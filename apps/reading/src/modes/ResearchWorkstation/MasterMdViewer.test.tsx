@@ -16,17 +16,35 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type { ChunkResponse } from "../../lib/api";
+import type {
+  AttributionReportResponse,
+  ConsentViewResponse,
+} from "../../lib/api";
 import type { ParsedSynthesis } from "../../lib/synthesisParser";
 
-const { getChunkMock, apiFetchMock, openDocumentMock } = vi.hoisted(() => ({
+const {
+  getChunkMock,
+  getAttributionReportMock,
+  getConsentViewMock,
+  apiFetchMock,
+  openDocumentMock,
+} = vi.hoisted(() => ({
   getChunkMock: vi.fn(),
+  getAttributionReportMock: vi.fn(),
+  getConsentViewMock: vi.fn(),
   apiFetchMock: vi.fn(),
   openDocumentMock: vi.fn(),
 }));
 
 vi.mock("../../lib/api", async (orig) => {
   const actual = await orig<typeof import("../../lib/api")>();
-  return { ...actual, getChunk: getChunkMock, apiFetch: apiFetchMock };
+  return {
+    ...actual,
+    getChunk: getChunkMock,
+    getAttributionReport: getAttributionReportMock,
+    getConsentView: getConsentViewMock,
+    apiFetch: apiFetchMock,
+  };
 });
 // Workspace actions + toast are side-effectful; stub them so the render is
 // pure. We assert on what the reader SEES, not on panel side effects.
@@ -74,6 +92,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   getChunkMock.mockReset();
+  getAttributionReportMock.mockReset();
+  getConsentViewMock.mockReset();
   openDocumentMock.mockReset();
   if (PRIOR_RESIZE_OBSERVER === undefined) {
     delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
@@ -125,6 +145,58 @@ function synth(over: Partial<ParsedSynthesis> = {}): ParsedSynthesis {
     qualityScore: null,
     reuseProvenance: [],
     compoundingStat: null,
+    ...over,
+  };
+}
+
+function attributionReport(
+  over: Partial<AttributionReportResponse> = {},
+): AttributionReportResponse {
+  const emptyAlgo = {
+    algorithm: "B" as const,
+    shares: {},
+    document_titles: {},
+    document_count: 0,
+    claim_count: 0,
+    document_ip_holders: {},
+    document_ip_holder_status: {},
+  };
+  return {
+    synthesis_id: "syn-1",
+    target_question: "Why?",
+    option_a: { ...emptyAlgo, algorithm: "A" },
+    option_b: {
+      ...emptyAlgo,
+      shares: { "doc-1": 1 },
+      document_titles: { "doc-1": "On Growth and Form" },
+      document_count: 1,
+      claim_count: 1,
+      document_ip_holders: { "doc-1": "ip-mit" },
+      document_ip_holder_status: { "ip-mit": "pre_onboarded" },
+    },
+    option_c: { ...emptyAlgo, algorithm: "C" },
+    ...over,
+  };
+}
+
+function consentView(over: Partial<ConsentViewResponse> = {}): ConsentViewResponse {
+  return {
+    holders: [],
+    escrow_report: {
+      pre_onboarded: 1,
+      invited: 0,
+      claimed: 0,
+      opted_out: 0,
+      claim_rate: 0,
+      total_escrow_accrued_cents: 0,
+      total_escrow_paid_cents: 0,
+      unclaimed_escrow_cents: 0,
+      publishers_with_nontrivial_accrual: 0,
+    },
+    disbursement_gates_open: ["G2", "G3"],
+    total_escrow_accruing_usd: "0",
+    any_disbursable: false,
+    gate_source_path: "docs/operator_gate_actions.md",
     ...over,
   };
 }
@@ -438,6 +510,42 @@ describe("MasterMdViewer — quality cue (SPR-11 M3)", () => {
     expect(screen.getByText(/another pass/i)).toBeTruthy();
     // … but with no sub-scores there is no "the detail" toggle.
     expect(screen.queryByText(/the detail/i)).toBeNull();
+  });
+});
+
+describe("MasterMdViewer — accrual anchored widget (SPR-04 M5)", () => {
+  it("does not load attribution when no persisted synthesis id is available", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(<MasterMdViewer synthesis={synth()} />);
+    await waitFor(() => expect(screen.getByText("The claim holds.")).toBeTruthy());
+    expect(getAttributionReportMock).not.toHaveBeenCalled();
+    expect(getConsentViewMock).not.toHaveBeenCalled();
+    expect(screen.queryByText(/What would be owed for this answer/i)).toBeNull();
+  });
+
+  it("mounts AccrualView through the anchored-widget component map", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    getAttributionReportMock.mockResolvedValue(attributionReport());
+    getConsentViewMock.mockResolvedValue(consentView());
+
+    const fixture = synth();
+    const { rerender } = render(
+      <MasterMdViewer synthesis={fixture} synthesisId="syn-1" />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText(/What would be owed for this answer/i)).toBeTruthy(),
+    );
+    expect(getAttributionReportMock).toHaveBeenCalledWith("syn-1");
+    expect(getConsentViewMock).toHaveBeenCalled();
+    expect(screen.getAllByText(/On Growth and Form/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/100% of attribution/)).toBeTruthy();
+
+    const attributionCalls = getAttributionReportMock.mock.calls.length;
+    const consentCalls = getConsentViewMock.mock.calls.length;
+    rerender(<MasterMdViewer synthesis={fixture} synthesisId="syn-1" />);
+    expect(getAttributionReportMock).toHaveBeenCalledTimes(attributionCalls);
+    expect(getConsentViewMock).toHaveBeenCalledTimes(consentCalls);
   });
 });
 
