@@ -3,14 +3,14 @@ import type { Meta, StoryObj } from "@storybook/react";
 import InvestigationsIndex from "./index";
 
 /**
- * Investigations index page — lists past + in-flight investigations
- * with status filter chips, total cost, per-row workstation +
- * replay deep-links, and a "start new investigation" form.
+ * Retired standalone investigations index — the preserved component
+ * that used to list past + in-flight investigations with status
+ * filters, total cost, per-row workstation + replay deep-links, and
+ * a "start new investigation" form.
  *
- * In Storybook (no backend) the listing renders empty and the
- * start-form is fully editable. Submitting the form fails the fetch
- * silently and surfaces the error text — useful for visually
- * verifying the error path.
+ * In production, the old /investigations door redirects into the
+ * canonical /my-research monitor. Storybook keeps this chrome around
+ * as a regression target for the retired component and its error path.
  */
 const meta = {
   title: "Workstation / InvestigationsIndex",

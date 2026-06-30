@@ -395,6 +395,27 @@ describe("Write door re-home (Write SPR-07)", () => {
 });
 
 /**
+ * Research SPR-05 — ONE MONITOR. The old flat InvestigationsIndex is folded
+ * into MyResearch, preserving list/status/cost/replay without re-opening a
+ * second discovery door.
+ */
+describe("Research one-monitor consolidation (Research SPR-05)", () => {
+  it("the retired /investigations door is not advertised from Map", () => {
+    const map = readSrc("modes/Map/index.tsx");
+    expect(map).not.toContain('path: "/investigations"');
+    expect(map).toContain('path: "/my-research"');
+  });
+
+  it("InvestigationsIndex points at the canonical MyResearch route", () => {
+    const m = modeById("InvestigationsIndex");
+    expect(m?.workflow).toBe("research");
+    expect(m?.built).toBe(true);
+    expect(m?.route).toBe("/my-research");
+    expect(m?.route).not.toBe("/investigations");
+  });
+});
+
+/**
  * Speak SPR-08 — ONE DOOR. The duplicate Interview surface is folded into
  * Speak (mirrors the SPR-05 InvestigationsIndex fold). Pinned so a future nav
  * change can't silently re-create a second door to interview-as-acquisition.
