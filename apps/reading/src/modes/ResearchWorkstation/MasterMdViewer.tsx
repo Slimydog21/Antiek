@@ -40,7 +40,10 @@ import {
 import { collectAnchoredWidgets, collectDecorations } from "../../reading-physics/registry";
 import type { ClaimId, ChunkId, LayoutMap, ReadingContext, RenderContext } from "../../reading-physics/types";
 import { useOpenDocument } from "../../lib/openDocument";
-import { sourcePageNumberFromSectionPath } from "../../lib/sectionPath";
+import {
+  sourcePageNumberFromSectionPath,
+  zeroBasedReaderPageFromSourcePage,
+} from "../../lib/sectionPath";
 import { CHUNK_ID_ATTR } from "./readingGeometryPass";
 import ChunkModal from "./ChunkModal";
 import { buildLayoutMap } from "./readingGeometryPass";
@@ -832,14 +835,12 @@ function SourceCitation({
                 toast.err(`${label} isn’t available to open.`);
                 return;
               }
-              // `source.locator` is a 1-based source page label (e.g. "p. 17");
+              // `source.locator` is a 1-based source page label (e.g. "p.17");
               // the reader's `page` opt is a 0-based index — convert honestly.
-              const sourcePage = source.locator
-                ? parseInt(source.locator.replace(/\D/g, ""), 10)
-                : NaN;
-              const page = Number.isFinite(sourcePage)
-                ? Math.max(0, sourcePage - 1)
-                : undefined;
+              const page =
+                zeroBasedReaderPageFromSourcePage(
+                  sourcePageNumberFromSectionPath(source.locator),
+                ) ?? undefined;
               openDocument(chunk.document_id, {
                 page,
                 chunkId: source.representativeChunkId,
