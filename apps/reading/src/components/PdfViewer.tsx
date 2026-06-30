@@ -24,12 +24,9 @@ interface PdfViewerProps {
    */
   onRegionSelected?: (regionId: string) => void;
   /**
-   * 1-based page index to jump to on load. Used by Mode A's chunk-
-   * citation modal which deep-links into /wrestle/<doc>?page=N.
-   *
-   * Sprint 11 day 2 accepts the prop but the underlying viewer still
-   * renders page 1 only (single-page legacy implementation). Multi-
-   * page navigation lands in Sprint 11 day 8 polish.
+   * 1-based page index to render on load. The viewer still renders one page at
+   * a time, but the page is the requested/clamped page so region selections and
+   * the header report the same locator the caller opened.
    */
   initialPage?: number;
 }
@@ -49,7 +46,7 @@ interface PageRenderState {
 }
 
 /**
- * Render the FIRST page of the PDF and capture selection events.
+ * Render one page of the PDF and capture selection events.
  *
  * Scope note: Sprint 2 day-1 renders one page and uses ``window.getSelection().toString()``
  * as the text. Multi-page render + accurate per-page char_offset
@@ -61,6 +58,7 @@ export default function PdfViewer({
   investigationId,
   documentId,
   onRegionSelected,
+  initialPage,
 }: PdfViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
@@ -90,13 +88,23 @@ export default function PdfViewer({
   // Render the page once when pdfBytes changes.
   useEffect(() => {
     let cancelled = false;
+    setRenderState(null);
     (async () => {
       try {
         // pdfjs.getDocument consumes a fresh buffer; never share with
         // upstream React state (it gets transferred).
         const buf = pdfBytes.slice().buffer;
         const pdf = await pdfjs.getDocument({ data: buf }).promise;
-        const page = await pdf.getPage(1);
+        const pageCount =
+          typeof pdf.numPages === "number" && Number.isFinite(pdf.numPages)
+            ? Math.max(1, Math.floor(pdf.numPages))
+            : 1;
+        const requestedPage =
+          typeof initialPage === "number" && Number.isFinite(initialPage)
+            ? Math.floor(initialPage)
+            : 1;
+        const pageNum = Math.min(Math.max(requestedPage, 1), pageCount);
+        const page = await pdf.getPage(pageNum);
         const viewport = page.getViewport({ scale: RENDER_SCALE });
         const canvas = canvasRef.current;
         const textLayer = textLayerRef.current;
@@ -139,7 +147,7 @@ export default function PdfViewer({
           .join("");
 
         if (!cancelled) {
-          setRenderState({ pageNum: 1, pageText });
+          setRenderState({ pageNum, pageText });
         }
       } catch (err) {
         console.error("PDF render failed:", err);
@@ -151,7 +159,7 @@ export default function PdfViewer({
     return () => {
       cancelled = true;
     };
-  }, [pdfBytes]);
+  }, [pdfBytes, initialPage]);
 
   const onMouseUp = useCallback(async () => {
     if (!renderState) return;
