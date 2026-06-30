@@ -109,10 +109,13 @@ coverage.
 ### Conflict 5 — Status dots on `docs/sprint-breakdown.html`
 
 The sprint-breakdown HTML's status dots reflect the master-spec sprint
-sequence. The UI-redesign sprints are not represented. **Future revision:**
-add a "Parallel UI track" group to the breakdown nav with sprints 0–12,
-linked to `docs/ui_redesign_posthog/sprint_NN_*.html`. Out of scope for
-2026-05-22.
+sequence. The UI-redesign sprints were not represented.
+
+**Resolution (updated 2026-06-30):** closed for the documentation/navigation
+surface. `docs/sprint-breakdown.html` now includes a "Parallel UI track"
+group with direct links to UI redesign sprints 0-12 under
+`docs/ui_redesign_posthog/sprint_NN_*.html`; each entry uses the existing
+parallel-track status dot semantics.
 
 ## What this implies for the audit
 
