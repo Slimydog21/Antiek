@@ -39,6 +39,8 @@ from pathlib import Path
 
 import pytest
 
+from substrate.notification_policy import interrupt
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Production layers an interruption must not originate from without
@@ -162,20 +164,56 @@ def _find_violations(path: Path) -> list[str]:
     return violations
 
 
-@pytest.mark.skipif(
-    not (REPO_ROOT / POLICY_FILE_REL).exists(),
-    reason=(
-        "substrate/notification_policy.py is a hashimoto-eng SPR-E5 feature not "
-        "merged into the four-workflow product consolidation. The load-bearing "
-        "AST boundary check (test_no_direct_interruption_apis_in_production) "
-        "still runs; the chokepoint-exists gate is only meaningful once the "
-        "module ships."
-    ),
-)
 def test_notification_policy_module_exists() -> None:
     assert (REPO_ROOT / POLICY_FILE_REL).exists(), (
         f"{POLICY_FILE_REL} missing — the chokepoint must exist for this gate to mean anything"
     )
+
+
+def test_notification_policy_logs_by_default(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level("INFO", logger="substrate.notification_policy"):
+        result = interrupt(
+            "Review queued acquisition failures",
+            title="Antiek queue",
+            metadata={"queue": "acquisition"},
+        )
+
+    assert result.allowed is True
+    assert result.decision == "logged"
+    assert result.reason == "default_log_only_policy"
+    assert result.request.message == "Review queued acquisition failures"
+    assert result.request.title == "Antiek queue"
+    assert dict(result.request.metadata) == {"queue": "acquisition"}
+    assert "operator interruption logged" in caplog.text
+    with pytest.raises(TypeError):
+        result.request.metadata["queue"] = "other"  # type: ignore[index]
+
+
+def test_notification_policy_denies_push_until_adapter_exists(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level("WARNING", logger="substrate.notification_policy"):
+        result = interrupt("Wake operator", severity="critical", allow_push=True)
+
+    assert result.allowed is False
+    assert result.decision == "denied"
+    assert result.reason == "push_adapter_not_installed"
+    assert "no push adapter is installed" in caplog.text
+
+
+def test_notification_policy_rejects_empty_messages() -> None:
+    with pytest.raises(ValueError, match="message must not be empty"):
+        interrupt("   ")
+
+
+def test_notification_policy_rejects_empty_titles() -> None:
+    with pytest.raises(ValueError, match="title must not be empty"):
+        interrupt("Wake operator", title="   ")
+
+
+def test_notification_policy_rejects_unknown_severity() -> None:
+    with pytest.raises(ValueError, match="severity must be one of"):
+        interrupt("Wake operator", severity="urgent")  # type: ignore[arg-type]
 
 
 def test_no_direct_interruption_apis_in_production() -> None:
