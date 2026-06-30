@@ -19,6 +19,7 @@ content if needed.
 
 from __future__ import annotations
 
+import json
 import time
 from urllib.parse import parse_qs, urlparse
 
@@ -31,6 +32,7 @@ from substrate.auth import (
     InvalidSessionCookie,
     InvalidToken,
     MockEmailProvider,
+    OutboundEmail,
     TokenExpired,
     mint_magic_link_token,
     mint_session_cookie,
@@ -306,6 +308,33 @@ def test_email_provider_factory_default_mock(monkeypatch):
 
     monkeypatch.setenv("ANTIEK_EMAIL_PROVIDER", "resend")
     assert get_email_provider().name == "resend"
+
+
+def test_mock_email_provider_can_write_jsonl_outbox(tmp_path, monkeypatch):
+    """Playwright login e2e reads this hermetic outbox instead of scraping
+    backend stdout or touching a real inbox."""
+    outbox = tmp_path / "mock-outbox.jsonl"
+    monkeypatch.setenv("ANTIEK_MOCK_EMAIL_OUTBOX_PATH", str(outbox))
+
+    sender = MockEmailProvider(log_to_stdout=False)
+    sender.send(
+        OutboundEmail(
+            to=_OPERATOR,
+            subject="Sign in",
+            text_body="Click http://127.0.0.1:8000/auth/callback?token=abc",
+        )
+    )
+    rows = [json.loads(line) for line in outbox.read_text(encoding="utf-8").splitlines()]
+    assert rows == [
+        {
+            "to": _OPERATOR,
+            "subject": "Sign in",
+            "text_body": "Click http://127.0.0.1:8000/auth/callback?token=abc",
+            "html_body": None,
+            "provider_message_id": "mock-1",
+            "sent_at": rows[0]["sent_at"],
+        }
+    ]
 
 
 def test_cross_origin_callback_redirects_to_frontend(monkeypatch):
