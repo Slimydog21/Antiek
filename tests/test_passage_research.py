@@ -3,8 +3,8 @@ guard and the two-way passage↔research provenance link.
 
 The mandatory gate (rigor #3): a research seeded from a gated book must
 NEVER carry the book's full text — that would launder content past the
-SPR-01 serve gate. The frontend (ResearchThis.tsx, return-to-reading,
-e2e) layers on the unbuilt DRW reading surface and is out of scope here.
+SPR-01 serve gate. The frontend handoff lives in ResearchThis.tsx and its
+reader tests; this suite owns the backend no-leak and provenance decision.
 """
 
 from __future__ import annotations
