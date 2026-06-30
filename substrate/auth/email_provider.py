@@ -82,6 +82,24 @@ class MockEmailProvider:
             sent_at=_utc_iso(),
         )
         self.sent.append(record)
+        outbox_path = os.environ.get("ANTIEK_MOCK_EMAIL_OUTBOX_PATH", "").strip()
+        if outbox_path:
+            os.makedirs(os.path.dirname(outbox_path) or ".", exist_ok=True)
+            with open(outbox_path, "a", encoding="utf-8") as f:
+                f.write(
+                    json.dumps(
+                        {
+                            "to": email.to,
+                            "subject": email.subject,
+                            "text_body": email.text_body,
+                            "html_body": email.html_body,
+                            "provider_message_id": record.provider_message_id,
+                            "sent_at": record.sent_at,
+                        },
+                        separators=(",", ":"),
+                    )
+                    + "\n"
+                )
         if self.log_to_stdout:
             print(
                 f"\n[MockEmailProvider] to={email.to} "
