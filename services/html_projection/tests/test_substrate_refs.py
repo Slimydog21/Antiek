@@ -96,6 +96,7 @@ def test_claim_from_metadata_public_domain(graph_db):
     assert data.kind == "claim"
     assert data.content_class == "public_domain"
     assert data.title == "On Liberty"
+    assert data.source_document_id == "doc-pd"
     assert data.payload["statement"] == "Liberty claim text"
     assert data.payload["text"] == "Liberty claim text"
 
@@ -115,6 +116,7 @@ def test_claim_resolves_source_via_supported_by_edge(graph_db):
     assert data.content_class == "public_domain"
     assert data.title == "Edge Source"
     assert data.ip_holder_id == "holder-edge"
+    assert data.source_document_id == "doc-edge"
     assert data.payload["statement"] == "Edge-backed claim"
 
 
@@ -124,6 +126,7 @@ def test_personal_reading_reported_not_prefiltered(graph_db):
     assert data.content_class == "personal_reading"
     assert data.ip_holder_id == "pg"
     assert data.title == "PG Essay"
+    assert data.source_document_id == "doc-pr"
     assert data.payload["statement"] == "Secret passage"
 
 
@@ -137,4 +140,5 @@ def test_malformed_metadata_falls_back_to_edge(graph_db):
     data = resolved["claim-bad-meta"]
     assert data.content_class == "public_domain"
     assert data.title == "Edge Source"
+    assert data.source_document_id == "doc-edge"
     assert data.payload["statement"] == "Bad meta claim"

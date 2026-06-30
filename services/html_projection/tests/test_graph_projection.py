@@ -198,6 +198,7 @@ def test_notebook_export_edges_carry_rights_tone():
                 content_class="public_domain",
                 ip_holder_id=None,
                 title="On Liberty",
+                source_document_id="doc-pd",
                 payload={"statement": "PUBLIC TEXT"},
             ),
             "n1": ResolvedRefData(
@@ -205,9 +206,41 @@ def test_notebook_export_edges_carry_rights_tone():
                 content_class="personal_reading",
                 ip_holder_id="pg",
                 title="A PG Essay",
+                source_document_id="doc-pr",
                 payload={"body": "SECRET"},
             ),
         },
     )
     tones = {edge["to_document_id"]: edge["tone"] for edge in dm["edges"]}
-    assert tones == {"On Liberty": "success", "A PG Essay": "warning"}
+    assert tones == {"doc-pd": "success", "doc-pr": "warning"}
+    labels = {edge["to_document_id"]: edge["to_title"] for edge in dm["edges"]}
+    assert labels == {"doc-pd": "On Liberty", "doc-pr": "A PG Essay"}
+
+
+def test_notebook_export_edges_fall_back_to_title_without_source_document_id():
+    from services.html_projection.adapters.notebook import ResolvedRefData
+    from services.html_projection.adapters.notebook_export import (
+        adapt_notebook_for_export,
+    )
+
+    dm = adapt_notebook_for_export(
+        {"type": "doc", "content": []},
+        title="Notebook",
+        resolved_refs={
+            "legacy": ResolvedRefData(
+                kind="claim",
+                content_class="public_domain",
+                ip_holder_id=None,
+                title="Legacy title",
+                payload={"statement": "PUBLIC TEXT"},
+            ),
+        },
+    )
+    assert dm["edges"] == [
+        {
+            "kind": "cites",
+            "to_document_id": "Legacy title",
+            "to_title": "Legacy title",
+            "tone": "success",
+        }
+    ]
