@@ -590,15 +590,20 @@ function locatorFromSectionPath(sectionPath: string | null): string | null {
 }
 
 /** Group resolved chunks by document into named sources, picking the
- *  first locator found per document. Order follows first appearance so
- *  the render is stable. */
+ *  first locator found per document. When a later chunk supplies that locator,
+ *  it also becomes the representative preview/open chunk so the visible
+ *  "from Source, p.N" affordance lands on the same evidence it names. Order
+ *  follows first appearance so the render is stable. */
 function groupByDocument(chunks: ChunkResponse[]): ResolvedSource[] {
   const byDoc = new Map<string, ResolvedSource>();
   for (const c of chunks) {
     const existing = byDoc.get(c.document_id);
     const locator = locatorFromSectionPath(c.section_path);
     if (existing) {
-      if (!existing.locator && locator) existing.locator = locator;
+      if (!existing.locator && locator) {
+        existing.locator = locator;
+        existing.representativeChunkId = c.chunk_id;
+      }
       continue;
     }
     byDoc.set(c.document_id, {
