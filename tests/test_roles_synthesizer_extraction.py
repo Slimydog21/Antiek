@@ -518,6 +518,39 @@ def test_reasoning_path_filters_fabricated_edge_ids_with_canonical_set():
     assert out.reasoning_paths_used[0].path_edge_ids == ("e-1",)
 
 
+def test_hallucinated_path_node_ids_rejected_against_canonical_set():
+    payload = _good_thesis()
+    payload["reasoning_paths_used"][0]["path_node_ids"] = ["n-1", "n-made-up"]
+    with pytest.raises(SynthesizerValidationError, match="canonical set"):
+        parse_synthesizer_response(
+            json.dumps(payload),
+            canonical_path_node_ids=("n-1", "n-2"),
+            canonical_path_edge_ids=("e-1",),
+        )
+
+
+def test_hallucinated_path_edge_ids_rejected_against_canonical_set():
+    payload = _good_thesis()
+    payload["reasoning_paths_used"][0]["path_edge_ids"] = ["e-1", "e-made-up"]
+    with pytest.raises(SynthesizerValidationError, match="canonical set"):
+        parse_synthesizer_response(
+            json.dumps(payload),
+            canonical_path_node_ids=("n-1", "n-2"),
+            canonical_path_edge_ids=("e-1",),
+        )
+
+
+def test_canonical_path_refs_are_preserved():
+    out = parse_synthesizer_response(
+        json.dumps(_good_thesis()),
+        canonical_path_node_ids=("n-1", "n-2"),
+        canonical_path_edge_ids=("e-1",),
+    )
+
+    assert out.reasoning_paths_used[0].path_node_ids == ("n-1", "n-2")
+    assert out.reasoning_paths_used[0].path_edge_ids == ("e-1",)
+
+
 def test_empty_reasoning_paths_ok():
     payload = _good_thesis(reasoning_paths_used=[])
     out = parse_synthesizer_response(json.dumps(payload))
