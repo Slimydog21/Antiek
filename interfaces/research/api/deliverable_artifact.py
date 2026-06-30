@@ -51,16 +51,12 @@ def resolve_deliverable_export(
     """Read a deliverable into a DeliverableExportSource, or None if absent.
 
     The operator-authored section prose (``deliverable_sections.prose_text``,
-    user-owned -> servable) exports faithfully as a ``synthesized`` block.
-
-    NOTE (rigor #1): the ``section_blocks`` references (insight/open_question/
-    operator_note/claim -> the substrate row's text + the source's
-    content_class/ip_holder) are NOT resolved here — 0 local deliverable rows to
-    validate against, and asserting a resolver works on unseen data is the
-    dishonesty the rigor forbids. They are omitted (not faked); the prose
-    carries the content. When the substrate resolution lands, append resolved
-    DeliverableBlocks with their real content_class — ``adapt_deliverable``
-    already cite-only's any non-servable block.
+    user-owned -> servable) exports as a ``synthesized`` block. Each section's
+    ``section_blocks`` refs (insight/open_question/operator_note/claim) are
+    resolved against the substrate via ``resolve_refs`` -> the unit's text + the
+    source document's content_class/ip_holder -> a ``DeliverableBlock``;
+    ``adapt_deliverable`` cite-only's any non-servable block. A ref the graph
+    cannot resolve is omitted (honest, not faked).
     """
     from runtime.db_lock import connect_read
 
@@ -75,20 +71,52 @@ def resolve_deliverable_export(
         if row is None:
             return None
         section_rows = con.execute(
-            "SELECT title, prose_text FROM deliverable_sections "
+            "SELECT section_id, title, prose_text FROM deliverable_sections "
             "WHERE deliverable_id = ? ORDER BY section_index",
             [deliverable_id],
         ).fetchall()
+        block_refs = {}
+        for sid, _stitle, _prose in section_rows:
+            block_refs[sid] = con.execute(
+                "SELECT block_kind, block_id FROM section_blocks "
+                "WHERE section_id = ? ORDER BY block_index",
+                [sid],
+            ).fetchall()
     finally:
         con.close()
 
+    # Resolve every referenced block_id against the substrate in one pass.
+    from services.html_projection.resolvers.substrate_refs import resolve_refs
+
+    all_block_ids = [bid for refs in block_refs.values() for (_kind, bid) in refs]
+    resolved = resolve_refs(all_block_ids, db_path=db) if all_block_ids else {}
+
     sections = []
-    for stitle, prose in section_rows:
+    for sid, stitle, prose in section_rows:
         blocks = []
         if prose:
             # Operator-authored synthesized prose — user-owned, servable.
             blocks.append(
                 DeliverableBlock(block_kind="synthesized", text=prose, content_class=None)
+            )
+        for block_kind, block_id in block_refs.get(sid, []):
+            rr = resolved.get(block_id)
+            if rr is None:
+                continue  # unresolvable ref omitted (honest)
+            text = (
+                rr.payload.get("statement")
+                or rr.payload.get("text")
+                or rr.payload.get("body")
+                or ""
+            )
+            blocks.append(
+                DeliverableBlock(
+                    block_kind=block_kind,
+                    text=text,
+                    content_class=rr.content_class,
+                    ip_holder_id=rr.ip_holder_id,
+                    source_title=rr.title,
+                )
             )
         sections.append(DeliverableSection(heading=stitle or "", blocks=blocks))
 
