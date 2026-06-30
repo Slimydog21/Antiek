@@ -155,7 +155,7 @@ viewport-scoped map. A verifier-critic returned DO-NOT-MERGE on M3: that machine
 was **misdirected and inert** on this surface. Round 2 corrected it. The honest
 model:
 
-- **The base geometry is ROOT-RELATIVE ⇒ SCROLL-INVARIANT.** `measureClaimGeometry`
+- **The base geometry is ROOT-RELATIVE ⇒ SCROLL-INVARIANT.** `measureAnchorGeometry`
   normalises every rect by `box.top - rootBox.top` (readingGeometryPass.ts), so
   scrolling the reading column moves the article and its claim spans by the same
   delta and leaves every root-relative rect unchanged. **Scrolling never changes
