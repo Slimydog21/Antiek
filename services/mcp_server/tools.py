@@ -20,6 +20,7 @@ from mcp.server.fastmcp import FastMCP
 
 from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
 
+from .defenses import wrap_untrusted_content
 from .errors import EmptyQueryError, SourceNotFoundError
 from .reader import _resolve_db_path
 
@@ -169,6 +170,7 @@ class PublicSearchResult(SearchResult):
     def to_dict(self) -> dict[str, Any]:
         d = super().to_dict()
         d["document_id"] = self.note_id
+        d["snippet"] = wrap_untrusted_content(d["snippet"])
         if self.ip_holder_id is not None:
             d["ip_holder_id"] = self.ip_holder_id
         if self.content_class is not None:
