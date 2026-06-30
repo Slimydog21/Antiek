@@ -18,8 +18,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from services.antiek_format import AntiekFormatError, read_antiek
+from services.antiek_format import read_antiek
 from services.antiek_format.single_file import verify_single_file_html
+from services.demand_gate.roundtrip_detector import ExportRegistry, classify_roundtrip
 from services.html_projection.island import extract_island
 
 _DOC_ISLAND_MARKER = 'data-antiek="doc-model"'
@@ -37,9 +38,15 @@ class IngestResult:
     quarantined: bool
     reason: Optional[str]
     framing: str = "quoted_payload"
+    # SPR-08 M2: round-trip classification when an ExportRegistry is supplied —
+    # "returned_unmodified" | "traveled_and_changed", else None (not a tracked
+    # round-trip, or no registry passed).
+    roundtrip: Optional[str] = None
 
 
-def ingest_antiek(data: bytes) -> IngestResult:
+def ingest_antiek(
+    data: bytes, *, export_registry: Optional[ExportRegistry] = None
+) -> IngestResult:
     """Ingest a returning born-Antiek artifact, island-only.
 
     - ``.antiek`` container: read the SIGNED ``content.tiptap.json`` structured
@@ -49,19 +56,37 @@ def ingest_antiek(data: bytes) -> IngestResult:
 
     A signature that does not verify (or a malformed/unsigned artifact)
     QUARANTINES with a logged reason — it is never silently ingested.
+
+    SPR-08 M2: when ``export_registry`` is supplied, a verified container is
+    classified against prior exports (returned_unmodified / traveled_and_changed)
+    — the only admissible demand signal — and the classification is recorded on
+    the result. Detection NEVER changes the ingest decision; a quarantined
+    artifact is never classified.
     """
     # 1. .antiek container — a deterministic ZIP (PK magic).
     if data[:2] == b"PK":
         try:
             result = read_antiek(data)
-        except AntiekFormatError as exc:
+        except Exception as exc:  # noqa: BLE001 — an ingestion boundary must
+            # NEVER crash on malformed/hostile bytes. ANY read failure (bad zip,
+            # bad CRC-32, missing/extra entry, an unverifiable signature that
+            # raises) quarantines with a reason — it is never silently ingested
+            # and never propagates an exception to the caller.
             return IngestResult(False, None, True, f"malformed .antiek container: {exc}")
         if not result.signature_valid:
             return IngestResult(
                 False, None, True, "container signature did not verify; quarantined"
             )
+        roundtrip = None
+        if export_registry is not None:
+            rt = classify_roundtrip(
+                result.document_id, result.content_tiptap, export_registry
+            )
+            roundtrip = rt.classification if rt.is_roundtrip else None
         # The SIGNED structured content — NOT the rendered projection.html.
-        return IngestResult(True, result.content_tiptap, False, None)
+        return IngestResult(
+            True, result.content_tiptap, False, None, roundtrip=roundtrip
+        )
 
     # 2. single-file .antiek.html — verify the whole-file signature, then
     #    extract the doc-model island. Never parse the visible markup.
