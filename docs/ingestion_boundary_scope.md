@@ -24,19 +24,22 @@ so no test name, docstring, or sentence elsewhere claims more than is true —
     (`services/ingestion/tests/test_ingest_island_only.py`).
   - No second ingestion fork: it reuses SPR-04 (`read_antiek`,
     `single_file.verify_single_file_html`) + SPR-02 (`extract_island`).
+- **Foreign-HTML sanitizer + hostile corpus (M3).**
+  `services/ingestion/sanitize_foreign_html.py` wraps the foreign-HTML
+  decision point with quarantine-on-any-vector semantics. It reuses the
+  SPR-02 zero-script/external-fetch gate and adds foreign-only buckets:
+  executable/navigable `data:` payloads, SVG `foreignObject`, iframe
+  `srcdoc`, and spoofed `data-antiek` markers. The hostile corpus has one
+  failing-before/passing-after fixture per vector, plus clean-prose and inert
+  raster-data-image controls (`services/ingestion/tests/test_sanitize_foreign_html.py`).
+- **CI wiring (M4).** `.github/workflows/ci.yml` now runs
+  `python -m pytest services/html_projection/ services/antiek_format/ services/ingestion/ -q -p no:cacheprovider`
+  as a blocking "HTML-projection layer gates" job step, covering zero-script,
+  palette, determinism, signature, shell integrity, island-only ingest, and
+  foreign-HTML sanitizer quarantine.
 
 ## Open — NOT closed by this slice
 
-- **M3 — foreign-HTML sanitizer + hostile corpus.** HTML that never came from
-  Antiek (`acquisition/urls`, the universal ingest) is **not yet** wrapped by a
-  sanitizer with the failing-before/passing-after hostile corpus (script
-  vectors in all casings/encodings, event handlers, `javascript:`/`data:` URIs,
-  remote-fetch beacons, SVG `foreignObject`, `srcdoc`, D9 bucket-C markers).
-  This is the larger half of the boundary and remains TODO. **Until it lands,
-  foreign HTML entering through acquisition is not sanitized by this work.**
-- **M4 — CI wiring.** The projection gates (zero-script, palette, determinism,
-  signature, ingest quarantine) are green locally but are **not yet wired into
-  CI** as a blocking check.
 - **The §7 daemon data/instruction boundary at large.** Every non-artifact path
   by which text can enter an LLM role's context — tool outputs, web fetches
   outside `acquisition`, model-generated text re-entering context-packs — is
@@ -46,10 +49,6 @@ so no test name, docstring, or sentence elsewhere claims more than is true —
 
 ## What would close the remaining items
 
-M3: a single sanitizer wrapping the existing `acquisition` ingest path (grep-
-proven no second fork), driven by a decision table, with one hostile-corpus
-fixture per category and a failing-before/passing-after pair each. M4: add the
-`services/html_projection` + `services/antiek_format` + `services/ingestion`
-suites + the zero-script/palette/determinism gates to the CI workflow as a
-required check. The daemon boundary is a separate, larger effort (its own
-spec), not closeable here.
+The daemon boundary is a separate, larger effort (its own spec), not closeable
+inside HPRJ SPR-07. Closing it requires a context-pack / tool-output boundary
+spec with fixtures for non-artifact text entering LLM roles.
