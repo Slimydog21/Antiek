@@ -335,12 +335,14 @@ def collect_investigation_lifecycle(events: list[Event]) -> dict[str, Any]:
         at = (e.action_type.value if hasattr(e.action_type, "value") else e.action_type)
         if at == ActionType.INVESTIGATION_START_REQUESTED.value:
             starts.add(e.investigation_id)
-        elif at == ActionType.INVESTIGATION_COMPLETED.value and isinstance(
-            e.payload, InvestigationCompletedPayload
+        elif (
+            at == ActionType.INVESTIGATION_COMPLETED.value
+            and isinstance(e.payload, InvestigationCompletedPayload)
         ):
             completed.append(e.payload)
-        elif at == ActionType.INVESTIGATION_FAILED.value and isinstance(
-            e.payload, InvestigationFailedPayload
+        elif (
+            at == ActionType.INVESTIGATION_FAILED.value
+            and isinstance(e.payload, InvestigationFailedPayload)
         ):
             failed.append(e.payload)
 
@@ -565,6 +567,12 @@ def collect_acquisition_cost(
     by_day: list[dict[str, Any]] = []
     total_usd = 0.0
     total_calls = 0
+    start_utc = start if start.tzinfo else start.replace(tzinfo=UTC)
+    end_utc = end if end.tzinfo else end.replace(tzinfo=UTC)
+    start_day = start_utc.astimezone(UTC).replace(
+        hour=0, minute=0, second=0, microsecond=0,
+    )
+    end_utc = end_utc.astimezone(UTC)
 
     if not budget_path.exists():
         return {

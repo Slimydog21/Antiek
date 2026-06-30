@@ -141,9 +141,10 @@ def test_operator_fixture_loads_with_provenance():
 # ---------------------------------------------------------------------------
 
 
-def test_run_benchmark_emits_artifact():
+def test_run_benchmark_emits_artifact(monkeypatch):
+    monkeypatch.delenv("TURBOPUFFER_API_KEY", raising=False)
     out = Path(tempfile.mkdtemp(prefix="antiek-spr05-art-")) / "spike.json"
-    artifact = rb.run_benchmark(
+    rb.run_benchmark(
         ["vss", "brute_force", "turbopuffer", "ducklake"],
         out_path=out,
         latency_repeats=3,
