@@ -63,6 +63,45 @@ def test_not_enough_live_provider_sessions_blocks_closure() -> None:
     assert any(">=5 valid sessions with live_provider_ai=true" in f for f in report.failures)
 
 
+def test_live_provider_sessions_require_dialogue_and_research_steps_to_pass() -> None:
+    records = [_session(i, live=i <= 5, citation=True) for i in range(1, 11)]
+    records[0]["entry_door"] = "search"
+    records[0]["steps"]["3"] = {"status": "inert"}
+
+    report = validate_sessions(records)
+
+    assert report.closure_ready is False
+    assert report.live_provider_sessions == 4
+    assert any(
+        "live_provider_ai=true requires provider-backed steps 3 and 4 to pass" in f
+        for f in report.failures
+    )
+    assert any(">=5 valid sessions with live_provider_ai=true" in f for f in report.failures)
+
+
+def test_reading_session_must_last_at_least_twenty_minutes() -> None:
+    records = [_session(i, live=i <= 5, citation=True) for i in range(1, 11)]
+    records[0]["entry_door"] = "search"
+    records[0]["minutes_reading"] = 19
+
+    report = validate_sessions(records)
+
+    assert report.closure_ready is False
+    assert report.valid_sessions == 9
+    assert any("minutes_reading must be at least 20" in f for f in report.failures)
+    assert any(">=10 valid sessions" in f for f in report.failures)
+
+
+def test_zero_reading_minutes_is_present_but_invalid() -> None:
+    record = _session(1)
+    record["minutes_reading"] = 0
+
+    report = validate_sessions([record])
+
+    assert any("minutes_reading must be at least 20" in f for f in report.failures)
+    assert not any("missing required fields: minutes_reading" in f for f in report.failures)
+
+
 def test_failure_or_irritation_requires_concrete_followup_issue() -> None:
     record = _session(1, live=True, citation=True, entry_door="search")
     record["steps"]["7"] = {
