@@ -27,6 +27,8 @@ import NotebooksIndex from "./modes/NotebooksIndex";
 import OperatorDashboard from "./modes/OperatorDashboard";
 import Outcomes from "./modes/Outcomes";
 import OutcomesIndex from "./modes/OutcomesIndex";
+import MarketplaceMetrics from "./modes/MarketplaceMetrics";
+import PayoutDashboard from "./modes/PayoutDashboard";
 import PayoutsAudit from "./modes/PayoutsAudit";
 import PricingPage from "./modes/Pricing";
 import PrivacyDashboard from "./modes/PrivacyDashboard";
@@ -175,6 +177,8 @@ function AuthenticatedRoutes() {
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/operator" element={<OperatorDashboard />} />
+        <Route path="/operator/payouts/dashboard" element={<PayoutDashboard />} />
+        <Route path="/marketplace" element={<MarketplaceMetrics />} />
         {/* antiek-unified SPR-05 — read-only coordination surface (gate ledger
             + 45-sprint roadmap). Slots into the SPR-04 shared/operator bucket
             when the four-workflow NavRail lands; reachable directly meanwhile. */}

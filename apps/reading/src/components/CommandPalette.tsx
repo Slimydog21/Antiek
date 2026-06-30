@@ -238,6 +238,20 @@ const ROUTE_INDEX: PaletteRoute[] = [
   },
   {
     kind: "route",
+    id: "route:payout-dashboard",
+    title: "Payout dashboard",
+    subtitle: "Unified creator + publisher accrual view (/operator/payouts/dashboard)",
+    path: "/operator/payouts/dashboard",
+  },
+  {
+    kind: "route",
+    id: "route:marketplace",
+    title: "Marketplace metrics",
+    subtitle: "Creator, publisher, and advertiser health snapshot (/marketplace)",
+    path: "/marketplace",
+  },
+  {
+    kind: "route",
     id: "route:notebooks-index",
     title: "Notebooks",
     subtitle: "Wedge 2 literate-analysis surface (/notebooks)",

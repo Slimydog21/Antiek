@@ -572,10 +572,9 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     sharedReason: "IP-economics audit; governance, not a workflow tool.",
   },
 
-  // Sprint 23-25+ economics surfaces. BUILT as components but NOT routed
-  // yet (Sprint 23-24 / 25+). Honest: built=false, shared bucket with a
-  // reason. They are operator/advertiser/creator governance surfaces —
-  // not one of the four workflows.
+  // Sprint 23-25+ economics surfaces. They are operator/advertiser/creator
+  // governance surfaces, not one of the four workflows. Keep built=false when
+  // a component exists but no production route/API contract is mounted yet.
   {
     id: "AdvertiserConsole",
     workflow: "shared",
@@ -597,16 +596,20 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     workflow: "shared",
     label: "Payout dashboard",
     blurb: "Unified creator + publisher payout dashboard (Sprint 25+).",
-    built: false,
-    sharedReason: "IP-economics dashboard (Sprint 25+); cross-cutting, unrouted.",
+    built: true,
+    route: "/operator/payouts/dashboard",
+    sharedReason:
+      "Read-only operator IP-economics dashboard (Sprint 25+); cross-cutting governance surface.",
   },
   {
     id: "MarketplaceMetrics",
     workflow: "shared",
     label: "Marketplace metrics",
     blurb: "Marketplace §2 metrics dashboard (Sprint 25+).",
-    built: false,
-    sharedReason: "Marketplace observability (Sprint 25+); cross-cutting, unrouted.",
+    built: true,
+    route: "/marketplace",
+    sharedReason:
+      "Read-only marketplace observability (Sprint 25+); cross-cutting operator surface.",
   },
 ];
 

@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
 /**
  * taxonomy.test.ts — the mechanical guard that keeps workflowTaxonomy.ts
  * from rotting (SPR-04 rigor #3).
@@ -30,6 +34,13 @@ import {
   workflowForPath,
   type ModeId,
 } from "./workflowTaxonomy";
+
+const _here = dirname(fileURLToPath(import.meta.url));
+const readSrc = (rel: string): string =>
+  readFileSync(resolve(_here, "..", rel), "utf-8")
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 
 /**
  * The real mode set, derived from the filesystem at build time.
@@ -155,6 +166,58 @@ describe("workflowTaxonomy built-flag + shared-bucket integrity", () => {
     expect(bad, `Entries with an invalid workflow: ${JSON.stringify(bad)}`).toEqual(
       [],
     );
+  });
+});
+
+describe("Sprint 25+ economics dashboard route integrity", () => {
+  const dashboards = [
+    {
+      id: "PayoutDashboard",
+      route: "/operator/payouts/dashboard",
+      component: "PayoutDashboard",
+    },
+    {
+      id: "MarketplaceMetrics",
+      route: "/marketplace",
+      component: "MarketplaceMetrics",
+    },
+  ] as const;
+
+  it("marks backend-backed dashboards as built shared surfaces with production routes", () => {
+    for (const dashboard of dashboards) {
+      const entry = modeById(dashboard.id);
+      expect(entry, `${dashboard.id} taxonomy entry`).toBeDefined();
+      expect(entry?.workflow).toBe("shared");
+      expect(entry?.built).toBe(true);
+      expect(entry?.route).toBe(dashboard.route);
+      expect(entry?.sharedReason).toMatch(/read-only/i);
+    }
+  });
+
+  it("mounts each built economics dashboard in App.tsx", () => {
+    const app = readSrc("App.tsx");
+    for (const dashboard of dashboards) {
+      expect(app).toContain(`import ${dashboard.component} from "./modes/${dashboard.component}"`);
+      expect(app).toContain(
+        `<Route path="${dashboard.route}" element={<${dashboard.component} />} />`,
+      );
+    }
+  });
+
+  it("lists each dashboard in operator discovery surfaces", () => {
+    const map = readSrc("modes/Map/index.tsx");
+    const palette = readSrc("components/CommandPalette.tsx");
+    for (const dashboard of dashboards) {
+      expect(map).toContain(`path: "${dashboard.route}"`);
+      expect(palette).toContain(`path: "${dashboard.route}"`);
+    }
+  });
+
+  it("keeps CreatorPayouts unrouted until its /me/payouts contract exists", () => {
+    const creator = modeById("CreatorPayouts");
+    expect(creator?.built).toBe(false);
+    expect(creator?.route).toBeUndefined();
+    expect(creator?.sharedReason).toMatch(/unrouted/i);
   });
 });
 
