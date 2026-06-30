@@ -146,3 +146,49 @@ def test_put_content_malformed_doc_422(tmp_path, monkeypatch):
         json={"doc": {"type": "not_a_doc"}},
     )
     assert r.status_code == 422
+
+
+def test_save_by_doc_creates_bound_notebook_and_decomposes_tiptap(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTIEK_DB_PATH", str(tmp_path / "test.duckdb"))
+    client = _client()
+    doc = {
+        "type": "doc",
+        "content": [
+            {"type": "paragraph", "content": [{"type": "text", "text": "note"}]},
+            {"type": "claim_card", "attrs": {"claim_id": "claim-1"}},
+        ],
+    }
+    r = client.post(
+        "/notebooks/by-doc/doc-1/save",
+        json={
+            "notebook_id": "nb-doc-1",
+            "content_json": doc,
+            "blocks": [],
+            "save_kind": "explicit",
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["notebook_id"] == "nb-doc-1"
+    assert body["document_id"] == "doc-1"
+    assert body["content_json"] == doc
+    assert [b["block_type"] for b in body["blocks"]] == ["prose", "claim_card"]
+    assert body["blocks"][1]["ref_id"] == "claim-1"
+
+    listing = client.get("/notebooks", params={"document_id": "doc-1"}).json()
+    assert [nb["notebook_id"] for nb in listing["notebooks"]] == ["nb-doc-1"]
+
+
+def test_save_by_doc_rejects_cross_document_notebook_reuse(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTIEK_DB_PATH", str(tmp_path / "test.duckdb"))
+    client = _client()
+    payload = {
+        "notebook_id": "nb-shared",
+        "content_json": {"type": "doc", "content": []},
+        "blocks": [],
+        "save_kind": "autosave",
+    }
+    first = client.post("/notebooks/by-doc/doc-a/save", json=payload)
+    assert first.status_code == 200, first.text
+    second = client.post("/notebooks/by-doc/doc-b/save", json=payload)
+    assert second.status_code == 409
