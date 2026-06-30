@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 28;
+export const EVENT_SCHEMA_VERSION = 29;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -32,6 +32,7 @@ export const ActionType = {
   INVESTIGATION_CHASE_HALTED: "investigation.chase_halted",
   CLAIM_ASSERTED_BY_OPERATOR: "claim.asserted_by_operator",
   PAGE_ATTRIBUTION_COMPUTED: "page.attribution.computed",
+  MCP_ATTRIBUTION_RECORDED: "mcp.attribution.recorded",
   DECOMPOSE_QUESTION_REQUESTED: "decompose.requested",
   DECOMPOSE_QUESTION_DELIVERED: "decompose.delivered",
   DECOMPOSER_PARAPHRASE_FLAGGED: "decomposer.paraphrase.flagged",
@@ -1617,6 +1618,22 @@ export interface PageAttributionComputedPayload {
 }
 
 /**
+ * MCP-SPR-03 — emitted when an external agent consumes a substrate source.
+ *
+ * The payload is metadata-only: no snippet, text, body, or content field is
+ * allowed into the event log. The enclosing Event carries ``document_id`` once
+ * the tool resolves the source anchor.
+ */
+export interface MCPAttributionRecordedPayload {
+  action_type: "mcp.attribution.recorded";
+  source_id: string;
+  consumer_id: string;
+  timestamp: string;
+  session_dwell_seconds?: number;
+  source_kind?: "chunk" | "document";
+}
+
+/**
  * Emitted by the RLM bridge on every document-load when the bridge
  * weighs in (above-threshold → escalate or defer; below-threshold →
  * skipped). Per master-spec §11.6 + rlm_integration_spec.md RLM-1.
@@ -2640,6 +2657,7 @@ export type TypedPayload =
   | InvestigationChaseHaltedPayload
   | ClaimAssertedByOperatorPayload
   | PageAttributionComputedPayload
+  | MCPAttributionRecordedPayload
   | RLMBridgeDecidedPayload
   | QualityGateEvaluatedPayload
   | CrossGraphCitationRecordedPayload
@@ -2773,6 +2791,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "investigation.start_requested",
   "knowledge.reused",
   "marginalia.noted",
+  "mcp.attribution.recorded",
   "note.compressed_doc_written",
   "note.emerged",
   "note.refined",

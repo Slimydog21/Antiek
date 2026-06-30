@@ -4,7 +4,7 @@ Full MCP lifecycle: start server → list resources → read resource →
 call tool → verify output. Hermetic (DuckDB temp file, no network).
 
 Covers all 3 resources (private note, user notes list, public note)
-+ 3 tools (search_personal, search_public, cite_source).
++ 4 tools (search_personal, search_public, cite_source, record_attribution).
 """
 
 from __future__ import annotations
@@ -241,6 +241,7 @@ class TestE2ETools:
         assert "search_personal" in names
         assert "search_public" in names
         assert "cite_source" in names
+        assert "record_attribution" in names
 
     def test_search_personal_returns_ranked_results(self, _seed: str) -> None:
         from runtime.db_lock import connect_read
@@ -361,6 +362,39 @@ class TestE2ETools:
                 cite_source(con, "nonexistent-chunk")
         finally:
             con.close()
+
+    def test_record_attribution_event_lifecycle(
+        self,
+        _seed: str,
+        tmp_path: Any,
+    ) -> None:
+        from runtime.db_lock import connect_read
+        from services.mcp_server.tools import record_attribution
+        from substrate.event_log import trajectory
+
+        events_dir = str(tmp_path / "events")
+        con = connect_read(_seed)
+        try:
+            result = record_attribution(
+                con,
+                "chunk-quantum-1",
+                consumer_id="agent-e2e",
+                timestamp="2026-06-30T11:00:00Z",
+                investigation_id="inv-mcp-e2e",
+                session_dwell_seconds=7.0,
+                events_dir=events_dir,
+            )
+        finally:
+            con.close()
+
+        assert result["event_id"] is not None
+        assert result["document_id"] == "pub-note-1"
+        rows = trajectory("inv-mcp-e2e", events_dir=events_dir)
+        assert len(rows) == 1
+        assert rows[0]["action_type"] == "mcp.attribution.recorded"
+        assert rows[0]["payload"]["consumer_id"] == "agent-e2e"
+        assert rows[0]["payload"]["source_id"] == "chunk-quantum-1"
+        assert rows[0]["document_id"] == "pub-note-1"
 
 
 # ---------------------------------------------------------------------------
