@@ -5,9 +5,9 @@ resolves to servable-snippet, NEVER gated full text — Write must not be a
 side door around Read's servability gate. Plus the brainstorm-source and
 dangling-source rules.
 
-The reader that OPENS the target (M2/M3 highlights + rabbit holes, M5
-return-to-writing + e2e) is blocked on the unbuilt DRW SPR-10 shared
-surface — not faked here. This covers the decision that protects the moat.
+The frontend reader-open path is covered in WriteHome tests; this suite covers
+the backend decision that protects the moat: resolving a target must never hand
+Write an ungated full-text side door.
 """
 
 from __future__ import annotations

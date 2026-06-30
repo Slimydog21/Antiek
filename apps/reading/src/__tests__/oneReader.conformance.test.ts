@@ -186,8 +186,9 @@ describe("oneReader conformance — pinned sets (lockstep guards, run today)", (
 });
 
 // ───────────────────────────────────────────────────────────────────────────
-// Door (a) — SPR-09 fills these. Skipped today: the one <Reader> + the routed
-// doors do not exist (SPR-03 builds the Reader, SPR-05 routes the doors).
+// Door (a) — source-level conformance. The one <Reader> and routed doors exist;
+// these tests keep production open targets from drifting back to bespoke
+// renderers or `/wrestle/:id`.
 // ───────────────────────────────────────────────────────────────────────────
 
 describe("oneReader conformance — door (a): every door routes to the one Reader [SPR-05 fills, source-level]", () => {
