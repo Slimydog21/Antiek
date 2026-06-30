@@ -276,7 +276,7 @@ def main() -> None:
              ("P-15 reuse", "Two-run hermetic test emits knowledge.reused.",
               ["P-15 row passes"], ["tests/test_flywheel_reuse.py"]),
              ("P-14 funnel", "Concurrent promotions serialize via db_lock.",
-              ["P-14 row passes"], ["tests/test_promotion_funnel.py"]),
+              ["P-14 row passes"], ["tests/test_research_runner.py"]),
              ("CI job", "deep-research in agent_execution_gates on main.",
               ["workflow contains step"], [".github/workflows/agent_execution_gates.yml"]),
              ("Operator handoff", "SPR-DRL-handoff.md passes canonical_verify handoff.",
@@ -389,7 +389,7 @@ def main() -> None:
 <h1>Perfect Deep Research Loop</h1>
 <p class="tagline">One terminal contract, Path A convergence, real gather via Exa Wedge 1.</p>
 <div class="meta-row"><span class="tag tag--green"><span class="dot"></span>engineering complete (P-17)</span>
-<span class="tag tag--yellow"><span class="dot"></span>not deployed / smoke pending</span>
+<span class="tag tag--yellow"><span class="dot"></span>DRW-LEDGER prod smoke pending</span>
 <span class="tag tag--grey">9 sprints · 7 waves · {DATE}</span></div></header>
 <section class="block"><h2>Goal</h2>
 <p>Converge DRW gather with Loop 1 synthesis under <code>DeepResearchComplete</code>, then wire <strong>Exa Wedge 1</strong> so gather promotes real documents into <code>SessionEvidencePack</code> chunks.</p>
