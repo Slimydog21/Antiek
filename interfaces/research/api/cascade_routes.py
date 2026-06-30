@@ -469,6 +469,9 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
     }
 
 
+_LOG = logging.getLogger(__name__)
+
+
 async def _run_to_completion(session: CascadeSession) -> None:
     """Drive a launched session to completion on the event loop.
 
@@ -496,6 +499,11 @@ async def _run_to_completion(session: CascadeSession) -> None:
     except Exception as exc:
         # Capture, do not swallow: record WITH the failing stage (so a join/merge
         # failure isn't mislabeled as a synthesis-tail one) + audit, stay non-fatal.
+        _LOG.exception(
+            "cascade completion failed (session_id=%s, stage=%s)",
+            getattr(session, "session_id", "?"),
+            stage,
+        )
         session.record_synthesis_tail_error(exc, stage=stage)
 
 

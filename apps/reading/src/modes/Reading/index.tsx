@@ -16,7 +16,6 @@ import ReadingColumn from "../../components/reader/ReadingColumn";
 import Reader, { deriveToc } from "../../components/reader/Reader";
 import ReaderErrorBoundary from "../../components/reader/ReaderErrorBoundary";
 import { allBlockTypesKnown } from "../../components/reader/knownBlockTypes";
-import { openDocumentStub } from "../../components/reader/openDocumentStub";
 import PdfViewer from "../../components/PdfViewer";
 import type { Block, Document, InlineSpan, TocEntry } from "../../types/document_model.gen";
 import { decodeRegion, useOpenDocument } from "../../lib/openDocument";
@@ -74,6 +73,10 @@ export default function BookReader() {
     return Number.isFinite(n) && n >= 0 ? n : null;
   }, [searchParams]);
   const optHighlight = useMemo(() => decodeRegion(searchParams.get("hl")), [searchParams]);
+  const optChunk = useMemo(() => {
+    const raw = searchParams.get("chunk");
+    return raw && raw.trim() ? raw.trim() : null;
+  }, [searchParams]);
   const optInspect = searchParams.get("mode") === "inspect";
 
   const [book, setBook] = useState<BookDetail | null>(null);
@@ -671,9 +674,10 @@ export default function BookReader() {
                     Document for the current page window. PRESERVES verbatim: the
                     articleRef (FloatMenu selection scope), the SPR-07 attribution
                     markers (Reader stamps data-akb-asset-id from a truthy assetId
-                    — present here ONLY for a servable book, §9.0), and no
-                    fabricated chunkId. openDocument is the SPR-03 stub (SPR-05
-                    wires the real gated resolver).
+                    — present here ONLY for a servable book, §9.0). ?chunk= from
+                    openDocument lands citation navigation (SPR-07 M5); books path
+                    still has no per-chunk id for the linear body unless the door
+                    passed chunkId. Citations route through useOpenDocument (SPR-05).
 
                     D1 — "never blank, never a throw": the structuredDoc gate
                     rejects an unknown block `type` up front, but a field-level
@@ -699,8 +703,8 @@ export default function BookReader() {
                     document={structuredDoc}
                     blocks={activeWindow?.blocks ?? []}
                     assetId={book.servable_full_text ? documentId : null}
-                    chunkId={null}
-                    openDocument={openDocumentStub}
+                    chunkId={optChunk}
+                    openDocument={openDocument}
                   />
                 </ReaderErrorBoundary>
               ) : (
@@ -835,8 +839,8 @@ export default function BookReader() {
       {/* M2 — the floating bookmark: a book-level MULTI-TURN talk-to-book
           conversation that persists across page navigation (session state, the
           usePosition precedent). Answers cite pages → jumpToPage moves the
-          SPR-07 reader. The SPR-04 selection FloatMenu Dialogue stays one-shot;
-          THIS is the new multi-turn surface. */}
+          SPR-07 reader. Distinct from the SPR-06 passage FloatMenu Dialogue
+          (the highlight gesture) — THIS is the book-wide bookmark. */}
       <TalkToBook documentId={documentId} title={book.title} onJumpToPage={jumpToPage} />
     </div>
   );

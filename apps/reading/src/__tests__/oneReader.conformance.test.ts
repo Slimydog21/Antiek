@@ -281,6 +281,15 @@ describe("oneReader conformance — door (b): no second document renderer reacha
     expect(src).toMatch(/<ReadingColumn\s+assetId=\{null\}\s+text=\{deliverable\.report\}/);
   });
 
+  it("BookReader wires the one openDocument resolver into <Reader> (SPR-07 M5)", () => {
+    const idx = readSrc("modes/Reading/index.tsx");
+    expect(idx).toMatch(/useOpenDocument\(\)/);
+    expect(idx).not.toMatch(/openDocument=\{openDocumentStub\}/);
+    expect(idx).toMatch(/openDocument=\{openDocument\}/);
+    expect(idx).toMatch(/searchParams\.get\("chunk"\)/);
+    expect(idx).toMatch(/chunkId=\{optChunk\}/);
+  });
+
   it("the DRW canvas 'cite source' opens the source via openDocument (no ad-hoc document open)", () => {
     const idx = readSrc("modes/DeepResearchWorkspace/index.tsx");
     expect(idx).toMatch(/useOpenDocument\(\)/);
