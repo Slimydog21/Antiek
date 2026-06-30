@@ -19,6 +19,11 @@ Coverage:
    (defends against the parser drifting from the payload).
 7. Drift detection — ``EVIDENCE_TYPES`` / ``EVIDENCE_CONFIDENCE_LEVELS``
    match the schema Literal sets.
+8. Fabricated chunk refs are rejected against request-supplied chunks.
+9. Fabricated edge refs are rejected against request-supplied subgraph
+   edges.
+10. Bracketed line-start prose citations inside chunk text are not treated as
+    canonical chunk refs.
 """
 
 from __future__ import annotations
@@ -363,6 +368,115 @@ async def test_sub_question_mismatch_treated_as_parse_failure(
     p = Event.model_validate(delivered[0]).payload
     assert p.insufficient_evidence is True
     assert p.sub_question == sub_q  # fallback uses the request's sub_question
+
+
+@pytest.mark.asyncio
+async def test_fabricated_chunk_ref_falls_back(
+    monkeypatch, app_and_bus, async_client,
+):
+    _, bus = app_and_bus
+    inv = "inv-ev-fake-chunk"
+    sub_q = "Which chunk supports the claim?"
+
+    bad = _good_response(sub_q)
+    bad["supporting_claims"][0]["chunk_ids"] = ["chunk-invented"]
+    stub = _StubEvidenceRetriever(json.dumps(bad))
+    register_provider(stub)
+    _patch_dispatch_config(monkeypatch, _evidence_config("stub-evidence"))
+
+    await _post_evidence_request(
+        async_client,
+        investigation_id=inv,
+        sub_question=sub_q,
+        chunks_block="### chunk_id: chunk-1\n\nOnly this chunk is in scope.",
+    )
+    await bus.wait_for_handlers(timeout=5.0)
+
+    delivered = [
+        r for r in trajectory(inv)
+        if r["action_type"] == ActionType.EVIDENCE_RETRIEVE_DELIVERED.value
+    ]
+    assert stub.call_count == 1
+    assert len(delivered) == 1
+    e = Event.model_validate(delivered[0])
+    p = e.payload
+    assert p.insufficient_evidence is True
+    assert p.supporting_claims == []
+    assert e.policy_id == "stub-evidence/stub-flash-model"
+
+
+@pytest.mark.asyncio
+async def test_bracketed_body_citation_not_canonical_chunk_ref(
+    monkeypatch, app_and_bus, async_client,
+):
+    _, bus = app_and_bus
+    inv = "inv-ev-body-citation"
+    sub_q = "Which body citation supports the claim?"
+
+    bad = _good_response(sub_q)
+    bad["supporting_claims"][0]["chunk_ids"] = ["1"]
+    stub = _StubEvidenceRetriever(json.dumps(bad))
+    register_provider(stub)
+    _patch_dispatch_config(monkeypatch, _evidence_config("stub-evidence"))
+
+    await _post_evidence_request(
+        async_client,
+        investigation_id=inv,
+        sub_question=sub_q,
+        chunks_block=(
+            "### chunk_id: chunk-1\n\n"
+            "This body text contains a footnote.\n"
+            "[1] A line-start footnote must not become a chunk id."
+        ),
+    )
+    await bus.wait_for_handlers(timeout=5.0)
+
+    delivered = [
+        r for r in trajectory(inv)
+        if r["action_type"] == ActionType.EVIDENCE_RETRIEVE_DELIVERED.value
+    ]
+    assert stub.call_count == 1
+    assert len(delivered) == 1
+    e = Event.model_validate(delivered[0])
+    p = e.payload
+    assert p.insufficient_evidence is True
+    assert p.supporting_claims == []
+    assert e.policy_id == "stub-evidence/stub-flash-model"
+
+
+@pytest.mark.asyncio
+async def test_fabricated_edge_ref_falls_back(
+    monkeypatch, app_and_bus, async_client,
+):
+    _, bus = app_and_bus
+    inv = "inv-ev-fake-edge"
+    sub_q = "Which edge supports the claim?"
+
+    bad = _good_response(sub_q)
+    bad["supporting_claims"][0]["edge_ids"] = ["edge-invented"]
+    stub = _StubEvidenceRetriever(json.dumps(bad))
+    register_provider(stub)
+    _patch_dispatch_config(monkeypatch, _evidence_config("stub-evidence"))
+
+    await _post_evidence_request(
+        async_client,
+        investigation_id=inv,
+        sub_question=sub_q,
+        subgraph_block=json.dumps({"edges": [{"edge_id": "edge-1"}]}),
+    )
+    await bus.wait_for_handlers(timeout=5.0)
+
+    delivered = [
+        r for r in trajectory(inv)
+        if r["action_type"] == ActionType.EVIDENCE_RETRIEVE_DELIVERED.value
+    ]
+    assert stub.call_count == 1
+    assert len(delivered) == 1
+    e = Event.model_validate(delivered[0])
+    p = e.payload
+    assert p.insufficient_evidence is True
+    assert p.supporting_claims == []
+    assert e.policy_id == "stub-evidence/stub-flash-model"
 
 
 # ---------------------------------------------------------------------------

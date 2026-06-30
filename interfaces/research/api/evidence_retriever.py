@@ -32,9 +32,13 @@ synthesizer chain).
 
 from __future__ import annotations
 
+import json
 import os
+import re
 import sys
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
 _PKG_ROOT = os.path.dirname(
@@ -65,6 +69,92 @@ from .broadcast import EventBroadcaster  # noqa: E402 — after the sys.path boo
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+_BRACKETED_CHUNK_LINE_RE = re.compile(
+    r"(?im)^\s*\[([A-Za-z0-9][A-Za-z0-9_.:/#@-]*)\]\s+tier\s*="
+)
+_CHUNK_ID_LINE_RE = re.compile(
+    r"(?im)^\s*(?:#{1,6}\s*)?chunk_id\s*:\s*([^\s|]+)"
+)
+
+
+@dataclass(frozen=True)
+class CanonicalEvidenceRefs:
+    chunk_ids: tuple[str, ...] | None = None
+    edge_ids: tuple[str, ...] | None = None
+
+
+def _canonical_refs_from_request(
+    req: EvidenceRetrieveRequestedPayload,
+) -> CanonicalEvidenceRefs:
+    chunks = _load_json_block(req.chunks_block)
+    subgraph = _load_json_block(req.subgraph_block)
+    chunk_ids = _ordered_unique(
+        [
+            *_collect_values_for_keys(
+                chunks,
+                {"chunk_id", "chunk_ids", "source_chunk_ids"},
+            ),
+            *_chunk_ids_from_text(req.chunks_block),
+        ]
+    )
+    edge_ids = _ordered_unique(
+        _collect_values_for_keys(subgraph, {"edge_id", "edge_ids"})
+    )
+    return CanonicalEvidenceRefs(
+        chunk_ids=chunk_ids or None,
+        edge_ids=edge_ids or None,
+    )
+
+
+def _load_json_block(raw: str) -> Any:
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _collect_values_for_keys(value: Any, keys: set[str]) -> list[str]:
+    refs: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key in keys:
+                refs.extend(_strings_from_value(child))
+            else:
+                refs.extend(_collect_values_for_keys(child, keys))
+    elif isinstance(value, list):
+        for child in value:
+            refs.extend(_collect_values_for_keys(child, keys))
+    return refs
+
+
+def _strings_from_value(value: Any) -> list[str]:
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    if isinstance(value, list):
+        out: list[str] = []
+        for child in value:
+            out.extend(_strings_from_value(child))
+        return out
+    return []
+
+
+def _chunk_ids_from_text(raw: str) -> list[str]:
+    refs = [match.group(1).strip() for match in _CHUNK_ID_LINE_RE.finditer(raw)]
+    refs.extend(
+        match.group(1).strip() for match in _BRACKETED_CHUNK_LINE_RE.finditer(raw)
+    )
+    return [ref for ref in refs if ref]
+
+
+def _ordered_unique(values: list[str]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        if value not in seen:
+            out.append(value)
+            seen.add(value)
+    return tuple(out)
 
 
 def _result_to_payload_lists(
@@ -140,7 +230,7 @@ def _dispatch_and_parse(
     event: Event,
     *,
     sub_question: str,
-    canonical_chunk_ids: tuple[str, ...] = (),
+    canonical_refs: CanonicalEvidenceRefs,
 ) -> tuple[EvidenceResult | None, str]:
     """Run one evidence_retriever dispatch + parse. Returns
     ``(EvidenceResult, policy_id)`` on success, ``(None, fallback_id)``
@@ -166,7 +256,8 @@ def _dispatch_and_parse(
         parsed = parse_evidence_response(
             response_text,
             expected_sub_question=sub_question,
-            canonical_chunk_ids=canonical_chunk_ids,
+            canonical_chunk_ids=canonical_refs.chunk_ids,
+            canonical_edge_ids=canonical_refs.edge_ids,
         )
         return parsed, policy_id
     except EvidenceValidationError as exc:
@@ -195,7 +286,7 @@ def make_evidence_retriever_handler(
         sub_question = req.sub_question.strip()
         if not sub_question:
             return  # nothing to retrieve
-        canonical_chunk_ids = _extract_chunk_ids_from_block(req.chunks_block)
+        canonical_refs = _canonical_refs_from_request(req)
 
         prompt = render_full_prompt(
             sub_question=sub_question,
@@ -210,7 +301,7 @@ def make_evidence_retriever_handler(
             prompt,
             event,
             sub_question=sub_question,
-            canonical_chunk_ids=canonical_chunk_ids,
+            canonical_refs=canonical_refs,
         )
         if result is None:
             await _emit_delivered(
