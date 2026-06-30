@@ -27,7 +27,7 @@ Each entry below carries:
 - **Action when unlocked** — what an agent should do the day the criterion
   fires
 
-The thirteen deferrals, by unlock criterion category:
+The tracked deferrals, by unlock criterion category:
 
 ---
 
@@ -503,7 +503,23 @@ full-shell visual proof.
 
 ---
 
-## D17 — Personal-Reading Lane live-ingest cluster (the prod-only network steps)
+## D18 — arXiv source-census producer (the source-onboarding gate's data feed)
+
+**Status:** ⚠️ Partial. The GATE shipped (PR #42 / `abde67e`) and the
+DB-backed producer landed (`tools/source_census.py::compute_source_census`); the
+live committed `reports/source_census.json` artifact is still deferred.
+**Unlock criterion:** a prod corpus **+** an unbanned arXiv ingest window (arXiv still 429-bans the box; the host-global governor makes a window safe) — operator-run.
+**Spec reference:** `docs/decisions/arxiv-corpus-first-reframe.md`; reframe P3b in `~/specs/antiek-arxiv-ingest/.caffenagent/reframe-run.json`.
+**Blocks-what:** nothing now — `tools/lint/source_gate.py` is wired into `ci.yml` but is a **no-op (exit 0) until `reports/source_census.json` exists**, so the gate cannot block any onboarding until a census is produced. The thresholds (metadata-complete ≥95% / linkback-resolvable ≥99% / dedup-overlap <20%) are PROVISIONAL until calibrated on the first real census.
+**Action when unlocked:** run `compute_source_census(con, source)` over the real
+prod corpus — `dedup_overlap_pct` via the one `substrate.dedup` identity ladder;
+metadata / linkback / t1 / open via plain `documents` SQL — then emit + commit
+`reports/source_census.json`, calibrate the PROVISIONAL thresholds against the
+first real arXiv census, and the wired CI gate enforces automatically.
+
+---
+
+## D19 — Personal-Reading Lane live-ingest cluster (the prod-only network steps)
 
 **Status:** ⚠️ Partial. The lane shipped + is live on prod (PR #43 merge
 `9aeb2c9`, deployed 2026-06-01); the connectors, classification gate, monitoring,
@@ -537,7 +553,7 @@ zero third-party docs on a servable class.
 **Retrieval gate closure (RG-06, verified 2026-06-02):** the ingest window and
 unlock criterion above are **unchanged** — still operator-invoked real-network
 ingest only. RG-01..RG-05 closed the latent VSS + `GET /chunks` seams (defects
-A/B in `docs/decisions/retrieval-gate-closure.md`). What RG-06 adds for D17 is a
+A/B in `docs/decisions/retrieval-gate-closure.md`). What RG-06 adds for D19 is a
 **mandatory retrieval spot-check after each connector ingest**: VSS query @
 `attribution_eligible` must not rank `personal_reading`, and
 `GET /chunks/{chunk_id}` must withhold body (`servable=False`,
@@ -546,19 +562,6 @@ A/B in `docs/decisions/retrieval-gate-closure.md`). What RG-06 adds for D17 is a
 `personal-lane.md` step 4 passes). **Halt ingest** if spot-check or
 `retrieval_gate_check` fails — do not continue the window.
 
-## D18 — arXiv source-census producer (the source-onboarding gate's data feed)
-
-**Status:** ⚠️ Partial. The GATE shipped (PR #42 / `abde67e`) and the
-DB-backed producer landed (`tools/source_census.py::compute_source_census`); the
-live committed `reports/source_census.json` artifact is still deferred.
-**Unlock criterion:** a prod corpus **+** an unbanned arXiv ingest window (arXiv still 429-bans the box; the host-global governor makes a window safe) — operator-run.
-**Spec reference:** `docs/decisions/arxiv-corpus-first-reframe.md`; reframe P3b in `~/specs/antiek-arxiv-ingest/.caffenagent/reframe-run.json`.
-**Blocks-what:** nothing now — `tools/lint/source_gate.py` is wired into `ci.yml` but is a **no-op (exit 0) until `reports/source_census.json` exists**, so the gate cannot block any onboarding until a census is produced. The thresholds (metadata-complete ≥95% / linkback-resolvable ≥99% / dedup-overlap <20%) are PROVISIONAL until calibrated on the first real census.
-**Action when unlocked:** run `compute_source_census(con, source)` over the real
-prod corpus — `dedup_overlap_pct` via the one `substrate.dedup` identity ladder;
-metadata / linkback / t1 / open via plain `documents` SQL — then emit + commit
-`reports/source_census.json`, calibrate the PROVISIONAL thresholds against the
-first real arXiv census, and the wired CI gate enforces automatically.
 ---
 
 ## Cross-reference: unlock criterion → deferrals it gates
@@ -575,7 +578,7 @@ first real arXiv census, and the wired CI gate enforces automatically.
 | Operator UI-design ratification (highlight removal semantics) | D12 (`highlight_removed` event) |
 | Read-surface integration sprints (geometry pass / `source.read` emit / marginalia persistence / review gesture + scheduler; each its own `docs/decisions/spr-0{5,6,7,8}-*.md`) | D13 (Physics of Reading live surface integrations) |
 | Operator ratifies the Physics of Reading canon (`physics-of-reading.md` draft→ratified) | D13's CI-guard advisory→blocking flip |
-| Operator ingest window (real network + per-connector credential) | D17 (Personal-Reading Lane live-ingest cluster) |
+| Operator ingest window (real network + per-connector credential) | D19 (Personal-Reading Lane live-ingest cluster) |
 
 ---
 
@@ -605,6 +608,8 @@ Realistic-earliest unlock dates assuming everything else moves on schedule:
   only flips CI strictness.
 - **D15 (arXiv governor per-hop metadata hook)** — closed on 2026-06-30.
 - **D17 (Mountain Shell v2 Tailwind yellow-mirror re-tone)** — closed on 2026-06-30.
+- **D19 (Personal-Reading Lane live-ingest cluster)** — operator ingest window;
+  no code change required until an operator-invoked real-network run.
 
 **Bottom line:** of the tracked deferrals, **2 closed this month** (D15, D17);
 remaining deferrals are gated on either time, volume, ratification, operator

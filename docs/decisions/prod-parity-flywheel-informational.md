@@ -32,7 +32,7 @@ corpus AND ≥ 1 `knowledge.reused` event from real research activity. A correct
 code deploy onto an unfed box **cannot** make it true — so hard-failing the
 deploy on it red-flags every correct deploy. The prod box is currently unfed:
 the corpus ingest window is an operator-gated deferral (arXiv is 429-banned; see
-`engineering_deferrals.md` D17/D18), so `flywheel_ready` is legitimately false.
+`engineering_deferrals.md` D19/D18), so `flywheel_ready` is legitimately false.
 
 SHA + providers, by contrast, ARE properties the deploy is responsible for and
 can always satisfy — they stay blocking (they are the catch that surfaced the

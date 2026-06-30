@@ -96,8 +96,9 @@ diverges. Both v1 failures are now verified dead — see
    procedural floor ships fine without it (the routes return a typed-503
    graceful-absence), so this is optional polish, **not a gate** — that is why it
    is recorded here and not in `operator_gate_actions.md`.
-2. **D17** — re-tone `apps/reading/tailwind.config.js` to mirror the softened
-   vars (see `engineering_deferrals.md` D17).
+2. **D17 closed 2026-06-30** — `apps/reading/tailwind.config.js` now mirrors the
+   softened vars, with `tokens.contrast.test.ts` guarding drift (see
+   `engineering_deferrals.md` D17).
 3. **Backend deploy of accumulated non-AMS2 `main`** — operator's call, separate
    from this PR.
 

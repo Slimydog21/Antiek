@@ -28,7 +28,7 @@ Byte-verify discipline: confirm `file:line` on handoff before editing substrate.
 | PR #38 §9.0 servability staged until G2/G3 | legal / serve | staged branch | TBD | serve lint cluster | **SR-08** | **OPEN** |
 | P5 chunk provenance (`personal_reading` non-citable) | `tools.codegen` | `tools/codegen/chunk_provenance.py` | `tests/test_conformance_gate.py` | `tools/codegen/check_conformance.py` | **SR-09** | **CLOSED** (P5) |
 | P4 continuous OAI sync under shared flock | `tools.arxiv_oai_sync` + systemd timer | `tools/arxiv_oai_sync.py`, `infrastructure/ansible/templates/antiek-arxiv-oai-sync.*.j2` | `tests/test_arxiv_oai_sync.py`, `tests/test_arxiv_oai_systemd.py`, focused `tests/test_rate_governor.py` flock cases | operator/systemd via `setup.yml` + `deploy.yml` | **SR-09** | **CLOSED** (P4; see `docs/decisions/asr-sr09-p4-oai-systemd.md`) |
-| P3b live `source_census.json` + D17 capstone | `tools.source_census` | `tools/source_census.py` | `tests/test_source_gate.py` (fixtures + synthetic producer DB) | `source_gate.py` enforces when census present | **SR-10** | **PARTIAL** (producer landed; live `reports/source_census.json` still operator-gated) |
+| P3b live `source_census.json` + D19 capstone | `tools.source_census` | `tools/source_census.py` | `tests/test_source_gate.py` (fixtures + synthetic producer DB) | `source_gate.py` enforces when census present | **SR-10** | **PARTIAL** (producer landed; live `reports/source_census.json` still operator-gated) |
 
 ## PR #43 closed obligations (on main @ `2b59fed`)
 

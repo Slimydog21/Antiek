@@ -6,7 +6,7 @@
 
 Use this table on **every** agent handoff before merge. Mark each row **PASS** or **FAIL**. **Any FAIL ⇒ session fails adversarial re-read** unless remediated and re-audited.
 
-**Grounding:** Rows cite egghead closure pattern, `DispatchDecomposer` contract case, AMS-v1 fiction ledger, `ccb4c66` Werner postmortem, and D17 deferral precision.
+**Grounding:** Rows cite egghead closure pattern, `DispatchDecomposer` contract case, AMS-v1 fiction ledger, `ccb4c66` Werner postmortem, and deferral-citation precision.
 
 ---
 
@@ -25,8 +25,8 @@ Use this table on **every** agent handoff before merge. Mark each row **PASS** o
 | R-09 | Pre-network vs provider | TypeError before dispatch ⇒ not "provider down" | Blames model outage without repro | T-09 | F-equiv |
 | R-10 | DispatchDecomposer proof | Production adapter test OR row `untested` | Only FakeDecomposer cited for adapter bug | T-10 | F-equiv |
 | R-11 | Repro script cited | When sprint names `repro_cascade_decompose_contract.py`, exit code in handoff | Repro skipped; "already fixed" | T-12 | — |
-| R-12 | Deferral cite precision | `engineering_deferrals.md:L###` @ SHA | Bare "D17" / "deferred" | T-08 | F8 |
-| R-13 | D17 cluster honesty | Live-ingest deferral described as operator window, not missing code | "D17 blocks implementation" without L475+ text | T-08 | F8 |
+| R-12 | Deferral cite precision | `engineering_deferrals.md:L###` @ SHA | Bare "D19" / "deferred" | T-08 | F8 |
+| R-13 | D19 cluster honesty | Live-ingest deferral described as operator window, not missing code | "D19 blocks implementation" without line-precise text | T-08 | F8 |
 | R-14 | AMS path fiction | Cited UI paths VERIFIED in ledger or prefixed `NEW:` | Bare fictional paths (AMS-v1 class) | T-11 | F3 |
 | R-15 | spec_refs lint | Changed sprint HTML passes `verify_spec_refs.ts` when cited | Unlinted new paths in htmlspec | T-11 | F3 |
 | R-16 | Invented performance | p95/fps/cost has artifact or explicit not-measured | "Feels snappy" / p95 without file (ccb4c66 class) | T-05, T-14 | F5 |
@@ -60,7 +60,7 @@ Use this table on **every** agent handoff before merge. Mark each row **PASS** o
 | "Provider down" on TypeError | R-09, R-08 | **DispatchDecomposer** pre-network |
 | AMS-v1 sprint "green" | R-14, R-15, R-24 | Fiction paths |
 | ccb4c66 hop "fixed lag" | R-16, R-17 | Measurement theater |
-| "Deferred to D17" in handoff | R-12, R-13 | Ambiguous deferral |
+| "Deferred to D19" in handoff | R-12, R-13 | Ambiguous deferral |
 
 ---
 

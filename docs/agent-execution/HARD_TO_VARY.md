@@ -150,7 +150,7 @@ An auditor marks **FAIL** if any row is true for the session under review.
 | F5 | **Invented metrics** — p95, fps, cost, “CI green” for serve/rights without measured artifact or named blocking job | Remove the number; story unchanged | Werner SPR-07; AMS-v2 `mountain-shell-v2-verification.md` |
 | F6 | `xfail` / skip without regression fixture that bites if guard removed | Guard rots; looks covered | `docs/decisions/spr-09-boundary-lint-vs-import-linter.md` |
 | F7 | **Informational CI as legal proof** — latency, Lost-Pixel, axe warn-only treated as blocking serve/rights/craft closure | `::warning::` survives; product claim does not | `docs/decisions/ci-informational-gates.md` |
-| F8 | **Ambiguous deferral IDs** — bare `D17` without `engineering_deferrals.md:L###` @ commit SHA | Reader cannot find the deferral cluster | `docs/engineering_deferrals.md` (D17 ≈ L475+, Personal-Reading live-ingest) |
+| F8 | **Ambiguous deferral IDs** — bare `D19` without `engineering_deferrals.md:L###` @ commit SHA | Reader cannot find the deferral cluster | `docs/engineering_deferrals.md` (D19 = Personal-Reading live-ingest) |
 
 **Additional fails (cite in case study; audit as F-equivalent, not optional):** “Provider down” when repro shows pre-network `TypeError`; sprint done with only `FakeDecomposer` for a `DispatchDecomposer` bug (`roles/cascade_planner/planner.py`); **memory-without-test** — closure from training-data recall or “I read the file” without `inspect` signatures, repro exit codes, or a named pytest row in the Scope Map.
 

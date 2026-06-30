@@ -1,8 +1,8 @@
-# Retrieval Gate Closure — Preflight + D17 Post-Ingest Spot-Checks
+# Retrieval Gate Closure — Preflight + D19 Post-Ingest Spot-Checks
 
 **Audience:** operator or PRcrouch verifying §9.0 chunk-gate closure on prod **before**
 and **after** a Personal-Reading Lane ingest window (`engineering_deferrals.md`
-D17). Complements `infrastructure/runbooks/personal-lane.md` (corpus audit +
+D19). Complements `infrastructure/runbooks/personal-lane.md` (corpus audit +
 serve-path checks); this runbook covers the **retrieval seams** PR #43 left open
 until RG-01..RG-06 closed them.
 
@@ -35,7 +35,7 @@ $PY -m pytest tests/test_compliance_invariants.py -q -m "not integration" \
   -k "retrieval_gate"
 ```
 
-**Refuse go-live** (and refuse to start D17 live ingest) if `retrieval_gate_check`
+**Refuse go-live** (and refuse to start D19 live ingest) if `retrieval_gate_check`
 is non-zero or any preflight pytest reports failures.
 
 ---
@@ -54,7 +54,7 @@ Every command below uses `$LIVE_DB` and `$PY`.
 
 ---
 
-## 2. Post-D17 retrieval spot-check (after **each** connector ingest)
+## 2. Post-D19 retrieval spot-check (after **each** connector ingest)
 
 Run **immediately after** a connector lands new `personal_reading` rows and
 **after** `personal-lane.md` step 4 (`corpus_audit`) exits 0. Repeat per connector
@@ -180,4 +180,4 @@ independent checks.
 | Closure matrix tests | `tests/test_retrieval_gate_closure.py` |
 | Drift lint | `tools/lint/retrieval_gate_check.py` |
 | Personal-lane go-live | `infrastructure/runbooks/personal-lane.md` |
-| D17 deferral | `docs/engineering_deferrals.md` (Personal-Reading Lane D17) |
+| D19 deferral | `docs/engineering_deferrals.md` (Personal-Reading Lane D19) |
