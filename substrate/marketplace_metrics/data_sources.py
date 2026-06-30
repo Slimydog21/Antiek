@@ -19,6 +19,10 @@ from collections.abc import Mapping
 from typing import Protocol
 
 
+class MarketplaceMetricsSourceError(RuntimeError):
+    """Raised when dashboard source data cannot be read honestly."""
+
+
 class _DBConn(Protocol):
     """Minimal DuckDB-shaped read-only connection contract."""
 
@@ -30,13 +34,16 @@ def fetch_publisher_status_rows(con: _DBConn) -> list[tuple[str, str]]:
     """Return [(ip_holder_id, status), ...] from the ip_holders table.
 
     Single source of truth for the publisher loop. Empty list when
-    the table is empty (pre-cohort)."""
+    the table is empty (pre-cohort). Missing/broken tables are errors:
+    an unreadable marketplace is not an empty marketplace."""
     try:
         rows = con.execute(
             "SELECT ip_holder_id, status FROM ip_holders"
         ).fetchall()
-    except Exception:
-        return []
+    except Exception as exc:
+        raise MarketplaceMetricsSourceError(
+            "could not read publisher status rows for marketplace metrics"
+        ) from exc
     return [(row[0], row[1]) for row in rows]
 
 
@@ -48,16 +55,20 @@ def fetch_publisher_accrual_cents(con: _DBConn) -> dict[str, int]:
         rows = con.execute(
             "SELECT ip_holder_id, escrow_balance_usd FROM ip_holders"
         ).fetchall()
-    except Exception:
-        return {}
+    except Exception as exc:
+        raise MarketplaceMetricsSourceError(
+            "could not read publisher accrual rows for marketplace metrics"
+        ) from exc
     out: dict[str, int] = {}
     for row in rows:
         ip_id = row[0]
         balance_usd = row[1] or 0
         try:
             cents = int(round(float(balance_usd) * 100))
-        except (TypeError, ValueError):
-            cents = 0
+        except (TypeError, ValueError) as exc:
+            raise MarketplaceMetricsSourceError(
+                f"invalid escrow balance for publisher {ip_id!r}"
+            ) from exc
         out[ip_id] = cents
     return out
 

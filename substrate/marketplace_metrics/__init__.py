@@ -34,6 +34,7 @@ from .dashboard import (
     classify_health,
 )
 from .data_sources import (
+    MarketplaceMetricsSourceError,
     collect_snapshot_inputs,
     fetch_creator_paid_cents,
     fetch_publisher_accrual_cents,
@@ -53,6 +54,7 @@ __all__ = [
     "CreatorEarningsDistribution",
     "EarningsBucket",
     "MarketplaceHealth",
+    "MarketplaceMetricsSourceError",
     "MarketplaceSnapshot",
     "PublisherEscrowReport",
     "PublisherStatusCounts",
