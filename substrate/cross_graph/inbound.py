@@ -34,6 +34,7 @@ from __future__ import annotations
 import enum
 import uuid
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -65,7 +66,7 @@ def _now_unix() -> int:
     return int(time.time())
 
 
-class InboundRejection(str, enum.Enum):
+class InboundRejection(enum.StrEnum):
     """Concrete reasons an inbound citation is refused. The handler
     NEVER raises on rejection — it returns an ``InboundCitationOutcome``
     with ``accepted=False`` and a populated ``rejection`` so the caller
@@ -284,7 +285,7 @@ def accept_inbound_citation(
 def ensure_nonce_table(con: Any) -> None:
     """Defensive table-creation for the persistent nonce ledger.
     Canonical schema lives in ``substrate/graph/schema.py``."""
-    try:
+    with suppress(Exception):
         con.execute(
             """
             CREATE TABLE IF NOT EXISTS federation_nonces (
@@ -295,8 +296,6 @@ def ensure_nonce_table(con: Any) -> None:
             )
             """
         )
-    except Exception:
-        pass
 
 
 def prune_expired_nonces(
@@ -344,14 +343,22 @@ def remember_nonce_persistent(
     ).fetchone()
     if existing is not None:
         return False
-    con.execute(
-        """
-        INSERT INTO federation_nonces (
-            nonce, partner_id, accepted_at_unix, expires_at_unix
-        ) VALUES (?, ?, ?, ?)
-        """,
-        [nonce, partner_id, now, now + retention_seconds],
-    )
+    try:
+        con.execute(
+            """
+            INSERT INTO federation_nonces (
+                nonce, partner_id, accepted_at_unix, expires_at_unix
+            ) VALUES (?, ?, ?, ?)
+            """,
+            [nonce, partner_id, now, now + retention_seconds],
+        )
+    except Exception:
+        raced = con.execute(
+            "SELECT 1 FROM federation_nonces WHERE nonce = ?", [nonce],
+        ).fetchone()
+        if raced is not None:
+            return False
+        raise
     return True
 
 
