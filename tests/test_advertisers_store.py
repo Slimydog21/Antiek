@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from substrate.advertisers import (
+    AdvertiserCampaign,
     CampaignStatus,
     InMemoryAdvertiserStore,
     SqliteAdvertiserStore,
@@ -37,6 +38,25 @@ def test_create_campaign_requires_advertiser():
             creative_headline="x", creative_url="x",
             daily_budget_cents=1000,
         )
+
+
+def test_inmemory_upsert_campaign_requires_advertiser():
+    store = InMemoryAdvertiserStore()
+    with pytest.raises(ValueError, match="unknown advertiser_id"):
+        store.upsert_campaign(
+            AdvertiserCampaign(
+                campaign_id="cam-orphan",
+                advertiser_id="adv-missing",
+                sector="x",
+                sub_sector=None,
+                intent="trial-signup",
+                target_topics=(),
+                creative_headline="x",
+                creative_url="https://x",
+                daily_budget_cents=1000,
+            )
+        )
+    assert store.list_campaigns() == []
 
 
 def test_create_campaign_default_status_is_draft():
@@ -80,10 +100,10 @@ def test_list_active_campaigns_filters_status():
                          sector="x", intent="t", creative_headline="h",
                          creative_url="u", daily_budget_cents=100,
                          status=CampaignStatus.ACTIVE)
-    c2 = create_campaign(store, advertiser_id=a.advertiser_id,
-                         sector="x", intent="t", creative_headline="h",
-                         creative_url="u", daily_budget_cents=100,
-                         status=CampaignStatus.DRAFT)
+    create_campaign(store, advertiser_id=a.advertiser_id,
+                    sector="x", intent="t", creative_headline="h",
+                    creative_url="u", daily_budget_cents=100,
+                    status=CampaignStatus.DRAFT)
     active = list_active_campaigns(store)
     assert {c.campaign_id for c in active} == {c1.campaign_id}
 
@@ -140,6 +160,43 @@ def test_sqlite_campaign_persists_across_reopen(tmp_path):
     assert found is not None
     assert found.target_topics == ("python", "tooling")
     assert found.daily_budget_cents == 10_000
+
+
+def test_sqlite_upsert_campaign_requires_advertiser(tmp_path):
+    db = str(tmp_path / "adv.sqlite")
+    store = SqliteAdvertiserStore(db_path=db)
+    with pytest.raises(ValueError, match="unknown advertiser_id"):
+        store.upsert_campaign(
+            AdvertiserCampaign(
+                campaign_id="cam-orphan",
+                advertiser_id="adv-missing",
+                sector="x",
+                sub_sector=None,
+                intent="trial-signup",
+                target_topics=(),
+                creative_headline="x",
+                creative_url="https://x",
+                daily_budget_cents=1000,
+            )
+        )
+    assert store.list_campaigns() == []
+
+    advertiser = create_advertiser(
+        store,
+        display_name="Valid Advertiser",
+        sector="developer-tools",
+        contact_email="ads@example.com",
+    )
+    campaign = create_campaign(
+        store,
+        advertiser_id=advertiser.advertiser_id,
+        sector="developer-tools",
+        intent="trial-signup",
+        creative_headline="ship faster",
+        creative_url="https://example.com",
+        daily_budget_cents=2000,
+    )
+    assert store.get_campaign(campaign.campaign_id) is not None
 
 
 def test_sqlite_update_campaign_status_persists(tmp_path):

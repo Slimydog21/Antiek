@@ -16,7 +16,7 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-class CampaignStatus(str, enum.Enum):
+class CampaignStatus(enum.StrEnum):
     ACTIVE = "active"
     PAUSED = "paused"
     DRAFT = "draft"
@@ -84,6 +84,8 @@ class InMemoryAdvertiserStore:
 
     def upsert_campaign(self, campaign: AdvertiserCampaign) -> None:
         with self._lock:
+            if campaign.advertiser_id not in self.advertisers:
+                raise ValueError(f"unknown advertiser_id {campaign.advertiser_id!r}")
             self.campaigns[campaign.campaign_id] = campaign
 
     def get_campaign(self, campaign_id: str) -> AdvertiserCampaign | None:
@@ -193,6 +195,12 @@ class SqliteAdvertiserStore:
     def upsert_campaign(self, campaign: AdvertiserCampaign) -> None:
         assert self._conn is not None
         with self._lock:
+            advertiser = self._conn.execute(
+                "SELECT 1 FROM advertisers WHERE advertiser_id = ?",
+                (campaign.advertiser_id,),
+            ).fetchone()
+            if advertiser is None:
+                raise ValueError(f"unknown advertiser_id {campaign.advertiser_id!r}")
             self._conn.execute("""
                 INSERT INTO advertiser_campaigns (
                     campaign_id, advertiser_id, sector, sub_sector, intent,
