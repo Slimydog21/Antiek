@@ -93,6 +93,28 @@ def _record_arxiv_serve_audit(db_path: str, document_id: str, result) -> None:
         )
 
 
+def _representative_chunk_id(con, document_id: str) -> str | None:
+    """Return the stable first chunk anchor for a served document.
+
+    The reader uses this metadata for `source.read` and marginalia provenance so
+    those events point at the same chunk id SiteSee tints. The route decides
+    whether exposing the anchor is allowed; this helper only reads the existing
+    document-scoped chunk index.
+    """
+
+    row = con.execute(
+        """
+        SELECT chunk_id
+        FROM chunks
+        WHERE document_id = ?
+        ORDER BY chunk_index ASC, chunk_id ASC
+        LIMIT 1
+        """,
+        [document_id],
+    ).fetchone()
+    return str(row[0]) if row and row[0] else None
+
+
 # ── Response shapes ─────────────────────────────────────────────────
 
 
@@ -218,6 +240,9 @@ class FullTextResponse(BaseModel):
     # client. Defaulted ``None`` so a legacy/un-backfilled servable doc (null
     # column) cleanly falls the frontend back to the ``full_text`` flattener.
     structured_blocks: str | None = None
+    # Reader view-state anchor. Metadata-only, but still withheld when the body
+    # is withheld so a gated/taken-down book does not expose a content anchor.
+    representative_chunk_id: str | None = None
     title: str | None
     author: str | None
     reason: str
@@ -481,6 +506,11 @@ def register_book_routes(app: FastAPI) -> None:
         con = connect_read(db)
         try:
             result = serve_full_text_guarded(con, document_id)
+            representative_chunk_id = (
+                _representative_chunk_id(con, document_id)
+                if result.full_text is not None
+                else None
+            )
         finally:
             con.close()
         if not result.found:
@@ -504,6 +534,7 @@ def register_book_routes(app: FastAPI) -> None:
             # body is withheld (serve.py only populates it on the body-serving
             # branches), so withheld structured blocks never cross the wire.
             structured_blocks=result.structured_blocks,
+            representative_chunk_id=representative_chunk_id,
             title=result.title,
             author=result.author,
             reason=result.reason,

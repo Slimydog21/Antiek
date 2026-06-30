@@ -53,7 +53,7 @@ describe("emitSourceRead — single-writer funnel, no body (§9.0)", () => {
     expect(env.payload.dwell_ms).toBe(31_235);
     expect(env.payload.page_count).toBe(3);
     // §9.0: NO body field rides the event — only metadata + evidence.
-    for (const forbidden of ["excerpt", "text", "body", "full_text", "snippet"]) {
+    for (const forbidden of ["content", "excerpt", "text", "body", "full_text", "snippet"]) {
       expect(env.payload[forbidden]).toBeUndefined();
     }
   });

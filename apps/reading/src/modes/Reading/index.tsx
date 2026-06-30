@@ -242,25 +242,11 @@ export default function BookReader() {
   // passed to components, never rendered.
   const readingThreadId = `read-${documentId}`;
 
-  // §9.0 — the chunk the read/note is attributed to.
-  //
-  // HONEST GAP (Read SPR-07 M4, tightened): the reader client has NO chunk id
-  // to attribute to this sprint. BookDetail / FullTextResponse expose
-  // title/toc/full_text/servability — never per-chunk ids — and surfacing them
-  // is a backend change (a /books endpoint that returns chunk ids) deliberately
-  // OUT OF SCOPE here. So we attribute to null HONESTLY rather than invent a
-  // chunk id. Consequence, stated plainly so the M4 claim is not overstated:
-  //   • source.read EVENT + the SiteSee resolver are LIVE (sourceRead.ts);
-  //   • the SiteSee "read" tint keys on chunk_id, so it PAINTS only once a
-  //     real chunk anchor is resolved — a documented follow-up (a books
-  //     endpoint exposing chunk ids), NOT something this sprint claims paints
-  //     end-to-end.
-  // For the in-book NOTE: document_id still completes the claim→chunk→document
-  // chain (the note's per-book insight node is grounded on its document via
-  // node metadata, so block_search returns it per-book even with a null chunk —
-  // see substrate/graph/insight_question.promote_from_marginalia_event). The
-  // chunk anchor on the note is the SAME documented follow-up.
-  const representativeChunkId: string | null = null;
+  // §9.0 — the chunk the read/note is attributed to. The full-text endpoint
+  // returns the document's first chunk anchor only when it serves the full body;
+  // gated/taken-down books get null. That lets source.read light SiteSee's
+  // chunk-keyed read tint without inventing a client-side anchor.
+  const representativeChunkId = body?.representative_chunk_id ?? null;
 
   // source.read (SPR-07 M4) — fire ONCE per source per reading session on the
   // justified dwell threshold, reusing the focused-dwell clock the ad-impression
@@ -280,7 +266,7 @@ export default function BookReader() {
         pageCount: dwell.pagesSeen,
       });
     },
-    [documentId, readingThreadId],
+    [documentId, readingThreadId, representativeChunkId],
   );
   const { observePage } = useReaderImpressions(documentId, sessionId, onDwell);
   const [showVoice, setShowVoice] = useState(false);
@@ -630,11 +616,12 @@ export default function BookReader() {
                   taken-down work never reaches here with a body (the snippet path
                   below renders the notice), so a tagged column is only ever a
                   servable asset; attribution can never accrue to withheld text. We
-                  pass no chunkId — the books read path exposes no per-chunk id for
-                  the linear body, and we never fabricate one (asset-level is
-                  correct, per the contract's cover/title-card case). For an arXiv
-                  T1 the gate served extracted hosted TEXT (no PDF blob exists —
-                  see docs/decisions/arxiv-t1-hosted-text-not-pdf.md), so it renders
+                  frame attention is intentionally asset-level here (the contract's
+                  cover/title-card case). Reader view-state that needs a chunk
+                  anchor (`source.read`, marginalia provenance) uses the gated
+                  `representativeChunkId` above instead. For an arXiv T1 the gate
+                  served extracted hosted TEXT (no PDF blob exists — see
+                  docs/decisions/arxiv-t1-hosted-text-not-pdf.md), so it renders
                   through this SAME markdown column, no PDF.js. */}
               {/* M5 view-original toggle — only when a preserved ORIGINAL exists.
                   The structured model is the DEFAULT; the original is a SECONDARY
@@ -675,9 +662,10 @@ export default function BookReader() {
                     articleRef (FloatMenu selection scope), the SPR-07 attribution
                     markers (Reader stamps data-akb-asset-id from a truthy assetId
                     — present here ONLY for a servable book, §9.0). ?chunk= from
-                    openDocument lands citation navigation (SPR-07 M5); books path
-                    still has no per-chunk id for the linear body unless the door
-                    passed chunkId. Citations route through useOpenDocument (SPR-05).
+                    openDocument lands citation navigation (SPR-07 M5); reader
+                    view-state uses the backend-provided `representativeChunkId`
+                    when no door-supplied chunk is present. Citations route through
+                    useOpenDocument (SPR-05).
 
                     D1 — "never blank, never a throw": the structuredDoc gate
                     rejects an unknown block `type` up front, but a field-level
