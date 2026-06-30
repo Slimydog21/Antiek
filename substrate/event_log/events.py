@@ -563,6 +563,9 @@ def trajectory(
                 except json.JSONDecodeError:
                     continue
 
+    if len(rows) == 1 and not isinstance(rows[0].get("payload"), str):
+        return rows
+
     for r in rows:
         if isinstance(r.get("payload"), str):
             try:

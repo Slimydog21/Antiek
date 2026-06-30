@@ -12,6 +12,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 
+TELEMETRY_ACTION_TYPES = frozenset({
+    "dispatch.call",
+    "context_pack.assembled",
+    "health.check",
+})
+
 
 @dataclass(frozen=True)
 class VerifierObservation:
@@ -121,10 +127,6 @@ def build_env_from_trajectory(trajectory_events: list[dict]) -> VerifierEnvScaff
     role-driven decision points."""
     substantive = [
         e for e in trajectory_events
-        if e.get("action_type") not in {
-            "dispatch.call",
-            "context_pack.assembled",
-            "health.check",
-        }
+        if e.get("action_type") not in TELEMETRY_ACTION_TYPES
     ]
     return VerifierEnvScaffold(trajectory_events=substantive)
