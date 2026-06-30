@@ -6,6 +6,9 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+import zipfile
+from io import BytesIO
+from xml.etree import ElementTree as ET
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,7 +17,7 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from substrate.schemas import TYPED_PAYLOAD_ACTION_TYPES, ActionType
+from substrate.schemas import TYPED_PAYLOAD_ACTION_TYPES, ActionType  # noqa: E402
 
 
 @pytest.fixture
@@ -286,16 +289,62 @@ def test_export_substack_omits_h1_title_and_uses_blockquote_kind(temp_substrate)
     assert "em-dashes — preserved" in body["content"]
 
 
+def test_dependency_free_pdf_fallback_has_valid_xref_offsets():
+    from interfaces.research.api.app import _simple_pdf_bytes
+
+    pdf = _simple_pdf_bytes(
+        "Memo",
+        "research_memo",
+        [(0, "Intro", "Plain text with (parentheses) and \\ slashes.")],
+    )
+    assert pdf.startswith(b"%PDF-")
+    xref_at = int(pdf.split(b"startxref\n", 1)[1].split(b"\n", 1)[0])
+    assert pdf[xref_at : xref_at + 4] == b"xref"
+    lines = pdf[xref_at:].splitlines()
+    assert lines[1] == b"0 6"
+    for object_number, entry in enumerate(lines[3:8], start=1):
+        offset = int(entry[:10])
+        assert pdf[offset:].startswith(f"{object_number} 0 obj".encode("ascii"))
+
+
+def test_dependency_free_epub_fallback_has_ocf_shape():
+    from interfaces.research.api.app import _simple_epub_bytes
+
+    epub_bytes = _simple_epub_bytes(
+        "dlv-1",
+        "Memo",
+        "research_memo",
+        [(0, "Intro", "Chapter prose.")],
+    )
+    with zipfile.ZipFile(BytesIO(epub_bytes)) as zf:
+        names = zf.namelist()
+        assert names[0] == "mimetype"
+        mimetype_info = zf.getinfo("mimetype")
+        assert mimetype_info.compress_type == zipfile.ZIP_STORED
+        assert mimetype_info.extra == b""
+        assert zf.read("mimetype") == b"application/epub+zip"
+        container = ET.fromstring(zf.read("META-INF/container.xml"))
+        rootfile = container.find(
+            ".//{urn:oasis:names:tc:opendocument:xmlns:container}rootfile"
+        )
+        assert rootfile is not None
+        package_path = rootfile.attrib["full-path"]
+        assert package_path == "EPUB/package.opf"
+        package = ET.fromstring(zf.read(package_path))
+        manifest = {
+            item.attrib["href"]
+            for item in package.findall(
+                ".//{http://www.idpf.org/2007/opf}item"
+            )
+        }
+        assert {"nav.xhtml", "section_1.xhtml"} <= manifest
+        assert b"Chapter prose." in zf.read("EPUB/section_1.xhtml")
+
+
 def test_export_pdf_returns_base64_pdf_bytes(temp_substrate):
-    """PDF export — Sprint 15 §3.4. xhtml2pdf renders the researcher's-
-    notebook stylesheet to base64-encoded PDF bytes. Verifies the
-    response shape + that the decoded bytes start with the PDF magic
-    number (``%PDF-``)."""
-    try:
-        import xhtml2pdf  # noqa: F401
-    except ImportError:
-        import pytest
-        pytest.skip("xhtml2pdf not installed — pip install -e '.[export]'")
+    """PDF export — Sprint 15 §3.4. Optional xhtml2pdf is preferred when
+    installed; the endpoint still returns a valid dependency-free PDF fallback
+    otherwise. This test must never skip in the default dev environment."""
     client = _client(temp_substrate)
     did, sid = _make_deliverable_with_section(client)
     client.patch(f"/sections/{sid}/prose", json={"prose_text": "Body text."})
@@ -315,13 +364,9 @@ def test_export_pdf_returns_base64_pdf_bytes(temp_substrate):
 
 
 def test_export_epub_returns_base64_epub_zip(temp_substrate):
-    """EPUB export — Sprint 15 §3.4. ebooklib produces a ZIP file with
-    the EPUB MIME marker. Verifies response shape + ZIP magic number."""
-    try:
-        import ebooklib  # noqa: F401
-    except ImportError:
-        import pytest
-        pytest.skip("ebooklib not installed — pip install -e '.[export]'")
+    """EPUB export — Sprint 15 §3.4. Optional ebooklib is preferred when
+    installed; the endpoint still returns a valid dependency-free EPUB fallback
+    otherwise. This test must never skip in the default dev environment."""
     client = _client(temp_substrate)
     did, sid = _make_deliverable_with_section(client)
     client.patch(f"/sections/{sid}/prose", json={"prose_text": "Chapter prose."})

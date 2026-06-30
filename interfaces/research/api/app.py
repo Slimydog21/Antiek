@@ -29,12 +29,16 @@ generated types in ``apps/reading/src/generated/types.ts`` (produced by
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
+import html
 import json
 import os
 import sys
+import zipfile
 from collections.abc import Awaitable, Callable
 from datetime import UTC
+from io import BytesIO
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 if TYPE_CHECKING:
@@ -695,6 +699,147 @@ class ExportFormat(BaseModel):
     content: str
     filename: str
     content_encoding: Literal["text", "base64"] = "text"
+
+
+def _export_escape(s: str | None) -> str:
+    return html.escape(s or "", quote=True)
+
+
+def _deliverable_html(title: str, kind: str, secs: list[tuple[int, str | None, str | None]]) -> str:
+    parts = [
+        "<!doctype html>",
+        f"<html><head><meta charset='utf-8'><title>{_export_escape(title)}</title></head><body>",
+        f"<h1>{_export_escape(title)}</h1>",
+        f"<p><em>{_export_escape(kind)}</em></p>",
+    ]
+    for idx, sec_title, prose in secs:
+        heading = sec_title or f"Section {idx + 1}"
+        parts.append(f"<h2>{_export_escape(heading)}</h2>")
+        if prose:
+            for para in prose.split("\n\n"):
+                parts.append(f"<p>{_export_escape(para)}</p>")
+        else:
+            parts.append("<p><em>(no prose yet)</em></p>")
+    parts.append("</body></html>")
+    return "\n".join(parts)
+
+
+def _pdf_escape_text(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def _simple_pdf_bytes(title: str, kind: str, secs: list[tuple[int, str | None, str | None]]) -> bytes:
+    """Tiny dependency-free PDF fallback for export environments without
+    xhtml2pdf. It is intentionally plain, but it is a real one-page PDF."""
+    lines = [title, kind, ""]
+    for idx, sec_title, prose in secs:
+        lines.append(sec_title or f"Section {idx + 1}")
+        lines.extend((prose or "(no prose yet)").splitlines() or ["(no prose yet)"])
+        lines.append("")
+    text_ops = ["BT", "/F1 11 Tf", "72 760 Td", "14 TL"]
+    for raw in lines[:42]:
+        text_ops.append(f"({_pdf_escape_text(raw[:110])}) Tj")
+        text_ops.append("T*")
+    text_ops.append("ET")
+    stream = "\n".join(text_ops).encode("latin-1", errors="replace")
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Length " + str(len(stream)).encode("ascii") + b" >>\nstream\n" + stream + b"\nendstream",
+    ]
+    out = BytesIO()
+    out.write(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offsets = [0]
+    for i, obj in enumerate(objects, start=1):
+        offsets.append(out.tell())
+        out.write(f"{i} 0 obj\n".encode("ascii"))
+        out.write(obj)
+        out.write(b"\nendobj\n")
+    xref_at = out.tell()
+    out.write(f"xref\n0 {len(objects) + 1}\n".encode("ascii"))
+    out.write(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        out.write(f"{offset:010d} 00000 n \n".encode("ascii"))
+    out.write(
+        f"trailer << /Size {len(objects) + 1} /Root 1 0 R >>\n"
+        f"startxref\n{xref_at}\n%%EOF\n".encode("ascii")
+    )
+    return out.getvalue()
+
+
+def _epub_xhtml(title: str, body: str) -> str:
+    return (
+        "<?xml version='1.0' encoding='utf-8'?>"
+        "<!DOCTYPE html>"
+        "<html xmlns='http://www.w3.org/1999/xhtml' "
+        "xmlns:epub='http://www.idpf.org/2007/ops'>"
+        f"<head><title>{_export_escape(title)}</title></head><body>{body}</body></html>"
+    )
+
+
+def _simple_epub_bytes(
+    deliverable_id: str,
+    title: str,
+    kind: str,
+    secs: list[tuple[int, str | None, str | None]],
+) -> bytes:
+    """Dependency-free EPUB3 fallback. The first ZIP entry is the required
+    uncompressed mimetype marker, so EPUB readers can recognize it."""
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr(
+            zipfile.ZipInfo("mimetype"),
+            "application/epub+zip",
+            compress_type=zipfile.ZIP_STORED,
+        )
+        zf.writestr(
+            "META-INF/container.xml",
+            "<?xml version='1.0' encoding='utf-8'?>"
+            "<container version='1.0' xmlns='urn:oasis:names:tc:opendocument:xmlns:container'>"
+            "<rootfiles><rootfile full-path='EPUB/package.opf' "
+            "media-type='application/oebps-package+xml'/></rootfiles></container>",
+        )
+        manifest_items = [
+            "<item id='nav' href='nav.xhtml' media-type='application/xhtml+xml' properties='nav'/>"
+        ]
+        spine_items = []
+        nav_links = []
+        for idx, sec_title, prose in secs or [(0, "Section 1", None)]:
+            heading = sec_title or f"Section {idx + 1}"
+            item_id = f"section{idx + 1}"
+            href = f"section_{idx + 1}.xhtml"
+            paras = "".join(
+                f"<p>{_export_escape(p)}</p>"
+                for p in (prose or "").split("\n\n")
+                if p.strip()
+            ) or "<p><em>(no prose yet)</em></p>"
+            zf.writestr(
+                f"EPUB/{href}",
+                _epub_xhtml(heading, f"<h2>{_export_escape(heading)}</h2>{paras}"),
+            )
+            manifest_items.append(
+                f"<item id='{item_id}' href='{href}' media-type='application/xhtml+xml'/>"
+            )
+            spine_items.append(f"<itemref idref='{item_id}'/>")
+            nav_links.append(f"<li><a href='{href}'>{_export_escape(heading)}</a></li>")
+        zf.writestr(
+            "EPUB/nav.xhtml",
+            _epub_xhtml(title, f"<nav epub:type='toc'><h1>{_export_escape(title)}</h1><ol>{''.join(nav_links)}</ol></nav>"),
+        )
+        zf.writestr(
+            "EPUB/package.opf",
+            "<?xml version='1.0' encoding='utf-8'?>"
+            "<package xmlns='http://www.idpf.org/2007/opf' version='3.0' "
+            f"unique-identifier='bookid'><metadata xmlns:dc='http://purl.org/dc/elements/1.1/'>"
+            f"<dc:identifier id='bookid'>{_export_escape(deliverable_id)}</dc:identifier>"
+            f"<dc:title>{_export_escape(title)}</dc:title><dc:language>en</dc:language>"
+            f"<dc:description>{_export_escape(kind)}</dc:description></metadata>"
+            f"<manifest>{''.join(manifest_items)}</manifest><spine>{''.join(spine_items)}</spine></package>",
+        )
+    return buf.getvalue()
 
 
 # ── Sprint H3: observability ──────────────────────────────────────────
@@ -3039,26 +3184,8 @@ def create_app(
                 filename=f"{deliverable_id}.substack.md",
             )
         if format == "html":
-            def esc(s: str | None) -> str:
-                return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            parts = [
-                "<!doctype html>",
-                f"<html><head><meta charset='utf-8'><title>{esc(title)}</title></head><body>",
-                f"<h1>{esc(title)}</h1>",
-                f"<p><em>{esc(kind)}</em></p>",
-            ]
-            for idx, sec_title, prose in secs:
-                heading = sec_title or f"Section {idx + 1}"
-                parts.append(f"<h2>{esc(heading)}</h2>")
-                if prose:
-                    for para in prose.split("\n\n"):
-                        parts.append(f"<p>{esc(para)}</p>")
-                else:
-                    parts.append("<p><em>(no prose yet)</em></p>")
-            parts.append("</body></html>")
-            content = "\n".join(parts)
             return ExportFormat(
-                format="html", content=content,
+                format="html", content=_deliverable_html(title, kind, secs),
                 filename=f"{deliverable_id}.html",
             )
         if format == "pdf":
@@ -3067,63 +3194,39 @@ def create_app(
             # reportlab + Pillow). Base64-encodes the bytes so the
             # JSON response shape stays uniform with the other formats.
             #
-            # If xhtml2pdf isn't installed the endpoint returns 503
-            # rather than crashing on import — operator installs via
-            # ``pip install -e '.[export]'`` and retries.
             try:
                 # optional 'export' extra; not installed in the lint env
                 from xhtml2pdf import pisa  # type: ignore[import-not-found]
-            except ImportError as e:
-                raise HTTPException(
-                    status_code=503,
-                    detail=(
-                        "PDF export requires the 'export' extra. "
-                        "Install: pip install -e '.[export]'"
-                    ),
-                ) from e
-            import base64
-            import io
-            def esc(s: str | None) -> str:
-                return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            # Researcher's-notebook print stylesheet per master-spec §5.
-            # Serif body font; generous line-height; no SaaS-dashboard
-            # primary blues; @page margins set for A4 with title block.
-            html_parts: list[str] = [
-                "<!doctype html>",
-                "<html><head><meta charset='utf-8'>",
-                f"<title>{esc(title)}</title>",
-                "<style>",
-                "@page { size: A4; margin: 2.5cm 2cm; }",
-                "body { font-family: 'Georgia', 'Times New Roman', serif; ",
-                "       font-size: 11pt; line-height: 1.55; color: #1c1917; }",
-                "h1 { font-size: 22pt; margin-bottom: 0.3em; }",
-                "h2 { font-size: 14pt; margin-top: 1.6em; margin-bottom: 0.5em; }",
-                "p { margin: 0 0 0.8em 0; }",
-                ".kind { font-style: italic; color: #57534e; margin-bottom: 2em; }",
-                "</style></head><body>",
-                f"<h1>{esc(title)}</h1>",
-                f"<p class='kind'>{esc(kind)}</p>",
-            ]
-            for idx, sec_title, prose in secs:
-                heading = sec_title or f"Section {idx + 1}"
-                html_parts.append(f"<h2>{esc(heading)}</h2>")
-                if prose:
-                    for para in prose.split("\n\n"):
-                        html_parts.append(f"<p>{esc(para)}</p>")
-                else:
-                    html_parts.append("<p><em>(no prose yet)</em></p>")
-            html_parts.append("</body></html>")
-            html_src = "\n".join(html_parts)
-            buf = io.BytesIO()
-            result = pisa.CreatePDF(src=html_src, dest=buf)
-            if getattr(result, "err", 0) > 0:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"PDF rendering failed: {result.err} error(s)",
+            except ModuleNotFoundError as exc:
+                if exc.name != "xhtml2pdf":
+                    raise
+                pdf_bytes = _simple_pdf_bytes(title, kind, secs)
+            else:
+                # Researcher's-notebook print stylesheet per master-spec §5.
+                # Serif body font; generous line-height; no SaaS-dashboard
+                # primary blues; @page margins set for A4 with title block.
+                html_src = _deliverable_html(title, kind, secs).replace(
+                    "</head>",
+                    "<style>"
+                    "@page { size: A4; margin: 2.5cm 2cm; }"
+                    "body { font-family: 'Georgia', 'Times New Roman', serif; "
+                    "       font-size: 11pt; line-height: 1.55; color: #1c1917; }"
+                    "h1 { font-size: 22pt; margin-bottom: 0.3em; }"
+                    "h2 { font-size: 14pt; margin-top: 1.6em; margin-bottom: 0.5em; }"
+                    "p { margin: 0 0 0.8em 0; }"
+                    "</style></head>",
                 )
+                buf = BytesIO()
+                result = pisa.CreatePDF(src=html_src, dest=buf)
+                if getattr(result, "err", 0) > 0:
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"PDF rendering failed: {result.err} error(s)",
+                    )
+                pdf_bytes = buf.getvalue()
             return ExportFormat(
                 format="pdf",
-                content=base64.b64encode(buf.getvalue()).decode("ascii"),
+                content=base64.b64encode(pdf_bytes).decode("ascii"),
                 filename=f"{deliverable_id}.pdf",
                 content_encoding="base64",
             )
@@ -3135,60 +3238,53 @@ def create_app(
             try:
                 # optional 'export' extra; not installed in the lint env
                 from ebooklib import epub  # type: ignore[import-not-found]
-            except ImportError as e:
-                raise HTTPException(
-                    status_code=503,
-                    detail=(
-                        "EPUB export requires the 'export' extra. "
-                        "Install: pip install -e '.[export]'"
-                    ),
-                ) from e
-            import base64
-            import tempfile
-            def esc(s: str | None) -> str:
-                return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            book = epub.EpubBook()
-            book.set_identifier(deliverable_id)
-            book.set_title(title)
-            book.set_language("en")
-            chapters = []
-            for idx, sec_title, prose in secs:
-                heading = sec_title or f"Section {idx + 1}"
-                paras = (
-                    "".join(
-                        f"<p>{esc(p)}</p>"
-                        for p in (prose or "").split("\n\n")
-                        if p.strip()
+            except ModuleNotFoundError as exc:
+                if exc.name != "ebooklib":
+                    raise
+                epub_bytes = _simple_epub_bytes(deliverable_id, title, kind, secs)
+            else:
+                import tempfile
+                book = epub.EpubBook()
+                book.set_identifier(deliverable_id)
+                book.set_title(title)
+                book.set_language("en")
+                chapters = []
+                for idx, sec_title, prose in secs:
+                    heading = sec_title or f"Section {idx + 1}"
+                    paras = (
+                        "".join(
+                            f"<p>{_export_escape(p)}</p>"
+                            for p in (prose or "").split("\n\n")
+                            if p.strip()
+                        )
+                        or "<p><em>(no prose yet)</em></p>"
                     )
-                    or "<p><em>(no prose yet)</em></p>"
-                )
-                chapter = epub.EpubHtml(
-                    title=heading,
-                    file_name=f"section_{idx + 1}.xhtml",
-                    lang="en",
-                    content=(
-                        f"<html><head><title>{esc(heading)}</title></head>"
-                        f"<body><h2>{esc(heading)}</h2>{paras}</body></html>"
-                    ),
-                )
-                book.add_item(chapter)
-                chapters.append(chapter)
-            book.toc = tuple(chapters)
-            book.add_item(epub.EpubNcx())
-            book.add_item(epub.EpubNav())
-            book.spine = ["nav", *chapters]
-            # ebooklib writes to a path, not bytes. Use a tempfile and
-            # read back. Cleanup via ``delete=True`` after read.
-            with tempfile.NamedTemporaryFile(suffix=".epub", delete=False) as tmp:
-                tmp_path = tmp.name
-            try:
-                epub.write_epub(tmp_path, book, {})
-                with open(tmp_path, "rb") as fh:
-                    epub_bytes = fh.read()
-            finally:
-                import os
-                with contextlib.suppress(OSError):
-                    os.unlink(tmp_path)
+                    chapter = epub.EpubHtml(
+                        title=heading,
+                        file_name=f"section_{idx + 1}.xhtml",
+                        lang="en",
+                        content=(
+                            f"<html><head><title>{_export_escape(heading)}</title></head>"
+                            f"<body><h2>{_export_escape(heading)}</h2>{paras}</body></html>"
+                        ),
+                    )
+                    book.add_item(chapter)
+                    chapters.append(chapter)
+                book.toc = tuple(chapters)
+                book.add_item(epub.EpubNcx())
+                book.add_item(epub.EpubNav())
+                book.spine = ["nav", *chapters]
+                # ebooklib writes to a path, not bytes. Use a tempfile and
+                # read back. Cleanup via ``delete=True`` after read.
+                with tempfile.NamedTemporaryFile(suffix=".epub", delete=False) as tmp:
+                    tmp_path = tmp.name
+                try:
+                    epub.write_epub(tmp_path, book, {})
+                    with open(tmp_path, "rb") as fh:
+                        epub_bytes = fh.read()
+                finally:
+                    with contextlib.suppress(OSError):
+                        os.unlink(tmp_path)
             return ExportFormat(
                 format="epub",
                 content=base64.b64encode(epub_bytes).decode("ascii"),
