@@ -31,6 +31,7 @@ export const CHUNK_ID_ATTR = "data-chunk-id";
 export const PASSAGE_CHUNK_ID_ATTR = "data-passage-chunk-id";
 export const PASSAGE_START_ATTR = "data-passage-start";
 export const PASSAGE_END_ATTR = "data-passage-end";
+export const COLLAPSE_SECTION_ID_ATTR = "data-collapse-section-id";
 
 /**
  * The claim id the synthesis-header anchor uses (the first claim, index 1). A

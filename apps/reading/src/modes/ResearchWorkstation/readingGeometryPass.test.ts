@@ -27,12 +27,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CHUNK_ID_ATTR,
   CLAIM_ID_ATTR,
+  COLLAPSE_SECTION_ID_ATTR,
   PASSAGE_CHUNK_ID_ATTR,
   PASSAGE_END_ATTR,
   PASSAGE_START_ATTR,
   buildLayoutMap,
   buildViewportBand,
   buildViewportScopedLayoutMap,
+  measureCollapseSection,
   measureAnchorGeometry,
 } from "./readingGeometryPass";
 import { EMPTY_LAYOUT_MAP, baseGeometryFromMap, createLayoutMap } from "../../reading-physics/layout-map";
@@ -244,6 +246,33 @@ describe("readingGeometryPass — M1 failure modes (rigor #3)", () => {
   });
 });
 
+describe("readingGeometryPass — collapse section measurement", () => {
+  it("measures a surface-declared collapse section as a root-relative band", () => {
+    const root = makeArticle([]);
+    const section = document.createElement("div");
+    section.setAttribute(COLLAPSE_SECTION_ID_ATTR, "claim-1");
+    installRect(root, { top: 20, left: 0, width: 800, height: 4000 });
+    installRect(section, { top: 220, left: 40, width: 600, height: 80 });
+    root.appendChild(section);
+
+    expect(measureCollapseSection(root, section)).toEqual({
+      id: "claim-1",
+      range: { topPx: 200, bottomPx: 280 },
+    });
+  });
+
+  it("drops unlaid or unmarked collapse sections", () => {
+    const root = makeArticle([]);
+    const section = document.createElement("div");
+    installRect(section, { top: 0, left: 0, width: 0, height: 0 });
+    root.appendChild(section);
+
+    expect(measureCollapseSection(root, section)).toBeNull();
+    section.setAttribute(COLLAPSE_SECTION_ID_ATTR, "claim-1");
+    expect(measureCollapseSection(root, section)).toBeNull();
+  });
+});
+
 describe("readingGeometryPass — M3: viewport-scoped recompute discipline", () => {
   it("short-circuits an OFF-BAND anchor to null while keeping an in-band one", () => {
     const root = makeArticle(
@@ -337,8 +366,8 @@ describe("readingGeometryPass — M2: facets light up against the live map (wiri
   it("MARGINALIA/ANCHORED-WIDGET: a widget anchored to a measured claim enacts to a real rect", () => {
     // Marginalia is the same anchored-widgets facet path; we prove a declared
     // anchored widget RESOLVES (non-null rect) against the live map. Exact
-    // marginalia PASSAGE anchors still need rendered passage-offset markers; the
-    // chunk-level bounded fallback is measured separately above.
+    // passage markers and chunk-level bounded fallbacks are measured above; the
+    // remaining marginalia work is mounting visible UI in the surface.
     const root = makeArticle([
       { claimId: "1", rect: { top: 500, left: 20, width: 600, height: 40 } },
     ]);

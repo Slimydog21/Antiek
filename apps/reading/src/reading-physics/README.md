@@ -142,7 +142,7 @@ capability — a **spatial transform** (section collapse) — and proves the
 what/where separation (PR-4 + PR-5) by adding a **minimap** that is a *second
 render pass of the same facets*.
 
-### Live surface status — geometry is real, some gestures remain dormant
+### Live surface status — geometry and collapse state are real, some UI remains dormant
 
 The spatial-transform facet, collapse controller, minimap, and layout-map
 machinery are still scoped to `reading-physics/`, but the production synthesis
@@ -159,6 +159,9 @@ surface now feeds them real geometry:
   structured citation passage anchors (`data-passage-*`) are measured. The
   minimap is mounted as a second pass over the same resolved decorations and
   live layout map.
+- `⌘/Ctrl+wheel` over a claim toggles ephemeral `CollapseState` and folds
+  `collapsePipelineFor(state)` into the live layout map, so downstream geometry
+  consumers such as the minimap inherit the spatial transform.
 
 **What remains deliberately dormant:**
 
@@ -166,9 +169,9 @@ surface now feeds them real geometry:
   carries `char_start` / `char_end`. The marginalia gutter experience is still
   dormant because `AccrualView` / `ChaseThread` are not mounted in the synthesis
   surface yet; do not round passage measurement up into mounted marginalia UI.
-- The `⌘/Ctrl+scroll` collapse gesture is not bound yet. The controller and
-  `collapsePipelineFor(state)` are tested, and `buildLayoutMap(root, transforms)`
-  is ready to fold the pipeline, but no surface handler mutates `CollapseState`.
+- Collapse fingerprint painting is still not rendered as visible document chrome.
+  The state and transform pipeline are live; the compressed color-band enact is a
+  separate paint pass.
 - `AccrualView` / `ChaseThread` gutter widgets are not mounted in
   `MasterMdViewer` yet. They share the anchored-widget facet and can consume the
   live map when wired.
