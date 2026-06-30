@@ -22,6 +22,7 @@ Coverage:
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 
@@ -75,7 +76,7 @@ class _StubNoteTaker:
 
     name = "stub-notetaker"
 
-    def __init__(self, text: str, *, raise_on_call: bool = False):
+    def __init__(self, text, *, raise_on_call: bool = False):
         self._text = text
         self._raise = raise_on_call
         self.call_count = 0
@@ -84,8 +85,9 @@ class _StubNoteTaker:
         self.call_count += 1
         if self._raise:
             raise ProviderError("stub failure", provider=self.name, model=model, latency_ms=0)
+        text = self._text(prompt) if callable(self._text) else self._text
         return RawProviderResponse(
-            text=self._text,
+            text=text,
             raw_usage={"input_tokens": 200, "output_tokens": 80},
             finish_reason="end_turn",
             latency_ms=8,
@@ -118,6 +120,30 @@ def _patch_dispatch_config(monkeypatch, config: DispatchConfig) -> None:
         router.DispatchConfig, "from_yaml",
         classmethod(lambda cls, path: config),
     )
+
+
+def _prompt_event_ids(prompt: str) -> list[str]:
+    ids: list[str] = []
+    for line in prompt.splitlines():
+        line = line.strip()
+        if line.startswith("[") and "]" in line:
+            ids.append(line[1:].split("]", 1)[0])
+    return ids
+
+
+def _notes_json_for_prompt(prompt: str, *texts: str) -> str:
+    ids = _prompt_event_ids(prompt)
+    source_id = ids[0] if ids else "missing-event-id"
+    return json.dumps({
+        "notes": [
+            {
+                "text": text,
+                "confidence": "high",
+                "source_event_ids": [source_id],
+            }
+            for text in texts
+        ]
+    })
 
 
 @pytest.fixture
@@ -209,6 +235,21 @@ def test_parse_notes_drops_unattributed():
     assert notes[0].text == "attributed"
 
 
+def test_parse_notes_rejects_fabricated_source_event_ids():
+    text = (
+        '{"notes": ['
+        '{"text": "partly real", "confidence": "high", '
+        '"source_event_ids": ["evt-real", "evt-fake", "evt-real"]},'
+        '{"text": "fully fake", "confidence": "high", '
+        '"source_event_ids": ["evt-fake"]}'
+        ']}'
+    )
+    notes = parse_notes_response(text, canonical_event_ids={"evt-real"})
+    assert len(notes) == 1
+    assert notes[0].text == "partly real"
+    assert notes[0].source_event_ids == ("evt-real",)
+
+
 def test_parse_notes_drops_empty_text():
     text = (
         '{"notes": ['
@@ -280,10 +321,7 @@ async def test_note_taker_fires_at_threshold(
 ):
     _, bus = app_and_bus
     stub = _StubNoteTaker(
-        '{"notes": ['
-        '{"text": "insight A", "confidence": "high", "source_event_ids": ["fake-1"]},'
-        '{"text": "insight B", "confidence": "moderate", "source_event_ids": ["fake-2"]}'
-        ']}'
+        lambda prompt: _notes_json_for_prompt(prompt, "insight A", "insight B")
     )
     register_provider(stub)
     _patch_dispatch_config(monkeypatch, _note_taker_config("stub-notetaker"))
@@ -305,6 +343,7 @@ async def test_note_taker_fires_at_threshold(
     e0 = Event.model_validate(note_events[0])
     assert isinstance(e0.payload, NoteEmergedPayload)
     assert e0.payload.note_text == "insight A"
+    assert e0.payload.source_event_ids
     assert e0.role == "note_taker"
     assert e0.document_id == "d"
     assert e0.policy_id == "stub-notetaker/stub-flash"
@@ -359,9 +398,7 @@ async def test_counter_isolated_per_investigation(
 ):
     """Events on inv-A don't increment inv-B's counter."""
     _, bus = app_and_bus
-    stub = _StubNoteTaker(
-        '{"notes": [{"text": "n", "confidence": "high", "source_event_ids": ["fake"]}]}'
-    )
+    stub = _StubNoteTaker(lambda prompt: _notes_json_for_prompt(prompt, "n"))
     register_provider(stub)
     _patch_dispatch_config(monkeypatch, _note_taker_config("stub-notetaker"))
 
@@ -468,13 +505,7 @@ async def test_note_emerged_events_do_not_retrigger_synthesis(
     triggers 1 synthesis producing N notes → synthesis count stays
     at 1, doesn't loop."""
     _, bus = app_and_bus
-    stub = _StubNoteTaker(
-        '{"notes": ['
-        '{"text": "a", "confidence": "high", "source_event_ids": ["fake"]},'
-        '{"text": "b", "confidence": "high", "source_event_ids": ["fake"]},'
-        '{"text": "c", "confidence": "high", "source_event_ids": ["fake"]}'
-        ']}'
-    )
+    stub = _StubNoteTaker(lambda prompt: _notes_json_for_prompt(prompt, "a", "b", "c"))
     register_provider(stub)
     _patch_dispatch_config(monkeypatch, _note_taker_config("stub-notetaker"))
 

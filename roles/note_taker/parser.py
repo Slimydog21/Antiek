@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import sys
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,6 +24,13 @@ except ImportError:  # pragma: no cover — direct-script fallback
     from roles._json_decode import (
         extract_json_object as _extract_json_object,  # type: ignore[no-redef]
     )
+
+try:
+    from substrate.provenance.validate_refs import validate_refs
+except ImportError:  # pragma: no cover — direct-script fallback
+    _here = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+    from substrate.provenance.validate_refs import validate_refs  # type: ignore[no-redef]
 
 
 # Confidence vocabulary must match ConfidenceLevel Literal on the
@@ -54,7 +62,11 @@ def _normalize_confidence(raw: Any) -> str:
     return "unknown"
 
 
-def parse_notes_response(text: str) -> list[ExtractedNote]:
+def parse_notes_response(
+    text: str,
+    *,
+    canonical_event_ids: Iterable[str] | None = None,
+) -> list[ExtractedNote]:
     """Parse the role response into ``ExtractedNote`` list.
 
     Failure modes tolerated:
@@ -83,10 +95,13 @@ def parse_notes_response(text: str) -> list[ExtractedNote]:
         attribution = rn.get("source_event_ids")
         if not isinstance(attribution, list):
             continue
-        cleaned_attrib = tuple(
-            str(a).strip() for a in attribution
-            if isinstance(a, str) and str(a).strip()
-        )
+        if canonical_event_ids is None:
+            cleaned_attrib = tuple(
+                str(a).strip() for a in attribution
+                if isinstance(a, str) and str(a).strip()
+            )
+        else:
+            cleaned_attrib = validate_refs(attribution, canonical_event_ids)
         if not cleaned_attrib:
             # Rule 4: drop unattributed notes. Hallucination defense.
             continue
