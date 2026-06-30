@@ -9,7 +9,7 @@ import type { InvestigationSummary } from "../../lib/api";
 import { useInWindow } from "../../components/windows/windowHostContext";
 import GlassSurface from "../../shell/GlassSurface";
 import BookCard from "./BookCard";
-import CorpusSearch from "./CorpusSearch";
+import UnifiedSearch from "../../components/UnifiedSearch";
 import CuratePrompt from "./CuratePrompt";
 import { documentsByTheme } from "./documentsByTheme";
 import type { FeedOrdering } from "./documentsByTheme";
@@ -152,22 +152,6 @@ export default function Library() {
     [openDocument],
   );
 
-  // Open a book at a specific page (M1 search-result jump). `openDocument`'s
-  // `page` opt seeds the SAME usePosition sessionStorage locator (no new
-  // mechanism) so the reader lands on the cited page. A null/unresolved page
-  // opens at the saved position (honest — no fake page jump).
-  const openAtPage = useCallback(
-    (documentId: string, pageIndex?: number | null) => {
-      openDocument(
-        documentId,
-        pageIndex !== null && pageIndex !== undefined && pageIndex >= 0
-          ? { page: pageIndex }
-          : undefined,
-      );
-    },
-    [openDocument],
-  );
-
   const subtitle = useMemo(() => {
     if (loading) return "Loading the shelf…";
     if (status === "servable") return `${books.length} books readable in full`;
@@ -247,7 +231,7 @@ export default function Library() {
           {/* M1: search the OWNED corpus — typed query OR file-drop bias.
               Theme-context (the active research themes) is folded into the
               query when present, degrading gracefully when absent. */}
-          <CorpusSearch onOpen={openAtPage} themeContext={themeTerms} />
+          <UnifiedSearch variant="library" themeContext={themeTerms} />
 
           {/* M4: meta-reading entry — deep-research the owned corpus into a
               re-openable, length-boxed Read asset. PROPOSED boundary (sign-off
