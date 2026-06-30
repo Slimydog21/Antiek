@@ -1,145 +1,109 @@
-"""Resolve notebook/deliverable ref_ids against the live substrate graph.
+"""Resolve graph node ref_ids to rights-aware export payloads (HPRJ).
 
-Each ref_id is a graph node (claim, insight, question, etc.). This resolver
-fetches the node's text, traces its source document (via metadata first, then
-a ``supported_by`` edge fallback), and reports that document's rights fields
-(``content_class``, ``ip_holder_id``, ``title``) faithfully.
-
-Rights discipline: this resolver REPORTS rights, it does NOT FILTER them.
-The caller (``RightsAwareResolver`` in the notebook adapter) decides whether
-to serve or cite-only based on ``content_class``. Pre-filtering here would
-double-apply the gate and hide the cite-only attribution the adapter builds.
-
-Provenance discipline: uses ``connect_read`` from ``runtime/db_lock`` — the
-only sanctioned read handle. Never writes; never opens a second store.
+Reads the live DuckDB graph via ``connect_read`` only. Reports source-document
+``content_class`` / ``ip_holder_id`` faithfully; the notebook/deliverable adapters
+apply ``SERVABLE_CONTENT_CLASSES`` filtering — this module must not pre-filter.
 """
 
 from __future__ import annotations
 
 import json
-from typing import Optional
+from typing import Any
 
 from runtime.db_lock import connect_read
-from services.html_projection.adapters.notebook import ResolvedRefData
 
-# The payload key each renderer partial reads as displayable text.
-_PAYLOAD_KEY_MAP: dict[str, str] = {
+from ..adapters.notebook import ResolvedRefData
+
+_KIND_PAYLOAD_KEYS: dict[str, str] = {
     "claim": "statement",
-    "insight": "statement",
     "question": "question",
+    "insight": "statement",
 }
 
 
-def _payload_key(node_type: str) -> str:
-    """Return the kind-specific payload key for *node_type*."""
-    return _PAYLOAD_KEY_MAP.get(node_type, "body")
-
-
-def _safe_json_loads(raw: Optional[str]) -> dict:
-    """Parse *raw* as JSON; return ``{}`` on any failure."""
+def _parse_metadata(raw: str | None) -> dict[str, Any]:
     if not raw:
         return {}
     try:
-        result = json.loads(raw)
-        if isinstance(result, dict):
-            return result
-        return {}
+        parsed = json.loads(raw)
     except (json.JSONDecodeError, TypeError, ValueError):
         return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
-def resolve_refs(
-    ref_ids: list[str], *, db_path: str
-) -> dict[str, ResolvedRefData]:
-    """Resolve *ref_ids* against the substrate graph at *db_path*.
+def _payload_for_kind(node_type: str, canonical_label: str) -> dict[str, str]:
+    key = _KIND_PAYLOAD_KEYS.get(node_type, "body")
+    return {key: canonical_label, "text": canonical_label}
 
-    Returns a dict mapping each successfully resolved ref_id to its
-    ``ResolvedRefData``.  Missing nodes are **omitted** (the export adapter
-    renders a visible ``[... unavailable]`` marker for absent keys).
 
-    For each ref_id:
-    1. Look up the node.  Absent → omit.
-    2. Derive ``source_document_id`` from ``metadata`` JSON; fall back to a
-       ``supported_by`` edge if metadata has none.
-    3. If a source document exists, read its ``title``, ``content_class``,
-       ``ip_holder_id``.  Otherwise all three are ``None`` (which the
-       adapter treats as servable — user/graph-owned content).
-    4. Build ``ResolvedRefData`` with both the kind-specific and generic
-       ``"text"`` payload keys set to the node's ``canonical_label``.
-    """
+def _source_document_id(con, node_id: str, metadata_raw: str | None) -> str | None:
+    meta = _parse_metadata(metadata_raw)
+    doc_id = meta.get("source_document_id")
+    if doc_id is not None:
+        return str(doc_id) if doc_id else None
+    row = con.execute(
+        "SELECT source_document_id FROM edges "
+        "WHERE source_node_id = ? AND relation = 'supported_by' "
+        "AND source_document_id IS NOT NULL "
+        "LIMIT 1",
+        [node_id],
+    ).fetchone()
+    if row is None or row[0] is None:
+        return None
+    return str(row[0])
+
+
+def _document_rights(
+    con, document_id: str
+) -> tuple[str | None, str | None, str | None]:
+    row = con.execute(
+        "SELECT title, content_class, ip_holder_id FROM documents WHERE document_id = ?",
+        [document_id],
+    ).fetchone()
+    if row is None:
+        return None, None, None
+    title, content_class, ip_holder_id = row
+    return title, content_class, ip_holder_id
+
+
+def resolve_refs(ref_ids: list[str], *, db_path: str) -> dict[str, ResolvedRefData]:
+    """Resolve notebook/deliverable ref_ids against the substrate graph.
+
+    Missing node_ids are omitted from the result (never fabricated)."""
     if not ref_ids:
         return {}
 
+    out: dict[str, ResolvedRefData] = {}
     con = connect_read(db_path)
     try:
-        result: dict[str, ResolvedRefData] = {}
         for ref_id in ref_ids:
-            resolved = _resolve_one(con, ref_id)
-            if resolved is not None:
-                result[ref_id] = resolved
-        return result
+            row = con.execute(
+                "SELECT node_id, canonical_label, node_type, metadata "
+                "FROM nodes WHERE node_id = ?",
+                [ref_id],
+            ).fetchone()
+            if row is None:
+                continue
+
+            node_id, canonical_label, node_type, metadata_raw = row
+            source_doc_id = _source_document_id(con, node_id, metadata_raw)
+
+            title: str | None = None
+            content_class: str | None = None
+            ip_holder_id: str | None = None
+            if source_doc_id:
+                title, content_class, ip_holder_id = _document_rights(
+                    con, source_doc_id
+                )
+
+            out[ref_id] = ResolvedRefData(
+                kind=str(node_type),
+                content_class=content_class,
+                ip_holder_id=ip_holder_id,
+                title=title,
+                payload=_payload_for_kind(str(node_type), str(canonical_label)),
+            )
     finally:
         con.close()
 
-
-def _resolve_one(
-    con, ref_id: str
-) -> Optional[ResolvedRefData]:
-    """Resolve a single *ref_id*.  Returns ``None`` if the node is absent."""
-
-    # ── Step 1: fetch the node ──────────────────────────────────────────
-    row = con.execute(
-        "SELECT node_id, canonical_label, node_type, metadata "
-        "FROM nodes WHERE node_id = ?",
-        [ref_id],
-    ).fetchone()
-    if row is None:
-        return None
-
-    _node_id, canonical_label, node_type, raw_metadata = row
-
-    # ── Step 2: determine source_document_id ────────────────────────────
-    meta = _safe_json_loads(raw_metadata)
-    source_document_id: Optional[str] = meta.get("source_document_id")
-
-    if source_document_id is None:
-        # Fallback: walk a supported_by edge.
-        edge_row = con.execute(
-            "SELECT source_document_id FROM edges "
-            "WHERE source_node_id = ? "
-            "AND relation = 'supported_by' "
-            "AND source_document_id IS NOT NULL "
-            "LIMIT 1",
-            [ref_id],
-        ).fetchone()
-        if edge_row is not None:
-            source_document_id = edge_row[0]
-
-    # ── Step 3: fetch document rights (if any) ──────────────────────────
-    content_class: Optional[str] = None
-    ip_holder_id: Optional[str] = None
-    title: Optional[str] = None
-
-    if source_document_id is not None:
-        doc_row = con.execute(
-            "SELECT title, content_class, ip_holder_id "
-            "FROM documents WHERE document_id = ?",
-            [source_document_id],
-        ).fetchone()
-        if doc_row is not None:
-            title, content_class, ip_holder_id = doc_row
-
-    # ── Step 4: build the payload ───────────────────────────────────────
-    kind_specific_key = _payload_key(node_type)
-    payload: dict = {
-        kind_specific_key: canonical_label,
-        "text": canonical_label,
-    }
-
-    return ResolvedRefData(
-        kind=node_type,
-        content_class=content_class,
-        ip_holder_id=ip_holder_id,
-        title=title,
-        payload=payload,
-    )
+    return out
