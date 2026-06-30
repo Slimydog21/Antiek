@@ -210,9 +210,6 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
     setSteering(iid);
     try {
       await steerResearch(sessionId, iid, kind, payload);
-    } catch {
-      // The next poll reflects the authoritative state; a failed steer is
-      // surfaced by the research not changing — no optimistic lie.
     } finally {
       setSteering(null);
     }
