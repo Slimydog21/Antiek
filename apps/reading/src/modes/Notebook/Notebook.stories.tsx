@@ -3,12 +3,9 @@ import type { Meta, StoryObj } from "@storybook/react";
 import Notebook from "./index";
 
 /**
- * S7-light story — renders the legacy Notebook surface inside a panel
- * frame so the operator can preview it as a workspace panel.
- *
- * The full TipTap-based S7 (block editor + 9 block kinds + slash menu +
- * autosave) is deferred until the SPR-08/09/11 notebook-track merge
- * lands on main. See `apps/reading/S7-FOLLOWUP.md`.
+ * Notebook surface stories. S7-full is now live: the TipTap editor,
+ * custom block extensions, slash menu, autosave, and substrate notebook
+ * routes exist alongside this index/canvas surface.
  */
 const meta = {
   title: "Loop 1 / Notebook",
