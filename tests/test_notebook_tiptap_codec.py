@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
+from substrate.graph.schema import init_database_at_path
 from substrate.notebooks.tiptap_codec import compose, decompose
 
 
@@ -93,10 +94,16 @@ def _client():
     return TestClient(create_app(register_wrestling=False, register_providers=False))
 
 
+def _use_temp_graph_db(tmp_path, monkeypatch) -> None:
+    db_path = str(tmp_path / "test.duckdb")
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
+    init_database_at_path(db_path)
+
+
 def test_put_content_replaces_existing_blocks(tmp_path, monkeypatch):
     """Atomic-replace removes old blocks and inserts the new ones in
     order. The notebook's block list reflects the new content."""
-    monkeypatch.setenv("ANTIEK_DB_PATH", str(tmp_path / "test.duckdb"))
+    _use_temp_graph_db(tmp_path, monkeypatch)
     client = _client()
 
     # Create notebook + seed one block via the existing append endpoint
@@ -127,7 +134,7 @@ def test_put_content_replaces_existing_blocks(tmp_path, monkeypatch):
 
 
 def test_put_content_unknown_notebook_404(tmp_path, monkeypatch):
-    monkeypatch.setenv("ANTIEK_DB_PATH", str(tmp_path / "test.duckdb"))
+    _use_temp_graph_db(tmp_path, monkeypatch)
     client = _client()
     r = client.put(
         "/notebooks/does-not-exist/content",
@@ -137,7 +144,7 @@ def test_put_content_unknown_notebook_404(tmp_path, monkeypatch):
 
 
 def test_put_content_malformed_doc_422(tmp_path, monkeypatch):
-    monkeypatch.setenv("ANTIEK_DB_PATH", str(tmp_path / "test.duckdb"))
+    _use_temp_graph_db(tmp_path, monkeypatch)
     client = _client()
     r = client.post("/notebooks", json={"title": "T"})
     nb_id = r.json()["notebook_id"]
@@ -149,7 +156,7 @@ def test_put_content_malformed_doc_422(tmp_path, monkeypatch):
 
 
 def test_save_by_doc_creates_bound_notebook_and_decomposes_tiptap(tmp_path, monkeypatch):
-    monkeypatch.setenv("ANTIEK_DB_PATH", str(tmp_path / "test.duckdb"))
+    _use_temp_graph_db(tmp_path, monkeypatch)
     client = _client()
     doc = {
         "type": "doc",
@@ -180,7 +187,7 @@ def test_save_by_doc_creates_bound_notebook_and_decomposes_tiptap(tmp_path, monk
 
 
 def test_save_by_doc_rejects_cross_document_notebook_reuse(tmp_path, monkeypatch):
-    monkeypatch.setenv("ANTIEK_DB_PATH", str(tmp_path / "test.duckdb"))
+    _use_temp_graph_db(tmp_path, monkeypatch)
     client = _client()
     payload = {
         "notebook_id": "nb-shared",

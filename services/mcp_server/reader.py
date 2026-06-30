@@ -13,6 +13,7 @@ from typing import Any
 
 import duckdb
 
+from substrate.books.serve_guard import serve_full_text_guarded
 from substrate.graph.retrieval_gate import is_chunk_body_withheld
 
 from .errors import (
@@ -107,7 +108,7 @@ def get_public_note(
     """
     row = con.execute(
         """
-        SELECT document_id, title, author, raw_text, metadata,
+        SELECT document_id, title, author, metadata,
                source_tier, document_type, owner_user_id,
                content_class, ip_holder_id, acquired_at
         FROM documents
@@ -119,11 +120,11 @@ def get_public_note(
     if row is None:
         raise PublicNoteNotFoundError(note_id)
 
-    (doc_id, title, author, raw_text, metadata_json, tier, doc_type,
+    (doc_id, title, author, metadata_json, tier, doc_type,
      owner, content_class, ip_holder_id, acquired_at) = row
 
-    withheld, _label = is_chunk_body_withheld(content_class)
-    if withheld:
+    served = serve_full_text_guarded(con, note_id)
+    if served.full_text is None:
         raise LicensingRequiredError(note_id, content_class)
 
     metadata: dict[str, Any] = {}
@@ -137,7 +138,7 @@ def get_public_note(
         "document_id": doc_id,
         "title": title,
         "author": author,
-        "content": raw_text,
+        "content": served.full_text,
         "metadata": metadata,
         "source_tier": tier,
         "document_type": doc_type,
@@ -145,6 +146,10 @@ def get_public_note(
         "content_class": content_class,
         "ip_holder_id": ip_holder_id,
         "acquired_at": acquired_at.isoformat() if acquired_at else None,
+        "tier": served.tier,
+        "ad_eligible": served.ad_eligible,
+        "canonical_url": served.canonical_url,
+        "license": served.license,
     }
 
 

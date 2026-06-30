@@ -41,6 +41,9 @@ class _StubEmbedding:
 
 @pytest.fixture
 def env(monkeypatch):
+    from substrate.dispatch.router import reset_provider_registry
+
+    reset_provider_registry()
     tmpdir = tempfile.mkdtemp(prefix="distill-api-test-")
     db = os.path.join(tmpdir, "t.duckdb")
     events = os.path.join(tmpdir, "events")
@@ -48,12 +51,20 @@ def env(monkeypatch):
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db)
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", events)
     monkeypatch.setenv("ANTIEK_EMBEDDING_PROVIDER", "hash")
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("XIAOMI_API_KEY", raising=False)
+    monkeypatch.delenv("HERMES_API_KEY", raising=False)
     monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
     monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
     ensure_initialized(db)
     # register_providers=False = the honest no-key state.
     app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
-    return {"client": TestClient(app), "db": db, "events": events, "mp": monkeypatch}
+    try:
+        yield {"client": TestClient(app), "db": db, "events": events, "mp": monkeypatch}
+    finally:
+        reset_provider_registry()
 
 
 def _seed(env, *, insights=(), questions=()):
