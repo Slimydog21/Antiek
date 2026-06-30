@@ -1,6 +1,7 @@
 /**
  * Closed union of auth diagnostic failure IDs — must match
  * docs/diagnostics/auth-failure-mode-matrix.md (version 2026-06-02).
+ * Matrix source commit: dc79ceeb5f5c9a55841ad644f48e61343d7886c7.
  *
  * Matrix is the source of truth. SPR-02+ import these codes for Login
  * errors, probes, and Playwright test names. Do not add codes here
