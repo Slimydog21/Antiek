@@ -21,7 +21,6 @@ from substrate.conversation.compaction import (
 from substrate.conversation.event_log import EventLog
 from substrate.conversation.policy import CompactionConfig, CompactionPolicy
 from substrate.conversation.token_counter import declare_token_count_seam
-
 from substrate.hooks import HookRegistry, load_extensions
 
 
