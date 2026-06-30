@@ -4924,30 +4924,33 @@ def create_app(
             compute_attribution_option_b,
             compute_attribution_option_c,
         )
-        if req.algorithm == "option_a":
-            r = compute_attribution_option_a(
-                page_id=req.page_id,
-                chunk_to_document=req.chunk_to_document,
-            )
-        elif req.algorithm == "option_b":
-            r = compute_attribution_option_b(
-                page_id=req.page_id,
-                chunk_to_document=req.chunk_to_document,
-                chunk_to_claim_confidence=req.chunk_to_claim_confidence,
-                document_to_source_tier=req.document_to_source_tier,
-            )
-        elif req.algorithm == "option_c":
-            r = compute_attribution_option_c(
-                page_id=req.page_id,
-                chunk_to_document=req.chunk_to_document,
-                chunk_to_claim_id=req.chunk_to_claim_id,
-                claim_load_bearing_scores=req.claim_load_bearing_scores,
-            )
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail=f"unknown algorithm {req.algorithm!r}",
-            )
+        try:
+            if req.algorithm == "option_a":
+                r = compute_attribution_option_a(
+                    page_id=req.page_id,
+                    chunk_to_document=req.chunk_to_document,
+                )
+            elif req.algorithm == "option_b":
+                r = compute_attribution_option_b(
+                    page_id=req.page_id,
+                    chunk_to_document=req.chunk_to_document,
+                    chunk_to_claim_confidence=req.chunk_to_claim_confidence,
+                    document_to_source_tier=req.document_to_source_tier,
+                )
+            elif req.algorithm == "option_c":
+                r = compute_attribution_option_c(
+                    page_id=req.page_id,
+                    chunk_to_document=req.chunk_to_document,
+                    chunk_to_claim_id=req.chunk_to_claim_id,
+                    claim_load_bearing_scores=req.claim_load_bearing_scores,
+                )
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"unknown algorithm {req.algorithm!r}",
+                )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         return AttributionResponse(
             algorithm=r.algorithm.value,
             page_id=r.page_id,

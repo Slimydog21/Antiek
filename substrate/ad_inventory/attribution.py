@@ -39,7 +39,7 @@ from dataclasses import dataclass
 ATTRIBUTION_ALGORITHM_VERSION = "attr-math-v1"
 
 
-class AttributionAlgorithm(str, enum.Enum):
+class AttributionAlgorithm(enum.StrEnum):
     """The three attribution options from master-spec §9.3."""
 
     OPTION_A_EQUAL_SPLIT = "equal_split_per_chunk_citation"
@@ -254,7 +254,11 @@ def compute_attribution_option_b(
     weights: dict[str, float] = {}
     for chunk_id, doc_id in chunk_to_document.items():
         confidence = chunk_to_claim_confidence.get(chunk_id, 0.5)
+        _validate_unit_interval(
+            confidence, field="chunk_to_claim_confidence", key=chunk_id,
+        )
         tier = document_to_source_tier.get(doc_id, 5)
+        _validate_source_tier(tier, doc_id=doc_id)
         # tier 1=highest trust, 5=lowest; (6 - tier) gives weight 5..1
         contribution = confidence * (6 - tier)
         weights[doc_id] = weights.get(doc_id, 0.0) + contribution
@@ -310,6 +314,9 @@ def compute_attribution_option_c(
         if claim_id is None:
             continue
         score = claim_load_bearing_scores.get(claim_id, 0.0)
+        _validate_unit_interval(
+            score, field="claim_load_bearing_scores", key=claim_id,
+        )
         weights[doc_id] = weights.get(doc_id, 0.0) + score
 
     total = sum(weights.values())
@@ -325,3 +332,20 @@ def compute_attribution_option_c(
         page_id=page_id,
         shares=shares,
     )
+
+
+def _validate_unit_interval(value: float, *, field: str, key: str) -> None:
+    if not 0.0 <= value <= 1.0:
+        raise ValueError(f"{field}[{key!r}] must be in [0, 1], got {value!r}")
+
+
+def _validate_source_tier(tier: int, *, doc_id: str) -> None:
+    if (
+        not isinstance(tier, int)
+        or isinstance(tier, bool)
+        or tier not in {1, 2, 3, 4, 5}
+    ):
+        raise ValueError(
+            f"document_to_source_tier[{doc_id!r}] must be an integer 1..5, "
+            f"got {tier!r}"
+        )

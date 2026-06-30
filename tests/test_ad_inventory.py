@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
+
 from substrate.ad_inventory import (
     AdInventoryItem,
     AttributionAlgorithm,
@@ -203,3 +205,37 @@ def test_attribution_shares_sum_to_one():
     )
     total = sum(result.shares.values())
     assert abs(total - 1.0) < 1e-9
+
+
+def test_option_b_rejects_out_of_range_confidence():
+    """Malformed scorer output must not silently distort payout weights."""
+    with pytest.raises(ValueError, match="chunk_to_claim_confidence"):
+        compute_attribution_option_b(
+            page_id="x",
+            chunk_to_document={"c-1": "doc-A"},
+            chunk_to_claim_confidence={"c-1": 1.5},
+            document_to_source_tier={"doc-A": 1},
+        )
+
+
+def test_option_b_rejects_invalid_source_tier():
+    """A bad tier cannot inflate or invert the (6 - tier) multiplier."""
+    for tier in (0, 99, True, 2.0):
+        with pytest.raises(ValueError, match="document_to_source_tier"):
+            compute_attribution_option_b(
+                page_id="x",
+                chunk_to_document={"c-1": "doc-A"},
+                chunk_to_claim_confidence={"c-1": 0.5},
+                document_to_source_tier={"doc-A": tier},
+            )
+
+
+def test_option_c_rejects_out_of_range_load_bearing_score():
+    """Malformed load-bearing scores must fail before revenue routing."""
+    with pytest.raises(ValueError, match="claim_load_bearing_scores"):
+        compute_attribution_option_c(
+            page_id="x",
+            chunk_to_document={"c-1": "doc-A"},
+            chunk_to_claim_id={"c-1": "claim-A"},
+            claim_load_bearing_scores={"claim-A": -0.1},
+        )
