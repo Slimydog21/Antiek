@@ -27,23 +27,12 @@ export type Mode = "day" | "night";
  * Sibling invariant: every value here is byte-identical to tokens.css.
  *
  * REACH — honest scope of this re-tone (rigor #1, intellectual honesty). The
- * re-tone is VAR-DEEP only. It softens the consumers that read the CSS custom
- * properties: the 4 `::selection` highlighter veils (`src/index.css`,
- * `--sun-hl-{day,night}`), the 1 `AssignHotkey.css` `var(--sun-deep)` color,
- * and the night offset-shadows (`--shadow-z*` read `var(--sun-deep)`). It does
- * NOT reach the 56 component consumers of the Tailwind utility classes
- * (`text-sun-deep` / `bg-sun-glow` / `border-sun-deep`, across
- * Research/Read/Write/Speak/Notebook — e.g. SceneChrome.tsx:200
- * `hover:bg-sun-glow`, dozens of `text-sun-deep` mono status labels), because
- * those resolve through `tailwind.config.js` (colors `sun-deep:#B89A00`,
- * `sun-glow:#FCE85E`, boxShadow `*-night:#8A7300` at lines 18-19/89-92), which
- * is config-layer-owned by another sprint and OUT OF SCOPE here. So the
- * on-screen `text-sun-deep` accent still renders the OLD loud `#B89A00` until
- * the Tailwind-owning sprint re-tones the var→tailwind mirror to match. The
- * sibling note in tokens.css restates this. The Tailwind header already says
- * "Source of truth: tokens.ts … Keep these in sync" — that mirror is now
- * intentionally divergent for the sun-deep/glow keys, with no CI guard
- * catching it; closing it is a follow-up for the Tailwind owner.
+ * re-tone is now BOTH var-deep and Tailwind-mirrored (D17 closure). It softens
+ * consumers that read CSS custom properties (`--sun-hl-*`, AssignHotkey.css,
+ * night offset-shadows) and consumers of Tailwind utilities such as
+ * `text-sun-deep`, `bg-sun-glow`, and `border-sun-deep`. The Tailwind mirror is
+ * guarded in `tokens.contrast.test.ts` so config-layer hexes cannot silently
+ * drift back to the old loud values.
  */
 export const sun = {
   base: "#F5DF24", // sharp esoteric lemon, slightly green-leaning — UNCHANGED (brand/bar/Werner)

@@ -20,15 +20,12 @@
      --sun (bar) it sits beside. The re-toned accent/highlight roles below are
      pulled toward this family. Not a new palette — a yellow-family re-tone.
 
-     REACH (honest scope, mirrors tokens.ts): this re-tone is VAR-DEEP only. It
-     softens consumers that read these vars — the 4 ::selection highlighter
-     veils (src/index.css), AssignHotkey.css var(--sun-deep), and the night
-     offset-shadows (var(--sun-deep)). It does NOT reach the 56 component
+     REACH (honest scope, mirrors tokens.ts): this re-tone is now var-deep and
+     Tailwind-mirrored (D17 closure). It softens consumers that read these vars
+     — the 4 ::selection highlighter veils (src/index.css), AssignHotkey.css
+     var(--sun-deep), and the night offset-shadows (var(--sun-deep)) — and
      consumers of the Tailwind utilities text-sun-deep / bg-sun-glow /
-     border-sun-deep, which resolve through tailwind.config.js (sun-deep
-     #B89A00 / sun-glow #FCE85E, OUT OF SCOPE for SPR-09). Those still render
-     the OLD loud hexes until the Tailwind owner re-tones the var->tailwind
-     mirror to match these values. */
+     border-sun-deep through tailwind.config.js. */
   --sun-light:      #E8D98C;  /* weathered straw; the calm light chrome leans on */
   --sun-light-soft: #F0E6B8;  /* palest weathered wash (faint chrome veils) */
   --sun-light-deep: #9C8636;  /* muted ochre weathered depth; ==--sun-deep day.

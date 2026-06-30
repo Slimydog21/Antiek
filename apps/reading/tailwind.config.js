@@ -5,7 +5,7 @@
 // Werner + bottom-bar accent. Day = layered off-whites + glacials. Night =
 // ten-layer off-black "majestic night sky".
 // Source of truth: src/design/tokens.ts (+ tokens.css for the rgba/var tokens).
-// Keep these in sync — every value carrying an AMS-SPR-01 note mirrors one there.
+// Keep these in sync — every value carrying an AMS-SPR-01/09 note mirrors one there.
 
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],

@@ -43,8 +43,15 @@
 import { describe, expect, it } from "vitest";
 
 import { contrastRatio, over, relativeLuminance, type Rgb, type Rgba } from "../../e2e/_ams/visible";
+// @ts-expect-error tailwind.config.js is the JS runtime config this guard verifies.
+import tailwindConfig from "../../tailwind.config.js";
+
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { barAccent, shadow, sun, sunLight, surface } from "./tokens";
+
+const tokensCss = readFileSync(join(process.cwd(), "src/design/tokens.css"), "utf8");
 
 // ── colour parsing (local, tiny; visible.ts's parseRgba is rgb()-string only) ──
 // NOTE: this file holds ZERO raw hex literals — every colour is read FROM the
@@ -187,6 +194,39 @@ describe("AMS-SPR-09 token re-tone — every consumed pair still clears WCAG", (
       const glowN = hex(sun.glow.night);
       const vn = rgba(sun.highlight.night);
       expect([vn.r, vn.g, vn.b]).toEqual([glowN.r, glowN.g, glowN.b]);
+    });
+  });
+
+  describe("D20 — Tailwind mirror stays in sync with the weathered sun tokens", () => {
+    const extendedTheme = tailwindConfig.theme?.extend as {
+      colors?: Record<string, string>;
+      boxShadow?: Record<string, string>;
+    };
+
+    it("mirrors sun.deep/glow through CSS vars and keeps bar-accent loud", () => {
+      expect(extendedTheme.colors?.["sun-deep"]).toBe("var(--sun-deep)");
+      expect(extendedTheme.colors?.["sun-glow"]).toBe("var(--sun-glow)");
+      expect(tokensCss).toContain(`--sun-deep:   ${sun.deep.day}`);
+      expect(tokensCss).toContain(`--sun-glow:   ${sun.glow.day}`);
+      expect(extendedTheme.colors?.["bar-accent"]).toBe(barAccent.day);
+    });
+
+    it("mirrors night sun-deep shadows through the same CSS var", () => {
+      expect(extendedTheme.boxShadow?.["z1-night"]).toBe(
+        "3px 3px 0 0 var(--sun-deep)",
+      );
+      expect(extendedTheme.boxShadow?.["z2-night"]).toBe(
+        "5px 5px 0 0 var(--sun-deep)",
+      );
+      expect(extendedTheme.boxShadow?.["z3-night"]).toBe(
+        "8px 8px 0 0 var(--sun-deep)",
+      );
+      expect(extendedTheme.boxShadow?.["lift-night"]).toBe(
+        "12px 12px 0 0 var(--sun-deep)",
+      );
+      expect(tokensCss).toMatch(
+        new RegExp(`--sun-deep:\\s+${shadow.night.z1.slice(-8)}`),
+      );
     });
   });
 

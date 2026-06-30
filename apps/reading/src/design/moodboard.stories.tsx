@@ -54,7 +54,7 @@ function Swatch({
         background: hex,
         border: `2.5px solid ${sun.base}`,
         borderRadius: 6,
-        boxShadow: dark ? "5px 5px 0 0 #8A7300" : "5px 5px 0 0 #0F1419",
+        boxShadow: dark ? `5px 5px 0 0 ${sun.deep.night}` : "5px 5px 0 0 #0F1419",
         padding: 14,
         minHeight: 88,
         color: dark || ["ink", "shadow-2", "shadow-1", "void", "space-1", "space-2", "charcoal-1", "charcoal-2", "slate-1", "slate-2"].includes(name) ? "#FBFCFD" : "#0F1419",
