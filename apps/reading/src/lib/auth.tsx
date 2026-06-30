@@ -235,3 +235,24 @@ export function authCallbackErrorDisplay(
   }
   return null;
 }
+
+export function authCallbackDiagnosticCode(
+  code: string | null,
+): AuthDiagnosticCode | null {
+  switch (code) {
+    case "magic_link_expired":
+      return "B-POLICY-CALLBACK-EXPIRED";
+    case "magic_link_invalid":
+      return "B-POLICY-CALLBACK-INVALID";
+    case "not_authorized":
+      return "B-POLICY-CALLBACK-NOT-AUTH";
+    default:
+      return null;
+  }
+}
+
+export function stripAuthCallbackErrorParam(searchParams: URLSearchParams): string {
+  const next = new URLSearchParams(searchParams);
+  next.delete("error");
+  return next.toString();
+}

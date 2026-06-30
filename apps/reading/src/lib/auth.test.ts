@@ -8,8 +8,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   AUTH_TRANSPORT_FETCH_MESSAGE,
+  authCallbackDiagnosticCode,
+  authCallbackErrorDisplay,
   authLoginErrorDisplay,
   requestMagicLink,
+  stripAuthCallbackErrorParam,
 } from "./auth";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -95,5 +98,51 @@ describe("authLoginErrorDisplay", () => {
     });
     expect(copy.message).toBe("Resend API error");
     expect(copy.hint).toMatch(/Resend|AgentMail/i);
+  });
+});
+
+describe("authCallbackErrorDisplay", () => {
+  it.each([
+    [
+      "magic_link_expired",
+      "This sign-in link expired.",
+      "B-POLICY-CALLBACK-EXPIRED",
+    ],
+    [
+      "magic_link_invalid",
+      "This sign-in link is not valid.",
+      "B-POLICY-CALLBACK-INVALID",
+    ],
+    [
+      "not_authorized",
+      "This email is not authorized for Antiek.",
+      "B-POLICY-CALLBACK-NOT-AUTH",
+    ],
+  ] as const)(
+    "SPR-03 closed callback error %s maps to copy and diagnostic code",
+    (callbackCode, message, diagnosticCode) => {
+      expect(authCallbackErrorDisplay(callbackCode)).toMatchObject({ message });
+      expect(authCallbackDiagnosticCode(callbackCode)).toBe(diagnosticCode);
+    },
+  );
+
+  it("ignores unknown callback errors instead of inventing UI copy", () => {
+    expect(authCallbackErrorDisplay("unexpected")).toBeNull();
+    expect(authCallbackDiagnosticCode("unexpected")).toBeNull();
+  });
+});
+
+describe("stripAuthCallbackErrorParam", () => {
+  it("removes callback error while preserving next", () => {
+    const next = stripAuthCallbackErrorParam(
+      new URLSearchParams("error=magic_link_expired&next=%2Finv%2Fabc"),
+    );
+    expect(next).toBe("next=%2Finv%2Fabc");
+  });
+
+  it("returns empty search when error was the only param", () => {
+    expect(stripAuthCallbackErrorParam(new URLSearchParams("error=not_authorized"))).toBe(
+      "",
+    );
   });
 });
