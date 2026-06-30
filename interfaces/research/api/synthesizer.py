@@ -40,6 +40,7 @@ import json
 import os
 import sys
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
@@ -82,6 +83,87 @@ from .broadcast import EventBroadcaster  # noqa: E402 — after the sys.path boo
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CanonicalSynthesisRefs:
+    supporting_chunk_ids: tuple[str, ...] | None = None
+    path_node_ids: tuple[str, ...] | None = None
+    path_edge_ids: tuple[str, ...] | None = None
+
+
+def _canonical_refs_from_request(
+    req: SynthesizeRequestedPayload,
+) -> CanonicalSynthesisRefs:
+    evidence = _load_json_block(req.evidence_block)
+    parameters = _load_json_block(req.parameters_block)
+    substrate = _load_json_block(req.substrate_block)
+    chunk_ids = _ordered_unique(
+        [
+            *_collect_values_for_keys(
+                evidence,
+                {"chunk_id", "chunk_ids", "source_chunk_ids", "supporting_chunk_ids"},
+            ),
+            *_collect_values_for_keys(
+                parameters,
+                {"chunk_id", "chunk_ids", "source_chunk_ids", "supporting_chunk_ids"},
+            ),
+            *_extract_bracketed_line_ids(req.evidence_block),
+        ]
+    )
+    path_node_ids = _ordered_unique(
+        _collect_values_for_keys(substrate, {"node_id", "node_ids", "path_node_ids", "path_nodes"})
+    )
+    path_edge_ids = _ordered_unique(
+        _collect_values_for_keys(substrate, {"edge_id", "edge_ids", "path_edge_ids"})
+    )
+    return CanonicalSynthesisRefs(
+        supporting_chunk_ids=chunk_ids or None,
+        path_node_ids=path_node_ids or None,
+        path_edge_ids=path_edge_ids or None,
+    )
+
+
+def _load_json_block(raw: str) -> Any:
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _collect_values_for_keys(value: Any, keys: set[str]) -> list[str]:
+    refs: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key in keys:
+                refs.extend(_strings_from_value(child))
+            else:
+                refs.extend(_collect_values_for_keys(child, keys))
+    elif isinstance(value, list):
+        for child in value:
+            refs.extend(_collect_values_for_keys(child, keys))
+    return refs
+
+
+def _strings_from_value(value: Any) -> list[str]:
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    if isinstance(value, list):
+        out: list[str] = []
+        for child in value:
+            out.extend(_strings_from_value(child))
+        return out
+    return []
+
+
+def _ordered_unique(values: list[str]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        if value not in seen:
+            out.append(value)
+            seen.add(value)
+    return tuple(out)
 
 
 def _result_to_thesis_components(result: ThesisResult) -> list[ThesisComponent]:
@@ -404,9 +486,7 @@ def _dispatch_and_parse(
     event: Event,
     *,
     rerender_with_prefix: Callable[[str], str] | None = None,
-    canonical_chunk_ids: tuple[str, ...] = (),
-    canonical_node_ids: tuple[str, ...] = (),
-    canonical_edge_ids: tuple[str, ...] = (),
+    canonical_refs: CanonicalSynthesisRefs,
 ) -> tuple[ThesisResult | None, str]:
     """Dispatch + parse with one self-repair retry on parse failure.
 
@@ -428,12 +508,7 @@ def _dispatch_and_parse(
         return None, policy_id
 
     try:
-        return parse_synthesizer_response(
-            response_text,
-            canonical_chunk_ids=canonical_chunk_ids,
-            canonical_node_ids=canonical_node_ids,
-            canonical_edge_ids=canonical_edge_ids,
-        ), policy_id
+        return _parse_with_canonical_refs(response_text, canonical_refs), policy_id
     except SynthesizerValidationError as exc:
         first_error = exc
         print(
@@ -467,18 +542,25 @@ def _dispatch_and_parse(
         return None, retry_policy
 
     try:
-        return parse_synthesizer_response(
-            retry_text,
-            canonical_chunk_ids=canonical_chunk_ids,
-            canonical_node_ids=canonical_node_ids,
-            canonical_edge_ids=canonical_edge_ids,
-        ), retry_policy
+        return _parse_with_canonical_refs(retry_text, canonical_refs), retry_policy
     except SynthesizerValidationError as exc2:
         print(
             f"synthesizer.handle: self-repair retry also failed — {exc2}",
             flush=True,
         )
         return None, retry_policy
+
+
+def _parse_with_canonical_refs(
+    response_text: str,
+    canonical_refs: CanonicalSynthesisRefs,
+) -> ThesisResult:
+    return parse_synthesizer_response(
+        response_text,
+        canonical_supporting_chunk_ids=canonical_refs.supporting_chunk_ids,
+        canonical_path_node_ids=canonical_refs.path_node_ids,
+        canonical_path_edge_ids=canonical_refs.path_edge_ids,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -496,9 +578,7 @@ def make_synthesizer_handler(
         if not isinstance(event.payload, SynthesizeRequestedPayload):
             return
         req = event.payload
-        canonical_chunk_ids, canonical_node_ids, canonical_edge_ids = (
-            _canonical_refs_for_request(req)
-        )
+        canonical_refs = _canonical_refs_from_request(req)
 
         # ── 1. First dispatch ──
         first_prompt = render_full_prompt(
@@ -511,9 +591,7 @@ def make_synthesizer_handler(
         first_result, policy_id = _dispatch_and_parse(
             first_prompt,
             event,
-            canonical_chunk_ids=canonical_chunk_ids,
-            canonical_node_ids=canonical_node_ids,
-            canonical_edge_ids=canonical_edge_ids,
+            canonical_refs=canonical_refs,
         )
         if first_result is None:
             await _emit_delivered(
@@ -546,9 +624,7 @@ def make_synthesizer_handler(
             revised_result, _revised_policy = _dispatch_and_parse(
                 revised_prompt,
                 event,
-                canonical_chunk_ids=canonical_chunk_ids,
-                canonical_node_ids=canonical_node_ids,
-                canonical_edge_ids=canonical_edge_ids,
+                canonical_refs=canonical_refs,
             )
             if revised_result is None:
                 # Loop receives the previous claims unchanged. The
