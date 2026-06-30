@@ -55,17 +55,22 @@ export interface SelectionRect {
 export interface SelectionProvenance {
   documentId?: string | null;
   chunkId?: string | null;
+  /** A real document-model block id for SPR-01 Region anchoring. Distinct from
+   * `chunkId`: chunks ground retrieval/citation provenance, while Region.block_id
+   * names a block in document space. Hosts must leave this null when they only
+   * know a page/window chunk. */
+  blockId?: string | null;
   /** §9.0 servability of the chunk the selection lands in. `undefined` ⇒ the
    * host could not resolve a chunk (e.g. a free-prose synthesis selection);
    * `true`/`false` ⇒ resolved-and-servable / resolved-and-withheld. */
   servable?: boolean;
   /** SPR-06 (M3): the highlighted span's char offsets WITHIN the resolved block
-   * (``chunkId``), 0-based, block-relative — the same coordinate system SPR-01's
-   * ``Region`` uses (NOT whole-document, NOT pixels). The host resolves these
+   * (`blockId`), 0-based, block-relative — the same coordinate system SPR-01's
+   * `Region` uses (NOT whole-document, NOT pixels). The host resolves these
    * from its DOM↔block map; both are present together or neither (a sub-block
-   * span carries both; a whole-block selection carries neither). When present
-   * (with documentId + chunkId) the Dialogue thread anchors to the exact span
-   * and persists to the graph; when absent it still answers, just un-anchored. */
+   * span carries both; a whole-block selection carries neither). They only
+   * become a persisted Dialogue Region when `documentId + blockId` are present;
+   * otherwise the dialogue still answers, just un-anchored. */
   charStart?: number | null;
   charEnd?: number | null;
 }

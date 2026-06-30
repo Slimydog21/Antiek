@@ -7,8 +7,9 @@
  * document, NOT pixels (see ``substrate.contracts.reading_surface.Region`` and
  * ``substrate/reading/thread_anchor.py``'s anchor-semantics paragraph). This
  * helper computes those offsets from a DOM ``Range`` against the block element
- * that contains it, so a host's ``resolveProvenance`` can hand the FloatMenu a
- * span the backend can anchor + re-locate after re-pagination/re-extraction.
+ * that contains it, so a host with a real document block id can hand the
+ * FloatMenu a span the backend can anchor + re-locate after
+ * re-pagination/re-extraction.
  *
  * WHY block-relative (rigor #5): a thread must survive re-pagination. Page
  * layout is a VIEW concern — the block's text is stable across paginations, so
@@ -57,18 +58,17 @@ export function charRangeInBlock(range: Range, blockEl: HTMLElement | null): Blo
 }
 
 /**
- * Find the nearest enclosing block element for ``range`` within ``scope``,
- * preferring an element tagged with a chunk marker (``data-akb-chunk-id``) so
- * the offsets are measured against the SAME block the chunk id names. Falls back
- * to the common-ancestor element, then the scope itself.
+ * Find the nearest enclosing block element for ``range`` within ``scope``.
+ * A page/window chunk marker is a useful measurement boundary when present, but
+ * it is not a SPR-01 Region block id. Falls back to the common-ancestor element,
+ * then the scope itself.
  */
 export function blockElementFor(range: Range, scope: HTMLElement | null): HTMLElement | null {
   if (!scope) return null;
   let node: Node | null = range.commonAncestorContainer;
   if (node.nodeType === Node.TEXT_NODE) node = node.parentElement;
   let el = node as HTMLElement | null;
-  // Walk up to a chunk-tagged block if one encloses the selection (the offsets
-  // then align with the chunk id the host resolves).
+  // Walk up to a chunk-tagged boundary if one encloses the selection.
   while (el && el !== scope) {
     if (el.hasAttribute("data-akb-chunk-id")) return el;
     el = el.parentElement;

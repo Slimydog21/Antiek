@@ -295,7 +295,9 @@ def test_thread_persisted_to_graph_anchored_to_region(client, db, monkeypatch):
     meta = json.loads(meta_json)
     assert meta["promoted_kind"] == "passage_dialogue"
     assert meta["region"]["document_id"] == "doc-1"
+    assert meta["region"]["block_id"] == "blk-1"
     assert meta["region"]["char_start"] == 0
+    assert meta["chunk_id"] is None  # Region.block_id is not a retrieval chunk.
     assert meta["anchor_excerpt"] == "the highlighted passage text"
 
 

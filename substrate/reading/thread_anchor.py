@@ -17,8 +17,8 @@ code, not a chat):
   the spec says REUSE not invent). A reader highlighting a passage and opening
   a Dialogue *is asking about that passage*, so the ``question`` node — which
   ``substrate.graph.insight_question.promote_question`` already supports with an
-  ``anchor_region_id`` + ``source_document_id`` + ``chunk_id`` — is the honest
-  fit. WHAT WOULD REVERSE THIS: if a Dialogue thread needs to be queried as a
+  ``anchor_region_id`` + ``source_document_id`` — is the honest fit. WHAT WOULD
+  REVERSE THIS: if a Dialogue thread needs to be queried as a
   distinct kind (e.g. a "my conversations" surface that must exclude research
   questions), add a dedicated ``NodeType`` + migration; until then the
   ``promoted_kind`` metadata marker (``"passage_dialogue"``) distinguishes it.
@@ -133,11 +133,11 @@ def anchor_thread(
         # same ``question`` node type (the reverse-decision marker above).
         "promoted_kind": "passage_dialogue",
         "investigation_id": investigation_id,
-        # ``block_id`` is the chunk the selection lands in — the provenance chain
-        # claim→chunk→document the graph already models, mirrored on metadata so
-        # a grounded-thread query recovers it without an edge.
+        # Region.block_id is a document-model block id, not a retrieval chunk.
+        # Keep source_document_id for document-scoped queries, but do not
+        # fabricate a chunk edge from the block id.
         "source_document_id": region.document_id,
-        "chunk_id": region.block_id,
+        "chunk_id": None,
         # The Region's own char-anchor identity (so a consumer can map node→region).
         "anchor_region_id": nid,
         # The full Region, so a consumer reconstructs the anchor without parsing

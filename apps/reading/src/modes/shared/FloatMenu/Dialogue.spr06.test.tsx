@@ -97,7 +97,7 @@ function Host({ provenance }: { provenance?: FloatMenuSelection["provenance"] })
   );
 }
 
-const ANCHORED = { documentId: "doc-1", chunkId: "blk-1", servable: true, charStart: 0, charEnd: 12 };
+const ANCHORED = { documentId: "doc-1", chunkId: "chunk-1", blockId: "blk-1", servable: true, charStart: 0, charEnd: 12 };
 
 beforeEach(() => {
   apiFetchMock.mockReset();
@@ -111,11 +111,19 @@ afterEach(() => {
 // ── regionOfSelection (M3 anchor resolution) ────────────────────────────────
 
 describe("regionOfSelection resolves the SPR-01 Region (M3)", () => {
-  it("builds a Region from documentId + chunkId + char range", () => {
+  it("builds a Region from documentId + blockId + char range", () => {
     const sel: FloatMenuSelection = { text: "x", rect: { top: 0, left: 0, width: 1, height: 1 }, provenance: ANCHORED };
     expect(regionOfSelection(sel)).toEqual({ document_id: "doc-1", block_id: "blk-1", char_start: 0, char_end: 12 });
   });
-  it("returns null when no chunk is resolved (free-prose selection — no anchor)", () => {
+  it("does not fabricate a Region from a chunk id", () => {
+    const sel: FloatMenuSelection = {
+      text: "x",
+      rect: { top: 0, left: 0, width: 1, height: 1 },
+      provenance: { documentId: "doc-1", chunkId: "chunk-1", servable: true, charStart: 0, charEnd: 12 },
+    };
+    expect(regionOfSelection(sel)).toBeNull();
+  });
+  it("returns null when no block is resolved (free-prose selection — no anchor)", () => {
     const sel: FloatMenuSelection = { text: "x", rect: { top: 0, left: 0, width: 1, height: 1 }, provenance: {} };
     expect(regionOfSelection(sel)).toBeNull();
   });
@@ -218,7 +226,7 @@ describe("DialoguePanel streams, recovers, and persists honestly (M2 + M4)", () 
 
   it("an un-anchored selection is labelled honestly as NOT saved", async () => {
     apiFetchMock.mockResolvedValueOnce(sseResponse([{ kind: "token", text: "reply" }, { kind: "done" }]));
-    openDialogue({}); // no documentId/chunkId → no Region → no persistence
+    openDialogue({}); // no documentId/blockId → no Region → no persistence
     await act(async () => {
       fireEvent.click(screen.getByText("Ask"));
     });

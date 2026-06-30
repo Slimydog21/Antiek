@@ -1124,14 +1124,14 @@ export type { Region as DialogueRegion } from "../types/document_model.gen";
  * block — a free-prose selection). char offsets are block-relative (M3). */
 export function regionFromProvenance(p: {
   documentId?: string | null;
-  chunkId?: string | null;
+  blockId?: string | null;
   charStart?: number | null;
   charEnd?: number | null;
 }): DialogueRegion | null {
-  if (!p.documentId || !p.chunkId) return null;
+  if (!p.documentId || !p.blockId) return null;
   return {
     document_id: p.documentId,
-    block_id: p.chunkId,
+    block_id: p.blockId,
     char_start: p.charStart ?? null,
     char_end: p.charEnd ?? null,
   };
