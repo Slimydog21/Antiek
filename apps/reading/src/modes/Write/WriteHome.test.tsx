@@ -42,7 +42,7 @@ vi.mock("./writeApi", async (orig) => ({
   getTraceTarget: getTraceTargetMock,
 }));
 
-import WriteHome from "./WriteHome";
+import WriteHome, { readerPageFromTraceSectionPath } from "./WriteHome";
 
 function ReaderProbe() {
   const { documentId } = useParams<{ documentId: string }>();
@@ -100,6 +100,13 @@ function mountAt(path: string) {
 }
 
 describe("WriteHome — the re-homed door", () => {
+  it("parses trace section paths into zero-based reader pages", () => {
+    expect(readerPageFromTraceSectionPath("Page 17")).toBe(16);
+    expect(readerPageFromTraceSectionPath("p. 3")).toBe(2);
+    expect(readerPageFromTraceSectionPath("Timestamp 00:17")).toBeUndefined();
+    expect(readerPageFromTraceSectionPath(null)).toBeUndefined();
+  });
+
   it("the no-piece Write home is LANDING-GLASS (SPR-03 M2 occlusion contract)", async () => {
     // Audit §3 item 5: the Write home (no piece) is a landing surface, rendered
     // through GlassSurface variant="glass" so the scene shows through the margins.
@@ -170,7 +177,7 @@ describe("WriteHome — the re-homed door", () => {
     // The honest trip: a servable source opens the one Reader and preserves the
     // chunk locator, so the Reader can resolve chunk → region without a
     // fabricated block id.
-    await waitFor(() => expect(screen.getByText("READER doc-1 ?chunk=c1")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("READER doc-1 ?page=0&chunk=c1")).toBeTruthy());
   });
 
   it("falls back honestly (no dead page) when the source is gated/unreachable", async () => {
