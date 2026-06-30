@@ -68,18 +68,11 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-# Defensive SSL bootstrap: a python.org-3.11 interpreter ships without a system
-# CA bundle (the arxiv-missing-ssl-env failure mode). Point at certifi when the
-# env is unset so the HTTPS handshake to arxiv.org / OA sources does not fail
-# silently mid-window. Idempotent and read-only w.r.t. the DB.
-if not os.environ.get("SSL_CERT_FILE"):
-    try:
-        import certifi
+from runtime.ssl_bootstrap import ensure_ssl_cert_env  # noqa: E402
 
-        os.environ.setdefault("SSL_CERT_FILE", certifi.where())
-        os.environ.setdefault("SSL_CERT_DIR", os.path.dirname(certifi.where()))
-    except Exception:
-        pass  # certifi absent -> leave env as-is; fall through to system default
+# Defensive SSL bootstrap for arxiv / OA HTTPS clients. Idempotent and read-only
+# w.r.t. the DB; preserves any operator-provided certificate env.
+ensure_ssl_cert_env()
 
 from acquisition.corpus_quality import (  # noqa: E402
     CandidateRef,
