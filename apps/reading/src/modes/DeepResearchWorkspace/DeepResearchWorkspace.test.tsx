@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type { PlanTree, ResearchStatus } from "../../api/research";
+import CostMeter from "./CostMeter";
 import PlanEditor from "./PlanEditor";
 import ResearchPanel from "./ResearchPanel";
 
@@ -160,6 +161,45 @@ describe("ResearchPanel — steer controls", () => {
     render(<ResearchPanel research={{ ...running, state: "paused" }} costUsd={0} onSteer={onSteer} />);
     fireEvent.click(screen.getByRole("button", { name: "Resume" }));
     expect(onSteer).toHaveBeenCalledWith("resume");
+  });
+});
+
+describe("CostMeter — session spend against aggregate cap", () => {
+  it("renders an awaiting state before the session reports cost", () => {
+    render(<CostMeter cost={null} />);
+    expect(screen.getByText("cost · awaiting session")).toBeTruthy();
+  });
+
+  it("displays session total while using aggregate spend for budget state", () => {
+    render(
+      <CostMeter
+        cost={{
+          per_research: { "inv-1": 0.1 },
+          session_total_usd: 0.1,
+          aggregate_spent_usd: 8.5,
+          aggregate_cap_usd: 10,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("$0.1000")).toBeTruthy();
+    expect(screen.getByText("Approaching the aggregate budget.")).toBeTruthy();
+  });
+
+  it("flags cap reached from aggregate spend, not the displayed session total", () => {
+    render(
+      <CostMeter
+        cost={{
+          per_research: { "inv-1": 0.5 },
+          session_total_usd: 0.5,
+          aggregate_spent_usd: 10,
+          aggregate_cap_usd: 10,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("$0.5000")).toBeTruthy();
+    expect(screen.getByText("Aggregate budget reached — new launches are blocked until the cap is lifted.")).toBeTruthy();
   });
 });
 

@@ -19,10 +19,11 @@ export default function CostMeter({ cost }: { cost: SessionCost | null }) {
       </div>
     );
   }
-  const spent = cost.aggregate_spent_usd;
+  const sessionSpent = cost.session_total_usd;
+  const aggregateSpent = cost.aggregate_spent_usd;
   const cap = cost.aggregate_cap_usd;
-  const frac = cap > 0 ? Math.min(1, spent / cap) : 0;
-  const atCap = cap > 0 && spent >= cap;
+  const frac = cap > 0 ? Math.min(1, aggregateSpent / cap) : 0;
+  const atCap = cap > 0 && aggregateSpent >= cap;
   const warn = !atCap && frac >= WARN_FRACTION;
   const barColor = atCap
     ? "bg-emperor"
@@ -37,7 +38,7 @@ export default function CostMeter({ cost }: { cost: SessionCost | null }) {
           session cost
         </span>
         <span className="font-mono text-sm text-ink dark:text-bright">
-          ${spent.toFixed(4)}
+          ${sessionSpent.toFixed(4)}
           <span className="text-shadow-1 dark:text-moonlight"> / ${cap.toFixed(2)}</span>
         </span>
       </div>
