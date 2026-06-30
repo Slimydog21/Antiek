@@ -163,6 +163,7 @@ describe("streamDialogueOverSelection consumes SSE frames (M2)", () => {
     const body = JSON.parse((init as RequestInit).body as string);
     expect(body.passage).toBe("discuss this passage");
     expect(body.region).toEqual({ document_id: "doc-1", block_id: "blk-1", char_start: 0, char_end: 12 });
+    expect(body.source_chunk_id).toBe("chunk-1");
   });
 
   it("a 503 channel surfaces a single recoverable error frame (no fake reply)", async () => {

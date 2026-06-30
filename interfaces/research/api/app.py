@@ -1252,6 +1252,9 @@ class ThoughtPartnerRequest(BaseModel):
         the thread anchors to, so the thread persists to the graph (M3 + M4).
         Optional: a selection over un-anchored prose (no resolved block) has no
         region and the turn still answers, just not persisted.
+      * ``source_chunk_id`` — optional retrieval provenance for the selected
+        passage. This is deliberately separate from ``region.block_id``: a
+        Region block id is document-model identity, not a graph chunk id.
       * ``history`` — prior turns of the running conversation (multi-turn).
 
     `system_context` is retained for client back-compat (the workspace-state
@@ -1264,6 +1267,7 @@ class ThoughtPartnerRequest(BaseModel):
     investigation_id: str | None = None
     system_context: str | None = None
     region: dict[str, Any] | None = None
+    source_chunk_id: str | None = None
     history: list[dict[str, str]] = []
 
 
@@ -5510,7 +5514,12 @@ def create_app(
         except Exception as exc:  # noqa: BLE001 — surface a bad anchor honestly
             raise HTTPException(status_code=422, detail=f"invalid region: {exc}") from exc
 
-    def _persist_thread(region, passage: str, investigation_id: str) -> str | None:
+    def _persist_thread(
+        region,
+        passage: str,
+        investigation_id: str,
+        source_chunk_id: str | None,
+    ) -> str | None:
         """Anchor the thread to the Region + persist to the graph through the
         SINGLE writer (M3 + M4). Best-effort: a persistence failure must not
         sink the reader's reply (they still got their answer), so it logs and
@@ -5529,6 +5538,7 @@ def create_app(
                     region=region,
                     excerpt=passage,
                     investigation_id=investigation_id,
+                    source_chunk_id=source_chunk_id,
                     con=con,
                 )
             return anchored.node_id
@@ -5567,7 +5577,7 @@ def create_app(
             raise HTTPException(
                 status_code=503, detail=f"dispatch_unavailable: {exc}"
             ) from exc
-        node_id = _persist_thread(region, passage, investigation_id)
+        node_id = _persist_thread(region, passage, investigation_id, req.source_chunk_id)
         return ThoughtPartnerResponseBody(text=result.text, thread_node_id=node_id)
 
     @app.post("/thought-partner/stream")
@@ -5629,7 +5639,7 @@ def create_app(
                 yield _sse({"kind": "token", "text": chunk})
             # Persist + announce the anchored thread (best-effort; never blocks
             # the reply the reader already received above).
-            node_id = _persist_thread(region, passage, investigation_id)
+            node_id = _persist_thread(region, passage, investigation_id, req.source_chunk_id)
             if node_id is not None:
                 yield _sse({"kind": "thread", "node_id": node_id})
             yield _sse({"kind": "done"})
