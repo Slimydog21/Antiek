@@ -781,6 +781,30 @@ describe("BookReader", () => {
     return JSON.stringify({ id: "doc-1", title: "A Servable Book", schema_version: 1, blocks });
   }
 
+  function structuredBlocksWithCitationJson(): string {
+    return JSON.stringify({
+      id: "doc-1",
+      title: "A Servable Book",
+      schema_version: 1,
+      blocks: [
+        { type: "heading", level: 1, spans: [{ type: "text", text: "Chapter One" }] },
+        {
+          type: "paragraph",
+          spans: [
+            { type: "text", text: "A cited claim " },
+            {
+              type: "citation",
+              source_document_id: "doc-source-42",
+              chunk_id: "chunk-7",
+              marker: "[1]",
+            },
+            { type: "text", text: "." },
+          ],
+        },
+      ],
+    });
+  }
+
   function richArticle(container: HTMLElement): HTMLElement | null {
     return container.querySelector("article[data-reader-root]") as HTMLElement | null;
   }
@@ -812,6 +836,17 @@ describe("BookReader", () => {
     expect(article.getAttribute("data-akb-asset-id")).toBe("doc-1");
     // No fabricated chunk id (asset-level attribution).
     expect(article.getAttribute("data-akb-chunk-id")).toBeNull();
+  });
+
+  it("rich citations open through the real one-door Reader resolver, not the standalone fallback", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody({ structured_blocks: structuredBlocksWithCitationJson() }));
+    const { container } = await renderReader();
+
+    await waitFor(() => expect(richArticle(container)).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Open the cited source [1]" }));
+
+    expect(navigateMock).toHaveBeenCalledWith("/read/doc-source-42?chunk=chunk-7");
   });
 
   it("falls back to the legacy ReadingColumn when structured_blocks is NULL", async () => {

@@ -9,8 +9,9 @@ import { useReaderContext } from "../ReaderContext";
  * grounding triple the graph edge vocabulary uses) PLUS an optional char range
  * into the SOURCE document. This component renders the `marker` ("[1]",
  * "(Smith 2020)") as a clickable button that calls `openDocument(
- * source_document_id, { chunkId })` — the one door (SPR-05 implements the
- * resolver; here it is the SPR-03 stub via ReaderContext).
+ * source_document_id, { chunkId })` — the one door. BookReader supplies the
+ * production resolver; isolated Reader renders fall back to ReaderContext's
+ * no-op logger.
  *
  * This is the affordance a FLATTENED markdown string could never carry: a
  * markdown `[1]` has nowhere to put `source_document_id` + `chunk_id`. Only the
@@ -20,7 +21,6 @@ import { useReaderContext } from "../ReaderContext";
  *
  * Out of scope here (rigor #4): this component does NOT implement or invent
  * routing. It calls the contract-typed resolver from ReaderContext and stops.
- * SPR-05 supplies the real `openDocument`.
  */
 export default function Citation({ span }: { span: CitationSpan }) {
   const { openDocument, resolveSourceTitle } = useReaderContext();

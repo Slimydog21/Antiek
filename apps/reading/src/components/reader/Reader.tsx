@@ -33,13 +33,12 @@ import { ReaderProvider, useReaderContext } from "./ReaderContext";
  * old ReadingColumn did, so the per-second attribution layer is unbroken.
  *
  * Data contract (rigor #1, honesty): this is the RENDER component. It takes the
- * already-resolved typed `Document` as a prop. The GATED FETCH + mount
- * (`openDocument` → consult the §9.0 serve gate → fetch the model) is SPR-05's
- * job; this sprint stubs `openDocument` for citations. The caller (BookReader)
- * deserializes `structured_blocks` from the existing /full-text serve response
- * and passes the Document here; when `structured_blocks` is NULL (a legacy /
- * un-backfilled doc), the caller falls back to the legacy `raw_text` flattener —
- * additive, never a blank.
+ * already-resolved typed `Document` as a prop. The GATED FETCH + mount happens
+ * at the host surface: BookReader deserializes `structured_blocks` from the
+ * existing /full-text serve response, passes the Document here, and supplies the
+ * real `openDocument` resolver for citations. When `structured_blocks` is NULL
+ * (a legacy / un-backfilled doc), the caller falls back to the legacy `raw_text`
+ * flattener — additive, never a blank.
  */
 
 export interface ReaderProps {
@@ -54,7 +53,7 @@ export interface ReaderProps {
   /** Render only these blocks (a pagination window). When omitted, the whole
    *  document body renders (Storybook / single-page use). */
   blocks?: Block[];
-  /** The SPR-05 resolver for citations. Defaults to the SPR-03 stub. */
+  /** Resolver for citations. Defaults to the standalone fallback context. */
   openDocument?: OpenDocument;
   /** Resolve a citation's source title for its hover affordance (M3). */
   resolveSourceTitle?: (sourceDocumentId: string) => string | undefined;

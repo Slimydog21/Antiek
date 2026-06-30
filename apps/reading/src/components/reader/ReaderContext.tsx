@@ -13,15 +13,14 @@ import { openDocumentStub } from "./openDocumentStub";
  * the coupling this sprint is trying to delete. The context decouples the
  * citation block from routing entirely:
  *
- *  - SPR-03 (now): the default is `openDocumentStub` (console no-op) — a
- *    citation is fully clickable and a test injects a spy via the provider to
- *    assert it fired with the right source_document_id + chunkId.
- *  - SPR-05 (later): the real `openDocument` (rights/tier gate → mount the
- *    Reader) is supplied at the provider with ZERO change to any block
- *    component. The seam is already the right shape.
+ *  - Standalone renders: the default is `openDocumentStub` (console no-op) so
+ *    Storybook/unit tests can mount Reader without an app router.
+ *  - Production hosts: BookReader and other routed surfaces supply the real
+ *    `openDocument` (rights/tier gate → `/read/:id`) with ZERO change to any
+ *    block component. The seam is already the right shape.
  */
 export interface ReaderContextValue {
-  /** Resolve + open a document. SPR-03 stub; SPR-05 real (rights/tier gate). */
+  /** Resolve + open a document. Production hosts supply the gated Reader door. */
   openDocument: OpenDocument;
   /** Resolve a citation's source title for the hover affordance (M3). Optional;
    *  SPR-03 has no title resolver, so the marker is the fallback hover text. */
