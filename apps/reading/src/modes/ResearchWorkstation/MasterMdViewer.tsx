@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { WheelEvent } from "react";
 
 import { toast } from "../../components/lemon/LemonToast";
@@ -24,6 +24,10 @@ import {
   QUALITY_CUE_WIDGET_ID,
   makeQualityCueAugmentation,
 } from "../../reading-physics/augmentations/quality-cue";
+import {
+  ACCRUAL_WIDGET_ID,
+  makeAccrualAugmentation,
+} from "../../reading-physics/augmentations/accrual";
 import {
   REVIEW_DUE_CLASS,
   makeReviewDueAugmentation,
@@ -54,6 +58,7 @@ import { CHUNK_ID_ATTR, COLLAPSE_SECTION_ID_ATTR } from "./readingGeometryPass";
 import ChunkModal from "./ChunkModal";
 import { buildLayoutMap, measureCollapseSection } from "./readingGeometryPass";
 import type { ClaimReviewRating } from "./reviewState";
+import AccrualView from "../Economics/AccrualView";
 
 /**
  * Renders a completed investigation's synthesis as a trustworthy
@@ -190,12 +195,14 @@ const GEOMETRY_RECOMPUTE_DEBOUNCE_MS = 100;
 
 export default function MasterMdViewer({
   synthesis,
+  synthesisId = null,
   reviewDueClaims = [],
   reviewDueEnabled = REVIEW_DUE_ENABLED_DEFAULT,
   onReviewClaim,
   reviewClaimPendingIds = [],
 }: {
   synthesis: ParsedSynthesis;
+  synthesisId?: string | null;
   reviewDueClaims?: readonly ReviewDueClaimView[];
   reviewDueEnabled?: boolean;
   onReviewClaim?: (claim: ParsedClaim, rating: ClaimReviewRating) => void | Promise<void>;
@@ -362,7 +369,7 @@ export default function MasterMdViewer({
               rect), so this is byte-equivalent to the prior EMPTY_LAYOUT_MAP call
               — passing the live map proves the surface threads it everywhere, and
               lights up the moment a geometry-DEPENDENT widget is mounted here. */}
-          {renderHeaderQualityCue(synthesis.qualityScore, layoutMap)}
+          {renderHeaderAnchoredWidgets(synthesis.qualityScore, layoutMap, synthesisId)}
         </header>
 
         {/* Thesis summary — flowing prose */}
@@ -999,33 +1006,40 @@ function RecommendationBadge({ rec }: { rec: Recommendation }) {
 // a DECLARED `AnchoredWidget` (augmentations/quality-cue.ts) the SURFACE places
 // via the anchored-widgets facet (PR-1). The widget's view is BYTE-EQUIVALENT to
 // the old inline JSX (same wording, classes, collapsed "the detail" toggle).
-// `renderHeaderQualityCue` below is the surface's facet apply pass for the
+// `renderHeaderAnchoredWidgets` below is the surface's facet apply pass for the
 // header slot.
 
 /**
  * Run the anchored-widgets facet pass for the synthesis-header slot and return
- * the QualityCue widget's rendered node (SPR-04 M4). This is the surface's
- * collect → combine → enact cycle for one widget (§2), routed through the SAME
- * facet machinery the decorations pass uses.
+ * the surface-mounted widget nodes (SPR-04 M4/M5). This is the surface's
+ * collect → combine → enact cycle, routed through the SAME facet machinery the
+ * decorations pass uses.
  *
  * A PLAIN function, NOT a React hook — it is called from the viewer's JSX, but
  * the SPR-02 discipline holds regardless: a hook here would be fragile next to
  * the early-returning sub-components. It calls no hooks, runs each render
- * (cheap — O(1) widget, pure), and the augmentation only DECLARES (PR-1).
+ * (cheap — O(1-2) widgets, pure), and the augmentations only DECLARE (PR-1).
  *
  * The QualityCue widget's content is geometry-independent (the surface places
  * it in the header; the cue ignores the rect), so the layout-map can be the
  * empty map — the de-overlap enact resolves a null rect, the widget renders its
- * view all the same. The RenderContext is the minimal header pass: "main", the
- * (empty) layout-map, and no `components` (QualityCue needs no surface-injected
- * component — it builds its view from React primitives, PR-8 clean).
+ * view all the same. AccrualView is heavier and PR-8 stays clean by letting the
+ * surface inject it through `components.AccrualPanel`; the augmentation imports
+ * no app-layer component and renders nothing when no real synthesis id exists.
  */
-function renderHeaderQualityCue(score: QualityScore | null, layout: LayoutMap) {
+function renderHeaderAnchoredWidgets(
+  score: QualityScore | null,
+  layout: LayoutMap,
+  synthesisId: string | null,
+) {
   // The score is substrate-derived (parsed from the persisted rubric); the
   // augmentation captures it at declare time and renders nothing for null
   // (the honest absent case). `QualityScore` structurally satisfies the
   // augmentation's minimal `QualityScoreView` (same five fields).
-  const cue = makeQualityCueAugmentation(score);
+  const augmentations = [
+    makeQualityCueAugmentation(score),
+    ...(synthesisId ? [makeAccrualAugmentation(synthesisId)] : []),
+  ];
   // Living-Roadmap SPR-02 (M1): the header pass now runs against the LIVE
   // layout-map the surface measured (was EMPTY_LAYOUT_MAP). QualityCue is
   // geometry-INDEPENDENT — it pins to the header and renders without a rect — so
@@ -1045,12 +1059,40 @@ function renderHeaderQualityCue(score: QualityScore | null, layout: LayoutMap) {
     },
   };
   const enacted = resolveAnchoredWidgets(
-    collectAnchoredWidgets([cue], ctx).all.map((p) => p.widget),
+    collectAnchoredWidgets(augmentations, ctx).all.map((p) => p.widget),
     layout,
   );
-  const renderCtx: RenderContext = { pass: "main", layout };
-  const headerWidget = enacted.find((e) => e.widget.id === QUALITY_CUE_WIDGET_ID);
-  return headerWidget ? renderEnacted(headerWidget, renderCtx) : null;
+  const renderCtx: RenderContext = {
+    pass: "main",
+    layout,
+    components: {
+      AccrualPanel: HeaderAccrualPanel,
+    },
+  };
+  const headerWidgets = enacted.filter(
+    (e) => e.widget.id === QUALITY_CUE_WIDGET_ID || e.widget.id === ACCRUAL_WIDGET_ID,
+  );
+  if (headerWidgets.length === 0) return null;
+  return (
+    <>
+      {headerWidgets.map((widget) => {
+        const node = renderEnacted(widget, renderCtx);
+        if (!node) return null;
+        if (widget.widget.id === QUALITY_CUE_WIDGET_ID) {
+          return <Fragment key={widget.widget.id}>{node}</Fragment>;
+        }
+        return (
+          <div key={widget.widget.id} className="mt-3">
+            {node}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function HeaderAccrualPanel({ synthesisId }: { synthesisId: string }) {
+  return <AccrualView synthesisId={synthesisId} />;
 }
 
 function Appendix({ synthesis }: { synthesis: ParsedSynthesis }) {

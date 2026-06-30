@@ -85,10 +85,11 @@ capability is not faked behind a stub, it simply awaits the one integration.
 3. **Mount the minimap** as a second pass: `minimapLayoutFrom(mainLayout, …)` →
    `projectDecorationsToMinimap(resolved, …)` → `renderMinimap(...)`.
 
-This single integration unblocks collapse, the minimap, **and** the not-yet-live
-`AccrualView` / `ChaseThread` gutter widgets simultaneously — they all wait on the
-same real `BaseGeometry`. (Only `QualityCue` is live today, because it pins to the
-header and renders without geometry.)
+This single integration unblocks collapse, the minimap, and gutter widgets that
+wait on the same real `BaseGeometry`. `QualityCue` is live because it pins to the
+header and renders without geometry; `AccrualView` is now mounted through the
+same anchored-widget facet when the reader has a persisted synthesis id; the
+remaining gutter widgets still need surface wiring.
 
 ## What actually shipped (Living-Roadmap SPR-02, 2026-05-27)
 
@@ -134,8 +135,7 @@ this live map.
   bounded/withheld chunk surfaces. What is still NOT true: a marginalia note is
   visibly mounted in the synthesis surface. The marginalia FACET PATH is proved
   live (an anchored widget resolves a non-null rect when handed a measured
-  anchor), but `AccrualView` / `ChaseThread` are still not mounted in
-  `MasterMdViewer`.
+  anchor), but the marginalia widget is still not mounted in `MasterMdViewer`.
 - The **collapse ⌘/Ctrl+wheel gesture is now bound as of 2026-07-01.** The
   surface toggles ephemeral `CollapseState` for the claim section under the
   pointer, measures the section band through `readingGeometryPass.ts`, and folds
@@ -144,11 +144,10 @@ this live map.
   `MasterMdViewer.test.tsx`). The visible compressed fingerprint/color band is
   also live: collapsed decorated claims render an aria-hidden, color-only strip
   beside the article, carrying decoration classes but no body/title text.
-- The **AccrualView / ChaseThread gutter widgets** are not mounted in
-  `MasterMdViewer` (they were never mounted here; SPR-04 built them). They share
-  the same anchored-widgets facet that is now proved live against the live map, so
-  mounting them is wiring — but it is not done in this sprint (out of scope: M2 is
-  minimap/collapse/marginalia wiring).
+- **AccrualView is mounted in `MasterMdViewer` as of 2026-07-01** through the
+  same anchored-widgets facet when the surface has a persisted synthesis id. The
+  remaining dormant gutter work is `ChaseThread` plus visible marginalia wiring;
+  both can consume the live map once mounted.
 
 **M3 recompute strategy (recorded per the milestone — corrected in round 2 to
 the honest model).** Round 1 mounted a `window` scroll/resize listener feeding a
