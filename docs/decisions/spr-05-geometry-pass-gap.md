@@ -125,21 +125,17 @@ this live map.
   the live map (byte-equivalent, it is geometry-independent).
 
 **What is still DORMANT, and exactly why (rigor #1 — do not round up):**
-- **Marginalia** anchors to `passage` anchors (chunk-relative offsets) and, for
-  withheld targets, `chunk` anchors. The surface today stamps DOM markers for
-  **claims only** (`data-claim-id`); it stamps no `data-chunk-id` /
-  `data-passage-*` markers. So the geometry pass measures NO passage/chunk anchor,
-  and a marginalia note's `passage` anchor resolves to `null` through the live map
-  → the note renders nothing. The marginalia FACET PATH is proved live (an
-  anchored widget resolves a non-null rect when handed a measured anchor — the
-  test re-pins to a claim anchor to prove this), but a marginalia note pinned to a
-  real passage **cannot light up until the surface stamps passage/chunk DOM
-  markers and the measure pass reads them.** That is the next wedge, deliberately
-  out of THIS sprint's scope (M2 is wiring-only; adding new DOM markers + extending
-  the measure query is net-new surface work). Distinguish: "I saw marginalia's
-  facet render against a real rect in a test" (TRUE) vs. "a marginalia note
-  consumed a rect the live map returned for its passage anchor" (NOT yet — no
-  passage geometry is measured).
+- **Marginalia passage anchors** remain dormant: they anchor to chunk-relative
+  `passage` offsets, and the synthesis surface still stamps no
+  `data-passage-*` markers. So a marginalia note pinned to a real passage
+  resolves to `null` through the live map → the note renders nothing. The
+  marginalia FACET PATH is proved live (an anchored widget resolves a non-null
+  rect when handed a measured anchor), and the **chunk** half is now live as of
+  2026-07-01: source citations stamp `data-chunk-id`, and the geometry pass
+  measures `{kind:"chunk"}` anchors for bounded/withheld chunk surfaces. What is
+  still NOT true: a marginalia note consumed a rect for its exact
+  `passage(start,end)` anchor. Closing that requires rendering/stamping passage
+  offset spans, not just chunk-level source chips.
 - The **collapse ⌘/Ctrl+scroll gesture is NOT bound.** This sprint lit up the
   geometry collapse CONSUMES; it did not add the surface gesture handler that
   mutates `CollapseState` and folds `collapsePipelineFor(state)` into the map. The
@@ -218,11 +214,11 @@ model:
   superseded and record the wiring commit + which widgets went live.~~ DONE
   2026-05-27 (see "What actually shipped" — closing commit on branch
   `caffen/lr-spr02`, orchestrator-committed on green).
-- **Marginalia needs to light up against real passages** → stamp `data-chunk-id` /
-  `data-passage-*` DOM markers on the rendered chunk/passage spans and extend
-  `measureClaimGeometry` (rename it) to measure them too. This is the named
-  next wedge; the layout-map + augmentation are ready, only the surface markers +
-  measure query are missing.
+- **Marginalia needs to light up against real passages** → `data-chunk-id` source
+  citation markers are now live (2026-07-01); the remaining named wedge is
+  `data-passage-*` DOM markers on rendered passage spans plus a measure query for
+  `{kind:"passage", chunkId, start, end}`. The layout-map + augmentation are ready;
+  exact passage surface markers are still missing.
 - A different surface than `MasterMdViewer` becomes the canonical reading column →
   the geometry pass + its feed-points move with it; update `readingGeometryPass.ts`
   + the mount.

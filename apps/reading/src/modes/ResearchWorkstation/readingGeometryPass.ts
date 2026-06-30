@@ -23,7 +23,7 @@
 //
 // ── HOW geometry enters without the physics measuring it (the layout-map seam) ─
 //
-//   DOM nodes carrying a semantic marker  (a claim span tagged data-claim-id)
+//   DOM nodes carrying a semantic marker  (claim span / source chunk chip)
 //        │  getBoundingClientRect (HERE, once per measured node)
 //        ▼
 //   anchorKey(anchor) → Rect   (a plain Map, the surface's BaseGeometry input)
@@ -51,7 +51,7 @@ import {
 } from "../../reading-physics/layout-map";
 import type { ViewportBand } from "../../reading-physics/layout-map";
 import { anchorKey } from "../../reading-physics/facets/decorations";
-import type { Anchor, ClaimId, LayoutMap, Rect } from "../../reading-physics/types";
+import type { Anchor, ClaimId, ChunkId, LayoutMap, Rect } from "../../reading-physics/types";
 
 /**
  * The DOM-marker attribute the surface stamps on a claim span
@@ -63,7 +63,17 @@ import type { Anchor, ClaimId, LayoutMap, Rect } from "../../reading-physics/typ
 export const CLAIM_ID_ATTR = "data-claim-id";
 
 /**
- * Measure every laid-out CLAIM anchor under `root` into an `anchorKey → Rect`
+ * The DOM-marker attribute the surface stamps on a source citation's
+ * representative chunk. Chunk anchors are the bounded fallback for withheld
+ * marginalia and the shared source-decoration anchor; measuring them closes the
+ * chunk half of the previously claim-only live geometry pass without pretending
+ * passage-offset anchors are available yet.
+ */
+export const CHUNK_ID_ATTR = "data-chunk-id";
+
+/**
+ * Measure every laid-out CLAIM and CHUNK anchor under `root` into an
+ * `anchorKey → Rect`
  * map, in the coordinate space of `root` (so rects are RELATIVE to the reading
  * column's top-left, stable under page scroll — the surface, not the augmentation,
  * owns this normalisation). This is the ONLY `getBoundingClientRect` caller in the
@@ -93,14 +103,17 @@ export const CLAIM_ID_ATTR = "data-claim-id";
 export function measureClaimGeometry(root: HTMLElement): Map<string, Rect> {
   const rects = new Map<string, Rect>();
   const rootBox = root.getBoundingClientRect();
-  const nodes = root.querySelectorAll<HTMLElement>(`[${CLAIM_ID_ATTR}]`);
+  const nodes = root.querySelectorAll<HTMLElement>(`[${CLAIM_ID_ATTR}], [${CHUNK_ID_ATTR}]`);
   for (const node of nodes) {
     const claimId = node.getAttribute(CLAIM_ID_ATTR);
-    if (!claimId) continue;
+    const chunkId = node.getAttribute(CHUNK_ID_ATTR);
+    if (!claimId && !chunkId) continue;
     const box = node.getBoundingClientRect();
     // ZERO-HEIGHT/ZERO-WIDTH → not laid out yet; omit so resolve() returns null.
     if (box.height <= 0 || box.width <= 0) continue;
-    const anchor: Anchor = { kind: "claim", claimId: claimId as ClaimId };
+    const anchor: Anchor = claimId
+      ? { kind: "claim", claimId: claimId as ClaimId }
+      : { kind: "chunk", chunkId: chunkId as ChunkId };
     rects.set(anchorKey(anchor), {
       // Normalise into the reading column's own coordinate space (subtract the
       // root's origin) so the map is stable under page scroll and matches the

@@ -819,6 +819,14 @@ describe("MasterMdViewer — geometry pass mounted in the surface (Living-Roadma
     expect(container.querySelector(".reading-minimap")).not.toBeNull();
   });
 
+  it("stamps source citations with chunk anchors for the live geometry pass", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    const { container } = render(<MasterMdViewer synthesis={synth()} />);
+    await waitFor(() => expect(screen.getByText(/On Growth and Form/)).toBeTruthy());
+
+    expect(container.querySelector('[data-chunk-id="c1"]')).not.toBeNull();
+  });
+
   it("the header quality cue still renders against the live map (geometry-independent, preserved)", () => {
     getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
     render(

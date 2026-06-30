@@ -41,6 +41,7 @@ import { collectAnchoredWidgets, collectDecorations } from "../../reading-physic
 import type { ClaimId, ChunkId, LayoutMap, ReadingContext, RenderContext } from "../../reading-physics/types";
 import { useOpenDocument } from "../../lib/openDocument";
 import { sourcePageNumberFromSectionPath } from "../../lib/sectionPath";
+import { CHUNK_ID_ATTR } from "./readingGeometryPass";
 import ChunkModal from "./ChunkModal";
 import { buildLayoutMap } from "./readingGeometryPass";
 import type { ClaimReviewRating } from "./reviewState";
@@ -799,6 +800,7 @@ function SourceCitation({
     // honest "not available to open" state — never the content.
     return (
       <span
+        {...{ [CHUNK_ID_ATTR]: source.representativeChunkId }}
         className="text-[11px] text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1 px-1.5 py-0.5 rounded inline-flex items-center gap-1"
         title={decoration?.title ?? RESTRICTED_TITLE}
       >
@@ -813,6 +815,7 @@ function SourceCitation({
 
   return (
     <button
+      {...{ [CHUNK_ID_ATTR]: source.representativeChunkId }}
       onClick={(e) => {
         // ⌘/Ctrl-click opens the source in the ONE Reader jumped to its page
         // (SPR-05 — was openPdfPanel, the bespoke pdf.js panel; now the one door
