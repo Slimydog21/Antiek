@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import {
+  CASCADE_WINDOW_STEP_PX,
+  CASCADE_WINDOW_WRAP_PX,
+} from "../design/elevation";
 import { MAX_WINDOWS, WINDOW_Z_BASE, useWindows } from "./windowsStore";
 
 const w = () => useWindows.getState();
@@ -232,6 +236,38 @@ describe("windowsStore — cascade + reset", () => {
     const b = w().open("library", {});
     expect(w().windows[b].rect.x).not.toBe(w().windows[a].rect.x);
     expect(w().windows[b].rect.y).not.toBe(w().windows[a].rect.y);
+  });
+
+  it("uses the shared elevation window cascade step", () => {
+    const a = w().open("stats", {});
+    const b = w().open("library", {});
+    expect(w().windows[b].rect.x - w().windows[a].rect.x).toBe(
+      CASCADE_WINDOW_STEP_PX,
+    );
+    expect(w().windows[b].rect.y - w().windows[a].rect.y).toBe(
+      CASCADE_WINDOW_STEP_PX,
+    );
+  });
+
+  it("caps before the shared window cascade would wrap onto the first rect", () => {
+    const ids: string[] = [];
+    for (let i = 0; i < MAX_WINDOWS; i++) {
+      ids.push(w().open("stats", {}, { id: `win-${i}` }));
+    }
+
+    const first = w().windows[ids[0]].rect;
+    const last = w().windows[ids[MAX_WINDOWS - 1]].rect;
+    expect(CASCADE_WINDOW_WRAP_PX).toBe(CASCADE_WINDOW_STEP_PX * 8);
+    expect(last.x - first.x).toBe(
+      CASCADE_WINDOW_WRAP_PX - CASCADE_WINDOW_STEP_PX,
+    );
+    expect(last.y - first.y).toBe(
+      CASCADE_WINDOW_WRAP_PX - CASCADE_WINDOW_STEP_PX,
+    );
+
+    const overflow = w().open("library", {}, { id: "would-wrap" });
+    expect(overflow).toBe(ids[0]);
+    expect(w().windows["would-wrap"]).toBeUndefined();
   });
 
   it("reset wipes every window + resets focus + zCounter", () => {
