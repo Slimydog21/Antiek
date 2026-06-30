@@ -126,16 +126,18 @@ this live map.
   the live map (byte-equivalent, it is geometry-independent).
 
 **What is still DORMANT, and exactly why (rigor #1 — do not round up):**
-- **Marginalia UI remains dormant, but the exact passage marker gap is closed as
-  of 2026-07-01.** Structured Reader citations now stamp `data-passage-*` when
-  their document-model span carries `char_start` / `char_end`, and the geometry
-  pass measures `{kind:"passage", chunkId, start, end}` anchors alongside claim
-  and chunk anchors. The **chunk** half is live too: source citations stamp
-  `data-chunk-id`, and the geometry pass measures `{kind:"chunk"}` anchors for
-  bounded/withheld chunk surfaces. What is still NOT true: a marginalia note is
-  visibly mounted in the synthesis surface. The marginalia FACET PATH is proved
-  live (an anchored widget resolves a non-null rect when handed a measured
-  anchor), but the marginalia widget is still not mounted in `MasterMdViewer`.
+- **Bounded marginalia is mounted in `MasterMdViewer` as of 2026-07-01.**
+  Completed research answers adapt persisted `marginalia.noted` events into
+  `MarginNoteAuthored`, re-resolve each note through `reResolveNote`, and feed
+  the successful resolutions to `makeMarginaliaAugmentation` through the same
+  anchored-widgets facet. The mounted proof is the bounded/restricted chunk path:
+  source citations stamp `data-chunk-id`, the geometry pass measures
+  `{kind:"chunk"}`, and the gutter card renders without leaking the withheld
+  excerpt. The exact passage marker gap remains closed in the structured Reader
+  (`data-passage-*` spans with `char_start` / `char_end`), but a servable
+  passage-level marginalia card in the synthesis surface still requires a
+  rendered passage marker for that exact `{kind:"passage"}` anchor; do not round
+  bounded marginalia up into full exact-passage synthesis marginalia.
 - The **collapse ⌘/Ctrl+wheel gesture is now bound as of 2026-07-01.** The
   surface toggles ephemeral `CollapseState` for the claim section under the
   pointer, measures the section band through `readingGeometryPass.ts`, and folds
@@ -146,8 +148,9 @@ this live map.
   beside the article, carrying decoration classes but no body/title text.
 - **AccrualView is mounted in `MasterMdViewer` as of 2026-07-01** through the
   same anchored-widgets facet when the surface has a persisted synthesis id. The
-  remaining dormant gutter work is `ChaseThread` plus visible marginalia wiring;
-  both can consume the live map once mounted.
+  remaining dormant gutter work is `ChaseThread` plus exact servable passage
+  marginalia in the synthesis surface; both can consume the live map once their
+  real anchors are present.
 
 **M3 recompute strategy (recorded per the milestone — corrected in round 2 to
 the honest model).** Round 1 mounted a `window` scroll/resize listener feeding a

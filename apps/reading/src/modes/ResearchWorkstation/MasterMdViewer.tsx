@@ -1,8 +1,9 @@
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { WheelEvent } from "react";
 
 import { ArtifactExport } from "../../components/ArtifactExport";
 import { toast } from "../../components/lemon/LemonToast";
+import type { Event } from "../../generated/types";
 import { getChunk } from "../../lib/api";
 import type { ChunkResponse } from "../../lib/api";
 import type {
@@ -40,6 +41,12 @@ import {
   SITESEE_SAVED_CLASS,
   makeSiteSeeAugmentation,
 } from "../../reading-physics/augmentations/sitesee";
+import {
+  makeMarginaliaAugmentation,
+  reResolveNote,
+  type MarginNoteAuthored,
+  type ResolvedMarginNote,
+} from "../../reading-physics/augmentations/marginalia";
 import {
   CollapseState,
   collapsePipelineFor,
@@ -106,6 +113,7 @@ import AccrualView from "../Economics/AccrualView";
 // tests prove this unchanged: the default-off claim-span assertion + the SPR-02
 // byte-equivalence test).
 const REVIEW_DUE_ENABLED_DEFAULT = false;
+const EMPTY_EVENTS: readonly Event[] = [];
 
 /**
  * Run the decorations facet pass for the review-due augmentation over the
@@ -203,6 +211,7 @@ const GEOMETRY_RECOMPUTE_DEBOUNCE_MS = 100;
 export default function MasterMdViewer({
   synthesis,
   synthesisId = null,
+  events = EMPTY_EVENTS,
   reviewDueClaims = [],
   reviewDueEnabled = REVIEW_DUE_ENABLED_DEFAULT,
   onReviewClaim,
@@ -210,6 +219,7 @@ export default function MasterMdViewer({
 }: {
   synthesis: ParsedSynthesis;
   synthesisId?: string | null;
+  events?: readonly Event[];
   reviewDueClaims?: readonly ReviewDueClaimView[];
   reviewDueEnabled?: boolean;
   onReviewClaim?: (claim: ParsedClaim, rating: ClaimReviewRating) => void | Promise<void>;
@@ -230,6 +240,11 @@ export default function MasterMdViewer({
     reviewDueClaims,
     reviewDueEnabled,
   );
+  const authoredMarginNotes = useMemo(
+    () => authoredMarginNotesFromEvents(events, synthesisId),
+    [events, synthesisId],
+  );
+  const resolvedMarginNotes = useResolvedMarginNotes(synthesis, authoredMarginNotes);
 
   // ── Living-Roadmap SPR-02 — the surface GEOMETRY PASS (M1/M3) ──────────────
   //
@@ -328,6 +343,11 @@ export default function MasterMdViewer({
           preTransformLayout={preTransformLayoutMap}
           postTransformLayout={layoutMap}
           collapseState={collapseState}
+        />
+        <MarginaliaLayer
+          synthesis={synthesis}
+          notes={resolvedMarginNotes}
+          layoutMap={layoutMap}
         />
         {/* Header band */}
         <header className="mb-8 pb-6 border-b border-rule dark:border-charcoal-1">
@@ -504,6 +524,205 @@ function ReadingMinimap({
   const minimapLayout = minimapLayoutFrom(layoutMap, MINIMAP_SCALE, MINIMAP_COLUMN_WIDTH_PX);
   const marks = projectDecorationsToMinimap(resolved, minimapLayout);
   return <>{renderMinimap(marks, MINIMAP_COLUMN_WIDTH_PX)}</>;
+}
+
+function asNonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/**
+ * Convert persisted marginalia events into the authored-note shape the
+ * marginalia augmentation resolves. This is a pure adapter over the typed event
+ * log: reconnect replays collapse by event_id, same-note replacements keep the
+ * latest stream value, malformed notes are ignored, and a synthesis-scoped event
+ * is shown only on its own synthesis.
+ */
+export function authoredMarginNotesFromEvents(
+  events: readonly Event[],
+  synthesisId: string | null,
+): MarginNoteAuthored[] {
+  const byNoteId = new Map<string, MarginNoteAuthored>();
+  const order: string[] = [];
+  const seenEvents = new Set<string>();
+
+  for (const event of events) {
+    if (event.event_id && seenEvents.has(event.event_id)) continue;
+    if (event.event_id) seenEvents.add(event.event_id);
+    if (event.action_type !== "marginalia.noted") continue;
+    if (event.synthesis_id && synthesisId && event.synthesis_id !== synthesisId) {
+      continue;
+    }
+
+    const payload = (event.payload ?? {}) as unknown as Record<string, unknown>;
+    const noteId = asNonEmptyString(payload.note_id);
+    const comment = asNonEmptyString(payload.note_text);
+    const anchorQuote = asNonEmptyString(payload.excerpt);
+    if (!noteId || !comment || !anchorQuote) continue;
+
+    if (!byNoteId.has(noteId)) order.push(noteId);
+    byNoteId.set(noteId, {
+      id: noteId,
+      comment,
+      anchorQuote,
+      targetChunkId: asNonEmptyString(payload.chunk_id) as ChunkId | null,
+      clip: null,
+    });
+  }
+
+  return order.map((id) => byNoteId.get(id)!).filter(Boolean);
+}
+
+function useResolvedMarginNotes(
+  synthesis: ParsedSynthesis,
+  authoredNotes: readonly MarginNoteAuthored[],
+): ResolvedMarginNote[] {
+  const [resolved, setResolved] = useState<ResolvedMarginNote[]>([]);
+
+  useEffect(() => {
+    if (authoredNotes.length === 0) {
+      setResolved([]);
+      return;
+    }
+
+    // Fail closed across investigation/synthesis switches: while the async
+    // quote re-resolution for the new inputs is pending, do not keep rendering
+    // widgets resolved against the previous event set.
+    setResolved([]);
+    let live = true;
+    const ctx: ReadingContext = {
+      synthesis: {
+        question: synthesis.question,
+        claims: synthesis.components.map((claim) => ({
+          claimId: String(claim.index) as ClaimId,
+          chunkIds: claim.chunkIds as ChunkId[],
+        })),
+      },
+      layout: { resolve: () => null },
+      substrate: { getChunk },
+    };
+
+    void (async () => {
+      const settled = await Promise.allSettled(
+        authoredNotes.map((note) => reResolveNote(note, ctx)),
+      );
+      if (!live) return;
+      setResolved(
+        settled
+          .filter((r): r is PromiseFulfilledResult<ResolvedMarginNote> => r.status === "fulfilled")
+          .map((r) => r.value),
+      );
+    })();
+
+    return () => {
+      live = false;
+    };
+  }, [authoredNotes, synthesis]);
+
+  return resolved;
+}
+
+function MarginaliaLayer({
+  synthesis,
+  notes,
+  layoutMap,
+}: {
+  synthesis: ParsedSynthesis;
+  notes: readonly ResolvedMarginNote[];
+  layoutMap: LayoutMap;
+}) {
+  if (notes.length === 0) return null;
+
+  const ctx: ReadingContext = {
+    synthesis: {
+      question: synthesis.question,
+      claims: synthesis.components.map((claim) => ({
+        claimId: String(claim.index) as ClaimId,
+        chunkIds: claim.chunkIds as ChunkId[],
+      })),
+    },
+    layout: layoutMap,
+    substrate: {
+      getChunk: () =>
+        Promise.reject(
+          new Error("substrate.getChunk is not wired in the marginalia render pass"),
+        ),
+    },
+  };
+  const widgets = collectAnchoredWidgets(
+    [makeMarginaliaAugmentation(notes)],
+    ctx,
+  ).all.map((placed) => placed.widget);
+  const enacted = resolveAnchoredWidgets(widgets, layoutMap).filter(
+    (widget) => widget.rect !== null,
+  );
+  if (enacted.length === 0) return null;
+
+  const renderCtx: RenderContext = {
+    pass: "main",
+    layout: layoutMap,
+    components: { MarginNote: SurfaceMarginNote },
+  };
+
+  return (
+    <div className="pointer-events-none absolute inset-0" aria-label="Margin notes">
+      {enacted.map((widget) => {
+        if (!widget.rect) return null;
+        const node = renderEnacted(widget, renderCtx);
+        if (!node) return null;
+        return (
+          <aside
+            key={widget.widget.id}
+            className="pointer-events-auto absolute w-48"
+            style={{
+              top: `${widget.rect.top}px`,
+              left: "-13.5rem",
+            }}
+          >
+            {node}
+          </aside>
+        );
+      })}
+    </div>
+  );
+}
+
+function SurfaceMarginNote({
+  comment,
+  excerpt,
+  servable,
+  transcript,
+  audioRef,
+}: {
+  readonly comment: string;
+  readonly excerpt: string | null;
+  readonly servable: boolean;
+  readonly transcript?: string | null;
+  readonly audioRef?: string | null;
+}) {
+  return (
+    <div className="rounded border border-rule bg-ice-0/95 px-3 py-2 text-xs shadow-sm dark:border-charcoal-1 dark:bg-charcoal-2/95">
+      <p className="font-serif leading-snug text-ink dark:text-bright">{comment}</p>
+      {servable && excerpt ? (
+        <blockquote className="mt-2 border-l-2 border-sun pl-2 font-serif text-[11px] leading-snug text-ink-soft dark:text-starlight">
+          {excerpt}
+        </blockquote>
+      ) : (
+        <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+          restricted source
+        </p>
+      )}
+      {transcript ? (
+        <p className="mt-2 font-serif text-[11px] leading-snug text-ink-soft dark:text-starlight">
+          {transcript}
+        </p>
+      ) : null}
+      {audioRef ? (
+        <p className="mt-1 font-mono text-[10px] text-shadow-1 dark:text-moonlight">
+          voice clip
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 function CollapseFingerprints({
