@@ -1,18 +1,23 @@
 # {{ ansible_managed }}
 #
-# One arXiv OAI-PMH incremental sync pass. Triggered by
+# Daily arXiv OAI-PMH metadata sync. Triggered by
 # antiek-arxiv-oai-sync.timer.
 #
 # This service is intentionally oneshot: systemd owns the schedule, while
 # tools.arxiv_oai_sync owns the high-water mark and mid-harvest resume cursor.
 # All arXiv state files are pinned under {{ antiek_state_dir }} so the existing
 # service hardening never writes into an implicit home-directory default.
+# Live arXiv requests go through acquisition.arxiv.rate_governor's host-global
+# flock, so this timer cannot race PDF/search jobs into the IP-scoped ban window.
 
 [Unit]
 Description=Antiek arXiv OAI-PMH incremental sync
 Documentation=https://github.com/Slimydog21/Antiek/blob/main/tools/arxiv_oai_sync.py
 Wants=network-online.target
 After=network-online.target antiek.service
+# setup.yml enables and starts the timer before the operator manually starts
+# antiek.service. Skip cleanly until the substrate has initialized the live DB.
+ConditionPathExists={{ antiek_state_dir }}/antiek.duckdb
 
 [Service]
 Type=oneshot
@@ -37,6 +42,9 @@ StandardOutput=journal
 StandardError=journal
 TimeoutStartSec=21600
 
+# The sync writes only under the Antiek state dir and may need /tmp for
+# DuckDB scratch. Everything else is read-only. MemoryDenyWriteExecute matches
+# the existing Python systemd units (antiek + continuous-research).
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict

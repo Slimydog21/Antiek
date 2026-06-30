@@ -120,8 +120,8 @@
         owner: root
         group: root
         mode: "0644"
-      register: antiek_arxiv_oai_sync_unit
-      tags: [systemd, arxiv_oai]
+      register: antiek_arxiv_oai_unit
+      tags: [systemd, arxiv, oai]
 
     - name: re-render antiek-arxiv-oai-sync.timer
       ansible.builtin.template:
@@ -130,13 +130,17 @@
         owner: root
         group: root
         mode: "0644"
-      register: antiek_arxiv_oai_sync_timer
-      tags: [systemd, arxiv_oai]
+      register: antiek_arxiv_oai_timer
+      tags: [systemd, arxiv, oai]
 
     - name: systemd daemon-reload if any unit changed
       ansible.builtin.systemd:
         daemon_reload: true
-      when: antiek_unit.changed or antiek_continuous_unit.changed or antiek_arxiv_oai_sync_unit.changed or antiek_arxiv_oai_sync_timer.changed
+      when: >
+        antiek_unit.changed or
+        antiek_continuous_unit.changed or
+        antiek_arxiv_oai_unit.changed or
+        antiek_arxiv_oai_timer.changed
       tags: [systemd]
 
     - name: enable antiek-continuous-research.service
@@ -152,12 +156,19 @@
       when: antiek_continuous_unit.changed
       tags: [systemd, continuous]
 
-    - name: enable and start antiek-arxiv-oai-sync.timer
+    - name: enable + start antiek-arxiv-oai-sync.timer
       ansible.builtin.systemd:
         name: antiek-arxiv-oai-sync.timer
         enabled: true
         state: started
-      tags: [systemd, arxiv_oai]
+      tags: [systemd, arxiv, oai]
+
+    - name: restart antiek-arxiv-oai-sync.timer if timer changed
+      ansible.builtin.systemd:
+        name: antiek-arxiv-oai-sync.timer
+      state: restarted
+      when: antiek_arxiv_oai_timer.changed
+      tags: [systemd, arxiv, oai]
 
     # ── Frontend rsync ───────────────────────────────────────────────────
     # The Phase A play built `apps/reading/dist/` locally. Push it to

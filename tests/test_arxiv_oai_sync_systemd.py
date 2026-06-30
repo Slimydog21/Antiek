@@ -67,5 +67,5 @@ def test_deploy_renders_and_enables_arxiv_oai_sync_timer():
         "        enabled: true\n"
         "        state: started"
     ) in deploy
-    assert "antiek_arxiv_oai_sync_unit.changed" in deploy
-    assert "antiek_arxiv_oai_sync_timer.changed" in deploy
+    assert "antiek_arxiv_oai_unit.changed" in deploy
+    assert "antiek_arxiv_oai_timer.changed" in deploy
