@@ -12,8 +12,9 @@ import pytest
 # the unified CLI subcommands built on them) are an experimental branch NOT
 # merged into the four-workflow product. Skip cleanly when absent rather than
 # erroring collection (CI runs the full suite). Runs in full once pi-execution
-# merges.
-pytest.importorskip("substrate.conversation")
+# merges. Check a concrete required module, not the namespace package:
+# ``substrate.conversation`` may exist as an empty namespace directory.
+pytest.importorskip("substrate.conversation.compaction")
 
 from substrate.harness.fork import create_fork
 
