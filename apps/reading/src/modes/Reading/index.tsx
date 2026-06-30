@@ -243,10 +243,10 @@ export default function BookReader() {
   // HONEST LIMITATION (rigor #1): a `?hl=` Region carries a `block_id`, but the
   // frontend typed `Document` blocks are NOT id-stamped in this model
   // (document_model.gen.ts: only FootnoteBlock carries an `id`), so a Region's
-  // block_id CANNOT be resolved to a page here. We therefore land on the
-  // Region's `?page=` companion when openDocument supplied one (Write
-  // trace-to-source resolves the chunk's page and passes it), and otherwise open
-  // at the saved page — never a fabricated block jump. Painting the exact
+  // block_id CANNOT be resolved to a page here. We therefore land on an
+  // explicit `?page=` when supplied; otherwise, `?chunk=` may resolve to an
+  // exact page through the chunk's `Page N` section_path. Without either, we
+  // open at the saved page — never a fabricated block jump. Painting the exact
   // char-range in the body is SPR-06 (highlight chat). The Region still rides on
   // the URL so SPR-06 has the anchor; this sprint lands the PAGE honestly.
   const deepLinkAppliedRef = useRef<string | null>(null);
@@ -346,10 +346,10 @@ export default function BookReader() {
   // reach the DOM, but the outbound guard holds regardless).
   const resolveProvenance = useCallback(
     (range: Range, _text: string): SelectionProvenance => {
-      // SPR-06 (M3): resolve the block-relative char range so a Dialogue thread
-      // anchors to the EXACT span (not just the chunk). Best-effort — a span
-      // crossing block boundaries degrades to whole-chunk (both offsets null),
-      // which still anchors honestly.
+      // SPR-06 (M3): resolve a best-effort block-relative char range for hosts
+      // that can also supply a real document block id. This reading page only
+      // knows its representative chunk, so Dialogue stays un-persisted rather
+      // than fabricating Region.block_id from a chunk id.
       const { charStart, charEnd } = resolveCharRange(range, articleRef.current);
       return {
         documentId,

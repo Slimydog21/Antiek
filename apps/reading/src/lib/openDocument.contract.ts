@@ -22,9 +22,10 @@ import type { Region } from "../types/document_model.gen";
  * whole document in read mode.
  *
  * - `page`     — jump to a page (for documents with a paginated/original view).
- * - `chunkId`  — scroll to the block/region that a graph chunk maps to (the
+ * - `chunkId`  — scroll to the page/region that a graph chunk maps to (the
  *                "open in document" affordance from a research ChunkModal / a
- *                citation). The Reader resolves chunkId → Region internally.
+ *                citation). The Reader may resolve chunkId to a page; it does
+ *                not fabricate a SPR-01 Region block id from the chunk.
  * - `highlight`— a span (in document space) to highlight on open — e.g. a
  *                Write trace-to-source landing on the cited passage, or a
  *                deep-research "cite source" jump. `Region` is the SAME type

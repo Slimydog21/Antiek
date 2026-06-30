@@ -150,7 +150,7 @@ export async function searchFloatMenuSelection(
 //   shape (`prompt` vs `reply`) and NEVER conflated — relabelling a reply as
 //   user content (or vice versa) is a §9 violation.
 // ANCHOR + PERSIST (M3 + M4): when the selection resolves a Region (documentId
-//   + chunkId [+ char range]) the thread is anchored to the exact span and
+//   + blockId [+ char range]) the thread is anchored to the exact span and
 //   persisted to the graph through the single sanctioned writer, so it survives
 //   reload. A selection over un-anchored prose still answers, just un-persisted.
 // INERT-without-keys: when no provider key is configured the endpoint 503s; the
@@ -201,8 +201,8 @@ export function buildDialoguePrompt(
 export function regionOfSelection(
   selection: FloatMenuSelection,
 ): DialogueRegion | null {
-  const { documentId, chunkId, charStart, charEnd } = selection.provenance;
-  return regionFromProvenance({ documentId, chunkId, charStart, charEnd });
+  const { documentId, blockId, charStart, charEnd } = selection.provenance;
+  return regionFromProvenance({ documentId, blockId, charStart, charEnd });
 }
 
 // ─── REWRITE (Write SPR-09 M4) ─────────────────────────────────────────────
