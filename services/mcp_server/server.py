@@ -1,7 +1,7 @@
 """FastMCP server for Antiek — serves substrate resources over stdio.
 
-This module creates the ``FastMCP`` app and registers resource handlers.
-The server is read-only: every DuckDB connection goes through
+This module creates the ``FastMCP`` app and registers resource + tool
+handlers. The server is read-only: every DuckDB connection goes through
 ``runtime.db_lock.connect_read`` (no write lock, no flock).
 
 Single-writer invariant (§16): when deploying behind uvicorn, use
@@ -14,6 +14,7 @@ from __future__ import annotations
 from mcp.server.fastmcp import FastMCP
 
 from .resources import register_resources
+from .tools import register_tools
 
 mcp = FastMCP(
     name="antiek",
@@ -24,6 +25,7 @@ mcp = FastMCP(
 )
 
 register_resources(mcp)
+register_tools(mcp)
 
 
 def main() -> None:
