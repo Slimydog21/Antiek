@@ -22,10 +22,9 @@ import { SlashMenu } from "./SlashMenu";
  * Antiek-specific block kinds plus the StarterKit defaults (prose,
  * heading, lists, blockquote, code, etc.).
  *
- * Persistence in S7-full on main: autosave to localStorage by
- * `notebookId` every 1.5 s of idle. The substrate-side `notebooks`
- * table + REST endpoints are tracked separately (S7-FOLLOWUP.md); when
- * those land, the autosave call swaps from localStorage to API.
+ * Persistence in S7-full on main: autosave goes through the substrate
+ * `notebooks` API and mirrors the last-known-good HTML to localStorage
+ * so drafts survive offline reloads.
  *
  * Slash menu: type `/` at any block start to open the block-insert menu.
  */
@@ -222,21 +221,21 @@ export function NotebookEditor({
   // the editor's content. Cross-tab writes already arrive through
   // the browser's standard `storage` event, which we also handle.
   useEffect(() => {
-    const reloadFromStorage = () => {
+    const reloadFromStorage = (opts: { force?: boolean } = {}) => {
       if (!editor) return;
       const stored = readStored(notebookId);
       if (!stored) return;
       // Only swap if the etag advanced past our baseline — avoids
       // clobbering an in-flight local edit on every dispatched action.
-      if (stored.etag <= etagRef.current) return;
+      if (!opts.force && stored.etag <= etagRef.current) return;
       editor.commands.setContent(stored.html);
       etagRef.current = stored.etag;
       setSaved("saved");
     };
     const onCustom = (e: Event) => {
-      const ce = e as CustomEvent<{ notebookId: string }>;
+      const ce = e as CustomEvent<{ notebookId: string; force?: boolean }>;
       if (ce.detail?.notebookId !== notebookId) return;
-      reloadFromStorage();
+      reloadFromStorage({ force: ce.detail.force });
     };
     const onStorage = (e: StorageEvent) => {
       if (e.key !== "antiek.notebook." + notebookId) return;

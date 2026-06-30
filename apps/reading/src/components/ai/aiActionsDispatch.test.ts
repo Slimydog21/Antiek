@@ -426,7 +426,7 @@ describe("AI tool-call · full dispatch round-trip", () => {
     expect(useWorkspace.getState().focusedPanelId).toBe("ai:chase:new-prior");
   });
 
-  it("add_to_notebook writes to localStorage + undo restores previous content and etag", () => {
+  it("add_to_notebook writes to localStorage + undo restores previous content and etag", async () => {
     const nbId = "ai-test-nb-" + Math.random().toString(36).slice(2, 8);
     const lsKey = "antiek.notebook." + nbId;
     const etagKey = lsKey + ".etag";
@@ -463,11 +463,11 @@ describe("AI tool-call · full dispatch round-trip", () => {
     expect(events[0].notebookId).toBe(nbId);
     expect(events[0].etag).toBe(8);
 
-    dispatched.undo?.();
+    await dispatched.undo?.();
     expect(window.localStorage.getItem(lsKey)).toBe("<p>before</p>");
     expect(window.localStorage.getItem(etagKey)).toBe("7");
     expect(events).toHaveLength(2);
-    expect(events[1]).toEqual({ notebookId: nbId, etag: 7 });
+    expect(events[1]).toEqual({ notebookId: nbId, etag: 7, force: true });
 
     window.removeEventListener("antiek:notebook:appended", listener);
     window.localStorage.removeItem(lsKey);
@@ -509,7 +509,7 @@ describe("AI tool-call · full dispatch round-trip", () => {
     window.localStorage.removeItem(etagKey);
   });
 
-  it("add_to_notebook undo removes newly-created local storage keys", () => {
+  it("add_to_notebook undo removes newly-created local storage keys", async () => {
     const nbId = "ai-test-nb-empty";
     const lsKey = "antiek.notebook." + nbId;
     const etagKey = lsKey + ".etag";
@@ -530,7 +530,7 @@ describe("AI tool-call · full dispatch round-trip", () => {
     expect(window.localStorage.getItem(lsKey)).toContain("first");
     expect(window.localStorage.getItem(etagKey)).toBe("1");
 
-    dispatched.undo?.();
+    await dispatched.undo?.();
     expect(window.localStorage.getItem(lsKey)).toBeNull();
     expect(window.localStorage.getItem(etagKey)).toBeNull();
   });
