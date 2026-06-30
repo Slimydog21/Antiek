@@ -21,6 +21,14 @@ import { onTraceIntent } from "./Editor/traceIntent";
 import { getTraceTarget, type RepositoryHit } from "./writeApi";
 import { useOpenDocument } from "../../lib/openDocument";
 
+export function readerPageFromTraceSectionPath(sectionPath: string | null): number | undefined {
+  if (!sectionPath) return undefined;
+  const match = sectionPath.match(/\b(?:Page|p\.?)\s*(\d+)\b/i);
+  if (!match) return undefined;
+  const sourcePage = parseInt(match[1], 10);
+  return Number.isFinite(sourcePage) ? Math.max(0, sourcePage - 1) : undefined;
+}
+
 /**
  * Write Home — the Write door (Product Depth SPR-07 M1).
  *
@@ -93,16 +101,11 @@ export default function WriteHome() {
   //
   // REGION ANCHORING (honest scope): the spec's ideal is locate_node → Region →
   // openDocument({highlight: region}). The trace endpoint
-  // (GET /write/blocks/{id}/trace) returns document_id + chunk_ids, but NOT a
-  // block-level Region (no block_id) — `reading_surface.locate_node` is a
-  // backend CONTRACT (substrate/contracts/reading_surface.py) not yet exposed
-  // over HTTP, and adding that endpoint + the §9.0 serve-gate changes is
-  // explicitly OUT of this sprint's scope. So we forward the FIRST chunk_id as
-  // the `chunkId` opt — the contract's exact seam for "scroll to the region a
-  // chunk maps to" — rather than FABRICATE a block_id from a chunk_id (which
-  // would be a false anchor, rigor #1). The Reader lands on the cited source;
-  // the exact char-range PAINT lands once locate_node is exposed + SPR-06
-  // paints. Recorded in the handoff as wired-to-chunk, region-paint-deferred.
+  // (GET /write/blocks/{id}/trace) returns document_id + chunk_ids and, for
+  // servable sources only, weak chunk-locator metadata; it still does NOT return
+  // a block-level Region (no block_id). So we forward the first chunk_id as the
+  // precise locator and, when a parseable source page is present, seed the
+  // Reader page too. We never fabricate a block_id from a chunk_id.
   useEffect(() => {
     return onTraceIntent((intent) => {
       if (!intent.outlineBlockId) {
@@ -116,6 +119,7 @@ export default function WriteHome() {
             openDocument(target.document_id, {
               // The trace's first chunk locates the cited region; the Reader
               // resolves chunkId → region. No fabricated block-level Region.
+              page: readerPageFromTraceSectionPath(target.primary_section_path),
               chunkId: target.chunk_ids?.[0],
             });
           } else {
