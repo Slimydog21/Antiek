@@ -129,6 +129,8 @@ def _translate() -> Iterator[None]:
         # recording into words" — never a fabricated transcript. 503 because
         # it's a missing/temporarily-unavailable capability, not a bad token.
         raise HTTPException(status_code=503, detail=str(e)) from e
+    except contributor_mod.MoneyValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
@@ -138,6 +140,13 @@ def _decimal(value: str, field: str) -> Decimal:
         return Decimal(value)
     except (InvalidOperation, TypeError) as e:
         raise HTTPException(status_code=400, detail=f"{field} must be a decimal string") from e
+
+
+def _non_negative_decimal(value: str, field: str) -> Decimal:
+    amount = _decimal(value, field)
+    if not amount.is_finite() or amount < 0:
+        raise HTTPException(status_code=400, detail=f"{field} must be non-negative")
+    return amount
 
 
 # ---------------------------------------------------------------------------
@@ -596,7 +605,7 @@ async def draft(project_id: str, req: DraftRequest) -> dict:
 
 @speak_router.post("/projects/{project_id}/publish", status_code=201)
 async def publish(project_id: str, req: PublishRequest) -> dict:
-    ad_revenue = _decimal(req.ad_revenue_usd, "ad_revenue_usd")
+    ad_revenue = _non_negative_decimal(req.ad_revenue_usd, "ad_revenue_usd")
     with _translate(), _write("speak/api:publish") as con:
         result = publish_mod.publish(
             con, project_id=project_id, deliverable_id=req.deliverable_id,
@@ -633,8 +642,10 @@ async def grade_interview(interview_id: str, req: GradeInterviewRequest) -> dict
         goal = payout_verifier.InterviewGoal(
             information_goal=req.information_goal,
             must_cover=tuple(req.must_cover),
-            budget_usd=_decimal(req.budget_usd, "budget_usd"),
-            per_interview_cap_usd=_decimal(req.per_interview_cap_usd, "per_interview_cap_usd"),
+            budget_usd=_non_negative_decimal(req.budget_usd, "budget_usd"),
+            per_interview_cap_usd=_non_negative_decimal(
+                req.per_interview_cap_usd, "per_interview_cap_usd",
+            ),
         )
         grade = payout_verifier.grade_interview(
             con, project_id=prow[0], interview_id=interview_id, goal=goal,
@@ -657,12 +668,14 @@ async def release_payout(project_id: str, req: ReleasePayoutRequest) -> dict:
     with _translate(), _write("speak/api:release_payout") as con:
         goal = payout_verifier.InterviewGoal(
             information_goal=req.information_goal,
-            budget_usd=_decimal(req.budget_usd, "budget_usd"),
-            per_interview_cap_usd=_decimal(req.per_interview_cap_usd, "per_interview_cap_usd"),
+            budget_usd=_non_negative_decimal(req.budget_usd, "budget_usd"),
+            per_interview_cap_usd=_non_negative_decimal(
+                req.per_interview_cap_usd, "per_interview_cap_usd",
+            ),
         )
         release = payout_verifier.release_payout(
             con, project_id=project_id, goal=goal,
-            ad_revenue_usd=_decimal(req.ad_revenue_usd, "ad_revenue_usd"),
+            ad_revenue_usd=_non_negative_decimal(req.ad_revenue_usd, "ad_revenue_usd"),
             publication_id=req.publication_id,
         )
     return {

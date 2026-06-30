@@ -65,11 +65,17 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any, Callable, Optional
+from typing import Any
 
-from .contributor import AccrualLine, accrue_contributions, DEFAULT_SLOP_THRESHOLD
+from .contributor import (
+    DEFAULT_SLOP_THRESHOLD,
+    AccrualLine,
+    accrue_contributions,
+    require_non_negative_decimal,
+)
 from .events import SPEAK_INTERVIEW_GRADED, record_speak_event
 from .schema import ensure_speak_schema
 
@@ -241,8 +247,8 @@ def grade_interview(
     project_id: str,
     interview_id: str,
     goal: InterviewGoal,
-    transcript_turns: Optional[list[dict]] = None,
-    dispatch_fn: Optional[Callable[..., Any]] = None,
+    transcript_turns: list[dict] | None = None,
+    dispatch_fn: Callable[..., Any] | None = None,
 ) -> InterviewGrade:
     """Grade one interview's transcript against the requester's goal.
 
@@ -339,7 +345,7 @@ def _persist_grade(con: Any, goal: InterviewGoal, grade: InterviewGrade) -> None
     )
 
 
-def get_grade(con: Any, interview_id: str) -> Optional[InterviewGrade]:
+def get_grade(con: Any, interview_id: str) -> InterviewGrade | None:
     row = con.execute(
         "SELECT interview_id, project_id, score, passed, honest, gamed_risk, "
         "rationale, graded_by FROM speak_interview_grades WHERE interview_id = ?",
@@ -384,8 +390,8 @@ def release_payout(
     project_id: str,
     goal: InterviewGoal,
     ad_revenue_usd: Decimal,
-    publication_id: Optional[str] = None,
-    impression_ref: Optional[str] = None,
+    publication_id: str | None = None,
+    impression_ref: str | None = None,
 ) -> PayoutRelease:
     """Release graded payout for a project's interviews, routed through §9.
 
@@ -416,6 +422,9 @@ def release_payout(
     anyway; the share fractions are still tracked).
     """
     ensure_speak_schema(con)
+    ad_revenue = require_non_negative_decimal(ad_revenue_usd, "ad_revenue_usd")
+    cap = require_non_negative_decimal(goal.per_interview_cap_usd, "per_interview_cap_usd")
+    budget = require_non_negative_decimal(goal.budget_usd, "budget_usd")
     grades = project_grades(con, project_id)
     # The §9 routing input: graded score per interview. A FAILING interview
     # carries its real (sub-threshold) score so the §9 slop gate excludes it
@@ -425,10 +434,8 @@ def release_payout(
 
     # 0 ⇒ "no bound"; translate to None so accrue_contributions accrues in
     # full when the requester set no budget/cap.
-    cap = Decimal(goal.per_interview_cap_usd)
-    budget = Decimal(goal.budget_usd)
     lines = accrue_contributions(
-        con, project_id=project_id, ad_revenue_usd=ad_revenue_usd,
+        con, project_id=project_id, ad_revenue_usd=ad_revenue,
         publication_id=publication_id, impression_ref=impression_ref,
         quality_scores=quality_scores, slop_threshold=PASSING_SCORE,
         budget_usd=budget if budget > 0 else None,
@@ -439,9 +446,9 @@ def release_payout(
     # already bound what was written + escrowed, so spent_usd is just the sum
     # of the actual accrued amounts, and capped/exhausted are the flags
     # accrue_contributions set on the lines it wrote.
-    spent = sum((l.amount_usd for l in lines if not l.slop_gated), Decimal("0"))
-    capped = [l.interview_id for l in lines if l.capped]
-    exhausted = any(l.budget_clamped for l in lines)
+    spent = sum((line.amount_usd for line in lines if not line.slop_gated), Decimal("0"))
+    capped = [line.interview_id for line in lines if line.capped]
+    exhausted = any(line.budget_clamped for line in lines)
 
     return PayoutRelease(
         accrual_lines=tuple(lines),

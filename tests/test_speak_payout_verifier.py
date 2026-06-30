@@ -20,6 +20,8 @@ from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database
 from substrate.speak import (
     consent as consent_mod,
+)
+from substrate.speak import (
     contributor,
     payout_verifier,
     project,
@@ -28,9 +30,9 @@ from substrate.speak.consent import ConsentScope
 from substrate.speak.contributor import DisbursementBlocked, attempt_disbursement
 from substrate.speak.payout_verifier import (
     InterviewGoal,
+    get_grade,
     grade_interview,
     release_payout,
-    get_grade,
 )
 from substrate.speak.schema import ensure_speak_schema
 from substrate.speak.third_party import record_claim
@@ -249,6 +251,37 @@ def test_per_interview_cap_clamps_one_interview(db):
         assert _escrow_balance_sum(con, p.project_id) <= Decimal("7")
 
 
+def test_release_rejects_negative_money_bounds(db):
+    with _con(db) as con:
+        p = project.create_project(con, title="Bio", publish_intent="will_be_public")
+        for goal, ad_revenue, field in (
+            (GOAL, Decimal("-0.01"), "ad_revenue_usd"),
+            (
+                InterviewGoal(
+                    information_goal=GOAL.information_goal,
+                    budget_usd=Decimal("-1"),
+                    per_interview_cap_usd=Decimal("0"),
+                ),
+                Decimal("1"),
+                "budget_usd",
+            ),
+            (
+                InterviewGoal(
+                    information_goal=GOAL.information_goal,
+                    budget_usd=Decimal("0"),
+                    per_interview_cap_usd=Decimal("-1"),
+                ),
+                Decimal("1"),
+                "per_interview_cap_usd",
+            ),
+        ):
+            with pytest.raises(ValueError, match=field):
+                release_payout(
+                    con, project_id=p.project_id, goal=goal, ad_revenue_usd=ad_revenue,
+                )
+        assert _accruals_sum(con, p.project_id) == Decimal("0")
+
+
 # ── rigor #3 edge case (d): consent withdrawn after capture → takedown ──
 
 
@@ -277,8 +310,8 @@ def test_takedown_withholds_an_earning_claim(db):
         assert iv in before.shares and before.shares[iv] > 0
         release_before = release_payout(con, project_id=p.project_id, goal=GOAL,
                                         ad_revenue_usd=Decimal("100"))
-        earning_before = {l.interview_id: l for l in release_before.accrual_lines
-                          if not l.slop_gated}
+        earning_before = {line.interview_id: line for line in release_before.accrual_lines
+                          if not line.slop_gated}
         assert iv in earning_before and earning_before[iv].amount_usd > 0
         assert _escrow_balance_sum(con, p.project_id) > 0
 
@@ -292,8 +325,8 @@ def test_takedown_withholds_an_earning_claim(db):
         # interview (its share is withheld, not paid again).
         release_after = release_payout(con, project_id=p.project_id, goal=GOAL,
                                        ad_revenue_usd=Decimal("100"))
-        earning_after = {l.interview_id: l for l in release_after.accrual_lines
-                         if not l.slop_gated}
+        earning_after = {line.interview_id: line for line in release_after.accrual_lines
+                         if not line.slop_gated}
         assert iv not in earning_after  # withheld in routing after takedown
 
 
@@ -344,7 +377,9 @@ def test_release_routes_via_section9_not_flat_fee(db):
         grade_interview(con, project_id=p.project_id, interview_id=b, goal=GOAL)
         release = release_payout(con, project_id=p.project_id, goal=GOAL,
                                  ad_revenue_usd=Decimal("100"))
-        earning = {l.interview_id: l for l in release.accrual_lines if not l.slop_gated}
+        earning = {
+            line.interview_id: line for line in release.accrual_lines if not line.slop_gated
+        }
         # NOT a flat fee: the two earning shares differ (§9 weighting), and
         # the heavier contributor earns more.
         assert "iv-a" in earning and "iv-b" in earning

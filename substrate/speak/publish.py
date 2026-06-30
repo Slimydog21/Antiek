@@ -68,6 +68,9 @@ def publish(
     gate passes. A private project is unaffected by the public gate, is
     never served, and routes no contributor split."""
     ensure_speak_schema(con)
+    ad_revenue = contributor_mod.require_non_negative_decimal(
+        ad_revenue_usd, "ad_revenue_usd"
+    )
     policy = economics_mode.policy_for_project(con, project_id)
     publication_id = new_publication_id()
 
@@ -94,7 +97,7 @@ def publish(
         # share tracked. Accrue, never disburse.
         accrual = contributor_mod.accrue_contributions(
             con, project_id=project_id, publication_id=publication_id,
-            ad_revenue_usd=ad_revenue_usd, quality_scores=quality_scores,
+            ad_revenue_usd=ad_revenue, quality_scores=quality_scores,
             impression_ref=impression_ref,
         )
     else:
@@ -114,7 +117,7 @@ def publish(
         SPEAK_PUBLISHED,
         {"publication_id": publication_id, "visibility": policy.publishing,
          "served": served, "servability": status.value,
-         "ad_revenue_usd": str(ad_revenue_usd)},
+         "ad_revenue_usd": str(ad_revenue)},
         project_id=project_id,
     )
     return PublishResult(
