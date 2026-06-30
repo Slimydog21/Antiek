@@ -11,6 +11,8 @@ Coverage:
    produce the right mix of constraint kinds in one Delivered event.
 5. Scalar without unit gets parsed BUT the converter drops it — the
    payload's parameters list contains it, constraints list does not.
+6. Fabricated parameter source chunks are rejected against
+   request-supplied evidence chunks.
 """
 
 from __future__ import annotations
@@ -137,6 +139,24 @@ async def _post_request(ac, *, investigation_id, evidence_block="[evidence]"):
     return r.json()
 
 
+def _evidence_block(*chunk_ids: str) -> str:
+    return json.dumps(
+        [
+            {
+                "sub_question": "What evidence constrains the parameter?",
+                "answer": "Evidence answer.",
+                "supporting_claims": [
+                    {
+                        "claim": f"Claim for {chunk_id}",
+                        "chunk_ids": [chunk_id],
+                    }
+                    for chunk_id in chunk_ids
+                ],
+            }
+        ]
+    )
+
+
 def _scalar_param() -> dict:
     return {
         "semantic_anchor": "training_compute",
@@ -245,8 +265,8 @@ async def test_dispatch_timeout_falls_back_without_hanging(
 
     import interfaces.research.api.parameter_extractor as pe
 
-    def wedged_dispatch(prompt, event):
-        del prompt, event
+    def wedged_dispatch(prompt, event, canonical_source_chunk_ids=None):
+        del prompt, event, canonical_source_chunk_ids
         time.sleep(0.20)
         raise AssertionError("timeout wrapper should stop awaiting this call")
 
@@ -276,8 +296,8 @@ async def test_unexpected_dispatch_error_falls_back(
 
     import interfaces.research.api.parameter_extractor as pe
 
-    def broken_dispatch(prompt, event):
-        del prompt, event
+    def broken_dispatch(prompt, event, canonical_source_chunk_ids=None):
+        del prompt, event, canonical_source_chunk_ids
         raise RuntimeError("worker pool broke")
 
     monkeypatch.setattr(pe, "_dispatch_and_parse", broken_dispatch)
@@ -318,6 +338,37 @@ async def test_parse_failure_falls_back_preserving_dispatch_policy_id(
     assert p.parameters == []
     assert p.constraints == []
     # Dispatch succeeded — parse failed. Provider stamp preserved.
+    assert e.policy_id == "stub-pe/stub-flash-model"
+
+
+@pytest.mark.asyncio
+async def test_fabricated_source_chunk_id_falls_back(
+    monkeypatch, app_and_bus, async_client,
+):
+    _, bus = app_and_bus
+    inv = "inv-pe-fake-chunk"
+
+    fabricated = _scalar_param()
+    fabricated["source_chunk_ids"] = ["chunk-made-up"]
+    register_provider(_StubParameterExtractor(json.dumps({"parameters": [fabricated]})))
+    _patch_dispatch_config(monkeypatch, _pe_config("stub-pe"))
+
+    await _post_request(
+        async_client,
+        investigation_id=inv,
+        evidence_block=_evidence_block("chunk-1"),
+    )
+    await bus.wait_for_handlers(timeout=5.0)
+
+    delivered = [
+        r for r in trajectory(inv)
+        if r["action_type"] == ActionType.PARAMETER_EXTRACT_DELIVERED.value
+    ]
+    assert len(delivered) == 1
+    e = Event.model_validate(delivered[0])
+    p = e.payload
+    assert p.parameters == []
+    assert p.constraints == []
     assert e.policy_id == "stub-pe/stub-flash-model"
 
 

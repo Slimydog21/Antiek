@@ -30,8 +30,10 @@ Failure-mode discipline (mirrors decomposer + evidence_retriever):
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
+from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
 _PKG_ROOT = os.path.dirname(
@@ -70,6 +72,61 @@ PARAMETER_EXTRACTOR_UNEXPECTED_POLICY_ID = (
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _canonical_source_chunk_ids_from_evidence_block(
+    evidence_block: str,
+) -> tuple[str, ...] | None:
+    evidence = _load_json_block(evidence_block)
+    chunk_ids = _ordered_unique(
+        _collect_values_for_keys(
+            evidence,
+            {"chunk_ids", "source_chunk_ids", "supporting_chunk_ids"},
+        )
+    )
+    return chunk_ids or None
+
+
+def _load_json_block(raw: str) -> Any:
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _collect_values_for_keys(value: Any, keys: set[str]) -> list[str]:
+    refs: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key in keys:
+                refs.extend(_strings_from_value(child))
+            else:
+                refs.extend(_collect_values_for_keys(child, keys))
+    elif isinstance(value, list):
+        for child in value:
+            refs.extend(_collect_values_for_keys(child, keys))
+    return refs
+
+
+def _strings_from_value(value: Any) -> list[str]:
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    if isinstance(value, list):
+        out: list[str] = []
+        for child in value:
+            out.extend(_strings_from_value(child))
+        return out
+    return []
+
+
+def _ordered_unique(values: list[str]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for value in values:
+        if value not in seen:
+            out.append(value)
+            seen.add(value)
+    return tuple(out)
 
 
 def _result_to_parameter_payloads(
@@ -124,6 +181,7 @@ def _parameter_extractor_timeout_s() -> float:
 def _dispatch_and_parse(
     prompt: str,
     event: Event,
+    canonical_source_chunk_ids: tuple[str, ...] | None = None,
 ) -> tuple[ParameterExtractResult | None, str]:
     """Run one parameter_extractor dispatch + parse. Returns
     ``(result, policy_id)`` on success, ``(None, fallback_id)`` on
@@ -146,7 +204,10 @@ def _dispatch_and_parse(
         return None, "parameter-extractor-fallback/no-provider"
 
     try:
-        parsed = parse_parameter_extractor_response(response_text)
+        parsed = parse_parameter_extractor_response(
+            response_text,
+            canonical_source_chunk_ids=canonical_source_chunk_ids,
+        )
         return parsed, policy_id
     except ParameterValidationError as exc:
         print(
@@ -159,6 +220,7 @@ def _dispatch_and_parse(
 async def _dispatch_and_parse_bounded(
     prompt: str,
     event: Event,
+    canonical_source_chunk_ids: tuple[str, ...] | None = None,
 ) -> tuple[ParameterExtractResult | None, str]:
     """Run dispatch+parse off-loop with a bounded wait.
 
@@ -170,7 +232,12 @@ async def _dispatch_and_parse_bounded(
     timeout_s = _parameter_extractor_timeout_s()
     try:
         return await asyncio.wait_for(
-            asyncio.to_thread(_dispatch_and_parse, prompt, event),
+            asyncio.to_thread(
+                _dispatch_and_parse,
+                prompt,
+                event,
+                canonical_source_chunk_ids,
+            ),
             timeout=timeout_s,
         )
     except TimeoutError:
@@ -203,9 +270,16 @@ def make_parameter_extractor_handler(broadcaster: EventBroadcaster):
             return  # defensive — handler keyed on action_type
         req = event.payload
         evidence_block = req.evidence_block or ""
+        canonical_source_chunk_ids = _canonical_source_chunk_ids_from_evidence_block(
+            evidence_block
+        )
 
         prompt = render_full_prompt(evidence_block=evidence_block)
-        result, policy_id = await _dispatch_and_parse_bounded(prompt, event)
+        result, policy_id = await _dispatch_and_parse_bounded(
+            prompt,
+            event,
+            canonical_source_chunk_ids,
+        )
 
         if result is None:
             await _emit_delivered(
