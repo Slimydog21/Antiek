@@ -17,6 +17,15 @@ Gap categories:
   <domain>-knowledge subdirs.
 """
 
+from .phase8_calibration_status import (
+    Phase8CalibrationRecord,
+    Phase8CalibrationStatus,
+    load_records_jsonl,
+    record_from_mapping,
+    record_from_patch_outcome,
+    summarize_calibration,
+    summarize_jsonl,
+)
 from .phase_audit import (
     AuditFinding,
     audit_phase_log,
@@ -25,6 +34,13 @@ from .phase_audit import (
 
 __all__ = [
     "AuditFinding",
+    "Phase8CalibrationRecord",
+    "Phase8CalibrationStatus",
     "collect_findings",
     "audit_phase_log",
+    "load_records_jsonl",
+    "record_from_mapping",
+    "record_from_patch_outcome",
+    "summarize_calibration",
+    "summarize_jsonl",
 ]
