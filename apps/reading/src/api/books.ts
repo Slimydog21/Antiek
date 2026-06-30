@@ -66,6 +66,9 @@ export interface FullTextResponse {
   // critic-backed remaining work; until it lands the field is absent and the
   // Reader falls back to the legacy `full_text` flattener (additive, never blank).
   structured_blocks?: string | null;
+  // Representative chunk anchor for reader-side view-state (`source.read`,
+  // marginalia provenance). Returned only when the full body is served.
+  representative_chunk_id?: string | null;
   title: string | null;
   author: string | null;
   reason: string;

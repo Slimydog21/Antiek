@@ -629,6 +629,7 @@ def test_api_full_text_endpoint_enforces_gate(db, client):
     assert body["servable"] is False
     assert body["full_text"] is None
     assert body["snippet"] is not None
+    assert body["representative_chunk_id"] is None
 
 
 def test_api_full_text_serves_servable(db, client):
@@ -642,6 +643,8 @@ def test_api_full_text_serves_servable(db, client):
     body = res.json()
     assert body["servable"] is True
     assert "OPEN BODY" in body["full_text"]
+    assert isinstance(body["representative_chunk_id"], str)
+    assert body["representative_chunk_id"]
 
 
 def test_api_full_text_unknown_404(db, client):
