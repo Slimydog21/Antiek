@@ -588,8 +588,10 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     workflow: "shared",
     label: "Creator payouts",
     blurb: "User-facing self-service payout view (Sprint 23-24).",
-    built: false,
-    sharedReason: "IP-economics self-service (Sprint 23-24); cross-cutting, unrouted.",
+    built: true,
+    route: "/me/payouts",
+    sharedReason:
+      "Read-only self-service IP-economics view (Sprint 23-24); scoped to the authenticated creator.",
   },
   {
     id: "PayoutDashboard",

@@ -177,6 +177,11 @@ describe("Sprint 25+ economics dashboard route integrity", () => {
       component: "PayoutDashboard",
     },
     {
+      id: "CreatorPayouts",
+      route: "/me/payouts",
+      component: "CreatorPayouts",
+    },
+    {
       id: "MarketplaceMetrics",
       route: "/marketplace",
       component: "MarketplaceMetrics",
@@ -213,11 +218,16 @@ describe("Sprint 25+ economics dashboard route integrity", () => {
     }
   });
 
-  it("keeps CreatorPayouts unrouted until its /me/payouts contract exists", () => {
+  it("keeps CreatorPayouts on the scoped /me/payouts contract", () => {
+    const app = readSrc("App.tsx");
+    const component = readSrc("modes/CreatorPayouts/index.tsx");
     const creator = modeById("CreatorPayouts");
-    expect(creator?.built).toBe(false);
-    expect(creator?.route).toBeUndefined();
-    expect(creator?.sharedReason).toMatch(/unrouted/i);
+    expect(creator?.built).toBe(true);
+    expect(creator?.route).toBe("/me/payouts");
+    expect(creator?.sharedReason).toMatch(/scoped/i);
+    expect(app).toContain('<Route path="/me/payouts" element={<CreatorPayouts />} />');
+    expect(component).toContain('apiFetch("/me/payouts")');
+    expect(component).not.toContain("/creator-payouts/");
   });
 });
 

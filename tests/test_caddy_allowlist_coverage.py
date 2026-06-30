@@ -79,10 +79,11 @@ def test_caddy_allowlist_covers_every_registered_route() -> None:
     )
 
 
-def test_caddy_allowlist_pins_marketplace_and_operator_dashboard_routes() -> None:
+def test_caddy_allowlist_pins_economics_dashboard_routes() -> None:
     with open(_CADDY, encoding="utf-8") as fh:
         line = next(row for row in fh if "@api_routes path" in row)
     assert "/marketplace*" in line
+    assert "/me/payouts*" in line
     assert "/operator/payouts/dashboard*" in line
     assert "/operator*" not in line
 

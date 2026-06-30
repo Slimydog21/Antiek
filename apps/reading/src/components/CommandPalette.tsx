@@ -245,6 +245,13 @@ const ROUTE_INDEX: PaletteRoute[] = [
   },
   {
     kind: "route",
+    id: "route:creator-payouts",
+    title: "Creator payouts",
+    subtitle: "Your scoped creator payout ledger (/me/payouts)",
+    path: "/me/payouts",
+  },
+  {
+    kind: "route",
     id: "route:marketplace",
     title: "Marketplace metrics",
     subtitle: "Creator, publisher, and advertiser health snapshot (/marketplace)",
