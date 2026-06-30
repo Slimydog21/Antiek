@@ -36,6 +36,7 @@ import csv
 import io
 import os
 import uuid
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -174,7 +175,7 @@ def write_csv(aggregates: list[AnnualPayoutAggregate], path: str) -> str:
 def ensure_table(con: Any) -> None:
     """Defensive table-creation. Canonical schema in
     ``substrate/graph/schema.py`` V5 chunk."""
-    try:
+    with suppress(Exception):
         con.execute(
             """
             CREATE TABLE IF NOT EXISTS tax_reports (
@@ -188,8 +189,6 @@ def ensure_table(con: Any) -> None:
             )
             """
         )
-    except Exception:
-        pass
 
 
 def record_emission(
@@ -207,7 +206,7 @@ def record_emission(
     points back to the file the operator handed the accountant."""
     ensure_table(con)
     out: list[TaxReportRecord] = []
-    emitted = _now_iso()
+    emitted = _now_iso().removesuffix("Z")
     for a in aggregates:
         report_id = f"taxrep-{uuid.uuid4().hex[:12]}"
         con.execute(
@@ -215,13 +214,13 @@ def record_emission(
             INSERT INTO tax_reports (
                 report_id, recipient_ref, tax_year,
                 total_payout_usd_cents, above_1099_threshold,
-                csv_export_path
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                csv_export_path, emitted_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 report_id, a.recipient_ref, a.tax_year,
                 a.total_usd_cents, a.above_1099_threshold,
-                csv_export_path,
+                csv_export_path, emitted,
             ],
         )
         out.append(TaxReportRecord(
