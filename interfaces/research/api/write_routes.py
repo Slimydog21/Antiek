@@ -18,7 +18,7 @@ It exposes the substrate the Write spec's milestones reference as
     no-blocks→gap + citation + gate contract; the live model call needs
     creative_writer in the dispatch config);
   • trace-to-source (SPR-07): the trace TARGET (the gated-source-no-leak
-    gate). The reader that opens it is DRW SPR-10, still unbuilt;
+    gate). The Write host opens servable targets through the one Reader;
   • pre-outline context window (SPR-08): promote a loose context to a
     structured outline.
 
