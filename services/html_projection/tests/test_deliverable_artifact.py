@@ -94,6 +94,79 @@ def test_non_servable_source_block_is_cite_only_no_leak():
     assert "pg" in blob
 
 
+def test_source_edges_use_document_id_with_title_label_and_tone():
+    doc_model = adapt_deliverable(
+        DeliverableExport(
+            title="d",
+            sections=[
+                DeliverableSection(
+                    heading="S",
+                    blocks=[
+                        DeliverableBlock(
+                            "claim",
+                            "Public text",
+                            content_class="public_domain",
+                            source_title="On Liberty",
+                            source_document_id="doc-pd",
+                        ),
+                        DeliverableBlock(
+                            "claim",
+                            "SECRET",
+                            content_class="personal_reading",
+                            ip_holder_id="pg",
+                            source_title="A PG essay",
+                            source_document_id="doc-pr",
+                        ),
+                    ],
+                )
+            ],
+        )
+    )
+    assert doc_model["edges"] == [
+        {
+            "kind": "cites",
+            "to_document_id": "doc-pd",
+            "to_title": "On Liberty",
+            "tone": "success",
+        },
+        {
+            "kind": "cites",
+            "to_document_id": "doc-pr",
+            "to_title": "A PG essay",
+            "tone": "warning",
+        },
+    ]
+
+
+def test_source_edges_fall_back_to_title_without_document_id():
+    doc_model = adapt_deliverable(
+        DeliverableExport(
+            title="d",
+            sections=[
+                DeliverableSection(
+                    heading="S",
+                    blocks=[
+                        DeliverableBlock(
+                            "claim",
+                            "Public text",
+                            content_class="public_domain",
+                            source_title="Legacy title",
+                        ),
+                    ],
+                )
+            ],
+        )
+    )
+    assert doc_model["edges"] == [
+        {
+            "kind": "cites",
+            "to_document_id": "Legacy title",
+            "to_title": "Legacy title",
+            "tone": "success",
+        }
+    ]
+
+
 def test_deliverable_is_gate_clean_and_round_trips():
     export = DeliverableExport(
         title="d",
