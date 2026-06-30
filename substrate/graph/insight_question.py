@@ -49,6 +49,7 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Sequence
+from contextlib import suppress
 from typing import Any
 
 try:
@@ -197,10 +198,8 @@ def _with_connection(con: LockedConnection | None, purpose: str, fn):
             owned.execute("COMMIT")
             return result
         except Exception:
-            try:
+            with suppress(Exception):  # pragma: no cover
                 owned.execute("ROLLBACK")
-            except Exception:  # pragma: no cover
-                pass
             raise
     finally:
         owned.close()
@@ -305,6 +304,7 @@ def promote_insight(
                 chunk_id=chunk_id,
                 source_tier=source_tier,
                 extraction_confidence=edge_conf,
+                supported_by=supported_by,
                 provider=provider,
                 dedup_rate=dedup_rate,
             )
@@ -413,6 +413,7 @@ def promote_question(
                 chunk_id=chunk_id,
                 source_tier=source_tier,
                 extraction_confidence=extraction_confidence,
+                supported_by=(),
                 provider=provider,
                 dedup_rate=dedup_rate,
             )
@@ -458,8 +459,8 @@ def promote_question(
 # the candidate through ``substrate.unit_dedup.find_near_duplicate`` against the
 # already-deposited units IN ITS OWN node_type. On a match it records a
 # ``duplicate_of`` edge to the surviving unit (carrying the candidate's primary
-# doc/chunk grounding to the survivor; merging its ADDITIONAL supported_by links
-# is a KNOWN GAP deferred to the always-on flip — see _link_duplicate) and SKIPS
+# doc/chunk grounding to the survivor) and merges any candidate ``supported_by``
+# evidence links onto the survivor before it SKIPS
 # the row insert, so the graph compounds rather than bloats.
 #
 # Single-writer + §16 preserved: this runs on the SAME write-locked connection
@@ -484,6 +485,7 @@ def _dedup_check(
     chunk_id: str | None,
     source_tier: int,
     extraction_confidence: float,
+    supported_by: Sequence[str],
     provider: Any,
     dedup_rate: Any,
 ):
@@ -520,6 +522,7 @@ def _dedup_check(
             source_document_id=source_document_id,
             chunk_id=chunk_id,
             match=match,
+            supported_by=supported_by,
         )
     if dedup_rate is not None:
         dedup_rate.record(linked=match is not None)
@@ -602,6 +605,7 @@ def _link_duplicate(
     extraction_confidence: float,
     source_document_id: str | None,
     chunk_id: str | None,
+    supported_by: Sequence[str],
     match,
 ) -> str:
     """Record a ``duplicate_of`` edge candidate -> survivor and return the
@@ -610,12 +614,11 @@ def _link_duplicate(
     the candidate's source, and stamps the dedup verdict (tier / cosine /
     key_type) into edge metadata for audit.
 
-    KNOWN GAP (deferred to the always-on-flip sprint — see the §9.0/SPR-03-style
-    ratification this dedup awaits): only the PRIMARY doc/chunk grounding is
-    carried here; the candidate's ADDITIONAL ``supported_by`` claim-node edges
-    are NOT yet merged onto the survivor. Harmless while dedup is opt-in/off in
-    prod, but the flip MUST absorb the candidate's ``supported_by`` links first
-    or the survivor's evidentiary base will be under-counted.
+    The candidate node was NOT inserted, so its ``supported_by`` edges cannot be
+    recovered later from a candidate row. Merge them onto the survivor now,
+    carrying this candidate's doc/chunk grounding on the evidence edges. This
+    widens evidence, not servability: the survivor node row is untouched unless
+    dangling targets need to be recorded for audit.
 
     CRITICAL: the candidate node was NOT inserted (that is the whole point —
     link, don't re-store), so the ``duplicate_of`` edge's SOURCE is the
@@ -641,7 +644,7 @@ def _link_duplicate(
         "edge",
         f"{survivor_id}|{DUPLICATE_OF_RELATION}|{candidate_node_id}",
     )
-    return insert_edge(
+    edge_id_written = insert_edge(
         con,
         source_node_id=survivor_id,
         target_node_id=survivor_id,
@@ -664,6 +667,21 @@ def _link_duplicate(
         },
         on_conflict="ignore",
     )
+    if node_type == "insight" and supported_by:
+        _written, dangling = _add_provenance_edges(
+            con,
+            source_node_id=survivor_id,
+            relation="supported_by",
+            targets=supported_by,
+            investigation_id=investigation_id,
+            source_tier=source_tier,
+            extraction_confidence=extraction_confidence,
+            source_document_id=source_document_id,
+            chunk_id=chunk_id,
+        )
+        if dangling:
+            _record_dangling(con, survivor_id, "supported_by", dangling)
+    return edge_id_written
 
 
 def _record_dangling(con: LockedConnection, node_id: str, relation: str, targets: list) -> None:

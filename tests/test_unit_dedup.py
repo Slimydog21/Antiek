@@ -30,6 +30,7 @@ module docstring + the handoff; it is NOT claimed solved here.
 
 from __future__ import annotations
 
+import json
 import os
 
 import pytest
@@ -97,7 +98,15 @@ def graph_env(monkeypatch, tmp_path):
     return db_path
 
 
-def _seed_grounding(con, emb, *, doc_id="doc1", chunk_id="ch1", content_class="public_domain"):
+def _seed_grounding(
+    con,
+    emb,
+    *,
+    doc_id="doc1",
+    chunk_id="ch1",
+    content_class="public_domain",
+    claim_label="claim",
+):
     """A document + chunk + claim node so a deposited unit is grounded (the
     deposit contract requires source_document_id + chunk_id)."""
     con.execute(
@@ -111,7 +120,7 @@ def _seed_grounding(con, emb, *, doc_id="doc1", chunk_id="ch1", content_class="p
         [chunk_id, doc_id, emb.encode("x")],
     )
     return insert_node(
-        con, canonical_label="claim", node_type="claim", graph_scope="depth",
+        con, canonical_label=claim_label, node_type="claim", graph_scope="depth",
         investigation_id="inv-seed", embedding=emb.encode("claim"), on_conflict="ignore",
     )
 
@@ -274,6 +283,80 @@ def test_merge_polarity_a_survivor_servability_unchanged(graph_env, emb):
         assert before == after, "a duplicate_of link must not mutate the survivor row"
         # And the survivor is still the only insight row.
         assert _count_units(con, "insight") == 1
+    finally:
+        con.close()
+
+
+def test_merge_polarity_a_duplicate_supported_by_edges_merge_to_survivor(graph_env, emb):
+    """A linked duplicate is not stored, so its claim evidence must be copied to
+    the survivor while preserving the candidate's own doc/chunk grounding."""
+    con = connect_write(graph_env, purpose="spr07_support_merge")
+    try:
+        con.execute("BEGIN")
+        claim1 = _seed_grounding(con, emb, doc_id="doc1", chunk_id="ch1")
+        claim2 = _seed_grounding(
+            con,
+            emb,
+            doc_id="doc2",
+            chunk_id="ch2",
+            claim_label="secondary claim",
+        )
+        survivor = promote_insight(
+            text=SEED,
+            investigation_id="inv-1",
+            confidence="high",
+            supported_by=[claim1],
+            source_document_id="doc1",
+            chunk_id="ch1",
+            embedding_provider=emb,
+            con=con,
+            dedup=True,
+        )
+        linked = promote_insight(
+            text=PARAPHRASE,
+            investigation_id="inv-1",
+            confidence="high",
+            supported_by=[claim2, "missing-claim"],
+            source_document_id="doc2",
+            chunk_id="ch2",
+            embedding_provider=emb,
+            con=con,
+            dedup=True,
+        )
+        linked_again = promote_insight(
+            text=PARAPHRASE,
+            investigation_id="inv-1",
+            confidence="high",
+            supported_by=[claim2],
+            source_document_id="doc2",
+            chunk_id="ch2",
+            embedding_provider=emb,
+            con=con,
+            dedup=True,
+        )
+        con.execute("COMMIT")
+
+        assert linked == survivor
+        assert linked_again == survivor
+        assert _count_units(con, "insight") == 1
+        assert _count_dup_edges(con) == 1
+        supported = {
+            tuple(row)
+            for row in con.execute(
+                "SELECT target_node_id, source_document_id, chunk_id "
+                "FROM edges WHERE source_node_id = ? AND relation = 'supported_by'",
+                [survivor],
+            ).fetchall()
+        }
+        assert (claim1, "doc1", "ch1") in supported
+        assert (claim2, "doc2", "ch2") in supported
+        assert len(supported) == 2
+
+        meta_raw = con.execute(
+            "SELECT metadata FROM nodes WHERE node_id = ?",
+            [survivor],
+        ).fetchone()[0]
+        assert "missing-claim" in json.loads(meta_raw)["skipped_dangling"]["supported_by"]
     finally:
         con.close()
 
