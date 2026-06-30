@@ -10,7 +10,7 @@
 
 After PR #43, `content_class='personal_reading'` was excluded in
 `substrate/graph/search.py` but **not** on the default vector path or the direct
-chunk HTTP API. Empty prod corpus (D17 ingest deferred) kept the gap latent.
+chunk HTTP API. Empty prod corpus (D19 ingest deferred) kept the gap latent.
 Live ingest would surface chunk text via VSS ranking or claim-modal
 `GET /chunks/{id}` — a §9.0 leak past what `corpus_audit` and `search()` tests
 proved.
@@ -77,12 +77,12 @@ proved.
 | Attribution regression pin | `test_compute_attribution_drops_personal_reading` in same file |
 | **Commit** | `809efeb` RG-05 |
 
-### RG-06 — capstone docs + D17 spot-checks
+### RG-06 — capstone docs + D19 spot-checks
 
 | Change | Location |
 |---|---|
 | Operator runbook (preflight + post-ingest spot-check) | `infrastructure/runbooks/retrieval-gate-closure.md` |
-| D17 deferral append + operator breadcrumb | `docs/engineering_deferrals.md`, `docs/operator_gate_actions.md` |
+| D19 deferral append + operator breadcrumb | `docs/engineering_deferrals.md`, `docs/operator_gate_actions.md` |
 | This decision record | `docs/decisions/retrieval-gate-closure.md` |
 
 ## Fail-before evidence
@@ -113,6 +113,6 @@ Full CI subset: `pytest tests/ -q -m "not integration"` per `.github/workflows/c
 
 ## Operator follow-on
 
-D17 ingest window unchanged in deferral; **added** mandatory retrieval spot-checks
+D19 ingest window unchanged in deferral; **added** mandatory retrieval spot-checks
 after each connector ingest — see `infrastructure/runbooks/retrieval-gate-closure.md`
 §2 and `docs/operator_gate_actions.md` Personal-Reading Lane breadcrumb.

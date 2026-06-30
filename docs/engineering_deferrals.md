@@ -27,7 +27,7 @@ Each entry below carries:
 - **Action when unlocked** — what an agent should do the day the criterion
   fires
 
-The deferrals below, by unlock criterion category (count-free on purpose — this line once said "thirteen" while the doc held twenty):
+The tracked deferrals, by unlock criterion category:
 
 ---
 
@@ -508,7 +508,17 @@ full-shell visual proof.
 
 ---
 
-## D17 — Personal-Reading Lane live-ingest cluster (the prod-only network steps)
+## D18 — arXiv source-census producer (the source-onboarding gate's data feed)
+
+**Status:** ⚠️ Partially closed. The GATE shipped (PR #42 / `abde67e`), the DB-backed PRODUCER now exists (`tools/source_census.py::compute_source_census`), and the arXiv OAI timer emits `{{ antiek_state_dir }}/reports/source_census.json` after each successful sync. The first live report capture + threshold calibration remain operator-run.
+**Unlock criterion:** a prod corpus **+** an unbanned arXiv ingest window (arXiv still 429-bans the box; the host-global governor makes a window safe) — operator-run for the first live report/capstone.
+**Spec reference:** `docs/decisions/arxiv-corpus-first-reframe.md`; reframe P3b in `~/specs/antiek-arxiv-ingest/.caffenagent/reframe-run.json`.
+**Blocks-what:** nothing now — `tools/lint/source_gate.py` is wired into `ci.yml` but is a **no-op (exit 0) until committed `reports/source_census.json` exists**, so the gate cannot block any onboarding until the live census is captured into the repo. The thresholds (metadata-complete ≥95% / linkback-resolvable ≥99% / dedup-overlap <20%) are PROVISIONAL until calibrated on the first real census.
+**Action when unlocked:** deploy/run `antiek-arxiv-oai-sync.timer`, collect `{{ antiek_state_dir }}/reports/source_census.json` from the prod corpus, review/calibrate the PROVISIONAL thresholds against that first real arXiv census, then commit `reports/source_census.json` so the wired CI gate enforces automatically.
+
+---
+
+## D19 — Personal-Reading Lane live-ingest cluster (the prod-only network steps)
 
 **Status:** ⚠️ Partial. The lane shipped + is live on prod (PR #43 merge
 `9aeb2c9`, deployed 2026-06-01); the connectors, classification gate, monitoring,
@@ -542,7 +552,7 @@ zero third-party docs on a servable class.
 **Retrieval gate closure (RG-06, verified 2026-06-02):** the ingest window and
 unlock criterion above are **unchanged** — still operator-invoked real-network
 ingest only. RG-01..RG-05 closed the latent VSS + `GET /chunks` seams (defects
-A/B in `docs/decisions/retrieval-gate-closure.md`). What RG-06 adds for D17 is a
+A/B in `docs/decisions/retrieval-gate-closure.md`). What RG-06 adds for D19 is a
 **mandatory retrieval spot-check after each connector ingest**: VSS query @
 `attribution_eligible` must not rank `personal_reading`, and
 `GET /chunks/{chunk_id}` must withhold body (`servable=False`,
@@ -551,15 +561,7 @@ A/B in `docs/decisions/retrieval-gate-closure.md`). What RG-06 adds for D17 is a
 `personal-lane.md` step 4 passes). **Halt ingest** if spot-check or
 `retrieval_gate_check` fails — do not continue the window.
 
-## D18 — arXiv source-census producer (the source-onboarding gate's data feed)
-
-**Status:** ⚠️ Partially closed. The GATE shipped (PR #42 / `abde67e`), the DB-backed PRODUCER now exists (`tools/source_census.py::compute_source_census`), and the arXiv OAI timer emits `{{ antiek_state_dir }}/reports/source_census.json` after each successful sync. The first live report capture + threshold calibration remain operator-run.
-**Unlock criterion:** a prod corpus **+** an unbanned arXiv ingest window (arXiv still 429-bans the box; the host-global governor makes a window safe) — operator-run for the first live report/capstone.
-**Spec reference:** `docs/decisions/arxiv-corpus-first-reframe.md`; reframe P3b in `~/specs/antiek-arxiv-ingest/.caffenagent/reframe-run.json`.
-**Blocks-what:** nothing now — `tools/lint/source_gate.py` is wired into `ci.yml` but is a **no-op (exit 0) until committed `reports/source_census.json` exists**, so the gate cannot block any onboarding until the live census is captured into the repo. The thresholds (metadata-complete ≥95% / linkback-resolvable ≥99% / dedup-overlap <20%) are PROVISIONAL until calibrated on the first real census.
-**Action when unlocked:** deploy/run `antiek-arxiv-oai-sync.timer`, collect `{{ antiek_state_dir }}/reports/source_census.json` from the prod corpus, review/calibrate the PROVISIONAL thresholds against that first real arXiv census, then commit `reports/source_census.json` so the wired CI gate enforces automatically.
-
-## D19 — Multi-operator owner-read requires user_id retrieval scoping
+## D21 — Multi-operator owner-read requires user_id retrieval scoping
 
 **Status:** ❌ Deferred. Single-operator enforcement landed (PR #72 / `77f1c71` + `7c84165`); the multi-operator user_id scoping it points to did not.
 **Unlock criterion:** D1 (Sprint 22 multi-user pivot) closes. The owner-read privilege (§9.0 `operator_only` tag in `ask_book` + `corpus_search`) is today gated on single-operator via `len(operator_allowlist_from_env()) <= 1`; extending it to multi-operator requires scoping retrieval by `request.state.user_id` against the document's owner (an `owner_user_id` column exists in the document schema, but `search()` does not filter on it).
@@ -577,12 +579,13 @@ A/B in `docs/decisions/retrieval-gate-closure.md`). What RG-06 adds for D17 is a
 | G8 (Loop 3 unlock — `loop_3_unlock_criteria.md` 5 sub-gates) | D3 (Wedge 4), D5 (Prime A+B), D6 (Prime E) |
 | RLM 6 design-decisions ratified (`rlm_integration_spec.md` §6) | D4 (RLM-1..5) |
 | D1 (multi-user) + creator cohort live | D7 (Sprint 25+ ads at scale) |
+| D1 (multi-user) | D21 (Multi-operator owner-read user_id scoping) |
 | D1 (multi-user) + ≥1 publisher opted in | D8 (Sprint 30+ federation activation) |
 | Operator-discretion polish | D9 (Substack publish), D10 (sync voice), D11 (chase-tree mode) |
 | Operator UI-design ratification (highlight removal semantics) | D12 (`highlight_removed` event) |
 | Read-surface integration sprints (geometry pass / `source.read` emit / marginalia persistence / review gesture + scheduler; each its own `docs/decisions/spr-0{5,6,7,8}-*.md`) | D13 (Physics of Reading live surface integrations) |
 | Operator ratifies the Physics of Reading canon (`physics-of-reading.md` draft→ratified) | D13's CI-guard advisory→blocking flip |
-| Operator ingest window (real network + per-connector credential) | D17 (Personal-Reading Lane live-ingest cluster) |
+| Operator ingest window (real network + per-connector credential) | D19 (Personal-Reading Lane live-ingest cluster) |
 
 ---
 
@@ -612,11 +615,13 @@ Realistic-earliest unlock dates assuming everything else moves on schedule:
   only flips CI strictness.
 - **D15 (arXiv governor per-hop metadata hook)** — closed on 2026-06-30.
 - **D20 (Mountain Shell v2 Tailwind yellow-mirror re-tone)** — closed on 2026-06-30.
+- **D19 (Personal-Reading Lane live-ingest cluster)** — operator ingest window;
+  no code change required until an operator-invoked real-network run.
 
 **Bottom line:** of the tracked deferrals, **2 closed this month** (D15, D20);
 remaining deferrals are gated on either time, volume, ratification, operator
 ingest windows, or D1; **3 close in late 2026 to mid-2027** (D1, then D7,
-D8 trail); **3 close in 2027+ at the earliest** (D3, D5, D6 all gated on
+D8 and D21 trail); **3 close in 2027+ at the earliest** (D3, D5, D6 all gated on
 G8); **D4 depends on operator's ratification cadence**; **D9, D10, D11,
 D12 are operator-discretion items with no spec-binding deadline**; **D13
 (Physics of Reading live integrations) is now closed for product integrations by

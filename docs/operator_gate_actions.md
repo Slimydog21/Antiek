@@ -407,7 +407,7 @@ DO NOT propose more engineering until the bottlenecks below clear.
 4. **§15.3 — Rate the voice-interview latency 1-5** on a real interview.
    No infrastructure change needed; just run the interview surface end-to-end.
 
-5. **D17 ingest — retrieval spot-check per connector** — after each live ingest
+5. **D19 ingest — retrieval spot-check per connector** — after each live ingest
    batch passes `personal-lane.md` + `corpus_audit`, run
    `infrastructure/runbooks/retrieval-gate-closure.md` §2 (VSS +
    `GET /chunks` withhold). Halt ingest on failure. RG-06 verified 2026-06-02;
@@ -549,7 +549,7 @@ to `main` as **PR #43 (merge `9aeb2c9`, `EVENT_SCHEMA_VERSION` 24→27)** and wa
   **G12** (Bernays per-title renewal check). All operator-only; the lane code is
   done.
 - **The live-ingest steps are deferred** to an operator ingest window —
-  `engineering_deferrals.md` **D17** (SPR-04 Gutenberg/archive.org · SPR-05 live
+  `engineering_deferrals.md` **D19** (SPR-04 Gutenberg/archive.org · SPR-05 live
   PG · SPR-06 real Substack subscriptions · SPR-08 X BYOK live smoke). The lane
   is dormant-correct + auditable-empty on prod until then; go-live procedure is
   `infrastructure/runbooks/personal-lane.md` (audit-gated).

@@ -23,7 +23,7 @@
 | **DispatchDecomposer** | Pre-network `TypeError` from keyword drift; not provider outage | `roles/cascade_planner/planner.py`, `scripts/repro_cascade_decompose_contract.py` |
 | **AMS-v1 fiction** | Sprint pages cited DOM/paths that never existed on `origin/main` | `docs/ams-v2/verified-interfaces.md`, `tools/specs/verify_spec_refs.ts` |
 | **ccb4c66** | Hop-delay tuning → ~4.5s perceived lag class without p95 artifact | `docs/htmlspec/werner-ice-fishing-cursor/index.html`, postmortem `ccb4c66` |
-| **D17 ambiguity** | Bare "D17" without line+SHA blocks finding Personal-Reading live-ingest deferral | `docs/engineering_deferrals.md` L475+ |
+| **Deferral ambiguity** | Bare deferral IDs without line+SHA block finding the intended cluster | `docs/engineering_deferrals.md` |
 
 ---
 
@@ -38,7 +38,7 @@
 | T-05 | Invented p95 / fps / cost | F5 |
 | T-06 | Bare xfail without bite fixture | F6 |
 | T-07 | Informational CI cited as blocking proof | F7 |
-| T-08 | Bare deferral ID ("D17") | F8 |
+| T-08 | Bare deferral ID ("D19") | F8 |
 | T-09 | "Provider down" on pre-network TypeError | F-equivalent (cascade) |
 | T-10 | FakeDecomposer-only regression story | F-equivalent (cascade) |
 | T-11 | Spec cites unverified UI paths | F3 + anti-fiction |
@@ -134,13 +134,13 @@
 
 ### T-08 — Bare deferral ID
 
-**Symptom:** Handoff says "deferred per D17" or "D17 blocks" without `engineering_deferrals.md:L###` @ commit SHA.
+**Symptom:** Handoff says "deferred per D19" or "D19 blocks" without `engineering_deferrals.md:L###` @ commit SHA.
 
-**Discriminant:** **Theater** if reader cannot open the deferral cluster in one hop. **Not theater** if cite is `engineering_deferrals.md:L475` @ `9aeb2c9` (Personal-Reading live-ingest cluster — operator ingest window, not "code missing").
+**Discriminant:** **Theater** if reader cannot open the deferral cluster in one hop. **Not theater** if cite names the current `engineering_deferrals.md` line range + commit SHA for D19 (Personal-Reading live-ingest cluster — operator ingest window, not "code missing").
 
-**Counter-example:** "Live Gutenberg fetch not proved — `engineering_deferrals.md:L475-L504` @ SHA; offline fixtures tested in `tests/…`" — bounded deferral, not theater.
+**Counter-example:** "Live Gutenberg fetch not proved — `engineering_deferrals.md:L###-L###` @ SHA, D19; offline fixtures tested in `tests/…`" — bounded deferral, not theater.
 
-**Maps to:** **F8** — D17 ambiguity class; operator gate docs require line-precise cites.
+**Maps to:** **F8** — deferral ambiguity class; operator gate docs require line-precise cites.
 
 ---
 
