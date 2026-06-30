@@ -125,7 +125,7 @@ def _is_exempt(rel: str) -> bool:
 
 def test_expected_open_door_set_is_pinned_and_nonempty():
     """NON-xfail guard: the OPEN-door set SPR-09 must satisfy is pinned here."""
-    assert len(EXPECTED_OPEN_DOORS) >= 11
+    assert len(EXPECTED_OPEN_DOORS) == 11
     for d in (
         "DocumentsIndex.open",
         "CommandPalette.openDocument",

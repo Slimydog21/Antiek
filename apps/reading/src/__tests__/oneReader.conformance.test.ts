@@ -73,17 +73,17 @@ const readSrc = (rel: string): string =>
  * makes it a red test).
  */
 export const EXPECTED_OPEN_DOORS: Readonly<Record<string, string>> = {
-  "Library.openWork": "src/modes/Library/index.tsx:145", // → navigate('/read/:id') today
-  "LibraryView.open": "src/components/library/LibraryView.tsx:71", // → navigate('/read/:id') today
+  "Library.openWork": "src/modes/Library/index.tsx:150", // → openDocument('/read/:id')
+  "LibraryView.open": "src/components/library/LibraryView.tsx:71", // → openDocument('/read/:id')
   "Reading.openDoc": "src/modes/Reading/index.tsx:41", // BookReader — the current /read/:id reader
-  "DocumentsIndex.open": "src/modes/DocumentsIndex/index.tsx:158", // → /wrestle/:id (MIS-ROUTE)
-  "CommandPalette.openDocument": "src/components/CommandPalette.tsx:390", // → /wrestle/:id (MIS-ROUTE)
-  "ChunkModal.openInDocument": "src/modes/ResearchWorkstation/ChunkModal.tsx:176", // → /wrestle/:id (MIS-ROUTE)
-  "MasterMdViewer.cmdClick": "src/modes/ResearchWorkstation/MasterMdViewer.tsx:762", // → openPdfPanel (:774)
+  "DocumentsIndex.open": "src/modes/DocumentsIndex/index.tsx:164", // converged from /wrestle/:id → openDocument
+  "CommandPalette.openDocument": "src/components/CommandPalette.tsx:423", // converged from /wrestle/:id → /read/:id
+  "ChunkModal.openInDocument": "src/modes/ResearchWorkstation/ChunkModal.tsx:188", // converged from /wrestle/:id → openDocument
+  "MasterMdViewer.cmdClick": "src/modes/ResearchWorkstation/MasterMdViewer.tsx:820", // converged from openPdfPanel → openDocument
   "DRW.citeSource": "src/modes/DeepResearchWorkspace/Canvas/BlockCard.tsx:117", // onCiteSource; host-wired in index.tsx
-  "Write.traceToSource": "src/modes/Write/WriteHome.tsx:101", // open call (Citation.tsx:38 emits, traceIntent.ts bus)
-  "MetaReading.openCitation": "src/modes/Reading/MetaReading/index.tsx:95", // → navigate('/read/:id') (:104)
-  "Route./read/:documentId": "src/App.tsx:161", // the canonical Reader route (mounts BookReader today)
+  "Write.traceToSource": "src/modes/Write/WriteHome.tsx:116", // open call (Citation.tsx:38 emits, traceIntent.ts bus)
+  "MetaReading.openCitation": "src/modes/Reading/MetaReading/index.tsx:100", // → openDocument('/read/:id')
+  "Route./read/:documentId": "src/App.tsx:173", // the canonical Reader route
 } as const;
 
 /**
@@ -122,9 +122,9 @@ export const FORBIDDEN_PROD_RENDERERS: readonly string[] = [
   "components/PdfViewer.tsx::asOpenTarget", // PdfViewer mounted as an OPEN-a-document target — gone (survives as ingest only)
 ] as const;
 
-// The three doors that TODAY mis-route to /wrestle (the convergence target the
-// one-door work must collapse). Mirrors the Python stub's named subset.
-const MISROUTED_TO_WRESTLE_TODAY: readonly string[] = [
+// The three doors that formerly mis-routed to /wrestle. They stay pinned as
+// named convergence targets so the guard proves the historical fork stays dead.
+const CONVERGED_FROM_WRESTLE: readonly string[] = [
   "DocumentsIndex.open",
   "CommandPalette.openDocument",
   "ChunkModal.openInDocument",
@@ -140,8 +140,8 @@ const MISROUTED_TO_WRESTLE_TODAY: readonly string[] = [
 describe("oneReader conformance — pinned sets (lockstep guards, run today)", () => {
   it("pins exactly the 11 OPEN doors EXPECTED_OPEN_DOORS pins (no door may be dropped)", () => {
     expect(Object.keys(EXPECTED_OPEN_DOORS)).toHaveLength(11);
-    // The three convergence-target doors that mis-route to /wrestle today.
-    for (const door of MISROUTED_TO_WRESTLE_TODAY) {
+    // The three convergence-target doors that used to mis-route to /wrestle.
+    for (const door of CONVERGED_FROM_WRESTLE) {
       expect(EXPECTED_OPEN_DOORS).toHaveProperty(door);
     }
     // Every door names a verified call site (no empty placeholders).
@@ -244,7 +244,7 @@ describe("oneReader conformance — door (a): every door routes to the one Reade
     expect(reading).toMatch(/import\s+Reader.*from\s+["']\.\.\/\.\.\/components\/reader\/Reader["']/);
   });
 
-  it("the three doors that mis-routed to /wrestle today now route to the one door (the convergence)", () => {
+  it("the three doors that formerly mis-routed to /wrestle stay on the one door", () => {
     for (const door of [
       "DocumentsIndex.open",
       "CommandPalette.openDocument",
