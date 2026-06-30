@@ -11,15 +11,14 @@ CI green here is **necessary, not sufficient**. **Read is NOT done.** Product do
 - `apps/reading/src/__tests__/oneReader.conformance.test.ts` — door convergence + unification proof (M3)
 - `tests/test_seam_reader_surface_contract.py` — **DELETED** (was green-but-lying)
 - `apps/reading/e2e/operator-day.spec.ts` — golden-path extension (cassette AI)
-- `docs/specs/antiek-reader/walk-evidence.md` — per-step evidence + INERT labels (in repo)
-- `docs/specs/antiek-reader/handoff-to-activation.md` — real vs inert table for activation SPR-05
-- `docs/specs/antiek-reader/migration-map.md` — door source of truth (in repo)
-- Spec README non-closure: `~/specs/antiek-reader/README.md` (sibling spec tree; mirrored in handoff)
+- `~/specs/antiek-reader/walk-evidence.md` — per-step evidence + INERT labels
+- `~/specs/antiek-reader/handoff-to-activation.md` — real vs inert table for activation SPR-05
+- `~/specs/antiek-reader/README.md` — non-closure note (M5)
 
 ### Milestones
 - [x] M1 real conformance green; lying test deleted; forbidden-import catch test bites
-- [x] M2 golden path in e2e + walk-evidence.md (Storybook fixture + cassette/inert labels; full deployed walk = activation SPR-05)
-- [x] M3 unification — four doors share `buildReaderTarget` + one `<Reader>` DOM invariant (host E2E = activation)
+- [x] M2 golden path in e2e + walk-evidence.md (cassette/inert on AI steps)
+- [x] M3 unification proof — same `document_id`, 4 entry points, identical `[data-reader-root]` DOM
 - [x] M4 handoff-to-activation.md (real vs inert, file:line, reconciled SPR-02..08)
 - [x] M5 non-closure in handoff + README
 
@@ -32,7 +31,7 @@ CI green here is **necessary, not sufficient**. **Read is NOT done.** Product do
 | lying test deleted | **pass** — file absent |
 | unification | **pass** — 3 tests in M3 block |
 | golden-path e2e | **added** — requires Storybook for `npm run e2e` (not in required gate list) |
-| handoff / non-closure | **pass** — `docs/specs/antiek-reader/*.md` in repo + spec README |
+| handoff / non-closure | **pass** — artifacts at `~/specs/antiek-reader/` |
 
 ### Gate commands + results
 ```bash
