@@ -904,10 +904,10 @@ describe("MasterMdViewer — artifact-export affordance (SPR-05 M5)", () => {
 
   it("shows the Export artifact action only when a synthesis id is present", () => {
     render(<MasterMdViewer synthesis={exportSynth("syn-1")} />);
-    expect(screen.getByText("Export artifact")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "HTML" })).toBeTruthy();
     cleanup();
     render(<MasterMdViewer synthesis={exportSynth(null)} />);
-    expect(screen.queryByText("Export artifact")).toBeNull();
+    expect(screen.queryByRole("button", { name: "HTML" })).toBeNull();
   });
 
   it("calls the artifact route and surfaces the SPECIFIC 403 reason", async () => {
@@ -918,7 +918,7 @@ describe("MasterMdViewer — artifact-export affordance (SPR-05 M5)", () => {
     } as unknown as Response);
 
     render(<MasterMdViewer synthesis={exportSynth("syn-9")} />);
-    fireEvent.click(screen.getByText("Export artifact"));
+    fireEvent.click(screen.getByRole("button", { name: "HTML" }));
 
     await waitFor(() =>
       expect(screen.getByText(/owner withheld this synthesis/)).toBeTruthy(),

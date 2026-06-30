@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { ArtifactExport } from "../../components/ArtifactExport";
 import { toast } from "../../components/lemon/LemonToast";
-import { API_BASE, apiFetch, getChunk } from "../../lib/api";
+import { getChunk } from "../../lib/api";
 import type { ChunkResponse } from "../../lib/api";
 import type {
   CompoundingStat,
@@ -188,16 +189,6 @@ function composedReviewDueByClaim(
 // surface constant; tuning it never touches the physics.
 const GEOMETRY_RECOMPUTE_DEBOUNCE_MS = 100;
 
-// SPR-08 M4 — the export formats, presented with EQUAL prominence + neutral
-// copy. A file-biased offer (pushing .antiek over the plain URL/HTML view)
-// would manufacture exactly the demand signal the gate measures, so order is
-// fixed and labels are plain — no "✨ new format ✨".
-const EXPORT_FORMATS: { id: string; label: string; ext: string }[] = [
-  { id: "html", label: "HTML", ext: "html" },
-  { id: "antiek", label: ".antiek", ext: "antiek" },
-  { id: "antiek_html", label: ".antiek.html", ext: "antiek.html" },
-];
-
 export default function MasterMdViewer({
   synthesis,
 }: {
@@ -205,50 +196,11 @@ export default function MasterMdViewer({
 }) {
   const [openChunkId, setOpenChunkId] = useState<string | null>(null);
 
-  // HPRJ SPR-05 M5 — the artifact-export affordance. The rights filter is
-  // enforced server-side (the route returns 403 with a reason on a synthesis-
-  // level restriction); this UI only calls it and surfaces the SPECIFIC reason,
-  // never a generic error.
-  const [exportError, setExportError] = useState<string | null>(null);
-  const [exporting, setExporting] = useState(false);
+  // HPRJ SPR-05 M5 — the artifact-export affordance lives in the shared
+  // <ArtifactExport> (the ONE neutral export affordance; the rights filter is
+  // server-side and it surfaces the 403 reason). Rendered below when there's a
+  // synthesis id.
   const synthesisId = synthesis.synthesisId;
-
-  async function handleExportArtifact(format: string): Promise<void> {
-    if (!synthesisId || exporting) return;
-    setExporting(true);
-    setExportError(null);
-    try {
-      const resp = await apiFetch(
-        `${API_BASE}/api/syntheses/${encodeURIComponent(synthesisId)}/artifact?format=${encodeURIComponent(format)}`,
-      );
-      if (resp.status === 403) {
-        const body = (await resp.json().catch(() => null)) as
-          | { reason?: string }
-          | null;
-        setExportError(
-          body?.reason ?? "Export refused under the source's rights.",
-        );
-        return;
-      }
-      if (!resp.ok) {
-        setExportError(`Export failed (HTTP ${resp.status}).`);
-        return;
-      }
-      const blob = await resp.blob();
-      const ext =
-        EXPORT_FORMATS.find((f) => f.id === format)?.ext ?? "html";
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `synthesis-${synthesisId}.${ext}`;
-      anchor.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      setExportError("Export failed — the server could not be reached.");
-    } finally {
-      setExporting(false);
-    }
-  }
 
   // SPR-08 M5 — the review-due decorations pass (default-off; empty map unless
   // the toggle is flipped AND review-state is wired). Computed once per render,
@@ -344,31 +296,10 @@ export default function MasterMdViewer({
           )}
           {synthesisId && (
             <div className="mb-3">
-              <button
-                type="button"
-                onClick={() => handleExportArtifact("html")}
-                disabled={exporting}
-                className="text-xs font-mono underline decoration-dotted underline-offset-2 text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright disabled:opacity-50"
-              >
-                {exporting ? "Exporting…" : "Export artifact"}
-              </button>
-              {/* SPR-08 M4 — the other formats, equal prominence, neutral copy. */}
-              {EXPORT_FORMATS.slice(1).map((f) => (
-                <button
-                  key={f.id}
-                  type="button"
-                  onClick={() => handleExportArtifact(f.id)}
-                  disabled={exporting}
-                  className="ml-3 text-xs font-mono underline decoration-dotted underline-offset-2 text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright disabled:opacity-50"
-                >
-                  {f.label}
-                </button>
-              ))}
-              {exportError && (
-                <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                  Export refused: {exportError}
-                </p>
-              )}
+              <ArtifactExport
+                basePath={`/api/syntheses/${synthesisId}`}
+                filenamePrefix={`synthesis-${synthesisId}`}
+              />
             </div>
           )}
           <div className="flex items-center gap-3 text-xs font-mono text-shadow-1 dark:text-moonlight">
