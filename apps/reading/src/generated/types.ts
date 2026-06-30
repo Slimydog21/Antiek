@@ -2414,6 +2414,9 @@ export interface MarginaliaNotedPayload {
   excerpt: string;
   source_kind?: "user";
   chunk_id?: string | null;
+  voice_transcript?: string | null;
+  voice_event_id?: string | null;
+  audio_ref?: string | null;
 }
 
 /**

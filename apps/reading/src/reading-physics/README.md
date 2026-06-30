@@ -441,9 +441,12 @@ clip with a **failed/absent transcript** renders the honest marker
 (`[voice clip — transcript unavailable]`), never a fabricated transcript.
 
 Like the SPR-06 `source.read` emit and the SPR-05 geometry pass, the actual
-**emit** (post the note event + store the blob) is a deferred **surface
-integration** — the augmentation reads the resolved note/clip view and ships
-**dormant-correct**. Full decision: `docs/decisions/spr-07-marginalia-voice-storage.md`.
+**emit** is a surface integration, not augmentation code. It is now wired for the
+shared FloatMenu path: text notes post `marginalia.noted`, and spoken notes carry
+the shared voice capture's `voice_transcript`, `voice_event_id`, and `audio_ref`
+by reference on that same note event. The augmentation reads the resolved
+note/clip view only. Full decision:
+`docs/decisions/spr-07-marginalia-voice-storage.md`.
 
 ### §9.0 — a non-servable quote target (M6)
 

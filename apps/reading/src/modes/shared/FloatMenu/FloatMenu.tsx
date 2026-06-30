@@ -294,6 +294,11 @@ function NotePanel({
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [voiceClip, setVoiceClip] = useState<{
+    transcript: string;
+    eventId: string | null;
+    audioRef: string | null;
+  } | null>(null);
   const voice = useVoiceCapture();
 
   const save = useCallback(
@@ -307,7 +312,12 @@ function NotePanel({
       setError(null);
       try {
         // NOTE → postTypedEvent, source_kind "user" (see floatMenuActions).
-        await saveFloatMenuNote({ investigationId, selection, noteText: t });
+        await saveFloatMenuNote({
+          investigationId,
+          selection,
+          noteText: t,
+          voiceClip,
+        });
         setSaved(true);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -315,7 +325,7 @@ function NotePanel({
         setBusy(false);
       }
     },
-    [investigationId, selection],
+    [investigationId, selection, voiceClip],
   );
 
   // Voice: record → transcribe → the USER-sourced transcript becomes the note
@@ -325,7 +335,14 @@ function NotePanel({
   const captureVoice = useCallback(async () => {
     if (voice.phase === "recording") {
       const res = await voice.stopAndCapture({ investigationId });
-      if (res) setText((prev) => (prev ? prev + " " : "") + res.transcript);
+      if (res) {
+        setText((prev) => (prev ? prev + " " : "") + res.transcript);
+        setVoiceClip({
+          transcript: res.transcript,
+          eventId: res.eventId,
+          audioRef: res.audioRef,
+        });
+      }
     } else {
       await voice.start();
     }

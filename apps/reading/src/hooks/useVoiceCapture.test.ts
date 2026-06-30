@@ -150,6 +150,7 @@ describe("useVoiceCapture — capture → transcribe → user-sourced (M1/M3)", 
     expect(captured!.sourceKind).toBe("user");
     expect(captured!.transcriptStatus).toBe("ok");
     expect(captured!.eventId).toBe("evt-9");
+    expect(captured!.audioRef).toBe("voice-blob://sha256/feedface.webm");
     expect(result.current.phase).toBe("captured");
 
     // M3: the PERSISTED event carries source_kind "user" (distinguishable
