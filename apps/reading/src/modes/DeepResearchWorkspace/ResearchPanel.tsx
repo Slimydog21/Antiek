@@ -53,7 +53,8 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
   const [redirectText, setRedirectText] = useState("");
   const terminal = TERMINAL_STATES.has(research.state);
   const isPaused = research.state === "paused";
-  const isRunning = research.state === "running" || research.state === "stopping";
+  const isRunning = research.state === "running";
+  const canSteer = !terminal && research.state !== "stopping";
 
   return (
     <section
@@ -75,7 +76,7 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
         <span className="truncate font-mono opacity-60">{research.investigation_id.slice(-12)}</span>
       </div>
 
-      {!terminal && (
+      {canSteer && (
         <div className="flex flex-wrap gap-1.5">
           {isPaused ? (
             <LemonButton size="sm" variant="secondary" disabled={busy}
@@ -93,7 +94,7 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
         </div>
       )}
 
-      {redirectOpen && !terminal && (
+      {redirectOpen && canSteer && (
         <form
           className="flex gap-1.5"
           onSubmit={(e) => {

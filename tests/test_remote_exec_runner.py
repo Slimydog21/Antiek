@@ -218,3 +218,26 @@ async def test_command_after_finish_is_noop(events_dir):
     await r.steer(h, Command(kind=CommandKind.STOP))
     await r.cancel(h)  # idempotent teardown
     assert prov.torn_down.count("inv-0") == 1
+
+
+async def test_commands_after_stop_request_are_noops(events_dir):
+    prov = FakeProvider(steps=50, delay_s=0.02)
+    r = RemoteResearchRunner(prov, events_dir=events_dir, seal_on_complete=False)
+    h = await r.start("inv-0", _plan(0, cap=0.5))
+    import asyncio
+    await asyncio.sleep(0.03)
+    await r.steer(h, Command(kind=CommandKind.STOP))
+    assert r.status(h).state == RunState.STOPPING
+    before_cap = r.cost(h).cap_usd
+    sent_before = len(prov.steered)
+
+    await r.steer(h, Command(kind=CommandKind.PAUSE))
+    await r.steer(h, Command(kind=CommandKind.REDIRECT, payload={"sub_question": "revived?"}))
+    await r.steer(h, Command(kind=CommandKind.DEEPEN, payload={"extra_budget_usd": 0.5, "follow_up": "revive"}))
+
+    assert r.status(h).state == RunState.STOPPING
+    assert r.status(h).sub_question != "revived?"
+    assert r.cost(h).cap_usd == pytest.approx(before_cap)
+    assert r.status(h).follow_ups == []
+    assert len(prov.steered) == sent_before
+    await r.cancel(h)
