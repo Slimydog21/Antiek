@@ -1,11 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────
 // openDocument — the ONE door contract (antiek-reader SPR-01 M3).
 //
-// THIS FILE IS TYPES + JSDoc ONLY. It ships NO implementation. SPR-05
-// implements `openDocument`, routes every open-a-document affordance through
-// it, and deletes the four redundant renderers. SPR-01 pins the signature so
-// downstream call sites can type-import it TODAY (the seam other sprints
-// compose against without re-litigating its shape).
+// THIS FILE IS TYPES + JSDoc ONLY. It ships NO implementation. The runtime
+// implementation lives in `openDocument.ts`, routes open-a-document affordances
+// through `/read/:documentId`, and keeps redundant renderers out of production
+// doors. SPR-01 pinned the signature so downstream call sites can type-import
+// the seam without re-litigating its shape.
 //
 // The diagnosis this closes (master spec): four-plus renderers exist by
 // accident and several doors (ChunkModal, DocumentsIndex, the CommandPalette
@@ -43,24 +43,21 @@ export interface OpenDocumentOptions {
 /**
  * Open a document in the ONE Reader.
  *
- * Every open-a-document affordance routes through this single function — see
- * `~/specs/antiek-reader/migration-map.md` for the exhaustive door list SPR-05
- * must converge. `/wrestle` is killed as an OPEN target (its upload affordance
+ * Every production open-a-document affordance routes through this single
+ * function. `/wrestle` is killed as an OPEN target (its upload affordance
  * survives only as an INGEST entry point).
  *
- * ── REQUIRED RIGHTS/TIER SEAM (binding on the SPR-05 implementation) ────────
- * `openDocument` MUST consult the serve gate BEFORE mounting the Reader. The
- * authoritative gate is the backend `substrate.books.serve.serve_full_text`
- * (deny-by-default; §9.0 Hachette/Bartz legal gate), surfaced to the frontend
- * over `GET /books/{documentId}/full-text` (which routes through
- * `serve_full_text_guarded` — `interfaces/research/api/books.py`). The response
- * carries the servability verdict (`serves_full_text` / `servable`), the
- * snippet-vs-full-text body, and the arXiv rights context (`tier`,
- * `ad_eligible`, `canonical_url`, `license`). The Reader renders the FULL
- * typed-block body only when the gate returns it; a gated document renders its
- * snippet/metadata view, a taken-down document renders the takedown notice.
- * SPR-05 MUST NOT route around this gate (a second, ungated fetch path would
- * re-open the §9.0 leak). The owner/personal-reading full-read switch
+ * ── REQUIRED RIGHTS/TIER SEAM ───────────────────────────────────────────────
+ * `openDocument` MUST NOT route around the serve gate. The authoritative gate
+ * is the backend `substrate.books.serve.serve_full_text` (deny-by-default; §9.0
+ * Hachette/Bartz legal gate), surfaced to the frontend over
+ * `GET /books/{documentId}/full-text` (which routes through
+ * `serve_full_text_guarded` — `interfaces/research/api/books.py`). The runtime
+ * resolver may stay a thin navigation function, but the mounted Reader route
+ * MUST fetch through that endpoint and render the FULL typed-block body only
+ * when the gate returns it. A gated document renders its snippet/metadata view,
+ * a taken-down document renders the takedown notice. A second, ungated fetch
+ * path would re-open the §9.0 leak. The owner/personal-reading full-read switch
  * (`serve_full_text(..., owner=True)`) is the only widening, and only for the
  * operator's own fetched third-party content.
  *
@@ -73,10 +70,9 @@ export type OpenDocument = (
 ) => void;
 
 /**
- * The props the ONE `<Reader>` mounts with (SPR-03 builds the component; SPR-05
- * wires `openDocument` to mount it). The Reader fetches the typed-block
- * `Document` (document_model.gen.ts) for `documentId` through the gated
- * endpoint above; `page` / `chunkId` / `highlight` position it.
+ * The route-level props for the ONE Reader surface. BookReader fetches the
+ * typed-block `Document` (document_model.gen.ts) for `documentId` through the
+ * gated endpoint above; `page` / `chunkId` / `highlight` position it.
  *
  * There is exactly one component with this prop shape — the "compose, don't
  * fork" invariant. SPR-09's conformance test asserts no second document
@@ -93,9 +89,9 @@ export interface ReaderProps {
 }
 
 /**
- * The shape of the gated serve response `openDocument` consults before
- * mounting. Documented here (not a fetch impl) so SPR-05's gate call is typed
- * against the contract, not an ad-hoc object.
+ * The shape of the gated serve response the Reader route consults before
+ * rendering the full body. Documented here (not a fetch impl) so gate checks are
+ * typed against the contract, not an ad-hoc object.
  *
  * Field names mirror the REAL `FullTextResponse` returned by
  * `GET /books/{document_id}/full-text` (`interfaces/research/api/books.py`),
