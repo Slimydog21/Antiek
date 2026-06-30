@@ -173,6 +173,32 @@ describe("Reader — citation as a first-class clickable marker (M3)", () => {
     expect(openDocument).toHaveBeenCalledWith("doc-source-9", { chunkId: "chunk-1" });
   });
 
+  it("an unresolved citation (failed fetch) renders a non-clickable marker", () => {
+    const openDocument = vi.fn();
+    const doc = {
+      ...allBlocksDocument,
+      blocks: [
+        {
+          type: "paragraph" as const,
+          block_id: "p-unresolved",
+          spans: [
+            {
+              type: "citation" as const,
+              source_document_id: "",
+              chunk_id: "",
+              marker: "[?]",
+            },
+          ],
+        },
+      ],
+    };
+    const { container } = renderDoc(doc, { openDocument });
+    const unresolved = container.querySelector("[data-citation-unresolved]");
+    expect(unresolved).toBeTruthy();
+    expect(container.querySelector("button[data-citation-marker]")).toBeNull();
+    expect(openDocument).not.toHaveBeenCalled();
+  });
+
   it("hover shows the resolved source title when a resolver is wired", () => {
     const { container } = render(
       <ReaderProvider

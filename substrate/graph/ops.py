@@ -534,6 +534,221 @@ def insert_edge(
 
 
 # ---------------------------------------------------------------------------
+# RDR SPR-07 — research-source dedup (normalized URL + content hash)
+# ---------------------------------------------------------------------------
+
+# DEDUP THRESHOLD (rigor #5 — logged inline, reversible):
+#   exact match on BOTH normalized URL AND sha256(raw_text) body hash.
+#   No fuzzy / cosine threshold for documents — unlike unit_dedup (insights),
+#   a fetched web body is byte-identical or it is a different revision.
+# FALSE-MERGE RISK:
+#   Two genuinely distinct articles served at the same canonical URL across time
+#   (a news site reusing a slug) would dedup to the FIRST ingested body if only
+#   URL were used. Requiring content-hash match prevents that silent loss UNLESS
+#   the bodies are byte-identical (then dedup is correct). Residual risk: two
+#   distinct sources that normalize to the same URL AND happen to hash identically
+#   (practically impossible at sha256). On suspected collision (same URL, different
+#   hash): mint a fresh document_id via ingest_url's url_doc_id(final_url) — the
+#   new body overwrites nothing; url_alias still points the requested URL at the
+#   canonical first-seen doc (§14.2) so re-fetch of the SAME url+body dedups.
+# REVERSAL: if >1% of re-ingests show same-url/different-hash that operators
+#   expected to be distinct revisions kept side-by-side, lower to URL-only dedup
+#   with explicit version suffixes (operator decision).
+#
+# OPERATOR DECISION (rigor #1, #5) — NOT resolved here:
+#   Fetched web sources are stamped ``personal_reading`` (deny-by-default).
+#   SERVING them on the public read path touches the legal gate — flagged in
+#   the handoff; this module does NOT mark them servable.
+
+
+def normalize_source_url(url: str) -> str:
+    """Normalization for dedup identity: lower-case scheme+host, strip fragment,
+    collapse trailing slash on the path (not on the bare host root)."""
+    from urllib.parse import urlparse, urlunparse
+
+    if not url or not url.strip():
+        raise ValueError("empty url")
+    parsed = urlparse(url.strip())
+    scheme = (parsed.scheme or "https").lower()
+    netloc = parsed.netloc.lower()
+    path = parsed.path or ""
+    if path != "/" and path.endswith("/"):
+        path = path.rstrip("/")
+    return urlunparse((scheme, netloc, path, "", parsed.query, ""))
+
+
+def document_body_hash(raw_text: str) -> str:
+    """sha256: prefix hash of a document body for dedup comparison."""
+    from processing.chunking.chunker import content_hash
+
+    return f"sha256:{content_hash(raw_text or '')}"
+
+
+def find_existing_source_document(
+    con: LockedConnection,
+    *,
+    normalized_url: str,
+    body_hash: str | None = None,
+) -> str | None:
+    """Return an existing ``document_id`` when normalized URL + body hash match.
+
+    Lookup order:
+      1. ``url_alias`` for the normalized URL (§14.2 canonical doc).
+      2. ``documents.source_uri`` / metadata final_url fallback.
+    When ``body_hash`` is supplied, the stored ``raw_text`` must hash to the
+    same value — otherwise returns None (same URL, different revision).
+
+    Read-only — accepts any connection (the dedup probe runs before ingest)."""
+    candidates: list[str] = []
+    try:
+        rows = con.execute(
+            "SELECT document_id FROM url_alias WHERE requested_url = ?",
+            [normalized_url],
+        ).fetchall()
+        candidates.extend(str(r[0]) for r in rows)
+    except Exception:
+        pass
+    rows = con.execute(
+        "SELECT document_id, raw_text, metadata FROM documents "
+        "WHERE source_uri = ? OR source_uri = ?",
+        [normalized_url, normalized_url.rstrip("/")],
+    ).fetchall()
+    for doc_id, raw_text, meta_raw in rows:
+        did = str(doc_id)
+        if did not in candidates:
+            candidates.append(did)
+        if meta_raw:
+            try:
+                meta = json.loads(meta_raw) if isinstance(meta_raw, str) else {}
+            except (TypeError, ValueError):
+                meta = {}
+            for key in ("final_url", "requested_url"):
+                val = meta.get(key)
+                if isinstance(val, str) and normalize_source_url(val) == normalized_url:
+                    if did not in candidates:
+                        candidates.append(did)
+    if not candidates:
+        return None
+    if body_hash is None:
+        return candidates[0]
+    for did in candidates:
+        row = con.execute(
+            "SELECT raw_text FROM documents WHERE document_id = ?", [did],
+        ).fetchone()
+        if row is None:
+            continue
+        stored_hash = document_body_hash(row[0] or "")
+        if stored_hash == body_hash:
+            return did
+    return None
+
+
+def ensure_source_anchor_node(
+    con: LockedConnection,
+    *,
+    document_id: str,
+    chunk_id: str,
+    investigation_id: str,
+    embedding_provider: Any | None = None,
+) -> str:
+    """Return an ``entity`` anchor node id for a (document, chunk) pair.
+
+    Used as the target of ``supported_by`` / ``cites`` edges. Idempotent —
+    reuses an existing anchor when present."""
+    _assert_write_locked(con)
+    anchor_id = content_addressed_id("node", f"source-anchor|{document_id}|{chunk_id}")
+    if _exists(con, "nodes", "node_id", anchor_id):
+        return anchor_id
+    row = con.execute(
+        "SELECT text FROM chunks WHERE chunk_id = ? AND document_id = ?",
+        [chunk_id, document_id],
+    ).fetchone()
+    label = (row[0][:160] if row and row[0] else f"{document_id}#{chunk_id}").strip()
+    if not label:
+        label = f"{document_id}#{chunk_id}"
+    from processing.embedding.embed import default_embedding_provider
+
+    provider = embedding_provider or default_embedding_provider()
+    insert_node(
+        con,
+        canonical_label=label,
+        node_type="entity",
+        graph_scope="cross_domain",
+        investigation_id=investigation_id,
+        embedding=provider.encode(label),
+        metadata={
+            "anchor_kind": "source_chunk",
+            "source_document_id": document_id,
+            "chunk_id": chunk_id,
+        },
+        node_id=anchor_id,
+        on_conflict="ignore",
+    )
+    return anchor_id
+
+
+def ensure_artifact_anchor_node(
+    con: LockedConnection,
+    *,
+    artifact_document_id: str,
+    title: str,
+    investigation_id: str,
+    embedding_provider: Any | None = None,
+) -> str:
+    """Return an ``entity`` anchor for a persisted synthesis artifact document."""
+    _assert_write_locked(con)
+    anchor_id = content_addressed_id("node", f"artifact-anchor|{artifact_document_id}")
+    if _exists(con, "nodes", "node_id", anchor_id):
+        return anchor_id
+    from processing.embedding.embed import default_embedding_provider
+
+    provider = embedding_provider or default_embedding_provider()
+    insert_node(
+        con,
+        canonical_label=title[:160] or artifact_document_id,
+        node_type="entity",
+        graph_scope="cross_domain",
+        investigation_id=investigation_id,
+        embedding=provider.encode(title or artifact_document_id),
+        metadata={
+            "anchor_kind": "synthesis_artifact",
+            "artifact_document_id": artifact_document_id,
+        },
+        node_id=anchor_id,
+        on_conflict="ignore",
+    )
+    return anchor_id
+
+
+def insert_provenance_edge(
+    con: LockedConnection,
+    *,
+    source_node_id: str,
+    target_node_id: str,
+    relation: str,
+    investigation_id: str,
+    source_document_id: str | None = None,
+    chunk_id: str | None = None,
+    source_tier: int = 4,
+    extraction_confidence: float = 0.8,
+) -> str:
+    """Write one provenance edge through the single sanctioned writer."""
+    return insert_edge(
+        con,
+        source_node_id=source_node_id,
+        target_node_id=target_node_id,
+        relation=relation,
+        source_tier=source_tier,
+        extraction_confidence=extraction_confidence,
+        graph_scope="cross_domain",
+        investigation_id=investigation_id,
+        source_document_id=source_document_id,
+        chunk_id=chunk_id,
+        on_conflict="ignore",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Deliverables (Sprint 13 — creation surface)
 # ---------------------------------------------------------------------------
 

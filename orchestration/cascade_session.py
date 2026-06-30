@@ -191,9 +191,11 @@ class CascadeSession:
 
     async def join_and_merge(self) -> dict:
         """Wait for all researches; drain the promotion funnel; link each
-        research's promoted insights to its sub-question node. One research
-        failing does not abort the merge for its siblings."""
+        research's promoted insights to its sub-question node; persist the
+        cascade synthesis artifact (RDR SPR-07 M3/M4). One research failing
+        does not abort the merge for its siblings."""
         await self._runner.join()
+        artifact_id: str | None = None
         if self._funnel is not None:
             await self._funnel.drain_and_stop()
         linked = 0
@@ -204,7 +206,43 @@ class CascadeSession:
                 linked += self._link_findings(leaf)
             except Exception:  # isolation: a bad merge for one leaf is not fatal
                 continue
-        return {"linked_findings": linked}
+        if self._funnel is not None and self._funnel.provenance_state.findings:
+            try:
+                artifact_id = self._persist_synthesis_artifact()
+            except Exception:  # artifact failure must not undo leaf merges
+                artifact_id = None
+        return {"linked_findings": linked, "artifact_document_id": artifact_id}
+
+    def _persist_synthesis_artifact(self) -> str | None:
+        """RDR SPR-07 M3 — invoke cascade synthesizer + write cites edges."""
+        from interfaces.research.api.cascade_synthesizer import (
+            persist_cascade_synthesis_artifact,
+        )
+
+        funnel = self._funnel
+        if funnel is None:
+            return None
+        con = connect_write(self._db_path, purpose="cascade_synthesis_artifact")
+        try:
+            con.execute("BEGIN")
+            try:
+                result = persist_cascade_synthesis_artifact(
+                    con,
+                    session_id=self.session_id,
+                    investigation_id=self.session_id,
+                    provenance_state=funnel.provenance_state,
+                    embedding_provider=getattr(funnel, "_embedding_provider", None),
+                )
+                con.execute("COMMIT")
+            except Exception:
+                con.execute("ROLLBACK")
+                raise
+        finally:
+            con.close()
+        if result is None:
+            return None
+        funnel.artifact_document_id = result.artifact_document_id
+        return result.artifact_document_id
 
     def _link_findings(self, leaf: Leaf) -> int:
         """Link insight nodes promoted under this research to its sub-question

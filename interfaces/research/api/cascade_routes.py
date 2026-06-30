@@ -426,6 +426,10 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
 
 
 async def _run_to_completion(session: CascadeSession) -> None:
+    # RDR SPR-07 M3: ``join_and_merge`` drains the promotion funnel (source
+    # ingest + supported_by edges) then persists the synthesis artifact via
+    # ``interfaces/research/api/cascade_synthesizer`` (cassette-deterministic
+    # without provider keys; live synthesizer dispatch awaits SPR-03).
     with suppress(Exception):  # pragma: no cover — best-effort
         await session.join_and_merge()
 

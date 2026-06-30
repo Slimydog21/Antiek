@@ -275,6 +275,17 @@ INSIGHT_QUESTION_RELATIONS: Final[tuple[InsightQuestionRelation, ...]] = (
 # EVENT_SCHEMA_VERSION bump.
 DUPLICATE_OF_RELATION: Final[str] = "duplicate_of"
 
+# ── RDR SPR-07 — synthesis artifact → cited source provenance edge ──
+# The cascade synthesis ``Document`` (the report) cites each persisted source
+# via a ``cites`` edge from the artifact anchor node to the source anchor node.
+# Checked existing vocabulary first: ``supported_by`` / ``resolved_by`` /
+# ``source_document_id`` already exist; ``cites`` is NEW because no prior
+# relation named a synthesis artifact pointing at its bibliography. Free-form
+# ``edges.relation`` TEXT (same as ``duplicate_of``) — no ActionType bump.
+# Target is an ``entity`` anchor node for the cited chunk (node→node FK); the
+# cited ``source_document_id`` + ``chunk_id`` ride the edge columns.
+CITES_RELATION: Final[str] = "cites"
+
 # Fast membership + validation surface for the promotion functions.
 INSIGHT_QUESTION_RELATION_NAMES: Final[frozenset[str]] = frozenset(
     r.relation for r in INSIGHT_QUESTION_RELATIONS

@@ -25,9 +25,32 @@ import { useReaderContext } from "../ReaderContext";
 export default function Citation({ span }: { span: CitationSpan }) {
   const { openDocument, resolveSourceTitle } = useReaderContext();
 
+  // A citation whose source failed to persist (SPR-07 partial-failure path)
+  // degrades to a non-clickable marker — honest, not a dead navigation.
+  const unresolved =
+    !span.source_document_id?.trim() || !span.chunk_id?.trim();
+
   // Hover affordance (M3): the source title when a resolver is wired, else the
   // marker itself — never an empty/fabricated title.
-  const title = resolveSourceTitle?.(span.source_document_id) ?? span.marker;
+  const title = unresolved
+    ? `Source unavailable (${span.marker})`
+    : (resolveSourceTitle?.(span.source_document_id) ?? span.marker);
+
+  if (unresolved) {
+    return (
+      <span
+        data-citation-marker
+        data-citation-unresolved
+        data-source-document-id={span.source_document_id || ""}
+        data-chunk-id={span.chunk_id || ""}
+        title={title}
+        aria-label={title}
+        className="reader-citation align-baseline text-shadow-1 dark:text-moonlight decoration-dotted underline-offset-2 cursor-not-allowed"
+      >
+        {span.marker}
+      </span>
+    );
+  }
 
   return (
     <button

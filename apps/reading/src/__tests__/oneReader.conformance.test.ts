@@ -284,7 +284,8 @@ describe("oneReader conformance — door (b): no second document renderer reacha
   it("the DRW canvas 'cite source' opens the source via openDocument (no ad-hoc document open)", () => {
     const idx = readSrc("modes/DeepResearchWorkspace/index.tsx");
     expect(idx).toMatch(/useOpenDocument\(\)/);
-    expect(idx).toMatch(/openDocument\(node\.source_document_id\)/);
+    expect(idx).toMatch(/openDocument\(\s*node\.source_document_id/);
+    expect(idx).toMatch(/chunkId:\s*node\.chunk_id/);
     // The cite-source button is now WIRED live (Canvas receives onCiteSource).
     expect(idx).toMatch(/onCiteSource=\{onCiteSource\}/);
     const blockCard = readSrc("modes/DeepResearchWorkspace/Canvas/BlockCard.tsx");

@@ -69,6 +69,7 @@ class DistilledNodeOut(BaseModel):
     text: str
     confidence: str | None = None
     source_document_id: str | None = None
+    chunk_id: str | None = None
     refinement_count: int = 0
     escalated: bool = False
     reserved_child_investigation_id: str | None = None
