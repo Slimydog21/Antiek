@@ -1,7 +1,7 @@
 ## Sprint SPR-08 — Handoff
 
 ### Status
-done (sharpen r2: legacy StartResearch tests skipped; rigor #3 denied-doc + post-failure tests; conformance guard)
+done
 
 ### Honesty banner (rigor #1) — DO NOT DROP
 Local vector path: **LIVE**, no key — operator can use on merge.
