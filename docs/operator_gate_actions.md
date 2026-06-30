@@ -525,11 +525,11 @@ new interaction primitives, all behind the existing gates.
 - Mint the visual baselines for the new shell/home/mascot: `cd apps/reading &&
   npm run visualtest:update` (SPR-12 deferred this so it wouldn't enshrine a
   pre-fix render).
-- Two PRE-EXISTING test flakes (NOT introduced here; flag to stabilize):
+- One PRE-EXISTING test flake remains flagged to stabilize:
   `apps/reading/src/components/ai/aiActionsEventBridge.test.ts` (vitest, passes
-  7/7 in isolation) and `tests/test_magic_link_auth.py::test_magic_link_rejects_tampered_token`
-  (pytest, passes in isolation; the last-base64-char tamper on a timestamped
-  token doesn't always change the signature).
+  7/7 in isolation). The former magic-link tamper flake is closed: token
+  verification now rejects non-canonical base64url signature encodings, so a
+  last-character text tamper cannot alias to the same decoded MAC.
 - Deploy reminder: the backend deploys with `--skip-tags frontend` — the
   `deploy.yml` frontend play builds from the LOCAL working tree (so it inherits
   uncommitted parallel-session WIP); the frontend ships via Pages-from-`main`.
@@ -565,12 +565,11 @@ to `main` as **PR #43 (merge `9aeb2c9`, `EVENT_SCHEMA_VERSION` 24→27)** and wa
   `personal_reading_nonattributable`, `personal_reading_not_in_training`) + the
   two-sided serve gate (write-side deny-by-default `graph/ops.py`, read-side
   exclusion `graph/search.py`).
-- The `test_magic_link_rejects_tampered_token` flake noted above is the same
-  pre-existing order-flake this run also hit on CI — not introduced by the lane
-  (0-line auth diff); belongs to whoever owns auth. (PRcrouch also re-ran a
-  pre-existing `test_arxiv_audit` order-flake that fails on `main` itself; both
-  point at the deferred suite-parallelization CI-infra task in
-  `docs/decisions/ci-pytest-timeout.md`.)
+- The `test_magic_link_rejects_tampered_token` flake noted by the original lane
+  handoff is closed by the canonical magic-link token decoder. PRcrouch also
+  re-ran a pre-existing `test_arxiv_audit` order-flake that fails on `main`
+  itself; that remains part of the deferred suite-parallelization CI-infra task
+  in `docs/decisions/ci-pytest-timeout.md`.
 
 ### Reference docs for cross-session continuity
 

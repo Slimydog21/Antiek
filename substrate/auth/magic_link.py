@@ -91,6 +91,13 @@ def _b64url_decode(text: str) -> bytes:
     return base64.urlsafe_b64decode((text + pad).encode("ascii"))
 
 
+def _b64url_decode_canonical(text: str) -> bytes:
+    raw = _b64url_decode(text)
+    if _b64url_encode(raw) != text:
+        raise ValueError("non-canonical base64url segment")
+    return raw
+
+
 def _sign(audience: str, payload_bytes: bytes) -> bytes:
     mac = hmac.new(_secret(), digestmod=hashlib.sha256)
     mac.update(audience.encode("utf-8"))
@@ -121,8 +128,8 @@ def _decode(
         raise invalid_exc("malformed token")
     payload_b64, sig_b64 = token.split(".", 1)
     try:
-        payload_bytes = _b64url_decode(payload_b64)
-        provided_sig = _b64url_decode(sig_b64)
+        payload_bytes = _b64url_decode_canonical(payload_b64)
+        provided_sig = _b64url_decode_canonical(sig_b64)
     except (ValueError, base64.binascii.Error) as exc:
         raise invalid_exc(f"base64 decode failed: {exc}") from exc
     expected_sig = _sign(audience, payload_bytes)

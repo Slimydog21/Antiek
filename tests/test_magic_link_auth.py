@@ -19,8 +19,10 @@ content if needed.
 
 from __future__ import annotations
 
+import base64
 import json
 import time
+from string import ascii_letters, digits
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -67,6 +69,27 @@ def test_magic_link_rejects_tampered_token(monkeypatch):
     payload_b64, sig_b64 = tok.split(".", 1)
     flipped_sig = ("A" if sig_b64[0] != "A" else "B") + sig_b64[1:]
     tampered = f"{payload_b64}.{flipped_sig}"
+    with pytest.raises(InvalidToken):
+        verify_magic_link_token(tampered)
+
+
+def test_magic_link_rejects_noncanonical_signature_encoding(monkeypatch):
+    """Reject textual signature tampering even when base64 pad bits alias."""
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", _SECRET)
+    tok = mint_magic_link_token(_OPERATOR)
+    payload_b64, sig_b64 = tok.split(".", 1)
+    sig_bytes = base64.urlsafe_b64decode((sig_b64 + "=" * (-len(sig_b64) % 4)).encode("ascii"))
+    alphabet = ascii_letters + digits + "-_"
+    alias = next(
+        c
+        for c in alphabet
+        if c != sig_b64[-1]
+        and base64.urlsafe_b64decode(
+            ((sig_b64[:-1] + c) + "=" * (-len(sig_b64) % 4)).encode("ascii")
+        )
+        == sig_bytes
+    )
+    tampered = f"{payload_b64}.{sig_b64[:-1]}{alias}"
     with pytest.raises(InvalidToken):
         verify_magic_link_token(tampered)
 
@@ -304,6 +327,7 @@ def test_email_provider_factory_default_mock(monkeypatch):
     selects ResendEmailProvider."""
     monkeypatch.delenv("ANTIEK_EMAIL_PROVIDER", raising=False)
     from substrate.auth import get_email_provider
+
     assert get_email_provider().name == "mock"
 
     monkeypatch.setenv("ANTIEK_EMAIL_PROVIDER", "resend")
