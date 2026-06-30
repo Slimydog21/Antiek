@@ -149,8 +149,10 @@ describe("AISidecar event-log bridge", () => {
     expect(p.target_kind).toBe("notebook");
     expect(p.target_id).toBe("scratch");
     expect(typeof p.prev_state.etag).toBe("number");
+    expect("html" in p.prev_state).toBe(true);
     expect(p.next_state.etag).toBe((p.prev_state.etag as number) + 1);
     expect(p.next_state.block_kind).toBe("note");
+    expect(String(p.next_state.appended_html)).toContain("Worth chasing.");
   });
 
   it("chase_question WITH context emits target_kind=investigation_chase", async () => {

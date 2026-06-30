@@ -322,6 +322,13 @@ export function dispatchAiAction(
 ): DispatchedAction {
   const ws = useWorkspace.getState();
   const at = Date.now();
+  const restoreFocus = (id: string | null) => {
+    if (id) {
+      useWorkspace.getState().focus(id);
+    } else {
+      useWorkspace.setState({ focusedPanelId: null });
+    }
+  };
 
   /** Wrap a result with event-log bridging. Records ai.action.applied
    * and wraps undo to route through the substrate /ai/undo path first. */
@@ -367,6 +374,7 @@ export function dispatchAiAction(
         action.id ??
         `ai:${action.panel_kind}:${JSON.stringify(action.props ?? {})}`;
       const wasOpen = Boolean(ws.panels[id]);
+      const prevFocus = ws.focusedPanelId;
       const prevDescriptor = wasOpen ? ws.panels[id] : null;
       ws.open(
         action.panel_kind,
@@ -380,11 +388,16 @@ export function dispatchAiAction(
       const descriptor: AiEventDescriptor = {
         target_kind: "ui_layout",
         target_id: id,
-        prev_state: prevDescriptor
-          ? { open: true, kind: prevDescriptor.kind, mode: prevDescriptor.mode }
-          : { open: false },
+        prev_state: {
+          open: wasOpen,
+          focused_id: prevFocus,
+          ...(prevDescriptor
+            ? { kind: prevDescriptor.kind, mode: prevDescriptor.mode }
+            : {}),
+        },
         next_state: {
           open: true,
+          focused_id: id,
           kind: action.panel_kind,
           mode: action.mode ?? "floating",
           title: action.title ?? "",
@@ -397,7 +410,12 @@ export function dispatchAiAction(
           label: `🪟 Opened ${action.panel_kind}${
             action.title ? " · " + action.title : ""
           }`,
-          undo: wasOpen ? null : () => useWorkspace.getState().close(id),
+          undo: wasOpen
+            ? () => restoreFocus(prevFocus)
+            : () => {
+                useWorkspace.getState().close(id);
+                restoreFocus(prevFocus);
+              },
           at,
         },
         descriptor,
@@ -415,20 +433,31 @@ export function dispatchAiAction(
         summary: `focus_panel ${action.id}`,
       };
       return withEventLog(
-        { action, label: `🎯 Focused ${action.id}`, undo: null, at },
+        {
+          action,
+          label: `🎯 Focused ${action.id}`,
+          undo: () => restoreFocus(prevFocus),
+          at,
+        },
         descriptor,
       );
     }
 
     case "close_panel": {
       const existing = ws.panels[action.id];
+      const prevFocus = ws.focusedPanelId;
       ws.close(action.id);
       const descriptor: AiEventDescriptor = {
         target_kind: "ui_layout",
         target_id: action.id,
         prev_state: existing
-          ? { open: true, kind: existing.kind, mode: existing.mode }
-          : { open: false },
+          ? {
+              open: true,
+              focused_id: prevFocus,
+              kind: existing.kind,
+              mode: existing.mode,
+            }
+          : { open: false, focused_id: prevFocus },
         next_state: { open: false },
         summary: `close_panel ${action.id}`,
       };
@@ -444,6 +473,7 @@ export function dispatchAiAction(
                   mode: existing.mode,
                   title: existing.title,
                 });
+                restoreFocus(prevFocus);
               }
             : null,
           at,
@@ -489,10 +519,12 @@ export function dispatchAiAction(
       const html = aiBlockToHtml(action.block);
       const lsKey = "antiek.notebook." + action.notebook_id;
       const etagKey = lsKey + ".etag";
+      let previous: string | null = null;
       let prevEtag = 0;
       let nextEtag = 0;
       try {
-        const existing = window.localStorage.getItem(lsKey) ?? "<p></p>";
+        previous = window.localStorage.getItem(lsKey);
+        const existing = previous ?? "<p></p>";
         const current = window.localStorage.getItem(etagKey);
         prevEtag = current === null ? 0 : parseInt(current, 10) || 0;
         nextEtag = prevEtag + 1;
@@ -514,18 +546,40 @@ export function dispatchAiAction(
       const descriptor: AiEventDescriptor = {
         target_kind: "notebook",
         target_id: action.notebook_id,
-        prev_state: { etag: prevEtag },
-        next_state: { etag: nextEtag, block_kind: action.block.kind },
+        prev_state: { etag: prevEtag, html: previous },
+        next_state: {
+          etag: nextEtag,
+          block_kind: action.block.kind,
+          appended_html: html,
+        },
         summary: `add_to_notebook ${action.notebook_id} +1 ${action.block.kind}`,
       };
       return withEventLog(
         {
           action,
           label: `📓 Added a ${action.block.kind} to “${action.notebook_id}”`,
-          // Undo not implemented — TipTap-aware undo would need to
-          // surgically remove the appended fragment; the operator can
-          // delete the block from the notebook directly.
-          undo: null,
+          undo: () => {
+            try {
+              if (previous === null) {
+                window.localStorage.removeItem(lsKey);
+              } else {
+                window.localStorage.setItem(lsKey, previous);
+              }
+              if (prevEtag <= 0) {
+                window.localStorage.removeItem(etagKey);
+              } else {
+                window.localStorage.setItem(etagKey, String(prevEtag));
+              }
+              window.dispatchEvent(
+                new CustomEvent("antiek:notebook:appended", {
+                  detail: { notebookId: action.notebook_id, etag: prevEtag },
+                }),
+              );
+            } catch {
+              // Local notebook storage is best-effort; never strand the
+              // operator in the AI action log if browser storage fails.
+            }
+          },
           at,
         },
         descriptor,
@@ -535,6 +589,7 @@ export function dispatchAiAction(
     case "chase_question": {
       const panelId = `chase:${action.text.slice(0, 32)}`;
       const wasOpen = Boolean(ws.panels[panelId]);
+      const prevFocus = ws.focusedPanelId;
       ws.open(
         "Chase",
         {
@@ -550,9 +605,10 @@ export function dispatchAiAction(
       const descriptor: AiEventDescriptor = {
         target_kind: "investigation_chase",
         target_id: panelId,
-        prev_state: { open: wasOpen },
+        prev_state: { open: wasOpen, focused_id: prevFocus },
         next_state: {
           open: true,
+          focused_id: panelId,
           question: action.text,
           investigation_id: action.investigation_id ?? null,
         },
@@ -564,10 +620,14 @@ export function dispatchAiAction(
           label: `🔍 Chasing: “${action.text.slice(0, 48)}${
             action.text.length > 48 ? "…" : ""
           }”`,
-          undo: () =>
-            useWorkspace
-              .getState()
-              .close(panelId),
+          undo: () => {
+            if (wasOpen) {
+              restoreFocus(prevFocus);
+            } else {
+              useWorkspace.getState().close(panelId);
+              restoreFocus(prevFocus);
+            }
+          },
           at,
         },
         descriptor,

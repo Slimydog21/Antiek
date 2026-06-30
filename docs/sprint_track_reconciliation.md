@@ -98,11 +98,13 @@ evidence, not current code blockers.
 UI-redesign S8 wired AISidecar across surfaces. Master-spec PostHog Wedge 4
 specifies UI-action capability *with undo via the event log*.
 
-**Resolution:** scaffolded but not closed. Each AI-driven UI action must
-emit a typed `ai.action.applied` event with sufficient payload to invert
-the action. The undo button reads the most-recent `ai.action.applied`
-and replays the inverse via the substrate. **This is task #13 on the
-2026-05-22 task list and remains open.**
+**Resolution (updated 2026-06-30):** closed for the current structured sidecar
+action grammar. `AISidecar` supplies `AiActionContext`, `dispatchAiAction()`
+emits `ai.action.applied`, undo routes through `POST /ai/undo`, and the backend
+emits `ai.action.undone` after invoking the registered inverse handler. The
+verdict is recorded at `docs/decisions/posthog-wedge-4-verdict.md`. Future
+sidecar target kinds must register an undo handler before they can claim Wedge 4
+coverage.
 
 ### Conflict 5 — Status dots on `docs/sprint-breakdown.html`
 
