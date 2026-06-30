@@ -88,10 +88,8 @@ def _stale_pid_check(lock_path: str) -> None:
     try:
         os.kill(pid, 0)
     except (ProcessLookupError, PermissionError):
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(lock_path)
-        except OSError:
-            pass
 
 
 class WriteLockTimeout(RuntimeError):
@@ -162,14 +160,10 @@ def _log_write_event(
                 con.close()
         finally:
             if acquired:
-                try:
+                with contextlib.suppress(OSError):
                     fcntl.flock(fd, fcntl.LOCK_UN)
-                except OSError:
-                    pass
-            try:
+            with contextlib.suppress(OSError):
                 os.close(fd)
-            except OSError:
-                pass
     except Exception as e:  # pragma: no cover — observability is best-effort
         # If write_log doesn't exist yet (pre-migration), or any other failure,
         # don't propagate. A single line on stderr is enough for ops.
@@ -235,10 +229,8 @@ class LockedConnection:
             try:
                 fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
             finally:
-                try:
+                with contextlib.suppress(OSError):
                     os.close(self._lock_fd)
-                except OSError:
-                    pass
         # Log AFTER the lock is released, on a fresh connection (briefly
         # re-locked). The main pipeline never blocks on this.
         if self._db_path:
@@ -285,8 +277,8 @@ def connect_write(
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 break
-            except OSError as e:
-                if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
+            except OSError as exc:
+                if exc.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
                     raise
                 if time.monotonic() >= deadline:
                     # Record the failed-acquire in write_log so timeout events
@@ -304,15 +296,13 @@ def connect_write(
                     raise WriteLockTimeout(
                         f"Could not acquire write lock on {lock_path} within {timeout_s}s. "
                         f"Another writer is holding it; inspect with `lsof {lock_path}`."
-                    )
+                    ) from exc
                 time.sleep(poll_interval_s)
     except WriteLockTimeout:
         raise
     except Exception:
-        try:
+        with contextlib.suppress(OSError):
             os.close(fd)
-        except OSError:
-            pass
         raise
 
     # Stamp pid + purpose + ISO timestamp for ops debugging — best-effort.
@@ -365,7 +355,13 @@ def connect_write_retrying(
     simpler connect_write() for human-invoked operations that should fail
     fast.
     """
+    if max_retries < 0:
+        raise ValueError("max_retries must be >= 0")
+
     last_exc = None
+    attempts = max_retries + 1
+    attempt_label = "attempt" if attempts == 1 else "attempts"
+    total_wait_s = attempts * timeout_s + max_retries * retry_delay_s
     for attempt in range(max_retries + 1):
         try:
             return connect_write(
@@ -378,11 +374,11 @@ def connect_write_retrying(
             last_exc = e
             if attempt >= max_retries:
                 raise WriteLockTimeout(
-                    f"Could not acquire write lock after {max_retries + 1} attempts "
-                    f"({(max_retries + 1) * timeout_s:.0f}s total). Last error: {e}"
+                    f"Could not acquire write lock after {attempts} {attempt_label} "
+                    f"({total_wait_s:.0f}s total wait budget). Last error: {e}"
                 ) from e
             print(
-                f"Write lock busy (attempt {attempt + 1}/{max_retries + 1}). "
+                f"Write lock busy (attempt {attempt + 1}/{attempts}). "
                 f"Waiting {retry_delay_s:.0f}s before retry...",
                 flush=True,
             )
@@ -514,20 +510,18 @@ class FlockWriteCoordinator:
                 try:
                     fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                     break
-                except OSError as e:
-                    if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
+                except OSError as exc:
+                    if exc.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
                         raise
                     if time.monotonic() >= deadline:
                         os.close(fd)
                         raise WriteLockTimeout(
                             f"Could not acquire write lock on {lock_path} within {self.timeout_s}s."
-                        )
+                        ) from exc
                     time.sleep(0.1)
         except Exception:
-            try:
+            with contextlib.suppress(OSError):
                 os.close(fd)
-            except OSError:
-                pass
             raise
         try:
             os.ftruncate(fd, 0)
