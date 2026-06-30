@@ -1,0 +1,25 @@
+{
+  "modules": [
+    {
+      "mock_ratio": 0.4,
+      "module": "tests/fixture_alpha.py",
+      "n_mock_tests": 2,
+      "n_structure_only": 0,
+      "n_tests": 5,
+      "predictive_ratio": 1.0
+    },
+    {
+      "mock_ratio": 0.25,
+      "module": "tests/fixture_beta.py",
+      "n_mock_tests": 2,
+      "n_structure_only": 0,
+      "n_tests": 8,
+      "predictive_ratio": 1.0
+    }
+  ],
+  "tests": [],
+  "totals": {
+    "suite_mock_ratio": 0.3077
+  },
+  "tree_sha": "fixture-improved-sha"
+}

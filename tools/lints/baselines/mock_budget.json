@@ -1,0 +1,1719 @@
+{
+  "captured_at": "2026-06-30T06:05:36.782354+00:00",
+  "census_tree_sha": "fdf9ba02968d0078f91a462b695d89d7de47e3b0",
+  "modules": {
+    "tests/books/test_hathitrust.py": {
+      "locked_ratio": 0.7143,
+      "n_tests": 7
+    },
+    "tests/books/test_internet_archive.py": {
+      "locked_ratio": 0.5455,
+      "n_tests": 11
+    },
+    "tests/books/test_library_of_congress.py": {
+      "locked_ratio": 0.6667,
+      "n_tests": 9
+    },
+    "tests/books/test_orchestrator_pd_curated.py": {
+      "locked_ratio": 0.6667,
+      "n_tests": 3
+    },
+    "tests/books/test_pd_dedup_cross_source.py": {
+      "locked_ratio": 0.4,
+      "n_tests": 5
+    },
+    "tests/books/test_standard_ebooks.py": {
+      "locked_ratio": 0.8333,
+      "n_tests": 6
+    },
+    "tests/books/test_wikisource.py": {
+      "locked_ratio": 0.1667,
+      "n_tests": 6
+    },
+    "tests/e2e/test_flywheel.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 8
+    },
+    "tests/properties/test_paved_road_properties.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 11
+    },
+    "tests/properties/test_speak_properties.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 12
+    },
+    "tests/properties/test_substrate_properties.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 12
+    },
+    "tests/regression/test_agent_failures.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 11
+    },
+    "tests/test_accrual_ledger.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 15
+    },
+    "tests/test_acquisition_arxiv.py": {
+      "locked_ratio": 0.3125,
+      "n_tests": 32
+    },
+    "tests/test_acquisition_books.py": {
+      "locked_ratio": 0.4783,
+      "n_tests": 23
+    },
+    "tests/test_acquisition_interview.py": {
+      "locked_ratio": 0.75,
+      "n_tests": 8
+    },
+    "tests/test_acquisition_paulgraham.py": {
+      "locked_ratio": 0.3214,
+      "n_tests": 28
+    },
+    "tests/test_acquisition_podcasts.py": {
+      "locked_ratio": 0.4706,
+      "n_tests": 17
+    },
+    "tests/test_acquisition_search_exa.py": {
+      "locked_ratio": 0.7692,
+      "n_tests": 26
+    },
+    "tests/test_acquisition_search_exa_cache.py": {
+      "locked_ratio": 0.2353,
+      "n_tests": 17
+    },
+    "tests/test_acquisition_search_exa_lookup.py": {
+      "locked_ratio": 0.7059,
+      "n_tests": 17
+    },
+    "tests/test_acquisition_substack.py": {
+      "locked_ratio": 0.4348,
+      "n_tests": 23
+    },
+    "tests/test_acquisition_twitter.py": {
+      "locked_ratio": 0.7273,
+      "n_tests": 11
+    },
+    "tests/test_acquisition_urls.py": {
+      "locked_ratio": 0.4737,
+      "n_tests": 19
+    },
+    "tests/test_acquisition_urls_browserbase.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 15
+    },
+    "tests/test_acquisition_voice.py": {
+      "locked_ratio": 0.7,
+      "n_tests": 10
+    },
+    "tests/test_acquisition_youtube.py": {
+      "locked_ratio": 0.5312,
+      "n_tests": 32
+    },
+    "tests/test_ad_economics_e2e.py": {
+      "locked_ratio": 0.0476,
+      "n_tests": 21
+    },
+    "tests/test_ad_eligibility.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 5
+    },
+    "tests/test_ad_inventory.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 12
+    },
+    "tests/test_ad_inventory_persistence.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 6
+    },
+    "tests/test_ad_routes.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 12
+    },
+    "tests/test_ad_targeting.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 15
+    },
+    "tests/test_advertiser_onboarding.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 10
+    },
+    "tests/test_advertiser_onboarding_persistence.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 7
+    },
+    "tests/test_advertisers_store.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 10
+    },
+    "tests/test_agent_ams_ref_lint.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 2
+    },
+    "tests/test_agent_failure_log.py": {
+      "locked_ratio": 0.1765,
+      "n_tests": 17
+    },
+    "tests/test_agentmail_provider.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 16
+    },
+    "tests/test_ai_actions.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 13
+    },
+    "tests/test_anti_gaming.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 15
+    },
+    "tests/test_anti_gaming_red_team.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 16
+    },
+    "tests/test_anti_stranding_gate.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 8
+    },
+    "tests/test_antiek_cli.py": {
+      "locked_ratio": 0.4091,
+      "n_tests": 22
+    },
+    "tests/test_antiek_cli_perf.py": {
+      "locked_ratio": 0.2,
+      "n_tests": 5
+    },
+    "tests/test_antiek_memory_mcp.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 12
+    },
+    "tests/test_api.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 12
+    },
+    "tests/test_api_advertisers.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 10
+    },
+    "tests/test_api_ai_undo.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 3
+    },
+    "tests/test_api_auth_state.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 6
+    },
+    "tests/test_api_backtest_endpoint.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 2
+    },
+    "tests/test_api_cross_graph_citation.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 2
+    },
+    "tests/test_api_document_filing.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 4
+    },
+    "tests/test_api_documents_listing.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 6
+    },
+    "tests/test_api_federation.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 16
+    },
+    "tests/test_api_mcp_well_known.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 4
+    },
+    "tests/test_api_outcomes_endpoint.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 3
+    },
+    "tests/test_api_outcomes_recent.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 5
+    },
+    "tests/test_api_payouts_listing.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 6
+    },
+    "tests/test_api_skill_rules_listing.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 8
+    },
+    "tests/test_api_sprint17_21_endpoints.py": {
+      "locked_ratio": 0.1429,
+      "n_tests": 7
+    },
+    "tests/test_api_sprint18_19_endpoints.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 10
+    },
+    "tests/test_api_stats_and_notebook_edit.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 8
+    },
+    "tests/test_architectural_incapability.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 9
+    },
+    "tests/test_arxiv_ad_events.py": {
+      "locked_ratio": 0.1429,
+      "n_tests": 7
+    },
+    "tests/test_arxiv_audit.py": {
+      "locked_ratio": 0.0667,
+      "n_tests": 15
+    },
+    "tests/test_arxiv_bulk.py": {
+      "locked_ratio": 0.5556,
+      "n_tests": 9
+    },
+    "tests/test_arxiv_census.py": {
+      "locked_ratio": 0.0556,
+      "n_tests": 18
+    },
+    "tests/test_arxiv_enrich.py": {
+      "locked_ratio": 0.4,
+      "n_tests": 20
+    },
+    "tests/test_arxiv_index.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 3
+    },
+    "tests/test_arxiv_ingest.py": {
+      "locked_ratio": 0.8333,
+      "n_tests": 12
+    },
+    "tests/test_arxiv_licenses.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 21
+    },
+    "tests/test_arxiv_oai_pmh.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 10
+    },
+    "tests/test_arxiv_oai_records.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 22
+    },
+    "tests/test_arxiv_oai_sync.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 24
+    },
+    "tests/test_arxiv_pdf_fetch.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 11
+    },
+    "tests/test_arxiv_rights_invariant.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 10
+    },
+    "tests/test_arxiv_rights_tiers.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 16
+    },
+    "tests/test_async_interview.py": {
+      "locked_ratio": 0.9167,
+      "n_tests": 12
+    },
+    "tests/test_async_note_taker.py": {
+      "locked_ratio": 0.8,
+      "n_tests": 20
+    },
+    "tests/test_attribution.py": {
+      "locked_ratio": 0.4286,
+      "n_tests": 14
+    },
+    "tests/test_attribution_ab_report.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 6
+    },
+    "tests/test_attribution_audit.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 11
+    },
+    "tests/test_attribution_explain.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 7
+    },
+    "tests/test_attribution_golden.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 13
+    },
+    "tests/test_attribution_payout_subscription.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 5
+    },
+    "tests/test_auction_ab_eval.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 7
+    },
+    "tests/test_auction_features.py": {
+      "locked_ratio": 0.1111,
+      "n_tests": 9
+    },
+    "tests/test_auction_model.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 9
+    },
+    "tests/test_auction_ranker.py": {
+      "locked_ratio": 0.6667,
+      "n_tests": 9
+    },
+    "tests/test_audit_agent_session.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 3
+    },
+    "tests/test_author_split.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 6
+    },
+    "tests/test_autoresearch_wedge3.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 11
+    },
+    "tests/test_backfill_cc0_remap.py": {
+      "locked_ratio": 0.1667,
+      "n_tests": 6
+    },
+    "tests/test_backtest_db.py": {
+      "locked_ratio": 0.8125,
+      "n_tests": 16
+    },
+    "tests/test_benchmark_harness.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 8
+    },
+    "tests/test_bernays_public_domain.py": {
+      "locked_ratio": 0.4,
+      "n_tests": 15
+    },
+    "tests/test_billing_kyc.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 15
+    },
+    "tests/test_billing_pipeline.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 7
+    },
+    "tests/test_billing_tax_reports.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 7
+    },
+    "tests/test_biography_authoring.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 9
+    },
+    "tests/test_block_repository.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 11
+    },
+    "tests/test_book_corpus_gate.py": {
+      "locked_ratio": 0.8438,
+      "n_tests": 32
+    },
+    "tests/test_book_curate.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 3
+    },
+    "tests/test_book_qa_meta_reading.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 15
+    },
+    "tests/test_brainstorm_interview.py": {
+      "locked_ratio": 0.5714,
+      "n_tests": 7
+    },
+    "tests/test_byok_pipelines.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 5
+    },
+    "tests/test_byok_store.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 5
+    },
+    "tests/test_caddy_allowlist_coverage.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 2
+    },
+    "tests/test_canonical_verify.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 3
+    },
+    "tests/test_cascade_api.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 12
+    },
+    "tests/test_cascade_create_plan_light.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 2
+    },
+    "tests/test_cascade_planner.py": {
+      "locked_ratio": 0.9167,
+      "n_tests": 12
+    },
+    "tests/test_cc0_source_declared_remap.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 8
+    },
+    "tests/test_clis_exa_and_legal_gate.py": {
+      "locked_ratio": 0.5769,
+      "n_tests": 26
+    },
+    "tests/test_codegen.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 14
+    },
+    "tests/test_collective_graph_eligibility.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 11
+    },
+    "tests/test_compliance_invariants.py": {
+      "locked_ratio": 0.5294,
+      "n_tests": 17
+    },
+    "tests/test_compounding_interviewer.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 8
+    },
+    "tests/test_conformance_gate.py": {
+      "locked_ratio": 0.2143,
+      "n_tests": 14
+    },
+    "tests/test_connector_bridge.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 5
+    },
+    "tests/test_constraint_loop.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 18
+    },
+    "tests/test_contact_guard.py": {
+      "locked_ratio": 0.3333,
+      "n_tests": 6
+    },
+    "tests/test_context_pack.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 17
+    },
+    "tests/test_continuous_daemon.py": {
+      "locked_ratio": 0.5455,
+      "n_tests": 22
+    },
+    "tests/test_contracts_conformance.py": {
+      "locked_ratio": 0.5263,
+      "n_tests": 19
+    },
+    "tests/test_contracts_dependency_map.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 6
+    },
+    "tests/test_contracts_drw_lock.py": {
+      "locked_ratio": 0.125,
+      "n_tests": 8
+    },
+    "tests/test_contributor_economics.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 9
+    },
+    "tests/test_coordination_no_fork.py": {
+      "locked_ratio": 0.0833,
+      "n_tests": 12
+    },
+    "tests/test_corpus_audit.py": {
+      "locked_ratio": 0.0938,
+      "n_tests": 32
+    },
+    "tests/test_corpus_body_quality_gate.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 4
+    },
+    "tests/test_corpus_ingest_resilience.py": {
+      "locked_ratio": 0.75,
+      "n_tests": 4
+    },
+    "tests/test_corpus_quality.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 34
+    },
+    "tests/test_cost_consent_no_disbursement.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 16
+    },
+    "tests/test_crdt_grant_revoke_race.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 16
+    },
+    "tests/test_cross_doc.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 12
+    },
+    "tests/test_cross_graph.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 9
+    },
+    "tests/test_cross_graph_writer.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 9
+    },
+    "tests/test_cross_interviewee.py": {
+      "locked_ratio": 0.875,
+      "n_tests": 8
+    },
+    "tests/test_declared_bar.py": {
+      "locked_ratio": 0.5,
+      "n_tests": 16
+    },
+    "tests/test_decomposer_env.py": {
+      "locked_ratio": 0.6111,
+      "n_tests": 18
+    },
+    "tests/test_dedup.py": {
+      "locked_ratio": 0.0645,
+      "n_tests": 31
+    },
+    "tests/test_deletion_requests_and_skill_detail.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 8
+    },
+    "tests/test_deletion_worker.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 12
+    },
+    "tests/test_dispatch.py": {
+      "locked_ratio": 0.75,
+      "n_tests": 12
+    },
+    "tests/test_dispatch_bootstrap.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 9
+    },
+    "tests/test_dispatch_fallback_chain.py": {
+      "locked_ratio": 0.625,
+      "n_tests": 8
+    },
+    "tests/test_dispatch_preference_hints.py": {
+      "locked_ratio": 0.4,
+      "n_tests": 5
+    },
+    "tests/test_dispatch_synthesis_pin.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 5
+    },
+    "tests/test_dispatch_tier_verdict.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 13
+    },
+    "tests/test_distill_routes.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 8
+    },
+    "tests/test_dp_preference_dispatch_hint_e2e.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 3
+    },
+    "tests/test_dp_preference_learning.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 8
+    },
+    "tests/test_dp_shuffler.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 11
+    },
+    "tests/test_dp_shuffler_production.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 11
+    },
+    "tests/test_draft_generation.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 10
+    },
+    "tests/test_ducklake.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 14
+    },
+    "tests/test_economics_matrix.py": {
+      "locked_ratio": 0.1818,
+      "n_tests": 11
+    },
+    "tests/test_edit_capture.py": {
+      "locked_ratio": 0.4167,
+      "n_tests": 12
+    },
+    "tests/test_enrich_rights_immutable.py": {
+      "locked_ratio": 0.6667,
+      "n_tests": 3
+    },
+    "tests/test_errors.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 13
+    },
+    "tests/test_escape_hatch.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 15
+    },
+    "tests/test_event_payloads_v4.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 16
+    },
+    "tests/test_event_payloads_v6_exa_browserbase_precursor.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 17
+    },
+    "tests/test_events_schema.py": {
+      "locked_ratio": 0.1176,
+      "n_tests": 17
+    },
+    "tests/test_evidence_retriever_bridge.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 11
+    },
+    "tests/test_exa_full_flow_integration.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 2
+    },
+    "tests/test_exhaustive.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 8
+    },
+    "tests/test_extraction.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 14
+    },
+    "tests/test_federation.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 13
+    },
+    "tests/test_federation_config.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 7
+    },
+    "tests/test_federation_event_emit.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 16
+    },
+    "tests/test_federation_inbound.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 13
+    },
+    "tests/test_federation_outbound.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 9
+    },
+    "tests/test_federation_wired_hooks.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 9
+    },
+    "tests/test_flywheel_reuse_gate.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 21
+    },
+    "tests/test_frame_attention_accrual.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 8
+    },
+    "tests/test_frame_attention_conservation.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 6
+    },
+    "tests/test_frame_attention_contract.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 13
+    },
+    "tests/test_frame_attention_weighting.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 15
+    },
+    "tests/test_gap_detection.py": {
+      "locked_ratio": 0.875,
+      "n_tests": 8
+    },
+    "tests/test_gated_escrow_accrual.py": {
+      "locked_ratio": 0.6667,
+      "n_tests": 6
+    },
+    "tests/test_gepa.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 10
+    },
+    "tests/test_gepa_phase8_applier_e2e.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 4
+    },
+    "tests/test_gepa_phase8_bridge.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 7
+    },
+    "tests/test_get_chunk_personal_reading.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 2
+    },
+    "tests/test_golden_traces.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 17
+    },
+    "tests/test_graph.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 28
+    },
+    "tests/test_graph_insight_question.py": {
+      "locked_ratio": 0.8333,
+      "n_tests": 18
+    },
+    "tests/test_graph_per_user.py": {
+      "locked_ratio": 0.0588,
+      "n_tests": 17
+    },
+    "tests/test_groundedness_harness.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 5
+    },
+    "tests/test_groundedness_scorer.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 7
+    },
+    "tests/test_grounding.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 14
+    },
+    "tests/test_health_flywheel.py": {
+      "locked_ratio": 0.8,
+      "n_tests": 5
+    },
+    "tests/test_house_second.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 7
+    },
+    "tests/test_ingest_budget.py": {
+      "locked_ratio": 0.375,
+      "n_tests": 16
+    },
+    "tests/test_ingest_checkpoint.py": {
+      "locked_ratio": 0.7143,
+      "n_tests": 7
+    },
+    "tests/test_ingest_observability.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 5
+    },
+    "tests/test_integration_invariants.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 10
+    },
+    "tests/test_integration_tiers.py": {
+      "locked_ratio": 0.6,
+      "n_tests": 20
+    },
+    "tests/test_intent_targeting.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 12
+    },
+    "tests/test_interview_orchestrator.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 6
+    },
+    "tests/test_interview_project_listing.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 4
+    },
+    "tests/test_invariant_registry_meta.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 17
+    },
+    "tests/test_investigation_endpoints.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 16
+    },
+    "tests/test_ip_holder_resolver.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 14
+    },
+    "tests/test_ip_holders.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 11
+    },
+    "tests/test_knowledge_reuse_spr06.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 17
+    },
+    "tests/test_krea_routes.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 18
+    },
+    "tests/test_launch_n_spr05.py": {
+      "locked_ratio": 0.5556,
+      "n_tests": 9
+    },
+    "tests/test_legal_gate.py": {
+      "locked_ratio": 0.1471,
+      "n_tests": 34
+    },
+    "tests/test_library_api.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 9
+    },
+    "tests/test_licenses_classify.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 16
+    },
+    "tests/test_lints_baseline.py": {
+      "locked_ratio": 0.0588,
+      "n_tests": 17
+    },
+    "tests/test_lints_cli_with_baseline.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 11
+    },
+    "tests/test_lints_mypy_strict_baseline.py": {
+      "locked_ratio": 0.375,
+      "n_tests": 16
+    },
+    "tests/test_lints_no_raise.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 14
+    },
+    "tests/test_lints_unannotated_bypass.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 17
+    },
+    "tests/test_loop_3.py": {
+      "locked_ratio": 0.6154,
+      "n_tests": 13
+    },
+    "tests/test_loop_3_checklist_and_rubric.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 11
+    },
+    "tests/test_loop_one_concurrent.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 4
+    },
+    "tests/test_loop_one_orchestrator.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 3
+    },
+    "tests/test_magic_link_auth.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 32
+    },
+    "tests/test_marginalia_promotion.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 7
+    },
+    "tests/test_marketplace_metrics.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 17
+    },
+    "tests/test_max_context_pack.py": {
+      "locked_ratio": 0.7143,
+      "n_tests": 7
+    },
+    "tests/test_merge_staging.py": {
+      "locked_ratio": 0.8889,
+      "n_tests": 18
+    },
+    "tests/test_middleware_archive.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 16
+    },
+    "tests/test_middleware_backtest.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 6
+    },
+    "tests/test_middleware_cohort.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 13
+    },
+    "tests/test_middleware_constraint_check.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 28
+    },
+    "tests/test_middleware_outcomes.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 21
+    },
+    "tests/test_middleware_source_tier.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 24
+    },
+    "tests/test_middleware_supersession.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 17
+    },
+    "tests/test_middleware_temporal.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 15
+    },
+    "tests/test_monetization_eligibility.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 9
+    },
+    "tests/test_monitoring_mode.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 12
+    },
+    "tests/test_multi_cloud.py": {
+      "locked_ratio": 0.6,
+      "n_tests": 20
+    },
+    "tests/test_multi_user.py": {
+      "locked_ratio": 0.2353,
+      "n_tests": 17
+    },
+    "tests/test_nonce_ledger_persistence.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 9
+    },
+    "tests/test_note_taking.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 14
+    },
+    "tests/test_notebook_block_lifecycle.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 8
+    },
+    "tests/test_notebook_promotion_chain_e2e.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 4
+    },
+    "tests/test_notebook_quality_gate_promotion.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 4
+    },
+    "tests/test_notebook_tiptap_codec.py": {
+      "locked_ratio": 0.3,
+      "n_tests": 10
+    },
+    "tests/test_notebooks.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 11
+    },
+    "tests/test_notification_policy_ast.py": {
+      "locked_ratio": 0.1429,
+      "n_tests": 7
+    },
+    "tests/test_null_content_class_gate.py": {
+      "locked_ratio": 0.75,
+      "n_tests": 4
+    },
+    "tests/test_oa_licenses.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 13
+    },
+    "tests/test_oa_pdf_detection.py": {
+      "locked_ratio": 0.3333,
+      "n_tests": 9
+    },
+    "tests/test_open_access_ingest.py": {
+      "locked_ratio": 0.4839,
+      "n_tests": 31
+    },
+    "tests/test_operator_bearer_middleware.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 25
+    },
+    "tests/test_ops_provider_ratio.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 8
+    },
+    "tests/test_opt_in_intake.py": {
+      "locked_ratio": 0.7895,
+      "n_tests": 19
+    },
+    "tests/test_orchestration_phase_log.py": {
+      "locked_ratio": 0.84,
+      "n_tests": 25
+    },
+    "tests/test_orchestration_phase_runner.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 21
+    },
+    "tests/test_orchestrator_chase.py": {
+      "locked_ratio": 0.3846,
+      "n_tests": 13
+    },
+    "tests/test_orchestrator_groundedness.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 4
+    },
+    "tests/test_outbound_transport.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 7
+    },
+    "tests/test_outcome_and_preference_event_emit.py": {
+      "locked_ratio": 0.3333,
+      "n_tests": 6
+    },
+    "tests/test_outline_block.py": {
+      "locked_ratio": 0.95,
+      "n_tests": 20
+    },
+    "tests/test_owner_boundary_lint.py": {
+      "locked_ratio": 0.0833,
+      "n_tests": 12
+    },
+    "tests/test_ownership.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 13
+    },
+    "tests/test_papers_arxiv_bulk.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 6
+    },
+    "tests/test_papers_biorxiv.py": {
+      "locked_ratio": 0.125,
+      "n_tests": 8
+    },
+    "tests/test_papers_core.py": {
+      "locked_ratio": 0.2857,
+      "n_tests": 7
+    },
+    "tests/test_papers_dedup_collapse.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 3
+    },
+    "tests/test_papers_plos.py": {
+      "locked_ratio": 0.4,
+      "n_tests": 5
+    },
+    "tests/test_papers_semantic_scholar.py": {
+      "locked_ratio": 0.375,
+      "n_tests": 8
+    },
+    "tests/test_parallel_orchestration.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 8
+    },
+    "tests/test_parameter_extractor_bridge.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 5
+    },
+    "tests/test_partner_identity.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 19
+    },
+    "tests/test_partner_identity_persistence.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 7
+    },
+    "tests/test_passage_research.py": {
+      "locked_ratio": 0.875,
+      "n_tests": 8
+    },
+    "tests/test_payout_decisions_log.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 9
+    },
+    "tests/test_payout_event_emit.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 5
+    },
+    "tests/test_payout_pipeline_integration.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 2
+    },
+    "tests/test_pdf_storage_tiering.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 10
+    },
+    "tests/test_personal_lane_read_side.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 3
+    },
+    "tests/test_personal_reading_lane.py": {
+      "locked_ratio": 0.5652,
+      "n_tests": 23
+    },
+    "tests/test_personal_space.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 15
+    },
+    "tests/test_phase8_gate.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 6
+    },
+    "tests/test_phase_audit.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 13
+    },
+    "tests/test_phase_runner_postconditions.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 39
+    },
+    "tests/test_prime_intellect_compat.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 3
+    },
+    "tests/test_processing.py": {
+      "locked_ratio": 0.2,
+      "n_tests": 15
+    },
+    "tests/test_prod_parity.py": {
+      "locked_ratio": 0.6667,
+      "n_tests": 21
+    },
+    "tests/test_prod_parity_seed_and_catch.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 1
+    },
+    "tests/test_programmatic_gate.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 8
+    },
+    "tests/test_promote_context.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 2
+    },
+    "tests/test_prompt_applier.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 13
+    },
+    "tests/test_prompt_autoresearch.py": {
+      "locked_ratio": 0.3077,
+      "n_tests": 13
+    },
+    "tests/test_prompt_autoresearch_verdict.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 10
+    },
+    "tests/test_provenance_economics_surfaced.py": {
+      "locked_ratio": 0.4286,
+      "n_tests": 7
+    },
+    "tests/test_provider_anthropic.py": {
+      "locked_ratio": 0.6,
+      "n_tests": 15
+    },
+    "tests/test_provider_openai_compat.py": {
+      "locked_ratio": 0.6667,
+      "n_tests": 12
+    },
+    "tests/test_public_domain_ingest.py": {
+      "locked_ratio": 0.7391,
+      "n_tests": 23
+    },
+    "tests/test_public_graph_quality_gate.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 10
+    },
+    "tests/test_public_notes_ingest.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 6
+    },
+    "tests/test_quality_gate.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 10
+    },
+    "tests/test_quality_gate_extraction.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 9
+    },
+    "tests/test_rate_governor.py": {
+      "locked_ratio": 0.4444,
+      "n_tests": 27
+    },
+    "tests/test_read_ad_escrow.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 6
+    },
+    "tests/test_reader_ad_slots.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 12
+    },
+    "tests/test_real_stripe_provider.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 8
+    },
+    "tests/test_reclassify_personal_reading.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 19
+    },
+    "tests/test_register_source.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 11
+    },
+    "tests/test_remote_exec_budget.py": {
+      "locked_ratio": 0.8333,
+      "n_tests": 6
+    },
+    "tests/test_remote_exec_fallback.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 8
+    },
+    "tests/test_remote_exec_isolation.py": {
+      "locked_ratio": 0.75,
+      "n_tests": 4
+    },
+    "tests/test_remote_exec_runner.py": {
+      "locked_ratio": 0.7273,
+      "n_tests": 11
+    },
+    "tests/test_research_runner.py": {
+      "locked_ratio": 0.8,
+      "n_tests": 15
+    },
+    "tests/test_research_tier_dispatch.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 21
+    },
+    "tests/test_result_helpers.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 19
+    },
+    "tests/test_results.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 24
+    },
+    "tests/test_retrieval_bench.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 10
+    },
+    "tests/test_retrieval_gate_canon.py": {
+      "locked_ratio": 0.2,
+      "n_tests": 5
+    },
+    "tests/test_retrieval_gate_closure.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 4
+    },
+    "tests/test_retrieval_gate_matrix.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 4
+    },
+    "tests/test_retrieval_gate_polarity.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 3
+    },
+    "tests/test_retrieval_substrate_interface.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 14
+    },
+    "tests/test_retrieval_substrate_personal_reading.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 2
+    },
+    "tests/test_retrieval_time_gate.py": {
+      "locked_ratio": 0.7143,
+      "n_tests": 7
+    },
+    "tests/test_rev_share.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 14
+    },
+    "tests/test_rights_audit.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 8
+    },
+    "tests/test_rlm_bridge.py": {
+      "locked_ratio": 0.75,
+      "n_tests": 8
+    },
+    "tests/test_rlm_bridge_event_emission.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 3
+    },
+    "tests/test_rlm_dag.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 28
+    },
+    "tests/test_rlm_long_corpus_and_investigation.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 4
+    },
+    "tests/test_rlm_repl.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 35
+    },
+    "tests/test_rlm_session.py": {
+      "locked_ratio": 0.7778,
+      "n_tests": 9
+    },
+    "tests/test_rlm_tools.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 32
+    },
+    "tests/test_role_creative_writer.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 19
+    },
+    "tests/test_role_voice_note_followup.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 13
+    },
+    "tests/test_roles_connector_extraction.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 22
+    },
+    "tests/test_roles_decomposer.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 24
+    },
+    "tests/test_roles_decomposer_extraction.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 22
+    },
+    "tests/test_roles_evidence_retriever_extraction.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 29
+    },
+    "tests/test_roles_grounder_challenger.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 20
+    },
+    "tests/test_roles_parameter_extractor_extraction.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 35
+    },
+    "tests/test_roles_synthesizer_extraction.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 35
+    },
+    "tests/test_roles_visual.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 20
+    },
+    "tests/test_rollover_persistence.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 5
+    },
+    "tests/test_rubric_benchmark.py": {
+      "locked_ratio": 0.2727,
+      "n_tests": 11
+    },
+    "tests/test_seam_conformance.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 6
+    },
+    "tests/test_seam_no_copy.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 6
+    },
+    "tests/test_seam_platform_authored_gate.py": {
+      "locked_ratio": 0.1667,
+      "n_tests": 6
+    },
+    "tests/test_seam_reader_surface_contract.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 5
+    },
+    "tests/test_seam_single_escrow_writer.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 6
+    },
+    "tests/test_seam_voice_single_owner.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 4
+    },
+    "tests/test_servability_drift_guard.py": {
+      "locked_ratio": 0.7143,
+      "n_tests": 7
+    },
+    "tests/test_serve_guard.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 17
+    },
+    "tests/test_skill_accumulator.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 10
+    },
+    "tests/test_skill_accumulator_lifecycle_e2e.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 4
+    },
+    "tests/test_skill_writer.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 7
+    },
+    "tests/test_skills_domain.py": {
+      "locked_ratio": 0.0698,
+      "n_tests": 43
+    },
+    "tests/test_skills_domain_auto_patch.py": {
+      "locked_ratio": 0.2381,
+      "n_tests": 21
+    },
+    "tests/test_skills_domain_master_md.py": {
+      "locked_ratio": 0.3158,
+      "n_tests": 19
+    },
+    "tests/test_skills_verification.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 61
+    },
+    "tests/test_source_gate.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 20
+    },
+    "tests/test_source_read_event.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 6
+    },
+    "tests/test_source_throttle.py": {
+      "locked_ratio": 0.1429,
+      "n_tests": 14
+    },
+    "tests/test_sources_ingest.py": {
+      "locked_ratio": 0.4118,
+      "n_tests": 17
+    },
+    "tests/test_speak_api.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 18
+    },
+    "tests/test_speak_biography_composition.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 4
+    },
+    "tests/test_speak_compounding_interviewer.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 2
+    },
+    "tests/test_speak_consent.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 20
+    },
+    "tests/test_speak_drw_gap_source.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 8
+    },
+    "tests/test_speak_fk_regression.py": {
+      "locked_ratio": 0.5,
+      "n_tests": 2
+    },
+    "tests/test_speak_invitee_voice.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 6
+    },
+    "tests/test_speak_payout_verifier.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 10
+    },
+    "tests/test_speak_project.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 12
+    },
+    "tests/test_speak_publish.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 10
+    },
+    "tests/test_speak_write_composer.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 6
+    },
+    "tests/test_spec_deviations.py": {
+      "locked_ratio": 0.1538,
+      "n_tests": 13
+    },
+    "tests/test_spec_gaps.py": {
+      "locked_ratio": 0.2222,
+      "n_tests": 27
+    },
+    "tests/test_sprint11_api.py": {
+      "locked_ratio": 0.8,
+      "n_tests": 20
+    },
+    "tests/test_sprint13_api.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 14
+    },
+    "tests/test_sprint14_api.py": {
+      "locked_ratio": 0.9,
+      "n_tests": 10
+    },
+    "tests/test_sprint15_api.py": {
+      "locked_ratio": 0.8667,
+      "n_tests": 15
+    },
+    "tests/test_sprint16_interviews.py": {
+      "locked_ratio": 0.5455,
+      "n_tests": 22
+    },
+    "tests/test_stage0_to_stage1_migration.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 7
+    },
+    "tests/test_stripe_connect.py": {
+      "locked_ratio": 0.25,
+      "n_tests": 12
+    },
+    "tests/test_stripe_payouts.py": {
+      "locked_ratio": 0.9,
+      "n_tests": 10
+    },
+    "tests/test_style_conditioning.py": {
+      "locked_ratio": 0.0909,
+      "n_tests": 11
+    },
+    "tests/test_style_extractor.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 29
+    },
+    "tests/test_substrate_cli_unified.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 16
+    },
+    "tests/test_substrate_end_to_end.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 1
+    },
+    "tests/test_substrate_quality_gate.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 14
+    },
+    "tests/test_suggestions_api.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 5
+    },
+    "tests/test_suggestions_surface.py": {
+      "locked_ratio": 0.6667,
+      "n_tests": 12
+    },
+    "tests/test_synquery.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 8
+    },
+    "tests/test_synthesis_rubric.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 9
+    },
+    "tests/test_synthesizer_bridge.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 7
+    },
+    "tests/test_synthesizer_measurement_window_14_4.py": {
+      "locked_ratio": 0.4,
+      "n_tests": 5
+    },
+    "tests/test_telemetry_preferences.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 13
+    },
+    "tests/test_textbooks_doab.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 4
+    },
+    "tests/test_textbooks_libretexts.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 9
+    },
+    "tests/test_textbooks_mit_ocw.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 4
+    },
+    "tests/test_textbooks_openstax.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 4
+    },
+    "tests/test_thought_partner.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 10
+    },
+    "tests/test_thread_no_duplicate.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 6
+    },
+    "tests/test_thread_reconstruct.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 5
+    },
+    "tests/test_trace_to_source.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 6
+    },
+    "tests/test_transfer_initiator.py": {
+      "locked_ratio": 0.875,
+      "n_tests": 8
+    },
+    "tests/test_trust_center_substrate.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 13
+    },
+    "tests/test_tts_voice_reply.py": {
+      "locked_ratio": 0.25,
+      "n_tests": 4
+    },
+    "tests/test_unit_dedup.py": {
+      "locked_ratio": 0.5333,
+      "n_tests": 15
+    },
+    "tests/test_universal_ingest.py": {
+      "locked_ratio": 0.7,
+      "n_tests": 10
+    },
+    "tests/test_video_frame_extraction.py": {
+      "locked_ratio": 0.375,
+      "n_tests": 8
+    },
+    "tests/test_vision_bootstrap.py": {
+      "locked_ratio": 0.8333,
+      "n_tests": 6
+    },
+    "tests/test_visual_bridge.py": {
+      "locked_ratio": 0.75,
+      "n_tests": 12
+    },
+    "tests/test_voice_capture_event.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 7
+    },
+    "tests/test_voice_mode_substrate.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 7
+    },
+    "tests/test_voice_notes.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 9
+    },
+    "tests/test_voice_style.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 14
+    },
+    "tests/test_voice_style_ab_runner.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 6
+    },
+    "tests/test_voice_style_constructions.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 12
+    },
+    "tests/test_voice_style_prompts.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 9
+    },
+    "tests/test_weekly_report.py": {
+      "locked_ratio": 0.8667,
+      "n_tests": 15
+    },
+    "tests/test_weekly_report_acquisition_section.py": {
+      "locked_ratio": 0.1,
+      "n_tests": 10
+    },
+    "tests/test_wrestling.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 19
+    },
+    "tests/test_write_routes.py": {
+      "locked_ratio": 1.0,
+      "n_tests": 17
+    },
+    "tests/test_ws_v4_v5_payloads.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 7
+    },
+    "tests/test_x_byok_ingest.py": {
+      "locked_ratio": 0.1667,
+      "n_tests": 6
+    },
+    "tests/test_x_byok_training_exclusion.py": {
+      "locked_ratio": 0.0,
+      "n_tests": 2
+    },
+    "tests/tools/test_boundary_task.py": {
+      "locked_ratio": 0.92,
+      "n_tests": 25
+    }
+  },
+  "suite_locked_mock_ratio": 0.4417
+}
