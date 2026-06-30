@@ -105,6 +105,16 @@ def test_parse_grounder_response_passed():
     assert v.reason is None
 
 
+def test_parse_grounder_response_rejects_fabricated_chunk_id():
+    v = parse_grounder_response(
+        '{"grounded": true, "located_chunk_id": "chunk-fake", "confidence": 0.8}',
+        canonical_chunk_ids={"chunk-real"},
+    )
+    assert v.grounded is True
+    assert v.located_chunk_id is None
+    assert v.confidence == pytest.approx(0.8)
+
+
 def test_parse_grounder_response_failed_with_each_reason():
     for reason in GROUNDING_FAILURE_REASONS:
         v = parse_grounder_response(

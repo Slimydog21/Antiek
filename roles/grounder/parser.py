@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass
+from collections.abc import Iterable
 from typing import Literal
 
 # Shared JSON-tolerant decoder lives at roles/_json_decode.py — moved
@@ -26,6 +27,13 @@ except ImportError:  # pragma: no cover — direct-script fallback
     from roles._json_decode import (
         extract_json_object as _extract_json_object,  # type: ignore[no-redef]
     )
+
+try:
+    from substrate.provenance.validate_refs import validate_ref
+except ImportError:  # pragma: no cover — direct-script fallback
+    _here = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+    from substrate.provenance.validate_refs import validate_ref  # type: ignore[no-redef]
 
 
 # Closed failure-reason set — mirrors the Literal on
@@ -65,16 +73,20 @@ class GroundingVerdict:
     reason: str | None
 
 
-def parse_grounder_response(text: str) -> GroundingVerdict:
+def parse_grounder_response(
+    text: str,
+    *,
+    canonical_chunk_ids: Iterable[str] | None = None,
+) -> GroundingVerdict:
     """Parse the LLM's JSON response. Returns a GroundingVerdict.
 
     Conservative defaults per the role prompt's "default to false when
     uncertain":
 
     - Malformed input → ``(False, None, 0.0, "ambiguous")``.
-    - grounded=true with non-string chunk_id → chunk_id None
-      (bridge will treat as ambiguous failure when validating against
-      its search results).
+    - grounded=true with non-string chunk_id → chunk_id None.
+    - When ``canonical_chunk_ids`` is supplied, a chunk_id outside that set
+      is dropped at parse time rather than trusted as provenance.
     - Confidence out of [0, 1] → clamped.
     - Failure reason not in GROUNDING_FAILURE_REASONS → coerced to
       ``ambiguous``.
@@ -86,7 +98,9 @@ def parse_grounder_response(text: str) -> GroundingVerdict:
     grounded = bool(obj.get("grounded"))
     if grounded:
         chunk_id = obj.get("located_chunk_id")
-        if not isinstance(chunk_id, str):
+        if canonical_chunk_ids is not None:
+            chunk_id = validate_ref(chunk_id, canonical_chunk_ids)
+        elif not isinstance(chunk_id, str):
             chunk_id = None
         try:
             confidence = float(obj.get("confidence", 0.0))
