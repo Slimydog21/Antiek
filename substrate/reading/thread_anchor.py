@@ -103,6 +103,7 @@ def anchor_thread(
     region: Region,
     excerpt: str,
     investigation_id: str,
+    source_chunk_id: str | None = None,
     con: Any | None = None,
 ) -> AnchoredThread:
     """Anchor a Dialogue thread to ``region`` and persist it as a graph
@@ -134,10 +135,10 @@ def anchor_thread(
         "promoted_kind": "passage_dialogue",
         "investigation_id": investigation_id,
         # Region.block_id is a document-model block id, not a retrieval chunk.
-        # Keep source_document_id for document-scoped queries, but do not
+        # Mirror a chunk only when the caller separately resolved one; never
         # fabricate a chunk edge from the block id.
         "source_document_id": region.document_id,
-        "chunk_id": None,
+        "chunk_id": source_chunk_id,
         # The Region's own char-anchor identity (so a consumer can map node→region).
         "anchor_region_id": nid,
         # The full Region, so a consumer reconstructs the anchor without parsing

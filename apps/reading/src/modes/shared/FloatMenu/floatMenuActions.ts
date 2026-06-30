@@ -236,8 +236,9 @@ export interface RewriteActions {
 
 /** The request body shared by the one-shot + streamed Dialogue endpoints: the
  * passage (the reader's own selection), an optional follow-up, the Region to
- * anchor to, and the prior turns (multi-turn). `prompt` is kept for the legacy
- * single-field contract. */
+ * anchor to, an optional separate source chunk id for retrieval provenance, and
+ * the prior turns (multi-turn). `prompt` is kept for the legacy single-field
+ * contract. */
 function dialogueBody(args: {
   investigationId: string;
   selection: FloatMenuSelection;
@@ -252,6 +253,9 @@ function dialogueBody(args: {
     // Legacy field — the assembled quote, so a single-field client still works.
     prompt: buildDialoguePrompt(args.selection, args.followUp),
     region: regionOfSelection(args.selection),
+    // Distinct from region.block_id: this is retrieval/citation provenance,
+    // never the document-block anchor used for Region identity.
+    source_chunk_id: args.selection.provenance.chunkId ?? null,
     history: args.history ?? [],
   });
 }

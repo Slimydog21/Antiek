@@ -301,6 +301,33 @@ def test_thread_persisted_to_graph_anchored_to_region(client, db, monkeypatch):
     assert meta["anchor_excerpt"] == "the highlighted passage text"
 
 
+def test_thread_preserves_separate_source_chunk_when_supplied(client, db, monkeypatch):
+    """A real source chunk is preserved as retrieval provenance, but only when
+    supplied separately from the document-space Region block id."""
+    _register_cassette("a real reply")
+    _patch_dialogue_config(monkeypatch)
+    resp = client.post(
+        "/thought-partner",
+        json={
+            "passage": "the highlighted passage text",
+            "investigation_id": "inv-1",
+            "region": _region_payload(block_id="doc-block-1"),
+            "source_chunk_id": "chunk-7",
+        },
+    )
+    assert resp.status_code == 200
+    node_id = resp.json()["thread_node_id"]
+    con = connect_read(db)
+    try:
+        meta = json.loads(
+            con.execute("SELECT metadata FROM nodes WHERE node_id = ?", [node_id]).fetchone()[0]
+        )
+    finally:
+        con.close()
+    assert meta["region"]["block_id"] == "doc-block-1"
+    assert meta["chunk_id"] == "chunk-7"
+
+
 def test_reopening_same_region_reattaches_same_thread(client, db, monkeypatch):
     """Re-opening the same highlight (same Region) reattaches the SAME thread
     node — not a new empty one (M3)."""
