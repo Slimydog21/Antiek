@@ -51,6 +51,7 @@ class DistilledNode:
     text: str                       # current canonical text (post-challenge)
     confidence: str | None = None
     source_document_id: str | None = None
+    chunk_id: str | None = None     # cited chunk for openDocument(chunkId) (SPR-07)
     refinement_count: int = 0       # how many times this note has changed
     escalated: bool = False         # a question with a reserved child research
     reserved_child_investigation_id: str | None = None
@@ -129,6 +130,7 @@ def distillation_for(
                     node_id=nid, kind="insight", text=label,
                     confidence=meta.get("confidence"),
                     source_document_id=meta.get("source_document_id"),
+                    chunk_id=meta.get("chunk_id") or meta.get("source_chunk_id"),
                     refinement_count=int(meta.get("refinement_count", 0) or 0),
                 ))
             elif ntype == "question":
@@ -140,6 +142,7 @@ def distillation_for(
                 questions.append(DistilledNode(
                     node_id=nid, kind="question", text=label,
                     source_document_id=meta.get("source_document_id"),
+                    chunk_id=meta.get("chunk_id") or meta.get("source_chunk_id"),
                     escalated=esc is not None,
                     reserved_child_investigation_id=(
                         esc.get("reserved_child_investigation_id") if esc else None

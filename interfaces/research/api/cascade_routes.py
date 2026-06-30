@@ -479,7 +479,13 @@ async def _run_to_completion(session: CascadeSession) -> None:
     the operator would never know). So we capture the failure, record it as the
     session's ``synthesis_tail_error`` and emit a durable audit trail (a typed
     event on the session trajectory + a structured log), then return — the task
-    stays non-fatal, the failure stays visible in trajectory/status."""
+    stays non-fatal, the failure stays visible in trajectory/status.
+
+    RDR SPR-07: ``join_and_merge`` drains the promotion funnel (source ingest +
+    supported_by edges) then persists the synthesis artifact via
+    ``interfaces.research.api.cascade_synthesizer``. Live synthesizer dispatch
+    still awaits activation keys, but the provenance/artifact wiring must remain
+    visible if it fails."""
     stage = "join_and_merge"
     try:
         await session.join_and_merge()

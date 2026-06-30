@@ -197,7 +197,10 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
   const onCiteSource = useCallback(
     (node: DistilledNode) => {
       if (!node.source_document_id) return; // honest no-op (button isn't shown anyway)
-      openDocument(node.source_document_id);
+      openDocument(
+        node.source_document_id,
+        node.chunk_id ? { chunkId: node.chunk_id } : undefined,
+      );
     },
     [openDocument],
   );
