@@ -23,7 +23,7 @@ Byte-verify discipline: confirm `file:line` on handoff before editing substrate.
 | `retrieval_gate_check` blocks second handwritten NOT IN | `tools.lint` | `tools/lint/retrieval_gate_check.py` | `tests/test_retrieval_gate_matrix.py` | CI step | **SR-03** | **CLOSED** |
 | `register_source_document` chokepoint + txn serve-guard | `substrate.rights.register` | `substrate/rights/register.py` | `tests/test_register_source.py` | `tools/lint/register_check.py` | **SR-04** | **CLOSED** (PR #58) |
 | `personal_reading` ∈ `VALID_CONTENT_CLASSES` before P1 merge | `substrate.rights.register` | `register.py:VALID_CONTENT_CLASSES` | `tests/test_register_source.py::test_personal_reading_content_class_accepted` | `register_check.py` | **SR-04** | **CLOSED** |
-| Adapters migrate to register; allowlist → empty | `acquisition.*.adapter` | per-adapter insert paths; `tools/lint/register_check.py` `_MIGRATION_PENDING = frozenset()` | `tests/test_register_source.py`, acquisition adapter clusters | `tools/lint/register_check.py` | **SR-05** | **CLOSED** |
+| Adapters migrate to register; allowlist → empty | `acquisition.*.adapter` | per-adapter insert paths; `tools/lint/register_check.py` `_MIGRATION_PENDING = frozenset()` | `tests/test_register_source.py`, acquisition adapter clusters | `tools/lint/register_check.py` | **SR-05** | **CLOSED** (see `docs/decisions/asr-sr05-adapter-migration.md`; allowlist empty) |
 | NULL backfill on prod DB (box) | operator tooling | TBD migration | TBD | — | **SR-06** | **OPEN** |
 | PR #38 §9.0 servability staged until G2/G3 | legal / serve | staged branch | TBD | serve lint cluster | **SR-08** | **OPEN** |
 | P5 chunk provenance (`personal_reading` non-citable) | `tools.codegen` | `tools/codegen/chunk_provenance.py` | `tests/test_conformance_gate.py` | `tools/codegen/check_conformance.py` | **SR-09** | **CLOSED** (P5) |
@@ -38,7 +38,7 @@ Byte-verify discipline: confirm `file:line` on handoff before editing substrate.
 | Constants: `personal_reading` not servable / not trainable | `substrate.constants` | `substrate/constants.py:543-617` | `tests/test_personal_reading_lane.py::test_constants_personal_reading_not_servable`, `::test_non_trainable_denylist_members` | — | PR #43 | **CLOSED** |
 | Training / RL export excludes `personal_reading` | `substrate.constants` + export paths | `substrate/constants.py` | `tests/test_x_byok_training_exclusion.py` | — | PR #43 | **CLOSED** |
 
-## SR-01..SR-10 ownership (OPEN rows)
+## SR-01..SR-10 ownership
 
 | sprint | owner | closes |
 |--------|-------|--------|
