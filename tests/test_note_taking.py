@@ -209,6 +209,24 @@ def test_parse_notes_drops_unattributed():
     assert notes[0].text == "attributed"
 
 
+def test_parse_notes_drops_hallucinated_source_event_ids():
+    text = (
+        '{"notes": ['
+        '{"text": "partly real", "confidence": "high", '
+        '"source_event_ids": ["evt-1", "evt-made-up"]},'
+        '{"text": "only fake", "confidence": "high", '
+        '"source_event_ids": ["evt-fake"]}'
+        ']}'
+    )
+    notes = parse_notes_response(
+        text,
+        canonical_source_event_ids=("evt-1",),
+    )
+    assert len(notes) == 1
+    assert notes[0].text == "partly real"
+    assert notes[0].source_event_ids == ("evt-1",)
+
+
 def test_parse_notes_drops_empty_text():
     text = (
         '{"notes": ['

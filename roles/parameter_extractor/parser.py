@@ -35,9 +35,10 @@ except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from roles._json_decode import (
-        extract_json_object as _extract_json_object,  # type: ignore[no-redef]
+        extract_json_object as _extract_json_object,
     )
 
+from substrate.provenance import InvalidReference, validate_refs
 
 # Closed vocabularies — must equal the schema-side Literal sets.
 # Drift caught by tests.
@@ -83,7 +84,7 @@ class ParameterExtractResult:
     ambiguity and dropped the empty-string unit cases."""
 
     parameters: tuple[ParsedParameter, ...]
-    raw: dict
+    raw: dict[str, Any]
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +225,12 @@ def _normalize_metric_value(raw: Any, ctx: str) -> ParsedMetricValue:
     return ParsedMetricValue(value_type=value_type, value=value, unit=unit)
 
 
-def _parse_parameter(obj: Any, idx: int) -> ParsedParameter:
+def _parse_parameter(
+    obj: Any,
+    idx: int,
+    *,
+    canonical_source_chunk_ids: set[str] | frozenset[str] | tuple[str, ...] | None,
+) -> ParsedParameter:
     ctx = f"parameters[{idx}]"
     if not isinstance(obj, dict):
         raise ParameterValidationError(f"{ctx}: expected an object")
@@ -243,6 +249,15 @@ def _parse_parameter(obj: Any, idx: int) -> ParsedParameter:
     source_chunk_ids = tuple(_require_str_list(
         obj.get("source_chunk_ids"), "source_chunk_ids", ctx,
     ))
+    if canonical_source_chunk_ids is not None:
+        try:
+            source_chunk_ids = validate_refs(
+                source_chunk_ids,
+                canonical_source_chunk_ids,
+                on_invalid="raise",
+            ).valid
+        except InvalidReference as exc:
+            raise ParameterValidationError(f"{ctx}.source_chunk_ids: {exc}") from exc
     if not source_chunk_ids:
         raise ParameterValidationError(
             f"{ctx}: source_chunk_ids cannot be empty — every parameter "
@@ -284,7 +299,11 @@ def _parse_parameter(obj: Any, idx: int) -> ParsedParameter:
     )
 
 
-def parse_parameter_extractor_response(text: str) -> ParameterExtractResult:
+def parse_parameter_extractor_response(
+    text: str,
+    *,
+    canonical_source_chunk_ids: set[str] | frozenset[str] | tuple[str, ...] | None = None,
+) -> ParameterExtractResult:
     """Parse + validate a Parameter Extractor raw response."""
     obj = _extract_json_object(text)
     if not isinstance(obj, dict):
@@ -298,5 +317,12 @@ def parse_parameter_extractor_response(text: str) -> ParameterExtractResult:
             "top: parameters must be a list"
         )
 
-    parameters = tuple(_parse_parameter(p, i) for i, p in enumerate(params_raw))
+    parameters = tuple(
+        _parse_parameter(
+            p,
+            i,
+            canonical_source_chunk_ids=canonical_source_chunk_ids,
+        )
+        for i, p in enumerate(params_raw)
+    )
     return ParameterExtractResult(parameters=parameters, raw=obj)

@@ -21,9 +21,10 @@ except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from roles._json_decode import (
-        extract_json_object as _extract_json_object,  # type: ignore[no-redef]
+        extract_json_object as _extract_json_object,
     )
 
+from substrate.provenance import validate_refs
 
 # Confidence vocabulary must match ConfidenceLevel Literal on the
 # Claim/Note payloads. Same set used by the synthesizer's claims.
@@ -54,7 +55,11 @@ def _normalize_confidence(raw: Any) -> str:
     return "unknown"
 
 
-def parse_notes_response(text: str) -> list[ExtractedNote]:
+def parse_notes_response(
+    text: str,
+    *,
+    canonical_source_event_ids: set[str] | frozenset[str] | tuple[str, ...] | None = None,
+) -> list[ExtractedNote]:
     """Parse the role response into ``ExtractedNote`` list.
 
     Failure modes tolerated:
@@ -87,6 +92,11 @@ def parse_notes_response(text: str) -> list[ExtractedNote]:
             str(a).strip() for a in attribution
             if isinstance(a, str) and str(a).strip()
         )
+        if canonical_source_event_ids is not None:
+            cleaned_attrib = validate_refs(
+                cleaned_attrib,
+                canonical_source_event_ids,
+            ).valid
         if not cleaned_attrib:
             # Rule 4: drop unattributed notes. Hallucination defense.
             continue

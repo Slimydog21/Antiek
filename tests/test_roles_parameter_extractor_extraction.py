@@ -232,6 +232,15 @@ def test_empty_source_chunk_ids_rejected():
         parse_parameter_extractor_response(json.dumps({"parameters": [payload]}))
 
 
+def test_hallucinated_source_chunk_ids_rejected_against_canonical_set():
+    payload = _numeric_param(source_chunk_ids=["chunk-1", "chunk-made-up"])
+    with pytest.raises(ParameterValidationError, match="canonical set"):
+        parse_parameter_extractor_response(
+            json.dumps({"parameters": [payload]}),
+            canonical_source_chunk_ids=("chunk-1",),
+        )
+
+
 def test_bad_constraint_strictness_rejected():
     payload = _numeric_param()
     payload["constraint_strictness"] = "mandatory"

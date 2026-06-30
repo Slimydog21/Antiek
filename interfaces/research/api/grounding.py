@@ -53,6 +53,7 @@ from substrate.context_pack import LayerSource, assemble_context_pack  # noqa: E
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized, search  # noqa: E402
+from substrate.provenance import validate_ref  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     ActionType,
     ClaimChallengeRaisedPayload,
@@ -61,7 +62,7 @@ from substrate.schemas import (  # noqa: E402
     Event,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402
 
 # Top-K chunks to surface to the grounder. 5 is enough for a tight
 # decision; more dilutes the prompt and increases cost.
@@ -261,11 +262,12 @@ def make_grounding_handler(
         # 4. Parse + emit.
         grounded, chunk_id, confidence, reason = _parse_grounder_response(response_text)
 
-        if grounded and chunk_id and chunk_id in searched_chunk_ids:
+        located_chunk_id = validate_ref(chunk_id, searched_chunk_ids)
+        if grounded and located_chunk_id:
             await _emit_grounding_passed(
                 event,
                 challenge=challenge,
-                located_chunk_id=chunk_id,
+                located_chunk_id=located_chunk_id,
                 confidence=confidence,
                 policy_id=policy_id,
                 broadcaster=broadcaster,

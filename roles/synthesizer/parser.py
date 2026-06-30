@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -51,9 +52,10 @@ except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from roles._json_decode import (
-        extract_json_object as _extract_json_object,  # type: ignore[no-redef]
+        extract_json_object as _extract_json_object,
     )
 
+from substrate.provenance import InvalidReference, validate_refs
 
 CONFIDENCE_LEVELS: frozenset[str] = frozenset({
     "high", "moderate", "low", "unknown",
@@ -136,7 +138,7 @@ class ThesisResult:
     constraint_compliance: ParsedConstraintCompliance
     reasoning_paths_used: tuple[ParsedReasoningPath, ...]
     conviction_level: float | None = None
-    raw: dict = field(default_factory=dict)
+    raw: dict[str, Any] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +223,11 @@ def _parse_effective_source_tier(obj: Any, ctx: str) -> int | None:
 
 
 def _parse_thesis_component(
-    obj: Any, idx: int, *, allow_unprovenanced: bool,
+    obj: Any,
+    idx: int,
+    *,
+    allow_unprovenanced: bool,
+    canonical_supporting_chunk_ids: Iterable[str] | None,
 ) -> ParsedThesisComponent:
     ctx = f"thesis_components[{idx}]"
     if not isinstance(obj, dict):
@@ -236,6 +242,17 @@ def _parse_thesis_component(
     chunks = tuple(_require_str_list(
         obj.get("supporting_chunk_ids"), "supporting_chunk_ids", ctx,
     ))
+    if canonical_supporting_chunk_ids is not None:
+        try:
+            chunks = validate_refs(
+                chunks,
+                canonical_supporting_chunk_ids,
+                on_invalid="raise",
+            ).valid
+        except InvalidReference as exc:
+            raise SynthesizerValidationError(
+                f"{ctx}.supporting_chunk_ids: {exc}"
+            ) from exc
     paths = tuple(_require_int_list(
         obj.get("supporting_path_indices"), "supporting_path_indices", ctx,
     ))
@@ -407,7 +424,11 @@ def _parse_reasoning_path(obj: Any, idx: int) -> ParsedReasoningPath:
     )
 
 
-def parse_synthesizer_response(text: str) -> ThesisResult:
+def parse_synthesizer_response(
+    text: str,
+    *,
+    canonical_supporting_chunk_ids: Iterable[str] | None = None,
+) -> ThesisResult:
     """Parse + validate a Synthesizer raw response."""
     obj = _extract_json_object(text)
     if not isinstance(obj, dict):
@@ -435,7 +456,12 @@ def parse_synthesizer_response(text: str) -> ThesisResult:
     if not isinstance(components_raw, list):
         raise SynthesizerValidationError("top: thesis_components must be a list")
     components = tuple(
-        _parse_thesis_component(c, i, allow_unprovenanced=allow_unprovenanced)
+        _parse_thesis_component(
+            c,
+            i,
+            allow_unprovenanced=allow_unprovenanced,
+            canonical_supporting_chunk_ids=canonical_supporting_chunk_ids,
+        )
         for i, c in enumerate(components_raw)
     )
 
