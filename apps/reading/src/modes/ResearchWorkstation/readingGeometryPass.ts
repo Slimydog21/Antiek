@@ -54,10 +54,12 @@ import type { ViewportBand } from "../../reading-physics/layout-map";
 import {
   CHUNK_ID_ATTR,
   CLAIM_ID_ATTR,
+  COLLAPSE_SECTION_ID_ATTR,
   PASSAGE_CHUNK_ID_ATTR,
   PASSAGE_END_ATTR,
   PASSAGE_START_ATTR,
 } from "../../reading-physics/anchors";
+import type { CollapsedSection } from "../../reading-physics/augmentations/collapse";
 import { anchorKey } from "../../reading-physics/facets/decorations";
 import type { Anchor, ClaimId, ChunkId, LayoutMap, Rect } from "../../reading-physics/types";
 
@@ -71,6 +73,7 @@ import type { Anchor, ClaimId, ChunkId, LayoutMap, Rect } from "../../reading-ph
 export {
   CHUNK_ID_ATTR,
   CLAIM_ID_ATTR,
+  COLLAPSE_SECTION_ID_ATTR,
   PASSAGE_CHUNK_ID_ATTR,
   PASSAGE_END_ATTR,
   PASSAGE_START_ATTR,
@@ -169,6 +172,27 @@ export function measureAnchorGeometry(root: HTMLElement): Map<string, Rect> {
     for (const anchor of anchors) rects.set(anchorKey(anchor), rect);
   }
   return rects;
+}
+
+/**
+ * Measure a surface-declared collapsible section into the pre-transform band
+ * `CollapseState` stores. This stays in the same surface measurement module as
+ * anchor geometry so `MasterMdViewer` does not grow ad hoc
+ * `getBoundingClientRect()` reads.
+ */
+export function measureCollapseSection(
+  root: HTMLElement,
+  section: HTMLElement,
+): CollapsedSection | null {
+  const id = section.getAttribute(COLLAPSE_SECTION_ID_ATTR);
+  if (!id) return null;
+  const rootBox = root.getBoundingClientRect();
+  const box = section.getBoundingClientRect();
+  if (box.height <= 0 || box.width <= 0) return null;
+  const topPx = box.top - rootBox.top;
+  const bottomPx = box.bottom - rootBox.top;
+  if (bottomPx <= topPx) return null;
+  return { id, range: { topPx, bottomPx } };
 }
 
 /**

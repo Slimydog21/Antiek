@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { WheelEvent } from "react";
 
 import { ArtifactExport } from "../../components/ArtifactExport";
 import { toast } from "../../components/lemon/LemonToast";
@@ -28,6 +29,10 @@ import {
   makeReviewDueAugmentation,
 } from "../../reading-physics/augmentations/review-due";
 import type { ReviewDueClaimView } from "../../reading-physics/augmentations/review-due";
+import {
+  CollapseState,
+  collapsePipelineFor,
+} from "../../reading-physics/augmentations/collapse";
 import type { ResolvedDecoration } from "../../reading-physics/facets/decorations";
 import { anchorKey } from "../../reading-physics/facets/decorations";
 import { renderEnacted, resolveAnchoredWidgets } from "../../reading-physics/facets/anchored-widgets";
@@ -44,9 +49,9 @@ import {
   sourcePageNumberFromSectionPath,
   zeroBasedReaderPageFromSourcePage,
 } from "../../lib/sectionPath";
-import { CHUNK_ID_ATTR } from "./readingGeometryPass";
+import { CHUNK_ID_ATTR, COLLAPSE_SECTION_ID_ATTR } from "./readingGeometryPass";
 import ChunkModal from "./ChunkModal";
-import { buildLayoutMap } from "./readingGeometryPass";
+import { buildLayoutMap, measureCollapseSection } from "./readingGeometryPass";
 import type { ClaimReviewRating } from "./reviewState";
 
 /**
@@ -238,16 +243,27 @@ export default function MasterMdViewer({
   // recompute trigger is a ResizeObserver on the article (it fires on exactly those,
   // uniformly, untied to `window`), debounced for the resize/reflow BURST case.
   //
-  // We mount the UNSCOPED buildLayoutMap (NOT the viewport-scoped variant): on this
-  // surface scoping would prune NOTHING — the transform pipeline is empty (SPR-05's
-  // collapse is not bound this sprint) so there is no per-frame fold cost to cap,
-  // and the base geometry is scroll-invariant so the visible band never narrows the
-  // work. The scoped path (buildViewportScopedLayoutMap / buildViewportBand in
-  // readingGeometryPass.ts) is RESERVED for when the reading column becomes its own
-  // scroll container AND a non-empty transform pipeline makes per-frame fold cost
-  // real — see that module's header for the reserved-seam contract.
+  // We mount the UNSCOPED buildLayoutMap (NOT the viewport-scoped variant). The
+  // collapse pipeline is now folded when the ephemeral collapse state is non-empty;
+  // viewport-scoping remains RESERVED for the later scroll-container slice where a
+  // visible band can honestly cap per-frame work.
   const articleRef = useRef<HTMLElement | null>(null);
   const [layoutMap, setLayoutMap] = useState<LayoutMap>(EMPTY_LAYOUT_MAP);
+  const [collapseState, setCollapseState] = useState(() => new CollapseState());
+
+  const handleArticleWheel = (event: WheelEvent<HTMLElement>) => {
+    if (!event.metaKey && !event.ctrlKey) return;
+    const root = articleRef.current;
+    const target = event.target instanceof Element ? event.target : null;
+    const section = target?.closest(`[${COLLAPSE_SECTION_ID_ATTR}]`);
+    if (!root || !(section instanceof HTMLElement) || !root.contains(section)) {
+      return;
+    }
+    const collapsed = measureCollapseSection(root, section);
+    if (!collapsed) return;
+    event.preventDefault();
+    setCollapseState((state) => state.toggle(collapsed));
+  };
 
   useLayoutEffect(() => {
     const root = articleRef.current;
@@ -256,10 +272,7 @@ export default function MasterMdViewer({
     const recompute = () => {
       const node = articleRef.current;
       if (!node) return;
-      // The transform pipeline is empty here; a live collapse passes
-      // collapsePipelineFor(state) as the 2nd arg with no surface change (SPR-05's
-      // seam is already threaded through buildLayoutMap).
-      setLayoutMap(buildLayoutMap(node));
+      setLayoutMap(buildLayoutMap(node, collapsePipelineFor(collapseState)));
     };
 
     // Initial measure: synchronous, pre-paint (the M1 geometry pass). Correct as a
@@ -284,12 +297,13 @@ export default function MasterMdViewer({
     };
     // Re-run when the rendered synthesis changes (new claims ⇒ new anchors to
     // measure). The streamed-mutation case re-renders on its own and re-runs this.
-  }, [synthesis]);
+  }, [synthesis, collapseState]);
 
   return (
     <div className="bg-ice-0 dark:bg-charcoal-2">
       <article
         ref={articleRef}
+        onWheel={handleArticleWheel}
         className="max-w-3xl mx-auto px-6 py-10 font-serif text-ink dark:text-bright">
         {/* Header band */}
         <header className="mb-8 pb-6 border-b border-rule dark:border-charcoal-1">
@@ -525,34 +539,36 @@ export function ClaimBlock({
     ) : null;
   return (
     <div className="text-base leading-relaxed">
-      <span className="font-mono text-xs text-ink-mute dark:text-moonlight mr-2">
-        {claim.index}.
-      </span>
-      <span
-        data-claim-id={String(claim.index)}
-        {...(claimClass ? { className: claimClass } : {})}
-        {...(reviewDue?.title ? { title: reviewDue.title } : {})}
-      >
-        {claim.claim}
-      </span>
-      {claim.rationale && (
-        <p className="text-sm text-ink-soft dark:text-starlight mt-2 leading-relaxed pl-6 border-l-2 border-rule dark:border-charcoal-1 ml-1">
-          {claim.rationale}
-        </p>
-      )}
-      <div className="mt-2 flex items-center gap-2 flex-wrap pl-6">
-        <ConfidenceChip
-          confidence={claim.confidence}
-          tier={claim.effectiveSourceTier}
-        />
-        <NamedSources chunkIds={claim.chunkIds} onPreview={onChunkClick} />
-        {reviewControls}
-        {claim.supportingPathIndices.length > 0 && (
-          <span className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
-            + {claim.supportingPathIndices.length} cross-domain path
-            {claim.supportingPathIndices.length === 1 ? "" : "s"}
-          </span>
+      <div {...{ [COLLAPSE_SECTION_ID_ATTR]: `claim-${claim.index}` }}>
+        <span className="font-mono text-xs text-ink-mute dark:text-moonlight mr-2">
+          {claim.index}.
+        </span>
+        <span
+          data-claim-id={String(claim.index)}
+          {...(claimClass ? { className: claimClass } : {})}
+          {...(reviewDue?.title ? { title: reviewDue.title } : {})}
+        >
+          {claim.claim}
+        </span>
+        {claim.rationale && (
+          <p className="text-sm text-ink-soft dark:text-starlight mt-2 leading-relaxed pl-6 border-l-2 border-rule dark:border-charcoal-1 ml-1">
+            {claim.rationale}
+          </p>
         )}
+        <div className="mt-2 flex items-center gap-2 flex-wrap pl-6">
+          <ConfidenceChip
+            confidence={claim.confidence}
+            tier={claim.effectiveSourceTier}
+          />
+          <NamedSources chunkIds={claim.chunkIds} onPreview={onChunkClick} />
+          {reviewControls}
+          {claim.supportingPathIndices.length > 0 && (
+            <span className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
+              + {claim.supportingPathIndices.length} cross-domain path
+              {claim.supportingPathIndices.length === 1 ? "" : "s"}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

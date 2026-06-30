@@ -136,13 +136,14 @@ this live map.
   live (an anchored widget resolves a non-null rect when handed a measured
   anchor), but `AccrualView` / `ChaseThread` are still not mounted in
   `MasterMdViewer`.
-- The **collapse ⌘/Ctrl+scroll gesture is NOT bound.** This sprint lit up the
-  geometry collapse CONSUMES; it did not add the surface gesture handler that
-  mutates `CollapseState` and folds `collapsePipelineFor(state)` into the map. The
-  3rd `transforms` argument is threaded through `buildViewportScopedLayoutMap` so a
-  later sprint binds the gesture with no change to the measure pass — but with no
-  handler, no collapse pipeline is ever folded, so collapse is "geometry-ready,
-  gesture-dormant."
+- The **collapse ⌘/Ctrl+wheel gesture is now bound as of 2026-07-01.** The
+  surface toggles ephemeral `CollapseState` for the claim section under the
+  pointer, measures the section band through `readingGeometryPass.ts`, and folds
+  `collapsePipelineFor(state)` into `buildLayoutMap`. Downstream geometry
+  consumers inherit the spatial transform (proved by the minimap mark shift in
+  `MasterMdViewer.test.tsx`). What is still NOT true: the document paints a
+  visible compressed fingerprint/color band for collapsed prose. The state +
+  geometry path is live; the fingerprint paint pass remains a later UI slice.
 - The **AccrualView / ChaseThread gutter widgets** are not mounted in
   `MasterMdViewer` (they were never mounted here; SPR-04 built them). They share
   the same anchored-widgets facet that is now proved live against the live map, so
@@ -220,6 +221,9 @@ model:
   `{kind:"passage", chunkId, start, end}`. The remaining named wedge is mounting
   the relevant gutter widgets in the synthesis/reader surface and feeding them
   the existing live layout-map.
+- **Collapse needs visible fingerprint chrome** → the gesture/state/layout-map
+  transform path is now live (2026-07-01). Remaining work is the paint pass that
+  renders decorations inside collapsed bands as the compressed color fingerprint.
 - A different surface than `MasterMdViewer` becomes the canonical reading column →
   the geometry pass + its feed-points move with it; update `readingGeometryPass.ts`
   + the mount.

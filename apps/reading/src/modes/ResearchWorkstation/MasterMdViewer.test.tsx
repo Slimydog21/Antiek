@@ -52,6 +52,7 @@ import { REVIEW_DUE_CLASS } from "../../reading-physics/augmentations/review-due
 import { anchorKey } from "../../reading-physics/facets/decorations";
 import type { ClaimId } from "../../reading-physics/types";
 import type { ParsedClaim } from "../../lib/synthesisParser";
+import { COLLAPSE_SECTION_ID_ATTR } from "./readingGeometryPass";
 
 // jsdom does not implement ResizeObserver, but MasterMdViewer's geometry pass
 // (Living-Roadmap SPR-02 round 2) constructs one on mount. Install a minimal
@@ -869,6 +870,83 @@ describe("MasterMdViewer — geometry pass mounted in the surface (Living-Roadma
     // QualityCue is geometry-independent: threading the live map (vs the old
     // EMPTY_LAYOUT_MAP) leaves its render byte-equivalent — it still clears the bar.
     expect(screen.getByText(/clears our quality bar/i)).toBeTruthy();
+  });
+});
+
+describe("MasterMdViewer — collapse gesture binding (SPR-05 surface integration)", () => {
+  it("Ctrl/Cmd-wheel over a claim toggles a collapse pipeline into the live layout-map", async () => {
+    getChunkMock.mockImplementation(async (id: string) => chunk({ chunk_id: id }));
+
+    const geomSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        const collapseId = this.getAttribute(COLLAPSE_SECTION_ID_ATTR);
+        const claimId = this.getAttribute("data-claim-id");
+        const r =
+          this.tagName === "ARTICLE"
+            ? { top: 0, left: 0, width: 800, height: 4000 }
+            : collapseId === "claim-1"
+              ? { top: 100, left: 20, width: 600, height: 40 }
+              : collapseId === "claim-2"
+                ? { top: 300, left: 20, width: 600, height: 40 }
+                : claimId === "1"
+                  ? { top: 110, left: 28, width: 560, height: 20 }
+                  : claimId === "2"
+                    ? { top: 310, left: 28, width: 560, height: 20 }
+                    : { top: 0, left: 0, width: 0, height: 0 };
+        return {
+          top: r.top,
+          left: r.left,
+          width: r.width,
+          height: r.height,
+          right: r.left + r.width,
+          bottom: r.top + r.height,
+          x: r.left,
+          y: r.top,
+          toJSON() {
+            return r;
+          },
+        } as DOMRect;
+      });
+
+    try {
+      const { container } = render(
+        <MasterMdViewer
+          synthesis={reviewDueSynth()}
+          reviewDueEnabled={true}
+          reviewDueClaims={[
+            { claimId: "1", dueLabel: "Due 1" },
+            { claimId: "2", dueLabel: "Due 2" },
+          ]}
+        />,
+      );
+
+      await waitFor(() =>
+        expect(container.querySelectorAll(".reading-minimap__mark")).toHaveLength(2),
+      );
+      const marksBefore = container.querySelectorAll<HTMLElement>(".reading-minimap__mark");
+      expect(marksBefore[1].style.top).toBe("24.8px");
+
+      const firstSection = container.querySelector<HTMLElement>(
+        `[${COLLAPSE_SECTION_ID_ATTR}="claim-1"]`,
+      );
+      expect(firstSection).not.toBeNull();
+      fireEvent.wheel(firstSection!, { ctrlKey: true, deltaY: 80 });
+
+      await waitFor(() => {
+        const marksAfter = container.querySelectorAll<HTMLElement>(".reading-minimap__mark");
+        expect(marksAfter[1].style.top).toBe("22.56px");
+      });
+
+      // A second modified wheel toggles the same ephemeral section back out.
+      fireEvent.wheel(firstSection!, { metaKey: true, deltaY: 80 });
+      await waitFor(() => {
+        const marksAfter = container.querySelectorAll<HTMLElement>(".reading-minimap__mark");
+        expect(marksAfter[1].style.top).toBe("24.8px");
+      });
+    } finally {
+      geomSpy.mockRestore();
+    }
   });
 });
 
