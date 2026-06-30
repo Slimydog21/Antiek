@@ -1,9 +1,8 @@
 """Spin a deep research from a book passage — the cross-workflow seam
 (Read SPR-08, backend pieces M1 + M4).
 
-Two backend halves of the seam; the reader-side UI (ResearchThis.tsx,
-return-to-reading, the Playwright e2e) layers on the DRW reading surface,
-which is unbuilt.
+Two backend halves of the seam; the reader-side UI (ResearchThis.tsx and
+return-to-reading through the Reader route) layers on top of this contract.
 
 1. **The research seed, gated.** ``build_research_seed`` turns a passage
    into the context that pre-seeds the Research workflow's planner. The
