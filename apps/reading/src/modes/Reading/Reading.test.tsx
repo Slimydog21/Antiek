@@ -19,6 +19,7 @@ const {
   searchBlocksMock,
   startInvestigationMock,
   apiFetchMock,
+  getChunkMock,
 } = vi.hoisted(() => ({
   getBookMock: vi.fn(),
   getFullTextMock: vi.fn(),
@@ -37,6 +38,7 @@ const {
   apiFetchMock: vi.fn((_i: unknown, _init?: unknown) =>
     Promise.resolve(new Response(JSON.stringify({ text: "reply" }), { status: 200 })),
   ),
+  getChunkMock: vi.fn(),
 }));
 
 vi.mock("../../api/books", async (orig) => {
@@ -61,6 +63,7 @@ vi.mock("../../lib/api", async (orig) => {
     searchBlocks: (q: string) => searchBlocksMock(q),
     startInvestigation: (r: unknown) => startInvestigationMock(r),
     apiFetch: (i: unknown, init?: unknown) => apiFetchMock(i, init),
+    getChunk: (chunkId: string) => getChunkMock(chunkId),
   };
 });
 
@@ -245,11 +248,11 @@ function makeBody(over: Partial<FullTextResponse> = {}): FullTextResponse {
   };
 }
 
-async function renderReader() {
+async function renderReader(path = "/read/doc-1") {
   listBooksMock.mockResolvedValue({ books: [], count: 0 });
   const { default: BookReader } = await import("./index");
   return render(
-    <MemoryRouter initialEntries={["/read/doc-1"]}>
+    <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/read/:documentId" element={<BookReader />} />
       </Routes>
@@ -264,6 +267,7 @@ describe("BookReader", () => {
     getFullTextMock.mockReset();
     listBooksMock.mockReset();
     navigateMock.mockReset();
+    getChunkMock.mockReset().mockRejectedValue(new Error("chunk_not_found"));
     // Default: a calm, empty reading thread (the no-key / nothing-yet case).
     useInvestigationMock.mockReset();
     useInvestigationMock.mockReturnValue({
@@ -286,6 +290,27 @@ describe("BookReader", () => {
     expect(screen.getByText(/Page 1 of 2/)).toBeTruthy(); // pager text (matcher spans nodes)
     fireEvent.click(screen.getByRole("button", { name: /Next/ }));
     await waitFor(() => expect(screen.getByText("The second page.")).toBeTruthy());
+  });
+
+  it("lands on the exact page for a ?chunk= link when the chunk has a Page N anchor", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    getChunkMock.mockResolvedValue({
+      chunk_id: "chunk-page-2",
+      text: "second page source",
+      section_path: "Page 2",
+      token_count: 12,
+      document_id: "doc-1",
+      document_title: "A Servable Book",
+      source_tier: 2,
+      servable: true,
+      servability: null,
+    });
+
+    await renderReader("/read/doc-1?chunk=chunk-page-2");
+
+    await waitFor(() => expect(screen.getByText("The second page.")).toBeTruthy());
+    expect(screen.getByText(/Page 2 of 2/)).toBeTruthy();
   });
 
   it("shows the preview banner and snippet for a gated book", async () => {

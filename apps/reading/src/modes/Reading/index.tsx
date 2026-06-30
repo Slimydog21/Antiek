@@ -4,6 +4,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { LemonButton, LemonTag } from "../../components/lemon";
 import type { BookDetail, BookSummary, FullTextResponse, TocItem } from "../../api/books";
 import { getBook, getBookFullText, listBooks, servabilityLabel } from "../../api/books";
+import { getChunk } from "../../lib/api";
 import FloatMenu from "../shared/FloatMenu/FloatMenu";
 import { useFloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
 import { resolveCharRange } from "../shared/FloatMenu/selectionCharRange";
@@ -46,6 +47,15 @@ import { emitSourceRead, isRead } from "./sourceRead";
  * does, and this surface honestly reflects it.
  */
 
+export function pageIndexFromChunkSectionPath(sectionPath: string | null | undefined): number | null {
+  if (!sectionPath) return null;
+  const match = sectionPath.trim().match(/^Page\s+(\d+)$/i);
+  if (!match) return null;
+  const pageNumber = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(pageNumber) || pageNumber < 1) return null;
+  return pageNumber - 1;
+}
+
 export default function BookReader() {
   const { documentId = "" } = useParams<{ documentId: string }>();
   // ── openDocument opts (SPR-05) ────────────────────────────────────────────
@@ -63,8 +73,9 @@ export default function BookReader() {
   //                sprint lands the reader on the region's page honestly.
   //   ?mode=inspect → default the "view original" register on (the provenance
   //                view), when an original exists.
-  //   ?chunk=... → forwarded for the Reader's chunk→region resolution (no
-  //                separate paint path this sprint).
+  //   ?chunk=... → resolved through GET /chunks/{id}; an exact `Page N`
+  //                section_path jumps to that page. Other locators stay
+  //                metadata — no fabricated page or block anchor.
   const [searchParams] = useSearchParams();
   const optPage = useMemo(() => {
     const raw = searchParams.get("page");
@@ -78,6 +89,7 @@ export default function BookReader() {
     return raw && raw.trim() ? raw.trim() : null;
   }, [searchParams]);
   const optInspect = searchParams.get("mode") === "inspect";
+  const [chunkPageIndex, setChunkPageIndex] = useState<number | null>(null);
 
   const [book, setBook] = useState<BookDetail | null>(null);
   const [body, setBody] = useState<FullTextResponse | null>(null);
@@ -115,6 +127,27 @@ export default function BookReader() {
       cancelled = true;
     };
   }, [documentId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setChunkPageIndex(null);
+    if (!optChunk) return () => {
+      cancelled = true;
+    };
+    (async () => {
+      try {
+        const chunk = await getChunk(optChunk);
+        if (!cancelled) {
+          setChunkPageIndex(pageIndexFromChunkSectionPath(chunk.section_path));
+        }
+      } catch {
+        if (!cancelled) setChunkPageIndex(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [documentId, optChunk]);
 
   // ── The ONE rich-render gate (Reader SPR-03 M4), §9.0-DEFENDED ────────────
   // Deserialize the SPR-02 `structured_blocks` into the SPR-01 typed `Document`
@@ -219,12 +252,14 @@ export default function BookReader() {
   const deepLinkAppliedRef = useRef<string | null>(null);
   useEffect(() => {
     if (pages.length === 0) return;
-    const key = `${documentId}|${optPage ?? ""}|${searchParams.get("hl") ?? ""}`;
+    const targetPage = optPage ?? chunkPageIndex;
+    const key = `${documentId}|${targetPage ?? ""}|${searchParams.get("hl") ?? ""}|${optChunk ?? ""}`;
     if (deepLinkAppliedRef.current === key) return;
     deepLinkAppliedRef.current = key;
-    // Only an explicit page is resolvable to a jump today (see limitation above).
-    if (optPage !== null) jumpToPage(optPage);
-  }, [pages.length, optPage, documentId, searchParams, jumpToPage]);
+    // Explicit ?page= wins. Otherwise, an exact "Page N" chunk section_path can
+    // land the reader on the chunk's page. Non-page locators stay metadata.
+    if (targetPage !== null) jumpToPage(targetPage);
+  }, [pages.length, optPage, chunkPageIndex, documentId, searchParams, optChunk, jumpToPage]);
 
   // Reader ad-impression flushing (SPR-05). A stable session id per mount;
   // the hook tracks focused dwell and flushes the page's slots on change.
