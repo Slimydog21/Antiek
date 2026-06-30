@@ -21,6 +21,18 @@
 import type { Anchor, ClaimId } from "./types";
 
 /**
+ * DOM marker attributes the surface stamps so the one geometry-measurement pass
+ * can translate laid-out nodes back into semantic anchors. These are marker
+ * names only: the surface owns when to stamp them, and augmentations never read
+ * the DOM.
+ */
+export const CLAIM_ID_ATTR = "data-claim-id";
+export const CHUNK_ID_ATTR = "data-chunk-id";
+export const PASSAGE_CHUNK_ID_ATTR = "data-passage-chunk-id";
+export const PASSAGE_START_ATTR = "data-passage-start";
+export const PASSAGE_END_ATTR = "data-passage-end";
+
+/**
  * The claim id the synthesis-header anchor uses (the first claim, index 1). A
  * branded `ClaimId` so callers get the opaque-handle type, not a free string.
  */

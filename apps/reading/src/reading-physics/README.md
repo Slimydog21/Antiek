@@ -155,15 +155,17 @@ surface now feeds them real geometry:
   `baseGeometryFromMap` → `createLayoutMap`.
 - The mounted map is no longer permanently `EMPTY_LAYOUT_MAP`. `EMPTY_LAYOUT_MAP`
   is only the honest first-paint/default state before the first measurement.
-- Claim anchors (`data-claim-id`) and source chunk anchors (`data-chunk-id`) are
-  measured. The minimap is mounted as a second pass over the same resolved
-  decorations and live layout map.
+- Claim anchors (`data-claim-id`), source chunk anchors (`data-chunk-id`), and
+  structured citation passage anchors (`data-passage-*`) are measured. The
+  minimap is mounted as a second pass over the same resolved decorations and
+  live layout map.
 
 **What remains deliberately dormant:**
 
-- Exact marginalia passage anchors (`{kind:"passage", chunkId, start, end}`) need
-  rendered `data-passage-*` spans before the surface can measure them. Chunk-level
-  bounded/withheld anchors are live; exact passage-offset anchors are not.
+- Exact passage geometry is now available when the rendered structured citation
+  carries `char_start` / `char_end`. The marginalia gutter experience is still
+  dormant because `AccrualView` / `ChaseThread` are not mounted in the synthesis
+  surface yet; do not round passage measurement up into mounted marginalia UI.
 - The `⌘/Ctrl+scroll` collapse gesture is not bound yet. The controller and
   `collapsePipelineFor(state)` are tested, and `buildLayoutMap(root, transforms)`
   is ready to fold the pipeline, but no surface handler mutates `CollapseState`.
