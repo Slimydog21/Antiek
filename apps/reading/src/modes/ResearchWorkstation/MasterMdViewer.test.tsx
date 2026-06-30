@@ -182,6 +182,47 @@ describe("MasterMdViewer — named-source read (M1)", () => {
     );
   });
 
+  it("previews the chunk that supplied the displayed locator", async () => {
+    getChunkMock.mockImplementation(async (id: string) =>
+      id === "c1"
+        ? chunk({
+            chunk_id: "c1",
+            document_id: "doc-1",
+            document_title: "One Paper",
+            section_path: null,
+          })
+        : chunk({
+            chunk_id: "c2",
+            document_id: "doc-1",
+            document_title: "One Paper",
+            section_path: "p.42",
+          }),
+    );
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          components: [
+            {
+              index: 1,
+              claim: "Backed by two chunks of one paper.",
+              confidence: "high",
+              effectiveSourceTier: 2,
+              hedgingRequired: false,
+              chunkIds: ["c1", "c2"],
+              supportingPathIndices: [],
+            },
+          ],
+          chunkCitations: { c1: [1], c2: [1] },
+        })}
+      />,
+    );
+    const source = await screen.findByText(/from One Paper/);
+    expect(source.textContent).toContain("p.42");
+    fireEvent.click(source);
+    await waitFor(() => expect(screen.getByText("c2")).toBeTruthy());
+    expect(screen.queryByText("c1")).toBeNull();
+  });
+
   it("does NOT open a restricted source — shows 'not available to open'", async () => {
     getChunkMock.mockResolvedValue(
       chunk({
