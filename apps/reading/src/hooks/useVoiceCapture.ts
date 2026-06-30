@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 
-import { AsrError, transcribe } from "../api/asr";
+import { AsrError, transcribe, uploadVoiceBlob } from "../api/asr";
 import { postTypedEvent } from "../lib/api";
 import { useVoiceRecorder, type RecorderState } from "./useVoiceRecorder";
 
@@ -14,9 +14,10 @@ import { useVoiceRecorder, type RecorderState } from "./useVoiceRecorder";
  *   transcribe → `api/asr.transcribe` (the LIVE `/voice/transcribe` route;
  *                Whisper today, MiMo-V2.5-ASR the intended future backend
  *                behind the same route — see docs/decisions/voice-infrastructure.md)
+ *   audio blob → `api/asr.uploadVoiceBlob` (`/voice/blob`; object storage)
  *   persist → `postTypedEvent` → `/events/typed`  (single-writer funnel;
- *                NO client-side store of any kind — the audio blob persists
- *                by REFERENCE via `audio_ref`, the transcript via the event)
+ *                NO client-side store of any kind — the event carries the
+ *                object-store `audio_ref`, plus the transcript)
  *
  * PROVENANCE (SPR-14 M3 / master-spec §9): a voice capture is ALWAYS
  * `sourceKind: "user"` (human-authored). The persisted `voice.captured` event
@@ -179,6 +180,21 @@ export function useVoiceCapture(): UseVoiceCapture {
       const transcriptStatus = blobToStatus(transcriptText);
 
       setPhase("persisting");
+      let audioRef = opts.audioRef ?? null;
+      if (!audioRef) {
+        try {
+          const uploaded = await uploadVoiceBlob(blob);
+          audioRef = uploaded.audioRef;
+        } catch (e: unknown) {
+          setPhase("error");
+          setError(
+            "Captured the transcript but couldn’t store the audio — " +
+              (e instanceof Error ? e.message : String(e)),
+          );
+          return null;
+        }
+      }
+
       let eventId: string | null = null;
       try {
         const emitted = await postTypedEvent({
@@ -193,7 +209,7 @@ export function useVoiceCapture(): UseVoiceCapture {
             transcript_status: transcriptStatus,
             language,
             duration_seconds: durationSeconds,
-            audio_ref: opts.audioRef ?? null,
+            audio_ref: audioRef,
           },
         });
         eventId = emitted.event_id;

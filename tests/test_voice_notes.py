@@ -165,6 +165,52 @@ def test_transcribe_endpoint_400_on_empty_audio():
     assert resp.status_code == 400
 
 
+def test_voice_blob_endpoint_stores_audio_by_reference(monkeypatch, tmp_path):
+    monkeypatch.setenv("ANTIEK_VOICE_BLOB_DIR", str(tmp_path / "voice-blobs"))
+    audio = b"\x00\x01voice bytes"
+    resp = _client().post(
+        "/voice/blob",
+        content=audio,
+        headers={"Content-Type": "audio/webm"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["audio_ref"].startswith("voice-blob://sha256/")
+    assert body["byte_size"] == len(audio)
+    assert len(body["sha256"]) == 64
+    stored = list((tmp_path / "voice-blobs").glob("*.webm"))
+    assert len(stored) == 1
+    assert stored[0].read_bytes() == audio
+
+    # Content-addressed: re-uploading the same bytes returns the same pointer.
+    again = _client().post(
+        "/voice/blob",
+        content=audio,
+        headers={"Content-Type": "audio/webm"},
+    )
+    assert again.json()["audio_ref"] == body["audio_ref"]
+
+
+def test_voice_blob_endpoint_refuses_empty_audio(monkeypatch, tmp_path):
+    monkeypatch.setenv("ANTIEK_VOICE_BLOB_DIR", str(tmp_path / "voice-blobs"))
+    resp = _client().post("/voice/blob", content=b"", headers={"Content-Type": "audio/webm"})
+    assert resp.status_code == 400
+    assert not (tmp_path / "voice-blobs").exists()
+
+
+def test_voice_blob_endpoint_refuses_over_cap_audio(monkeypatch, tmp_path):
+    from interfaces.research.api.read_voice import MAX_VOICE_BLOB_BYTES
+
+    monkeypatch.setenv("ANTIEK_VOICE_BLOB_DIR", str(tmp_path / "voice-blobs"))
+    resp = _client().post(
+        "/voice/blob",
+        content=b"x" * (MAX_VOICE_BLOB_BYTES + 1),
+        headers={"Content-Type": "audio/webm"},
+    )
+    assert resp.status_code == 413
+    assert not (tmp_path / "voice-blobs").exists()
+
+
 def test_distill_can_skip_emission():
     """emit=False distills without writing events — for a preview the user
     hasn't committed yet."""

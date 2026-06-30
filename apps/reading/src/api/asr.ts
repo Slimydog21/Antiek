@@ -24,7 +24,9 @@
  * This module does NOT persist anything. Persistence of the capture (the
  * transcript + audio reference + the user-sourced provenance label) flows
  * through the single-writer typed-event funnel in `useVoiceCapture`
- * (`postTypedEvent` → `/events/typed`), never a side store.
+ * (`postTypedEvent` → `/events/typed`), never a client side store. Raw audio
+ * storage is the separate `/voice/blob` object path below; events carry only
+ * its returned `audio_ref`.
  */
 
 import { API_BASE, apiFetch } from "../lib/api";
@@ -37,6 +39,12 @@ export interface TranscriptionResult {
   durationSeconds: number;
 }
 
+export interface VoiceBlobUploadResult {
+  audioRef: string;
+  byteSize: number;
+  sha256: string;
+}
+
 /** Why a transcription attempt failed — surfaced so a caller can choose to
  * retry vs. let the user type, and so a 503 is NEVER mistaken for an empty
  * transcript (SPR-14 rigor #3: a failed transcription is surfaced, never
@@ -44,6 +52,7 @@ export interface TranscriptionResult {
 export type AsrFailureKind =
   | "unavailable" // 503 — the ASR service (operator key / endpoint) is down
   | "empty_audio" // 400 — no audio bytes were sent
+  | "too_large" // 413 — audio exceeded the backend upload bound
   | "timeout" // the request was aborted on the client timeout
   | "http"; // any other non-OK status
 
@@ -117,6 +126,9 @@ export async function transcribe(
   if (resp.status === 400) {
     throw new AsrError("empty_audio", "No audio captured.", 400);
   }
+  if (resp.status === 413) {
+    throw new AsrError("too_large", "That recording is too long to store.", 413);
+  }
   if (!resp.ok) {
     throw new AsrError("http", `POST /voice/transcribe: HTTP ${resp.status}`, resp.status);
   }
@@ -130,5 +142,31 @@ export async function transcribe(
     transcript: body.transcript,
     language: body.language,
     durationSeconds: body.duration_seconds,
+  };
+}
+
+/** Store a captured audio blob and return the object reference that typed
+ * events carry as `audio_ref`. The blob itself never rides the event funnel. */
+export async function uploadVoiceBlob(audio: Blob): Promise<VoiceBlobUploadResult> {
+  const resp = await apiFetch(`${API_BASE}/voice/blob`, {
+    method: "POST",
+    headers: { "Content-Type": audio.type || "audio/webm" },
+    body: audio,
+  });
+  if (resp.status === 400) {
+    throw new AsrError("empty_audio", "No audio captured.", 400);
+  }
+  if (!resp.ok) {
+    throw new AsrError("http", `POST /voice/blob: HTTP ${resp.status}`, resp.status);
+  }
+  const body = (await resp.json()) as {
+    audio_ref: string;
+    byte_size: number;
+    sha256: string;
+  };
+  return {
+    audioRef: body.audio_ref,
+    byteSize: body.byte_size,
+    sha256: body.sha256,
   };
 }
