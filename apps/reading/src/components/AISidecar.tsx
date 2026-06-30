@@ -355,10 +355,11 @@ export default function AISidecar() {
                         <button
                           type="button"
                           onClick={() => {
-                            rec.undo?.();
-                            setAiLog((prev) =>
-                              prev.filter((r) => r !== rec),
-                            );
+                            void Promise.resolve(rec.undo?.()).finally(() => {
+                              setAiLog((prev) =>
+                                prev.filter((r) => r !== rec),
+                              );
+                            });
                           }}
                           className="text-[10px] font-mono px-1.5 py-0.5 rounded border border-rule dark:border-charcoal-1 text-ink-soft dark:text-starlight hover:bg-sun/15"
                         >
