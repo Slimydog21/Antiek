@@ -162,6 +162,9 @@ surface now feeds them real geometry:
 - `⌘/Ctrl+wheel` over a claim toggles ephemeral `CollapseState` and folds
   `collapsePipelineFor(state)` into the live layout map, so downstream geometry
   consumers such as the minimap inherit the spatial transform.
+- Collapsed decorated claims now paint a visible, color-only fingerprint strip
+  beside the article. It carries decoration classes and deterministic color, not
+  body/title text.
 
 **What remains deliberately dormant:**
 
@@ -169,9 +172,6 @@ surface now feeds them real geometry:
   carries `char_start` / `char_end`. The marginalia gutter experience is still
   dormant because `AccrualView` / `ChaseThread` are not mounted in the synthesis
   surface yet; do not round passage measurement up into mounted marginalia UI.
-- Collapse fingerprint painting is still not rendered as visible document chrome.
-  The state and transform pipeline are live; the compressed color-band enact is a
-  separate paint pass.
 - `AccrualView` / `ChaseThread` gutter widgets are not mounted in
   `MasterMdViewer` yet. They share the anchored-widget facet and can consume the
   live map when wired.

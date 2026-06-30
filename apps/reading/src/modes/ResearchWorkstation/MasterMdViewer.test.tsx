@@ -924,6 +924,7 @@ describe("MasterMdViewer — collapse gesture binding (SPR-05 surface integratio
       await waitFor(() =>
         expect(container.querySelectorAll(".reading-minimap__mark")).toHaveLength(2),
       );
+      expect(container.querySelector(".reading-collapse-fingerprint__mark")).toBeNull();
       const marksBefore = container.querySelectorAll<HTMLElement>(".reading-minimap__mark");
       expect(marksBefore[1].style.top).toBe("24.8px");
 
@@ -937,6 +938,14 @@ describe("MasterMdViewer — collapse gesture binding (SPR-05 surface integratio
         const marksAfter = container.querySelectorAll<HTMLElement>(".reading-minimap__mark");
         expect(marksAfter[1].style.top).toBe("22.56px");
       });
+      const fingerprint = container.querySelector<HTMLElement>(
+        ".reading-collapse-fingerprint__mark",
+      );
+      expect(fingerprint).not.toBeNull();
+      expect(fingerprint!.className).toContain(REVIEW_DUE_CLASS);
+      expect(fingerprint!.textContent).toBe("");
+      expect(fingerprint!.style.top).toBe("103px");
+      expect(fingerprint!.style.height).toBe("6px");
 
       // A second modified wheel toggles the same ephemeral section back out.
       fireEvent.wheel(firstSection!, { metaKey: true, deltaY: 80 });
@@ -944,6 +953,7 @@ describe("MasterMdViewer — collapse gesture binding (SPR-05 surface integratio
         const marksAfter = container.querySelectorAll<HTMLElement>(".reading-minimap__mark");
         expect(marksAfter[1].style.top).toBe("24.8px");
       });
+      expect(container.querySelector(".reading-collapse-fingerprint__mark")).toBeNull();
     } finally {
       geomSpy.mockRestore();
     }

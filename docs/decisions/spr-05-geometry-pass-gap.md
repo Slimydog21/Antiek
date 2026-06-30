@@ -141,9 +141,9 @@ this live map.
   pointer, measures the section band through `readingGeometryPass.ts`, and folds
   `collapsePipelineFor(state)` into `buildLayoutMap`. Downstream geometry
   consumers inherit the spatial transform (proved by the minimap mark shift in
-  `MasterMdViewer.test.tsx`). What is still NOT true: the document paints a
-  visible compressed fingerprint/color band for collapsed prose. The state +
-  geometry path is live; the fingerprint paint pass remains a later UI slice.
+  `MasterMdViewer.test.tsx`). The visible compressed fingerprint/color band is
+  also live: collapsed decorated claims render an aria-hidden, color-only strip
+  beside the article, carrying decoration classes but no body/title text.
 - The **AccrualView / ChaseThread gutter widgets** are not mounted in
   `MasterMdViewer` (they were never mounted here; SPR-04 built them). They share
   the same anchored-widgets facet that is now proved live against the live map, so
@@ -183,10 +183,11 @@ model:
   listener.) A surface constant justified inline; tuning it never touches the physics.
 - **Viewport-scoping is deliberately NOT mounted on this surface.** Round 1 mounted
   `createViewportScopedLayoutMap`; round 2 mounts the **unscoped** `buildLayoutMap`.
-  Scoping would prune NOTHING here: the transform pipeline is empty (SPR-05's
-  collapse is unbound this sprint, so there is no per-frame fold cost to cap) AND
-  the base geometry is scroll-invariant (the visible band never narrows the resolved
-  set). `buildViewportScopedLayoutMap` / `buildViewportBand` / `VIEWPORT_OVERSCAN_PX`
+  At the time, scoping would prune NOTHING: the transform pipeline was empty and
+  the base geometry was scroll-invariant (the visible band never narrowed the
+  resolved set). Later 2026-07-01 updates bound collapse, but the article still is
+  not its own scroll container, so the surface still has no honest visible band to
+  scope against. `buildViewportScopedLayoutMap` / `buildViewportBand` / `VIEWPORT_OVERSCAN_PX`
   remain **exported and tested** in `readingGeometryPass.ts` as the **RESERVED PATH**
   for when (a) the reading column becomes its OWN scroll container AND (b) a
   non-empty transform pipeline (SPR-05 collapse) makes per-frame fold cost real — at
@@ -221,9 +222,9 @@ model:
   `{kind:"passage", chunkId, start, end}`. The remaining named wedge is mounting
   the relevant gutter widgets in the synthesis/reader surface and feeding them
   the existing live layout-map.
-- **Collapse needs visible fingerprint chrome** → the gesture/state/layout-map
-  transform path is now live (2026-07-01). Remaining work is the paint pass that
-  renders decorations inside collapsed bands as the compressed color fingerprint.
+- ~~**Collapse needs visible fingerprint chrome** → the gesture/state/layout-map
+  transform path is live and the color-only fingerprint strip now paints decorated
+  collapsed claims (2026-07-01).~~ DONE.
 - A different surface than `MasterMdViewer` becomes the canonical reading column →
   the geometry pass + its feed-points move with it; update `readingGeometryPass.ts`
   + the mount.
