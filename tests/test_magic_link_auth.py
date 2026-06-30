@@ -240,6 +240,38 @@ def test_auth_callback_rejects_non_allowlisted_email(monkeypatch):
     assert "error=not_authorized" in r.headers["location"]
 
 
+def test_auth_callback_rejects_email_removed_after_request(monkeypatch):
+    """Real SPR-06 flow: request while allowlisted, remove before click.
+
+    The callback must reject the stale link using the current SPR-03 Login
+    redirect surface and must not mint a session cookie.
+    """
+    sender = MockEmailProvider(log_to_stdout=False)
+    monkeypatch.setattr(
+        "interfaces.research.api.auth.get_email_provider",
+        lambda: sender,
+    )
+    client = _client(monkeypatch)
+    r = client.post("/auth/request", json={"email": _OPERATOR})
+    assert r.status_code == 200
+    assert r.json() == {"sent": True}
+    assert len(sender.sent) == 1
+
+    monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", _OPERATOR_SECOND)
+    magic_link = next(
+        part
+        for part in sender.sent[0].email.text_body.split()
+        if "/auth/callback?token=" in part
+    )
+    parsed = urlparse(magic_link)
+    callback_path = f"{parsed.path}?{parsed.query}"
+
+    r2 = client.get(callback_path, follow_redirects=False)
+    assert r2.status_code == 302
+    assert "error=not_authorized" in r2.headers["location"]
+    assert SESSION_COOKIE_NAME not in r2.cookies
+
+
 def test_session_cookie_authorizes_middleware(monkeypatch):
     """After /auth/callback issues a cookie, /auth/whoami (which the
     middleware protects) returns the cookie identity."""
