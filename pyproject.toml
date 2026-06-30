@@ -95,6 +95,13 @@ export = [
   "xhtml2pdf>=0.2.13",
   "ebooklib>=0.18",
 ]
+# MCP server surface — services/mcp_server/. Exposes substrate resources
+# over Model Context Protocol (stdio transport). Optional because the MCP
+# server is a separate deployment surface; core substrate code never
+# imports it.
+mcp = [
+  "mcp[cli]>=1.0",
+]
 
 # Dev / test
 dev = [
@@ -149,6 +156,7 @@ packages = [
   "interfaces",
   "compounding",
   "runtime",
+  "services",
 ]
 
 [tool.ruff]
