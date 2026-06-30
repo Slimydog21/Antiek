@@ -14,6 +14,7 @@ import {
   emitClaimReviewed,
   isClaimReviewedPayload,
   resolveDueClaimsFromEvents,
+  scheduleClaimReview,
 } from "./reviewState";
 
 afterEach(() => postTypedEventMock.mockClear());
@@ -148,9 +149,37 @@ describe("reviewState resolver", () => {
   });
 });
 
+describe("scheduleClaimReview", () => {
+  it("returns deterministic v1 intervals for review ratings", () => {
+    const reviewedAt = new Date("2026-06-30T10:00:00Z");
+
+    expect(scheduleClaimReview(reviewedAt, "again")).toMatchObject({
+      rating: "again",
+      nextDueAt: new Date("2026-06-30T10:30:00Z"),
+      ease: 1.3,
+      intervalDays: 30 / (24 * 60),
+      dueLabel: "Due again soon",
+    });
+    expect(scheduleClaimReview(reviewedAt, "good")).toMatchObject({
+      rating: "good",
+      nextDueAt: new Date("2026-07-01T10:00:00Z"),
+      ease: 2.5,
+      intervalDays: 1,
+      dueLabel: "Due tomorrow",
+    });
+    expect(scheduleClaimReview(reviewedAt, "easy")).toMatchObject({
+      rating: "easy",
+      nextDueAt: new Date("2026-07-07T10:00:00Z"),
+      ease: 3,
+      intervalDays: 7,
+      dueLabel: "Due in a week",
+    });
+  });
+});
+
 describe("emitClaimReviewed", () => {
   it("posts a claim.reviewed typed event with scheduler metadata and no body", async () => {
-    await emitClaimReviewed({
+    await expect(emitClaimReviewed({
       investigationId: "read-syn-1",
       synthesisId: "syn-1",
       claimId: "2",
@@ -160,7 +189,7 @@ describe("emitClaimReviewed", () => {
       ease: 2.5,
       intervalDays: 1,
       dueLabel: "Due tomorrow",
-    });
+    })).resolves.toBe(true);
 
     expect(postTypedEventMock).toHaveBeenCalledTimes(1);
     const env = postTypedEventMock.mock.calls[0][0] as {
@@ -188,6 +217,6 @@ describe("emitClaimReviewed", () => {
         reviewedAt: new Date("2026-06-30T10:00:00Z"),
         nextDueAt: new Date("2026-07-01T10:00:00Z"),
       }),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe(false);
   });
 });

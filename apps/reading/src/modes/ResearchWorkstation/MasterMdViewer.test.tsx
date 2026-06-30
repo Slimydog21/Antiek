@@ -13,7 +13,7 @@
  *     "source unavailable", never a fabricated title (rigor #1).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type { ChunkResponse } from "../../lib/api";
 import type { ParsedSynthesis } from "../../lib/synthesisParser";
@@ -486,9 +486,8 @@ describe("MasterMdViewer — byte-equivalence of the re-homed §9.0 render (SPR-
 // due set, so we drive the toggle-ON path through the exported PURE seam
 // (`reviewDueDecorationsFor`, which does not read the toggle), then enact the
 // resolved decoration through the exported `ClaimBlock` — the same enact the
-// mount uses. Real review-state resolution from the substrate is still deferred
-// (spr-08-review-state-resolution-gap.md); this drives the seam with a populated
-// set to prove the wiring is live, not the resolver.
+// mount uses. Real review-state resolution from substrate events is covered in
+// reviewState.test.ts; these tests prove the viewer honors a populated due set.
 
 function reviewDueSynth(): ParsedSynthesis {
   return synth({
@@ -598,6 +597,128 @@ describe("MasterMdViewer — review-due liveness (SPR-08 M5)", () => {
     expect(dueSpan!.getAttribute("class")).toContain(REVIEW_DUE_CLASS);
     expect(dueSpan!.getAttribute("title")).toBe("Due today");
     expect(notDueSpan!.getAttribute("class") ?? "").not.toContain(REVIEW_DUE_CLASS);
+  });
+
+  it("mounted viewer wires review controls for due claims", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    const onReviewClaim = vi.fn();
+    render(
+      <MasterMdViewer
+        synthesis={reviewDueSynth()}
+        reviewDueEnabled={true}
+        reviewDueClaims={[{ claimId: "1", dueLabel: "Due today" }]}
+        onReviewClaim={onReviewClaim}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getAllByRole("button", { name: "Good" })).toHaveLength(1),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Easy" }));
+
+    expect(onReviewClaim).toHaveBeenCalledTimes(1);
+    expect(onReviewClaim.mock.calls[0][0]).toMatchObject({ index: 1 });
+    expect(onReviewClaim.mock.calls[0][1]).toBe("easy");
+  });
+
+  it("mounted viewer disables review controls for pending due claims", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(
+      <MasterMdViewer
+        synthesis={reviewDueSynth()}
+        reviewDueEnabled={true}
+        reviewDueClaims={[{ claimId: "1", dueLabel: "Due today" }]}
+        onReviewClaim={vi.fn()}
+        reviewClaimPendingIds={["1"]}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Good" }).hasAttribute("disabled")).toBe(true),
+    );
+  });
+
+  it("renders review controls only for due claims and reports the selected rating", () => {
+    getChunkMock.mockImplementation(async (id: string) => chunk({ chunk_id: id }));
+    const syn = reviewDueSynth();
+    const resolved = reviewDueDecorationsFor(syn, [
+      { claimId: "1", dueLabel: "Due today" },
+    ]);
+    const onReviewClaim = vi.fn();
+
+    render(
+      <>
+        <ClaimBlock
+          claim={syn.components[0] as ParsedClaim}
+          onChunkClick={noopPreview}
+          reviewDue={resolved.get(
+            anchorKey({ kind: "claim", claimId: "1" as ClaimId }),
+          )}
+          onReviewClaim={onReviewClaim}
+        />
+        <ClaimBlock
+          claim={syn.components[1] as ParsedClaim}
+          onChunkClick={noopPreview}
+          reviewDue={resolved.get(
+            anchorKey({ kind: "claim", claimId: "2" as ClaimId }),
+          )}
+          onReviewClaim={onReviewClaim}
+        />
+      </>,
+    );
+
+    expect(screen.getAllByRole("button", { name: "Again" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Good" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Easy" })).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Good" }));
+
+    expect(onReviewClaim).toHaveBeenCalledTimes(1);
+    expect(onReviewClaim).toHaveBeenCalledWith(
+      syn.components[0],
+      "good",
+    );
+  });
+
+  it("does not render review controls without a due decoration even when a handler is present", () => {
+    getChunkMock.mockImplementation(async (id: string) => chunk({ chunk_id: id }));
+    const syn = reviewDueSynth();
+
+    render(
+      <ClaimBlock
+        claim={syn.components[0] as ParsedClaim}
+        onChunkClick={noopPreview}
+        onReviewClaim={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Again" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Good" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Easy" })).toBeNull();
+  });
+
+  it("disables review controls for a pending due claim", () => {
+    getChunkMock.mockImplementation(async (id: string) => chunk({ chunk_id: id }));
+    const syn = reviewDueSynth();
+    const resolved = reviewDueDecorationsFor(syn, [
+      { claimId: "1", dueLabel: "Due today" },
+    ]);
+
+    render(
+      <ClaimBlock
+        claim={syn.components[0] as ParsedClaim}
+        onChunkClick={noopPreview}
+        reviewDue={resolved.get(
+          anchorKey({ kind: "claim", claimId: "1" as ClaimId }),
+        )}
+        onReviewClaim={vi.fn()}
+        reviewPending={true}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "Again" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Good" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Easy" }).hasAttribute("disabled")).toBe(true);
   });
 });
 

@@ -363,9 +363,8 @@ pass (SPR-02), the `source.read` event + resolver (SPR-07), and the marginalia
 note→graph-node write path (SPR-07) — so they now render against live data on
 `main`. The two tracks dovetailed: PR #14 shipped the consumers, PR #16 shipped
 the feeds. What REMAINS deferred is a smaller residual set (below): the
-spaced-repetition review gesture/scheduler UI and the operator-only canon
-ratification that flips the CI guard advisory→blocking. No augmentation invents
-its own data (PR-2 / PR-6).
+review-due policy toggle and the operator-only canon ratification that flips the
+CI guard advisory→blocking. No augmentation invents its own data (PR-2 / PR-6).
 **Unlock criterion:** per sub-item below — each is a distinct surface/backend
 integration with its own decision file in `docs/decisions/`. None is closeable by
 writing the missing feed inside an augmentation; each waits on a named surface
@@ -406,14 +405,16 @@ The cluster contains:
   the §9 user/model distinction holds), and the note is searchable. The 2026-06-30
   follow-up adds `/voice/blob` object storage and wires `useVoiceCapture` to emit
   `voice.captured.audio_ref` only after the blob is stored.
-- **The review-state resolver**
+- **The review-state resolver + review gesture**
   (`docs/decisions/spr-08-review-state-resolution-gap.md`) — ✅ **SIGNAL +
-  RESOLVER CLOSED.** `claim.reviewed` now ships as a typed event, the generated
-  TypeScript payload exists, `reviewState.ts` resolves latest-event-wins review
-  history into `ReviewDueClaimView[]`, and `ResearchWorkstation` hands those due
-  claims to `MasterMdViewer` with review-due enabled. No review history still
-  produces the honest empty due set. **RESIDUAL:** build the reader-facing review
-  gesture and settle scheduler policy/rating semantics.
+  RESOLVER + V1 GESTURE CLOSED.** `claim.reviewed` now ships as a typed event,
+  the generated TypeScript payload exists, `reviewState.ts` resolves
+  latest-event-wins review history into `ReviewDueClaimView[]`, and
+  `ResearchWorkstation` hands those due claims to `MasterMdViewer` with
+  review-due enabled. Due claims now expose Again/Good/Easy review controls that
+  emit deterministic scheduler metadata (30 minutes / 1 day / 7 days). No review
+  history still produces the honest empty due set. **RESIDUAL:** decide whether
+  review-due needs a broader user-visible policy toggle.
 
 A fifth, **operator-only** item gates the guard's strictness rather than an
 augmentation: ratifying the canon (`physics-of-reading.md` `status: draft →
@@ -424,9 +425,9 @@ Until then the guard runs green-advisory, printing any findings without blocking
 
 **What's left:** the geometry pass + the `source.read` event + the marginalia
 note→node write path closed when the Living Roadmap (PR #16) landed, and the
-SiteSee read-tint chunk anchor and shared marginalia voice-blob storage closed
-on 2026-06-30. The remaining residual is the review gesture/scheduler UI. The
-canon ratification is an
+SiteSee read-tint chunk anchor, shared marginalia voice-blob storage, and
+review gesture/v1 scheduler closed on 2026-06-30. The remaining residual is the
+review-due policy toggle. The canon ratification is an
 operator action independent of the integrations — it can happen any time and
 changes only CI strictness (advisory→blocking), not behavior.
 
@@ -593,10 +594,11 @@ Realistic-earliest unlock dates assuming everything else moves on schedule:
 - **D13 (Physics of Reading live integrations)** — **mostly closed by PR #16 plus
   the 2026-06-30 review-state follow-up** (the geometry pass, the `source.read`
   event + resolver, the marginalia note→node write path, the
-  `claim.reviewed` signal + resolver, the SiteSee read-tint chunk anchor, and
-  shared marginalia voice-blob storage are live). The residuals (review
-  gesture/scheduler UI) have no calendar binding; the canon ratification is an
-  independent operator-discretion action that only flips CI strictness.
+  `claim.reviewed` signal + resolver + review gesture/v1 scheduler, the SiteSee
+  read-tint chunk anchor, and shared marginalia voice-blob storage are live). The
+  residual review-due policy toggle has no calendar binding; the canon
+  ratification is an independent operator-discretion action that only flips CI
+  strictness.
 - **D17 (Mountain Shell v2 Tailwind yellow-mirror re-tone)** — operator-discretion
   / anytime cheap tidy; no calendar binding. Shipped baseline (var-deep re-tone)
   is AA-passing; this is chrome-consistency polish only.
@@ -610,9 +612,9 @@ D12 are operator-discretion items with no spec-binding deadline**; **D13
 (Physics of Reading live integrations) is now MOSTLY CLOSED by PR #16 plus the
 2026-06-30 review-state/read-tint follow-ups — the geometry pass, the
 `source.read` event, the marginalia note→node write path, the `claim.reviewed`
-signal + resolver, the SiteSee read-tint chunk anchor, and shared marginalia
-voice-blob storage are live; only the review gesture/scheduler UI + the
-operator-only canon ratification remain**.
+signal + resolver + review gesture/v1 scheduler, the SiteSee read-tint chunk
+anchor, and shared marginalia voice-blob storage are live; only the review-due
+policy toggle + the operator-only canon ratification remain**.
 
 The pattern matches `operator_gate_actions.md`'s G7→G8 chain:
 **multi-user is the keystone**. D1 closing unblocks the largest cluster

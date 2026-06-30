@@ -41,6 +41,7 @@ import type { ClaimId, ChunkId, LayoutMap, ReadingContext, RenderContext } from 
 import { useOpenDocument } from "../../lib/openDocument";
 import ChunkModal from "./ChunkModal";
 import { buildLayoutMap } from "./readingGeometryPass";
+import type { ClaimReviewRating } from "./reviewState";
 
 /**
  * Renders a completed investigation's synthesis as a trustworthy
@@ -179,10 +180,14 @@ export default function MasterMdViewer({
   synthesis,
   reviewDueClaims = [],
   reviewDueEnabled = REVIEW_DUE_ENABLED_DEFAULT,
+  onReviewClaim,
+  reviewClaimPendingIds = [],
 }: {
   synthesis: ParsedSynthesis;
   reviewDueClaims?: readonly ReviewDueClaimView[];
   reviewDueEnabled?: boolean;
+  onReviewClaim?: (claim: ParsedClaim, rating: ClaimReviewRating) => void | Promise<void>;
+  reviewClaimPendingIds?: readonly string[];
 }) {
   const [openChunkId, setOpenChunkId] = useState<string | null>(null);
 
@@ -358,6 +363,8 @@ export default function MasterMdViewer({
                   reviewDue={reviewDueByClaim.get(
                     anchorKey({ kind: "claim", claimId: String(c.index) as ClaimId }),
                   )}
+                  onReviewClaim={onReviewClaim}
+                  reviewPending={reviewClaimPendingIds.includes(String(c.index))}
                 />
               ))}
             </div>
@@ -444,6 +451,8 @@ export function ClaimBlock({
   claim,
   onChunkClick,
   reviewDue,
+  onReviewClaim,
+  reviewPending = false,
 }: {
   claim: ParsedClaim;
   onChunkClick: (chunkId: string) => void;
@@ -456,6 +465,8 @@ export function ClaimBlock({
    *  while the toggle is off / review-state is deferred — empty `dueClaims` ⇒ no
    *  decoration ⇒ the claim span renders byte-identically to today). */
   reviewDue?: ResolvedDecoration | undefined;
+  onReviewClaim?: (claim: ParsedClaim, rating: ClaimReviewRating) => void | Promise<void>;
+  reviewPending?: boolean;
 }) {
   // ENACT the declared review-due verdict. Off / no-data ⇒ no class added ⇒
   // the span is byte-identical to the pre-SPR-08 render. The closed-vocabulary
@@ -463,6 +474,35 @@ export function ClaimBlock({
   const claimClass = reviewDue?.classNames.includes(REVIEW_DUE_CLASS)
     ? REVIEW_DUE_CLASS
     : undefined;
+  const reviewControls =
+    reviewDue && onReviewClaim ? (
+      <span className="inline-flex items-center gap-1 rounded border border-rule bg-ice-1 px-1 py-0.5 font-mono text-[10px] text-shadow-1 dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-moonlight">
+        <button
+          type="button"
+          className="px-1 py-0.5 hover:text-ink disabled:opacity-50 dark:hover:text-bright"
+          disabled={reviewPending}
+          onClick={() => onReviewClaim(claim, "again")}
+        >
+          Again
+        </button>
+        <button
+          type="button"
+          className="px-1 py-0.5 hover:text-ink disabled:opacity-50 dark:hover:text-bright"
+          disabled={reviewPending}
+          onClick={() => onReviewClaim(claim, "good")}
+        >
+          Good
+        </button>
+        <button
+          type="button"
+          className="px-1 py-0.5 hover:text-ink disabled:opacity-50 dark:hover:text-bright"
+          disabled={reviewPending}
+          onClick={() => onReviewClaim(claim, "easy")}
+        >
+          Easy
+        </button>
+      </span>
+    ) : null;
   return (
     <div className="text-base leading-relaxed">
       <span className="font-mono text-xs text-ink-mute dark:text-moonlight mr-2">
@@ -486,6 +526,7 @@ export function ClaimBlock({
           tier={claim.effectiveSourceTier}
         />
         <NamedSources chunkIds={claim.chunkIds} onPreview={onChunkClick} />
+        {reviewControls}
         {claim.supportingPathIndices.length > 0 && (
           <span className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
             + {claim.supportingPathIndices.length} cross-domain path
