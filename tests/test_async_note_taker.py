@@ -19,6 +19,7 @@ from processing.embedding import _reset_default_provider, set_default_embedding_
 from roles.challenger import ChallengeUnavailable, make_dispatch_resolver, parse_resolution
 from roles.note_taker import (
     AsyncNoteScheduler,
+    DispatchDistiller,
     Distillation,
     DistilledQuestion,
     RunNoteDeduper,
@@ -60,6 +61,11 @@ class FakeDistiller:
         return Distillation(insights=notes, questions=qs)
 
 
+class _DispatchResult:
+    def __init__(self, text: str):
+        self.text = text
+
+
 @pytest.fixture(autouse=True)
 def _emb():
     set_default_embedding_provider(_FakeEmbedding())
@@ -80,6 +86,47 @@ def env(monkeypatch):
     monkeypatch.setattr(ln, "graph_db_path", lambda: db)
     init_database_at_path(db)
     return {"db": db, "events": ev}
+
+
+def test_dispatch_distiller_filters_fabricated_source_event_ids(monkeypatch):
+    import substrate.dispatch as dispatch_mod
+
+    monkeypatch.setattr(
+        dispatch_mod,
+        "dispatch",
+        lambda *args, **kwargs: _DispatchResult(
+            '{"notes": [{"text": "partly real", "confidence": "high", '
+            '"source_event_ids": ["step-1", "evt-made-up"]}]}'
+        ),
+    )
+
+    out = DispatchDistiller().distill(
+        "step text",
+        source_event_ids=("step-1",),
+    )
+
+    assert len(out.insights) == 1
+    assert out.insights[0].source_event_ids == ("step-1",)
+
+
+def test_dispatch_distiller_drops_fully_fabricated_source_event_ids(monkeypatch):
+    import substrate.dispatch as dispatch_mod
+
+    monkeypatch.setattr(
+        dispatch_mod,
+        "dispatch",
+        lambda *args, **kwargs: _DispatchResult(
+            '{"notes": [{"text": "fake", "confidence": "high", '
+            '"source_event_ids": ["evt-made-up"]}]}'
+        ),
+    )
+
+    out = DispatchDistiller().distill(
+        "step text",
+        source_event_ids=("step-1",),
+    )
+
+    assert out.insights == []
 
 
 # --------------------------------------------------------------------------
