@@ -4,7 +4,8 @@
 This is NOT a product-completion shortcut. ``specs/activation/golden-path.md``
 states the activation rule: Read closes only after 10 distinct operator sessions
 are logged, with live-provider coverage, citation tracing, a non-Library entry
-point, and concrete follow-ups for every failure or irritation.
+point, at least 20 minutes of reading per valid session, and concrete follow-ups
+for every failure or irritation.
 
 The tool makes that rule executable over a JSONL log so future agents cannot
 convert "CI is green" into "Read is done". It never records sessions itself and
@@ -57,6 +58,7 @@ REQUIRED_SESSION_FIELDS: tuple[str, ...] = (
     "document_id",
     "entry_door",
     "provider_status",
+    "minutes_reading",
     "steps",
 )
 REQUIRED_STEPS: tuple[str, ...] = tuple(str(i) for i in range(1, 8))
@@ -128,7 +130,7 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
             continue
         seen_session_ids.add(session_id)
 
-        missing = [field for field in REQUIRED_SESSION_FIELDS if not record.get(field)]
+        missing = _missing_required_fields(record)
         if missing:
             failures.append(prefix + "missing required fields: " + ", ".join(missing))
 
@@ -153,11 +155,24 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
                     prefix + f"issues[{issue_index}] lacks concrete followup_issue"
                 )
 
-        if _session_core_steps_pass(steps) and not missing:
+        minutes_reading = record.get("minutes_reading")
+        if not _has_minimum_reading_time(minutes_reading):
+            failures.append(prefix + "minutes_reading must be at least 20")
+
+        if (
+            _session_core_steps_pass(steps)
+            and not missing
+            and _has_minimum_reading_time(minutes_reading)
+        ):
             valid_session_ids.add(session_id)
 
-        if bool(record.get("live_provider_ai")):
+        if _session_live_provider_passed(record, steps):
             live_provider_sessions.add(session_id)
+        elif bool(record.get("live_provider_ai")):
+            failures.append(
+                prefix
+                + "live_provider_ai=true requires provider-backed steps 3 and 4 to pass"
+            )
 
         if bool(record.get("citation_traced")) or _step_status(steps.get("5")) == "pass":
             citation_trace_sessions.add(session_id)
@@ -215,6 +230,37 @@ def _session_core_steps_pass(steps: dict[Any, Any]) -> bool:
         if _step_status(steps.get(step)) != "pass":
             return False
     return all(_step_status(steps.get(step)) in {"pass", "inert"} for step in ("3", "4"))
+
+
+def _missing_required_fields(record: dict[str, Any]) -> list[str]:
+    missing: list[str] = []
+    for field in REQUIRED_SESSION_FIELDS:
+        if field == "minutes_reading":
+            if field not in record:
+                missing.append(field)
+            continue
+        if not record.get(field):
+            missing.append(field)
+    return missing
+
+
+def _session_live_provider_passed(record: dict[str, Any], steps: dict[Any, Any]) -> bool:
+    if not bool(record.get("live_provider_ai")):
+        return False
+    return _step_status(steps.get("3")) == "pass" and _step_status(steps.get("4")) == "pass"
+
+
+def _has_minimum_reading_time(value: Any) -> bool:
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, (int, float)):
+        return value >= 20
+    if isinstance(value, str):
+        try:
+            return float(value.strip()) >= 20
+        except ValueError:
+            return False
+    return False
 
 
 def _closure_failures(
