@@ -417,4 +417,13 @@ describe("Speak one-door consolidation (Speak SPR-08)", () => {
     expect(workflowForPath("/speak")).toBe("speak");
     expect(workflowForPath("/speak/p-123")).toBe("speak");
   });
+
+  it("shared discovery does not re-advertise the retired /interviews door", () => {
+    const map = readSrc("modes/Map/index.tsx");
+    const chrome = readSrc("shell/SceneChrome.tsx");
+    expect(map).not.toContain('path: "/interviews"');
+    expect(map).toContain('path: "/speak"');
+    expect(chrome).not.toContain('to: "/interviews"');
+    expect(chrome).toContain('to: "/speak"');
+  });
 });

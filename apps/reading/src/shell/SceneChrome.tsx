@@ -114,11 +114,11 @@ const SCENES: Record<Exclude<Workflow, "shared">, SceneDef> = {
   speak: {
     actions: [
       { id: "new-project", label: "New project", to: "/speak", primary: true },
-      { id: "interviews", label: "Interviews", to: "/interviews" },
+      { id: "voices", label: "Voices", to: "/speak" },
     ],
     tabs: [
       { id: "projects", label: "Projects", to: "/speak" },
-      { id: "interviews", label: "Interviews", to: "/interviews" },
+      { id: "voices", label: "Voices", to: "/speak" },
     ],
   },
 };

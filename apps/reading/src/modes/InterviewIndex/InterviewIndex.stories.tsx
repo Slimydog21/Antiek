@@ -6,10 +6,10 @@ import InterviewIndex from "./index";
  * Interview index — operator-facing project + invite surface
  * (master-spec §11.5).
  *
- * Storybook renders the page in its empty state — no projects load
- * from the backend. The "new project" form is fully editable; the
- * submit button posts to a missing endpoint and surfaces the
- * error inline. Useful as a chrome regression target.
+ * Storybook renders the retired standalone index as a chrome regression
+ * target. In production, interview acquisition is folded into the one
+ * Speak door at /speak; the underlying project + invite endpoints still
+ * exist for the Speak console flow.
  */
 const meta = {
   title: "Workstation / InterviewIndex",
