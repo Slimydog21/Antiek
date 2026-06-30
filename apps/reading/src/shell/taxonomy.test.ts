@@ -248,6 +248,18 @@ describe("Sprint 25+ economics dashboard route integrity", () => {
     expect(component).toContain('apiFetch("/operator/advertiser-campaigns")');
     expect(component).not.toContain("/advertiser-self-service");
   });
+
+  it("keeps Federation on the canonical federation config API", () => {
+    const app = readSrc("App.tsx");
+    const component = readSrc("modes/Federation/index.tsx");
+    const federation = modeById("Federation");
+    expect(federation?.built).toBe(true);
+    expect(federation?.route).toBe("/federation");
+    expect(federation?.sharedReason).toMatch(/cross-substrate/i);
+    expect(app).toContain('<Route path="/federation" element={<Federation />} />');
+    expect(component).toContain('apiFetch("/federation/config")');
+    expect(component).not.toContain("/cross-graph/federation-config");
+  });
 });
 
 /**

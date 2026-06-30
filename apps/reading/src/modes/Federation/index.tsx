@@ -6,7 +6,7 @@ import { apiFetch } from "../../lib/api";
  * Federation config UI (master-spec §13.9 Phase 3).
  *
  * Operator-facing surface for the substrate-wide federation policy.
- * Reads/writes /cross-graph/federation-config. The strict default
+ * Reads/writes /federation/config. The strict default
  * (no partners, opt-in + attribution required) is the starting
  * posture; this page is how the operator deviates from it.
  *
@@ -32,7 +32,7 @@ export default function Federation() {
   const reload = useCallback(async () => {
     setError(null);
     try {
-      const resp = await apiFetch("/cross-graph/federation-config");
+      const resp = await apiFetch("/federation/config");
       if (!resp.ok) {
         throw new Error(`GET federation-config: HTTP ${resp.status}`);
       }
@@ -54,7 +54,7 @@ export default function Federation() {
     setError(null);
     setSavedAt(null);
     try {
-      const resp = await apiFetch("/cross-graph/federation-config", {
+      const resp = await apiFetch("/federation/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(draft),
