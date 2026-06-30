@@ -40,6 +40,9 @@ class DeliverableBlock:
     content_class: Optional[str] = None
     ip_holder_id: Optional[str] = None
     source_title: Optional[str] = None
+    # The source document id (when known) — a stable knowledge-graph node
+    # identity; the title alone collides across same-named documents.
+    source_document_id: Optional[str] = None
 
     @property
     def servable(self) -> bool:
@@ -118,22 +121,25 @@ def adapt_deliverable(export: DeliverableExport) -> dict:
     # Knowledge-graph edges: the unique cited source TITLES (rights-safe — a
     # citation, never the passage). The block carries no document id, so the
     # title is the node identity; deduped in first-seen order.
-    cited: dict[str, bool] = {}
+    cited: dict[str, tuple[str, bool]] = {}
     for section in export.sections:
         for block in section.blocks:
-            if block.source_title and block.source_title not in cited:
-                cited[block.source_title] = block.servable
+            if not block.source_title:
+                continue
+            node_id = block.source_document_id or block.source_title
+            if node_id not in cited:
+                cited[node_id] = (block.source_title, block.servable)
     return {
         "title": export.title,
         "content": content,
         "edges": [
             {
                 "kind": "cites",
-                "to_document_id": title,
-                "to_title": title,
+                "to_document_id": node_id,
+                "to_title": label,
                 "tone": "success" if servable else "warning",
             }
-            for title, servable in cited.items()
+            for node_id, (label, servable) in cited.items()
         ],
         "metadata": {"unsupported_block_kinds": unsupported_block_kinds(export)},
     }

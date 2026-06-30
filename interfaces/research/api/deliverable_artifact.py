@@ -116,6 +116,7 @@ def resolve_deliverable_export(
                     content_class=rr.content_class,
                     ip_holder_id=rr.ip_holder_id,
                     source_title=rr.title,
+                    source_document_id=rr.source_document_id,
                 )
             )
         sections.append(DeliverableSection(heading=stitle or "", blocks=blocks))
