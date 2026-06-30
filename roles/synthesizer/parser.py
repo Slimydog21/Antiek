@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -53,6 +54,13 @@ except ImportError:  # pragma: no cover — direct-script fallback
     from roles._json_decode import (
         extract_json_object as _extract_json_object,  # type: ignore[no-redef]
     )
+
+try:
+    from substrate.provenance.validate_refs import validate_refs
+except ImportError:  # pragma: no cover — direct-script fallback
+    _here = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+    from substrate.provenance.validate_refs import validate_refs  # type: ignore[no-redef]
 
 
 CONFIDENCE_LEVELS: frozenset[str] = frozenset({
@@ -221,7 +229,11 @@ def _parse_effective_source_tier(obj: Any, ctx: str) -> int | None:
 
 
 def _parse_thesis_component(
-    obj: Any, idx: int, *, allow_unprovenanced: bool,
+    obj: Any,
+    idx: int,
+    *,
+    allow_unprovenanced: bool,
+    canonical_chunk_ids: Iterable[str] | None = None,
 ) -> ParsedThesisComponent:
     ctx = f"thesis_components[{idx}]"
     if not isinstance(obj, dict):
@@ -233,9 +245,13 @@ def _parse_thesis_component(
             f"{ctx}: confidence {confidence!r} not in {sorted(CONFIDENCE_LEVELS)} "
             "(NOT 'medium' — the upstream enum is high/moderate/low/unknown)"
         )
-    chunks = tuple(_require_str_list(
+    raw_chunks = _require_str_list(
         obj.get("supporting_chunk_ids"), "supporting_chunk_ids", ctx,
-    ))
+    )
+    if canonical_chunk_ids is None:
+        chunks = tuple(raw_chunks)
+    else:
+        chunks = validate_refs(raw_chunks, canonical_chunk_ids)
     paths = tuple(_require_int_list(
         obj.get("supporting_path_indices"), "supporting_path_indices", ctx,
     ))
@@ -377,20 +393,34 @@ def _parse_constraint_compliance(obj: Any) -> ParsedConstraintCompliance:
     )
 
 
-def _parse_reasoning_path(obj: Any, idx: int) -> ParsedReasoningPath:
+def _parse_reasoning_path(
+    obj: Any,
+    idx: int,
+    *,
+    canonical_node_ids: Iterable[str] | None = None,
+    canonical_edge_ids: Iterable[str] | None = None,
+) -> ParsedReasoningPath:
     ctx = f"reasoning_paths_used[{idx}]"
     if not isinstance(obj, dict):
         raise SynthesizerValidationError(f"{ctx}: expected an object")
-    nodes = tuple(_require_str_list(
+    raw_nodes = _require_str_list(
         obj.get("path_node_ids"), "path_node_ids", ctx,
-    ))
+    )
+    if canonical_node_ids is None:
+        nodes = tuple(raw_nodes)
+    else:
+        nodes = validate_refs(raw_nodes, canonical_node_ids)
     if not nodes:
         raise SynthesizerValidationError(
             f"{ctx}: path_node_ids cannot be empty"
         )
-    edges = tuple(_require_str_list(
+    raw_edges = _require_str_list(
         obj.get("path_edge_ids"), "path_edge_ids", ctx,
-    ))
+    )
+    if canonical_edge_ids is None:
+        edges = tuple(raw_edges)
+    else:
+        edges = validate_refs(raw_edges, canonical_edge_ids)
     summary = _require_str(
         obj.get("support_summary"), "support_summary", ctx,
     )
@@ -407,7 +437,13 @@ def _parse_reasoning_path(obj: Any, idx: int) -> ParsedReasoningPath:
     )
 
 
-def parse_synthesizer_response(text: str) -> ThesisResult:
+def parse_synthesizer_response(
+    text: str,
+    *,
+    canonical_chunk_ids: Iterable[str] | None = None,
+    canonical_node_ids: Iterable[str] | None = None,
+    canonical_edge_ids: Iterable[str] | None = None,
+) -> ThesisResult:
     """Parse + validate a Synthesizer raw response."""
     obj = _extract_json_object(text)
     if not isinstance(obj, dict):
@@ -435,7 +471,12 @@ def parse_synthesizer_response(text: str) -> ThesisResult:
     if not isinstance(components_raw, list):
         raise SynthesizerValidationError("top: thesis_components must be a list")
     components = tuple(
-        _parse_thesis_component(c, i, allow_unprovenanced=allow_unprovenanced)
+        _parse_thesis_component(
+            c,
+            i,
+            allow_unprovenanced=allow_unprovenanced,
+            canonical_chunk_ids=canonical_chunk_ids,
+        )
         for i, c in enumerate(components_raw)
     )
 
@@ -480,7 +521,13 @@ def parse_synthesizer_response(text: str) -> ThesisResult:
             "valid; ``insufficient_evidence`` typically emits [])"
         )
     reasoning = tuple(
-        _parse_reasoning_path(r, i) for i, r in enumerate(reasoning_raw)
+        _parse_reasoning_path(
+            r,
+            i,
+            canonical_node_ids=canonical_node_ids,
+            canonical_edge_ids=canonical_edge_ids,
+        )
+        for i, r in enumerate(reasoning_raw)
     )
 
     conviction_raw = obj.get("conviction_level")
