@@ -230,7 +230,7 @@ def test_cli_dry_run_writes_nothing(temp_db_and_events, capsys, monkeypatch):
     # and neutralise the throttle's real state file.
     monkeypatch.setattr(
         "acquisition.arxiv.client._http_get",
-        lambda url, client=None, throttle=None: feed,
+        lambda url, client=None, throttle=None, **_kwargs: feed,
     )
     monkeypatch.setenv(
         "ANTIEK_ARXIV_THROTTLE_PATH",
@@ -261,7 +261,9 @@ def test_cli_real_run_splits_servable_and_gated(
         "2402.20002": _feed("2402.20002", _ARXIV_DEFAULT),
     }
 
-    def fake_fetch_by_id(arxiv_id, *, client=None, base_url=None, throttle=None):
+    def fake_fetch_by_id(
+        arxiv_id, *, client=None, base_url=None, throttle=None, **_kwargs
+    ):
         return _parse_response(feeds[arxiv_id])[0]
 
     monkeypatch.setattr(ingest_arxiv, "fetch_by_id", fake_fetch_by_id)
@@ -384,7 +386,8 @@ def test_live_429_pdf_fetch_sets_sentinel_and_halts_batch(
 
     # (i) the sentinel is on disk and active.
     assert os.path.exists(state_path)
-    persisted = json.loads(open(state_path, encoding="utf-8").read())
+    with open(state_path, encoding="utf-8") as f:
+        persisted = json.loads(f.read())
     assert persisted["banned_until"] > 0.0
     assert throttle.is_banned() is True
 

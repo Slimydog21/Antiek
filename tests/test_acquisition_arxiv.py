@@ -52,14 +52,19 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from acquisition.arxiv import (
+from acquisition.arxiv import (  # noqa: E402
     ArxivPaper,
     arxiv_doc_id,
     fetch_by_id,
     ingest_paper,
     search,
 )
-from acquisition.arxiv.client import _build_search_url, _parse_response
+from acquisition.arxiv.client import (  # noqa: E402
+    _build_search_url,
+    _parse_response,
+    arxiv_metadata_cache_stats,
+    clear_arxiv_metadata_cache,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -126,6 +131,15 @@ def _mock_client(handler) -> httpx.Client:
 
 def _paper_for_test() -> ArxivPaper:
     return _parse_response(_FEED_ONE_ENTRY)[0]
+
+
+@pytest.fixture(autouse=True)
+def _clear_arxiv_metadata_cache(monkeypatch):
+    monkeypatch.delenv("ANTIEK_ARXIV_CACHE_SIZE", raising=False)
+    monkeypatch.delenv("ANTIEK_ARXIV_CACHE_METRICS_INVESTIGATION_ID", raising=False)
+    clear_arxiv_metadata_cache()
+    yield
+    clear_arxiv_metadata_cache()
 
 
 # ---------------------------------------------------------------------------
@@ -305,6 +319,159 @@ def test_search_raises_on_4xx():
     def handler(req): return httpx.Response(404, content=b"")
     with pytest.raises(httpx.HTTPStatusError):
         search(query="x", client=_mock_client(handler))
+
+
+def test_search_metadata_cache_defaults_to_phase_a_cohort_size():
+    stats = arxiv_metadata_cache_stats()
+
+    assert stats.cache_capacity == 1000
+    assert stats.cache_hits == 0
+    assert stats.cache_misses == 0
+
+
+def test_search_metadata_cache_invalid_env_falls_back_to_default(monkeypatch):
+    monkeypatch.setenv("ANTIEK_ARXIV_CACHE_SIZE", "not-an-int")
+
+    stats = arxiv_metadata_cache_stats()
+
+    assert stats.cache_capacity == 1000
+
+
+def test_search_metadata_cache_reuses_export_response_without_refetch():
+    calls = 0
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, content=_FEED_ONE_ENTRY, request=req)
+
+    client = _mock_client(handler)
+
+    first = search(query="GRPO", client=client)
+    second = search(query="GRPO", client=client)
+
+    client.close()
+    assert [p.arxiv_id for p in first] == ["2402.03300"]
+    assert [p.arxiv_id for p in second] == ["2402.03300"]
+    assert calls == 1
+    stats = arxiv_metadata_cache_stats()
+    assert stats.cache_misses == 1
+    assert stats.cache_hits == 1
+    assert stats.cache_size == 1
+
+
+def test_search_metadata_cache_size_zero_disables_store(monkeypatch):
+    monkeypatch.setenv("ANTIEK_ARXIV_CACHE_SIZE", "0")
+    calls = 0
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, content=_FEED_ONE_ENTRY, request=req)
+
+    client = _mock_client(handler)
+
+    search(query="GRPO", client=client)
+    search(query="GRPO", client=client)
+
+    client.close()
+    stats = arxiv_metadata_cache_stats()
+    assert calls == 2
+    assert stats.cache_capacity == 0
+    assert stats.cache_size == 0
+    assert stats.cache_hits == 0
+    assert stats.cache_misses == 2
+
+
+def test_search_metadata_cache_honors_env_capacity_and_evicts_lru(monkeypatch):
+    monkeypatch.setenv("ANTIEK_ARXIV_CACHE_SIZE", "1")
+    calls: list[str] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        calls.append(str(req.url))
+        return httpx.Response(200, content=_FEED_ONE_ENTRY, request=req)
+
+    client = _mock_client(handler)
+
+    search(query="first", client=client)
+    search(query="second", client=client)
+    search(query="first", client=client)
+
+    client.close()
+    assert len(calls) == 3
+    stats = arxiv_metadata_cache_stats()
+    assert stats.cache_capacity == 1
+    assert stats.cache_size == 1
+    assert stats.cache_hits == 0
+    assert stats.cache_misses == 3
+
+
+def test_search_metadata_cache_does_not_store_http_errors():
+    calls = 0
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return httpx.Response(404, content=b"", request=req)
+        return httpx.Response(200, content=_FEED_ONE_ENTRY, request=req)
+
+    client = _mock_client(handler)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        search(query="GRPO", client=client)
+    papers = search(query="GRPO", client=client)
+
+    client.close()
+    assert [p.arxiv_id for p in papers] == ["2402.03300"]
+    assert calls == 2
+    stats = arxiv_metadata_cache_stats()
+    assert stats.cache_size == 1
+    assert stats.cache_hits == 0
+    assert stats.cache_misses == 2
+
+
+def test_search_metadata_cache_emits_hit_miss_metrics(tmp_path, monkeypatch):
+    import json
+
+    events_dir = tmp_path / "events"
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(events_dir))
+
+    calls = 0
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, content=_FEED_ONE_ENTRY, request=req)
+
+    client = _mock_client(handler)
+
+    search(
+        query="GRPO",
+        client=client,
+        cache_metrics_investigation_id="inv-arxiv-cache",
+    )
+    search(
+        query="GRPO",
+        client=client,
+        cache_metrics_investigation_id="inv-arxiv-cache",
+    )
+
+    client.close()
+    rows = [
+        json.loads(line)
+        for line in (events_dir / "inv-arxiv-cache.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()
+    ]
+    payloads = [row["payload"] for row in rows if row["action_type"] == "arxiv.metadata_cache"]
+    assert calls == 1
+    assert len(payloads) == 2
+    assert payloads[0]["cache_misses"] == 1
+    assert payloads[0]["cache_hits"] == 0
+    assert payloads[1]["cache_misses"] == 1
+    assert payloads[1]["cache_hits"] == 1
+    assert payloads[1]["cache_capacity"] == 1000
 
 
 # ---------------------------------------------------------------------------

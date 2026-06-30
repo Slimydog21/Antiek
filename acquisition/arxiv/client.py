@@ -16,9 +16,12 @@ the entry list.
 
 from __future__ import annotations
 
+import hashlib
 import os
+import threading
 import urllib.parse
 import xml.etree.ElementTree as ET
+from collections import OrderedDict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -35,6 +38,9 @@ _OPENSEARCH_NS = "{http://a9.com/-/spec/opensearch/1.1/}"
 DEFAULT_BASE_URL = "https://export.arxiv.org/api/query"
 DEFAULT_USER_AGENT = "Antiek/0.1 (acquisition.arxiv)"
 DEFAULT_TIMEOUT_S = 15.0
+DEFAULT_METADATA_CACHE_SIZE = 1000
+METADATA_CACHE_SIZE_ENV = "ANTIEK_ARXIV_CACHE_SIZE"
+METADATA_CACHE_METRICS_INVESTIGATION_ENV = "ANTIEK_ARXIV_CACHE_METRICS_INVESTIGATION_ID"
 
 # arXiv rate-limits: one query / 3s. This export SEARCH API
 # (``export.arxiv.org``) is the endpoint that historically IP-banned the box
@@ -52,6 +58,128 @@ _SORT_MAP = {
     "date": "submittedDate",
     "updated": "lastUpdatedDate",
 }
+
+
+@dataclass(frozen=True)
+class ArxivMetadataCacheStats:
+    """Inspectable export-search metadata cache counters."""
+
+    cache_hits: int
+    cache_misses: int
+    cache_size: int
+    cache_capacity: int
+
+
+_CACHE_LOCK = threading.RLock()
+_METADATA_CACHE: OrderedDict[str, bytes] = OrderedDict()
+_CACHE_HITS = 0
+_CACHE_MISSES = 0
+_CACHE_CAPACITY: int | None = None
+
+
+def _metadata_cache_capacity() -> int:
+    raw = os.environ.get(METADATA_CACHE_SIZE_ENV)
+    if raw is None or not raw.strip():
+        return DEFAULT_METADATA_CACHE_SIZE
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return DEFAULT_METADATA_CACHE_SIZE
+    return max(0, parsed)
+
+
+def _sync_metadata_cache_capacity_locked() -> int:
+    """Apply the current env-sized capacity and evict from the LRU tail."""
+    global _CACHE_CAPACITY
+    capacity = _metadata_cache_capacity()
+    _CACHE_CAPACITY = capacity
+    while len(_METADATA_CACHE) > capacity:
+        _METADATA_CACHE.popitem(last=False)
+    return capacity
+
+
+def clear_arxiv_metadata_cache() -> None:
+    """Clear the in-process export-search metadata cache and counters.
+
+    Intended for tests and operator diagnostics. Production callers normally
+    let the cache live for the process lifetime.
+    """
+    global _CACHE_HITS, _CACHE_MISSES, _CACHE_CAPACITY
+    with _CACHE_LOCK:
+        _METADATA_CACHE.clear()
+        _CACHE_HITS = 0
+        _CACHE_MISSES = 0
+        _CACHE_CAPACITY = None
+
+
+def arxiv_metadata_cache_stats() -> ArxivMetadataCacheStats:
+    """Return cache hit/miss counters after applying current env capacity.
+
+    If ``ANTIEK_ARXIV_CACHE_SIZE`` shrinks mid-process, this reconciles the LRU
+    down to the new capacity before reporting size/capacity.
+    """
+    with _CACHE_LOCK:
+        capacity = _sync_metadata_cache_capacity_locked()
+        return ArxivMetadataCacheStats(
+            cache_hits=_CACHE_HITS,
+            cache_misses=_CACHE_MISSES,
+            cache_size=len(_METADATA_CACHE),
+            cache_capacity=capacity,
+        )
+
+
+def _cache_lookup(url: str) -> bytes | None:
+    global _CACHE_HITS, _CACHE_MISSES
+    with _CACHE_LOCK:
+        capacity = _sync_metadata_cache_capacity_locked()
+        if capacity <= 0:
+            _CACHE_MISSES += 1
+            return None
+        if url not in _METADATA_CACHE:
+            _CACHE_MISSES += 1
+            return None
+        body = _METADATA_CACHE.pop(url)
+        _METADATA_CACHE[url] = body
+        _CACHE_HITS += 1
+        return body
+
+
+def _cache_store(url: str, body: bytes) -> None:
+    with _CACHE_LOCK:
+        capacity = _sync_metadata_cache_capacity_locked()
+        if capacity <= 0:
+            return
+        if url in _METADATA_CACHE:
+            _METADATA_CACHE.pop(url)
+        _METADATA_CACHE[url] = body
+        while len(_METADATA_CACHE) > capacity:
+            _METADATA_CACHE.popitem(last=False)
+
+
+def _emit_cache_metric(url: str, *, investigation_id: str | None = None) -> None:
+    target = investigation_id or os.environ.get(METADATA_CACHE_METRICS_INVESTIGATION_ENV)
+    if not target:
+        return
+    try:
+        from substrate.event_log import log_event
+
+        stats = arxiv_metadata_cache_stats()
+        log_event(
+            target,
+            "arxiv.metadata_cache",
+            payload={
+                "cache_hits": stats.cache_hits,
+                "cache_misses": stats.cache_misses,
+                "cache_size": stats.cache_size,
+                "cache_capacity": stats.cache_capacity,
+                "cache_key": hashlib.sha256(url.encode("utf-8")).hexdigest()[:16],
+            },
+            role="acquisition",
+            policy_id="acquisition/arxiv",
+        )
+    except Exception:
+        # Cache telemetry must never break acquisition.
+        return
 
 
 @dataclass(frozen=True)
@@ -223,6 +351,7 @@ def _http_get(
     *,
     client: httpx.Client | None = None,
     throttle: ArxivThrottle | None = None,
+    cache_metrics_investigation_id: str | None = None,
 ) -> bytes:
     """One GET to the export SEARCH API, host-rate-governed (SPR-09 M1).
 
@@ -250,6 +379,11 @@ def _http_get(
     """
     from acquisition.arxiv.rate_governor import governed_request
 
+    cached = _cache_lookup(url)
+    if cached is not None:
+        _emit_cache_metric(url, investigation_id=cache_metrics_investigation_id)
+        return cached
+
     headers = {"User-Agent": DEFAULT_USER_AGENT}
 
     if client is not None:
@@ -258,6 +392,8 @@ def _http_get(
 
         r = governed_request(_send, throttle=throttle)
         r.raise_for_status()
+        _cache_store(url, r.content)
+        _emit_cache_metric(url, investigation_id=cache_metrics_investigation_id)
         return r.content
 
     with httpx.Client() as c:
@@ -266,6 +402,8 @@ def _http_get(
 
         r = governed_request(_send, throttle=throttle)
         r.raise_for_status()
+        _cache_store(url, r.content)
+        _emit_cache_metric(url, investigation_id=cache_metrics_investigation_id)
         return r.content
 
 
@@ -279,6 +417,7 @@ def search(
     client: httpx.Client | None = None,
     base_url: str | None = None,
     throttle: ArxivThrottle | None = None,
+    cache_metrics_investigation_id: str | None = None,
 ) -> list[ArxivPaper]:
     """Query arXiv. At least one of query/author/category must be set.
 
@@ -290,12 +429,24 @@ def search(
     sentinel) the host-global rate governor reuses; the CLIs thread theirs in so
     a live 429's ban sentinel persists. When ``None``, the governed seam owns the
     canonical throttle (SPR-09 M1) — this export-search egress is NEVER
-    ungoverned."""
+    ungoverned.
+
+    Export-search metadata responses are cached by request URL. The cache
+    defaults to 1000 entries, can be tuned with ``ANTIEK_ARXIV_CACHE_SIZE``, and
+    exposes hit/miss counters through ``arxiv_metadata_cache_stats``. Pass
+    ``cache_metrics_investigation_id`` (or set
+    ``ANTIEK_ARXIV_CACHE_METRICS_INVESTIGATION_ID``) to emit an
+    ``arxiv.metadata_cache`` event-log row after each lookup."""
     url = _build_search_url(
         query=query, author=author, category=category,
         max_results=max_results, sort=sort, base_url=base_url,
     )
-    body = _http_get(url, client=client, throttle=throttle)
+    body = _http_get(
+        url,
+        client=client,
+        throttle=throttle,
+        cache_metrics_investigation_id=cache_metrics_investigation_id,
+    )
     return _parse_response(body)
 
 
@@ -305,6 +456,7 @@ def fetch_by_id(
     client: httpx.Client | None = None,
     base_url: str | None = None,
     throttle: ArxivThrottle | None = None,
+    cache_metrics_investigation_id: str | None = None,
 ) -> ArxivPaper | None:
     """Fetch a single paper by id. Returns ``None`` when arXiv
     returns no entries (id unknown).
@@ -314,6 +466,11 @@ def fetch_by_id(
     url = _build_search_url(
         ids=[arxiv_id], max_results=1, base_url=base_url,
     )
-    body = _http_get(url, client=client, throttle=throttle)
+    body = _http_get(
+        url,
+        client=client,
+        throttle=throttle,
+        cache_metrics_investigation_id=cache_metrics_investigation_id,
+    )
     papers = _parse_response(body)
     return papers[0] if papers else None
