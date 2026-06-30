@@ -102,7 +102,19 @@ def adapt_notebook_for_export(
         else []
     )
     out = [_inline(n, resolver) for n in nodes if isinstance(n, dict)]
-    return {"content": out, "title": title, "edges": []}
+    # Knowledge-graph edges: the unique resolved source TITLES (rights-safe
+    # citations; the resolver carries no document id, so the title is the node).
+    cited: dict[str, None] = {}
+    for ref in resolved_refs.values():
+        if ref.title and ref.title not in cited:
+            cited[ref.title] = None
+    return {
+        "content": out,
+        "title": title,
+        "edges": [
+            {"kind": "cites", "to_document_id": t, "to_title": t} for t in cited
+        ],
+    }
 
 
 __all__ = ["adapt_notebook_for_export", "collect_ref_ids"]
