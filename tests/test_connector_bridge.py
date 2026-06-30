@@ -172,14 +172,20 @@ async def _post_request(ac, *, investigation_id, seed_pairs, keyword_mappings=No
     return r.json()
 
 
-def _good_response(*, with_paths: bool = True) -> dict:
+def _good_response(
+    *,
+    with_paths: bool = True,
+    matched_node_id: str = "n-tsmc",
+    target_node_id: str = "n-asml",
+    edge_id: str = "e-1",
+) -> dict:
     paths_list = [{
-        "path_nodes": ["n-tsmc", "n-asml"],
+        "path_nodes": [matched_node_id, target_node_id],
         "node_labels": ["TSMC", "ASML"],
         "path_relations": ["sources_from"],
         "depth": 1,
         "avg_confidence": 0.95,
-        "edge_ids": ["e-1"],
+        "edge_ids": [edge_id],
     }] if with_paths else []
     nl_list = [{
         "text": "TSMC sources EUV lithography systems from ASML.",
@@ -187,7 +193,7 @@ def _good_response(*, with_paths: bool = True) -> dict:
     }] if with_paths else []
     return {
         "keyword_mappings": [{
-            "keyword": "TSMC", "matched_node_id": "n-tsmc",
+            "keyword": "TSMC", "matched_node_id": matched_node_id,
             "matched_node_label": "TSMC", "matched_node_type": "entity",
             "similarity": 0.95, "low_confidence": False,
         }],
@@ -208,9 +214,13 @@ async def test_connector_happy_path(monkeypatch, app_and_bus, async_client, db_p
     _, bus = app_and_bus
     inv = "inv-conn-happy"
 
-    src, tgt, _ = _seed_two_node_path(db_path)
+    src, tgt, edge = _seed_two_node_path(db_path)
 
-    register_provider(_StubConnector(json.dumps(_good_response())))
+    register_provider(_StubConnector(json.dumps(_good_response(
+        matched_node_id=src,
+        target_node_id=tgt,
+        edge_id=edge,
+    ))))
     _patch_dispatch_config(monkeypatch, _connector_config("stub-connector"))
 
     await _post_request(
@@ -318,7 +328,57 @@ async def test_parse_failure_preserves_paths_and_dispatch_stamp(
 
 
 # ---------------------------------------------------------------------------
-# 4. Empty seed_pairs
+# 4. Fabricated connector refs
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_fabricated_connector_refs_fall_back_without_fake_edges(
+    monkeypatch, app_and_bus, async_client, db_path,
+):
+    _, bus = app_and_bus
+    inv = "inv-conn-fabricated"
+    src, tgt, _ = _seed_two_node_path(db_path)
+
+    bad = _good_response(
+        matched_node_id="n-made-up",
+        target_node_id=tgt,
+        edge_id="e-made-up",
+    )
+    register_provider(_StubConnector(json.dumps(bad)))
+    _patch_dispatch_config(monkeypatch, _connector_config("stub-connector"))
+
+    await _post_request(
+        async_client, investigation_id=inv,
+        seed_pairs=[{"source_node_id": src, "target_node_id": tgt}],
+        keyword_mappings=[{
+            "keyword": "TSMC",
+            "matched_node_id": src,
+            "matched_node_label": "TSMC",
+            "matched_node_type": "entity",
+            "similarity": 0.92,
+            "low_confidence": False,
+        }],
+    )
+    await bus.wait_for_handlers(timeout=5.0)
+
+    delivered = [
+        r for r in trajectory(inv)
+        if r["action_type"] == ActionType.CONNECTOR_DELIVERED.value
+    ]
+    assert len(delivered) == 1
+    e = Event.model_validate(delivered[0])
+    p = e.payload
+    assert isinstance(p, ConnectorDeliveredPayload)
+    assert p.natural_language_relationships == []
+    assert p.keyword_mappings[0].matched_node_id == src
+    assert all("made-up" not in node_id for path in p.paths for node_id in path.path_nodes)
+    assert all("made-up" not in edge_id for path in p.paths for edge_id in path.edge_ids)
+    assert e.policy_id == "stub-connector/stub-pro-model"
+
+
+# ---------------------------------------------------------------------------
+# 5. Empty seed_pairs
 # ---------------------------------------------------------------------------
 
 
@@ -357,7 +417,7 @@ async def test_empty_seed_pairs_still_dispatches(
 
 
 # ---------------------------------------------------------------------------
-# 5. Disconnected graph (traversal returns no paths)
+# 6. Disconnected graph (traversal returns no paths)
 # ---------------------------------------------------------------------------
 
 

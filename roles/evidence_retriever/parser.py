@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -27,9 +28,10 @@ except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from roles._json_decode import (
-        extract_json_object as _extract_json_object,  # type: ignore[no-redef]
+        extract_json_object as _extract_json_object,
     )
 
+from substrate.provenance import InvalidReference, validate_refs
 
 # Closed vocabularies — kept here for fail-loud parser-side checks.
 # When the Sprint 7 typed payloads land, these MUST equal the schema
@@ -79,7 +81,7 @@ class EvidenceResult:
     supporting_claims: tuple[ParsedClaim, ...]
     evidentiary_gaps: tuple[ParsedGap, ...]
     insufficient_evidence: bool
-    raw: dict
+    raw: dict[str, Any]
 
 
 # ---------------------------------------------------------------------------
@@ -141,7 +143,13 @@ def _parse_source_tier(obj: Any, ctx: str) -> int | None:
     return obj
 
 
-def _parse_claim(obj: Any, idx: int) -> ParsedClaim:
+def _parse_claim(
+    obj: Any,
+    idx: int,
+    *,
+    canonical_chunk_ids: Iterable[str] | None,
+    canonical_edge_ids: Iterable[str] | None,
+) -> ParsedClaim:
     ctx = f"supporting_claims[{idx}]"
     if not isinstance(obj, dict):
         raise EvidenceValidationError(f"{ctx}: expected an object")
@@ -153,12 +161,30 @@ def _parse_claim(obj: Any, idx: int) -> ParsedClaim:
             f"{sorted(EVIDENCE_TYPES)}"
         )
     chunk_ids = tuple(_require_str_list(obj.get("chunk_ids"), "chunk_ids", ctx))
+    if canonical_chunk_ids is not None:
+        try:
+            chunk_ids = validate_refs(
+                chunk_ids,
+                canonical_chunk_ids,
+                on_invalid="raise",
+            ).valid
+        except InvalidReference as exc:
+            raise EvidenceValidationError(f"{ctx}.chunk_ids: {exc}") from exc
     if not chunk_ids and evidence_type != "gap":
         raise EvidenceValidationError(
             f"{ctx}: chunk_ids cannot be empty when evidence_type="
             f"{evidence_type!r} (gap claims may have empty chunk_ids)"
         )
     edge_ids = tuple(_require_str_list(obj.get("edge_ids"), "edge_ids", ctx))
+    if canonical_edge_ids is not None:
+        try:
+            edge_ids = validate_refs(
+                edge_ids,
+                canonical_edge_ids,
+                on_invalid="raise",
+            ).valid
+        except InvalidReference as exc:
+            raise EvidenceValidationError(f"{ctx}.edge_ids: {exc}") from exc
     confidence = _require_str(obj.get("confidence"), "confidence", ctx)
     if confidence not in EVIDENCE_CONFIDENCE_LEVELS:
         raise EvidenceValidationError(
@@ -203,6 +229,8 @@ def parse_evidence_response(
     text: str,
     *,
     expected_sub_question: str | None = None,
+    canonical_chunk_ids: Iterable[str] | None = None,
+    canonical_edge_ids: Iterable[str] | None = None,
 ) -> EvidenceResult:
     """Parse + validate an Evidence Retriever raw response.
 
@@ -245,7 +273,15 @@ def parse_evidence_response(
     claims_raw = obj.get("supporting_claims")
     if not isinstance(claims_raw, list):
         raise EvidenceValidationError("top: supporting_claims must be a list")
-    claims = tuple(_parse_claim(c, i) for i, c in enumerate(claims_raw))
+    claims = tuple(
+        _parse_claim(
+            c,
+            i,
+            canonical_chunk_ids=canonical_chunk_ids,
+            canonical_edge_ids=canonical_edge_ids,
+        )
+        for i, c in enumerate(claims_raw)
+    )
 
     gaps_raw = obj.get("evidentiary_gaps")
     if not isinstance(gaps_raw, list):

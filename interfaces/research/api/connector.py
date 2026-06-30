@@ -75,7 +75,7 @@ from substrate.schemas import (  # noqa: E402
     SeedPair,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Traversal dispatch
@@ -184,6 +184,10 @@ def _traversal_for_request(
 def _dispatch_and_parse(
     prompt: str,
     event: Event,
+    *,
+    canonical_matched_node_ids: tuple[str, ...],
+    canonical_path_node_ids: tuple[str, ...],
+    canonical_edge_ids: tuple[str, ...] | None,
 ) -> tuple[ConnectorResult | None, str]:
     try:
         result = dispatch(
@@ -203,7 +207,12 @@ def _dispatch_and_parse(
         return None, "connector-fallback/no-provider"
 
     try:
-        parsed = parse_connector_response(response_text)
+        parsed = parse_connector_response(
+            response_text,
+            canonical_matched_node_ids=canonical_matched_node_ids,
+            canonical_path_node_ids=canonical_path_node_ids,
+            canonical_edge_ids=canonical_edge_ids,
+        )
         return parsed, policy_id
     except ConnectorValidationError as exc:
         print(
@@ -280,9 +289,31 @@ def make_connector_handler(
             mappings_block=mappings_block,
             paths_block=paths_block,
         )
+        canonical_matched_node_ids = tuple(
+            m.matched_node_id
+            for m in req.keyword_mappings
+            if m.matched_node_id
+        )
+        canonical_path_node_ids = tuple(
+            node_id
+            for path in traversed_paths
+            for node_id in path.path_nodes
+        )
+        edge_ids = tuple(
+            edge_id
+            for path in traversed_paths
+            for edge_id in path.edge_ids
+        )
+        canonical_edge_ids = edge_ids or None
 
         # ── 3. Dispatch + parse ──
-        result, policy_id = _dispatch_and_parse(prompt, event)
+        result, policy_id = _dispatch_and_parse(
+            prompt,
+            event,
+            canonical_matched_node_ids=canonical_matched_node_ids,
+            canonical_path_node_ids=canonical_path_node_ids,
+            canonical_edge_ids=canonical_edge_ids,
+        )
 
         if result is None:
             # Fallback: surface the traversed paths even though the

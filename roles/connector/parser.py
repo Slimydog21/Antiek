@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -35,9 +36,10 @@ except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from roles._json_decode import (
-        extract_json_object as _extract_json_object,  # type: ignore[no-redef]
+        extract_json_object as _extract_json_object,
     )
 
+from substrate.provenance import InvalidReference, validate_ref, validate_refs
 
 TRAVERSAL_ALGORITHMS: frozenset[str] = frozenset({
     "shortest_simple_path",
@@ -88,7 +90,7 @@ class ConnectorResult:
     algorithm_rationale: str | None
     paths: tuple[ParsedGraphPath, ...]
     natural_language_relationships: tuple[ParsedNlRelationship, ...]
-    raw: dict
+    raw: dict[str, Any]
 
 
 def _require_str(obj: Any, field_name: str, ctx: str, *, allow_empty: bool = False) -> str:
@@ -130,7 +132,12 @@ def _opt_str_list(obj: Any, field_name: str, ctx: str) -> list[str]:
     return out
 
 
-def _parse_keyword_mapping(obj: Any, idx: int) -> ParsedKeywordMapping:
+def _parse_keyword_mapping(
+    obj: Any,
+    idx: int,
+    *,
+    canonical_matched_node_ids: Iterable[str] | None,
+) -> ParsedKeywordMapping:
     ctx = f"keyword_mappings[{idx}]"
     if not isinstance(obj, dict):
         raise ConnectorValidationError(f"{ctx}: expected an object")
@@ -158,17 +165,33 @@ def _parse_keyword_mapping(obj: Any, idx: int) -> ParsedKeywordMapping:
             "flag (anti-pattern #3: dropping low-confidence mappings)"
         )
 
+    matched_node_id = _opt_str(obj.get("matched_node_id"), "matched_node_id", ctx)
+    if matched_node_id is not None and canonical_matched_node_ids is not None:
+        validated = validate_ref(matched_node_id, canonical_matched_node_ids)
+        if validated is None:
+            raise ConnectorValidationError(
+                f"{ctx}.matched_node_id: reference {matched_node_id!r} "
+                "is not in canonical set"
+            )
+        matched_node_id = validated
+
     return ParsedKeywordMapping(
         keyword=keyword,
         similarity=sim,
         low_confidence=low_conf,
-        matched_node_id=_opt_str(obj.get("matched_node_id"), "matched_node_id", ctx),
+        matched_node_id=matched_node_id,
         matched_node_label=_opt_str(obj.get("matched_node_label"), "matched_node_label", ctx),
         matched_node_type=_opt_str(obj.get("matched_node_type"), "matched_node_type", ctx),
     )
 
 
-def _parse_path(obj: Any, idx: int) -> ParsedGraphPath:
+def _parse_path(
+    obj: Any,
+    idx: int,
+    *,
+    canonical_path_node_ids: Iterable[str] | None,
+    canonical_edge_ids: Iterable[str] | None,
+) -> ParsedGraphPath:
     ctx = f"paths[{idx}]"
     if not isinstance(obj, dict):
         raise ConnectorValidationError(f"{ctx}: expected an object")
@@ -176,6 +199,24 @@ def _parse_path(obj: Any, idx: int) -> ParsedGraphPath:
     relations = tuple(_opt_str_list(obj.get("path_relations"), "path_relations", ctx))
     labels = tuple(_opt_str_list(obj.get("node_labels"), "node_labels", ctx))
     edge_ids = tuple(_opt_str_list(obj.get("edge_ids"), "edge_ids", ctx))
+    if canonical_path_node_ids is not None:
+        try:
+            nodes = validate_refs(
+                nodes,
+                canonical_path_node_ids,
+                on_invalid="raise",
+            ).valid
+        except InvalidReference as exc:
+            raise ConnectorValidationError(f"{ctx}.path_nodes: {exc}") from exc
+    if canonical_edge_ids is not None:
+        try:
+            edge_ids = validate_refs(
+                edge_ids,
+                canonical_edge_ids,
+                on_invalid="raise",
+            ).valid
+        except InvalidReference as exc:
+            raise ConnectorValidationError(f"{ctx}.edge_ids: {exc}") from exc
     depth_raw = obj.get("depth")
     if not isinstance(depth_raw, int) or isinstance(depth_raw, bool) or depth_raw < 0:
         raise ConnectorValidationError(
@@ -220,7 +261,13 @@ def _parse_nl_relationship(obj: Any, idx: int, n_paths: int) -> ParsedNlRelation
     return ParsedNlRelationship(text=text, source_path_index=spi_raw)
 
 
-def parse_connector_response(text: str) -> ConnectorResult:
+def parse_connector_response(
+    text: str,
+    *,
+    canonical_matched_node_ids: Iterable[str] | None = None,
+    canonical_path_node_ids: Iterable[str] | None = None,
+    canonical_edge_ids: Iterable[str] | None = None,
+) -> ConnectorResult:
     """Parse + validate a Connector role's raw response."""
     obj = _extract_json_object(text)
     if not isinstance(obj, dict):
@@ -232,7 +279,12 @@ def parse_connector_response(text: str) -> ConnectorResult:
     if not isinstance(mappings_raw, list):
         raise ConnectorValidationError("top: keyword_mappings must be a list")
     keyword_mappings = tuple(
-        _parse_keyword_mapping(m, i) for i, m in enumerate(mappings_raw)
+        _parse_keyword_mapping(
+            m,
+            i,
+            canonical_matched_node_ids=canonical_matched_node_ids,
+        )
+        for i, m in enumerate(mappings_raw)
     )
 
     algorithm = _require_str(
@@ -250,7 +302,15 @@ def parse_connector_response(text: str) -> ConnectorResult:
     paths_raw = obj.get("paths")
     if not isinstance(paths_raw, list):
         raise ConnectorValidationError("top: paths must be a list")
-    paths = tuple(_parse_path(p, i) for i, p in enumerate(paths_raw))
+    paths = tuple(
+        _parse_path(
+            p,
+            i,
+            canonical_path_node_ids=canonical_path_node_ids,
+            canonical_edge_ids=canonical_edge_ids,
+        )
+        for i, p in enumerate(paths_raw)
+    )
 
     nl_raw = obj.get("natural_language_relationships")
     if not isinstance(nl_raw, list):
