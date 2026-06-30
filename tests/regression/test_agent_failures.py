@@ -37,6 +37,7 @@ Spec: ~/specs/antiek-hashimoto-engineering/sprint-e2-harness.html
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -231,6 +232,36 @@ def test_open_gaps_are_visible() -> None:
     # just surface the count.
     if open_gaps:
         print(f"\n{len(open_gaps)} open agent-failure GAP(s): {open_gaps}")
+
+
+def test_closed_fixtures_do_not_claim_closed_siblings_are_still_gaps() -> None:
+    """Closed fixtures must not carry stale prose saying a closed sibling is
+    "still GAP".
+
+    The fixture library is partly prose today. That is acceptable only if the
+    prose does not contradict the machine-readable fixture state.
+    """
+
+    fixtures = {p.stem: _load_fixture(p) for p in FIXTURE_PATHS}
+    closed_ids = {fixture_id for fixture_id, fx in fixtures.items() if _is_closed(fx)}
+    stale_claims: list[str] = []
+    for path in FIXTURE_PATHS:
+        fx = fixtures[path.stem]
+        searchable = "\n".join(
+            str(fx.get(field, ""))
+            for field in (
+                "context_summary",
+                "expected_behavior",
+                "actual_failure",
+                "harness_check_that_now_catches",
+                "notes",
+            )
+        )
+        for sibling_id in closed_ids - {path.stem}:
+            pattern = rf"\b{re.escape(sibling_id)}\b[^\n.()]*\(\s*still\s+GAP\s*[)—)]"
+            if re.search(pattern, searchable, flags=re.IGNORECASE):
+                stale_claims.append(f"{path.name} claims closed sibling {sibling_id} is still GAP")
+    assert not stale_claims, "\n".join(stale_claims)
 
 
 # ---------------------------------------------------------------------------
