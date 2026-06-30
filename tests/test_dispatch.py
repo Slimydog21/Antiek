@@ -175,7 +175,11 @@ def _two_tier_config() -> DispatchConfig:
         pricing=synthesis_pricing, fallback=fallback,
     )
     return DispatchConfig(
-        role_tiers={"decomposer": "flash", "synthesizer": "synthesis"},
+        role_tiers={
+            "decomposer": "flash",
+            "synthesizer": "synthesis",
+            "creative_writer": "synthesis",
+        },
         tiers={"flash": flash, "synthesis": synthesis},
     )
 
@@ -389,6 +393,7 @@ def test_config_loads_from_yaml_file():
     assert "flash" in config.tiers
     assert "synthesis" in config.tiers
     assert config.role_tiers["synthesizer"] == "synthesis"
+    assert config.role_tiers["creative_writer"] == "synthesis"
     # Sprint 17 dispatch tier-differentiation measurement (2026-05-19,
     # master-spec §14.4 + sprint17 spec §1.2): synthesis tier inverted
     # to Opus 4.7 primary via OpenRouter, Hermes/Grok fallback, for a
@@ -422,7 +427,7 @@ def test_config_role_tiers_covers_every_dispatching_role():
         "decomposer", "evidence_retriever", "parameter_extractor",
         "connector", "synthesizer", "user_agent", "note_taker",
         "challenger", "grounder", "tier_assigner", "constraint_checker",
-        "verifier", "knowledge_extractor",
+        "verifier", "knowledge_extractor", "creative_writer",
     }
     missing = required_roles - set(config.role_tiers)
     assert not missing, (

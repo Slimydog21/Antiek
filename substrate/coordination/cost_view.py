@@ -104,9 +104,8 @@ class Workflow(str, Enum):
 #     Read; these are its inference roles.
 #   • SPEAK — interview-as-acquisition. ``interviewer`` is the capture role
 #     (out of the ROLES catalog by design — it is a Speak product role).
-#   • WRITE — has no distinct dispatch role in the current substrate (the Write
-#     composer reuses synthesis-shaped dispatch); intentionally absent here so a
-#     future Write role lands in UNMAPPED and is surfaced, not mis-attributed.
+#   • WRITE — creative_writer generates section prose from attached lego blocks.
+#     It shares the synthesis tier for quality, but spend belongs to Write.
 
 _ROLE_WORKFLOW: dict[str, Workflow] = {
     # Research investigation pipeline.
@@ -119,6 +118,8 @@ _ROLE_WORKFLOW: dict[str, Workflow] = {
     "tier_assigner": Workflow.RESEARCH,
     "constraint_checker": Workflow.RESEARCH,
     "verifier": Workflow.RESEARCH,
+    # Write composition.
+    "creative_writer": Workflow.WRITE,
     # Read wrestling-loop roles.
     "note_taker": Workflow.READ,
     "challenger": Workflow.READ,

@@ -79,10 +79,12 @@ def events_dir(tmp_path: Path) -> str:
     """A fixture events dir with a known DispatchCall event log. We emit:
       - research: 2 calls, $0.10 + $0.20
       - read:     1 call,  $0.05  (note_taker → Read)
+      - write:    1 call,  $0.11  (creative_writer → Write)
       - speak:    1 call,  $0.40  (interviewer → Speak)
       - remote:   1 research call via provider 'daytona', $0.15 (SPR-02)
       - unmapped: 1 call with an unknown role, $0.07 (must still be counted)
-    Aggregate raw = 0.10+0.20+0.05+0.40+0.15+0.07 = 0.97. Remote slice = 0.15.
+    Aggregate raw = 0.10+0.20+0.05+0.11+0.40+0.15+0.07 = 1.08.
+    Remote slice = 0.15.
     """
     d = str(tmp_path / "events")
 
@@ -107,6 +109,7 @@ def events_dir(tmp_path: Path) -> str:
     emit("inv-1", "decomposer", 0.10)
     emit("inv-1", "synthesizer", 0.20)
     emit("inv-2", "note_taker", 0.05)
+    emit("inv-2", "creative_writer", 0.11)
     emit("inv-2", "interviewer", 0.40)
     emit("inv-3", "user_agent", 0.15, provider="daytona")  # remote-exec leaf
     emit("inv-3", "totally_unknown_role", 0.07)            # unmapped, still counted
@@ -122,7 +125,7 @@ def test_aggregate_equals_sum_of_per_workflow(events_dir: str) -> None:
         "aggregate must equal the sum of per-workflow raw cost — no double "
         "count, no dropped workflow"
     )
-    assert cv.aggregate_raw_cost_usd == Decimal("0.97")
+    assert cv.aggregate_raw_cost_usd == Decimal("1.08")
 
 
 def test_remote_exec_cost_is_included(events_dir: str) -> None:
@@ -143,11 +146,12 @@ def test_unmapped_role_is_counted_not_dropped(events_dir: str) -> None:
     assert unmapped.raw_cost_usd == Decimal("0.07")
     assert cv.has_unmapped_spend() is True
     # And it is still in the aggregate (the no-drift property).
-    assert cv.aggregate_raw_cost_usd == Decimal("0.97")
+    assert cv.aggregate_raw_cost_usd == Decimal("1.08")
 
 
 def test_role_to_workflow_mapping_matches_taxonomy() -> None:
     assert workflow_for_role("synthesizer") is Workflow.RESEARCH
+    assert workflow_for_role("creative_writer") is Workflow.WRITE
     assert workflow_for_role("note_taker") is Workflow.READ
     assert workflow_for_role("interviewer") is Workflow.SPEAK
     assert workflow_for_role("nope") is Workflow.UNMAPPED

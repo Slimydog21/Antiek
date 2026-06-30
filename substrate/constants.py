@@ -456,6 +456,7 @@ ROLES: Final[tuple[str, ...]] = (
     "parameter_extractor",
     "connector",
     "synthesizer",
+    "creative_writer",       # Write workflow prose generation
     "user_agent",
     "note_taker",            # background note-emergence during wrestling
     "challenger",            # adversarial questioner during wrestling
@@ -473,6 +474,7 @@ DEFAULT_ROLE_TIER: Final[dict[str, str]] = {
     "parameter_extractor":  "flash",
     "connector":            "pro",
     "synthesizer":          "synthesis",
+    "creative_writer":      "synthesis",
     "user_agent":           "pro",
     "note_taker":           "flash",
     "challenger":           "pro",
