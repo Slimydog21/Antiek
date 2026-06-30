@@ -4,4 +4,4 @@ from __future__ import annotations
 
 
 def test_always_fails():
-    assert False, "consistent regression"
+    raise AssertionError("consistent regression")
