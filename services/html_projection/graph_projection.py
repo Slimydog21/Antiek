@@ -36,8 +36,10 @@ def graph_widget_node(
     graph_edges: list[dict] = []
     for edge in refs:
         target = str(edge.get("to_document_id"))
+        # Prefer a human title (a citation label — rights-safe) over the raw id.
+        label = str(edge.get("to_title") or target)
         if target not in seen:
-            nodes.append({"id": target, "label": target})
+            nodes.append({"id": target, "label": label})
             seen.add(target)
         graph_edges.append({"from": _SELF, "to": target})
     return {

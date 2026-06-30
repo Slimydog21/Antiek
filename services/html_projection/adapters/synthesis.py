@@ -213,10 +213,23 @@ def adapt_synthesis(export: SynthesisExport) -> dict:
             if not src.resolved:
                 content.append(_prose("(unsourced)"))
 
+    # Knowledge-graph edges: this synthesis CITES each unique source document.
+    # Rights-safe — a citation (document id + title), NEVER the passage text;
+    # the same title/id the cite-only marker already shows for a non-servable
+    # source. The graph_widget_node visualizes these in the artifact.
+    cited: dict[str, str] = {}
+    for claim in export.claims:
+        for src in claim.sources:
+            if src.document_id and src.document_id not in cited:
+                cited[src.document_id] = src.document_title or src.document_id
+
     return {
         "title": export.target_question,
         "content": content,
-        "edges": [],
+        "edges": [
+            {"kind": "cites", "to_document_id": doc_id, "to_title": title}
+            for doc_id, title in cited.items()
+        ],
         "metadata": {
             "synthesis_id": export.synthesis_id,
             "recommendation": export.recommendation,
