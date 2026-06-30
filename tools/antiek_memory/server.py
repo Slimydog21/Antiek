@@ -97,6 +97,9 @@ class AntiekMemoryServer:
     def handle_request(self, request: dict) -> dict | None:
         """Process one JSON-RPC request and return the response dict.
         Returns None for notifications (requests without an `id`)."""
+        if "id" not in request:
+            return None
+
         rpc_id = request.get("id")
         method = request.get("method")
         params = request.get("params") or {}
