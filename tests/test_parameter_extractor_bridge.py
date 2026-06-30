@@ -119,10 +119,25 @@ async def async_client(app_and_bus):
         yield ac
 
 
-async def _post_request(ac, *, investigation_id, evidence_block="[evidence]"):
+def _evidence_block(*chunk_ids: str) -> str:
+    ids = list(chunk_ids) or ["chunk-1", "chunk-2"]
+    return json.dumps([
+        {
+            "subquestion_id": "sq-1",
+            "supporting_claims": [
+                {
+                    "claim": "synthetic evidence",
+                    "chunk_ids": ids,
+                },
+            ],
+        },
+    ])
+
+
+async def _post_request(ac, *, investigation_id, evidence_block=None):
     payload = {
         "action_type": "parameter_extract.requested",
-        "evidence_block": evidence_block,
+        "evidence_block": evidence_block or _evidence_block(),
     }
     r = await ac.post(
         "/events/typed",
