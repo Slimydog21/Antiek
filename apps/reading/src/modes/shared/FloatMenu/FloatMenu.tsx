@@ -15,6 +15,11 @@ import {
   type SearchResult,
 } from "./floatMenuActions";
 import type { FloatMenuSelection } from "./useFloatMenuSelection";
+import {
+  dialogueSessionKey,
+  loadDialogueSession,
+  saveDialogueSession,
+} from "./dialogueTurnStorage";
 
 /**
  * FloatMenu — THE shared highlight → float-window interaction primitive
@@ -402,10 +407,12 @@ function DialoguePanel({
   investigationId: string;
   onClose: () => void;
 }) {
+  const sessionKey = dialogueSessionKey(investigationId, selection);
   const [followUp, setFollowUp] = useState("");
   // Multi-turn: completed turns (the running conversation) + the live streaming
-  // answer being assembled token-by-token.
-  const [turns, setTurns] = useState<DialogueTurn[]>([]);
+  // answer being assembled token-by-token. Re-opening the same anchored passage
+  // hydrates from sessionStorage (turn transcripts are not on the graph yet).
+  const [turns, setTurns] = useState<DialogueTurn[]>(() => loadDialogueSession(sessionKey)?.turns ?? []);
   const [streaming, setStreaming] = useState(false);
   const [liveAnswer, setLiveAnswer] = useState("");
   // A mid-stream interruption (network drop / abort / missing terminal frame)
@@ -414,9 +421,22 @@ function DialoguePanel({
   const [failure, setFailure] = useState<{ reason: string | null } | null>(null);
   // The graph node the thread anchored to (M4) — shown honestly so the reader
   // knows it persisted (survives reload) vs. an un-anchored free-prose turn.
-  const [threadNodeId, setThreadNodeId] = useState<string | null>(null);
+  const [threadNodeId, setThreadNodeId] = useState<string | null>(
+    () => loadDialogueSession(sessionKey)?.threadNodeId ?? null,
+  );
   const voice = useVoiceCapture();
   const abortRef = useRef<AbortController | null>(null);
+
+  // Re-open same passage → hydrate session-local turns (graph stores anchor only).
+  useEffect(() => {
+    const stored = loadDialogueSession(sessionKey);
+    setTurns(stored?.turns ?? []);
+    setThreadNodeId(stored?.threadNodeId ?? null);
+    setFollowUp("");
+    setLiveAnswer("");
+    setInterrupted(null);
+    setFailure(null);
+  }, [sessionKey]);
 
   // Whether this selection resolves a Region (and so persists). Honest label.
   const anchored = regionOfSelection(selection) !== null;
@@ -448,7 +468,7 @@ function DialoguePanel({
               acc += ev.text;
               setLiveAnswer(acc); // progressive render as tokens arrive
             } else if (ev.kind === "thread") {
-              setThreadNodeId(ev.node_id); // persisted to the graph (M4)
+              setThreadNodeId(ev.node_id); // graph anchor id (M4); turns stay session-local
             } else if (ev.kind === "done") {
               sawTerminal = true;
             } else if (ev.kind === "error") {
@@ -483,6 +503,11 @@ function DialoguePanel({
     },
     [investigationId, selection, turns],
   );
+
+  useEffect(() => {
+    if (turns.length === 0 && threadNodeId === null) return;
+    saveDialogueSession(sessionKey, { turns, threadNodeId });
+  }, [sessionKey, turns, threadNodeId]);
 
   // Stop the live stream and surface the partial as a recoverable interruption.
   const stopStream = useCallback(() => {
@@ -612,10 +637,10 @@ function DialoguePanel({
           reload), or an un-anchored free-prose turn (answers, not persisted). */}
       <p className="text-[10px] text-moonlight mt-1.5">
         {threadNodeId
-          ? "Saved — this thread is anchored to the passage and survives reload."
+          ? "Passage anchor saved to your graph; conversation turns stay in this browser session until transcript persistence ships."
           : anchored
-            ? "This thread anchors to the passage and is saved to your graph."
-            : "This selection has no anchor, so the conversation isn’t saved."}
+            ? "Anchored to the passage — graph anchor saves after the first reply."
+            : "No passage anchor — replies aren’t saved to the graph."}
       </p>
     </Panel>
   );

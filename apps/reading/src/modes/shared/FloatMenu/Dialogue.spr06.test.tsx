@@ -99,7 +99,10 @@ function Host({ provenance }: { provenance?: FloatMenuSelection["provenance"] })
 
 const ANCHORED = { documentId: "doc-1", chunkId: "blk-1", servable: true, charStart: 0, charEnd: 12 };
 
-beforeEach(() => apiFetchMock.mockReset());
+beforeEach(() => {
+  apiFetchMock.mockReset();
+  sessionStorage.clear();
+});
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
@@ -187,7 +190,7 @@ describe("DialoguePanel streams, recovers, and persists honestly (M2 + M4)", () 
     // The completed turn shows the assembled model reply.
     await waitFor(() => expect(screen.getByText("the model reply")).toBeTruthy());
     // Honest persistence label (M4) — the thread anchored + survives reload.
-    expect(screen.getByText(/survives reload/i)).toBeTruthy();
+    expect(screen.getByText(/Passage anchor saved|browser session/i)).toBeTruthy();
   });
 
   it("a mid-stream interruption (no terminal frame) surfaces a recoverable Retry, not a frozen UI", async () => {
@@ -219,7 +222,50 @@ describe("DialoguePanel streams, recovers, and persists honestly (M2 + M4)", () 
     await act(async () => {
       fireEvent.click(screen.getByText("Ask"));
     });
-    await waitFor(() => expect(screen.getByText(/isn.t saved/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/aren.t saved to the graph/i)).toBeTruthy());
+  });
+
+  it("re-opening Dialogue on the same anchor hydrates session-local turns", async () => {
+    const store: Record<string, string> = {};
+    vi.stubGlobal("sessionStorage", {
+      getItem: (k: string) => store[k] ?? null,
+      setItem: (k: string, v: string) => {
+        store[k] = v;
+      },
+      removeItem: (k: string) => {
+        delete store[k];
+      },
+    });
+    apiFetchMock.mockResolvedValueOnce(
+      sseResponse([
+        { kind: "token", text: "stored answer" },
+        { kind: "thread", node_id: "question-abc" },
+        { kind: "done" },
+      ]),
+    );
+    openDialogue(ANCHORED);
+    fireEvent.change(screen.getByPlaceholderText("Ask about this passage…"), {
+      target: { value: "q1" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText("Ask"));
+    });
+    await waitFor(() => expect(screen.getByText("stored answer")).toBeTruthy());
+    // Simulate closing and re-opening the panel on the same anchor.
+    cleanup();
+    openDialogue(ANCHORED);
+    expect(screen.getByText("stored answer")).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
+
+  it("withheld selection (servable false) may still open Dialogue — SEARCH stays blocked", async () => {
+    apiFetchMock.mockResolvedValueOnce(sseResponse([{ kind: "token", text: "ok" }, { kind: "done" }]));
+    openDialogue({ ...ANCHORED, servable: false });
+    await act(async () => {
+      fireEvent.click(screen.getByText("Ask"));
+    });
+    await waitFor(() => expect(screen.getByText("ok")).toBeTruthy());
+    expect(apiFetchMock).toHaveBeenCalled();
   });
 
   it("carries a completed turn as history into the next request (multi-turn)", async () => {
