@@ -65,7 +65,6 @@ export default function AdvertiserConsole() {
     try {
       const resp = await apiFetch("/operator/advertiser-campaigns");
       if (!resp.ok) {
-        // Endpoint not yet implemented — show empty state, not error.
         if (resp.status === 404) {
           setCampaigns([]);
           return;
@@ -157,7 +156,7 @@ export default function AdvertiserConsole() {
                 <code className="mx-1 px-1 bg-ice-3 dark:bg-charcoal-1 rounded">
                   POST /operator/advertiser-campaigns
                 </code>
-                (substrate side persists; UI affordance ships in Sprint 25+).
+                (manual operator workflow; advertiser self-service remains gated).
               </p>
             ) : (
               <ul className="divide-y divide-rule dark:divide-charcoal-1 border border-rule dark:border-charcoal-1 rounded">
