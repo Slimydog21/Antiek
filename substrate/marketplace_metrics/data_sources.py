@@ -69,6 +69,10 @@ def fetch_publisher_accrual_cents(con: _DBConn) -> dict[str, int]:
             raise MarketplaceMetricsSourceError(
                 f"invalid escrow balance for publisher {ip_id!r}"
             ) from exc
+        if cents < 0:
+            raise MarketplaceMetricsSourceError(
+                f"negative escrow balance for publisher {ip_id!r}"
+            )
         out[ip_id] = cents
     return out
 
