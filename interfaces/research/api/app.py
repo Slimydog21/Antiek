@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import os
 import sys
 from collections.abc import Awaitable, Callable
@@ -193,7 +194,7 @@ def _probe_flywheel() -> tuple[bool, int]:
     """
     try:
         from runtime.db_lock import connect_read
-        from substrate.event_log import action_counts
+        from substrate.event_log import default_events_dir
         from substrate.graph import default_db_path
 
         # (1) Retrieval substrate reachable: the graph DB opens read-only.
@@ -202,15 +203,12 @@ def _probe_flywheel() -> tuple[bool, int]:
         con = connect_read(default_db_path())
         con.close()
 
-        # (2) >= 1 observable knowledge.reused event. action_counts with no
-        # investigation_id scans every trajectory in the default events
-        # dir; we sum the knowledge.reused row. An unreadable/empty dir
-        # returns [] → count 0 → not ready.
-        reused = 0
-        for row in action_counts(events_dir=None):
-            if row.get("action_type") == "knowledge.reused":
-                reused = int(row.get("count", 0) or 0)
-                break
+        # (2) >= 1 sampled observable knowledge.reused event. Keep startup
+        # bounded to the field we need: scanning full trajectories parses huge
+        # payloads and sorts rows, which made importing this module block on
+        # large local event logs. Here we inspect only a bounded file sample
+        # and only each row's action_type.
+        reused = _count_knowledge_reused_events(default_events_dir())
         return (reused >= 1, reused)
     except Exception:
         # Any failure (missing/locked DB, unreadable events dir, import
@@ -218,6 +216,70 @@ def _probe_flywheel() -> tuple[bool, int]:
         # (False, 0) rather than failing the whole /health over a probe,
         # mirroring _resolve_build_sha's swallow-to-"unknown".
         return (False, 0)
+
+
+def _count_knowledge_reused_events(events_dir: str) -> int:
+    """Count sampled knowledge.reused rows without materializing trajectories.
+
+    ``substrate.event_log.action_counts`` is the canonical analytics helper,
+    but it loads and JSON-decodes every payload. The health flywheel probe runs
+    during app construction, including module import for ``app = create_app()``;
+    startup should not parse megabytes of unrelated payloads just to answer
+    whether reuse is observable in the bounded startup sample.
+
+    By default this samples 2048 event files. Set
+    ``ANTIEK_FLYWHEEL_PROBE_MAX_FILES=0`` for a full historical scan.
+    """
+    if not os.path.isdir(events_dir):
+        return 0
+
+    count = 0
+    max_files_raw = os.environ.get("ANTIEK_FLYWHEEL_PROBE_MAX_FILES", "2048").strip()
+    try:
+        max_files = max(0, int(max_files_raw))
+    except ValueError:
+        max_files = 2048
+
+    paths: list[str] = []
+    for entry in os.scandir(events_dir):
+        if not entry.name.endswith((".jsonl", ".parquet")):
+            continue
+        paths.append(entry.path)
+        if max_files and len(paths) >= max_files:
+            break
+
+    for path in paths:
+        if path.endswith(".jsonl"):
+            count += _count_reuse_jsonl(path)
+        elif path.endswith(".parquet"):
+            count += _count_reuse_parquet(path)
+    return count
+
+
+def _count_reuse_jsonl(path: str) -> int:
+    count = 0
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            if "knowledge.reused" not in line or "action_type" not in line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if row.get("action_type") == "knowledge.reused":
+                count += 1
+    return count
+
+
+def _count_reuse_parquet(path: str) -> int:
+    try:
+        import pyarrow.parquet as pq_reader  # type: ignore[import-not-found]
+
+        table = pq_reader.read_table(path, columns=["action_type"])
+    except Exception:
+        return 0
+    values = table.column("action_type").to_pylist()
+    return sum(1 for value in values if value == "knowledge.reused")
 
 
 class InvestigationStartRequest(BaseModel):
