@@ -84,11 +84,12 @@ The inversion is **scoped, not total** — the steelman of full-page navigation
 still wins where it wins (simpler, zero adaptation, one focused task), so it
 stays the default exactly there:
 
-- **Window is the default** for **within-contract** surfaces — the pages that
-  satisfy the two-line window-adaptation contract (drop opaque bg + fill
-  container) and own no internal dock: `Stats`, `Library`, and the product
-  **sub-action** surfaces launched from `ProductsLauncher`. A default click on
-  these floats a window; no buried button required.
+- **Window is the default** for product activation surfaces launched from
+  `ProductsLauncher` (the `subaction` windows). Route-backed reference pages
+  that satisfy the two-line window-adaptation contract (drop opaque bg + fill
+  container) and own no internal dock — currently `Stats`, `Library`, and
+  `Documents` — are window-eligible through `WINDOW_PAGES`; mode rows expose
+  the explicit `⊞` affordance while their primary click still navigates.
 - **Navigate full-page stays the default** for:
   - **Primary workflow switches** (Research ↔ Read ↔ Write ↔ Speak via the
     NavRail) — these are destinations, not companions.
@@ -99,10 +100,11 @@ stays the default exactly there:
     third adaptation to force them to float. (Owner boundary: SPR-05 owns the
     scene/NavRail; these pages own their own viewport.)
 
-`ProductsLauncher` no longer hides windows behind `⊞`: a product/sub-action
-click opens a window by default for the contract-verified, window-eligible
-kinds. The eligible set is `WINDOW_PAGES` in `openWindow.ts` (the
-inversion's machine-readable boundary).
+`ProductsLauncher` no longer hides product activation behind `⊞`: a product
+click opens a `subaction` window by default. Route-backed mode rows still
+navigate on primary click and expose `⊞` for contract-verified, window-eligible
+pages. The eligible set is `WINDOW_PAGES` in `openWindow.ts` (the
+machine-readable boundary).
 
 > **The sub-action window is a launcher-into-a-page, not a persistent
 > companion.** Activating a product floats a `subaction` window listing that
@@ -143,9 +145,10 @@ redesigned.
 
 ### Pages adapted (exact surgical diffs)
 
-Both pages carry the identical two-line diff:
+Each adapted route page carries the same two-line diff:
 
-`src/modes/Stats/index.tsx` and `src/modes/Library/index.tsx`:
+`src/modes/Stats/index.tsx`, `src/modes/Library/index.tsx`, and
+`src/modes/DocumentsIndex/index.tsx`:
 
 ```diff
 + const inWindow = useInWindow();
@@ -156,8 +159,8 @@ Both pages carry the identical two-line diff:
 +   <main className={`flex-1 overflow-y-auto ${inWindow ? "bg-transparent" : "bg-ice-0 dark:bg-charcoal-2"}`}>
 ```
 
-`DocumentsIndex` shares the same structure and is a future drop-in (not wired
-yet — kept to the verified two pages this sprint).
+`DocumentsIndex` uses the same `useInWindow()` gate and is mapped from
+`/documents` to the `documents` window kind.
 
 ## Ad border (M3)
 

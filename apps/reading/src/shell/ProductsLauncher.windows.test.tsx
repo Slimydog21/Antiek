@@ -1,9 +1,9 @@
 /**
  * ProductsLauncher.windows.test.tsx — SPR-09 M5 spawn integration.
  *
- * The launcher gains an additive "open in window" (⊞) affordance for
- * window-eligible, built modes (Library, Stats). Navigate stays the default;
- * ⊞ opens a transparent workspace window over the scene instead.
+ * The launcher exposes an additive "open in window" (⊞) affordance for
+ * window-eligible, built modes (Library, Stats, Documents). Navigate stays the
+ * default for mode rows; ⊞ opens a transparent workspace window over the scene.
  *
  * Asserts:
  *   - window-eligible built modes show the ⊞ button;
@@ -62,6 +62,14 @@ describe("ProductsLauncher — open in window (M5)", () => {
     const ws = useWindows.getState();
     expect(ws.order.length).toBe(1);
     expect(ws.windows[ws.order[0]].kind).toBe("stats");
+  });
+
+  it("the shared Documents mode is window-eligible and opens a documents window", () => {
+    renderLauncher();
+    fireEvent.click(screen.getByLabelText("Open Documents in a window"));
+    const ws = useWindows.getState();
+    expect(ws.order.length).toBe(1);
+    expect(ws.windows[ws.order[0]].kind).toBe("documents");
   });
 
   it("a non-window-eligible built mode does NOT render a ⊞ button", () => {

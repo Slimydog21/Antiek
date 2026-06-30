@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import LemonTable from "../../components/lemon/LemonTable";
 import LemonTag from "../../components/lemon/LemonTag";
+import { useInWindow } from "../../components/windows/windowHostContext";
 import { apiFetch } from "../../lib/api";
 import { useOpenDocument } from "../../lib/openDocument";
 
@@ -30,6 +31,10 @@ type TierFilter = (typeof TIER_FILTERS)[number];
 
 export default function DocumentsIndex() {
   const openDocument = useOpenDocument();
+  // SPR-09 window-adaptation contract: in a WorkspaceWindow, fill the host
+  // container and drop the opaque full-bleed bg. The full-page route remains
+  // the normal h-screen operator surface.
+  const inWindow = useInWindow();
   const [rows, setRows] = useState<DocumentRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,8 +81,10 @@ export default function DocumentsIndex() {
   }, [rows]);
 
   return (
-    <div className="flex flex-col h-screen">
-      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
+    <div className={`flex flex-col ${inWindow ? "h-full" : "h-screen"}`}>
+      <main
+        className={`flex-1 overflow-y-auto ${inWindow ? "bg-transparent" : "bg-ice-0 dark:bg-charcoal-2"}`}
+      >
         <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
             <h1 className="text-2xl font-serif text-ink dark:text-bright">

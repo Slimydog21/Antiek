@@ -2,17 +2,16 @@
  * windowContract.test.tsx — SPR-09 M4 acceptance (the bounded contract) +
  * SPR-04 M3 acceptance (the windows-default policy INVERSION).
  *
- * PART 1 (SPR-09 M4) — the window-adaptation contract on a REAL product page
- * (Stats):
+ * PART 1 (SPR-09 M4) — the window-adaptation contract on real route pages
+ * (Stats + DocumentsIndex):
  *   - rendered at its normal route (useInWindow()=false), the page keeps its
  *     opaque full-bleed bg + h-screen — the full-page route is UNCHANGED;
  *   - rendered inside a WorkspaceWindow (useInWindow()=true via the host
  *     provider), the SAME page drops the opaque bg (→ glass shows through) and
  *     uses h-full (→ fills the window), with NO feature change.
  * This is the whole contract: (a) condition the opaque bg, (b) fill the
- * container. Nothing else about Stats is touched. Library carries the
- * identical two-line surgical diff (asserted by code review, not re-tested —
- * it is the same edit).
+ * container. Nothing else about the page is touched. Library carries the
+ * same branch and has its own focused test in Library.test.tsx.
  *
  * PART 2 (SPR-04 M3) — the policy INVERSION enforced at the launcher: the
  * DEFAULT (primary) click on a within-contract PRODUCT opens a window
@@ -26,6 +25,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
+import DocumentsIndex from "../../modes/DocumentsIndex";
 import Stats from "../../modes/Stats";
 import { ProductsLauncher } from "../../shell/ProductsLauncher";
 import { useWindows } from "../../workspace/windowsStore";
@@ -53,6 +53,26 @@ function okStats() {
   apiFetchMock.mockResolvedValue({
     ok: true,
     json: async () => ({ counts: { investigations: 3, documents: 7 }, warnings: [] }),
+  } as Response);
+}
+
+function okDocuments() {
+  apiFetchMock.mockResolvedValue({
+    ok: true,
+    json: async () => ({
+      documents: [
+        {
+          document_id: "doc-window",
+          title: "Window-safe document",
+          source_uri: null,
+          document_type: "book",
+          source_tier: 1,
+          investigation_id: null,
+          content_class: "public_domain",
+          ip_holder_id: null,
+        },
+      ],
+    }),
   } as Response);
 }
 
@@ -107,6 +127,40 @@ describe("window-adaptation contract — Stats hosted in a window", () => {
     // The substrate counts still load + render — the adaptation is cosmetic only.
     await waitFor(() => expect(screen.getByText("investigations")).toBeTruthy());
     expect(screen.getByText("3")).toBeTruthy();
+  });
+});
+
+describe("window-adaptation contract — DocumentsIndex", () => {
+  it("keeps the opaque bg + h-screen when NOT in a window", async () => {
+    okDocuments();
+    const { container } = render(
+      <MemoryRouter>
+        <DocumentsIndex />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText("Window-safe document")).toBeTruthy());
+    const { root, main } = rootAndMain(container);
+    expect(root.className).toContain("h-screen");
+    expect(root.className).not.toContain("h-full");
+    expect(main.className).toContain("bg-ice-0");
+    expect(main.className).not.toContain("bg-transparent");
+  });
+
+  it("drops the opaque bg and uses h-full when hosted in a window", async () => {
+    okDocuments();
+    const { container } = render(
+      <MemoryRouter>
+        <WindowHostProvider value={true}>
+          <DocumentsIndex />
+        </WindowHostProvider>
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText("Window-safe document")).toBeTruthy());
+    const { root, main } = rootAndMain(container);
+    expect(root.className).toContain("h-full");
+    expect(root.className).not.toContain("h-screen");
+    expect(main.className).toContain("bg-transparent");
+    expect(main.className).not.toContain("bg-ice-0");
   });
 });
 

@@ -147,7 +147,7 @@ export function ProductsLauncher({
   };
 
   // SPR-09 M5 — the legacy additive "open in window" spawn, retained for the
-  // window-eligible run/settings rows (Stats / Library) as a power affordance.
+  // window-eligible mode rows (Stats / Library / Documents) as a power affordance.
   // A window-eligible, built mode (contract-verified page) opens as a
   // transparent workspace window over the scene instead of navigating away.
   const openModeInWindow = (m: ModeEntry) => {
