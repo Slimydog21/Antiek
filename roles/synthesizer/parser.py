@@ -394,13 +394,28 @@ def _parse_constraint_compliance(obj: Any) -> ParsedConstraintCompliance:
     )
 
 
-def _parse_reasoning_path(obj: Any, idx: int) -> ParsedReasoningPath:
+def _parse_reasoning_path(
+    obj: Any,
+    idx: int,
+    *,
+    canonical_path_node_ids: Iterable[str] | None,
+    canonical_path_edge_ids: Iterable[str] | None,
+) -> ParsedReasoningPath:
     ctx = f"reasoning_paths_used[{idx}]"
     if not isinstance(obj, dict):
         raise SynthesizerValidationError(f"{ctx}: expected an object")
     nodes = tuple(_require_str_list(
         obj.get("path_node_ids"), "path_node_ids", ctx,
     ))
+    if canonical_path_node_ids is not None:
+        try:
+            nodes = validate_refs(
+                nodes,
+                canonical_path_node_ids,
+                on_invalid="raise",
+            ).valid
+        except InvalidReference as exc:
+            raise SynthesizerValidationError(f"{ctx}.path_node_ids: {exc}") from exc
     if not nodes:
         raise SynthesizerValidationError(
             f"{ctx}: path_node_ids cannot be empty"
@@ -408,6 +423,15 @@ def _parse_reasoning_path(obj: Any, idx: int) -> ParsedReasoningPath:
     edges = tuple(_require_str_list(
         obj.get("path_edge_ids"), "path_edge_ids", ctx,
     ))
+    if canonical_path_edge_ids is not None:
+        try:
+            edges = validate_refs(
+                edges,
+                canonical_path_edge_ids,
+                on_invalid="raise",
+            ).valid
+        except InvalidReference as exc:
+            raise SynthesizerValidationError(f"{ctx}.path_edge_ids: {exc}") from exc
     summary = _require_str(
         obj.get("support_summary"), "support_summary", ctx,
     )
@@ -428,6 +452,8 @@ def parse_synthesizer_response(
     text: str,
     *,
     canonical_supporting_chunk_ids: Iterable[str] | None = None,
+    canonical_path_node_ids: Iterable[str] | None = None,
+    canonical_path_edge_ids: Iterable[str] | None = None,
 ) -> ThesisResult:
     """Parse + validate a Synthesizer raw response."""
     obj = _extract_json_object(text)
@@ -506,7 +532,13 @@ def parse_synthesizer_response(
             "valid; ``insufficient_evidence`` typically emits [])"
         )
     reasoning = tuple(
-        _parse_reasoning_path(r, i) for i, r in enumerate(reasoning_raw)
+        _parse_reasoning_path(
+            r,
+            i,
+            canonical_path_node_ids=canonical_path_node_ids,
+            canonical_path_edge_ids=canonical_path_edge_ids,
+        )
+        for i, r in enumerate(reasoning_raw)
     )
 
     conviction_raw = obj.get("conviction_level")
