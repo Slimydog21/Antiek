@@ -20,6 +20,10 @@ import { allBlockTypesKnown } from "../../components/reader/knownBlockTypes";
 import PdfViewer from "../../components/PdfViewer";
 import type { Block, Document, InlineSpan, TocEntry } from "../../types/document_model.gen";
 import { decodeRegion, useOpenDocument } from "../../lib/openDocument";
+import {
+  sourcePageNumberFromExactSectionPath,
+  zeroBasedReaderPageFromSourcePage,
+} from "../../lib/sectionPath";
 import { paginateBlocks, windowForBlockIndex } from "./paginateBlocks";
 import AdBorder from "./AdBorder";
 import type { AdFillView } from "./AdBorder";
@@ -48,12 +52,7 @@ import { emitSourceRead, isRead } from "./sourceRead";
  */
 
 export function pageIndexFromChunkSectionPath(sectionPath: string | null | undefined): number | null {
-  if (!sectionPath) return null;
-  const match = sectionPath.trim().match(/^(?:Page|p\.?)\s*(\d+)$/i);
-  if (!match) return null;
-  const pageNumber = Number.parseInt(match[1], 10);
-  if (!Number.isFinite(pageNumber) || pageNumber < 1) return null;
-  return pageNumber - 1;
+  return zeroBasedReaderPageFromSourcePage(sourcePageNumberFromExactSectionPath(sectionPath));
 }
 
 export default function BookReader() {
