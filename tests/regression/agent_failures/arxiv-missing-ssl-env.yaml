@@ -37,16 +37,19 @@ actual_failure: |
   the operator had to debug from the stderr.
 
 harness_check_that_now_catches: |
-  GAP — Antiek would need a startup self-check that asserts
-  ssl.create_default_context().get_ca_certs() returns a non-empty
-  set, OR explicit certifi pinning in the HTTP client factory. The
-  Prime Intellect memory entry documents the same root cause
-  (python.org-3.11 + missing certs); a single ssl-bootstrap helper
-  could centralise the fix.
+  runtime/ssl_bootstrap.py — ensure_ssl_cert_env() preserves any
+  operator-provided SSL_CERT_FILE / SSL_CERT_DIR, and when SSL_CERT_FILE is
+  absent pins both variables to certifi's CA bundle before acquisition HTTP
+  clients run. tools/run_corpus_ingest.py calls the helper at startup, so arxiv
+  / open-access HTTPS does not fail two frames deep on python.org macOS Python.
+  Covered by tests/test_ssl_bootstrap.py, including the certifi-empty-env and
+  preserve-operator-env cases; the fixture library enforces that this named
+  harness file exists.
 
-fix_commit: GAP
+fix_commit: SPR-08
 
 notes: |
   This is the same root cause that affects Prime CLI per the
   reference_prime_intellect_lab memory entry. A unified
-  ssl_bootstrap helper in runtime/ would close both at once.
+  ssl_bootstrap helper in runtime/ closes the Antiek acquisition path without
+  mutating DB state or overriding an operator-provided certificate bundle.
