@@ -990,6 +990,25 @@ class NotebookPutContentRequest(BaseModel):
     doc: dict[str, Any]
 
 
+class PerDocNotebookSaveRequest(BaseModel):
+    """Save-as endpoint body for a notebook bound to one document."""
+
+    notebook_id: str
+    content_json: Any
+    blocks: list[dict[str, Any]] = []
+    save_kind: str = "explicit"
+
+
+class PerDocNotebookSaveResponse(BaseModel):
+    notebook_id: str
+    document_id: str | None = None
+    content_json: Any
+    blocks: list[dict[str, Any]]
+    updated_at: str | None = None
+    version: int = 0
+    archive_url: str | None = None
+
+
 class AIUndoRequest(BaseModel):
     """``POST /ai/undo`` body (§5.5 Wedge 4). The AI sidecar records
     both ids when it emits ``ai.action.applied`` so the undo button
@@ -4185,6 +4204,27 @@ def create_app(
             ],
         )
 
+    def _per_doc_blocks_from_request(
+        blocks: list[dict[str, Any]],
+        content_json: Any,
+    ) -> list[dict[str, Any]]:
+        if blocks:
+            normalized: list[dict[str, Any]] = []
+            for i, block in enumerate(blocks):
+                block_type = str(block.get("block_type") or block.get("type") or "prose")
+                content = block.get("content_json", block.get("content", block))
+                if not isinstance(content, dict):
+                    raise ValueError(f"blocks[{i}].content_json must be an object")
+                ref_raw = block.get("ref_id")
+                ref_id = str(ref_raw) if ref_raw is not None else None
+                normalized.append(
+                    {"block_type": block_type, "ref_id": ref_id, "content": content}
+                )
+            return normalized
+        if isinstance(content_json, dict):
+            return [{"block_type": "prose", "ref_id": None, "content": content_json}]
+        raise ValueError("content_json must be a TipTap doc object or blocks must be supplied")
+
     @app.post(
         "/notebooks",
         response_model=NotebookResponse,
@@ -4235,6 +4275,105 @@ def create_app(
         return NotebookListResponse(
             count=len(nbs),
             notebooks=[_notebook_to_response(nb) for nb in nbs],
+        )
+
+    @app.post(
+        "/notebooks/by-doc/{document_id}/save",
+        response_model=PerDocNotebookSaveResponse,
+    )
+    async def save_notebook_by_document(
+        document_id: str,
+        req: PerDocNotebookSaveRequest = Body(...),
+    ) -> PerDocNotebookSaveResponse:
+        """Create-or-update the notebook bound to ``document_id``."""
+        from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.notebooks import append_block, create_notebook, get_notebook
+        from substrate.notebooks.tiptap_codec import decompose
+
+        if req.save_kind not in {"explicit", "autosave"}:
+            raise HTTPException(status_code=422, detail="save_kind must be explicit or autosave")
+        if not req.notebook_id.strip():
+            raise HTTPException(status_code=422, detail="notebook_id must be non-empty")
+
+        try:
+            if isinstance(req.content_json, dict) and req.content_json.get("type") == "doc":
+                decomposed = [
+                    {
+                        "block_type": block.block_type,
+                        "ref_id": block.ref_id,
+                        "content": block.content_json,
+                    }
+                    for block in decompose(req.content_json)
+                ]
+            else:
+                decomposed = _per_doc_blocks_from_request(req.blocks, req.content_json)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        db_path = default_db_path()
+        try:
+            with connect_write(db_path, purpose="api:save_notebook_by_document") as con:
+                nb = get_notebook(con, req.notebook_id)
+                if nb is None:
+                    create_notebook(
+                        con,
+                        notebook_id=req.notebook_id,
+                        title=f"Notebook for {document_id}",
+                        document_id=document_id,
+                    )
+                elif nb.document_id not in {None, document_id}:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="notebook_id is already bound to another document",
+                    )
+                elif nb.document_id is None:
+                    con.execute(
+                        "UPDATE notebooks SET document_id = ?, updated_at = CURRENT_TIMESTAMP "
+                        "WHERE notebook_id = ?",
+                        [document_id, req.notebook_id],
+                    )
+
+                con.execute(
+                    "DELETE FROM notebook_blocks WHERE notebook_id = ?",
+                    [req.notebook_id],
+                )
+                for block in decomposed:
+                    append_block(
+                        con,
+                        notebook_id=req.notebook_id,
+                        block_type=block["block_type"],
+                        ref_id=block.get("ref_id"),
+                        content=block["content"],
+                    )
+                con.execute(
+                    "UPDATE notebooks SET updated_at = CURRENT_TIMESTAMP "
+                    "WHERE notebook_id = ?",
+                    [req.notebook_id],
+                )
+                nb = get_notebook(con, req.notebook_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if nb is None:
+            raise HTTPException(status_code=500, detail="failed to save notebook")
+        return PerDocNotebookSaveResponse(
+            notebook_id=nb.notebook_id,
+            document_id=nb.document_id,
+            content_json=req.content_json,
+            blocks=[
+                {
+                    "block_id": block.block_id,
+                    "block_index": block.block_index,
+                    "block_type": block.block_type,
+                    "ref_id": block.ref_id,
+                    "content_json": block.content_json,
+                    "created_at": block.created_at,
+                }
+                for block in nb.blocks
+            ],
+            updated_at=nb.updated_at,
+            version=len(nb.blocks),
+            archive_url=None,
         )
 
     @app.get("/notebooks/{notebook_id}", response_model=NotebookResponse)

@@ -31,9 +31,10 @@ from __future__ import annotations
 
 import json
 import uuid
+from contextlib import suppress
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 # Block types — must match the SQL CHECK constraint in
 # substrate/graph/schema.py:notebook_blocks.block_type.
@@ -95,6 +96,7 @@ def create_notebook(
     con: Any,
     *,
     title: str,
+    notebook_id: str | None = None,
     investigation_id: str | None = None,
     document_id: str | None = None,
     owner_user_id: str = "__operator__",
@@ -112,7 +114,9 @@ def create_notebook(
             f"content_class must be in {VALID_NOTEBOOK_CONTENT_CLASSES}, "
             f"got {content_class!r}"
         )
-    notebook_id = f"nb-{uuid.uuid4().hex[:12]}"
+    notebook_id = notebook_id or f"nb-{uuid.uuid4().hex[:12]}"
+    if not notebook_id.strip():
+        raise ValueError("notebook_id must be non-empty")
     metadata_json = json.dumps(metadata or {})
     con.execute(
         """
@@ -342,10 +346,8 @@ def get_notebook(con: Any, notebook_id: str) -> Notebook | None:
     ) = row
     metadata = {}
     if md:
-        try:
+        with suppress(TypeError, ValueError):
             metadata = json.loads(md)
-        except (TypeError, ValueError):
-            pass
 
     block_rows = con.execute(
         """
