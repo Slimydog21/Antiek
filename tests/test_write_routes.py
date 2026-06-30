@@ -61,7 +61,10 @@ def seed():
         doc = insert_document(con, document_id="doc-1", source_tier=2,
                               document_type="book", title="Source Book")
         con.execute("UPDATE documents SET content_class='public_domain' WHERE document_id=?", [doc])
-        ch = insert_chunk(con, document_id=doc, chunk_index=0, text="evidence")
+        ch = insert_chunk(
+            con, document_id=doc, chunk_index=3,
+            section_path="Chapter 2", text="evidence",
+        )
         node = insert_node(con, canonical_label="a sourced insight", node_type="claim",
                            graph_scope="cross_domain", investigation_id="__operator__",
                            metadata={"chunk_id": ch})
@@ -69,7 +72,10 @@ def seed():
                                     document_type="book", title="Gated Book")
         con.execute("UPDATE documents SET content_class='restricted_pending_opt_in' "
                     "WHERE document_id=?", [gated_doc])
-        gch = insert_chunk(con, document_id=gated_doc, chunk_index=0, text="gated passage")
+        gch = insert_chunk(
+            con, document_id=gated_doc, chunk_index=9,
+            section_path="Restricted chapter", text="gated passage",
+        )
         gnode = insert_node(con, canonical_label="a gated insight", node_type="claim",
                             graph_scope="cross_domain", investigation_id="__operator__",
                             metadata={"chunk_id": gch})
@@ -183,6 +189,8 @@ def test_trace_public_domain_opens_at_span(client, seed):
     trace = client.get(f"/write/blocks/{obid}/trace").json()
     assert trace["kind"] == "source_span"
     assert trace["full_text_allowed"] is True
+    assert trace["primary_chunk_index"] == 3
+    assert trace["primary_section_path"] == "Chapter 2"
 
 
 def test_trace_gated_book_no_leak(client, seed):
@@ -194,6 +202,8 @@ def test_trace_gated_book_no_leak(client, seed):
     trace = client.get(f"/write/blocks/{obid}/trace").json()
     assert trace["kind"] == "servable_snippet"
     assert trace["full_text_allowed"] is False  # the gate, over HTTP
+    assert trace["primary_chunk_index"] is None
+    assert trace["primary_section_path"] is None
 
 
 # ── SPR-03 — folders + search ──────────────────────────────────────

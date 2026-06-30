@@ -180,6 +180,9 @@ export interface TraceTarget {
   document_id: string | null;
   document_title: string | null;
   chunk_ids: string[];
+  /** Stable document-order locator for the first resolved chunk, not a Region. */
+  primary_chunk_index: number | null;
+  primary_section_path: string | null;
   servability_status: string | null;
   detail: string | null;
 }

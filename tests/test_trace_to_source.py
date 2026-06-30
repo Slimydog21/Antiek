@@ -58,7 +58,10 @@ def db(monkeypatch):
                     "INSERT INTO book_assets (document_id, taken_down) VALUES (?, TRUE)",
                     [doc_id],
                 )
-            ch = insert_chunk(con, document_id=doc_id, chunk_index=0, text="passage")
+            ch = insert_chunk(
+                con, document_id=doc_id, chunk_index=7,
+                section_path="Page 8", text="passage",
+            )
             node = insert_node(con, canonical_label=node_label, node_type="claim",
                                graph_scope="cross_domain", investigation_id="__operator__",
                                metadata={"chunk_id": ch})
@@ -82,6 +85,8 @@ def test_public_domain_source_opens_at_span(db):
     assert target.kind == "source_span"
     assert target.full_text_allowed is True
     assert target.document_id == doc
+    assert target.primary_chunk_index == 7
+    assert target.primary_section_path == "Page 8"
 
 
 def test_gated_book_shows_servable_snippet_only(db):
@@ -92,6 +97,8 @@ def test_gated_book_shows_servable_snippet_only(db):
     con.close()
     assert target.kind == "servable_snippet"
     assert target.full_text_allowed is False  # no leak
+    assert target.primary_chunk_index is None
+    assert target.primary_section_path is None
     assert "no full text" in target.detail
 
 

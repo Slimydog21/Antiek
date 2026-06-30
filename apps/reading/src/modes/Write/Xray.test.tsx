@@ -2,8 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import { getTraceTarget } from "./writeApi";
 import type { OutlineBlockView } from "./writeApi";
-import Xray, { splitParagraphs } from "./Xray";
+import Xray, { splitParagraphs, traceSourceLabel } from "./Xray";
 
 /**
  * Xray.test — the paragraph ↔ blocks provenance view (SPR-09 M3).
@@ -23,7 +24,9 @@ vi.mock("./writeApi", async (orig) => ({
   ...(await orig<typeof import("./writeApi")>()),
   getTraceTarget: vi.fn().mockResolvedValue({
     kind: "document", full_text_allowed: true, document_id: "doc-1",
-    document_title: "Source Book", chunk_ids: ["c1"], servability_status: "servable", detail: null,
+    document_title: "Source Book", chunk_ids: ["c1"],
+    primary_chunk_index: 0, primary_section_path: "Page 1",
+    servability_status: "servable", detail: null,
   }),
 }));
 
@@ -43,6 +46,19 @@ afterEach(cleanup);
 describe("Xray — paragraph↔blocks over persisted provenance", () => {
   it("splits prose the substrate's way (blank line)", () => {
     expect(splitParagraphs("a\n\nb\n\n\nc")).toEqual(["a", "b", "c"]);
+  });
+
+  it("labels traced source locators without inventing a region", () => {
+    expect(traceSourceLabel({
+      documentTitle: "Source Book",
+      primarySectionPath: "Page 3",
+      primaryChunkIndex: 2,
+    })).toBe("Source: Source Book · Page 3");
+    expect(traceSourceLabel({
+      documentTitle: "Source Book",
+      primarySectionPath: null,
+      primaryChunkIndex: 2,
+    })).toBe("Source: Source Book · chunk 3");
   });
 
   it("click a paragraph → shows its driving blocks", async () => {
@@ -75,6 +91,33 @@ describe("Xray — paragraph↔blocks over persisted provenance", () => {
     const uses = await screen.findByTestId("xray-block-uses");
     // The inversion is COMPLETE — all three paragraphs (1,2,3) are listed.
     expect(uses.textContent).toMatch(/1, 2, 3/);
+  });
+
+  it("does not render gated trace locator metadata even if the API sends it", async () => {
+    vi.mocked(getTraceTarget).mockResolvedValueOnce({
+      kind: "servable_snippet",
+      full_text_allowed: false,
+      document_id: "doc-gated",
+      document_title: "Gated Book",
+      chunk_ids: ["c-gated"],
+      primary_chunk_index: 8,
+      primary_section_path: "Restricted appendix",
+      servability_status: "restricted_pending_opt_in",
+      detail: "gated source — metadata only",
+    });
+    render(
+      <Xray
+        proseText={`Para one [b: ${NODE}].`}
+        proseProvenance={{ "0": [NODE] }}
+        blocks={[block()]}
+      />,
+    );
+    await userEvent.click(screen.getByTestId("xray-paragraph-0").querySelector("button")!);
+    await userEvent.click(screen.getByTestId("xray-paragraph-blocks-0").querySelector("button")!);
+    const uses = await screen.findByTestId("xray-block-uses");
+    expect(uses.textContent).toContain("gated source");
+    expect(uses.textContent).not.toContain("Restricted appendix");
+    expect(uses.textContent).not.toContain("chunk 9");
   });
 
   it("rigor #3a — a paragraph with ZERO blocks is flagged unsupported, not faked", async () => {

@@ -152,6 +152,8 @@ describe("WriteHome — the re-homed door", () => {
       document_id: "doc-1",
       document_title: "Source Book",
       chunk_ids: ["c1"],
+      primary_chunk_index: 0,
+      primary_section_path: "Page 1",
       servability_status: "servable",
       detail: null,
     };
@@ -179,6 +181,8 @@ describe("WriteHome — the re-homed door", () => {
       document_id: "doc-gated",
       document_title: "Gated Book",
       chunk_ids: [],
+      primary_chunk_index: null,
+      primary_section_path: null,
       servability_status: "restricted_pending_opt_in",
       detail: "this source is gated",
     };
