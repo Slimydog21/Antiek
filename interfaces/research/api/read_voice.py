@@ -17,12 +17,18 @@ transcript (400) so a misheard ASR line never becomes a confident insight.
 
 from __future__ import annotations
 
+import hashlib
+import os
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from roles.note_taker import NOTE_TAKER_SYSTEM_PROMPT, parse_notes_response
 from roles.note_taker.parser import ExtractedNote
 from substrate.dispatch import ProviderError, dispatch
+
+MAX_VOICE_BLOB_BYTES = 25 * 1024 * 1024
 
 
 class DispatchNoteDistiller:
@@ -65,6 +71,12 @@ class TranscribeResponse(BaseModel):
     duration_seconds: float = 0.0
 
 
+class VoiceBlobResponse(BaseModel):
+    audio_ref: str
+    byte_size: int
+    sha256: str
+
+
 class VoiceNoteRequest(BaseModel):
     page_index: int = Field(ge=0)
     transcript: str = Field(min_length=1)
@@ -83,8 +95,56 @@ class VoiceNoteResponseModel(BaseModel):
     emitted_event_ids: list[str]
 
 
+def _voice_blob_dir() -> Path:
+    root = os.environ.get("ANTIEK_VOICE_BLOB_DIR")
+    return Path(root).expanduser() if root else Path.home() / ".antiek" / "voice-blobs"
+
+
+def _extension_for(content_type: str | None) -> str:
+    subtype = (content_type or "audio/webm").split("/", 1)[-1].split(";", 1)[0]
+    subtype = "".join(ch for ch in subtype.lower() if ch.isalnum())
+    return subtype[:12] or "webm"
+
+
+def store_voice_blob(audio: bytes, *, content_type: str | None = None) -> VoiceBlobResponse:
+    """Persist a captured audio blob by content hash and return its reference.
+
+    The blob is filesystem/object-store data, not DuckDB/event data. Events carry
+    only ``audio_ref`` so downstream graph state remains text/provenance, while
+    the raw recording is retrievable by key if the operator wants to inspect it.
+    """
+
+    digest = hashlib.sha256(audio).hexdigest()
+    ext = _extension_for(content_type)
+    root = _voice_blob_dir()
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / f"{digest}.{ext}"
+    if not path.exists():
+        path.write_bytes(audio)
+    return VoiceBlobResponse(
+        audio_ref=f"voice-blob://sha256/{digest}.{ext}",
+        byte_size=len(audio),
+        sha256=digest,
+    )
+
+
 def register_read_voice_routes(app: FastAPI) -> None:
     """Mount the reader voice-note routes."""
+
+    @app.post("/voice/blob", response_model=VoiceBlobResponse, tags=["voice"])
+    async def upload_voice_blob(request: Request) -> VoiceBlobResponse:
+        """Store a captured audio blob and return a stable ``audio_ref``.
+
+        The request body is the raw MediaRecorder blob; no multipart dependency
+        is needed. Empty audio is refused so an event never points at a non-blob.
+        """
+
+        audio = await request.body()
+        if not audio:
+            raise HTTPException(status_code=400, detail="empty_audio")
+        if len(audio) > MAX_VOICE_BLOB_BYTES:
+            raise HTTPException(status_code=413, detail="audio_too_large")
+        return store_voice_blob(audio, content_type=request.headers.get("content-type"))
 
     @app.post("/voice/transcribe", response_model=TranscribeResponse, tags=["voice"])
     async def transcribe(request: Request) -> TranscribeResponse:

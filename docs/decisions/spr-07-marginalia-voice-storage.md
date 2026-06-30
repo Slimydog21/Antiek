@@ -1,17 +1,19 @@
 # SPR-07 — voice-anchored marginalia: the note/anchor/voice persistence is a SURFACE integration (ships dormant-correct)
 
 **Date:** 2026-05-27
+**Updated:** 2026-06-30
 **Branch:** `caffen/physics-spr07` (worktree `antiek-physics-spr07`)
 **Source spec:** `docs/philosophy/physics-of-reading.md` (the canon) + the SPR-07
 sprint (`voice-anchored-marginalia`)
-**Status:** SPR-07 capability complete + tested. The quote-resolution (M1/M6),
-the margin-note anchored widget (M2), the voice resolved-view (M3), the
-plain-text materiality / re-resolution (M4), and the four-augmentation
-composition (M5) are all built + green against the resolved views. The actual
-**emit** of the note/anchor/voice substrate event + the **audio-blob object
-storage** are a SURFACE/BACKEND integration the augmentation cannot perform
-(PR-2 / PR-6) — they ship dormant-correct, exactly like the SPR-06
-`source.read` emit and the SPR-05 geometry pass.
+**Status:** **MARGINALIA WRITE + SHARED VOICE-BLOB STORAGE CLOSED.** SPR-07
+capability remains complete + tested: quote-resolution (M1/M6), margin-note
+anchored widget (M2), voice resolved-view (M3), plain-text materiality /
+re-resolution (M4), and four-augmentation composition (M5). The surface write
+path now persists `marginalia.noted` through the shared FloatMenu, and the
+shared `useVoiceCapture` path stores the recorded audio blob through
+`POST /voice/blob` before emitting `voice.captured` with the returned
+`audio_ref`. The augmentation still reads resolved views only; it opens no
+writer.
 **Owner:** Read-surface instance (whoever wires the note-author write path) +
 operator (sequencing the integration).
 
@@ -37,12 +39,12 @@ their settled answers:
    /books/{id}/voice-note`) persists it through the funnel. No new transcription
    or note-distillation path is built.
 
-3. **The audio blob.** Lives in **object storage keyed by the note's substrate
-   event id** — referenced by the event's `audio_ref` field (the same field
-   `saveVoiceNote` already accepts). The blob is NOT in the substrate (DuckDB);
-   only the *reference* + the transcript are. This is the canon's "the audio blob
-   lives in object storage keyed by the event" verbatim, and it reuses the field
-   Speak's voice path already carries.
+3. **The audio blob.** Lives in local object storage through `POST /voice/blob`,
+   returned as a content-addressed `voice-blob://sha256/...` `audio_ref`. The
+   blob is NOT in the substrate (DuckDB); only the *reference* + the transcript
+   are. `useVoiceCapture` uploads the blob after successful transcription and
+   before `voice.captured` persistence, so a persisted voice capture always
+   carries the blob pointer unless a caller supplied an existing `audio_ref`.
 
 The augmentation (`augmentations/marginalia/`) therefore only ever READS the
 resolved note + clip view (`ResolvedMarginNote` / `VoiceClipView`); it imports no
@@ -56,12 +58,12 @@ and the PR-2 grep is clean).
   + renders, copy carries the quote, move re-resolves by quote (M4), and all four
   augmentations compose (M5). All proved headless in
   `augmentations/marginalia/{resolve-quote,marginalia.compose}.test.ts`.
-- **Emit (write side) — deferred SURFACE integration.** Capturing the typed note,
-  posting the `marginalia.note` event through the funnel, and storing the audio
-  blob (keyed by the event id) is a surface/backend wiring the augmentation may
-  not do (PR-2 / PR-6). Until the surface wires it, there are no persisted notes
-  to resolve — the augmentation is **dormant-correct**: it renders the moment the
-  resolved-note view carries an entry.
+- **Emit (write side) — closed for the shared FloatMenu/marginalia path.** The
+  shared FloatMenu posts `marginalia.noted` through `postTypedEvent`, and its
+  voice affordance uses `useVoiceCapture`: record → transcribe → `POST
+  /voice/blob` → `voice.captured` with `audio_ref` → fold the user transcript
+  into the marginalia note. If transcription or blob storage fails, no
+  `voice.captured` event is persisted; the failure is surfaced.
 
 ## Why this is separate from the SPR-06 `source.read` + SPR-05 geometry gaps
 
@@ -74,25 +76,21 @@ and the PR-2 grep is clean).
   (the reader commits a note + an optional clip), PLUS the object-storage blob
   write. A distinct integration point from both — recorded here so none is
   mistaken for another. (The voice path itself — transcribe + save — already
-  exists in Speak; what's deferred is wiring the marginalia author flow to it.)
+  exists in Speak; the shared marginalia author flow is now wired to blob
+  storage + the typed event funnel.)
 
 ## The exact next step
 
-1. **Capture:** in the reading surface, when the reader anchors a note (type a
-   quote + comment; optionally record/attach a clip), call Speak's
-   `transcribeAudio` for the clip → correct the transcript → `saveVoiceNote`
-   (or a `marginalia.note`-shaped typed event via `postTypedEvent`) with the
-   `anchorQuote`, `comment`, and `audio_ref` (the object-storage blob key).
-2. **Resolve:** read the persisted note events for the synthesis, run each
+1. **Resolve:** read the persisted note events for the synthesis, run each
    through `reResolveNote(authored, ctx)` (re-resolves the anchor BY QUOTE), and
    hand the `ResolvedMarginNote[]` to `makeMarginaliaAugmentation`.
-3. The augmentation already maps resolved notes → anchored widgets; no
+2. The augmentation already maps resolved notes → anchored widgets; no
    augmentation change needed.
 
 ## Reconsider if
 
-- The surface wires the marginalia author flow + blob store (this gap closes) →
-  mark superseded and record the wiring commit.
+- A future object store needs remote/S3 semantics → keep the `audio_ref` contract
+  and swap the `/voice/blob` backend, not the event shape.
 - A `marginalia.note` event shape turns out to overlap the existing voice-note
   event → reuse that event name instead of minting a new one (avoid a duplicate
   signal), and point the resolver at it.
