@@ -16,7 +16,13 @@ import PasteIngest from "./PasteIngest";
 import UnifiedSearch from "../../components/UnifiedSearch";
 import SuggestedResearch from "./SuggestedResearch";
 import ThinkingStream from "./ThinkingStream";
-import { resolveDueClaimsFromEvents } from "./reviewState";
+import {
+  emitClaimReviewed,
+  resolveDueClaimsFromEvents,
+  scheduleClaimReview,
+} from "./reviewState";
+import type { ClaimReviewRating } from "./reviewState";
+import type { ParsedClaim } from "../../lib/synthesisParser";
 
 /**
  * Mode A — Research Workstation (S5 redesign → Living-Roadmap SPR-05 M3).
@@ -242,12 +248,21 @@ function CompletedInvestigationContent({
   }) => void;
 }) {
   const [reviewNow, setReviewNow] = useState(() => new Date());
+  const [locallyReviewedClaimIds, setLocallyReviewedClaimIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [reviewPendingClaimIds, setReviewPendingClaimIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const reviewPendingClaimIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     setReviewNow(new Date());
+    setLocallyReviewedClaimIds(new Set());
+    reviewPendingClaimIdsRef.current = new Set();
+    setReviewPendingClaimIds(new Set());
     const id = window.setInterval(() => setReviewNow(new Date()), 60_000);
     return () => window.clearInterval(id);
-  }, [investigation.events]);
-
+  }, [investigation.id]);
   const synth = useMemo(
     () => parseSynthesis(investigation.events),
     [investigation.events],
@@ -256,6 +271,18 @@ function CompletedInvestigationContent({
     () => latestDeliveredSynthesisId(investigation.events),
     [investigation.events],
   );
+  const eventClock = useMemo(() => {
+    const last = investigation.events[investigation.events.length - 1];
+    return [
+      investigation.events.length,
+      last?.event_id ?? "",
+      last?.emitted_at ?? "",
+    ].join(":");
+  }, [investigation.events]);
+  useEffect(() => {
+    setReviewNow(new Date());
+  }, [eventClock]);
+
   const reviewDueClaims = useMemo(
     () =>
       resolveDueClaimsFromEvents(investigation.events, {
@@ -263,6 +290,67 @@ function CompletedInvestigationContent({
         synthesisId,
       }),
     [investigation.events, reviewNow, synthesisId],
+  );
+  useEffect(() => {
+    const dueClaimIds = new Set(reviewDueClaims.map((claim) => claim.claimId));
+    setLocallyReviewedClaimIds((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const claimId of prev) {
+        if (dueClaimIds.has(claimId)) {
+          next.add(claimId);
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [reviewDueClaims]);
+  const visibleReviewDueClaims = useMemo(
+    () =>
+      reviewDueClaims.filter(
+        (claim) => !locallyReviewedClaimIds.has(claim.claimId),
+      ),
+    [locallyReviewedClaimIds, reviewDueClaims],
+  );
+  const reviewPendingClaimIdList = useMemo(
+    () => Array.from(reviewPendingClaimIds),
+    [reviewPendingClaimIds],
+  );
+  const handleReviewClaim = useCallback(
+    async (claim: ParsedClaim, rating: ClaimReviewRating) => {
+      if (!synthesisId) return;
+      const claimId = String(claim.index);
+      if (reviewPendingClaimIdsRef.current.has(claimId)) return;
+      reviewPendingClaimIdsRef.current = new Set(reviewPendingClaimIdsRef.current).add(
+        claimId,
+      );
+      setReviewPendingClaimIds(new Set(reviewPendingClaimIdsRef.current));
+      const reviewedAt = new Date();
+      const schedule = scheduleClaimReview(reviewedAt, rating);
+      try {
+        const emitted = await emitClaimReviewed({
+          investigationId: investigation.id,
+          synthesisId,
+          claimId,
+          reviewedAt,
+          nextDueAt: schedule.nextDueAt,
+          rating: schedule.rating,
+          ease: schedule.ease,
+          intervalDays: schedule.intervalDays,
+          dueLabel: schedule.dueLabel,
+        });
+        if (emitted) {
+          setLocallyReviewedClaimIds((prev) => new Set(prev).add(claimId));
+        }
+      } finally {
+        const next = new Set(reviewPendingClaimIdsRef.current);
+        next.delete(claimId);
+        reviewPendingClaimIdsRef.current = next;
+        setReviewPendingClaimIds(new Set(next));
+      }
+    },
+    [investigation.id, synthesisId],
   );
 
   // SPR-03: a completed research's durable product is its insights + open
@@ -276,7 +364,9 @@ function CompletedInvestigationContent({
         <MasterMdViewer
           synthesis={synth}
           reviewDueEnabled={true}
-          reviewDueClaims={reviewDueClaims}
+          reviewDueClaims={visibleReviewDueClaims}
+          onReviewClaim={handleReviewClaim}
+          reviewClaimPendingIds={reviewPendingClaimIdList}
         />
       ) : null}
       <div className="border-t border-rule dark:border-charcoal-1">

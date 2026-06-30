@@ -19,6 +19,17 @@ export interface ClaimReviewedEventView {
   due_label?: string | null;
 }
 
+export const CLAIM_REVIEW_RATINGS = ["again", "good", "easy"] as const;
+export type ClaimReviewRating = (typeof CLAIM_REVIEW_RATINGS)[number];
+
+export interface ClaimReviewSchedule {
+  nextDueAt: Date;
+  rating: ClaimReviewRating;
+  ease: number;
+  intervalDays: number;
+  dueLabel: string;
+}
+
 type ReviewStateEventInput = Pick<
   Event,
   "action_type" | "payload" | "emitted_at"
@@ -81,6 +92,42 @@ export function resolveDueClaimsFromEvents(
   return due.sort((a, b) => a.claimId.localeCompare(b.claimId));
 }
 
+function addMilliseconds(date: Date, ms: number): Date {
+  return new Date(date.getTime() + ms);
+}
+
+export function scheduleClaimReview(
+  reviewedAt: Date,
+  rating: ClaimReviewRating,
+): ClaimReviewSchedule {
+  if (rating === "again") {
+    const intervalDays = 30 / (24 * 60);
+    return {
+      nextDueAt: addMilliseconds(reviewedAt, 30 * 60 * 1000),
+      rating,
+      ease: 1.3,
+      intervalDays,
+      dueLabel: "Due again soon",
+    };
+  }
+  if (rating === "easy") {
+    return {
+      nextDueAt: addMilliseconds(reviewedAt, 7 * 24 * 60 * 60 * 1000),
+      rating,
+      ease: 3,
+      intervalDays: 7,
+      dueLabel: "Due in a week",
+    };
+  }
+  return {
+    nextDueAt: addMilliseconds(reviewedAt, 24 * 60 * 60 * 1000),
+    rating,
+    ease: 2.5,
+    intervalDays: 1,
+    dueLabel: "Due tomorrow",
+  };
+}
+
 export async function emitClaimReviewed(args: {
   investigationId: string;
   synthesisId: string;
@@ -91,7 +138,7 @@ export async function emitClaimReviewed(args: {
   ease?: number | null;
   intervalDays?: number | null;
   dueLabel?: string | null;
-}): Promise<void> {
+}): Promise<boolean> {
   const payload: ClaimReviewedPayload = {
     action_type: "claim.reviewed",
     claim_id: args.claimId,
@@ -108,7 +155,9 @@ export async function emitClaimReviewed(args: {
       synthesis_id: args.synthesisId,
       payload,
     });
+    return true;
   } catch {
     /* best-effort — a missed review-state emit keeps the cue dark, honestly */
+    return false;
   }
 }

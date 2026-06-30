@@ -5,15 +5,16 @@
 **Branch:** `physics/spr-08` (worktree `antiek-physics-spr08`)
 **Source spec:** `docs/philosophy/physics-of-reading.md` (the canon) + SPR-08 sprint
 (the capstone — agent-authorability / PR-8 + `AUTHORING_KIT.md`)
-**Status:** **RESOLVER CLOSED.** review-due remains the first AGENT-authored
-augmentation and still composes through the same un-relaxed gates, but the
-deferred substrate signal/resolver is now wired: `claim.reviewed` typed events
-record per-claim review verdicts, `reviewState.ts` resolves the latest event per
-claim into `ReviewDueClaimView[]`, and `ResearchWorkstation` hands that due set
-to `MasterMdViewer` with review-due enabled. No history still means honest
-no-data: no claim lights up until a `claim.reviewed` event makes it due.
-**Owner:** Read-surface instance for the remaining review gesture/scheduler UI,
-operator for any future policy toggle.
+**Status:** **RESOLVER + V1 GESTURE CLOSED.** review-due remains the first
+AGENT-authored augmentation and still composes through the same un-relaxed gates,
+but the deferred substrate signal/resolver is now wired: `claim.reviewed` typed
+events record per-claim review verdicts, `reviewState.ts` resolves the latest
+event per claim into `ReviewDueClaimView[]`, and `ResearchWorkstation` hands
+that due set to `MasterMdViewer` with review-due enabled. Due claims now expose
+Again/Good/Easy controls that emit deterministic v1 scheduler metadata. No
+history still means honest no-data: no claim lights up until a `claim.reviewed`
+event makes it due.
+**Owner:** operator for any future policy toggle.
 
 ## What was decided
 
@@ -83,15 +84,32 @@ That substrate-resolution integration now exists for `claim.reviewed` history.
 It remains distinct from the geometry pass; recorded here so future scheduler/UI
 work is not conflated with geometry.
 
-## The exact next step
+## Closed follow-up: reader gesture + v1 scheduler
 
-1. **Gesture:** add the reader-facing review action that calls
-   `emitClaimReviewed(...)` after the operator settles the exact control and
-   scheduling policy.
-2. **Scheduler policy:** tune the rating/ease/interval semantics that populate
-   `next_due_at`; the event and resolver already carry those fields without
-   requiring a separate side store.
-3. **Policy toggle:** decide whether review-due stays enabled in
+On 2026-06-30 the read surface added the missing reader-facing review action:
+due claims render compact **Again / Good / Easy** controls only when
+`ResearchWorkstation` has resolved a persisted `claim.reviewed` history into a
+due cue. Selecting a rating emits another `claim.reviewed` typed event through
+the existing single-writer funnel and hides the claim locally after a confirmed
+emit.
+
+The v1 scheduler policy is deterministic and deliberately small:
+
+- `again` -> 30 minutes, ease `1.3`, label `Due again soon`
+- `good` -> 1 day, ease `2.5`, label `Due tomorrow`
+- `easy` -> 7 days, ease `3.0`, label `Due in a week`
+
+These are hardcoded v1 constants in `scheduleClaimReview(...)` in
+`apps/reading/src/modes/ResearchWorkstation/reviewState.ts`; tune them there
+until the operator asks for a user-visible scheduler policy.
+
+This closes the prior gesture/scheduler substrate gap without inventing first
+review schedules for claims with no history. No history still produces the
+honest empty due set.
+
+## Remaining next step
+
+1. **Policy toggle:** decide whether review-due stays enabled in
    `ResearchWorkstation` only or becomes a user-visible setting across the
    broader reading surface.
 
