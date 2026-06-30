@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 from substrate.contracts import dependency_map, drw_sprint_lock
@@ -68,7 +68,7 @@ def _specs_root() -> Path:
 _SPRINT_FILE_RE = re.compile(r"^sprint-(\d{2})-(.+)\.html$")
 
 
-class SprintStatus(str, Enum):
+class SprintStatus(StrEnum):
     """Coarse build state of a sprint, derived from the DRW sprint-lock where
     the sprint is a DRW sprint, else ``UNKNOWN`` (the products own their own
     internal status; this roadmap does not invent one)."""
@@ -243,19 +243,27 @@ def _dependencies_for(node_id: str) -> tuple[str, ...]:
 def build_roadmap(specs_root: Path | None = None) -> Roadmap:
     """Ingest the five rosters + SPR-01's DAG; reconcile the count; compute the
     unblocked set from dependency state. Reads only — authors nothing."""
+    explicit_root = specs_root is not None
     root = specs_root or _specs_root()
     crit = set(dependency_map.critical_path())
 
     rosters: list[SpecRoster] = []
-    # The live specs/ root takes precedence (the operator's current view). Only
-    # when the root itself is absent — CI and prod, where the untracked planning
-    # specs do not ship — fall back to the committed manifest, so the roadmap is
-    # portable rather than empty. When a root IS present (the real dir or a test
-    # fixture), an absent per-spec dir honestly contributes 0 (no backfill).
+    # The live specs/ root takes precedence for dirs that are actually present.
+    # The canonical repo may still contain a tracked specs/ directory without
+    # the untracked planning roster dirs; in that case use the committed
+    # manifest per missing roster so CI/prod do not render an empty roadmap.
+    # Explicit fixture roots keep strict fixture semantics: absent per-spec dirs
+    # honestly contribute 0 and are never backfilled from the manifest.
     root_present = root.is_dir()
-    manifest = {} if root_present else _manifest_rosters()
+    manifest = {} if explicit_root else _manifest_rosters()
     for spec, dirname, label in _SPEC_DIRS:
-        files = _read_roster_files(root / dirname) if root_present else manifest.get(spec, [])
+        spec_dir = root / dirname
+        if root_present and spec_dir.is_dir():
+            files = _read_roster_files(spec_dir)
+        elif explicit_root:
+            files = []
+        else:
+            files = manifest.get(spec, [])
         rows: list[SprintRow] = []
         for sprint, slug in files:
             node_id = f"{spec}:{sprint}"
@@ -285,11 +293,13 @@ def build_roadmap(specs_root: Path | None = None) -> Roadmap:
             SpecRoster(spec=spec, label=label, directory=dirname, sprints=tuple(rows))
         )
 
-    superseded_files = (
-        _read_roster_files(root / _SUPERSEDED_DIR)
-        if root_present
-        else manifest.get(_SUPERSEDED_DIR, [])
-    )
+    superseded_dir = root / _SUPERSEDED_DIR
+    if root_present and superseded_dir.is_dir():
+        superseded_files = _read_roster_files(superseded_dir)
+    elif explicit_root:
+        superseded_files = []
+    else:
+        superseded_files = manifest.get(_SUPERSEDED_DIR, [])
 
     return Roadmap(
         rosters=tuple(rosters),

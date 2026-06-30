@@ -137,3 +137,59 @@ it simply no longer competes for memory with the full suite. Orthogonal to (and
 cheaper than) the xdist/sharding fix above, which remains the right move for the
 `pytest` job's own wall-clock. **Reconsider-if:** the suite is sharded so the
 keystone can re-home into a shard cheaply.
+
+## 2026-06-30 — xdist validation attempt, not yet wired
+
+The required throughput fix was validated far enough to prove it is viable, but
+**not** far enough to wire into CI. The intended command remains:
+
+```bash
+python -m pytest tests/ -q -m "not integration" -n auto --dist loadscope
+```
+
+`pytest-xdist` is already declared in the `dev` extra. The workflow still runs
+serial at the 40-minute stopgap because the full xdist run is not green yet. Do
+not lower the timeout or add `-n auto` to CI until the blockers below are closed.
+
+Validation completed:
+
+- `tests/test_coordination_no_fork.py` failed both serial and xdist because the
+  canonical `specs/` directory can exist without the untracked roster dirs,
+  causing `build_roadmap()` to skip the committed roster manifest and return an
+  empty roadmap.
+- `substrate/coordination/roadmap.py` now falls back to
+  `sprint_rosters.json` per missing canonical roster dir, while preserving
+  strict fixture semantics for explicit `specs_root` calls.
+- Known order-sensitive validation passed under xdist:
+  `tests/test_acquisition_arxiv.py tests/test_coordination_no_fork.py tests/test_magic_link_auth.py -q -n 4 --dist loadscope`
+  → 82 passed.
+- Personal-reading lane validation passed under xdist:
+  `tests/test_personal_reading_lane.py tests/test_personal_lane_read_side.py tests/test_retrieval_substrate_personal_reading.py tests/test_get_chunk_personal_reading.py tests/test_x_byok_training_exclusion.py -q -n 4 --dist loadscope`
+  → 34 passed.
+
+Full-suite validation result:
+
+```bash
+python -m pytest tests/ -q -m "not integration" -n auto --dist loadscope --tb=short
+# 5815 passed, 14 skipped, 12 failed before operator interrupt during teardown
+```
+
+Remaining blockers observed in that run:
+
+- `tests/test_krea_routes.py::test_routes_registered_and_health_unaffected`
+  saw an `_IncludedRouter` route object without `.path`.
+- Turbopuffer retrieval tests selected the credentialed spike stub and raised
+  `NotImplementedError` instead of the no-credentials skip path.
+- `tests/test_declared_bar.py::test_mypy_targets_match_wheel_packages` saw
+  `services` in wheel packages but not declared mypy targets.
+- `tests/test_compliance_invariants.py::test_raw_body_scanner_reports_zero_violations_on_the_current_tree`
+  reported existing raw-body SQL reads outside the serve gate.
+- `tests/test_weekly_report.py` hit naive-vs-aware datetime comparison in
+  acquisition-cost collection.
+- `tests/test_retrieval_bench.py::test_run_benchmark_emits_artifact` hit the
+  Turbopuffer spike stub.
+- `tests/test_dispatch_bootstrap.py::test_health_endpoint_reports_registered_providers`
+  observed registered providers beyond the two pinned in the test.
+
+Next CI-infra slice: close or quarantine these full-suite blockers, then rerun
+the exact full xdist command above before changing `.github/workflows/ci.yml`.
