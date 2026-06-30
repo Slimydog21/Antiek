@@ -39,7 +39,15 @@ def graph_widget_node(
         # Prefer a human title (a citation label — rights-safe) over the raw id.
         label = str(edge.get("to_title") or target)
         if target not in seen:
-            nodes.append({"id": target, "label": label})
+            node: dict = {"id": target, "label": label}
+            # Rights-aware tone (optional): the caller sets "tone" from the
+            # source's servability, so the graph visually distinguishes a
+            # servable source from a cite-only one. Passed straight to the
+            # dep_graph widget's tone vocabulary.
+            tone = edge.get("tone")
+            if tone:
+                node["tone"] = str(tone)
+            nodes.append(node)
             seen.add(target)
         graph_edges.append({"from": _SELF, "to": target})
     return {

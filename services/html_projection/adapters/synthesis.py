@@ -217,18 +217,28 @@ def adapt_synthesis(export: SynthesisExport) -> dict:
     # Rights-safe — a citation (document id + title), NEVER the passage text;
     # the same title/id the cite-only marker already shows for a non-servable
     # source. The graph_widget_node visualizes these in the artifact.
-    cited: dict[str, str] = {}
+    cited: dict[str, tuple[str, bool]] = {}
     for claim in export.claims:
         for src in claim.sources:
             if src.document_id and src.document_id not in cited:
-                cited[src.document_id] = src.document_title or src.document_id
+                cited[src.document_id] = (
+                    src.document_title or src.document_id,
+                    src.servable,
+                )
 
     return {
         "title": export.target_question,
         "content": content,
         "edges": [
-            {"kind": "cites", "to_document_id": doc_id, "to_title": title}
-            for doc_id, title in cited.items()
+            {
+                "kind": "cites",
+                "to_document_id": doc_id,
+                "to_title": title,
+                # Rights-aware tone: a servable source reads green, a cite-only
+                # one amber — the graph is a visual rights map.
+                "tone": "success" if servable else "warning",
+            }
+            for doc_id, (title, servable) in cited.items()
         ],
         "metadata": {
             "synthesis_id": export.synthesis_id,

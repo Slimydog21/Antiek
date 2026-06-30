@@ -118,17 +118,22 @@ def adapt_deliverable(export: DeliverableExport) -> dict:
     # Knowledge-graph edges: the unique cited source TITLES (rights-safe — a
     # citation, never the passage). The block carries no document id, so the
     # title is the node identity; deduped in first-seen order.
-    cited: dict[str, None] = {}
+    cited: dict[str, bool] = {}
     for section in export.sections:
         for block in section.blocks:
             if block.source_title and block.source_title not in cited:
-                cited[block.source_title] = None
+                cited[block.source_title] = block.servable
     return {
         "title": export.title,
         "content": content,
         "edges": [
-            {"kind": "cites", "to_document_id": title, "to_title": title}
-            for title in cited
+            {
+                "kind": "cites",
+                "to_document_id": title,
+                "to_title": title,
+                "tone": "success" if servable else "warning",
+            }
+            for title, servable in cited.items()
         ],
         "metadata": {"unsupported_block_kinds": unsupported_block_kinds(export)},
     }

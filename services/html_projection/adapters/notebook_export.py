@@ -23,6 +23,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+from substrate.constants import SERVABLE_CONTENT_CLASSES
+
 from ..context import Tombstone
 from .notebook import ResolvedRefData, RightsAwareResolver
 
@@ -104,15 +106,21 @@ def adapt_notebook_for_export(
     out = [_inline(n, resolver) for n in nodes if isinstance(n, dict)]
     # Knowledge-graph edges: the unique resolved source TITLES (rights-safe
     # citations; the resolver carries no document id, so the title is the node).
-    cited: dict[str, None] = {}
+    cited: dict[str, bool] = {}
     for ref in resolved_refs.values():
         if ref.title and ref.title not in cited:
-            cited[ref.title] = None
+            cited[ref.title] = ref.content_class in SERVABLE_CONTENT_CLASSES
     return {
         "content": out,
         "title": title,
         "edges": [
-            {"kind": "cites", "to_document_id": t, "to_title": t} for t in cited
+            {
+                "kind": "cites",
+                "to_document_id": t,
+                "to_title": t,
+                "tone": "success" if servable else "warning",
+            }
+            for t, servable in cited.items()
         ],
     }
 

@@ -52,6 +52,28 @@ def test_to_title_is_preferred_as_the_node_label():
     assert "On Liberty" in labels and "doc-A" not in labels  # title beats raw id
 
 
+def test_graph_preserves_rights_tone_on_target_nodes():
+    node = graph_widget_node(
+        [
+            {
+                "kind": "cites",
+                "to_document_id": "doc-A",
+                "to_title": "On Liberty",
+                "tone": "success",
+            },
+            {
+                "kind": "cites",
+                "to_document_id": "doc-B",
+                "to_title": "A PG Essay",
+                "tone": "warning",
+            },
+        ]
+    )
+    nodes = {n["id"]: n for n in node["attrs"]["data"]["nodes"]}
+    assert nodes["doc-A"]["tone"] == "success"
+    assert nodes["doc-B"]["tone"] == "warning"
+
+
 def test_synthesis_artifact_shows_knowledge_graph_rights_safe():
     from services.html_projection.adapters.synthesis import (
         Claim,
@@ -83,3 +105,109 @@ def test_synthesis_artifact_shows_knowledge_graph_rights_safe():
     assert "Knowledge graph" in html and "A PG Essay" in html  # cited title shown
     assert "SECRET PASSAGE" not in html  # passage withheld even though cited
     assert_script_free(html)
+
+
+def test_synthesis_edges_carry_rights_tone():
+    from services.html_projection.adapters.synthesis import (
+        Claim,
+        SourceRef,
+        SynthesisExport,
+        adapt_synthesis,
+    )
+
+    dm = adapt_synthesis(
+        SynthesisExport(
+            synthesis_id="s",
+            target_question="Q?",
+            claims=[
+                Claim(
+                    "A claim",
+                    [
+                        SourceRef(
+                            document_id="doc-PD",
+                            document_title="On Liberty",
+                            content_class="public_domain",
+                            ip_holder_id=None,
+                            chunk_text="PUBLIC TEXT",
+                        ),
+                        SourceRef(
+                            document_id="doc-PR",
+                            document_title="A PG Essay",
+                            content_class="personal_reading",
+                            ip_holder_id="pg",
+                            chunk_text="SECRET",
+                        ),
+                    ],
+                )
+            ],
+        )
+    )
+    tones = {edge["to_document_id"]: edge["tone"] for edge in dm["edges"]}
+    assert tones == {"doc-PD": "success", "doc-PR": "warning"}
+
+
+def test_deliverable_edges_carry_rights_tone():
+    from services.html_projection.adapters.deliverable import (
+        DeliverableBlock,
+        DeliverableExport,
+        DeliverableSection,
+        adapt_deliverable,
+    )
+
+    dm = adapt_deliverable(
+        DeliverableExport(
+            title="Memo",
+            sections=[
+                DeliverableSection(
+                    heading="Findings",
+                    blocks=[
+                        DeliverableBlock(
+                            "claim",
+                            "PUBLIC TEXT",
+                            content_class="public_domain",
+                            source_title="On Liberty",
+                        ),
+                        DeliverableBlock(
+                            "claim",
+                            "SECRET",
+                            content_class="personal_reading",
+                            ip_holder_id="pg",
+                            source_title="A PG Essay",
+                        ),
+                    ],
+                )
+            ],
+        )
+    )
+    tones = {edge["to_document_id"]: edge["tone"] for edge in dm["edges"]}
+    assert tones == {"On Liberty": "success", "A PG Essay": "warning"}
+
+
+def test_notebook_export_edges_carry_rights_tone():
+    from services.html_projection.adapters.notebook import ResolvedRefData
+    from services.html_projection.adapters.notebook_export import (
+        adapt_notebook_for_export,
+    )
+
+    dm = adapt_notebook_for_export(
+        {"type": "doc", "content": []},
+        title="Notebook",
+        resolved_refs={
+            "c1": ResolvedRefData(
+                kind="claim",
+                content_class="public_domain",
+                ip_holder_id=None,
+                title="On Liberty",
+                payload={"statement": "PUBLIC TEXT"},
+            ),
+            "n1": ResolvedRefData(
+                kind="note",
+                content_class="personal_reading",
+                ip_holder_id="pg",
+                title="A PG Essay",
+                payload={"body": "SECRET"},
+            ),
+        },
+    )
+    tones = {edge["to_document_id"]: edge["tone"] for edge in dm["edges"]}
+    assert tones == {"On Liberty": "success", "A PG Essay": "warning"}
