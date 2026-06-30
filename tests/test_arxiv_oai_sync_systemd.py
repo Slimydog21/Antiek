@@ -37,6 +37,11 @@ def test_arxiv_oai_sync_service_pins_state_and_runs_incremental_cli():
         "python -m tools.arxiv_oai_sync incremental --census-json "
         "{{ antiek_state_dir }}/reports/arxiv_oai_census.json"
     ) in service
+    assert (
+        "python -m tools.source_census --source arxiv --db-path "
+        "{{ antiek_state_dir }}/antiek.duckdb --out "
+        "{{ antiek_state_dir }}/reports/source_census.json"
+    ) in service
     assert "ReadWritePaths={{ antiek_state_dir }} /tmp /var/tmp" in service
 
 
