@@ -48,6 +48,16 @@ def seeded_db():
     yield db, emb, counts
 
 
+@pytest.fixture(autouse=True)
+def _no_vendor_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Interface tests exercise the honest no-credential adapter path.
+
+    Operator shells may carry live vendor keys; those belong to explicit live
+    smoke runs, not this offline interface contract.
+    """
+    monkeypatch.delenv("TURBOPUFFER_API_KEY", raising=False)
+
+
 # ---------------------------------------------------------------------------
 # M1 — shape + ordering parity
 # ---------------------------------------------------------------------------

@@ -18,8 +18,8 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from substrate.dispatch.providers import register_default_providers
-from substrate.dispatch.router import (
+from substrate.dispatch.providers import register_default_providers  # noqa: E402
+from substrate.dispatch.router import (  # noqa: E402
     _PROVIDER_REGISTRY,
     get_provider,
     reset_provider_registry,
@@ -27,8 +27,16 @@ from substrate.dispatch.router import (
 
 
 @pytest.fixture(autouse=True)
-def _clean_registry():
-    """Each test starts from an empty registry so order doesn't matter."""
+def _clean_registry(monkeypatch: pytest.MonkeyPatch):
+    """Each test starts from an empty registry and no ambient provider keys."""
+    for key in (
+        "DEEPSEEK_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "OPENROUTER_API_KEY",
+        "XIAOMI_API_KEY",
+        "HERMES_API_KEY",
+    ):
+        monkeypatch.delenv(key, raising=False)
     reset_provider_registry()
     yield
     reset_provider_registry()
@@ -71,7 +79,6 @@ def test_both_keys_registers_both(monkeypatch):
 def test_idempotent(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-fake-1")
     register_default_providers(quiet=True)
-    first_instance = get_provider("deepseek")
     register_default_providers(quiet=True)
     second_instance = get_provider("deepseek")
     # Same name → registry replaces but doesn't error.

@@ -176,20 +176,31 @@ python -m pytest tests/ -q -m "not integration" -n auto --dist loadscope --tb=sh
 
 Remaining blockers observed in that run:
 
-- `tests/test_krea_routes.py::test_routes_registered_and_health_unaffected`
-  saw an `_IncludedRouter` route object without `.path`.
-- Turbopuffer retrieval tests selected the credentialed spike stub and raised
-  `NotImplementedError` instead of the no-credentials skip path.
 - `tests/test_declared_bar.py::test_mypy_targets_match_wheel_packages` saw
   `services` in wheel packages but not declared mypy targets.
 - `tests/test_compliance_invariants.py::test_raw_body_scanner_reports_zero_violations_on_the_current_tree`
   reported existing raw-body SQL reads outside the serve gate.
-- `tests/test_weekly_report.py` hit naive-vs-aware datetime comparison in
-  acquisition-cost collection.
-- `tests/test_retrieval_bench.py::test_run_benchmark_emits_artifact` hit the
-  Turbopuffer spike stub.
-- `tests/test_dispatch_bootstrap.py::test_health_endpoint_reports_registered_providers`
-  observed registered providers beyond the two pinned in the test.
 
-Next CI-infra slice: close or quarantine these full-suite blockers, then rerun
-the exact full xdist command above before changing `.github/workflows/ci.yml`.
+Closed after the first full-suite attempt:
+
+- `tests/test_krea_routes.py::test_routes_registered_and_health_unaffected`
+  now ignores FastAPI router internals without `.path`.
+- `tests/test_weekly_report.py` now normalizes naive/aware acquisition-cost
+  window datetimes before comparing budget sidecar dates.
+- Turbopuffer retrieval/benchmark tests now clear ambient
+  `TURBOPUFFER_API_KEY` so offline tests prove the no-credentials skip path
+  rather than accidentally entering the unimplemented live spike.
+- `tests/test_dispatch_bootstrap.py::test_health_endpoint_reports_registered_providers`
+  now clears ambient provider keys in the test fixture and opts in only the
+  providers under test.
+
+Verification for the closed blockers:
+
+```bash
+python -m pytest tests/test_weekly_report.py tests/test_krea_routes.py tests/test_retrieval_substrate_interface.py tests/test_retrieval_bench.py tests/test_dispatch_bootstrap.py -q -n 4 --dist loadscope --tb=short
+# 76 passed, 1 skipped
+```
+
+Next CI-infra slice: close or quarantine the remaining full-suite blockers
+above, then rerun the exact full xdist command before changing
+`.github/workflows/ci.yml`.
