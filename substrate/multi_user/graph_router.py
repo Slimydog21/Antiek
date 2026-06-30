@@ -22,6 +22,9 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 
+from substrate.ducklake.catalog import DuckLakeCatalog
+from substrate.ducklake.routing import NoSharding, ShardingStrategy, resolve_db_path
+
 
 @dataclass(frozen=True)
 class PersonalGraphHandle:
@@ -64,6 +67,8 @@ class GraphRouter:
             os.path.expanduser("~/.antiek/shared_substrate.duckdb"),
         )
     )
+    catalog: DuckLakeCatalog | None = None
+    sharding_strategy: ShardingStrategy = field(default_factory=NoSharding)
 
     def personal_graph_path(self, user_id: str) -> str:
         """Per-user DuckDB file path. The user_id is sanitized (only
@@ -74,10 +79,12 @@ class GraphRouter:
         existing operator-only graph at ANTIEK_DUCKDB_PATH is the
         Stage-0 single-graph baseline that Stage-1 migration moves
         from."""
-        safe = "".join(c if c.isalnum() or c in "_-" else "_" for c in user_id)
-        if not safe:
-            raise ValueError(f"invalid user_id: {user_id!r}")
-        return os.path.join(self.personal_graphs_dir, f"{safe}.duckdb")
+        return resolve_db_path(
+            user_id,
+            catalog=self.catalog,
+            strategy=self.sharding_strategy,
+            root_dir=self.personal_graphs_dir,
+        )
 
 
 def resolve_personal_graph(
@@ -90,6 +97,10 @@ def resolve_personal_graph(
     holds the handle for the duration of their critical section;
     db_lock.connect_write acquires the flock per master-spec §13.10
     substrate hygiene."""
+    if encryption_key_ref is None and router.catalog is not None:
+        entry = router.catalog.lookup(user_id)
+        if entry is not None:
+            encryption_key_ref = entry.encryption_key_ref
     return PersonalGraphHandle(
         user_id=user_id,
         db_path=router.personal_graph_path(user_id),
