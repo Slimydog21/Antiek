@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import contextmanager, suppress
@@ -425,13 +426,21 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
     }
 
 
+_LOG = logging.getLogger(__name__)
+
+
 async def _run_to_completion(session: CascadeSession) -> None:
     # RDR SPR-07 M3: ``join_and_merge`` drains the promotion funnel (source
     # ingest + supported_by edges) then persists the synthesis artifact via
     # ``interfaces/research/api/cascade_synthesizer`` (cassette-deterministic
     # without provider keys; live synthesizer dispatch awaits SPR-03).
-    with suppress(Exception):  # pragma: no cover — best-effort
+    try:
         await session.join_and_merge()
+    except Exception:  # pragma: no cover — background task must not crash the loop
+        _LOG.exception(
+            "cascade join_and_merge failed (session_id=%s)",
+            getattr(session, "session_id", "?"),
+        )
 
 
 @cascade_router.get("/sessions/{session_id}")
