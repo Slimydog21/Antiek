@@ -3,9 +3,9 @@ import type { Meta, StoryObj } from "@storybook/react";
 import EditorPanel from "./EditorPanel";
 
 /**
- * NotebookEditor — TipTap-based block editor (S7-full). Five custom
- * Antiek block kinds + StarterKit defaults + slash menu + local
- * autosave.
+ * NotebookEditor — TipTap-based block editor (S7-full). Nine custom
+ * Antiek block kinds + StarterKit defaults + slash menu + substrate
+ * autosave with a local offline mirror.
  *
  * In a real workspace this opens via:
  *
@@ -52,7 +52,8 @@ export const WithSampleContent: Story = {
             <p>
               Type <code>/</code> to insert a block:
               note, claim card, region embed, cross-doc link, synthesis
-              section, headings, lists, blockquote, code.
+              section, question card, chat exchange, image, LaTeX,
+              headings, lists, blockquote, code.
             </p>
           `}
         />

@@ -7,7 +7,7 @@ import { NotebookEditor } from "./Editor";
  *
  * Props arrive from the workspace open() call (the panel's stored
  * props are spread into the renderer). Required:
- *   - notebookId: string  (stable id for localStorage autosave)
+ *   - notebookId: string  (stable id for substrate autosave + local mirror)
  *
  * Optional:
  *   - placeholder: string
