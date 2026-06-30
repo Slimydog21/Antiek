@@ -20,4 +20,12 @@ describe("ResearchWorkstation — dense IDE exempt from floating stack chrome", 
     expect(src).toMatch(/<UnifiedSearch variant="research"/);
     expect(src).not.toMatch(/<StartResearch/);
   });
+
+  it("completed research gates review-due cues behind the operator policy toggle", () => {
+    const src = readFileSync(resolve(import.meta.dirname, "index.tsx"), "utf8");
+    expect(src).toMatch(/useReviewDuePolicy/);
+    expect(src).toMatch(/Review cues/);
+    expect(src).toMatch(/reviewDueEnabled=\{reviewDuePolicyEnabled\}/);
+    expect(src).toMatch(/onReviewClaim=\{reviewDuePolicyEnabled \? handleReviewClaim : undefined\}/);
+  });
 });

@@ -71,11 +71,11 @@ import type { ClaimReviewRating } from "./reviewState";
 // apply pass the §9.0 servability / IP-holder augmentations already run (the
 // claim span gets the augmentation-declared `review-due` class).
 //
-// It ships behind this default-OFF prop (anti-purgatory, PR-7): the feature is
-// genuinely WIRED and runs through the real facet pass when enabled, but a caller
-// must hand in substrate-resolved `dueClaims`. The default remains EMPTY/OFF so
-// the shipped surface shows the HONEST no-data state rather than fabricated
-// review state. Filed: docs/decisions/spr-08-review-state-resolution-gap.md.
+// The reusable viewer keeps a default-OFF prop (anti-purgatory, PR-7): the
+// feature is genuinely WIRED and runs through the real facet pass when enabled,
+// but a caller must hand in substrate-resolved `dueClaims`. Completed
+// investigations now enable it through an explicit operator policy toggle in
+// ResearchWorkstation; other callers still get the honest empty/off default.
 //
 // DEFAULT-OFF byte-equivalence: with the toggle false, `composedReviewDueByClaim`
 // runs no augmentation and returns an empty map, so every claim span renders with
@@ -198,9 +198,8 @@ export default function MasterMdViewer({
   // synthesis id.
   const synthesisId = synthesis.synthesisId;
 
-  // SPR-08 M5 — the review-due decorations pass (default-off; empty map unless
-  // the toggle is flipped AND review-state is wired). Computed once per render,
-  // threaded into each ClaimBlock. Off ⇒ empty ⇒ byte-equivalent to today.
+  // SPR-08 M5 — the review-due decorations pass. Computed once per render,
+  // threaded into each ClaimBlock. Policy off ⇒ empty ⇒ byte-equivalent to today.
   const reviewDueByClaim = composedReviewDueByClaim(
     synthesis,
     reviewDueClaims,
@@ -472,12 +471,13 @@ export function ClaimBlock({
   claim: ParsedClaim;
   onChunkClick: (chunkId: string) => void;
   /** SPR-08 M5 — the COMBINED decoration the review-due augmentation declared for
-   *  this claim's range (when the default-off toggle is on AND review-state is
-   *  resolved). The augmentation declares the `review-due` verdict class; this
+   *  this claim's range (when review-state resolves this claim as due and the
+   *  caller policy enables the pass). The augmentation declares the
+   *  `review-due` verdict class; this
    *  component ENACTS it onto the claim span — never re-deciding "is this due"
    *  inline (PR-6: the augmentation read the verdict; the surface honors it).
    *  Undefined when the claim is not due (the common case, and ALWAYS the case
-   *  while the toggle is off / review-state is deferred — empty `dueClaims` ⇒ no
+   *  while the policy toggle is off — empty `dueClaims` ⇒ no
    *  decoration ⇒ the claim span renders byte-identically to today). */
   reviewDue?: ResolvedDecoration | undefined;
   onReviewClaim?: (claim: ParsedClaim, rating: ClaimReviewRating) => void | Promise<void>;
