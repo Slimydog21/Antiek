@@ -12,8 +12,8 @@ import { useOpenDocument } from "../../lib/openDocument";
  * via `openDocument(documentId, { page, chunkId })` (SPR-05 — was a
  * `/wrestle/<doc>?page=N` mis-route; now the one door → the gated Reader). The
  * chunk id is forwarded so the Reader can resolve chunk→region; the parsed page
- * (a 0-based reader index derived from the "Page N" section label) lands the
- * cited page.
+ * (a 0-based reader index derived from the "Page N" / "p.N" section label)
+ * lands the cited page.
  */
 export default function ChunkModal({
   chunkId,
@@ -164,18 +164,15 @@ function TierChip({ tier }: { tier: number }) {
 
 function OpenInDocumentButton({ chunk }: { chunk: ChunkResponse }) {
   const openDocument = useOpenDocument();
-  // Parse "Page N" out of section_path. Section path examples that
+  // Parse a source page out of section_path. Section path examples that
   // encode a page:
   //   "Page 17"
   //   "Page 17 · Section 3.2"
+  //   "p.17"
   // When the substrate is extended to YouTube/podcast sources, the
   // section_path uses a different shape (Timestamp: ...) and we
   // disable the cross-mode link.
-  let sourcePage: number | null = null;
-  if (chunk.section_path) {
-    const m = chunk.section_path.match(/Page\s+(\d+)/i);
-    if (m) sourcePage = parseInt(m[1], 10);
-  }
+  const sourcePage = sourcePageFromSectionPath(chunk.section_path);
   // The "Page N" label is a 1-based SOURCE page; the reader's `page` opt is a
   // 0-based reader index. Convert honestly (N → N-1, clamped at 0); the chunk id
   // is the precise locator the Reader resolves to a region.
@@ -192,4 +189,12 @@ function OpenInDocumentButton({ chunk }: { chunk: ChunkResponse }) {
       {label} →
     </button>
   );
+}
+
+export function sourcePageFromSectionPath(sectionPath: string | null): number | null {
+  if (!sectionPath) return null;
+  const match = sectionPath.match(/\b(?:Page|p\.?)\s*(\d+)\b/i);
+  if (!match) return null;
+  const sourcePage = parseInt(match[1], 10);
+  return Number.isFinite(sourcePage) ? sourcePage : null;
 }
