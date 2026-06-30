@@ -8,7 +8,7 @@
  *    FRAME_TELEMETRY_SCHEMA_VERSION;
  *  - it flushes on pagehide and on visibilitychange→hidden, preferring the
  *    keepalive beacon there, and does NOT flush on visibilitychange→visible;
- *  - a 404 (the deferred SPR-09 route) surfaces a route-absent error and does
+ *  - a 404 (older deployment / wrong API base) surfaces a route-absent error and does
  *    not throw; a 409/422 surfaces a version-mismatch error carrying the sent
  *    version; a network failure surfaces a network error;
  *  - it is POST-only — the only transport calls are beacon()/post(), never any
@@ -181,7 +181,7 @@ describe("FrameTelemetryEmitter — lifecycle flush (M4)", () => {
 });
 
 describe("FrameTelemetryEmitter — graceful degrade (M4 seam)", () => {
-  it("surfaces route-absent on 404 and does not throw (the SPR-09 seam)", async () => {
+  it("surfaces route-absent on 404 and does not throw", async () => {
     const errors: TelemetryError[] = [];
     const { transport } = spyTransport({ postStatus: 404 });
     const emitter = new FrameTelemetryEmitter({

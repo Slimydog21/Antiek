@@ -8,9 +8,12 @@
 // aggregates the batch to per-asset accrual before any DB write; the emitter's
 // job is the compact batch, so request count is O(windows) not O(seconds).
 //
-// Live route: interfaces/research/api/ad_routes.py:141 registers
-// `POST /api/ad/frame-telemetry`; schema or deployment mismatches surface
-// through ``onError`` and never throw into the render path.
+// LIVE ROUTE: `POST /api/ad/frame-telemetry` exists in
+// interfaces/research/api/ad_routes.py. This emitter POSTs the defined batch
+// shape and DEGRADES GRACEFULLY: a 404 (route absent in an older deployment) or
+// a schema-version mismatch SURFACES an error through ``onError`` and is NOT
+// silently dropped, but it never throws into the render path and never opens a
+// DB writer (POST-only).
 
 import { API_BASE } from "../../lib/api";
 import {
@@ -190,8 +193,7 @@ export class FrameTelemetryEmitter {
       return;
     }
     if (status === 404) {
-      // Route absent (the live route is ad_routes.py:141; a 404 means an old
-      // deployment predating it). Surface it — do not pretend it succeeded.
+      // Older deployment / wrong API base. Surface it — do not pretend it succeeded.
       this.onError?.({ kind: "route-absent", status, windowId: this.windowId });
       return;
     }
