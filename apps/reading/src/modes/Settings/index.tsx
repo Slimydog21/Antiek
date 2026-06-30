@@ -1,22 +1,18 @@
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
+import { LemonTag } from "../../components/lemon";
+import { useProviderKeys } from "../../hooks/useProviderKeys";
 
 /**
- * Operator Settings — stub page.
+ * Operator Settings.
  *
- * S4's NavRail footer lists Settings per the master-spec layout
- * table. The full settings surface (UI flavor, default panel
- * starters, keyboard map customization, dispatch-tier overrides,
- * data privacy controls) lands in a separate sprint that's not
- * part of the redesign programme. This stub exists so the rail
- * icon resolves to a real page rather than a 404.
- *
- * What lives here today: a readout of the workspace's current
- * viewport tier, the active OS theme, and a pointer to where the
- * full settings surface will land.
+ * Honest operator readout for the settings that already have substrate
+ * signals: workspace environment, dispatch provider activation, and
+ * the canonical routes where policy/economics controls live.
  */
 export default function Settings() {
   const tier = useViewportTier();
+  const providerKeys = useProviderKeys();
   const isDark =
     typeof window !== "undefined" &&
     window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -32,13 +28,13 @@ export default function Settings() {
             Operator settings
           </h1>
           <p className="text-sm text-ink-soft dark:text-starlight font-serif italic mt-1">
-            Settings surface stub — the full controls land in a
-            follow-up sprint. For now this page shows what the
-            workspace currently detects.
+            Live workspace and activation readout. Mutating controls
+            stay on their canonical operator surfaces; this page tells
+            you what is active before you launch agentic work.
           </p>
         </header>
 
-        <LemonCard title="Environment" elevation="z1">
+        <LemonCard title="Workspace environment" elevation="z1">
           <div className="p-4 space-y-3 font-mono text-[13px]">
             <Row label="Viewport tier" value={tier} />
             <Row label="OS theme" value={isDark ? "dark" : "light"} />
@@ -56,17 +52,93 @@ export default function Settings() {
           </div>
         </LemonCard>
 
-        <LemonCard title="Coming later" elevation="z1" colour="glacial">
-          <ul className="p-4 space-y-2 text-sm text-ink dark:text-bright list-disc list-inside">
-            <li>Default panel starters per route</li>
-            <li>Keyboard map customisation</li>
-            <li>Dispatch-tier overrides + budget caps</li>
-            <li>Data-privacy + sharing controls</li>
-            <li>Workspace layout export / import</li>
-          </ul>
+        <LemonCard title="Agentic activation" elevation="z1">
+          <div className="p-4 space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-serif text-ink dark:text-bright">
+                  Model provider registry
+                </p>
+                <p className="text-xs text-ink-soft dark:text-starlight">
+                  Mirrors <code className="font-mono">/health.registered_providers</code>;
+                  no secret values are exposed here.
+                </p>
+              </div>
+              <ProviderStatusTag status={providerKeys.status} />
+            </div>
+
+            {providerKeys.status === "ready" ? (
+              <div className="flex flex-wrap gap-2">
+                {providerKeys.providers.map((provider) => (
+                  <LemonTag key={provider} colour="aurora" dot>
+                    {provider}
+                  </LemonTag>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-shadow-1 dark:text-moonlight">
+                {providerKeys.status === "loading"
+                  ? "Checking provider registry..."
+                  : providerKeys.status === "error"
+                    ? "Could not read /health; agentic paths should be treated as unavailable."
+                    : "No model providers are registered, so agentic research and generation stay inert."}
+              </p>
+            )}
+
+            <button
+              type="button"
+              onClick={providerKeys.refresh}
+              className="text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 px-2 py-1 rounded hover:bg-ice-1 dark:hover:bg-charcoal-2"
+            >
+              Refresh provider status
+            </button>
+          </div>
+        </LemonCard>
+
+        <LemonCard title="Control surfaces" elevation="z1" colour="glacial">
+          <div className="p-4 grid gap-2 sm:grid-cols-2">
+            <ControlLink href="/trust" title="Trust Center" body="DP budget posture, deletion SLA, unlock status" />
+            <ControlLink href="/privacy" title="Privacy dashboard" body="ε exposure and delete-all controls" />
+            <ControlLink href="/coordination/cost-consent" title="Cost + consent" body="Unified spend, escrow, and consent status" />
+            <ControlLink href="/operator" title="Operator dashboard" body="Substrate-level operations snapshot" />
+          </div>
         </LemonCard>
       </div>
     </div>
+  );
+}
+
+function ProviderStatusTag({ status }: { status: ReturnType<typeof useProviderKeys>["status"] }) {
+  if (status === "ready") return <LemonTag colour="aurora">ready</LemonTag>;
+  if (status === "loading") return <LemonTag colour="muted">checking</LemonTag>;
+  if (status === "error") return <LemonTag colour="danger">unreachable</LemonTag>;
+  return <LemonTag colour="sun">not configured</LemonTag>;
+}
+
+function ControlLink({
+  href,
+  title,
+  body,
+}: {
+  href: string;
+  title: string;
+  body: string;
+}) {
+  return (
+    <a
+      href={href}
+      className="block rounded-md border border-rule dark:border-charcoal-1 px-3 py-2 hover:bg-ice-1 dark:hover:bg-charcoal-2 transition-colors"
+    >
+      <span className="block text-sm font-serif text-ink dark:text-bright">
+        {title}
+      </span>
+      <span className="block text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+        {href}
+      </span>
+      <span className="block text-xs text-ink-soft dark:text-starlight mt-1">
+        {body}
+      </span>
+    </a>
   );
 }
 
