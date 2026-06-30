@@ -51,6 +51,7 @@ from . import tokens
 from .contract import contract_for_tiptap_type
 from .context import RenderContext
 from .escape import escape_attr, escape_text
+from .graph_projection import graph_widget_node
 from .island import embed_island
 from .partials import unsupported as unsupported_partial
 from .partials._common import inline_text
@@ -140,6 +141,12 @@ def _render_edges(edges: list[dict[str, Any]]) -> str:
         return ""
     out = ['<section class="antiek-edges">']
     out.append("<h2>Asserted edges</h2>")
+    # The knowledge-graph visualization (a dep_graph widget) precedes the
+    # textual list: the artifact SHOWS its graph, then enumerates it. Skipped
+    # when no edge carries a to_document_id (graph_widget_node returns None).
+    graph_node = graph_widget_node(edges)
+    if graph_node is not None:
+        out.append(tokens.render_widget("dep_graph", graph_node["attrs"]["data"]))
     out.append("<ul>")
     for edge in edges:
         if not isinstance(edge, dict):
