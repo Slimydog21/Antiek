@@ -29,17 +29,17 @@ from substrate.conversation.policy import CompactionConfig, CompactionPolicy
 from substrate.conversation.token_counter import count_tokens
 from substrate.harness.apply import apply_harness
 from substrate.harness.fork import create_fork
-from substrate.harness_diff import diff_snapshots, load_snapshot
 from substrate.observability.burn import BurnRecorder
 from substrate.observability.burn_context import (
     BurnContext,
     reset_burn_context,
     set_burn_context,
 )
-from substrate.queue import BoundedQueue, QueueFull
-from substrate.queue import get_registry as get_queue_registry
 
 from substrate.edit import EditTransaction
+from substrate.harness_diff import diff_snapshots, load_snapshot
+from substrate.queue import BoundedQueue, QueueFull
+from substrate.queue import get_registry as get_queue_registry
 
 
 @pytest.fixture(autouse=True)
