@@ -40,6 +40,7 @@ import {
 import { collectAnchoredWidgets, collectDecorations } from "../../reading-physics/registry";
 import type { ClaimId, ChunkId, LayoutMap, ReadingContext, RenderContext } from "../../reading-physics/types";
 import { useOpenDocument } from "../../lib/openDocument";
+import { sourcePageNumberFromSectionPath } from "../../lib/sectionPath";
 import ChunkModal from "./ChunkModal";
 import { buildLayoutMap } from "./readingGeometryPass";
 import type { ClaimReviewRating } from "./reviewState";
@@ -584,9 +585,8 @@ interface ResolvedSource {
 
 /** Derive a "p.NNN" locator from a section_path, when present. */
 function locatorFromSectionPath(sectionPath: string | null): string | null {
-  if (!sectionPath) return null;
-  const m = sectionPath.match(/\b(?:Page|p\.?)\s*(\d+)\b/i);
-  return m ? `p.${m[1]}` : null;
+  const sourcePage = sourcePageNumberFromSectionPath(sectionPath);
+  return sourcePage !== null ? `p.${sourcePage}` : null;
 }
 
 /** Group resolved chunks by document into named sources, picking the

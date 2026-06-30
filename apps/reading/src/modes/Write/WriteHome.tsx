@@ -20,13 +20,13 @@ import { ProjectTypeField } from "./ProjectType";
 import { onTraceIntent } from "./Editor/traceIntent";
 import { getTraceTarget, type RepositoryHit } from "./writeApi";
 import { useOpenDocument } from "../../lib/openDocument";
+import {
+  sourcePageNumberFromSectionPath,
+  zeroBasedReaderPageFromSourcePage,
+} from "../../lib/sectionPath";
 
 export function readerPageFromTraceSectionPath(sectionPath: string | null): number | undefined {
-  if (!sectionPath) return undefined;
-  const match = sectionPath.match(/\b(?:Page|p\.?)\s*(\d+)\b/i);
-  if (!match) return undefined;
-  const sourcePage = parseInt(match[1], 10);
-  return Number.isFinite(sourcePage) ? Math.max(0, sourcePage - 1) : undefined;
+  return zeroBasedReaderPageFromSourcePage(sourcePageNumberFromSectionPath(sectionPath)) ?? undefined;
 }
 
 /**

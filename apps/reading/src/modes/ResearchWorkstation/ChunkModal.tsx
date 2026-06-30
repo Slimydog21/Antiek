@@ -3,6 +3,10 @@ import { useEffect, useState } from "react";
 import { getChunk } from "../../lib/api";
 import type { ChunkResponse } from "../../lib/api";
 import { useOpenDocument } from "../../lib/openDocument";
+import {
+  sourcePageNumberFromSectionPath,
+  zeroBasedReaderPageFromSourcePage,
+} from "../../lib/sectionPath";
 
 /**
  * Modal showing the actual text of a chunk cited by a claim.
@@ -176,7 +180,7 @@ function OpenInDocumentButton({ chunk }: { chunk: ChunkResponse }) {
   // The "Page N" label is a 1-based SOURCE page; the reader's `page` opt is a
   // 0-based reader index. Convert honestly (N → N-1, clamped at 0); the chunk id
   // is the precise locator the Reader resolves to a region.
-  const readerPage = sourcePage !== null ? Math.max(0, sourcePage - 1) : undefined;
+  const readerPage = zeroBasedReaderPageFromSourcePage(sourcePage) ?? undefined;
   const label = sourcePage !== null ? `Open at page ${sourcePage}` : "Open in document";
   return (
     <button
@@ -192,9 +196,5 @@ function OpenInDocumentButton({ chunk }: { chunk: ChunkResponse }) {
 }
 
 export function sourcePageFromSectionPath(sectionPath: string | null): number | null {
-  if (!sectionPath) return null;
-  const match = sectionPath.match(/\b(?:Page|p\.?)\s*(\d+)\b/i);
-  if (!match) return null;
-  const sourcePage = parseInt(match[1], 10);
-  return Number.isFinite(sourcePage) ? sourcePage : null;
+  return sourcePageNumberFromSectionPath(sectionPath);
 }
