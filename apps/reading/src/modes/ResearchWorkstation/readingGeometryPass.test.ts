@@ -25,6 +25,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  CHUNK_ID_ATTR,
   CLAIM_ID_ATTR,
   buildLayoutMap,
   buildViewportBand,
@@ -34,7 +35,7 @@ import {
 import { EMPTY_LAYOUT_MAP, baseGeometryFromMap, createLayoutMap } from "../../reading-physics/layout-map";
 import { anchorKey } from "../../reading-physics/facets/decorations";
 import type { ResolvedDecoration } from "../../reading-physics/facets/decorations";
-import type { Anchor, ClaimId } from "../../reading-physics/types";
+import type { Anchor, ClaimId, ChunkId } from "../../reading-physics/types";
 import {
   minimapLayoutFrom,
   projectDecorationsToMinimap,
@@ -100,6 +101,7 @@ afterEach(() => {
  *  pinned at the origin so root-relative == absolute for simple assertions. */
 function makeArticle(
   claims: { claimId: string; rect: FakeRect }[],
+  chunks: { chunkId: string; rect: FakeRect }[] = [],
   rootRect: FakeRect = { top: 0, left: 0, width: 800, height: 4000 },
 ): HTMLElement {
   const root = document.createElement("article");
@@ -110,12 +112,22 @@ function makeArticle(
     installRect(span, c.rect);
     root.appendChild(span);
   }
+  for (const c of chunks) {
+    const button = document.createElement("button");
+    button.setAttribute(CHUNK_ID_ATTR, c.chunkId);
+    installRect(button, c.rect);
+    root.appendChild(button);
+  }
   document.body.appendChild(root);
   return root;
 }
 
 function claimAnchor(id: string): Anchor {
   return { kind: "claim", claimId: id as ClaimId };
+}
+
+function chunkAnchor(id: string): Anchor {
+  return { kind: "chunk", chunkId: id as ChunkId };
 }
 
 describe("readingGeometryPass — M1: measured DOM → non-null rect through createLayoutMap", () => {
@@ -144,6 +156,16 @@ describe("readingGeometryPass — M1: measured DOM → non-null rect through cre
     // … the LIVE map resolves it to a real rect. So replacing EMPTY with the live
     // map genuinely changes the resolved geometry (not a no-op rename).
     expect(buildLayoutMap(root).resolve(claimAnchor("1"))).not.toBeNull();
+  });
+
+  it("resolves a source chunk anchor from the rendered citation marker", () => {
+    const root = makeArticle(
+      [],
+      [{ chunkId: "c1", rect: { top: 180, left: 40, width: 180, height: 24 } }],
+    );
+    const r = buildLayoutMap(root).resolve(chunkAnchor("c1"));
+    expect(r).not.toBeNull();
+    expect(r).toEqual({ top: 180, left: 40, width: 180, height: 24 });
   });
 
   it("goes through baseGeometryFromMap → createLayoutMap (the designed seam, not a parallel build)", () => {
@@ -192,6 +214,7 @@ describe("readingGeometryPass — M3: viewport-scoped recompute discipline", () 
         { claimId: "1", rect: { top: 100, left: 20, width: 600, height: 40 } }, // in view
         { claimId: "2", rect: { top: 9000, left: 20, width: 600, height: 40 } }, // off view
       ],
+      [],
       // Root is the scroll reference; band = root box ± overscan, root-relative.
       { top: 0, left: 0, width: 800, height: 600 },
     );
@@ -275,10 +298,9 @@ describe("readingGeometryPass — M2: facets light up against the live map (wiri
 
   it("MARGINALIA/ANCHORED-WIDGET: a widget anchored to a measured claim enacts to a real rect", () => {
     // Marginalia is the same anchored-widgets facet path; we prove a declared
-    // anchored widget RESOLVES (non-null rect) against the live map. (Marginalia
-    // itself anchors to PASSAGE anchors, which this claim-only DOM does not carry
-    // — see the handoff: marginalia is genuinely dormant for passage targets until
-    // the surface stamps passage markers. The facet PATH it shares is proved live.)
+    // anchored widget RESOLVES (non-null rect) against the live map. Exact
+    // marginalia PASSAGE anchors still need rendered passage-offset markers; the
+    // chunk-level bounded fallback is measured separately above.
     const root = makeArticle([
       { claimId: "1", rect: { top: 500, left: 20, width: 600, height: 40 } },
     ]);
