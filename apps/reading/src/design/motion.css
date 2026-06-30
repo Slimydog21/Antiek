@@ -6,9 +6,9 @@
    utilities animate transform/opacity but do NOT switch themselves off
    under prefers-reduced-motion. This file is the one place that does:
    when the operator has asked the OS to reduce motion, every transition
-   and CSS animation collapses to near-zero duration so state changes are
-   instant. Function is never lost — the :hover/:active/[data-enter]
-   *end states* still apply, they just stop travelling.
+   and CSS animation collapses to near-zero duration. Transform travel is
+   suppressed in the TS motion primitives with `motion-reduce:*`; focus,
+   shadow, and colour affordances remain visible.
 
    Werner's pose keyframes (werner/animated/animations.css) have their own,
    more expressive reduced-motion fallbacks (a static-but-recognisable

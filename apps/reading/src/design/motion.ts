@@ -11,8 +11,9 @@
  * GPU-cheap only: transform + box-shadow + opacity. No width/height/top
  * animation, no layout thrash. Reduced-motion is honoured by the
  * Tailwind `transition-*` utilities collapsing under the OS setting via
- * the media query in motion.css; with motion off these classes still
- * apply the final state (the lift/press is instant, never lost).
+ * the media query in motion.css. With reduced motion on, transform travel
+ * is suppressed by the `motion-reduce:*` utilities below; non-motion
+ * affordances such as shadow and focus rings stay visible.
  *
  * Re-export of the timing tokens for any TS that needs a duration in JS
  * (e.g. a setTimeout matched to a beat) rather than a class.
@@ -37,7 +38,9 @@ export const press =
   "transition-transform duration-base ease-standard " +
   "hover:-translate-x-[2px] hover:-translate-y-[2px] " +
   "hover:shadow-z3 dark:hover:shadow-z3-night " +
-  "active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none";
+  "active:translate-x-[2px] active:translate-y-[2px] active:!shadow-none " +
+  "motion-reduce:hover:translate-x-0 motion-reduce:hover:translate-y-0 " +
+  "motion-reduce:active:translate-x-0 motion-reduce:active:translate-y-0";
 
 /**
  * CARD-LIFT — the gentler upward nudge for a card whose hover is led by
@@ -47,7 +50,8 @@ export const press =
  */
 export const cardLift =
   "transition-transform duration-base ease-standard " +
-  "group-hover:-translate-y-0.5 group-hover:shadow-z2 dark:group-hover:shadow-z2-night";
+  "group-hover:-translate-y-0.5 group-hover:shadow-z2 dark:group-hover:shadow-z2-night " +
+  "motion-reduce:group-hover:translate-y-0";
 
 /**
  * ENTER — a panel/modal arriving: fade + a small rise, eased-out. Drive
