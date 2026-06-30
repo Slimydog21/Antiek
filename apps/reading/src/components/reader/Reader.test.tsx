@@ -280,6 +280,18 @@ describe("Reader — ToC derives from heading blocks (M4)", () => {
     // Python side). A doc with no headings yields an empty ToC, not a crash.
     expect(deriveToc([])).toEqual([]);
   });
+
+  it("stamps document-level block indexes when rendering a page window", () => {
+    const windowed = {
+      ...allBlocksDocument,
+      blocks: (allBlocksDocument.blocks ?? []).slice(12, 14),
+    };
+    const { container } = render(
+      <Reader document={windowed} blocks={windowed.blocks} blockStartIndex={12} />,
+    );
+    const rendered = Array.from(container.querySelectorAll("[data-block-index]"));
+    expect(rendered.map((el) => el.getAttribute("data-block-index"))).toEqual(["12", "13"]);
+  });
 });
 
 describe("Reader — attribution markers preserved from ReadingColumn (M4)", () => {

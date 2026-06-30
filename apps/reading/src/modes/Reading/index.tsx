@@ -725,6 +725,7 @@ export default function BookReader() {
                     ref={articleRef}
                     document={structuredDoc}
                     blocks={activeWindow?.blocks ?? []}
+                    blockStartIndex={activeWindow?.firstBlockIndex ?? 0}
                     assetId={book.servable_full_text ? documentId : null}
                     chunkId={optChunk}
                     openDocument={openDocument}

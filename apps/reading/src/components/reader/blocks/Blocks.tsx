@@ -237,14 +237,22 @@ function BlockView({ block }: { block: Block }) {
 }
 
 /**
- * Render a list of blocks. Each block gets a `data-block-index` so paginate.ts
- * can window on block boundaries and the ToC can scroll to a heading by index.
+ * Render a list of blocks. Each block gets a document-level `data-block-index`
+ * so paginated windows, ToC jumps, and future Region highlight paint all speak
+ * the same block-index coordinate system. `startIndex` is the first rendered
+ * block's index in the full document. Recursive nested block lists (list items,
+ * blockquotes, footnotes) omit it because they are not top-level document block
+ * coordinates.
  */
-export default function Blocks({ blocks }: { blocks: Block[] }) {
+export default function Blocks({ blocks, startIndex }: { blocks: Block[]; startIndex?: number }) {
   return (
     <>
       {blocks.map((block, i) => (
-        <div key={i} data-block-index={i} className="reader-block">
+        <div
+          key={i}
+          {...(startIndex !== undefined ? { "data-block-index": startIndex + i } : {})}
+          className="reader-block"
+        >
           <BlockView block={block} />
         </div>
       ))}

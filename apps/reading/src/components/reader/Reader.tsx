@@ -53,6 +53,9 @@ export interface ReaderProps {
   /** Render only these blocks (a pagination window). When omitted, the whole
    *  document body renders (Storybook / single-page use). */
   blocks?: Block[];
+  /** Document-level index of the first rendered block when `blocks` is a page
+   *  window. Keeps DOM `data-block-index` stable across pagination. */
+  blockStartIndex?: number;
   /** Resolver for citations. Defaults to the standalone fallback context. */
   openDocument?: OpenDocument;
   /** Resolve a citation's source title for its hover affordance (M3). */
@@ -106,7 +109,7 @@ function plainText(spans: import("../../types/document_model.gen").InlineSpan[])
 }
 
 const Reader = forwardRef<HTMLElement, ReaderProps>(function Reader(
-  { document: doc, assetId, chunkId, blocks, openDocument, resolveSourceTitle },
+  { document: doc, assetId, chunkId, blocks, blockStartIndex = 0, openDocument, resolveSourceTitle },
   ref,
 ) {
   const rendered = blocks ?? doc.blocks ?? [];
@@ -137,7 +140,7 @@ const Reader = forwardRef<HTMLElement, ReaderProps>(function Reader(
         className="reader-body flex-1 font-serif text-[15px] leading-[1.7] text-ink dark:text-bright"
       >
         {rendered.length > 0 ? (
-          <Blocks blocks={rendered} />
+          <Blocks blocks={rendered} startIndex={blockStartIndex} />
         ) : (
           <p className="text-shadow-1 dark:text-moonlight italic">
             This document has no readable content.
