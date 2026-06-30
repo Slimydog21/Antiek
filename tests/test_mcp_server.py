@@ -1,10 +1,12 @@
-"""Tests for the Antiek MCP server (SPR-MCP-01).
+"""Tests for the Antiek MCP server.
 
 Covers:
 - Existing note returns content + metadata
 - Missing note returns NoteNotFoundError
 - Server starts without error (FastMCP app construction)
 - list_resources returns typed resources
+- search_personal/search_public return ranked results
+- public notes include attribution metadata and enforce retrieval-time gating
 """
 
 from __future__ import annotations
@@ -51,6 +53,73 @@ def _seed_note(_init_db: str) -> str:
             3,
             "note",
             "user-42",
+        ],
+    )
+    con.close()
+    return _init_db
+
+
+@pytest.fixture()
+def _seed_search_notes(_init_db: str) -> str:
+    """Insert personal, public, and gated documents for MCP-SPR-02."""
+    con = duckdb.connect(_init_db)
+    con.executemany(
+        """
+        INSERT INTO documents (
+            document_id, title, author, raw_text, metadata,
+            source_tier, document_type, owner_user_id,
+            content_class, ip_holder_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            (
+                "personal-alpha",
+                "Private Alpha",
+                "User",
+                "alpha alpha private memory about design systems",
+                json.dumps({"tags": ["personal"]}),
+                3,
+                "note",
+                "user-42",
+                "personal_reading",
+                None,
+            ),
+            (
+                "personal-beta",
+                "Private Beta",
+                "User",
+                "beta private memory",
+                None,
+                3,
+                "note",
+                "user-42",
+                "user_owned",
+                None,
+            ),
+            (
+                "public-alpha",
+                "Public Alpha",
+                "Publisher",
+                "alpha public graph source for attribution routing",
+                json.dumps({"license": "open"}),
+                1,
+                "article",
+                "publisher-user",
+                "source_declared_open",
+                "ip-holder-1",
+            ),
+            (
+                "gated-alpha",
+                "Gated Alpha",
+                "Publisher",
+                "alpha gated source must not leak",
+                None,
+                1,
+                "article",
+                "publisher-user",
+                "restricted_pending_opt_in",
+                "ip-holder-2",
+            ),
         ],
     )
     con.close()
@@ -203,6 +272,7 @@ class TestServerStartup:
         uris = [t.uriTemplate for t in templates]
         assert "antiek://private/notes/{user_id}/{note_id}" in uris
         assert "antiek://private/notes/{user_id}" in uris
+        assert "antiek://public/notes/{note_id}" in uris
 
     async def test_resource_template_names(self) -> None:
         from services.mcp_server.server import mcp
@@ -211,8 +281,18 @@ class TestServerStartup:
         by_name = {t.name: t for t in templates}
         assert "private_note" in by_name
         assert "user_notes" in by_name
+        assert "public_note" in by_name
         assert by_name["private_note"].mimeType == "application/json"
         assert by_name["user_notes"].mimeType == "application/json"
+        assert by_name["public_note"].mimeType == "application/json"
+
+    async def test_list_tools(self) -> None:
+        from services.mcp_server.server import mcp
+
+        tools = await mcp.list_tools()
+        by_name = {t.name: t for t in tools}
+        assert "search_personal" in by_name
+        assert "search_public" in by_name
 
 
 class TestResourceRead:
@@ -236,3 +316,83 @@ class TestResourceRead:
             await mcp.read_resource(
                 "antiek://private/notes/user-42/nonexistent"
             )
+
+    async def test_read_public_note_with_attribution(self, _seed_search_notes: str) -> None:
+        from services.mcp_server.server import mcp
+
+        result = await mcp.read_resource("antiek://public/notes/public-alpha")
+        assert len(result) == 1
+        content = json.loads(result[0].content)
+        assert content["document_id"] == "public-alpha"
+        assert content["content_class"] == "source_declared_open"
+        assert content["ip_holder_id"] == "ip-holder-1"
+        assert content["metadata"]["license"] == "open"
+
+    async def test_read_gated_public_note_raises(self, _seed_search_notes: str) -> None:
+        from services.mcp_server.server import mcp
+
+        with pytest.raises(ValueError, match="Licensing required"):
+            await mcp.read_resource("antiek://public/notes/gated-alpha")
+
+
+class TestSearchTools:
+    """MCP-SPR-02 search function coverage."""
+
+    def test_search_personal_ranks_user_notes(self, _seed_search_notes: str) -> None:
+        from runtime.db_lock import connect_read
+        from services.mcp_server.tools import search_personal
+
+        con = connect_read(_seed_search_notes)
+        try:
+            result = search_personal(con, "alpha design", user_id="user-42", top_k=2)
+        finally:
+            con.close()
+
+        assert result["query"] == "alpha design"
+        assert result["top_k"] == 2
+        assert [r["note_id"] for r in result["results"]] == ["personal-alpha"]
+        assert result["results"][0]["score"] > 0
+        assert "alpha" in result["results"][0]["snippet"]
+
+    def test_search_personal_empty_query_typed_error(self, _seed_search_notes: str) -> None:
+        from runtime.db_lock import connect_read
+        from services.mcp_server.errors import EmptyQueryError
+        from services.mcp_server.tools import search_personal
+
+        con = connect_read(_seed_search_notes)
+        try:
+            with pytest.raises(EmptyQueryError) as exc_info:
+                search_personal(con, "  ", user_id="user-42")
+        finally:
+            con.close()
+        assert exc_info.value.tool_name == "search_personal"
+
+    def test_search_public_excludes_gated_notes(self, _seed_search_notes: str) -> None:
+        from runtime.db_lock import connect_read
+        from services.mcp_server.tools import search_public
+
+        con = connect_read(_seed_search_notes)
+        try:
+            result = search_public(con, "alpha source", top_k=5)
+        finally:
+            con.close()
+
+        note_ids = [r["note_id"] for r in result["results"]]
+        assert "public-alpha" in note_ids
+        assert "gated-alpha" not in note_ids
+        public = next(r for r in result["results"] if r["note_id"] == "public-alpha")
+        assert public["ip_holder_id"] == "ip-holder-1"
+        assert public["content_class"] == "source_declared_open"
+
+    def test_search_public_empty_query_typed_error(self, _seed_search_notes: str) -> None:
+        from runtime.db_lock import connect_read
+        from services.mcp_server.errors import EmptyQueryError
+        from services.mcp_server.tools import search_public
+
+        con = connect_read(_seed_search_notes)
+        try:
+            with pytest.raises(EmptyQueryError) as exc_info:
+                search_public(con, "\t")
+        finally:
+            con.close()
+        assert exc_info.value.tool_name == "search_public"

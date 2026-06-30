@@ -13,7 +13,9 @@ from typing import Any
 
 import duckdb
 
-from .errors import NoteNotFoundError
+from substrate.graph.retrieval_gate import is_chunk_body_withheld
+
+from .errors import LicensingRequiredError, NoteNotFoundError, PublicNoteNotFoundError
 
 
 def _resolve_db_path() -> str:
@@ -76,6 +78,67 @@ def get_note(
         "document_type": doc_type,
         "owner_user_id": owner,
         "content_class": content_class,
+        "acquired_at": acquired_at.isoformat() if acquired_at else None,
+    }
+
+
+def get_public_note(
+    con: duckdb.DuckDBPyConnection,
+    note_id: str,
+) -> dict[str, Any]:
+    """Fetch a public note by note_id with attribution metadata.
+
+    A "public note" is a document accessible on a non-privileged retrieval
+    path. Per §9.0 retrieval-time gating, documents with content_class in
+    {restricted_pending_opt_in, personal_reading} raise
+    ``LicensingRequiredError``.
+
+    Returns note content + attribution-routing metadata (ip_holder_id,
+    content_class).
+
+    Raises:
+        PublicNoteNotFoundError: When no matching document exists.
+        LicensingRequiredError: When the note's content_class is gated.
+    """
+    row = con.execute(
+        """
+        SELECT document_id, title, author, raw_text, metadata,
+               source_tier, document_type, owner_user_id,
+               content_class, ip_holder_id, acquired_at
+        FROM documents
+        WHERE document_id = ?
+        """,
+        [note_id],
+    ).fetchone()
+
+    if row is None:
+        raise PublicNoteNotFoundError(note_id)
+
+    (doc_id, title, author, raw_text, metadata_json, tier, doc_type,
+     owner, content_class, ip_holder_id, acquired_at) = row
+
+    withheld, _label = is_chunk_body_withheld(content_class)
+    if withheld:
+        raise LicensingRequiredError(note_id, content_class)
+
+    metadata: dict[str, Any] = {}
+    if metadata_json:
+        try:
+            metadata = json.loads(metadata_json)
+        except (json.JSONDecodeError, TypeError):
+            metadata = {"_raw": metadata_json}
+
+    return {
+        "document_id": doc_id,
+        "title": title,
+        "author": author,
+        "content": raw_text,
+        "metadata": metadata,
+        "source_tier": tier,
+        "document_type": doc_type,
+        "owner_user_id": owner,
+        "content_class": content_class,
+        "ip_holder_id": ip_holder_id,
         "acquired_at": acquired_at.isoformat() if acquired_at else None,
     }
 
