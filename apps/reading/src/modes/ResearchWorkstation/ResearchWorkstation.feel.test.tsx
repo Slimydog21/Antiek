@@ -15,12 +15,9 @@ describe("ResearchWorkstation — dense IDE exempt from floating stack chrome", 
     expect(src).not.toMatch(/shadow-z3/);
   });
 
-  it("StartResearch example prompts use shared cardLift motion helper", () => {
-    const src = readFileSync(
-      resolve(import.meta.dirname, "StartResearch.tsx"),
-      "utf8",
-    );
-    expect(src).toMatch(/cardLift/);
-    expect(src).toMatch(/from ["'].*design\/motion["']/);
+  it("idle research home mounts UnifiedSearch (SPR-08), not a legacy StartResearch composer", () => {
+    const src = readFileSync(resolve(import.meta.dirname, "index.tsx"), "utf8");
+    expect(src).toMatch(/<UnifiedSearch variant="research"/);
+    expect(src).not.toMatch(/<StartResearch/);
   });
 });

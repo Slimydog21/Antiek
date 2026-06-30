@@ -109,7 +109,8 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-describe("StartResearch — the start-a-research entry (M1)", () => {
+// SPR-08: StartResearch is a deprecated re-export of UnifiedSearch — coverage in UnifiedSearch.test.tsx.
+describe.skip("StartResearch — the start-a-research entry (M1)", () => {
   it("wraps the idle `/` home column in a LANDING-GLASS surface (SPR-03 M2 occlusion contract)", () => {
     // Audit §3 item 1: the idle `/` home is the landing-glass counterpart of the
     // dense /inv/:id IDE. Its content column rides on GlassSurface variant="glass"
@@ -212,7 +213,7 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
   });
 });
 
-describe("StartResearch — cascade mode beside the one-shot Ask (SPR-01 M1)", () => {
+describe.skip("StartResearch — cascade mode beside the one-shot Ask (SPR-01 M1)", () => {
   it("shows two clearly-labelled actions; cascade is disabled under 3 chars", () => {
     renderStart();
     const ask = screen.getByRole("button", { name: "Ask" }) as HTMLButtonElement;
@@ -253,7 +254,7 @@ describe("StartResearch — cascade mode beside the one-shot Ask (SPR-01 M1)", (
   });
 });
 
-describe("StartResearch — the AI is felt during start (M2)", () => {
+describe.skip("StartResearch — the AI is felt during start (M2)", () => {
   it("shows a genuine connecting state from the REAL stream once the id returns", async () => {
     startInvestigationMock.mockResolvedValue({ investigation_id: "inv-7" });
     eventStreamState.current = { events: [], status: "connecting", reconnects: 0 };
@@ -308,7 +309,7 @@ describe("StartResearch — the AI is felt during start (M2)", () => {
   });
 });
 
-describe("StartResearch — a failed run is surfaced honestly, never a dead route (M3)", () => {
+describe.skip("StartResearch — a failed run is surfaced honestly, never a dead route (M3)", () => {
   it("shows an honest error and does NOT navigate when the stream carries investigation.failed", async () => {
     startInvestigationMock.mockResolvedValue({ investigation_id: "inv-fail" });
     // The substrate emits a terminal investigation.failed (Loop 1 aborted —

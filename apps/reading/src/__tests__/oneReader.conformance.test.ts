@@ -281,6 +281,15 @@ describe("oneReader conformance — door (b): no second document renderer reacha
     expect(src).toMatch(/<ReadingColumn\s+assetId=\{null\}\s+text=\{deliverable\.report\}/);
   });
 
+  it("Library and Research idle home use UnifiedSearch as the one content-search surface (SPR-08)", () => {
+    const lib = readSrc("modes/Library/index.tsx");
+    expect(lib).toMatch(/import UnifiedSearch from/);
+    expect(lib).toMatch(/<UnifiedSearch variant="library"/);
+    expect(lib).not.toMatch(/<CorpusSearch/);
+    const rw = readSrc("modes/ResearchWorkstation/index.tsx");
+    expect(rw).toMatch(/<UnifiedSearch variant="research"/);
+  });
+
   it("BookReader wires the one openDocument resolver into <Reader> (SPR-07 M5)", () => {
     const idx = readSrc("modes/Reading/index.tsx");
     expect(idx).toMatch(/useOpenDocument\(\)/);
