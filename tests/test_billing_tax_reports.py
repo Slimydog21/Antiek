@@ -193,9 +193,11 @@ def test_record_then_load_emissions(db):
             total_usd_cents=800_00, transfer_count=2,
         ),
     ]
-    record_emission(con, aggregates=aggs, csv_export_path="/tmp/1099.csv")
+    recorded = record_emission(con, aggregates=aggs, csv_export_path="/tmp/1099.csv")
     emissions = load_emissions(con, tax_year=2026)
     assert len(emissions) == 1
     assert emissions[0].recipient_ref == "acct_a"
     assert emissions[0].above_1099_threshold is True
     assert emissions[0].csv_export_path == "/tmp/1099.csv"
+    assert emissions[0].report_id == recorded[0].report_id
+    assert emissions[0].emitted_at == recorded[0].emitted_at
