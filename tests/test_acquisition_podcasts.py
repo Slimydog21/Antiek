@@ -19,14 +19,14 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from acquisition.podcasts import (
+from acquisition.podcasts import (  # noqa: E402
     Episode,
     Podcast,
     fetch_feed,
     ingest_podcast_episode,
     podcast_doc_id,
 )
-from acquisition.podcasts.client import (
+from acquisition.podcasts.client import (  # noqa: E402
     _clean_srt,
     _clean_vtt,
     _parse_duration,
@@ -170,14 +170,61 @@ def _mock_client(handler) -> httpx.Client:
     return httpx.Client(transport=httpx.MockTransport(handler), timeout=5.0)
 
 
+class _RecordingArxivThrottle:
+    def __init__(self) -> None:
+        self.waits = 0
+        self.noted_statuses: list[int] = []
+
+    def wait_if_needed(self) -> None:
+        self.waits += 1
+
+    def note_response(self, status_code: int, headers) -> None:
+        self.noted_statuses.append(status_code)
+
+
 def test_fetch_feed_parses_channel_metadata():
     def handler(req: httpx.Request) -> httpx.Response:
         return httpx.Response(200, content=_RSS_SAMPLE)
-    podcast = fetch_feed("https://example/feed.rss", client=_mock_client(handler))
+    client = _mock_client(handler)
+    podcast = fetch_feed("https://example/feed.rss", client=client)
     assert podcast.title == "Phased Array Weekly"
     assert podcast.author == "Antiek Test Network"
     assert podcast.language == "en-us"
     assert len(podcast.episodes) == 2
+    assert client.__dict__.get("_antiek_arxiv_hooked") is True
+
+
+def test_fetch_feed_redirect_hop_to_arxiv_is_governed(monkeypatch, tmp_path):
+    from acquisition.arxiv import rate_governor
+
+    arxiv_throttle = _RecordingArxivThrottle()
+    monkeypatch.setattr(rate_governor, "_CANONICAL_THROTTLE", arxiv_throttle)
+    monkeypatch.setenv(
+        "ANTIEK_ARXIV_GOVERNOR_LOCK_PATH",
+        str(tmp_path / "podcast-arxiv-governor.lock"),
+    )
+    seen_hosts: list[str] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen_hosts.append(req.url.host or "")
+        if req.url.host != "arxiv.org":
+            return httpx.Response(
+                302,
+                headers={"location": "https://arxiv.org/abs/2401.00001"},
+            )
+        return httpx.Response(200, content=_RSS_SAMPLE)
+
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        follow_redirects=True,
+        timeout=5.0,
+    )
+
+    podcast = fetch_feed("https://example/feed.rss", client=client)
+    assert podcast.title == "Phased Array Weekly"
+    assert seen_hosts[-1] == "arxiv.org"
+    assert arxiv_throttle.waits >= 1
+    assert 200 in arxiv_throttle.noted_statuses
 
 
 def test_fetch_feed_episode_details():

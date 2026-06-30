@@ -445,17 +445,21 @@ substrate-owned data; DuckDB stays the primary store.
 
 ## D15 — Uniform per-hop arXiv-governor hook on the metadata fetchers (defense-in-depth)
 
-**Status:** ❌ Deferred. **NOT a current hole.**
-**Unlock criterion:** anytime (a cheap tidy).
+**Status:** ✅ Closed on 2026-06-30. **Defense-in-depth tidy landed.**
+**Unlock criterion:** satisfied (anytime cheap tidy).
 **Spec reference:** `docs/decisions/arxiv-rate-governor-host-scoped.md`; arXiv SPR-09 (`7ae2318`).
 **Blocks-what:** nothing. Four JSON-metadata fetchers (`openalex._http_get`,
-`unpaywall.resolve_doi`, `doaj._get_json`, `pmc._search`) + the podcasts feed
-fetchers use `govern_if_arxiv`'s initial-host check on a `follow_redirects=True`
-client *without* the per-request hook; they hit static REST hosts that never
-bounce to arxiv.org, so there is no current ungoverned-redirect vector (the
-existential PDF / arbitrary-URL paths are all per-hop governed).
-**Action when unlocked:** attach `install_arxiv_request_hook` to those clients
-uniformly for defense-in-depth.
+`unpaywall.resolve_doi`, `doaj._get_json`, `pmc._search`) plus
+`podcasts.fetch_feed` now attach `install_arxiv_request_hook` to injected clients
+and use `arxiv_governed_client` for self-built `follow_redirects=True` clients.
+The old initial-host `govern_if_arxiv` seam remains, but every redirect hop whose
+host is arXiv is now governed too. The static REST/RSS hosts still do not
+currently redirect to arXiv; this closes the cheap defense-in-depth residual.
+**Verification:** `tests/test_open_access_ingest.py` pins the hook on all four
+metadata fetchers and behaviorally proves a non-arXiv metadata URL redirecting
+to `arxiv.org` trips the arXiv throttle hook; `tests/test_acquisition_podcasts.py`
+pins the same behavior for feed fetches; and `tests/test_rate_governor.py`
+continues to pin the shared per-hop redirect-governance semantics.
 
 ## D16 — arXiv rate-governor scanner directory-scope is a manual allowlist
 
@@ -611,12 +615,14 @@ Realistic-earliest unlock dates assuming everything else moves on schedule:
   remaining canon ratification is an independent operator-discretion action that
   only flips CI strictness.
 - **D20 (Mountain Shell v2 Tailwind yellow-mirror re-tone)** — operator-discretion
+- **D15 (arXiv governor per-hop metadata hook)** — closed on 2026-06-30.
+- **D20 (Mountain Shell v2 Tailwind yellow-mirror re-tone)** — operator-discretion
   / anytime cheap tidy; no calendar binding. Shipped baseline (var-deep re-tone)
   is AA-passing; this is chrome-consistency polish only.
 
-**Bottom line:** of the 13 deferrals, **none can be closed this week**;
-**0 close this month** (every deferral is gated on either time, volume,
-ratification, or D1); **3 close in late 2026 to mid-2027** (D1, then D7,
+**Bottom line:** of the tracked deferrals, **1 closed this month** (D15);
+remaining deferrals are gated on either time, volume, ratification, operator
+ingest windows, or D1; **3 close in late 2026 to mid-2027** (D1, then D7,
 D8 trail); **3 close in 2027+ at the earliest** (D3, D5, D6 all gated on
 G8); **D4 depends on operator's ratification cadence**; **D9, D10, D11,
 D12 are operator-discretion items with no spec-binding deadline**; **D13

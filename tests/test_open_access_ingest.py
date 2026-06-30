@@ -64,6 +64,18 @@ def _mock_client(handler) -> httpx.Client:
     return httpx.Client(transport=httpx.MockTransport(handler), timeout=5.0)
 
 
+class _RecordingArxivThrottle:
+    def __init__(self) -> None:
+        self.waits = 0
+        self.noted_statuses: list[int] = []
+
+    def wait_if_needed(self) -> None:
+        self.waits += 1
+
+    def note_response(self, status_code: int, headers) -> None:
+        self.noted_statuses.append(status_code)
+
+
 @pytest.fixture
 def temp_db_and_events(monkeypatch):
     tmpdir = tempfile.mkdtemp(prefix="antiek-oa-ingest-")
@@ -223,12 +235,14 @@ def test_openalex_search_polite_pool_and_oa_filter():
         seen["url"] = str(req.url)
         return httpx.Response(200, json=_OPENALEX_CC_BY)
 
+    client = _mock_client(handler)
     works = openalex.search_works(
-        search="x", client=_mock_client(handler), throttle=_no_sleep_throttle()
+        search="x", client=client, throttle=_no_sleep_throttle()
     )
     assert "mailto=" in seen["url"]
     assert "open_access.is_oa%3Atrue" in seen["url"] or "open_access.is_oa:true" in seen["url"]
     assert len(works) == 1
+    assert client.__dict__.get("_antiek_arxiv_hooked") is True
 
 
 # ---------------------------------------------------------------------------
@@ -352,11 +366,155 @@ def test_unpaywall_http_path_with_throttle():
         assert "email=" in str(req.url)
         return httpx.Response(200, json=_UNPAYWALL_CC_BY)
 
+    client = _mock_client(handler)
     ft = unpaywall.resolve_doi(
         "10.1371/journal.pone.0000308",
-        client=_mock_client(handler), throttle=_no_sleep_throttle(),
+        client=client, throttle=_no_sleep_throttle(),
     )
     assert ft.resolution.redistributable is True
+    assert client.__dict__.get("_antiek_arxiv_hooked") is True
+
+
+def test_oa_metadata_fetchers_install_redirect_safe_arxiv_hook_on_injected_clients():
+    """D15 defense-in-depth: the JSON metadata fetchers use a request hook, not
+    only the initial-host ``govern_if_arxiv`` check, so a redirect hop to arXiv is
+    governed if these API clients ever redirect there."""
+    clients: dict[str, httpx.Client] = {}
+
+    def unpaywall_handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_UNPAYWALL_CC_BY)
+
+    clients["unpaywall"] = _mock_client(unpaywall_handler)
+    unpaywall.resolve_doi(
+        "10.1371/journal.pone.0000308",
+        client=clients["unpaywall"],
+        throttle=_no_sleep_throttle(),
+    )
+
+    def pmc_handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_PMC_CC_BY)
+
+    clients["pmc"] = _mock_client(pmc_handler)
+    assert pmc.resolve_by_doi(
+        "10.1371/journal.pone.0000308",
+        client=clients["pmc"],
+        throttle=_no_sleep_throttle(),
+    ) is not None
+
+    def doaj_handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_DOAJ_JOURNAL_CC_BY if "search/journals" in str(req.url) else _DOAJ_ARTICLE_NO_LICENSE,
+        )
+
+    clients["doaj"] = _mock_client(doaj_handler)
+    assert doaj.confirm_by_doi(
+        "10.1371/journal.pone.0000308",
+        client=clients["doaj"],
+        throttle=_no_sleep_throttle(),
+    ) is not None
+
+    def openalex_handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=_OPENALEX_CC_BY)
+
+    clients["openalex"] = _mock_client(openalex_handler)
+    assert openalex.search_works(
+        search="x",
+        client=clients["openalex"],
+        throttle=_no_sleep_throttle(),
+    )
+
+    assert {
+        name: client.__dict__.get("_antiek_arxiv_hooked", False)
+        for name, client in clients.items()
+    } == {
+        "unpaywall": True,
+        "pmc": True,
+        "doaj": True,
+        "openalex": True,
+    }
+
+
+@pytest.mark.parametrize(
+    ("name", "call_fetcher", "payload"),
+    [
+        (
+            "unpaywall",
+            lambda client: unpaywall.resolve_doi(
+                "10.1371/journal.pone.0000308",
+                client=client,
+                throttle=_no_sleep_throttle(),
+            ),
+            _UNPAYWALL_CC_BY,
+        ),
+        (
+            "pmc",
+            lambda client: pmc.resolve_by_doi(
+                "10.1371/journal.pone.0000308",
+                client=client,
+                throttle=_no_sleep_throttle(),
+            ),
+            _PMC_CC_BY,
+        ),
+        (
+            "doaj",
+            lambda client: doaj.confirm_by_doi(
+                "10.1371/journal.pone.0000308",
+                client=client,
+                throttle=_no_sleep_throttle(),
+            ),
+            _DOAJ_JOURNAL_CC_BY,
+        ),
+        (
+            "openalex",
+            lambda client: openalex.search_works(
+                search="x",
+                client=client,
+                throttle=_no_sleep_throttle(),
+            ),
+            _OPENALEX_CC_BY,
+        ),
+    ],
+)
+def test_oa_metadata_fetcher_redirect_hop_to_arxiv_is_governed(
+    name,
+    call_fetcher,
+    payload,
+    monkeypatch,
+    tmp_path,
+):
+    """Behavioral D15 proof: a non-arXiv metadata API URL that redirects to an
+    arXiv host trips the installed per-hop request hook on injected clients."""
+    from acquisition.arxiv import rate_governor
+
+    arxiv_throttle = _RecordingArxivThrottle()
+    monkeypatch.setattr(rate_governor, "_CANONICAL_THROTTLE", arxiv_throttle)
+    monkeypatch.setenv(
+        "ANTIEK_ARXIV_GOVERNOR_LOCK_PATH",
+        str(tmp_path / f"{name}-arxiv-governor.lock"),
+    )
+
+    seen_hosts: list[str] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen_hosts.append(req.url.host or "")
+        if req.url.host != "arxiv.org":
+            return httpx.Response(
+                302,
+                headers={"location": "https://arxiv.org/abs/2401.00001"},
+            )
+        return httpx.Response(200, json=payload)
+
+    client = httpx.Client(
+        transport=httpx.MockTransport(handler),
+        follow_redirects=True,
+        timeout=5.0,
+    )
+
+    assert call_fetcher(client) is not None
+    assert seen_hosts[-1] == "arxiv.org"
+    assert arxiv_throttle.waits >= 1
+    assert 200 in arxiv_throttle.noted_statuses
 
 
 # ---------------------------------------------------------------------------

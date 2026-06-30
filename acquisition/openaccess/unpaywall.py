@@ -122,25 +122,30 @@ def resolve_doi(
         # gate: a non-arXiv API host (the default api.unpaywall.org) is fetched
         # directly; were the base ever an arXiv host it would be governed.
         from acquisition.arxiv.rate_governor import (
+            arxiv_governed_client,
             canonical_arxiv_throttle,
             govern_if_arxiv,
+            install_arxiv_request_hook,
         )
 
         headers = {"User-Agent": DEFAULT_USER_AGENT}
+        arxiv_throttle = canonical_arxiv_throttle()
         if client is not None:
+            install_arxiv_request_hook(client, throttle=arxiv_throttle)
+
             def _send() -> httpx.Response:
                 return client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-            r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
+            r = govern_if_arxiv(url, _send, throttle=arxiv_throttle)
         else:
-            with httpx.Client(
-                follow_redirects=True,
-                timeout=DEFAULT_TIMEOUT_S,  # module default; same pattern as acquisition/papers/core.py DEFAULT_TIMEOUT_S
+            with arxiv_governed_client(
+                throttle=arxiv_throttle,
+                timeout=DEFAULT_TIMEOUT_S,
             ) as c:
                 def _send() -> httpx.Response:
                     return c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-                r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
+                r = govern_if_arxiv(url, _send, throttle=arxiv_throttle)
         r.raise_for_status()
         return cast("dict[str, Any]", r.json())
 
