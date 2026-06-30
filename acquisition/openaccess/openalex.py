@@ -147,22 +147,27 @@ def _http_get(url: str, *, client: httpx.Client | None) -> dict:
     # host-based gate: the default api.openalex.org host is fetched directly;
     # were the base ever an arXiv host it would be governed by the shared gate.
     from acquisition.arxiv.rate_governor import (
+        arxiv_governed_client,
         canonical_arxiv_throttle,
         govern_if_arxiv,
+        install_arxiv_request_hook,
     )
 
     headers = {"User-Agent": DEFAULT_USER_AGENT}
+    arxiv_throttle = canonical_arxiv_throttle()
     if client is not None:
+        install_arxiv_request_hook(client, throttle=arxiv_throttle)
+
         def _send() -> httpx.Response:
             return client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-        r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
+        r = govern_if_arxiv(url, _send, throttle=arxiv_throttle)
     else:
-        with httpx.Client(follow_redirects=True) as c:
+        with arxiv_governed_client(throttle=arxiv_throttle) as c:
             def _send() -> httpx.Response:
                 return c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-            r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
+            r = govern_if_arxiv(url, _send, throttle=arxiv_throttle)
     r.raise_for_status()
     return r.json()
 
@@ -250,7 +255,7 @@ def fetch_work_record(
             base_url=base_url,
         )
         if throttle is not None:
-            payload = throttle.run_with_retry(lambda: _http_get(url, client=client))
+            payload = throttle.run_with_retry(lambda url=url: _http_get(url, client=client))
         else:
             payload = _http_get(url, client=client)
         results = payload.get("results") or []

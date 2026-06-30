@@ -215,20 +215,28 @@ def fetch_feed(
     # arbitrary caller-supplied URL, routed through ``govern_if_arxiv`` so an
     # arXiv host (if ever passed) is held under the host-global gate; any other
     # host is fetched directly (unchanged).
-    from acquisition.arxiv.rate_governor import canonical_arxiv_throttle, govern_if_arxiv
+    from acquisition.arxiv.rate_governor import (
+        arxiv_governed_client,
+        canonical_arxiv_throttle,
+        govern_if_arxiv,
+        install_arxiv_request_hook,
+    )
 
     headers = {"User-Agent": DEFAULT_USER_AGENT}
+    arxiv_throttle = canonical_arxiv_throttle()
     if client is not None:
+        install_arxiv_request_hook(client, throttle=arxiv_throttle)
+
         def _send() -> httpx.Response:
             return client.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-        r = govern_if_arxiv(feed_url, _send, throttle=canonical_arxiv_throttle())
+        r = govern_if_arxiv(feed_url, _send, throttle=arxiv_throttle)
     else:
-        with httpx.Client(follow_redirects=True) as c:
+        with arxiv_governed_client(throttle=arxiv_throttle) as c:
             def _send() -> httpx.Response:
                 return c.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-            r = govern_if_arxiv(feed_url, _send, throttle=canonical_arxiv_throttle())
+            r = govern_if_arxiv(feed_url, _send, throttle=arxiv_throttle)
     r.raise_for_status()
 
     parsed = feedparser.parse(r.content)
