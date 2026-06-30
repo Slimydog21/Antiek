@@ -1,0 +1,18 @@
+{
+  "version": "1.0",
+  "server": "antiek",
+  "tools": [
+    {
+      "name": "search_personal",
+      "description_sha256": "a5102b8e7df7f50024bb69e2ec1caf52d5dff67b069600b06313d85eff73aff5"
+    },
+    {
+      "name": "search_public",
+      "description_sha256": "3793c8d70be893279508b49218a5c50a231e0f5892c74ae12db4196951060ba1"
+    },
+    {
+      "name": "cite_source",
+      "description_sha256": "e21e2bf2d88f299e74d0895e4265a4763cd4fb1b41368b153f70b79387f158e2"
+    }
+  ]
+}
