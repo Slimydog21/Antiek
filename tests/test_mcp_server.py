@@ -10,7 +10,6 @@ Covers:
 from __future__ import annotations
 
 import json
-import os
 from typing import Any
 
 import duckdb
@@ -63,7 +62,6 @@ class TestNoteNotFound:
 
     def test_missing_note_raises(self, _init_db: str) -> None:
         from runtime.db_lock import connect_read
-
         from services.mcp_server.errors import NoteNotFoundError
         from services.mcp_server.reader import get_note
 
@@ -78,7 +76,6 @@ class TestNoteNotFound:
 
     def test_wrong_user_raises(self, _seed_note: str) -> None:
         from runtime.db_lock import connect_read
-
         from services.mcp_server.errors import NoteNotFoundError
         from services.mcp_server.reader import get_note
 
@@ -95,7 +92,6 @@ class TestGetNote:
 
     def test_returns_content_and_metadata(self, _seed_note: str) -> None:
         from runtime.db_lock import connect_read
-
         from services.mcp_server.reader import get_note
 
         con = connect_read(_seed_note)
@@ -115,7 +111,6 @@ class TestGetNote:
 
     def test_missing_metadata_handled(self, _init_db: str) -> None:
         from runtime.db_lock import connect_read
-
         from services.mcp_server.reader import get_note
 
         con = duckdb.connect(_init_db)
@@ -139,7 +134,6 @@ class TestGetNote:
 
     def test_invalid_json_metadata_falls_back(self, _init_db: str) -> None:
         from runtime.db_lock import connect_read
-
         from services.mcp_server.reader import get_note
 
         con = duckdb.connect(_init_db)
@@ -167,7 +161,6 @@ class TestListUserNotes:
 
     def test_lists_notes_for_user(self, _seed_note: str) -> None:
         from runtime.db_lock import connect_read
-
         from services.mcp_server.reader import list_user_notes
 
         con = connect_read(_seed_note)
@@ -184,7 +177,6 @@ class TestListUserNotes:
 
     def test_empty_list_for_unknown_user(self, _seed_note: str) -> None:
         from runtime.db_lock import connect_read
-
         from services.mcp_server.reader import list_user_notes
 
         con = connect_read(_seed_note)
@@ -240,7 +232,7 @@ class TestResourceRead:
     async def test_read_missing_note_raises(self, _seed_note: str) -> None:
         from services.mcp_server.server import mcp
 
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError, match="Note not found"):
             await mcp.read_resource(
                 "antiek://private/notes/user-42/nonexistent"
             )
