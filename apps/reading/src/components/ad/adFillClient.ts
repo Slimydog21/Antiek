@@ -7,13 +7,13 @@
 // edge case (rigor #1, mirroring substrate/ad_inventory/reader_slots.py's
 // fill_slot, which returns a HousePromo whenever no ad matches).
 //
-// NAMED SEAM (handoff): the route `GET /api/ad/fill` DOES NOT EXIST YET. The
-// backend has only advertiser-onboarding routes (interfaces/research/api/
-// advertisers.py); the fill route is deferred to SPR-09. This client therefore
-// DEGRADES GRACEFULLY: a 404 (route absent) or any network error resolves to a
-// house fill, so the border is never blank and the app never crashes waiting
-// on a route that isn't built. When SPR-09 lands the route, this client starts
-// receiving real fills with no caller change.
+// LIVE ROUTE: `GET /api/ad/fill` exists in interfaces/research/api/ad_routes.py.
+// It fills ONE reader slot at a time (`document_id`, `page_index`, `position`).
+// This client fans out across the active edges and still DEGRADES GRACEFULLY:
+// when there is no current reader document/page, the route is absent, or a
+// network error occurs, each requested edge gets a neutral house fill. The
+// border is therefore never blank, but the live route is used whenever the
+// shell can name the active reader slot.
 
 import { API_BASE, apiFetch } from "../../lib/api";
 import type { Lens } from "./frameContract";
@@ -54,6 +54,9 @@ export interface HousePromo {
  * advertiser pays — 0 for house (the honest default, no invented money).
  */
 export interface SlotFill {
+  slot_id?: string;
+  document_id?: string;
+  page_index?: number;
   position: BorderPosition;
   kind: "ad" | "house";
   ad?: AdCreative | null;
@@ -82,37 +85,43 @@ function houseFill(position: BorderPosition): SlotFill {
 }
 
 /**
- * Fetch the fills for the border's active edges. The route is a deferred seam:
- * a 404 or any error degrades to a neutral house fill per requested edge, so
- * the border always has something real to paint and never throws.
+ * Fetch the fills for the border's active reader edges. The live backend route
+ * fills one edge per request; a missing reader document, 404, or any error
+ * degrades to neutral house per requested edge, so the border always paints.
  */
 export async function fetchFill(opts: {
   lens: Lens;
+  documentId?: string | null;
+  pageIndex?: number | null;
   positions: BorderPosition[];
   signal?: AbortSignal;
 }): Promise<FillResult> {
-  const params = new URLSearchParams({
-    lens: opts.lens,
-    positions: opts.positions.join(","),
-  });
+  if (!opts.documentId || opts.pageIndex === undefined || opts.pageIndex === null) {
+    return { fills: opts.positions.map(houseFill), served: false };
+  }
   try {
-    const resp = await apiFetch(`${API_BASE}/api/ad/fill?${params.toString()}`, {
-      method: "GET",
-      signal: opts.signal,
-    });
-    if (!resp.ok) {
-      // Route absent (404, the SPR-09 seam) or a server error: degrade to
-      // house. NOT a thrown error — the border must always paint.
-      return { fills: opts.positions.map(houseFill), served: false };
-    }
-    const body = (await resp.json()) as { fills?: SlotFill[] };
-    const fills = Array.isArray(body.fills) ? body.fills : [];
-    // Any edge the server didn't fill is house-filled here so every requested
-    // edge always has a creative (house is the default, never blank).
-    const byPos = new Map(fills.map((f) => [f.position, f]));
+    const results = await Promise.all(
+      opts.positions.map(async (position) => {
+        const params = new URLSearchParams({
+          document_id: opts.documentId as string,
+          page_index: String(opts.pageIndex),
+          position,
+        });
+        const resp = await apiFetch(`${API_BASE}/api/ad/fill?${params.toString()}`, {
+          method: "GET",
+          signal: opts.signal,
+        });
+        if (!resp.ok) return { fill: houseFill(position), served: false };
+        const body = (await resp.json()) as SlotFill;
+        return {
+          fill: body?.position === position ? body : houseFill(position),
+          served: body?.position === position,
+        };
+      }),
+    );
     return {
-      fills: opts.positions.map((p) => byPos.get(p) ?? houseFill(p)),
-      served: true,
+      fills: results.map((r) => r.fill),
+      served: results.some((r) => r.served),
     };
   } catch {
     return { fills: opts.positions.map(houseFill), served: false };

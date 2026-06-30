@@ -11,11 +11,15 @@ import { useCallback, useEffect, useState } from "react";
  * (see `paginate.ts`).
  */
 
-const KEY = (documentId: string) => `antiek.read.pos.${documentId}`;
+export const READ_POSITION_EVENT = "antiek:read-position";
 
-function readStored(documentId: string): number {
+export function readPositionKey(documentId: string): string {
+  return `antiek.read.pos.${documentId}`;
+}
+
+export function readStoredPosition(documentId: string): number {
   try {
-    const raw = window.sessionStorage.getItem(KEY(documentId));
+    const raw = window.sessionStorage.getItem(readPositionKey(documentId));
     const n = raw === null ? 0 : parseInt(raw, 10);
     return Number.isFinite(n) && n >= 0 ? n : 0;
   } catch {
@@ -23,17 +27,30 @@ function readStored(documentId: string): number {
   }
 }
 
+function publishPosition(documentId: string, pageIndex: number): void {
+  try {
+    window.sessionStorage.setItem(readPositionKey(documentId), String(pageIndex));
+  } catch {
+    /* sessionStorage unavailable (private mode) — position is best-effort. */
+  }
+  window.dispatchEvent(
+    new CustomEvent(READ_POSITION_EVENT, {
+      detail: { documentId, pageIndex },
+    }),
+  );
+}
+
 export function usePosition(
   documentId: string | null,
   pageCount: number,
 ): { pageIndex: number; setPageIndex: (i: number) => void } {
   const [pageIndex, setPageIndexState] = useState<number>(() =>
-    documentId ? readStored(documentId) : 0,
+    documentId ? readStoredPosition(documentId) : 0,
   );
 
   // When the document changes, restore that document's saved position.
   useEffect(() => {
-    if (documentId) setPageIndexState(readStored(documentId));
+    if (documentId) setPageIndexState(readStoredPosition(documentId));
   }, [documentId]);
 
   // Clamp into range whenever the page count resolves (a saved position
@@ -44,20 +61,16 @@ export function usePosition(
     }
   }, [pageCount]);
 
+  useEffect(() => {
+    if (documentId) publishPosition(documentId, pageIndex);
+  }, [documentId, pageIndex]);
+
   const setPageIndex = useCallback(
     (i: number) => {
       const clamped = pageCount > 0 ? Math.max(0, Math.min(i, pageCount - 1)) : Math.max(0, i);
       setPageIndexState(clamped);
-      if (documentId) {
-        try {
-          window.sessionStorage.setItem(KEY(documentId), String(clamped));
-        } catch {
-          /* sessionStorage unavailable (private mode) — position is
-             best-effort; reading still works, it just won't persist. */
-        }
-      }
     },
-    [documentId, pageCount],
+    [pageCount],
   );
 
   return { pageIndex, setPageIndex };

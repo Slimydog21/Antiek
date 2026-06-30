@@ -51,6 +51,9 @@ export interface AdBorderProps {
   /** The active lens — stamped on every FrameSecond + sent to the fill route
    *  for lens-appropriate creatives. */
   lens: Lens;
+  /** Active reader slot identity. Non-read lenses omit this and render house. */
+  documentId?: string | null;
+  pageIndex?: number | null;
   /** A stable id for this window's telemetry batch (trace anchor). */
   windowId: string;
   /** Surfaced telemetry failures (route-absent / version-mismatch). Defaults
@@ -64,6 +67,8 @@ export interface AdBorderProps {
 
 export function AdBorder({
   lens,
+  documentId = null,
+  pageIndex = null,
   windowId,
   onTelemetryError,
   fillFetcher = fetchFill,
@@ -122,13 +127,14 @@ export function AdBorder({
     };
   }, [positions]);
 
-  // Fetch the fills for the active edges. Re-fetches on lens / position change.
-  // The route is a deferred seam → degrades to house fill (never blank).
+  // Fetch the fills for the active reader edges. Non-read/no-document surfaces
+  // degrade to neutral house fill; a real /read/:id route calls the live backend
+  // per-slot fill API and still falls back to house on any route/network miss.
   useEffect(() => {
     const ctl = new AbortController();
-    fillFetcher({ lens, positions, signal: ctl.signal }).then(setFill);
+    fillFetcher({ lens, documentId, pageIndex, positions, signal: ctl.signal }).then(setFill);
     return () => ctl.abort();
-  }, [lens, positions, fillFetcher]);
+  }, [lens, documentId, pageIndex, positions, fillFetcher]);
 
   const fillFor = (pos: BorderPosition): SlotFill =>
     fill.fills.find((f) => f.position === pos) ?? {

@@ -8,13 +8,12 @@
 // aggregates the batch to per-asset accrual before any DB write; the emitter's
 // job is the compact batch, so request count is O(windows) not O(seconds).
 //
-// NAMED SEAM (handoff): the route `POST /api/ad/frame-telemetry` DOES NOT EXIST
-// YET — the backend has only advertiser-onboarding routes; the ingest route is
-// deferred to SPR-09. This emitter POSTs to the defined path and DEGRADES
-// GRACEFULLY: a 404 (route absent) or a schema-version mismatch SURFACES an
-// error through ``onError`` and is NOT silently dropped, but it never throws
-// into the render path and never opens a DB writer (POST-only). When SPR-09
-// lands the route, the emitter starts succeeding with no caller change.
+// LIVE ROUTE: `POST /api/ad/frame-telemetry` exists in
+// interfaces/research/api/ad_routes.py. This emitter POSTs the defined batch
+// shape and DEGRADES GRACEFULLY: a 404 (route absent in an older deployment) or
+// a schema-version mismatch SURFACES an error through ``onError`` and is NOT
+// silently dropped, but it never throws into the render path and never opens a
+// DB writer (POST-only).
 
 import { API_BASE } from "../../lib/api";
 import {
@@ -193,7 +192,7 @@ export class FrameTelemetryEmitter {
       return;
     }
     if (status === 404) {
-      // The deferred SPR-09 route. Surface it — do not pretend it succeeded.
+      // Older deployment / wrong API base. Surface it — do not pretend it succeeded.
       this.onError?.({ kind: "route-absent", status, windowId: this.windowId });
       return;
     }
