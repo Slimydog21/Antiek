@@ -363,7 +363,9 @@ class TestManifestAgainstLiveServer:
     """Verify the manifest matches the live FastMCP tool descriptions."""
 
     async def test_live_tools_match_manifest(self) -> None:
-        from services.mcp_server.manifest import generate_manifest, verify_manifest
+        from pathlib import Path
+
+        from services.mcp_server.manifest import load_manifest, verify_manifest
         from services.mcp_server.server import mcp
 
         live_tools = await mcp.list_tools()
@@ -371,5 +373,13 @@ class TestManifestAgainstLiveServer:
             {"name": t.name, "description": t.description}
             for t in live_tools
         ]
-        manifest = generate_manifest(tool_dicts)
+        manifest_path = (
+            Path(__file__).parents[1]
+            / "services"
+            / "mcp_server"
+            / ".well-known"
+            / "mcp-tools.json"
+        )
+        assert manifest_path.exists()
+        manifest = load_manifest(manifest_path)
         assert verify_manifest(tool_dicts, manifest) == []
