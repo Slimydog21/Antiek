@@ -27,6 +27,7 @@ The initiator NEVER catches & swallows provider exceptions silently —
 from __future__ import annotations
 
 import uuid
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -67,12 +68,12 @@ def ensure_table(con: Any) -> None:
     """Defensive table-creation. The canonical schema definition lives
     in ``substrate/graph/schema.py``; this is a no-op on a fully-
     initialized DB. Read-only connections fail silently."""
-    try:
+    with suppress(Exception):
         con.execute(
             """
             CREATE TABLE IF NOT EXISTS payout_transfers (
                 transfer_attempt_id     TEXT PRIMARY KEY,
-                decision_id             TEXT NOT NULL,
+                decision_id             TEXT NOT NULL UNIQUE,
                 stripe_transfer_id      TEXT,
                 recipient_account_id    TEXT,
                 amount_usd_cents        INTEGER NOT NULL,
@@ -85,8 +86,12 @@ def ensure_table(con: Any) -> None:
             )
             """
         )
-    except Exception:
-        pass
+    with suppress(Exception):
+        con.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "idx_payout_transfers_decision_unique "
+            "ON payout_transfers(decision_id)"
+        )
 
 
 def _record(
@@ -98,6 +103,7 @@ def _record(
     amount_usd_cents: int,
     status: str,
     note: str,
+    allow_existing_mismatch: bool = False,
 ) -> TransferOutcome:
     """Insert one transfer-log row. Idempotent on ``decision_id`` —
     if a row already exists for that decision, the existing outcome
@@ -110,34 +116,91 @@ def _record(
         [decision_id],
     ).fetchone()
     if existing is not None:
-        return TransferOutcome(
-            transfer_attempt_id=existing[0],
-            decision_id=decision_id,
-            stripe_transfer_id=existing[1],
-            recipient_account_id=existing[2],
-            amount_usd_cents=int(existing[3]),
-            status=existing[4],
-            note=existing[5] or "",
-            initiated_at=(
-                existing[6].isoformat() if hasattr(existing[6], "isoformat")
-                else str(existing[6])
-            ),
-        )
+        if not _existing_matches_attempt(
+            existing,
+            stripe_transfer_id=stripe_transfer_id,
+            recipient_account_id=recipient_account_id,
+            amount_usd_cents=amount_usd_cents,
+            status=status,
+            note=note,
+        ):
+            if _can_upgrade_failed_to_transferred(
+                existing,
+                recipient_account_id=recipient_account_id,
+                amount_usd_cents=amount_usd_cents,
+                status=status,
+            ):
+                return _upgrade_failed_to_transferred(
+                    con,
+                    decision_id=decision_id,
+                    existing=existing,
+                    stripe_transfer_id=stripe_transfer_id,
+                    recipient_account_id=recipient_account_id,
+                    amount_usd_cents=amount_usd_cents,
+                    note=note,
+                )
+            if allow_existing_mismatch:
+                return _existing_outcome(decision_id, existing)
+            raise TransferInitiatorError(
+                f"decision {decision_id!r} already has a different "
+                "transfer outcome"
+            )
+        return _existing_outcome(decision_id, existing)
 
     attempt_id = f"xfer-{uuid.uuid4().hex[:12]}"
-    con.execute(
-        """
-        INSERT INTO payout_transfers (
-            transfer_attempt_id, decision_id, stripe_transfer_id,
-            recipient_account_id, amount_usd_cents, status, note,
-            initiated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        """,
-        [
-            attempt_id, decision_id, stripe_transfer_id,
-            recipient_account_id, amount_usd_cents, status, note,
-        ],
-    )
+    try:
+        con.execute(
+            """
+            INSERT INTO payout_transfers (
+                transfer_attempt_id, decision_id, stripe_transfer_id,
+                recipient_account_id, amount_usd_cents, status, note,
+                initiated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """,
+            [
+                attempt_id, decision_id, stripe_transfer_id,
+                recipient_account_id, amount_usd_cents, status, note,
+            ],
+        )
+    except Exception as exc:
+        raced = con.execute(
+            "SELECT transfer_attempt_id, stripe_transfer_id, recipient_account_id, "
+            "amount_usd_cents, status, note, initiated_at "
+            "FROM payout_transfers WHERE decision_id = ?",
+            [decision_id],
+        ).fetchone()
+        if raced is not None:
+            if not _existing_matches_attempt(
+                raced,
+                stripe_transfer_id=stripe_transfer_id,
+                recipient_account_id=recipient_account_id,
+                amount_usd_cents=amount_usd_cents,
+                status=status,
+                note=note,
+            ):
+                if _can_upgrade_failed_to_transferred(
+                    raced,
+                    recipient_account_id=recipient_account_id,
+                    amount_usd_cents=amount_usd_cents,
+                    status=status,
+                ):
+                    return _upgrade_failed_to_transferred(
+                        con,
+                        decision_id=decision_id,
+                        existing=raced,
+                        stripe_transfer_id=stripe_transfer_id,
+                        recipient_account_id=recipient_account_id,
+                        amount_usd_cents=amount_usd_cents,
+                        note=note,
+                    )
+                if allow_existing_mismatch:
+                    return _existing_outcome(decision_id, raced)
+                raise TransferInitiatorError(
+                    f"decision {decision_id!r} was recorded concurrently "
+                    "with a different transfer outcome"
+                ) from exc
+            return _existing_outcome(decision_id, raced)
+        raise
     return TransferOutcome(
         transfer_attempt_id=attempt_id,
         decision_id=decision_id,
@@ -148,6 +211,111 @@ def _record(
         note=note,
         initiated_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     )
+
+
+def _existing_outcome(decision_id: str, row: tuple) -> TransferOutcome:
+    return TransferOutcome(
+        transfer_attempt_id=row[0],
+        decision_id=decision_id,
+        stripe_transfer_id=row[1],
+        recipient_account_id=row[2],
+        amount_usd_cents=int(row[3]),
+        status=row[4],
+        note=row[5] or "",
+        initiated_at=(
+            row[6].isoformat() if hasattr(row[6], "isoformat")
+            else str(row[6])
+        ),
+    )
+
+
+def _existing_matches_attempt(
+    row: tuple,
+    *,
+    stripe_transfer_id: str | None,
+    recipient_account_id: str | None,
+    amount_usd_cents: int,
+    status: str,
+    note: str,
+) -> bool:
+    return (
+        row[1] == stripe_transfer_id
+        and row[2] == recipient_account_id
+        and int(row[3]) == amount_usd_cents
+        and row[4] == status
+        and (row[5] or "") == note
+    )
+
+
+def _can_upgrade_failed_to_transferred(
+    row: tuple,
+    *,
+    recipient_account_id: str | None,
+    amount_usd_cents: int,
+    status: str,
+) -> bool:
+    return (
+        row[4] == STATUS_FAILED
+        and status == STATUS_TRANSFERRED
+        and row[2] == recipient_account_id
+        and int(row[3]) == amount_usd_cents
+    )
+
+
+def _upgrade_failed_to_transferred(
+    con: Any,
+    *,
+    decision_id: str,
+    existing: tuple,
+    stripe_transfer_id: str | None,
+    recipient_account_id: str | None,
+    amount_usd_cents: int,
+    note: str,
+) -> TransferOutcome:
+    if stripe_transfer_id is None:
+        raise TransferInitiatorError(
+            f"decision {decision_id!r} retry cannot upgrade failed transfer "
+            "without a Stripe transfer id"
+        )
+    con.execute(
+        """
+        UPDATE payout_transfers
+        SET stripe_transfer_id = ?,
+            recipient_account_id = ?,
+            amount_usd_cents = ?,
+            status = ?,
+            note = ?,
+            initiated_at = CURRENT_TIMESTAMP
+        WHERE decision_id = ? AND status = ?
+        """,
+        [
+            stripe_transfer_id,
+            recipient_account_id,
+            amount_usd_cents,
+            STATUS_TRANSFERRED,
+            note,
+            decision_id,
+            STATUS_FAILED,
+        ],
+    )
+    row = con.execute(
+        "SELECT transfer_attempt_id, stripe_transfer_id, recipient_account_id, "
+        "amount_usd_cents, status, note, initiated_at "
+        "FROM payout_transfers WHERE decision_id = ?",
+        [decision_id],
+    ).fetchone()
+    if row is None or not _existing_matches_attempt(
+        row,
+        stripe_transfer_id=stripe_transfer_id,
+        recipient_account_id=recipient_account_id,
+        amount_usd_cents=amount_usd_cents,
+        status=STATUS_TRANSFERRED,
+        note=note,
+    ):
+        raise TransferInitiatorError(
+            f"decision {decision_id!r} failed transfer retry did not persist"
+        )
+    return _existing_outcome(decision_id, row)
 
 
 def initiate_transfer(
@@ -250,6 +418,7 @@ def initiate_transfer(
             amount_usd_cents=decision.amount_usd_cents,
             status=STATUS_FAILED,
             note=f"provider error: {exc!r}",
+            allow_existing_mismatch=True,
         )
 
     return _record(
