@@ -124,6 +124,14 @@ def test_unknown_method_returns_error():
     assert response["error"]["code"] == -32601
 
 
+def test_notification_without_id_returns_no_response():
+    server = make_default_server()
+    response = server.handle_request({
+        "jsonrpc": "2.0", "method": "tools/list", "params": {},
+    })
+    assert response is None
+
+
 # ── Stdio transport ──────────────────────────────────────────────────
 
 
@@ -150,6 +158,17 @@ def test_stdio_parse_error_returns_parse_error_response():
     response = json.loads(stdout.getvalue().strip())
     assert response["error"]["code"] == -32700
     assert response["id"] is None
+
+
+def test_stdio_notification_without_id_writes_no_response():
+    server = make_default_server()
+    request_in = json.dumps({
+        "jsonrpc": "2.0", "method": "tools/list", "params": {},
+    })
+    stdin = io.StringIO(request_in + "\n")
+    stdout = io.StringIO()
+    serve_stdio(server, stdin=stdin, stdout=stdout)
+    assert stdout.getvalue() == ""
 
 
 # ── Signing / rug-pull defense ───────────────────────────────────────
