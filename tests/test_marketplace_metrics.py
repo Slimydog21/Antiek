@@ -9,12 +9,15 @@ from substrate.marketplace_metrics import (
     AdvertiserRetentionReport,
     CreatorEarningsDistribution,
     MarketplaceHealth,
+    MarketplaceMetricsSourceError,
     PublisherEscrowReport,
     PublisherStatusCounts,
     assemble_snapshot,
     compute_advertiser_retention,
     compute_creator_distribution,
     compute_publisher_escrow,
+    fetch_publisher_accrual_cents,
+    fetch_publisher_status_rows,
 )
 
 # ── Creator distribution ──────────────────────────────────────────
@@ -276,3 +279,78 @@ def test_no_prior_advertisers_is_watch_signal():
     joined = " | ".join(snap.health_signals)
     assert "advertiser_retention" in joined
     assert snap.health in {MarketplaceHealth.WATCH, MarketplaceHealth.UNHEALTHY}
+
+
+# ── DB data-source truthfulness ───────────────────────────────────
+
+
+class _FakeConn:
+    def __init__(
+        self,
+        rows_by_sql: dict[str, list[tuple]] | None = None,
+        *,
+        exc: Exception | None = None,
+    ):
+        self.rows_by_sql = rows_by_sql or {}
+        self.exc = exc
+        self._last_sql = ""
+
+    def execute(self, sql: str, params: list | None = None):
+        if self.exc is not None:
+            raise self.exc
+        self._last_sql = " ".join(sql.split())
+        return self
+
+    def fetchall(self) -> list[tuple]:
+        return self.rows_by_sql.get(self._last_sql, [])
+
+
+def test_marketplace_status_source_does_not_mask_db_failures():
+    con = _FakeConn(exc=RuntimeError("catalog unavailable"))
+
+    with pytest.raises(MarketplaceMetricsSourceError, match="publisher status"):
+        fetch_publisher_status_rows(con)
+
+
+def test_marketplace_accrual_source_does_not_mask_db_failures():
+    con = _FakeConn(exc=RuntimeError("catalog unavailable"))
+
+    with pytest.raises(MarketplaceMetricsSourceError, match="publisher accrual"):
+        fetch_publisher_accrual_cents(con)
+
+
+def test_marketplace_sources_preserve_empty_pre_cohort_tables():
+    con = _FakeConn(
+        {
+            "SELECT ip_holder_id, status FROM ip_holders": [],
+            "SELECT ip_holder_id, escrow_balance_usd FROM ip_holders": [],
+        }
+    )
+
+    assert fetch_publisher_status_rows(con) == []
+    assert fetch_publisher_accrual_cents(con) == {}
+
+
+def test_marketplace_accrual_source_treats_null_balance_as_zero():
+    con = _FakeConn(
+        {
+            "SELECT ip_holder_id, escrow_balance_usd FROM ip_holders": [
+                ("ip-null", None),
+            ]
+        }
+    )
+
+    assert fetch_publisher_accrual_cents(con) == {"ip-null": 0}
+
+
+def test_marketplace_accrual_source_rejects_corrupt_balance():
+    con = _FakeConn(
+        {
+            "SELECT ip_holder_id, escrow_balance_usd FROM ip_holders": [
+                ("ip-bad", object()),
+            ]
+        }
+    )
+
+    with pytest.raises(MarketplaceMetricsSourceError, match="invalid escrow balance"):
+        fetch_publisher_accrual_cents(con)
