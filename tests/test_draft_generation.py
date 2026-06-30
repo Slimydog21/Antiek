@@ -26,8 +26,8 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from roles.creative_writer.prompt import CreativeWriterContext
-from substrate.write.draft_generation import (
+from roles.creative_writer.prompt import CreativeWriterContext  # noqa: E402
+from substrate.write.draft_generation import (  # noqa: E402
     VOICE_STYLE_GATE,
     build_creative_writer_context,
     enforce_voice_gate,
@@ -36,7 +36,7 @@ from substrate.write.draft_generation import (
     merge_regenerated_paragraph,
     validate_generated_citations,
 )
-from substrate.write.outline_block import OutlineBlock
+from substrate.write.outline_block import OutlineBlock  # noqa: E402
 
 
 def _oblock(obid, *, node_id=None, content=None, kind="insight", prov="graph_node"):
@@ -99,6 +99,24 @@ def test_unsupported_paragraph_flagged():
     report = validate_generated_citations(result, attached_block_ids={"node-1"})
     assert 0 in report.supported_paragraphs
     assert 1 in report.unsupported_paragraphs  # flagged, not asserted as fact
+    assert not report.all_claims_cited
+
+
+def test_hidden_provenance_without_inline_citation_is_unsupported():
+    from roles.creative_writer.parser import CreativeWriterResult
+    result = CreativeWriterResult(
+        prose_text=(
+            "This is a substantive claim with valid hidden provenance, but the "
+            "operator cannot inspect any visible citation in the prose."
+        ),
+        prose_provenance={0: ["node-1"]},
+        uncited_blocks=[],
+    )
+    report = validate_generated_citations(result, attached_block_ids={"node-1"})
+    assert report.supported_paragraphs == []
+    assert report.unsupported_paragraphs == [0]
+    assert report.fabricated_citations == []
+    assert report.cited_block_ids == ["node-1"]
     assert not report.all_claims_cited
 
 
@@ -188,6 +206,27 @@ def test_happy_path_generation_with_fake_model():
     assert res.status == "generated"
     assert res.citation_report.all_claims_cited
     assert res.gate.passed
+
+
+def test_generation_does_not_count_hidden_provenance_as_citation():
+    hidden_only_json = (
+        '{"prose_text": "The capital intensity rises with scale, and the moat is '
+        'the data rather than the model.", '
+        '"prose_provenance": {"0": ["node-1"]}, "uncited_blocks": []}'
+    )
+    ctx = build_creative_writer_context(
+        deliverable_title="T", deliverable_kind="research_memo",
+        section_title="S", section_index=0, section_count=1,
+        blocks=[_oblock("oblk-1", node_id="node-1")],
+    )
+    res = generate_section(
+        ctx=ctx, dispatch_fn=_fake_dispatch(hidden_only_json), section_id="sec-1",
+    )
+    assert res.status == "generated"
+    assert res.citation_report is not None
+    assert res.citation_report.unsupported_paragraphs == [0]
+    assert not res.citation_report.all_claims_cited
+    assert res.prose_provenance == {0: ["node-1"]}
 
 
 def test_merge_regenerated_paragraph_preserves_other_paragraphs_and_revalidates():

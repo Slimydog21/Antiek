@@ -11,11 +11,11 @@ that makes "provenance is the moat" structural rather than hopeful:
 - ``build_creative_writer_context`` — OutlineBlocks → ``CreativeWriterContext``
   (resolves each block's text: the node label for graph-node blocks, the
   inline content for user-originated ones).
-- ``validate_generated_citations`` — extracts inline ``[b: <id>]`` citations
-  + the ``prose_provenance`` map, then flags: paragraphs with NO citation
-  (``unsupported`` — surfaced to the writer, never asserted as fact) and
-  citations to blocks that were never attached (``fabricated`` — the
-  failure the parser alone can't catch).
+- ``validate_generated_citations`` — treats inline ``[b: <id>]`` citations
+  as the operator-visible support contract, while still using the
+  ``prose_provenance`` map for X-ray metadata and fabricated-id detection.
+  Substantive paragraphs with no inline citation are flagged ``unsupported``
+  and citations to blocks that were never attached are flagged ``fabricated``.
 - ``enforce_voice_gate`` — scores prose with ``voice_style`` (§5.5). The
   gate WINS: a style prompt can never push output below it.
 - ``generate_section`` — the orchestration. A section with NO blocks
@@ -155,9 +155,14 @@ def validate_generated_citations(
     *,
     attached_block_ids: set[str],
 ) -> CitationReport:
-    """Validate that every claim cites an attached block. Paragraphs with
-    a substantive claim and no citation are flagged ``unsupported``;
-    citations to non-attached blocks are flagged ``fabricated``."""
+    """Validate that every claim visibly cites an attached block.
+
+    ``prose_provenance`` is X-ray metadata, not a substitute for the inline
+    ``[b: ...]`` citation the operator can inspect in the prose. Hidden
+    provenance still participates in fabricated-id detection and the persisted
+    paragraph→block map, but a substantive paragraph needs an inline citation
+    to count as supported.
+    """
     supported: list[int] = []
     unsupported: list[int] = []
     fabricated: set[str] = set()
@@ -174,9 +179,9 @@ def validate_generated_citations(
                 fabricated.add(cid)
         # Substantive paragraph with no citation → unsupported claim.
         stripped = _CITATION_RE.sub("", para).strip()
-        if not cited_here and len(stripped) >= _MIN_CLAIM_CHARS:
+        if not inline and len(stripped) >= _MIN_CLAIM_CHARS:
             unsupported.append(idx)
-        elif cited_here:
+        elif inline:
             supported.append(idx)
 
     uncited_blocks = sorted(attached_block_ids - {c for c in all_cited if c in attached_block_ids})
