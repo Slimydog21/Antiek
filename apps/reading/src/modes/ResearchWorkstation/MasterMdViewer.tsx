@@ -13,6 +13,7 @@ import type {
   ReusedInsight,
 } from "../../lib/synthesisParser";
 import {
+  RESTRICTED_CLASS,
   RESTRICTED_TITLE,
   SERVABLE_CLASS,
   SERVABLE_TITLE,
@@ -31,6 +32,7 @@ import type { ReviewDueClaimView } from "../../reading-physics/augmentations/rev
 import {
   CollapseState,
   collapsePipelineFor,
+  fingerprintPlan,
 } from "../../reading-physics/augmentations/collapse";
 import type { ResolvedDecoration } from "../../reading-physics/facets/decorations";
 import { anchorKey } from "../../reading-physics/facets/decorations";
@@ -241,6 +243,8 @@ export default function MasterMdViewer({
   // viewport-scoping remains RESERVED for the later scroll-container slice where a
   // visible band can honestly cap per-frame work.
   const articleRef = useRef<HTMLElement | null>(null);
+  const [preTransformLayoutMap, setPreTransformLayoutMap] =
+    useState<LayoutMap>(EMPTY_LAYOUT_MAP);
   const [layoutMap, setLayoutMap] = useState<LayoutMap>(EMPTY_LAYOUT_MAP);
   const [collapseState, setCollapseState] = useState(() => new CollapseState());
 
@@ -265,6 +269,7 @@ export default function MasterMdViewer({
     const recompute = () => {
       const node = articleRef.current;
       if (!node) return;
+      setPreTransformLayoutMap(buildLayoutMap(node));
       setLayoutMap(buildLayoutMap(node, collapsePipelineFor(collapseState)));
     };
 
@@ -297,7 +302,13 @@ export default function MasterMdViewer({
       <article
         ref={articleRef}
         onWheel={handleArticleWheel}
-        className="max-w-3xl mx-auto px-6 py-10 font-serif text-ink dark:text-bright">
+        className="relative max-w-3xl mx-auto px-6 py-10 font-serif text-ink dark:text-bright">
+        <CollapseFingerprints
+          byClaim={reviewDueByClaim}
+          preTransformLayout={preTransformLayoutMap}
+          postTransformLayout={layoutMap}
+          collapseState={collapseState}
+        />
         {/* Header band */}
         <header className="mb-8 pb-6 border-b border-rule dark:border-charcoal-1">
           {synthesis.question && (
@@ -461,6 +472,69 @@ function ReadingMinimap({
   const minimapLayout = minimapLayoutFrom(layoutMap, MINIMAP_SCALE, MINIMAP_COLUMN_WIDTH_PX);
   const marks = projectDecorationsToMinimap(resolved, minimapLayout);
   return <>{renderMinimap(marks, MINIMAP_COLUMN_WIDTH_PX)}</>;
+}
+
+function CollapseFingerprints({
+  byClaim,
+  preTransformLayout,
+  postTransformLayout,
+  collapseState,
+}: {
+  byClaim: Map<string, ResolvedDecoration>;
+  preTransformLayout: LayoutMap;
+  postTransformLayout: LayoutMap;
+  collapseState: CollapseState;
+}) {
+  const collapsedSections = collapseState.list();
+  const resolved = Array.from(byClaim.values());
+  if (collapsedSections.length === 0 || resolved.length === 0) return null;
+
+  const placements = fingerprintPlan(
+    resolved.map((decoration) => ({
+      key: decoration.key,
+      anchor: decoration.anchor,
+    })),
+    preTransformLayout,
+    collapseState,
+  );
+  const marks: { decoration: ResolvedDecoration; rect: NonNullable<ReturnType<LayoutMap["resolve"]>> }[] = [];
+  for (const placement of placements) {
+    if (!placement.inFingerprint || !placement.bandId) continue;
+    const decoration = byClaim.get(placement.anchorKey);
+    if (!decoration) continue;
+    const rect = postTransformLayout.resolve(decoration.anchor);
+    if (!rect) continue;
+    marks.push({ decoration, rect });
+  }
+  if (marks.length === 0) return null;
+
+  return (
+    <div className="reading-collapse-fingerprint" aria-hidden="true">
+      {marks.map(({ decoration, rect }) => (
+        <div
+          key={decoration.key}
+          className={`reading-collapse-fingerprint__mark ${decoration.classNames.join(" ")}`.trim()}
+          style={{
+            position: "absolute",
+            top: `${rect.top}px`,
+            right: "-14px",
+            width: "6px",
+            height: `${Math.max(1, rect.height)}px`,
+            backgroundColor: fingerprintColor(decoration.classNames),
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function fingerprintColor(classNames: readonly string[]): string {
+  if (classNames.includes(REVIEW_DUE_CLASS)) return "#f59e0b";
+  if (classNames.includes(SERVABLE_CLASS)) return "#10b981";
+  if (classNames.includes(RESTRICTED_CLASS)) return "#ef4444";
+  if (classNames.some((name) => name.includes("method"))) return "#3b82f6";
+  if (classNames.some((name) => name.includes("result"))) return "#14b8a6";
+  return "#64748b";
 }
 
 // ── Sub-components ───────────────────────────────────────────────────

@@ -200,10 +200,9 @@ export function measureCollapseSection(
  * `createLayoutMap`. Returns the LIVE layout-map the surface mounts into every
  * render context, replacing `EMPTY_LAYOUT_MAP`.
  *
- * `transforms` is the (currently empty) SPR-05 spatial-transform pipeline —
- * threaded through so a collapse pipeline (`collapsePipelineFor(state)`) folds in
- * with no change to this signature when collapse goes live. Empty ⇒ the map
- * resolves base geometry verbatim (the no-transform identity).
+ * `transforms` is the SPR-05 spatial-transform pipeline. Empty ⇒ the map
+ * resolves base geometry verbatim; a live collapse passes
+ * `collapsePipelineFor(state)` so every anchor resolves post-transform.
  */
 export function buildLayoutMap(
   root: HTMLElement,
@@ -232,14 +231,13 @@ export function buildLayoutMap(
  *   (a) the base geometry is ROOT-RELATIVE (see `measureAnchorGeometry`), hence
  *       SCROLL-INVARIANT — the visible band never narrows the resolved set as the
  *       reader scrolls; and
- *   (b) the transform pipeline is EMPTY this sprint (SPR-05's collapse is unbound),
- *       so there is no per-frame fold cost for scoping to cap.
+ *   (b) even with collapse now bound, the article is not its own scroll container,
+ *       so this surface still has no honest visible band to scope against.
  * Switch the surface to this scoped map ONLY when BOTH become true:
  *   (1) the reading column becomes its OWN scroll container (so a real visible
  *       band exists to scope against), AND
- *   (2) a NON-EMPTY transform pipeline (the SPR-05 collapse fold) makes per-frame
- *       fold cost real — at which point bounding the fold to on-screen anchors
- *       earns its keep. Until then this is a tested seam, not dead code: the
+ *   (2) that band is wired through this helper so the collapse fold is bounded
+ *       to on-screen anchors. Until then this is a tested seam, not dead code: the
  *       retained tests + the D13 doc reference keep it honest and ready.
  */
 export function buildViewportScopedLayoutMap(
