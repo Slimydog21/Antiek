@@ -63,7 +63,7 @@ The four product specs left eight integration seams assumed-but-not-pinned
 
 | # | Seam | Resolution | Guard that proves it |
 |---|---|---|---|
-| 1 | Shared reading surface ownership | DRW SPR-10 is the canonical reader; Read/Write contract against `ReaderSurfaceContract` | `tests/test_seam_reader_surface_contract.py`; conformance gate (provisional row) |
+| 1 | Shared reading surface ownership | One `<Reader>` + `openDocument`; lying seam test **deleted** SPR-09 | `substrate/contracts/__tests__/test_reader_conformance.py`; `oneReader.conformance.test.ts` |
 | 2 | Voice pipeline two owners | `acquisition/voice/` is the single owner; Read+Speak call it | `tests/test_seam_voice_single_owner.py` |
 | 3 | Two `attribution.py` files | Distinct concerns, **one escrow-balance writer** = `ip_holders.accrue_escrow` (corrected post-SPR-03: NOT `publisher_escrow.py`, which is read-only reporting) | `tests/test_seam_single_escrow_writer.py`; invariant suite #3 |
 | 4 | `platform_authored`-from-Speak gating | `provenance_class ∈ {operator_authored, speak_derived}`; speak_derived serves only after the publish gate | `tests/test_seam_platform_authored_gate.py`; invariant suite #4; **e2e M1** |
