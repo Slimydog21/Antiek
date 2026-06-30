@@ -153,6 +153,9 @@ role_tiers:
   parameter_extractor: flash
   connector: pro
   synthesizer: synthesis
+  # Write workflow draft generation. Shares the synthesis tier because prose
+  # quality, citation discipline, and voice gate compliance are user-facing.
+  creative_writer: synthesis
   user_agent: pro
   note_taker: flash
   challenger: pro
