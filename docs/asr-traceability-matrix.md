@@ -27,7 +27,7 @@ Byte-verify discipline: confirm `file:line` on handoff before editing substrate.
 | NULL backfill on prod DB (box) | operator tooling | TBD migration | TBD | — | **SR-06** | **OPEN** |
 | PR #38 §9.0 servability staged until G2/G3 | legal / serve | staged branch | TBD | serve lint cluster | **SR-08** | **OPEN** |
 | P5 chunk provenance (`personal_reading` non-citable) | `tools.codegen` | `tools/codegen/chunk_provenance.py` | `tests/test_conformance_gate.py` | `tools/codegen/check_conformance.py` | **SR-09** | **CLOSED** (P5) |
-| P4 continuous OAI sync under shared flock | `tools.arxiv_oai_sync` | `tools/arxiv_oai_sync.py` | TBD | operator/systemd | **SR-09** | **OPEN** (P4) |
+| P4 continuous OAI sync under shared flock | `tools.arxiv_oai_sync` + systemd timer | `tools/arxiv_oai_sync.py`, `infrastructure/ansible/templates/antiek-arxiv-oai-sync.service.j2`, `infrastructure/ansible/templates/antiek-arxiv-oai-sync.timer.j2` | `tests/test_arxiv_oai_sync.py`, `tests/test_rate_governor.py::test_oai_harvest_send_is_inside_the_host_global_governor_flock`, `tests/test_arxiv_oai_sync_systemd.py` | `tools/lint/rate_governor_check.py`; deploy renders/enables `antiek-arxiv-oai-sync.timer` | **SR-09** | **PARTIAL** (local sync driver + deployable timer landed; live timer enablement / first production run remains operator proof) |
 | P3b live `source_census.json` + D17 capstone | `tools.source_census` | `tools/source_census.py` (`compute_source_census`, `python -m tools.source_census --source ... --out reports/source_census.json`) | `tests/test_source_gate.py` (fixtures + DB-backed producer) | `source_gate.py` enforces when census present | **SR-10** | **PARTIAL** (producer landed; live `reports/source_census.json` emission still requires operator/prod corpus) |
 
 ## PR #43 closed obligations (on main @ `2b59fed`)
@@ -50,7 +50,7 @@ Byte-verify discipline: confirm `file:line` on handoff before editing substrate.
 | **SR-06** | operator / box migration | NULL backfill before flip |
 | **SR-07** | `substrate/graph/search.py` | NULL fail-closed (`GATE-BACKFILL-DONE`) |
 | **SR-08** | PR #38 servability (counsel G2/G3) | Legal §9.0 servability merge |
-| **SR-09** | P4 daemon + P5 codegen | Corpus sync + chunk provenance |
+| **SR-09** | P4 timer + P5 codegen | Corpus sync + chunk provenance (P4 live proof pending) |
 | **SR-10** | `tools/source_census.py` + `reports/source_census.json` | P3b census producer landed; live `source_census.json` still operator-corpus emission |
 
 ## Sequencing (binding)
@@ -59,6 +59,6 @@ Byte-verify discipline: confirm `file:line` on handoff before editing substrate.
 2. **SR-04 → SR-05** (write spine).  
 3. **SR-06 → [GATE-BACKFILL-DONE] → SR-07** (NULL).  
 4. **SR-08** only after **GATE-G2-G3**.  
-5. **SR-09 → SR-10** (corpus compound).
+5. **SR-09 → SR-10** (corpus compound). P4's local driver/timer is present; live timer enablement + first production run remain operator proof before calling SR-09 fully closed.
 
 See `docs/decisions/asr-baseline-2026-06-02.md`.
