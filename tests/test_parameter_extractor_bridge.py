@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 
 import httpx
 import pytest
@@ -163,6 +164,25 @@ def _qual_param() -> dict:
 # ---------------------------------------------------------------------------
 
 
+def test_parameter_extractor_timeout_env_parser(monkeypatch):
+    import interfaces.research.api.parameter_extractor as pe
+
+    monkeypatch.delenv("ANTIEK_PARAMETER_EXTRACTOR_TIMEOUT_S", raising=False)
+    assert pe._parameter_extractor_timeout_s() == 600.0
+
+    monkeypatch.setenv("ANTIEK_PARAMETER_EXTRACTOR_TIMEOUT_S", "not-a-number")
+    assert pe._parameter_extractor_timeout_s() == 600.0
+
+    monkeypatch.setenv("ANTIEK_PARAMETER_EXTRACTOR_TIMEOUT_S", "-10")
+    assert pe._parameter_extractor_timeout_s() == 0.001
+
+    monkeypatch.setenv("ANTIEK_PARAMETER_EXTRACTOR_TIMEOUT_S", "0")
+    assert pe._parameter_extractor_timeout_s() == 0.001
+
+    monkeypatch.setenv("ANTIEK_PARAMETER_EXTRACTOR_TIMEOUT_S", "1.25")
+    assert pe._parameter_extractor_timeout_s() == 1.25
+
+
 @pytest.mark.asyncio
 async def test_happy_path_emits_delivered_with_parameters_and_constraints(
     monkeypatch, app_and_bus, async_client,
@@ -213,6 +233,67 @@ async def test_provider_unavailable_falls_back(
     assert p.parameters == []
     assert p.constraints == []
     assert e.policy_id == "parameter-extractor-fallback/no-provider"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_timeout_falls_back_without_hanging(
+    monkeypatch, app_and_bus, async_client,
+):
+    _, bus = app_and_bus
+    inv = "inv-pe-timeout"
+    monkeypatch.setenv("ANTIEK_PARAMETER_EXTRACTOR_TIMEOUT_S", "0.01")
+
+    import interfaces.research.api.parameter_extractor as pe
+
+    def wedged_dispatch(prompt, event):
+        del prompt, event
+        time.sleep(0.20)
+        raise AssertionError("timeout wrapper should stop awaiting this call")
+
+    monkeypatch.setattr(pe, "_dispatch_and_parse", wedged_dispatch)
+
+    await _post_request(async_client, investigation_id=inv)
+    await bus.wait_for_handlers(timeout=2.0)
+
+    delivered = [
+        r for r in trajectory(inv)
+        if r["action_type"] == ActionType.PARAMETER_EXTRACT_DELIVERED.value
+    ]
+    assert len(delivered) == 1
+    e = Event.model_validate(delivered[0])
+    p = e.payload
+    assert p.parameters == []
+    assert p.constraints == []
+    assert e.policy_id == "parameter-extractor-fallback/timeout"
+
+
+@pytest.mark.asyncio
+async def test_unexpected_dispatch_error_falls_back(
+    monkeypatch, app_and_bus, async_client,
+):
+    _, bus = app_and_bus
+    inv = "inv-pe-unexpected"
+
+    import interfaces.research.api.parameter_extractor as pe
+
+    def broken_dispatch(prompt, event):
+        del prompt, event
+        raise RuntimeError("worker pool broke")
+
+    monkeypatch.setattr(pe, "_dispatch_and_parse", broken_dispatch)
+
+    await _post_request(async_client, investigation_id=inv)
+    await bus.wait_for_handlers(timeout=2.0)
+
+    delivered = [
+        r for r in trajectory(inv)
+        if r["action_type"] == ActionType.PARAMETER_EXTRACT_DELIVERED.value
+    ]
+    assert len(delivered) == 1
+    e = Event.model_validate(delivered[0])
+    assert e.payload.parameters == []
+    assert e.payload.constraints == []
+    assert e.policy_id == "parameter-extractor-fallback/unexpected-error"
 
 
 @pytest.mark.asyncio
