@@ -94,16 +94,22 @@ def verify_manifest(
 ) -> list[str]:
     """Verify live tools against a manifest.
 
-    Returns a list of tool names whose descriptions drifted. An empty
-    list means all tools match — safe to proceed.
+    Returns a list of tool names whose manifest entries drifted from the
+    live server. An empty list means the static manifest and live
+    ``tools/list`` response contain the same tool names with the same
+    descriptions — safe to proceed.
     """
     manifest_hashes: dict[str, str] = {
         entry["name"]: entry["description_sha256"]
         for entry in manifest.get("tools", [])
     }
+    live_names = {t["name"] for t in tools}
     drifted: list[str] = []
     for t in tools:
         expected = manifest_hashes.get(t["name"])
         if expected is None or not verify_tool_hash(t["name"], t["description"], expected):
             drifted.append(t["name"])
+    for name in manifest_hashes:
+        if name not in live_names:
+            drifted.append(name)
     return drifted
