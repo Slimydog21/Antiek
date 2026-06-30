@@ -56,9 +56,8 @@ fix_commit: SPR-02
 
 notes: |
   Closed together with banned-until-sentinel-absent (same
-  ArxivThrottle mechanism — the sentinel IS the throttle's ban
-  state). See also: arxiv-missing-ssl-env (still GAP — needs a
-  broader runtime/ssl_bootstrap helper, out of SPR-02 scope),
-  undersized-metadata-cache (still GAP). Alternate-source (PDF/S2)
-  fallback on ban is a future enhancement; the cross-process pause
+  ArxivThrottle mechanism — the sentinel IS the throttle's ban state).
+  Sibling fixtures arxiv-missing-ssl-env and undersized-metadata-cache
+  are now closed by their own harnesses. Alternate-source (PDF/S2)
+  fallback on ban remains a future enhancement; the cross-process pause
   is the invariant-respecting fix shipped here.
