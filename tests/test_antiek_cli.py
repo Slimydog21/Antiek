@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 import pytest
 
+from tools.antiek_cli import __main__ as antiek_cli_main
 from tools.antiek_cli.check import (
     ALL_ORDER,
     DEFAULT_SCOPE,
@@ -181,3 +182,29 @@ def test_main_skip_returns_zero() -> None:
         "props", -1, 0.0, skipped_reason="x")
     with patch.dict("tools.antiek_cli.check.RUNNERS", {"props": fake}, clear=False):
         assert main(["props"]) == 0
+
+
+def test_package_entrypoint_accepts_documented_check_namespace() -> None:
+    seen: list[list[str]] = []
+
+    def fake_check_main(argv: list[str] | None = None) -> int:
+        seen.append(list(argv or []))
+        return 0
+
+    with patch("tools.antiek_cli.__main__.check_main", fake_check_main):
+        assert antiek_cli_main.main(["check", "props"]) == 0
+
+    assert seen == [["props"]]
+
+
+def test_package_entrypoint_keeps_direct_subcommand_alias() -> None:
+    seen: list[list[str]] = []
+
+    def fake_check_main(argv: list[str] | None = None) -> int:
+        seen.append(list(argv or []))
+        return 0
+
+    with patch("tools.antiek_cli.__main__.check_main", fake_check_main):
+        assert antiek_cli_main.main(["props"]) == 0
+
+    assert seen == [["props"]]
