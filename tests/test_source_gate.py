@@ -15,6 +15,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import duckdb
 import pytest
 
 from tools.source_census import (
@@ -23,6 +24,7 @@ from tools.source_census import (
     METADATA_COMPLETE_MIN,
     REFERENCE_SOURCE,
     SourceCensus,
+    compute_source_census,
     evaluate,
     gate_failures,
     load_censuses,
@@ -45,8 +47,204 @@ def _census(source="web", **over):
     return SourceCensus(**base)
 
 
+def _documents_con():
+    con = duckdb.connect(":memory:")
+    con.execute(
+        """
+        CREATE TABLE documents (
+            document_id TEXT,
+            source_uri TEXT,
+            title TEXT,
+            author TEXT,
+            raw_text TEXT,
+            metadata TEXT,
+            content_class TEXT
+        )
+        """
+    )
+    return con
+
+
+def _insert_doc(
+    con,
+    document_id,
+    *,
+    source_uri=None,
+    title=None,
+    author=None,
+    raw_text=None,
+    metadata=None,
+    content_class=None,
+):
+    con.execute(
+        "INSERT INTO documents VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+            document_id,
+            source_uri,
+            title,
+            author,
+            raw_text,
+            json.dumps(metadata or {}),
+            content_class,
+        ],
+    )
+
+
 def test_clean_source_passes():
     assert gate_failures(_census()) == []
+
+
+def test_compute_source_census_measures_arxiv_rows_with_dedup_overlap():
+    con = _documents_con()
+    _insert_doc(
+        con,
+        "doc-arxiv-2401.00001v1",
+        source_uri="https://arxiv.org/abs/2401.00001v1",
+        title="Same Paper",
+        author="Ada",
+        raw_text="x" * 240,
+        metadata={
+            "source": "arxiv_oai_pmh",
+            "arxiv_id": "2401.00001v1",
+            "rights_tier": "T1",
+            "license_content_class": "source_declared_open",
+        },
+        content_class="source_declared_open",
+    )
+    _insert_doc(
+        con,
+        "doc-arxiv-2401.00001v2",
+        source_uri="https://arxiv.org/abs/2401.00001v2",
+        title="Same Paper Revised",
+        author="Ada",
+        raw_text="y" * 240,
+        metadata={
+            "source": "arxiv_oai_pmh",
+            "arxiv_id": "2401.00001v2",
+            "rights_tier": "T3",
+            "license_content_class": "restricted_pending_opt_in",
+        },
+        content_class="restricted_pending_opt_in",
+    )
+    _insert_doc(
+        con,
+        "doc-arxiv-2402.00002",
+        source_uri=None,
+        title=None,
+        author="Babbage",
+        metadata={
+            "arxiv_id": "2402.00002",
+            "rights_tier": "T2",
+            "license_content_class": "restricted_pending_opt_in",
+        },
+        content_class="restricted_pending_opt_in",
+    )
+    _insert_doc(
+        con,
+        "doc-web-outside",
+        source_uri="https://example.com/a",
+        title="Outside",
+        metadata={"source": "web", "source_id": "outside"},
+    )
+
+    census = compute_source_census(con, REFERENCE_SOURCE)
+
+    assert census == SourceCensus(
+        source=REFERENCE_SOURCE,
+        total=3,
+        t1_pct=33.333,
+        open_pct=66.667,
+        metadata_complete_pct=66.667,
+        dedup_overlap_pct=33.333,
+        linkback_resolvable_pct=66.667,
+    )
+
+
+def test_compute_source_census_measures_declared_non_reference_source():
+    con = _documents_con()
+    _insert_doc(
+        con,
+        "doc-feed-1",
+        source_uri="https://feed.example/post-1",
+        title="Feed Post",
+        author="Author",
+        raw_text="z" * 240,
+        metadata={"source": "feeds", "source_id": "post-1"},
+        content_class="personal_reading",
+    )
+    _insert_doc(
+        con,
+        "doc-feed-duplicate",
+        source_uri="https://feed.example/post-1-copy",
+        title="Feed Post Copy",
+        author="Author",
+        raw_text="different body",
+        metadata={"source": "feeds", "source_id": "post-1"},
+        content_class="personal_reading",
+    )
+    _insert_doc(
+        con,
+        "doc-other",
+        source_uri="https://other.example/post",
+        title="Other",
+        metadata={"source": "other", "source_id": "post"},
+    )
+
+    census = compute_source_census(con, "feeds")
+
+    assert census.total == 2
+    assert census.metadata_complete_pct == 100.0
+    assert census.linkback_resolvable_pct == 100.0
+    assert census.dedup_overlap_pct == 50.0
+    assert census.t1_pct == 0.0
+    assert census.open_pct == 0.0
+
+
+def test_compute_source_census_without_source_id_falls_through_to_content_hash():
+    con = _documents_con()
+    body = "same normalized body " * 20
+    _insert_doc(
+        con,
+        "doc-feed-1",
+        source_uri="https://feed.example/post-1",
+        title="Feed Post",
+        author="Author",
+        raw_text=body,
+        metadata={"source": "feeds"},
+        content_class="personal_reading",
+    )
+    _insert_doc(
+        con,
+        "doc-feed-2",
+        source_uri="https://feed.example/post-2",
+        title="Feed Post Mirror",
+        author="Author",
+        raw_text=body,
+        metadata={"source": "feeds"},
+        content_class="personal_reading",
+    )
+
+    census = compute_source_census(con, "feeds")
+
+    assert census.total == 2
+    assert census.dedup_overlap_pct == 50.0
+
+
+def test_compute_source_census_empty_source_returns_structural_failure_row():
+    con = _documents_con()
+
+    census = compute_source_census(con, "feeds")
+
+    assert census == SourceCensus(
+        source="feeds",
+        total=0,
+        t1_pct=0.0,
+        open_pct=0.0,
+        metadata_complete_pct=0.0,
+        dedup_overlap_pct=0.0,
+        linkback_resolvable_pct=0.0,
+    )
+    assert gate_failures(census)
 
 
 def test_metadata_incomplete_fails():
