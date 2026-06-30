@@ -333,8 +333,8 @@ export default function UnifiedSearch({
           disabled={start.busy || Boolean(start.startedId && !start.failed)}
           className={
             variant === "library"
-              ? "flex-1 bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright rounded-md px-3 py-1.5 text-sm outline-none border border-rule dark:border-charcoal-1"
-              : "w-full font-serif text-[15px] leading-relaxed bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright rounded-hog border border-rule dark:border-charcoal-1 px-3 py-2 outline-none"
+              ? "flex-1 bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright rounded-md px-3 py-1.5 text-sm outline-none border border-rule dark:border-charcoal-1 focus-visible:ring-2 focus-visible:ring-sun focus-visible:ring-offset-2 focus-visible:ring-offset-ice-0 dark:focus-visible:ring-offset-charcoal-2"
+              : "w-full font-serif text-[15px] leading-relaxed bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright rounded-hog border border-rule dark:border-charcoal-1 px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-sun focus-visible:ring-offset-2 focus-visible:ring-offset-ice-0 dark:focus-visible:ring-offset-charcoal-2"
           }
         />
         {variant === "library" && (

@@ -33,6 +33,8 @@ export type LemonButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 const base =
   "inline-flex items-center justify-center gap-2 font-mono font-semibold " +
   "border-edge rounded-hog " +
+  "focus:outline-none focus-visible:ring-2 focus-visible:ring-sun focus-visible:ring-offset-2 " +
+  "focus-visible:ring-offset-ice-0 dark:focus-visible:ring-offset-charcoal-2 " +
   "disabled:opacity-50 disabled:pointer-events-none";
 
 const variants: Record<Variant, string> = {

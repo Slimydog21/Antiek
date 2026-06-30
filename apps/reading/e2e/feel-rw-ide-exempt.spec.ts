@@ -16,13 +16,26 @@ async function clearWorkspacePersistence(page: import("@playwright/test").Page) 
   });
 }
 
+async function resolvedSunRgb(page: import("@playwright/test").Page) {
+  return page.evaluate(() => {
+    const probe = document.createElement("span");
+    probe.style.color = getComputedStyle(document.documentElement)
+      .getPropertyValue("--sun")
+      .trim();
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  });
+}
+
 test.describe("FEEL-S4 — ResearchWorkstation IDE exempt", () => {
   test("research landing has no floating opaque stack chrome", async ({
     page,
   }) => {
     await clearWorkspacePersistence(page);
     await loginAndGotoApp(page, "/");
-    await expect(page.locator("textarea").first()).toBeVisible({
+    await expect(page.getByRole("searchbox", { name: "Unified search" })).toBeVisible({
       timeout: 15_000,
     });
 
@@ -44,11 +57,16 @@ test.describe("FEEL-S4 — ResearchWorkstation IDE exempt", () => {
   test("composer control exposes sun focus-visible ring", async ({ page }) => {
     await clearWorkspacePersistence(page);
     await loginAndGotoApp(page, "/");
-    const textarea = page.locator("textarea").first();
-    await expect(textarea).toBeVisible({ timeout: 10_000 });
-    await textarea.focus();
-    await expect(textarea).toBeFocused();
-    const ring = await textarea.evaluate((el) => getComputedStyle(el).outlineColor);
-    expect(ring).toBeTruthy();
+    const searchbox = page.getByRole("searchbox", { name: "Unified search" });
+    await expect(searchbox).toBeVisible({ timeout: 10_000 });
+    await searchbox.focus();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
+    await expect(searchbox).toBeFocused();
+    const sun = await resolvedSunRgb(page);
+    const boxShadow = await searchbox.evaluate(
+      (el) => getComputedStyle(el).boxShadow,
+    );
+    expect(boxShadow).toContain(sun);
   });
 });

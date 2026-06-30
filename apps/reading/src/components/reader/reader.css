@@ -26,8 +26,8 @@
 .reader-math-fallback code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.85em;
-  background: rgba(249, 189, 43, 0.12); /* sun-yellow wash */
-  border: 1px dashed var(--sun, #d99e10);
+  background: var(--sun-hl-faint); /* sun-yellow wash */
+  border: 1px dashed var(--sun);
   border-radius: 4px;
   padding: 0.05em 0.35em;
   color: inherit;
