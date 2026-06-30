@@ -587,7 +587,7 @@ hr.divider {
   <h1>Antiek Auth Diagnostic Precision</h1>
   <p class="tagline">Make login failures mechanically diagnosable — Layer A (transport) vs Layer B (policy/delivery) — with zero conflation and operator-grade verification gates.</p>
   <div class="meta-row">
-    <span class="tag tag--blue"><span class="dot"></span>Status: Ready to execute</span>
+    <span class="tag tag--yellow"><span class="dot"></span>Status: Executed locally · SPR-06 prod block</span>
     <span class="tag tag--yellow"><span class="dot"></span>Target: <span class="mono">/Users/slimydog/Desktop/Antiek</span></span>
     <span class="tag tag--grey">6 sprints · 3 waves</span>
     <span class="tag tag--grey">Generated 2026-06-02</span>
@@ -605,7 +605,12 @@ hr.divider {
     <li>Expired/invalid magic links clicked from email show operator-grade copy (API HTML or frontend <code>?error=</code>), not anonymous JSON on <code>api.antiek.ai</code>.</li>
     <li><code>tools/auth_probe.py</code> (composed with <code>prod_parity</code>) exits 0/1/2 with staged checks documented in handoff.</li>
     <li>Playwright tier-B spec: mock provider link → callback → cookie → <code>/auth/me</code> 200; one expired-token path.</li>
-    <li><code>ANTIEK_OPERATOR_EMAIL</code> comma-list works identically in <code>auth.py</code> allowlist <em>and</em> <code>app.py</code> session middleware; <code>the@faisalnazer.com</code> onboarded on production with pasted probe output.</li>
+    <li><code>ANTIEK_OPERATOR_EMAIL</code> comma-list works identically in <code>auth.py</code> allowlist <em>and</em> <code>app.py</code> session middleware; production onboarding for <code>the@faisalnazer.com</code> remains blocked on operator SSH approval and must be proven with pasted probe output before SPR-06 is closed.</li>
+  </ul>
+  <h3>Execution status</h3>
+  <ul>
+    <li>SPR-01 through SPR-05 are done per <code>.caffenagent/run-ledger.md</code> with matrix, taxonomy, callback, auth probe, and hermetic login-e2e proof merged.</li>
+    <li>SPR-06 local multi-email behavior is tested, but M3 production allowlist update is blocked on operator approval; do not claim production onboarding until the live allowlist and auth probe evidence are captured.</li>
   </ul>
   <h3>Failure mode to avoid</h3>
   <p>UI-only renames (“say Offline instead of Failed to fetch”) while API and middleware still conflate layers — craftsmanship that is easy to vary and fails under hostile re-read.</p>
@@ -651,13 +656,13 @@ Layer B: HTTP completes — sent:true w/o mail, 503 email_delivery_failed, callb
       <span class="id">SPR-01</span>
       <span class="title">Failure-mode matrix &amp; contract</span>
       <span class="goal">Freeze Layer A/B taxonomy, ops false positives, discriminant commands.</span>
-      <span class="footer"><span class="tag tag--blue">Wave 1</span><span class="tag tag--grey">~1.0 PD</span><span class="tag tag--green"><span class="dot"></span>Keystone</span></span>
+      <span class="footer"><span class="tag tag--blue">Wave 1</span><span class="tag tag--green"><span class="dot"></span>Done</span><span class="tag tag--green"><span class="dot"></span>Keystone</span></span>
     </a>
     <a class="sprint-card" href="sprint-02-login-error-taxonomy.html">
       <span class="id">SPR-02</span>
       <span class="title">Login client error taxonomy</span>
       <span class="goal">Replace raw browser strings with stable codes + operator copy.</span>
-      <span class="footer"><span class="tag tag--blue">Wave 1</span><span class="tag tag--grey">~1.5 PD</span></span>
+      <span class="footer"><span class="tag tag--blue">Wave 1</span><span class="tag tag--green"><span class="dot"></span>Done</span></span>
     </a>
   </div>
 
@@ -667,13 +672,13 @@ Layer B: HTTP completes — sent:true w/o mail, 503 email_delivery_failed, callb
       <span class="id">SPR-03</span>
       <span class="title">Callback error surface</span>
       <span class="goal">Email-click path: API redirect/HTML → antiek.ai/login?error=</span>
-      <span class="footer"><span class="tag tag--blue">Wave 2</span><span class="tag tag--grey">~2.0 PD</span></span>
+      <span class="footer"><span class="tag tag--blue">Wave 2</span><span class="tag tag--green"><span class="dot"></span>Done</span></span>
     </a>
     <a class="sprint-card" href="sprint-04-auth-probe.html">
       <span class="id">SPR-04</span>
       <span class="title">Auth probe (composed)</span>
       <span class="goal">Staged CLI probe; extend prod_parity — no duplicate checker.</span>
-      <span class="footer"><span class="tag tag--blue">Wave 2</span><span class="tag tag--grey">~1.5 PD</span></span>
+      <span class="footer"><span class="tag tag--blue">Wave 2</span><span class="tag tag--green"><span class="dot"></span>Done</span></span>
     </a>
   </div>
 
@@ -683,13 +688,13 @@ Layer B: HTTP completes — sent:true w/o mail, 503 email_delivery_failed, callb
       <span class="id">SPR-05</span>
       <span class="title">Playwright login e2e (tier B)</span>
       <span class="goal">MockEmailProvider link → callback → cookie → /auth/me.</span>
-      <span class="footer"><span class="tag tag--blue">Wave 3</span><span class="tag tag--grey">~2.5 PD</span></span>
+      <span class="footer"><span class="tag tag--blue">Wave 3</span><span class="tag tag--green"><span class="dot"></span>Done</span></span>
     </a>
     <a class="sprint-card" href="sprint-06-multi-email-allowlist.html">
       <span class="id">SPR-06</span>
       <span class="title">Multi-email allowlist &amp; prod onboarding</span>
-      <span class="goal">Middleware split + the@faisalnazer.com + probe evidence.</span>
-      <span class="footer"><span class="tag tag--blue">Wave 3</span><span class="tag tag--grey">~1.5 PD</span></span>
+      <span class="goal">Middleware split locally verified; the@faisalnazer.com production proof awaits operator SSH approval.</span>
+      <span class="footer"><span class="tag tag--blue">Wave 3</span><span class="tag tag--yellow"><span class="dot"></span>Blocked M3</span></span>
     </a>
   </div>
 </section>
