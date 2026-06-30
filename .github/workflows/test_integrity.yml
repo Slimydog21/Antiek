@@ -1,0 +1,108 @@
+# Test-integrity floor — Antiek × Beck Test-Integrity spec
+# (~/specs/antiek-beck-test-integrity/). Wires SPR-02 (fake-gate detector),
+# SPR-03 (desiderata lint), and SPR-05 (mock-budget gate) as one additive
+# workflow. Each step is INFORMATIONAL per docs/decisions/ci-informational-gates.md:
+# it runs, prints full findings to the log, surfaces a ::warning:: on nonzero
+# tool exit, and always exits 0 so the job never reds on a grandfathered backlog.
+# Flip-to-blocking is operator-only, one gate at a time, per
+# docs/decisions/test-integrity-ci-floor.md. ci.yml and the other four
+# workflows are NOT edited here.
+
+name: test-integrity
+
+on:
+  pull_request:
+    paths:
+      - 'tools/test_census.py'
+      - 'tools/test_census_baseline.json'
+      - 'tools/fake_gate_detector.py'
+      - 'tools/flaky_quarantine.py'
+      - 'tools/flaky_quarantine_pytest.py'
+      - 'tools/pytest_quarantine_plugin.py'
+      - 'tools/lint/**'
+      - 'tools/lints/baselines/**'
+      - 'tools/tests/**'
+      - 'mutants/**'
+      - 'tests/quarantine.toml'
+      - '.github/workflows/test_integrity.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/test_census.py'
+      - 'tools/test_census_baseline.json'
+      - 'tools/fake_gate_detector.py'
+      - 'tools/flaky_quarantine.py'
+      - 'tools/flaky_quarantine_pytest.py'
+      - 'tools/pytest_quarantine_plugin.py'
+      - 'tools/lint/**'
+      - 'tools/lints/baselines/**'
+      - 'tools/tests/**'
+      - 'mutants/**'
+      - 'tests/quarantine.toml'
+      - '.github/workflows/test_integrity.yml'
+
+concurrency:
+  group: test-integrity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-integrity-floor:
+    name: test-integrity-floor
+    runs-on: ubuntu-latest
+    # Fake-gate detector runs bounded mutation (9 mutants × pytest selectors);
+    # budget is well under the main-suite ceiling but leave headroom.
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install (core + dev extras the detector selectors need)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,arxiv,pdf,urls,embedding,youtube,rss]"
+
+      - name: Fake-gate detector (informational)
+        # SPR-02: bounded mutation-lite. --enforce prints the full survivor
+        # report (path:line, rationale, selector) to the log, then exits 1 ONLY
+        # on a NEW fake gate not in mutants/survivors_baseline.json.
+        # Grandfathered survivors still print (loud, not silenced) but exit 0.
+        run: |
+          set +e
+          python -m tools.fake_gate_detector --enforce
+          rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning title=Fake-gate detector is informational on CI::NEW fake-gate finding(s) detected (exit $rc). Full path:line list above. Flip to blocking per docs/decisions/test-integrity-ci-floor.md when the reconsider-if is met."
+          fi
+          exit 0
+
+      - name: Test-desiderata lint (informational)
+        # SPR-03: AST lint over tests/. Prints every path:line violation to
+        # stdout before exiting 1 on any finding backlog.
+        run: |
+          set +e
+          python -m tools.lint.test_desiderata_check --rule all
+          rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning title=Test-desiderata lint is informational on CI::Desiderata violation backlog present (exit $rc). Full path:line list above. Flip to blocking per docs/decisions/test-integrity-ci-floor.md when the reconsider-if is met."
+          fi
+          exit 0
+
+      - name: Mock-budget gate (informational)
+        # SPR-05: per-module mock-ratio one-way ratchet against
+        # tools/lints/baselines/mock_budget.json. Prints offending tests on
+        # upward regression before exiting 1.
+        run: |
+          set +e
+          python -m tools.lint.mock_budget_check enforce \
+            --baseline-file tools/lints/baselines/mock_budget.json
+          rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning title=Mock-budget gate is informational on CI::Mock-ratio regression detected (exit $rc). Module + offending tests above. Flip to blocking per docs/decisions/test-integrity-ci-floor.md when the reconsider-if is met."
+          fi
+          exit 0
