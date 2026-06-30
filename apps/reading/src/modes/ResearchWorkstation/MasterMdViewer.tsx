@@ -585,7 +585,7 @@ interface ResolvedSource {
 /** Derive a "p.NNN" locator from a section_path, when present. */
 function locatorFromSectionPath(sectionPath: string | null): string | null {
   if (!sectionPath) return null;
-  const m = sectionPath.match(/p\.?\s*(\d+)/i);
+  const m = sectionPath.match(/\b(?:Page|p\.?)\s*(\d+)\b/i);
   return m ? `p.${m[1]}` : null;
 }
 

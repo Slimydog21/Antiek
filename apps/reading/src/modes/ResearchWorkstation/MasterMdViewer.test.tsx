@@ -157,6 +157,29 @@ describe("MasterMdViewer — named-source read (M1)", () => {
     expect(screen.queryByText("c1")).toBeNull();
   });
 
+  it("normalizes Page N source paths and opens them on the same reader page", async () => {
+    getChunkMock.mockResolvedValue(
+      chunk({
+        chunk_id: "c1",
+        document_id: "doc-1",
+        document_title: "On Growth and Form",
+        section_path: "Page 17 · Section 3.2",
+      }),
+    );
+    render(<MasterMdViewer synthesis={synth()} />);
+
+    const source = await screen.findByTitle("Click to preview · ⌘-click to open the source");
+    expect(source.textContent).toBe("from On Growth and Form, p.17");
+
+    fireEvent.click(source, { metaKey: true });
+    await waitFor(() =>
+      expect(openDocumentMock).toHaveBeenCalledWith("doc-1", {
+        page: 16,
+        chunkId: "c1",
+      }),
+    );
+  });
+
   it("collapses many chunks of one document into one named source", async () => {
     getChunkMock.mockImplementation(async (id: string) =>
       chunk({ chunk_id: id, document_id: "doc-1", document_title: "One Paper" }),
