@@ -41,6 +41,7 @@ const GROUPS: { title: string; routes: RouteEntry[] }[] = [
       { path: "/loop-3", title: "Loop 3 checklist", description: "RL unlock criteria + env gate (§14.2)" },
       { path: "/operator", title: "Operator dashboard", description: "Composite operator-facing snapshot" },
       { path: "/operator/payouts/dashboard", title: "Payout dashboard", description: "Unified creator + publisher accrual view" },
+      { path: "/me/payouts", title: "Creator payouts", description: "Your scoped creator payout ledger" },
       { path: "/marketplace", title: "Marketplace metrics", description: "Creator, publisher, and advertiser health snapshot" },
     ],
   },

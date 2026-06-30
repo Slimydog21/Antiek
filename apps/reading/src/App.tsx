@@ -13,6 +13,7 @@ import Coordination from "./modes/Coordination";
 import CostConsent from "./modes/Coordination/CostConsent";
 import CreationStudio from "./modes/CreationStudio";
 import CrossGraphCitations from "./modes/CrossGraphCitations";
+import CreatorPayouts from "./modes/CreatorPayouts";
 import DocumentsIndex from "./modes/DocumentsIndex";
 import Federation from "./modes/Federation";
 import Home from "./modes/Home/Home";
@@ -178,6 +179,7 @@ function AuthenticatedRoutes() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/operator" element={<OperatorDashboard />} />
         <Route path="/operator/payouts/dashboard" element={<PayoutDashboard />} />
+        <Route path="/me/payouts" element={<CreatorPayouts />} />
         <Route path="/marketplace" element={<MarketplaceMetrics />} />
         {/* antiek-unified SPR-05 — read-only coordination surface (gate ledger
             + 45-sprint roadmap). Slots into the SPR-04 shared/operator bucket

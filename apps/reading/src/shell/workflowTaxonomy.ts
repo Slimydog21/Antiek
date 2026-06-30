@@ -572,10 +572,19 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     sharedReason: "IP-economics audit; governance, not a workflow tool.",
   },
   // Sprint 23-25+ economics surfaces. They are operator/advertiser/creator
-  // governance surfaces, not one of the four workflows. AdvertiserConsole and
-  // CreatorPayouts remain deleted orphan concepts until a real routed contract
-  // returns their required shapes; only the two read-only dashboards below are
-  // mounted in this build.
+  // governance surfaces, not one of the four workflows. AdvertiserConsole
+  // remains a deleted orphan concept until a real routed backend contract
+  // returns its required campaign-performance shape.
+  {
+    id: "CreatorPayouts",
+    workflow: "shared",
+    label: "Creator payouts",
+    blurb: "User-facing self-service payout view (Sprint 23-24).",
+    built: true,
+    route: "/me/payouts",
+    sharedReason:
+      "Read-only self-service IP-economics view (Sprint 23-24); scoped to the authenticated creator.",
+  },
   {
     id: "PayoutDashboard",
     workflow: "shared",
