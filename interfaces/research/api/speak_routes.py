@@ -120,24 +120,24 @@ def _translate() -> Iterator[None]:
     try:
         yield
     except (ScopedConsentRequired, ConsentRequired, PublicEcosystemGated) as e:
-        raise HTTPException(status_code=403, detail=str(e))
+        raise HTTPException(status_code=403, detail=str(e)) from e
     except (PublishBlocked, DisbursementBlocked) as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except AsrError as e:
         # Transcription couldn't run (no model provider configured, or the
         # provider failed). The honest answer is "we couldn't turn your
         # recording into words" — never a fabricated transcript. 503 because
         # it's a missing/temporarily-unavailable capability, not a bad token.
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 def _decimal(value: str, field: str) -> Decimal:
     try:
         return Decimal(value)
-    except (InvalidOperation, TypeError):
-        raise HTTPException(status_code=400, detail=f"{field} must be a decimal string")
+    except (InvalidOperation, TypeError) as e:
+        raise HTTPException(status_code=400, detail=f"{field} must be a decimal string") from e
 
 
 # ---------------------------------------------------------------------------
@@ -217,7 +217,7 @@ class ClaimRequest(BaseModel):
     about_subject: bool = False
     subject_ref: str | None = None
     speaker_is_subject: bool = False
-    confidence: float = 0.5
+    confidence: float = Field(0.5, ge=0.0, le=1.0, allow_inf_nan=False)
 
 
 class SubjectConsentRequest(BaseModel):

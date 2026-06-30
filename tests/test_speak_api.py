@@ -55,6 +55,19 @@ def _invite_and_attest(client, project_id, email, claim_text, subject="the-dad")
     return interview_id
 
 
+def test_claim_endpoint_rejects_out_of_range_confidence(client):
+    project_id = client.post("/speak/projects", json={"title": "Bio"}).json()["project_id"]
+    iv = client.post(
+        f"/speak/projects/{project_id}/invites",
+        json={"informant_email": "a@x.com"},
+    ).json()
+    resp = client.post(
+        f"/speak/interviews/{iv['interview_id']}/claims",
+        json={"text": "He ran the bakery.", "confidence": 1.1},
+    )
+    assert resp.status_code == 422
+
+
 # ── full journey ────────────────────────────────────────────────────────
 
 
@@ -411,6 +424,6 @@ def test_release_payout_accrues_to_escrow_no_disbursement(client, monkeypatch):
     assert r.status_code == 201, r.text
     body = r.json()
     # Routed via §9: accrual lines exist with share fractions (not a flat fee).
-    assert any(l["interview_id"] == interview_id for l in body["accrual_lines"])
+    assert any(line["interview_id"] == interview_id for line in body["accrual_lines"])
     # spent accrued to escrow (a real dollar figure because ad_revenue>0).
     assert "spent_usd" in body

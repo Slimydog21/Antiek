@@ -23,6 +23,7 @@ is third-party.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -64,6 +65,7 @@ def record_claim(
     an interviewee makes purely about themselves is not third-party.
     """
     ensure_speak_schema(con)
+    _validate_confidence(confidence)
     cid = claim_id or new_claim_id(project_id, text, interview_id)
     is_third_party = bool(
         (about_subject or subject_ref is not None) and not speaker_is_subject
@@ -134,3 +136,15 @@ def list_claims(
         + " ORDER BY created_at"
     )
     return [get_claim(con, r[0]) for r in con.execute(sql, [project_id]).fetchall()]
+
+
+def _validate_confidence(confidence: float) -> None:
+    if (
+        isinstance(confidence, bool)
+        or not isinstance(confidence, int | float)
+        or not math.isfinite(float(confidence))
+        or not 0.0 <= float(confidence) <= 1.0
+    ):
+        raise ValueError(
+            f"claim confidence must be a finite number in [0, 1], got {confidence!r}"
+        )
