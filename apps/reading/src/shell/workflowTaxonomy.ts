@@ -572,9 +572,18 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     sharedReason: "IP-economics audit; governance, not a workflow tool.",
   },
   // Sprint 23-25+ economics surfaces. They are operator/advertiser/creator
-  // governance surfaces, not one of the four workflows. AdvertiserConsole
-  // remains a deleted orphan concept until a real routed backend contract
-  // returns its required campaign-performance shape.
+  // governance surfaces, not one of the four workflows. Keep built=false when
+  // a component exists but no production route/API contract is mounted yet.
+  {
+    id: "AdvertiserConsole",
+    workflow: "shared",
+    label: "Advertiser console",
+    blurb: "Operator-only ad inventory + campaign console (Sprint 23-24).",
+    built: true,
+    route: "/operator/advertiser-campaigns",
+    sharedReason:
+      "Operator-only ad-economics console (Sprint 23-24); manual campaign management, not advertiser self-service.",
+  },
   {
     id: "CreatorPayouts",
     workflow: "shared",

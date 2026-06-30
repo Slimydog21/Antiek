@@ -179,19 +179,28 @@ describe("workflowTaxonomy built-flag + shared-bucket integrity", () => {
 describe("Sprint 25+ economics dashboard route integrity", () => {
   const dashboards = [
     {
+      id: "AdvertiserConsole",
+      route: "/operator/advertiser-campaigns",
+      component: "AdvertiserConsole",
+      sharedReason: /operator-only/i,
+    },
+    {
       id: "PayoutDashboard",
       route: "/operator/payouts/dashboard",
       component: "PayoutDashboard",
+      sharedReason: /read-only/i,
     },
     {
       id: "CreatorPayouts",
       route: "/me/payouts",
       component: "CreatorPayouts",
+      sharedReason: /read-only/i,
     },
     {
       id: "MarketplaceMetrics",
       route: "/marketplace",
       component: "MarketplaceMetrics",
+      sharedReason: /read-only/i,
     },
   ] as const;
 
@@ -202,7 +211,7 @@ describe("Sprint 25+ economics dashboard route integrity", () => {
       expect(entry?.workflow).toBe("shared");
       expect(entry?.built).toBe(true);
       expect(entry?.route).toBe(dashboard.route);
-      expect(entry?.sharedReason).toMatch(/read-only/i);
+      expect(entry?.sharedReason).toMatch(dashboard.sharedReason);
     }
   });
 
@@ -225,10 +234,6 @@ describe("Sprint 25+ economics dashboard route integrity", () => {
     }
   });
 
-  it("keeps deleted advertiser console out of taxonomy until its contract exists", () => {
-    expect(modeById("AdvertiserConsole")).toBeUndefined();
-  });
-
   it("keeps CreatorPayouts on the scoped /me/payouts contract", () => {
     const app = readSrc("App.tsx");
     const component = readSrc("modes/CreatorPayouts/index.tsx");
@@ -239,6 +244,16 @@ describe("Sprint 25+ economics dashboard route integrity", () => {
     expect(app).toContain('<Route path="/me/payouts" element={<CreatorPayouts />} />');
     expect(component).toContain('apiFetch("/me/payouts")');
     expect(component).not.toContain("/creator-payouts/");
+  });
+
+  it("keeps AdvertiserConsole on the operator-only campaign contract", () => {
+    const component = readSrc("modes/AdvertiserConsole/index.tsx");
+    const advertiser = modeById("AdvertiserConsole");
+    expect(advertiser?.built).toBe(true);
+    expect(advertiser?.route).toBe("/operator/advertiser-campaigns");
+    expect(advertiser?.sharedReason).toMatch(/operator-only/i);
+    expect(component).toContain('apiFetch("/operator/advertiser-campaigns")');
+    expect(component).not.toContain("/advertiser-self-service");
   });
 });
 

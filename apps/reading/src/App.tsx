@@ -25,6 +25,7 @@ import Map from "./modes/Map";
 import Notebook from "./modes/Notebook";
 import AutoNotebook from "./modes/Notebook/AutoNotebook";
 import NotebooksIndex from "./modes/NotebooksIndex";
+import AdvertiserConsole from "./modes/AdvertiserConsole";
 import OperatorDashboard from "./modes/OperatorDashboard";
 import Outcomes from "./modes/Outcomes";
 import OutcomesIndex from "./modes/OutcomesIndex";
@@ -178,6 +179,7 @@ function AuthenticatedRoutes() {
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/operator" element={<OperatorDashboard />} />
+        <Route path="/operator/advertiser-campaigns" element={<AdvertiserConsole />} />
         <Route path="/operator/payouts/dashboard" element={<PayoutDashboard />} />
         <Route path="/me/payouts" element={<CreatorPayouts />} />
         <Route path="/marketplace" element={<MarketplaceMetrics />} />

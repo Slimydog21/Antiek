@@ -40,6 +40,7 @@ const GROUPS: { title: string; routes: RouteEntry[] }[] = [
       { path: "/federation", title: "Federation config", description: "Cross-substrate citation policy (§13.9 Phase 3)" },
       { path: "/loop-3", title: "Loop 3 checklist", description: "RL unlock criteria + env gate (§14.2)" },
       { path: "/operator", title: "Operator dashboard", description: "Composite operator-facing snapshot" },
+      { path: "/operator/advertiser-campaigns", title: "Advertiser console", description: "Operator-managed lead-gen campaigns" },
       { path: "/operator/payouts/dashboard", title: "Payout dashboard", description: "Unified creator + publisher accrual view" },
       { path: "/me/payouts", title: "Creator payouts", description: "Your scoped creator payout ledger" },
       { path: "/marketplace", title: "Marketplace metrics", description: "Creator, publisher, and advertiser health snapshot" },

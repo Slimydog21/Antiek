@@ -238,6 +238,13 @@ const ROUTE_INDEX: PaletteRoute[] = [
   },
   {
     kind: "route",
+    id: "route:advertiser-console",
+    title: "Advertiser console",
+    subtitle: "Operator-managed lead-gen campaigns (/operator/advertiser-campaigns)",
+    path: "/operator/advertiser-campaigns",
+  },
+  {
+    kind: "route",
     id: "route:payout-dashboard",
     title: "Payout dashboard",
     subtitle: "Unified creator + publisher accrual view (/operator/payouts/dashboard)",
