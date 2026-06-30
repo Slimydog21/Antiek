@@ -162,6 +162,20 @@ describe("ResearchPanel — steer controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Resume" }));
     expect(onSteer).toHaveBeenCalledWith("resume");
   });
+
+  it("surfaces a refused steer command on the owning research card", async () => {
+    render(
+      <ResearchPanel
+        research={running}
+        costUsd={0.01}
+        onSteer={vi.fn().mockRejectedValue(new Error("budget already halted"))}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+
+    expect((await screen.findByRole("alert")).textContent).toBe("Steer failed: budget already halted");
+  });
 });
 
 describe("CostMeter — session spend against aggregate cap", () => {

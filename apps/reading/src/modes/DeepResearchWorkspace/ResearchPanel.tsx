@@ -44,17 +44,25 @@ const STATE_CLASS: Record<ResearchRunState, string> = {
 export interface ResearchPanelProps {
   research: ResearchStatus;
   costUsd: number;
-  onSteer: (kind: SteerKind, payload?: Record<string, unknown>) => void;
+  onSteer: (kind: SteerKind, payload?: Record<string, unknown>) => void | Promise<void>;
   busy?: boolean;
 }
 
 export default function ResearchPanel({ research, costUsd, onSteer, busy }: ResearchPanelProps) {
   const [redirectOpen, setRedirectOpen] = useState(false);
   const [redirectText, setRedirectText] = useState("");
+  const [steerError, setSteerError] = useState<string | null>(null);
   const terminal = TERMINAL_STATES.has(research.state);
   const isPaused = research.state === "paused";
   const isRunning = research.state === "running";
   const canSteer = !terminal && research.state !== "stopping";
+  const submitSteer = (kind: SteerKind, payload?: Record<string, unknown>) => {
+    setSteerError(null);
+    const result = payload === undefined ? onSteer(kind) : onSteer(kind, payload);
+    Promise.resolve(result).catch((e) => {
+      setSteerError(e instanceof Error ? e.message : String(e));
+    });
+  };
 
   return (
     <section
@@ -80,18 +88,24 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
         <div className="flex flex-wrap gap-1.5">
           {isPaused ? (
             <LemonButton size="sm" variant="secondary" disabled={busy}
-              onClick={() => onSteer("resume")}>Resume</LemonButton>
+              onClick={() => submitSteer("resume")}>Resume</LemonButton>
           ) : (
             <LemonButton size="sm" variant="secondary" disabled={busy || !isRunning}
-              onClick={() => onSteer("pause")}>Pause</LemonButton>
+              onClick={() => submitSteer("pause")}>Pause</LemonButton>
           )}
           <LemonButton size="sm" variant="danger" disabled={busy}
-            onClick={() => onSteer("stop")}>Stop</LemonButton>
+            onClick={() => submitSteer("stop")}>Stop</LemonButton>
           <LemonButton size="sm" variant="tertiary" disabled={busy}
             onClick={() => setRedirectOpen((v) => !v)}>Redirect</LemonButton>
           <LemonButton size="sm" variant="tertiary" disabled={busy}
-            onClick={() => onSteer("deepen", { extra_budget_usd: 0.25 })}>Deepen</LemonButton>
+            onClick={() => submitSteer("deepen", { extra_budget_usd: 0.25 })}>Deepen</LemonButton>
         </div>
+      )}
+
+      {steerError && (
+        <p className="text-[11px] text-emperor" role="alert">
+          Steer failed: {steerError}
+        </p>
       )}
 
       {redirectOpen && canSteer && (
@@ -101,7 +115,7 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
             e.preventDefault();
             const q = redirectText.trim();
             if (!q) return;
-            onSteer("redirect", { sub_question: q });
+            submitSteer("redirect", { sub_question: q });
             setRedirectText("");
             setRedirectOpen(false);
           }}
