@@ -233,12 +233,12 @@ function SectionCard({
     }
   }
 
-  async function handleGenerate() {
+  async function handleGenerate(paragraphIndex?: number) {
     setGenerating(true);
     setGenResult(null);
     setGenError(null);
     try {
-      const r = await generateSection(section.section_id);
+      const r = await generateSection(section.section_id, { paragraphIndex });
       setGenResult(r);
       if (r.status === "generated" && r.prose_text) {
         // Load the real prose into the editor (M4). Plain prose becomes
@@ -260,18 +260,13 @@ function SectionCard({
     }
   }
 
-  // M3 + M4: regenerate the section (the drag-in-X-ray gesture, and the
-  // rewrite / make-stronger actions, both regenerate this section from its
-  // blocks via the SHIPPED generate path — never a new model path). The
-  // creative_writer re-anchors per-block, so the regenerated prose stays cited.
+  // M3 + M4: regenerate through the shipped creative_writer path. A plain
+  // Generate / rewrite re-drafts the section; an X-ray paragraph gesture passes
+  // the paragraph index so the server merges only that paragraph back into the
+  // persisted draft, then re-validates citations + voice gate.
   const handleRegenerate = useCallback(
-    async (_paragraphIndex?: number) => {
-      // This sprint's generate endpoint is section-granular (creative_writer
-      // expands a section). A per-paragraph regenerate maps onto a section
-      // regenerate that re-anchors all paragraphs; the affected paragraph is
-      // necessarily refreshed. (A true single-paragraph endpoint is a named
-      // follow-up — see handoff Open questions.)
-      await handleGenerate();
+    async (paragraphIndex?: number) => {
+      await handleGenerate(paragraphIndex);
     },
     // handleGenerate is stable enough for this sprint's surface.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -452,10 +447,6 @@ function SectionCard({
             proseText={proseText}
             proseProvenance={proseProvenance}
             blocks={blocks}
-            // `idx` is the affected paragraph; handleRegenerate intentionally
-            // re-drafts the whole SECTION this sprint (the shipped endpoint is
-            // section-granular — D-2/D-3). The index is passed through for when
-            // a per-paragraph endpoint lands; today it is deliberately ignored.
             onRegenerateParagraph={(idx) => void handleRegenerate(idx)}
           />
         </div>

@@ -35,12 +35,13 @@ no fabricated citations), so no REST path can mint orphan prose.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any, Literal
 
 import duckdb
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from roles.interviewer.drivers import DriverSet
@@ -49,7 +50,11 @@ from substrate.graph import default_db_path, ensure_initialized
 from substrate.write import block_search
 from substrate.write import folders as folders_mod
 from substrate.write.brainstorm_blocks import drivers_to_blocks
-from substrate.write.draft_generation import build_creative_writer_context, generate_section
+from substrate.write.draft_generation import (
+    build_creative_writer_context,
+    generate_section,
+    merge_regenerated_paragraph,
+)
 from substrate.write.outline import OutlineError, OutlineNode, build_outline_tree
 from substrate.write.outline_block import (
     OutlineBlock,
@@ -105,7 +110,7 @@ def _translate() -> Iterator[None]:
     try:
         yield
     except (OutlineBlockError, OutlineError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +183,12 @@ class PromoteContextRequest(BaseModel):
     ] = "general_essay"
     objective: str = ""
     blocks: list[PlaceBlockRequest] = Field(default_factory=list)
+
+
+class GenerateSectionRequest(BaseModel):
+    # Optional X-ray gesture contract: regenerate only this paragraph in the
+    # persisted draft, while still using the single creative_writer section path.
+    paragraph_index: int | None = Field(default=None, ge=0)
 
 
 # ---------------------------------------------------------------------------
@@ -411,7 +422,10 @@ def promote_context(req: PromoteContextRequest) -> dict:
 
 
 @write_router.post("/sections/{section_id}/generate", status_code=200)
-def generate_section_draft(section_id: str) -> dict:
+def generate_section_draft(
+    section_id: str,
+    req: GenerateSectionRequest | None = Body(default=None),
+) -> dict:
     """Generate a section's prose from its attached OutlineBlocks.
 
     The no-blocks→gap path needs no model. The live generation path routes
@@ -420,14 +434,15 @@ def generate_section_draft(section_id: str) -> dict:
     surfaces a clear 503 rather than fabricating prose."""
     with _read() as con:
         row = con.execute(
-            "SELECT d.deliverable_id, d.title, d.deliverable_kind, s.title "
+            "SELECT d.deliverable_id, d.title, d.deliverable_kind, s.title, "
+            "s.prose_text, s.prose_provenance "
             "FROM deliverable_sections s JOIN deliverables d "
             "ON s.deliverable_id = d.deliverable_id WHERE s.section_id = ?",
             [section_id],
         ).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="section not found")
-        deliverable_id, dtitle, dkind, stitle = row
+        deliverable_id, dtitle, dkind, stitle, existing_prose, existing_prov_raw = row
         blocks = list_section_blocks(con, section_id)
 
         def _resolve_label(node_id: str) -> str:
@@ -453,6 +468,21 @@ def generate_section_draft(section_id: str) -> dict:
             ctx=ctx, dispatch_fn=default_dispatch_fn(investigation_id=deliverable_id),
             section_id=section_id,
         )
+        if req and req.paragraph_index is not None:
+            if isinstance(existing_prov_raw, str):
+                try:
+                    existing_prov = json.loads(existing_prov_raw)
+                except json.JSONDecodeError:
+                    existing_prov = {}
+            else:
+                existing_prov = existing_prov_raw or {}
+            result = merge_regenerated_paragraph(
+                existing_prose_text=existing_prose,
+                existing_prose_provenance=existing_prov,
+                regenerated=result,
+                paragraph_index=req.paragraph_index,
+                attached_block_ids={b.block_id for b in ctx.blocks},
+            )
     except KeyError as e:
         # Defensive: config drift or an unregistered provider. The shipped
         # config maps creative_writer to synthesis; a KeyError now means the
@@ -463,7 +493,7 @@ def generate_section_draft(section_id: str) -> dict:
             detail=f"generation unavailable: dispatch provider unavailable: {e}",
         ) from e
     except Exception as e:  # provider/credential failure
-        raise HTTPException(status_code=503, detail=f"generation unavailable: {e}")
+        raise HTTPException(status_code=503, detail=f"generation unavailable: {e}") from e
 
     report = result.citation_report
     # M3: persist prose_provenance so the X-ray can read paragraph→blocks back.

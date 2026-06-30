@@ -210,4 +210,34 @@ describe("Outline — no id, honest generate, real editor", () => {
     await userEvent.click(await screen.findByRole("button", { name: /^X-ray$/i }));
     expect(await screen.findByTestId("xray")).toBeTruthy();
   });
+
+  it("X-ray regenerate sends the affected paragraph index to the generate endpoint", async () => {
+    getSectionBlocksMock.mockResolvedValue([block()]);
+    generateSectionMock.mockResolvedValue({
+      status: "generated",
+      section_id: "sec-1",
+      prose_text: `Prior para [b: ${NODE_ID}].\n\nSharper para [b: ${NODE_ID}].`,
+      prose_provenance: { "0": [NODE_ID], "1": [NODE_ID] },
+    } satisfies GenerationResult);
+    render(
+      <Outline
+        deliverableId="dlv-1"
+        sections={[
+          section({
+            block_count: 1,
+            prose_text: `Prior para [b: ${NODE_ID}].\n\nOld para [b: ${NODE_ID}].`,
+            prose_provenance: { "0": [NODE_ID], "1": [NODE_ID] },
+          }),
+        ]}
+        onChanged={vi.fn()}
+      />,
+    );
+    await screen.findByText("Capital intensity rises with scale");
+    await userEvent.click(await screen.findByRole("button", { name: /^X-ray$/i }));
+    await userEvent.click(screen.getByTestId("xray-paragraph-1").querySelector("button")!);
+    await userEvent.click(screen.getByRole("button", { name: /regenerate this paragraph/i }));
+    await waitFor(() =>
+      expect(generateSectionMock).toHaveBeenCalledWith("sec-1", { paragraphIndex: 1 }),
+    );
+  });
 });
