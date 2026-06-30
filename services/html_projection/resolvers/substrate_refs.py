@@ -102,6 +102,7 @@ def resolve_refs(ref_ids: list[str], *, db_path: str) -> dict[str, ResolvedRefDa
                 ip_holder_id=ip_holder_id,
                 title=title,
                 payload=_payload_for_kind(str(node_type), str(canonical_label)),
+                source_document_id=source_doc_id,
             )
     finally:
         con.close()

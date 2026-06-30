@@ -104,23 +104,31 @@ def adapt_notebook_for_export(
         else []
     )
     out = [_inline(n, resolver) for n in nodes if isinstance(n, dict)]
-    # Knowledge-graph edges: the unique resolved source TITLES (rights-safe
-    # citations; the resolver carries no document id, so the title is the node).
-    cited: dict[str, bool] = {}
+    # Knowledge-graph edges: the unique resolved sources, keyed by the source
+    # document id when known (a stable identity — title alone collides across
+    # same-named docs), labelled by the title (a rights-safe citation), toned by
+    # servability.
+    cited: dict[str, tuple[str, bool]] = {}
     for ref in resolved_refs.values():
-        if ref.title and ref.title not in cited:
-            cited[ref.title] = ref.content_class in SERVABLE_CONTENT_CLASSES
+        if not ref.title:
+            continue
+        node_id = ref.source_document_id or ref.title
+        if node_id not in cited:
+            cited[node_id] = (
+                ref.title,
+                ref.content_class in SERVABLE_CONTENT_CLASSES,
+            )
     return {
         "content": out,
         "title": title,
         "edges": [
             {
                 "kind": "cites",
-                "to_document_id": t,
-                "to_title": t,
+                "to_document_id": node_id,
+                "to_title": label,
                 "tone": "success" if servable else "warning",
             }
-            for t, servable in cited.items()
+            for node_id, (label, servable) in cited.items()
         ],
     }
 

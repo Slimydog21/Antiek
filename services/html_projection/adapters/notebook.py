@@ -56,6 +56,9 @@ class ResolvedRefData:
     title: Optional[str]
     payload: dict = field(default_factory=dict)
     deleted_at: Optional[str] = None  # set => deleted (renders a tombstone)
+    # The source document's id (when resolved) — a stable node identity for the
+    # knowledge-graph projection (title alone collides across same-named docs).
+    source_document_id: Optional[str] = None
 
     @property
     def servable(self) -> bool:
