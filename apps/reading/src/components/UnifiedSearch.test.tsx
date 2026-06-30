@@ -355,6 +355,41 @@ describe("UnifiedSearch — rigor #3 enumerated states", () => {
     expect(screen.getByText("Web Hit")).toBeTruthy();
   });
 
+  it("denied-document servability is enforced only via openDocument (no legacy renderer)", async () => {
+    corpusSearchMock.mockResolvedValue({
+      query: "gated",
+      hits: [hit({ document_id: "doc-gated", document_title: "Gated Work" })],
+      count: 1,
+    });
+    renderSearch();
+    fireEvent.change(screen.getByLabelText("Unified search"), { target: { value: "gated" } });
+    await vi.advanceTimersByTimeAsync(200);
+    await screen.findByText("Gated Work");
+    fireEvent.click(screen.getByText("Gated Work").closest("button")!);
+    expect(openDocumentMock).toHaveBeenCalledWith("doc-gated", {
+      page: 4,
+      chunkId: "c1",
+    });
+    // §9.0 deny panel is BookReader's job — UnifiedSearch must not open PdfViewer/MasterMdViewer.
+  });
+
+  it("after investigation failure, input re-enables and local search works again", async () => {
+    resetInvestigationState({
+      startedId: "inv-fail",
+      phase: "failed",
+      failed: true,
+      failureReason: "investigation.failed",
+      events: [],
+    });
+    corpusSearchMock.mockResolvedValue({ query: "retry", hits: [hit()], count: 1 });
+    renderSearch();
+    const input = screen.getByLabelText("Unified search") as HTMLInputElement;
+    expect(input.disabled).toBe(false);
+    fireEvent.change(input, { target: { value: "retry" } });
+    await vi.advanceTimersByTimeAsync(200);
+    await screen.findByText("Quantum Book");
+  });
+
   it("theme context folds into the local query when present", async () => {
     corpusSearchMock.mockResolvedValue({ query: "x", hits: [], count: 0 });
     render(
