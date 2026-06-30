@@ -10,11 +10,14 @@ from fastapi.testclient import TestClient
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    monkeypatch.setenv("ANTIEK_DB_PATH", str(tmp_path / "test.duckdb"))
+    db_path = str(tmp_path / "test.duckdb")
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
     monkeypatch.setenv("ANTIEK_EVENT_LOG_DIR", str(tmp_path / "events"))
     monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
     monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
     monkeypatch.delenv("ANTIEK_AUTH_SECRET", raising=False)
+    from substrate.graph import ensure_initialized
+    ensure_initialized(db_path)
     from interfaces.research.api.app import create_app
     return TestClient(create_app(register_wrestling=False, register_providers=False))
 
@@ -141,3 +144,36 @@ def test_undo_wrong_action_type_422(client: TestClient):
     assert r.status_code == 422
     body = r.json()
     assert body["detail"]["code"] == "wrong_action_type"
+
+
+def test_undo_investigation_chase_emits_undone_event(client: TestClient):
+    """Client-owned chase panels still route through /ai/undo so the
+    trajectory records a linked ai.action.undone event."""
+    r = client.post(
+        "/events/typed",
+        json={
+            "investigation_id": "inv-test",
+            "payload": {
+                "action_type": "ai.action.applied",
+                "target_kind": "investigation_chase",
+                "target_id": "chase:dispatch-tier-verdict",
+                "operator_prompt": "chase this question",
+                "prev_state": {"open": False, "focused_id": None},
+                "next_state": {
+                    "open": True,
+                    "focused_id": "chase:dispatch-tier-verdict",
+                    "question": "What is the verdict criterion?",
+                },
+                "prev_state_hash": "y" * 64,
+            },
+        },
+    )
+    assert r.status_code == 201, r.text
+    applied_event_id = r.json()["event_id"]
+
+    r = client.post(
+        "/ai/undo",
+        json={"event_id": applied_event_id, "investigation_id": "inv-test"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["action_type"] == "ai.action.undone"

@@ -105,6 +105,12 @@ describe("AI tool-call · full dispatch round-trip", () => {
   });
 
   it("undo reverses an open_panel dispatch", () => {
+    useWorkspace.getState().open(
+      "FakeChat",
+      {},
+      { id: "ai:test:prior", mode: "floating", title: "Prior" },
+    );
+    useWorkspace.getState().focus("ai:test:prior");
     const { actions } = parseAssistantReply(
       "x\n\n@@actions\n" +
         JSON.stringify([
@@ -121,6 +127,39 @@ describe("AI tool-call · full dispatch round-trip", () => {
     expect(useWorkspace.getState().panels["ai:test:undo"]).toBeTruthy();
     r.undo!();
     expect(useWorkspace.getState().panels["ai:test:undo"]).toBeFalsy();
+    expect(useWorkspace.getState().focusedPanelId).toBe("ai:test:prior");
+  });
+
+  it("open_panel undo restores previous focus when the panel already existed", () => {
+    useWorkspace.getState().open(
+      "FakeChat",
+      {},
+      { id: "ai:open:prior", mode: "floating", title: "Prior" },
+    );
+    useWorkspace.getState().open(
+      "FakeSidebar",
+      {},
+      { id: "ai:open:existing", mode: "floating", title: "Existing" },
+    );
+    useWorkspace.getState().focus("ai:open:prior");
+    const { actions } = parseAssistantReply(
+      "x\n\n@@actions\n" +
+        JSON.stringify([
+          {
+            kind: "open_panel",
+            panel_kind: "FakeSidebar",
+            id: "ai:open:existing",
+          },
+        ]) +
+        "\n@@end",
+    );
+    const dispatched = dispatchAiAction(actions[0]);
+    expect(useWorkspace.getState().panels["ai:open:existing"]).toBeTruthy();
+    expect(useWorkspace.getState().focusedPanelId).toBe("ai:open:existing");
+
+    dispatched.undo?.();
+    expect(useWorkspace.getState().panels["ai:open:existing"]).toBeTruthy();
+    expect(useWorkspace.getState().focusedPanelId).toBe("ai:open:prior");
   });
 
   it("contextual dispatch retains the applied event id and undo calls /ai/undo before local rollback", async () => {
@@ -212,6 +251,32 @@ describe("AI tool-call · full dispatch round-trip", () => {
     expect(useWorkspace.getState().panels["ai:test:close"]).toBeFalsy();
   });
 
+  it("close_panel undo restores the previously focused panel", () => {
+    useWorkspace.getState().open(
+      "FakeChat",
+      {},
+      { id: "ai:close:prior", mode: "floating", title: "Prior" },
+    );
+    useWorkspace.getState().open(
+      "FakeSidebar",
+      {},
+      { id: "ai:close:target", mode: "floating", title: "Target" },
+    );
+    useWorkspace.getState().focus("ai:close:prior");
+    const { actions } = parseAssistantReply(
+      "x\n\n@@actions\n" +
+        JSON.stringify([{ kind: "close_panel", id: "ai:close:target" }]) +
+        "\n@@end",
+    );
+    const dispatched = dispatchAiAction(actions[0]);
+    expect(useWorkspace.getState().panels["ai:close:target"]).toBeFalsy();
+    expect(useWorkspace.getState().focusedPanelId).toBe("ai:close:prior");
+
+    dispatched.undo?.();
+    expect(useWorkspace.getState().panels["ai:close:target"]).toBeTruthy();
+    expect(useWorkspace.getState().focusedPanelId).toBe("ai:close:prior");
+  });
+
   it("set_panel_mode flips a panel's mode + undo restores", () => {
     useWorkspace.getState().open(
       "FakeSidebar",
@@ -254,6 +319,49 @@ describe("AI tool-call · full dispatch round-trip", () => {
     expect(useWorkspace.getState().focusedPanelId).toBe("ai:test:focus");
   });
 
+  it("focus_panel undo restores the previous focused panel", () => {
+    useWorkspace.getState().open(
+      "FakeChat",
+      {},
+      { id: "ai:focus:old", mode: "floating", title: "Old" },
+    );
+    useWorkspace.getState().open(
+      "FakeSidebar",
+      {},
+      { id: "ai:focus:new", mode: "floating", title: "New" },
+    );
+    useWorkspace.getState().focus("ai:focus:old");
+    const { actions } = parseAssistantReply(
+      "x\n\n@@actions\n" +
+        JSON.stringify([{ kind: "focus_panel", id: "ai:focus:new" }]) +
+        "\n@@end",
+    );
+    const dispatched = dispatchAiAction(actions[0]);
+    expect(useWorkspace.getState().focusedPanelId).toBe("ai:focus:new");
+
+    dispatched.undo?.();
+    expect(useWorkspace.getState().focusedPanelId).toBe("ai:focus:old");
+  });
+
+  it("focus_panel undo restores null focus when nothing was focused before", () => {
+    useWorkspace.getState().open(
+      "FakeSidebar",
+      {},
+      { id: "ai:focus:null", mode: "floating", title: "New" },
+    );
+    useWorkspace.setState({ focusedPanelId: null });
+    const { actions } = parseAssistantReply(
+      "x\n\n@@actions\n" +
+        JSON.stringify([{ kind: "focus_panel", id: "ai:focus:null" }]) +
+        "\n@@end",
+    );
+    const dispatched = dispatchAiAction(actions[0]);
+    expect(useWorkspace.getState().focusedPanelId).toBe("ai:focus:null");
+
+    dispatched.undo?.();
+    expect(useWorkspace.getState().focusedPanelId).toBeNull();
+  });
+
   it("chase_question opens a Chase panel scoped to the question text", () => {
     const { actions } = parseAssistantReply(
       "x\n\n@@actions\n" +
@@ -268,8 +376,62 @@ describe("AI tool-call · full dispatch round-trip", () => {
     expect(useWorkspace.getState().panels[chaseId].kind).toBe("Chase");
   });
 
-  it("add_to_notebook writes to localStorage + bumps etag + dispatches the same-window event", () => {
+  it("chase_question undo preserves a pre-existing chase panel", () => {
+    useWorkspace.getState().open(
+      "FakeChat",
+      {},
+      { id: "ai:chase:prior", mode: "floating", title: "Prior" },
+    );
+    const text = "What is the dispatch tier verdict criterion?";
+    const chaseId = `chase:${text.slice(0, 32)}`;
+    useWorkspace.getState().open(
+      "Chase",
+      { question: text },
+      { id: chaseId, mode: "floating", title: "Chase" },
+    );
+    useWorkspace.getState().focus("ai:chase:prior");
+    const { actions } = parseAssistantReply(
+      "x\n\n@@actions\n" +
+        JSON.stringify([{ kind: "chase_question", text }]) +
+        "\n@@end",
+    );
+    const dispatched = dispatchAiAction(actions[0]);
+    expect(useWorkspace.getState().panels[chaseId]).toBeTruthy();
+    expect(useWorkspace.getState().focusedPanelId).toBe(chaseId);
+
+    dispatched.undo?.();
+    expect(useWorkspace.getState().panels[chaseId]).toBeTruthy();
+    expect(useWorkspace.getState().focusedPanelId).toBe("ai:chase:prior");
+  });
+
+  it("chase_question undo closes a newly-opened chase panel", () => {
+    useWorkspace.getState().open(
+      "FakeChat",
+      {},
+      { id: "ai:chase:new-prior", mode: "floating", title: "Prior" },
+    );
+    useWorkspace.getState().focus("ai:chase:new-prior");
+    const text = "is this new chase panel removable?";
+    const chaseId = `chase:${text.slice(0, 32)}`;
+    const { actions } = parseAssistantReply(
+      "x\n\n@@actions\n" +
+        JSON.stringify([{ kind: "chase_question", text }]) +
+        "\n@@end",
+    );
+    const dispatched = dispatchAiAction(actions[0]);
+    expect(useWorkspace.getState().panels[chaseId]).toBeTruthy();
+
+    dispatched.undo?.();
+    expect(useWorkspace.getState().panels[chaseId]).toBeUndefined();
+    expect(useWorkspace.getState().focusedPanelId).toBe("ai:chase:new-prior");
+  });
+
+  it("add_to_notebook writes to localStorage + undo restores previous content and etag", () => {
     const nbId = "ai-test-nb-" + Math.random().toString(36).slice(2, 8);
+    const lsKey = "antiek.notebook." + nbId;
+    const etagKey = lsKey + ".etag";
+    window.localStorage.setItem(lsKey, "<p>before</p>");
+    window.localStorage.setItem(etagKey, "7");
     const events: Array<{ notebookId: string; etag: number }> = [];
     const listener = (e: Event) => {
       const ce = e as CustomEvent<{ notebookId: string; etag: number }>;
@@ -288,23 +450,89 @@ describe("AI tool-call · full dispatch round-trip", () => {
         ]) +
         "\n@@end",
     );
-    dispatchAiAction(actions[0]);
+    const dispatched = dispatchAiAction(actions[0]);
 
-    const stored = window.localStorage.getItem("antiek.notebook." + nbId);
+    const stored = window.localStorage.getItem(lsKey);
     expect(stored).toContain("antiek-note");
     expect(stored).toContain("hi from AI");
 
-    const etag = window.localStorage.getItem(
-      "antiek.notebook." + nbId + ".etag",
-    );
-    expect(parseInt(etag ?? "0", 10)).toBeGreaterThan(0);
+    const etag = window.localStorage.getItem(etagKey);
+    expect(parseInt(etag ?? "0", 10)).toBe(8);
 
     expect(events).toHaveLength(1);
     expect(events[0].notebookId).toBe(nbId);
+    expect(events[0].etag).toBe(8);
+
+    dispatched.undo?.();
+    expect(window.localStorage.getItem(lsKey)).toBe("<p>before</p>");
+    expect(window.localStorage.getItem(etagKey)).toBe("7");
+    expect(events).toHaveLength(2);
+    expect(events[1]).toEqual({ notebookId: nbId, etag: 7 });
 
     window.removeEventListener("antiek:notebook:appended", listener);
-    window.localStorage.removeItem("antiek.notebook." + nbId);
-    window.localStorage.removeItem("antiek.notebook." + nbId + ".etag");
+    window.localStorage.removeItem(lsKey);
+    window.localStorage.removeItem(etagKey);
+  });
+
+  it("contextual add_to_notebook undo calls /ai/undo before restoring local storage", async () => {
+    const nbId = "ai-test-nb-context";
+    const lsKey = "antiek.notebook." + nbId;
+    const etagKey = lsKey + ".etag";
+    window.localStorage.setItem(lsKey, "<p>old</p>");
+    window.localStorage.setItem(etagKey, "2");
+    const { actions } = parseAssistantReply(
+      "x\n\n@@actions\n" +
+        JSON.stringify([
+          {
+            kind: "add_to_notebook",
+            notebook_id: nbId,
+            block: { kind: "note", text: "new" },
+          },
+        ]) +
+        "\n@@end",
+    );
+    const dispatched = dispatchAiAction(actions[0], {
+      investigation_id: "__sidecar__",
+      operator_prompt: "add a note",
+    });
+    await expect(dispatched.appliedEventId).resolves.toBe("evt-ai-applied-1");
+
+    await dispatched.undo?.();
+    expect(undoAiActionMock).toHaveBeenCalledWith({
+      event_id: "evt-ai-applied-1",
+      investigation_id: "__sidecar__",
+    });
+    expect(window.localStorage.getItem(lsKey)).toBe("<p>old</p>");
+    expect(window.localStorage.getItem(etagKey)).toBe("2");
+
+    window.localStorage.removeItem(lsKey);
+    window.localStorage.removeItem(etagKey);
+  });
+
+  it("add_to_notebook undo removes newly-created local storage keys", () => {
+    const nbId = "ai-test-nb-empty";
+    const lsKey = "antiek.notebook." + nbId;
+    const etagKey = lsKey + ".etag";
+    window.localStorage.removeItem(lsKey);
+    window.localStorage.removeItem(etagKey);
+    const { actions } = parseAssistantReply(
+      "x\n\n@@actions\n" +
+        JSON.stringify([
+          {
+            kind: "add_to_notebook",
+            notebook_id: nbId,
+            block: { kind: "note", text: "first" },
+          },
+        ]) +
+        "\n@@end",
+    );
+    const dispatched = dispatchAiAction(actions[0]);
+    expect(window.localStorage.getItem(lsKey)).toContain("first");
+    expect(window.localStorage.getItem(etagKey)).toBe("1");
+
+    dispatched.undo?.();
+    expect(window.localStorage.getItem(lsKey)).toBeNull();
+    expect(window.localStorage.getItem(etagKey)).toBeNull();
   });
 
   it("toast dispatches the lemon toast queue (dynamic import resolves)", async () => {

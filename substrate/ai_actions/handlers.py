@@ -160,4 +160,5 @@ def _ui_layout_handler(
 
 register_handler("notebook_block", _notebook_block_handler)
 register_handler("notebook", _notebook_handler)
+register_handler("investigation_chase", _ui_layout_handler)
 register_handler("ui_layout", _ui_layout_handler)

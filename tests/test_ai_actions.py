@@ -10,6 +10,7 @@ from substrate.ai_actions import (
     undo_ai_action,
 )
 from substrate.ai_actions.actions import _hash_prev
+from substrate.ai_actions.handlers import HANDLERS
 from substrate.schemas.events import (
     EVENT_SCHEMA_VERSION,
     TYPED_PAYLOAD_ACTION_TYPES,
@@ -66,6 +67,18 @@ def test_undone_payload_validates():
         target_id="nbb-1",
     )
     assert p.reason == "operator_undo"
+
+
+def test_sidecar_emitted_target_kinds_have_undo_handlers():
+    """Every target_kind the current AISidecar dispatcher emits must be
+    acceptable to /ai/undo. Otherwise the UI can record ai.action.applied
+    events that the substrate rejects on undo."""
+    assert {
+        "notebook",
+        "ui_layout",
+        "investigation_chase",
+    } <= set(HANDLERS)
+    assert "notebook_block" in HANDLERS
 
 
 # ── Apply / undo flow ────────────────────────────────────────────────
