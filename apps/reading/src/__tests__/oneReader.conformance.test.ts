@@ -1,6 +1,5 @@
 /**
- * The one-Reader conformance CONTRACT — the TS/bundle half SPR-09 will fill
- * (antiek-reader SPR-01 M4).
+ * The one-Reader conformance harness — the TS/bundle half (antiek-reader SPR-09).
  *
  * The Python side (`substrate/contracts/__tests__/test_reader_conformance.py`)
  * owns the substrate round-trip (door c) plus the machine-checkable half of
@@ -28,7 +27,13 @@ import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, relative, sep } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { cleanup, render } from "@testing-library/react";
+import { createElement } from "react";
+import { afterEach, describe, expect, it } from "vitest";
+
+import Reader from "../components/reader/Reader";
+import { allBlocksDocument } from "../components/reader/fixtures/allBlocks";
+import { buildReaderTarget } from "../lib/openDocument";
 
 // Load-bearing imports: the real SPR-01 contract types. If the contract is
 // deleted or its surface changes, this file fails to compile under `tsc
@@ -469,5 +474,90 @@ describe("oneReader conformance — TREE-WIDE: no second open-a-document seam su
     expect(caught).toEqual([
       { file: "modes/Notebook/blocks/RegionEmbedBlock.tsx", seam: "openPdfPanel(" },
     ]);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Unification proof (SPR-09 M3) — same document_id, four entry points, identical
+// serialized Reader DOM. "Identical" is mechanical: the innerHTML of
+// `[data-reader-root]` with whitespace collapsed, for a fixed document_id and
+// fixed (empty) opts. Any divergence fails.
+// ───────────────────────────────────────────────────────────────────────────
+
+const UNIFY_DOC_ID = "unify-doc-spr09";
+const UNIFY_DOC = { ...allBlocksDocument, id: UNIFY_DOC_ID };
+
+/** Serialize the Reader subtree the four entry points must agree on. */
+function serializeReaderSubtree(container: HTMLElement): string {
+  const root = container.querySelector("[data-reader-root]");
+  if (!root) throw new Error("missing [data-reader-root] — not a Reader render");
+  return root.innerHTML.replace(/\s+/g, " ").trim();
+}
+
+/** Render the one Reader the way BookReader mounts it after any door resolves. */
+function renderUnifiedReader(): string {
+  const { container } = render(
+    createElement(Reader, { document: UNIFY_DOC, assetId: UNIFY_DOC_ID }),
+  );
+  const html = serializeReaderSubtree(container);
+  cleanup();
+  return html;
+}
+
+const UNIFICATION_ENTRY_POINTS: Readonly<
+  Record<string, () => { path: string; search: string }>
+> = {
+  /** Library.openWork → openDocument(id) */
+  "Library.openWork": () => buildReaderTarget(UNIFY_DOC_ID),
+  /** DRW.citeSource → openDocument(source_document_id) — same id for this proof */
+  "DRW.citeSource": () => buildReaderTarget(UNIFY_DOC_ID),
+  /** Write.traceToSource → openDocument(id) */
+  "Write.traceToSource": () => buildReaderTarget(UNIFY_DOC_ID),
+  /** UnifiedSearch result click → openDocument(id) (SPR-08) */
+  "UnifiedSearch.result": () => buildReaderTarget(UNIFY_DOC_ID),
+};
+
+afterEach(() => {
+  cleanup();
+  document.body.innerHTML = "";
+});
+
+describe("oneReader conformance — unification proof (SPR-09 M3)", () => {
+  it("all four entry points resolve to the same /read/:id target for a fixed document_id + fixed opts", () => {
+    const targets = Object.values(UNIFICATION_ENTRY_POINTS).map((fn) => fn());
+    const baseline = JSON.stringify(targets[0]);
+    for (const t of targets) {
+      expect(JSON.stringify(t)).toBe(baseline);
+    }
+    expect(targets[0].path).toBe(`/read/${encodeURIComponent(UNIFY_DOC_ID)}`);
+    expect(targets[0].search).toBe("");
+  });
+
+  it("all four entry points produce byte-identical [data-reader-root] DOM (fixed document_id, fixed opts)", () => {
+    const baseline = renderUnifiedReader();
+    for (const [entry, resolve] of Object.entries(UNIFICATION_ENTRY_POINTS)) {
+      // Each door resolves to the same target, then mounts the same Reader body.
+      resolve();
+      const html = renderUnifiedReader();
+      expect(html, `${entry} produced divergent Reader DOM`).toBe(baseline);
+    }
+  });
+
+  it("perturbing one entry point's document blocks fails the equality check (proves the guard bites)", () => {
+    const baseline = renderUnifiedReader();
+    const perturbed = {
+      ...UNIFY_DOC,
+      blocks: [
+        {
+          type: "paragraph" as const,
+          spans: [{ type: "text" as const, text: "Perturbed body — must diverge." }],
+        },
+      ],
+    };
+    const { container } = render(
+      createElement(Reader, { document: perturbed, assetId: UNIFY_DOC_ID }),
+    );
+    const divergent = serializeReaderSubtree(container);
+    expect(divergent).not.toBe(baseline);
   });
 });

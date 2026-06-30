@@ -77,7 +77,7 @@ currently **provisional** — DRW SPR-10 unbuilt). Read SPR-03 specializes by
 composition; Write SPR-07 traces into it via the same contract; neither forks a
 second reader. Until DRW SPR-10 lands, Read/Write compose against the
 conformance-tested stub.
-**Guard:** `tests/test_seam_reader_surface_contract.py` — "Read composes the
+**Guard:** `substrate/contracts/__tests__/test_reader_conformance.py` + `apps/reading/src/__tests__/oneReader.conformance.test.ts` — "Read composes the
 reader contract, never forks" (a fork dropping an extension point fails the
 structural check).
 

@@ -66,7 +66,7 @@ single composition surface. **DRW SPR-10 owns** it; **Read SPR-03 specializes by
 composition** and **Write SPR-07 traces into it** via the same contract;
 **neither forks** a second reading surface. Until DRW SPR-10 lands, Read/Write
 compose against the conformance-tested stub
-(`tests/test_seam_reader_surface_contract.py`).
+(`substrate/contracts/__tests__/test_reader_conformance.py` + `apps/reading/src/__tests__/oneReader.conformance.test.ts`).
 
 ## What this package is NOT
 
