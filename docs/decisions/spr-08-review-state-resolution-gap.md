@@ -1,17 +1,19 @@
-# SPR-08 — the reader's review-state is not yet resolved from the substrate (review-due ships dormant behind a default-off toggle)
+# SPR-08 — review-state is now resolved from typed substrate events
 
 **Date:** 2026-05-27
+**Updated:** 2026-06-30
 **Branch:** `physics/spr-08` (worktree `antiek-physics-spr08`)
 **Source spec:** `docs/philosophy/physics-of-reading.md` (the canon) + SPR-08 sprint
 (the capstone — agent-authorability / PR-8 + `AUTHORING_KIT.md`)
-**Status:** review-due (the first AGENT-authored augmentation) is capability
-complete, composes + passes the same un-relaxed gates, and is MOUNTED live in
-`MasterMdViewer.tsx` through the real decorations facet pass — behind a
-**default-OFF toggle** (`REVIEW_DUE_ENABLED`). The cue is **dormant**: it depends
-on a per-reader **review-state** (which claims are *due to review*) that the
-surface does not yet resolve from the substrate.
-**Owner:** Read-surface instance (whoever builds the surface spaced-repetition
-schedule resolution) + operator (sequencing the integration + flipping the toggle).
+**Status:** **RESOLVER CLOSED.** review-due remains the first AGENT-authored
+augmentation and still composes through the same un-relaxed gates, but the
+deferred substrate signal/resolver is now wired: `claim.reviewed` typed events
+record per-claim review verdicts, `reviewState.ts` resolves the latest event per
+claim into `ReviewDueClaimView[]`, and `ResearchWorkstation` hands that due set
+to `MasterMdViewer` with review-due enabled. No history still means honest
+no-data: no claim lights up until a `claim.reviewed` event makes it due.
+**Owner:** Read-surface instance for the remaining review gesture/scheduler UI,
+operator for any future policy toggle.
 
 ## What was decided
 
@@ -25,22 +27,22 @@ IP-holder augmentations already run, and the mount is a GENUINELY LIVE wiring
 
 The augmentation reads a surface-resolved `dueClaims` view: the substrate-derived
 list of claims currently due, with an optional substrate-resolved cue label
-("Due today" / "Overdue"). Diligence found that **no review-state signal exists
-yet** — there is no resolved spaced-repetition schedule the surface can hand to
-the factory. The augmentation never invents one (PR-2/PR-6: it READS a
-substrate-resolved verdict, never fabricates or recomputes it).
+("Due today" / "Overdue"). The deferred missing piece was the review-history
+signal and resolver. That is now provided by a `claim.reviewed` typed event and
+a surface resolver that reads persisted events, selects the latest review verdict
+per claim, and marks a claim due only when `next_due_at <= now`.
 
-The decision (anti-purgatory, PR-7 — ship it wired, not in a drawer): mount
-review-due NOW through the real facet pass, behind a **default-off** toggle, and
-pass an **empty `dueClaims`**. Flipping the toggle on therefore shows the HONEST
-no-data state — nothing lights up — rather than fabricated review state. When the
-surface later resolves a real schedule and hands it in, the cue lights up with no
-augmentation change (dormant-correct).
+The original decision (anti-purgatory, PR-7 — ship it wired, not in a drawer)
+mounted review-due through the real facet pass behind a default-off toggle and
+passed an empty `dueClaims`. The 2026-06-30 follow-up keeps the same no-fabrication
+rule but replaces the placeholder with a real resolver. With no
+`claim.reviewed` history, the resolved due set is still empty; with due history,
+the cue lights up without changing the augmentation.
 
 This doc files the net-new signal prominently so it is tracked where closure
-gates live (`docs/decisions/`), mirroring the SPR-06 `source.read` deferral — the
-review-state resolution is the one deferred piece most at risk of "never lighting
-up."
+gates live (`docs/decisions/`), mirroring the SPR-06 `source.read` deferral. The
+2026-06-30 update records the closure of the resolver piece that was most at
+risk of "never lighting up."
 
 ## The gap, precisely
 
@@ -58,19 +60,14 @@ up."
   byte-equivalence") asserts NO claim span carries the `review-due` class or a
   review-due title on the shipped default, and the SPR-02 byte-equivalence test
   re-proves the whole §9.0 render unchanged transitively.
-- **review-state**: there is **no resolved spaced-repetition schedule** the
-  surface can pass in. Until the surface resolves which claims are due (from the
-  reader's review history in the substrate) and hands a populated `dueClaims`,
-  the due set is empty and the cue never appears. The augmentation is
-  **dormant-correct**: it renders the moment the resolved `dueClaims` carries an
-  entry. This is test-pinned by the toggle-ON liveness test
-  (`MasterMdViewer.test.tsx` — "review-due liveness"): driving the pure seam
-  `reviewDueDecorationsFor()` with a populated `dueClaims` (`[{claimId: "1",
-  dueLabel: "Due today"}]`) lands the `review-due` class + cue title on the due
-  claim span and on NO other claim span — proving the wiring is genuinely live,
-  not the resolver. The resolver itself is the deferred piece: even with the
-  toggle ON today, the surface still hands an EMPTY `dueClaims`, which is the
-  honest no-data state, NOT a bug.
+- **review-state**: **closed on 2026-06-30.** The schema now includes
+  `ClaimReviewedPayload` (`action_type = "claim.reviewed"`), generated TS types
+  include the payload, and `reviewState.ts` resolves persisted review events into
+  due claims. The resolver is latest-event-wins by `emitted_at`, ignores malformed
+  payloads, and never fabricates first-review schedules. Tests pin the event
+  schema, typed emitter, no-body payload shape, latest-event-wins behavior,
+  malformed/no-data behavior, and mounted `MasterMdViewer` rendering from
+  substrate-resolved `dueClaims`.
 
 ## Why this is separate from the SPR-05 geometry-pass gap (NOT subsumed)
 
@@ -82,33 +79,31 @@ review-due needs NONE of that. It is a plain decoration: claim-anchored, no
 gutter lane, no rect, no widget. Its mount is already genuinely live through the
 decorations pass — flipping `REVIEW_DUE_ENABLED` on renders it immediately. What
 it waits on is not geometry but **data**: a surface-resolved review schedule.
-That is a substrate-resolution integration (assemble the due set from the
-reader's review history), distinct from a geometry pass. Recorded here so the two
-deferrals are not conflated.
+That substrate-resolution integration now exists for `claim.reviewed` history.
+It remains distinct from the geometry pass; recorded here so future scheduler/UI
+work is not conflated with geometry.
 
 ## The exact next step
 
-1. **Resolve:** in the reading surface, assemble the per-reader review schedule
-   for the synthesis — which claims are due, and an optional substrate-resolved
-   cue label per due claim — by reading the reader's review history from the
-   substrate (the spaced-repetition state). No side store; read-only.
-2. **Hand in:** pass the populated `ReviewDueClaimView[]` to
-   `makeReviewDueAugmentation(...)` in `composedReviewDueByClaim()` (replace the
-   empty `dueClaims` placeholder).
-3. **Flip:** set `REVIEW_DUE_ENABLED = true` (or promote it to a real
-   feature/user setting) once the resolver ships. review-due already maps the
-   resolved view → the `review-due` class; no augmentation change needed.
+1. **Gesture:** add the reader-facing review action that calls
+   `emitClaimReviewed(...)` after the operator settles the exact control and
+   scheduling policy.
+2. **Scheduler policy:** tune the rating/ease/interval semantics that populate
+   `next_due_at`; the event and resolver already carry those fields without
+   requiring a separate side store.
+3. **Policy toggle:** decide whether review-due stays enabled in
+   `ResearchWorkstation` only or becomes a user-visible setting across the
+   broader reading surface.
 
-> Resolving the review schedule itself depends on a review-history signal in the
-> substrate (when a reader reviews a claim, that gesture must be recorded — likely
-> a typed event through the one shipped funnel `postTypedEvent` → `/events/typed`
-> → `runtime/db_lock`, single-writer, PR-6, exactly like SPR-06's `source.read`).
-> If that signal does not yet exist, emitting it is a prerequisite of step 1.
+The original prerequisite — a review-history signal through the typed event
+funnel (`postTypedEvent` → `/events/typed` → `runtime/db_lock`, single-writer,
+PR-6) — is now satisfied by `claim.reviewed`.
 
 ## Reconsider if
 
-- The surface resolves + hands in a real `dueClaims` and the toggle is flipped on
-  (this gap closes) → mark superseded and record the wiring commit.
+- The review gesture needs richer schedule inputs than `rating`, `ease`,
+  `interval_days`, `reviewed_at`, and `next_due_at` can represent → extend
+  `ClaimReviewedPayload` with a new schema version, not a parallel signal.
 - A review-history / spaced-repetition signal turns out to already exist under
   another event name → point the resolver at it instead of emitting a new one
   (avoid a duplicate signal).

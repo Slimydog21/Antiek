@@ -60,7 +60,7 @@ import { buildLayoutMap } from "./readingGeometryPass";
  * default per the voice and style discipline (audit metadata, not
  * reading material).
  */
-// ── SPR-08 M5 — the review-due augmentation, behind a default-OFF toggle ─────
+// ── SPR-08 M5 — the review-due augmentation, behind a default-OFF default ────
 //
 // review-due (augmentations/review-due.ts) is the first AGENT-authored reading
 // augmentation — a spaced-repetition "this claim is due to review" cue. It is a
@@ -69,13 +69,10 @@ import { buildLayoutMap } from "./readingGeometryPass";
 // apply pass the §9.0 servability / IP-holder augmentations already run (the
 // claim span gets the augmentation-declared `review-due` class).
 //
-// It ships behind this default-OFF toggle (anti-purgatory, PR-7): the feature is
-// genuinely WIRED and runs through the real facet pass when flipped on, but the
-// review-state it reads — which claims the reader is *due* to review — is a
-// DEFERRED surface integration (resolving the reader's spaced-repetition schedule
-// from the substrate), exactly like SPR-06's `source.read` signal. Until that
-// resolver exists, the toggle passes an EMPTY `dueClaims`, so flipping it on
-// shows the HONEST no-data state (nothing lights up) rather than fabricated
+// It ships behind this default-OFF prop (anti-purgatory, PR-7): the feature is
+// genuinely WIRED and runs through the real facet pass when enabled, but a caller
+// must hand in substrate-resolved `dueClaims`. The default remains EMPTY/OFF so
+// the shipped surface shows the HONEST no-data state rather than fabricated
 // review state. Filed: docs/decisions/spr-08-review-state-resolution-gap.md.
 //
 // DEFAULT-OFF byte-equivalence: with the toggle false, `composedReviewDueByClaim`
@@ -83,17 +80,7 @@ import { buildLayoutMap } from "./readingGeometryPass";
 // no extra class — byte-identical to the pre-SPR-08 render (the MasterMdViewer
 // tests prove this unchanged: the default-off claim-span assertion + the SPR-02
 // byte-equivalence test).
-const REVIEW_DUE_ENABLED = false;
-
-/**
- * DEFERRED: the surface resolves the reader's spaced-repetition schedule from
- * the substrate and returns the due claims here. Until that resolver ships, the
- * due set is EMPTY — review-due declares nothing (honest no-data), never a
- * fabricated due claim. See spr-08-review-state-resolution-gap.md.
- */
-function resolveDueClaims(): readonly ReviewDueClaimView[] {
-  return [];
-}
+const REVIEW_DUE_ENABLED_DEFAULT = false;
 
 /**
  * Run the decorations facet pass for the review-due augmentation over the
@@ -146,18 +133,18 @@ export function reviewDueDecorationsFor(
 /**
  * The toggle-gated review-due decorations pass.
  *
- * GATED by `REVIEW_DUE_ENABLED`: off ⇒ the pass runs nothing and the returned
- * map is empty — every claim renders exactly as today (default-off
- * byte-equivalence). On ⇒ it runs the real pass (`reviewDueDecorationsFor`) over
- * the deferred-resolution due set (`resolveDueClaims()`, still empty), so it
- * declares nothing until review-state is wired (the honest dormant-correct
- * state, NOT fabricated).
+ * GATED by `reviewDueEnabled`: off ⇒ the pass runs nothing and the returned
+ * map is empty, preserving default-off rendering. On ⇒ it runs the real pass
+ * (`reviewDueDecorationsFor`) over the upstream review-state resolver result.
+ * Empty input remains honest no-data and fabricates no due state.
  */
 function composedReviewDueByClaim(
   synthesis: ParsedSynthesis,
+  dueClaims: readonly ReviewDueClaimView[],
+  enabled: boolean,
 ): Map<string, ResolvedDecoration> {
-  return REVIEW_DUE_ENABLED
-    ? reviewDueDecorationsFor(synthesis, resolveDueClaims())
+  return enabled
+    ? reviewDueDecorationsFor(synthesis, dueClaims)
     : new Map();
 }
 
@@ -190,15 +177,23 @@ const GEOMETRY_RECOMPUTE_DEBOUNCE_MS = 100;
 
 export default function MasterMdViewer({
   synthesis,
+  reviewDueClaims = [],
+  reviewDueEnabled = REVIEW_DUE_ENABLED_DEFAULT,
 }: {
   synthesis: ParsedSynthesis;
+  reviewDueClaims?: readonly ReviewDueClaimView[];
+  reviewDueEnabled?: boolean;
 }) {
   const [openChunkId, setOpenChunkId] = useState<string | null>(null);
 
   // SPR-08 M5 — the review-due decorations pass (default-off; empty map unless
   // the toggle is flipped AND review-state is wired). Computed once per render,
   // threaded into each ClaimBlock. Off ⇒ empty ⇒ byte-equivalent to today.
-  const reviewDueByClaim = composedReviewDueByClaim(synthesis);
+  const reviewDueByClaim = composedReviewDueByClaim(
+    synthesis,
+    reviewDueClaims,
+    reviewDueEnabled,
+  );
 
   // ── Living-Roadmap SPR-02 — the surface GEOMETRY PASS (M1/M3) ──────────────
   //
@@ -1108,4 +1103,3 @@ function ReusedInsightLink({ insight }: { insight: ReusedInsight }) {
   }
   return <span className="text-ink-soft dark:text-starlight">{label}</span>;
 }
-
