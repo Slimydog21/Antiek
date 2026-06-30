@@ -439,8 +439,7 @@ def test_frontend_surface_has_no_payout_path(rel: str) -> None:
     """The CostConsent mode + its stories must not call a payout/disbursement
     endpoint or render a 'disburse' control. Greppable on the TSX source."""
     p = _REPO / rel
-    if not p.exists():
-        pytest.skip(f"{rel} not present yet")
+    assert p.exists(), f"{rel} is part of the read-only CostConsent surface"
     text = p.read_text(encoding="utf-8")
     # Strip JS/TS comments so prose explaining the absence doesn't trip the grep.
     text_no_block = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)

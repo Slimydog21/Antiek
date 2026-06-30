@@ -36,8 +36,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 from tools.lints.baseline import (
     SCHEMA_VERSION,
     BaselineSchema,
@@ -101,19 +99,7 @@ def _mirror_tools(dest_root: Path, *, include_reachability: bool) -> None:
 # =========================================================================== #
 # (a) Reachability gate — seed a zero-importer module -> red, add importer ->
 #     green. Runs against the REAL reachability_gate.py as a subprocess.
-#     Builder A owns that file; if it is not yet in the tree (parallel build),
-#     the test SKIPS with a pending-integration message rather than passing
-#     vacuously — the logic that WILL exercise it is fully written below.
 # =========================================================================== #
-_REACHABILITY_PRESENT = _REACHABILITY_GATE.exists()
-_reach_skip = pytest.mark.skipif(
-    not _REACHABILITY_PRESENT,
-    reason=(
-        "tools/lint/reachability_gate.py not yet in tree (Builder A, SPR-01). "
-        "PENDING INTEGRATION — the seed-and-catch logic below is complete and "
-        "exercises the real gate as a subprocess the moment it lands."
-    ),
-)
 
 
 def _build_reachability_tree(root: Path) -> Path:
@@ -122,6 +108,7 @@ def _build_reachability_tree(root: Path) -> Path:
     real gate + tools/lints into it (so the gate's _REPO resolves to ``root``),
     and DROP any inherited baseline so a fresh mint grandfathers exactly the
     clean tree. Returns the gate path inside ``root``."""
+    assert _REACHABILITY_GATE.exists(), "reachability_gate.py is a landed SPR-01 gate"
     aug = root / "apps" / "reading" / "src" / "reading-physics" / "augmentations"
     src = root / "apps" / "reading" / "src"
     aug.mkdir(parents=True)
@@ -147,7 +134,6 @@ def _build_reachability_tree(root: Path) -> Path:
     return root / "tools" / "lint" / "reachability_gate.py"
 
 
-@_reach_skip
 def test_reachability_seeds_red_then_green(tmp_path: Path) -> None:
     """NEW zero-importer AUGMENTATION reds; adding an inbound import greens.
 
@@ -206,7 +192,6 @@ def test_reachability_seeds_red_then_green(tmp_path: Path) -> None:
     )
 
 
-@_reach_skip
 def test_reachability_seeds_red_then_green_route(tmp_path: Path) -> None:
     """NEW no-inbound-link ROUTE reds; adding an inbound <Link> greens.
 
@@ -253,11 +238,7 @@ def test_reachability_seeds_red_then_green_route(tmp_path: Path) -> None:
 #     Runs against the REAL merge_age_gate.py (Builder B; already in tree).
 # =========================================================================== #
 def test_merge_age_seeds_red_at_30_behind_then_green(tmp_path: Path) -> None:
-    if not _MERGE_AGE_GATE.exists():
-        pytest.skip(
-            "tools/lint/merge_age_gate.py not yet in tree (Builder B, SPR-01). "
-            "PENDING INTEGRATION — logic below exercises the real gate."
-        )
+    assert _MERGE_AGE_GATE.exists(), "merge_age_gate.py is a landed SPR-01 gate"
     work = tmp_path / "ma"
     origin = work / "origin.git"
     repo = work / "repo"
@@ -318,8 +299,7 @@ def test_merge_age_seeds_red_at_30_behind_then_green(tmp_path: Path) -> None:
 
 def test_merge_age_unresolvable_origin_fails_loud(tmp_path: Path) -> None:
     """Defensibility: no origin/main -> NON-ZERO (never a silent pass)."""
-    if not _MERGE_AGE_GATE.exists():
-        pytest.skip("merge_age_gate.py not yet in tree — PENDING INTEGRATION.")
+    assert _MERGE_AGE_GATE.exists(), "merge_age_gate.py is a landed SPR-01 gate"
     repo = tmp_path / "noremote"
     repo.mkdir()
     _git(repo, "init", "-q", str(repo))
@@ -339,8 +319,7 @@ def test_merge_age_unresolvable_origin_fails_loud(tmp_path: Path) -> None:
 
 def test_merge_age_N_constant_matches_doc() -> None:
     """No drift: the N in merge_age_gate.py (=25) == the N in the decision doc."""
-    if not _MERGE_AGE_GATE.exists():
-        pytest.skip("merge_age_gate.py not yet in tree — PENDING INTEGRATION.")
+    assert _MERGE_AGE_GATE.exists(), "merge_age_gate.py is a landed SPR-01 gate"
     import importlib.util
 
     spec = importlib.util.spec_from_file_location("_ma_gate", _MERGE_AGE_GATE)
