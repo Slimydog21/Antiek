@@ -15,25 +15,38 @@ completeness / link-back / dedup; ``t1_pct`` (redistributable-open share) and
 ``open_pct`` are REPORTED but ADVISORY (a source can be valuable to research while
 mostly link-back-only — that is arXiv itself).
 
-This module owns the CONTRACT (the JSON shape a producer writes to
-``reports/source_census.json``) + the THRESHOLDS + the gate PREDICATE. The producer
-— ``compute_source_census(con, source)`` over the real corpus (via the one
-``substrate.dedup`` identity ladder) — is the operator-gated P3b follow-on (it needs
-the prod corpus + an unbanned ingest window); the contract here defines its target
-shape so P3b is a single function, not a reinvention.
+This module owns the CONTRACT (the JSON shape written to
+``reports/source_census.json``) + the THRESHOLDS + the gate PREDICATE + the small
+DB-backed producer that computes that contract from the documents table. The
+producer is hermetic (no network) and reads only the existing corpus DB; running it
+against the live/prod corpus remains an operator step.
 
-PURE: no DB, no network, no I/O beyond reading/writing the census JSON file — so the
-gate predicate is unit-testable against hand-written censuses, exactly the property a
-kill-gate needs (its correctness must not depend on live data).
+The gate predicate is still unit-testable against hand-written censuses, exactly the
+property a kill-gate needs (its correctness must not depend on live data).
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
+import sys
+from collections import Counter
 from dataclasses import asdict, dataclass
+from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any
+
+_REPO = Path(__file__).resolve().parent.parent
+if str(_REPO) not in sys.path:
+    sys.path.insert(0, str(_REPO))
+
+from substrate.constants import SERVABLE_CONTENT_CLASSES  # noqa: E402
+from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
+from substrate.dedup import (  # noqa: E402
+    IdentityRecord,
+    identity_key,
+)
 
 # ---------------------------------------------------------------------------
 # Thresholds — PROVISIONAL until calibrated against the first REAL arXiv census
@@ -216,4 +229,252 @@ def save_censuses(censuses: list[SourceCensus], path: Path) -> None:
     """Write the census array deterministically (sorted by source, indented) so a
     re-emit is a clean diff."""
     payload = [c.to_dict() for c in sorted(censuses, key=lambda c: c.source)]
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def _loads_metadata(raw: Any) -> dict[str, Any]:
+    if isinstance(raw, dict):
+        return raw
+    if not isinstance(raw, str) or not raw.strip():
+        return {}
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _host(source_uri: str | None) -> str | None:
+    if not source_uri:
+        return None
+    parsed = urlparse(source_uri)
+    host = parsed.netloc.lower()
+    if host.startswith("www."):
+        host = host[4:]
+    return host or None
+
+
+def _row_source(
+    *,
+    document_id: str,
+    source_uri: str | None,
+    document_type: str | None,
+    metadata: dict[str, Any],
+) -> str:
+    """Best-effort source label for one documents row.
+
+    Prefer explicit metadata because acquisition adapters already stamp source
+    provenance there. arXiv gets a stable canonical label even when older rows
+    only reveal themselves through document_id/source_uri. Otherwise use a
+    source-uri host, falling back to document_type and finally "unknown".
+    """
+    meta_source = metadata.get("source")
+    arxiv_id = metadata.get("arxiv_id") or metadata.get("arxiv")
+    if (
+        meta_source in {"arxiv_oai_pmh", "arxiv_bulk", "arxiv"}
+        or arxiv_id
+        or document_id.startswith("doc-arxiv-")
+        or _host(source_uri) == "arxiv.org"
+    ):
+        return REFERENCE_SOURCE
+    if isinstance(meta_source, str) and meta_source.strip():
+        return meta_source.strip().lower()
+    host = _host(source_uri)
+    if host:
+        return host
+    if document_type:
+        return str(document_type).strip().lower()
+    return "unknown"
+
+
+def _identity_for_row(
+    *,
+    document_id: str,
+    source_uri: str | None,
+    title: str | None,
+    author: str | None,
+    raw_text: str | None,
+    metadata: dict[str, Any],
+) -> str:
+    """Cross-source dedup identity for overlap measurement.
+
+    Reuses ``substrate.dedup.identity_key`` so the census does not mint a second
+    identity ladder. ``document_id`` is used only as the no-signal fallback so a
+    row with no stable id/body/title does not collapse into every other blank row.
+    """
+    record = IdentityRecord(
+        ref_id=document_id,
+        source=str(metadata.get("source") or _host(source_uri) or "documents"),
+        doi=metadata.get("doi") if isinstance(metadata.get("doi"), str) else None,
+        isbn=metadata.get("isbn") if isinstance(metadata.get("isbn"), str) else None,
+        arxiv_id=(
+            metadata.get("arxiv_id")
+            if isinstance(metadata.get("arxiv_id"), str)
+            else None
+        ),
+        source_id=(
+            metadata.get("source_id")
+            if isinstance(metadata.get("source_id"), str)
+            else source_uri
+        ),
+        title=title,
+        author=author,
+        body=raw_text,
+    )
+    key = identity_key(record)
+    if key is None:
+        return f"document_id:{document_id}"
+    return f"{key.key_type.value}:{key.key}"
+
+
+def _pct(part: int, total: int) -> float:
+    return 0.0 if total <= 0 else (part / total) * 100.0
+
+
+def compute_source_census(con: Any, source: str) -> SourceCensus:
+    """Compute one ``SourceCensus`` from the live documents table.
+
+    Metrics are intentionally simple and reviewable:
+
+    * ``metadata_complete_pct``: rows with both title and source_uri.
+    * ``linkback_resolvable_pct``: rows whose source_uri is http(s).
+    * ``dedup_overlap_pct``: duplicate rows by the canonical
+      ``substrate.dedup.identity_key`` ladder.
+    * ``t1_pct``: arXiv rows whose metadata says rights_tier == T1; for other
+      sources, rows whose content_class is servable.
+    * ``open_pct``: rows whose content_class is servable.
+
+    The function does not create the DB, call the network, or write files. The
+    CLI below is the explicit operator-facing emission path.
+    """
+    rows = con.execute(
+        "SELECT document_id, source_uri, title, author, raw_text, metadata, "
+        "content_class, document_type FROM documents"
+    ).fetchall()
+
+    wanted = source.strip().lower()
+    selected: list[dict[str, Any]] = []
+    for (
+        document_id,
+        source_uri,
+        title,
+        author,
+        raw_text,
+        metadata_raw,
+        content_class,
+        document_type,
+    ) in rows:
+        metadata = _loads_metadata(metadata_raw)
+        row_source = _row_source(
+            document_id=str(document_id),
+            source_uri=source_uri,
+            document_type=document_type,
+            metadata=metadata,
+        )
+        if row_source != wanted:
+            continue
+        selected.append(
+            {
+                "document_id": str(document_id),
+                "source_uri": source_uri,
+                "title": title,
+                "author": author,
+                "raw_text": raw_text,
+                "metadata": metadata,
+                "content_class": content_class,
+            }
+        )
+
+    total = len(selected)
+    metadata_complete = 0
+    linkback_resolvable = 0
+    t1 = 0
+    open_rows = 0
+    identities: Counter[str] = Counter()
+    for row in selected:
+        if str(row["title"] or "").strip() and str(row["source_uri"] or "").strip():
+            metadata_complete += 1
+        parsed = urlparse(str(row["source_uri"] or ""))
+        if parsed.scheme in {"http", "https"} and parsed.netloc:
+            linkback_resolvable += 1
+        cc = row["content_class"]
+        if cc in SERVABLE_CONTENT_CLASSES:
+            open_rows += 1
+        meta = row["metadata"]
+        if wanted == REFERENCE_SOURCE:
+            if meta.get("rights_tier") == "T1":
+                t1 += 1
+        elif cc in SERVABLE_CONTENT_CLASSES:
+            t1 += 1
+        identities[
+            _identity_for_row(
+                document_id=row["document_id"],
+                source_uri=row["source_uri"],
+                title=row["title"],
+                author=row["author"],
+                raw_text=row["raw_text"],
+                metadata=meta,
+            )
+        ] += 1
+
+    duplicates = sum(count - 1 for count in identities.values() if count > 1)
+    return SourceCensus(
+        source=wanted,
+        total=total,
+        t1_pct=_pct(t1, total),
+        open_pct=_pct(open_rows, total),
+        metadata_complete_pct=_pct(metadata_complete, total),
+        dedup_overlap_pct=_pct(duplicates, total),
+        linkback_resolvable_pct=_pct(linkback_resolvable, total),
+    )
+
+
+def compute_source_censuses(con: Any, sources: list[str]) -> list[SourceCensus]:
+    return [compute_source_census(con, source) for source in sources]
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="python -m tools.source_census",
+        description="Compute reports/source_census.json from the documents table.",
+    )
+    p.add_argument(
+        "--source",
+        action="append",
+        required=True,
+        help="Source label to compute; repeatable (for example: --source arxiv).",
+    )
+    p.add_argument(
+        "--db-path",
+        default=None,
+        help="DuckDB graph path (default ANTIEK_DUCKDB_PATH or configured graph DB).",
+    )
+    p.add_argument(
+        "--out",
+        default=str(_REPO / "reports" / "source_census.json"),
+        help="Output JSON path (default reports/source_census.json).",
+    )
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    db_path = ensure_initialized(args.db_path or default_db_path())
+    import duckdb
+
+    con = duckdb.connect(db_path, read_only=True)
+    try:
+        censuses = compute_source_censuses(con, args.source)
+    finally:
+        con.close()
+    save_censuses(censuses, Path(args.out))
+    print(
+        f"wrote {len(censuses)} source census row(s) to {args.out}: "
+        f"{', '.join(c.source for c in censuses)}"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
