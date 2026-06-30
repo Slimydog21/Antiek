@@ -368,15 +368,39 @@ async def test_note_taker_fires_at_threshold(
 
 
 @pytest.mark.asyncio
+async def test_note_taker_drops_hallucinated_source_event_ids_at_bridge(
+    monkeypatch, app_and_bus, async_client
+):
+    _, bus = app_and_bus
+    stub = _StubNoteTaker(
+        '{"notes": [{"text": "fabricated", "confidence": "high", '
+        '"source_event_ids": ["evt-made-up"]}]}'
+    )
+    register_provider(stub)
+    _patch_dispatch_config(monkeypatch, _note_taker_config("stub-notetaker"))
+
+    inv = "inv-note-fake-source"
+    for _ in range(3):
+        await _post_distillation_delivered(
+            async_client, investigation_id=inv, document_id="d",
+        )
+    await bus.wait_for_handlers(timeout=5.0)
+
+    assert stub.call_count == 1
+    note_events = [
+        r for r in trajectory(inv) if r["action_type"] == "note.emerged"
+    ]
+    assert note_events == []
+
+
+@pytest.mark.asyncio
 async def test_note_taker_counter_resets_after_fire(
     monkeypatch, app_and_bus, async_client
 ):
     """After threshold-fire, the counter resets — the next fire only
     happens after another <threshold> qualifying events."""
     _, bus = app_and_bus
-    stub = _StubNoteTaker(
-        '{"notes": [{"text": "n", "confidence": "high", "source_event_ids": ["fake-1"]}]}'
-    )
+    stub = _StubNoteTaker(lambda prompt: _notes_json_for_prompt(prompt, "n"))
     register_provider(stub)
     _patch_dispatch_config(monkeypatch, _note_taker_config("stub-notetaker"))
 
