@@ -141,6 +141,42 @@ def _seed_full_dataset(db_path: str) -> None:
         ],
     )
 
+    # Public-domain book chunk for the book resource lifecycle.
+    con.execute(
+        """
+        INSERT INTO documents (
+            document_id, title, author, raw_text, metadata,
+            source_tier, document_type, content_class, ip_holder_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            "book-e2e-1",
+            "Public Domain Field Guide",
+            "Archivist",
+            "Public-domain book text for MCP resource verification.",
+            json.dumps({"isbn": "9780000000002", "license": "public-domain"}),
+            1,
+            "book",
+            "public_domain",
+            None,
+        ],
+    )
+    con.execute(
+        """
+        INSERT INTO chunks (
+            chunk_id, document_id, chunk_index, section_path, text, token_count
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        [
+            "chunk-book-e2e-1",
+            "book-e2e-1",
+            0,
+            "Chapter 1",
+            "Public-domain book text for MCP resource verification.",
+            7,
+        ],
+    )
+
     con.close()
 
 
@@ -166,6 +202,7 @@ class TestE2EResources:
         assert "antiek://private/notes/{user_id}/{note_id}" in uris
         assert "antiek://private/notes/{user_id}" in uris
         assert "antiek://public/notes/{note_id}" in uris
+        assert "antiek://books/{isbn}/{chunk_id}" in uris
 
     async def test_read_private_note(self, _seed: str) -> None:
         from services.mcp_server.server import mcp
@@ -203,6 +240,20 @@ class TestE2EResources:
         # Content should be wrapped (M1 defense)
         assert note["content"].startswith('<antiek:content trusted="false">')
         assert "Surface codes" in note["content"]
+
+    async def test_read_book_chunk(self, _seed: str) -> None:
+        from services.mcp_server.server import mcp
+
+        result = await mcp.read_resource(
+            "antiek://books/9780000000002/chunk-book-e2e-1"
+        )
+        assert len(result) == 1
+        chunk = json.loads(result[0].content)
+        assert chunk["chunk_id"] == "chunk-book-e2e-1"
+        assert chunk["document_id"] == "book-e2e-1"
+        assert chunk["isbn"] == "9780000000002"
+        assert chunk["content_class"] == "public_domain"
+        assert "MCP resource verification" in chunk["text"]
 
     async def test_read_gated_public_note_raises(self, _seed: str) -> None:
         from services.mcp_server.server import mcp

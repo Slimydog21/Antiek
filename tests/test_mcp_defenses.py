@@ -318,11 +318,7 @@ class TestManifestDriftDetection:
         ]
         manifest = generate_manifest(tools)
         fewer_tools = [{"name": "search", "description": "Search tool"}]
-        drifted = verify_manifest(fewer_tools, manifest)
-        # 'cite' is in the manifest but not in live tools — not detected as
-        # drift (the manifest is a superset). Only tools present in live
-        # but absent from manifest, or with changed descriptions, are drifted.
-        assert drifted == []
+        assert verify_manifest(fewer_tools, manifest) == ["cite"]
 
     def test_detects_extra_tool(self) -> None:
         from services.mcp_server.manifest import generate_manifest, verify_manifest
