@@ -53,7 +53,7 @@ from substrate.schemas import (  # noqa: E402
     NoteEmergedPayload,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402
 
 # Action types the note-taker subscribes to. Tightened to the events
 # that ACTUALLY reflect substantive wrestling movement — distillations
@@ -255,7 +255,19 @@ async def _run_note_synthesis(
         return
 
     # 4. Parse + emit + broadcast.
-    notes = parse_notes_response(response_text)
+    source_event_ids: list[str] = []
+    for row in recent:
+        raw_event_id = row.get("event_id")
+        if raw_event_id is None:
+            continue
+        event_id = str(raw_event_id).strip()
+        if event_id:
+            source_event_ids.append(event_id)
+    canonical_source_event_ids = tuple(source_event_ids)
+    notes = parse_notes_response(
+        response_text,
+        canonical_source_event_ids=canonical_source_event_ids,
+    )
     for note in notes:
         emitted_id = emit_typed(
             triggering_event.investigation_id,
