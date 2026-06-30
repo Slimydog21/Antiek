@@ -418,10 +418,33 @@
       register: antiek_unit
       tags: [systemd]
 
+    - name: render antiek-arxiv-oai-sync.service
+      ansible.builtin.template:
+        src: ../templates/antiek-arxiv-oai-sync.service.j2
+        dest: /etc/systemd/system/antiek-arxiv-oai-sync.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_arxiv_oai_unit
+      tags: [systemd, arxiv, oai]
+
+    - name: render antiek-arxiv-oai-sync.timer
+      ansible.builtin.template:
+        src: ../templates/antiek-arxiv-oai-sync.timer.j2
+        dest: /etc/systemd/system/antiek-arxiv-oai-sync.timer
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_arxiv_oai_timer
+      tags: [systemd, arxiv, oai]
+
     - name: systemd daemon-reload if unit changed
       ansible.builtin.systemd:
         daemon_reload: true
-      when: antiek_unit.changed
+      when: >
+        antiek_unit.changed or
+        antiek_arxiv_oai_unit.changed or
+        antiek_arxiv_oai_timer.changed
       tags: [systemd]
 
     - name: enable antiek.service (but do NOT start — secrets are empty)
@@ -432,6 +455,13 @@
         # leave the service ready-to-start. The operator starts it after
         # populating the secrets file.
       tags: [systemd]
+
+    - name: enable + start antiek-arxiv-oai-sync.timer
+      ansible.builtin.systemd:
+        name: antiek-arxiv-oai-sync.timer
+        enabled: true
+        state: started
+      tags: [systemd, arxiv, oai]
 
     # ──────────────────────────────────────────────────────────────────────
     # 10. Caddyfile

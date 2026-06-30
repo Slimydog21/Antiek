@@ -1,0 +1,57 @@
+# {{ ansible_managed }}
+#
+# Daily arXiv OAI-PMH metadata sync. Triggered by
+# antiek-arxiv-oai-sync.timer.
+#
+# This is ASR SR-09 P4's operator surface: it runs the same
+# tools.arxiv_oai_sync incremental path covered by tests, writes the
+# OAI rights census to the state dir, and persists rows into the live
+# DuckDB through runtime.db_lock.connect_write. Live arXiv requests go
+# through acquisition.arxiv.rate_governor's host-global flock, so this
+# timer cannot race PDF/search jobs into the IP-scoped ban window.
+
+[Unit]
+Description=Antiek arXiv OAI-PMH incremental sync
+Documentation=https://github.com/Slimydog21/Antiek/blob/main/tools/arxiv_oai_sync.py
+Wants=network-online.target
+After=network-online.target antiek.service
+# setup.yml enables and starts the timer before the operator manually starts
+# antiek.service. Skip cleanly until the substrate has initialized the live DB.
+ConditionPathExists={{ antiek_state_dir }}/antiek.duckdb
+
+[Service]
+Type=oneshot
+User={{ antiek_user }}
+Group={{ antiek_group }}
+WorkingDirectory={{ antiek_install_dir }}
+
+EnvironmentFile={{ antiek_secrets_file }}
+Environment="PATH={{ antiek_install_dir }}/.venv/bin:/usr/bin:/bin"
+Environment="ANTIEK_STATE_DIR={{ antiek_state_dir }}"
+Environment="ANTIEK_DUCKDB_PATH={{ antiek_state_dir }}/antiek.duckdb"
+Environment="ANTIEK_ARXIV_OAI_SYNC_PATH={{ antiek_state_dir }}/arxiv_oai_sync.json"
+Environment="ANTIEK_ARXIV_OAI_STATE_PATH={{ antiek_state_dir }}/arxiv_oai_harvest.json"
+Environment="ANTIEK_ARXIV_THROTTLE_PATH={{ antiek_state_dir }}/arxiv_throttle.json"
+Environment="ANTIEK_ARXIV_GOVERNOR_LOCK_PATH={{ antiek_state_dir }}/arxiv_governor.lock"
+
+ExecStart={{ antiek_install_dir }}/.venv/bin/python -m tools.arxiv_oai_sync incremental --census-json {{ antiek_state_dir }}/arxiv_oai_sync_census.json
+
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=21600
+
+# The sync writes only under the Antiek state dir and may need /tmp for
+# DuckDB scratch. Everything else is read-only. MemoryDenyWriteExecute matches
+# the existing Python systemd units (antiek + continuous-research).
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths={{ antiek_state_dir }} /tmp /var/tmp
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true

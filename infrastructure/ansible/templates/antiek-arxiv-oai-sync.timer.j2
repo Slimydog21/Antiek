@@ -1,0 +1,17 @@
+# {{ ansible_managed }}
+#
+# Daily trigger for antiek-arxiv-oai-sync.service. 04:20 UTC keeps it
+# after the 03:00 backup window and before the operator's Riyadh morning.
+
+[Unit]
+Description=Antiek arXiv OAI-PMH sync timer
+Documentation=https://github.com/Slimydog21/Antiek
+
+[Timer]
+OnCalendar=*-*-* 04:20:00 UTC
+Persistent=true
+RandomizedDelaySec=20min
+Unit=antiek-arxiv-oai-sync.service
+
+[Install]
+WantedBy=timers.target
