@@ -15,8 +15,7 @@ import Xray, { splitParagraphs } from "./Xray";
  *  - a paragraph with ZERO blocks is flagged unsupported, never silently
  *    presented as sourced (rigor #3a — §9 no-fabrication carried into the X-ray);
  *  - the drag-in-X-ray / regenerate gesture hands the host the affected
- *    paragraph's index (the host re-drafts that paragraph's SECTION — scope is
- *    the host's concern; here we verify only the index contract, not the scope).
+ *    paragraph's index.
  */
 
 // getTraceTarget is the only writeApi call Xray makes (block → source chain).
@@ -101,9 +100,9 @@ describe("Xray — paragraph↔blocks over persisted provenance", () => {
       />,
     );
     await userEvent.click(screen.getByTestId("xray-paragraph-1").querySelector("button")!);
-    await userEvent.click(screen.getByRole("button", { name: /regenerate this section/i }));
+    await userEvent.click(screen.getByRole("button", { name: /regenerate this paragraph/i }));
     // The host receives the affected paragraph's index (1) — it re-drafts that
-    // paragraph's section. We assert the index contract, not the regen scope.
+    // paragraph via the shipped generate path.
     await waitFor(() => expect(onRegen).toHaveBeenCalledWith(1));
     expect(onRegen).not.toHaveBeenCalledWith(0);
   });

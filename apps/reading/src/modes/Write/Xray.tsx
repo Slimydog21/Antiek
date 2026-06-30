@@ -7,11 +7,9 @@ import { getTraceTarget, type OutlineBlockView } from "./writeApi";
  *
  * Toggle between (a) the rendered draft and (b) an X-ray that shows, for each
  * paragraph, the blocks that drove it. Click a paragraph → its blocks; click a
- * block → every paragraph using it. The regenerate gesture (drag a block, or the
- * "regenerate" affordance) re-drafts the SECTION the paragraph belongs to: the
- * shipped generate endpoint is section-granular, so the affected paragraph is
- * necessarily refreshed (re-anchored per-block) along with its siblings. A true
- * single-paragraph regenerate is a deferred follow-up (decision doc D-2/D-3).
+ * block → every paragraph using it. The regenerate gesture hands the host the
+ * affected paragraph index; the host uses the shipped creative_writer section
+ * path, then persists a paragraph-scoped merge after citation + voice checks.
  * Provenance chains through to chunks → documents (resolve_provenance via the
  * trace endpoint), not just block ids.
  *
@@ -35,9 +33,8 @@ export interface XrayProps {
    * provenance kind (a graph-node block's id is its node reference). */
   blocks: OutlineBlockView[];
   /** Hand the host the paragraph the writer acted on (the drag-in-X-ray /
-   * regenerate gesture). The host owns the SHIPPED generate path and re-drafts
-   * that paragraph's SECTION (section-granular today); the X-ray never forks a
-   * second generate path. The index passed is the affected paragraph. */
+   * regenerate gesture). The host owns the shipped generate path and passes the
+   * index through so the server can merge only the affected paragraph. */
   onRegenerateParagraph?: (paragraphIndex: number) => void | Promise<void>;
 }
 
@@ -246,7 +243,7 @@ export default function Xray({
                       onClick={() => void onRegenerateParagraph(idx)}
                       className="text-[11px] text-ocean underline"
                     >
-                      regenerate this section
+                      regenerate this paragraph
                     </button>
                   )}
                 </div>

@@ -33,6 +33,7 @@ from substrate.write.draft_generation import (
     enforce_voice_gate,
     extract_inline_citations,
     generate_section,
+    merge_regenerated_paragraph,
     validate_generated_citations,
 )
 from substrate.write.outline_block import OutlineBlock
@@ -187,3 +188,43 @@ def test_happy_path_generation_with_fake_model():
     assert res.status == "generated"
     assert res.citation_report.all_claims_cited
     assert res.gate.passed
+
+
+def test_merge_regenerated_paragraph_preserves_other_paragraphs_and_revalidates():
+    """X-ray paragraph regenerate uses the single section generator, then
+    persists only the acted-on paragraph with a fresh citation/gate report."""
+    node = "node-1"
+    regenerated_json = (
+        '{"prose_text": '
+        '"New first paragraph stays cited [b: node-1].\\n\\n'
+        'Replacement paragraph is sharper and still grounded [b: node-1].", '
+        '"prose_provenance": {"0": ["node-1"], "1": ["node-1"]}, '
+        '"uncited_blocks": []}'
+    )
+    ctx = build_creative_writer_context(
+        deliverable_title="T", deliverable_kind="research_memo",
+        section_title="S", section_index=0, section_count=1,
+        blocks=[_oblock("oblk-1", node_id=node)],
+    )
+    regenerated = generate_section(
+        ctx=ctx, dispatch_fn=_fake_dispatch(regenerated_json), section_id="sec-1",
+    )
+
+    merged = merge_regenerated_paragraph(
+        existing_prose_text=(
+            f"Keep the original opening because the writer did not act on it [b: {node}].\n\n"
+            f"Old second paragraph that should be replaced [b: {node}]."
+        ),
+        existing_prose_provenance={"0": [node], "1": [node]},
+        regenerated=regenerated,
+        paragraph_index=1,
+        attached_block_ids={node},
+    )
+
+    assert merged.status == "generated"
+    assert "Keep the original opening" in merged.prose_text
+    assert "Old second paragraph" not in merged.prose_text
+    assert "Replacement paragraph is sharper" in merged.prose_text
+    assert merged.prose_provenance == {0: [node], 1: [node]}
+    assert merged.citation_report is not None
+    assert merged.citation_report.all_claims_cited

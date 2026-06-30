@@ -230,10 +230,23 @@ export interface GenerationResult {
 
 /** Generate a section's prose from its attached blocks (SPR-06). The live
  * model path may return 503 until creative_writer is wired into dispatch. */
-export async function generateSection(sectionId: string): Promise<GenerationResult> {
+export async function generateSection(
+  sectionId: string,
+  opts: { paragraphIndex?: number } = {},
+): Promise<GenerationResult> {
+  const body =
+    opts.paragraphIndex === undefined
+      ? undefined
+      : JSON.stringify({ paragraph_index: opts.paragraphIndex });
   return _json<GenerationResult>(
     await apiFetch(`${API_BASE}/write/sections/${encodeURIComponent(sectionId)}/generate`, {
       method: "POST",
+      ...(body
+        ? {
+            headers: { "Content-Type": "application/json" },
+            body,
+          }
+        : {}),
     }),
     "POST /write/sections/{id}/generate",
   );

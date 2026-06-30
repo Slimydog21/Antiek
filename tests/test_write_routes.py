@@ -387,3 +387,53 @@ def test_xray_reads_persisted_provenance_via_get_deliverable(client, seed):
     prov = client.get(f"/write/blocks/{blk}/provenance").json()
     assert prov["status"] == "resolved"
     assert prov["document_id"] == seed["document"]
+
+
+def test_generate_with_paragraph_index_persists_only_that_paragraph(client, seed, monkeypatch):
+    """The X-ray regenerate gesture is paragraph-scoped over HTTP: it uses the
+    shipped generate endpoint, but the persisted section keeps untouched
+    paragraphs and replaces only the acted-on paragraph."""
+    import substrate.write.draft_generation as draft_generation
+    from substrate.graph.ops import update_section_prose
+
+    sec, node = seed["section_id"], seed["node"]
+    client.post("/write/blocks", json={
+        "section_id": sec, "block_kind": "claim", "provenance_kind": "graph_node",
+        "node_id": node, "block_index": 0,
+    })
+    with connect_write(default_db_path(), purpose="test/seed_paragraph_regen") as con:
+        update_section_prose(
+            con,
+            section_id=sec,
+            prose_text=(
+                f"Keep this opening paragraph intact [b: {node}].\n\n"
+                f"Old paragraph that the X-ray action will replace [b: {node}]."
+            ),
+            prose_provenance={"0": [node], "1": [node]},
+        )
+
+    def fake_default_dispatch_fn(*, investigation_id: str = "__operator__"):
+        def _dispatch(system: str, user: str) -> str:
+            return (
+                '{"prose_text": '
+                f'"Generated opening paragraph should not be persisted [b: {node}].\\n\\n'
+                f'Rewritten target paragraph is grounded and sharper [b: {node}].", '
+                f'"prose_provenance": {{"0": ["{node}"], "1": ["{node}"]}}, '
+                '"uncited_blocks": []}'
+            )
+        return _dispatch
+
+    monkeypatch.setattr(draft_generation, "default_dispatch_fn", fake_default_dispatch_fn)
+
+    r = client.post(f"/write/sections/{sec}/generate", json={"paragraph_index": 1})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["status"] == "generated"
+    assert "Keep this opening paragraph intact" in body["prose_text"]
+    assert "Generated opening paragraph should not be persisted" not in body["prose_text"]
+    assert "Rewritten target paragraph" in body["prose_text"]
+
+    row = _section_prose_row(seed["deliverable_id"])
+    assert "Keep this opening paragraph intact" in row[0]
+    assert "Old paragraph" not in row[0]
+    assert "Rewritten target paragraph" in row[0]

@@ -291,6 +291,116 @@ def generate_section(
     )
 
 
+def _coerce_provenance_keys(prose_provenance: dict | None) -> dict[int, list[str]]:
+    """Normalize persisted JSON provenance keys back to int paragraph indices."""
+    if not prose_provenance:
+        return {}
+    normalized: dict[int, list[str]] = {}
+    for raw_key, raw_value in prose_provenance.items():
+        try:
+            key = int(raw_key)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(raw_value, list):
+            normalized[key] = [str(v) for v in raw_value]
+    return normalized
+
+
+def merge_regenerated_paragraph(
+    *,
+    existing_prose_text: str | None,
+    existing_prose_provenance: dict | None,
+    regenerated: GenerationResult,
+    paragraph_index: int,
+    attached_block_ids: set[str],
+) -> GenerationResult:
+    """Turn a successful section generation into a paragraph-scoped replace.
+
+    The model path remains the same ``creative_writer`` section generator, so
+    no second rewrite path is introduced. If the generated section passes its
+    own citation + voice gate, replace only the requested paragraph in the
+    already-persisted section prose, carry forward the other paragraphs'
+    provenance, then re-run citation + voice validation on the merged prose.
+    """
+    if regenerated.status != "generated":
+        return regenerated
+    if paragraph_index < 0:
+        return GenerationResult(
+            status="invalid", section_id=regenerated.section_id, prose_text="",
+            citation_report=None, gate=None,
+            detail="paragraph_index must be non-negative",
+        )
+
+    existing_paragraphs = _paragraphs(existing_prose_text or "")
+    regenerated_paragraphs = _paragraphs(regenerated.prose_text)
+    if not existing_paragraphs:
+        return GenerationResult(
+            status="invalid", section_id=regenerated.section_id, prose_text="",
+            citation_report=None, gate=None,
+            detail="paragraph regenerate requires existing section prose",
+        )
+    if paragraph_index >= len(existing_paragraphs):
+        return GenerationResult(
+            status="invalid", section_id=regenerated.section_id, prose_text="",
+            citation_report=None, gate=None,
+            detail=(
+                f"paragraph_index {paragraph_index} is outside the existing "
+                f"{len(existing_paragraphs)} paragraph draft"
+            ),
+        )
+    if paragraph_index >= len(regenerated_paragraphs):
+        return GenerationResult(
+            status="invalid", section_id=regenerated.section_id, prose_text="",
+            citation_report=None, gate=None,
+            detail=(
+                f"regenerated draft did not include paragraph_index {paragraph_index}"
+            ),
+        )
+
+    merged_paragraphs = list(existing_paragraphs)
+    merged_paragraphs[paragraph_index] = regenerated_paragraphs[paragraph_index]
+    merged_prose = "\n\n".join(merged_paragraphs)
+
+    merged_provenance = _coerce_provenance_keys(existing_prose_provenance)
+    regenerated_provenance = _coerce_provenance_keys(regenerated.prose_provenance)
+    merged_provenance[paragraph_index] = list(
+        regenerated_provenance.get(paragraph_index, [])
+    )
+
+    merged_role_result = CreativeWriterResult(
+        prose_text=merged_prose,
+        prose_provenance=merged_provenance,
+        uncited_blocks=[],
+    )
+    report = validate_generated_citations(
+        merged_role_result, attached_block_ids=attached_block_ids,
+    )
+    gate = enforce_voice_gate(merged_prose)
+    if not gate.passed:
+        return GenerationResult(
+            status="gate_failed", section_id=regenerated.section_id,
+            prose_text=merged_prose, citation_report=report, gate=gate,
+            detail=(
+                f"voice_style gate failed after paragraph regenerate "
+                f"(score {gate.score} < {VOICE_STYLE_GATE}) — regenerate"
+            ),
+        )
+
+    detail = f"regenerated paragraph {paragraph_index + 1}"
+    if report.unsupported_paragraphs:
+        detail += (
+            f"; {len(report.unsupported_paragraphs)} unsupported paragraph(s) "
+            "flagged for the writer (not asserted as fact)"
+        )
+    if report.fabricated_citations:
+        detail += f"; {len(report.fabricated_citations)} fabricated citation(s) flagged"
+    return GenerationResult(
+        status="generated", section_id=regenerated.section_id,
+        prose_text=merged_prose, citation_report=report, gate=gate,
+        detail=detail, prose_provenance=merged_provenance,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Persistence — make the X-ray's paragraph→blocks link durable (SPR-09 M3)
 # ---------------------------------------------------------------------------
