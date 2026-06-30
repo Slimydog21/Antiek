@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import fcntl
+import os
+
 import pytest
 
 from runtime import db_lock
@@ -130,3 +133,53 @@ def test_connect_write_retrying_does_not_retry_non_lock_errors(monkeypatch):
 
     assert attempts == 1
     assert sleeps == []
+
+
+def test_flock_write_coordinator_requires_purpose(tmp_path):
+    coord = db_lock.FlockWriteCoordinator(str(tmp_path / "graph.duckdb"))
+
+    with pytest.raises(ValueError, match="purpose is mandatory"), coord.acquire_write_context(""):
+        pass
+
+
+def test_flock_write_coordinator_acquires_and_releases(tmp_path):
+    coord = db_lock.FlockWriteCoordinator(str(tmp_path / "graph.duckdb"))
+
+    with coord.acquire_write_context("unit_test") as ctx:
+        ctx.execute("CREATE TABLE t (x INTEGER)")
+        ctx.execute("INSERT INTO t VALUES (42)")
+
+    with coord.acquire_write_context("unit_test_verify") as ctx:
+        assert ctx.execute("SELECT x FROM t").fetchone()[0] == 42
+
+
+def test_flock_write_coordinator_releases_after_body_exception(tmp_path):
+    coord = db_lock.FlockWriteCoordinator(str(tmp_path / "graph.duckdb"))
+
+    with pytest.raises(RuntimeError, match="boom"), coord.acquire_write_context("raises") as ctx:
+        ctx.execute("CREATE TABLE t (x INTEGER)")
+        raise RuntimeError("boom")
+
+    with coord.acquire_write_context("after_exception") as ctx:
+        assert ctx.execute("SELECT COUNT(*) FROM t").fetchone()[0] == 0
+
+
+def test_flock_write_coordinator_override_path_times_out(tmp_path):
+    db_path = tmp_path / "graph.duckdb"
+    lock_path = tmp_path / "custom.write.lock"
+    coord = db_lock.FlockWriteCoordinator(
+        str(db_path),
+        lock_path=str(lock_path),
+        timeout_s=0.05,
+    )
+    fd = os.open(lock_path, os.O_CREAT | os.O_WRONLY, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        with pytest.raises(
+            db_lock.WriteLockTimeout,
+            match="custom.write.lock",
+        ), coord.acquire_write_context("blocked"):
+            pass
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
