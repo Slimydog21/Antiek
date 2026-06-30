@@ -62,8 +62,10 @@ and the PR-2 grep is clean).
   shared FloatMenu posts `marginalia.noted` through `postTypedEvent`, and its
   voice affordance uses `useVoiceCapture`: record → transcribe → `POST
   /voice/blob` → `voice.captured` with `audio_ref` → fold the user transcript
-  into the marginalia note. If transcription or blob storage fails, no
-  `voice.captured` event is persisted; the failure is surfaced.
+  into the marginalia note. The note event also carries `voice_transcript`,
+  `voice_event_id`, and `audio_ref` by reference so the mounted gutter card can
+  show the clip without reading a side store. If transcription or blob storage
+  fails, no `voice.captured` event is persisted; the failure is surfaced.
 
 ## Why this is separate from the SPR-06 `source.read` + SPR-05 geometry gaps
 

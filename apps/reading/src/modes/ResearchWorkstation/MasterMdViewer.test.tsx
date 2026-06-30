@@ -558,6 +558,9 @@ describe("MasterMdViewer — marginalia anchored widget wiring (SPR-07)", () => 
                 note_text: "Reader note on a restricted source.",
                 excerpt: "withheld quoted passage",
                 chunk_id: "c1",
+                voice_transcript: "spoken marginalia transcript",
+                voice_event_id: "ev-voice-1",
+                audio_ref: "voice://clip-1",
               },
               { event_id: "ev-note-1", synthesis_id: "syn-1" },
             ),
@@ -579,6 +582,8 @@ describe("MasterMdViewer — marginalia anchored widget wiring (SPR-07)", () => 
         expect(screen.getByText("Reader note on a restricted source.")).toBeTruthy(),
       );
       expect(screen.getByText("restricted source")).toBeTruthy();
+      expect(screen.getByText("spoken marginalia transcript")).toBeTruthy();
+      expect(screen.getByText("voice clip")).toBeTruthy();
       expect(screen.queryByText("withheld quoted passage")).toBeNull();
     } finally {
       geomSpy.mockRestore();

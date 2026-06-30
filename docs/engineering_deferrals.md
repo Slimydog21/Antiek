@@ -411,11 +411,12 @@ The cluster contains:
   the §9 user/model distinction holds), and the note is searchable. The 2026-06-30
   follow-up adds `/voice/blob` object storage and wires `useVoiceCapture` to emit
   `voice.captured.audio_ref` only after the blob is stored. **2026-07-01
-  follow-up:** `MasterMdViewer` now reads persisted `marginalia.noted` events,
-  re-resolves them through `reResolveNote`, and mounts the bounded/restricted
-  chunk gutter card through `makeMarginaliaAugmentation`; exact servable passage
-  marginalia in the synthesis surface still waits on a rendered passage marker
-  for the exact anchor.
+  follow-up:** `marginalia.noted` now preserves the voice clip reference
+  (`voice_transcript`, `voice_event_id`, `audio_ref`), and `MasterMdViewer` reads
+  persisted notes, re-resolves them through `reResolveNote`, and mounts the
+  bounded/restricted chunk gutter card through `makeMarginaliaAugmentation`;
+  exact servable passage marginalia in the synthesis surface still waits on a
+  rendered passage marker for the exact anchor.
 - **The review-state resolver + review gesture + policy toggle**
   (`docs/decisions/spr-08-review-state-resolution-gap.md`) — ✅ **SIGNAL +
   RESOLVER + V1 GESTURE + POLICY TOGGLE CLOSED.** `claim.reviewed` now ships as

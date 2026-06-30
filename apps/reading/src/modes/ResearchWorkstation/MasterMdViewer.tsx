@@ -560,12 +560,21 @@ export function authoredMarginNotesFromEvents(
     if (!noteId || !comment || !anchorQuote) continue;
 
     if (!byNoteId.has(noteId)) order.push(noteId);
+    const voiceTranscript = asNonEmptyString(payload.voice_transcript);
+    const audioRef = asNonEmptyString(payload.audio_ref);
     byNoteId.set(noteId, {
       id: noteId,
       comment,
       anchorQuote,
       targetChunkId: asNonEmptyString(payload.chunk_id) as ChunkId | null,
-      clip: null,
+      clip:
+        voiceTranscript || audioRef
+          ? {
+              transcript: voiceTranscript,
+              audioRef,
+              durationSeconds: null,
+            }
+          : null,
     });
   }
 

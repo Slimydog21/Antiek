@@ -77,6 +77,12 @@ export interface SaveNoteArgs {
    * voice note this is the user-sourced transcript (still source_kind "user" —
    * voice-in is human speech, never model output). */
   noteText: string;
+  /** Optional voice clip reference from the shared voice capture path. */
+  voiceClip?: {
+    transcript: string;
+    eventId: string | null;
+    audioRef: string | null;
+  } | null;
   /** Optional stable id; defaults to a generated one. */
   noteId?: string;
 }
@@ -99,6 +105,9 @@ export async function saveFloatMenuNote(
     // Provenance chain: the chunk the selection lands in (null when the host
     // resolved none — honest, never invented).
     chunk_id: selection.provenance.chunkId ?? null,
+    voice_transcript: args.voiceClip?.transcript ?? null,
+    voice_event_id: args.voiceClip?.eventId ?? null,
+    audio_ref: args.voiceClip?.audioRef ?? null,
   };
   const emitted = await postTypedEvent({
     investigation_id: investigationId,

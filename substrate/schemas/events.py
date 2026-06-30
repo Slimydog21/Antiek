@@ -3665,6 +3665,14 @@ class MarginaliaNotedPayload(_PayloadBase):
     # selection over a cited claim resolves a chunk; a free-prose selection may
     # not). Null is honest "no chunk resolved", never invented.
     chunk_id: str | None = None
+    # Optional voice clip material for a spoken marginalia note. ``note_text`` is
+    # still the reader's note text (often the transcript folded into the note);
+    # these fields preserve the clip reference for the mounted gutter card. The
+    # blob rides by reference only, reusing the shared /voice/blob path; the
+    # event never carries audio bytes.
+    voice_transcript: str | None = None
+    voice_event_id: str | None = None
+    audio_ref: str | None = None
 
 
 # ── Block-canvas position persistence — DRW "organism" view (SPR-03) ──

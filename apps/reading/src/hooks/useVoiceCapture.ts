@@ -80,6 +80,8 @@ export interface VoiceCaptureResult {
   /** The id of the persisted `voice.captured` typed event (null only if
    * events are disabled server-side). */
   eventId: string | null;
+  /** Object-storage reference to the captured audio blob. */
+  audioRef: string | null;
 }
 
 export interface UseVoiceCapture {
@@ -234,6 +236,7 @@ export function useVoiceCapture(): UseVoiceCapture {
         sourceKind: "user",
         transcriptStatus,
         eventId,
+        audioRef,
       };
       setResult(captured);
       setPhase("captured");

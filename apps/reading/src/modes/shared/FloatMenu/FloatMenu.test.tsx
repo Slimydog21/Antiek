@@ -60,6 +60,7 @@ const stopAndCaptureMock = vi.hoisted(() =>
     sourceKind: "user" as const,
     transcriptStatus: "ok" as const,
     eventId: "ev-voice-1",
+    audioRef: "voice://clip-1",
   })),
 );
 const voiceStartMock = vi.hoisted(() => vi.fn(async () => {}));
@@ -358,7 +359,14 @@ describe("VOICE note keeps source_kind 'user' through the fold (M3)", () => {
     });
     expect(postTypedEventMock).toHaveBeenCalledTimes(1);
     const env = postTypedEventMock.mock.calls[0][0] as {
-      payload: { action_type: string; source_kind: string; note_text: string };
+      payload: {
+        action_type: string;
+        source_kind: string;
+        note_text: string;
+        voice_transcript: string | null;
+        voice_event_id: string | null;
+        audio_ref: string | null;
+      };
     };
     // §9 load-bearing (M3): voice-in is human speech — the "user" label SURVIVES
     // the fold from voice → note. The transcript text is carried, never
@@ -366,6 +374,9 @@ describe("VOICE note keeps source_kind 'user' through the fold (M3)", () => {
     expect(env.payload.action_type).toBe("marginalia.noted");
     expect(env.payload.source_kind).toBe("user");
     expect(env.payload.note_text).toContain(VOICE_TRANSCRIPT);
+    expect(env.payload.voice_transcript).toBe(VOICE_TRANSCRIPT);
+    expect(env.payload.voice_event_id).toBe("ev-voice-1");
+    expect(env.payload.audio_ref).toBe("voice://clip-1");
   });
 });
 
