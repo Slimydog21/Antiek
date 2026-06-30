@@ -15,7 +15,12 @@ import duckdb
 
 from substrate.graph.retrieval_gate import is_chunk_body_withheld
 
-from .errors import LicensingRequiredError, NoteNotFoundError, PublicNoteNotFoundError
+from .errors import (
+    BookChunkNotFoundError,
+    LicensingRequiredError,
+    NoteNotFoundError,
+    PublicNoteNotFoundError,
+)
 
 
 def _resolve_db_path() -> str:
@@ -171,3 +176,67 @@ def list_user_notes(
         }
         for r in rows
     ]
+
+
+def get_book_chunk(
+    con: duckdb.DuckDBPyConnection,
+    isbn: str,
+    chunk_id: str,
+) -> dict[str, Any]:
+    """Fetch a book chunk by ISBN + chunk_id with §9.0 retrieval-time gating.
+
+    Looks up the document by ISBN (stored in ``documents.metadata`` JSON),
+    then fetches the matching chunk from the ``chunks`` table. Applies
+    ``is_chunk_body_withheld`` to enforce the non-privileged gate:
+    public-domain books return content; gated books raise
+    ``LicensingRequiredError``.
+
+    Raises:
+        BookChunkNotFoundError: When the ISBN has no matching document or
+            the chunk_id does not exist for that document.
+        LicensingRequiredError: When the book's content_class is gated on
+            a non-privileged retrieval path (§9.0).
+    """
+    doc_row = con.execute(
+        """
+        SELECT document_id, title, author, content_class, ip_holder_id
+        FROM documents
+        WHERE metadata IS NOT NULL
+          AND json_extract_string(metadata, '$.isbn') = ?
+        """,
+        [isbn],
+    ).fetchone()
+
+    if doc_row is None:
+        raise BookChunkNotFoundError(isbn, chunk_id)
+
+    doc_id, title, author, content_class, ip_holder_id = doc_row
+
+    withheld, _label = is_chunk_body_withheld(content_class)
+    if withheld:
+        raise LicensingRequiredError(chunk_id, content_class)
+
+    chunk_row = con.execute(
+        """
+        SELECT chunk_id, section_path, text, token_count
+        FROM chunks
+        WHERE chunk_id = ? AND document_id = ?
+        """,
+        [chunk_id, doc_id],
+    ).fetchone()
+
+    if chunk_row is None:
+        raise BookChunkNotFoundError(isbn, chunk_id)
+
+    return {
+        "chunk_id": chunk_row[0],
+        "document_id": doc_id,
+        "isbn": isbn,
+        "title": title,
+        "author": author,
+        "section_path": chunk_row[1],
+        "text": chunk_row[2],
+        "token_count": chunk_row[3],
+        "content_class": content_class,
+        "ip_holder_id": ip_holder_id,
+    }

@@ -52,3 +52,12 @@ class LicensingRequiredError(Exception):
             f"(content_class={content_class}). "
             f"Publisher opt-in needed per §9.0."
         )
+
+
+class BookChunkNotFoundError(Exception):
+    """Raised when a book chunk cannot be located by ISBN + chunk_id."""
+
+    def __init__(self, isbn: str, chunk_id: str) -> None:
+        self.isbn = isbn
+        self.chunk_id = chunk_id
+        super().__init__(f"Book chunk not found: isbn={isbn}, chunk_id={chunk_id}")
