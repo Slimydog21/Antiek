@@ -136,6 +136,22 @@ def test_attribution_compute_unknown_algorithm_rejected():
     assert resp.status_code == 400
 
 
+def test_attribution_compute_validation_error_is_client_error():
+    client = _client()
+    resp = client.post(
+        "/attribution/compute",
+        json={
+            "page_id": "page-1",
+            "chunk_to_document": {"c-1": "doc-A"},
+            "chunk_to_claim_confidence": {"c-1": 1.5},
+            "document_to_source_tier": {"doc-A": 1},
+            "algorithm": "option_b",
+        },
+    )
+    assert resp.status_code == 422
+    assert "chunk_to_claim_confidence" in resp.json()["detail"]
+
+
 # ── Auth probe endpoint ─────────────────────────────────────────────
 
 
@@ -171,5 +187,5 @@ def test_trust_center_loop3_unlock_all_false():
     client = _client()
     resp = client.get("/trust-center")
     body = resp.json()
-    for criterion, met in body["loop_3_unlock_status"].items():
+    for met in body["loop_3_unlock_status"].values():
         assert met is False
