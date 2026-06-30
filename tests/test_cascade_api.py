@@ -125,6 +125,51 @@ def test_approve_makes_launchable_and_edit_reopens_gate(client):
     assert r.status_code == 200 and r.json()["launchable"] is False
 
 
+def test_set_budget_edit_persists_limits_and_reopens_gate(client):
+    root = client.post("/research/plans", json={"problem": "P", "sub_questions": ["a", "b"]}).json()["root_node_id"]
+    assert client.post(f"/research/plans/{root}/approve", json={}).json()["launchable"] is True
+    tree = client.get(f"/research/plans/{root}").json()["tree"]
+    root_local = tree["root"]["local_id"]
+
+    r = client.post(
+        f"/research/plans/{root}/edit",
+        json={
+            "op": "set_budget",
+            "target_local_id": root_local,
+            "budget_usd": 0.75,
+            "max_depth": 4,
+        },
+    )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["launchable"] is False
+    assert body["tree"]["root"]["budget_usd"] == pytest.approx(0.75)
+    assert body["tree"]["root"]["max_depth"] == 4
+
+
+def test_split_edit_adds_focused_children_and_reopens_gate(client):
+    root = client.post("/research/plans", json={"problem": "P", "sub_questions": ["broad"]}).json()["root_node_id"]
+    assert client.post(f"/research/plans/{root}/approve", json={}).json()["launchable"] is True
+    tree = client.get(f"/research/plans/{root}").json()["tree"]
+    child_local = tree["root"]["children"][0]["local_id"]
+
+    r = client.post(
+        f"/research/plans/{root}/edit",
+        json={
+            "op": "split",
+            "target_local_id": child_local,
+            "into": ["narrow one", "narrow two"],
+        },
+    )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    split_node = body["tree"]["root"]["children"][0]
+    assert body["launchable"] is False
+    assert [c["question"] for c in split_node["children"]] == ["narrow one", "narrow two"]
+
+
 # --------------------------------------------------------------------------
 # Launch gate
 # --------------------------------------------------------------------------
