@@ -26,11 +26,11 @@ except ImportError:  # pragma: no cover — direct-script fallback
     )
 
 try:
-    from substrate.provenance.validate_refs import validate_refs
+    from substrate.provenance import validate_refs
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.provenance.validate_refs import validate_refs
+    from substrate.provenance import validate_refs
 
 
 # Confidence vocabulary must match ConfidenceLevel Literal on the
@@ -66,6 +66,7 @@ def parse_notes_response(
     text: str,
     *,
     canonical_event_ids: Iterable[str] | None = None,
+    canonical_source_event_ids: Iterable[str] | None = None,
 ) -> list[ExtractedNote]:
     """Parse the role response into ``ExtractedNote`` list.
 
@@ -95,13 +96,18 @@ def parse_notes_response(
         attribution = rn.get("source_event_ids")
         if not isinstance(attribution, list):
             continue
-        if canonical_event_ids is None:
+        canonical_ids = (
+            canonical_event_ids
+            if canonical_event_ids is not None
+            else canonical_source_event_ids
+        )
+        if canonical_ids is None:
             cleaned_attrib = tuple(
                 str(a).strip() for a in attribution
                 if isinstance(a, str) and str(a).strip()
             )
         else:
-            cleaned_attrib = validate_refs(attribution, canonical_event_ids)
+            cleaned_attrib = validate_refs(attribution, canonical_ids).valid
         if not cleaned_attrib:
             # Rule 4: drop unattributed notes. Hallucination defense.
             continue

@@ -40,11 +40,11 @@ except ImportError:  # pragma: no cover — direct-script fallback
     )
 
 try:
-    from substrate.provenance.validate_refs import validate_refs
+    from substrate.provenance import InvalidReference, validate_refs
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.provenance.validate_refs import validate_refs
+    from substrate.provenance import InvalidReference, validate_refs
 
 
 # Closed vocabularies — must equal the schema-side Literal sets.
@@ -235,7 +235,9 @@ def _normalize_metric_value(raw: Any, ctx: str) -> ParsedMetricValue:
 def _parse_parameter(
     obj: Any,
     idx: int,
+    *,
     canonical_chunk_ids: Iterable[str] | None = None,
+    canonical_source_chunk_ids: Iterable[str] | None = None,
 ) -> ParsedParameter:
     ctx = f"parameters[{idx}]"
     if not isinstance(obj, dict):
@@ -255,10 +257,28 @@ def _parse_parameter(
     raw_source_chunk_ids = _require_str_list(
         obj.get("source_chunk_ids"), "source_chunk_ids", ctx,
     )
-    if canonical_chunk_ids is None:
+    canonical_ids = (
+        canonical_chunk_ids
+        if canonical_chunk_ids is not None
+        else canonical_source_chunk_ids
+    )
+    if canonical_ids is None:
         source_chunk_ids = tuple(raw_source_chunk_ids)
     else:
-        source_chunk_ids = validate_refs(raw_source_chunk_ids, canonical_chunk_ids)
+        try:
+            result = validate_refs(
+                raw_source_chunk_ids,
+                canonical_ids,
+                on_invalid=(
+                    "raise"
+                    if canonical_chunk_ids is None
+                    and canonical_source_chunk_ids is not None
+                    else "drop"
+                ),
+            )
+        except InvalidReference as exc:
+            raise ParameterValidationError(f"{ctx}.source_chunk_ids: {exc}") from exc
+        source_chunk_ids = result.valid
     if not source_chunk_ids:
         raise ParameterValidationError(
             f"{ctx}: source_chunk_ids cannot be empty — every parameter "
@@ -304,6 +324,7 @@ def parse_parameter_extractor_response(
     text: str,
     *,
     canonical_chunk_ids: Iterable[str] | None = None,
+    canonical_source_chunk_ids: Iterable[str] | None = None,
 ) -> ParameterExtractResult:
     """Parse + validate a Parameter Extractor raw response."""
     obj = _extract_json_object(text)
@@ -319,7 +340,12 @@ def parse_parameter_extractor_response(
         )
 
     parameters = tuple(
-        _parse_parameter(p, i, canonical_chunk_ids)
+        _parse_parameter(
+            p,
+            i,
+            canonical_chunk_ids=canonical_chunk_ids,
+            canonical_source_chunk_ids=canonical_source_chunk_ids,
+        )
         for i, p in enumerate(params_raw)
     )
     return ParameterExtractResult(parameters=parameters, raw=obj)

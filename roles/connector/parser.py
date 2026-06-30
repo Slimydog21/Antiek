@@ -200,7 +200,7 @@ def _parse_path(
     if canonical_node_ids is None:
         nodes = tuple(raw_nodes)
     else:
-        nodes = validate_refs(raw_nodes, canonical_node_ids)
+        nodes = validate_refs(raw_nodes, canonical_node_ids).valid
         if raw_nodes and not nodes:
             raise ConnectorValidationError(
                 f"{ctx}: path_nodes resolved to empty after canonical validation"
@@ -211,7 +211,7 @@ def _parse_path(
     if canonical_edge_ids is None:
         edge_ids = tuple(raw_edge_ids)
     else:
-        edge_ids = validate_refs(raw_edge_ids, canonical_edge_ids)
+        edge_ids = validate_refs(raw_edge_ids, canonical_edge_ids).valid
     depth_raw = obj.get("depth")
     if not isinstance(depth_raw, int) or isinstance(depth_raw, bool) or depth_raw < 0:
         raise ConnectorValidationError(

@@ -51,7 +51,10 @@ def _has_provenance_validator_import(tree: ast.AST) -> bool:
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             module = node.module or ""
-            if module == "substrate.provenance.validate_refs":
+            if module in {
+                "substrate.provenance",
+                "substrate.provenance.validate_refs",
+            }:
                 imported = {alias.name for alias in node.names}
                 if {"validate_ref", "validate_refs"} & imported:
                     return True

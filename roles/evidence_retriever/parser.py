@@ -169,7 +169,7 @@ def _parse_claim(
     if canonical_chunk_ids is None:
         chunk_ids = tuple(raw_chunk_ids)
     else:
-        chunk_ids = validate_refs(raw_chunk_ids, canonical_chunk_ids)
+        chunk_ids = validate_refs(raw_chunk_ids, canonical_chunk_ids).valid
     if not chunk_ids and evidence_type != "gap":
         raise EvidenceValidationError(
             f"{ctx}: chunk_ids cannot be empty when evidence_type="
@@ -179,7 +179,7 @@ def _parse_claim(
     if canonical_edge_ids is None:
         edge_ids = tuple(raw_edge_ids)
     else:
-        edge_ids = validate_refs(raw_edge_ids, canonical_edge_ids)
+        edge_ids = validate_refs(raw_edge_ids, canonical_edge_ids).valid
     confidence = _require_str(obj.get("confidence"), "confidence", ctx)
     if confidence not in EVIDENCE_CONFIDENCE_LEVELS:
         raise EvidenceValidationError(

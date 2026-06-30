@@ -1,51 +1,87 @@
-"""Pure helpers for model-emitted reference validation.
+"""Deterministic validation for model-emitted provenance references.
 
-Role parsers may accept identifiers emitted by an LLM only after comparing
-them with the canonical references the model was shown. A miss is not a fact;
-it is dropped before it can become graph provenance.
+Role parsers may accept ids from an LLM only after checking them against the
+canonical ids the orchestrator actually supplied. A miss is model noise, not a
+new fact. This module is pure and deliberately small so parsers can share one
+rule instead of hand-rolling membership checks.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 
-def _canonical_set(canonical_refs: Iterable[str]) -> frozenset[str]:
-    return frozenset(
-        ref.strip()
-        for ref in canonical_refs
-        if isinstance(ref, str) and ref.strip()
-    )
+class InvalidReference(ValueError):
+    """Raised when a model-emitted reference is outside the canonical set."""
 
 
-def validate_ref(candidate: object, canonical_refs: Iterable[str]) -> str | None:
-    """Return the canonical reference when ``candidate`` is allowed.
+@dataclass(frozen=True)
+class RefValidationResult:
+    """Result for list validation.
 
-    Non-strings, blank strings, and strings absent from ``canonical_refs`` return
-    ``None``. The function intentionally does no fuzzy matching; provenance
-    references are identity claims, not search queries.
+    ``valid`` preserves input order after trimming and de-duplicating.
+    ``invalid`` preserves the fabricated references for diagnostics.
     """
+
+    valid: tuple[str, ...]
+    invalid: tuple[str, ...]
+
+
+def _canonicalize(canonical_set: Iterable[str]) -> frozenset[str]:
+    return frozenset(str(ref).strip() for ref in canonical_set if str(ref).strip())
+
+
+def validate_ref(candidate: object, canonical_set: Iterable[str]) -> str | None:
+    """Return the normalized ref when it is canonical, otherwise ``None``."""
     if not isinstance(candidate, str):
         return None
-    cleaned = candidate.strip()
-    if not cleaned:
+    normalized = candidate.strip()
+    if not normalized:
         return None
-    allowed = _canonical_set(canonical_refs)
-    return cleaned if cleaned in allowed else None
+    return normalized if normalized in _canonicalize(canonical_set) else None
 
 
-def validate_refs(candidates: object, canonical_refs: Iterable[str]) -> tuple[str, ...]:
-    """Validate a list-like set of candidate refs, preserving first-seen order."""
-    if not isinstance(candidates, (list, tuple)):
-        return ()
-    allowed = _canonical_set(canonical_refs)
-    out: list[str] = []
+def validate_refs(
+    candidates: Iterable[object],
+    canonical_set: Iterable[str],
+    *,
+    on_invalid: str = "drop",
+) -> RefValidationResult:
+    """Validate a list of model-emitted refs against a canonical set.
+
+    Args:
+        candidates: Refs emitted by the model.
+        canonical_set: Refs actually supplied by the orchestrator.
+        on_invalid: ``"drop"`` records invalid refs in the result and keeps
+            valid refs. ``"raise"`` raises ``InvalidReference`` on the first
+            invalid ref.
+    """
+    if on_invalid not in {"drop", "raise"}:
+        raise ValueError("on_invalid must be 'drop' or 'raise'")
+
+    canonical = _canonicalize(canonical_set)
+    valid: list[str] = []
+    invalid: list[str] = []
     seen: set[str] = set()
     for candidate in candidates:
         if not isinstance(candidate, str):
+            invalid.append(repr(candidate))
+            if on_invalid == "raise":
+                raise InvalidReference(f"reference {candidate!r} is not a string")
             continue
-        cleaned = candidate.strip()
-        if cleaned and cleaned in allowed and cleaned not in seen:
-            out.append(cleaned)
-            seen.add(cleaned)
-    return tuple(out)
+
+        normalized = candidate.strip()
+        if not normalized or normalized not in canonical:
+            invalid.append(normalized)
+            if on_invalid == "raise":
+                raise InvalidReference(
+                    f"reference {normalized!r} is not in canonical set"
+                )
+            continue
+
+        if normalized not in seen:
+            valid.append(normalized)
+            seen.add(normalized)
+
+    return RefValidationResult(valid=tuple(valid), invalid=tuple(invalid))

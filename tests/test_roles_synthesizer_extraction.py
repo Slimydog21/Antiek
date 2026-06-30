@@ -427,6 +427,19 @@ def test_component_with_no_provenance_rejected_under_proceed():
         parse_synthesizer_response(json.dumps(payload))
 
 
+def test_hallucinated_supporting_chunk_ids_rejected_against_canonical_set():
+    payload = _good_thesis()
+    payload["thesis_components"][0]["supporting_chunk_ids"] = [
+        "chunk-1",
+        "chunk-made-up",
+    ]
+    with pytest.raises(SynthesizerValidationError, match="canonical set"):
+        parse_synthesizer_response(
+            json.dumps(payload),
+            canonical_supporting_chunk_ids=("chunk-1", "chunk-2"),
+        )
+
+
 def test_path_only_provenance_ok():
     """Path citations alone are sufficient — no chunks required if
     a graph path grounds the claim."""

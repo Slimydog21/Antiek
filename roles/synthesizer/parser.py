@@ -56,11 +56,11 @@ except ImportError:  # pragma: no cover — direct-script fallback
     )
 
 try:
-    from substrate.provenance.validate_refs import validate_refs
+    from substrate.provenance import InvalidReference, validate_refs
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.provenance.validate_refs import validate_refs
+    from substrate.provenance import InvalidReference, validate_refs
 
 
 CONFIDENCE_LEVELS: frozenset[str] = frozenset({
@@ -234,6 +234,7 @@ def _parse_thesis_component(
     *,
     allow_unprovenanced: bool,
     canonical_chunk_ids: Iterable[str] | None = None,
+    canonical_supporting_chunk_ids: Iterable[str] | None = None,
 ) -> ParsedThesisComponent:
     ctx = f"thesis_components[{idx}]"
     if not isinstance(obj, dict):
@@ -248,10 +249,30 @@ def _parse_thesis_component(
     raw_chunks = _require_str_list(
         obj.get("supporting_chunk_ids"), "supporting_chunk_ids", ctx,
     )
-    if canonical_chunk_ids is None:
+    canonical_ids = (
+        canonical_chunk_ids
+        if canonical_chunk_ids is not None
+        else canonical_supporting_chunk_ids
+    )
+    if canonical_ids is None:
         chunks = tuple(raw_chunks)
     else:
-        chunks = validate_refs(raw_chunks, canonical_chunk_ids)
+        try:
+            result = validate_refs(
+                raw_chunks,
+                canonical_ids,
+                on_invalid=(
+                    "raise"
+                    if canonical_chunk_ids is None
+                    and canonical_supporting_chunk_ids is not None
+                    else "drop"
+                ),
+            )
+        except InvalidReference as exc:
+            raise SynthesizerValidationError(
+                f"{ctx}.supporting_chunk_ids: {exc}"
+            ) from exc
+        chunks = result.valid
     paths = tuple(_require_int_list(
         obj.get("supporting_path_indices"), "supporting_path_indices", ctx,
     ))
@@ -409,7 +430,7 @@ def _parse_reasoning_path(
     if canonical_node_ids is None:
         nodes = tuple(raw_nodes)
     else:
-        nodes = validate_refs(raw_nodes, canonical_node_ids)
+        nodes = validate_refs(raw_nodes, canonical_node_ids).valid
     if not nodes:
         raise SynthesizerValidationError(
             f"{ctx}: path_node_ids cannot be empty"
@@ -420,7 +441,7 @@ def _parse_reasoning_path(
     if canonical_edge_ids is None:
         edges = tuple(raw_edges)
     else:
-        edges = validate_refs(raw_edges, canonical_edge_ids)
+        edges = validate_refs(raw_edges, canonical_edge_ids).valid
     summary = _require_str(
         obj.get("support_summary"), "support_summary", ctx,
     )
@@ -443,6 +464,7 @@ def parse_synthesizer_response(
     canonical_chunk_ids: Iterable[str] | None = None,
     canonical_node_ids: Iterable[str] | None = None,
     canonical_edge_ids: Iterable[str] | None = None,
+    canonical_supporting_chunk_ids: Iterable[str] | None = None,
 ) -> ThesisResult:
     """Parse + validate a Synthesizer raw response."""
     obj = _extract_json_object(text)
@@ -476,6 +498,7 @@ def parse_synthesizer_response(
             i,
             allow_unprovenanced=allow_unprovenanced,
             canonical_chunk_ids=canonical_chunk_ids,
+            canonical_supporting_chunk_ids=canonical_supporting_chunk_ids,
         )
         for i, c in enumerate(components_raw)
     )
