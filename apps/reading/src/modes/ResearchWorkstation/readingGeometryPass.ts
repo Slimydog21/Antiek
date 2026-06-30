@@ -100,7 +100,7 @@ export const CHUNK_ID_ATTR = "data-chunk-id";
  *     triggers a re-render → the effect re-runs → a fresh snapshot. We never read
  *     mid-mutation because the read is pinned to the commit boundary.
  */
-export function measureClaimGeometry(root: HTMLElement): Map<string, Rect> {
+export function measureAnchorGeometry(root: HTMLElement): Map<string, Rect> {
   const rects = new Map<string, Rect>();
   const rootBox = root.getBoundingClientRect();
   const nodes = root.querySelectorAll<HTMLElement>(`[${CLAIM_ID_ATTR}], [${CHUNK_ID_ATTR}]`);
@@ -141,7 +141,7 @@ export function buildLayoutMap(
   root: HTMLElement,
   transforms: Parameters<typeof createLayoutMap>[1] = [],
 ): LayoutMap {
-  const rects = measureClaimGeometry(root);
+  const rects = measureAnchorGeometry(root);
   return createLayoutMap(baseGeometryFromMap(rects), transforms);
 }
 
@@ -151,7 +151,7 @@ export function buildLayoutMap(
  * container) so off-screen anchors short-circuit to `null` before the transform
  * pipeline folds — capping per-frame work to the on-screen anchors.
  *
- * The band is in the SAME pre-transform coordinate space `measureClaimGeometry`
+ * The band is in the SAME pre-transform coordinate space `measureAnchorGeometry`
  * produces (root-relative), so the cheap base-rect membership test is apples-to-
  * apples. `buildViewportBand` below derives it from the scroll container.
  *
@@ -161,7 +161,7 @@ export function buildLayoutMap(
  * UNSCOPED `buildLayoutMap` instead (Living-Roadmap SPR-02 round 2). On the
  * current surface, scoping would prune NOTHING and is therefore not honest
  * machinery to mount:
- *   (a) the base geometry is ROOT-RELATIVE (see `measureClaimGeometry`), hence
+ *   (a) the base geometry is ROOT-RELATIVE (see `measureAnchorGeometry`), hence
  *       SCROLL-INVARIANT — the visible band never narrows the resolved set as the
  *       reader scrolls; and
  *   (b) the transform pipeline is EMPTY this sprint (SPR-05's collapse is unbound),
@@ -179,7 +179,7 @@ export function buildViewportScopedLayoutMap(
   viewport: ViewportBand,
   transforms: Parameters<typeof createViewportScopedLayoutMap>[2] = [],
 ): LayoutMap {
-  const rects = measureClaimGeometry(root);
+  const rects = measureAnchorGeometry(root);
   return createViewportScopedLayoutMap(
     baseGeometryFromMap(rects),
     viewport,
@@ -209,7 +209,7 @@ export const VIEWPORT_OVERSCAN_PX = 300;
 /**
  * Derive the pre-transform visible band from a scroll container + the reading
  * `root`, padded by `VIEWPORT_OVERSCAN_PX`. Expressed in `root`-relative
- * coordinates (the space `measureClaimGeometry` uses) so it feeds
+ * coordinates (the space `measureAnchorGeometry` uses) so it feeds
  * `createViewportScopedLayoutMap` directly. The SURFACE owns this read (it owns
  * the scroll container); the physics never measures the viewport itself (PR-4).
  *

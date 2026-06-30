@@ -30,7 +30,7 @@ import {
   buildLayoutMap,
   buildViewportBand,
   buildViewportScopedLayoutMap,
-  measureClaimGeometry,
+  measureAnchorGeometry,
 } from "./readingGeometryPass";
 import { EMPTY_LAYOUT_MAP, baseGeometryFromMap, createLayoutMap } from "../../reading-physics/layout-map";
 import { anchorKey } from "../../reading-physics/facets/decorations";
@@ -175,7 +175,7 @@ describe("readingGeometryPass — M1: measured DOM → non-null rect through cre
     // Re-derive the SAME map by hand through the documented constructors and
     // assert the surface pass produced an identical resolution — proving it uses
     // baseGeometryFromMap + createLayoutMap, not a re-implementation.
-    const rects = measureClaimGeometry(root);
+    const rects = measureAnchorGeometry(root);
     const handBuilt = createLayoutMap(baseGeometryFromMap(rects));
     expect(buildLayoutMap(root).resolve(claimAnchor("1"))).toEqual(
       handBuilt.resolve(claimAnchor("1")),
@@ -201,7 +201,7 @@ describe("readingGeometryPass — M1 failure modes (rigor #3)", () => {
     const root = makeArticle([
       { claimId: "1", rect: { top: 9000, left: 20, width: 600, height: 40 } }, // far below fold
     ]);
-    // measureClaimGeometry keeps it (it is laid out, just off-screen). The
+    // measureAnchorGeometry keeps it (it is laid out, just off-screen). The
     // UNSCOPED map resolves it — viewport-scoping (M3) is what would drop it.
     expect(buildLayoutMap(root).resolve(claimAnchor("1"))).not.toBeNull();
   });
