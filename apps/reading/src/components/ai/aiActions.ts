@@ -105,6 +105,8 @@ export type AiAction =
       message: string;
     };
 
+type NotebookActionBlock = Extract<AiAction, { kind: "add_to_notebook" }>["block"];
+
 // ─── Parser ──────────────────────────────────────────────────────────
 
 const ACTIONS_FENCE_OPEN = /(?:^|\n)\s*@@actions\s*\n/;
@@ -572,7 +574,7 @@ export function dispatchAiAction(
               }
               window.dispatchEvent(
                 new CustomEvent("antiek:notebook:appended", {
-                  detail: { notebookId: action.notebook_id, etag: prevEtag },
+                  detail: { notebookId: action.notebook_id, etag: prevEtag, force: true },
                 }),
               );
             } catch {
@@ -658,11 +660,7 @@ export function dispatchAiAction(
   }
 }
 
-function aiBlockToHtml(block: AiAction extends infer A
-  ? A extends { kind: "add_to_notebook"; block: infer B }
-    ? B
-    : never
-  : never): string {
+function aiBlockToHtml(block: NotebookActionBlock): string {
   // Map the action's compact block schema to the custom-element tags
   // that the TipTap parseHTML extensions recognise.
   const escape = (s: string) =>
