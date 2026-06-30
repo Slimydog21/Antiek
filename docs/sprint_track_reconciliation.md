@@ -84,11 +84,14 @@ UI-redesign S8 shipped a CommandPalette. Master-spec PostHog Wedge 3
 specifies a *substrate-event-aware* Cmd+K that updates within seconds of
 new content landing in the graph.
 
-**Resolution:** the existing palette IS substrate-aware in code (reads
-from the workspace store which mirrors substrate state). The wedge
-ratification has not been formally recorded; that's a docs gap, not a
-code gap. The next sprint should add a Wedge 3 verdict doc at
-`docs/decisions/posthog-wedge-3-verdict.md` confirming acceptance.
+**Resolution:** the existing palette IS substrate-aware in code: it refreshes
+investigations, documents, notebooks, and parked questions from substrate-backed
+API indexes when opened, while the workspace store supplies shell/workspace
+actions. The wedge ratification is now recorded at
+`docs/decisions/posthog-wedge-3-verdict.md`. The accepted scope is
+fresh-on-open substrate awareness for the current single-operator product;
+WebSocket fan-out and production graph density remain future activation
+evidence, not current code blockers.
 
 ### Conflict 4 — AI sidecar: chrome vs undo-via-event-log
 
