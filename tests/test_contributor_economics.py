@@ -84,6 +84,20 @@ def test_contribution_shares_sum_to_one(db):
         assert result.algorithm == "claim_confidence_times_source_tier"
 
 
+def test_claim_confidence_must_be_unit_interval(db):
+    with _con(db) as con:
+        p = project.create_project(con, title="Dad's biography")
+        for confidence in (-0.1, 1.1, float("nan"), float("inf"), True):
+            with pytest.raises(ValueError, match="confidence"):
+                record_claim(
+                    con,
+                    project_id=p.project_id,
+                    text="Malformed scorer output.",
+                    interview_id="iv-bad",
+                    confidence=confidence,
+                )
+
+
 # ── M3 slop gate ────────────────────────────────────────────────────────
 
 
@@ -111,8 +125,9 @@ def test_accrual_routes_pool_to_escrow(db):
         contributor.map_contributor(con, interview_id="iv-b", project_id=p.project_id, display_name="B")
         _publishable_claim(con, p.project_id, "Fact one about him.", "iv-a")
         _publishable_claim(con, p.project_id, "Fact two about him.", "iv-b")
-        lines = contributor.accrue_contributions(con, project_id=p.project_id,
-                                                 ad_revenue_usd=Decimal("100"))
+        contributor.accrue_contributions(
+            con, project_id=p.project_id, ad_revenue_usd=Decimal("100"),
+        )
         # 70% slice of $100 = $70 split across contributors → total accrued ≈ $70.
         total = contributor.accrued_total(con, p.project_id)
         assert abs(total - Decimal("70")) < Decimal("0.01")
