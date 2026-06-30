@@ -18,6 +18,11 @@ import Reader, { deriveToc } from "./Reader";
 import { ReaderProvider } from "./ReaderContext";
 import { allBlocksDocument } from "./fixtures/allBlocks";
 import { SUPPORTED_MATH, UNSUPPORTED_MATH, arxivMathDocument } from "./fixtures/arxivMath";
+import {
+  PASSAGE_CHUNK_ID_ATTR,
+  PASSAGE_END_ATTR,
+  PASSAGE_START_ATTR,
+} from "../../reading-physics/anchors";
 import type { Document } from "../../types/document_model.gen";
 
 afterEach(() => {
@@ -150,6 +155,25 @@ describe("Reader — citation as a first-class clickable marker (M3)", () => {
     expect(cite!.textContent).toBe("[1]");
     expect(cite!.getAttribute("data-source-document-id")).toBe("doc-source-42");
     expect(cite!.getAttribute("data-chunk-id")).toBe("chunk-7");
+  });
+
+  it("stamps passage-offset markers when the citation carries source char offsets", () => {
+    const { container } = renderDoc(allBlocksDocument);
+    const cite = container.querySelector("button[data-citation-marker]");
+    expect(cite!.getAttribute(PASSAGE_CHUNK_ID_ATTR)).toBe("chunk-7");
+    expect(cite!.getAttribute(PASSAGE_START_ATTR)).toBe("100");
+    expect(cite!.getAttribute(PASSAGE_END_ATTR)).toBe("240");
+  });
+
+  it("does not fabricate passage-offset markers when offsets are absent", () => {
+    const { container } = renderDoc(allBlocksDocument);
+    const cite = container.querySelector(
+      'button[data-citation-marker][data-source-document-id="doc-source-9"]',
+    );
+    expect(cite).toBeTruthy();
+    expect(cite!.getAttribute(PASSAGE_CHUNK_ID_ATTR)).toBeNull();
+    expect(cite!.getAttribute(PASSAGE_START_ATTR)).toBeNull();
+    expect(cite!.getAttribute(PASSAGE_END_ATTR)).toBeNull();
   });
 
   it("clicking a citation invokes the resolver with source_document_id + chunkId", () => {

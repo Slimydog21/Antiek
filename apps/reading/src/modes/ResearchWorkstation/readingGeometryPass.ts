@@ -23,7 +23,8 @@
 //
 // ── HOW geometry enters without the physics measuring it (the layout-map seam) ─
 //
-//   DOM nodes carrying a semantic marker  (claim span / source chunk chip)
+//   DOM nodes carrying a semantic marker  (claim span / source chunk chip /
+//                                         structured citation passage marker)
 //        │  getBoundingClientRect (HERE, once per measured node)
 //        ▼
 //   anchorKey(anchor) → Rect   (a plain Map, the surface's BaseGeometry input)
@@ -50,6 +51,13 @@ import {
   createViewportScopedLayoutMap,
 } from "../../reading-physics/layout-map";
 import type { ViewportBand } from "../../reading-physics/layout-map";
+import {
+  CHUNK_ID_ATTR,
+  CLAIM_ID_ATTR,
+  PASSAGE_CHUNK_ID_ATTR,
+  PASSAGE_END_ATTR,
+  PASSAGE_START_ATTR,
+} from "../../reading-physics/anchors";
 import { anchorKey } from "../../reading-physics/facets/decorations";
 import type { Anchor, ClaimId, ChunkId, LayoutMap, Rect } from "../../reading-physics/types";
 
@@ -60,19 +68,56 @@ import type { Anchor, ClaimId, ChunkId, LayoutMap, Rect } from "../../reading-ph
  * pixel — so measuring the node it sits on is the legitimate surface read, and
  * the resulting rect is keyed by the SAME `anchorKey` an augmentation queries.
  */
-export const CLAIM_ID_ATTR = "data-claim-id";
+export {
+  CHUNK_ID_ATTR,
+  CLAIM_ID_ATTR,
+  PASSAGE_CHUNK_ID_ATTR,
+  PASSAGE_END_ATTR,
+  PASSAGE_START_ATTR,
+};
 
 /**
  * The DOM-marker attribute the surface stamps on a source citation's
- * representative chunk. Chunk anchors are the bounded fallback for withheld
- * marginalia and the shared source-decoration anchor; measuring them closes the
- * chunk half of the previously claim-only live geometry pass without pretending
- * passage-offset anchors are available yet.
+ * representative chunk, and the `data-passage-*` attributes the structured
+ * Reader stamps when a citation carries source char offsets. Chunk anchors are
+ * the bounded fallback for withheld marginalia and the shared source-decoration
+ * anchor; passage anchors are the exact `{chunkId,start,end}` surface for
+ * servable citation offsets.
  */
-export const CHUNK_ID_ATTR = "data-chunk-id";
+function passageOffset(raw: string | null): number | null {
+  if (raw === null || raw.trim() === "") return null;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+function anchorsFromNode(node: HTMLElement): Anchor[] {
+  const anchors: Anchor[] = [];
+
+  const claimId = node.getAttribute(CLAIM_ID_ATTR);
+  if (claimId) anchors.push({ kind: "claim", claimId: claimId as ClaimId });
+
+  const chunkId = node.getAttribute(CHUNK_ID_ATTR);
+  if (chunkId) anchors.push({ kind: "chunk", chunkId: chunkId as ChunkId });
+
+  const passageChunkId = node.getAttribute(PASSAGE_CHUNK_ID_ATTR);
+  if (passageChunkId) {
+    const start = passageOffset(node.getAttribute(PASSAGE_START_ATTR));
+    const end = passageOffset(node.getAttribute(PASSAGE_END_ATTR));
+    if (start !== null && end !== null && end >= start) {
+      anchors.push({
+        kind: "passage",
+        chunkId: passageChunkId as ChunkId,
+        start,
+        end,
+      });
+    }
+  }
+
+  return anchors;
+}
 
 /**
- * Measure every laid-out CLAIM and CHUNK anchor under `root` into an
+ * Measure every laid-out CLAIM, CHUNK, and PASSAGE anchor under `root` into an
  * `anchorKey → Rect`
  * map, in the coordinate space of `root` (so rects are RELATIVE to the reading
  * column's top-left, stable under page scroll — the surface, not the augmentation,
@@ -103,18 +148,16 @@ export const CHUNK_ID_ATTR = "data-chunk-id";
 export function measureAnchorGeometry(root: HTMLElement): Map<string, Rect> {
   const rects = new Map<string, Rect>();
   const rootBox = root.getBoundingClientRect();
-  const nodes = root.querySelectorAll<HTMLElement>(`[${CLAIM_ID_ATTR}], [${CHUNK_ID_ATTR}]`);
+  const nodes = root.querySelectorAll<HTMLElement>(
+    `[${CLAIM_ID_ATTR}], [${CHUNK_ID_ATTR}], [${PASSAGE_CHUNK_ID_ATTR}]`,
+  );
   for (const node of nodes) {
-    const claimId = node.getAttribute(CLAIM_ID_ATTR);
-    const chunkId = node.getAttribute(CHUNK_ID_ATTR);
-    if (!claimId && !chunkId) continue;
+    const anchors = anchorsFromNode(node);
+    if (anchors.length === 0) continue;
     const box = node.getBoundingClientRect();
     // ZERO-HEIGHT/ZERO-WIDTH → not laid out yet; omit so resolve() returns null.
     if (box.height <= 0 || box.width <= 0) continue;
-    const anchor: Anchor = claimId
-      ? { kind: "claim", claimId: claimId as ClaimId }
-      : { kind: "chunk", chunkId: chunkId as ChunkId };
-    rects.set(anchorKey(anchor), {
+    const rect = {
       // Normalise into the reading column's own coordinate space (subtract the
       // root's origin) so the map is stable under page scroll and matches the
       // pre-transform space `ViewportBand` is expressed in (M3).
@@ -122,7 +165,8 @@ export function measureAnchorGeometry(root: HTMLElement): Map<string, Rect> {
       left: box.left - rootBox.left,
       width: box.width,
       height: box.height,
-    });
+    };
+    for (const anchor of anchors) rects.set(anchorKey(anchor), rect);
   }
   return rects;
 }

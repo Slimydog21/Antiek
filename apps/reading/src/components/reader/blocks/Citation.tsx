@@ -1,4 +1,10 @@
 import type { CitationSpan } from "../../../types/document_model.gen";
+import {
+  CHUNK_ID_ATTR,
+  PASSAGE_CHUNK_ID_ATTR,
+  PASSAGE_END_ATTR,
+  PASSAGE_START_ATTR,
+} from "../../../reading-physics/anchors";
 import { useReaderContext } from "../ReaderContext";
 
 /**
@@ -24,6 +30,20 @@ import { useReaderContext } from "../ReaderContext";
  */
 export default function Citation({ span }: { span: CitationSpan }) {
   const { openDocument, resolveSourceTitle } = useReaderContext();
+  const hasPassageOffsets =
+    typeof span.char_start === "number" &&
+    typeof span.char_end === "number" &&
+    span.char_end >= span.char_start;
+  const chunkAttrs = {
+    [CHUNK_ID_ATTR]: span.chunk_id || "",
+    ...(hasPassageOffsets
+      ? {
+          [PASSAGE_CHUNK_ID_ATTR]: span.chunk_id,
+          [PASSAGE_START_ATTR]: String(span.char_start),
+          [PASSAGE_END_ATTR]: String(span.char_end),
+        }
+      : {}),
+  };
 
   // A citation whose source failed to persist (SPR-07 partial-failure path)
   // degrades to a non-clickable marker — honest, not a dead navigation.
@@ -42,7 +62,7 @@ export default function Citation({ span }: { span: CitationSpan }) {
         data-citation-marker
         data-citation-unresolved
         data-source-document-id={span.source_document_id || ""}
-        data-chunk-id={span.chunk_id || ""}
+        {...chunkAttrs}
         title={title}
         aria-label={title}
         className="reader-citation align-baseline text-shadow-1 dark:text-moonlight decoration-dotted underline-offset-2 cursor-not-allowed"
@@ -60,7 +80,7 @@ export default function Citation({ span }: { span: CitationSpan }) {
       // React internals (mirrors the data-akb-* marker discipline elsewhere).
       data-citation-marker
       data-source-document-id={span.source_document_id}
-      data-chunk-id={span.chunk_id}
+      {...chunkAttrs}
       onClick={() =>
         openDocument(span.source_document_id, { chunkId: span.chunk_id })
       }

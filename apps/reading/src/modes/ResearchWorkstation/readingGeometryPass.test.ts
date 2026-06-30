@@ -27,6 +27,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CHUNK_ID_ATTR,
   CLAIM_ID_ATTR,
+  PASSAGE_CHUNK_ID_ATTR,
+  PASSAGE_END_ATTR,
+  PASSAGE_START_ATTR,
   buildLayoutMap,
   buildViewportBand,
   buildViewportScopedLayoutMap,
@@ -102,6 +105,7 @@ afterEach(() => {
 function makeArticle(
   claims: { claimId: string; rect: FakeRect }[],
   chunks: { chunkId: string; rect: FakeRect }[] = [],
+  passages: { chunkId: string; start: number; end: number; rect: FakeRect }[] = [],
   rootRect: FakeRect = { top: 0, left: 0, width: 800, height: 4000 },
 ): HTMLElement {
   const root = document.createElement("article");
@@ -118,6 +122,15 @@ function makeArticle(
     installRect(button, c.rect);
     root.appendChild(button);
   }
+  for (const p of passages) {
+    const span = document.createElement("span");
+    span.setAttribute(CHUNK_ID_ATTR, p.chunkId);
+    span.setAttribute(PASSAGE_CHUNK_ID_ATTR, p.chunkId);
+    span.setAttribute(PASSAGE_START_ATTR, String(p.start));
+    span.setAttribute(PASSAGE_END_ATTR, String(p.end));
+    installRect(span, p.rect);
+    root.appendChild(span);
+  }
   document.body.appendChild(root);
   return root;
 }
@@ -128,6 +141,10 @@ function claimAnchor(id: string): Anchor {
 
 function chunkAnchor(id: string): Anchor {
   return { kind: "chunk", chunkId: id as ChunkId };
+}
+
+function passageAnchor(chunkId: string, start: number, end: number): Anchor {
+  return { kind: "passage", chunkId: chunkId as ChunkId, start, end };
 }
 
 describe("readingGeometryPass — M1: measured DOM → non-null rect through createLayoutMap", () => {
@@ -166,6 +183,26 @@ describe("readingGeometryPass — M1: measured DOM → non-null rect through cre
     const r = buildLayoutMap(root).resolve(chunkAnchor("c1"));
     expect(r).not.toBeNull();
     expect(r).toEqual({ top: 180, left: 40, width: 180, height: 24 });
+  });
+
+  it("resolves an exact passage anchor from rendered passage-offset markers", () => {
+    const root = makeArticle(
+      [],
+      [],
+      [
+        {
+          chunkId: "c1",
+          start: 12,
+          end: 31,
+          rect: { top: 220, left: 48, width: 140, height: 18 },
+        },
+      ],
+    );
+    const map = buildLayoutMap(root);
+    const r = map.resolve(passageAnchor("c1", 12, 31));
+    expect(r).not.toBeNull();
+    expect(r).toEqual({ top: 220, left: 48, width: 140, height: 18 });
+    expect(map.resolve(chunkAnchor("c1"))).toEqual(r);
   });
 
   it("goes through baseGeometryFromMap → createLayoutMap (the designed seam, not a parallel build)", () => {
@@ -214,6 +251,7 @@ describe("readingGeometryPass — M3: viewport-scoped recompute discipline", () 
         { claimId: "1", rect: { top: 100, left: 20, width: 600, height: 40 } }, // in view
         { claimId: "2", rect: { top: 9000, left: 20, width: 600, height: 40 } }, // off view
       ],
+      [],
       [],
       // Root is the scroll reference; band = root box ± overscan, root-relative.
       { top: 0, left: 0, width: 800, height: 600 },

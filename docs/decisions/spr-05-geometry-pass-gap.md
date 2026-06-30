@@ -125,17 +125,17 @@ this live map.
   the live map (byte-equivalent, it is geometry-independent).
 
 **What is still DORMANT, and exactly why (rigor #1 — do not round up):**
-- **Marginalia passage anchors** remain dormant: they anchor to chunk-relative
-  `passage` offsets, and the synthesis surface still stamps no
-  `data-passage-*` markers. So a marginalia note pinned to a real passage
-  resolves to `null` through the live map → the note renders nothing. The
-  marginalia FACET PATH is proved live (an anchored widget resolves a non-null
-  rect when handed a measured anchor), and the **chunk** half is now live as of
-  2026-07-01: source citations stamp `data-chunk-id`, and the geometry pass
-  measures `{kind:"chunk"}` anchors for bounded/withheld chunk surfaces. What is
-  still NOT true: a marginalia note consumed a rect for its exact
-  `passage(start,end)` anchor. Closing that requires rendering/stamping passage
-  offset spans, not just chunk-level source chips.
+- **Marginalia UI remains dormant, but the exact passage marker gap is closed as
+  of 2026-07-01.** Structured Reader citations now stamp `data-passage-*` when
+  their document-model span carries `char_start` / `char_end`, and the geometry
+  pass measures `{kind:"passage", chunkId, start, end}` anchors alongside claim
+  and chunk anchors. The **chunk** half is live too: source citations stamp
+  `data-chunk-id`, and the geometry pass measures `{kind:"chunk"}` anchors for
+  bounded/withheld chunk surfaces. What is still NOT true: a marginalia note is
+  visibly mounted in the synthesis surface. The marginalia FACET PATH is proved
+  live (an anchored widget resolves a non-null rect when handed a measured
+  anchor), but `AccrualView` / `ChaseThread` are still not mounted in
+  `MasterMdViewer`.
 - The **collapse ⌘/Ctrl+scroll gesture is NOT bound.** This sprint lit up the
   geometry collapse CONSUMES; it did not add the surface gesture handler that
   mutates `CollapseState` and folds `collapsePipelineFor(state)` into the map. The
@@ -214,11 +214,12 @@ model:
   superseded and record the wiring commit + which widgets went live.~~ DONE
   2026-05-27 (see "What actually shipped" — closing commit on branch
   `caffen/lr-spr02`, orchestrator-committed on green).
-- **Marginalia needs to light up against real passages** → `data-chunk-id` source
-  citation markers are now live (2026-07-01); the remaining named wedge is
-  `data-passage-*` DOM markers on rendered passage spans plus a measure query for
-  `{kind:"passage", chunkId, start, end}`. The layout-map + augmentation are ready;
-  exact passage surface markers are still missing.
+- **Marginalia needs to light up as visible UI** → `data-chunk-id` source
+  citation markers and exact `data-passage-*` citation markers are now live
+  (2026-07-01), and the geometry pass measures `{kind:"chunk"}` plus
+  `{kind:"passage", chunkId, start, end}`. The remaining named wedge is mounting
+  the relevant gutter widgets in the synthesis/reader surface and feeding them
+  the existing live layout-map.
 - A different surface than `MasterMdViewer` becomes the canonical reading column →
   the geometry pass + its feed-points move with it; update `readingGeometryPass.ts`
   + the mount.
