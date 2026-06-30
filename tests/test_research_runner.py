@@ -244,6 +244,37 @@ async def test_stop_seals_and_transitions(events_dir):
     assert any(row["action_type"] == ActionType.INVESTIGATION_COMPLETED.value for row in rows)
 
 
+async def test_commands_after_stop_request_do_not_regress_stopping_state(events_dir):
+    step_emitted = asyncio.Event()
+    finish = asyncio.Event()
+
+    async def delayed_after_checkpoint(ctx: LoopContext):
+        await ctx.checkpoint()
+        await asyncio.sleep(0.03)
+        step_emitted.set()
+        yield ctx.step("step after stop request", cost_usd=0.0)
+        await finish.wait()
+        await ctx.checkpoint()
+
+    r = HostLocalRunner(delayed_after_checkpoint, events_dir=events_dir)
+    h = await r.start("inv-0", _plan(0))
+    await asyncio.sleep(0.01)
+    await r.steer(h, Command(CommandKind.STOP))
+    assert r.status(h).state == RunState.STOPPING
+
+    await asyncio.wait_for(step_emitted.wait(), timeout=1.0)
+    assert r.status(h).state == RunState.STOPPING
+    await r.steer(h, Command(CommandKind.PAUSE))
+    await r.steer(h, Command(CommandKind.REDIRECT, {"sub_question": "revived"}))
+    await r.steer(h, Command(CommandKind.DEEPEN, {"extra_budget_usd": 0.25}))
+
+    assert r.status(h).state == RunState.STOPPING
+    assert r.status(h).sub_question != "revived"
+    finish.set()
+    _ = [ev async for ev in r.stream(h)]
+    assert r.status(h).state == RunState.STOPPED
+
+
 async def test_redirect_changes_sub_question(events_dir):
     seen = []
 

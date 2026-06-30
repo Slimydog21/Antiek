@@ -122,6 +122,10 @@ class LoopContext:
         self._stop = True
         self._resume.set()                # unblock a paused loop so it can stop
 
+    @property
+    def stop_requested(self) -> bool:
+        return self._stop
+
     def request_redirect(self, sub_question: str) -> None:
         self._pending_redirect = sub_question
         self._resume.set()
@@ -309,7 +313,8 @@ class HostLocalRunner:
                                            state=RunState.RUNNING))
             try:
                 async for ev in self._loop_fn(ctx):
-                    st.state = RunState.PAUSED if ctx.paused else RunState.RUNNING
+                    if not ctx.stop_requested:
+                        st.state = RunState.PAUSED if ctx.paused else RunState.RUNNING
                     # Charge budget from the cost the step reports — this is
                     # the same number the step's DispatchCall events carry, so
                     # the ledger reconciles with dispatch by construction.
@@ -394,7 +399,7 @@ class HostLocalRunner:
 
     async def steer(self, handle: Handle, command: Command) -> None:
         st = self._states.get(handle.investigation_id)
-        if st is None or st.state.is_terminal() or st.ctx is None:
+        if st is None or st.state.is_terminal() or st.state == RunState.STOPPING or st.ctx is None:
             return  # safe no-op: command after a research finished
         ctx = st.ctx
         if command.kind == CommandKind.PAUSE:

@@ -146,6 +146,15 @@ describe("ResearchPanel — steer controls", () => {
     expect(screen.getByText("done")).toBeTruthy();
   });
 
+  it("hides steer controls while a stop request is sealing", () => {
+    render(<ResearchPanel research={{ ...running, state: "stopping" }} costUsd={0.02} onSteer={() => {}} />);
+    expect(screen.getByText("stopping")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Redirect" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Deepen" })).toBeNull();
+  });
+
   it("shows Resume (not Pause) when paused", () => {
     const onSteer = vi.fn();
     render(<ResearchPanel research={{ ...running, state: "paused" }} costUsd={0} onSteer={onSteer} />);

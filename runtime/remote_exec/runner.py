@@ -298,7 +298,7 @@ class RemoteResearchRunner:
 
     async def steer(self, handle: Handle, command: Command) -> None:
         st = self._states.get(handle.investigation_id)
-        if st is None or st.state.is_terminal():
+        if st is None or st.state.is_terminal() or st.state == RunState.STOPPING:
             return  # safe no-op: command after a research finished
         # DEEPEN extends the cap host-side (the budget lives on the host's
         # BudgetManager regardless of where the loop runs); REDIRECT updates
