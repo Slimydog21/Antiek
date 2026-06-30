@@ -307,8 +307,10 @@ def test_tier_3_packages_are_in_prod_vendors_allowlist() -> None:
     ``substrate/integrations.py``'s ``PROD_VENDORS`` frozenset, so
     a future grep for "what counts as adopted" lands on the same set."""
     integrations_module = REPO_ROOT / "substrate" / "integrations.py"
-    if not integrations_module.exists():
-        pytest.skip("substrate/integrations.py not present on this branch")
+    assert integrations_module.exists(), (
+        "substrate/integrations.py is the canonical PROD_VENDORS allowlist and "
+        "must exist now that the integration-tier contract has landed"
+    )
     text = integrations_module.read_text(encoding="utf-8")
     specs = cit.load_registry()
     missing = [s.name for s in specs if s.tier == 3 and s.name not in text]
