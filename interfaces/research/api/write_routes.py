@@ -453,12 +453,15 @@ def generate_section_draft(section_id: str) -> dict:
             ctx=ctx, dispatch_fn=default_dispatch_fn(investigation_id=deliverable_id),
             section_id=section_id,
         )
-    except KeyError:
-        # creative_writer not wired into the dispatch config.
+    except KeyError as e:
+        # Defensive: config drift or an unregistered provider. The shipped
+        # config maps creative_writer to synthesis; a KeyError now means the
+        # runtime dispatch substrate is unavailable, not that Write should
+        # fabricate prose.
         raise HTTPException(
             status_code=503,
-            detail="generation unavailable: creative_writer is not in the dispatch config",
-        )
+            detail=f"generation unavailable: dispatch provider unavailable: {e}",
+        ) from e
     except Exception as e:  # provider/credential failure
         raise HTTPException(status_code=503, detail=f"generation unavailable: {e}")
 
