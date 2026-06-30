@@ -63,7 +63,9 @@ vi.mock("../../components/lemon/LemonToast", () => ({
 }));
 
 import MasterMdViewer, { ClaimBlock, reviewDueDecorationsFor } from "./MasterMdViewer";
+import { RESTRICTED_CLASS, SERVABLE_CLASS } from "../../reading-physics/augmentations/servability";
 import { REVIEW_DUE_CLASS } from "../../reading-physics/augmentations/review-due";
+import { SITESEE_CITED_CLASS } from "../../reading-physics/augmentations/sitesee";
 import { anchorKey } from "../../reading-physics/facets/decorations";
 import type { ClaimId } from "../../reading-physics/types";
 import type { ParsedClaim } from "../../lib/synthesisParser";
@@ -226,6 +228,17 @@ describe("MasterMdViewer — named-source read (M1)", () => {
     expect(screen.queryByText("c1")).toBeNull();
   });
 
+  it("enacts SiteSee's cited tint on the named source chip", async () => {
+    getChunkMock.mockResolvedValue(
+      chunk({ chunk_id: "c1", document_title: "On Growth and Form", section_path: "p.12" }),
+    );
+    render(<MasterMdViewer synthesis={synth()} />);
+    const source = await screen.findByText(/from On Growth and Form/);
+    expect(source.className).toContain(SITESEE_CITED_CLASS);
+    expect(source.className).toContain("ring-sun/70");
+    expect(source.getAttribute("title")).toContain("You've cited this source");
+  });
+
   it("normalizes Page N source paths and opens them on the same reader page", async () => {
     getChunkMock.mockResolvedValue(
       chunk({
@@ -237,7 +250,7 @@ describe("MasterMdViewer — named-source read (M1)", () => {
     );
     render(<MasterMdViewer synthesis={synth()} />);
 
-    const source = await screen.findByTitle("Click to preview · ⌘-click to open the source");
+    const source = await screen.findByTitle(/Click to preview · ⌘-click to open the source/);
     expect(source.textContent).toBe("from On Growth and Form, p.17");
 
     fireEvent.click(source, { metaKey: true });
@@ -260,7 +273,7 @@ describe("MasterMdViewer — named-source read (M1)", () => {
     );
     render(<MasterMdViewer synthesis={synth()} />);
 
-    const source = await screen.findByTitle("Click to preview · ⌘-click to open the source");
+    const source = await screen.findByTitle(/Click to preview · ⌘-click to open the source/);
     expect(source.textContent).toBe("from On Growth and Form, p.12");
 
     fireEvent.click(source, { metaKey: true });
@@ -556,11 +569,6 @@ describe("MasterMdViewer — accrual anchored widget (SPR-04 M5)", () => {
 // the baseline. Both a SERVABLE and a NON-servable source are exercised in one
 // render (rigor #3).
 
-const SERVABLE_BUTTON_CLASS =
-  "text-[11px] text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 px-1.5 py-0.5 rounded transition-colors";
-const RESTRICTED_SPAN_CLASS =
-  "text-[11px] text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1 px-1.5 py-0.5 rounded inline-flex items-center gap-1";
-
 /** A synthesis with two claims: one cites a SERVABLE source, the other a
  *  NON-servable source — so a single render exercises both §9.0 branches. */
 function twoSourceSynth(): ParsedSynthesis {
@@ -589,8 +597,8 @@ function twoSourceSynth(): ParsedSynthesis {
   });
 }
 
-describe("MasterMdViewer — byte-equivalence of the re-homed §9.0 render (SPR-02)", () => {
-  it("emits the EXACT servable button + restricted span the inline code produced", async () => {
+describe("MasterMdViewer — §9.0 source gates with composed citation history", () => {
+  it("keeps the servable button and restricted span branches while SiteSee adds citation history", async () => {
     getChunkMock.mockImplementation(async (id: string) => {
       if (id === "open-1") {
         return chunk({
@@ -617,21 +625,26 @@ describe("MasterMdViewer — byte-equivalence of the re-homed §9.0 render (SPR-
 
     const { container } = render(<MasterMdViewer synthesis={twoSourceSynth()} />);
 
-    // ── Servable source: a BUTTON, exact class string + tooltip + content ──
+    // ── Servable source: a BUTTON, open tooltip + content preserved ──
     const openBtn = await waitFor(() =>
-      screen.getByTitle("Click to preview · ⌘-click to open the source"),
+      screen.getByTitle(/Click to preview · ⌘-click to open the source/),
     );
     expect(openBtn.tagName).toBe("BUTTON");
-    expect(openBtn.getAttribute("class")).toBe(SERVABLE_BUTTON_CLASS);
+    expect(openBtn.getAttribute("class")).toContain(SERVABLE_CLASS);
+    expect(openBtn.getAttribute("class")).toContain(SITESEE_CITED_CLASS);
+    expect(openBtn.getAttribute("class")).toContain("ring-sun/70");
+    expect(openBtn.getAttribute("title")).toContain("You've cited this source");
     expect(openBtn.textContent).toBe("from An Open Paper, p.7, published by MIT Press");
 
-    // ── Restricted source: a SPAN, exact class string + tooltip + the
+    // ── Restricted source: a SPAN, restricted tooltip + the
     //     "not available to open" inner span; NO body, NO owner ──
     const gatedSpan = screen.getByTitle(
-      "This source isn’t available to open here (its license restricts it).",
+      /This source isn.t available to open here/,
     );
     expect(gatedSpan.tagName).toBe("SPAN");
-    expect(gatedSpan.getAttribute("class")).toBe(RESTRICTED_SPAN_CLASS);
+    expect(gatedSpan.getAttribute("class")).toContain(RESTRICTED_CLASS);
+    expect(gatedSpan.getAttribute("class")).toContain(SITESEE_CITED_CLASS);
+    expect(gatedSpan.getAttribute("title")).toContain("You've cited this source");
     expect(gatedSpan.textContent).toBe(
       "from A Restricted Book, p.99· not available to open",
     );

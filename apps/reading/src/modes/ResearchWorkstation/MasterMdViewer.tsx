@@ -34,6 +34,12 @@ import {
 } from "../../reading-physics/augmentations/review-due";
 import type { ReviewDueClaimView } from "../../reading-physics/augmentations/review-due";
 import {
+  SITESEE_CITED_CLASS,
+  SITESEE_READ_CLASS,
+  SITESEE_SAVED_CLASS,
+  makeSiteSeeAugmentation,
+} from "../../reading-physics/augmentations/sitesee";
+import {
   CollapseState,
   collapsePipelineFor,
   fingerprintPlan,
@@ -544,6 +550,19 @@ function fingerprintColor(classNames: readonly string[]): string {
   return "#64748b";
 }
 
+function sourceHistoryTintClass(classNames: readonly string[]): string {
+  if (classNames.includes(SITESEE_READ_CLASS)) {
+    return "ring-1 ring-emerald-400/70 dark:ring-emerald-300/60";
+  }
+  if (classNames.includes(SITESEE_SAVED_CLASS)) {
+    return "ring-1 ring-aurora/70 dark:ring-sky/60";
+  }
+  if (classNames.includes(SITESEE_CITED_CLASS)) {
+    return "ring-1 ring-sun/70 dark:ring-sun/60";
+  }
+  return "";
+}
+
 // ── Sub-components ───────────────────────────────────────────────────
 
 export function ClaimBlock({
@@ -759,9 +778,11 @@ function NamedSources({
 
   // ── Facet apply pass (SPR-03: the first TWO-augmentation composition) ──
   //
-  // Two augmentations now declare decorations on each source's range:
+  // Three augmentations now declare decorations on each source's range:
   //   - ServabilityAugmentation declares the §9.0 verdict class + tooltip;
   //   - IpHolderAugmentation declares the "whose work grounds this" owner name.
+  //   - SiteSee declares the citation-history tint (`cited` for a named source
+  //     that appears because this synthesis cited it).
   // The decorations facet MERGES both contributions per source (§5.1), and the
   // surface here reads the combined verdict class AND owner name off ONE
   // resolved decoration. Neither augmentation imports the other — they meet
@@ -788,7 +809,7 @@ function NamedSources({
 
 /**
  * Run the decorations facet pass over the resolved sources, COMPOSING the
- * servability + IP-holder augmentations (SPR-03 M5), and return a lookup from a
+ * servability + IP-holder + SiteSee augmentations, and return a lookup from a
  * source's anchor key → its combined decoration. This is the surface's
  * collect → combine half of the cycle (§2); SourceCitation owns enact. A plain
  * pure function — NOT a hook: NamedSources returns early above its call site,
@@ -798,12 +819,13 @@ function NamedSources({
 function composedDecorationsByChunk(
   sources: ResolvedSource[],
 ): Map<string, ResolvedDecoration> {
-  // Both augmentations read substrate verdicts off each resolved source (PR-6:
+  // The augmentations read substrate verdicts off each resolved source (PR-6:
   // read, never recompute) and declare a decoration per source on the SAME
   // anchor (the representative chunk). The facet merges them — servability's
-  // verdict class with the IP-holder's owner name — so they compose without
-  // importing each other (PR-3). The render context is minimal: decorations
-  // need no layout-map (that resolves widget pixels, SPR-04), and the
+  // verdict class, the IP-holder's owner name, and SiteSee's citation-history
+  // tint — so they compose without importing each other (PR-3). The render
+  // context is minimal: decorations need no layout-map (that resolves widget
+  // pixels, SPR-04), and the
   // augmentations pull no further substrate data, so `substrate` is a
   // shape-only stub never called this sprint.
   const servability = makeServabilityAugmentation(
@@ -815,6 +837,15 @@ function composedDecorationsByChunk(
   const ipHolder = makeIpHolderAugmentation(
     sources.map((s) => ({
       representativeChunkId: s.representativeChunkId,
+      ipHolderName: s.ipHolderName,
+    })),
+  );
+  const siteSee = makeSiteSeeAugmentation(
+    sources.map((s) => ({
+      representativeChunkId: s.representativeChunkId,
+      state: "cited",
+      servable: s.servable,
+      title: s.title,
       ipHolderName: s.ipHolderName,
     })),
   );
@@ -833,7 +864,7 @@ function composedDecorationsByChunk(
   };
   // Collect both augmentations' declarations and combine. Order-independent:
   // passing [ipHolder, servability] yields the identical resolved set.
-  const resolved = collectDecorations([servability, ipHolder], ctx);
+  const resolved = collectDecorations([servability, ipHolder, siteSee], ctx);
   const byKey = new Map<string, ResolvedDecoration>();
   for (const d of resolved) byKey.set(d.key, d);
   return byKey;
@@ -878,6 +909,8 @@ function SourceCitation({
   // branch — fail-closed so a source can never open without a positive
   // servable verdict.
   const servable = decoration?.classNames.includes(SERVABLE_CLASS) ?? false;
+  const declaredClasses = decoration?.classNames.join(" ") ?? "";
+  const historyTintClass = sourceHistoryTintClass(decoration?.classNames ?? []);
 
   if (!servable) {
     // §9.0: a restricted / taken-down source must NOT open. Show the
@@ -886,7 +919,7 @@ function SourceCitation({
     return (
       <span
         {...{ [CHUNK_ID_ATTR]: source.representativeChunkId }}
-        className="text-[11px] text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1 px-1.5 py-0.5 rounded inline-flex items-center gap-1"
+        className={`text-[11px] text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1 px-1.5 py-0.5 rounded inline-flex items-center gap-1 ${declaredClasses} ${historyTintClass}`.trim()}
         title={decoration?.title ?? RESTRICTED_TITLE}
       >
         from {label}
@@ -939,7 +972,7 @@ function SourceCitation({
         }
         onPreview(source.representativeChunkId);
       }}
-      className="text-[11px] text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 px-1.5 py-0.5 rounded transition-colors"
+      className={`text-[11px] text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 px-1.5 py-0.5 rounded transition-colors ${declaredClasses} ${historyTintClass}`.trim()}
       title={decoration?.title ?? SERVABLE_TITLE}
     >
       from {label}

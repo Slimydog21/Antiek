@@ -342,6 +342,13 @@ read from existing events.)
 > `apps/reading/src/modes/Reading/resolveCitationHistory.ts`. The `read` tint
 > lights for previously-read sources. Closure recorded in
 > `docs/decisions/spr-06-source-read-event-gap.md`.
+>
+> **Update (2026-07-01): completed research answers now enact SiteSee's cited
+> tint.** `MasterMdViewer` includes `makeSiteSeeAugmentation` in the named-source
+> decoration pass, so a source chip that exists because the synthesis cited it
+> carries `sitesee--cited` and the surface paints the visible cited ring. This is
+> the research-answer mount of the already-shipped SiteSee state; it opens no
+> writer and does not alter the book-reader `source.read` funnel.
 
 ### §9.0 — the hover card shows only bounded metadata (reused, not re-implemented)
 
@@ -457,11 +464,11 @@ violation. This changes **no** verdict for the flat augmentations the tree ships
 own helper modules are one augmentation. The refinement is verified to still flag
 every real cross-augmentation import (flat→flat, flat→package, package→flat).
 
-## Byte-equivalence baseline (still enforced)
+## Source-gate baseline
 
-The pre-SPR-02 `SourceCitation` render is pinned by `MasterMdViewer.test.tsx`
-("byte-equivalence of the re-homed §9.0 render"). SPR-03's generalization +
-the IP-holder re-home keep it **byte-identical** (the IP-holder name now flows
-through the facet's `attribution` payload instead of an inline string, with the
-same rendered "published by …"). Any diff is a regression — do not adjust the
-baseline.
+The pre-SPR-02 `SourceCitation` branch discipline is pinned by
+`MasterMdViewer.test.tsx`: a servable source remains an openable button, a
+restricted source remains a non-openable span, withheld bodies and owners never
+surface, and exactly the servable source opens. Later composition may add
+declared facet classes/titles (for example SiteSee's `sitesee--cited`), but it
+must not weaken those §9.0 gates.

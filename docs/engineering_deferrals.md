@@ -400,6 +400,9 @@ The cluster contains:
   `/books/{document_id}/full-text` returns `representative_chunk_id` when the
   full body is served, and `modes/Reading/index.tsx` emits `source.read` with
   that real chunk id so the SiteSee `read` tint can paint end-to-end.
+  **2026-07-01 follow-up:** completed research answers now also enact SiteSee's
+  `cited` state on `MasterMdViewer` named-source chips through the same
+  decorations facet; the §9.0 open/withhold branches remain pinned.
 - **The marginalia note/voice persistence**
   (`docs/decisions/spr-07-marginalia-voice-storage.md`) — ✅ **NOTE→NODE WRITE PATH
   + SHARED VOICE-BLOB STORAGE CLOSED:** an in-book `marginalia.noted` becomes a
