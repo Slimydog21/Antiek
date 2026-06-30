@@ -43,14 +43,15 @@ E. Parser — provenance discipline:
 F. Parser — reasoning_paths_used:
    24. ``support_summary`` <20 chars rejected.
    25. Empty ``path_node_ids`` rejected.
-   26. Empty ``reasoning_paths_used`` list OK (typical for
+   26. ``supporting_path_indices`` must reference existing paths.
+   27. Empty ``reasoning_paths_used`` list OK (typical for
        insufficient_evidence).
 
 G. Drift detection:
-   27. CONFIDENCE_LEVELS == schema ConfidenceLevel.
-   28. IMPLICIT_RECOMMENDATIONS subset of SynthesisRecommendation
+   28. CONFIDENCE_LEVELS == schema ConfidenceLevel.
+   29. IMPLICIT_RECOMMENDATIONS subset of SynthesisRecommendation
        (the schema also accepts "undetermined" for back-compat).
-   29. EXECUTION_RISK_SEVERITIES == ThesisRiskSeverity.
+   30. EXECUTION_RISK_SEVERITIES == ThesisRiskSeverity.
 """
 
 from __future__ import annotations
@@ -445,9 +446,17 @@ def test_path_only_provenance_ok():
     a graph path grounds the claim."""
     payload = _good_thesis()
     payload["thesis_components"][0]["supporting_chunk_ids"] = []
-    payload["thesis_components"][0]["supporting_path_indices"] = [0, 2]
+    payload["thesis_components"][0]["supporting_path_indices"] = [0]
     out = parse_synthesizer_response(json.dumps(payload))
-    assert out.thesis_components[0].supporting_path_indices == (0, 2)
+    assert out.thesis_components[0].supporting_path_indices == (0,)
+
+
+def test_supporting_path_indices_must_reference_existing_reasoning_path():
+    payload = _good_thesis()
+    payload["thesis_components"][0]["supporting_chunk_ids"] = []
+    payload["thesis_components"][0]["supporting_path_indices"] = [1]
+    with pytest.raises(SynthesizerValidationError, match="out of range"):
+        parse_synthesizer_response(json.dumps(payload))
 
 
 # ---------------------------------------------------------------------------
@@ -504,6 +513,7 @@ def test_canonical_path_refs_are_preserved():
 
 def test_empty_reasoning_paths_ok():
     payload = _good_thesis(reasoning_paths_used=[])
+    payload["thesis_components"][0]["supporting_path_indices"] = []
     out = parse_synthesizer_response(json.dumps(payload))
     assert out.reasoning_paths_used == ()
 

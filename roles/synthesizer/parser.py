@@ -448,6 +448,21 @@ def _parse_reasoning_path(
     )
 
 
+def _validate_supporting_path_indices(
+    components: tuple[ParsedThesisComponent, ...],
+    reasoning_paths: tuple[ParsedReasoningPath, ...],
+) -> None:
+    path_count = len(reasoning_paths)
+    for component_index, component in enumerate(components):
+        for path_index in component.supporting_path_indices:
+            if path_index >= path_count:
+                raise SynthesizerValidationError(
+                    f"thesis_components[{component_index}].supporting_path_indices: "
+                    f"path index {path_index} is out of range for "
+                    f"{path_count} reasoning_paths_used entries"
+                )
+
+
 def parse_synthesizer_response(
     text: str,
     *,
@@ -540,6 +555,7 @@ def parse_synthesizer_response(
         )
         for i, r in enumerate(reasoning_raw)
     )
+    _validate_supporting_path_indices(components, reasoning)
 
     conviction_raw = obj.get("conviction_level")
     conviction: float | None = None
