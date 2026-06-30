@@ -49,7 +49,7 @@ import { emitSourceRead, isRead } from "./sourceRead";
 
 export function pageIndexFromChunkSectionPath(sectionPath: string | null | undefined): number | null {
   if (!sectionPath) return null;
-  const match = sectionPath.trim().match(/^Page\s+(\d+)$/i);
+  const match = sectionPath.trim().match(/^(?:Page|p\.?)\s*(\d+)$/i);
   if (!match) return null;
   const pageNumber = Number.parseInt(match[1], 10);
   if (!Number.isFinite(pageNumber) || pageNumber < 1) return null;
@@ -73,7 +73,7 @@ export default function BookReader() {
   //                sprint lands the reader on the region's page honestly.
   //   ?mode=inspect → default the "view original" register on (the provenance
   //                view), when an original exists.
-  //   ?chunk=... → resolved through GET /chunks/{id}; an exact `Page N`
+  //   ?chunk=... → resolved through GET /chunks/{id}; an exact `Page N` / `p.N`
   //                section_path jumps to that page. Other locators stay
   //                metadata — no fabricated page or block anchor.
   const [searchParams] = useSearchParams();
@@ -245,7 +245,7 @@ export default function BookReader() {
   // (document_model.gen.ts: only FootnoteBlock carries an `id`), so a Region's
   // block_id CANNOT be resolved to a page here. We therefore land on an
   // explicit `?page=` when supplied; otherwise, `?chunk=` may resolve to an
-  // exact page through the chunk's `Page N` section_path. Without either, we
+  // exact page through the chunk's `Page N` / `p.N` section_path. Without either, we
   // open at the saved page — never a fabricated block jump. Painting the exact
   // char-range in the body is SPR-06 (highlight chat). The Region still rides on
   // the URL so SPR-06 has the anchor; this sprint lands the PAGE honestly.
@@ -256,8 +256,8 @@ export default function BookReader() {
     const key = `${documentId}|${targetPage ?? ""}|${searchParams.get("hl") ?? ""}|${optChunk ?? ""}`;
     if (deepLinkAppliedRef.current === key) return;
     deepLinkAppliedRef.current = key;
-    // Explicit ?page= wins. Otherwise, an exact "Page N" chunk section_path can
-    // land the reader on the chunk's page. Non-page locators stay metadata.
+    // Explicit ?page= wins. Otherwise, an exact page chunk section_path can land
+    // the reader on the chunk's page. Non-page locators stay metadata.
     if (targetPage !== null) jumpToPage(targetPage);
   }, [pages.length, optPage, chunkPageIndex, documentId, searchParams, optChunk, jumpToPage]);
 

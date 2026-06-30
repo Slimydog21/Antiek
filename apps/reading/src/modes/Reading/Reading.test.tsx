@@ -122,6 +122,16 @@ function selectTextIn(
 // ── paginate (the locator scheme) ───────────────────────────────────
 
 describe("paginate", () => {
+  it("maps exact chunk section paths to zero-based page indexes", async () => {
+    const { pageIndexFromChunkSectionPath } = await import("./index");
+    expect(pageIndexFromChunkSectionPath("Page 2")).toBe(1);
+    expect(pageIndexFromChunkSectionPath("p.2")).toBe(1);
+    expect(pageIndexFromChunkSectionPath("p 2")).toBe(1);
+    expect(pageIndexFromChunkSectionPath("Page 2 · Section 3")).toBeNull();
+    expect(pageIndexFromChunkSectionPath("Timestamp 00:17")).toBeNull();
+    expect(pageIndexFromChunkSectionPath(null)).toBeNull();
+  });
+
   it("splits served markdown on `## Page N`, dropping front matter", () => {
     const md = "# Title\n_by Author_\n## Page 1\n\nfirst page body\n\n## Page 2\n\nsecond page body";
     const pages = paginate(md);
@@ -308,6 +318,27 @@ describe("BookReader", () => {
     });
 
     await renderReader("/read/doc-1?chunk=chunk-page-2");
+
+    await waitFor(() => expect(screen.getByText("The second page.")).toBeTruthy());
+    expect(screen.getByText(/Page 2 of 2/)).toBeTruthy();
+  });
+
+  it("lands on the exact page for a ?chunk= link when the chunk has a p.N anchor", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    getChunkMock.mockResolvedValue({
+      chunk_id: "chunk-p-2",
+      text: "second page source",
+      section_path: "p.2",
+      token_count: 12,
+      document_id: "doc-1",
+      document_title: "A Servable Book",
+      source_tier: 2,
+      servable: true,
+      servability: null,
+    });
+
+    await renderReader("/read/doc-1?chunk=chunk-p-2");
 
     await waitFor(() => expect(screen.getByText("The second page.")).toBeTruthy());
     expect(screen.getByText(/Page 2 of 2/)).toBeTruthy();
