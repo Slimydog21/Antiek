@@ -33,16 +33,20 @@ actual_failure: |
   noticed only after the ban took the daemon offline for an hour.
 
 harness_check_that_now_catches: |
-  GAP — cache size is hardcoded somewhere in the arxiv adapter, no
-  metrics surface, no env override. A small refactor would expose
-  ANTIEK_ARXIV_CACHE_SIZE + emit cache_hits / cache_misses to the
-  event log; the §14.4 inline rubric (SPR-E7's craft surface) does
-  not cover acquisition-path metrics.
+  acquisition/arxiv/client.py — the export-search metadata cache is a
+  URL-keyed LRU sized by ANTIEK_ARXIV_CACHE_SIZE, defaults to 1000 entries, and
+  exposes cache_hits / cache_misses through arxiv_metadata_cache_stats(). When
+  cache_metrics_investigation_id or ANTIEK_ARXIV_CACHE_METRICS_INVESTIGATION_ID
+  is set, each lookup emits an arxiv.metadata_cache event-log row with
+  cache_hits, cache_misses, cache_size, and cache_capacity. Covered by
+  tests/test_acquisition_arxiv.py, including default sizing, env-capacity LRU
+  eviction, no-refetch reuse, and event-log metrics.
 
-fix_commit: GAP
+fix_commit: SPR-08
 
 notes: |
   Sister fixture to arxiv-429-export-ban. Fixing the cache size
   reduces the rate of re-fetches; fixing the throttle prevents
   the ban from re-triggering. Both are independent mitigations
-  for the same incident class.
+  for the same incident class; the cache mitigation is now explicit on the
+  export-search metadata boundary rather than buried in a caller.
