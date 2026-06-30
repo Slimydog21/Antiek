@@ -588,6 +588,26 @@ describe("MasterMdViewer — review-due liveness (SPR-08 M5)", () => {
     expect(notDueSpan!.getAttribute("class") ?? "").not.toContain(REVIEW_DUE_CLASS);
     expect(notDueSpan!.getAttribute("title")).toBeNull();
   });
+
+  it("mounted viewer accepts substrate-resolved dueClaims when explicitly enabled", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    const { container } = render(
+      <MasterMdViewer
+        synthesis={reviewDueSynth()}
+        reviewDueEnabled={true}
+        reviewDueClaims={[{ claimId: "1", dueLabel: "Due today" }]}
+      />,
+    );
+    await waitFor(() =>
+      expect(container.querySelector('[data-claim-id="1"]')).not.toBeNull(),
+    );
+
+    const dueSpan = container.querySelector('[data-claim-id="1"]');
+    const notDueSpan = container.querySelector('[data-claim-id="2"]');
+    expect(dueSpan!.getAttribute("class")).toContain(REVIEW_DUE_CLASS);
+    expect(dueSpan!.getAttribute("title")).toBe("Due today");
+    expect(notDueSpan!.getAttribute("class") ?? "").not.toContain(REVIEW_DUE_CLASS);
+  });
 });
 
 // ── SPR-08 M5 — DEFAULT-OFF byte-equivalence of the claim span ───────────────

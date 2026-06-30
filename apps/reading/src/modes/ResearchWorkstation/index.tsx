@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { useInvestigation } from "../../hooks/useInvestigation";
@@ -16,6 +16,7 @@ import PasteIngest from "./PasteIngest";
 import UnifiedSearch from "../../components/UnifiedSearch";
 import SuggestedResearch from "./SuggestedResearch";
 import ThinkingStream from "./ThinkingStream";
+import { resolveDueClaimsFromEvents } from "./reviewState";
 
 /**
  * Mode A — Research Workstation (S5 redesign → Living-Roadmap SPR-05 M3).
@@ -201,39 +202,11 @@ function CenterContent({
     investigation.status === "completed" ||
     investigation.status === "failed"
   ) {
-    const synth = parseSynthesis(investigation.events);
-    // SPR-03: a completed research's durable product is its insights + open
-    // questions (DistillView, M2), shown alongside the answer prose
-    // (MasterMdViewer, SPR-04's narrative is separate). When there's no
-    // synthesis (the no-key / nothing-distilled case) DistillView carries the
-    // honest no-result state on its own.
     return (
-      <div className="flex h-full min-h-0 flex-col overflow-y-auto">
-        {synth ? <MasterMdViewer synthesis={synth} /> : null}
-        <div className="border-t border-rule dark:border-charcoal-1">
-          <DistillView
-            investigationId={investigation.id}
-            running={false}
-            onChase={onChaseQuestion}
-          />
-        </div>
-        {/* SPR-09: the §7 daemon's scored open questions, surfaced beside the
-            answer as threads worth chasing. Read-only to render; chasing one
-            reuses SPR-04's chase gesture (onChaseQuestion → the one
-            ChaseThread panel), so it launches through the same capped path —
-            no second launch mechanism, no auto-spawn. */}
-        <div className="border-t border-rule dark:border-charcoal-1">
-          <SuggestedResearch
-            variant="beside"
-            onChase={(c) => onChaseQuestion({ text: c.text })}
-          />
-        </div>
-        {/* SPR-04 M3: paste/drop a file into THIS research → max-context
-            pack. Absorbed content is citable on the next run / chase. */}
-        <div className="border-t border-rule px-4 py-4 dark:border-charcoal-1">
-          <PasteIngest investigationId={investigation.id} />
-        </div>
-      </div>
+      <CompletedInvestigationContent
+        investigation={investigation}
+        onChaseQuestion={onChaseQuestion}
+      />
     );
   }
   // SPR-02 live view + SPR-03 auto-notes: the plain-language thinking stream on
@@ -256,4 +229,93 @@ function CenterContent({
       </aside>
     </div>
   );
+}
+
+function CompletedInvestigationContent({
+  investigation,
+  onChaseQuestion,
+}: {
+  investigation: InvestigationState;
+  onChaseQuestion: (q: {
+    text: string;
+    reserved_child_investigation_id?: string | null;
+  }) => void;
+}) {
+  const [reviewNow, setReviewNow] = useState(() => new Date());
+  useEffect(() => {
+    setReviewNow(new Date());
+    const id = window.setInterval(() => setReviewNow(new Date()), 60_000);
+    return () => window.clearInterval(id);
+  }, [investigation.events]);
+
+  const synth = useMemo(
+    () => parseSynthesis(investigation.events),
+    [investigation.events],
+  );
+  const synthesisId = useMemo(
+    () => latestDeliveredSynthesisId(investigation.events),
+    [investigation.events],
+  );
+  const reviewDueClaims = useMemo(
+    () =>
+      resolveDueClaimsFromEvents(investigation.events, {
+        now: reviewNow,
+        synthesisId,
+      }),
+    [investigation.events, reviewNow, synthesisId],
+  );
+
+  // SPR-03: a completed research's durable product is its insights + open
+  // questions (DistillView, M2), shown alongside the answer prose
+  // (MasterMdViewer, SPR-04's narrative is separate). When there's no
+  // synthesis (the no-key / nothing-distilled case) DistillView carries the
+  // honest no-result state on its own.
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-y-auto">
+      {synth ? (
+        <MasterMdViewer
+          synthesis={synth}
+          reviewDueEnabled={true}
+          reviewDueClaims={reviewDueClaims}
+        />
+      ) : null}
+      <div className="border-t border-rule dark:border-charcoal-1">
+        <DistillView
+          investigationId={investigation.id}
+          running={false}
+          onChase={onChaseQuestion}
+        />
+      </div>
+      {/* SPR-09: the §7 daemon's scored open questions, surfaced beside the
+            answer as threads worth chasing. Read-only to render; chasing one
+            reuses SPR-04's chase gesture (onChaseQuestion → the one
+            ChaseThread panel), so it launches through the same capped path —
+            no second launch mechanism, no auto-spawn. */}
+      <div className="border-t border-rule dark:border-charcoal-1">
+        <SuggestedResearch
+          variant="beside"
+          onChase={(c) => onChaseQuestion({ text: c.text })}
+        />
+      </div>
+      {/* SPR-04 M3: paste/drop a file into THIS research → max-context
+            pack. Absorbed content is citable on the next run / chase. */}
+      <div className="border-t border-rule px-4 py-4 dark:border-charcoal-1">
+        <PasteIngest investigationId={investigation.id} />
+      </div>
+    </div>
+  );
+}
+
+function latestDeliveredSynthesisId(events: InvestigationState["events"]): string | null {
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const event = events[i];
+    if (
+      event.action_type === "synthesize.delivered" &&
+      typeof event.synthesis_id === "string" &&
+      event.synthesis_id.length > 0
+    ) {
+      return event.synthesis_id;
+    }
+  }
+  return null;
 }

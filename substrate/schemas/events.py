@@ -423,6 +423,14 @@ class ActionType(str, Enum):
     #    history; it emits nothing and opens no writer of its own.
     SOURCE_READ = "source.read"
 
+    # ── Claim reviewed → review-due resolver (Living Roadmap SPR-08 follow-up).
+    #    When a reader explicitly reviews a claim, the surface emits this typed
+    #    event through the same single-writer funnel as source.read. It carries
+    #    the claim's semantic anchor + the scheduler's next_due_at verdict, not
+    #    claim text or source body. review-due reads these events to decide which
+    #    claim anchors are due; no client side-store and no fabricated schedule.
+    CLAIM_REVIEWED = "claim.reviewed"
+
     # ── Meta-reading deliverable (Living Roadmap SPR-08 M4). A one-shot,
     #    READ-ONLY, page-cited synthesis over the reader's OWNED corpus, saved
     #    as a re-openable Read asset. WHY AN EVENT, NOT A CLIENT SIDE-STORE:
@@ -692,14 +700,21 @@ class ActionType(str, Enum):
 #     reaches the pack. Composes the existing scorer + the §9.0 servability
 #     answer recorded on the unit at deposit (deny-by-default, read not
 #     re-derived). specs/antiek-flywheel-foundation/ SPR-08. 2026-06.
-# --- merged: reuse.gated (SPR-08, above) and document.content_class_defaulted
-#     (Personal-Reading Lane, below) were each independently bumped to v26
-#     over base v25 on separate branches; folded together here the union
-#     schema version is 27 (two distinct +1 events over v25). ---
+# v27: merged reuse.gated (SPR-08, above) and
+#     document.content_class_defaulted (Personal-Reading Lane, below). They were
+#     each independently bumped to v26 over base v25 on separate branches;
+#     folded together here, the union schema version is 27 (two distinct +1
+#     events over v25).
 # --- merged: the line above (knowledge.reused) shipped on main as v25; the
 #     block below (document.content_class_defaulted) is the Personal-Reading
 #     Lane event folded in here, so the union schema version is 26 (two
 #     independent +1 bumps over base v24). ---
+# v28: Living Roadmap SPR-08 follow-up — review-state resolver signal. One
+#     typed event (claim.reviewed) records that the reader reviewed a claim and
+#     stores the scheduler's next_due_at verdict. review-due can now resolve
+#     due claims from substrate history instead of an empty placeholder. The
+#     event carries no claim/source body; only the claim anchor, reviewed_at,
+#     next_due_at, and optional scheduling metadata.
 # v26: Personal-Reading Lane SPR-01 — deny-by-default ingest classification.
 #     One typed event (document.content_class_defaulted) records that
 #     insert_document defaulted a third-party document_type (web_article /
@@ -3722,6 +3737,38 @@ class SourceReadPayload(_PayloadBase):
     page_count: int = Field(ge=0, default=0)
 
 
+# ── Claim reviewed → review-due resolver (SPR-08 follow-up) ────────────────
+
+
+class ClaimReviewedPayload(_PayloadBase):
+    """A reader explicitly reviewed one synthesis claim and the scheduler
+    persisted the next due verdict.
+    This is the review-state signal the dormant review-due augmentation was
+    waiting for (``docs/decisions/spr-08-review-state-resolution-gap.md``). It
+    is substrate view-state, like ``source.read``: the surface emits the review
+    gesture through the single-writer typed-event funnel and later resolves the
+    due set by replaying the latest review event per claim.
+    §9.0 — NO BODY. The event carries no claim prose, no source excerpt, and no
+    retrieved text. The claim anchor is ``claim_id``; the optional scheduler
+    metadata is numeric/label-only and reconstructs why a due cue appears."""
+
+    action_type: Literal[ActionType.CLAIM_REVIEWED] = ActionType.CLAIM_REVIEWED
+    # Claim positional/semantic id used by the reader augmentation. It must be
+    # non-empty; the Event envelope carries investigation/synthesis scope.
+    claim_id: str = Field(min_length=1)
+    # ISO-8601 timestamps. Strings keep the payload JSON simple and match the
+    # frontend's Date parsing contract; timezone handling is the scheduler's
+    # responsibility, but emitted values should be UTC/Z.
+    reviewed_at: str = Field(min_length=1)
+    next_due_at: str = Field(min_length=1)
+    # Optional scheduler evidence. Not gated today; recorded so future schedule
+    # tuning can explain why the next_due_at landed where it did.
+    rating: str | None = None
+    ease: float | None = Field(default=None, ge=0)
+    interval_days: float | None = Field(default=None, ge=0)
+    due_label: str | None = None
+
+
 # ── Meta-reading deliverable → re-openable Read asset (SPR-08 M4) ──────────
 
 
@@ -3832,7 +3879,7 @@ class DocumentFiledIntoInvestigationPayload(_PayloadBase):
 
 
 TypedPayload = Annotated[
-    DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
+    DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ClaimReviewedPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
     Field(discriminator="action_type"),
 ]
 
@@ -3969,6 +4016,8 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.BLOCK_POSITIONED.value,
     # Living Roadmap SPR-07 — source.read → SiteSee "read" tint.
     ActionType.SOURCE_READ.value,
+    # Living Roadmap SPR-08 follow-up — claim.reviewed → review-due resolver.
+    ActionType.CLAIM_REVIEWED.value,
     # Living Roadmap SPR-08 — meta-reading deliverable → re-openable Read asset.
     ActionType.READ_META_READING_GENERATED.value,
     # Living Roadmap SPR-13 — file a personal-space doc INTO a research project.

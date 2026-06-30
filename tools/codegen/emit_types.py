@@ -272,6 +272,8 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.BlockPositionPayload,
     # Living Roadmap SPR-07 — source.read → SiteSee "read" tint.
     schema_module.SourceReadPayload,
+    # Living Roadmap SPR-08 follow-up — claim.reviewed → review-due resolver.
+    schema_module.ClaimReviewedPayload,
     # Living Roadmap SPR-08 — meta-reading deliverable → re-openable Read asset.
     schema_module.ReadMetaReadingGeneratedPayload,
     # Living Roadmap SPR-13 — file a personal-space doc INTO a research project.
@@ -510,7 +512,8 @@ def _emit_interface(model: type[BaseModel], lines: list[str]) -> None:
     if docstring:
         lines.append("/**")
         for d_line in docstring.splitlines():
-            lines.append(f" * {d_line.rstrip()}")
+            stripped = d_line.rstrip()
+            lines.append(f" * {stripped}" if stripped else " *")
         lines.append(" */")
     lines.append(f"export interface {name} {{")
     for field_name, field in model.model_fields.items():

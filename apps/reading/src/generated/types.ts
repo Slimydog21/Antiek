@@ -138,6 +138,7 @@ export const ActionType = {
   BLOCK_POSITIONED: "block.positioned",
   MARGINALIA_NOTED: "marginalia.noted",
   SOURCE_READ: "source.read",
+  CLAIM_REVIEWED: "claim.reviewed",
   READ_META_READING_GENERATED: "read.meta_reading.generated",
   DOCUMENT_FILED_INTO_INVESTIGATION: "document.filed_into_investigation",
   GROUNDEDNESS_SCORED: "groundedness.scored",
@@ -207,7 +208,7 @@ export interface ContextLayer {
  * A typed unit of distilled truth. Embedded inside
  * ``DistillationDeliveredPayload.claims`` and referenced by
  * challenge / grounding-check events via ``claim_id``.
- * 
+ *
  * Why structured: a distillation stored as opaque prose cannot have
  * its claims extracted to graph nodes, cannot be diffed, cannot be
  * trained on. See ``docs/architecture_notes.md`` §13.1 (Layer 1).
@@ -303,7 +304,7 @@ export interface ParaphraseFlagRecord {
 
 /**
  * One evidence-cited claim produced by the Evidence Retriever.
- * 
+ *
  * ``source_tier_min`` is optional — ``None`` is the spec sentinel for
  * "below the schema floor"; ``0`` is REJECTED (the upstream prompt's
  * explicit prohibition). Valid integer range is [1, 5].
@@ -331,7 +332,7 @@ export interface EvidentiaryGap {
  * Structured value attached to a Parameter. ``value_type`` is the
  * discriminator; ``value`` and ``unit`` are present only for the
  * numeric / categorical shapes.
- * 
+ *
  * The upstream "JSON null vs literal-string 'null'" rule (parser
  * normalizes both to the literal ``"null"``) is enforced one layer
  * higher in ``roles/parameter_extractor/parser.py`` — by the time a
@@ -360,7 +361,7 @@ export interface Parameter {
 
 /**
  * Pydantic mirror of the Sprint 4 day 3-4 ``Constraint`` dataclass.
- * 
+ *
  * Named ``ConstraintSpec`` (not ``Constraint``) to avoid naming
  * collision with the dataclass that's already exported from
  * ``middleware/constraint_check/constraints.py``. The bridge handler
@@ -436,7 +437,7 @@ export interface NaturalLanguageRelationship {
  * paths) — the upstream's "provenance is structural" rule. The
  * parser enforces this disjunction; the Pydantic model carries the
  * fields but doesn't reject empty-both at the schema layer.
- * 
+ *
  * ``effective_source_tier`` is in [1, 5] OR ``None``. ``0`` is
  * forbidden (the upstream prompt's explicit prohibition; defended
  * by ``Field(ge=1, le=5)``).
@@ -560,10 +561,10 @@ export interface ClaimGroundednessVerdict {
 
 /**
  * Emitted by ``substrate/dispatch/`` on every LLM provider call.
- * 
+ *
  * The cost-tracking decorator populates these fields after the call
  * returns; the event is then written to the trajectory.
- * 
+ *
  * The five optional ``*_ext`` fields below carry the token-burn telemetry
  * antiek-yegge-execute SPR-01 specified as a *separate* ``token_burn`` event.
  * That was a substrate-fit defect against current main: ``DISPATCH_CALL`` is
@@ -599,7 +600,7 @@ export interface DispatchCallPayload {
 /**
  * Records the registration of a first-class worker by the worker registry
  * (antiek-yegge-execute SPR-04, not yet built). One event per spawn.
- * 
+ *
  * Added by SPR-01 (yegge-execute) on 2026-07-02. event_log stores the
  * ``worker_id`` string verbatim — UUID-v7 validity + sortability is SPR-04's
  * responsibility, not event_log's; this payload does not validate the id's
@@ -619,7 +620,7 @@ export interface WorkerIdentityPayload {
 
 /**
  * Emitted by ``substrate/context_pack/`` after each pack assembly.
- * 
+ *
  * Captures what the model actually saw at decision time — the layered
  * composition + budget reality. This is the queryable property that
  * backs §2.5's "what did the model actually see when it made this
@@ -642,9 +643,9 @@ export interface ContextPackAssembledPayload {
  * decision: which prior knowledge units were injected, their REAL cosine
  * scores, why each retrieved unit was injected or dropped, where each came
  * from, and the ``CONTEXT_PACK_ASSEMBLED`` event this reuse rides on.
- * 
+ *
  * Field contract:
- * 
+ *
  * * ``reused_unit_ids`` / ``scores`` describe the INJECTED set only and are
  *   EQUAL-LENGTH, in pack (similarity-desc, id-tiebreak) order. ``scores`` are
  *   the real cosine similarities, never a floor (honesty, rigor #1).
@@ -654,7 +655,7 @@ export interface ContextPackAssembledPayload {
  *   ``dropped-low-relevance`` — the honest, distinct reason for the unit's fate.
  * * ``context_pack_event_id`` is the assembled pack's event id, so a reuse
  *   decision is joinable to exactly what the model saw.
- * 
+ *
  * An empty ``reused_unit_ids`` is valid and expected for a novel question or
  * an all-non-servable / all-over-budget retrieval — the event is STILL emitted
  * (reuse-of-nothing is recorded, not skipped).
@@ -674,16 +675,16 @@ export interface KnowledgeReusedPayload {
  * BEFORE any unit text reaches the context pack. An ADMITTED unit emits NO
  * reuse.gated event — absence of this event for a reused unit is the signal
  * that it cleared both conditions.
- * 
+ *
  * Why this exists (the honesty thesis): the flywheel reuses prior knowledge
  * into NEW investigations (SPR-06), so an ungrounded unit does not merely sit
  * in the graph — it seeds the next synthesis. Without this gate the loop
  * amplifies hallucination at the same rate it amplifies signal. The gate does
  * NOT make reuse "safe"; it excludes below-threshold + non-servable units and
  * logs every exclusion here.
- * 
+ *
  * Field contract:
- * 
+ *
  * * ``unit_id`` / ``source_investigation_id`` — the excluded unit and where it
  *   came from.
  * * ``groundedness_score`` — the unit's score from the shipped #27 lexical
@@ -963,7 +964,7 @@ export interface StalenessResolvePayload {
  * to the syntheses table. The envelope's ``synthesis_id`` carries the
  * archived id; the payload carries the high-level metadata an
  * analytics consumer needs WITHOUT reading the full synthesis row.
- * 
+ *
  * Architecture_notes §4: archive is the only writer to the syntheses
  * table. This event is the canonical "synthesis exists now" signal
  * for downstream consumers (backtest, cohort, weekly_report).
@@ -1131,7 +1132,7 @@ export interface OutcomeRecordedPayload {
  * §3.2). Captures both component scores plus the final aggregated
  * score so cohort analysis can correlate verification quality to
  * synthesizer outcomes.
- * 
+ *
  * All three score fields are in [0, 1] when set. Deterministic
  * component may be None when the rubric is purely judgmental;
  * judged component may be None when the rubric is purely
@@ -1159,7 +1160,7 @@ export interface RubricScoredPayload {
  * reproducible. ``scored_claims`` / ``total_claims`` make the coverage
  * explicit (analogy-only claims with no chunk citation are excluded
  * from the mean but counted in ``total_claims``).
- * 
+ *
  * Observability-only this sprint — it gates nothing until M5's
  * promote-to-gate criterion is met in a later sprint.
  */
@@ -1182,7 +1183,7 @@ export interface GroundednessScoredPayload {
  * crash must SURFACE, never silently drop the quality signal. The phase
  * stays non-blocking — the orchestrator logs + emits this and proceeds —
  * so "non-blocking" never again means "the signal disappeared".
- * 
+ *
  * ``stage`` says which scorer crashed (``groundedness`` or ``rubric``);
  * ``error_type`` + ``error`` carry the exception class + message for
  * triage.
@@ -1237,7 +1238,7 @@ export interface PhaseVerifyPayload {
  * workflow) to request a Decomposer run. The bridge handler
  * subscribes to this action_type, dispatches the role, and emits
  * ``DECOMPOSE_QUESTION_DELIVERED`` when done.
- * 
+ *
  * ``context`` is optional domain framing — empty string when the
  * caller has nothing extra to say.
  */
@@ -1355,7 +1356,7 @@ export interface AutoPatchSkippedPayload {
  * dispatch. The bridge subscribes to this action_type, dispatches
  * the role at the flash tier, and emits
  * ``EVIDENCE_RETRIEVE_DELIVERED`` when done.
- * 
+ *
  * ``chunks_block`` and ``subgraph_block`` are the **rendered**
  * context strings the bridge upstream produced from its retrieval
  * layer — they ride inside the request so the role's input is fully
@@ -1401,7 +1402,7 @@ export interface ParameterExtractRequestedPayload {
 /**
  * Emitted by the Parameter Extractor bridge once a parsed +
  * validated response lands.
- * 
+ *
  * Two fields:
  * - ``parameters`` — the role's literal output, preserved verbatim
  *   so RL trajectory mining can score the raw extraction.
@@ -1433,7 +1434,7 @@ export interface ConnectorRequestedPayload {
 /**
  * Emitted by the Connector bridge once a parsed + validated
  * response lands. Carries:
- * 
+ *
  * - ``keyword_mappings`` — role's confirmation / correction of the
  *   pre-resolved mappings; ``low_confidence`` flags preserved.
  * - ``selected_algorithm`` — role's algorithm choice (echoes what
@@ -1458,7 +1459,7 @@ export interface ConnectorDeliveredPayload {
  * have all delivered. Carries the five pre-rendered prompt blocks
  * verbatim so the role's input is fully reconstructable from the
  * trajectory.
- * 
+ *
  * Definition order note: this payload sits AFTER ``ConstraintSpec``
  * so its ``constraints: list[ConstraintSpec]`` field resolves at
  * annotation-read time. Codegen reads ``__annotations__`` directly
@@ -1517,7 +1518,7 @@ export interface AuditFindingPayload {
  * phases 1-9. ``topic_slug`` (if supplied) is used for the MASTER.md
  * output path; ``context`` is optional domain framing the
  * Decomposer reads.
- * 
+ *
  * Sprint 11 adds ``parent_investigation_id`` + ``spawn_context`` for
  * the web app's highlight-to-chase mechanic. Both are metadata-only;
  * the orchestrator doesn't change behavior based on them, but the
@@ -1573,7 +1574,7 @@ export interface InvestigationFailedPayload {
  * parent_investigation_id, the parent_event_id (typically the
  * parent's synthesis.delivered event), and the highlighted text the
  * operator was chasing.
- * 
+ *
  * The substrate doesn't act on this event; it's UI metadata. The
  * web app's useInvestigationTree hook reads these events to render
  * the chase tree (migrating off localStorage once the substrate
@@ -1590,7 +1591,7 @@ export interface InvestigationSpawnedFromPayload {
  * Emitted when the orchestrator decides not to spawn a child
  * investigation despite chase_mode != "off". The reason field tells
  * the operator (and the UI) why the chase chain stopped here.
- * 
+ *
  * Sprint 12 — first interpretation of continuous mode. The full
  * daemon model (cross-investigation pollination) lands in Sprint
  * 14+ per master-product-spec section 7.3.
@@ -1607,7 +1608,7 @@ export interface InvestigationChaseHaltedPayload {
  * Sprint 15 — emitted when the operator's edit to creative_writer's
  * output is promoted to a first-class graph claim. Master spec §10.4
  * Option B.
- * 
+ *
  * The original generated prose and the operator's edit are both
  * preserved so the audit trail captures the delta. ``claim_text`` is
  * canonically the operator's text; ``original_text`` is the
@@ -1615,7 +1616,7 @@ export interface InvestigationChaseHaltedPayload {
  * (unsupported) unless the operator manually attaches chunk
  * citations — at which point the substrate's grounder can verify it
  * and downgrade the tier.
- * 
+ *
  * ``node_id`` is the graph node row the claim was promoted to. The
  * web app uses this to surface the claim under its origin
  * deliverable + section in future search.
@@ -1634,12 +1635,12 @@ export interface ClaimAssertedByOperatorPayload {
 
 /**
  * Sprint 16 — emitted per synthesis-attribution computation.
- * 
+ *
  * ``algorithm_shares`` is the full three-algorithm map; each value
  * is itself a ``{document_id: share}`` dict where shares sum to 1.0
  * (subject to float rounding). ``algorithm`` key is one of "A",
  * "B", "C" matching master spec §9.3.
- * 
+ *
  * Phase 1 (this sprint): telemetry only. No payouts triggered by
  * this event. The phase-2 payout job reads these events to decide
  * splits — but that pipeline isn't wired yet.
@@ -1656,7 +1657,7 @@ export interface PageAttributionComputedPayload {
  * Emitted by the RLM bridge on every document-load when the bridge
  * weighs in (above-threshold → escalate or defer; below-threshold →
  * skipped). Per master-spec §11.6 + rlm_integration_spec.md RLM-1.
- * 
+ *
  * Carries the verdict + the ratification state at decision time so
  * operators reading the trajectory can reconstruct WHY a long doc
  * did or did not enter RLM mode at a given moment.
@@ -1751,7 +1752,7 @@ export interface PreferenceObservationRecordedPayload {
  * Emitted by ``substrate/multi_user/skill_writer.py`` when a
  * discovered skill rule clears the ``SkillRuleAccumulator`` promotion
  * gate and lands in the shared substrate's ``skill_rules`` table.
- * 
+ *
  * Carries the rule's content-addressed identifier, the cumulative DP
  * ε spent across all contributing users (capped at §16.2's 10.0),
  * the distinct-user count that triggered promotion, and the
@@ -1773,12 +1774,12 @@ export interface SkillRulePromotedPayload {
 
 /**
  * A discovery-layer source (Wedge 1: Exa search) proposed a URL.
- * 
+ *
  * The URL has NOT been ingested; this event is the audit trail of
  * "what we considered." Promotion to ingestion is a separate event
  * (DiscoverySelectedPayload). Per spec §6.8: discovery does NOT
  * fetch, does NOT auto-ingest, does NOT bypass the legal gate.
- * 
+ *
  * ``discovery_id`` is the stable handle for a proposal. The wedge
  * mints it as ``"disc-{provider}-" + sha256(url+investigation_id)[:16]``.
  */
@@ -1803,14 +1804,14 @@ export interface DiscoveryProposedPayload {
  * A previously-proposed discovery was promoted to ingestion (or
  * explicitly refused). Ties the discovery_id to the resulting
  * document_id when ingestion succeeded.
- * 
+ *
  * ``document_id`` is None when the decision is anything other than
  * ``"ingested"``. The legal-gate rejection path emits a Selected
  * event with ``decision="rejected_by_legal_gate"`` and a None
  * document_id so the audit trail records the refusal — the Sprint
  * 18 retrieval-time gate (master-spec §9) is enforced upstream of
  * this event, not by this event.
- * 
+ *
  * Per spec §6.9: this event only fires once per (discovery_id,
  * decision) pair. Re-promoting an already-ingested discovery is
  * idempotent at the URL adapter level (url_doc_id deduplicates);
@@ -1829,13 +1830,13 @@ export interface DiscoverySelectedPayload {
  * Wedge 2 escalation event. Emitted by acquisition/urls/adapter.py
  * when the httpx primary fetch returned ``low_word_count`` and the
  * caller opted into a heavier fetcher (currently Browserbase).
- * 
+ *
  * Per spec §7.2: the URL adapter still owns DocumentLoadedPayload
  * emission; this event sits alongside, recording the escalation
  * itself. Per spec §7.4: this is escalation, NOT default — the
  * 1000-5000× cost ratio against httpx is the load-bearing reason
  * Browserbase is never the primary fetcher.
- * 
+ *
  * ``primary_word_count`` and ``fallback_word_count`` let the
  * trajectory show whether the escalation recovered usable content
  * (fallback > primary) or hit a paywall/captcha (fallback ≈ primary).
@@ -2009,13 +2010,13 @@ export interface VisualRoleFailedPayload {
  * Emitted by the AI sidecar (Max-style ubiquitous AI per §5.5)
  * whenever the AI applies a UI-mutating action on behalf of the
  * operator. Carries enough state to invert the action:
- * 
+ *
  * - ``target_kind`` + ``target_id`` say what was changed.
  * - ``prev_state`` + ``next_state`` are opaque JSON snapshots the
  *   undo handler diffs to produce the inverse.
  * - ``operator_prompt`` is the natural-language ask that triggered
  *   the action — so the operator can read what they asked for.
- * 
+ *
  * The undo path replays the inverse: if ``ai.action.applied`` set
  * a notebook block from X to Y, the undo POST sets it back from Y
  * to X and emits ``ai.action.undone`` linking back via
@@ -2034,7 +2035,7 @@ export interface AIActionAppliedPayload {
 
 /**
  * Emitted when the operator clicks "undo" on the AI sidecar.
- * 
+ *
  * Links to the ``ai.action.applied`` event being inverted via
  * ``inverted_event_id``. The undo handler is responsible for
  * actually re-applying ``prev_state`` to the substrate; this event
@@ -2051,12 +2052,12 @@ export interface AIActionUndonePayload {
 /**
  * Emitted by the DP shuffler whenever a telemetry signal passes
  * through randomized response (§13.3 + §16.2).
- * 
+ *
  * Records the surface, the configured ε, and whether the value was
  * flipped — *without* recording the original or flipped value
  * (that would defeat the point). The aggregator downstream consumes
  * only the noisy stream + the registered ε to debias.
- * 
+ *
  * The Trust Center reads the running sum of recorded ε per surface
  * per day to publish "X surfaces collect at total ε=Y today" per
  * §13.7.
@@ -2072,10 +2073,10 @@ export interface DPRoutedPayload {
 
 /**
  * A lego block placed into an outline section (substrate/write/).
- * 
+ *
  * provenance_kind discriminates how the block traces to a source of
  * truth — the invariant SPR-07 trace-to-source relies on:
- * 
+ *
  * - 'graph_node'    → ``node_id`` references an insight/question/claim
  *                     graph node; provenance resolves node → document
  *                     → chunks. ``content`` is null (the node is the
@@ -2128,7 +2129,7 @@ export interface OutlineBlockRemovedPayload {
 
 /**
  * One structured before/after edit in the writing surface.
- * 
+ *
  * This is the granular replacement for the coarse
  * ``updateSectionProse`` capture (whole-section ``original_text`` vs
  * ``prose_text``). The editor (SPR-04) emits one of these per edit at
@@ -2137,12 +2138,12 @@ export interface OutlineBlockRemovedPayload {
  * ``paragraph_index`` / ``sentence_index``) so the authoring trajectory
  * (SPR-02) and section/paragraph style prompts (SPR-06) both address
  * the same units.
- * 
+ *
  * ``reverted`` is the undo/redo coordination point: a reverted edit is
  * still captured (the chain of edits is the signal — like Cursor's
  * accept/edit loop) but is explicitly EXCLUDED from training signal so a
  * revert is never counted as an endorsement.
- * 
+ *
  * CAPTURE ≠ TRAINING. These events are written ungated. The reward is
  * computed post-unlock by ``rubric_verifier`` (itself gated); nothing
  * here computes a reward or invokes training.
@@ -2165,7 +2166,7 @@ export interface EditCapturedPayload {
 /**
  * A section's draft was generated by ``creative_writer`` and its
  * per-paragraph provenance persisted (Write SPR-09).
- * 
+ *
  * The X-ray view (paragraph → driving blocks → chunks → documents)
  * depends on ``prose_provenance`` surviving the generating request.
  * ``creative_writer`` returns ``prose_provenance`` (paragraph_index →
@@ -2173,13 +2174,13 @@ export interface EditCapturedPayload {
  * generation succeeds AND the voice gate passes — makes the
  * paragraph→blocks link DURABLE in the graph alongside the
  * ``deliverable_sections.prose_text`` / ``prose_provenance`` row write.
- * 
+ *
  * The link is the §9 moat made auditable: a maintainer can reconstruct,
  * for any generated paragraph, which blocks drove it (and from there the
  * chunks/documents via ``substrate.write.provenance.resolve_provenance``).
  * This is a composition/audit event — the underlying blocks/nodes are
  * untouched (outlines are views over nodes, per the moat).
- * 
+ *
  * ``prose_provenance`` keys are STRINGS here (paragraph indices) because
  * JSON object keys are strings; the reader parses them back to ints. The
  * map values are the block_ids creative_writer cited per paragraph (the
@@ -2205,7 +2206,7 @@ export interface SectionDraftGeneratedPayload {
  * account and a gated book flips to publisher_opted_in). The
  * from/to statuses are the DERIVED ServabilityStatus values (not the
  * raw content_class) so the audit reads in the gate's own vocabulary.
- * 
+ *
  * The ``document_id`` of the affected book rides the Event envelope
  * (``emit_typed(..., document_id=...)``), so it isn't duplicated here.
  */
@@ -2240,7 +2241,7 @@ export interface BookTakenDownPayload {
  * guard writes ``content_class='personal_reading'`` instead of NULL — closing
  * the §9.0 leak where a NULL content_class passed the public chunk-search gate
  * and reached the monetized read path.
- * 
+ *
  * Carries the ingest classification trail — ``document_type`` (which set
  * triggered the default) and the ``applied_content_class`` (always
  * 'personal_reading' today; recorded explicitly so a future positive-basis
@@ -2371,18 +2372,18 @@ export interface SeamWriteToSpeakPayload {
  * ``useVoiceCapture`` hook after record → transcribe; downstream
  * distillation (``substrate/books/voice_note`` → ``note.emerged``) is
  * unchanged and consumes this capture by event id.
- * 
+ *
  * ``source_kind`` is fixed to ``"user"`` here and is the §9 load-bearing
  * field: a voice capture is human-authored, never model output. The schema
  * pins it to the literal ``"user"`` (not the open :data:`ProvenanceSourceKind`) so a
  * voice capture can NEVER be persisted as ``"ai"``/``"system"`` — the
  * no-conflation invariant is enforced by the type, not by convention.
- * 
+ *
  * The audio blob rides by *reference* (``audio_ref`` — the same field
  * ``saveVoiceNote`` carries), never inline and never a client side-store:
  * the blob persists wherever the reference points, the event carries only
  * the pointer + the transcript.
- * 
+ *
  * ``transcript`` may be empty: a silent recording must NOT be given a
  * hallucinated transcript (SPR-14 rigor #3). ``transcript_status``
  * distinguishes a genuine empty/silent capture ("empty") from an ordinary
@@ -2406,7 +2407,7 @@ export interface VoiceCapturedPayload {
  * highlight → float-menu (Living Roadmap SPR-04 M2). The reader selects text
  * on any surface and chooses "Note"; the selection becomes a marginalia note
  * persisted through the single-writer funnel — never a client side-store.
- * 
+ *
  * ``source_kind`` is fixed to ``"user"`` and is the §9 load-bearing field,
  * identically to :class:`VoiceCapturedPayload`: a marginalia note is
  * human-authored, so it can NEVER be persisted as ``"ai"``/``"system"`` and
@@ -2415,7 +2416,7 @@ export interface VoiceCapturedPayload {
  * model/retrieval-sourced RESULTS, which are labelled by their own paths;
  * only this note is user-sourced.) The no-conflation invariant is enforced by
  * the type, not by convention.
- * 
+ *
  * Provenance (master-spec §9): the note chains claim→chunk→document like every
  * other claim. ``chunk_id`` is the chunk the selection lands in (when the host
  * can resolve it — a synthesis selection over a cited claim resolves a chunk;
@@ -2438,7 +2439,7 @@ export interface MarginaliaNotedPayload {
 /**
  * Where an insight/open-question block sits on the DRW canvas (Living
  * Roadmap SPR-03 M2/M4). Emitted on drag-end by the Canvas component.
- * 
+ *
  * The canvas is a FREE 2D coordinate space — NOT the reading-physics
  * in-document layout-map (that anchors widgets to text; this places nodes
  * on a whiteboard). ``x``/``y`` are canvas-local pixels; the canvas
@@ -2447,7 +2448,7 @@ export interface MarginaliaNotedPayload {
  * for position. A node with no event falls back to deterministic
  * auto-layout client-side; we never persist the auto-layout coordinates
  * (only an operator drag emits an event).
- * 
+ *
  * Why an event and not a client side-store? A canvas position is graph
  * *view-state* the operator wants to survive reload. The only sanctioned
  * DuckDB writer is the host funnel through ``runtime/db_lock``; a
@@ -2456,11 +2457,11 @@ export interface MarginaliaNotedPayload {
  * as every other state mutation — the §-single-writer reason, identical to
  * why VoiceCapturedPayload carries its audio by reference rather than a
  * side-store.
- * 
+ *
  * A canvas position is NOT a §9 provenance claim — it asserts nothing about
  * the world, only about pixels — so it carries no source/grounding fields;
  * the block's provenance still lives on its graph node (source_document_id).
- * 
+ *
  * ``region_id`` (+ optional human ``region_label``) carries M4 theme
  * grouping through the SAME event: a block dropped into a named region
  * records its region here rather than as a second event type or a side
@@ -2481,18 +2482,18 @@ export interface BlockPositionPayload {
  * SPR-06 gap (``docs/decisions/spr-06-source-read-event-gap.md``): ``cited``
  * and ``saved`` were already substrate-derived; a per-source ``read`` signal
  * was not, so the tint shipped dormant.
- * 
+ *
  * WHY AN EVENT, NOT A CLIENT SIDE-STORE (PR-2 / PR-6, identical reasoning to
  * :class:`BlockPositionPayload`): a reader's read-history is substrate
  * view-state SiteSee resolves back from the log — the only sanctioned DuckDB
  * writer is the host funnel through ``runtime/db_lock``; a localStorage
  * side-store would be a second source of truth that can diverge. So it rides
  * the SAME single-writer typed-event funnel as every other state mutation.
- * 
+ *
  * EMITTED ONCE PER SOURCE PER READING SESSION (coalesced — the surface tracks
  * a per-session emitted-set, never a per-page emit), on a JUSTIFIED dwell
  * threshold (see the decision doc). It is a v1, reversible tint signal.
- * 
+ *
  * §9.0 — NO BODY. This event carries NO excerpt and no source text: only the
  * ``document_id`` (on the Event envelope), the ``chunk_id`` the read was
  * attributed to (the representative chunk SiteSee tints), and the dwell
@@ -2501,7 +2502,7 @@ export interface BlockPositionPayload {
  * rides this event because no body field exists (structurally impossible),
  * and the read of a withheld source is the reader's own dwell, not its
  * content.
- * 
+ *
  * NOT A §9 PROVENANCE CLAIM. It asserts the reader's OWN reading history
  * (like a "saved" signal), not a claim about the world, so it carries no
  * ``source_kind``/grounding fields (unlike VoiceCaptured / MarginaliaNoted,
@@ -2515,14 +2516,37 @@ export interface SourceReadPayload {
 }
 
 /**
+ * A reader explicitly reviewed one synthesis claim and the scheduler
+ * persisted the next due verdict.
+ * This is the review-state signal the dormant review-due augmentation was
+ * waiting for (``docs/decisions/spr-08-review-state-resolution-gap.md``). It
+ * is substrate view-state, like ``source.read``: the surface emits the review
+ * gesture through the single-writer typed-event funnel and later resolves the
+ * due set by replaying the latest review event per claim.
+ * §9.0 — NO BODY. The event carries no claim prose, no source excerpt, and no
+ * retrieved text. The claim anchor is ``claim_id``; the optional scheduler
+ * metadata is numeric/label-only and reconstructs why a due cue appears.
+ */
+export interface ClaimReviewedPayload {
+  action_type: "claim.reviewed";
+  claim_id: string;
+  reviewed_at: string;
+  next_due_at: string;
+  rating?: string | null;
+  ease?: number | null;
+  interval_days?: number | null;
+  due_label?: string | null;
+}
+
+/**
  * A one-shot, READ-ONLY, page-cited synthesis over the reader's OWNED
  * corpus, saved as a re-openable Read asset (Read SPR-08 M4).
- * 
+ *
  * It is substrate truth (re-open / narrate / promote-on-explicit-action), so
  * it rides the single-writer funnel — not a client side-store (which would
  * diverge from the graph). The running talk-to-book chat is the opposite case
  * (ephemeral session view-state, sessionStorage).
- * 
+ *
  * §9.0 — the ``report`` is MODEL-generated synthesis grounded on owned
  * SERVABLE chunks; a withheld body never enters it because retrieval went
  * through the search gate (restricted content excluded). The ``citations``
@@ -2530,7 +2554,7 @@ export interface SourceReadPayload {
  * record of EXACTLY which owned docs were in scope — the proof this never
  * reached the open internet (internet-agnostic; if it had, it would be
  * Research, not Read).
- * 
+ *
  * PROPOSED boundary (operator decision 2, sign-off pending): built behind the
  * "proposed (sign-off pending)" banner, reversible to a ``soft`` corpus scope.
  * Promotion into Research is the EXISTING ``seam.read_to_research`` event on
@@ -2552,13 +2576,13 @@ export interface ReadMetaReadingGeneratedPayload {
 /**
  * The reader EXPLICITLY accepted a suggestion to file a personal-space
  * document into a research project (Read SPR-13 M3).
- * 
+ *
  * THE INVARIANT (operator decision 1 + out-of-scope list): filing is NEVER
  * automatic. The personal space CONTINUOUSLY SUGGESTS a match
  * (``match_document_to_investigations`` ranks projects by the doc's similarity
  * to each project's question); the file only happens on an EXPLICIT user
  * accept that emits this event. Decline leaves the doc put (no event).
- * 
+ *
  * FILING IS A LINK, NOT A COPY. The ``/events/typed`` side-effect handler sets
  * ``documents.investigation_id`` THROUGH THE SINGLE-WRITER FUNNEL (the host
  * ``connect_write`` lock = ``runtime/db_lock``) — a direct ``UPDATE documents``
@@ -2566,7 +2590,7 @@ export interface ReadMetaReadingGeneratedPayload {
  * chain (claim→chunk→document→ip_holder_id) is untouched; ``ip_holder_id`` is
  * immutable on filing. 1:N — a document belongs to 0..1 investigation
  * (``documents.investigation_id``).
- * 
+ *
  * The match ``score`` + the project ``question`` are recorded so the filing
  * decision is RECONSTRUCTABLE (a maintainer can see why this doc landed in this
  * project) — never re-derived guesswork.
@@ -2695,13 +2719,14 @@ export type TypedPayload =
   | MarginaliaNotedPayload
   | BlockPositionPayload
   | SourceReadPayload
+  | ClaimReviewedPayload
   | ReadMetaReadingGeneratedPayload
   | DocumentFiledIntoInvestigationPayload;
 
 /**
  * The envelope around a typed payload. Written one row per JSONL line
  * while live; sealed to Parquet at investigation completion.
- * 
+ *
  * The top-level ``action_type`` is redundant with ``payload.action_type``
  * but kept as a separate column for query efficiency — DuckDB filters on
  * action_type without parsing the payload JSON. The model_validator
@@ -2734,6 +2759,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "claim.challenge_raised",
   "claim.grounding_check_failed",
   "claim.grounding_check_passed",
+  "claim.reviewed",
   "connector.delivered",
   "connector.requested",
   "constraint.loop_resolved",
