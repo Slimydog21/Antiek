@@ -406,3 +406,112 @@ class TestBM25Scoring:
         text = "Alpha " * 100 + "quantum computing is here" + " beta" * 100
         snippet = _extract_snippet(text, ["quantum", "computing"], context_chars=50)
         assert "quantum" in snippet.lower()
+
+
+@pytest.fixture()
+def _seed_citation_source(_init_db: str) -> str:
+    """Seed one document and chunk for MCP-SPR-03 cite_source."""
+    con = duckdb.connect(_init_db)
+    con.execute(
+        """
+        INSERT INTO documents (
+            document_id, title, author, published_at, raw_text, metadata,
+            source_tier, document_type, owner_user_id,
+            content_class, ip_holder_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [
+            "doc-cite-1",
+            "Citation Systems",
+            "Ada Lovelace",
+            "1843-01-01",
+            "Citation systems preserve provenance.",
+            json.dumps({"source": "test"}),
+            1,
+            "paper",
+            "__operator__",
+            "public_domain",
+            "ipholder-ada",
+        ],
+    )
+    con.execute(
+        """
+        INSERT INTO chunks (
+            chunk_id, document_id, chunk_index, section_path, text, token_count
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        [
+            "chunk-cite-1",
+            "doc-cite-1",
+            7,
+            "Chapter 1 > Provenance",
+            "Citation systems preserve provenance.",
+            5,
+        ],
+    )
+    con.close()
+    return _init_db
+
+
+class TestCiteSource:
+    """MCP-SPR-03 M1 citation source resolution."""
+
+    def test_cites_chunk_with_provenance_chain(self, _seed_citation_source: str) -> None:
+        from runtime.db_lock import connect_read
+        from services.mcp_server.tools import cite_source
+
+        con = connect_read(_seed_citation_source)
+        try:
+            citation = cite_source(con, "chunk-cite-1")
+        finally:
+            con.close()
+
+        assert citation["chunk_id"] == "chunk-cite-1"
+        assert citation["document_id"] == "doc-cite-1"
+        assert citation["chunk_index"] == 7
+        assert citation["section_path"] == "Chapter 1 > Provenance"
+        assert citation["title"] == "Citation Systems"
+        assert citation["author"] == "Ada Lovelace"
+        assert citation["date"] == "1843-01-01"
+        assert citation["source_tier"] == 1
+        assert citation["ip_holder_id"] == "ipholder-ada"
+        assert "Ada Lovelace" in citation["formatted_citation"]
+        assert "Citation Systems" in citation["formatted_citation"]
+
+    def test_cites_document_without_chunk(self, _seed_citation_source: str) -> None:
+        from runtime.db_lock import connect_read
+        from services.mcp_server.tools import cite_source
+
+        con = connect_read(_seed_citation_source)
+        try:
+            citation = cite_source(con, "doc-cite-1", id_type="document")
+        finally:
+            con.close()
+
+        assert citation["chunk_id"] is None
+        assert citation["document_id"] == "doc-cite-1"
+        assert citation["title"] == "Citation Systems"
+        assert citation["formatted_citation"] == (
+            "Ada Lovelace. Citation Systems. 1843-01-01."
+        )
+
+    def test_missing_source_raises_typed_error(self, _seed_citation_source: str) -> None:
+        from runtime.db_lock import connect_read
+        from services.mcp_server.errors import SourceNotFoundError
+        from services.mcp_server.tools import cite_source
+
+        con = connect_read(_seed_citation_source)
+        try:
+            with pytest.raises(SourceNotFoundError) as exc_info:
+                cite_source(con, "missing-chunk")
+        finally:
+            con.close()
+
+        assert exc_info.value.source_id == "missing-chunk"
+        assert exc_info.value.id_type == "chunk"
+
+    async def test_cite_source_tool_registered(self) -> None:
+        from services.mcp_server.server import mcp
+
+        tools = await mcp.list_tools()
+        assert "cite_source" in {tool.name for tool in tools}

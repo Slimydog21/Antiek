@@ -28,6 +28,15 @@ class EmptyQueryError(Exception):
         super().__init__(f"{tool_name} requires a non-empty query")
 
 
+class SourceNotFoundError(Exception):
+    """Raised when a citation source cannot be resolved."""
+
+    def __init__(self, source_id: str, id_type: str) -> None:
+        self.source_id = source_id
+        self.id_type = id_type
+        super().__init__(f"Source not found: id={source_id}, id_type={id_type}")
+
+
 class LicensingRequiredError(Exception):
     """Raised when a public note's content is gated (§9.0).
 
