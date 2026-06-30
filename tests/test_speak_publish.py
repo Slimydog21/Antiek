@@ -100,6 +100,21 @@ def test_public_publish_routes_split_private_does_not(db, monkeypatch):
         assert result.accrual_lines == ()  # private accrues nothing
 
 
+def test_publish_rejects_negative_ad_revenue_before_writing(db):
+    with _con(db) as con:
+        p = project.create_project(con, title="Private", publish_intent="private_never_published")
+        with pytest.raises(ValueError, match="ad_revenue_usd"):
+            publish.publish(con, project_id=p.project_id, ad_revenue_usd=Decimal("-0.01"))
+        pub_rows = con.execute(
+            "SELECT count(*) FROM speak_publications WHERE project_id = ?", [p.project_id]
+        ).fetchone()[0]
+        accrual_rows = con.execute(
+            "SELECT count(*) FROM speak_accruals WHERE project_id = ?", [p.project_id]
+        ).fetchone()[0]
+        assert pub_rows == 0
+        assert accrual_rows == 0
+
+
 # ── M3 consent + verification gate at publish ───────────────────────────
 
 

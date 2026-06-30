@@ -32,7 +32,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from substrate import ip_holders
@@ -63,6 +63,10 @@ DEFAULT_SLOP_THRESHOLD = 0.4
 
 class DisbursementBlocked(Exception):
     """Raised on any attempt to disburse money before G2/G3."""
+
+
+class MoneyValidationError(ValueError):
+    """Raised when a money field would corrupt the escrow/accrual ledger."""
 
 
 # ---------------------------------------------------------------------------
@@ -266,13 +270,22 @@ def accrue_contributions(
     ``attempt_disbursement``, which is gated on G2/G3.
     """
     ensure_speak_schema(con)
+    ad_revenue = require_non_negative_decimal(ad_revenue_usd, "ad_revenue_usd")
+    cap = (
+        require_non_negative_decimal(per_interview_cap_usd, "per_interview_cap_usd")
+        if per_interview_cap_usd is not None
+        else None
+    )
+    budget = (
+        require_non_negative_decimal(budget_usd, "budget_usd")
+        if budget_usd is not None
+        else None
+    )
     contribution = measure_contribution(
         con, project_id=project_id, quality_scores=quality_scores,
         slop_threshold=slop_threshold,
     )
-    contributor_pool = (Decimal(ad_revenue_usd) * CREATOR_REV_SHARE)
-    cap = Decimal(per_interview_cap_usd) if per_interview_cap_usd is not None else None
-    budget = Decimal(budget_usd) if budget_usd is not None else None
+    contributor_pool = ad_revenue * CREATOR_REV_SHARE
     spent = Decimal("0")  # cumulative clamped escrow accrued this call
 
     lines: list[AccrualLine] = []
@@ -331,7 +344,7 @@ def accrue_contributions(
 
     record_speak_event(
         SPEAK_CONTRIBUTION_ACCRUED,
-        {"publication_id": publication_id, "ad_revenue_usd": str(ad_revenue_usd),
+        {"publication_id": publication_id, "ad_revenue_usd": str(ad_revenue),
          "contributor_pool_usd": str(contributor_pool),
          "n_earning": len(contribution.shares), "n_slop": len(contribution.slop_gated)},
         project_id=project_id,
@@ -345,6 +358,18 @@ def accrued_total(con: Any, project_id: str) -> Decimal:
         [project_id],
     ).fetchone()
     return Decimal(str(row[0]))
+
+
+def require_non_negative_decimal(value: Decimal | float | int | str, field: str) -> Decimal:
+    try:
+        amount = Decimal(value)
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise MoneyValidationError(f"{field} must be a decimal amount") from exc
+    if not amount.is_finite() or amount < 0:
+        raise MoneyValidationError(
+            f"{field} must be a finite non-negative amount, got {value!r}"
+        )
+    return amount
 
 
 # ---------------------------------------------------------------------------

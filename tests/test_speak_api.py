@@ -249,6 +249,15 @@ def test_private_publish_not_served(client):
     assert r.json()["visibility"] == "private"
 
 
+def test_publish_rejects_negative_ad_revenue(client):
+    pid = client.post("/speak/projects", json={
+        "title": "Private bio", "publish_intent": "private_never_published",
+    }).json()["project_id"]
+    resp = client.post(f"/speak/projects/{pid}/publish", json={"ad_revenue_usd": "-0.01"})
+    assert resp.status_code == 400
+    assert "ad_revenue_usd" in resp.json()["detail"]
+
+
 def _token_from_link(link: str) -> str:
     return link.split("token=", 1)[1]
 
@@ -427,3 +436,44 @@ def test_release_payout_accrues_to_escrow_no_disbursement(client, monkeypatch):
     assert any(line["interview_id"] == interview_id for line in body["accrual_lines"])
     # spent accrued to escrow (a real dollar figure because ad_revenue>0).
     assert "spent_usd" in body
+
+
+def test_release_payout_rejects_negative_budget(client):
+    pid = client.post(
+        "/speak/projects",
+        json={"title": "Bio", "publish_intent": "will_be_public"},
+    ).json()["project_id"]
+    cases = (
+        ("ad_revenue_usd", "-1", "0", "0"),
+        ("budget_usd", "1", "-1", "0"),
+        ("per_interview_cap_usd", "1", "0", "-1"),
+        ("ad_revenue_usd", "NaN", "0", "0"),
+    )
+    for field, ad_revenue, budget, cap in cases:
+        resp = client.post(f"/speak/projects/{pid}/release-payout", json={
+            "information_goal": "the bakery and the war",
+            "ad_revenue_usd": ad_revenue,
+            "budget_usd": budget,
+            "per_interview_cap_usd": cap,
+        })
+        assert resp.status_code == 400
+        assert field in resp.json()["detail"]
+
+
+def test_grade_interview_rejects_negative_money_bounds(client):
+    pid = client.post(
+        "/speak/projects",
+        json={"title": "Bio", "publish_intent": "will_be_public"},
+    ).json()["project_id"]
+    iv = client.post(f"/speak/projects/{pid}/invites", json={"informant_email": "a@x.com"}).json()
+    for field, budget, cap in (
+        ("budget_usd", "-1", "0"),
+        ("per_interview_cap_usd", "0", "-1"),
+    ):
+        resp = client.post(f"/speak/interviews/{iv['interview_id']}/grade", json={
+            "information_goal": "the bakery and the war",
+            "budget_usd": budget,
+            "per_interview_cap_usd": cap,
+        })
+        assert resp.status_code == 400
+        assert field in resp.json()["detail"]

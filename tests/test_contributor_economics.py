@@ -148,6 +148,40 @@ def test_zero_buyers_tracks_share_but_zero_dollars(db):
         assert contributor.accrued_total(con, p.project_id) == Decimal("0")
 
 
+def test_accrual_rejects_negative_money_bounds(db):
+    with _con(db) as con:
+        p = project.create_project(con, title="Dad's biography")
+        mapping = contributor.map_contributor(
+            con, interview_id="iv-a", project_id=p.project_id, display_name="A",
+        )
+        _publishable_claim(con, p.project_id, "A fact about him.", "iv-a")
+
+        with pytest.raises(ValueError, match="ad_revenue_usd"):
+            contributor.accrue_contributions(
+                con, project_id=p.project_id, ad_revenue_usd=Decimal("-0.01"),
+            )
+        with pytest.raises(ValueError, match="budget_usd"):
+            contributor.accrue_contributions(
+                con,
+                project_id=p.project_id,
+                ad_revenue_usd=Decimal("1"),
+                budget_usd=Decimal("-1"),
+            )
+        with pytest.raises(ValueError, match="per_interview_cap_usd"):
+            contributor.accrue_contributions(
+                con,
+                project_id=p.project_id,
+                ad_revenue_usd=Decimal("1"),
+                per_interview_cap_usd=Decimal("-1"),
+            )
+        rows = con.execute(
+            "SELECT count(*) FROM speak_accruals WHERE project_id = ?", [p.project_id]
+        ).fetchone()[0]
+        assert rows == 0
+        assert contributor.accrued_total(con, p.project_id) == Decimal("0")
+        assert ip_holders.get(con, mapping.ip_holder_id).escrow_balance_usd == Decimal("0")
+
+
 def test_accrual_reconciles_no_double_count(db):
     with _con(db) as con:
         p = project.create_project(con, title="Dad's biography")
