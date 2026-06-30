@@ -51,6 +51,81 @@ describe("PlanEditor — the glass-box gate", () => {
     fireEvent.submit(input);
     expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ op: "reword", question: "Reworded sub" }));
   });
+
+  it("sets per-node budget and depth through the edit contract", async () => {
+    const onEdit = vi.fn();
+    render(<PlanEditor tree={TREE} launchable={false} onEdit={onEdit} onApprove={() => {}} onLaunch={() => {}} />);
+    fireEvent.click(screen.getAllByText("budget")[0]);
+
+    const budget = screen.getByLabelText("budget USD");
+    const maxDepth = screen.getByLabelText("max depth");
+    fireEvent.change(budget, { target: { value: "0.75" } });
+    fireEvent.change(maxDepth, { target: { value: "4" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save limits" }));
+
+    expect(onEdit).toHaveBeenCalledWith({
+      op: "set_budget",
+      target_local_id: "pn-root",
+      budget_usd: 0.75,
+      max_depth: 4,
+    });
+  });
+
+  it("does not submit empty or invalid budget edits", async () => {
+    const onEdit = vi.fn();
+    render(<PlanEditor tree={TREE} launchable={false} onEdit={onEdit} onApprove={() => {}} onLaunch={() => {}} />);
+    fireEvent.click(screen.getAllByText("budget")[0]);
+
+    const save = screen.getByRole("button", { name: "Save limits" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText("budget USD"), { target: { value: "0.75" } });
+    fireEvent.change(screen.getByLabelText("max depth"), { target: { value: "4.5" } });
+    expect(save.disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText("max depth"), { target: { value: "4" } });
+    expect(save.disabled).toBe(false);
+  });
+
+  it("splits a broad node into focused sub-questions through the edit contract", async () => {
+    const onEdit = vi.fn();
+    render(<PlanEditor tree={TREE} launchable={false} onEdit={onEdit} onApprove={() => {}} onLaunch={() => {}} />);
+    fireEvent.click(screen.getAllByText("split")[0]);
+
+    const textarea = await screen.findByLabelText("split sub-questions");
+    fireEvent.change(textarea, { target: { value: "First narrower question\n\nSecond narrower question" } });
+    fireEvent.click(screen.getByRole("button", { name: "Split" }));
+
+    expect(onEdit).toHaveBeenCalledWith({
+      op: "split",
+      target_local_id: "pn-root",
+      into: ["First narrower question", "Second narrower question"],
+    });
+  });
+
+  it("requires at least two split targets before sending a split edit", async () => {
+    const onEdit = vi.fn();
+    render(<PlanEditor tree={TREE} launchable={false} onEdit={onEdit} onApprove={() => {}} onLaunch={() => {}} />);
+    fireEvent.click(screen.getAllByText("split")[1]);
+
+    const split = screen.getByRole("button", { name: "Split" }) as HTMLButtonElement;
+    expect(split.disabled).toBe(true);
+
+    const textarea = await screen.findByLabelText("split sub-questions");
+    fireEvent.change(textarea, { target: { value: "Only one narrower question" } });
+    expect(split.disabled).toBe(true);
+    fireEvent.click(split);
+    expect(onEdit).not.toHaveBeenCalled();
+
+    fireEvent.change(textarea, { target: { value: "First leaf split\nSecond leaf split" } });
+    expect(split.disabled).toBe(false);
+    fireEvent.click(split);
+    expect(onEdit).toHaveBeenCalledWith({
+      op: "split",
+      target_local_id: "pn-1",
+      into: ["First leaf split", "Second leaf split"],
+    });
+  });
 });
 
 describe("ResearchPanel — steer controls", () => {
