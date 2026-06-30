@@ -22,6 +22,7 @@ import {
   scheduleClaimReview,
 } from "./reviewState";
 import type { ClaimReviewRating } from "./reviewState";
+import { useReviewDuePolicy } from "./reviewDuePolicy";
 import type { ParsedClaim } from "../../lib/synthesisParser";
 
 /**
@@ -237,7 +238,7 @@ function CenterContent({
   );
 }
 
-function CompletedInvestigationContent({
+export function CompletedInvestigationContent({
   investigation,
   onChaseQuestion,
 }: {
@@ -247,6 +248,8 @@ function CompletedInvestigationContent({
     reserved_child_investigation_id?: string | null;
   }) => void;
 }) {
+  const [reviewDuePolicyEnabled, setReviewDuePolicyEnabled] =
+    useReviewDuePolicy();
   const [reviewNow, setReviewNow] = useState(() => new Date());
   const [locallyReviewedClaimIds, setLocallyReviewedClaimIds] = useState<Set<string>>(
     () => new Set(),
@@ -308,10 +311,12 @@ function CompletedInvestigationContent({
   }, [reviewDueClaims]);
   const visibleReviewDueClaims = useMemo(
     () =>
-      reviewDueClaims.filter(
-        (claim) => !locallyReviewedClaimIds.has(claim.claimId),
-      ),
-    [locallyReviewedClaimIds, reviewDueClaims],
+      reviewDuePolicyEnabled
+        ? reviewDueClaims.filter(
+            (claim) => !locallyReviewedClaimIds.has(claim.claimId),
+          )
+        : [],
+    [locallyReviewedClaimIds, reviewDueClaims, reviewDuePolicyEnabled],
   );
   const reviewPendingClaimIdList = useMemo(
     () => Array.from(reviewPendingClaimIds),
@@ -361,13 +366,26 @@ function CompletedInvestigationContent({
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto">
       {synth ? (
-        <MasterMdViewer
-          synthesis={synth}
-          reviewDueEnabled={true}
-          reviewDueClaims={visibleReviewDueClaims}
-          onReviewClaim={handleReviewClaim}
-          reviewClaimPendingIds={reviewPendingClaimIdList}
-        />
+        <>
+          <div className="flex items-center justify-end border-b border-rule bg-ice-1 px-5 py-2 dark:border-charcoal-1 dark:bg-charcoal-2">
+            <label className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5 accent-sun"
+                checked={reviewDuePolicyEnabled}
+                onChange={(e) => setReviewDuePolicyEnabled(e.target.checked)}
+              />
+              Review cues
+            </label>
+          </div>
+          <MasterMdViewer
+            synthesis={synth}
+            reviewDueEnabled={reviewDuePolicyEnabled}
+            reviewDueClaims={visibleReviewDueClaims}
+            onReviewClaim={reviewDuePolicyEnabled ? handleReviewClaim : undefined}
+            reviewClaimPendingIds={reviewPendingClaimIdList}
+          />
+        </>
       ) : null}
       <div className="border-t border-rule dark:border-charcoal-1">
         <DistillView
