@@ -1,5 +1,7 @@
 import katex from "katex";
 
+import { accent } from "../../../design/tokens";
+
 /**
  * renderMath — the ONE KaTeX entry point for the Reader (SPR-03 M2, rigor #1).
  *
@@ -59,7 +61,7 @@ export function renderMath(tex: string, opts: { display: boolean }): RenderedMat
       throwOnError: false,
       // The colour KaTeX paints an in-string error in — kept visible (not the
       // page text colour) so a partially-failed expression is obvious.
-      errorColor: "#c63d24",
+      errorColor: accent.emperor.day,
       // Defensive: cap macro expansion so a pathological ``\newcommand`` loop
       // in an extracted paper can't hang the render.
       maxExpand: 1000,
