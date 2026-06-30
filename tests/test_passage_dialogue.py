@@ -239,6 +239,29 @@ def _region_payload(document_id="doc-1", block_id="blk-1", cs=0, ce=20):
     return {"document_id": document_id, "block_id": block_id, "char_start": cs, "char_end": ce}
 
 
+def test_thread_insert_emits_graph_node_inserted_event(client, db, monkeypatch):
+    """Single-writer proof: anchor_thread routes through insert_node → typed event."""
+    from substrate.event_log import trajectory
+    from substrate.schemas.events import Event, GraphNodeInsertedPayload
+
+    _register_cassette("reply")
+    _patch_dialogue_config(monkeypatch)
+    inv = "inv-spr06-event"
+    resp = client.post(
+        "/thought-partner",
+        json={"passage": "p", "investigation_id": inv, "region": _region_payload()},
+    )
+    assert resp.status_code == 200
+    node_id = resp.json()["thread_node_id"]
+    rows = trajectory(inv)
+    node_events = [r for r in rows if r["action_type"] == "graph.node.inserted"]
+    assert len(node_events) == 1
+    event = Event.model_validate(node_events[0])
+    assert event.action_type == "graph.node.inserted"
+    assert isinstance(event.payload, GraphNodeInsertedPayload)
+    assert event.payload.node_id == node_id
+
+
 def test_thread_persisted_to_graph_anchored_to_region(client, db, monkeypatch):
     """After a turn with a Region, the thread is a queryable graph node anchored
     to the Region (inspectable through the graph, not only the UI)."""
