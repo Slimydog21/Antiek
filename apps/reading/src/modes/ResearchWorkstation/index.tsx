@@ -13,7 +13,7 @@ import HighlightToolbar from "./HighlightToolbar";
 import MasterMdViewer from "./MasterMdViewer";
 import NotesPanel from "./NotesPanel";
 import PasteIngest from "./PasteIngest";
-import StartResearch from "./StartResearch";
+import UnifiedSearch from "../../components/UnifiedSearch";
 import SuggestedResearch from "./SuggestedResearch";
 import ThinkingStream from "./ThinkingStream";
 
@@ -35,7 +35,7 @@ import ThinkingStream from "./ThinkingStream";
  * The Research surface has exactly ONE home and ONE per-project view, and
  * they are not competing tabs:
  *
- *   /            → THIS component, IDLE branch → <StartResearch embedded />.
+ *   /            → THIS component, IDLE branch → <UnifiedSearch embedded />.
  *                  The IDLE home is the composer (start a research) ABOVE the
  *                  MyResearch LOG (past + running projects). This is the
  *                  operator's "the research home IS the research log" decision:
@@ -92,7 +92,7 @@ export default function ResearchWorkstation() {
         <InvestigationCenter investigationId={investigationId} />
       ) : (
         // SPR-05 M3: the idle home is the consolidated composer + research log.
-        <StartResearch embedded />
+        <UnifiedSearch variant="research" embedded />
       )}
     </PanelHost>
   );
