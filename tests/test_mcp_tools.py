@@ -515,3 +515,111 @@ class TestCiteSource:
 
         tools = await mcp.list_tools()
         assert "cite_source" in {tool.name for tool in tools}
+
+
+class TestRecordAttribution:
+    """MCP-SPR-03 M2 attribution capture at the consuming agent step."""
+
+    def test_writes_typed_metadata_only_event(
+        self,
+        _seed_citation_source: str,
+        tmp_path: Any,
+    ) -> None:
+        from runtime.db_lock import connect_read
+        from services.mcp_server.tools import record_attribution
+        from substrate.event_log import trajectory
+
+        events_dir = str(tmp_path / "events")
+        con = connect_read(_seed_citation_source)
+        try:
+            result = record_attribution(
+                con,
+                "chunk-cite-1",
+                consumer_id="agent-composer-25",
+                timestamp="2026-06-30T10:15:00Z",
+                investigation_id="inv-mcp-attr",
+                session_dwell_seconds=12.5,
+                events_dir=events_dir,
+            )
+        finally:
+            con.close()
+
+        assert result["idempotent"] is False
+        assert result["event_id"] is not None
+        assert result["document_id"] == "doc-cite-1"
+        events = trajectory("inv-mcp-attr", events_dir=events_dir)
+        written = [e for e in events if e["action_type"] == "mcp.attribution.recorded"]
+        assert len(written) == 1
+        payload = written[0]["payload"]
+        assert payload["source_id"] == "chunk-cite-1"
+        assert payload["consumer_id"] == "agent-composer-25"
+        assert payload["timestamp"] == "2026-06-30T10:15:00Z"
+        assert payload["session_dwell_seconds"] == 12.5
+        assert written[0]["document_id"] == "doc-cite-1"
+        for forbidden in ("text", "body", "content", "snippet", "raw_text"):
+            assert forbidden not in payload
+
+    def test_idempotent_for_same_source_consumer_timestamp(
+        self,
+        _seed_citation_source: str,
+        tmp_path: Any,
+    ) -> None:
+        from runtime.db_lock import connect_read
+        from services.mcp_server.tools import record_attribution
+        from substrate.event_log import trajectory
+
+        events_dir = str(tmp_path / "events")
+        con = connect_read(_seed_citation_source)
+        try:
+            first = record_attribution(
+                con,
+                "chunk-cite-1",
+                consumer_id="agent-1",
+                timestamp="2026-06-30T10:16:00Z",
+                investigation_id="inv-mcp-attr-idem",
+                events_dir=events_dir,
+            )
+            second = record_attribution(
+                con,
+                "chunk-cite-1",
+                consumer_id="agent-1",
+                timestamp="2026-06-30T10:16:00Z",
+                investigation_id="inv-mcp-attr-idem",
+                events_dir=events_dir,
+            )
+        finally:
+            con.close()
+
+        assert first["event_id"] == second["event_id"]
+        assert second["idempotent"] is True
+        events = trajectory("inv-mcp-attr-idem", events_dir=events_dir)
+        assert sum(e["action_type"] == "mcp.attribution.recorded" for e in events) == 1
+
+    def test_missing_source_raises_typed_error(
+        self,
+        _seed_citation_source: str,
+        tmp_path: Any,
+    ) -> None:
+        from runtime.db_lock import connect_read
+        from services.mcp_server.errors import SourceNotFoundError
+        from services.mcp_server.tools import record_attribution
+
+        con = connect_read(_seed_citation_source)
+        try:
+            with pytest.raises(SourceNotFoundError):
+                record_attribution(
+                    con,
+                    "missing-source",
+                    consumer_id="agent-1",
+                    timestamp="2026-06-30T10:17:00Z",
+                    investigation_id="inv-missing",
+                    events_dir=str(tmp_path / "events"),
+                )
+        finally:
+            con.close()
+
+    async def test_record_attribution_tool_registered(self) -> None:
+        from services.mcp_server.server import mcp
+
+        tools = await mcp.list_tools()
+        assert "record_attribution" in {tool.name for tool in tools}

@@ -213,6 +213,7 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.InvestigationChaseHaltedPayload,
     schema_module.ClaimAssertedByOperatorPayload,
     schema_module.PageAttributionComputedPayload,
+    schema_module.MCPAttributionRecordedPayload,
     schema_module.RLMBridgeDecidedPayload,
     schema_module.QualityGateEvaluatedPayload,
     schema_module.CrossGraphCitationRecordedPayload,

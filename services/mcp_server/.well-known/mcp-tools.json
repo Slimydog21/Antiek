@@ -13,6 +13,10 @@
     {
       "name": "cite_source",
       "description_sha256": "e21e2bf2d88f299e74d0895e4265a4763cd4fb1b41368b153f70b79387f158e2"
+    },
+    {
+      "name": "record_attribution",
+      "description_sha256": "347c58169385c01f177700da62257bdce8e2849b5c5d02ea9feafb4445a1e060"
     }
   ]
 }

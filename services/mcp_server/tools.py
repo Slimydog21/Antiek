@@ -21,7 +21,7 @@ from mcp.server.fastmcp import FastMCP
 from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
 
 from .defenses import wrap_untrusted_content
-from .errors import EmptyQueryError, SourceNotFoundError
+from .errors import EmptyQueryError, LicensingRequiredError, SourceNotFoundError
 from .reader import _resolve_db_path
 
 # ---------------------------------------------------------------------------
@@ -456,6 +456,154 @@ def cite_source(
     }
 
 
+def _resolve_attribution_source(
+    con: duckdb.DuckDBPyConnection,
+    source_id: str,
+) -> dict[str, Any]:
+    """Resolve an attribution source id without reading source body."""
+    row = con.execute(
+        """
+        SELECT c.chunk_id, c.document_id, d.content_class, d.ip_holder_id
+        FROM chunks c
+        JOIN documents d ON d.document_id = c.document_id
+        WHERE c.chunk_id = ?
+        """,
+        [source_id],
+    ).fetchone()
+    if row is not None:
+        chunk_id, document_id, content_class, ip_holder_id = row
+        return {
+            "source_id": chunk_id,
+            "source_kind": "chunk",
+            "document_id": document_id,
+            "content_class": content_class,
+            "ip_holder_id": ip_holder_id,
+        }
+
+    row = con.execute(
+        """
+        SELECT document_id, content_class, ip_holder_id
+        FROM documents
+        WHERE document_id = ?
+        """,
+        [source_id],
+    ).fetchone()
+    if row is None:
+        raise SourceNotFoundError(source_id, "source")
+
+    document_id, content_class, ip_holder_id = row
+    return {
+        "source_id": document_id,
+        "source_kind": "document",
+        "document_id": document_id,
+        "content_class": content_class,
+        "ip_holder_id": ip_holder_id,
+    }
+
+
+def _matching_attribution_event(
+    *,
+    investigation_id: str,
+    source_id: str,
+    consumer_id: str,
+    timestamp: str,
+    events_dir: str | None = None,
+) -> dict[str, Any] | None:
+    """Return the existing event for the MCP idempotency key, if any."""
+    from substrate.event_log import trajectory
+    from substrate.schemas.events import ActionType
+
+    for event in trajectory(investigation_id, events_dir=events_dir):
+        if event.get("action_type") != ActionType.MCP_ATTRIBUTION_RECORDED.value:
+            continue
+        payload = event.get("payload") or {}
+        if (
+            payload.get("source_id") == source_id
+            and payload.get("consumer_id") == consumer_id
+            and payload.get("timestamp") == timestamp
+        ):
+            return event
+    return None
+
+
+def record_attribution(
+    con: duckdb.DuckDBPyConnection,
+    source_id: str,
+    *,
+    consumer_id: str,
+    timestamp: str,
+    investigation_id: str,
+    session_dwell_seconds: float = 0.0,
+    events_dir: str | None = None,
+) -> dict[str, Any]:
+    """Record an MCP attribution event at the step that consumed a source.
+
+    Idempotency key: ``(source_id, consumer_id, timestamp)`` within one
+    investigation. The event is metadata-only and never includes source body.
+    """
+    source_id = source_id.strip()
+    consumer_id = consumer_id.strip()
+    timestamp = timestamp.strip()
+    investigation_id = investigation_id.strip()
+
+    if not source_id:
+        raise SourceNotFoundError(source_id, "source")
+    if not consumer_id:
+        raise ValueError("consumer_id is required")
+    if not timestamp:
+        raise ValueError("timestamp is required")
+    if not investigation_id:
+        raise ValueError("investigation_id is required")
+    if session_dwell_seconds < 0:
+        raise ValueError("session_dwell_seconds must be >= 0")
+
+    source = _resolve_attribution_source(con, source_id)
+    existing = _matching_attribution_event(
+        investigation_id=investigation_id,
+        source_id=source["source_id"],
+        consumer_id=consumer_id,
+        timestamp=timestamp,
+        events_dir=events_dir,
+    )
+    if existing is not None:
+        return {
+            "event_id": existing.get("event_id"),
+            "action_type": existing.get("action_type"),
+            "idempotent": True,
+            **source,
+        }
+
+    from substrate.event_log import emit_typed
+    from substrate.graph.retrieval_gate import is_chunk_body_withheld
+    from substrate.schemas.events import MCPAttributionRecordedPayload
+
+    withheld, _label = is_chunk_body_withheld(source["content_class"])
+    if withheld:
+        raise LicensingRequiredError(source["source_id"], source["content_class"])
+
+    payload = MCPAttributionRecordedPayload(
+        source_id=source["source_id"],
+        consumer_id=consumer_id,
+        timestamp=timestamp,
+        session_dwell_seconds=session_dwell_seconds,
+        source_kind=source["source_kind"],
+    )
+    event_id = emit_typed(
+        investigation_id,
+        payload,
+        document_id=source["document_id"],
+        role="mcp/record_attribution",
+        policy_id="mcp/record_attribution",
+        events_dir=events_dir,
+    )
+    return {
+        "event_id": event_id,
+        "action_type": payload.action_type,
+        "idempotent": False,
+        **source,
+    }
+
+
 # ---------------------------------------------------------------------------
 # MCP tool registration
 # ---------------------------------------------------------------------------
@@ -520,6 +668,40 @@ def register_tools(mcp: FastMCP) -> None:
         con = connect_read(db_path)
         try:
             result = cite_source(con, id, id_type=id_type)
+        finally:
+            con.close()
+        return json.dumps(result, default=str)
+
+    @mcp.tool(
+        name="record_attribution",
+        description=(
+            "Record that an external agent consumed a substrate source. "
+            "Writes a metadata-only mcp.attribution.recorded event with "
+            "source_id, consumer_id, timestamp, and optional dwell evidence. "
+            "Idempotent on source_id + consumer_id + timestamp."
+        ),
+    )
+    def record_attribution_tool(
+        source_id: str,
+        consumer_id: str,
+        timestamp: str,
+        investigation_id: str,
+        session_dwell_seconds: float = 0.0,
+    ) -> str:
+        """Record an MCP attribution event."""
+        from runtime.db_lock import connect_read
+
+        db_path = _resolve_db_path()
+        con = connect_read(db_path)
+        try:
+            result = record_attribution(
+                con,
+                source_id,
+                consumer_id=consumer_id,
+                timestamp=timestamp,
+                investigation_id=investigation_id,
+                session_dwell_seconds=session_dwell_seconds,
+            )
         finally:
             con.close()
         return json.dumps(result, default=str)
