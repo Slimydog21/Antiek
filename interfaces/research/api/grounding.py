@@ -129,7 +129,7 @@ def _render_chunks_for_prompt(chunks: list[dict]) -> str:
 def _parse_grounder_response(
     text: str,
     *,
-    canonical_chunk_ids: list[str] | tuple[str, ...] | None = None,
+    canonical_chunk_ids: list[str] | tuple[str, ...] = (),
 ) -> tuple[bool, str | None, float, str | None]:
     """Back-compat shim. The real parser lives at
     ``roles.grounder.parse_grounder_response`` (Sprint 4 day 4-5

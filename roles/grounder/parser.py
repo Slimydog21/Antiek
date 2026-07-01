@@ -70,7 +70,7 @@ class GroundingVerdict:
 def parse_grounder_response(
     text: str,
     *,
-    canonical_chunk_ids: Iterable[str] | None = None,
+    canonical_chunk_ids: Iterable[str] = (),
 ) -> GroundingVerdict:
     """Parse the LLM's JSON response. Returns a GroundingVerdict.
 
@@ -78,9 +78,8 @@ def parse_grounder_response(
     uncertain":
 
     - Malformed input → ``(False, None, 0.0, "ambiguous")``.
-    - grounded=true with non-string chunk_id → chunk_id None. When
-      ``canonical_chunk_ids`` is supplied, a missing or off-context
-      chunk_id becomes an ambiguous failure immediately.
+    - grounded=true with non-string, missing, or off-context chunk_id →
+      ambiguous failure immediately.
     - Confidence out of [0, 1] → clamped.
     - Failure reason not in GROUNDING_FAILURE_REASONS → coerced to
       ``ambiguous``.
@@ -94,14 +93,14 @@ def parse_grounder_response(
         chunk_id = obj.get("located_chunk_id")
         if not isinstance(chunk_id, str):
             chunk_id = None
-        elif canonical_chunk_ids is not None:
+        else:
             chunk_id = validate_ref(chunk_id, canonical_chunk_ids)
         try:
             confidence = float(obj.get("confidence", 0.0))
         except (TypeError, ValueError):
             confidence = 0.0
         confidence = max(0.0, min(1.0, confidence))
-        if canonical_chunk_ids is not None and chunk_id is None:
+        if chunk_id is None:
             return GroundingVerdict(False, None, 0.0, "ambiguous")
         return GroundingVerdict(True, chunk_id, confidence, None)
 

@@ -97,7 +97,8 @@ def test_grounding_failure_reasons_closed_set():
 
 def test_parse_grounder_response_passed():
     v = parse_grounder_response(
-        '{"grounded": true, "located_chunk_id": "chunk-1", "confidence": 0.8}'
+        '{"grounded": true, "located_chunk_id": "chunk-1", "confidence": 0.8}',
+        canonical_chunk_ids=("chunk-1",),
     )
     assert isinstance(v, GroundingVerdict)
     assert v.grounded is True
@@ -110,6 +111,13 @@ def test_parse_grounder_response_rejects_noncanonical_located_chunk():
     v = parse_grounder_response(
         '{"grounded": true, "located_chunk_id": "chunk-made-up", "confidence": 0.8}',
         canonical_chunk_ids=("chunk-1",),
+    )
+    assert v == GroundingVerdict(False, None, 0.0, "ambiguous")
+
+
+def test_parse_grounder_response_rejects_grounded_without_canonical_chunks():
+    v = parse_grounder_response(
+        '{"grounded": true, "located_chunk_id": "chunk-1", "confidence": 0.8}'
     )
     assert v == GroundingVerdict(False, None, 0.0, "ambiguous")
 
@@ -135,12 +143,14 @@ def test_parse_grounder_response_failed_with_each_reason():
 
 def test_parse_grounder_response_clamps_confidence():
     v_hi = parse_grounder_response(
-        '{"grounded": true, "located_chunk_id": "c", "confidence": 1.5}'
+        '{"grounded": true, "located_chunk_id": "c", "confidence": 1.5}',
+        canonical_chunk_ids=("c",),
     )
     assert v_hi.confidence == 1.0
 
     v_lo = parse_grounder_response(
-        '{"grounded": true, "located_chunk_id": "c", "confidence": -0.2}'
+        '{"grounded": true, "located_chunk_id": "c", "confidence": -0.2}',
+        canonical_chunk_ids=("c",),
     )
     assert v_lo.confidence == 0.0
 
