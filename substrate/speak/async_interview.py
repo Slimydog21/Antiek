@@ -393,7 +393,10 @@ def next_followups(
         system, user = render_full_prompt(ctx)
         raw = dispatch_fn(prompt=user, system=system, role="interviewer",
                           investigation_id=f"speak-followup-{interview_id}")
-        result = parse_interviewer_response(raw if isinstance(raw, str) else getattr(raw, "text", str(raw)))
+        result = parse_interviewer_response(
+            raw if isinstance(raw, str) else getattr(raw, "text", str(raw)),
+            must_cover_count=len(ctx.must_cover),
+        )
         if not result.should_end and result.interviewer_text:
             generated.append(FollowupQuestion(
                 question_id=f"fu-{uuid.uuid4().hex[:8]}",

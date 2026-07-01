@@ -17,7 +17,7 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from roles.interviewer import (
+from roles.interviewer import (  # noqa: E402
     INTERVIEWER_SYSTEM_PROMPT,
     InterviewerContext,
     InterviewerValidationError,
@@ -103,12 +103,14 @@ def test_append_interview_turn_unknown_id_raises(temp_substrate):
     from substrate.graph.schema import init_database_at_path
 
     init_database_at_path(temp_substrate["db_path"])
-    with connect_write(temp_substrate["db_path"], purpose="test") as con:
-        with pytest.raises(ValueError, match="not found"):
-            append_interview_turn(
-                con, interview_id="intv-nope",
-                role="interviewer", text="x",
-            )
+    with (
+        connect_write(temp_substrate["db_path"], purpose="test") as con,
+        pytest.raises(ValueError, match="not found"),
+    ):
+        append_interview_turn(
+            con, interview_id="intv-nope",
+            role="interviewer", text="x",
+        )
 
 
 def test_append_interview_turn_invalid_role_raises(temp_substrate):
@@ -225,6 +227,24 @@ def test_parser_rejects_non_int_indices():
     )
     with pytest.raises(InterviewerValidationError, match="non-negative ints"):
         parse_interviewer_response(raw)
+
+
+def test_parser_rejects_out_of_range_must_cover_indices():
+    raw = (
+        '{"interviewer_text": "Next question?", "should_end": false, '
+        '"must_cover_remaining_indices": [0, 2]}'
+    )
+    with pytest.raises(InterviewerValidationError, match="configured guide range"):
+        parse_interviewer_response(raw, must_cover_count=2)
+
+
+def test_parser_rejects_negative_must_cover_count():
+    raw = (
+        '{"interviewer_text": "Next question?", "should_end": false, '
+        '"must_cover_remaining_indices": []}'
+    )
+    with pytest.raises(InterviewerValidationError, match="must_cover_count"):
+        parse_interviewer_response(raw, must_cover_count=-1)
 
 
 def test_parser_no_json_rejected():

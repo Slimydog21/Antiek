@@ -22,8 +22,19 @@ class InterviewerResult:
     reasoning_note: str | None
 
 
-def parse_interviewer_response(raw: str) -> InterviewerResult:
-    """Parse + validate one interviewer-role turn output."""
+def parse_interviewer_response(
+    raw: str,
+    *,
+    must_cover_count: int | None = None,
+) -> InterviewerResult:
+    """Parse + validate one interviewer-role turn output.
+
+    ``must_cover_count`` is optional for backwards compatibility. When the
+    caller knows the guide length, returned ``must_cover_remaining_indices``
+    must point inside that guide, not to nonexistent questions.
+    """
+    if must_cover_count is not None and must_cover_count < 0:
+        raise InterviewerValidationError("must_cover_count must be non-negative")
     data = extract_json_object(raw)
     if data is None:
         raise InterviewerValidationError("no JSON object in response")
@@ -43,6 +54,11 @@ def parse_interviewer_response(raw: str) -> InterviewerResult:
         if not isinstance(v, int) or v < 0:
             raise InterviewerValidationError(
                 f"must_cover_remaining_indices entries must be non-negative ints; got {v!r}"
+            )
+        if must_cover_count is not None and v >= must_cover_count:
+            raise InterviewerValidationError(
+                "must_cover_remaining_indices entries must be within the "
+                f"configured guide range 0..{must_cover_count - 1}; got {v!r}"
             )
         indices.append(v)
     follow_up = bool(data.get("follow_up_for_prior_turn", False))
