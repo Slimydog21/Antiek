@@ -255,6 +255,13 @@ describe("Sprint 25+ economics dashboard route integrity", () => {
     expect(discoveryCopy).not.toMatch(/ε exposure|delete-all|deletion SLA|DP budget/i);
     expect(discoveryCopy).not.toMatch(/Substrate-level operations snapshot/i);
     expect(discoveryCopy).not.toMatch(/\(\/privacy\)|\(\/trust\)/i);
+
+    for (const route of ["/privacy", "/trust"]) {
+      expect(map).toContain(`path: "${route}"`);
+      expect(palette).toContain(`path: "${route}"`);
+    }
+
+    expect(modeById("PrivacyDashboard")?.label).toBe("Privacy dashboard");
   });
 
   it("keeps CreatorPayouts on the scoped /me/payouts contract", () => {

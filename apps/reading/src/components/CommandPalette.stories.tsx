@@ -95,6 +95,13 @@ export const RankingExample: Story = {
       },
       {
         kind: "route",
+        id: "route:privacy",
+        title: "Privacy dashboard",
+        subtitle: "Privacy budgets and deletion controls",
+        path: "/privacy",
+      },
+      {
+        kind: "route",
         id: "route:loop3",
         title: "Loop 3 checklist",
         subtitle: "RL unlock criteria + env gate",
