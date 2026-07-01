@@ -171,9 +171,9 @@ export default function PersonalSpace({ metaDocsOnly = false }: Props) {
                 </button>
                 , or{" "}
                 <button type="button" className="underline" onClick={() => navigate("/read/meta-reading")}>
-                  make a reading
+                  make a proposed reading
                 </button>{" "}
-                across your corpus — they’ll collect here and organize themselves.
+                across your corpus — sign-off is pending; created readings collect here.
               </p>
             </div>
           )}

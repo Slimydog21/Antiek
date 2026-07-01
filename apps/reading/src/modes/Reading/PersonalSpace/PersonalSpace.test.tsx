@@ -121,6 +121,8 @@ describe("M1 — list + open + empty", () => {
     categoriesMock.mockResolvedValue({ categories: [], ordering: "recency", stability_bound: 4 });
     render(<PersonalSpace />);
     expect(await screen.findByTestId("personal-space-empty")).toBeTruthy();
+    expect(screen.getByText("make a proposed reading")).toBeTruthy();
+    expect(screen.getByText(/sign-off is pending; created readings collect here/i)).toBeTruthy();
     expect(screen.queryByTestId("personal-space-category")).toBeNull();
   });
 });
