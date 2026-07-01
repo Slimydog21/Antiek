@@ -6293,29 +6293,10 @@ def create_app(
                 "eval_headroom": False,
             }
 
-        return TrustCenterPublication(
-            differential_privacy_epsilon_budgets={
-                "skill_invocation_frequency": 2.0,
-                "source_tier_preference_signals": 1.0,
-                "query_content_telemetry": 0.0,  # not collected
-            },
-            deletion_sla_days=30,
-            substrate_controls=[
-                "encryption at rest (per-graph keys via KMS)",
-                "access logging (append-only)",
-                "change management (CI gates on schema)",
-                "vulnerability scanning (Dependabot/Snyk)",
-                "backup testing (quarterly restore drill)",
-                "retrieval-time policy_tag gating (§9.0)",
-            ],
-            compliance_frameworks=[
-                "GDPR Article 13/14 transparency",
-                "CCPA notice + opt-out",
-                "engineering-grade differential privacy (ε ≤ 10 hard cap)",
-                "SOC 2 Type II — deferred (not required for consumer Phase 1)",
-            ],
-            loop_3_unlock_status=loop_3_status,
-        )
+        from substrate.trust_center import build_publication
+
+        payload = build_publication(loop_3_unlock_status=loop_3_status)
+        return TrustCenterPublication(**payload.as_dict())
 
     # ── Speak workflow (specs/speak/) — the fourth workflow's REST
     #    surface. Kept in its own module (interfaces/research/api/
