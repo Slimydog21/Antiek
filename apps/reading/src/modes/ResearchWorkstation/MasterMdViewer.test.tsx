@@ -515,6 +515,34 @@ describe("MasterMdViewer — marginalia anchored widget wiring (SPR-07)", () => 
     ]);
   });
 
+  it("adapts voice clip references even when the transcript is absent", () => {
+    const note = eventOf(
+      "marginalia.noted",
+      {
+        note_id: "mn-voice",
+        note_text: "Remember the spoken aside.",
+        excerpt: "the moat is provenance",
+        chunk_id: "c1",
+        audio_ref: "voice-blob://sha256/clip",
+      },
+      { event_id: "ev-note-voice", synthesis_id: "syn-1" },
+    );
+
+    expect(authoredMarginNotesFromEvents([note], "syn-1")).toEqual([
+      {
+        id: "mn-voice",
+        comment: "Remember the spoken aside.",
+        anchorQuote: "the moat is provenance",
+        targetChunkId: "c1",
+        clip: {
+          transcript: null,
+          audioRef: "voice-blob://sha256/clip",
+          durationSeconds: null,
+        },
+      },
+    ]);
+  });
+
   it("renders a marginalia note through the anchored-widget facet for a bounded restricted source", async () => {
     getChunkMock.mockResolvedValue(
       chunk({

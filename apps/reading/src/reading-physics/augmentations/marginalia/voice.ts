@@ -12,7 +12,9 @@
 //     correction step) before it becomes the note's data.
 //   - `saveVoiceNote(documentId, { …, transcript, audio_ref })` → POST
 //     /books/{id}/voice-note → persists through the ONE shipped funnel; the
-//     `audio_ref` field is the object-storage reference to the blob.
+//     `audio_ref` field is the object-storage reference to the blob. The shared
+//     FloatMenu marginalia author flow also persists `marginalia.noted` with
+//     `voice_transcript` + `audio_ref` when a clip is attached.
 //
 // So the voice path's storage decision is SETTLED by reuse: the transcript +
 // the `audio_ref` reference are a SUBSTRATE event (text is the data), and the
@@ -22,14 +24,12 @@
 //
 // ── WHAT THIS MODULE IS (and is NOT) ───────────────────────────────────────
 //
-// Like SPR-06's `source.read` and SPR-05's geometry pass, the actual EMIT (post
-// the note event, store the blob) is a SURFACE/BACKEND integration — it needs a
-// write funnel + object storage, which an augmentation may not touch (PR-2 /
-// PR-6). This module therefore does NOT capture audio, transcribe, or persist.
-// It defines the RESOLVED VIEW the surface hands the augmentation — the
-// substrate-ref + transcript a note's clip resolves to — and the pure helpers
-// that read it. The augmentation renders the note against this view; it lights
-// up fully the moment the surface wires the emit (documented-deferred).
+// The actual EMIT (post the note event, store the blob) is a SURFACE/BACKEND
+// integration — it needs a write funnel + object storage, which an augmentation
+// may not touch (PR-2 / PR-6). That shared surface path is now wired, and this
+// module deliberately remains read-only: it defines the RESOLVED VIEW the
+// surface hands the augmentation — the substrate-ref + transcript a note's clip
+// resolves to — and the pure helpers that read it.
 //
 // A note with NO clip works fully — voice is OPTIONAL, not required (M3). And a
 // clip with a FAILED/ABSENT transcript is honest: the note still anchors and
