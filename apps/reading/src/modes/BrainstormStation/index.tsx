@@ -32,7 +32,8 @@ import {
  * Three columns:
  *   Left  — Watch-for-later folder (parked questions)
  *   Center — Selected parked question detail + launch button
- *   Right — Thought-partner pane (Sprint 18 placeholder)
+ *   Right — Thought-partner pane (live when provider dispatch is configured;
+ *            honest no-key state otherwise)
  */
 export default function BrainstormStation() {
   const [parked, setParked] = useState<ParkedQuestionEntry[]>([]);
