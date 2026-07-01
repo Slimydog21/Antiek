@@ -1,15 +1,24 @@
 // AUTO-GENERATED — DO NOT EDIT.
 //
-// Generated from substrate/contracts/ by tools/codegen/emit_contracts.py.
+// Generated from substrate/contracts/ and substrate/ad_inventory/frame_attention.py
+// by tools/codegen/emit_contracts.py.
 // Re-run after any contract change:  python tools/codegen/emit_contracts.py
 // CI gate that fails on drift:        python tools/codegen/check_staleness.py
 //
-// The Pydantic models in substrate/contracts/ are the single source of truth.
-// These are the cross-workflow contracts the four products (Research/Read/
-// Write/Speak) build against. The provisional ReaderSurfaceContract is a
-// Python Protocol (behavior, not data) and is intentionally not emitted here.
+// The Pydantic models in substrate/contracts/ and the frame-attention
+// dataclasses in substrate/ad_inventory/frame_attention.py are the single
+// sources of truth. These are the cross-workflow contracts the four products
+// (Research/Read/Write/Speak) build against. The provisional
+// ReaderSurfaceContract is a Python Protocol (behavior, not data) and is
+// intentionally not emitted here.
 
 export const CONTRACT_SCHEMA_VERSION = 2;
+
+// Frame-attention telemetry input contract. Source of truth:
+// substrate/ad_inventory/frame_attention.py
+export const FRAME_TELEMETRY_SCHEMA_VERSION = "frame-telemetry-v2";
+export const VALID_LENSES = ["read", "research", "speak", "write"] as const;
+export type Lens = (typeof VALID_LENSES)[number];
 
 /**
  * One rendered layer of an assembled context pack: its kind, the source
@@ -169,4 +178,69 @@ export interface EconomicsCellContract {
   visibility: "public" | "private_published";
   contributor_split: number;
   platform_margin: number;
+}
+
+/**
+ * One IP asset's in-frame VISIBILITY for one second.
+ *
+ * Units / ranges (documented per rigor #5 — every feature's meaning is
+ * auditable):
+ *
+ * * ``asset_id`` — the document/asset id (maps to ``documents.document_id``,
+ *   which carries ``ip_holder_id`` and ``content_class``). The trace anchor.
+ * * ``chunk_id`` — the specific chunk visible in frame, or ``None`` when the
+ *   asset is in frame with no resolved chunk (a cover/title card). An asset
+ *   with no chunk still earns (it is the ASSET that is monetized); the chunk
+ *   is trace detail, not an eligibility input.
+ * * ``content_class`` — the asset's classification AS REPORTED BY THE BACKEND
+ *   lookup at aggregation time, fed to ``monetization_eligible``. The client
+ *   MAY echo a hint but the backend NEVER trusts it; the authoritative value
+ *   is resolved server-side. Carried here so the pure weighting function is
+ *   self-contained and testable.
+ * * ``viewport_area_fraction`` — fraction of the window viewport the asset
+ *   occupied this second, in [0.0, 1.0]. 1.0 = filled the whole viewport.
+ * * ``prominence`` — a position/salience signal in [0.0, 1.0]. 1.0 = center/
+ *   foreground (eye-line); 0.0 = peripheral. The SPR-07 emitter derives it
+ *   from on-screen geometry (center-weighting) the way ``reader_slots``
+ *   models TOP/BOTTOM/LEFT/RIGHT position categoricals — but as a continuous
+ *   prominence rather than a categorical, because the border wraps the frame.
+ * * ``focused_dwell_ms`` — milliseconds of FOCUSED, foregrounded dwell this
+ *   asset accrued this second, in [0, 1000]. Mirrors
+ *   ``reader_impressions.focused_dwell_ms`` semantics: dwell while the tab is
+ *   backgrounded/idle does NOT count and the client must not report it. ≥ 0.
+ */
+export interface FrameAttentionSample {
+  asset_id: string;
+  viewport_area_fraction: number;
+  prominence: number;
+  focused_dwell_ms: number;
+  content_class?: string | null;
+  chunk_id?: string | null;
+}
+
+/**
+ * One second of one window: the active lens + the in-frame assets.
+ *
+ * ``second_index`` is the 0-based second offset within the window (second 0
+ * is the first second the window was on screen). It is the per-second key the
+ * accrual aggregation sums over; it never becomes a DB row on its own.
+ */
+export interface FrameSecond {
+  second_index: number;
+  lens: Lens;
+  samples: FrameAttentionSample[];
+}
+
+/**
+ * The compact per-window batch the SPR-07 emitter flushes.
+ *
+ * Client-inbound frame-telemetry-v2 shape: the browser sends
+ * attention only. ``ad_value_usd_cents`` is deliberately absent
+ * because the server mints/prices the window before constructing
+ * the server-side ``WindowFrameBatch`` dataclass.
+ */
+export interface WindowFrameBatch {
+  window_id: string;
+  seconds: FrameSecond[];
+  schema_version: string;
 }

@@ -43,7 +43,7 @@ _TARGETS = (
         "contracts",
         emit_contracts.render,
         emit_contracts.DEFAULT_OUTPUT,
-        "substrate/contracts/",
+        "substrate/contracts/ + substrate/ad_inventory/frame_attention.py",
         "python tools/codegen/emit_contracts.py",
     ),
     (
