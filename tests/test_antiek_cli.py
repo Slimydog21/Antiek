@@ -8,6 +8,7 @@ runners — does not exercise real subprocesses.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -24,8 +25,10 @@ from tools.antiek_cli.check import (
     _run_all,
     main,
     run_invariants,
+    run_perf,
     run_props,
 )
+from tools.benchmarks.hot_paths.compare import compare_runs
 
 
 def test_stage_pass_flags() -> None:
@@ -83,6 +86,29 @@ def test_parser_strict() -> None:
 def test_parser_all_continue_on_error() -> None:
     args = _build_parser().parse_args(["all", "--continue-on-error"])
     assert args.continue_on_error is True
+
+
+def test_parser_perf_compare_args() -> None:
+    args = _build_parser().parse_args(
+        [
+            "perf",
+            "--baseline",
+            "base.json",
+            "--current",
+            "head.json",
+            "--max-regression-pct",
+            "10",
+        ]
+    )
+    assert args.cmd == "perf"
+    assert args.baseline == "base.json"
+    assert args.current == "head.json"
+    assert args.max_regression_pct == 10.0
+
+
+def test_parser_perf_default_regression_threshold() -> None:
+    args = _build_parser().parse_args(["perf"])
+    assert args.max_regression_pct == 25.0
 
 
 def test_parser_requires_subcommand() -> None:
@@ -182,6 +208,206 @@ def test_main_skip_returns_zero() -> None:
         "props", -1, 0.0, skipped_reason="x")
     with patch.dict("tools.antiek_cli.check.RUNNERS", {"props": fake}, clear=False):
         assert main(["props"]) == 0
+
+
+def _bench_run(path: Path, bench_name: str, *, median: int, p95: int, p99: int) -> None:
+    path.write_text(
+        json.dumps(
+            [
+                {
+                    "bench_name": bench_name,
+                    "iterations": 100,
+                    "median_ns": median,
+                    "p95_ns": p95,
+                    "p99_ns": p99,
+                    "min_ns": median,
+                    "max_ns": p99,
+                    "total_wall_s": 0.1,
+                    "timestamp_utc": "2026-07-01T00:00:00+00:00",
+                    "python_version": "3.12",
+                    "platform": "test",
+                    "metadata": {},
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_perf_compare_passes_when_within_threshold(tmp_path: Path, capsys) -> None:
+    baseline = tmp_path / "baseline.json"
+    current = tmp_path / "current.json"
+    _bench_run(baseline, "bench.a", median=100, p95=150, p99=200)
+    _bench_run(current, "bench.a", median=110, p95=160, p99=210)
+
+    rc = main(
+        [
+            "perf",
+            "--baseline",
+            str(baseline),
+            "--current",
+            str(current),
+            "--max-regression-pct",
+            "20",
+        ]
+    )
+
+    assert rc == 0
+    assert "Perf comparison PASS" in capsys.readouterr().out
+
+
+def test_perf_compare_fails_on_regression(tmp_path: Path, capsys) -> None:
+    baseline = tmp_path / "baseline.json"
+    current = tmp_path / "current.json"
+    _bench_run(baseline, "bench.a", median=100, p95=150, p99=200)
+    _bench_run(current, "bench.a", median=140, p95=160, p99=210)
+
+    rc = main(
+        [
+            "perf",
+            "--baseline",
+            str(baseline),
+            "--current",
+            str(current),
+            "--max-regression-pct",
+            "20",
+        ]
+    )
+
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "Perf regressions:" in out
+    assert "bench.a median_ns" in out
+
+
+def test_perf_compare_requires_paired_paths(tmp_path: Path) -> None:
+    result = run_perf("substrate/", baseline=str(tmp_path / "baseline.json"))
+    assert result.rc == 2
+    assert result.skipped_reason == "--baseline and --current must be passed together"
+
+    result = run_perf("substrate/", current=str(tmp_path / "current.json"))
+    assert result.rc == 2
+    assert result.skipped_reason == "--baseline and --current must be passed together"
+
+
+def test_perf_compare_rejects_negative_threshold(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.json"
+    current = tmp_path / "current.json"
+    _bench_run(baseline, "bench.a", median=100, p95=150, p99=200)
+    _bench_run(current, "bench.a", median=90, p95=140, p99=190)
+
+    result = run_perf(
+        "substrate/",
+        baseline=str(baseline),
+        current=str(current),
+        max_regression_pct=-1,
+    )
+    assert result.rc == 2
+    assert result.skipped_reason == "--max-regression-pct must be >= 0"
+
+
+def test_compare_runs_reports_median_regression(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.json"
+    current = tmp_path / "current.json"
+    _bench_run(baseline, "bench.a", median=100, p95=150, p99=200)
+    _bench_run(current, "bench.a", median=130, p95=150, p99=200)
+
+    findings = compare_runs(baseline, current, max_regression_pct=20)
+    assert [f.metric for f in findings] == ["median_ns"]
+    assert findings[0].regression_pct == 30.0
+
+
+def test_compare_runs_reports_tail_metric_regressions(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.json"
+    current = tmp_path / "current.json"
+    _bench_run(baseline, "bench.a", median=100, p95=150, p99=200)
+    _bench_run(current, "bench.a", median=100, p95=210, p99=260)
+
+    findings = compare_runs(baseline, current, max_regression_pct=20)
+    assert [f.metric for f in findings] == ["p95_ns", "p99_ns"]
+
+
+def test_compare_runs_rejects_missing_baseline_bench(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.json"
+    current = tmp_path / "current.json"
+    _bench_run(baseline, "bench.a", median=100, p95=150, p99=200)
+    _bench_run(current, "bench.b", median=100, p95=150, p99=200)
+
+    with pytest.raises(ValueError, match="missing benchmark"):
+        compare_runs(baseline, current, max_regression_pct=20)
+
+
+def test_compare_runs_rejects_duplicate_bench_names(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.json"
+    current = tmp_path / "current.json"
+    row = {
+        "bench_name": "bench.a",
+        "iterations": 100,
+        "median_ns": 100,
+        "p95_ns": 150,
+        "p99_ns": 200,
+        "min_ns": 90,
+        "max_ns": 210,
+        "total_wall_s": 0.1,
+        "timestamp_utc": "2026-07-01T00:00:00+00:00",
+        "python_version": "3.12",
+        "platform": "test",
+        "metadata": {},
+    }
+    baseline.write_text(json.dumps([row, row]), encoding="utf-8")
+    current.write_text(json.dumps([row]), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="duplicate benchmark"):
+        compare_runs(baseline, current, max_regression_pct=20)
+
+
+def test_compare_runs_rejects_missing_metric(tmp_path: Path) -> None:
+    baseline = tmp_path / "baseline.json"
+    current = tmp_path / "current.json"
+    _bench_run(baseline, "bench.a", median=100, p95=150, p99=200)
+    current.write_text(
+        json.dumps(
+            [
+                {
+                    "bench_name": "bench.a",
+                    "iterations": 100,
+                    "median_ns": 100,
+                    "p95_ns": 150,
+                    "min_ns": 90,
+                    "max_ns": 210,
+                    "total_wall_s": 0.1,
+                    "timestamp_utc": "2026-07-01T00:00:00+00:00",
+                    "python_version": "3.12",
+                    "platform": "test",
+                    "metadata": {},
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="missing p99_ns"):
+        compare_runs(baseline, current, max_regression_pct=20)
+
+
+def test_perf_compare_bad_path_returns_usage_error(tmp_path: Path, capsys) -> None:
+    baseline = tmp_path / "missing.json"
+    current = tmp_path / "current.json"
+    _bench_run(current, "bench.a", median=100, p95=150, p99=200)
+
+    rc = main(
+        [
+            "perf",
+            "--baseline",
+            str(baseline),
+            "--current",
+            str(current),
+        ]
+    )
+
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "Perf comparison error:" in out
 
 
 def test_package_entrypoint_accepts_documented_check_namespace() -> None:
