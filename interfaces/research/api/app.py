@@ -309,6 +309,7 @@ class InvestigationStartRequest(BaseModel):
     question: str = Field(..., min_length=3)
     context: str = ""
     topic_slug: str | None = None
+    investigation_kind: Literal["loop_one", "rlm"] = "loop_one"
     max_sub_questions: int = Field(default=8, ge=1, le=20)
     investigation_id: str | None = None
     parent_investigation_id: str | None = None
@@ -2346,6 +2347,7 @@ def create_app(
                     question=req.question,
                     context=req.context,
                     topic_slug=req.topic_slug,
+                    investigation_kind=req.investigation_kind,
                     max_sub_questions=req.max_sub_questions,
                     parent_investigation_id=req.parent_investigation_id,
                     spawn_context=req.spawn_context,
