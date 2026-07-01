@@ -461,7 +461,7 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
   {
     id: "PrivacyDashboard",
     workflow: "shared",
-    label: "Privacy",
+    label: "Privacy dashboard",
     blurb: "Privacy budgets and deletion controls.",
     built: true,
     route: "/privacy",
