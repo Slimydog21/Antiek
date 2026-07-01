@@ -54,6 +54,12 @@ UI boundary copy as `exact_no_key_copy`. The validator also accepts
 `no_key_copy`, `activation_boundary_copy`, or `boundary_copy` aliases so older
 operator notes can be normalized without losing the literal copy.
 
+For step 1, record either a screenshot reference (`screenshot`,
+`screenshot_url`, or `screenshot_path`) or a visible-reader note
+(`visible_content_note`, `structured_content_note`, or `render_note`). For step
+6, record `return_context_note`; `context_note` and `scroll_context_note` are
+accepted aliases.
+
 ## Dogfood closure rule
 
 Activation SPR-07 closes only after **10 distinct operator sessions** satisfy the

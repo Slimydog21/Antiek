@@ -30,7 +30,10 @@ JSONL record shape (one object per session)::
       "minutes_reading": 22,
       "verdict": "ACTIVATE",
       "steps": {
-        "1": {"status": "pass"},
+        "1": {
+          "status": "pass",
+          "visible_content_note": "visible heading/table/math/figure note"
+        },
         "2": {
           "status": "pass",
           "selected_text": "highlighted passage text",
@@ -45,7 +48,7 @@ JSONL record shape (one object per session)::
           "investigation_id": "child investigation/session id"
         },
         "5": {"status": "pass"},
-        "6": {"status": "pass"},
+        "6": {"status": "pass", "return_context_note": "scroll/context survived note"},
         "7": {"status": "pass", "operator_note": "free-form reading note"}
       }
     }
@@ -180,8 +183,12 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
         failures.extend(step_failures)
         step_status_failures = _step_status_failures(prefix, steps)
         failures.extend(step_status_failures)
+        reader_open_evidence_failures = _reader_open_evidence_failures(prefix, steps)
+        failures.extend(reader_open_evidence_failures)
         selection_evidence_failures = _selection_evidence_failures(prefix, steps)
         failures.extend(selection_evidence_failures)
+        return_context_evidence_failures = _return_context_evidence_failures(prefix, steps)
+        failures.extend(return_context_evidence_failures)
         reading_work_evidence_failures = _reading_work_evidence_failures(prefix, steps)
         failures.extend(reading_work_evidence_failures)
         inert_provider_evidence_failures = _inert_provider_evidence_failures(prefix, steps)
@@ -214,7 +221,9 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
             and not missing_steps
             and not step_failures
             and not step_status_failures
+            and not reader_open_evidence_failures
             and not selection_evidence_failures
+            and not return_context_evidence_failures
             and not reading_work_evidence_failures
             and not inert_provider_evidence_failures
             and not live_provider_evidence_failures
@@ -317,6 +326,29 @@ def _step_status(raw_step: Any) -> str:
     return str(raw_step.get("status") or "").strip().lower()
 
 
+def _reader_open_evidence_failures(prefix: str, steps: dict[Any, Any]) -> list[str]:
+    step = steps.get("1")
+    if not isinstance(step, dict) or _step_status(step) != "pass":
+        return []
+
+    screenshot_ref = (
+        _required_text(step.get("screenshot"))
+        or _required_text(step.get("screenshot_url"))
+        or _required_text(step.get("screenshot_path"))
+    )
+    visible_note = (
+        _required_text(step.get("visible_content_note"))
+        or _required_text(step.get("structured_content_note"))
+        or _required_text(step.get("render_note"))
+    )
+    if not screenshot_ref and not visible_note:
+        return [
+            prefix
+            + "step 1 requires screenshot reference or visible_content_note"
+        ]
+    return []
+
+
 def _selection_evidence_failures(prefix: str, steps: dict[Any, Any]) -> list[str]:
     step = steps.get("2")
     if not isinstance(step, dict) or _step_status(step) != "pass":
@@ -330,6 +362,21 @@ def _selection_evidence_failures(prefix: str, steps: dict[Any, Any]) -> list[str
     if not _has_non_empty_string_list(menu_labels):
         failures.append(prefix + "step 2 requires menu_labels")
     return failures
+
+
+def _return_context_evidence_failures(prefix: str, steps: dict[Any, Any]) -> list[str]:
+    step = steps.get("6")
+    if not isinstance(step, dict) or _step_status(step) != "pass":
+        return []
+
+    context_note = (
+        _required_text(step.get("return_context_note"))
+        or _required_text(step.get("context_note"))
+        or _required_text(step.get("scroll_context_note"))
+    )
+    if not context_note:
+        return [prefix + "step 6 requires return_context_note"]
+    return []
 
 
 def _reading_work_evidence_failures(prefix: str, steps: dict[Any, Any]) -> list[str]:

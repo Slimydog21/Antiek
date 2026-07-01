@@ -13,7 +13,10 @@ def _session(
     entry_door: str = "library",
 ) -> dict:
     steps = {
-        "1": {"status": "pass"},
+        "1": {
+            "status": "pass",
+            "visible_content_note": f"Visible heading and structured block for session {idx}.",
+        },
         "2": {
             "status": "pass",
             "selected_text": f"Selected passage text for session {idx}.",
@@ -22,7 +25,10 @@ def _session(
         "3": {"status": "pass" if live else "inert"},
         "4": {"status": "pass" if live else "inert"},
         "5": {"status": "pass"},
-        "6": {"status": "pass"},
+        "6": {
+            "status": "pass",
+            "return_context_note": f"Return preserved reader context in session {idx}.",
+        },
         "7": {"status": "pass", "operator_note": f"Read for continuity in session {idx}."},
     }
     if citation:
@@ -413,6 +419,32 @@ def test_inert_provider_steps_accept_boundary_copy_alias() -> None:
     assert not any("inert provider step" in f for f in report.failures)
 
 
+def test_reader_open_step_requires_screenshot_or_visible_content_note() -> None:
+    record = _session(1, live=True, citation=True, entry_door="search")
+    record["steps"]["1"] = {"status": "pass"}
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.valid_sessions == 0
+    assert any(
+        "step 1 requires screenshot reference or visible_content_note" in f
+        for f in report.failures
+    )
+
+
+def test_reader_open_step_accepts_screenshot_reference() -> None:
+    record = _session(1, live=True, citation=True, entry_door="search")
+    record["steps"]["1"] = {
+        "status": "pass",
+        "screenshot_path": "reports/read/session-1-open.png",
+    }
+
+    report = validate_sessions([record])
+
+    assert not any("step 1 requires" in f for f in report.failures)
+
+
 def test_selection_step_requires_selected_text_and_menu_labels() -> None:
     record = _session(1, live=True, citation=True, entry_door="search")
     record["steps"]["2"] = {"status": "pass"}
@@ -470,6 +502,29 @@ def test_reading_work_step_accepts_reading_note_alias() -> None:
     report = validate_sessions([record])
 
     assert not any("step 7 requires operator_note" in f for f in report.failures)
+
+
+def test_return_context_step_requires_return_context_note() -> None:
+    record = _session(1, live=True, citation=True, entry_door="search")
+    record["steps"]["6"] = {"status": "pass"}
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.valid_sessions == 0
+    assert any("step 6 requires return_context_note" in f for f in report.failures)
+
+
+def test_return_context_step_accepts_context_note_alias() -> None:
+    record = _session(1, live=True, citation=True, entry_door="search")
+    record["steps"]["6"] = {
+        "status": "pass",
+        "context_note": "Back preserved the original selected passage.",
+    }
+
+    report = validate_sessions([record])
+
+    assert not any("step 6 requires return_context_note" in f for f in report.failures)
 
 
 def test_live_provider_session_requires_ready_provider_status() -> None:
