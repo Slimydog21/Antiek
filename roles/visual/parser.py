@@ -62,13 +62,22 @@ class VisualResult:
     """Each entry is (claim_text, confidence)."""
 
 
-def _parse_region(raw: object) -> VisualRegion:
+def _parse_region(
+    raw: object,
+    *,
+    expected_page_or_frame_id: str | None = None,
+) -> VisualRegion:
     if not isinstance(raw, dict):
         raise VisualValidationError("region must be an object")
     pf_id = raw.get("page_or_frame_id")
     if not isinstance(pf_id, str) or not pf_id:
         raise VisualValidationError(
             "region.page_or_frame_id must be a non-empty string"
+        )
+    if expected_page_or_frame_id is not None and pf_id != expected_page_or_frame_id:
+        raise VisualValidationError(
+            "region.page_or_frame_id must echo the input frame id "
+            f"{expected_page_or_frame_id!r}; got {pf_id!r}"
         )
     bbox = raw.get("bbox")
     if (
@@ -94,7 +103,11 @@ def _parse_region(raw: object) -> VisualRegion:
     )
 
 
-def _parse_claim(raw: object) -> VisualClaim:
+def _parse_claim(
+    raw: object,
+    *,
+    expected_page_or_frame_id: str | None = None,
+) -> VisualClaim:
     if not isinstance(raw, dict):
         raise VisualValidationError("claim must be an object")
     claim_text = raw.get("claim_text")
@@ -108,7 +121,10 @@ def _parse_claim(raw: object) -> VisualClaim:
             f"confidence must be one of {sorted(_VALID_CONFIDENCE)!r}; "
             f"got {confidence!r}"
         )
-    region = _parse_region(raw.get("region"))
+    region = _parse_region(
+        raw.get("region"),
+        expected_page_or_frame_id=expected_page_or_frame_id,
+    )
     return VisualClaim(
         claim_text=claim_text.strip(),
         confidence=confidence,
@@ -144,8 +160,17 @@ def _parse_uncited(raw: object) -> tuple[tuple[str, str], ...]:
     return tuple(out)
 
 
-def parse_visual_response(raw: str) -> VisualResult:
-    """Parse + validate the visual role's output."""
+def parse_visual_response(
+    raw: str,
+    *,
+    expected_page_or_frame_id: str | None = None,
+) -> VisualResult:
+    """Parse + validate the visual role's output.
+
+    ``expected_page_or_frame_id`` is optional for backwards compatibility.
+    When supplied by the bridge, every claim region must echo the frame that
+    was actually sent to the model.
+    """
     data = extract_json_object(raw)
     if data is None:
         raise VisualValidationError("no JSON object in response")
@@ -159,7 +184,10 @@ def parse_visual_response(raw: str) -> VisualResult:
     raw_claims = data.get("claims")
     if not isinstance(raw_claims, list):
         raise VisualValidationError("claims must be a list")
-    claims = tuple(_parse_claim(c) for c in raw_claims)
+    claims = tuple(
+        _parse_claim(c, expected_page_or_frame_id=expected_page_or_frame_id)
+        for c in raw_claims
+    )
 
     uncited = _parse_uncited(data.get("uncited_observations"))
 

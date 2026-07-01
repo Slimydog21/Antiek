@@ -197,6 +197,24 @@ def test_parse_refuses_invalid_confidence():
         parse_visual_response(raw)
 
 
+def test_parse_refuses_wrong_page_or_frame_id_when_expected():
+    raw = json.dumps({
+        "frame_summary": "x.",
+        "claims": [
+            {
+                "claim_text": "a.",
+                "confidence": "high",
+                "region": {
+                    "page_or_frame_id": "frame-made-up",
+                    "bbox": [0, 0, 1, 1],
+                },
+            },
+        ],
+    })
+    with pytest.raises(VisualValidationError, match="echo the input frame id"):
+        parse_visual_response(raw, expected_page_or_frame_id="frame-real")
+
+
 def test_parse_refuses_bbox_outside_unit_square():
     raw = json.dumps({
         "frame_summary": "x.",

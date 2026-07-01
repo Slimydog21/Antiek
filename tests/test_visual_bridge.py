@@ -118,6 +118,33 @@ def test_dispatch_malformed_json_yields_parse_validation_failure():
     assert failure.payload.failure_kind == "parse_validation"
 
 
+def test_dispatch_wrong_page_or_frame_id_yields_parse_validation_failure():
+    provider = MockVisionProvider(canned_text=json.dumps({
+        "frame_summary": "A graph plots x against y.",
+        "claims": [
+            {
+                "claim_text": "The y-axis is labeled voltage.",
+                "confidence": "high",
+                "region": {
+                    "page_or_frame_id": "page-made-up",
+                    "bbox": [0.0, 0.4, 0.1, 0.6],
+                },
+            },
+        ],
+    }))
+    result, failure = dispatch_visual_role(
+        document_id="doc-1",
+        investigation_id="inv-1",
+        context=_ctx(),
+        provider=provider,
+    )
+    assert result is None
+    assert failure is not None
+    assert failure.action_type == ActionType.VISUAL_ROLE_FAILED
+    assert failure.payload.failure_kind == "parse_validation"
+    assert "page_or_frame_id" in failure.payload.detail
+
+
 def test_dispatch_failure_detail_does_not_leak_raw_response():
     provider = MockVisionProvider(
         canned_text="secret token: hunter2",
