@@ -119,6 +119,12 @@ import AccrualView from "../Economics/AccrualView";
 // investigations now enable it through an explicit operator policy toggle in
 // ResearchWorkstation; other callers still get the honest empty/off default.
 //
+
+function formatCostUsd(value: unknown): string {
+  const cost = typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+  return `$${cost.toFixed(4)}`;
+}
+
 // DEFAULT-OFF byte-equivalence: with the toggle false, `composedReviewDueByClaim`
 // runs no augmentation and returns an empty map, so every claim span renders with
 // no extra class — byte-identical to the pre-SPR-08 render (the MasterMdViewer
@@ -461,7 +467,7 @@ export default function MasterMdViewer({
           <div className="flex items-center gap-3 text-xs font-mono text-shadow-1 dark:text-moonlight">
             <RecommendationBadge rec={synthesis.recommendation} />
             <span className="text-ink-mute dark:text-moonlight">·</span>
-            <span>${synthesis.totalCostUsd.toFixed(4)} spent</span>
+            <span>{formatCostUsd(synthesis.totalCostUsd)} spent</span>
             {synthesis.domainsPatched.length > 0 && (
               <>
                 <span className="text-ink-mute dark:text-moonlight">·</span>

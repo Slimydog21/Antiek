@@ -250,6 +250,14 @@ describe("MasterMdViewer — no static save-to-notebook in the research flow (SP
 });
 
 describe("MasterMdViewer — named-source read (M1)", () => {
+  it("sanitizes malformed synthesis cost before rendering the header", () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(<MasterMdViewer synthesis={synth({ totalCostUsd: Number.POSITIVE_INFINITY })} />);
+
+    expect(screen.getByText("$0.0000 spent")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/NaN|Infinity|\$-/);
+  });
+
   it("renders the source as a named title + locator, never [N chunks]", async () => {
     getChunkMock.mockResolvedValue(
       chunk({ chunk_id: "c1", document_title: "On Growth and Form", section_path: "p.12" }),
