@@ -517,7 +517,8 @@ def test_chunk_to_region_is_inverse_of_region_to_chunk():
 
 def test_parse_grounder_response_extracts_clean_json():
     grounded, cid, conf, reason = _parse_grounder_response(
-        '{"grounded": true, "located_chunk_id": "chunk-1", "confidence": 0.8}'
+        '{"grounded": true, "located_chunk_id": "chunk-1", "confidence": 0.8}',
+        canonical_chunk_ids=["chunk-1"],
     )
     assert grounded is True
     assert cid == "chunk-1"
@@ -529,6 +530,12 @@ def test_parse_grounder_response_canonical_chunks_reject_fabricated_id():
     assert _parse_grounder_response(
         '{"grounded": true, "located_chunk_id": "chunk-fake", "confidence": 0.8}',
         canonical_chunk_ids=["chunk-1"],
+    ) == (False, None, 0.0, "ambiguous")
+
+
+def test_parse_grounder_response_rejects_grounded_without_canonical_chunks():
+    assert _parse_grounder_response(
+        '{"grounded": true, "located_chunk_id": "chunk-1", "confidence": 0.8}'
     ) == (False, None, 0.0, "ambiguous")
 
 
@@ -544,11 +551,13 @@ def test_parse_grounder_response_extracts_failed():
 
 def test_parse_grounder_response_clamps_confidence_to_unit_range():
     _, _, conf, _ = _parse_grounder_response(
-        '{"grounded": true, "located_chunk_id": "c", "confidence": 1.5}'
+        '{"grounded": true, "located_chunk_id": "c", "confidence": 1.5}',
+        canonical_chunk_ids=["c"],
     )
     assert conf == 1.0
     _, _, conf2, _ = _parse_grounder_response(
-        '{"grounded": true, "located_chunk_id": "c", "confidence": -0.1}'
+        '{"grounded": true, "located_chunk_id": "c", "confidence": -0.1}',
+        canonical_chunk_ids=["c"],
     )
     assert conf2 == 0.0
 
