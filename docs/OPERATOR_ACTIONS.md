@@ -67,7 +67,7 @@ next free number. Track the counter at the bottom of this file.
 | OA-007 | Stripe Connect real activation (MockProvider → RealProvider) | OPEN | Sprints 23-24 entire | Operator + Stripe |
 | OA-008 | External red-team firm engagement (Sprint 23-24 gate (c)) | OPEN | Sprints 23-24 entire | Operator + external firm |
 | OA-009 | Phase 1 (Sprints 17-21) committed + pushed + deployed | PARTIALLY DONE | Phase 2 entire | Operator |
-| OA-010 | Integration-revert pattern resolved | PARTIALLY MITIGATED | Remaining tracked-file integrations, especially DuckLake routing | Operator + infra |
+| OA-010 | Integration-revert pattern resolved | PARTIALLY MITIGATED | Remaining tracked-file integration drift audit | Operator + infra |
 | OA-011 | KMS keys provisioned in production | OPEN | Per-user encryption at rest | Operator + cloud |
 | OA-012 | Postgres catalog deployed (DuckLake Stage 1) | OPEN | Sprint 22 substrate stage transition | Operator + DBA |
 | OA-013 | Trust Center publicly published at antiek.ai/trust | OPEN | Sprint 22 §13.7 deliverable | Operator + ops |
@@ -455,7 +455,7 @@ constitutes proof. Mark OA-009 status: CLOSED.
 
 **Status:** PARTIALLY MITIGATED
 **Owner:** Operator + infrastructure
-**Blocks:** Remaining tracked-file integrations, especially DuckLake routing
+**Blocks:** Remaining tracked-file integration drift audit
 **Surfaced by:** Phase 2 audit v2 §6.2; observed across multiple sessions
 **First flagged:** 2026-05-22
 
@@ -510,11 +510,28 @@ have persisted across multiple commits on `reader/integration`:
 - `substrate/deletion_worker/__main__.py` provides the operator-run
   deletion worker command: `python -m substrate.deletion_worker`.
 
-This does **not** close OA-010 yet. The still-open integration named by
-the 2026-05-23 audit is DuckLake query-time catalog routing in the
-production call path: the substrate router can consult a `DuckLakeCatalog`
-when configured, but production call sites still need proof that they
-instantiate/use the catalog-backed router.
+**Fresh evidence, 2026-07-01:** DuckLake query-time catalog routing now
+has production call-path proof:
+
+- `substrate/multi_user/graph_router.py` exposes
+  `build_graph_router_from_env()` and `default_personal_graph_handle()`.
+  When `ANTIEK_DUCKLAKE_CATALOG_DB` is set, the router instantiates a
+  persistent `DuckLakeCatalog` using `SqliteCatalogBackend`.
+- `substrate/graph/default_db_path()` preserves the legacy
+  `ANTIEK_DUCKDB_PATH` operator override, but otherwise routes through
+  the env-backed `GraphRouter` when `ANTIEK_DUCKLAKE_CATALOG_DB` is
+  configured. This is the call path already used by the FastAPI API
+  modules.
+- `tests/test_multi_user.py` proves catalog lookup wins at query time,
+  uncatalogued users fall back to sharded routing for explicit router
+  callers, partial router env does not repoint the legacy default DB,
+  and the explicit `ANTIEK_DUCKDB_PATH` override still wins over catalog
+  routing.
+
+This does **not** close OA-010 yet. The remaining work is a fresh-session
+drift audit over the historically reverted tracked files after the
+router/API/doc changes have lived across at least one independent commit
+sequence.
 
 #### Once closed
 
