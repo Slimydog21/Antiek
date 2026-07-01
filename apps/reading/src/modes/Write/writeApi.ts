@@ -59,6 +59,18 @@ async function _json<T>(resp: Response, what: string): Promise<T> {
   return resp.json() as Promise<T>;
 }
 
+function assertNonNegativeSafeInteger(value: number, field: string): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new RangeError(`${field} must be a non-negative safe integer`);
+  }
+}
+
+function assertPositiveSafeInteger(value: number, field: string): void {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new RangeError(`${field} must be a positive safe integer`);
+  }
+}
+
 export async function searchRepository(opts: {
   q?: string;
   folderId?: string;
@@ -69,7 +81,10 @@ export async function searchRepository(opts: {
   if (opts.q) params.set("q", opts.q);
   if (opts.folderId) params.set("folder_id", opts.folderId);
   if (opts.sourceDocumentId) params.set("source_document_id", opts.sourceDocumentId);
-  if (opts.limit) params.set("limit", String(opts.limit));
+  if (opts.limit !== undefined) {
+    assertPositiveSafeInteger(opts.limit, "limit");
+    params.set("limit", String(opts.limit));
+  }
   const qs = params.toString();
   const body = await _json<{ hits: RepositoryHit[] }>(
     await apiFetch(`${API_BASE}/write/blocks/search${qs ? `?${qs}` : ""}`),
@@ -111,6 +126,7 @@ export async function addFolderBlock(folderId: string, nodeId: string): Promise<
 /** Place a block in the outline (the drop target's commit). Returns the
  * new outline_block_id. */
 export async function placeBlock(body: PlaceBlockBody): Promise<string> {
+  assertNonNegativeSafeInteger(body.block_index, "block_index");
   const r = await _json<{ outline_block_id: string }>(
     await apiFetch(`${API_BASE}/write/blocks`, {
       method: "POST",
@@ -165,6 +181,7 @@ export async function moveBlock(
   toSectionId: string,
   toIndex: number,
 ): Promise<void> {
+  assertNonNegativeSafeInteger(toIndex, "to_index");
   await _json<unknown>(
     await apiFetch(`${API_BASE}/write/blocks/${encodeURIComponent(outlineBlockId)}/move`, {
       method: "POST",
@@ -239,6 +256,9 @@ export async function generateSection(
   sectionId: string,
   opts: { paragraphIndex?: number } = {},
 ): Promise<GenerationResult> {
+  if (opts.paragraphIndex !== undefined) {
+    assertNonNegativeSafeInteger(opts.paragraphIndex, "paragraph_index");
+  }
   const body =
     opts.paragraphIndex === undefined
       ? undefined

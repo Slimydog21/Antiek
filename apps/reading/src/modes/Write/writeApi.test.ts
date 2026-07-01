@@ -21,6 +21,7 @@ import {
   emitBrainstormBlocks,
   generateSection,
   getTraceTarget,
+  moveBlock,
   placeBlock,
   searchRepository,
 } from "./writeApi";
@@ -66,6 +67,15 @@ describe("writeApi client contracts", () => {
     expect(result).toEqual([hit]);
   });
 
+  it("rejects malformed repository search limits before sending requests", async () => {
+    await expect(searchRepository({ limit: 0 })).rejects.toThrow(/limit/);
+    await expect(searchRepository({ limit: -1 })).rejects.toThrow(/limit/);
+    await expect(searchRepository({ limit: 2.5 })).rejects.toThrow(/limit/);
+    await expect(searchRepository({ limit: 9007199254740992 })).rejects.toThrow(/limit/);
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
   it("places graph-node blocks without inline content and user-authored blocks without node ids", async () => {
     apiFetchMock.mockResolvedValueOnce(jsonResponse({ outline_block_id: "oblk-node" }));
 
@@ -105,6 +115,25 @@ describe("writeApi client contracts", () => {
       content: "my own paragraph seed",
       block_index: 3,
     });
+  });
+
+  it("rejects malformed write indices before sending requests", async () => {
+    await expect(
+      placeBlock({
+        section_id: "sec-1",
+        block_kind: "claim",
+        provenance_kind: "graph_node",
+        node_id: "node-claim",
+        block_index: 1.5,
+      }),
+    ).rejects.toThrow(/block_index/);
+
+    await expect(moveBlock("oblk-1", "sec-1", -1)).rejects.toThrow(/to_index/);
+    await expect(
+      generateSection("sec-1", { paragraphIndex: 9007199254740992 }),
+    ).rejects.toThrow(/paragraph_index/);
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
   it("keeps outline display text on content or node labels, never ids", () => {
