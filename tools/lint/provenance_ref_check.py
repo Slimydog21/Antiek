@@ -46,6 +46,9 @@ _EXTRA_PARSER_FILES: tuple[str, ...] = (
     # Research bridge gap clustering parses model-emitted question_ids outside
     # roles/*/parser.py, so it belongs under the same provenance-ref guard.
     "substrate/research_bridge/gap.py",
+    # Legacy interface-level wrestling bridge still parses synthesizer JSON
+    # directly and emits attribution_region_ids.
+    "interfaces/research/api/wrestling.py",
 )
 
 
