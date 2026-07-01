@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from substrate.provenance import validate_ref
+
 from .._json_decode import extract_json_object
 
 MAX_PROMPTS = 3
@@ -30,7 +32,7 @@ def parse_voice_note_followup_response(
     raw: str, *, known_block_ids: set[str] | None = None,
 ) -> VoiceNoteFollowupResult:
     """Parse + validate the role's output. When ``known_block_ids`` is
-    passed, ``anchor_block_id`` values not in the set raise."""
+    passed, ``anchor_block_id`` values must resolve to that canonical set."""
     data = extract_json_object(raw)
     if data is None:
         raise VoiceNoteFollowupValidationError("no JSON object in response")
@@ -65,14 +67,17 @@ def parse_voice_note_followup_response(
             raise VoiceNoteFollowupValidationError(
                 f"prompts[{i}].anchor_block_id must be string or null"
             )
-        if (
-            anchor is not None
-            and known_block_ids is not None
-            and anchor not in known_block_ids
-        ):
-            raise VoiceNoteFollowupValidationError(
-                f"prompts[{i}].anchor_block_id {anchor!r} is not in known_block_ids"
-            )
+        if anchor is not None:
+            if known_block_ids is not None:
+                resolved_anchor = validate_ref(anchor, known_block_ids)
+                if resolved_anchor is None:
+                    raise VoiceNoteFollowupValidationError(
+                        f"prompts[{i}].anchor_block_id {anchor!r} "
+                        "is not in known_block_ids"
+                    )
+                anchor = resolved_anchor
+            else:
+                anchor = anchor.strip()
         rationale = item.get("rationale") or ""
         if not isinstance(rationale, str):
             raise VoiceNoteFollowupValidationError(
