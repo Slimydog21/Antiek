@@ -29,6 +29,7 @@ Either outcome is defensible.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -72,6 +73,11 @@ def compute_verdict(
     Pure function over the outcomes; injectable thresholds for tests
     but production should use the constants at module top.
     """
+    _validate_thresholds(
+        min_mutations=min_mutations,
+        min_acceptance_rate=min_acceptance_rate,
+        min_mean_delta=min_mean_delta,
+    )
     if not outcomes:
         return Verdict(
             role=role,
@@ -174,6 +180,33 @@ def compute_verdict(
         rationale=rationale,
         sub_metric_regressions=regressions,
     )
+
+
+def _validate_thresholds(
+    *,
+    min_mutations: int,
+    min_acceptance_rate: float,
+    min_mean_delta: float,
+) -> None:
+    if isinstance(min_mutations, bool) or not isinstance(min_mutations, int):
+        raise ValueError("min_mutations must be a positive integer")
+    if min_mutations <= 0:
+        raise ValueError("min_mutations must be a positive integer")
+    if (
+        isinstance(min_acceptance_rate, bool)
+        or not isinstance(min_acceptance_rate, int | float)
+        or not math.isfinite(float(min_acceptance_rate))
+        or min_acceptance_rate < 0.0
+        or min_acceptance_rate > 1.0
+    ):
+        raise ValueError("min_acceptance_rate must be a number in [0, 1]")
+    if (
+        isinstance(min_mean_delta, bool)
+        or not isinstance(min_mean_delta, int | float)
+        or not math.isfinite(float(min_mean_delta))
+        or min_mean_delta < 0.0
+    ):
+        raise ValueError("min_mean_delta must be a non-negative finite number")
 
 
 def render_verdict_markdown(verdict: Verdict) -> str:
