@@ -82,7 +82,7 @@ export function AdBorderMount() {
       const detail = (event as CustomEvent<{ documentId?: string; pageIndex?: number }>).detail;
       if (detail?.documentId !== readerDocumentId) return;
       const next = detail.pageIndex;
-      if (typeof next === "number" && Number.isFinite(next) && next >= 0) {
+      if (typeof next === "number" && Number.isSafeInteger(next) && next >= 0) {
         setTrackedReaderPage({ documentId: readerDocumentId, pageIndex: next });
       }
     };
