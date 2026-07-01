@@ -181,6 +181,42 @@ export interface ImpressionItem {
   tab_focused: boolean;
 }
 
+function nonNegativeSafeInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
+function nonNegativeFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
+function sanitizeImpression(item: ImpressionItem): ImpressionItem | null {
+  const slotId = typeof item.slot_id === "string" ? item.slot_id.trim() : "";
+  const pageIndex = nonNegativeSafeInteger(item.page_index);
+  const revenueUsdCents = nonNegativeSafeInteger(item.revenue_usd_cents);
+  const focusedDwellMs = nonNegativeFiniteNumber(item.focused_dwell_ms);
+  if (
+    !slotId ||
+    pageIndex === null ||
+    revenueUsdCents === null ||
+    focusedDwellMs === null ||
+    (item.fill_kind !== "ad" && item.fill_kind !== "house")
+  ) {
+    return null;
+  }
+  return {
+    slot_id: slotId,
+    page_index: pageIndex,
+    fill_kind: item.fill_kind,
+    revenue_usd_cents: revenueUsdCents,
+    focused_dwell_ms: focusedDwellMs,
+    tab_focused: item.tab_focused === true,
+  };
+}
+
 /** Flush a session's reader ad impressions (Read SPR-05 → SPR-09). The
  * attention rule + accrual are applied server-side; the client's claimed
  * attention isn't trusted. Best-effort: a failed flush never disrupts
@@ -190,12 +226,15 @@ export async function recordAdImpressions(
   sessionId: string,
   impressions: ImpressionItem[],
 ): Promise<void> {
-  if (impressions.length === 0) return;
+  const safeImpressions = impressions
+    .map((item) => sanitizeImpression(item))
+    .filter((item): item is ImpressionItem => item !== null);
+  if (safeImpressions.length === 0) return;
   try {
     await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/ad-impressions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: sessionId, impressions }),
+      body: JSON.stringify({ session_id: sessionId, impressions: safeImpressions }),
       keepalive: true, // survive a page-unload flush
     });
   } catch {

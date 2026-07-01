@@ -328,6 +328,81 @@ describe("books api — ad impression boundary", () => {
     });
   });
 
+  it("drops malformed impressions before flushing valid ones", async () => {
+    await recordAdImpressions("doc-1", "session-1", [
+      {
+        slot_id: "  slot:doc:p0:top  ",
+        page_index: 0,
+        fill_kind: "house",
+        revenue_usd_cents: 0,
+        focused_dwell_ms: 1200.5,
+        tab_focused: true,
+      },
+      {
+        slot_id: "slot:bad:fractional-page",
+        page_index: 0.5,
+        fill_kind: "ad",
+        revenue_usd_cents: 10,
+        focused_dwell_ms: 500,
+        tab_focused: true,
+      },
+      {
+        slot_id: "slot:bad:negative-revenue",
+        page_index: 0,
+        fill_kind: "ad",
+        revenue_usd_cents: -1,
+        focused_dwell_ms: 500,
+        tab_focused: true,
+      },
+      {
+        slot_id: "slot:bad:infinite-dwell",
+        page_index: 0,
+        fill_kind: "ad",
+        revenue_usd_cents: 10,
+        focused_dwell_ms: Number.POSITIVE_INFINITY,
+        tab_focused: true,
+      },
+    ]);
+
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+    expect(postedJsonBody()).toEqual({
+      session_id: "session-1",
+      impressions: [
+        {
+          slot_id: "slot:doc:p0:top",
+          page_index: 0,
+          fill_kind: "house",
+          revenue_usd_cents: 0,
+          focused_dwell_ms: 1200.5,
+          tab_focused: true,
+        },
+      ],
+    });
+  });
+
+  it("does not flush when every impression is malformed", async () => {
+    await recordAdImpressions("doc-1", "session-1", [
+      {
+        slot_id: "",
+        page_index: 0,
+        fill_kind: "house",
+        revenue_usd_cents: 0,
+        focused_dwell_ms: 100,
+        tab_focused: true,
+      },
+      {
+        slot_id: "slot:bad:unsafe-page",
+        page_index: Number.MAX_SAFE_INTEGER + 1,
+        fill_kind: "ad",
+        revenue_usd_cents: 10,
+        focused_dwell_ms: 100,
+        tab_focused: true,
+      },
+    ]);
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
   it("does not disrupt reading when the impression flush is rejected", async () => {
     apiFetchMock.mockRejectedValueOnce(new Error("offline"));
 
