@@ -43,8 +43,13 @@ interface CreatorPayouts {
   total_paid_cents: number;
 }
 
-const USD = (cents: number) =>
-  `$${(cents / 100).toLocaleString(undefined, {
+const nonNegativeFiniteNumber = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+
+const USD = (cents: unknown) =>
+  `$${((nonNegativeFiniteNumber(cents) ?? 0) / 100).toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
