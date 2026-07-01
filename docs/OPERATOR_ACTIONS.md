@@ -1017,6 +1017,18 @@ but adds complexity to the operator's tax situation."*
    (any creator above the §9.5 $10/mo threshold).
 3. Sign off on the Terms of Service for creator accounts.
 
+After filing the signoff artifact, run the packaged verifier:
+
+```bash
+./.venv/bin/python -m tools.ops.kyc_1099_signoff_probe --json
+```
+
+The probe validates the eventual
+`docs/decisions/oa-017-kyc-1099-signoff.md` artifact for counsel name, firm,
+date, Stripe Connect KYC, creator Terms of Service, the live $10 KYC payout
+floor, the live $600 1099-NEC threshold, and rechecks that above-floor payout
+settlement requires completed KYC. It does not close OA-017 by itself.
+
 #### Once closed
 
 Commit `docs/decisions/oa-017-kyc-1099-signoff.md` with counsel's
