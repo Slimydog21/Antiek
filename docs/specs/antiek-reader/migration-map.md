@@ -74,7 +74,7 @@ door dropped or added.
 The three TODAY-mis-routing-to-`/wrestle` doors (the convergence target named in
 `test_expected_open_door_set_is_pinned_and_nonempty`): `DocumentsIndex.open`,
 `CommandPalette.openDocument`, `ChunkModal.openInDocument`. All three verified
-above pointing at `/wrestle/:id`.
+above pointing at `openDocument` / `/read/:id`.
 
 ---
 

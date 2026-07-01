@@ -26,8 +26,8 @@ import type { UseLibraryArgs, UseLibraryResult } from "./useLibrary";
 // mock the hook to (a) RECORD the args the view passes (so we can assert the
 // filter/search/page query the view drives) and (b) RETURN a controllable
 // result (works / loading / routeAbsent) so each state is testable without a
-// network. fetchLibraryPage itself is unit-covered separately via the args
-// recorded here.
+// network. fetchLibraryPage itself is unit-covered separately in
+// useLibrary.test.ts.
 const lastArgs: { current: UseLibraryArgs | null } = { current: null };
 const result: { current: UseLibraryResult } = {
   current: {
