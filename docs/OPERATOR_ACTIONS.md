@@ -359,6 +359,18 @@ Then render the decision artifact:
   --output docs/decisions/autoresearch-wedge-1-verdict.md
 ```
 
+Finally, run the operator evidence probe:
+
+```bash
+./.venv/bin/python -m tools.ops.autoresearch_wedge1_probe --repo-root .
+```
+
+The probe must PASS before OA-005 can be marked CLOSED. It validates
+that readiness is satisfied, the mutation outcomes are loadable, the
+computed verdict is terminal (`ratify` or `reject`), and the filed
+decision artifact matches the computed verdict. The probe itself does
+not close OA-005; the committed decision artifact does.
+
 The verdict module enforces the four-criterion Lutke-gap test:
 ≥ 20 mutations, ≥ 40% acceptance, ≥ 0.05 mean delta, no
 sub-metric regression on grounding or sector vocab.
@@ -374,6 +386,7 @@ roadmap. Both outcomes are defensible per §15.6.
 - Master-spec §15.6
 - Operator gate G6
 - `tools/prompt_autoresearch/`
+- `tools/ops/autoresearch_wedge1_probe.py`
 
 ---
 
