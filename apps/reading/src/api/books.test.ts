@@ -1,11 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * books api — meta-reading client boundary (Read SPR-08 M4).
+ * books api — Read client boundaries.
  *
- * The surface tests pin the component-level call shape. This file pins the API
- * client wire contract: default hard owned-corpus scope, explicit rollback
- * overrides, and backend error messages.
+ * Surface tests pin component-level call shapes. This file pins API-client wire
+ * contracts: meta-reading defaults/errors and personal-space filing suggestions.
  */
 
 const apiFetchMock = vi.hoisted(() => vi.fn());
@@ -15,7 +14,7 @@ vi.mock("../lib/api", () => ({
   apiFetch: apiFetchMock,
 }));
 
-import { generateMetaReading } from "./books";
+import { generateMetaReading, getFileSuggestion } from "./books";
 
 function metaReadingResponse() {
   return {
@@ -145,5 +144,63 @@ describe("books api — meta-reading boundary", () => {
         length_amount: 3,
       }),
     ).rejects.toThrow("POST /corpus/meta-reading: HTTP 500");
+  });
+});
+
+describe("books api — file suggestion boundary", () => {
+  const suggestionResponse = {
+    document_id: "doc with space",
+    matches: [
+      {
+        investigation_id: "inv-1",
+        question: "free will and determinism",
+        score: 0.72,
+      },
+    ],
+  };
+
+  it("requests a suggestion for one encoded document id and parses matches", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(suggestionResponse), { status: 200 }),
+    );
+
+    const result = await getFileSuggestion("doc with space");
+
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+    expect(apiFetchMock.mock.calls[0][0]).toBe(
+      "/api/meta-readings/file-suggestion?document_id=doc+with+space",
+    );
+    expect(result).toEqual(suggestionResponse);
+  });
+
+  it("escapes query-control characters in the document id", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ ...suggestionResponse, document_id: "doc&id=1" }), {
+        status: 200,
+      }),
+    );
+
+    await getFileSuggestion("doc&id=1");
+
+    expect(apiFetchMock.mock.calls[0][0]).toBe(
+      "/api/meta-readings/file-suggestion?document_id=doc%26id%3D1",
+    );
+  });
+
+  it("treats embedder unavailability as no suggestion, not a filing failure", async () => {
+    apiFetchMock.mockResolvedValueOnce(new Response("no embedder", { status: 503 }));
+
+    await expect(getFileSuggestion("doc-1")).resolves.toEqual({
+      document_id: "doc-1",
+      matches: [],
+    });
+  });
+
+  it("keeps unexpected suggestion failures loud with the endpoint name", async () => {
+    apiFetchMock.mockResolvedValueOnce(new Response("boom", { status: 500 }));
+
+    await expect(getFileSuggestion("doc-1")).rejects.toThrow(
+      "GET /meta-readings/file-suggestion: HTTP 500",
+    );
   });
 });
