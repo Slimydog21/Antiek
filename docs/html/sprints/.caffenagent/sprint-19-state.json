@@ -1,0 +1,33 @@
+{
+  "spec_file": "docs/html/sprints/sprint-19.html",
+  "target_branch": "reader/integration",
+  "status": "operator_gated",
+  "recorded_at": "2026-07-01T20:23:09Z",
+  "verified_code_sha": "f1479ace",
+  "mode": "status_reconciliation",
+  "deterministic_evidence": {
+    "exa_browserbase_autoresearch": "174 passed: tests/test_acquisition_search_exa.py tests/test_acquisition_search_exa_cache.py tests/test_acquisition_search_exa_lookup.py tests/test_acquisition_urls_browserbase.py tests/test_exa_full_flow_integration.py tests/test_autoresearch_wedge1_probe.py tests/test_prompt_autoresearch.py tests/test_prompt_autoresearch_readiness.py tests/test_prompt_autoresearch_verdict.py tests/test_prompt_autoresearch_calibration.py tests/test_prompt_autoresearch_docs.py",
+    "notebooks_mcp": "83 passed: tests/test_notebooks.py tests/test_mcp_server.py tests/test_mcp_tools.py tests/test_mcp_resources.py",
+    "frontend_notebook": "49 passed: npm test -- Notebook Editor --run",
+    "wedge1_files": "acquisition/search/exa exists with tests for adapter, cache, lookup, and full flow",
+    "wedge2_files": "acquisition/urls/client_browserbase.py and acquisition/urls/budget_browserbase.py exist with Browserbase tests",
+    "autoresearch_files": "substrate/autoresearch, tools/ops/autoresearch_wedge1_probe.py, and tools/prompt_autoresearch exist with readiness/verdict/calibration/docs tests",
+    "notebook_files": "substrate/notebooks and apps/reading notebook/editor surfaces covered by scoped tests"
+  },
+  "operator_only_remaining": [
+    "Operator runs discover(...) with the production Exa key and ingests at least three results.",
+    "Operator confirms a legal-gate rejection in the live discovery-to-ingest path.",
+    "Operator confirms Browserbase recovery on a JS-rendered SPA fixture with the fallback flag.",
+    "First-cohort publisher outreach cannot send until G2 counsel review and G3 publisher opt-in path are ready.",
+    "Operator completes the end-to-end Sprint 19 research session described in the sprint acceptance section."
+  ],
+  "not_claimed": [
+    "Full repository test suite was not rerun in this S19 pass.",
+    "Production Exa, Browserbase, email, DNS, and Stripe integrations were not exercised.",
+    "First-cohort publisher notifications were not sent."
+  ],
+  "notes": [
+    "The status label was changed from linchpin / Wedges land to operator-gated to reflect current deterministic evidence without overstating live ratification.",
+    "The Sprint 19 code surface is substantial and green under scoped tests; the remaining proofs are live-key/operator workflow gates."
+  ]
+}
