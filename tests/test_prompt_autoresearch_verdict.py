@@ -119,6 +119,8 @@ def test_reject_when_acceptance_rate_below_floor():
             outs.append(_mk_outcome(mutation_id=f"m-{i}", delta=-0.05, accepted=False))
     v = compute_verdict("synthesizer", outs)
     assert v.decision == "reject"
+    assert v.accepted_count == 4
+    assert v.rejected_count == 16
     assert v.acceptance_rate == 4 / MIN_MUTATIONS
     assert "acceptance rate" in v.rationale
 
@@ -198,6 +200,8 @@ def test_renders_markdown_with_decision_and_metrics():
     assert "# Autoresearch Wedge 1 verdict — `synthesizer` (§15.6)" in md
     assert "**Decision:** `ratify`" in md
     assert "## Summary" in md
+    assert "- Accepted mutations: **20**" in md
+    assert "- Rejected mutations: **0**" in md
     assert "Best mutation rationale: tighten citations" in md
     assert "Best mutation parent baseline: `baseline-1`" in md
     assert "Best mutation proposed at: `2026-07-01T00:00:00Z`" in md
@@ -241,6 +245,8 @@ def test_render_verdict_rejects_malformed_best_mutation_provenance():
         total_cost_usd=1.0,
         rationale="valid rationale",
         sub_metric_regressions=[],
+        accepted_count=20,
+        rejected_count=0,
         best_mutation_parent_baseline_id=123,  # type: ignore[arg-type]
     )
 
@@ -250,6 +256,31 @@ def test_render_verdict_rejects_malformed_best_mutation_provenance():
         assert "best_mutation_parent_baseline_id must be a string when present" in str(exc)
     else:  # pragma: no cover - defensive assertion path
         raise AssertionError("expected malformed best-mutation provenance to be rejected")
+
+
+def test_render_verdict_rejects_impossible_mutation_counts():
+    verdict = Verdict(
+        role="synthesizer",
+        decision="ratify",
+        iteration_count=20,
+        acceptance_rate=1.0,
+        mean_delta=0.10,
+        median_delta=0.10,
+        best_mutation_id="m-0",
+        best_mutation_delta=0.10,
+        total_cost_usd=1.0,
+        rationale="valid rationale",
+        sub_metric_regressions=[],
+        accepted_count=19,
+        rejected_count=0,
+    )
+
+    try:
+        render_verdict_markdown(verdict)
+    except ValueError as exc:
+        assert "accepted_count + rejected_count must equal iteration_count" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected impossible mutation counts to be rejected")
 
 
 def test_render_reject_includes_regression_list():

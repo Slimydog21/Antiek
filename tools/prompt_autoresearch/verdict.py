@@ -59,6 +59,8 @@ class Verdict:
     total_cost_usd: float
     rationale: str
     sub_metric_regressions: list[str]
+    accepted_count: int = 0
+    rejected_count: int = 0
     best_mutation_rationale: str = ""
     best_mutation_parent_baseline_id: str | None = None
     best_mutation_proposed_at: str = ""
@@ -103,7 +105,9 @@ def compute_verdict(
 
     n = len(outcomes)
     accepted = [o for o in outcomes if o.accepted]
-    acceptance_rate = len(accepted) / n
+    accepted_count = len(accepted)
+    rejected_count = n - accepted_count
+    acceptance_rate = accepted_count / n
     deltas = sorted(o.delta for o in outcomes)
     mean_delta = sum(deltas) / n
     median_delta = (
@@ -183,6 +187,8 @@ def compute_verdict(
         total_cost_usd=total_cost,
         rationale=rationale,
         sub_metric_regressions=regressions,
+        accepted_count=accepted_count,
+        rejected_count=rejected_count,
         best_mutation_rationale=best.mutation_rationale,
         best_mutation_parent_baseline_id=best.parent_baseline_id,
         best_mutation_proposed_at=best.proposed_at,
@@ -229,6 +235,8 @@ def render_verdict_markdown(verdict: Verdict) -> str:
     lines.append("## Summary")
     lines.append("")
     lines.append(f"- Iterations: **{verdict.iteration_count}**")
+    lines.append(f"- Accepted mutations: **{verdict.accepted_count}**")
+    lines.append(f"- Rejected mutations: **{verdict.rejected_count}**")
     lines.append(f"- Acceptance rate: **{verdict.acceptance_rate * 100:.1f}%**")
     lines.append(f"- Mean delta: **{verdict.mean_delta:+.4f}**")
     lines.append(f"- Median delta: **{verdict.median_delta:+.4f}**")
@@ -306,6 +314,12 @@ def _validate_verdict(verdict: Verdict) -> None:
             raise ValueError(f"verdict {field} must be finite")
     if verdict.acceptance_rate < 0.0 or verdict.acceptance_rate > 1.0:
         raise ValueError("verdict acceptance_rate must be in [0, 1]")
+    for field in ("accepted_count", "rejected_count"):
+        value = getattr(verdict, field)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"verdict {field} must be a non-negative integer")
+    if verdict.accepted_count + verdict.rejected_count != verdict.iteration_count:
+        raise ValueError("verdict accepted_count + rejected_count must equal iteration_count")
     if verdict.total_cost_usd < 0.0:
         raise ValueError("verdict total_cost_usd must be non-negative")
     if not isinstance(verdict.rationale, str) or not verdict.rationale.strip():
