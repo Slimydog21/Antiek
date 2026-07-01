@@ -84,6 +84,11 @@ const TONE_STYLE: Record<Narration["tone"], { dot: string; text: string }> = {
   milestone: { dot: "bg-emperor", text: "text-ink dark:text-bright font-semibold" },
 };
 
+function safeCostUsd(value: unknown): string {
+  const cost = typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+  return `$${cost.toFixed(4)}`;
+}
+
 export default function ThinkingStream({ investigation, steer, onRetry }: ThinkingStreamProps) {
   const [showRaw, setShowRaw] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -252,7 +257,7 @@ function StreamHeader({
         <span className="text-ink-mute dark:text-moonlight">·</span>
         {/* M3: real accumulated cost in dollars, no token jargon. */}
         <span className="font-mono text-ink-soft dark:text-starlight" aria-label="cost so far">
-          ${investigation.costTotal.toFixed(4)}
+          {safeCostUsd(investigation.costTotal)}
         </span>
       </div>
 
