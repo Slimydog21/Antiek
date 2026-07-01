@@ -264,6 +264,13 @@ def test_rlm_wrestling_emits_sub_call_for_llm_batch(tmp_path, monkeypatch):
     assert sub_call.prompt_count == 5
     assert sub_call.target_role == "synthesizer"
     assert sub_call.parent_event_id == event.event_id
+    dispatch_calls = [
+        row
+        for row in trajectory("inv-rlm-wrestle-batch")
+        if row["action_type"] == "dispatch.call"
+    ]
+    assert len(dispatch_calls) == 6  # one codegen call + five llm_batch calls
+    assert all(row["parent_event_id"] == event.event_id for row in dispatch_calls)
 
 
 def test_rlm_wrestling_cost_cap_delivers_hedged_answer(tmp_path, monkeypatch):
