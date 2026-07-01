@@ -15,7 +15,7 @@ The architectural shape is now:
 .github/workflows/substrate_floor.yml          ← CI entry point
         │
         ├── ruff (Wave 1 + tooling scope)
-        ├── mypy --strict (Wave 1 + lints + cli)
+        ├── mypy --strict (Wave 1 + lints + cli + perf harness)
         ├── tools.lints.cli_with_baseline enforce no_raise
         │       │
         │       └── tools/lints/baselines/no_raise.json   ← grandfathered set
@@ -108,7 +108,7 @@ The single raise is the input-validation guard in `escape_hatch()`'s constructor
 Triggers on PR + push to substrate-quality paths only (defensive — not the whole repo). Each step is independent:
 
 1. ruff (Wave 1 substrate + tooling)
-2. mypy --strict (Wave 1 + lints/baseline + lints/cli_with_baseline)
+2. mypy --strict (Wave 1 + lints/baseline + lints/cli_with_baseline + CLI + perf harness)
 3. Lint enforce — `no_raise` against committed baseline
 4. Lint enforce — `bypass` against committed baseline
 5. Unit tests — Wave 1+2+3+4 substrate-quality tests
@@ -117,6 +117,13 @@ Triggers on PR + push to substrate-quality paths only (defensive — not the who
 8. Substrate invariants (guarded: `if [ -f substrate/invariants.py ]; then ... else echo "::notice::..." fi`)
 
 The invariants guard accommodates the empirical fact that the invariants module is missing on many parallel-stream branches.
+
+**2026-07-01 tightening:** the mypy step now includes
+`tools/antiek_cli/check.py` and `tools/benchmarks/hot_paths`, matching the
+workflow's path triggers and the ruff scope. The unit step also runs
+`tests/test_antiek_cli_perf.py`. `tests/test_substrate_floor_workflow.py` pins
+those entries so the substrate-floor trigger, strict check, and perf CLI tests
+do not drift apart again.
 
 ## ARE-09 — `antiek check perf` subcommand
 

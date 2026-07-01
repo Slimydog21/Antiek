@@ -32,7 +32,9 @@ on:
       - 'tests/test_escape_hatch.py'
       - 'tests/test_lints_*.py'
       - 'tests/test_antiek_cli.py'
+      - 'tests/test_antiek_cli_perf.py'
       - 'tests/test_benchmark_harness.py'
+      - 'tests/test_substrate_floor_workflow.py'
       - 'tests/properties/**'
       - 'tools/benchmarks/**'
       - '.github/workflows/substrate_floor.yml'
@@ -67,14 +69,18 @@ jobs:
         run: |
           ruff check $SCOPE_FILES tools/lints/ tools/antiek_cli/ tools/benchmarks/
 
-      - name: mypy --strict (Wave 1 substrate + lints + cli)
+      - name: mypy --strict (Wave 1 substrate + lints + cli + perf harness)
         run: |
-          # --explicit-package-bases --namespace-packages: tools/lints/ has an
-          # __init__.py but tools/ does not, so mypy otherwise resolves
-          # baseline.py under two module names ("lints.baseline" and
-          # "tools.lints.baseline") and aborts ("source file found twice").
+          # --explicit-package-bases --namespace-packages: tools/* packages
+          # have __init__.py files but tools/ itself does not, so mypy otherwise
+          # can resolve modules under two names (e.g. "lints.baseline" and
+          # "tools.lints.baseline") and abort ("source file found twice").
           mypy --strict --explicit-package-bases --namespace-packages \
-            $SCOPE_FILES tools/lints/baseline.py tools/lints/cli_with_baseline.py
+            $SCOPE_FILES \
+            tools/lints/baseline.py \
+            tools/lints/cli_with_baseline.py \
+            tools/antiek_cli/check.py \
+            tools/benchmarks/hot_paths
 
       - name: Lint enforce — no_raise (against committed baseline)
         run: |
@@ -101,7 +107,9 @@ jobs:
             tests/test_lints_baseline.py \
             tests/test_lints_cli_with_baseline.py \
             tests/test_antiek_cli.py \
+            tests/test_antiek_cli_perf.py \
             tests/test_benchmark_harness.py \
+            tests/test_substrate_floor_workflow.py \
             -v
 
       - name: Property tests (hypothesis)
