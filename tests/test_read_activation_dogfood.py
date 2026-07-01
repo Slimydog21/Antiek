@@ -71,6 +71,23 @@ def test_citation_tracing_requires_explicit_session_evidence() -> None:
     )
 
 
+def test_citation_trace_flag_requires_citation_step_to_pass() -> None:
+    record = _session(1, citation=True)
+    record["steps"]["5"] = {
+        "status": "fail",
+        "followup_issue": "citation marker opened the wrong source",
+    }
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.citation_trace_sessions == 0
+    assert any(
+        "citation_traced=true requires step 5 to pass" in f
+        for f in report.failures
+    )
+
+
 def test_non_library_entry_accepts_human_spelled_command_palette() -> None:
     records = [
         _session(i, live=i <= 5, citation=i <= 3, entry_door="library")
