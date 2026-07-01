@@ -374,6 +374,33 @@ describe("AI tool-call · full dispatch round-trip", () => {
     const chaseId = "chase:is this real?";
     expect(useWorkspace.getState().panels[chaseId]).toBeTruthy();
     expect(useWorkspace.getState().panels[chaseId].kind).toBe("Chase");
+    expect(useWorkspace.getState().panels[chaseId].props).toEqual({
+      spawnContext: "is this real?",
+      parentInvestigationId: "__sidecar__",
+    });
+  });
+
+  it("chase_question uses an explicit investigation id as the Chase parent", () => {
+    const { actions } = parseAssistantReply(
+      "x\n\n@@actions\n" +
+        JSON.stringify([
+          {
+            kind: "chase_question",
+            text: "is this tied to the current research?",
+            investigation_id: "inv-parent",
+          },
+        ]) +
+        "\n@@end",
+    );
+    dispatchAiAction(actions[0], {
+      investigation_id: "__sidecar__",
+      operator_prompt: "chase this",
+    });
+    const chaseId = "chase:is this tied to the current rese";
+    expect(useWorkspace.getState().panels[chaseId].props).toEqual({
+      spawnContext: "is this tied to the current research?",
+      parentInvestigationId: "inv-parent",
+    });
   });
 
   it("chase_question undo preserves a pre-existing chase panel", () => {
@@ -386,7 +413,7 @@ describe("AI tool-call · full dispatch round-trip", () => {
     const chaseId = `chase:${text.slice(0, 32)}`;
     useWorkspace.getState().open(
       "Chase",
-      { question: text },
+      { spawnContext: text, parentInvestigationId: "__sidecar__" },
       { id: chaseId, mode: "floating", title: "Chase" },
     );
     useWorkspace.getState().focus("ai:chase:prior");

@@ -595,8 +595,9 @@ export function dispatchAiAction(
       ws.open(
         "Chase",
         {
-          question: action.text,
-          investigationId: action.investigation_id,
+          spawnContext: action.text,
+          parentInvestigationId:
+            action.investigation_id ?? context?.investigation_id ?? "__sidecar__",
         },
         {
           id: panelId,
@@ -611,8 +612,9 @@ export function dispatchAiAction(
         next_state: {
           open: true,
           focused_id: panelId,
-          question: action.text,
-          investigation_id: action.investigation_id ?? null,
+          spawn_context: action.text,
+          parent_investigation_id:
+            action.investigation_id ?? context?.investigation_id ?? "__sidecar__",
         },
         summary: `chase_question "${action.text.slice(0, 64)}"`,
       };
