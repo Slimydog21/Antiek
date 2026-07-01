@@ -79,8 +79,9 @@ export default function BookReader() {
   const optPage = useMemo(() => {
     const raw = searchParams.get("page");
     if (raw === null) return null;
-    const n = parseInt(raw, 10);
-    return Number.isFinite(n) && n >= 0 ? n : null;
+    if (!/^\d+$/.test(raw)) return null;
+    const n = Number(raw);
+    return Number.isSafeInteger(n) ? n : null;
   }, [searchParams]);
   const optHighlight = useMemo(() => decodeRegion(searchParams.get("hl")), [searchParams]);
   const optChunk = useMemo(() => {

@@ -40,8 +40,9 @@ function lensForPath(pathname: string): Lens {
 function pageFromRouteOrStorage(documentId: string, search: string): number {
   const raw = new URLSearchParams(search).get("page");
   if (raw === null) return readStoredPosition(documentId);
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : readStoredPosition(documentId);
+  if (!/^\d+$/.test(raw)) return readStoredPosition(documentId);
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) ? parsed : readStoredPosition(documentId);
 }
 
 export function AdBorderMount() {

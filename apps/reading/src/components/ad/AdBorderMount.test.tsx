@@ -108,4 +108,23 @@ describe("AdBorderMount", () => {
       }),
     );
   });
+
+  it.each(["2.9", "4junk", "-1", "Infinity"])(
+    "does not truncate malformed URL page param %s into an ad-attribution page",
+    (page) => {
+      window.sessionStorage.setItem("antiek.read.pos.doc-3", "5");
+      render(
+        <MemoryRouter initialEntries={[`/read/doc-3?page=${encodeURIComponent(page)}`]}>
+          <AdBorderMount />
+        </MemoryRouter>,
+      );
+
+      expect(adBorderMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          documentId: "doc-3",
+          pageIndex: 5,
+        }),
+      );
+    },
+  );
 });

@@ -325,6 +325,18 @@ describe("BookReader", () => {
     await waitFor(() => expect(screen.getByText("The second page.")).toBeTruthy());
   });
 
+  it.each(["1.9", "1junk", "-1", "Infinity"])(
+    "ignores malformed ?page=%s instead of truncating it into a reader page",
+    async (page) => {
+      getBookMock.mockResolvedValue(makeDetail());
+      getFullTextMock.mockResolvedValue(makeBody());
+      await renderReader(`/read/doc-1?page=${encodeURIComponent(page)}`);
+
+      await waitFor(() => expect(screen.getByText("The opening of the book.")).toBeTruthy());
+      expect(screen.getByText(/Page 1 of 2/)).toBeTruthy();
+    },
+  );
+
   it("lands on the exact page for a ?chunk= link when the chunk has a Page N anchor", async () => {
     getBookMock.mockResolvedValue(makeDetail());
     getFullTextMock.mockResolvedValue(makeBody());
