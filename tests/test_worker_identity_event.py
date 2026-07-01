@@ -57,8 +57,9 @@ def test_event_schema_version_bumped():
     Pinned strict so a union change without a conscious bump reds here.
     Tracks the current value: 28 (worker.identity, yegge SPR-01) -> 29
     (DiscoveryProvider Literal += "parallel", restore #134) -> 30
-    (DispatchCallPayload.tier accepts "tts")."""
-    assert EVENT_SCHEMA_VERSION == 30
+    (DispatchCallPayload.tier accepts "tts") -> 31 (multi-user audit
+    lifecycle events)."""
+    assert EVENT_SCHEMA_VERSION == 31
 
 
 # ── validation (rigor #3: rejects bad input at emit time) ───────────────────

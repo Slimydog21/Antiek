@@ -140,6 +140,9 @@ NESTED_MODELS: tuple[type[BaseModel], ...] = (
 
 # Payload models, in the same order as the TypedPayload union.
 PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
+    schema_module.UserRegisteredPayload,
+    schema_module.UserIdentityAttachedPayload,
+    schema_module.GraphScopeChangedPayload,
     schema_module.DispatchCallPayload,
     # antiek-yegge-execute SPR-01 — worker registration (future registry, SPR-04).
     schema_module.WorkerIdentityPayload,
