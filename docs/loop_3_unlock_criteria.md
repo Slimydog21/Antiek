@@ -126,6 +126,24 @@ only and does not unlock Loop 3 by itself.
 - [ ] A *ceiling* has been characterized — either (a) the score of the best available closed-weight model on the same eval, or (b) human inter-annotator agreement on the rubric. The pre-RL score must be consistently below the ceiling by a margin that exceeds the noise from §3.
 - [ ] GEPA prompt optimization (`§A`) has already been attempted and has plateaued. RL is not the first knob to turn.
 
+**Evidence command:**
+
+```bash
+./.venv/bin/python -m compounding.verification.eval_headroom \
+  --evidence reports/loop3/eval-headroom.json
+```
+
+Do not pass `--min-eval-examples` for unlock evidence. The committed placeholder
+points at the current 50-example `parameter_extractor_v0.jsonl` fixture and
+must fail until the curated eval set is expanded to ≥200 rows. Passing evidence
+requires current-policy score, ceiling kind (`closed_weight` or
+`human_agreement`), ceiling score, non-negative reward noise floor, a headroom
+margin greater than that noise floor, source artifacts for the score/ceiling/
+noise measurements, schema-valid eval rows (`chunk_text` +
+`expected_parameters`), and explicit GEPA plateau evidence with a report
+artifact. This command checks evidence shape only and does not run GEPA or
+evals.
+
 **Why this matters:** RL is the most expensive optimization in the toolbox. If GEPA hasn't been tried, prompt-tuning is cheaper and may close the gap. If there's no measured gap, there's nothing for RL to close.
 
 **Current state:** No eval set, no baseline, no GEPA run, no ceiling.
