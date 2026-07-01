@@ -358,6 +358,56 @@ def test_render_verdict_rejects_missing_best_mutation_on_positive_iterations():
         raise AssertionError("expected missing positive-iteration best mutation to be rejected")
 
 
+def test_render_verdict_rejects_ratify_below_thresholds():
+    verdict = Verdict(
+        role="synthesizer",
+        decision="ratify",
+        iteration_count=20,
+        acceptance_rate=0.20,
+        mean_delta=0.10,
+        median_delta=0.10,
+        best_mutation_id="m-0",
+        best_mutation_delta=0.10,
+        total_cost_usd=1.0,
+        rationale="claims ratify despite weak acceptance",
+        sub_metric_regressions=[],
+        accepted_count=4,
+        rejected_count=16,
+    )
+
+    try:
+        render_verdict_markdown(verdict)
+    except ValueError as exc:
+        assert "ratify verdict requires acceptance_rate at least MIN_ACCEPTANCE_RATE" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected below-threshold ratify verdict to be rejected")
+
+
+def test_render_verdict_rejects_full_volume_insufficient_data():
+    verdict = Verdict(
+        role="synthesizer",
+        decision="insufficient_data",
+        iteration_count=20,
+        acceptance_rate=0.0,
+        mean_delta=-0.10,
+        median_delta=-0.10,
+        best_mutation_id="m-0",
+        best_mutation_delta=-0.10,
+        total_cost_usd=1.0,
+        rationale="claims insufficient data despite full volume",
+        sub_metric_regressions=[],
+        accepted_count=0,
+        rejected_count=20,
+    )
+
+    try:
+        render_verdict_markdown(verdict)
+    except ValueError as exc:
+        assert "insufficient_data verdict requires iteration_count below MIN_MUTATIONS" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected full-volume insufficient_data verdict to be rejected")
+
+
 def test_render_reject_includes_regression_list():
     outs = [
         _mk_outcome(mutation_id=f"m-{i}", delta=0.10, accepted=True, grounding=0.30)

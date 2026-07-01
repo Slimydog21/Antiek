@@ -335,6 +335,19 @@ def _validate_verdict(verdict: Verdict) -> None:
             raise ValueError("verdict best_mutation_delta must be zero when iteration_count is zero")
     elif not isinstance(verdict.best_mutation_id, str) or not verdict.best_mutation_id.strip():
         raise ValueError("verdict best_mutation_id must be present when iteration_count is positive")
+    if verdict.decision == "insufficient_data" and verdict.iteration_count >= MIN_MUTATIONS:
+        raise ValueError("insufficient_data verdict requires iteration_count below MIN_MUTATIONS")
+    if verdict.decision == "reject" and verdict.iteration_count < MIN_MUTATIONS:
+        raise ValueError("reject verdict requires iteration_count at least MIN_MUTATIONS")
+    if verdict.decision == "ratify":
+        if verdict.iteration_count < MIN_MUTATIONS:
+            raise ValueError("ratify verdict requires iteration_count at least MIN_MUTATIONS")
+        if verdict.acceptance_rate + _FLOAT_TOLERANCE < MIN_ACCEPTANCE_RATE:
+            raise ValueError("ratify verdict requires acceptance_rate at least MIN_ACCEPTANCE_RATE")
+        if verdict.mean_delta + _FLOAT_TOLERANCE < MIN_MEAN_DELTA:
+            raise ValueError("ratify verdict requires mean_delta at least MIN_MEAN_DELTA")
+        if verdict.sub_metric_regressions:
+            raise ValueError("ratify verdict cannot include sub_metric_regressions")
     if verdict.total_cost_usd < 0.0:
         raise ValueError("verdict total_cost_usd must be non-negative")
     if not isinstance(verdict.rationale, str) or not verdict.rationale.strip():
