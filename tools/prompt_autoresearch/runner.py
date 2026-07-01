@@ -54,6 +54,12 @@ class PromptMutation:
     rationale: str  # one-line description of the change
     proposed_at: str = field(default_factory=_now_iso)
 
+    def __post_init__(self) -> None:
+        _require_text(self.mutation_id, field="mutation_id")
+        _require_text(self.role, field="role")
+        _require_text(self.proposed_prompt, field="proposed_prompt")
+        _require_text(self.rationale, field="rationale")
+
 
 @dataclass
 class PromptMutationOutcome:
@@ -89,6 +95,9 @@ class PromptAutoresearchRunner:
     baseline_total_score: float = 0.0
     iterations: list[PromptMutationOutcome] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        _require_text(self.role, field="role")
+
     def run_iteration(
         self,
         mutation: PromptMutation,
@@ -116,6 +125,7 @@ class PromptAutoresearchRunner:
             PromptMutationOutcome with accept/reject decision.
         """
         _check_local_only()
+        self._validate_mutation(mutation)
 
         # Project cost before executing. The mutator can supply an
         # estimated cost in the mutation's rationale or metadata; for
@@ -168,6 +178,17 @@ class PromptAutoresearchRunner:
 
         return outcome
 
+    def _validate_mutation(self, mutation: PromptMutation) -> None:
+        if mutation.role != self.role:
+            raise ValueError(
+                f"mutation role {mutation.role!r} does not match runner role {self.role!r}"
+            )
+
 
 def make_id() -> str:
     return f"mutation-{uuid.uuid4().hex[:12]}"
+
+
+def _require_text(value: str, *, field: str) -> None:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field} must be a non-empty string")
