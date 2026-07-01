@@ -30,7 +30,22 @@ const TRUST_RESPONSE = {
   loop_3_unlock_status: {
     trajectory_volume: false,
     sft_readiness: false,
+    validated_reward: false,
+    open_weight_justification: false,
+    eval_headroom: false,
   },
+  loop_3_evidence_status: {
+    trajectory_volume: false,
+    sft_readiness: false,
+    validated_reward: false,
+    open_weight_justification: false,
+    eval_headroom: false,
+  },
+  loop_3_evidence_summaries: {
+    trajectory_volume: "sealed_investigation_count: 0 >= 10000",
+    eval_headroom: "eval_set_min_examples: 50 >= 200",
+  },
+  loop_3_all_evidence_passed: false,
 };
 
 const DELETION_RESPONSE = {
@@ -165,6 +180,18 @@ describe("PrivacyDashboard", () => {
     expect(
       screen.getByText(/Differential privacy with epsilon capped at 10/),
     ).toBeTruthy();
+    expect(screen.getByText("Model training gate")).toBeTruthy();
+    expect(screen.getByText("Evidence incomplete")).toBeTruthy();
+    expect(screen.getByText("Operator checklist")).toBeTruthy();
+    expect(screen.getByText("Evidence checks")).toBeTruthy();
+    expect(screen.getAllByText("0/5")).toHaveLength(2);
+    expect(screen.getByText("Trajectory volume")).toBeTruthy();
+    expect(screen.getByText("SFT readiness")).toBeTruthy();
+    expect(screen.getByText("Reward validation")).toBeTruthy();
+    expect(screen.getByText("Open-weight rationale")).toBeTruthy();
+    expect(screen.getByText("Evaluation headroom")).toBeTruthy();
+    expect(screen.getAllByText("Not reviewed")).toHaveLength(5);
+    expect(screen.getAllByText("Not verified")).toHaveLength(5);
     expect(screen.getByText(/Pending deletion request/)).toBeTruthy();
     expect(screen.getByText(/Deletion completes within 30 days/)).toBeTruthy();
 
@@ -175,6 +202,8 @@ describe("PrivacyDashboard", () => {
     expect(screen.queryByText(/§/i)).toBeNull();
     expect(screen.queryByText(/substrate/i)).toBeNull();
     expect(screen.queryByText(/master-spec/i)).toBeNull();
+    expect(screen.queryByText(/eval_set_min_examples/i)).toBeNull();
+    expect(screen.queryByText(/sealed_investigation_count/i)).toBeNull();
     expect(screen.queryByText(/request_id/i)).toBeNull();
     expect(screen.queryByText(/del-raw-123/i)).toBeNull();
     expect(screen.queryByText(/GET \/trust-center/i)).toBeNull();
