@@ -13,6 +13,11 @@ from tools.prompt_autoresearch.verdict import (
     compute_verdict,
     render_verdict_markdown,
 )
+from tools.prompt_autoresearch.outcomes_io import (
+    load_outcomes_json,
+    outcome_to_json,
+    write_outcomes_json,
+)
 
 
 def _mk_outcome(
@@ -169,6 +174,26 @@ def test_render_reject_includes_regression_list():
     assert "grounding" in md
 
 
+def test_outcome_json_round_trips(tmp_path):
+    outcome = _mk_outcome(
+        mutation_id="m-roundtrip",
+        delta=0.12,
+        accepted=True,
+        rubric=0.90,
+    )
+    path = tmp_path / "outcomes.json"
+
+    write_outcomes_json(path, role="synthesizer", outcomes=[outcome])
+
+    role, loaded = load_outcomes_json(path)
+    assert role == "synthesizer"
+    assert len(loaded) == 1
+    assert loaded[0].mutation_id == outcome.mutation_id
+    assert loaded[0].cost_usd == outcome.cost_usd
+    assert loaded[0].composite_breakdown.rubric == 0.90
+    assert outcome_to_json(loaded[0]) == outcome_to_json(outcome)
+
+
 def _outcome_json(mutation_id: str = "m-0") -> dict:
     return {
         "mutation_id": mutation_id,
@@ -193,12 +218,13 @@ def test_verdict_cli_writes_markdown_from_json(tmp_path):
 
     outcomes_path = tmp_path / "outcomes.json"
     output_path = tmp_path / "verdict.md"
-    outcomes_path.write_text(
-        json.dumps({
-            "role": "synthesizer",
-            "outcomes": [_outcome_json(f"m-{i}") for i in range(MIN_MUTATIONS)],
-        }),
-        encoding="utf-8",
+    write_outcomes_json(
+        outcomes_path,
+        role="synthesizer",
+        outcomes=[
+            _mk_outcome(mutation_id=f"m-{i}", delta=0.10, accepted=True)
+            for i in range(MIN_MUTATIONS)
+        ],
     )
 
     rc = main(["--outcomes", str(outcomes_path), "--output", str(output_path)])

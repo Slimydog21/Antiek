@@ -26,6 +26,12 @@ from .runner import (
     PromptMutation,
     PromptMutationOutcome,
 )
+from .outcomes_io import (
+    load_outcomes_json,
+    outcome_from_json,
+    outcome_to_json,
+    write_outcomes_json,
+)
 from .score import (
     CompositeScore,
     composite_score,
@@ -44,5 +50,9 @@ __all__ = [
     "composite_score",
     "deterministic_voice_style_score",
     "grounding_preserved_rate",
+    "load_outcomes_json",
+    "outcome_from_json",
+    "outcome_to_json",
     "sector_vocab_overlap",
+    "write_outcomes_json",
 ]

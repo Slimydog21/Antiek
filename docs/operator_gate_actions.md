@@ -253,10 +253,26 @@ The operator runs ≥20 mutations against the synthesizer's golden traces,
 exports the resulting `PromptMutationOutcome` rows to JSON, and then
 closes the gate with:
 
+Add this to the end of the local mutation-run script once `runner.iterations`
+contains the ≥20 `PromptMutationOutcome` rows:
+
+```python
+from pathlib import Path
+from tools.prompt_autoresearch import write_outcomes_json
+
+write_outcomes_json(
+    Path("reports/autoresearch/synthesizer-outcomes.json"),
+    role="synthesizer",
+    outcomes=runner.iterations,
+)
+```
+
+Then render the decision artifact:
+
 ```bash
 ./.venv/bin/python -m tools.prompt_autoresearch.verdict_cli \
   --role synthesizer \
-  --outcomes <path-to-mutation-outcomes.json> \
+  --outcomes reports/autoresearch/synthesizer-outcomes.json \
   --output docs/decisions/autoresearch-wedge-1-verdict.md
 ```
 
