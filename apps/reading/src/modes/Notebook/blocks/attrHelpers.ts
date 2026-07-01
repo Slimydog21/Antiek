@@ -19,6 +19,13 @@
 
 type AttrRecord = Record<string, unknown>;
 
+function parseStrictInteger(value: string): number | null {
+  const trimmed = value.trim();
+  if (!/^-?\d+$/.test(trimmed)) return null;
+  const n = Number(trimmed);
+  return Number.isSafeInteger(n) ? n : null;
+}
+
 /** String attribute. Null when absent. */
 export function stringAttr(name: string) {
   return {
@@ -36,8 +43,7 @@ export function intAttr(name: string) {
     parseHTML: (el: HTMLElement) => {
       const v = el.getAttribute(name);
       if (v == null || v === "") return null;
-      const n = parseInt(v, 10);
-      return Number.isFinite(n) ? n : null;
+      return parseStrictInteger(v);
     },
     renderHTML: (attrs: AttrRecord) =>
       attrs[name] != null ? { [name]: String(attrs[name]) } : {},

@@ -77,6 +77,21 @@ describe("intAttr", () => {
     expect(helper.parseHTML(el)).toBeNull();
   });
 
+  it("rejects partial, fractional, and unsafe integer values", () => {
+    const helper = intAttr("page");
+    expect(
+      helper.parseHTML(mkEl("antiek-region-embed", { page: "12junk" })),
+    ).toBeNull();
+    expect(
+      helper.parseHTML(mkEl("antiek-region-embed", { page: "2.5" })),
+    ).toBeNull();
+    expect(
+      helper.parseHTML(
+        mkEl("antiek-region-embed", { page: "9007199254740992" }),
+      ),
+    ).toBeNull();
+  });
+
   it("emits the attribute as a string in renderHTML", () => {
     const helper = intAttr("page");
     expect(helper.renderHTML({ page: 42 })).toEqual({ page: "42" });

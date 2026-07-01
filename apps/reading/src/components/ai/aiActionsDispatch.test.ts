@@ -562,6 +562,48 @@ describe("AI tool-call · full dispatch round-trip", () => {
     expect(window.localStorage.getItem(etagKey)).toBeNull();
   });
 
+  it("add_to_notebook treats malformed stored etags as absent", async () => {
+    const nbId = "ai-test-nb-bad-etag";
+    const lsKey = "antiek.notebook." + nbId;
+    const etagKey = lsKey + ".etag";
+    window.localStorage.setItem(lsKey, "<p>before</p>");
+    window.localStorage.setItem(etagKey, "7junk");
+    const events: Array<{ notebookId: string; etag: number; force?: boolean }> = [];
+    const listener = (e: Event) => {
+      const ce = e as CustomEvent<{
+        notebookId: string;
+        etag: number;
+        force?: boolean;
+      }>;
+      if (ce.detail) events.push(ce.detail);
+    };
+    window.addEventListener("antiek:notebook:appended", listener);
+
+    const { actions } = parseAssistantReply(
+      "x\n\n@@actions\n" +
+        JSON.stringify([
+          {
+            kind: "add_to_notebook",
+            notebook_id: nbId,
+            block: { kind: "note", text: "after bad etag" },
+          },
+        ]) +
+        "\n@@end",
+    );
+    const dispatched = dispatchAiAction(actions[0]);
+    expect(window.localStorage.getItem(etagKey)).toBe("1");
+    expect(events[0]).toEqual({ notebookId: nbId, etag: 1 });
+
+    await dispatched.undo?.();
+    expect(window.localStorage.getItem(lsKey)).toBe("<p>before</p>");
+    expect(window.localStorage.getItem(etagKey)).toBeNull();
+    expect(events[1]).toEqual({ notebookId: nbId, etag: 0, force: true });
+
+    window.removeEventListener("antiek:notebook:appended", listener);
+    window.localStorage.removeItem(lsKey);
+    window.localStorage.removeItem(etagKey);
+  });
+
   it("toast dispatches the lemon toast queue (dynamic import resolves)", async () => {
     const { actions } = parseAssistantReply(
       "x\n\n@@actions\n" +
