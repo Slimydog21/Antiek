@@ -20,4 +20,16 @@ describe("Topbar", () => {
     expect(screen.getByText("Privacy dashboard")).toBeTruthy();
     expect(screen.queryByText(/^Privacy$/)).toBeNull();
   });
+
+  it("uses the canonical substrate stats breadcrumb label", () => {
+    render(
+      <MemoryRouter initialEntries={["/stats"]}>
+        <Topbar />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toBeTruthy();
+    expect(screen.getByText("Substrate stats")).toBeTruthy();
+    expect(screen.queryByText(/^Stats$/)).toBeNull();
+  });
 });

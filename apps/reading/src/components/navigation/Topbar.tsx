@@ -37,7 +37,7 @@ function defaultBreadcrumbsFor(pathname: string): Crumb[] {
     notebook: "Notebook",
     documents: "Documents",
     billing: "Billing",
-    stats: "Stats",
+    stats: "Substrate stats",
     map: "Map",
     backtest: "Backtest",
     privacy: "Privacy dashboard",
