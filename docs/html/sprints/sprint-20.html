@@ -94,9 +94,13 @@
     <p>The local substrate is present and the scoped backend test slice passed on 2026-07-01. The sprint cannot honestly close until the operator publishes at least one artifact, produces a fresh dispatch-tier verdict from verified synthesis traffic, and records the autoresearch Wedge 1 ratification decision.</p>
 </div>
 
-<p>Fresh deterministic gate:</p>
+<p>Fresh deterministic gates:</p>
 
-<pre><code>.venv/bin/python -m pytest \
+<pre><code>cd apps/reading && npm test -- TrajectoryReplay --run
+
+1 file / 8 tests passed
+
+.venv/bin/python -m pytest \
   tests/test_dispatch_tier_verdict.py \
   tests/test_prompt_autoresearch_verdict.py \
   tests/test_phase8_gate.py \
@@ -106,7 +110,7 @@
 
 81 passed in 0.70s</code></pre>
 
-<p>Implementation evidence exists for trajectory replay and Phase 8 shadow-mode substrate. Direct TrajectoryReplay component tests were not present in the repository during this reconciliation pass; the current frontend coverage is adjacent workspace-contract coverage plus Storybook surface evidence.</p>
+<p>Implementation evidence exists for trajectory replay and Phase 8 shadow-mode substrate. Direct TrajectoryReplay component coverage now verifies empty-state honesty, chronological sorting, manual scrubbing, ReplayStepList jump handling, malformed jump no-op behavior, play/pause, autoplay progression, final-event stop behavior, and restart.</p>
 
 <p>The dispatch verdict has a provisional closure record at <code>docs/decisions/dispatch-tier-verdict.md</code> and a follow-up at <code>docs/decisions/g5-dispatch-tier-verdict-followup.md</code>. That follow-up explicitly requires fresh operator investigations and a re-run once there are at least 20 verified syntheses per provider.</p>
 
