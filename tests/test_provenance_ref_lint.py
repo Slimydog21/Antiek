@@ -53,6 +53,38 @@ def parse(obj):
     assert any("question_id" in violation for violation in violations)
 
 
+def test_lint_catches_parser_that_surfaces_echoed_ids_without_validator(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "bad_investigation_role" / "parser.py",
+        """
+def parse(obj):
+    return {"investigation_id": obj.get("investigation_id")}
+""",
+    )
+    _write(
+        tmp_path / "roles" / "bad_visual_role" / "parser.py",
+        """
+def parse(obj):
+    return {"page_or_frame_id": obj.get("page_or_frame_id")}
+""",
+    )
+    _write(
+        tmp_path / "roles" / "bad_anchor_role" / "parser.py",
+        """
+def parse(obj):
+    return {"anchor_block_id": obj.get("anchor_block_id")}
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any("investigation_id" in violation for violation in violations)
+    assert any("page_or_frame_id" in violation for violation in violations)
+    assert any("anchor_block_id" in violation for violation in violations)
+
+
 def test_lint_allows_parser_that_routes_refs_through_validator(
     tmp_path: Path,
 ) -> None:

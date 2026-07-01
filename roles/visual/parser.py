@@ -28,6 +28,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from substrate.provenance import validate_ref
+
 from .._json_decode import extract_json_object
 
 _VALID_CONFIDENCE: frozenset[str] = frozenset({"low", "moderate", "high"})
@@ -74,11 +76,14 @@ def _parse_region(
         raise VisualValidationError(
             "region.page_or_frame_id must be a non-empty string"
         )
-    if expected_page_or_frame_id is not None and pf_id != expected_page_or_frame_id:
-        raise VisualValidationError(
-            "region.page_or_frame_id must echo the input frame id "
-            f"{expected_page_or_frame_id!r}; got {pf_id!r}"
-        )
+    if expected_page_or_frame_id is not None:
+        validated_pf_id = validate_ref(pf_id, (expected_page_or_frame_id,))
+        if validated_pf_id is None:
+            raise VisualValidationError(
+                "region.page_or_frame_id must echo the input frame id "
+                f"{expected_page_or_frame_id!r}; got {pf_id!r}"
+            )
+        pf_id = validated_pf_id
     bbox = raw.get("bbox")
     if (
         not isinstance(bbox, (list, tuple))

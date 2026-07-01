@@ -49,6 +49,8 @@ except ImportError:  # pragma: no cover — direct-script fallback
         extract_json_object as _extract_json_object,  # type: ignore[no-redef]
     )
 
+from substrate.provenance import validate_ref
+
 
 # Closed taxonomies — must equal the schema's SubQuestionCategory /
 # EvidenceTypeRequired Literals. Drift caught by tests.
@@ -184,11 +186,14 @@ def parse_decomposer_response(
 
     # Top-level keys
     iid = _require_str(obj.get("investigation_id"), "investigation_id", "top")
-    if expected_investigation_id and iid != expected_investigation_id:
-        raise DecomposerValidationError(
-            f"investigation_id mismatch: model returned {iid!r}, "
-            f"expected {expected_investigation_id!r}"
-        )
+    if expected_investigation_id:
+        validated_iid = validate_ref(iid, (expected_investigation_id,))
+        if validated_iid is None:
+            raise DecomposerValidationError(
+                f"investigation_id mismatch: model returned {iid!r}, "
+                f"expected {expected_investigation_id!r}"
+            )
+        iid = validated_iid
 
     decomp_raw = obj.get("decomposition")
     if not isinstance(decomp_raw, list):

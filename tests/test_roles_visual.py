@@ -215,6 +215,26 @@ def test_parse_refuses_wrong_page_or_frame_id_when_expected():
         parse_visual_response(raw, expected_page_or_frame_id="frame-real")
 
 
+def test_parse_normalizes_expected_page_or_frame_id_with_shared_ref_validator():
+    raw = json.dumps({
+        "frame_summary": "x.",
+        "claims": [
+            {
+                "claim_text": "a.",
+                "confidence": "high",
+                "region": {
+                    "page_or_frame_id": " frame-real ",
+                    "bbox": [0, 0, 1, 1],
+                },
+            },
+        ],
+    })
+
+    out = parse_visual_response(raw, expected_page_or_frame_id="frame-real")
+
+    assert out.claims[0].region.page_or_frame_id == "frame-real"
+
+
 def test_parse_refuses_bbox_outside_unit_square():
     raw = json.dumps({
         "frame_summary": "x.",
