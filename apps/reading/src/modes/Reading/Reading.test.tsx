@@ -193,6 +193,15 @@ describe("usePosition", () => {
     const { result } = renderHook(() => usePosition("doc-b", 3));
     expect(result.current.pageIndex).toBe(2); // clamped to last page
   });
+
+  it.each(["2.9", "4junk", "-1", "Infinity", "NaN"])(
+    "rejects malformed saved locator %s instead of truncating it",
+    (stored) => {
+      window.sessionStorage.setItem("antiek.read.pos.doc-c", stored);
+      const { result } = renderHook(() => usePosition("doc-c", 10));
+      expect(result.current.pageIndex).toBe(0);
+    },
+  );
 });
 
 // ── useReaderImpressions (SPR-05 flush loop) ────────────────────────

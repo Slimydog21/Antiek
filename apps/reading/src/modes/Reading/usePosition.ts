@@ -20,8 +20,9 @@ export function readPositionKey(documentId: string): string {
 export function readStoredPosition(documentId: string): number {
   try {
     const raw = window.sessionStorage.getItem(readPositionKey(documentId));
-    const n = raw === null ? 0 : parseInt(raw, 10);
-    return Number.isFinite(n) && n >= 0 ? n : 0;
+    if (raw === null || !/^\d+$/.test(raw)) return 0;
+    const n = Number(raw);
+    return Number.isSafeInteger(n) ? n : 0;
   } catch {
     return 0;
   }
