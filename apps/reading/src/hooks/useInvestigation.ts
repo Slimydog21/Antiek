@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { Event } from "../generated/types";
 import { getInvestigationStatus, getTrajectory } from "../lib/api";
+import { isEventFrame } from "../lib/eventFrame";
 import type { InvestigationStatus } from "../lib/api";
 import { useEventStream } from "./useEventStream";
 
@@ -73,7 +74,7 @@ export function useInvestigation(
           getInvestigationStatus(investigationId).catch((): InvestigationStatus | null => null),
         ]);
         if (cancelled) return;
-        setSeedEvents(traj.events ?? []);
+        setSeedEvents(Array.isArray(traj.events) ? traj.events.filter(isEventFrame) : []);
         setStatus(st);
       } catch {
         // 404 or similar — leave seedEvents empty, status null → "not_found"
