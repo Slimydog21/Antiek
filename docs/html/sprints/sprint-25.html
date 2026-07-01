@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sprint 25+ — Ads at scale and marketplace effects</title>
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+
+<nav class="topnav">
+    <div class="topnav-inner">
+        <span class="topnav-title">Antiek docs</span>
+        <a href="../index.html">Index</a>
+        <a href="../spec-exa-browserbase.html">Exa &amp; Browserbase spec</a>
+        <a href="sprint-21.html">S21</a>
+        <a href="sprint-22.html">S22</a>
+        <a href="sprint-23-24.html">S23-24</a>
+        <a href="sprint-25.html" class="active">S25+</a>
+    </div>
+</nav>
+
+<main>
+<article>
+
+<p class="kicker">Sprint 25+ &middot; unlock-gated &middot; substrate verified 2026-07-01 &middot; marketplace traction required</p>
+<h1>Sprint 25+ — Ad Inventory at Scale + Cross-Graph Network Effects</h1>
+
+<div class="meta">
+    <p><strong>Theme</strong>. Sprint 25+ scales the Phase 3 marketplace: ad-supported public consumption, creator and publisher rev-share, cross-graph ask-an-expert, marketplace health metrics, and conditional advertiser self-service, public handbook, and SOC 2 decisions.</p>
+    <p><strong>Current reconciliation</strong>. Marketplace metrics, mixed attribution, cross-graph ask-an-expert substrate, programmatic-gate evaluation, payout dashboard, and frontend route coverage are present and green under scoped tests. The sprint remains unlock-gated because the required creator, publisher, advertiser, revenue, and external-observer signals are not local-code artifacts.</p>
+</div>
+
+<div class="toc">
+    <div class="toc-title">On this page</div>
+    <ol>
+        <li><a href="#unlock">Unlock conditions</a></li>
+        <li><a href="#phases">Progressive phases</a></li>
+        <li><a href="#deliverables">Specific deliverables</a></li>
+        <li><a href="#status">Status reconciliation</a></li>
+        <li><a href="#acceptance">Acceptance &amp; exit criteria</a></li>
+    </ol>
+</div>
+
+<h2 id="unlock">1. Unlock conditions <a class="section-anchor" href="#unlock">#</a></h2>
+
+<div class="callout warn">
+    <strong>Phase 3 marketplace gate</strong>
+    <p>Sprint 25+ depends on Sprints 23-24 producing real marketplace traction: at least 30 creators actively earning monthly rev-share above threshold, at least 5 opted-in publishers with non-trivial escrow accrual, and no payout reversal in the prior 8 weeks. Conditional tracks remain conditional: advertiser self-service requires spend scale; handbook requires team size; SOC 2 requires enterprise procurement signal.</p>
+</div>
+
+<h2 id="phases">2. Progressive phases <a class="section-anchor" href="#phases">#</a></h2>
+
+<h3>2.1 Ad inventory across public consumption</h3>
+<p>The vertical-ad mechanic expands to public-graph pages. Topic targeting becomes more nuanced. An inline sponsor card pattern can appear between synthesis sections only when voice/style discipline is preserved.</p>
+<p><strong>Exit</strong>: more than 90% of public-graph page views serve an ad without harming voice/style; inline sponsor placements pass the voice test on 95% of placements.</p>
+
+<h3>2.2 Unified creator and publisher rev-share</h3>
+<p>Creator and opted-in publisher economics converge into one proportional attribution pipeline. Mixed sessions must split the 70% share without duplicating dollars.</p>
+<p><strong>Exit</strong>: a single payout dashboard renders creator and publisher accrual consistently; mixed-attribution audits show no double-spend.</p>
+
+<h3>2.3 Cross-graph ask-an-expert</h3>
+<p>Open-question chase can surface a relevant opted-in creator as an interview candidate. Outreach and payment stay inside Antiek, mediated by existing Stripe Connect rails.</p>
+<p><strong>Exit</strong>: one real cross-graph interview completes and payment clears.</p>
+
+<h3>2.4 Advertiser self-service console</h3>
+<p>This remains conditional on aggregate advertiser monthly spend crossing the threshold. If triggered, advertiser self-service handles campaign creation, creative upload, targeting, budget, bid setting, and dashboarding, with manual review before first activation.</p>
+<p><strong>Exit</strong>: if triggered, two advertisers complete self-service onboarding without operator intervention; otherwise operator-mediated sales continue.</p>
+
+<h3>2.5 Public handbook and SOC 2 decision</h3>
+<p>The public handbook is conditional on team size greater than one. SOC 2 Type II is conditional on enterprise procurement signal and would begin a real observation window rather than a documentation-only exercise.</p>
+<p><strong>Exit</strong>: conditional decisions are recorded with cited trigger evidence.</p>
+
+<h3>2.6 Marketplace metrics dashboard</h3>
+<p>The operator dashboard aggregates creator earnings distribution, publisher escrow accrual and claim rate, advertiser spend, and retention. It feeds the Sprint 30+ federation/programmatic decisions.</p>
+<p><strong>Exit</strong>: the dashboard is live and the operator can answer whether the marketplace is healthy without manual SQL.</p>
+
+<h2 id="deliverables">3. Specific deliverables <a class="section-anchor" href="#deliverables">#</a></h2>
+
+<ul>
+    <li><code>substrate/ad_inventory/scaling.py</code> &mdash; inline sponsor card and voice-discipline suppression hook.</li>
+    <li><code>substrate/rev_share/mixed_attribution.py</code> &mdash; creator and publisher proportional split with no double-spend.</li>
+    <li><code>substrate/cross_graph/ask_expert.py</code> &mdash; opt-in discovery, outreach, and payment-mediated interview substrate.</li>
+    <li><code>apps/reading/src/modes/PayoutDashboard/</code> &mdash; unified creator and publisher accrual view.</li>
+    <li><code>apps/reading/src/modes/MarketplaceMetrics/</code> &mdash; operator-only economic-loop dashboard.</li>
+    <li><code>tools/marketplace/programmatic_gate.py</code> &mdash; programmatic-display gate re-evaluation runner.</li>
+    <li><code>docs/soc2_decision.md</code> &mdash; SOC 2 pursue/defer decision template.</li>
+</ul>
+
+<h2 id="status">4. Status reconciliation <a class="section-anchor" href="#status">#</a></h2>
+
+<div class="callout warn">
+    <strong>Unlock-gated, not complete</strong>
+    <p>The substrate and dashboards are partially ready. The sprint cannot close until the marketplace has real creator, publisher, advertiser, revenue, and interview transactions. Conditional deferrals are correct while the trigger evidence is absent.</p>
+</div>
+
+<p>Fresh deterministic gates:</p>
+
+<pre><code>.venv/bin/python -m pytest \
+  tests/test_marketplace_metrics.py \
+  tests/test_api_marketplace_dashboard.py \
+  tests/test_programmatic_gate.py \
+  tests/test_cross_graph.py \
+  tests/test_api_creator_payouts.py \
+  tests/test_rev_share.py \
+  tests/test_intent_targeting.py \
+  tests/test_phase1_deploy_probe.py -q
+
+89 passed, 1 warning in 8.38s
+
+cd apps/reading &amp;&amp; npm test -- MarketplaceMetrics PayoutDashboard taxonomy --run
+
+1 file passed; 33 tests passed</code></pre>
+
+<p>The programmatic gate runner exists to produce a decision from marketplace data; it does not activate programmatic infrastructure. <code>docs/soc2_decision.md</code> remains a template until enterprise procurement signal exists.</p>
+
+<h2 id="acceptance">5. Acceptance &amp; exit criteria <a class="section-anchor" href="#acceptance">#</a></h2>
+
+<ul>
+    <li>Ad-supported public consumption is more than 60% of monthly platform revenue.</li>
+    <li>At least 10 creators earn real take-home dollars above the payout threshold.</li>
+    <li>Cross-graph ask-an-expert produces one completed paid interview.</li>
+    <li>At least one external observer describes Antiek as a marketplace without prompting.</li>
+    <li>Mixed-attribution rev-share clears a sampled monthly audit with no double-spend or under-payment.</li>
+    <li>The programmatic-display gate is re-evaluated and documented.</li>
+</ul>
+
+</article>
+</main>
+
+</body>
+</html>

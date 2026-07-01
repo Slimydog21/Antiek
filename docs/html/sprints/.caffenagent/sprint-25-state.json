@@ -1,0 +1,39 @@
+{
+  "spec_file": "docs/html/sprints/sprint-25.html",
+  "source_spec_section": "docs/sprint-breakdown.html#sprint-25",
+  "target_branch": "reader/integration",
+  "status": "unlock_gated",
+  "recorded_at": "2026-07-01T20:38:20Z",
+  "verified_code_sha": "dc31cb89",
+  "mode": "status_reconciliation",
+  "deterministic_evidence": {
+    "backend_gate": "89 passed: marketplace metrics, marketplace API, programmatic gate, cross-graph, creator payouts, rev-share, intent targeting, phase1 deploy probe",
+    "frontend_gate": "33 passed: npm test -- MarketplaceMetrics PayoutDashboard taxonomy --run from apps/reading",
+    "marketplace_metrics_files": "substrate/marketplace_metrics and apps/reading/src/modes/MarketplaceMetrics exist",
+    "mixed_attribution_files": "substrate/rev_share/mixed_attribution.py exists with rev-share tests",
+    "ask_expert_files": "substrate/cross_graph/ask_expert.py exists with cross-graph tests",
+    "programmatic_gate": "tools/marketplace/programmatic_gate.py exists and is tested"
+  },
+  "operator_only_remaining": [
+    "At least 30 creators actively earn monthly rev-share above threshold.",
+    "At least 5 publishers opt in with non-trivial escrow accrual.",
+    "No payout reversal occurs in the prior 8 weeks.",
+    "Ad-supported public consumption exceeds 60% of monthly platform revenue.",
+    "At least 10 creators receive real take-home dollars above threshold.",
+    "One cross-graph ask-an-expert interview completes with payment cleared.",
+    "An external observer describes Antiek as a marketplace without prompting.",
+    "Mixed-attribution monthly audit clears with no double-spend or under-payment.",
+    "Programmatic-display gate re-evaluation is filed from live marketplace data."
+  ],
+  "not_claimed": [
+    "Full repository test suite was not rerun in this S25+ pass.",
+    "Advertiser self-service was not built or activated because spend threshold evidence is absent.",
+    "SOC 2 Type II observation was not started.",
+    "Public handbook was not published.",
+    "No live marketplace revenue or interview transaction was created locally."
+  ],
+  "notes": [
+    "The standalone Sprint 25+ HTML page was added from docs/sprint-breakdown.html#sprint-25.",
+    "Conditional deferrals remain valid while their trigger evidence is absent."
+  ]
+}
