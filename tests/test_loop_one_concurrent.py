@@ -169,23 +169,25 @@ def _synthesizer_response_for(inv_id: str) -> str:
     })
 
 
-_EVIDENCE_RESPONSE = json.dumps({
-    "sub_question": "(any sub-question)",
-    "answer": "Evidence Q2.",
-    "supporting_claims": [
-        {
-            "claim": "Quantum X holds at threshold",
-            "evidence_type": "direct",
-            "chunk_ids": ["chunk-1", "chunk-INV_PLACEHOLDER-1"],
-            "edge_ids": [],
-            "source_tier_min": 1,
-            "confidence": "high",
-            "confidence_basis": "two SEC filings",
-        },
-    ],
-    "evidentiary_gaps": [],
-    "insufficient_evidence": False,
-})
+def _evidence_response_for(sub_question: str) -> str:
+    inv_id = _inv_id_from_prompt(sub_question)
+    return json.dumps({
+        "sub_question": sub_question,
+        "answer": "Evidence Q2.",
+        "supporting_claims": [
+            {
+                "claim": "Quantum X holds at threshold",
+                "evidence_type": "direct",
+                "chunk_ids": ["chunk-1", f"chunk-{inv_id}-1"],
+                "edge_ids": [],
+                "source_tier_min": 1,
+                "confidence": "high",
+                "confidence_basis": "two SEC filings",
+            },
+        ],
+        "evidentiary_gaps": [],
+        "insufficient_evidence": False,
+    })
 
 _PARAMETER_EXTRACTOR_RESPONSE = json.dumps({
     "parameters": [
@@ -240,6 +242,8 @@ class _PerInvestigationStub:
         return _inv_id_from_prompt(prompt)
 
     def call(self, *, model, prompt, max_tokens, temperature) -> RawProviderResponse:
+        import re as _re
+
         # Identify role.
         if "extract the **design-critical parameters" in prompt:
             tag = "parameter_extractor"
@@ -263,12 +267,19 @@ class _PerInvestigationStub:
             else None
         )
 
+        sq_match = _re.search(r"Sub-question:\s*\n\s*>\s*(.+)", prompt)
+
         if tag == "decomposer":
             text = _decomposer_response_for(inv_id)
         elif tag == "synthesizer":
             text = _synthesizer_response_for(inv_id)
         elif tag == "evidence_retriever":
-            text = _EVIDENCE_RESPONSE
+            sub_question = (
+                sq_match.group(1).strip()
+                if sq_match is not None
+                else "(any sub-question)"
+            )
+            text = _evidence_response_for(sub_question)
         elif tag == "parameter_extractor":
             text = _PARAMETER_EXTRACTOR_RESPONSE
         elif tag == "connector":
@@ -282,7 +293,6 @@ class _PerInvestigationStub:
         # placeholder (the evidence_retriever parser cross-checks).
         if inv_id is not None:
             text = text.replace("INV_PLACEHOLDER", inv_id)
-        sq_match = re.search(r"Sub-question:\s*\n\s*>\s*(.+)", prompt)
         if sq_match:
             text = text.replace("(any sub-question)", sq_match.group(1).strip())
 
@@ -330,22 +340,19 @@ def _patch_dispatch(monkeypatch, config: DispatchConfig) -> None:
 def _chunks_block_for_sub_question(
     sub_question: str, top_k: int = 5, policy_tag: str = "attribution_eligible",
 ) -> str:
+    del top_k, policy_tag
     if "Sub-question" not in sub_question:
         return (
-            "[chunk-1] Source tier: 1 | Document: Shared quantum fixture "
-            "| Section: Evidence | Similarity: 1.000\n\n"
-            "Quantum X holds at threshold under tier-1 primary evidence.\n"
+            "[chunk-1] tier=1: Shared quantum substrate evidence supports the "
+            "common evidence and parameter extraction stubs.\n"
         )
 
     inv_id = _inv_id_from_prompt(sub_question)
     return (
-        "[chunk-1] Source tier: 1 | Document: Shared quantum fixture "
-        "| Section: Evidence | Similarity: 1.000\n\n"
-        "Quantum X holds at threshold under tier-1 primary evidence.\n\n"
-        "---\n"
-        f"[chunk-{inv_id}-1] Source tier: 1 | Document: {inv_id} quantum "
-        "fixture | Section: Synthesis | Similarity: 1.000\n\n"
-        f"Quantum substrate evidence supports {inv_id} per primary sources.\n"
+        "[chunk-1] tier=1: Shared quantum substrate evidence supports the "
+        "common evidence and parameter extraction stubs.\n"
+        f"[chunk-{inv_id}-1] tier=1: Per-investigation quantum substrate "
+        f"evidence supports {inv_id}."
     )
 
 
@@ -442,6 +449,13 @@ async def test_three_concurrent_investigations_complete_independently(
     _, bus = app_and_bus
     register_provider(_PerInvestigationStub())
     _patch_dispatch(monkeypatch, _all_role_config())
+    import orchestration.loop_one.orchestrator as orchestrator
+
+    monkeypatch.setattr(
+        orchestrator,
+        "_render_chunks_block_for_sub_question",
+        _chunks_block_for_sub_question,
+    )
 
     inv_specs = [
         ("inv-conc-alpha", "Question A about quantum?", "topic-alpha"),
