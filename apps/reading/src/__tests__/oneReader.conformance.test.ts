@@ -321,6 +321,12 @@ describe("oneReader conformance — door (b): no second document renderer reacha
     expect(legacy).not.toMatch(/path="\/wrestle\/:documentId"/);
     // The bare /wrestle ingest/upload route survives (migration-map.md §3).
     expect(app).toMatch(/path="\/wrestle"\s+element=\{<WrestleApp\s*\/>\}/);
+    // The ingest surface must not keep reading the killed route param as a
+    // hidden by-id opener. A document appears only after the operator loads a
+    // PDF in this surface.
+    const wrestle = readSrc("modes/WrestleApp/index.tsx");
+    expect(wrestle).not.toMatch(/useParams/);
+    expect(wrestle).not.toMatch(/params\.documentId/);
     // The ProjectTree document node no longer routes to /wrestle/:id (fifth door).
     const tree = readSrc("shell/ProjectTree.tsx");
     expect(tree).not.toMatch(/\/wrestle\/\$\{/);

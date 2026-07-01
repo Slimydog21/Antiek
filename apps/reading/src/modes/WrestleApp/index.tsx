@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
 
 import LemonButton from "../../components/lemon/LemonButton";
 import PdfViewer from "../../components/PdfViewer";
@@ -31,9 +30,6 @@ import type { StarterPanel } from "../../workspace/PanelHost";
  * re-rasterisation so the worker doesn't thrash during resize gestures.
  */
 export default function WrestleApp() {
-  const params = useParams<{ documentId?: string }>();
-  const initialDocumentId = params.documentId ?? null;
-
   // Read ?page= deep-link from Mode A's chunk-citation modal.
   const initialPage = (() => {
     const usp = new URLSearchParams(window.location.search);
@@ -52,7 +48,7 @@ export default function WrestleApp() {
   });
 
   const [pdfBytes, setPdfBytes] = useState<Uint8Array | null>(null);
-  const [documentId, setDocumentId] = useState<string | null>(initialDocumentId);
+  const [documentId, setDocumentId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const { events, status, reconnects } = useEventStream(investigationId);
