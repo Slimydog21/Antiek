@@ -98,6 +98,15 @@
 <p>Fresh deterministic gates:</p>
 
 <pre><code>.venv/bin/python -m pytest \
+  tests/test_ad_inventory_scaling.py \
+  tests/test_voice_style.py \
+  tests/test_ad_inventory.py \
+  tests/test_reader_ad_slots.py \
+  tests/test_ad_targeting.py -q
+
+61 passed
+
+.venv/bin/python -m pytest \
   tests/test_marketplace_metrics.py \
   tests/test_api_marketplace_dashboard.py \
   tests/test_programmatic_gate.py \
