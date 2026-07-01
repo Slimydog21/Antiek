@@ -68,19 +68,19 @@ footer.spec-footer{margin-top:var(--space-8);padding-top:var(--space-4);border-t
 <div class="milestone"><div class="num">1</div><div>
 <div class="title">FastMCP server scaffold</div><p class="desc"><code>services/mcp_server/__init__.py</code> — FastMCP app with stdio transport. Entry point at <code>services/mcp_server/__main__.py</code>.</p>
 <div class="criteria"><strong>Acceptance criteria</strong><ul><li><code>python -m services.mcp_server</code> starts without error</li><li>Server exposes <code>list_resources()</code> returning typed resources</li></ul></div>
-<div class="files"><span class="file">services/mcp_server/__init__.py</span><span class="file">services/mcp_server/__main__.py</span><span class="file">services/mcp_server/server.py</span></div>
+<div class="files"><span class="file">NEW: services/mcp_server/__init__.py</span><span class="file">NEW: services/mcp_server/__main__.py</span><span class="file">NEW: services/mcp_server/server.py</span></div>
 </div></div>
 
 <div class="milestone"><div class="num">2</div><div>
 <div class="title">Private notes resource</div><p class="desc"><code>antiek://private/notes/{user_id}/{note_id}</code> — reads from DuckDB <code>documents</code> table. Returns note content + metadata. Typed error for missing notes.</p>
 <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Existing note returns content + metadata JSON</li><li>Missing note returns typed <code>NoteNotFoundError</code></li><li>Content is read-only (no write through resource)</li></ul></div>
-<div class="files"><span class="file">services/mcp_server/resources.py</span><span class="file">services/mcp_server/errors.py</span></div>
+<div class="files"><span class="file">NEW: services/mcp_server/resources.py</span><span class="file">NEW: services/mcp_server/errors.py</span></div>
 </div></div>
 
 <div class="milestone"><div class="num">3</div><div>
 <div class="title">DuckDB reader integration</div><p class="desc">Use existing <code>substrate/graph/search.py</code> patterns for DuckDB reads. Respect single-writer invariant — read-only connection.</p>
 <div class="criteria"><strong>Acceptance criteria</strong><ul><li>MCP server uses read-only DuckDB connection</li><li>No writes to substrate from MCP server</li><li><code>runtime/db_lock.py</code> pattern respected</li></ul></div>
-<div class="files"><span class="file">services/mcp_server/reader.py</span><span class="file">tests/test_mcp_server.py</span></div>
+<div class="files"><span class="file">NEW: services/mcp_server/reader.py</span><span class="file">NEW: tests/test_mcp_server.py</span></div>
 </div></div>
 </section>
 

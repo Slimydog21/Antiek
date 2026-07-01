@@ -24,19 +24,19 @@
 <div class="milestone"><div class="num">1</div><div>
 <div class="title">Prompt-injection defense</div><p class="desc">Every public-notes return wraps content in <code>&lt;antiek:content trusted="false"&gt;...&lt;/antiek:content&gt;</code>. System prompt instructs agent to treat envelope content as data, not instructions. OWASP LLM01 mitigation adapted to MCP.</p>
 <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Public notes return wrapped in <code>trusted="false"</code> envelope</li><li>Red test: injection attempt in note content → still wrapped</li><li>Private notes NOT wrapped (trusted owner content)</li></ul></div>
-<div class="files"><span class="file">services/mcp_server/defenses.py</span><span class="file">tests/test_mcp_defenses.py</span></div>
+<div class="files"><span class="file">NEW: services/mcp_server/defenses.py</span><span class="file">NEW: tests/test_mcp_defenses.py</span></div>
 </div></div>
 
 <div class="milestone"><div class="num">2</div><div>
 <div class="title">Rug-pull defense</div><p class="desc">Tool description hashes published in <code>.well-known/mcp-tools.json</code> manifest. Clients verify on every refresh. Drift treated as fatal session-termination event.</p>
 <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Manifest generated with SHA-256 hashes of all tool descriptions</li><li>Drift detection: changed description → verification fails</li><li>Manifest is static file, not generated at runtime</li></ul></div>
-<div class="files"><span class="file">services/mcp_server/manifest.py</span><span class="file">services/mcp_server/.well-known/mcp-tools.json</span></div>
+<div class="files"><span class="file">NEW: services/mcp_server/manifest.py</span><span class="file">NEW: services/mcp_server/.well-known/mcp-tools.json</span></div>
 </div></div>
 
 <div class="milestone"><div class="num">3</div><div>
 <div class="title">E2E integration tests</div><p class="desc">Full MCP lifecycle test: start server → list resources → read resource → call tool → verify output. Hermetic (no network, no external deps).</p>
 <div class="criteria"><strong>Acceptance criteria</strong><ul><li>E2E test covers all 3 resources + 4 tools</li><li>Test is hermetic (DuckDB in-memory or temp file)</li><li>Test runs in CI without external deps</li></ul></div>
-<div class="files"><span class="file">tests/test_mcp_e2e.py</span></div>
+<div class="files"><span class="file">NEW: tests/test_mcp_e2e.py</span></div>
 </div></div>
 </section>
 

@@ -25,19 +25,19 @@
 <div class="milestone"><div class="num">1</div><div>
 <div class="title">search_personal tool</div><p class="desc">BM25 search over user's personal notes. Returns ranked results with relevance scores.</p>
 <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Query returns matching notes ranked by relevance</li><li>Empty query returns typed error</li><li>Results include note_id, title, snippet, score</li></ul></div>
-<div class="files"><span class="file">services/mcp_server/tools.py</span><span class="file">tests/test_mcp_tools.py</span></div>
+<div class="files"><span class="file">NEW: services/mcp_server/tools.py</span><span class="file">NEW: tests/test_mcp_tools.py</span></div>
 </div></div>
 
 <div class="milestone"><div class="num">2</div><div>
 <div class="title">search_public tool</div><p class="desc">BM25 search over public graph. Returns results with attribution-routing metadata.</p>
 <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Query returns public notes with attribution metadata</li><li>Results include ip_holder_id, content_class</li><li>Retrieval-time gating respected (§9.0)</li></ul></div>
-<div class="files"><span class="file">services/mcp_server/tools.py</span></div>
+<div class="files"><span class="file">NEW: services/mcp_server/tools.py</span></div>
 </div></div>
 
 <div class="milestone"><div class="num">3</div><div>
 <div class="title">Public notes resource</div><p class="desc"><code>antiek://public/notes/{note_id}</code> — read-only with attribution-routing metadata. All writes through public-notes pipeline.</p>
 <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Public note returns content + attribution metadata</li><li>Read-only (no write through resource)</li><li>Gated notes return licensing-required error</li></ul></div>
-<div class="files"><span class="file">services/mcp_server/resources.py</span></div>
+<div class="files"><span class="file">NEW: services/mcp_server/resources.py</span></div>
 </div></div>
 </section>
 

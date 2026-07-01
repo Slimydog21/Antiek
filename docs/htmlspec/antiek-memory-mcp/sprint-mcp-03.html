@@ -23,19 +23,19 @@
 <div class="milestone"><div class="num">1</div><div>
 <div class="title">cite_source tool</div><p class="desc">Cite a source from the substrate. Returns formatted citation with provenance chain (chunk → document → ip_holder).</p>
 <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Returns citation with chunk_id, document_id, ip_holder_id</li><li>Missing source returns typed error</li><li>Citation format includes title, author, date</li></ul></div>
-<div class="files"><span class="file">services/mcp_server/tools.py</span><span class="file">tests/test_mcp_tools.py</span></div>
+<div class="files"><span class="file">NEW: services/mcp_server/tools.py</span><span class="file">NEW: tests/test_mcp_tools.py</span></div>
 </div></div>
 
 <div class="milestone"><div class="num">2</div><div>
 <div class="title">record_attribution tool</div><p class="desc">Capture attribution event at the agent step that consumed the content. Not after the fact — this is what makes rev-share work end-to-end across the MCP boundary.</p>
 <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Attribution event written to substrate event log</li><li>Event includes source_id, consumer_id, timestamp</li><li>Idempotent (same source+consumer+timestamp = no duplicate)</li></ul></div>
-<div class="files"><span class="file">services/mcp_server/tools.py</span></div>
+<div class="files"><span class="file">NEW: services/mcp_server/tools.py</span></div>
 </div></div>
 
 <div class="milestone"><div class="num">3</div><div>
 <div class="title">Books resource</div><p class="desc"><code>antiek://books/{isbn}/{chunk_id}</code> — per-publisher licensing state. Returns chunk OR licensing-required error per §9.0 retrieval-time gating.</p>
 <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Public-domain book chunk returns content</li><li>Gated book returns licensing-required error</li><li>chunk_id resolves to correct text segment</li></ul></div>
-<div class="files"><span class="file">services/mcp_server/resources.py</span></div>
+<div class="files"><span class="file">NEW: services/mcp_server/resources.py</span></div>
 </div></div>
 </section>
 
