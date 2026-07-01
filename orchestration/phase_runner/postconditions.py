@@ -142,6 +142,26 @@ def _events_of_type(investigation_id: str, action_type: ActionType) -> list[Even
     return out
 
 
+def _is_rlm_investigation(investigation_id: str) -> bool:
+    for event in _events_of_type(
+        investigation_id,
+        ActionType.INVESTIGATION_START_REQUESTED,
+    ):
+        payload = event.payload
+        if getattr(payload, "investigation_kind", "loop_one") == "rlm":
+            return True
+    return False
+
+
+def _rlm_skip_ok(phase: int, investigation_id: str) -> tuple[bool, str] | None:
+    if phase in {1, 2, 3, 4, 5} and _is_rlm_investigation(investigation_id):
+        return True, (
+            f"phase {phase} skipped for investigation_kind='rlm'; "
+            "RLM iteration events replace Loop-One role artifacts"
+        )
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Phase 1 — Orient
 # ---------------------------------------------------------------------------
@@ -155,12 +175,15 @@ def check_phase_1(
     """``orientation.md`` exists, is ≥ ``_ORIENTATION_MIN_CHARS``, and
     contains a ``## Prior Graph Knowledge`` section with at least one
     chunk_/node_ regex citation."""
+    if skip := _rlm_skip_ok(1, investigation_id):
+        return skip
     research_dir = research_dir or default_research_dir(investigation_id)
     path = os.path.join(research_dir, "orientation.md")
     if not os.path.exists(path):
         return False, f"{path} not found"
     try:
-        text = open(path, encoding="utf-8").read()
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
     except OSError as e:
         return False, f"{path} unreadable: {e}"
 
@@ -199,6 +222,8 @@ def check_phase_2(
     research_dir: str | None = None,
 ) -> tuple[bool, str]:
     """Three round-1 dimension files exist and are non-trivially sized."""
+    if skip := _rlm_skip_ok(2, investigation_id):
+        return skip
     research_dir = research_dir or default_research_dir(investigation_id)
     required = (
         "round1-technical.md", "round1-competitive.md", "round1-strategic.md",
@@ -230,12 +255,15 @@ def check_phase_3(
     research_dir: str | None = None,
 ) -> tuple[bool, str]:
     """``round1-critique.md`` exists + references each dimension."""
+    if skip := _rlm_skip_ok(3, investigation_id):
+        return skip
     research_dir = research_dir or default_research_dir(investigation_id)
     path = os.path.join(research_dir, "round1-critique.md")
     if not os.path.exists(path):
         return False, f"{path} not found"
     try:
-        text = open(path, encoding="utf-8").read().lower()
+        with open(path, encoding="utf-8") as f:
+            text = f.read().lower()
     except OSError as e:
         return False, f"{path} unreadable: {e}"
     missing = [
@@ -259,6 +287,8 @@ def check_phase_4(
     research_dir: str | None = None,
 ) -> tuple[bool, str]:
     """At least one ``round2-*.md`` (≠ critique) exists with > floor."""
+    if skip := _rlm_skip_ok(4, investigation_id):
+        return skip
     research_dir = research_dir or default_research_dir(investigation_id)
     if not os.path.isdir(research_dir):
         return False, f"{research_dir} not a directory"
@@ -295,6 +325,8 @@ def check_phase_5(
     research_dir: str | None = None,
 ) -> tuple[bool, str]:
     """``round2-critique.md`` exists > floor."""
+    if skip := _rlm_skip_ok(5, investigation_id):
+        return skip
     research_dir = research_dir or default_research_dir(investigation_id)
     path = os.path.join(research_dir, "round2-critique.md")
     if not os.path.exists(path):
@@ -503,12 +535,11 @@ def check_phase_8(
     # ── (A) Trajectory event ──
     events = _events_of_type(investigation_id, ActionType.AUTO_PATCH_APPLIED)
     for e in reversed(events):
-        if isinstance(e.payload, AutoPatchAppliedPayload):
-            if e.payload.patched:
-                return True, (
-                    f"auto_patch_applied: status={e.payload.status}, "
-                    f"patched={e.payload.patched}"
-                )
+        if isinstance(e.payload, AutoPatchAppliedPayload) and e.payload.patched:
+            return True, (
+                f"auto_patch_applied: status={e.payload.status}, "
+                f"patched={e.payload.patched}"
+            )
 
     # ── (B) Skill-file mtime check ──
     knowledge_skills_dir = (

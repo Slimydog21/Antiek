@@ -454,15 +454,26 @@ async def test_rlm_investigation_kind_emits_rlm_session_events(
     )
     await bus.wait_for_handlers(timeout=2.0)
 
-    action_types = [row["action_type"] for row in trajectory(inv)]
+    rows = trajectory(inv)
+    action_types = [row["action_type"] for row in rows]
     assert ActionType.DECOMPOSE_QUESTION_REQUESTED.value not in action_types
-    assert action_types == [
+    for required in (
         ActionType.INVESTIGATION_START_REQUESTED.value,
         ActionType.RLM_SESSION_STARTED.value,
         ActionType.RLM_SUB_CALL_DISPATCHED.value,
         ActionType.RLM_ITERATION.value,
         ActionType.RLM_SESSION_COMPLETED.value,
-    ]
+        ActionType.SYNTHESIZE_DELIVERED.value,
+        ActionType.MASTER_MD_WRITTEN.value,
+        ActionType.INVESTIGATION_COMPLETED.value,
+    ):
+        assert required in action_types
+    completed = next(
+        row for row in rows
+        if row["action_type"] == ActionType.INVESTIGATION_COMPLETED.value
+    )
+    assert completed["payload"]["total_phases_verified"] == 8
+    assert completed["payload"]["master_md_path"]
 
 
 @pytest.mark.asyncio
