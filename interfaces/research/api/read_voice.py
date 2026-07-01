@@ -55,7 +55,7 @@ class DispatchNoteDistiller:
         result = dispatch(prompt, "note_taker", investigation_id=self.investigation_id)
         return parse_notes_response(
             result.text,
-            canonical_source_event_ids=source_event_ids or None,
+            canonical_source_event_ids=source_event_ids,
         )
 
 

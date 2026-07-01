@@ -66,7 +66,7 @@ def parse_notes_response(
     text: str,
     *,
     canonical_event_ids: Iterable[str] | None = None,
-    canonical_source_event_ids: Iterable[str] | None = None,
+    canonical_source_event_ids: Iterable[str] = (),
 ) -> list[ExtractedNote]:
     """Parse the role response into ``ExtractedNote`` list.
 
@@ -101,13 +101,10 @@ def parse_notes_response(
             if canonical_event_ids is not None
             else canonical_source_event_ids
         )
-        if canonical_ids is None:
-            cleaned_attrib = tuple(
-                str(a).strip() for a in attribution
-                if isinstance(a, str) and str(a).strip()
-            )
-        else:
-            cleaned_attrib = validate_refs(attribution, canonical_ids).valid
+        cleaned_attrib = validate_refs(
+            attribution,
+            canonical_ids,
+        ).valid
         if not cleaned_attrib:
             # Rule 4: drop unattributed notes. Hallucination defense.
             continue
