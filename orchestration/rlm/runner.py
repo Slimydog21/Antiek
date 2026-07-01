@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
@@ -70,6 +70,7 @@ async def run_iteration_with_timeout(
     cost_usd: Decimal = Decimal("0.00"),
     timeout_s: float = float(RLM_REPL_PER_CALL_TIMEOUT_SECONDS),
     summary: str = "RLM iteration executed",
+    after_execute: Callable[[], Awaitable[None]] | None = None,
 ) -> RLMIterationRun:
     """Execute one generated-code iteration and emit the lifecycle event.
 
@@ -114,6 +115,9 @@ async def run_iteration_with_timeout(
         )
     else:
         executor.shutdown(wait=True, cancel_futures=True)
+
+    if after_execute is not None:
+        await after_execute()
 
     repl_summary = repl.summarise()
     if repl_summary.exception:
@@ -163,6 +167,7 @@ async def run_loop_with_timeout(
     timeout_s: float = float(RLM_REPL_PER_CALL_TIMEOUT_SECONDS),
     cost_usd: IterationCost = Decimal("0.00"),
     iteration_summary: IterationSummary = "RLM iteration executed",
+    after_execute: Callable[[], Awaitable[None]] | None = None,
 ) -> RLMLoopRun:
     """Run an RLM REPL loop with timeout and typed lifecycle events."""
 
@@ -197,6 +202,7 @@ async def run_loop_with_timeout(
             cost_usd=_iteration_cost(cost_usd, repl_summary, code),
             timeout_s=timeout_s,
             summary=_iteration_summary(iteration_summary, repl_summary, code),
+            after_execute=after_execute,
         )
         last_action_type = iteration.event_action_type
         if iteration.status in {"failed", "timeout", "cost_capped"}:
