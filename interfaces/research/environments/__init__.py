@@ -33,6 +33,12 @@ from .parameter_extractor_env import (
     ParameterExtractorRollout,
     ParameterExtractorTask,
 )
+from .rlm_env import (
+    RLMEnvironment,
+    RLMReward,
+    RLMRollout,
+    RLMTask,
+)
 from .synthesizer_env import (
     SynthesizerEnvironment,
     SynthesizerReward,
@@ -57,6 +63,10 @@ __all__ = [
     "ParameterExtractorReward",
     "ParameterExtractorRollout",
     "ParameterExtractorTask",
+    "RLMEnvironment",
+    "RLMReward",
+    "RLMRollout",
+    "RLMTask",
     "SynthesizerEnvironment",
     "SynthesizerReward",
     "SynthesizerRollout",
