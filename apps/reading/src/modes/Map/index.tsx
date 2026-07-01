@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
 
+import { operatorRouteGroups } from "../../shell/operatorRoutes";
+
 /**
  * Application map — operator-facing index of every route.
  *
@@ -10,72 +12,7 @@ import { Link } from "react-router-dom";
  * without leaving home.
  */
 
-interface RouteEntry {
-  path: string;
-  title: string;
-  description: string;
-}
-
-const GROUPS: { title: string; routes: RouteEntry[] }[] = [
-  {
-    title: "Workstation",
-    routes: [
-      { path: "/home", title: "Antiek home", description: "Front door to the four workflows" },
-      { path: "/", title: "Research workstation", description: "Mode A — chat-first investigation surface" },
-      { path: "/deep-research", title: "Deep Research Workspace", description: "Cascade monitor and steerable research sessions" },
-      { path: "/wrestle", title: "Document wrestler", description: "Mode B — PDF reading + region selection" },
-      { path: "/write", title: "Write home", description: "Blocks → outline → draft → editor loop" },
-      { path: "/create", title: "Creation studio", description: "Mode C — lego-block writing" },
-      { path: "/brainstorm", title: "Brainstorm station", description: "Mode E — watch-for-later + thought partner" },
-      { path: "/library", title: "Library", description: "Read shelf over the servable corpus" },
-      { path: "/library/browse", title: "Library browse", description: "Paginated catalog over every servable work" },
-      { path: "/readings", title: "Your readings", description: "Saved reads and created deliverables" },
-      { path: "/meta-readings", title: "All meta-docs", description: "Created deliverables only" },
-      { path: "/read/meta-reading", title: "Meta-reading", description: "Proposed — sign-off pending" },
-      { path: "/my-research", title: "My research", description: "One monitor over running + completed research" },
-      { path: "/documents", title: "Documents", description: "Saved sources by quality tier" },
-      { path: "/notebooks", title: "Notebooks", description: "Wedge 2 literate-analysis surface" },
-      { path: "/sources", title: "Sources", description: "Acquisition adapters" },
-      { path: "/speak", title: "Speak", description: "One door for interview projects + invited voices" },
-      { path: "/biography", title: "Biography", description: "Template that composes Research, Write, and Speak" },
-      { path: "/skill-rules", title: "Skill rules", description: "Cross-user discovered rules" },
-    ],
-  },
-  {
-    title: "Governance",
-    routes: [
-      { path: "/privacy", title: "Privacy dashboard", description: "Privacy budgets and deletion controls" },
-      { path: "/trust", title: "Trust Center", description: "Published privacy, deletion, and training commitments" },
-      { path: "/settings", title: "Settings", description: "Application settings and control links" },
-      { path: "/coordination", title: "Coordination", description: "Gate ledger, roadmap, unified cost, escrow, and consent" },
-      { path: "/coordination/cost-consent", title: "Cost & consent", description: "Unified spend, escrow, and consent status" },
-      { path: "/federation", title: "Federation config", description: "Cross-substrate citation policy (§13.9 Phase 3)" },
-      { path: "/cross-graph/citations", title: "Cross-graph citations", description: "Record citations and revenue share" },
-      { path: "/loop-3", title: "Loop 3 checklist", description: "RL unlock criteria + env gate (§14.2)" },
-      { path: "/operator", title: "Operator dashboard", description: "Composite operator-facing snapshot" },
-      { path: "/operator/advertiser-campaigns", title: "Advertiser console", description: "Operator-managed lead-gen campaigns" },
-      { path: "/operator/payouts/dashboard", title: "Payout dashboard", description: "Unified creator + publisher accrual view" },
-      { path: "/me/payouts", title: "Creator payouts", description: "Your scoped creator payout ledger" },
-      { path: "/marketplace", title: "Marketplace metrics", description: "Creator, publisher, and advertiser health snapshot" },
-    ],
-  },
-  {
-    title: "Audit + analytics",
-    routes: [
-      { path: "/stats", title: "Substrate stats", description: "Per-table cardinality dashboard" },
-      { path: "/outcomes", title: "Outcomes audit", description: "Cross-investigation grading history" },
-      { path: "/payouts", title: "Payouts audit", description: "Stripe Connect transfer log" },
-      { path: "/billing", title: "Billing", description: "Free-tier usage + margin breakdown" },
-    ],
-  },
-  {
-    title: "Pricing + replay",
-    routes: [
-      { path: "/pricing", title: "Pricing", description: "OpenRouter-style pay-as-you-go calculator" },
-      { path: "/map", title: "Application map", description: "Index of every operator-facing surface" },
-    ],
-  },
-];
+const GROUPS = operatorRouteGroups();
 
 const KEYBOARD_HINTS: { label: string; key: string }[] = [
   { label: "Command palette", key: "⌘K" },

@@ -95,6 +95,16 @@ describe("CommandPalette", () => {
     expect(screen.getByText("Proposed — sign-off pending (/read/meta-reading)")).toBeTruthy();
   });
 
+  it("finds governance routes from the shared operator registry", async () => {
+    renderPalette();
+
+    window.dispatchEvent(new Event("antiek:palette:toggle"));
+    await userEvent.type(await screen.findByRole("textbox"), "cross-graph citations");
+
+    expect(await screen.findByText("Cross-graph citations")).toBeTruthy();
+    expect(screen.getByText("Record citations + rev-share (/cross-graph/citations)")).toBeTruthy();
+  });
+
   it("opens a parked question in Brainstorm with the thought-partner selection seeded", async () => {
     renderPalette();
 
