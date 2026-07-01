@@ -214,6 +214,47 @@ def parse(obj):
     assert any("question_id" in violation for violation in violations)
 
 
+def test_lint_catches_new_ref_shaped_fields_without_validator(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "future_role" / "parser.py",
+        """
+def parse(obj):
+    return {
+        "claim_id": obj.get("claim_id"),
+        "note_ids": obj.get("note_ids", []),
+    }
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any("claim_id" in violation for violation in violations)
+    assert any("note_ids" in violation for violation in violations)
+
+
+def test_lint_allows_new_ref_shaped_fields_routed_through_validator(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "future_good_role" / "parser.py",
+        """
+from substrate.provenance import validate_ref, validate_refs
+
+def parse(obj, canonical):
+    claim_id = validate_ref(obj.get("claim_id"), canonical)
+    note_ids = validate_refs(obj.get("note_ids", []), canonical).valid
+    return {
+        "claim_id": claim_id,
+        "note_ids": note_ids,
+    }
+""",
+    )
+
+    assert find_violations(tmp_path) == []
+
+
 def test_lint_allows_subscripted_refs_routed_through_validator(
     tmp_path: Path,
 ) -> None:

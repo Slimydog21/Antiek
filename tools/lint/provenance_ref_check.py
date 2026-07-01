@@ -38,6 +38,10 @@ _TARGET_FIELDS: frozenset[str] = frozenset({
     "path_edge_ids",
 })
 
+
+def _is_ref_field(field: str) -> bool:
+    return field in _TARGET_FIELDS or field.endswith(("_id", "_ids"))
+
 _BRIDGE_VALIDATED_EXCEPTIONS: frozenset[str] = frozenset({
     # The grounder parser is deliberately a pure response-shape parser; the
     # canonical searched chunk ids exist only in interfaces/research/api/grounding.py,
@@ -80,7 +84,7 @@ def _field_reads(tree: ast.AST) -> list[tuple[int, str]]:
             and node.args
             and isinstance(node.args[0], ast.Constant)
             and isinstance(node.args[0].value, str)
-            and node.args[0].value in _TARGET_FIELDS
+            and _is_ref_field(node.args[0].value)
         ):
             out.append((node.lineno, node.args[0].value))
             continue
@@ -88,7 +92,7 @@ def _field_reads(tree: ast.AST) -> list[tuple[int, str]]:
             isinstance(node, ast.Subscript)
             and isinstance(node.slice, ast.Constant)
             and isinstance(node.slice.value, str)
-            and node.slice.value in _TARGET_FIELDS
+            and _is_ref_field(node.slice.value)
         ):
             out.append((node.lineno, node.slice.value))
     return out
@@ -215,11 +219,17 @@ def _scan_file(rel: str, path: Path) -> list[str]:
         sites = _unvalidated_field_sites(func, validator_imported)
         if not sites:
             continue
-        first_line, first_field = min(sites)
-        violations.append(
-            f"{rel}:{first_line}: parser function {func.name!r} surfaces "
-            f"{first_field!r} without substrate.provenance.validate_ref(s)"
-        )
+        first_lines_by_field: dict[str, int] = {}
+        for line, field in sites:
+            first_lines_by_field[field] = min(
+                line,
+                first_lines_by_field.get(field, line),
+            )
+        for field, line in sorted(first_lines_by_field.items(), key=lambda item: item[1]):
+            violations.append(
+                f"{rel}:{line}: parser function {func.name!r} surfaces "
+                f"{field!r} without substrate.provenance.validate_ref(s)"
+            )
     return violations
 
 
