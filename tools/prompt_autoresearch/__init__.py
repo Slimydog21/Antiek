@@ -37,6 +37,12 @@ from .outcomes_io import (
     outcome_to_json,
     write_outcomes_json,
 )
+from .readiness import (
+    ReadinessItem,
+    ReadinessReport,
+    audit_wedge1_readiness,
+    render_readiness_markdown,
+)
 from .score import (
     CompositeScore,
     composite_score,
@@ -53,6 +59,9 @@ __all__ = [
     "PromptAutoresearchRunner",
     "PromptMutation",
     "PromptMutationOutcome",
+    "ReadinessItem",
+    "ReadinessReport",
+    "audit_wedge1_readiness",
     "calibrate_epsilon",
     "composite_score",
     "deterministic_voice_style_score",
@@ -61,6 +70,7 @@ __all__ = [
     "outcome_from_json",
     "outcome_to_json",
     "render_calibration_markdown",
+    "render_readiness_markdown",
     "sector_vocab_overlap",
     "write_outcomes_json",
 ]
