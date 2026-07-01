@@ -22,13 +22,16 @@ from substrate.multi_user import (
     build_graph_router_from_env,
     configured_ducklake_catalog,
     decode_token,
+    decode_trusted_claims_header,
     default_personal_graph_handle,
+    encode_verified_claims_header,
     extract_discovered_rule,
     move_to_partition,
     normalize_verified_claims,
     propagate_to_shared_substrate,
     resolve_personal_graph,
     resolve_shared_substrate,
+    sign_verified_claims_header,
     validate_partition,
 )
 from substrate.multi_user.auth import operator_claims
@@ -144,6 +147,47 @@ def test_normalize_verified_claims_does_not_grant_operator_implicitly():
 
     assert claims.user_id == "supabase:u1"
     assert claims.scopes == frozenset({"authenticated"})
+
+
+def test_trusted_claims_header_round_trip():
+    encoded = encode_verified_claims_header({
+        "sub": "user_2abc",
+        "email": "USER@example.com",
+        "public_metadata": {"antiek_scopes": ["operator"]},
+    })
+    signature = sign_verified_claims_header(
+        vendor="clerk",
+        encoded_claims=encoded,
+        secret="test-hop-secret",
+    )
+
+    claims = decode_trusted_claims_header(
+        vendor="clerk",
+        encoded_claims=encoded,
+        signature=signature,
+        secret="test-hop-secret",
+    )
+
+    assert claims.user_id == "clerk:user_2abc"
+    assert claims.email == "user@example.com"
+    assert claims.scopes == frozenset({"authenticated", "operator"})
+
+
+def test_trusted_claims_header_rejects_signature_mismatch():
+    encoded = encode_verified_claims_header({"sub": "user_2abc"})
+    signature = sign_verified_claims_header(
+        vendor="clerk",
+        encoded_claims=encoded,
+        secret="right-secret",
+    )
+
+    with pytest.raises(AuthError, match="signature mismatch"):
+        decode_trusted_claims_header(
+            vendor="clerk",
+            encoded_claims=encoded,
+            signature=signature,
+            secret="wrong-secret",
+        )
 
 
 # ── Graph routing tests ──────────────────────────────────────────────

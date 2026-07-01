@@ -407,6 +407,13 @@ JWT signatures; the future HTTP adapter must still perform issuer,
 audience, expiry, and key-rotation checks before handing claims to the
 substrate seam.
 
+The FastAPI middleware also has an opt-in trusted-claims adapter gated
+by `ANTIEK_EXTERNAL_AUTH_VENDOR` and
+`ANTIEK_EXTERNAL_AUTH_HEADER_SECRET`. It verifies an HMAC on
+`X-Antiek-Verified-Claims` before normalizing the payload. Until
+route-level multi-user authorization lands, that adapter only accepts
+external claims carrying the `operator` scope.
+
 #### Once closed
 
 Commit `docs/decisions/oa-006-auth-vendor.md` with the choice + the

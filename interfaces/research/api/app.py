@@ -1479,6 +1479,15 @@ def create_app(
     #     For probes (smoke runs, health checks), ops scripts, any
     #     non-browser client.
     #
+    # (5) External verified-claims adapter (Sprint 22 prep) — when
+    #     ANTIEK_EXTERNAL_AUTH_VENDOR + ANTIEK_EXTERNAL_AUTH_HEADER_SECRET
+    #     are set, a reverse proxy or provider adapter may pass
+    #     X-Antiek-Verified-Claims + X-Antiek-Verified-Claims-Signature.
+    #     The provider JWT must already be verified upstream; this layer
+    #     verifies only the hop-local HMAC and normalizes to UserClaims.
+    #     Until route-level multi-user authz lands, this path requires
+    #     the normalized claims to carry the operator scope.
+    #
     # When BOTH env vars are unset, enforcement is bypassed and the
     # API is open (existing tests + local dev unchanged). When one
     # is set, requests must pass that path or be rejected. When
@@ -1530,8 +1539,12 @@ def create_app(
     _OPERATOR_TOKEN_ENV = "ANTIEK_OPERATOR_TOKEN"
     _OPERATOR_EMAIL_ENV = "ANTIEK_OPERATOR_EMAIL"
     _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV = "ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID"
+    _EXTERNAL_AUTH_VENDOR_ENV = "ANTIEK_EXTERNAL_AUTH_VENDOR"
+    _EXTERNAL_AUTH_HEADER_SECRET_ENV = "ANTIEK_EXTERNAL_AUTH_HEADER_SECRET"
     _CF_ACCESS_EMAIL_HEADER = "Cf-Access-Authenticated-User-Email"
     _CF_ACCESS_CLIENT_ID_HEADER = "Cf-Access-Client-Id"
+    _EXTERNAL_AUTH_CLAIMS_HEADER = "X-Antiek-Verified-Claims"
+    _EXTERNAL_AUTH_SIGNATURE_HEADER = "X-Antiek-Verified-Claims-Signature"
     _SESSION_COOKIE_NAME = "ANTIEK_SESSION"
 
     @app.middleware("http")
@@ -1544,7 +1557,19 @@ def create_app(
         expected_st_client_id = os.environ.get(
             _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV, "",
         ).strip().lower()
-        if not expected_token and not operator_emails and not expected_st_client_id:
+        external_auth_vendor = os.environ.get(
+            _EXTERNAL_AUTH_VENDOR_ENV, "",
+        ).strip().lower()
+        external_auth_secret = os.environ.get(
+            _EXTERNAL_AUTH_HEADER_SECRET_ENV, "",
+        ).strip()
+        if (
+            not expected_token
+            and not operator_emails
+            and not expected_st_client_id
+            and not external_auth_vendor
+            and not external_auth_secret
+        ):
             # Enforcement disabled. Existing tests + local dev
             # work unchanged. The request still acquires a default
             # operator identity on request.state so endpoints have a
@@ -1585,6 +1610,17 @@ def create_app(
             req.state.auth_method = method
             req.state.user_email = email
 
+        def _attach_claims(
+            req: Request,
+            *,
+            method: str,
+            claims: Any,
+        ) -> None:
+            req.state.user_id = claims.user_id
+            req.state.scopes = frozenset(claims.scopes)
+            req.state.auth_method = method
+            req.state.user_email = claims.email
+
         # Path 1: Antiek-issued session cookie (magic-link login).
         # PostHog-style owned-auth path. Checked BEFORE Cloudflare
         # Access so a cookie-bearing request always takes our path.
@@ -1609,7 +1645,43 @@ def create_app(
                         )
                         return await call_next(request)
 
-        # Path 2: Cloudflare Access — browser SSO (email header)
+        # Path 2: External provider adapter — already-verified claims
+        # from Clerk/Supabase, protected for the origin hop by an
+        # operator-held HMAC secret. This is intentionally operator-
+        # scoped for now: broad non-operator API access waits for
+        # route-level user authorization.
+        if external_auth_vendor and external_auth_secret:
+            encoded_claims = request.headers.get(
+                _EXTERNAL_AUTH_CLAIMS_HEADER, "",
+            ).strip()
+            signature = request.headers.get(
+                _EXTERNAL_AUTH_SIGNATURE_HEADER, "",
+            ).strip()
+            if encoded_claims and signature:
+                try:
+                    from substrate.multi_user.auth import (
+                        decode_trusted_claims_header,
+                    )
+                    external_claims = decode_trusted_claims_header(
+                        vendor=external_auth_vendor,
+                        encoded_claims=encoded_claims,
+                        signature=signature,
+                        secret=external_auth_secret,
+                    )
+                except Exception:  # noqa: BLE001 — invalid external auth falls through
+                    external_claims = None
+                if (
+                    external_claims is not None
+                    and "operator" in external_claims.scopes
+                ):
+                    _attach_claims(
+                        request,
+                        method=f"external_{external_auth_vendor}",
+                        claims=external_claims,
+                    )
+                    return await call_next(request)
+
+        # Path 3: Cloudflare Access — browser SSO (email header)
         if operator_emails:
             cf_email = request.headers.get(
                 _CF_ACCESS_EMAIL_HEADER, "",
@@ -1618,7 +1690,7 @@ def create_app(
                 _attach_operator(request, method="cloudflare_access_email")
                 return await call_next(request)
 
-        # Path 3: Cloudflare Access — Service Token (machine callers)
+        # Path 4: Cloudflare Access — Service Token (machine callers)
         # Cloudflare validates the CF-Access-Client-Id +
         # CF-Access-Client-Secret pair at the edge before forwarding;
         # the substrate trusts the Client Id's arrival as
@@ -1640,7 +1712,7 @@ def create_app(
                 _attach_operator(request, method="cloudflare_service_token")
                 return await call_next(request)
 
-        # Path 4: Bearer token (legacy + backstop for direct-to-origin
+        # Path 5: Bearer token (legacy + backstop for direct-to-origin
         # callers that aren't going through Cloudflare Access)
         if expected_token:
             auth = request.headers.get("Authorization", "")
