@@ -593,3 +593,58 @@ def test_generate_with_paragraph_index_persists_only_that_paragraph(client, seed
     assert "Keep this opening paragraph intact" in row[0]
     assert "Old paragraph" not in row[0]
     assert "Rewritten target paragraph" in row[0]
+
+
+def test_generate_connected_piece_uses_backing_investigation(client, seed, monkeypatch):
+    """A connected Write piece drafts inside its backing research trajectory:
+    dispatch and section.draft_generated both use investigation_root_id, while
+    the persisted section still belongs to the deliverable."""
+    import substrate.write.draft_generation as draft_generation
+
+    with connect_write(default_db_path(), purpose="test/connected_generation") as con:
+        did = insert_deliverable(
+            con,
+            title="Connected generation",
+            deliverable_kind="research_memo",
+            investigation_root_id="inv-write-root",
+        )
+        sec = insert_section(con, deliverable_id=did, section_index=0, title="S1")
+    client.post("/write/blocks", json={
+        "section_id": sec,
+        "deliverable_id": did,
+        "block_kind": "claim",
+        "provenance_kind": "graph_node",
+        "node_id": seed["node"],
+        "block_index": 0,
+    })
+    dispatch_investigations: list[str] = []
+
+    def fake_default_dispatch_fn(*, investigation_id: str = "__operator__"):
+        dispatch_investigations.append(investigation_id)
+
+        def _dispatch(system: str, user: str) -> str:
+            return (
+                '{"prose_text": '
+                f'"Connected draft stays with its research folder [b: {seed["node"]}].", '
+                f'"prose_provenance": {{"0": ["{seed["node"]}"]}}, '
+                '"uncited_blocks": []}'
+            )
+
+        return _dispatch
+
+    monkeypatch.setattr(draft_generation, "default_dispatch_fn", fake_default_dispatch_fn)
+
+    r = client.post(f"/write/sections/{sec}/generate")
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "generated"
+    assert dispatch_investigations == ["inv-write-root"]
+
+    row = _section_prose_row(did)
+    assert row[0].startswith("Connected draft")
+    jsonl = os.path.join(
+        os.environ["ANTIEK_RESEARCH_EVENTS_DIR"],
+        "inv-write-root.jsonl",
+    )
+    assert os.path.exists(jsonl)
+    events = [json.loads(line) for line in open(jsonl)]
+    assert any(e["action_type"] == "section.draft_generated" for e in events)
