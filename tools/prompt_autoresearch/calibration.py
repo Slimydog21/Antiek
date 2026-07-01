@@ -71,6 +71,7 @@ def calibrate_epsilon(
 
 def render_calibration_markdown(report: CalibrationReport) -> str:
     """Render an operator-reviewable calibration note."""
+    _validate_report(report)
     return "\n".join([
         f"# Prompt autoresearch calibration — `{report.role}`",
         "",
@@ -90,3 +91,33 @@ def render_calibration_markdown(report: CalibrationReport) -> str:
         "Use the recommended epsilon for the mutation cohort that feeds the Wedge 1 verdict.",
         "",
     ])
+
+
+def _validate_report(report: CalibrationReport) -> None:
+    if not isinstance(report.role, str) or not report.role.strip():
+        raise ValueError("calibration report role must be a non-empty string")
+    if (
+        isinstance(report.iteration_count, bool)
+        or not isinstance(report.iteration_count, int)
+        or report.iteration_count <= 0
+    ):
+        raise ValueError("calibration report iteration_count must be positive")
+    for field in (
+        "mean_delta",
+        "sigma",
+        "two_sigma",
+        "floor_epsilon",
+        "recommended_epsilon",
+    ):
+        value = getattr(report, field)
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise ValueError(f"calibration report {field} must be finite")
+        if not math.isfinite(float(value)):
+            raise ValueError(f"calibration report {field} must be finite")
+    for field in ("sigma", "two_sigma", "floor_epsilon", "recommended_epsilon"):
+        if getattr(report, field) < 0.0:
+            raise ValueError(f"calibration report {field} must be non-negative")
+    if report.recommended_epsilon < report.floor_epsilon:
+        raise ValueError("calibration report recommended_epsilon must be at least floor_epsilon")
+    if not isinstance(report.rationale, str) or not report.rationale.strip():
+        raise ValueError("calibration report rationale must be a non-empty string")

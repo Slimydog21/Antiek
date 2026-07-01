@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from tools.prompt_autoresearch import (
+    CalibrationReport,
     CompositeScore,
     PromptMutationOutcome,
     calibrate_epsilon,
@@ -77,6 +78,26 @@ def test_calibration_markdown_records_recommended_epsilon():
 
     assert "# Prompt autoresearch calibration — `synthesizer`" in md
     assert "Recommended epsilon" in md
+
+
+def test_calibration_markdown_rejects_inconsistent_report():
+    report = CalibrationReport(
+        role="synthesizer",
+        iteration_count=5,
+        mean_delta=0.0,
+        sigma=0.01,
+        two_sigma=0.02,
+        floor_epsilon=0.05,
+        recommended_epsilon=0.01,
+        rationale="bad report",
+    )
+
+    try:
+        render_calibration_markdown(report)
+    except ValueError as exc:
+        assert "recommended_epsilon must be at least floor_epsilon" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected inconsistent calibration report to be rejected")
 
 
 def test_calibration_cli_writes_markdown_from_outcome_json(tmp_path):

@@ -10,6 +10,7 @@ from tools.prompt_autoresearch.score import CompositeScore
 from tools.prompt_autoresearch.verdict import (
     MIN_MEAN_DELTA,
     MIN_MUTATIONS,
+    Verdict,
     compute_verdict,
     render_verdict_markdown,
 )
@@ -186,6 +187,29 @@ def test_renders_markdown_with_decision_and_metrics():
     assert "## Summary" in md
     assert "## Next steps" in md
     assert "Wedges 2-4 unlock" in md
+
+
+def test_render_verdict_rejects_invalid_decision():
+    verdict = Verdict(
+        role="synthesizer",
+        decision="maybe",
+        iteration_count=20,
+        acceptance_rate=1.0,
+        mean_delta=0.10,
+        median_delta=0.10,
+        best_mutation_id="m-0",
+        best_mutation_delta=0.10,
+        total_cost_usd=1.0,
+        rationale="invalid decision",
+        sub_metric_regressions=[],
+    )
+
+    try:
+        render_verdict_markdown(verdict)
+    except ValueError as exc:
+        assert "verdict decision must be one of" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected invalid verdict decision to be rejected")
 
 
 def test_render_reject_includes_regression_list():
