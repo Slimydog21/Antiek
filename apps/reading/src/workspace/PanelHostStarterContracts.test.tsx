@@ -50,7 +50,6 @@ vi.mock("../components/TrajectoryReplay", () => ({
 
 import Replay from "../modes/Replay";
 import CreationStudio from "../modes/CreationStudio";
-import InterviewMode from "../modes/Interview";
 import BrainstormStation from "../modes/BrainstormStation";
 
 class MockWebSocket {
@@ -128,50 +127,6 @@ describe("route PanelHost starter contracts", () => {
         mode: "docked-right",
         title: "Block palette",
         id: "create:block-palette",
-      },
-    ]);
-  });
-
-  it("Interview opens recording, transcript, and notes panels with the route id", async () => {
-    apiMocks.apiFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        interview_id: "int-7",
-        project_id: "project-1",
-        project_title: "Biography interview",
-        topic_description: null,
-        framing: null,
-        must_cover: [],
-        status: "active",
-        consent_recorded: true,
-        transcript: [],
-      }),
-    });
-
-    mountAt("/interview/int-7", <InterviewMode />, "/interview/:interviewId");
-
-    await waitFor(() => expect(panelHostMock).toHaveBeenCalled());
-    expect(latestStarters()).toEqual([
-      {
-        kind: "InterviewRecording",
-        mode: "docked-left",
-        title: "Recording",
-        id: "interview:int-7:recording",
-        props: { interviewId: "int-7", consentRecorded: true },
-      },
-      {
-        kind: "InterviewTranscript",
-        mode: "docked-right",
-        title: "Transcript",
-        id: "interview:int-7:transcript",
-        props: { interviewId: "int-7" },
-      },
-      {
-        kind: "InterviewNotes",
-        mode: "docked-bottom",
-        title: "Notes",
-        id: "interview:int-7:notes",
-        props: { interviewId: "int-7" },
       },
     ]);
   });

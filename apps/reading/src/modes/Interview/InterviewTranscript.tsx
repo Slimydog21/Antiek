@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiFetch } from "../../lib/api";
+
+export const INTERVIEW_TRANSCRIPT_REFRESH_EVENT =
+  "antiek:interview:transcript-refresh";
 
 /**
  * InterviewTranscript panel (S10 row 10.10; Speak SPR-02 M5).
@@ -53,23 +56,31 @@ export default function InterviewTranscript({
   const [error, setError] = useState<string | null>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [draft, setDraft] = useState<string>("");
+  const reloadGenerationRef = useRef(0);
 
   const reload = useCallback(async () => {
     if (seedTurns || !interviewId) return;
+    const generation = reloadGenerationRef.current + 1;
+    reloadGenerationRef.current = generation;
     try {
       const resp = await apiFetch(
         `/interviews/${encodeURIComponent(interviewId)}`,
       );
       if (!resp.ok) {
-        setError(`HTTP ${resp.status}`);
+        if (generation === reloadGenerationRef.current) {
+          setError(`HTTP ${resp.status}`);
+        }
         return;
       }
       const data = await resp.json();
+      if (generation !== reloadGenerationRef.current) return;
       const t: Turn[] = Array.isArray(data.transcript) ? data.transcript : [];
       setTurns(t);
       setError(null);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (generation === reloadGenerationRef.current) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     }
   }, [interviewId, seedTurns]);
 
@@ -79,6 +90,24 @@ export default function InterviewTranscript({
     const handle = setInterval(() => void reload(), 10_000);
     return () => clearInterval(handle);
   }, [reload, seedTurns]);
+
+  useEffect(() => {
+    if (seedTurns || !interviewId) return;
+    const onTranscriptRefresh = (event: Event) => {
+      const detail = (event as CustomEvent<{ interviewId?: string }>).detail;
+      if (detail?.interviewId === interviewId) void reload();
+    };
+    window.addEventListener(
+      INTERVIEW_TRANSCRIPT_REFRESH_EVENT,
+      onTranscriptRefresh,
+    );
+    return () => {
+      window.removeEventListener(
+        INTERVIEW_TRANSCRIPT_REFRESH_EVENT,
+        onTranscriptRefresh,
+      );
+    };
+  }, [interviewId, reload, seedTurns]);
 
   const beginEdit = useCallback((index: number, current: string) => {
     setEditingIndex(index);

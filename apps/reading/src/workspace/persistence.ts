@@ -78,7 +78,6 @@ const PANEL_KINDS = new Set<PanelKind>([
   "DeliverableSidebar",
   "BlockPalette",
   "ReplayStepList",
-  "InterviewRecording",
   "InterviewTranscript",
   "InterviewNotes",
   "Lightbox",
