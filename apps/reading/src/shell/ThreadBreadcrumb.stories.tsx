@@ -10,7 +10,8 @@ import type { Thread, ThreadHop } from "./threadModel";
  * Stories cover the SPR-06 acceptance surface:
  *   - a 1-hop (degenerate) thread,
  *   - a full-flywheel thread (Research → Read → Write → Read),
- *   - a thread crossing an UNBUILT workflow (honest "not yet" stub hop),
+ *   - a synthetic stale-capability hop that exercises the honest "not yet"
+ *     stub branch without claiming today's Write workflow is unbuilt,
  *   - the integrity-warning state when a forked copy slips through (the
  *     breadcrumb refuses to render a continuity the data can't support),
  *   - the ThreadJump container that advances the breadcrumb on a jump.
@@ -63,7 +64,10 @@ const WITH_UNBUILT_HOP: Thread = {
   isDegenerate: false,
   hops: [
     hop("speak", { entityId: "speak-claim-42", entityKind: "speak_claim" }),
-    // A hop into Write while Write is marked unbuilt — honest stub segment.
+    // Synthetic regression fixture: the live taxonomy has a built Write
+    // landing, but a historical/stale thread payload can still say a hop is
+    // unavailable. The breadcrumb must render that as an honest stub segment
+    // rather than inventing a fake clickable target.
     hop("write", {
       entityId: "speak-claim-42",
       entityKind: "speak_claim",
@@ -72,7 +76,9 @@ const WITH_UNBUILT_HOP: Thread = {
       built: false,
     }),
   ],
-  stubs: [{ workflow: "write", reason: "write has no built surface yet" }],
+  stubs: [
+    { workflow: "write", reason: "stale thread payload marked write unavailable" },
+  ],
 };
 
 // A FORKED thread — the write→read hop holds a copy (different id). The server
@@ -110,7 +116,7 @@ export const FullFlywheelThread: Story = {
   args: { thread: FULL_FLYWHEEL },
 };
 
-/** A thread crossing an unbuilt workflow — the Write hop is an honest stub. */
+/** A stale-capability thread payload — the Write hop is an honest stub. */
 export const WithUnbuiltHop: Story = {
   args: { thread: WITH_UNBUILT_HOP },
 };

@@ -8,17 +8,16 @@
  *
  *   - Walk the full flywheel (Research → Read → Write → Read) and confirm the
  *     breadcrumb tracks the SAME entity across every workflow segment.
- *   - Where a product is UNBUILT, the test asserts the honest SPR-04 stub
- *     appears rather than a fake screen (intellectual honesty #1 — the UI
- *     flywheel is honest about what exists).
+ *   - Where a stale thread payload marks a hop unavailable, the test asserts
+ *     the honest SPR-04 stub appears rather than a fake screen (intellectual
+ *     honesty #1 — the UI flywheel is honest about what the payload says).
  *   - The negative: a forked-copy thread suppresses the trail (the breadcrumb
  *     refuses to assert a continuity the data can't support).
  *
- * HONEST SCOPE (rigor #1): the *served-back-in-Read* leg is not a live serve —
- * Read's reader (substrate/books/) is unbuilt on this base. The breadcrumb
- * tracking the entity through the Read segment is the UI-level proof available;
- * the live Read-serving leg lands when Read merges. The Python e2e
- * (tests/e2e/test_flywheel.py) proves the served-back leg at the CONTRACT level.
+ * HONEST SCOPE (rigor #1): this harness runs against static Storybook, not a
+ * live substrate. The breadcrumb tracking the entity through the Read segment
+ * is the UI-level proof available here; the Python e2e
+ * (tests/e2e/test_flywheel.py) proves the served-back leg at the contract level.
  *
  *   npm run e2e   (builds Storybook, then runs Playwright)
  */
@@ -58,13 +57,16 @@ test.describe("SPR-08 — frontend flywheel walk (one entity, four workflows)", 
     // entity. Every hop in the full-flywheel fixture carries `insight-7f3a9c`;
     // the breadcrumb renders that single thread, not four disconnected views.
     // (The forked case below proves the breadcrumb refuses a multi-id trail.)
-    const research = page.locator('[data-testid="thread-hop-current-research"]');
+    const research = page.locator('[data-testid="thread-hop-research"]');
     const write = page.locator('[data-testid="thread-hop-write"]');
     await expect(research).toBeVisible();
     await expect(write).toBeVisible();
+    await expect(
+      page.locator('[data-testid="thread-hop-current-read"]'),
+    ).toBeVisible();
   });
 
-  test("an unbuilt workflow hop shows the honest SPR-04 stub, not a fake screen", async ({
+  test("a stale unavailable hop shows the honest SPR-04 stub, not a fake screen", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1100, height: 400 });
@@ -73,9 +75,10 @@ test.describe("SPR-08 — frontend flywheel walk (one entity, four workflows)", 
     await expect(page.locator('[data-testid="thread-breadcrumb"]')).toBeVisible({
       timeout: 5_000,
     });
-    // The Write hop is marked unbuilt → an honest, non-navigable "not yet"
-    // stub segment, NEVER a fabricated clickable target (intellectual honesty
-    // #1). This is the UI flywheel being honest about what exists.
+    // The fixture marks the Write hop unavailable even though today's taxonomy
+    // has a built Write surface. The breadcrumb must respect the payload with
+    // an honest, non-navigable "not yet" segment, NEVER a fabricated clickable
+    // target (intellectual honesty #1).
     await expect(
       page.locator('[data-testid="thread-hop-stub-write"]'),
     ).toBeVisible();
