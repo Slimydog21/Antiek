@@ -249,17 +249,15 @@ data with the substrate now ready for a clean re-measurement.
 **Blocks:** Phase 8 enforcing mode + autoresearch Wedges 2-4
 
 The local-only prompt-autoresearch runner is at `tools/prompt_autoresearch/`.
-The operator runs ≥20 mutations against the synthesizer's golden traces
-and then closes the gate with:
+The operator runs ≥20 mutations against the synthesizer's golden traces,
+exports the resulting `PromptMutationOutcome` rows to JSON, and then
+closes the gate with:
 
 ```bash
-./.venv/bin/python -c "
-from tools.prompt_autoresearch.verdict import compute_verdict, render_verdict_markdown
-from <your-runner-results> import outcomes
-v = compute_verdict('synthesizer', outcomes)
-md = render_verdict_markdown(v)
-print(md)
-" > docs/decisions/autoresearch-wedge-1-verdict.md
+./.venv/bin/python -m tools.prompt_autoresearch.verdict_cli \
+  --role synthesizer \
+  --outcomes <path-to-mutation-outcomes.json> \
+  --output docs/decisions/autoresearch-wedge-1-verdict.md
 ```
 
 The verdict module (committed today, `tools/prompt_autoresearch/verdict.py`)

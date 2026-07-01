@@ -277,16 +277,14 @@ Mark OA-004 status: CLOSED.
 
 The local-only prompt-autoresearch runner is at
 `tools/prompt_autoresearch/`. The operator runs ≥ 20 mutations
-against the synthesizer's golden traces and closes the gate with:
+against the synthesizer's golden traces, exports the resulting
+`PromptMutationOutcome` rows to JSON, and closes the gate with:
 
 ```bash
-./.venv/bin/python -c "
-from tools.prompt_autoresearch.verdict import compute_verdict, render_verdict_markdown
-from <your-runner-results> import outcomes
-v = compute_verdict('synthesizer', outcomes)
-md = render_verdict_markdown(v)
-print(md)
-" > docs/decisions/autoresearch-wedge-1-verdict.md
+./.venv/bin/python -m tools.prompt_autoresearch.verdict_cli \
+  --role synthesizer \
+  --outcomes <path-to-mutation-outcomes.json> \
+  --output docs/decisions/autoresearch-wedge-1-verdict.md
 ```
 
 The verdict module enforces the four-criterion Lutke-gap test:
