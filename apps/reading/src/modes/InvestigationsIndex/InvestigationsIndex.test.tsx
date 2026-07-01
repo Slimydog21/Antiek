@@ -57,6 +57,26 @@ describe("InvestigationsIndex", () => {
     expect(document.body.textContent).not.toMatch(/NaN|Infinity|\$-/);
   });
 
+  it("accepts numeric-string costs from the investigations API", async () => {
+    apiFetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        count: 2,
+        investigations: [
+          row("inv-string-a", "String cost A", "0.0123"),
+          row("inv-string-b", "String cost B", "0.0077"),
+        ],
+      }),
+    } as Response);
+
+    renderIndex();
+
+    expect(await screen.findByText("String cost A")).toBeTruthy();
+    expect(screen.getByText("2 shown · $0.02 total cost")).toBeTruthy();
+    expect(screen.getByText("$0.0123")).toBeTruthy();
+    expect(screen.getByText("$0.0077")).toBeTruthy();
+  });
+
   it("clamps malformed max sub-question input before submitting", async () => {
     apiFetchMock
       .mockResolvedValueOnce({
@@ -88,7 +108,7 @@ describe("InvestigationsIndex", () => {
   });
 });
 
-function row(id: string, question: string, cost: number) {
+function row(id: string, question: string, cost: unknown) {
   return {
     investigation_id: id,
     question,
