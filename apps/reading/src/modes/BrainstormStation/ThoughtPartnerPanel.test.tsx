@@ -67,6 +67,11 @@ describe("ThoughtPartnerPanel", () => {
       ok: true,
       json: async () => ({
         text: "Treat memory as retrieval that preserves friction and provenance.",
+        shape: "synthesis",
+        challenges: [],
+        synthesis_text: "Treat memory as retrieval that preserves friction and provenance.",
+        extensions: [],
+        policy_id: "cassette/thought-v1",
         thread_node_id: "thread-1",
       }),
     });
@@ -107,7 +112,75 @@ describe("ThoughtPartnerPanel", () => {
       }),
     );
     expect(await screen.findByText(/Treat memory as retrieval/)).toBeTruthy();
+    expect(screen.getByText("Reply · synthesis")).toBeTruthy();
+    expect(screen.getByText("policy: cassette/thought-v1")).toBeTruthy();
     expect(screen.getByText("anchored thread: thread-1")).toBeTruthy();
+  });
+
+  it("renders structured challenge replies with cited note ids", async () => {
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        text: "- If provenance disappears, the memory claim fails. [q-memory]",
+        shape: "challenge",
+        challenges: [
+          {
+            condition: "If provenance disappears, the memory claim fails.",
+            note_ids: ["q-memory"],
+          },
+        ],
+        synthesis_text: null,
+        extensions: [],
+        policy_id: "cassette/thought-v1",
+      }),
+    });
+
+    render(<ThoughtPartnerPanel />);
+    selectQuestion();
+    await userEvent.type(
+      await screen.findByPlaceholderText("Challenge, synthesize, or extend this question..."),
+      "Challenge this",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Ask thought partner" }));
+
+    expect(await screen.findByText("Reply · challenge")).toBeTruthy();
+    expect(screen.getByText("If provenance disappears, the memory claim fails.")).toBeTruthy();
+    expect(screen.getByText("q-memory")).toBeTruthy();
+  });
+
+  it("renders structured extension replies with tags and rationale", async () => {
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        text: "- What evidence would show retrieval feels like memory? (measurement)",
+        shape: "extension",
+        challenges: [],
+        synthesis_text: null,
+        extensions: [
+          {
+            sub_question: "What evidence would show retrieval feels like memory?",
+            tag: "measurement",
+            rationale: "Turns the intuition into something falsifiable.",
+          },
+        ],
+        policy_id: "cassette/thought-v1",
+      }),
+    });
+
+    render(<ThoughtPartnerPanel />);
+    selectQuestion();
+    await userEvent.type(
+      await screen.findByPlaceholderText("Challenge, synthesize, or extend this question..."),
+      "Extend this",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Ask thought partner" }));
+
+    expect(await screen.findByText("Reply · extension")).toBeTruthy();
+    expect(
+      screen.getByText("What evidence would show retrieval feels like memory?"),
+    ).toBeTruthy();
+    expect(screen.getByText("measurement")).toBeTruthy();
+    expect(screen.getByText("Turns the intuition into something falsifiable.")).toBeTruthy();
   });
 
   it("surfaces the honest no-key state without fabricating a reply", async () => {
