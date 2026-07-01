@@ -42,6 +42,30 @@ for the §14.4 measurement, the §13.4 compounding-curve demonstration (G7), and
 the §15.3 voice-latency assessment. Substrate is healthy now (the May 17-18
 read-only-filesystem outage is resolved); operator usage is the bottleneck.
 
+## Auth Diagnostic Operator Action — Multi-email magic-link allowlist
+
+**Status:** ⏳ operator-gated production verification
+**Source sprint:** `docs/htmlspec/auth-diagnostic-precision/sprint-06-multi-email-allowlist.html`
+**Runbook:** `infrastructure/runbooks/magic-link-auth.md`
+
+This is an activation/onboarding action, **not a new G1-G12 product/legal gate**.
+Engineering has fixed and tested the comma-separated allowlist path via
+`operator_allowlist_from_env()` and
+`tests/test_magic_link_auth.py::test_multi_email_allowlist_middleware_accepts_both_operators`.
+The remaining production-only step is to verify the real VM env includes every
+operator email and then run the auth probe.
+
+Minimum operator command block:
+
+```bash
+ssh <antiek-vm> "grep '^ANTIEK_OPERATOR_EMAIL=' /etc/antiek/secrets.env | sed 's/=.*/=<redacted>/'"
+python tools/auth_probe.py --base-url https://api.antiek.ai
+```
+
+If the allowlist needs updating, follow
+`infrastructure/runbooks/magic-link-auth.md` §3, restart `antiek`, then paste the
+redacted allowlist line count and `auth_probe` exit in the sprint handoff.
+
 The original eight gates, with their current state and the action required:
 
 ---
