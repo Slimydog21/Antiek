@@ -5,9 +5,8 @@ event log can be mapped to the Prime Intellect verifiers env schema
 without information loss.
 
 D: `prime eval run` runner for Antiek rubrics with the
-parameter_extractor_v0.jsonl fixture. Sprint 17 ships 10 of the 50
-target examples; operator-curated expansion to 50 lands incrementally
-as parameter_extractor traces accumulate in production.
+parameter_extractor_v0.jsonl fixture. Sprint 19 carries the
+operator-curated 50-example eval set.
 """
 
 from __future__ import annotations
@@ -42,9 +41,8 @@ def test_fixture_exists_and_loads():
     )
     with open(FIXTURE_PATH, encoding="utf-8") as f:
         rows = [json.loads(l) for l in f if l.strip()]
-    assert len(rows) >= 10, (
-        f"Sprint 17 ships ≥10 examples; got {len(rows)}. Operator "
-        f"expands to 50 incrementally per master-spec §15.8."
+    assert len(rows) == 50, (
+        f"Sprint 19 ships the 50-example eval set; got {len(rows)}."
     )
 
 
