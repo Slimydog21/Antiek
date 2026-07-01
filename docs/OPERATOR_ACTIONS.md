@@ -139,6 +139,17 @@ The assembled handoff lives at `docs/g2_counsel_packet.md`.
 4. Hachette v. Internet Archive context — Second Circuit ruling
    killing the structural fair-use argument.
 
+Before sending the packet, run the support probe:
+
+```bash
+./.venv/bin/python -m tools.ops.g2_counsel_packet_probe \
+  --packet-path docs/g2_counsel_packet.md
+```
+
+The probe validates packet completeness and the live notification
+template shape. It does not close OA-001; only the committed lawyer
+review decision artifact closes this action.
+
 #### Once closed
 
 Commit `docs/decisions/g2-lawyer-review.md` recording the date and
@@ -150,6 +161,7 @@ first-cohort outreach (OA-015) can then proceed.
 - Master-spec §9.0, §9.10, §15.9
 - Operator gate G2 (`docs/operator_gate_actions.md`)
 - v3 audit §7 item #44, #45, #77
+- `tools/ops/g2_counsel_packet_probe.py`
 
 ---
 
