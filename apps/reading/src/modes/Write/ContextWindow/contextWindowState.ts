@@ -43,6 +43,8 @@ export interface PromoteBlockSpec {
 export interface PromoteContextBody {
   title: string;
   deliverable_kind: string;
+  deliverable_id?: string;
+  section_id?: string;
   objective: string;
   blocks: PromoteBlockSpec[];
 }
@@ -67,10 +69,13 @@ export function itemToSpec(item: ContextItem, index: number): PromoteBlockSpec {
 export function contextToPromoteRequest(
   state: ContextWindowState,
   deliverableKind = "general_essay",
+  target: { deliverableId?: string; sectionId?: string } = {},
 ): PromoteContextBody {
   return {
     title: state.title.trim() || (state.objective.trim().slice(0, 80) || "Untitled draft"),
     deliverable_kind: deliverableKind,
+    ...(target.deliverableId ? { deliverable_id: target.deliverableId } : {}),
+    ...(target.sectionId ? { section_id: target.sectionId } : {}),
     objective: state.objective.trim(),
     blocks: state.items.map(itemToSpec),
   };

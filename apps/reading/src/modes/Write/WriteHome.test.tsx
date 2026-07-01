@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation, useParams } from "react-router-dom";
 
@@ -18,20 +18,23 @@ import type { TraceTarget } from "./writeApi";
  */
 
 const {
-  listDeliverablesMock, getTraceTargetMock, listInvestigationsMock,
-  startInvestigationMock, createDeliverableMock,
+  listDeliverablesMock, getDeliverableMock, getTraceTargetMock, listInvestigationsMock,
+  startInvestigationMock, createDeliverableMock, promoteContextMock, generateSectionMock,
 } = vi.hoisted(() => ({
   listDeliverablesMock: vi.fn(),
+  getDeliverableMock: vi.fn(),
   getTraceTargetMock: vi.fn(),
   listInvestigationsMock: vi.fn(),
   startInvestigationMock: vi.fn(),
   createDeliverableMock: vi.fn(),
+  promoteContextMock: vi.fn(),
+  generateSectionMock: vi.fn(),
 }));
 
 vi.mock("../../lib/api", async (orig) => ({
   ...(await orig<typeof import("../../lib/api")>()),
   listDeliverables: listDeliverablesMock,
-  getDeliverable: vi.fn().mockResolvedValue(null),
+  getDeliverable: getDeliverableMock,
   createDeliverable: createDeliverableMock,
   listInvestigations: listInvestigationsMock,
   startInvestigation: startInvestigationMock,
@@ -40,6 +43,8 @@ vi.mock("../../lib/api", async (orig) => ({
 vi.mock("./writeApi", async (orig) => ({
   ...(await orig<typeof import("./writeApi")>()),
   getTraceTarget: getTraceTargetMock,
+  promoteContext: promoteContextMock,
+  generateSection: generateSectionMock,
 }));
 
 import WriteHome, { readerPageFromTraceSectionPath } from "./WriteHome";
@@ -56,6 +61,7 @@ function ReaderProbe() {
 
 beforeEach(() => {
   listDeliverablesMock.mockReset().mockResolvedValue({ count: 0, deliverables: [] });
+  getDeliverableMock.mockReset().mockResolvedValue(null);
   getTraceTargetMock.mockReset();
   listInvestigationsMock.mockReset().mockResolvedValue({ count: 0, investigations: [] });
   startInvestigationMock.mockReset().mockResolvedValue({
@@ -65,6 +71,16 @@ beforeEach(() => {
     deliverable_id: "dlv-new", title: "Memo", deliverable_kind: "general_essay",
     investigation_root_id: "inv-spawned", status: "draft",
     created_at: null, updated_at: null, section_count: 0,
+  });
+  promoteContextMock.mockReset().mockResolvedValue({
+    deliverable_id: "dlv-open",
+    section_id: "sec-context",
+    block_ids: ["oblk-context"],
+  });
+  generateSectionMock.mockReset().mockResolvedValue({
+    status: "gap",
+    section_id: "sec-context",
+    detail: "no model needed for this test",
   });
   // WriteHome now renders through GlassSurface (SPR-03 M2 landing-glass home /
   // M3 solid open-piece), which reads prefers-reduced-motion via
@@ -158,6 +174,61 @@ describe("WriteHome — the re-homed door", () => {
       expect.objectContaining({
         title: "A margins memo",
         investigation_root_id: "inv-spawned",
+      }),
+    );
+  });
+
+  it("promotes open-piece context into the current deliverable, not a stray draft", async () => {
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-open",
+      title: "Open piece",
+      deliverable_kind: "general_essay",
+      investigation_root_id: "inv-root",
+      status: "draft",
+      created_at: null,
+      updated_at: null,
+      sections: [],
+    });
+
+    mountAt("/write/dlv-open");
+    await screen.findByText("Open piece");
+    await userEvent.click(screen.getByRole("button", { name: /brainstorm a section/i }));
+
+    const dropZone = screen
+      .getByText(/Drag lego blocks here from the repository/i)
+      .closest("div");
+    expect(dropZone).toBeTruthy();
+    fireEvent.drop(dropZone!, {
+      dataTransfer: {
+        types: ["application/x-antiek-block"],
+        getData: (type: string) =>
+          type === "application/x-antiek-block"
+            ? JSON.stringify({
+                from: "palette",
+                block_id: "node-context",
+                block_kind: "insight",
+                label: "a context block",
+              })
+            : "",
+      },
+    });
+    await userEvent.type(
+      screen.getByPlaceholderText(/state the writing objective/i),
+      "turn this into the next section",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /promote to outline/i }));
+
+    await waitFor(() => expect(promoteContextMock).toHaveBeenCalled());
+    expect(promoteContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deliverable_id: "dlv-open",
+        objective: "turn this into the next section",
+        blocks: [
+          expect.objectContaining({
+            provenance_kind: "graph_node",
+            node_id: "node-context",
+          }),
+        ],
       }),
     );
   });

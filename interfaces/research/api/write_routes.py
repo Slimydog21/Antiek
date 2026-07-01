@@ -181,6 +181,8 @@ class PromoteContextRequest(BaseModel):
         "research_memo", "book_chapter", "biography_section",
         "investor_brief", "general_essay",
     ] = "general_essay"
+    deliverable_id: str | None = None
+    section_id: str | None = None
     objective: str = ""
     blocks: list[PlaceBlockRequest] = Field(default_factory=list)
 
@@ -411,6 +413,7 @@ def promote_context(req: PromoteContextRequest) -> dict:
         result = promote_to_outline(
             con, title=req.title, deliverable_kind=req.deliverable_kind,
             specs=specs, objective=req.objective,
+            deliverable_id=req.deliverable_id, section_id=req.section_id,
         )
     return {
         "deliverable_id": result.deliverable_id,

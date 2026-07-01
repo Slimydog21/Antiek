@@ -265,6 +265,23 @@ def test_context_promote(client, seed):
     assert blocks["count"] == 2
 
 
+def test_context_promote_into_existing_deliverable(client, seed):
+    r = client.post("/write/context/promote", json={
+        "title": "From context", "deliverable_kind": "general_essay",
+        "deliverable_id": seed["deliverable_id"],
+        "objective": "make this the next section",
+        "blocks": [
+            {"section_id": "ignored", "block_kind": "insight",
+             "provenance_kind": "graph_node", "node_id": seed["node"], "block_index": 0},
+        ],
+    })
+    assert r.status_code == 201
+    body = r.json()
+    assert body["deliverable_id"] == seed["deliverable_id"]
+    blocks = client.get(f"/write/sections/{body['section_id']}/blocks").json()
+    assert blocks["count"] == 1
+
+
 # ── SPR-06 — generation no-blocks → gap (no model) ─────────────────
 
 
