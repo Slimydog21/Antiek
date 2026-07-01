@@ -51,6 +51,7 @@ contract.
 from __future__ import annotations
 
 import datetime as dt
+import dataclasses
 import enum
 import inspect
 import sys
@@ -434,6 +435,15 @@ def _python_to_ts_inner(tp: Any, *, field_name: str, model_name: str) -> str:
             raise UnsupportedType(
                 f"{model_name}.{field_name}: nested model {name!r} not in the "
                 "emit list. Add it to NESTED_MODELS in tools/codegen/emit_types.py."
+            )
+        return name
+
+    if isinstance(tp, type) and dataclasses.is_dataclass(tp):
+        name = tp.__name__
+        if name not in _KNOWN_NESTED_NAMES:
+            raise UnsupportedType(
+                f"{model_name}.{field_name}: nested dataclass {name!r} not in the "
+                "emit list. Add it to the relevant codegen model list."
             )
         return name
 
