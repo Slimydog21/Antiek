@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import { AdBorderMount } from "./AdBorderMount";
@@ -92,6 +92,34 @@ describe("AdBorderMount", () => {
       ),
     );
   });
+
+  it.each([7.5, Number.MAX_SAFE_INTEGER + 1])(
+    "ignores malformed reader position event page index %s",
+    async (pageIndex) => {
+      window.sessionStorage.setItem("antiek.read.pos.doc-1", "2");
+      render(
+        <MemoryRouter initialEntries={["/read/doc-1"]}>
+          <AdBorderMount />
+        </MemoryRouter>,
+      );
+
+      expect(adBorderMock).toHaveBeenCalledWith(
+        expect.objectContaining({ documentId: "doc-1", pageIndex: 2 }),
+      );
+
+      await act(async () => {
+        window.dispatchEvent(
+          new CustomEvent(READ_POSITION_EVENT, {
+            detail: { documentId: "doc-1", pageIndex },
+          }),
+        );
+      });
+
+      expect(adBorderMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ documentId: "doc-1", pageIndex: 2 }),
+      );
+    },
+  );
 
   it("falls back to the stored reader page when the URL page param is malformed", () => {
     window.sessionStorage.setItem("antiek.read.pos.doc-2", "6");
