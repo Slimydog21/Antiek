@@ -1,0 +1,34 @@
+{
+  "spec_file": "docs/html/sprints/sprint-20.html",
+  "source_spec_section": "docs/sprint-breakdown.html#sprint-20",
+  "target_branch": "reader/integration",
+  "status": "operator_gated",
+  "recorded_at": "2026-07-01T20:26:27Z",
+  "verified_code_sha": "a71298dd",
+  "mode": "status_reconciliation",
+  "deterministic_evidence": {
+    "backend_gate": "81 passed: tests/test_dispatch_tier_verdict.py tests/test_prompt_autoresearch_verdict.py tests/test_phase8_gate.py tests/test_phase8_calibration_status.py tests/test_gepa_phase8_bridge.py tests/test_gepa_phase8_applier_e2e.py",
+    "trajectory_replay_files": "apps/reading/src/components/TrajectoryReplay.tsx and apps/reading/src/components/TrajectoryReplay.stories.tsx exist",
+    "phase8_gate_files": "compounding/skill_growth/gate.py exists with Phase 8 gate tests",
+    "dispatch_verdict_files": "tools/dispatch_tier_verdict exists with dispatch-tier verdict tests",
+    "operator_gate_record": "docs/operator_gate_actions.md records G5 as provisionally closed with a fresh-traffic re-open trigger"
+  },
+  "operator_only_remaining": [
+    "Operator publishes at least one substantive Antiek-produced artifact outside Antiek.",
+    "Operator runs enough fresh investigations to produce verified synthesis traffic and re-runs the dispatch tier verdict.",
+    "Operator records the final Sprint 20 dispatch posture decision.",
+    "Operator reads the Sprint 19 prompt-autoresearch mutation report and records the Wedge 1 ratify-or-reject verdict.",
+    "If Wedge 1 ratifies, operator runs Phase 8 gate in shadow mode against real patch traffic for calibration."
+  ],
+  "not_claimed": [
+    "Full repository test suite was not rerun in this S20 pass.",
+    "Direct TrajectoryReplay component tests were not present; only implementation/story evidence and adjacent workspace contract coverage were observed.",
+    "No external artifact was published by this local reconciliation pass.",
+    "No production dispatch event-log re-run was performed.",
+    "No autoresearch Wedge 1 operator ratification decision was made."
+  ],
+  "notes": [
+    "The standalone Sprint 20 HTML page was missing even though docs/html/index.html linked to it; this pass restored that page from docs/sprint-breakdown.html#sprint-20.",
+    "The status label is operator-gated because the sprint's decisive outputs are external publication and operator verdict artifacts, not only code substrate."
+  ]
+}
