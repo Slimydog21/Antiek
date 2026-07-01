@@ -302,6 +302,7 @@ def _emit_dispatch_call(
     prompt_hash: str,
     finish_reason: str | None,
     context_pack_event_id: str | None,
+    correlation_id: str | None = None,
 ) -> str | None:
     """Emit one DispatchCall event. Returns the event_id."""
     return emit_typed(
@@ -324,6 +325,7 @@ def _emit_dispatch_call(
         parent_event_id=parent_event_id,
         role=role,
         policy_id=f"{provider}/{model}",
+        correlation_id=correlation_id,
     )
 
 
@@ -336,6 +338,7 @@ def dispatch(
     verification_required: bool = False,
     context_pack_event_id: str | None = None,
     parent_event_id: str | None = None,
+    correlation_id: str | None = None,
     config: DispatchConfig | None = None,
     config_path: str | Path | None = None,
     provider_override: str | None = None,
@@ -462,6 +465,7 @@ def dispatch(
                 prompt_hash=prompt_hash,
                 finish_reason="error",
                 context_pack_event_id=context_pack_event_id,
+                correlation_id=correlation_id,
             )
             current = current.fallback
             chain_index += 1
@@ -495,6 +499,7 @@ def dispatch(
                 prompt_hash=prompt_hash,
                 finish_reason="error",
                 context_pack_event_id=context_pack_event_id,
+                correlation_id=correlation_id,
             )
             last_error = e
             current = current.fallback
@@ -520,6 +525,7 @@ def dispatch(
             prompt_hash=prompt_hash,
             finish_reason=finish,
             context_pack_event_id=context_pack_event_id,
+            correlation_id=correlation_id,
         )
         return DispatchResult(
             text=raw.text,

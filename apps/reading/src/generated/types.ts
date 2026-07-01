@@ -2678,6 +2678,7 @@ export type TypedPayload =
 export interface Event {
   event_id: string;
   investigation_id: string;
+  correlation_id?: string | null;
   synthesis_id?: string | null;
   phase?: number | null;
   role?: string | null;

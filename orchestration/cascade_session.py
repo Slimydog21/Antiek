@@ -157,7 +157,9 @@ class CascadeSession:
             self._leaves[leaf.investigation_id] = leaf
             plan = ResearchPlan(
                 investigation_id=leaf.investigation_id, sub_question=leaf.sub_question,
-                parent_investigation_id=self.session_id, budget=leaf.budget,
+                parent_investigation_id=self.session_id,
+                correlation_id=self.session_id,
+                budget=leaf.budget,
             )
             handle = await self._runner.start(leaf.investigation_id, plan)
             self._handles[leaf.investigation_id] = handle

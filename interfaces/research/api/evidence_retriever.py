@@ -165,6 +165,7 @@ def _dispatch_and_parse(
             "evidence_retriever",
             investigation_id=event.investigation_id,
             parent_event_id=event.event_id,
+            correlation_id=event.correlation_id,
         )
         response_text = result.text
         policy_id = f"{result.provider}/{result.model}"
@@ -273,6 +274,7 @@ async def _emit_delivered(
         parent_event_id=event.event_id,
         role="evidence_retriever",
         policy_id=policy_id,
+        correlation_id=event.correlation_id,
     )
     await _broadcast_emitted(event, eid, broadcaster)
 

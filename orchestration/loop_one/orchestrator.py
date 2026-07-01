@@ -91,6 +91,7 @@ from substrate.schemas import (  # noqa: E402
 )
 
 from interfaces.research.api.broadcast import EventBroadcaster  # noqa: E402
+from substrate.event_log import correlation_context  # noqa: E402
 from orchestration.audit import audit_phase_log  # noqa: E402
 from orchestration.phase_runner import (  # noqa: E402
     enter_phase,
@@ -320,6 +321,7 @@ class InvestigationContext:
     chase_value: int = 0
     chase_budget_usd: float = 2.0
     parent_investigation_id: Optional[str] = None
+    correlation_id: Optional[str] = None
     # SPR-01 M3: the curated fast/deep research tier the operator chose at
     # the research entry, threaded from the start payload. "fast" → MiMo
     # V2.5 Pro, "deep" → DeepSeek V4 Pro (see
@@ -1265,15 +1267,17 @@ def make_loop_one_handler(
             chase_value=req.chase_value,
             chase_budget_usd=req.chase_budget_usd,
             parent_investigation_id=req.parent_investigation_id,
+            correlation_id=event.correlation_id or event.investigation_id,
             research_tier=req.research_tier,
         )
 
         async def run_and_maybe_chase() -> None:
-            await _run_investigation(ctx, broadcaster, coordinator)
-            # Only spawn a chase child if the investigation reached a
-            # terminal state we can build on (we don't chase failures).
-            if ctx.synthesis is not None and ctx.failed_phase is None:
-                await _maybe_spawn_chase_child(ctx, broadcaster)
+            with correlation_context(ctx.correlation_id):
+                await _run_investigation(ctx, broadcaster, coordinator)
+                # Only spawn a chase child if the investigation reached a
+                # terminal state we can build on (we don't chase failures).
+                if ctx.synthesis is not None and ctx.failed_phase is None:
+                    await _maybe_spawn_chase_child(ctx, broadcaster)
 
         # Detached task — the orchestrator runs alongside the request
         # handler that triggered it.
@@ -1465,6 +1469,7 @@ async def _maybe_spawn_chase_child(
         ),
         role="orchestrator",
         policy_id="orchestrator-chase",
+        correlation_id=ctx.correlation_id,
     )
     # Also emit a SPAWNED_FROM record for tree-rendering visibility.
     await broadcast_emit(
@@ -1476,6 +1481,7 @@ async def _maybe_spawn_chase_child(
         ),
         role="orchestrator",
         policy_id="orchestrator-chase",
+        correlation_id=ctx.correlation_id,
     )
 
 

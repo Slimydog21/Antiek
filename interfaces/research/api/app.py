@@ -1818,6 +1818,15 @@ def create_app(
         investigation_id = (
             req.investigation_id or f"inv-{_uuid.uuid4().hex[:12]}"
         )
+        correlation_id = investigation_id
+        if req.parent_investigation_id:
+            parent_rows = trajectory(req.parent_investigation_id)
+            if parent_rows:
+                correlation_id = (
+                    parent_rows[0].get("correlation_id")
+                    or parent_rows[0].get("investigation_id")
+                    or req.parent_investigation_id
+                )
         try:
             event_id = emit_typed(
                 investigation_id,
@@ -1835,6 +1844,7 @@ def create_app(
                 ),
                 role="operator",
                 policy_id="operator-cli",
+                correlation_id=correlation_id,
             )
         except Exception as exc:  # Pydantic ValidationError
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -1859,6 +1869,7 @@ def create_app(
                     role="operator",
                     policy_id="operator-cli",
                     parent_event_id=event_id,
+                    correlation_id=correlation_id,
                 )
 
         # Broadcast the start event so the orchestrator handler
@@ -3669,6 +3680,11 @@ def create_app(
             )
 
         child_inv_id = f"inv-{_uuid.uuid4().hex[:12]}"
+        parent_rows = trajectory(found_source_inv)
+        correlation_id = (
+            parent_rows[0].get("correlation_id")
+            if parent_rows else None
+        ) or found_source_inv
         try:
             start_event_id = emit_typed(
                 child_inv_id,
@@ -3683,6 +3699,7 @@ def create_app(
                 ),
                 role="operator",
                 policy_id="operator/brainstorm",
+                correlation_id=correlation_id,
             )
         except Exception as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -3704,6 +3721,7 @@ def create_app(
                 ),
                 role="operator",
                 policy_id="operator/brainstorm",
+                correlation_id=correlation_id,
             )
 
         # Broadcast the start event so the Loop 1 orchestrator picks it up.

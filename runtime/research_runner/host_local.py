@@ -220,6 +220,7 @@ class HostLocalRunner:
                 payload={"parent_investigation_id": plan.parent_investigation_id,
                          "sub_question": plan.sub_question},
                 role="user_agent", events_dir=self._events_dir,
+                correlation_id=plan.correlation_id,
             )
 
         # Aggregate-cap gate: refuse the launch with a surfaced reason rather
@@ -230,7 +231,8 @@ class HostLocalRunner:
             st.error = reason
             log_event(investigation_id, ActionType.INVESTIGATION_CHASE_HALTED,
                       payload={"reason": "aggregate_budget", "detail": reason},
-                      role="user_agent", events_dir=self._events_dir)
+                      role="user_agent", events_dir=self._events_dir,
+                      correlation_id=plan.correlation_id)
             await st.queue.put(StepEvent(investigation_id, 0, "status",
                                          text=reason, state=RunState.BUDGET_HALTED))
             await st.queue.put(StepEvent(investigation_id, 0, "done",
@@ -275,6 +277,7 @@ class HostLocalRunner:
                 investigation_id=investigation_id,
                 layers=[],
                 units=units,
+                correlation_id=plan.correlation_id,
                 events_dir=self._events_dir,
             )
         except Exception:  # pragma: no cover — reuse never breaks a research
@@ -295,7 +298,8 @@ class HostLocalRunner:
             # only its own file — automatic isolation by investigation_id.
             log_event(iid, ActionType.INVESTIGATION_START_REQUESTED,
                       payload={"sub_question": ctx.sub_question},
-                      role="user_agent", events_dir=self._events_dir)
+                      role="user_agent", events_dir=self._events_dir,
+                      correlation_id=st.plan.correlation_id)
             await self._push(st, StepEvent(iid, 0, "status", text="running",
                                            state=RunState.RUNNING))
             try:
@@ -323,7 +327,8 @@ class HostLocalRunner:
                 log_event(iid, ActionType.INVESTIGATION_CHASE_HALTED,
                           payload={"reason": exc.scope, "detail": str(exc),
                                    "spent_usd": self.budget.spent(iid)},
-                          role="user_agent", events_dir=self._events_dir)
+                          role="user_agent", events_dir=self._events_dir,
+                          correlation_id=st.plan.correlation_id)
                 await self._finish(st, None, None, halted=True)
                 return
             except asyncio.CancelledError:
@@ -336,7 +341,8 @@ class HostLocalRunner:
                 st.error = f"{type(exc).__name__}: {exc}"
                 log_event(iid, ActionType.INVESTIGATION_FAILED,
                           payload={"error": st.error}, role="user_agent",
-                          events_dir=self._events_dir)
+                          events_dir=self._events_dir,
+                          correlation_id=st.plan.correlation_id)
                 await self._push(st, StepEvent(iid, 0, "error", text=st.error,
                                                state=RunState.FAILED))
                 await self._finish(st, None, None, already_logged=True)
@@ -353,7 +359,8 @@ class HostLocalRunner:
         iid = st.plan.investigation_id
         if action is not None and not already_logged:
             log_event(iid, action, payload=payload or {}, role="user_agent",
-                      events_dir=self._events_dir)
+                      events_dir=self._events_dir,
+                      correlation_id=st.plan.correlation_id)
         if self._seal_on_complete:
             try:
                 seal_investigation(iid, events_dir=self._events_dir)

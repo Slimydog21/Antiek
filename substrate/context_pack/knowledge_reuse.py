@@ -617,6 +617,7 @@ def assemble_context_pack_with_reuse(
     relevance_floor: float = RELEVANCE_FLOOR,
     events_dir: str | None = None,
     policy_id: str | None = None,
+    correlation_id: str | None = None,
     apply_trust_gate: bool = True,
     reuse_threshold: float | None = None,
     chunk_text_for: Any | None = None,
@@ -718,6 +719,7 @@ def assemble_context_pack_with_reuse(
         truncation=truncation,
         counter=counter,
         parent_event_id=parent_event_id,
+        correlation_id=correlation_id,
     )
 
     if include_reuse and apply_trust_gate and gate_decisions:
@@ -735,6 +737,7 @@ def assemble_context_pack_with_reuse(
                     role=role,
                     events_dir=events_dir,
                     policy_id=policy_id,
+                    correlation_id=correlation_id,
                 )
 
     reuse_event_id: str | None = None
@@ -747,6 +750,7 @@ def assemble_context_pack_with_reuse(
             role=role,
             events_dir=events_dir,
             policy_id=policy_id,
+            correlation_id=correlation_id,
         )
 
     return PackWithReuse(
@@ -769,6 +773,7 @@ def _emit_knowledge_reused(
     role: str,
     events_dir: str | None,
     policy_id: str | None,
+    correlation_id: str | None,
 ) -> str | None:
     """Emit exactly one ``knowledge.reused`` event for this investigation start.
 
@@ -797,4 +802,5 @@ def _emit_knowledge_reused(
         role=role,
         events_dir=events_dir,
         policy_id=policy_id,
+        correlation_id=correlation_id,
     )

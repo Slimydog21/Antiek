@@ -82,6 +82,7 @@ import traceback
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -169,6 +170,32 @@ def _events_disabled() -> bool:
     return os.environ.get("ANTIEK_EVENTS_DISABLED", "").lower() in ("1", "true", "yes")
 
 
+_current_correlation_id: ContextVar[str | None] = ContextVar(
+    "antiek_event_correlation_id",
+    default=None,
+)
+
+
+def current_correlation_id() -> str | None:
+    return _current_correlation_id.get()
+
+
+@contextmanager
+def correlation_context(correlation_id: str | None) -> Iterator[None]:
+    token = _current_correlation_id.set(correlation_id)
+    try:
+        yield
+    finally:
+        _current_correlation_id.reset(token)
+
+
+def _normalize_correlation_id(
+    investigation_id: str,
+    correlation_id: str | None = None,
+) -> str:
+    return correlation_id or _current_correlation_id.get() or investigation_id
+
+
 def _append_jsonl(path: str, row: dict[str, Any]):
     """Append a single JSON line. Open in 'a' mode — atomic at OS level for
     single-line writes ≤ PIPE_BUF. We never write multi-line payloads."""
@@ -191,6 +218,7 @@ def log_event(
     role: str | None = None,
     policy_id: str | None = None,
     document_id: str | None = None,
+    correlation_id: str | None = None,
     events_dir: str | None = None,
 ) -> str | None:
     """Emit a single typed event into the investigation's JSONL trajectory.
@@ -208,6 +236,7 @@ def log_event(
     row = {
         "event_id": event_id,
         "investigation_id": investigation_id,
+        "correlation_id": _normalize_correlation_id(investigation_id, correlation_id),
         "synthesis_id": synthesis_id,
         "phase": phase,
         "role": role,
@@ -248,6 +277,7 @@ def emit_typed(
     role: str | None = None,
     policy_id: str | None = None,
     document_id: str | None = None,
+    correlation_id: str | None = None,
     events_dir: str | None = None,
 ) -> str | None:
     """Emit a typed event. ``action_type`` is derived from the payload's
@@ -272,6 +302,7 @@ def emit_typed(
     event = Event(
         event_id=event_id,
         investigation_id=investigation_id,
+        correlation_id=_normalize_correlation_id(investigation_id, correlation_id),
         synthesis_id=synthesis_id,
         phase=phase,
         role=role,
@@ -306,6 +337,9 @@ class EventEmitter:
 
     Also carries an optional default ``document_id`` which is convenient for
     wrestling-loop callers that emit many document-scoped events in a row.
+    Emitters are correlation-agnostic until an event is emitted: an explicit
+    ``correlation_id`` wins, then the active ``correlation_context()``, then
+    the emitter's construction-time default.
     """
 
     investigation_id: str
@@ -313,6 +347,7 @@ class EventEmitter:
     events_dir: str | None = None
     default_policy_id: str = DEFAULT_POLICY_ID
     default_document_id: str | None = None
+    correlation_id: str | None = None
     enabled: bool = True
     _parent_stack: list[str] = field(default_factory=list)
 
@@ -325,6 +360,7 @@ class EventEmitter:
         events_dir: str | None = None,
         default_policy_id: str = DEFAULT_POLICY_ID,
         default_document_id: str | None = None,
+        correlation_id: str | None = None,
     ) -> EventEmitter:
         return cls(
             investigation_id=investigation_id,
@@ -332,6 +368,7 @@ class EventEmitter:
             events_dir=events_dir,
             default_policy_id=default_policy_id,
             default_document_id=default_document_id,
+            correlation_id=_normalize_correlation_id(investigation_id, correlation_id),
             enabled=not _events_disabled(),
         )
 
@@ -352,6 +389,7 @@ class EventEmitter:
         policy_id: str | None = None,
         parent_event_id: str | None = None,
         document_id: str | None = None,
+        correlation_id: str | None = None,
     ) -> str | None:
         if not self.enabled:
             return None
@@ -368,6 +406,7 @@ class EventEmitter:
             role=role,
             policy_id=policy_id or self.default_policy_id,
             document_id=document_id if document_id is not None else self.default_document_id,
+            correlation_id=correlation_id or current_correlation_id() or self.correlation_id,
             events_dir=self.events_dir,
         )
 
@@ -380,6 +419,7 @@ class EventEmitter:
         policy_id: str | None = None,
         parent_event_id: str | None = None,
         document_id: str | None = None,
+        correlation_id: str | None = None,
     ) -> str | None:
         """Typed counterpart to ``emit``. Validates the payload against the
         discriminated union in ``substrate/schemas/events.py`` and writes a
@@ -402,6 +442,7 @@ class EventEmitter:
             role=role,
             policy_id=policy_id or self.default_policy_id,
             document_id=document_id if document_id is not None else self.default_document_id,
+            correlation_id=correlation_id or current_correlation_id() or self.correlation_id,
             events_dir=self.events_dir,
         )
 
@@ -564,6 +605,8 @@ def trajectory(
                     continue
 
     for r in rows:
+        if r.get("correlation_id") is None:
+            r["correlation_id"] = r.get("investigation_id")
         if isinstance(r.get("payload"), str):
             try:
                 r["payload"] = json.loads(r["payload"])

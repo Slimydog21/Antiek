@@ -110,13 +110,19 @@ def _safe_trajectory(investigation_id: str, events_dir: str | None) -> list[dict
 def _rows_for_scope(
     investigation_id: str | None,
     events_dir: str | None,
+    correlation_id: str | None = None,
 ) -> list[dict[str, Any]]:
     if investigation_id:
-        return _safe_trajectory(investigation_id, events_dir)
+        rows = _safe_trajectory(investigation_id, events_dir)
+        if correlation_id:
+            rows = [row for row in rows if row.get("correlation_id") == correlation_id]
+        return rows
 
     rows: list[dict[str, Any]] = []
     for iid in _investigation_ids(events_dir):
         rows.extend(_safe_trajectory(iid, events_dir))
+    if correlation_id:
+        rows = [row for row in rows if row.get("correlation_id") == correlation_id]
     return rows
 
 
@@ -136,7 +142,7 @@ def _p95(values: list[int]) -> float | None:
 
 
 def which_phase_slowest(args: argparse.Namespace) -> list[dict[str, Any]]:
-    rows = _rows_for_scope(args.investigation_id, args.events_dir)
+    rows = _rows_for_scope(args.investigation_id, args.events_dir, args.correlation_id)
     exits = [row for row in rows if row.get("action_type") == "phase.exit"]
 
     if args.investigation_id:
@@ -215,7 +221,7 @@ class ProviderStats:
 
 
 def which_provider_fails(args: argparse.Namespace) -> list[dict[str, Any]]:
-    rows = _rows_for_scope(args.investigation_id, args.events_dir)
+    rows = _rows_for_scope(args.investigation_id, args.events_dir, args.correlation_id)
     stats: dict[tuple[str, str], ProviderStats] = defaultdict(ProviderStats)
     dispatch_by_event_id: dict[str, tuple[str, str]] = {}
     failed_dispatch_event_ids: set[str] = set()
@@ -268,7 +274,31 @@ def which_provider_fails(args: argparse.Namespace) -> list[dict[str, Any]]:
 
 
 def where_did_it_stall(args: argparse.Namespace) -> list[dict[str, Any]]:
-    rows = _safe_trajectory(args.investigation_id, args.events_dir)
+    rows = _rows_for_scope(args.investigation_id, args.events_dir, args.correlation_id)
+    if args.investigation_id:
+        scoped_ids = [args.investigation_id]
+    else:
+        scoped_ids = sorted({
+            str(row["investigation_id"])
+            for row in rows
+            if row.get("investigation_id") is not None
+        })
+
+    results: list[dict[str, Any]] = []
+    for investigation_id in scoped_ids:
+        inv_rows = [
+            row for row in rows
+            if row.get("investigation_id") == investigation_id
+        ]
+        if inv_rows or args.investigation_id:
+            results.append(_where_did_one_investigation_stall(investigation_id, inv_rows))
+    return results
+
+
+def _where_did_one_investigation_stall(
+    investigation_id: str | None,
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
     last_completed_phase: int | None = None
     entered: dict[int, dict[str, Any]] = {}
     exited: set[int] = set()
@@ -284,60 +314,52 @@ def where_did_it_stall(args: argparse.Namespace) -> list[dict[str, Any]]:
         elif action_type == "investigation.failed":
             payload = _payload(row)
             failed_phase = _phase_int(payload.get("phase")) or phase
-            return [
-                {
-                    "investigation_id": args.investigation_id,
-                    "status": "failed",
-                    "last_completed_phase": _phase_int(payload.get("last_completed_phase"))
-                    or last_completed_phase,
-                    "stalled_phase": failed_phase,
-                    "phase_name": PHASE_NAMES.get(failed_phase, f"Phase {failed_phase}")
-                    if failed_phase is not None
-                    else "unknown",
-                    "signature": "investigation.failed",
-                    "diagnostic": payload.get("diagnostic") or payload.get("error") or "unknown",
-                }
-            ]
+            return {
+                "investigation_id": investigation_id,
+                "status": "failed",
+                "last_completed_phase": _phase_int(payload.get("last_completed_phase"))
+                or last_completed_phase,
+                "stalled_phase": failed_phase,
+                "phase_name": PHASE_NAMES.get(failed_phase, f"Phase {failed_phase}")
+                if failed_phase is not None
+                else "unknown",
+                "signature": "investigation.failed",
+                "diagnostic": payload.get("diagnostic") or payload.get("error") or "unknown",
+            }
 
     if any(row.get("action_type") == "investigation.completed" for row in rows):
-        return [
-            {
-                "investigation_id": args.investigation_id,
-                "status": "completed",
-                "last_completed_phase": last_completed_phase,
-                "stalled_phase": None,
-                "phase_name": None,
-                "signature": "completed",
-                "diagnostic": None,
-            }
-        ]
+        return {
+            "investigation_id": investigation_id,
+            "status": "completed",
+            "last_completed_phase": last_completed_phase,
+            "stalled_phase": None,
+            "phase_name": None,
+            "signature": "completed",
+            "diagnostic": None,
+        }
 
     unmatched = [phase for phase in entered if phase not in exited]
     if unmatched:
         stalled_phase = max(unmatched, key=lambda phase: entered[phase].get("emitted_at") or "")
-        return [
-            {
-                "investigation_id": args.investigation_id,
-                "status": "stalled",
-                "last_completed_phase": last_completed_phase,
-                "stalled_phase": stalled_phase,
-                "phase_name": PHASE_NAMES.get(stalled_phase, f"Phase {stalled_phase}"),
-                "signature": "phase.enter_without_phase.exit",
-                "diagnostic": _payload(entered[stalled_phase]).get("note"),
-            }
-        ]
-
-    return [
-        {
-            "investigation_id": args.investigation_id,
-            "status": "unknown",
+        return {
+            "investigation_id": investigation_id,
+            "status": "stalled",
             "last_completed_phase": last_completed_phase,
-            "stalled_phase": None,
-            "phase_name": None,
-            "signature": "no_open_phase_or_terminal_event",
-            "diagnostic": None,
+            "stalled_phase": stalled_phase,
+            "phase_name": PHASE_NAMES.get(stalled_phase, f"Phase {stalled_phase}"),
+            "signature": "phase.enter_without_phase.exit",
+            "diagnostic": _payload(entered[stalled_phase]).get("note"),
         }
-    ]
+
+    return {
+        "investigation_id": investigation_id,
+        "status": "unknown",
+        "last_completed_phase": last_completed_phase,
+        "stalled_phase": None,
+        "phase_name": None,
+        "signature": "no_open_phase_or_terminal_event",
+        "diagnostic": None,
+    }
 
 
 def _fmt(value: Any) -> str:
@@ -378,6 +400,12 @@ def _display_rows(rows: list[dict[str, Any]], args: argparse.Namespace) -> list[
 
 
 def _emit(rows: list[dict[str, Any]], args: argparse.Namespace, columns: list[str]) -> None:
+    if args.correlation_id and not rows:
+        print(
+            "eventlog-query: no rows matched --correlation-id; check for a typo, "
+            "missing data, or pre-SPR-04 fan-out rows that do not carry parent correlation ids.",
+            file=sys.stderr,
+        )
     if args.json:
         print(json.dumps(rows, indent=2, sort_keys=True))
     else:
@@ -392,6 +420,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Event log directory; overrides ANTIEK_RESEARCH_EVENTS_DIR/default.",
     )
     common.add_argument("--json", action="store_true", help="Emit the same data as a JSON list.")
+    common.add_argument(
+        "--correlation-id",
+        default=None,
+        help=(
+            "Scope rows to one run correlation id. Best-effort for pre-SPR-04 data: "
+            "old rows without correlation_id read as their own investigation id, so "
+            "legacy fan-out parent scopes are not reconstructed."
+        ),
+    )
 
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -429,7 +466,7 @@ def build_parser() -> argparse.ArgumentParser:
         parents=[common],
         help="Report terminal failure, completion, or the last phase.enter without phase.exit.",
     )
-    stall.add_argument("--investigation-id", required=True)
+    stall.add_argument("--investigation-id", default=None)
     stall.set_defaults(func=where_did_it_stall)
     return parser
 

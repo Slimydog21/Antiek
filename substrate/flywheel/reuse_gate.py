@@ -212,6 +212,7 @@ def _emit_reuse_gated(
     role: str | None,
     events_dir: str | None,
     policy_id: str | None,
+    correlation_id: str | None = None,
 ) -> str | None:
     """Emit one ``reuse.gated`` event for an EXCLUDED unit. The score, threshold,
     and reasons are carried on the event so an audit reads the exact bar in
@@ -239,4 +240,5 @@ def _emit_reuse_gated(
         role=role,
         events_dir=events_dir,
         policy_id=policy_id,
+        correlation_id=correlation_id,
     )

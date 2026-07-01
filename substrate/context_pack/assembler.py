@@ -396,6 +396,7 @@ def assemble_context_pack(
     truncation: TruncationStrategy = "smart",
     counter: TokenCounter | None = None,
     parent_event_id: str | None = None,
+    correlation_id: str | None = None,
 ) -> ContextPack:
     """Assemble a context pack.
 
@@ -476,6 +477,7 @@ def assemble_context_pack(
         ),
         parent_event_id=parent_event_id,
         role=role,
+        correlation_id=correlation_id,
     )
 
     return ContextPack(
