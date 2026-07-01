@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Literal
+
+from interfaces.research.rlm_repl import ReplSummary
 
 from .events import RLMEventEmitter
 from .session import (
@@ -28,6 +31,34 @@ class RLMIterationRun:
     status: Literal["iteration", "failed", "timeout", "cost_capped"]
     stdout: str | None
     event_action_type: str
+
+
+@dataclass(frozen=True)
+class RLMLoopRun:
+    status: Literal["completed", "failed", "timeout", "cost_capped"]
+    final_answer: str
+    iterations: int
+    event_action_type: str
+
+
+IterationCost = Decimal | Callable[[ReplSummary, str], Decimal]
+IterationSummary = str | Callable[[ReplSummary, str], str]
+
+
+def _iteration_cost(cost_usd: IterationCost, summary: ReplSummary, code: str) -> Decimal:
+    if callable(cost_usd):
+        return cost_usd(summary, code)
+    return cost_usd
+
+
+def _iteration_summary(
+    summary_template: IterationSummary,
+    summary: ReplSummary,
+    code: str,
+) -> str:
+    if callable(summary_template):
+        return summary_template(summary, code)
+    return summary_template
 
 
 async def run_iteration_with_timeout(
@@ -122,4 +153,82 @@ async def run_iteration_with_timeout(
     )
 
 
-__all__ = ["RLMIterationRun", "run_iteration_with_timeout"]
+async def run_loop_with_timeout(
+    *,
+    repl: Any,
+    generate_code: Callable[[ReplSummary], str],
+    session: RLMSession,
+    emitter: RLMEventEmitter,
+    max_iterations: int | None = None,
+    timeout_s: float = float(RLM_REPL_PER_CALL_TIMEOUT_SECONDS),
+    cost_usd: IterationCost = Decimal("0.00"),
+    iteration_summary: IterationSummary = "RLM iteration executed",
+) -> RLMLoopRun:
+    """Run an RLM REPL loop with timeout and typed lifecycle events."""
+
+    limit = max_iterations or repl.max_iterations
+    last_action_type = ""
+
+    while not repl.is_finished() and repl.iteration < limit:
+        repl_summary = repl.summarise()
+        try:
+            code = generate_code(repl_summary)
+        except Exception as exc:
+            session.fail()
+            event = await emitter.emit(
+                session_failed_payload(
+                    session,
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                )
+            )
+            return RLMLoopRun(
+                status="failed",
+                final_answer=repl.final_answer(),
+                iterations=session.state.iteration_count,
+                event_action_type=_event_action_type(event),
+            )
+
+        iteration = await run_iteration_with_timeout(
+            repl=repl,
+            session=session,
+            code=code,
+            emitter=emitter,
+            cost_usd=_iteration_cost(cost_usd, repl_summary, code),
+            timeout_s=timeout_s,
+            summary=_iteration_summary(iteration_summary, repl_summary, code),
+        )
+        last_action_type = iteration.event_action_type
+        if iteration.status in {"failed", "timeout", "cost_capped"}:
+            return RLMLoopRun(
+                status=iteration.status,
+                final_answer=repl.final_answer(),
+                iterations=session.state.iteration_count,
+                event_action_type=last_action_type,
+            )
+
+    if not repl.answer.get("ready"):
+        repl.answer["ready"] = True
+
+    final_answer = repl.final_answer()
+    session.complete(final_summary=final_answer)
+    event = await emitter.emit(
+        session_completed_payload(
+            session,
+            final_summary=final_answer,
+        )
+    )
+    return RLMLoopRun(
+        status="completed",
+        final_answer=final_answer,
+        iterations=session.state.iteration_count,
+        event_action_type=_event_action_type(event),
+    )
+
+
+__all__ = [
+    "RLMIterationRun",
+    "RLMLoopRun",
+    "run_iteration_with_timeout",
+    "run_loop_with_timeout",
+]
