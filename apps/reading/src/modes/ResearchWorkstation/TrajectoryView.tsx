@@ -18,6 +18,12 @@ import PhaseRow from "./PhaseRow";
  * Transitions to MasterMdViewer happen at the parent component level
  * (ResearchWorkstation/InvestigationCenter) on investigation.completed.
  */
+
+function safeCostUsd(value: unknown): string {
+  const cost = typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+  return `$${cost.toFixed(4)}`;
+}
+
 export default function TrajectoryView({
   investigation,
 }: {
@@ -97,7 +103,7 @@ function TrajectoryHeader({
         </span>
         <span className="text-ink-mute dark:text-moonlight">·</span>
         <span className="text-ink-soft dark:text-starlight">
-          ${investigation.costTotal.toFixed(4)}
+          {safeCostUsd(investigation.costTotal)}
         </span>
         <span className="text-ink-mute dark:text-moonlight">·</span>
         <span className="text-shadow-1 dark:text-moonlight">

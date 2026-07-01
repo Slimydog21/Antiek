@@ -211,6 +211,33 @@ describe("ThinkingStream — live cost + steer (M3)", () => {
     expect(screen.queryByText(/token/i)).toBeNull();
   });
 
+  it("sanitizes malformed accumulated cost in the narrated header", () => {
+    render(
+      <ThinkingStream
+        investigation={state({
+          costTotal: Number.POSITIVE_INFINITY,
+          events: [ev("e1", "decompose.requested")],
+        })}
+      />,
+    );
+    expect(screen.getByLabelText("cost so far").textContent).toBe("$0.0000");
+    expect(document.body.textContent).not.toMatch(/NaN|Infinity|\$-/);
+  });
+
+  it("sanitizes malformed accumulated cost in the raw trajectory header", () => {
+    render(
+      <ThinkingStream
+        investigation={state({
+          costTotal: Number.NaN,
+          events: [ev("e1", "decompose.delivered", { decomposition: [{}] })],
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByText(/show raw activity/i));
+    expect(screen.getAllByText("$0.0000").length).toBeGreaterThan(1);
+    expect(document.body.textContent).not.toMatch(/NaN|Infinity|\$-/);
+  });
+
   it("renders a Stop control ONLY when a session-backed steer is wired", () => {
     const onStop = vi.fn();
     const { rerender } = render(
