@@ -1,0 +1,42 @@
+{
+  "spec_dir": "docs/ui_redesign_posthog",
+  "target_branch": "reader/integration",
+  "status": "done",
+  "recorded_at": "2026-07-01T20:14:30Z",
+  "verified_code_sha": "231af58b",
+  "mode": "verification_closure",
+  "sprints": {
+    "Brand": {
+      "status": "done",
+      "round": 2,
+      "verified_code_sha": "231af58b",
+      "gate_results": {
+        "retro_closure": "pass",
+        "npm_run_typecheck": "pass",
+        "npm_test_run": "1591 passed"
+      }
+    },
+    "S0-S12": {
+      "status": "done",
+      "round": 2,
+      "verified_code_sha": "231af58b",
+      "gate_results": {
+        "retro_closure": "pass",
+        "npm_run_typecheck": "pass",
+        "npm_test_run": "188 files / 1591 tests passed",
+        "npm_run_build_check": "pass; index gz 608.23 KB / 683.59 KB budget"
+      }
+    }
+  },
+  "not_reverified_2026_07_01": [
+    "npm run visualtest / Lost-Pixel baseline comparison",
+    "VoiceOver manual pass",
+    "sm-tier hamburger NavRail collapse",
+    "Lost-Pixel CI promotion"
+  ],
+  "notes": [
+    "RETRO.md records historical programme-close visual baselines and the known workspace-demo animation timing flake.",
+    "The 2026-07-01 verification found and fixed a copy-lint regression in Write context-window drag handling before closure was recorded.",
+    "The master spec index status was changed from DRAFT to CLOSED to match the shipped retro and fresh gates."
+  ]
+}
