@@ -7,8 +7,9 @@
  * MOUNTS BlockDetail, drives a real text selection inside its scope, and asserts:
  *   - a selection inside the block opens the SAME four-action FloatMenu;
  *   - the RICHER-provenance path is covered: a NOTE on a block-detail selection
- *     chains to the node's own `source_document_id` (BlockDetail.resolveProvenance),
- *     so the persisted marginalia.noted carries that document_id (§9 chain).
+ *     chains to the node's own `source_document_id` + `chunk_id`
+ *     (BlockDetail.resolveProvenance), so the persisted marginalia.noted
+ *     carries the claim→chunk→document §9 chain.
  *
  * Selection in jsdom follows the FloatMenu.test.tsx pattern: a real Range over a
  * text node inside the scope + a spied getBoundingClientRect + a mocked
@@ -79,6 +80,7 @@ function insightNode(extra: Partial<DistilledNode> = {}): DistilledNode {
     text: "a grounded insight worth selecting and noting",
     confidence: "high",
     source_document_id: "doc-block-9",
+    chunk_id: "chunk-block-9",
     refinement_count: 0,
     escalated: false,
     reserved_child_investigation_id: null,
@@ -120,8 +122,8 @@ describe("BlockDetail — the SECOND live FloatMenu host (M1)", () => {
     expect(screen.getByRole("menuitem", { name: "Deep-research" })).toBeTruthy();
   });
 
-  it("a NOTE on a block-detail selection chains to the node's source_document_id (richer provenance §9)", async () => {
-    renderDetail(insightNode({ source_document_id: "doc-block-9" }));
+  it("a NOTE on a block-detail selection chains to the node's source document and chunk (richer provenance §9)", async () => {
+    renderDetail(insightNode({ source_document_id: "doc-block-9", chunk_id: "chunk-block-9" }));
     const scope = screen.getByText(
       "a grounded insight worth selecting and noting",
     );
@@ -135,13 +137,37 @@ describe("BlockDetail — the SECOND live FloatMenu host (M1)", () => {
     expect(postTypedEventMock).toHaveBeenCalledTimes(1);
     const env = postTypedEventMock.mock.calls[0][0] as {
       document_id?: string;
-      payload: { action_type: string; source_kind: string };
+      payload: { action_type: string; source_kind: string; chunk_id: string | null };
     };
     // BlockDetail.resolveProvenance grounds the note in the node's OWN source
-    // document — the richer provenance this host adds over the synthesis host.
+    // document and chunk — the richer provenance this host adds over the
+    // synthesis host.
     expect(env.document_id).toBe("doc-block-9");
+    expect(env.payload.chunk_id).toBe("chunk-block-9");
     expect(env.payload.action_type).toBe("marginalia.noted");
     // §9 — a marginalia note stays user-sourced (never a model label).
     expect(env.payload.source_kind).toBe("user");
+  });
+
+  it("records null chunk provenance when the node has no chunk_id", async () => {
+    const node = insightNode({ source_document_id: "doc-block-9" });
+    delete node.chunk_id;
+    renderDetail(node);
+    const scope = screen.getByText(
+      "a grounded insight worth selecting and noting",
+    );
+    selectTextIn(scope, "a grounded insight");
+    fireEvent.click(screen.getByRole("menuitem", { name: "Note" }));
+    const textarea = screen.getByPlaceholderText("Type a note, or speak it…");
+    fireEvent.change(textarea, { target: { value: "this block has no chunk" } });
+    await act(async () => {
+      fireEvent.click(screen.getByText("Save note"));
+    });
+    const env = postTypedEventMock.mock.calls[0][0] as {
+      document_id?: string;
+      payload: { chunk_id: string | null };
+    };
+    expect(env.document_id).toBe("doc-block-9");
+    expect(env.payload.chunk_id).toBeNull();
   });
 });

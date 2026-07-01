@@ -18,9 +18,8 @@ import {
  * menu — exactly the menu the Research synthesis host mounts, not a fork.
  *
  * Provenance here is RICHER than the synthesis host: a block IS a graph node
- * with a `source_document_id` (DistilledNode.source_document_id), so a NOTE on a
- * block-detail selection chains to that document. (A chunk id isn't resolved
- * from a free selection over the node text, so chunk stays null — honest.)
+ * with a `source_document_id` and, when available, a `chunk_id`, so a NOTE on a
+ * block-detail selection chains to the node's source chunk and document.
  *
  * Deep-research reuses the chase path directly (startInvestigation with
  * parent_investigation_id + recordSpawnRelationship — the same calls
@@ -41,12 +40,13 @@ export default function BlockDetail({
   const scopeRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
-  // The host resolves provenance: this node's source document grounds any note
-  // (§9 chain claim→chunk→document). The selection hook reads the DOM range;
-  // the host maps it to graph entities — here, the node's own source document.
+  // The host resolves provenance: this node's source document/chunk grounds any
+  // note (§9 chain claim→chunk→document). This is provenance, not raw source
+  // body servability: the selected text is the rendered graph node, so
+  // `servable` stays unset rather than claiming source-body gate state.
   const resolveProvenance = (_range: Range, _text: string): SelectionProvenance => ({
     documentId: node.source_document_id ?? null,
-    chunkId: null, // a free selection over node text resolves no single chunk
+    chunkId: node.chunk_id ?? null,
   });
 
   const selection = useFloatMenuSelection({ scopeRef, resolveProvenance });
