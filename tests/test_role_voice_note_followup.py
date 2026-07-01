@@ -11,7 +11,7 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from roles.voice_note_followup import (
+from roles.voice_note_followup import (  # noqa: E402
     VOICE_NOTE_FOLLOWUP_SYSTEM_PROMPT,
     VoiceNoteFollowupContext,
     VoiceNoteFollowupValidationError,
@@ -83,6 +83,15 @@ def test_parser_happy_path_minimal():
     )
     r = parse_voice_note_followup_response(raw, known_block_ids={"i-1"})
     assert len(r.prompts) == 1
+    assert r.prompts[0].anchor_block_id == "i-1"
+
+
+def test_parser_trims_canonical_anchor_block_id():
+    raw = (
+        '{"prompts": [{"prompt": "What thread should this idea connect to?", '
+        '"anchor_block_id": " i-1 ", "rationale": "same selected block."}]}'
+    )
+    r = parse_voice_note_followup_response(raw, known_block_ids={"i-1"})
     assert r.prompts[0].anchor_block_id == "i-1"
 
 
