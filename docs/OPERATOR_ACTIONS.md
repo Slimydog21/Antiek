@@ -789,6 +789,14 @@ wires Postgres. To activate:
    `catalog.register(user_id="test-user", db_path=...)` +
    `catalog.lookup("test-user")`.
 
+   Use the packaged probe on the production host so the proof exercises the
+   deployed Postgres backend without printing the DSN:
+
+   ```bash
+   ANTIEK_DUCKLAKE_POSTGRES_DSN="$PRODUCTION_DSN" \
+     ./.venv/bin/python -m tools.ops.ducklake_postgres_probe --json
+   ```
+
 #### Once closed
 
 A successful `catalog.register(user_id="test-user", db_path=...)` +
