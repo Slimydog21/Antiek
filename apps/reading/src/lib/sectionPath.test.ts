@@ -22,11 +22,20 @@ describe("sectionPath page locator parsing", () => {
     expect(sourcePageNumberFromSectionPath(null)).toBeNull();
   });
 
+  it.each(["Page 2.9", "Page 2junk", "p.2.9", "p 2junk", "Page 9007199254740992"])(
+    "does not truncate malformed source page locator %s",
+    (sectionPath) => {
+      expect(sourcePageNumberFromSectionPath(sectionPath)).toBeNull();
+    },
+  );
+
   it("keeps exact reader deep-link anchors stricter than source affordances", () => {
     expect(sourcePageNumberFromExactSectionPath("Page 2")).toBe(2);
     expect(sourcePageNumberFromExactSectionPath("p.2")).toBe(2);
     expect(sourcePageNumberFromExactSectionPath("p 2")).toBe(2);
     expect(sourcePageNumberFromExactSectionPath("Page 2 · Section 3")).toBeNull();
+    expect(sourcePageNumberFromExactSectionPath("Page 2.9")).toBeNull();
+    expect(sourcePageNumberFromExactSectionPath("Page 9007199254740992")).toBeNull();
   });
 
   it("converts source pages to zero-based reader indexes", () => {
@@ -34,5 +43,7 @@ describe("sectionPath page locator parsing", () => {
     expect(zeroBasedReaderPageFromSourcePage(1)).toBe(0);
     expect(zeroBasedReaderPageFromSourcePage(null)).toBeNull();
     expect(zeroBasedReaderPageFromSourcePage(undefined)).toBeNull();
+    expect(zeroBasedReaderPageFromSourcePage(1.9)).toBeNull();
+    expect(zeroBasedReaderPageFromSourcePage(0)).toBeNull();
   });
 });
