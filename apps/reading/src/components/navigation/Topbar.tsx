@@ -40,7 +40,7 @@ function defaultBreadcrumbsFor(pathname: string): Crumb[] {
     stats: "Stats",
     map: "Map",
     backtest: "Backtest",
-    privacy: "Privacy",
+    privacy: "Privacy dashboard",
     pricing: "Pricing",
     operator: "Operator",
     outcomes: "Outcomes",

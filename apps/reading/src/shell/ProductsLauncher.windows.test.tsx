@@ -72,6 +72,17 @@ describe("ProductsLauncher — open in window (M5)", () => {
     expect(ws.windows[ws.order[0]].kind).toBe("documents");
   });
 
+  it("uses the canonical privacy dashboard label in Run & settings", () => {
+    const onClose = renderLauncher();
+
+    fireEvent.click(screen.getByRole("button", { name: "Privacy dashboard" }));
+
+    expect(navigateMock).toHaveBeenCalledWith("/privacy");
+    expect(onClose).toHaveBeenCalled();
+    expect(useWindows.getState().order.length).toBe(0);
+    expect(screen.queryByText("Privacy & deletion")).toBeNull();
+  });
+
   it("a non-window-eligible built mode does NOT render a ⊞ button", () => {
     renderLauncher();
     // Sources is a built mode but not contract-verified for windows.

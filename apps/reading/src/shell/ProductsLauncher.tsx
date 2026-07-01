@@ -34,7 +34,7 @@ const BARE_ROUTES = new Set(
 const RUN_LABELS: Record<string, string> = {
   OperatorDashboard: "Operator console",
   TrustCenter: "Trust & safety",
-  PrivacyDashboard: "Privacy & deletion",
+  PrivacyDashboard: "Privacy dashboard",
   Billing: "Billing & usage",
   Settings: "Settings",
   Coordination: "Coordination",
