@@ -67,6 +67,13 @@ def _validator_call_names(tree: ast.Module) -> frozenset[str]:
             for alias in node.names:
                 if alias.name in {"validate_ref", "validate_refs"}:
                     names.add(alias.asname or alias.name)
+        elif isinstance(node, ast.ImportFrom) and node.module == "substrate":
+            for alias in node.names:
+                if alias.name != "provenance":
+                    continue
+                local = alias.asname or alias.name
+                names.add(f"{local}.validate_ref")
+                names.add(f"{local}.validate_refs")
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name != "substrate.provenance":
