@@ -54,6 +54,18 @@ open-weight from model-name appearance alone.
 - [ ] Reward-↔-downstream-outcome correlation: do high-reward LLM calls correlate with `OUTCOME_RECORDED` events grading the resulting synthesis as `DEFENSIBLE`? Evidence in a notebook committed to `compounding/verification/`.
 - [ ] Reward noise floor characterized: run the same prompt × model × eval set ≥3 times. Standard deviation of the reward must be smaller than the smallest improvement that would matter.
 
+**Volume evidence command:**
+
+```bash
+./.venv/bin/python -m compounding.verification.reward_signal \
+  --events-dir ~/.antiek/research_events
+```
+
+Do not pass `--include-live-jsonl`, `--min-llm-events`, or
+`--min-rubric-scored-events` for unlock evidence. This command only proves the
+`rubric.scored` volume bullet. It does **not** prove reward/outcome correlation
+or the reward noise floor.
+
 **Why this matters:** RL maximizes whatever reward you give it. If the reward is noise, you train noise. If the reward is decorrelated from outcome, you train against the outcome. Either is worse than not training.
 
 **Current state:** Schema locked (`middleware/outcomes/events.py`), scorer not implemented, no production emissions, no correlation analysis.
