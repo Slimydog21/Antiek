@@ -7,7 +7,7 @@ import os
 import re
 import sys
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 try:
@@ -194,13 +194,7 @@ def _parse_cluster_response(
             question_ids=qids,
         ))
     out.sort(key=lambda c: c.priority_rank)
-    return [
-        GapCluster(
-            cluster_id=c.cluster_id, label=c.label, rationale=c.rationale,
-            priority_rank=i, question_ids=c.question_ids,
-        )
-        for i, c in enumerate(out)
-    ]
+    return [replace(c, priority_rank=i) for i, c in enumerate(out)]
 
 
 def _parse_cascade_response(
@@ -250,16 +244,7 @@ def _parse_cascade_response(
         ))
     kept.sort(key=lambda p: p.order_index)
     return (
-        [
-            GapPrompt(
-                cluster_id=p.cluster_id, order_index=i,
-                prompt_text=p.prompt_text, target_provider=p.target_provider,
-                expected_output_shape=p.expected_output_shape,
-                depends_on_prior_order_index=p.depends_on_prior_order_index,
-                rationale=p.rationale,
-            )
-            for i, p in enumerate(kept)
-        ],
+        [replace(p, order_index=i) for i, p in enumerate(kept)],
         grounding_drops,
     )
 

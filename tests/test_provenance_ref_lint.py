@@ -715,6 +715,107 @@ def parse(obj, canonical):
     assert find_violations(tmp_path) == []
 
 
+def test_lint_rejects_output_that_mixes_validator_with_raw_ref(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "mixed_trust_role" / "parser.py",
+        """
+from substrate.provenance import validate_ref
+
+def parse(obj, canonical):
+    return {
+        "question_id": (
+            validate_ref(obj.get("qid"), canonical),
+            obj.get("question_id"),
+        )
+    }
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any("question_id" in violation for violation in violations)
+
+
+def test_lint_rejects_raw_output_even_when_same_field_was_validated_elsewhere(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "same_field_bypass_role" / "parser.py",
+        """
+from substrate.provenance import validate_ref
+
+def parse(obj, canonical):
+    validate_ref(obj.get("question_id"), canonical)
+    return {"question_id": obj.get("question_id")}
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any("question_id" in violation for violation in violations)
+
+
+def test_lint_rejects_output_alias_that_mixes_trusted_and_raw_refs(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "mixed_alias_role" / "parser.py",
+        """
+from substrate.provenance import validate_ref
+
+def parse(obj, canonical):
+    trusted = validate_ref(obj.get("qid"), canonical)
+    mixed = trusted or obj.get("question_id")
+    return {"question_id": mixed}
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any("question_id" in violation for violation in violations)
+
+
+def test_lint_allows_output_alias_that_combines_only_trusted_refs(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "trusted_combo_role" / "parser.py",
+        """
+from substrate.provenance import validate_ref
+
+def parse(obj, canonical):
+    primary = validate_ref(obj.get("qid"), canonical)
+    fallback = validate_ref(obj.get("fallback_qid"), canonical)
+    selected = primary or fallback
+    return {"question_id": selected}
+""",
+    )
+
+    assert find_violations(tmp_path) == []
+
+
+def test_lint_allows_none_for_optional_ref_output(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "optional_ref_role" / "parser.py",
+        """
+from dataclasses import dataclass
+
+@dataclass
+class GroundingVerdict:
+    located_chunk_id: str | None
+
+def parse(obj):
+    return GroundingVerdict(None)
+""",
+    )
+
+    assert find_violations(tmp_path) == []
+
+
 def test_lint_allows_subscripted_refs_routed_through_validator(
     tmp_path: Path,
 ) -> None:
