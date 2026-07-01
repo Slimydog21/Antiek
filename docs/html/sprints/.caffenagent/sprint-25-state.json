@@ -8,7 +8,9 @@
   "mode": "status_reconciliation",
   "deterministic_evidence": {
     "backend_gate": "89 passed: marketplace metrics, marketplace API, programmatic gate, cross-graph, creator payouts, rev-share, intent targeting, phase1 deploy probe",
+    "ad_inventory_scaling_gate": "61 passed: tests/test_ad_inventory_scaling.py tests/test_voice_style.py tests/test_ad_inventory.py tests/test_reader_ad_slots.py tests/test_ad_targeting.py",
     "frontend_gate": "33 passed: npm test -- MarketplaceMetrics PayoutDashboard taxonomy --run from apps/reading",
+    "ad_inventory_scaling_files": "substrate/ad_inventory/scaling.py now provides the Sprint 25+ inline sponsor voice-discipline suppression hook",
     "marketplace_metrics_files": "substrate/marketplace_metrics and apps/reading/src/modes/MarketplaceMetrics exist",
     "mixed_attribution_files": "substrate/rev_share/mixed_attribution.py exists with rev-share tests",
     "ask_expert_files": "substrate/cross_graph/ask_expert.py exists with cross-graph tests",

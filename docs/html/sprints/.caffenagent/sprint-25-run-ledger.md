@@ -10,6 +10,8 @@
 
 ## Fresh Gates
 
+- `.venv/bin/python -m pytest tests/test_ad_inventory_scaling.py tests/test_voice_style.py tests/test_ad_inventory.py tests/test_reader_ad_slots.py tests/test_ad_targeting.py -q`
+  - Passed: 61 tests.
 - `.venv/bin/python -m pytest tests/test_marketplace_metrics.py tests/test_api_marketplace_dashboard.py tests/test_programmatic_gate.py tests/test_cross_graph.py tests/test_api_creator_payouts.py tests/test_rev_share.py tests/test_intent_targeting.py tests/test_phase1_deploy_probe.py -q`
   - Passed: 89 tests, 1 warning.
 - `cd apps/reading && npm test -- MarketplaceMetrics PayoutDashboard taxonomy --run`
@@ -20,6 +22,7 @@
 | Criterion | Status | Evidence |
 |-----------|--------|----------|
 | Ad-supported public consumption > 60% monthly revenue | unlock-gated | no live revenue evidence |
+| Inline sponsor card voice-discipline suppression hook exists | verified | `substrate/ad_inventory/scaling.py`; `tests/test_ad_inventory_scaling.py` |
 | At least 10 creators earn above payout threshold | unlock-gated | creator payout APIs/tests pass; no live cohort |
 | Cross-graph ask-an-expert paid interview completes | unlock-gated | cross-graph substrate tests pass; no live transaction |
 | External observer calls Antiek a marketplace unprompted | external-gated | no observer evidence |

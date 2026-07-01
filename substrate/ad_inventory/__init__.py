@@ -69,10 +69,20 @@ from .payout import (
     distribute_with_gates,
     enforce_per_document_daily_cap,
 )
+from .scaling import (
+    AdPlacementContext,
+    AdPlacementDecision,
+    AdSlotPattern,
+    evaluate_ad_placement,
+    should_suppress_ad_slot,
+)
 
 __all__ = [
     "AdImpression",
     "AdInventoryItem",
+    "AdPlacementContext",
+    "AdPlacementDecision",
+    "AdSlotPattern",
     "AdvertiserOnboardingError",
     "AdvertiserRecord",
     "AdvertiserRegistry",
@@ -103,6 +113,7 @@ __all__ = [
     "distribute_session_ad_revenue",
     "distribute_with_gates",
     "enforce_per_document_daily_cap",
+    "evaluate_ad_placement",
     "is_serving",
     "learned_ranker_enabled",
     "reject_advertiser",
@@ -111,6 +122,7 @@ __all__ = [
     "select_lead_gen_ad",
     "select_targeted_ad",
     "select_targeted_ad_rule_based",
+    "should_suppress_ad_slot",
     "submit_application",
     "suspend_advertiser",
 ]
