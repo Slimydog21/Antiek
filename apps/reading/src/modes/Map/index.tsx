@@ -31,7 +31,7 @@ const GROUPS: { title: string; routes: RouteEntry[] }[] = [
       { path: "/library/browse", title: "Library browse", description: "Paginated catalog over every servable work" },
       { path: "/readings", title: "Your readings", description: "Saved reads and created deliverables" },
       { path: "/meta-readings", title: "All meta-docs", description: "Created deliverables only" },
-      { path: "/read/meta-reading", title: "Meta-reading", description: "Research across your owned reading space" },
+      { path: "/read/meta-reading", title: "Meta-reading", description: "Proposed — sign-off pending" },
       { path: "/my-research", title: "My research", description: "One monitor over running + completed research" },
       { path: "/documents", title: "Documents", description: "Saved sources by quality tier" },
       { path: "/notebooks", title: "Notebooks", description: "Wedge 2 literate-analysis surface" },

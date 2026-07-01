@@ -203,7 +203,7 @@ const ROUTE_INDEX: PaletteRoute[] = [
     kind: "route",
     id: "route:meta-reading",
     title: "Meta-reading",
-    subtitle: "Research across your owned reading space (/read/meta-reading)",
+    subtitle: "Proposed — sign-off pending (/read/meta-reading)",
     path: "/read/meta-reading",
   },
   {

@@ -85,6 +85,16 @@ describe("CommandPalette", () => {
     expect(screen.queryByText(/\(\/trust\)/i)).toBeNull();
   });
 
+  it("labels the meta-reading generator as proposed before navigation", async () => {
+    renderPalette();
+
+    window.dispatchEvent(new Event("antiek:palette:toggle"));
+    await userEvent.type(await screen.findByRole("textbox"), "meta-reading");
+
+    expect(await screen.findByText("Meta-reading")).toBeTruthy();
+    expect(screen.getByText("Proposed — sign-off pending (/read/meta-reading)")).toBeTruthy();
+  });
+
   it("opens a parked question in Brainstorm with the thought-partner selection seeded", async () => {
     renderPalette();
 
