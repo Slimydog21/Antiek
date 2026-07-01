@@ -27,6 +27,9 @@ def test_operator_actions_reflect_privacy_integration_evidence():
     worker = (
         REPO / "substrate" / "deletion_worker" / "__main__.py"
     ).read_text(encoding="utf-8")
+    stripe_connect = (
+        REPO / "tools" / "stripe_connect" / "__init__.py"
+    ).read_text(encoding="utf-8")
     compact_text = " ".join(text.split())
     table_rows = [
         line
@@ -46,6 +49,10 @@ def test_operator_actions_reflect_privacy_integration_evidence():
     assert "/trust-center/telemetry-preferences" in text
     assert "/trust-center/deletion-requests" in text
     assert "substrate/deletion_worker/__main__.py" in text
+    assert "tools/stripe_connect/__init__.py" in text
+    assert "RevSharePayoutRouter" in text
+    assert "route_impression_revenue" in text
+    assert "export_tax_year" in text
     assert "python -m substrate.deletion_worker" in text
     assert '"/trust-center"' in api
     assert '"/trust-center/telemetry-preferences"' in api
@@ -62,3 +69,6 @@ def test_operator_actions_reflect_privacy_integration_evidence():
     assert 'path="/operator/advertiser-campaigns"' in app
     assert 'path="/operator/payouts/dashboard"' in app
     assert "python -m substrate.deletion_worker" in worker
+    assert "RevSharePayoutRouter" in stripe_connect
+    assert "route_impression_revenue" in stripe_connect
+    assert "export_tax_year" in stripe_connect

@@ -38,6 +38,13 @@ from .pricing import (
     apply_margin,
     record_token_usage,
 )
+from .payouts import (
+    PayoutOutcome,
+    RevSharePayoutRouter,
+    TaxYearRow,
+    export_tax_year,
+    route_impression_revenue,
+)
 from .providers import (
     MockStripeProvider,
     RealStripeProvider,
@@ -49,17 +56,22 @@ from .providers import (
 __all__ = [
     "BillingEvent",
     "MockStripeProvider",
+    "PayoutOutcome",
     "PricingTier",
     "RealStripeProvider",
+    "RevSharePayoutRouter",
     "StripeAccountStatus",
     "StripeConnectAccount",
     "StripeOperationsLog",
     "StripeProvider",
     "StripeUnavailable",
+    "TaxYearRow",
     "TokenUsageRecord",
     "apply_margin",
     "create_publisher_account",
     "create_user_creator_account",
+    "export_tax_year",
     "get_stripe_provider",
     "record_token_usage",
+    "route_impression_revenue",
 ]

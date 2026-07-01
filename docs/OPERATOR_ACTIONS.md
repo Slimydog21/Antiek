@@ -513,6 +513,9 @@ have persisted across multiple commits on `reader/integration`:
   `/marketplace`, `/me/payouts`, and the operator campaign/payout routes.
 - `substrate/deletion_worker/__main__.py` provides the operator-run
   deletion worker command: `python -m substrate.deletion_worker`.
+- `tools/stripe_connect/__init__.py` re-exports
+  `RevSharePayoutRouter`, `route_impression_revenue`,
+  `export_tax_year`, and the related payout result types.
 
 **Fresh evidence, 2026-07-01:** DuckLake query-time catalog routing now
 has production call-path proof:
