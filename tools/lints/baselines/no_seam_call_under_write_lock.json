@@ -1,0 +1,13 @@
+{
+  "generated_at": "2026-07-01T14:54:49.990288+00:00",
+  "lint": "no_seam_call_under_write_lock",
+  "schema_version": 1,
+  "violations": [
+    {
+      "col": 20,
+      "kind": "seam-under-write-lock:harvest",
+      "line": 283,
+      "path": "tools/arxiv_oai_sync.py"
+    }
+  ]
+}

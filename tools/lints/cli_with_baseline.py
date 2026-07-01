@@ -67,6 +67,12 @@ from tools.lints.no_unbounded_external_call import (
 from tools.lints.no_unbounded_external_call import (
     scan_paths as scan_unbounded_external_call,
 )
+from tools.lints.no_seam_call_under_write_lock import (
+    Violation as SeamUnderLockViolation,
+)
+from tools.lints.no_seam_call_under_write_lock import (
+    scan_paths as scan_seam_under_lock,
+)
 from tools.lints.unannotated_bypass import (
     BypassViolation,
 )
@@ -101,6 +107,14 @@ def _unbounded_external_call_to_key(v: object) -> ViolationKey:
     )
 
 
+def _seam_under_lock_to_key(v: object) -> ViolationKey:
+    assert isinstance(v, SeamUnderLockViolation)
+    return ViolationKey(
+        path=str(v.path), line=v.line, col=v.col,
+        kind=f"seam-under-write-lock:{v.seam}",
+    )
+
+
 # Registry: lint-name → (scan-function, key-adapter, friendly-name).
 # Adding a new lint = add an entry here + import the scan_paths
 # function. The CLI is registry-driven; subcommands list current
@@ -116,6 +130,11 @@ LINT_REGISTRY: dict[str, tuple[
         scan_unbounded_external_call,
         _unbounded_external_call_to_key,
         "no_unbounded_external_call",
+    ),
+    "seam_under_write_lock": (
+        scan_seam_under_lock,
+        _seam_under_lock_to_key,
+        "no_seam_call_under_write_lock",
     ),
 }
 
