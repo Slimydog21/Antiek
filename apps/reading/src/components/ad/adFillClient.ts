@@ -84,6 +84,12 @@ function houseFill(position: BorderPosition): SlotFill {
   return { position, kind: "house", house: null, revenue_usd_cents: 0 };
 }
 
+function safePageIndex(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
 /**
  * Fetch the fills for the border's active reader edges. The live backend route
  * fills one edge per request; a missing reader document, 404, or any error
@@ -96,7 +102,8 @@ export async function fetchFill(opts: {
   positions: BorderPosition[];
   signal?: AbortSignal;
 }): Promise<FillResult> {
-  if (!opts.documentId || opts.pageIndex === undefined || opts.pageIndex === null) {
+  const pageIndex = safePageIndex(opts.pageIndex);
+  if (!opts.documentId || pageIndex === null) {
     return { fills: opts.positions.map(houseFill), served: false };
   }
   try {
@@ -104,7 +111,7 @@ export async function fetchFill(opts: {
       opts.positions.map(async (position) => {
         const params = new URLSearchParams({
           document_id: opts.documentId as string,
-          page_index: String(opts.pageIndex),
+          page_index: String(pageIndex),
           position,
         });
         const resp = await apiFetch(`${API_BASE}/api/ad/fill?${params.toString()}`, {
