@@ -30,13 +30,34 @@ interface ListResponse {
 }
 
 const FILTERS = ["all", "user_owned", "user_public_contribution"] as const;
+type NotebookFilter = (typeof FILTERS)[number];
+
+const FILTER_LABELS: Record<NotebookFilter, string> = {
+  all: "All",
+  user_owned: "Private",
+  user_public_contribution: "Public contribution",
+};
+
+function notebookVisibilityLabel(contentClass: string): string {
+  if (contentClass === "user_public_contribution") return "Public contribution";
+  if (contentClass === "user_owned") return "Private";
+  return "Unclassified";
+}
+
+function notebookLinkSummary(row: NotebookSummary): string {
+  const links = [
+    row.investigation_id ? "linked research" : null,
+    row.document_id ? "linked document" : null,
+  ].filter(Boolean);
+  return links.length > 0 ? links.join(" · ") : "No linked source";
+}
 
 export default function NotebooksIndex() {
   const navigate = useNavigate();
   const [rows, setRows] = useState<NotebookSummary[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<(typeof FILTERS)[number]>("all");
+  const [filter, setFilter] = useState<NotebookFilter>("all");
 
   // New-notebook draft.
   const [draftTitle, setDraftTitle] = useState<string>("");
@@ -49,7 +70,7 @@ export default function NotebooksIndex() {
     try {
       const resp = await apiFetch("/notebooks");
       if (!resp.ok) {
-        throw new Error(`GET /notebooks: HTTP ${resp.status}`);
+        throw new Error(`Couldn’t load notebooks (HTTP ${resp.status}).`);
       }
       const data: ListResponse = await resp.json();
       setRows(data.notebooks ?? []);
@@ -86,7 +107,7 @@ export default function NotebooksIndex() {
         }),
       });
       if (!resp.ok) {
-        throw new Error(`POST /notebooks: HTTP ${resp.status}`);
+        throw new Error(`Couldn’t create the notebook (HTTP ${resp.status}).`);
       }
       const created: NotebookSummary = await resp.json();
       setDraftTitle("");
@@ -110,10 +131,10 @@ export default function NotebooksIndex() {
               Notebooks
             </h1>
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-              Per master-spec §4.2: notebooks are the literate-analysis
-              surface — markdown prose interleaved with claim cards,
-              region embeds, question cards, and substrate refs.
-              Promote-to-public is gated on the §13.9 quality gate.
+              A notebook is the place where reading turns into analysis:
+              prose, source passages, notes, open questions, links across
+              documents, images, math, and reusable sections live together.
+              Public sharing stays gated until the quality review clears.
             </p>
           </header>
 
@@ -132,8 +153,9 @@ export default function NotebooksIndex() {
               type="text"
               value={draftInvId}
               onChange={(e) => setDraftInvId(e.target.value)}
-              placeholder="Investigation ID (optional)"
-              className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
+              aria-label="Link to research"
+              placeholder="Link to research (optional)"
+              className="w-full text-sm font-serif text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
             />
             <button
               type="button"
@@ -158,7 +180,7 @@ export default function NotebooksIndex() {
                       : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright hover:bg-ice-4 dark:bg-charcoal-1"
                   }`}
                 >
-                  {f.replace(/_/g, " ")}
+                  {FILTER_LABELS[f]}
                 </button>
               ))}
             </div>
@@ -199,13 +221,10 @@ export default function NotebooksIndex() {
                   render: (r) => (
                     <div>
                       <p className="font-serif text-ink dark:text-bright truncate">
-                        {r.title}
+                        {r.title || "Untitled notebook"}
                       </p>
                       <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
-                        {r.notebook_id}
-                        {r.investigation_id && (
-                          <> · inv: {r.investigation_id.slice(0, 8)}</>
-                        )}
+                        {notebookLinkSummary(r)}
                       </p>
                     </div>
                   ),
@@ -221,7 +240,7 @@ export default function NotebooksIndex() {
                 },
                 {
                   key: "class",
-                  header: "Class",
+                  header: "Visibility",
                   align: "right",
                   render: (r) => (
                     <LemonTag
@@ -231,7 +250,7 @@ export default function NotebooksIndex() {
                           : "muted"
                       }
                     >
-                      {r.content_class.replace(/_/g, " ")}
+                      {notebookVisibilityLabel(r.content_class)}
                     </LemonTag>
                   ),
                 },
