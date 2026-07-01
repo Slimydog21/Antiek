@@ -9,6 +9,8 @@ from statistics import pstdev
 from tools.prompt_autoresearch.runner import PromptMutationOutcome
 from tools.prompt_autoresearch.verdict import MIN_MEAN_DELTA
 
+_FLOAT_TOLERANCE = 1e-9
+
 
 @dataclass(frozen=True)
 class CalibrationReport:
@@ -129,6 +131,14 @@ def _validate_report(report: CalibrationReport) -> None:
     for field in ("sigma", "two_sigma", "floor_epsilon", "recommended_epsilon"):
         if getattr(report, field) < 0.0:
             raise ValueError(f"calibration report {field} must be non-negative")
+    if abs(report.two_sigma - (2.0 * report.sigma)) > _FLOAT_TOLERANCE:
+        raise ValueError("calibration report two_sigma must equal 2 * sigma")
+    expected_epsilon = max(report.floor_epsilon, report.two_sigma)
+    if abs(report.recommended_epsilon - expected_epsilon) > _FLOAT_TOLERANCE:
+        raise ValueError(
+            "calibration report recommended_epsilon must equal "
+            "max(floor_epsilon, two_sigma)"
+        )
     if report.recommended_epsilon < report.floor_epsilon:
         raise ValueError("calibration report recommended_epsilon must be at least floor_epsilon")
     if not isinstance(report.rationale, str) or not report.rationale.strip():
