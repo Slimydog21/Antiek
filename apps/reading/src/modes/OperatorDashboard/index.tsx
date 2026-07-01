@@ -37,6 +37,22 @@ interface CompositeSnapshot {
   recentPayouts: PayoutTransfer[];
 }
 
+function nonNegativeFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
+function centsToUsd(value: unknown): string {
+  const cents = nonNegativeFiniteNumber(value) ?? 0;
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function decimalUsd(value: string): string {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? `$${parsed.toFixed(2)}` : "$0.00";
+}
+
 /**
  * Operator dashboard (master-spec §9.10 + §13.7).
  *
@@ -267,7 +283,7 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
                   className="flex justify-between gap-2 truncate"
                 >
                   <span>{p.status.replace(/_/g, " ")}</span>
-                  <span>${(p.amount_usd_cents / 100).toFixed(2)}</span>
+                  <span>{centsToUsd(p.amount_usd_cents)}</span>
                 </li>
               ))}
             </ul>
@@ -314,7 +330,7 @@ function PublisherSection({
                   {p.display_name}
                 </p>
                 <p className="text-xs font-mono text-shadow-1 dark:text-moonlight truncate">
-                  {p.ip_holder_id} · escrow ${p.escrow_balance_usd}
+                  {p.ip_holder_id} · escrow {decimalUsd(p.escrow_balance_usd)}
                   {p.legal_contact_email && (
                     <span> · {p.legal_contact_email}</span>
                   )}
