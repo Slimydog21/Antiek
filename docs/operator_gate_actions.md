@@ -383,7 +383,8 @@ follow-ons from the personal-reading lane and remain tracked below.
 
 ## Operator Activities — Produce Traffic (cross-session breadcrumb)
 
-**Engineering scope of the spec is essentially complete as of 2026-05-23.**
+**Engineering-side blockers known from the v4/v5 audit sequence are reconciled
+as of 2026-07-01.**
 What's left is operator-bound action. Future-agent reading this section:
 DO NOT propose more engineering until the bottlenecks below clear.
 

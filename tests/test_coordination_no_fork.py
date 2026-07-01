@@ -100,9 +100,14 @@ def test_operator_gate_actions_summary_tracks_appended_follow_ons() -> None:
     assert "counsel-pending public Trust Center copy" in md_compact
     assert "live control-plane references are reconciled" in md_compact
     assert "publication still awaits G2-cleared wording and OA-013" in md_compact
+    assert (
+        "Engineering-side blockers known from the v4/v5 audit sequence are "
+        "reconciled as of 2026-07-01"
+    ) in md_compact
     assert "The nine gates" not in md
     assert "of the 8 gates" not in md
     assert "public-facing scaffold; awaits G2" not in md_compact
+    assert "Engineering scope of the spec is essentially complete as of 2026-05-23" not in md_compact
     assert "plus appended personal-reading-lane follow-on gate-actions" in master_compact
     assert "plus appended personal-reading-lane follow-on gate-actions" in deferrals_compact
     assert "the eight binding gates (G1" not in master_compact
