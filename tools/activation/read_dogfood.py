@@ -80,6 +80,11 @@ NON_LIBRARY_ENTRY_DOORS: frozenset[str] = frozenset(
     }
 )
 ALLOWED_STEP_STATUSES: frozenset[str] = frozenset({"pass", "fail", "inert"})
+ALLOWED_FINAL_VERDICTS: tuple[str, ...] = (
+    "ACTIVATE",
+    "REPAIR",
+    "ROLL BACK CLAIM",
+)
 
 
 @dataclass(frozen=True)
@@ -89,6 +94,7 @@ class DogfoodReport:
     live_provider_sessions: int
     citation_trace_sessions: int
     non_library_sessions: int
+    final_verdict: str | None
     closure_ready: bool
     failures: tuple[str, ...]
 
@@ -99,6 +105,7 @@ class DogfoodReport:
             "live_provider_sessions": self.live_provider_sessions,
             "citation_trace_sessions": self.citation_trace_sessions,
             "non_library_sessions": self.non_library_sessions,
+            "final_verdict": self.final_verdict,
             "closure_ready": self.closure_ready,
             "failures": list(self.failures),
         }
@@ -219,6 +226,9 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
         non_library_sessions=non_library_sessions,
     )
     failures.extend(closure_failures)
+    final_verdict = _final_verdict(records)
+    if not closure_failures:
+        failures.extend(_final_verdict_failures(final_verdict))
 
     return DogfoodReport(
         total_sessions=len(records),
@@ -226,6 +236,7 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
         live_provider_sessions=len(live_provider_sessions),
         citation_trace_sessions=len(citation_trace_sessions),
         non_library_sessions=len(non_library_sessions),
+        final_verdict=final_verdict,
         closure_ready=not failures,
         failures=tuple(failures),
     )
@@ -402,6 +413,31 @@ def _closure_failures(
     return failures
 
 
+def _final_verdict(records: list[dict[str, Any]]) -> str | None:
+    if not records:
+        return None
+    raw_verdict = _required_text(records[-1].get("verdict"))
+    if not raw_verdict:
+        return None
+    normalized = raw_verdict.replace("_", " ").replace("-", " ").upper()
+    normalized = " ".join(normalized.split())
+    for verdict in ALLOWED_FINAL_VERDICTS:
+        if normalized == verdict:
+            return verdict
+    return raw_verdict
+
+
+def _final_verdict_failures(final_verdict: str | None) -> list[str]:
+    allowed = ", ".join(ALLOWED_FINAL_VERDICTS)
+    if final_verdict is None:
+        return [f"final verdict required once closure evidence passes: {allowed}"]
+    if final_verdict not in ALLOWED_FINAL_VERDICTS:
+        return [f"final verdict must be one of: {allowed}"]
+    if final_verdict != "ACTIVATE":
+        return [f"closure requires final verdict ACTIVATE; found {final_verdict}"]
+    return []
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("log", type=Path, help="Read activation dogfood JSONL log")
@@ -426,7 +462,8 @@ def main(argv: list[str] | None = None) -> int:
             f"{report.valid_sessions}/{report.total_sessions} valid sessions, "
             f"{report.live_provider_sessions} live-provider, "
             f"{report.citation_trace_sessions} citation-traced, "
-            f"{report.non_library_sessions} non-library"
+            f"{report.non_library_sessions} non-library, "
+            f"verdict={report.final_verdict or 'missing'}"
         )
         for failure in report.failures:
             print(f"  - {failure}")
