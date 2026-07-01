@@ -5,6 +5,7 @@ import type { PlanTree, ResearchStatus } from "../../api/research";
 import CostMeter from "./CostMeter";
 import PlanEditor from "./PlanEditor";
 import ResearchPanel from "./ResearchPanel";
+import { launchedChildIdsFromSession } from "./sessionLineage";
 
 afterEach(() => cleanup());
 
@@ -175,6 +176,19 @@ describe("ResearchPanel — steer controls", () => {
     fireEvent.click(screen.getByRole("button", { name: "Stop" }));
 
     expect((await screen.findByRole("alert")).textContent).toBe("Steer failed: budget already halted");
+  });
+});
+
+describe("Monitor — launched child ids", () => {
+  it("derives launched child labels only from known session research ids", () => {
+    const launched = launchedChildIdsFromSession([
+      { investigation_id: "inv-child-a" },
+      { investigation_id: "inv-child-b" },
+    ]);
+
+    expect(launched.has("inv-child-a")).toBe(true);
+    expect(launched.has("inv-child-b")).toBe(true);
+    expect(launched.has("reserved-but-not-launched")).toBe(false);
   });
 });
 

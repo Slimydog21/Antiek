@@ -17,7 +17,7 @@
  * not reach for Daytona.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { PanelHost } from "../../workspace/PanelHost";
@@ -42,6 +42,7 @@ import type { PlanEdit } from "./PlanEditor";
 import ResearchPanel from "./ResearchPanel";
 import Canvas from "./Canvas/Canvas";
 import BlockDetail from "./BlockDetail";
+import { launchedChildIdsFromSession } from "./sessionLineage";
 import { useResearchSession } from "./useResearchSession";
 
 interface PlanState {
@@ -173,6 +174,10 @@ function ComposeBar({
 function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
   const session = useResearchSession(sessionId);
   const [steering, setSteering] = useState<string | null>(null);
+  const launchedChildIds = useMemo(
+    () => launchedChildIdsFromSession(session.researches),
+    [session.researches],
+  );
   // SPR-03: the "organism" canvas branch. When set to a completed
   // investigation id, the monitor swaps the live-card grid for the
   // block-canvas view of that research's insight/question graph. Null = the
@@ -244,6 +249,7 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
         <div className="relative min-h-[480px] flex-1 overflow-hidden rounded-hog border-edge border-sun">
           <Canvas
             investigationId={canvasFor}
+            launchedChildIds={launchedChildIds}
             onOpenDetail={setOpenNode}
             onCiteSource={onCiteSource}
           />

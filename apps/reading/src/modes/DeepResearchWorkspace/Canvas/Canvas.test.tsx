@@ -315,6 +315,50 @@ describe("Canvas — empty + single-node edge cases (rigor #3)", () => {
   });
 });
 
+describe("Canvas — launched child edge state", () => {
+  it("threads launchedChildIds into the lineage edge label", async () => {
+    getDistillationMock.mockResolvedValue({
+      investigation_id: "inv-1",
+      insights: [],
+      questions: [
+        question("q1", "Should this deepen?", {
+          reserved_child_investigation_id: "inv-child",
+        }),
+      ],
+    });
+    getTrajectoryMock.mockResolvedValue({ investigation_id: "inv-1", count: 0, events: [] });
+
+    render(<Canvas investigationId="inv-1" launchedChildIds={new Set(["inv-child"])} />);
+    await waitFor(() => expect(screen.getByText("Should this deepen?")).toBeTruthy());
+
+    const edge = document.querySelector('[data-edge-to="inv-child"]');
+    expect(edge).toBeTruthy();
+    expect(edge!.getAttribute("data-child-state")).toBe("launched");
+    expect(screen.getByText("launched deeper research")).toBeTruthy();
+  });
+
+  it("leaves a reserved child dashed when the launched set does not contain it", async () => {
+    getDistillationMock.mockResolvedValue({
+      investigation_id: "inv-1",
+      insights: [],
+      questions: [
+        question("q1", "Should this deepen?", {
+          reserved_child_investigation_id: "inv-child",
+        }),
+      ],
+    });
+    getTrajectoryMock.mockResolvedValue({ investigation_id: "inv-1", count: 0, events: [] });
+
+    render(<Canvas investigationId="inv-1" launchedChildIds={new Set(["other-child"])} />);
+    await waitFor(() => expect(screen.getByText("Should this deepen?")).toBeTruthy());
+
+    const edge = document.querySelector('[data-edge-to="inv-child"]');
+    expect(edge).toBeTruthy();
+    expect(edge!.getAttribute("data-child-state")).toBe("reserved");
+    expect(screen.getByText("reserved deeper research")).toBeTruthy();
+  });
+});
+
 describe("Canvas — a plain click (no movement) does NOT persist", () => {
   it("a pointer down/up without movement emits no event", async () => {
     getDistillationMock.mockResolvedValue({
