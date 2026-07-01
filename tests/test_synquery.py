@@ -117,6 +117,20 @@ def test_adapter_filters_by_budget(monkeypatch):
     assert "expensive" not in expert_ids
 
 
+def test_adapter_refuses_budget_above_hard_cap(monkeypatch):
+    monkeypatch.setenv("ANTIEK_SYNQUERY_ENABLED", "1")
+    adapter = SynqueryAdapter(client=MockSynqueryClient())
+    request = SynqueryRequest(
+        question_id="q-cap",
+        question_text="x",
+        investigation_id=None,
+        operator_budget_usd=5000.01,
+    )
+
+    with pytest.raises(SynqueryAPIError, match="hard cap"):
+        adapter.request_experts(request)
+
+
 def test_adapter_book_returns_pending_handle(monkeypatch):
     monkeypatch.setenv("ANTIEK_SYNQUERY_ENABLED", "1")
     adapter = SynqueryAdapter(client=MockSynqueryClient())
@@ -131,6 +145,48 @@ def test_adapter_book_returns_pending_handle(monkeypatch):
     )
     assert response.booking_handle is not None
     assert response.booking_handle.booking_status == "pending"
+
+
+def test_adapter_booking_blocks_estimated_cost_above_effective_cap(monkeypatch):
+    monkeypatch.setenv("ANTIEK_SYNQUERY_ENABLED", "1")
+    adapter = SynqueryAdapter(client=MockSynqueryClient())
+    request = SynqueryRequest(
+        question_id="q-1",
+        question_text="x",
+        investigation_id="inv-x",
+        operator_budget_usd=1000.0,
+    )
+
+    with pytest.raises(SynqueryAPIError, match="exceeds spend cap"):
+        adapter.book_expert_interview(
+            request=request,
+            expert_id="e-pricey",
+            scheduling_window_iso="2026-06-15T14:00:00Z",
+            duration_minutes=90,
+            expert_rate_usd_per_hour=800.0,
+        )
+
+
+def test_adapter_booking_allows_cost_under_operator_cap(monkeypatch):
+    monkeypatch.setenv("ANTIEK_SYNQUERY_ENABLED", "1")
+    adapter = SynqueryAdapter(client=MockSynqueryClient())
+    request = SynqueryRequest(
+        question_id="q-1",
+        question_text="x",
+        investigation_id="inv-x",
+        operator_budget_usd=1000.0,
+    )
+
+    response = adapter.book_expert_interview(
+        request=request,
+        expert_id="e-ok",
+        scheduling_window_iso="2026-06-15T14:00:00Z",
+        duration_minutes=60,
+        expert_rate_usd_per_hour=800.0,
+    )
+
+    assert response.booking_handle is not None
+    assert response.booking_handle.expert_id == "e-ok"
 
 
 def test_adapter_ingests_completed_transcript_as_tier_2_source(monkeypatch, temp_graph):

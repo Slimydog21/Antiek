@@ -3,15 +3,16 @@
   "source_spec_section": "docs/sprint-breakdown.html#sprint-21",
   "target_branch": "reader/integration",
   "status": "operator_gated",
-  "recorded_at": "2026-07-01T21:03:20Z",
+  "recorded_at": "2026-07-01T21:06:56Z",
   "verified_code_sha": "commit containing this record",
   "mode": "status_reconciliation",
   "deterministic_evidence": {
     "backend_gate": "65 passed: tests/test_synquery.py tests/test_api_sprint17_21_endpoints.py tests/test_phase8_gate.py tests/test_phase8_calibration_status.py tests/test_gepa_phase8_bridge.py tests/test_gepa_phase8_applier_e2e.py tests/test_ai_actions.py tests/test_api_ai_undo.py tests/test_billing_pipeline.py",
-    "synquery_transcript_gate": "12 passed: .venv/bin/python -m pytest tests/test_synquery.py -q",
+    "synquery_gate": "15 passed: .venv/bin/python -m pytest tests/test_synquery.py -q",
     "frontend_gate": "31 passed: npm test -- AppShell.hotkeys AISidecar CommandPalette WorkspaceStore --run from apps/reading",
     "synquery_files": "tools/synquery contains feature-flagged adapter/client, booking mock coverage, and completed-transcript ingestion into documents/chunks",
     "synquery_transcript_ingest": "Completed transcript contract persists expert_interview_transcript with source_tier=2, user_owned gate metadata, Synquery provenance metadata, chunking, and idempotent repeated delivery coverage",
+    "synquery_cost_cap": "Contract-equivalent booking cap rejects operator budgets above $5,000 and estimated booking costs above the effective per-deliverable cap",
     "phase8_files": "compounding/skill_growth/gate.py exists with shadow/enforcing tests",
     "ai_sidecar_records": "docs/decisions/posthog-wedge-4-verdict.md accepts current structured AI sidecar undo surface",
     "operator_gate_record": "docs/operator_gate_actions.md records G6 autoresearch Wedge 1 verdict as open"
@@ -22,12 +23,13 @@
     "Returned live Synquery transcript ingests through the verified tier-2 contract path.",
     "Operator closes G6 autoresearch Wedge 1 ratify-or-reject verdict.",
     "If G6 ratifies, Phase 8 enforcing runs in production and records at least one correct rejection.",
-    "Synquery expert-call hard cap is proven against a live or contract-equivalent booking path."
+    "Synquery expert-call hard cap is proven against a live booking path."
   ],
   "not_claimed": [
     "Full repository test suite was not rerun in this S21 pass.",
     "Real Synquery API calls, booking, payment, and transcript webhook were not exercised.",
     "Synquery transcript ingestion was proven with a local contract-equivalent completed-transcript payload, not a live vendor callback.",
+    "Synquery spend-cap enforcement was proven with a local contract-equivalent booking estimate, not a live paid booking.",
     "Phase 8 enforcing was not activated in production because G6 remains open.",
     "Real browser route-by-route visual inspection of the sidecar panel was not performed."
   ],
