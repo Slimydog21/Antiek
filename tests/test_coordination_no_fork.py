@@ -65,14 +65,23 @@ def test_all_eight_gates_present() -> None:
 
 def test_operator_gate_actions_summary_tracks_appended_follow_ons() -> None:
     md = canonical_gate_path().read_text(encoding="utf-8")
+    repo_root = canonical_gate_path().parents[1]
     master_spec = (canonical_gate_path().parents[0] / "master-product-spec.md").read_text(
         encoding="utf-8",
     )
     engineering_deferrals = (
         canonical_gate_path().parents[0] / "engineering_deferrals.md"
     ).read_text(encoding="utf-8")
+    gate_ledger_src = (
+        repo_root / "substrate" / "coordination" / "gate_ledger.py"
+    ).read_text(encoding="utf-8")
+    coordination_copy = (
+        repo_root / "apps" / "reading" / "src" / "modes" / "Coordination" / "GateLedger.tsx"
+    ).read_text(encoding="utf-8")
     master_compact = " ".join(master_spec.split())
     deferrals_compact = " ".join(engineering_deferrals.split())
+    ledger_compact = " ".join(gate_ledger_src.split())
+    coordination_compact = " ".join(coordination_copy.split())
     quick_gate_ids = [
         line.split("|")[1].strip().split()[0]
         for line in md.splitlines()
@@ -95,6 +104,15 @@ def test_operator_gate_actions_summary_tracks_appended_follow_ons() -> None:
     assert "plus appended personal-reading-lane follow-on gate-actions" in deferrals_compact
     assert "the eight binding gates (G1" not in master_compact
     assert "covers the eight gates" not in deferrals_compact
+    assert "The original activation gates (G1-G8)" in ledger_compact
+    assert (
+        "now also records appended operator/legal follow-on gate-actions (G9-G12)"
+        in ledger_compact
+    )
+    assert "The original G1-G8 activation gates" in coordination_compact
+    assert "Appended G9-G12 follow-ons remain" in coordination_compact
+    assert "The eight binding gates" not in ledger_compact
+    assert "The eight binding gates" not in coordination_compact
 
 
 # ── 2. Mutation of a fixture copy is reflected (no stale second copy) ─────────

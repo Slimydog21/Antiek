@@ -3,9 +3,10 @@ import { LemonCard, LemonTag } from "../../components/lemon";
 /**
  * GateLedger — read-only view over docs/operator_gate_actions.md (SPR-05 M3).
  *
- * The eight binding gates presented ONCE as shared cross-workflow gates, each
- * with a per-product IMPACT column (which of Research/Read/Write/Speak it blocks
- * and how). No per-product gate duplication — this is the single canonical view.
+ * The original G1-G8 activation gates presented ONCE as shared cross-workflow
+ * gates, each with a per-product IMPACT column (which of Research/Read/Write/
+ * Speak it blocks and how). Appended G9-G12 operator/legal follow-ons stay in
+ * the source doc; no per-product gate duplication is created here.
  *
  * Presentational: it renders the data the parent fetched from
  * GET /coordination/gates. There is no control here that writes a gate's state;
@@ -68,8 +69,8 @@ export function GateLedger({
           Gate ledger
         </h2>
         <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-          The eight binding gates blocking activation, presented once as shared
-          cross-workflow gates. This is a read-only view over{" "}
+          The original G1-G8 activation gates, presented once as shared
+          cross-workflow gates. Appended G9-G12 follow-ons remain in{" "}
           <code className="font-mono text-xs">{sourcePath}</code> — the
           canonical source. Gate state changes only in that file; nothing here
           can write it.
