@@ -65,6 +65,8 @@ Important constraints already represented in code and docs:
 Primary source files:
 
 - `substrate/ip_holders/__init__.py`
+  (`NOTIFICATION_EMAIL_TEMPLATE`, `render_notification_email`, and the
+  `ip_holders` state machine)
 - `docs/master-product-spec.md` section 9.10
 - `docs/operator_gate_actions.md` section G2
 - `docs/OPERATOR_ACTIONS.md` section OA-001
