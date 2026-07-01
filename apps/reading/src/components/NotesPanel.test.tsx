@@ -81,4 +81,33 @@ describe("NotesPanel", () => {
       ),
     ).toBeTruthy();
   });
+
+  it("accepts numeric-string dispatch metrics", () => {
+    render(
+      <NotesPanel
+        events={[
+          dispatchEvent({
+            provider: "anthropic",
+            model: "claude",
+            input_tokens: "1200",
+            output_tokens: "84",
+            cost_usd: "0.0123456",
+            latency_ms: "1650.4",
+          }),
+        ]}
+        status="open"
+        reconnects={0}
+        investigationId="inv-1"
+        documentId="doc-1"
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.textContent ===
+          "anthropic/claude  in=1200 out=84 $0.01235 1650ms",
+      ),
+    ).toBeTruthy();
+  });
 });
