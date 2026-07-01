@@ -172,7 +172,7 @@ unauthorized access, mis-routed DP signal):
 
 ### Past incidents
 
-_None as of 2026-05-22._
+_None as of 2026-07-01._
 
 ---
 
