@@ -1,0 +1,28 @@
+{
+  "spec_dir": "docs/htmlspec/antiek-hard-to-vary-execution",
+  "product_spec_dir": "docs/specs/ant-h2v",
+  "target_branch": "reader/integration",
+  "status": "done",
+  "recorded_at": "2026-07-01T20:09:18Z",
+  "verified_code_sha": "c9e020c3",
+  "pr": 52,
+  "pr_url": "https://github.com/Slimydog21/Antiek/pull/52",
+  "github_pr_state": "MERGED",
+  "sprints": {
+    "SPR-01": { "status": "done" },
+    "SPR-02": { "status": "done" },
+    "SPR-03": { "status": "done" },
+    "SPR-04": { "status": "done" },
+    "SPR-05": { "status": "done" },
+    "SPR-06": { "status": "done" },
+    "SPR-07": { "status": "done" },
+    "SPR-08": { "status": "done" },
+    "SPR-09": { "status": "done" },
+    "SPR-10": { "status": "done" }
+  },
+  "verification": {
+    "agent_gates": "CANONICAL_VERIFY_OK: agent-gates",
+    "cascade": "CANONICAL_VERIFY_OK: cascade",
+    "loop_one_orchestrator": "5 passed"
+  }
+}
