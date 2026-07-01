@@ -175,7 +175,7 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
         if not _has_minimum_reading_time(minutes_reading):
             failures.append(prefix + "minutes_reading must be at least 20")
 
-        if (
+        session_is_valid = (
             _session_core_steps_pass(steps)
             and not missing
             and not field_format_failures
@@ -185,12 +185,14 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
             and not step_status_failures
             and not issue_failures
             and _has_minimum_reading_time(minutes_reading)
-        ):
+        )
+        if session_is_valid:
             valid_session_ids.add(session_id)
 
-        if _session_live_provider_passed(record, steps):
+        live_provider_passed = _session_live_provider_passed(record, steps)
+        if session_is_valid and live_provider_passed:
             live_provider_sessions.add(session_id)
-        elif record.get("live_provider_ai") is True:
+        elif record.get("live_provider_ai") is True and not live_provider_passed:
             failures.append(
                 prefix
                 + "live_provider_ai=true requires provider-backed steps 3 and 4 to pass"
@@ -198,12 +200,16 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
         if record.get("live_provider_ai") is True and _provider_status(record) != "ready":
             failures.append(prefix + "live_provider_ai=true requires provider_status=ready")
 
-        if _session_citation_traced(record, steps):
+        citation_traced = _session_citation_traced(record, steps)
+        if session_is_valid and citation_traced:
             citation_trace_sessions.add(session_id)
-        elif record.get("citation_traced") is True:
+        elif record.get("citation_traced") is True and not citation_traced:
             failures.append(prefix + "citation_traced=true requires step 5 to pass")
 
-        if _entry_door_token(record.get("entry_door")) in NON_LIBRARY_ENTRY_DOORS:
+        if (
+            session_is_valid
+            and _entry_door_token(record.get("entry_door")) in NON_LIBRARY_ENTRY_DOORS
+        ):
             non_library_sessions.add(session_id)
 
     closure_failures = _closure_failures(
