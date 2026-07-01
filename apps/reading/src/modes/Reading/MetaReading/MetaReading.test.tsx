@@ -197,6 +197,17 @@ describe("MetaReading (M4)", () => {
     });
   });
 
+  it("frames promotion failures as retryable engine failures, not a fake promotion", async () => {
+    acceptPromotionMock.mockRejectedValue(new Error("promotion unavailable"));
+    await generate();
+    fireEvent.click(screen.getByRole("button", { name: /Chase it as a research/ }));
+
+    expect(await screen.findByText(/Couldn’t promote this reading/i)).toBeTruthy();
+    expect(screen.getByText(/Engine: promotion unavailable/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(screen.queryByTestId("promote-done")).toBeNull();
+  });
+
   it("a truncated synthesis is labelled honestly", async () => {
     await generate({ truncated: true });
     expect(screen.getByTestId("meta-reading-truncated")).toBeTruthy();
@@ -224,6 +235,20 @@ describe("MetaReading (M4)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Make the reading" }));
     expect(await screen.findByText(/readable corpus is empty/)).toBeTruthy();
     // No deliverable section, no report.
+    expect(screen.queryByTestId("meta-reading-deliverable")).toBeNull();
+  });
+
+  it("frames generation failures as retryable engine failures, not raw text", async () => {
+    generateMock.mockRejectedValue(new Error("Meta-reading isn’t available right now."));
+    render(<MetaReading />);
+    fireEvent.change(screen.getByPlaceholderText(/What should this reading be about/), {
+      target: { value: "anything" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Make the reading" }));
+
+    expect(await screen.findByText(/Couldn’t make the reading/i)).toBeTruthy();
+    expect(screen.getByText(/Engine: Meta-reading isn’t available right now/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
     expect(screen.queryByTestId("meta-reading-deliverable")).toBeNull();
   });
 

@@ -8,6 +8,7 @@ import ReadAloud from "../../../components/voice/ReadAloud";
 import ReadingColumn from "../../../components/reader/ReadingColumn";
 import { useOpenDocument } from "../../../lib/openDocument";
 import { acceptPromotion, suggestPromotion } from "../../../lib/researchSuggestion";
+import AIActionFailure from "../../../shared/AIActionFailure";
 
 /**
  * MetaReading — the one-shot, READ-ONLY, page-cited synthesis over the OWNED
@@ -36,6 +37,7 @@ const PROPOSED_BANNER_TEXT =
   "Proposed — sign-off pending. Meta-reading is built to a proposed Research↔Read boundary: a one-shot, read-only synthesis over your OWNED books only (never the open internet). The boundary isn’t ratified yet, and reverts to a softer corpus scope if sign-off is withheld.";
 
 type LengthUnit = "pages" | "minutes";
+type ErrorSource = "load" | "generate" | "promotion";
 
 export default function MetaReading() {
   const navigate = useNavigate();
@@ -50,6 +52,7 @@ export default function MetaReading() {
   const [amount, setAmount] = useState(3);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorSource, setErrorSource] = useState<ErrorSource | null>(null);
   const [deliverable, setDeliverable] = useState<MetaReadingResponse | null>(null);
   const [promoted, setPromoted] = useState<string | null>(null);
   const [promoting, setPromoting] = useState(false);
@@ -63,6 +66,7 @@ export default function MetaReading() {
     let cancelled = false;
     setBusy(true);
     setError(null);
+    setErrorSource(null);
     setDeliverable(null);
     setPromoted(null);
     void getSavedMetaReading(assetId)
@@ -86,7 +90,10 @@ export default function MetaReading() {
         });
       })
       .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : String(e));
+          setErrorSource("load");
+        }
       })
       .finally(() => {
         if (!cancelled) setBusy(false);
@@ -117,6 +124,7 @@ export default function MetaReading() {
     if (!prompt.trim() || busy) return;
     setBusy(true);
     setError(null);
+    setErrorSource(null);
     setDeliverable(null);
     setPromoted(null);
     try {
@@ -128,6 +136,7 @@ export default function MetaReading() {
       setDeliverable(res);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
+      setErrorSource("generate");
     } finally {
       setBusy(false);
     }
@@ -143,6 +152,8 @@ export default function MetaReading() {
   const onAcceptPromotion = useCallback(async () => {
     if (!deliverable || promoting) return;
     setPromoting(true);
+    setError(null);
+    setErrorSource(null);
     try {
       const res = await acceptPromotion({
         assetId: deliverable.asset_id,
@@ -152,6 +163,7 @@ export default function MetaReading() {
       setPromoted(res.investigation_id);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
+      setErrorSource("promotion");
     } finally {
       setPromoting(false);
     }
@@ -225,9 +237,23 @@ export default function MetaReading() {
           )}
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded" role="alert">
-              {error}
-            </p>
+            errorSource === "generate" ? (
+              <AIActionFailure
+                title="Couldn’t make the reading"
+                reason={error}
+                onRetry={() => void generate()}
+              />
+            ) : errorSource === "promotion" ? (
+              <AIActionFailure
+                title="Couldn’t promote this reading"
+                reason={error}
+                onRetry={() => void onAcceptPromotion()}
+              />
+            ) : (
+              <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded" role="alert">
+                {error}
+              </p>
+            )
           )}
 
           {deliverable && deliverable.empty && (
