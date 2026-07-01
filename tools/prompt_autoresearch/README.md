@@ -12,7 +12,7 @@ mutation cohort, qualitative review, and final decision artifact.
 ## Files
 
 - `runner.py` — local-only `PromptAutoresearchRunner`, `PromptMutation`,
-  and `PromptMutationOutcome`.
+  `PromptMutationOutcome`, and an injectable iteration event sink.
 - `score.py` — composite score and deterministic sub-scores:
   voice/style, sector vocabulary, and grounding preservation.
 - `budget.py` — per-iteration and total budget caps.
@@ -81,6 +81,11 @@ write_outcomes_json(
     outcomes=runner.iterations,
 )
 ```
+
+If you want a JSONL event log during the run, pass an `event_sink`
+callback when constructing the runner. The runner emits one
+`prompt_autoresearch.iteration_completed` event for every accepted,
+rejected, or budget-rejected iteration; the callback owns persistence.
 
 Then render the calibration note:
 

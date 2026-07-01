@@ -17,6 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
+from typing import Any
 
 from .budget import BudgetCap, BudgetExceeded
 from .score import CompositeScore, composite_score
@@ -98,6 +99,7 @@ class PromptAutoresearchRunner:
     epsilon: float = 0.05  # placeholder; calibration run sets this
     baseline_total_score: float = 0.0
     iterations: list[PromptMutationOutcome] = field(default_factory=list)
+    event_sink: Callable[[dict[str, Any]], None] | None = None
 
     def __post_init__(self) -> None:
         _require_text(self.role, field="role")
@@ -156,6 +158,7 @@ class PromptAutoresearchRunner:
                 notes=f"budget exceeded: {exc}",
             )
             self.iterations.append(outcome)
+            self._emit_iteration_completed(outcome)
             return outcome
 
         rubric = rubric_judge_fn(synthesis_text)
@@ -182,6 +185,7 @@ class PromptAutoresearchRunner:
             proposed_at=mutation.proposed_at,
         )
         self.iterations.append(outcome)
+        self._emit_iteration_completed(outcome)
 
         if accepted:
             # Advance the baseline. The mutation's prompt text is now
@@ -197,6 +201,33 @@ class PromptAutoresearchRunner:
             raise ValueError(
                 f"mutation role {mutation.role!r} does not match runner role {self.role!r}"
             )
+
+    def _emit_iteration_completed(self, outcome: PromptMutationOutcome) -> None:
+        if self.event_sink is None:
+            return
+        self.event_sink({
+            "event": "prompt_autoresearch.iteration_completed",
+            "role": self.role,
+            "mutation_id": outcome.mutation_id,
+            "accepted": outcome.accepted,
+            "baseline_score": outcome.baseline_score,
+            "candidate_score": outcome.candidate_score,
+            "delta": outcome.delta,
+            "epsilon_required": outcome.epsilon_required,
+            "composite_breakdown": {
+                "rubric": outcome.composite_breakdown.rubric,
+                "voice_style": outcome.composite_breakdown.voice_style,
+                "sector_vocab": outcome.composite_breakdown.sector_vocab,
+                "grounding": outcome.composite_breakdown.grounding,
+                "total": outcome.composite_breakdown.total,
+            },
+            "cost_usd": str(outcome.cost_usd),
+            "mutation_rationale": outcome.mutation_rationale,
+            "parent_baseline_id": outcome.parent_baseline_id,
+            "proposed_at": outcome.proposed_at,
+            "notes": outcome.notes,
+            "emitted_at": _now_iso(),
+        })
 
 
 def make_id() -> str:
