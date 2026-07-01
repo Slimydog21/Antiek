@@ -153,7 +153,7 @@ describe("TalkToBook (M2)", () => {
 
     expect(screen.queryByTestId("talk-turn-count")).toBeNull();
     fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
-    expect(screen.getByText(/Ask anything about this book/)).toBeTruthy();
+    expect(screen.getByText(/Ask a cited question about this book/)).toBeTruthy();
   });
 
   it("resets saved state whose active branch no longer exists", () => {
@@ -169,7 +169,19 @@ describe("TalkToBook (M2)", () => {
 
     expect(screen.queryByTestId("talk-turn-count")).toBeNull();
     fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
-    expect(screen.getByText(/Ask anything about this book/)).toBeTruthy();
+    expect(screen.getByText(/Ask a cited question about this book/)).toBeTruthy();
+  });
+
+  it("presents the surface as async cited Q&A, not live voice chat", () => {
+    render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
+
+    expect(screen.getByTestId("talk-to-book-bookmark").textContent).toBe("Ask this book");
+    fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
+    expect(screen.getByLabelText("Ask this book")).toBeTruthy();
+    expect(screen.getByText("Ask “A Book”")).toBeTruthy();
+    expect(screen.getByText(/Answers return asynchronously/i)).toBeTruthy();
+    expect(screen.queryByText(/live voice/i)).toBeNull();
+    expect(screen.queryByText(/real[- ]?time/i)).toBeNull();
   });
 
   it("restores a valid saved branch without refetching", () => {
