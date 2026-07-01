@@ -45,6 +45,14 @@ function lsEtagKey(notebookId: string): string {
   return LS_PREFIX + notebookId + LS_ETAG_SUFFIX;
 }
 
+function parseStoredEtag(value: string | null): number {
+  if (value === null) return 0;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return 0;
+  const n = Number(trimmed);
+  return Number.isSafeInteger(n) ? n : 0;
+}
+
 type Stored = { html: string; etag: number };
 
 function readStored(notebookId: string): Stored | null {
@@ -53,7 +61,7 @@ function readStored(notebookId: string): Stored | null {
     const html = window.localStorage.getItem(lsKey(notebookId));
     if (html === null) return null;
     const etagRaw = window.localStorage.getItem(lsEtagKey(notebookId));
-    const etag = etagRaw === null ? 0 : Number.parseInt(etagRaw, 10) || 0;
+    const etag = parseStoredEtag(etagRaw);
     return { html, etag };
   } catch {
     return null;
@@ -77,8 +85,7 @@ function writeStored(
   if (typeof window === "undefined") return null;
   try {
     const currentRaw = window.localStorage.getItem(lsEtagKey(notebookId));
-    const currentEtag =
-      currentRaw === null ? 0 : Number.parseInt(currentRaw, 10) || 0;
+    const currentEtag = parseStoredEtag(currentRaw);
     if (currentEtag !== expectedEtag) {
       return null;
     }

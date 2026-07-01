@@ -107,6 +107,14 @@ export type AiAction =
 
 type NotebookActionBlock = Extract<AiAction, { kind: "add_to_notebook" }>["block"];
 
+function parseStoredEtag(value: string | null): number {
+  if (value === null) return 0;
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return 0;
+  const n = Number(trimmed);
+  return Number.isSafeInteger(n) ? n : 0;
+}
+
 // ─── Parser ──────────────────────────────────────────────────────────
 
 const ACTIONS_FENCE_OPEN = /(?:^|\n)\s*@@actions\s*\n/;
@@ -528,7 +536,7 @@ export function dispatchAiAction(
         previous = window.localStorage.getItem(lsKey);
         const existing = previous ?? "<p></p>";
         const current = window.localStorage.getItem(etagKey);
-        prevEtag = current === null ? 0 : parseInt(current, 10) || 0;
+        prevEtag = parseStoredEtag(current);
         nextEtag = prevEtag + 1;
         const appended = existing.replace(
           /<\/body>\s*$/,
