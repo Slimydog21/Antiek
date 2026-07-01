@@ -13,7 +13,7 @@ was cross-checked against the actual product-spec sprint pages
 | `ResearchToReadSeam` | research → read | `InsightNodeContract` ref (`insight_node` id) | DRW SPR-01 (promote insight) | Read corpus / living-note surface | committed |
 | `ReadToResearchSeam` | read → research | `document_region` ref (a `DocumentRegionSelected` anchor) | **Read SPR-08** (research-from-passage) | DRW SPR-05 (cascade planner seed) | committed |
 | `ReadToWriteSeam` | read → write | `InsightNodeContract` ref → `OutlineBlockContract` (`graph_node`) | Read (drag from folders) | **Write SPR-03** (block repository / folders) | committed |
-| `WriteToReadSeam` | write → read | `OutlineBlockContract` ref → resolved source span | **Write SPR-07** (trace-to-source) | shared reading surface (DRW SPR-10 / Read SPR-03 reader) | committed |
+| `WriteToReadSeam` | write → read | `OutlineBlockContract` ref → resolved source span | **Write SPR-07** (trace-to-source) | shared reading surface (antiek-reader SPR-01 / Read SPR-03 reader; DRW SPR-10 historical citation) | committed |
 | `SpeakToWriteSeam` | speak → write | `speak_claim` ref → `OutlineBlockContract` (`synthesized`) | **Speak SPR-08** (biography authoring) | Write SPR-01 (OutlineComposer) | committed |
 | `SpeakToReadSeam` | speak → read | `ServableEntryContract` ref (`platform_authored` + `speak_derived`) | **Speak SPR-09** (publishing) | Read servable corpus (seam #4 gate) | committed |
 | `WriteToSpeakSeam` | write → speak | `question_node` ref (an outline gap's open question) | Write (unspecified) | Speak (unspecified) | **provisional** |
@@ -61,12 +61,15 @@ The greppable invariant: exactly one `def ingest_voice_note` (in
 
 ## The reading-surface ownership note (collision #1)
 
-`ReaderSurfaceContract` (SPR-01, **provisional** — DRW SPR-10 unbuilt) is the
-single composition surface. **DRW SPR-10 owns** it; **Read SPR-03 specializes by
-composition** and **Write SPR-07 traces into it** via the same contract;
-**neither forks** a second reading surface. Until DRW SPR-10 lands, Read/Write
-compose against the conformance-tested stub
-(`substrate/contracts/__tests__/test_reader_conformance.py` + `apps/reading/src/__tests__/oneReader.conformance.test.ts`).
+`ReaderSurfaceContract` is the single composition surface, now **pinned and
+committed by antiek-reader SPR-01**. DRW SPR-10 remains in the frozen sprint-lock
+as a provisional historical citation because that DRW deliverable was never
+built; it no longer owns the live contract. Read SPR-03 specializes by
+composition and Write SPR-07 traces into it via the same contract, so neither
+forks a second reading surface. The conformance harness enforces this against
+the actual one Reader (`substrate/contracts/__tests__/test_reading_surface.py`,
+`substrate/contracts/__tests__/test_reader_conformance.py`, and
+`apps/reading/src/__tests__/oneReader.conformance.test.ts`).
 
 ## What this package is NOT
 

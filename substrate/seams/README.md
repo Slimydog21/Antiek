@@ -41,7 +41,7 @@ successor automatically would be a runaway-cost bug. The invariant lives in the
 | `ResearchToReadSeam` | research → read | `insight_node` id | DRW SPR-01 / Read corpus | committed |
 | `ReadToResearchSeam` | read → research | `document_region` ref | Read SPR-08 / DRW SPR-05 | committed |
 | `ReadToWriteSeam` | read → write | `insight_node` id → node-backed block | Read / Write SPR-03 | committed |
-| `WriteToReadSeam` | write → read | `outline_block` ref → source span | Write SPR-07 / shared reader (DRW SPR-10) | committed |
+| `WriteToReadSeam` | write → read | `outline_block` ref → source span | Write SPR-07 / shared reader (antiek-reader SPR-01; DRW SPR-10 historical citation) | committed |
 | `SpeakToWriteSeam` | speak → write | `speak_claim` id → synthesized block | Speak SPR-08 / Write SPR-01 | committed |
 | `SpeakToReadSeam` | speak → read | `servable_entry` ref | Speak SPR-09 / Read corpus (seam #4 gate) | committed |
 | `WriteToSpeakSeam` | write → speak | `question_node` id | unspecified / unspecified | **provisional** |
@@ -72,14 +72,18 @@ through. Each is pinned to **one greppable / named invariant** (rigor #5).
 
 ### #1 — Shared reading-surface ownership
 
-**One owner: DRW SPR-10** (`substrate.contracts.reading_surface.ReaderSurfaceContract`,
-currently **provisional** — DRW SPR-10 unbuilt). Read SPR-03 specializes by
-composition; Write SPR-07 traces into it via the same contract; neither forks a
-second reader. Until DRW SPR-10 lands, Read/Write compose against the
-conformance-tested stub.
-**Guard:** `substrate/contracts/__tests__/test_reader_conformance.py` + `apps/reading/src/__tests__/oneReader.conformance.test.ts` — "Read composes the
-reader contract, never forks" (a fork dropping an extension point fails the
-structural check).
+**One live owner: antiek-reader SPR-01**
+(`substrate.contracts.reading_surface.ReaderSurfaceContract`). DRW SPR-10 stays
+in `drw_sprint_lock.py` as a **provisional historical citation** because that
+DRW deliverable was never built; it does not own the live contract anymore.
+`reading_surface.py` pins the concrete `Region` / `RenderedRegion` /
+`AnchoredNote` seam to antiek-reader SPR-01, and Read/Write trace into that one
+Reader rather than forking a second reader.
+**Guard:** `substrate/contracts/__tests__/test_reading_surface.py`,
+`substrate/contracts/__tests__/test_reader_conformance.py`, and
+`apps/reading/src/__tests__/oneReader.conformance.test.ts` — the contract is
+de-provisionalized, every open door routes to the one `<Reader>`, and a fork
+dropping an extension point fails the structural check.
 
 ### #2 — Single voice-pipeline owner
 
