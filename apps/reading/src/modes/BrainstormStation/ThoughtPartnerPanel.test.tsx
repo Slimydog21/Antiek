@@ -9,11 +9,15 @@ import {
   resetBrainstormQuestionSelection,
 } from "./WatchForLaterPanel";
 
-const apiFetchMock = vi.hoisted(() => vi.fn());
+const { apiFetchMock, parkQuestionForLaterMock } = vi.hoisted(() => ({
+  apiFetchMock: vi.fn(),
+  parkQuestionForLaterMock: vi.fn(),
+}));
 
 vi.mock("../../lib/api", async (orig) => ({
   ...(await orig<typeof import("../../lib/api")>()),
   apiFetch: apiFetchMock,
+  parkQuestionForLater: parkQuestionForLaterMock,
 }));
 
 const QUESTION: ParkedQuestionEntry = {
@@ -54,6 +58,11 @@ function deferredResponse(text: string) {
 
 beforeEach(() => {
   apiFetchMock.mockReset();
+  parkQuestionForLaterMock.mockReset().mockResolvedValue({
+    event_id: "evt-parked",
+    action_type: "question.identified",
+    question_id: "q-extension",
+  });
 });
 
 afterEach(() => {
@@ -181,6 +190,47 @@ describe("ThoughtPartnerPanel", () => {
     ).toBeTruthy();
     expect(screen.getByText("measurement")).toBeTruthy();
     expect(screen.getByText("Turns the intuition into something falsifiable.")).toBeTruthy();
+  });
+
+  it("parks an extension reply back into watch-for-later", async () => {
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        text: "- What evidence would show retrieval feels like memory? (measurement)",
+        shape: "extension",
+        challenges: [],
+        synthesis_text: null,
+        extensions: [
+          {
+            sub_question: "What evidence would show retrieval feels like memory?",
+            tag: "measurement",
+            rationale: "Turns the intuition into something falsifiable.",
+          },
+        ],
+        policy_id: "cassette/thought-v1",
+      }),
+    });
+
+    render(<ThoughtPartnerPanel />);
+    selectQuestion();
+    await userEvent.type(
+      await screen.findByPlaceholderText("Challenge, synthesize, or extend this question..."),
+      "Extend this",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Ask thought partner" }));
+
+    await userEvent.click(await screen.findByRole("button", { name: "Park for later" }));
+
+    await waitFor(() =>
+      expect(parkQuestionForLaterMock).toHaveBeenCalledWith({
+        investigation_id: "inv-source",
+        question_text: "What evidence would show retrieval feels like memory?",
+        source_document_id: "doc-source",
+        anchor_region_id: "region-1",
+        parent_event_id: "event-parent",
+      }),
+    );
+    expect(await screen.findByRole("button", { name: "Parked" })).toBeTruthy();
   });
 
   it("surfaces the honest no-key state without fabricating a reply", async () => {

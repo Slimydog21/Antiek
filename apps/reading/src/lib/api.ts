@@ -307,6 +307,50 @@ export async function launchParkedQuestion(
   return resp.json();
 }
 
+export interface ParkQuestionRequest {
+  investigation_id: string;
+  question_text: string;
+  source_document_id?: string | null;
+  anchor_region_id?: string | null;
+  parent_event_id?: string | null;
+}
+
+export interface ParkQuestionResult extends EmittedEventResponse {
+  question_id: string;
+}
+
+function newQuestionId(): string {
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi && "randomUUID" in cryptoApi) {
+    return `q-${cryptoApi.randomUUID()}`;
+  }
+  return `q-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** POST /events/typed — park a question into the watch-for-later folder.
+ * Watch-for-later is not a separate table; it is the set of unsharpened
+ * question.identified events, so extensions from the thought-partner must
+ * enter through the same typed-event boundary. */
+export async function parkQuestionForLater(
+  req: ParkQuestionRequest,
+): Promise<ParkQuestionResult> {
+  const question_id = newQuestionId();
+  const emitted = await postTypedEvent({
+    investigation_id: req.investigation_id,
+    document_id: req.source_document_id ?? undefined,
+    parent_event_id: req.parent_event_id ?? undefined,
+    role: "operator",
+    policy_id: "operator/brainstorm",
+    payload: {
+      action_type: "question.identified",
+      question_id,
+      question_text: req.question_text,
+      anchor_region_id: req.anchor_region_id ?? null,
+    },
+  });
+  return { ...emitted, question_id };
+}
+
 // ── Notebook surface — Wedge 2 linchpin (master-spec §4.2) ──
 
 export interface NotebookBlockShape {
