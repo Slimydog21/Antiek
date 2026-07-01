@@ -21,6 +21,11 @@ ratification IS the test.
 """
 
 from .budget import BudgetCap, BudgetExceeded
+from .calibration import (
+    CalibrationReport,
+    calibrate_epsilon,
+    render_calibration_markdown,
+)
 from .runner import (
     PromptAutoresearchRunner,
     PromptMutation,
@@ -43,16 +48,19 @@ from .score import (
 __all__ = [
     "BudgetCap",
     "BudgetExceeded",
+    "CalibrationReport",
     "CompositeScore",
     "PromptAutoresearchRunner",
     "PromptMutation",
     "PromptMutationOutcome",
+    "calibrate_epsilon",
     "composite_score",
     "deterministic_voice_style_score",
     "grounding_preserved_rate",
     "load_outcomes_json",
     "outcome_from_json",
     "outcome_to_json",
+    "render_calibration_markdown",
     "sector_vocab_overlap",
     "write_outcomes_json",
 ]
