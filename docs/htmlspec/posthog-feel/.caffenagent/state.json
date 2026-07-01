@@ -1,0 +1,75 @@
+{
+  "spec_dir": "docs/htmlspec/posthog-feel",
+  "target_branch": "reader/integration",
+  "status": "done",
+  "recorded_at": "2026-07-01T20:04:59Z",
+  "verified_code_sha": "c88e229c",
+  "mode": "verification_closure",
+  "sprints": {
+    "FEEL-S1": {
+      "status": "done",
+      "round": 2,
+      "verified_code_sha": "c88e229c",
+      "gate_results": {
+        "unit_focus_rw": "12 passed",
+        "spec_ref_lint": "pass",
+        "e2e_feel": "pass"
+      }
+    },
+    "FEEL-S2": {
+      "status": "done",
+      "round": 2,
+      "verified_code_sha": "c88e229c",
+      "gate_results": {
+        "chromium_feel_panels_cascade": "pass",
+        "e2e_feel": "pass"
+      }
+    },
+    "FEEL-S3": {
+      "status": "done",
+      "round": 2,
+      "verified_code_sha": "c88e229c",
+      "gate_results": {
+        "ams_real_feel_experience_matrix": "pass",
+        "ams_real_windows_default_targeted": "pass",
+        "e2e_feel": "pass"
+      }
+    },
+    "FEEL-S4": {
+      "status": "done",
+      "round": 2,
+      "verified_code_sha": "c88e229c",
+      "gate_results": {
+        "ResearchWorkstation.feel": "pass",
+        "ams_real_feel_rw_ide_exempt": "pass",
+        "e2e_feel": "pass"
+      }
+    },
+    "FEEL-S5": {
+      "status": "done",
+      "round": 2,
+      "verified_code_sha": "c88e229c",
+      "gate_results": {
+        "feel_focus_unit": "pass",
+        "chromium_feel_focus_ring": "pass",
+        "e2e_feel": "pass"
+      }
+    },
+    "FEEL-S6": {
+      "status": "done",
+      "round": 2,
+      "verified_code_sha": "c88e229c",
+      "gate_results": {
+        "npm_run_e2e_feel": "pass",
+        "spec_ref_lint": "pass",
+        "targeted_ams_real": "7 passed"
+      }
+    }
+  },
+  "not_proven_by_automation": [
+    "Safari manual pass",
+    "Firefox manual pass",
+    "VoiceOver focus order on dense ResearchWorkstation IDE",
+    "Subjective daily-driver stack legibility"
+  ]
+}
