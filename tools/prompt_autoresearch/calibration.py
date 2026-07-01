@@ -6,6 +6,7 @@ import math
 from dataclasses import dataclass
 from statistics import pstdev
 
+from tools.prompt_autoresearch.markdown import markdown_code_span, markdown_inline
 from tools.prompt_autoresearch.runner import PromptMutationOutcome
 from tools.prompt_autoresearch.verdict import MIN_MEAN_DELTA
 
@@ -87,9 +88,9 @@ def render_calibration_markdown(report: CalibrationReport) -> str:
     """Render an operator-reviewable calibration note."""
     _validate_report(report)
     return "\n".join([
-        f"# Prompt autoresearch calibration — `{report.role}`",
+        f"# Prompt autoresearch calibration — {markdown_code_span(report.role)}",
         "",
-        report.rationale,
+        markdown_inline(report.rationale),
         "",
         "## Summary",
         "",

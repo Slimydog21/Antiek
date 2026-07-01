@@ -95,6 +95,25 @@ def test_calibration_markdown_records_recommended_epsilon():
     assert "Recommended epsilon" in md
 
 
+def test_calibration_markdown_escapes_dynamic_inline_content():
+    report = CalibrationReport(
+        role="synth`role\nextra",
+        iteration_count=5,
+        mean_delta=0.0,
+        sigma=0.01,
+        two_sigma=0.02,
+        floor_epsilon=0.05,
+        recommended_epsilon=0.05,
+        rationale="# forged heading\nuse **bold** | table",
+    )
+
+    md = render_calibration_markdown(report)
+
+    assert "# Prompt autoresearch calibration — `` synth`role extra ``" in md
+    assert "\\# forged heading use \\*\\*bold\\*\\* \\| table" in md
+    assert "\n# forged heading" not in md
+
+
 def test_calibration_markdown_rejects_inconsistent_report():
     report = CalibrationReport(
         role="synthesizer",
