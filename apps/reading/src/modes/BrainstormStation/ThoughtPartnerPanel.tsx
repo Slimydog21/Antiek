@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { apiFetch, type ParkedQuestionEntry } from "../../lib/api";
+import {
+  apiFetch,
+  parkQuestionForLater,
+  type ParkedQuestionEntry,
+} from "../../lib/api";
 import {
   BRAINSTORM_SELECT_QUESTION_EVENT,
   getBrainstormQuestionSelection,
@@ -35,6 +39,11 @@ export default function ThoughtPartnerPanel() {
   const [pending, setPending] = useState(false);
   const [reply, setReply] = useState<ThoughtPartnerReply | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [parkError, setParkError] = useState<string | null>(null);
+  const [parkingExtensionKey, setParkingExtensionKey] = useState<string | null>(null);
+  const [parkedExtensionKeys, setParkedExtensionKeys] = useState<Set<string>>(
+    () => new Set(),
+  );
   const requestGenerationRef = useRef(0);
 
   useEffect(() => {
@@ -45,6 +54,9 @@ export default function ThoughtPartnerPanel() {
       setPending(false);
       setReply(null);
       setError(null);
+      setParkError(null);
+      setParkingExtensionKey(null);
+      setParkedExtensionKeys(new Set());
     };
     const latest = getBrainstormQuestionSelection();
     if (latest) applySelection(latest);
@@ -74,7 +86,10 @@ export default function ThoughtPartnerPanel() {
     const generation = ++requestGenerationRef.current;
     setPending(true);
     setError(null);
+    setParkError(null);
     setReply(null);
+    setParkingExtensionKey(null);
+    setParkedExtensionKeys(new Set());
     try {
       const response = await apiFetch("/brainstorm/thought-partner", {
         method: "POST",
@@ -150,6 +165,28 @@ export default function ThoughtPartnerPanel() {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       if (generation === requestGenerationRef.current) setPending(false);
+    }
+  }
+
+  async function parkExtension(extension: ThoughtPartnerReply["extensions"][number]) {
+    if (!selectedQuestion) return;
+    const key = extension.sub_question;
+    if (!key || parkedExtensionKeys.has(key) || parkingExtensionKey) return;
+    setParkingExtensionKey(key);
+    setParkError(null);
+    try {
+      await parkQuestionForLater({
+        investigation_id: selectedQuestion.source_investigation_id,
+        question_text: extension.sub_question,
+        source_document_id: selectedQuestion.source_document_id,
+        anchor_region_id: selectedQuestion.anchor_region_id,
+        parent_event_id: selectedQuestion.parent_event_id,
+      });
+      setParkedExtensionKeys((prev) => new Set(prev).add(key));
+    } catch (e: unknown) {
+      setParkError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setParkingExtensionKey(null);
     }
   }
 
@@ -248,6 +285,21 @@ export default function ThoughtPartnerPanel() {
                       {extension.rationale}
                     </p>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => void parkExtension(extension)}
+                    disabled={
+                      parkedExtensionKeys.has(extension.sub_question) ||
+                      parkingExtensionKey === extension.sub_question
+                    }
+                    className="mt-2 rounded border border-rule px-2 py-1 text-[11px] font-medium text-ink-soft hover:border-ocean hover:text-ink disabled:opacity-50 dark:border-charcoal-1 dark:text-moonlight dark:hover:text-bright"
+                  >
+                    {parkedExtensionKeys.has(extension.sub_question)
+                      ? "Parked"
+                      : parkingExtensionKey === extension.sub_question
+                        ? "Parking..."
+                        : "Park for later"}
+                  </button>
                 </li>
               ))}
             </ul>
@@ -264,6 +316,11 @@ export default function ThoughtPartnerPanel() {
           {reply.threadNodeId && (
             <p className="mt-2 text-[10.5px] font-mono text-ink-mute dark:text-moonlight">
               anchored thread: {reply.threadNodeId}
+            </p>
+          )}
+          {parkError && (
+            <p className="mt-2 text-xs text-emperor">
+              Could not park extension: {parkError}
             </p>
           )}
         </section>
