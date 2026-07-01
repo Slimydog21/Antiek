@@ -80,6 +80,15 @@ the reader:
   surfacing the honesty guard. Tests: `test_voice_notes.py` endpoint
   cases + `VoiceNote.test.tsx`.
 
+## Closed drift check
+
+The earlier "SPR-05 impression posting + SPR-06 voice capture UI" deferral is
+closed in the current tree. `BookReader` mounts `useReaderImpressions`,
+`ResearchThis`, and `VoiceNote`; existing reader tests guard spin-research and
+the impression flush loop, and `Reading.test.tsx` now also guards the active-page
+voice-note handoff (`documentId`, `pageIndex`, `read-<documentId>` investigation
+id) plus close/unmount behavior.
+
 ## Honest deferrals
 
 - **Talk-to-book real-time** stays gated on speech round-trip latency
@@ -88,9 +97,6 @@ the reader:
   already has; pulling *new* candidate titles via Exa is an extension,
   and each discovered title would still land through the SPR-01 gate
   before it could be curated.
-- **SPR-05 impression posting + SPR-06 voice capture UI**: the backend
-  semantics + the reader locators exist; the browser code that emits
-  impressions / captures audio mounts on this reader as the last wiring.
 - **DRW SPR-10 generalization**: Read specializes `WrestleApp`'s surface
   rather than a formally-shared one. When DRW SPR-10 extracts the shared
   reader, the Read `Reading` mode should consume it instead of carrying
