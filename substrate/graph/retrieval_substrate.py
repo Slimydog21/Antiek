@@ -325,6 +325,8 @@ class DuckDbVssSubstrate:
         import shutil
         import tempfile
 
+        from substrate.errors import RetrieverInfraError
+
         dim = int(getattr(model, "dimension", 0) or 0)
         if dim < 1:  # pragma: no cover — defensive
             _log.warning("model.dimension is %r; brute-force fallback", dim)
@@ -334,9 +336,21 @@ class DuckDbVssSubstrate:
         copy_path = os.path.join(scratch, "vss_index.duckdb")
         try:
             shutil.copy(db_path, copy_path)
-        except OSError as exc:  # pragma: no cover
-            _log.warning("could not copy graph for vss index (%s); brute-force fallback", exc)
-            return cls(connect_read(db_path), model=model, vss_active=False)
+        except OSError as exc:
+            # I-LOUD (nygard SPR-02): a read-only FS / disk-full / permission
+            # error at the vss-index copy is an INFRA fault — NOT the expected
+            # "vss unavailable" degradation. The expected condition (the DuckDB
+            # vss extension being unavailable) is handled by `_vss_available`
+            # below and keeps its benign brute-force fallback; an OSError here
+            # must SURFACE typed instead of being silently masked as
+            # "brute-force fallback", which erased the cause of the 2026-05-17
+            # read-only-FS incident. See tests/regression/
+            # test_retriever_readonly_fs_2026_05_17.py.
+            raise RetrieverInfraError(
+                "could not copy graph for vss index",
+                seam="retrieval_substrate.vss_index_copy",
+                cause=exc,
+            ) from exc
 
         import duckdb
 

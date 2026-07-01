@@ -44,6 +44,8 @@ __all__ = [
     "UpstreamUnavailable",
     "VerifierTimeout",
     "WriterContended",
+    "RetrieverInfraError",
+    "is_expected_degradation",
 ]
 
 
@@ -142,3 +144,110 @@ SubstrateError = (
     | VerifierTimeout
     | WriterContended
 )
+
+
+# ---------------------------------------------------------------------------
+# Raisable infra error (nygard SPR-02, I-LOUD)
+# ---------------------------------------------------------------------------
+#
+# Design note (reconciling the spec with the code): the ``SubstrateError`` union
+# above is a set of Pydantic *value* types — the ``E`` in ``Result[T, E]``, used
+# as ``Err(SchemaMismatch(...))`` — not exceptions. The nygard SPR-02 spec asks
+# for a typed error that is BOTH added to "the SubstrateError hierarchy" AND
+# "caught by ``except SubstrateError``" and chained via ``raise ... from``. Those
+# are exception semantics, which the value-union cannot carry (a Pydantic model
+# is not a ``BaseException``). Rather than break every ``Result[T, SubstrateError]``
+# consumer by turning the union into an exception hierarchy, we add a *raisable*
+# error here, following the codebase's own idiom for raisable errors
+# (``ProviderError(Exception)``, ``AIActionError(Exception)``, ...). It composes
+# with ``Result`` via ``Err(error=RetrieverInfraError(...))`` (``Err.error`` is an
+# unconstrained ``E``) and is caught with ``except RetrieverInfraError``.
+
+
+class RetrieverInfraError(Exception):
+    """A typed, raisable INFRASTRUCTURE fault at a retrieval/retriever seam.
+
+    This is the fail-loud carrier for I-LOUD: an *unexpected infra fault* — an
+    ``OSError`` writing a cache/index, a locked-DB timeout, a disk-full, a
+    missing-extension hard fail — surfaces as this typed error instead of being
+    silently masked into a benign degradation (a brute-force fallback, an
+    ``insufficient_evidence`` Delivered, etc.). It is explicitly NOT for
+    *expected* degradations (a missing provider key, a model-side parse failure,
+    a model-asserted "insufficient evidence", or a genuinely unavailable optional
+    feature) — those keep their existing benign behavior. See
+    :func:`is_expected_degradation`.
+
+    Carries enough context to debug without a re-run: the ``seam`` name, the
+    original exception (``cause`` — also set as ``__cause__`` when raised via
+    ``raise RetrieverInfraError(...) from exc``), and its ``errno`` when the
+    cause was an ``OSError`` (so ``EROFS`` is visible in the message).
+
+    Examples (doctests via ``pytest --doctest-modules substrate/errors.py``):
+
+        >>> import errno as _e
+        >>> try:
+        ...     raise OSError(_e.EROFS, "Read-only file system", "/x")
+        ... except OSError as exc:
+        ...     err = RetrieverInfraError("vss index copy failed",
+        ...                               seam="retrieval_substrate.vss_copy",
+        ...                               cause=exc)
+        >>> err.seam
+        'retrieval_substrate.vss_copy'
+        >>> err.errno == _e.EROFS
+        True
+        >>> isinstance(err, Exception)
+        True
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        seam: str,
+        cause: BaseException | None = None,
+    ) -> None:
+        self.seam = seam
+        self.cause = cause
+        # Surface the errno when the underlying fault was an OSError, so EROFS /
+        # ENOSPC / EACCES are visible without unwrapping the chain.
+        self.errno = getattr(cause, "errno", None) if cause is not None else None
+        detail = f" [errno={self.errno}]" if self.errno is not None else ""
+        super().__init__(f"{seam}: {message}{detail}")
+
+
+def is_expected_degradation(exc: BaseException) -> bool:
+    """Is ``exc`` an EXPECTED, named degradation (keep benign) or an infra fault
+    (surface as :class:`RetrieverInfraError`)?
+
+    The closed list of expected conditions is deliberately small and explicit —
+    extend it with a code change + comment, never by silently broadening a catch.
+    Everything NOT on this list (notably ``OSError``) is an infra fault.
+
+    Expected (benign) today:
+    - ``substrate.dispatch.base.ProviderError`` — a named upstream/provider
+      condition (missing key, upstream error) the dispatch fallback already owns.
+    - ``KeyError`` — an unregistered provider (route-override with no key), a
+      recoverable fallback trigger.
+    - ``roles.evidence_retriever.EvidenceValidationError`` — a model-side parse /
+      validation failure (the response, not the infra).
+
+    A :class:`RetrieverInfraError` itself is already typed infra — not "expected".
+    """
+    if isinstance(exc, RetrieverInfraError):
+        return False
+    # Named expected conditions, imported lazily to avoid import cycles.
+    try:
+        from substrate.dispatch.base import ProviderError
+
+        if isinstance(exc, ProviderError):
+            return True
+    except Exception:  # pragma: no cover - dispatch always importable in practice
+        pass
+    try:
+        from roles.evidence_retriever import EvidenceValidationError
+
+        if isinstance(exc, EvidenceValidationError):
+            return True
+    except Exception:  # pragma: no cover
+        pass
+    return isinstance(exc, KeyError)

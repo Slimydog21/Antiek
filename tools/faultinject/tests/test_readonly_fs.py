@@ -115,21 +115,24 @@ def test_fires_at_shutil_copy_seam(tmp_path):
         assert ei.value.errno == errno.EROFS
 
 
-def test_drives_real_retriever_vss_open_seam(tmp_path, monkeypatch, caplog):
+def test_drives_real_retriever_vss_open_seam(tmp_path, monkeypatch):
     """HTML acceptance line 170: a self-test drives the ACTUAL retriever write
     path under the injector and observes the OSError reaching the call site.
 
     DuckDbVssSubstrate.open() copies the graph to a scratch dir before building
-    an HNSW index (retrieval_substrate.py:333-339). We pin the scratch dir so we
-    can arm readonly_fs on the copy target, then assert the injected EROFS
-    reaches the shutil.copy call site — where today it is silently swallowed into
-    the brute-force fallback (the exact 2026-05-17 class SPR-02 makes fail-loud).
+    an HNSW index (retrieval_substrate.py:~336). We pin the scratch dir so we can
+    arm readonly_fs on the copy target, then assert the injected EROFS reaches
+    the shutil.copy call site. Post nygard SPR-02, the retriever surfaces it as a
+    typed RetrieverInfraError (before SPR-02 it was silently swallowed into the
+    brute-force fallback — see tests/regression/
+    test_retriever_readonly_fs_2026_05_17.py for the fails-before record).
     """
-    import substrate.graph.retrieval_substrate as rs
-
-    db = tmp_path / "graph.duckdb"
     import duckdb
 
+    import substrate.graph.retrieval_substrate as rs
+    from substrate.errors import RetrieverInfraError
+
+    db = tmp_path / "graph.duckdb"
     duckdb.connect(str(db)).close()  # a real, readable graph file to copy FROM
     scratch = tmp_path / "vss-scratch"
     scratch.mkdir()
@@ -143,15 +146,14 @@ def test_drives_real_retriever_vss_open_seam(tmp_path, monkeypatch, caplog):
         def encode(self, xs):  # pragma: no cover - not reached on the copy-fail path
             return [[0.0] * 8 for _ in xs]
 
-    caplog.set_level(logging.WARNING, logger="antiek.retrieval_substrate")
+    # The injected EROFS reaches the real shutil.copy call site and surfaces as a
+    # typed RetrieverInfraError carrying the errno — proving readonly_fs fires at
+    # the real retriever write seam (not just on a synthetic tmp path).
     with readonly_fs(copy_target):
-        sub = rs.DuckDbVssSubstrate.open(str(db), model=_StubModel())
-
-    # The injected EROFS reached the real shutil.copy call site: the retriever
-    # logged the copy failure and fell back (vss_active False). This documents
-    # the silent-swallow SPR-02 will convert into a typed RetrieverInfraError.
-    assert "could not copy graph for vss index" in caplog.text
-    assert getattr(sub, "vss_active", None) is False
+        with pytest.raises(RetrieverInfraError) as ei:
+            rs.DuckDbVssSubstrate.open(str(db), model=_StubModel())
+    assert ei.value.errno == errno.EROFS
+    assert "retrieval" in ei.value.seam
 
 
 def test_nested_arming_refused_and_outer_recovers(tmp_path):
