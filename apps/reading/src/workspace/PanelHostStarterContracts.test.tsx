@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
+import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 
 import type { StarterPanel } from "./PanelHost";
+import { useWorkspace } from "./WorkspaceStore";
 
 const panelHostMock = vi.hoisted(() =>
   vi.fn(({ children }: { starters?: StarterPanel[]; children: ReactNode }) => (
@@ -84,10 +86,45 @@ function mountAt(path: string, element: ReactNode, route: string) {
   );
 }
 
+function CreationStudioWithJump() {
+  const navigate = useNavigate();
+  return (
+    <>
+      <button type="button" onClick={() => navigate("/create/del-2")}>
+        Open second deliverable
+      </button>
+      <CreationStudio />
+    </>
+  );
+}
+
+function deliverableDetail(deliverableId: string, title: string) {
+  return {
+    deliverable_id: deliverableId,
+    title,
+    deliverable_kind: "research_memo",
+    status: "draft",
+    investigation_root_id: null,
+    sections: [],
+  };
+}
+
+function deferredDeliverable(deliverableId: string, title: string) {
+  let resolve!: (value: ReturnType<typeof deliverableDetail>) => void;
+  const promise = new Promise<ReturnType<typeof deliverableDetail>>((done) => {
+    resolve = done;
+  });
+  return {
+    promise,
+    resolve: () => resolve(deliverableDetail(deliverableId, title)),
+  };
+}
+
 afterEach(() => {
   cleanup();
   panelHostMock.mockClear();
   Object.values(apiMocks).forEach((mock) => mock.mockReset());
+  useWorkspace.getState().reset();
   vi.unstubAllGlobals();
 });
 
@@ -130,6 +167,164 @@ describe("route PanelHost starter contracts", () => {
         id: "create:block-palette",
       },
     ]);
+  });
+
+  it("CreationStudio opens a preview workspace panel for the active deliverable", async () => {
+    apiMocks.getDeliverable.mockResolvedValue({
+      deliverable_id: "del-1",
+      title: "Research memo",
+      deliverable_kind: "research_memo",
+      status: "draft",
+      investigation_root_id: null,
+      sections: [],
+    });
+
+    mountAt("/create/del-1", <CreationStudio />, "/create/:deliverableId?");
+
+    await waitFor(() => expect(apiMocks.getDeliverable).toHaveBeenCalled());
+    expect(latestStarters()).toEqual([
+      {
+        kind: "DeliverableSidebar",
+        mode: "docked-left",
+        title: "Deliverables",
+        id: "create:deliverable-sidebar",
+      },
+      {
+        kind: "BlockPalette",
+        mode: "docked-right",
+        title: "Block palette",
+        id: "create:block-palette",
+      },
+    ]);
+    await waitFor(() =>
+      expect(useWorkspace.getState().panels["create:del-1:preview"]).toMatchObject({
+        kind: "DeliverablePreview",
+        mode: "docked-bottom",
+        title: "Preview",
+        props: { deliverableId: "del-1" },
+      }),
+    );
+  });
+
+  it("CreationStudio swaps the preview panel when the active deliverable changes", async () => {
+    apiMocks.getDeliverable.mockResolvedValue(
+      deliverableDetail("del-1", "Research memo"),
+    );
+
+    mountAt(
+      "/create/del-1",
+      <CreationStudioWithJump />,
+      "/create/:deliverableId?",
+    );
+
+    await waitFor(() =>
+      expect(useWorkspace.getState().panels["create:del-1:preview"]).toBeTruthy(),
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Open second deliverable" }),
+    );
+
+    await waitFor(() =>
+      expect(useWorkspace.getState().panels["create:del-2:preview"]).toMatchObject({
+        kind: "DeliverablePreview",
+        props: { deliverableId: "del-2" },
+      }),
+    );
+    expect(useWorkspace.getState().panels["create:del-1:preview"]).toBeUndefined();
+    expect(latestStarters()).toEqual([
+      {
+        kind: "DeliverableSidebar",
+        mode: "docked-left",
+        title: "Deliverables",
+        id: "create:deliverable-sidebar",
+      },
+      {
+        kind: "BlockPalette",
+        mode: "docked-right",
+        title: "Block palette",
+        id: "create:block-palette",
+      },
+    ]);
+  });
+
+  it("CreationStudio keeps the active canvas detail when route fetches resolve out of order", async () => {
+    const stale = deferredDeliverable("del-1", "Stale memo");
+    const fresh = deferredDeliverable("del-2", "Fresh memo");
+    apiMocks.getDeliverable
+      .mockReturnValueOnce(stale.promise)
+      .mockReturnValueOnce(fresh.promise);
+
+    mountAt(
+      "/create/del-1",
+      <CreationStudioWithJump />,
+      "/create/:deliverableId?",
+    );
+
+    await waitFor(() =>
+      expect(apiMocks.getDeliverable).toHaveBeenCalledWith("del-1"),
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Open second deliverable" }),
+    );
+
+    await waitFor(() =>
+      expect(apiMocks.getDeliverable).toHaveBeenCalledWith("del-2"),
+    );
+    fresh.resolve();
+    expect(await screen.findByRole("heading", { name: "Fresh memo" })).toBeTruthy();
+
+    stale.resolve();
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "Stale memo" })).toBeNull(),
+    );
+  });
+
+  it("CreationStudio clears the previous canvas detail while a new deliverable loads", async () => {
+    const fresh = deferredDeliverable("del-2", "Fresh memo");
+    apiMocks.getDeliverable
+      .mockResolvedValueOnce(deliverableDetail("del-1", "Old memo"))
+      .mockReturnValueOnce(fresh.promise);
+
+    mountAt(
+      "/create/del-1",
+      <CreationStudioWithJump />,
+      "/create/:deliverableId?",
+    );
+
+    expect(await screen.findByRole("heading", { name: "Old memo" })).toBeTruthy();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Open second deliverable" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: "Old memo" })).toBeNull(),
+    );
+    fresh.resolve();
+    expect(await screen.findByRole("heading", { name: "Fresh memo" })).toBeTruthy();
+  });
+
+  it("CreationStudio keeps the current canvas detail when a same-deliverable refresh fails", async () => {
+    apiMocks.getDeliverable
+      .mockResolvedValueOnce(deliverableDetail("del-1", "Old memo"))
+      .mockRejectedValueOnce(new Error("offline"));
+    apiMocks.createSection.mockResolvedValue({});
+
+    mountAt("/create/del-1", <CreationStudio />, "/create/:deliverableId?");
+
+    expect(await screen.findByRole("heading", { name: "Old memo" })).toBeTruthy();
+
+    await userEvent.type(
+      screen.getByPlaceholderText(/New section title/),
+      "New section",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Add section" }));
+
+    await waitFor(() => expect(apiMocks.createSection).toHaveBeenCalled());
+    expect(screen.getByRole("heading", { name: "Old memo" })).toBeTruthy();
+    expect(screen.queryByText("Deliverable not found.")).toBeNull();
   });
 
   it("Interview opens recording, transcript, and notes panels with the route id", async () => {

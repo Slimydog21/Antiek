@@ -50,6 +50,7 @@ export type PanelKind =
   | "Stats"
   | "DeliverableSidebar"
   | "BlockPalette"
+  | "DeliverablePreview"
   | "ReplayStepList"
   | "InterviewRecording"
   | "InterviewTranscript"

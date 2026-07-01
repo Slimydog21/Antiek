@@ -93,6 +93,7 @@ export const PanelRegistry: Record<PanelKind, Renderer> = {
   // S10 row 10.7 — CreationStudio side panels
   DeliverableSidebar: lazy(() => import("../modes/CreationStudio/DeliverableSidebar")),
   BlockPalette: lazy(() => import("../modes/CreationStudio/BlockPalette")),
+  DeliverablePreview: lazy(() => import("../modes/CreationStudio/DeliverablePreview")),
 
   // S10 row 10.14 — Replay step timeline panel
   ReplayStepList: lazy(() => import("../modes/Replay/ReplayStepList")),
