@@ -735,6 +735,31 @@ def test_resolve_region_text_from_db_returns_none_when_missing(tmp_path):
     assert _resolve_region_text_from_db(db, "r-doesnt-exist") is None
 
 
+def test_resolve_document_text_from_db_orders_chunks(tmp_path):
+    from interfaces.research.api.wrestling import _resolve_document_text_from_db
+    from runtime.db_lock import connect_write
+    from substrate.graph import ensure_initialized, insert_chunk, insert_document
+
+    db = str(tmp_path / "g.duckdb")
+    ensure_initialized(db)
+    con = connect_write(db, purpose="test_seed")
+    try:
+        insert_document(
+            con,
+            document_id="doc-rlm",
+            source_tier=4,
+            document_type="pdf",
+            title="long.pdf",
+        )
+        insert_chunk(con, document_id="doc-rlm", chunk_index=1, text="second")
+        insert_chunk(con, document_id="doc-rlm", chunk_index=0, text="first")
+    finally:
+        con.close()
+
+    assert _resolve_document_text_from_db(db, "doc-rlm") == "first\n\nsecond"
+    assert _resolve_document_text_from_db(db, "missing") is None
+
+
 def test_region_to_chunk_id_strips_r_prefix():
     from interfaces.research.api.wrestling import _region_to_chunk_id
     assert _region_to_chunk_id("r-abc-123") == "chunk-abc-123"
