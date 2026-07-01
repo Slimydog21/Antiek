@@ -25,6 +25,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -385,7 +386,12 @@ async def async_client(app_and_bus):
 
 
 async def _post_investigation(
-    ac, *, investigation_id: str, question: str, topic_slug: str,
+    ac,
+    *,
+    investigation_id: str,
+    question: str,
+    topic_slug: str,
+    investigation_kind: str = "loop_one",
 ) -> None:
     r = await ac.post(
         "/investigations",
@@ -393,6 +399,7 @@ async def _post_investigation(
             "question": question,
             "investigation_id": investigation_id,
             "topic_slug": topic_slug,
+            "investigation_kind": investigation_kind,
             "max_sub_questions": 4,
         },
     )
@@ -413,6 +420,81 @@ async def _await_completion(ac, investigation_id: str, *, timeout: float = 30.0)
 # ---------------------------------------------------------------------------
 # 1-4. Three concurrent investigations
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_loop_one_and_rlm_kinds_run_concurrently_without_cross_talk(
+    monkeypatch,
+    app_and_bus,
+    async_client,
+):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    _, bus = app_and_bus
+    register_provider(_PerInvestigationStub())
+    _patch_dispatch(monkeypatch, _all_role_config())
+
+    import orchestration.loop_one.orchestrator as orchestrator
+    import orchestration.loop_one.rlm_orchestrator as rlm_orchestrator
+
+    monkeypatch.setattr(
+        orchestrator,
+        "_render_chunks_block_for_sub_question",
+        _canonical_chunks_block_for_sub_question,
+    )
+
+    def fake_rlm_dispatch(prompt, role, **kwargs):
+        if "## REPL state" in prompt:
+            text = "\n".join([
+                "graph = search_graph(question, top_k=2)",
+                "sub_answers = llm_batch([question, 'Pick one source to read'])",
+                "answer['content'] = 'RLM mixed-lane answer: ' + graph + ' :: ' + str(sub_answers)",
+                "answer['ready'] = True",
+            ])
+        else:
+            text = f"rlm sub-answer for {prompt[:24]}"
+        return SimpleNamespace(text=text, tier="test", cost_usd=0.01)
+
+    monkeypatch.setattr(rlm_orchestrator, "dispatch", fake_rlm_dispatch)
+
+    loop_id = "inv-mixed-loop"
+    rlm_id = "inv-mixed-rlm"
+    await asyncio.gather(
+        _post_investigation(
+            async_client,
+            investigation_id=loop_id,
+            question="Question about quantum loop-one?",
+            topic_slug="mixed-loop",
+        ),
+        _post_investigation(
+            async_client,
+            investigation_id=rlm_id,
+            question="Survey the quantum reading corpus.",
+            topic_slug="mixed-rlm",
+            investigation_kind="rlm",
+        ),
+    )
+
+    loop_status, rlm_status = await asyncio.gather(
+        _await_completion(async_client, loop_id, timeout=45.0),
+        _await_completion(async_client, rlm_id, timeout=45.0),
+    )
+    assert loop_status and loop_status["status"] == "completed"
+    assert rlm_status and rlm_status["status"] == "completed"
+
+    loop_actions = [row["action_type"] for row in trajectory(loop_id)]
+    rlm_actions = [row["action_type"] for row in trajectory(rlm_id)]
+
+    assert ActionType.RLM_SESSION_STARTED.value not in loop_actions
+    assert ActionType.DECOMPOSE_QUESTION_DELIVERED.value in loop_actions
+    assert ActionType.RLM_SESSION_STARTED.value in rlm_actions
+    assert ActionType.RLM_SUB_CALL_DISPATCHED.value in rlm_actions
+    assert ActionType.DECOMPOSE_QUESTION_REQUESTED.value not in rlm_actions
+
+    loop_terminal = loop_status["terminal_payload"]
+    rlm_terminal = rlm_status["terminal_payload"]
+    assert loop_terminal["master_md_path"] != rlm_terminal["master_md_path"]
+    assert loop_id in loop_terminal["thesis_summary"]
+    assert "RLM mixed-lane answer" in rlm_terminal["thesis_summary"]
 
 
 @pytest.mark.asyncio
