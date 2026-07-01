@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import InterviewVoiceCapture from "../../components/InterviewVoiceCapture";
 import { apiFetch } from "../../lib/api";
+import { INTERVIEW_TRANSCRIPT_REFRESH_EVENT } from "./InterviewTranscript";
 
 /**
  * InterviewRecording panel (S10 row 10.10).
@@ -74,9 +75,11 @@ export default function InterviewRecording({
         <InterviewVoiceCapture
           sessionId={interviewId}
           onUploaded={() => {
-            // Best-effort: the main route polls / refreshes on its own
-            // cycle. Future improvement: emit a `transcript:refresh`
-            // workspace event the InterviewTranscript panel listens for.
+            window.dispatchEvent(
+              new CustomEvent(INTERVIEW_TRANSCRIPT_REFRESH_EVENT, {
+                detail: { interviewId },
+              }),
+            );
           }}
         />
       )}

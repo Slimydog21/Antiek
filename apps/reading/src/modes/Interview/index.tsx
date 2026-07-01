@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import InterviewVoiceCapture from "../../components/InterviewVoiceCapture";
 import { track } from "../../lib/analytics";
 import { apiFetch } from "../../lib/api";
 import { PanelHost } from "../../workspace/PanelHost";
+import { INTERVIEW_TRANSCRIPT_REFRESH_EVENT } from "./InterviewTranscript";
 
 /**
  * Loop 4 interview surface (master-spec §11.5 + integration_autoresearch §B).
@@ -46,9 +47,12 @@ export default function InterviewMode() {
   const [draftInformant, setDraftInformant] = useState<string>("");
   const [draftInterviewer, setDraftInterviewer] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const reloadGenerationRef = useRef(0);
 
   const reload = useCallback(async () => {
     if (!interviewId) return;
+    const generation = reloadGenerationRef.current + 1;
+    reloadGenerationRef.current = generation;
     setLoading(true);
     setError(null);
     try {
@@ -58,17 +62,42 @@ export default function InterviewMode() {
       if (!resp.ok) {
         throw new Error(`GET /interviews failed: HTTP ${resp.status}`);
       }
-      setDetail(await resp.json());
+      const nextDetail = await resp.json();
+      if (generation === reloadGenerationRef.current) {
+        setDetail(nextDetail);
+      }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (generation === reloadGenerationRef.current) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
-      setLoading(false);
+      if (generation === reloadGenerationRef.current) {
+        setLoading(false);
+      }
     }
   }, [interviewId]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    if (!interviewId) return;
+    const onTranscriptRefresh = (event: Event) => {
+      const detail = (event as CustomEvent<{ interviewId?: string }>).detail;
+      if (detail?.interviewId === interviewId) void reload();
+    };
+    window.addEventListener(
+      INTERVIEW_TRANSCRIPT_REFRESH_EVENT,
+      onTranscriptRefresh,
+    );
+    return () => {
+      window.removeEventListener(
+        INTERVIEW_TRANSCRIPT_REFRESH_EVENT,
+        onTranscriptRefresh,
+      );
+    };
+  }, [interviewId, reload]);
 
   const postTurn = async (role: "interviewer" | "informant", text: string) => {
     if (!interviewId || !text.trim() || submitting) return;
@@ -296,7 +325,16 @@ export default function InterviewMode() {
 
               {detail.status !== "completed" && interviewId && (
                 <section className="space-y-3">
-                  <InterviewVoiceCapture sessionId={interviewId} />
+                  <InterviewVoiceCapture
+                    sessionId={interviewId}
+                    onUploaded={() => {
+                      window.dispatchEvent(
+                        new CustomEvent(INTERVIEW_TRANSCRIPT_REFRESH_EVENT, {
+                          detail: { interviewId },
+                        }),
+                      );
+                    }}
+                  />
                   <button
                     type="button"
                     onClick={() => void completeInterview()}
