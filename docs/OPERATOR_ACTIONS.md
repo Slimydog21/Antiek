@@ -67,7 +67,7 @@ next free number. Track the counter at the bottom of this file.
 | OA-007 | Stripe Connect real activation (MockProvider → RealProvider) | OPEN | Sprints 23-24 entire | Operator + Stripe |
 | OA-008 | External red-team firm engagement (Sprint 23-24 gate (c)) | OPEN | Sprints 23-24 entire | Operator + external firm |
 | OA-009 | Phase 1 (Sprints 17-21) committed + pushed + deployed | PARTIALLY DONE | Phase 2 entire | Operator |
-| OA-010 | Integration-revert pattern resolved | PARTIALLY MITIGATED | Remaining tracked-file integration drift audit | Operator + infra |
+| OA-010 | Integration-revert pattern resolved | CLOSED | — | Operator + infra |
 | OA-011 | KMS keys provisioned in production | OPEN | Per-user encryption at rest | Operator + cloud |
 | OA-012 | Postgres catalog deployed (DuckLake Stage 1) | OPEN | Sprint 22 substrate stage transition | Operator + DBA |
 | OA-013 | Trust Center publicly published at antiek.ai/trust | OPEN | Sprint 22 §13.7 deliverable | Operator + ops |
@@ -79,11 +79,11 @@ next free number. Track the counter at the bottom of this file.
 | OA-019 | SOC 2 PURSUE/DEFER decision recorded | OPEN | Sprint 25+ Phase 6 conditional | Operator |
 | OA-020 | Sprint 18 retrieval-time gating production deploy verified | OPEN | Activation of substrate-side G1 close | Operator + ops |
 
-**Not closed:** 20 total — 17 OPEN, 1 PARTIALLY DONE, 1 AWAITING
-OPERATOR TEST, 1 PARTIALLY MITIGATED. One entry is closeable today
-(OA-005); a few are achievable within weeks (OA-001 → OA-002 → OA-015
-chain); the longest-pole items (OA-003 G7 compounding, OA-004 G8 Loop
-3) are ≥ 6 months out.
+**Not closed:** 19 total — 17 OPEN, 1 PARTIALLY DONE, 1 AWAITING
+OPERATOR TEST. One entry is closeable today (OA-005); a few are
+achievable within weeks (OA-001 → OA-002 → OA-015 chain); the
+longest-pole items (OA-003 G7 compounding, OA-004 G8 Loop 3) are
+≥ 6 months out.
 
 ---
 
@@ -453,9 +453,9 @@ constitutes proof. Mark OA-009 status: CLOSED.
 
 ### OA-010 — Integration-revert pattern resolved
 
-**Status:** PARTIALLY MITIGATED
+**Status:** CLOSED
 **Owner:** Operator + infrastructure
-**Blocks:** Remaining tracked-file integration drift audit
+**Blocks:** —
 **Surfaced by:** Phase 2 audit v2 §6.2; observed across multiple sessions
 **First flagged:** 2026-05-22
 
@@ -531,16 +531,40 @@ has production call-path proof:
   and the explicit `ANTIEK_DUCKDB_PATH` override still wins over catalog
   routing.
 
-This does **not** close OA-010 yet. The remaining work is a fresh-session
-drift audit over the historically reverted tracked files after the
-router/API/doc changes have lived across at least one independent commit
-sequence.
+**Fresh-session drift audit, 2026-07-01:** after commits
+`23048220`, `ecbe05f0`, and `92be39b9`, a new continuation inspected
+the historically reverted tracked files and found the integration edits
+still present:
 
-#### Once closed
+- `interfaces/research/api/app.py` still registers the trust,
+  marketplace, payout, and operator advertiser campaign routes.
+- `apps/reading/src/App.tsx` still registers the privacy, trust,
+  marketplace, creator-payout, operator advertiser campaign, and
+  operator payout dashboard routes.
+- `tools/stripe_connect/__init__.py` still re-exports
+  `RevSharePayoutRouter`, `route_impression_revenue`,
+  `export_tax_year`, `PayoutOutcome`, and `TaxYearRow`.
 
-A session can edit `app.py` (or the new sub-router) + commit + return
-in a fresh session and find the edit still present. Mark OA-010
-status: CLOSED.
+Focused proof:
+
+```bash
+pytest tests/test_privacy_control_plane_docs.py tests/test_stripe_connect.py \
+  tests/test_stripe_payouts.py tests/test_multi_user.py \
+  tests/test_phase2_audit_v5.py -q
+```
+
+Result on 2026-07-01: `52 passed`.
+
+OA-010 is closed: the tracked-file integrations that previously reverted
+now have persistent committed evidence and regression tests guarding
+their presence.
+
+#### Closure record
+
+Closed on 2026-07-01 after a fresh continuation verified the tracked
+integrations still existed after the three-commit sequence named above.
+The merge-bar proof is the focused test command in the drift-audit
+section plus the source inspections recorded there.
 
 #### Cross-references
 
