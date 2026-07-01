@@ -61,6 +61,12 @@ from tools.lints.no_raise_in_substrate_writers import (
 from tools.lints.no_raise_in_substrate_writers import (
     scan_paths as scan_no_raise,
 )
+from tools.lints.no_unbounded_external_call import (
+    Violation as UnboundedExternalCallViolation,
+)
+from tools.lints.no_unbounded_external_call import (
+    scan_paths as scan_unbounded_external_call,
+)
 from tools.lints.unannotated_bypass import (
     BypassViolation,
 )
@@ -87,6 +93,14 @@ def _bypass_to_key(v: object) -> ViolationKey:
     )
 
 
+def _unbounded_external_call_to_key(v: object) -> ViolationKey:
+    assert isinstance(v, UnboundedExternalCallViolation)
+    return ViolationKey(
+        path=str(v.path), line=v.line, col=v.col,
+        kind=f"unbounded-external-call:{v.call}",
+    )
+
+
 # Registry: lint-name → (scan-function, key-adapter, friendly-name).
 # Adding a new lint = add an entry here + import the scan_paths
 # function. The CLI is registry-driven; subcommands list current
@@ -98,6 +112,11 @@ LINT_REGISTRY: dict[str, tuple[
 ]] = {
     "no_raise": (scan_no_raise, _no_raise_to_key, "no_raise_in_substrate_writers"),
     "bypass": (scan_bypass, _bypass_to_key, "unannotated_bypass"),
+    "unbounded_external_call": (
+        scan_unbounded_external_call,
+        _unbounded_external_call_to_key,
+        "no_unbounded_external_call",
+    ),
 }
 
 
