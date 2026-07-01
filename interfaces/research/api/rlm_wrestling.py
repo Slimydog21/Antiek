@@ -85,6 +85,7 @@ async def maybe_handle_rlm_distillation(
     resolve_region_text,
     parse_claims_response,
     sha256_prefix,
+    timeout_s: float | None = None,
 ) -> bool:
     """Handle above-threshold ratified distillation via the RLM runner."""
 
@@ -227,6 +228,7 @@ async def maybe_handle_rlm_distillation(
                 f"RLM wrestling iteration {summary.iteration + 1}"
             ),
             after_execute=flush_sub_calls,
+            **({"timeout_s": timeout_s} if timeout_s is not None else {}),
         )
     except (ProviderError, KeyError) as exc:
         session.fail()
