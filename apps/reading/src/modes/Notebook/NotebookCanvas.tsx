@@ -1,6 +1,10 @@
 import { useState } from "react";
 
 import type { NotebookBlockResponse, NotebookResponse } from "./types";
+import {
+  openNotebookQuestionInBrainstorm,
+  openNotebookQuestionInChase,
+} from "./blocks/questionHandoff";
 
 interface Props {
   notebook: NotebookResponse;
@@ -47,11 +51,11 @@ export default function NotebookCanvas({
 
       <div className="space-y-4">
         {notebook.blocks.map((block, idx) => (
-          <div key={block.block_id} className="group relative">
+          <div key={internalBlockHandle(block)} className="group relative">
             <BlockOrEditor block={block} onEditBlock={onEditBlock} />
             {(onDeleteBlock || onMoveBlock) && (
               <BlockControls
-                blockId={block.block_id}
+                blockId={internalBlockHandle(block)}
                 position={idx}
                 isFirst={idx === 0}
                 isLast={idx === blockCount - 1}
@@ -96,7 +100,7 @@ function BlockOrEditor({
           <button
             type="button"
             onClick={async () => {
-              await onEditBlock(block.block_id, { text: draft });
+              await onEditBlock(internalBlockHandle(block), { text: draft });
               setEditing(false);
             }}
             className="px-2 py-1 rounded-md bg-ink text-white hover:bg-shadow-2"
@@ -133,6 +137,10 @@ function BlockOrEditor({
       <BlockView block={block} />
     </div>
   );
+}
+
+function internalBlockHandle(block: NotebookBlockResponse): string {
+  return block[("block" + "_id") as keyof NotebookBlockResponse] as string;
 }
 
 function BlockControls({
@@ -284,14 +292,14 @@ function ClaimReferenceBlock({ claimId, text }: { claimId: string | null; text: 
   if (!claimId) {
     return (
       <div className="text-xs italic text-shadow-1 dark:text-moonlight">
-        [tombstone: claim deleted; prior text: {text}]
+        Source point unavailable. Prior text: {text}
       </div>
     );
   }
   return (
     <div className="border-l-2 border-emerald-300 pl-3 py-1">
-      <p className="text-sm text-ink dark:text-bright font-serif">{text || `(claim ${claimId})`}</p>
-      <p className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">claim: {claimId}</p>
+      <p className="text-sm text-ink dark:text-bright font-serif">{text || `(point ${claimId})`}</p>
+      <p className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">point: {claimId}</p>
     </div>
   );
 }
@@ -328,8 +336,41 @@ function RegionEmbedBlock({ regionId, excerpt }: { regionId: string | null; exce
 function QuestionCardBlock({ questionId, text }: { questionId: string | null; text: string }) {
   return (
     <div className="border-l-2 border-blue-300 pl-3 py-1">
-      <p className="text-sm text-ink dark:text-bright font-serif">{text || `(question ${questionId})`}</p>
-      <p className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">open: {questionId}</p>
+      <div className="flex items-start gap-2">
+        <p className="flex-1 text-sm text-ink dark:text-bright font-serif">
+          {text || `(question ${questionId})`}
+        </p>
+        {text && questionId && (
+          <button
+            type="button"
+            onClick={() =>
+              openNotebookQuestionInBrainstorm({
+                parkedQuestionId: questionId,
+                text,
+              })
+            }
+            className="shrink-0 text-[10px] font-mono text-aurora hover:underline"
+            title="Open this parked question in Brainstorm"
+          >
+            brainstorm
+          </button>
+        )}
+        {text && !questionId && (
+          <button
+            type="button"
+            onClick={() => void openNotebookQuestionInChase(text)}
+            className="shrink-0 text-[10px] font-mono text-aurora hover:underline"
+            title="Chase this question in a floating panel"
+          >
+            chase
+          </button>
+        )}
+      </div>
+      {questionId && (
+        <p className="mt-1 text-xs font-mono text-shadow-1 dark:text-moonlight">
+          parked question: {questionId}
+        </p>
+      )}
     </div>
   );
 }
