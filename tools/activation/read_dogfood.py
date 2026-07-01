@@ -36,8 +36,14 @@ JSONL record shape (one object per session)::
           "selected_text": "highlighted passage text",
           "menu_labels": ["Ask", "Investigate", "Trace source"]
         },
-        "3": {"status": "pass"},
-        "4": {"status": "pass"},
+        "3": {
+          "status": "pass",
+          "first_answer": "first provider answer"
+        },
+        "4": {
+          "status": "pass",
+          "investigation_id": "child investigation/session id"
+        },
         "5": {"status": "pass"},
         "6": {"status": "pass"},
         "7": {"status": "pass", "operator_note": "free-form reading note"}
@@ -178,6 +184,8 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
         failures.extend(selection_evidence_failures)
         reading_work_evidence_failures = _reading_work_evidence_failures(prefix, steps)
         failures.extend(reading_work_evidence_failures)
+        inert_provider_evidence_failures = _inert_provider_evidence_failures(prefix, steps)
+        failures.extend(inert_provider_evidence_failures)
         live_provider_evidence_failures = _live_provider_evidence_failures(prefix, record, steps)
         failures.extend(live_provider_evidence_failures)
         citation_evidence_failures = _citation_evidence_failures(prefix, record, steps)
@@ -208,6 +216,7 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
             and not step_status_failures
             and not selection_evidence_failures
             and not reading_work_evidence_failures
+            and not inert_provider_evidence_failures
             and not live_provider_evidence_failures
             and not citation_evidence_failures
             and not issue_failures
@@ -334,6 +343,29 @@ def _reading_work_evidence_failures(prefix: str, steps: dict[Any, Any]) -> list[
     if not operator_note:
         return [prefix + "step 7 requires operator_note"]
     return []
+
+
+def _inert_provider_evidence_failures(prefix: str, steps: dict[Any, Any]) -> list[str]:
+    failures: list[str] = []
+    for step_id in ("3", "4"):
+        step = steps.get(step_id)
+        if not isinstance(step, dict) or _step_status(step) != "inert":
+            continue
+        if not _activation_boundary_copy(step):
+            failures.append(
+                prefix
+                + f"inert provider step {step_id} requires exact no-key boundary copy"
+            )
+    return failures
+
+
+def _activation_boundary_copy(step: dict[str, Any]) -> str:
+    return (
+        _required_text(step.get("exact_no_key_copy"))
+        or _required_text(step.get("no_key_copy"))
+        or _required_text(step.get("activation_boundary_copy"))
+        or _required_text(step.get("boundary_copy"))
+    )
 
 
 def _has_non_empty_string_list(value: Any) -> bool:
