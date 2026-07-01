@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
@@ -10,6 +11,19 @@ from interfaces.research.api.app import create_app
 def _client():
     app = create_app(register_wrestling=False)
     return TestClient(app)
+
+
+@pytest.fixture()
+def isolated_telemetry_preferences(tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "ANTIEK_TELEMETRY_PREFERENCES_PATH",
+        str(tmp_path / "telemetry_preferences.sqlite"),
+    )
+    from substrate.trust_center import reset_default_registry
+
+    reset_default_registry()
+    yield
+    reset_default_registry()
 
 
 # ── Quality gate endpoint (§13.9) ────────────────────────────────────
@@ -216,3 +230,77 @@ def test_trust_center_loop3_unlock_all_false():
     body = resp.json()
     for met in body["loop_3_unlock_status"].values():
         assert met is False
+
+
+def test_telemetry_preferences_seed_from_live_registry(
+    isolated_telemetry_preferences,
+):
+    client = _client()
+
+    resp = client.get("/trust-center/telemetry-preferences")
+
+    assert resp.status_code == 200, resp.text
+    by_name = {p["surface_name"]: p for p in resp.json()["preferences"]}
+    assert by_name["skill_invocation_frequency"]["enabled"] is True
+    assert by_name["source_tier_preference_signals"]["enabled"] is False
+    assert by_name["query_content_telemetry"]["enabled"] is False
+    assert by_name["query_content_telemetry"]["sensitivity"] == "forbidden"
+
+
+def test_telemetry_preferences_include_new_registry_surface(
+    isolated_telemetry_preferences,
+):
+    from substrate.dp_shuffler import SurfaceConfig
+    from substrate.trust_center import default_registry
+
+    default_registry().register(SurfaceConfig(
+        surface_name="dispatch_tier_telemetry",
+        epsilon_per_day=0.5,
+        sensitivity="high",
+        description="dispatch tier hint sampling",
+        opt_in_required=True,
+    ))
+    client = _client()
+
+    resp = client.get("/trust-center/telemetry-preferences")
+
+    assert resp.status_code == 200, resp.text
+    by_name = {p["surface_name"]: p for p in resp.json()["preferences"]}
+    assert by_name["dispatch_tier_telemetry"]["epsilon_per_day"] == 0.5
+    assert by_name["dispatch_tier_telemetry"]["sensitivity"] == "high"
+    assert by_name["dispatch_tier_telemetry"]["description"] == (
+        "dispatch tier hint sampling"
+    )
+    assert by_name["dispatch_tier_telemetry"]["enabled"] is False
+
+
+def test_telemetry_preference_patch_persists(
+    isolated_telemetry_preferences,
+):
+    client = _client()
+
+    patched = client.patch(
+        "/trust-center/telemetry-preferences/skill_invocation_frequency",
+        json={"enabled": False},
+    )
+    listed = client.get("/trust-center/telemetry-preferences")
+
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["enabled"] is False
+    by_name = {p["surface_name"]: p for p in listed.json()["preferences"]}
+    assert by_name["skill_invocation_frequency"]["enabled"] is False
+    assert by_name["skill_invocation_frequency"]["updated_at"] is not None
+
+
+def test_telemetry_preference_refuses_forbidden_enable(
+    isolated_telemetry_preferences,
+):
+    client = _client()
+
+    resp = client.patch(
+        "/trust-center/telemetry-preferences/query_content_telemetry",
+        json={"enabled": True},
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "forbidden_surface"

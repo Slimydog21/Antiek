@@ -28,12 +28,41 @@ interface DeletionRequest {
   deletion_sla_days: number;
 }
 
+interface TelemetryPreference {
+  surface_name: string;
+  epsilon_per_day: number;
+  sensitivity: PrivacySensitivity;
+  description: string;
+  opt_in_required: boolean;
+  enabled: boolean;
+  updated_at: string | null;
+}
+
+const KNOWN_BUDGET_CATEGORIES = new Set([
+  "skill_invocation_frequency",
+  "source_tier_preference_signals",
+  "query_content_telemetry",
+]);
+
+function titleFromPreference(preference: TelemetryPreference | undefined, category: string) {
+  if (!preference || KNOWN_BUDGET_CATEGORIES.has(category)) {
+    return formatBudgetLabel(category);
+  }
+  const firstSentence = preference.description.split(/[.!?]/)[0]?.trim();
+  const phrase = firstSentence || "Registered privacy signal";
+  return phrase.charAt(0).toUpperCase() + phrase.slice(1);
+}
+
 export default function PrivacyDashboard() {
   const [data, setData] = useState<TrustCenterData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingDeletion, setPendingDeletion] = useState<DeletionRequest | null>(null);
   const [deletionStatusKnown, setDeletionStatusKnown] = useState(false);
   const [deletionBusy, setDeletionBusy] = useState(false);
+  const [preferences, setPreferences] = useState<Record<string, TelemetryPreference>>({});
+  const [preferencesKnown, setPreferencesKnown] = useState(false);
+  const [preferenceError, setPreferenceError] = useState<string | null>(null);
+  const [preferenceBusy, setPreferenceBusy] = useState<string | null>(null);
   const reloadSeq = useRef(0);
 
   const reload = useCallback(async (options?: {
@@ -44,9 +73,10 @@ export default function PrivacyDashboard() {
     const requestId = reloadSeq.current + 1;
     reloadSeq.current = requestId;
     try {
-      const [tc, dr] = await Promise.all([
+      const [tc, dr, pref] = await Promise.all([
         apiFetch("/trust-center"),
         apiFetch("/trust-center/deletion-requests").catch(() => null),
+        apiFetch("/trust-center/telemetry-preferences").catch(() => null),
       ]);
       if (requestId !== reloadSeq.current) return false;
       if (!tc.ok) {
@@ -55,6 +85,9 @@ export default function PrivacyDashboard() {
           setPendingDeletion(null);
           setDeletionStatusKnown(false);
         }
+        setPreferences({});
+        setPreferencesKnown(false);
+        setPreferenceError(null);
         throw new Error(`Could not load privacy settings (HTTP ${tc.status}).`);
       }
       setError(null);
@@ -77,6 +110,23 @@ export default function PrivacyDashboard() {
         setDeletionStatusKnown(false);
         if (!options?.preservePendingOnFailure) setPendingDeletion(null);
       }
+      if (pref?.ok) {
+        const prefData = await pref.json();
+        setPreferences(
+          Object.fromEntries(
+            (prefData.preferences ?? []).map((p: TelemetryPreference) => [
+              p.surface_name,
+              p,
+            ]),
+          ),
+        );
+        setPreferencesKnown(true);
+        setPreferenceError(null);
+      } else {
+        setPreferences({});
+        setPreferencesKnown(false);
+        setPreferenceError("Could not load privacy preferences; toggles unavailable.");
+      }
       return true;
     } catch (e: unknown) {
       if (requestId !== reloadSeq.current) return false;
@@ -85,6 +135,9 @@ export default function PrivacyDashboard() {
         setPendingDeletion(null);
         setDeletionStatusKnown(false);
       }
+      setPreferences({});
+      setPreferencesKnown(false);
+      setPreferenceError(null);
       setError(e instanceof Error ? e.message : String(e));
       return false;
     }
@@ -143,12 +196,57 @@ export default function PrivacyDashboard() {
     }
   };
 
+  const updatePreference = async (surfaceName: string, enabled: boolean) => {
+    if (preferenceBusy) return;
+    setPreferenceBusy(surfaceName);
+    try {
+      const resp = await apiFetch(
+        `/trust-center/telemetry-preferences/${encodeURIComponent(surfaceName)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled }),
+        },
+      );
+      if (!resp.ok) {
+        throw new Error(`Could not update privacy preference (HTTP ${resp.status}).`);
+      }
+      const updated = await resp.json();
+      setPreferences((current) => ({
+        ...current,
+        [updated.surface_name]: updated,
+      }));
+      setPreferencesKnown(true);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPreferenceBusy(null);
+    }
+  };
+
   const totalEpsilon = data
     ? Object.values(data.differential_privacy_epsilon_budgets).reduce(
         (a, b) => a + b,
         0,
       )
     : 0;
+  const telemetryRows = data
+    ? (preferencesKnown
+        ? Object.values(preferences).map((preference) => ({
+            category: preference.surface_name,
+            epsilon: preference.epsilon_per_day,
+            sensitivity: preference.sensitivity,
+            preference,
+          }))
+        : Object.entries(data.differential_privacy_epsilon_budgets).map(
+            ([category, epsilon]) => ({
+              category,
+              epsilon,
+              sensitivity: sensitivityForBudget(category, epsilon),
+              preference: undefined,
+            }),
+          ))
+    : [];
 
   return (
     <div className="flex flex-col h-screen">
@@ -177,15 +275,29 @@ export default function PrivacyDashboard() {
             </p>
           )}
 
+          {preferenceError && (
+            <p className="text-sm text-amber-900 border border-amber-200 bg-amber-50 px-3 py-2 rounded">
+              {preferenceError}
+            </p>
+          )}
+
           {data &&
-            Object.entries(data.differential_privacy_epsilon_budgets).map(
-              ([category, epsilon]) => (
+            telemetryRows.map(
+              ({ category, epsilon, sensitivity, preference }) => (
                 <TelemetrySection
                   key={category}
-                  title={formatBudgetLabel(category)}
-                  description={formatBudgetDescription(category)}
+                  title={titleFromPreference(preference, category)}
+                  description={
+                    preference && !KNOWN_BUDGET_CATEGORIES.has(category)
+                      ? preference.description
+                      : formatBudgetDescription(category)
+                  }
                   epsilon={epsilon}
-                  sensitivity={sensitivityForBudget(category, epsilon)}
+                  sensitivity={sensitivity}
+                  preference={preference}
+                  preferencesKnown={preferencesKnown}
+                  preferenceBusy={preferenceBusy === category}
+                  onPreferenceChange={(enabled) => updatePreference(category, enabled)}
                 />
               ),
             )}
@@ -213,13 +325,22 @@ function TelemetrySection({
   description,
   epsilon,
   sensitivity,
+  preference,
+  preferencesKnown,
+  preferenceBusy,
+  onPreferenceChange,
 }: {
   title: string;
   description: string;
   epsilon: number;
   sensitivity: PrivacySensitivity;
+  preference: TelemetryPreference | undefined;
+  preferencesKnown: boolean;
+  preferenceBusy: boolean;
+  onPreferenceChange: (enabled: boolean) => void;
 }) {
   const isForbidden = sensitivity === "forbidden";
+  const enabled = preference?.enabled ?? !isForbidden;
   return (
     <section className="border border-rule dark:border-charcoal-1 rounded-md px-5 py-4 space-y-3">
       <div className="flex items-center justify-between gap-3">
@@ -237,9 +358,21 @@ function TelemetrySection({
             Never collected
           </span>
         ) : (
-          <span className="text-xs font-mono text-ink dark:text-bright bg-ice-3 dark:bg-charcoal-1 px-2 py-1 rounded">
-            Collected as a noisy aggregate
-          </span>
+          <label className="inline-flex items-center gap-2 text-xs font-mono text-ink dark:text-bright bg-ice-3 dark:bg-charcoal-1 px-2 py-1 rounded">
+            <input
+              type="checkbox"
+              checked={enabled}
+              disabled={!preferencesKnown || preferenceBusy}
+              onChange={(event) => onPreferenceChange(event.currentTarget.checked)}
+            />
+            <span>
+              {!preferencesKnown
+                ? "Preference unavailable"
+                : enabled
+                  ? "Noisy aggregate on"
+                  : "Noisy aggregate off"}
+            </span>
+          </label>
         )}
         <span
           className={`text-xs font-mono px-2 py-1 rounded ${
