@@ -48,6 +48,22 @@ mutation cohort, qualitative review, and final decision artifact.
 This command is read-only. It reports which unlock criteria are
 mechanically satisfied and which remain operator-bound.
 
+If the `program` row is still operator-bound, review
+`roles/synthesizer/program.md` and record the sign-off artifact expected
+by the audit:
+
+```markdown
+# Synthesizer program review
+
+- Reviewer: Operator
+- Reviewed_at: 2026-07-01T00:00:00Z
+- Verdict: operator_approved
+- Reviewed artifact: roles/synthesizer/program.md
+```
+
+Save it as `reports/autoresearch/synthesizer-program-review.md`, then
+re-run the readiness audit.
+
 ### 1. Run the no-op calibration cohort
 
 Wire a local script that creates a `PromptAutoresearchRunner`, runs a

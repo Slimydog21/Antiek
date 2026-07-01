@@ -43,6 +43,8 @@ def audit_wedge1_readiness(repo_root: Path) -> ReadinessReport:
     )
     calibration = root / "reports/autoresearch/synthesizer-calibration.md"
     calibration_valid = _is_calibration_report(calibration)
+    program_review = root / "reports/autoresearch/synthesizer-program-review.md"
+    program_review_valid = _is_program_review_note(program_review)
     required_tool_files = [
         "runner.py",
         "score.py",
@@ -65,11 +67,18 @@ def audit_wedge1_readiness(repo_root: Path) -> ReadinessReport:
     if program.is_file():
         text = program.read_text(encoding="utf-8")
         if "voice" in text.lower() and "style" in text.lower():
-            program_status = "operator_bound"
-            program_evidence = (
-                "roles/synthesizer/program.md exists and names voice/style; "
-                "operator review note is still required"
-            )
+            if program_review_valid:
+                program_status = "satisfied"
+                program_evidence = (
+                    "roles/synthesizer/program.md exists and "
+                    f"{program_review.relative_to(root)} records operator review"
+                )
+            else:
+                program_status = "operator_bound"
+                program_evidence = (
+                    "roles/synthesizer/program.md exists and names voice/style; "
+                    + _program_review_evidence(root, program_review)
+                )
         else:
             program_evidence = "roles/synthesizer/program.md exists but does not name voice/style"
 
@@ -148,6 +157,34 @@ def _calibration_evidence(root: Path, calibration: Path) -> str:
     return (
         f"{calibration.relative_to(root)} exists but is not a generated "
         "calibration report"
+    )
+
+
+def _is_program_review_note(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    text = path.read_text(encoding="utf-8").lower()
+    required_fragments = (
+        "# synthesizer program review",
+        "reviewer:",
+        "reviewed_at:",
+        "verdict:",
+        "operator_approved",
+        "roles/synthesizer/program.md",
+    )
+    return all(fragment in text for fragment in required_fragments)
+
+
+def _program_review_evidence(root: Path, review: Path) -> str:
+    if not review.is_file():
+        return (
+            "write reports/autoresearch/synthesizer-program-review.md "
+            "with reviewer, reviewed_at, verdict: operator_approved, and "
+            "roles/synthesizer/program.md"
+        )
+    return (
+        f"{review.relative_to(root)} exists but does not record the required "
+        "operator review fields"
     )
 
 
