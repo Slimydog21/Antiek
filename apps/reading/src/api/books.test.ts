@@ -259,6 +259,20 @@ describe("books api — voice-note boundary", () => {
     ).rejects.toThrow(/note distiller isn.t available right now\./);
   });
 
+  it.each([1.5, -1, Number.MAX_SAFE_INTEGER + 1, Number.POSITIVE_INFINITY])(
+    "rejects malformed voice-note page index %s before sending",
+    async (page_index) => {
+      await expect(
+        saveVoiceNote("doc-1", {
+          page_index,
+          transcript: "confirmed draft",
+          investigation_id: "read-doc-1",
+        }),
+      ).rejects.toThrow(/page_index/);
+      expect(apiFetchMock).not.toHaveBeenCalled();
+    },
+  );
+
   it("keeps unexpected voice-note save failures loud with the endpoint name", async () => {
     apiFetchMock.mockResolvedValueOnce(new Response("boom", { status: 500 }));
 

@@ -161,6 +161,7 @@ export async function saveVoiceNote(
     capture_event_id?: string | null;
   },
 ): Promise<VoiceNoteResult> {
+  assertNonNegativeSafeInteger(body.page_index, "page_index");
   const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/voice-note`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
