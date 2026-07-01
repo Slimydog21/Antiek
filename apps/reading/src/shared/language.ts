@@ -113,27 +113,24 @@ export interface BannedPattern {
  */
 export const BANNED_PATTERNS: readonly BannedPattern[] = [
   {
-    // Matches the enumerated long-id form (`inv-` + ≥6 hex). Un-bracketed bare
-    // counts and short ids are a documented follow-up, not caught here yet —
-    // no rule change needed now.
+    // Matches raw investigation ids, including short/demo ids (`inv-abc`) and
+    // long generated ids (`inv-` + hex). These are code handles, never labels.
     id: "inv-id",
-    pattern: /\binv-[0-9a-f]{6,}/gi,
+    pattern: /\binv-[a-z0-9][a-z0-9_-]{2,}\b/gi,
     description: "a raw investigation id (`inv-…`)",
     replacement: "hide the id; say \"research\" (see GLOSSARY: investigation)",
   },
   {
-    // Matches the enumerated bracketed form (`[…chunk…]`). An un-bracketed
-    // count (e.g. "5 chunks" in prose) is a documented follow-up, not caught
-    // here yet — no rule change needed now.
+    // Matches bracketed labels (`[…chunk…]`) and bare plural counts ("5 chunks").
     id: "n-chunks",
-    pattern: /\[\s*\{?[^[\]]{0,40}\bchunk(_id)?s?\b[^[\]]{0,40}\]/gi,
-    description: "a bracketed chunk count / chunk-id label (`[N chunks]`)",
+    pattern: /(?:\[\s*\{?[^[\]]{0,40}\bchunk(_id)?s?\b[^[\]]{0,40}\]|\b\d+\s+chunks\b)/gi,
+    description: "a chunk count / chunk-id label (`[N chunks]`, `5 chunks`)",
     replacement: "\"N sources\" (see GLOSSARY: [N chunks])",
   },
   {
     id: "n-claims",
-    pattern: /\[\s*\{?[^[\]]{0,40}\bclaim(_id)?s?\b[^[\]]{0,40}\]/gi,
-    description: "a bracketed claim count / claim-id label (`[N claims]`)",
+    pattern: /(?:\[\s*\{?[^[\]]{0,40}\bclaim(_id)?s?\b[^[\]]{0,40}\]|\b\d+\s+claims\b)/gi,
+    description: "a claim count / claim-id label (`[N claims]`, `3 claims`)",
     replacement: "\"N points\" (see GLOSSARY: [N claims])",
   },
   {
@@ -153,6 +150,12 @@ export const BANNED_PATTERNS: readonly BannedPattern[] = [
     pattern: /\bpublish_intent\b/g,
     description: "the raw `publish_intent` enum token",
     replacement: "plain words like keep private / will be public (see GLOSSARY: publish_intent)",
+  },
+  {
+    id: "chunk-id",
+    pattern: /\bchunk-(?:\d+|[0-9a-f]{4,})\b/gi,
+    description: "a raw chunk id (`chunk-…`) used as a label",
+    replacement: "the source's title (see GLOSSARY: chunk UUID)",
   },
   {
     // A bare 32- or 40-hex string used as a label. Hyphenated UUIDs are caught

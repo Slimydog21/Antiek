@@ -11,9 +11,10 @@
  * the current tree and stops the NEXT leak rather than demanding a big-bang
  * cleanup first.
  *
- * Re-mint the baseline deliberately (after a product fixes a leak, the count
- * shrinks):  COPY_LINT_UPDATE=1 npx vitest run src/shared/copyLint.test.ts
- * Never set it to silence a regression — the baseline only ever shrinks.
+ * Re-mint the baseline deliberately: after a product fixes a leak (the count
+ * shrinks) or after `language.ts` tightens a rule and the existing tree is
+ * re-baselined under the stricter contract. Never set it to silence a
+ * regression.
  */
 import { describe, expect, it } from "vitest";
 import {
