@@ -138,17 +138,19 @@ class PromptAutoresearchRunner:
         try:
             self.budget.record_iteration_cost(cost_usd)
         except BudgetExceeded as exc:
-            return PromptMutationOutcome(
+            outcome = PromptMutationOutcome(
                 mutation_id=mutation.mutation_id,
                 accepted=False,
                 baseline_score=self.baseline_total_score,
-                candidate_score=0.0,
+                candidate_score=self.baseline_total_score,
                 delta=0.0,
                 epsilon_required=self.epsilon,
                 composite_breakdown=CompositeScore(0, 0, 0, 0, 0),
                 cost_usd=cost_usd,
                 notes=f"budget exceeded: {exc}",
             )
+            self.iterations.append(outcome)
+            return outcome
 
         rubric = rubric_judge_fn(synthesis_text)
         cs = composite_score(
