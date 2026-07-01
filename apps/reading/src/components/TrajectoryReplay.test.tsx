@@ -146,6 +146,26 @@ describe("TrajectoryReplay", () => {
     expect(screen.getByText("3 / 3")).toBeTruthy();
   });
 
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "falls back to the default playback speed for invalid playSpeed %s",
+    async (playSpeed) => {
+      vi.useFakeTimers();
+      render(<TrajectoryReplay events={UNSORTED_EVENTS} playSpeed={playSpeed} />);
+
+      fireEvent.click(screen.getByRole("button", { name: "Play" }));
+      act(() => {
+        vi.advanceTimersByTime(499);
+      });
+      expect(screen.getByText("1 / 3")).toBeTruthy();
+
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(screen.getByText("2 / 3")).toBeTruthy();
+      expect(screen.getByText(/event_id: event-middle/)).toBeTruthy();
+    },
+  );
+
   it("restarts at the first sorted event", () => {
     render(<TrajectoryReplay events={UNSORTED_EVENTS} />);
 

@@ -24,6 +24,8 @@ export default function TrajectoryReplay({ events, playSpeed = 2 }: Props) {
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [playing, setPlaying] = useState<boolean>(false);
   const intervalRef = useRef<number | null>(null);
+  const safePlaySpeed =
+    Number.isFinite(playSpeed) && playSpeed > 0 ? playSpeed : 2;
 
   const sortedEvents = useMemo(() => {
     return [...events].sort((a, b) => {
@@ -44,7 +46,7 @@ export default function TrajectoryReplay({ events, playSpeed = 2 }: Props) {
       }
       return;
     }
-    const tickMs = Math.max(50, Math.floor(1000 / playSpeed));
+    const tickMs = Math.max(50, Math.floor(1000 / safePlaySpeed));
     intervalRef.current = window.setInterval(() => {
       setCurrentIndex((idx) => {
         if (idx + 1 >= total) {
@@ -60,7 +62,7 @@ export default function TrajectoryReplay({ events, playSpeed = 2 }: Props) {
         intervalRef.current = null;
       }
     };
-  }, [playing, playSpeed, total]);
+  }, [playing, safePlaySpeed, total]);
 
   // S10 row 10.14 — Replay step-list panel dispatches `antiek:replay:goto`
   // with an event_id when the operator clicks a step pill. We listen +
