@@ -35,6 +35,11 @@ from .session import (
     SubLLMWithTools,
     create_session,
     iterate_session,
+    iteration_payload,
+    session_completed_payload,
+    session_failed_payload,
+    session_started_payload,
+    sub_call_dispatched_payload,
 )
 
 __all__ = [
@@ -49,6 +54,11 @@ __all__ = [
     "create_session",
     "estimate_tokens_from_bytes",
     "is_ratified",
+    "iteration_payload",
     "iterate_session",
     "maybe_escalate_to_rlm",
+    "session_completed_payload",
+    "session_failed_payload",
+    "session_started_payload",
+    "sub_call_dispatched_payload",
 ]

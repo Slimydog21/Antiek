@@ -229,6 +229,11 @@ class ActionType(StrEnum):
     # RLM bridge decision (orchestration/rlm/bridge.py) — emitted by
     # wrestling.document_loaded when the bridge decides escalate/defer.
     RLM_BRIDGE_DECIDED = "rlm.bridge.decided"
+    RLM_SESSION_STARTED = "rlm.session_started"
+    RLM_ITERATION = "rlm.iteration"
+    RLM_SUB_CALL_DISPATCHED = "rlm.sub_call_dispatched"
+    RLM_SESSION_COMPLETED = "rlm.session_completed"
+    RLM_SESSION_FAILED = "rlm.session_failed"
     # Quality-gate verdict for §13.9 public-graph promotion.
     QUALITY_GATE_EVALUATED = "quality_gate.evaluated"
     # Cross-graph citation recorded (substrate/cross_graph/federation.py).
@@ -780,7 +785,11 @@ class ActionType(StrEnum):
 #     user.registered, user.identity_attached, and graph.scope_changed record
 #     account lifecycle and graph-routing scope changes without turning on the
 #     Sprint 22+ multi-user pivot.
-EVENT_SCHEMA_VERSION: int = 31
+# v32: RLM Sprint 11 event vocabulary. Five typed audit events
+#     rlm.session_started, rlm.iteration, rlm.sub_call_dispatched,
+#     rlm.session_completed, and rlm.session_failed make long-document RLM
+#     sessions reconstructable before the full execution bridge lands.
+EVENT_SCHEMA_VERSION: int = 32
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -2770,6 +2779,75 @@ class RLMBridgeDecidedPayload(_PayloadBase):
     ]
 
 
+class RLMSessionStartedPayload(_PayloadBase):
+    """First event in a ratified RLM session.
+
+    It records the session identity, root attribution role, document anchor, and
+    budget envelope. The full document text never belongs in the event log.
+    """
+
+    action_type: Literal[ActionType.RLM_SESSION_STARTED] = ActionType.RLM_SESSION_STARTED
+    session_id: str
+    root_role: str
+    document_id_ref: str | None = None
+    threshold_tokens: int = Field(ge=0)
+    estimated_tokens: int | None = Field(default=None, ge=0)
+    max_iterations: int = Field(ge=1)
+    cost_cap_usd: float = Field(ge=0.0)
+
+
+class RLMIterationPayload(_PayloadBase):
+    """One root RLM iteration: LLM-written code was attempted and summarized."""
+
+    action_type: Literal[ActionType.RLM_ITERATION] = ActionType.RLM_ITERATION
+    session_id: str
+    iteration: int = Field(ge=1)
+    summary: str
+    cost_usd: float = Field(ge=0.0)
+
+
+class RLMSubCallDispatchedPayload(_PayloadBase):
+    """A sub-LLM call made from inside an RLM session.
+
+    Tools attach to sub-LLMs only; the root REPL is not granted tools. This
+    event records the sub-call boundary without storing prompt text.
+    """
+
+    action_type: Literal[ActionType.RLM_SUB_CALL_DISPATCHED] = (
+        ActionType.RLM_SUB_CALL_DISPATCHED
+    )
+    session_id: str
+    target_role: str
+    tier: str
+    prompt_count: int = Field(ge=1)
+    parent_event_id: str | None = None
+    cost_usd: float = Field(default=0.0, ge=0.0)
+
+
+class RLMSessionCompletedPayload(_PayloadBase):
+    """Terminal success or cost-cap completion event for an RLM session."""
+
+    action_type: Literal[ActionType.RLM_SESSION_COMPLETED] = (
+        ActionType.RLM_SESSION_COMPLETED
+    )
+    session_id: str
+    status: Literal["completed", "cost_capped"]
+    iteration_count: int = Field(ge=0)
+    cost_usd_accumulated: float = Field(ge=0.0)
+    final_summary: str
+
+
+class RLMSessionFailedPayload(_PayloadBase):
+    """Terminal failure event for an RLM session."""
+
+    action_type: Literal[ActionType.RLM_SESSION_FAILED] = ActionType.RLM_SESSION_FAILED
+    session_id: str
+    iteration_count: int = Field(ge=0)
+    cost_usd_accumulated: float = Field(ge=0.0)
+    error_type: str
+    error_message: str
+
+
 class QualityGateEvaluatedPayload(_PayloadBase):
     """Quality-gate verdict for §13.9 public-graph promotion of a
     notebook block. Carries the per-rubric pass/fail and the headline
@@ -3980,7 +4058,7 @@ class DocumentFiledIntoInvestigationPayload(_PayloadBase):
 
 
 TypedPayload = Annotated[
-    UserRegisteredPayload | UserIdentityAttachedPayload | GraphScopeChangedPayload | DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | MCPAttributionRecordedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ClaimReviewedPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
+    UserRegisteredPayload | UserIdentityAttachedPayload | GraphScopeChangedPayload | DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | MCPAttributionRecordedPayload | RLMBridgeDecidedPayload | RLMSessionStartedPayload | RLMIterationPayload | RLMSubCallDispatchedPayload | RLMSessionCompletedPayload | RLMSessionFailedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ClaimReviewedPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
     Field(discriminator="action_type"),
 ]
 
@@ -4068,6 +4146,11 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.PAGE_ATTRIBUTION_COMPUTED.value,
     ActionType.MCP_ATTRIBUTION_RECORDED.value,
     ActionType.RLM_BRIDGE_DECIDED.value,
+    ActionType.RLM_SESSION_STARTED.value,
+    ActionType.RLM_ITERATION.value,
+    ActionType.RLM_SUB_CALL_DISPATCHED.value,
+    ActionType.RLM_SESSION_COMPLETED.value,
+    ActionType.RLM_SESSION_FAILED.value,
     ActionType.QUALITY_GATE_EVALUATED.value,
     ActionType.CROSS_GRAPH_CITATION_RECORDED.value,
     ActionType.REV_SHARE_DECIDED.value,

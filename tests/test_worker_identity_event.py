@@ -58,8 +58,8 @@ def test_event_schema_version_bumped():
     Tracks the current value: 28 (worker.identity, yegge SPR-01) -> 29
     (DiscoveryProvider Literal += "parallel", restore #134) -> 30
     (DispatchCallPayload.tier accepts "tts") -> 31 (multi-user audit
-    lifecycle events)."""
-    assert EVENT_SCHEMA_VERSION == 31
+    lifecycle events) -> 32 (RLM session audit events)."""
+    assert EVENT_SCHEMA_VERSION == 32
 
 
 # ── validation (rigor #3: rejects bad input at emit time) ───────────────────

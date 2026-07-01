@@ -12,6 +12,11 @@ from orchestration.rlm import (
     RLMRatificationRequired,
     create_session,
     iterate_session,
+    iteration_payload,
+    session_completed_payload,
+    session_failed_payload,
+    session_started_payload,
+    sub_call_dispatched_payload,
 )
 from orchestration.rlm.session import RLMToolIsolationViolation
 
@@ -97,3 +102,66 @@ def test_complete_session(monkeypatch):
     session.complete(final_summary="Three theses emerged across the corpus.")
     assert session.state.status == "completed"
     assert session.state.completed_at is not None
+
+
+def test_session_payload_helpers_shape_typed_events(monkeypatch):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    session = create_session(
+        investigation_id="inv-x",
+        root_role="wrestler",
+        document_id="doc-long",
+    )
+    started = session_started_payload(session, estimated_tokens=128_000)
+    assert started.action_type == "rlm.session_started"
+    assert started.session_id == session.state.session_id
+    assert started.document_id_ref == "doc-long"
+    assert started.threshold_tokens == 64_000
+    assert started.max_iterations == 8
+    assert started.cost_cap_usd == 5.0
+
+    iterate_session(session, summary="chapter split", cost_usd=Decimal("0.25"))
+    iteration = iteration_payload(session, session.iterations[-1])
+    assert iteration.action_type == "rlm.iteration"
+    assert iteration.iteration == 1
+    assert iteration.cost_usd == 0.25
+
+    sub_call = sub_call_dispatched_payload(
+        session,
+        target_role="grounder",
+        tier="flash",
+        prompt_count=5,
+        parent_event_id="evt-parent",
+        cost_usd=Decimal("0.05"),
+    )
+    assert sub_call.action_type == "rlm.sub_call_dispatched"
+    assert sub_call.prompt_count == 5
+    assert sub_call.parent_event_id == "evt-parent"
+
+    completed = session_completed_payload(session, final_summary="answer ready")
+    assert completed.action_type == "rlm.session_completed"
+    assert completed.status == "completed"
+    assert completed.iteration_count == 1
+    assert completed.cost_usd_accumulated == 0.25
+
+    failed = session_failed_payload(
+        session,
+        error_type="TimeoutError",
+        error_message="iteration timed out",
+    )
+    assert failed.action_type == "rlm.session_failed"
+    assert failed.error_type == "TimeoutError"
+    assert failed.iteration_count == 1
+
+
+def test_session_completed_payload_preserves_cost_cap_status(monkeypatch):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    session = create_session(investigation_id="inv-x", root_role="wrestler")
+    iterate_session(session, summary="near cap", cost_usd=Decimal("4.99"))
+    iterate_session(session, summary="over cap", cost_usd=Decimal("0.02"))
+
+    completed = session_completed_payload(session, final_summary="cost cap reached")
+
+    assert session.state.status == "cost_capped"
+    assert completed.status == "cost_capped"
+    assert completed.iteration_count == 1
+    assert completed.cost_usd_accumulated == 4.99

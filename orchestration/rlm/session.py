@@ -18,6 +18,7 @@ from decimal import Decimal
 RLM_DOC_THRESHOLD_TOKENS: int = 64_000  # documents above this use RLM mode
 RLM_REPL_PER_CALL_TIMEOUT_SECONDS: int = 120
 RLM_SESSION_COST_USD_CAP: Decimal = Decimal("5.00")
+RLM_DEFAULT_MAX_ITERATIONS: int = 8
 
 
 # Tool-isolation invariant per rlm_integration_spec.md Paper §2
@@ -170,3 +171,85 @@ def iterate_session(
     """One iteration step. Operator wires real dispatch around this
     once the sub-LLM-with-tools tooling lands."""
     session.record_iteration(summary=summary, cost_usd=cost_usd)
+
+
+def session_started_payload(
+    session: RLMSession,
+    *,
+    threshold_tokens: int = RLM_DOC_THRESHOLD_TOKENS,
+    estimated_tokens: int | None = None,
+    max_iterations: int = RLM_DEFAULT_MAX_ITERATIONS,
+):
+    from substrate.schemas.events import RLMSessionStartedPayload
+
+    return RLMSessionStartedPayload(
+        session_id=session.state.session_id,
+        root_role=session.state.root_role,
+        document_id_ref=session.state.document_id,
+        threshold_tokens=threshold_tokens,
+        estimated_tokens=estimated_tokens,
+        max_iterations=max_iterations,
+        cost_cap_usd=float(RLM_SESSION_COST_USD_CAP),
+    )
+
+
+def iteration_payload(session: RLMSession, iteration: dict):
+    from substrate.schemas.events import RLMIterationPayload
+
+    return RLMIterationPayload(
+        session_id=session.state.session_id,
+        iteration=int(iteration["iteration"]),
+        summary=str(iteration["summary"]),
+        cost_usd=float(Decimal(str(iteration["cost_usd"]))),
+    )
+
+
+def sub_call_dispatched_payload(
+    session: RLMSession,
+    *,
+    target_role: str,
+    tier: str,
+    prompt_count: int,
+    parent_event_id: str | None = None,
+    cost_usd: Decimal = Decimal("0.00"),
+):
+    from substrate.schemas.events import RLMSubCallDispatchedPayload
+
+    return RLMSubCallDispatchedPayload(
+        session_id=session.state.session_id,
+        target_role=target_role,
+        tier=tier,
+        prompt_count=prompt_count,
+        parent_event_id=parent_event_id,
+        cost_usd=float(cost_usd),
+    )
+
+
+def session_completed_payload(session: RLMSession, *, final_summary: str):
+    from substrate.schemas.events import RLMSessionCompletedPayload
+
+    status = "cost_capped" if session.state.status == "cost_capped" else "completed"
+    return RLMSessionCompletedPayload(
+        session_id=session.state.session_id,
+        status=status,
+        iteration_count=session.state.iteration_count,
+        cost_usd_accumulated=float(session.state.cost_usd_accumulated),
+        final_summary=final_summary,
+    )
+
+
+def session_failed_payload(
+    session: RLMSession,
+    *,
+    error_type: str,
+    error_message: str,
+):
+    from substrate.schemas.events import RLMSessionFailedPayload
+
+    return RLMSessionFailedPayload(
+        session_id=session.state.session_id,
+        iteration_count=session.state.iteration_count,
+        cost_usd_accumulated=float(session.state.cost_usd_accumulated),
+        error_type=error_type,
+        error_message=error_message,
+    )
