@@ -19,7 +19,9 @@ from tools.stripe_connect import (
     StripeConnectAccount,
 )
 from tools.stripe_connect.payouts import (
+    PayoutOutcome,
     RevSharePayoutRouter,
+    TaxYearRow,
     export_tax_year,
     route_impression_revenue,
     _idem_key,
@@ -64,6 +66,16 @@ def _make_router_with_active_creator(creator_id: str = "u-1") -> RevSharePayoutR
 def test_idempotency_key_is_deterministic():
     assert _idem_key("imp-1", "u-1") == _idem_key("imp-1", "u-1")
     assert _idem_key("imp-1", "u-1") != _idem_key("imp-2", "u-1")
+
+
+def test_payout_router_exports_from_package_surface():
+    import tools.stripe_connect as stripe_connect
+
+    assert stripe_connect.PayoutOutcome is PayoutOutcome
+    assert stripe_connect.RevSharePayoutRouter is RevSharePayoutRouter
+    assert stripe_connect.TaxYearRow is TaxYearRow
+    assert stripe_connect.export_tax_year is export_tax_year
+    assert stripe_connect.route_impression_revenue is route_impression_revenue
 
 
 def test_block_verdict_drops_revenue_audit_logged():
