@@ -41,6 +41,7 @@ import os
 import sys
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
@@ -50,11 +51,21 @@ _PKG_ROOT = os.path.dirname(
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from interfaces.research.rlm_repl import RLMRepl  # noqa: E402
 from middleware.constraint_check import (  # noqa: E402
     ConstraintLoopResult,
     Violation,
     run_constraint_loop,
 )
+from orchestration.rlm import (  # noqa: E402
+    RLMEventEmitter,
+    create_session,
+    run_loop_with_timeout,
+    session_failed_payload,
+    session_started_payload,
+)
+from orchestration.rlm.bridge import is_ratified  # noqa: E402
+from orchestration.rlm.session import RLM_DEFAULT_MAX_ITERATIONS  # noqa: E402
 from roles.synthesizer import (  # noqa: E402
     SynthesizerValidationError,
     ThesisResult,
@@ -79,6 +90,10 @@ from substrate.schemas import (  # noqa: E402
 )
 
 from .broadcast import EventBroadcaster  # noqa: E402 — after the sys.path bootstrap above
+
+SYNTHESIS_CONTEXT_BUDGET_TOKENS = 256_000
+SYNTHESIS_BYTES_PER_TOKEN_ESTIMATE = 4
+RLM_SYNTHESIS_POLICY_ID = "rlm-synthesizer/evented-loop"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -563,6 +578,126 @@ def _parse_with_canonical_refs(
     )
 
 
+def _estimate_tokens_from_text(text: str) -> int:
+    return max(0, len(text.encode("utf-8")) // SYNTHESIS_BYTES_PER_TOKEN_ESTIMATE)
+
+
+def _should_use_rlm_synthesis(prompt: str) -> bool:
+    return (
+        is_ratified()
+        and _estimate_tokens_from_text(prompt) >= SYNTHESIS_CONTEXT_BUDGET_TOKENS
+    )
+
+
+async def _dispatch_rlm_and_parse(
+    prompt: str,
+    event: Event,
+    *,
+    canonical_refs: CanonicalSynthesisRefs,
+    broadcaster: EventBroadcaster,
+) -> tuple[ThesisResult | None, str]:
+    session = create_session(
+        investigation_id=event.investigation_id,
+        root_role="synthesizer",
+    )
+    emitter = RLMEventEmitter(
+        broadcaster.broadcast,
+        investigation_id=event.investigation_id,
+        param_version="synthesizer-rlm-v0",
+    )
+    await emitter.emit(
+        session_started_payload(
+            session,
+            estimated_tokens=_estimate_tokens_from_text(prompt),
+            max_iterations=RLM_DEFAULT_MAX_ITERATIONS,
+        )
+    )
+
+    root_prompt = (
+        "You are synthesizing a long Loop 1 substrate block. The complete "
+        "synthesis prompt is in the Python variable prompt. Write Python "
+        "code that extracts or summarizes manageable slices as needed, then "
+        "set answer['content'] to a JSON string matching the synthesizer "
+        "ThesisResult contract and set answer['ready'] = True."
+    )
+    repl = RLMRepl(
+        corpus={"prompt": prompt, "system_prompt": root_prompt},
+        max_iterations=RLM_DEFAULT_MAX_ITERATIONS,
+    )
+    last_codegen_cost = Decimal("0.00")
+
+    def generate_code(summary) -> str:
+        nonlocal last_codegen_cost
+        result = dispatch(
+            "\n\n".join([root_prompt, summary.format_for_prompt()]),
+            "synthesizer",
+            investigation_id=event.investigation_id,
+            parent_event_id=event.event_id,
+        )
+        last_codegen_cost = Decimal(str(result.cost_usd))
+        return result.text
+
+    try:
+        loop_result = await run_loop_with_timeout(
+            repl=repl,
+            generate_code=generate_code,
+            session=session,
+            emitter=emitter,
+            cost_usd=lambda _summary, _code: last_codegen_cost,
+            iteration_summary=lambda summary, _code: (
+                f"RLM synthesis iteration {summary.iteration + 1}"
+            ),
+        )
+    except (ProviderError, KeyError) as exc:
+        session.fail()
+        await emitter.emit(
+            session_failed_payload(
+                session,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
+        )
+        return None, "synthesizer-fallback/no-provider"
+
+    if loop_result.status not in {"completed", "cost_capped"}:
+        return None, RLM_SYNTHESIS_POLICY_ID
+    if loop_result.status == "cost_capped":
+        return None, RLM_SYNTHESIS_POLICY_ID
+
+    try:
+        return (
+            _parse_with_canonical_refs(loop_result.final_answer, canonical_refs),
+            RLM_SYNTHESIS_POLICY_ID,
+        )
+    except SynthesizerValidationError as exc:
+        print(
+            f"synthesizer.handle[rlm]: parse failed — {exc}",
+            flush=True,
+        )
+        return None, RLM_SYNTHESIS_POLICY_ID
+
+
+async def _dispatch_maybe_rlm_and_parse(
+    prompt: str,
+    event: Event,
+    *,
+    canonical_refs: CanonicalSynthesisRefs,
+    broadcaster: EventBroadcaster,
+) -> tuple[ThesisResult | None, str]:
+    if _should_use_rlm_synthesis(prompt):
+        return await _dispatch_rlm_and_parse(
+            prompt,
+            event,
+            canonical_refs=canonical_refs,
+            broadcaster=broadcaster,
+        )
+    return _dispatch_and_parse(
+        prompt,
+        event,
+        canonical_refs=canonical_refs,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Handler factory
 # ---------------------------------------------------------------------------
@@ -588,10 +723,11 @@ def make_synthesizer_handler(
             parameters_block=req.parameters_block,
             substrate_block=req.substrate_block,
         )
-        first_result, policy_id = _dispatch_and_parse(
+        first_result, policy_id = await _dispatch_maybe_rlm_and_parse(
             first_prompt,
             event,
             canonical_refs=canonical_refs,
+            broadcaster=broadcaster,
         )
         if first_result is None:
             await _emit_delivered(
