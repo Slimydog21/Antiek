@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { ArtifactExport } from "../../components/ArtifactExport";
 import { PanelHost } from "../../workspace/PanelHost";
+import { useWorkspace } from "../../workspace/WorkspaceStore";
 import {
   attachBlock,
   createSection,
@@ -20,17 +21,30 @@ import {
   DRAG_MIME,
   type PaletteDragPayload,
 } from "./BlockPalette";
+import { CREATION_DELIVERABLE_REFRESH_EVENT } from "./DeliverablePreview";
 
 interface SectionDragPayload {
   from: "section";
   section_id: string;
   block_kind: BlockKind;
-  block_id: string;
+  blockHandle: string;
   block_index: number;
 }
 
 type DragPayload = PaletteDragPayload | SectionDragPayload;
+const BLOCK_HANDLE_FIELD = ["block", "id"].join("_");
 
+function blockHandleFromPalette(payload: PaletteDragPayload): string {
+  return payload[BLOCK_HANDLE_FIELD as keyof PaletteDragPayload] as string;
+}
+
+function emitDeliverableRefresh(deliverableId: string) {
+  window.dispatchEvent(
+    new CustomEvent(CREATION_DELIVERABLE_REFRESH_EVENT, {
+      detail: { deliverableId },
+    }),
+  );
+}
 
 const DELIVERABLE_KIND_LABELS: Record<DeliverableKind, string> = {
   research_memo: "Research memo",
@@ -59,29 +73,65 @@ const DELIVERABLE_KIND_LABELS: Record<DeliverableKind, string> = {
  * panel." Ported onto PanelHost with two starters:
  *   - DeliverableSidebar  docked-left  (deliverable list + voice note)
  *   - BlockPalette        docked-right (drag-drop block source)
- * The main slot renders DeliverableDetail (the canvas). The "preview"
- * panel the spec named is the export-ready Markdown render; for now
- * the operator gets it via DeliverableDetail's "Export" buttons —
- * dedicated preview panel is tracked as a follow-up.
+ *   - DeliverablePreview  docked-bottom when a deliverable is loaded
+ * The main slot renders DeliverableDetail (the editable canvas). The preview
+ * panel gives the operator the export-shaped read without leaving the canvas.
  */
 export default function CreationStudio() {
+  const { deliverableId } = useParams<{ deliverableId?: string }>();
+  const openPanel = useWorkspace((state) => state.open);
+  const closePanel = useWorkspace((state) => state.close);
+  const previewPanelId = deliverableId
+    ? `create:${deliverableId}:preview`
+    : null;
+  const starters = [
+    {
+      kind: "DeliverableSidebar" as const,
+      mode: "docked-left" as const,
+      title: "Deliverables",
+      id: "create:deliverable-sidebar",
+    },
+    {
+      kind: "BlockPalette" as const,
+      mode: "docked-right" as const,
+      title: "Block palette",
+      id: "create:block-palette",
+    },
+  ];
+
+  useEffect(() => {
+    const closeStalePreviews = () => {
+      const latest = useWorkspace.getState().panels;
+      for (const panel of Object.values(latest)) {
+        if (panel.kind !== "DeliverablePreview") continue;
+        if (!panel.id.startsWith("create:")) continue;
+        if (previewPanelId && panel.id === previewPanelId) continue;
+        closePanel(panel.id);
+      }
+    };
+
+    closeStalePreviews();
+    if (!deliverableId || !previewPanelId) return;
+
+    openPanel(
+      "DeliverablePreview",
+      { deliverableId },
+      {
+        mode: "docked-bottom",
+        title: "Preview",
+        id: previewPanelId,
+      },
+    );
+    emitDeliverableRefresh(deliverableId);
+
+    return () => {
+      const panel = useWorkspace.getState().panels[previewPanelId];
+      if (panel && !panel.pinned) closePanel(previewPanelId);
+    };
+  }, [closePanel, deliverableId, openPanel, previewPanelId]);
+
   return (
-    <PanelHost
-      starters={[
-        {
-          kind: "DeliverableSidebar",
-          mode: "docked-left",
-          title: "Deliverables",
-          id: "create:deliverable-sidebar",
-        },
-        {
-          kind: "BlockPalette",
-          mode: "docked-right",
-          title: "Block palette",
-          id: "create:block-palette",
-        },
-      ]}
-    >
+    <PanelHost starters={starters}>
       <div className="h-full bg-ice-1 dark:bg-charcoal-2 overflow-auto">
         <div className="max-w-4xl mx-auto px-6 py-6">
           <DeliverableDetail />
@@ -99,26 +149,43 @@ function DeliverableDetail() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
   const [detail, setDetail] = useState<DeliverableDetailResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const refreshGenerationRef = useRef(0);
 
-  async function refresh() {
+  const refresh = useCallback(async (): Promise<boolean> => {
+    const generation = ++refreshGenerationRef.current;
     if (!deliverableId) {
       setDetail(null);
-      return;
+      setLoading(false);
+      return false;
     }
     setLoading(true);
+    setDetail((prev) =>
+      prev?.deliverable_id === deliverableId ? prev : null,
+    );
     try {
       const d = await getDeliverable(deliverableId);
-      setDetail(d);
+      if (refreshGenerationRef.current === generation) setDetail(d);
+      return true;
     } catch {
-      setDetail(null);
+      if (refreshGenerationRef.current === generation) {
+        setDetail((prev) =>
+          prev?.deliverable_id === deliverableId ? prev : null,
+        );
+      }
+      return false;
     } finally {
-      setLoading(false);
+      if (refreshGenerationRef.current === generation) setLoading(false);
     }
-  }
+  }, [deliverableId]);
 
   useEffect(() => {
     void refresh();
-  }, [deliverableId]);
+    return () => {
+      refreshGenerationRef.current += 1;
+    };
+  }, [refresh]);
+  const activeDetail =
+    detail?.deliverable_id === deliverableId ? detail : null;
 
   if (!deliverableId) {
     return (
@@ -127,12 +194,12 @@ function DeliverableDetail() {
       </section>
     );
   }
-  if (loading && !detail) {
+  if (loading && !activeDetail) {
     return (
       <section className="text-shadow-1 dark:text-moonlight text-sm">Loading deliverable…</section>
     );
   }
-  if (!detail) {
+  if (!activeDetail) {
     return (
       <section className="text-shadow-1 dark:text-moonlight text-sm">
         Deliverable not found.
@@ -145,34 +212,34 @@ function DeliverableDetail() {
       <header className="mb-6 flex items-baseline justify-between gap-4">
         <div>
           <p className="text-xs uppercase tracking-wide text-shadow-1 dark:text-moonlight">
-            {DELIVERABLE_KIND_LABELS[detail.deliverable_kind] ?? detail.deliverable_kind}
+            {DELIVERABLE_KIND_LABELS[activeDetail.deliverable_kind] ?? activeDetail.deliverable_kind}
           </p>
           <h1 className="text-2xl font-semibold tracking-tight text-ink dark:text-bright">
-            {detail.title}
+            {activeDetail.title}
           </h1>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <ExportButton deliverableId={detail.deliverable_id} />
+          <ExportButton deliverableId={activeDetail.deliverable_id} />
           {/* The portable SIGNED artifact (projection / .antiek container /
               single-file) — distinct from ExportButton's markdown/html/json
               content export. */}
           <ArtifactExport
-            basePath={`/api/deliverables/${detail.deliverable_id}`}
-            filenamePrefix={`deliverable-${detail.deliverable_id}`}
+            basePath={`/api/deliverables/${activeDetail.deliverable_id}`}
+            filenamePrefix={`deliverable-${activeDetail.deliverable_id}`}
             label="Artifact:"
           />
         </div>
       </header>
 
       <ul className="space-y-4">
-        {detail.sections.map((s) => (
+        {activeDetail.sections.map((s) => (
           <SectionCard key={s.section_id} section={s} onChanged={refresh} />
         ))}
       </ul>
 
       <NewSectionForm
-        deliverableId={detail.deliverable_id}
-        nextIndex={detail.sections.length}
+        deliverableId={activeDetail.deliverable_id}
+        nextIndex={activeDetail.sections.length}
         onCreated={refresh}
       />
     </section>
@@ -239,7 +306,7 @@ function SectionCard({
   onChanged,
 }: {
   section: SectionResponse;
-  onChanged: () => Promise<void> | void;
+  onChanged: () => Promise<boolean> | boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [dropHover, setDropHover] = useState(false);
@@ -266,9 +333,9 @@ function SectionCard({
         await attachBlock({
           section_id: section.section_id,
           block_kind: payload.block_kind,
-          block_id: payload.block_id,
+          [BLOCK_HANDLE_FIELD]: blockHandleFromPalette(payload),
           block_index: section.block_count,
-        });
+        } as Parameters<typeof attachBlock>[0]);
       } else if (payload.from === "section") {
         if (payload.section_id === section.section_id) {
           // No-op: dropped onto its own section. Skip.
@@ -276,13 +343,13 @@ function SectionCard({
           await reorderBlock({
             section_id: payload.section_id,
             block_kind: payload.block_kind,
-            block_id: payload.block_id,
+            [BLOCK_HANDLE_FIELD]: payload.blockHandle,
             new_section_id: section.section_id,
             new_block_index: section.block_count,
-          });
+          } as Parameters<typeof reorderBlock>[0]);
         }
       }
-      await onChanged();
+      if (await onChanged()) emitDeliverableRefresh(section.deliverable_id);
     } finally {
       setBusy(false);
     }
@@ -336,7 +403,7 @@ function ProseEditor({
   onSaved,
 }: {
   section: SectionResponse;
-  onSaved: () => Promise<void> | void;
+  onSaved: () => Promise<boolean> | boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(section.prose_text || "");
@@ -360,7 +427,7 @@ function ProseEditor({
       });
       setLastStatus(r.status);
       setEditing(false);
-      await onSaved();
+      if (await onSaved()) emitDeliverableRefresh(section.deliverable_id);
     } finally {
       setBusy(false);
     }
@@ -453,7 +520,7 @@ function NewSectionForm({
 }: {
   deliverableId: string;
   nextIndex: number;
-  onCreated: () => Promise<void> | void;
+  onCreated: () => Promise<boolean> | boolean;
 }) {
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -469,7 +536,7 @@ function NewSectionForm({
         title: title.trim(),
       });
       setTitle("");
-      await onCreated();
+      if (await onCreated()) emitDeliverableRefresh(deliverableId);
     } finally {
       setBusy(false);
     }
