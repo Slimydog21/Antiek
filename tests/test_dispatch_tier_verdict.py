@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 
 from tools.dispatch_tier_verdict.analyzer import (
@@ -203,6 +204,36 @@ def test_accepts_emitted_at_field():
     assert v.hermes_score.synthesis_count == 1
 
 
+def test_rejects_malformed_synthesis_costs():
+    events = [
+        _dispatch_synthesis("hermes", "grok-4.3", inv="neg", cost_usd=-0.01),
+        _verify_score(0.9, inv="neg"),
+        _dispatch_synthesis("hermes", "grok-4.3", inv="nan", cost_usd=math.nan),
+        _verify_score(0.9, inv="nan"),
+    ]
+
+    v = analyse_events(events=events)
+
+    assert v.hermes_score is None
+    assert v.scores == []
+
+
+def test_rejects_malformed_rubric_scores():
+    events = [
+        _dispatch_synthesis("hermes", "grok-4.3", inv="nan-score"),
+        _verify_score(math.nan, inv="nan-score"),
+        _dispatch_synthesis("hermes", "grok-4.3", inv="high-score"),
+        _verify_score(1.5, inv="high-score"),
+    ]
+
+    v = analyse_events(events=events)
+
+    assert v.hermes_score is not None
+    assert v.hermes_score.synthesis_count == 2
+    assert v.hermes_score.verified_count == 0
+    assert v.hermes_score.passed_count == 0
+
+
 # ── G5 follow-up: synthesizer self-grade fallback ────────────────────
 
 
@@ -255,6 +286,22 @@ def test_self_grade_insufficient_evidence_counts_as_fail():
     assert v.hermes_score is not None
     assert v.hermes_score.verified_count == 1
     assert v.hermes_score.passed_count == 0  # insufficient_evidence = fail
+
+
+def test_self_grade_rejects_invalid_conviction():
+    events = [
+        _dispatch_synthesis("hermes", "grok-4.3", inv="inv-1"),
+        _synthesize_delivered(inv="inv-1", recommendation="buy", conviction=1.5),
+        _dispatch_synthesis("hermes", "grok-4.3", inv="inv-2"),
+        _synthesize_delivered(inv="inv-2", recommendation="buy", conviction=math.nan),
+    ]
+
+    v = analyse_events(events=events)
+
+    assert v.hermes_score is not None
+    assert v.hermes_score.synthesis_count == 2
+    assert v.hermes_score.verified_count == 0
+    assert v.hermes_score.passed_count == 0
 
 
 def test_rubric_scored_overrides_self_grade():

@@ -9,6 +9,7 @@ the verdict logic without an event log.
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -205,6 +206,9 @@ def analyse_events(
         if action == "dispatch.call":
             tier = payload.get("tier")
             if tier == SYNTHESIS_TIER:
+                cost_usd = _non_negative_finite_float(payload.get("cost_usd"))
+                if cost_usd is None:
+                    continue
                 provider = _normalise_provider(payload.get("provider", "unknown"))
                 model = payload.get("model", "unknown")
                 key = (provider, model)
@@ -213,13 +217,13 @@ def analyse_events(
                     {"count": 0, "cost": 0.0},
                 )
                 bucket["count"] += 1
-                bucket["cost"] += float(payload.get("cost_usd", 0.0))
+                bucket["cost"] += cost_usd
                 if inv_id:
                     last_synthesis_per_inv[inv_id] = key
 
         elif action == "rubric.scored":
-            score = payload.get("final_score")
-            if not isinstance(score, (int, float)):
+            score = _unit_interval_float(payload.get("final_score"))
+            if score is None:
                 continue
             if not inv_id:
                 continue
@@ -251,8 +255,10 @@ def analyse_events(
             # - no conviction_level → 0.5 (neutral)
             if recommendation == "insufficient_evidence":
                 self_score = 0.0
-            elif isinstance(conviction, (int, float)):
-                self_score = max(0.0, min(1.0, float(conviction)))
+            elif (conviction_score := _unit_interval_float(conviction)) is not None:
+                self_score = conviction_score
+            elif conviction is not None:
+                continue
             else:
                 self_score = 0.5
             self_grade_outcomes.setdefault(key, []).append(self_score)
@@ -351,6 +357,24 @@ def _pick_score(
         if provider_contains in s.provider.lower() or model_contains in s.model.lower():
             return s
     return None
+
+
+def _non_negative_finite_float(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    number = float(value)
+    if not math.isfinite(number) or number < 0.0:
+        return None
+    return number
+
+
+def _unit_interval_float(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    number = float(value)
+    if not math.isfinite(number) or number < 0.0 or number > 1.0:
+        return None
+    return number
 
 
 def render_verdict_markdown(verdict: Verdict) -> str:
