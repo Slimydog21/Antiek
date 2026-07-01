@@ -53,7 +53,15 @@ export function parsePaletteDrag(
   if (!raw) return null;
   try {
     const obj = JSON.parse(raw) as Partial<PaletteDragPayload>;
-    if (obj.from !== "palette" || typeof obj.block_id !== "string") return null;
+    if (
+      obj.from !== "palette" ||
+      typeof obj.block_id !== "string" ||
+      obj.block_id.trim() === "" ||
+      typeof obj.block_kind !== "string" ||
+      obj.block_kind.trim() === ""
+    ) {
+      return null;
+    }
     return obj as PaletteDragPayload;
   } catch {
     return null;

@@ -50,5 +50,9 @@ describe("parsePaletteDrag", () => {
     expect(parsePaletteDrag("not json")).toBeNull();
     expect(parsePaletteDrag(JSON.stringify({ from: "section", block_id: "x" }))).toBeNull();
     expect(parsePaletteDrag(JSON.stringify({ from: "palette" }))).toBeNull();
+    expect(parsePaletteDrag(JSON.stringify({ from: "palette", block_id: "" }))).toBeNull();
+    expect(parsePaletteDrag(JSON.stringify({ from: "palette", block_id: "   ", block_kind: "insight" }))).toBeNull();
+    expect(parsePaletteDrag(JSON.stringify({ from: "palette", block_id: "node-1" }))).toBeNull();
+    expect(parsePaletteDrag(JSON.stringify({ from: "palette", block_id: "node-1", block_kind: "" }))).toBeNull();
   });
 });
