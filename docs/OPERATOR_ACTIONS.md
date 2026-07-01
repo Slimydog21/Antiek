@@ -882,6 +882,17 @@ distinct from operating funds."*
    without a `segregated_account_ref`; otherwise-payable rev-share lines stay
    escrowed before any provider transfer.
 
+   Use the packaged verifier after recording the production secret reference:
+
+   ```bash
+   ./.venv/bin/python -m tools.ops.escrow_account_decision_probe --json
+   ```
+
+   The probe validates the decision artifact and rechecks that the live payout
+   substrate still escrows and blocks transfers when `segregated_account_ref`
+   is absent. It does not print account numbers and does not close OA-014 by
+   itself.
+
 #### Once closed
 
 A live segregated-account number recorded in production secret
