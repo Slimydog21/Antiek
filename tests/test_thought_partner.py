@@ -64,6 +64,46 @@ def test_parse_challenge_shape():
     assert parsed.extensions == []
 
 
+def test_parse_challenge_filters_fabricated_note_ids():
+    response = json.dumps({
+        "shape": "challenge",
+        "challenges": [
+            {
+                "condition": "If the benchmark only holds in one lab, the cross-lab thesis fails",
+                "note_ids": ["n-1", "n-made-up"],
+            },
+        ],
+        "synthesis_text": "",
+        "extensions": [],
+    })
+    parsed = parse_thought_partner_response(
+        response,
+        canonical_note_ids=("n-1",),
+    )
+    assert parsed.shape == "challenge"
+    assert parsed.challenges[0].note_ids == ["n-1"]
+
+
+def test_parse_challenge_drops_fully_fabricated_note_ids():
+    response = json.dumps({
+        "shape": "challenge",
+        "challenges": [
+            {
+                "condition": "If the benchmark only holds in one lab, the cross-lab thesis fails",
+                "note_ids": ["n-made-up"],
+            },
+        ],
+        "synthesis_text": "",
+        "extensions": [],
+    })
+    parsed = parse_thought_partner_response(
+        response,
+        canonical_note_ids=("n-1",),
+    )
+    assert parsed.shape == "challenge"
+    assert parsed.challenges[0].note_ids == []
+
+
 def test_parse_synthesis_shape():
     response = json.dumps({
         "shape": "synthesis",
