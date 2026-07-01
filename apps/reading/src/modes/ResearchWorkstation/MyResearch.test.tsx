@@ -198,6 +198,26 @@ describe("MyResearch — honest aggregate (M2)", () => {
     expect(screen.getAllByText("$0.0000").length).toBeGreaterThanOrEqual(3);
     expect(document.body.textContent).not.toMatch(/NaN|Infinity|\$-/);
   });
+
+  it("accepts numeric-string costs from investigation summaries", () => {
+    listState.current.investigations = [
+      inv({
+        investigation_id: "inv-c1",
+        status: "completed",
+        cost_usd_total: "0.0123" as unknown as number,
+      }),
+      inv({
+        investigation_id: "inv-c2",
+        status: "completed",
+        cost_usd_total: "0.0077" as unknown as number,
+      }),
+    ];
+    renderMonitor();
+
+    expect(screen.getByText("$0.0200")).toBeTruthy();
+    expect(screen.getByText("$0.0123")).toBeTruthy();
+    expect(screen.getByText("$0.0077")).toBeTruthy();
+  });
 });
 
 describe("MyResearch — honest no-key state + use-gate (M4)", () => {
