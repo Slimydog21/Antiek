@@ -422,8 +422,9 @@ DO NOT propose more engineering until the bottlenecks below clear.
    as G2 closure (no point spending $20/mo on cosmetics for operator-only
    email).
 
-8. **Re-publish Trust Center** with G2-cleared compliance copy — scaffold
-   at `docs/trust_center_public.md` has `[OPERATOR + LAWYER]` brackets.
+8. **Re-publish Trust Center** with G2-cleared compliance copy — counsel-pending
+   copy at `docs/trust_center_public.md` still has `[OPERATOR + LAWYER]`
+   brackets and live control-plane references reconciled as of 2026-07-01.
 
 ### After G2 + G3 close
 
@@ -579,7 +580,9 @@ to `main` as **PR #43 (merge `9aeb2c9`, `EVENT_SCHEMA_VERSION` 24→27)** and wa
 - `docs/decisions/` — one file per closed gate, named `gN-<slug>.md`.
 - `docs/sprint_track_reconciliation.md` — resolves the master-spec
   Sprint 11→22 sequence vs the UI-redesign Sprint 0→12 sequence.
-- `docs/trust_center_public.md` — public-facing scaffold; awaits G2.
+- `docs/trust_center_public.md` — counsel-pending public Trust Center copy;
+  live control-plane references are reconciled, while publication still awaits
+  G2-cleared wording and OA-013.
 - `infrastructure/runbooks/*.md` — deployment + activation flows.
 
 ---

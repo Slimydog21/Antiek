@@ -80,6 +80,7 @@ def test_operator_gate_actions_summary_tracks_appended_follow_ons() -> None:
     ).read_text(encoding="utf-8")
     master_compact = " ".join(master_spec.split())
     deferrals_compact = " ".join(engineering_deferrals.split())
+    md_compact = " ".join(md.split())
     ledger_compact = " ".join(gate_ledger_src.split())
     coordination_compact = " ".join(coordination_copy.split())
     quick_gate_ids = [
@@ -96,8 +97,12 @@ def test_operator_gate_actions_summary_tracks_appended_follow_ons() -> None:
     assert "Original G1-G8" in md
     assert "G9-G12 are appended operator/legal" in md
     assert "follow-ons from the personal-reading lane" in md
+    assert "counsel-pending public Trust Center copy" in md_compact
+    assert "live control-plane references are reconciled" in md_compact
+    assert "publication still awaits G2-cleared wording and OA-013" in md_compact
     assert "The nine gates" not in md
     assert "of the 8 gates" not in md
+    assert "public-facing scaffold; awaits G2" not in md_compact
     assert "plus appended personal-reading-lane follow-on gate-actions" in master_compact
     assert "plus appended personal-reading-lane follow-on gate-actions" in deferrals_compact
     assert "the eight binding gates (G1" not in master_compact
