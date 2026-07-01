@@ -77,6 +77,8 @@ def outcome_from_json(raw: Any, *, index: int) -> PromptMutationOutcome:
         raise ValueError(f"outcomes[{index}].cost_usd must be decimal-compatible") from exc
     if not cost.is_finite():
         raise ValueError(f"outcomes[{index}].cost_usd must be finite")
+    if cost < Decimal("0"):
+        raise ValueError(f"outcomes[{index}].cost_usd must be non-negative")
 
     return PromptMutationOutcome(
         mutation_id=_as_str(raw.get("mutation_id"), field=f"outcomes[{index}].mutation_id"),

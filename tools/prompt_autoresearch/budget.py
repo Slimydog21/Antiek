@@ -24,7 +24,13 @@ class BudgetCap:
     iteration_count: int = 0
     cap_breaches: list[dict] = field(default_factory=list)
 
+    def __post_init__(self) -> None:
+        _validate_money(self.total_cap_usd, field="total_cap_usd")
+        _validate_money(self.per_iteration_cap_usd, field="per_iteration_cap_usd")
+        _validate_money(self.spent_total_usd, field="spent_total_usd")
+
     def will_breach(self, projected_iteration_cost_usd: Decimal) -> bool:
+        _validate_money(projected_iteration_cost_usd, field="projected_iteration_cost_usd")
         if projected_iteration_cost_usd > self.per_iteration_cap_usd:
             return True
         if self.spent_total_usd + projected_iteration_cost_usd > self.total_cap_usd:
@@ -34,6 +40,7 @@ class BudgetCap:
     def record_iteration_cost(self, cost_usd: Decimal) -> None:
         """Record actual iteration cost. Raises BudgetExceeded if the
         new running total exceeds the cap."""
+        _validate_money(cost_usd, field="cost_usd")
         if cost_usd > self.per_iteration_cap_usd:
             self.cap_breaches.append({
                 "kind": "per_iteration",
@@ -57,3 +64,12 @@ class BudgetCap:
             )
         self.spent_total_usd += cost_usd
         self.iteration_count += 1
+
+
+def _validate_money(value: Decimal, *, field: str) -> None:
+    if not isinstance(value, Decimal):
+        raise TypeError(f"{field} must be a Decimal")
+    if not value.is_finite():
+        raise ValueError(f"{field} must be finite")
+    if value < Decimal("0"):
+        raise ValueError(f"{field} must be non-negative")

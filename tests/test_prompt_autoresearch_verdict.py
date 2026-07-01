@@ -236,6 +236,20 @@ def test_outcome_json_rejects_non_finite_cost(tmp_path):
         raise AssertionError("expected non-finite cost to be rejected")
 
 
+def test_outcome_json_rejects_negative_cost(tmp_path):
+    path = tmp_path / "outcomes.json"
+    payload = _outcome_json()
+    payload["cost_usd"] = "-0.01"
+    path.write_text(json.dumps([payload]), encoding="utf-8")
+
+    try:
+        load_outcomes_json(path)
+    except ValueError as exc:
+        assert "outcomes[0].cost_usd must be non-negative" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected negative cost to be rejected")
+
+
 def _outcome_json(mutation_id: str = "m-0") -> dict:
     return {
         "mutation_id": mutation_id,
