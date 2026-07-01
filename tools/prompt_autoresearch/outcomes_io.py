@@ -106,10 +106,10 @@ def outcome_from_json(raw: Any, *, index: int) -> PromptMutationOutcome:
         raise ValueError(
             f"outcomes[{index}].delta must equal candidate_score - baseline_score"
         )
-    expected_accepted = delta >= epsilon_required
+    expected_accepted = delta > epsilon_required
     if accepted != expected_accepted:
         raise ValueError(
-            f"outcomes[{index}].accepted must equal delta >= epsilon_required"
+            f"outcomes[{index}].accepted must equal delta > epsilon_required"
         )
 
     return PromptMutationOutcome(
