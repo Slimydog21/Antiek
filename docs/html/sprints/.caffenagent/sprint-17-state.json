@@ -1,0 +1,28 @@
+{
+  "spec_file": "docs/html/sprints/sprint-17.html",
+  "target_branch": "reader/integration",
+  "status": "operator_gated",
+  "recorded_at": "2026-07-01T20:14:30Z",
+  "verified_code_sha": "dba9a16c",
+  "mode": "status_reconciliation",
+  "deterministic_evidence": {
+    "required_role_programs": "12 required role program.md files present",
+    "synthesizer_voice_style": "roles/synthesizer/program.md references master-spec §5.1-§5.5",
+    "storybook_build": "npm run build-storybook passed",
+    "production_bundle": "npm run build:check passed during UI redesign closure",
+    "unit_suite": "npm test -- --run passed during UI redesign closure: 188 files / 1591 tests"
+  },
+  "closed_or_superseded_gates": {
+    "lemon_ui_verdict": "G4 closed 2026-05-23; docs/decisions/g4-lemon-ui-verdict.md",
+    "dispatch_tier_measurement": "G5 provisionally closed 2026-05-23 with re-open trigger after fresh traffic; docs/decisions/dispatch-tier-verdict.md and docs/decisions/g5-dispatch-tier-verdict-followup.md",
+    "brainstorming_scaffold": "Surface exists in apps/reading/src/modes/BrainstormStation and Sprint 18 thought-partner follow-on exists"
+  },
+  "operator_only_remaining": [
+    "Run a real five-minute interview voice session and rate the async latency/rhythm 1-5 per docs/operator_gate_actions.md §15.3.",
+    "Run 5-10 real investigations before re-running the dispatch-tier verdict against fresh production traffic."
+  ],
+  "notes": [
+    "This is not marked done because the sprint acceptance criteria include operator-only real-session proof.",
+    "The status label was changed from in flight to operator-gated to prevent future engineering agents from treating external proof as an unimplemented code path."
+  ]
+}
