@@ -283,6 +283,31 @@ def test_render_verdict_rejects_impossible_mutation_counts():
         raise AssertionError("expected impossible mutation counts to be rejected")
 
 
+def test_render_verdict_rejects_acceptance_rate_that_disagrees_with_counts():
+    verdict = Verdict(
+        role="synthesizer",
+        decision="ratify",
+        iteration_count=20,
+        acceptance_rate=1.0,
+        mean_delta=0.10,
+        median_delta=0.10,
+        best_mutation_id="m-0",
+        best_mutation_delta=0.10,
+        total_cost_usd=1.0,
+        rationale="valid rationale",
+        sub_metric_regressions=[],
+        accepted_count=10,
+        rejected_count=10,
+    )
+
+    try:
+        render_verdict_markdown(verdict)
+    except ValueError as exc:
+        assert "acceptance_rate must equal accepted_count / iteration_count" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected inconsistent acceptance rate to be rejected")
+
+
 def test_render_reject_includes_regression_list():
     outs = [
         _mk_outcome(mutation_id=f"m-{i}", delta=0.10, accepted=True, grounding=0.30)
