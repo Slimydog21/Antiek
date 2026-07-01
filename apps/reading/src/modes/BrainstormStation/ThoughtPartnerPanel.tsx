@@ -7,6 +7,7 @@ import {
 } from "../../lib/api";
 import {
   BRAINSTORM_SELECT_QUESTION_EVENT,
+  dispatchBrainstormWatchlistChanged,
   getBrainstormQuestionSelection,
 } from "./WatchForLaterPanel";
 
@@ -182,6 +183,7 @@ export default function ThoughtPartnerPanel() {
         anchor_region_id: selectedQuestion.anchor_region_id,
         parent_event_id: selectedQuestion.parent_event_id,
       });
+      dispatchBrainstormWatchlistChanged();
       setParkedExtensionKeys((prev) => new Set(prev).add(key));
     } catch (e: unknown) {
       setParkError(e instanceof Error ? e.message : String(e));

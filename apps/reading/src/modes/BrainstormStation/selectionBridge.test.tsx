@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
@@ -30,6 +30,7 @@ import BrainstormStation from ".";
 import WatchForLaterPanel, {
   BRAINSTORM_SELECT_QUESTION_EVENT,
   dispatchBrainstormQuestionSelection,
+  dispatchBrainstormWatchlistChanged,
   resetBrainstormQuestionSelection,
 } from "./WatchForLaterPanel";
 
@@ -132,5 +133,22 @@ describe("BrainstormStation watch-list selection bridge", () => {
         .closest("button");
       expect(selectedButton?.className).toContain("border-ink");
     });
+  });
+
+  it("WatchForLaterPanel reloads immediately when the watch-list changes", async () => {
+    apiMocks.listWatchForLater
+      .mockResolvedValueOnce({ questions: [QUESTION] })
+      .mockResolvedValueOnce({ questions: [QUESTION, SECOND_QUESTION] });
+
+    render(<WatchForLaterPanel />);
+    expect(await screen.findByText(QUESTION.question_text)).toBeTruthy();
+    expect(screen.queryByText(SECOND_QUESTION.question_text)).toBeNull();
+
+    act(() => {
+      dispatchBrainstormWatchlistChanged();
+    });
+
+    await waitFor(() => expect(apiMocks.listWatchForLater).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(SECOND_QUESTION.question_text)).toBeTruthy();
   });
 });

@@ -4,6 +4,8 @@ import { listWatchForLater, type ParkedQuestionEntry } from "../../lib/api";
 import WatchForLaterFolder from "./WatchForLaterFolder";
 
 export const BRAINSTORM_SELECT_QUESTION_EVENT = "antiek:brainstorm:select-question";
+export const BRAINSTORM_WATCHLIST_CHANGED_EVENT =
+  "antiek:brainstorm:watchlist-changed";
 
 let latestBrainstormQuestionSelection: ParkedQuestionEntry | null = null;
 
@@ -14,6 +16,10 @@ export function dispatchBrainstormQuestionSelection(question: ParkedQuestionEntr
       detail: { question },
     }),
   );
+}
+
+export function dispatchBrainstormWatchlistChanged() {
+  window.dispatchEvent(new CustomEvent(BRAINSTORM_WATCHLIST_CHANGED_EVENT));
 }
 
 export function getBrainstormQuestionSelection(): ParkedQuestionEntry | null {
@@ -55,7 +61,14 @@ export default function WatchForLaterPanel() {
   useEffect(() => {
     void reload();
     const t = setInterval(reload, 15_000);
-    return () => clearInterval(t);
+    const onChanged = () => {
+      void reload();
+    };
+    window.addEventListener(BRAINSTORM_WATCHLIST_CHANGED_EVENT, onChanged);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener(BRAINSTORM_WATCHLIST_CHANGED_EVENT, onChanged);
+    };
   }, [reload]);
 
   useEffect(() => {
