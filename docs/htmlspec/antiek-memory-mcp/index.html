@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>ANT-MCP · Antiek Memory MCP programme</title>
+<style>
+:root{--color-primary:#1d4aff;--color-accent:#f9bd2b;--color-success:#1a7f4f;--color-black:#151515;--color-ink:#2c2c2c;--color-muted:#6b6b6b;--color-line:#cfcfcf;--color-bg:#fafaf7;--color-bg-card:#fff;--color-bg-soft:#f3f1ea;--tag-blue:#e5ecff;--tag-green:#d9efe2;--radius:6px;--border:2px solid var(--color-black);--border-thin:1px solid var(--color-line);--shadow-card:4px 4px 0 0 var(--color-black);--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-7:28px;--space-8:32px;--text-sm:12px;--text-md:13px;--text-body:15px;--text-lg:16px;--text-2xl:22px;--text-3xl:32px}
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Inter",sans-serif;font-size:var(--text-body);line-height:1.55;color:var(--color-ink);background:var(--color-bg)}.page{max-width:1100px;margin:0 auto;padding:var(--space-8) var(--space-7)}header.hero,section.block{border:var(--border);border-radius:var(--radius);background:var(--color-bg-card);box-shadow:var(--shadow-card);padding:var(--space-7);margin-bottom:var(--space-5)}.eyebrow{font-size:var(--text-sm);letter-spacing:.08em;text-transform:uppercase;color:var(--color-muted);font-weight:600;margin:0 0 4px}h1{margin:0 0 4px;font-size:var(--text-3xl);line-height:1.15;color:var(--color-black)}h2{margin:0 0 8px;font-size:var(--text-2xl);color:var(--color-black)}p{margin:0 0 var(--space-3)}table{width:100%;border-collapse:collapse;margin-top:var(--space-3)}th,td{border:var(--border-thin);padding:10px;vertical-align:top;text-align:left}th{background:var(--color-bg-soft);color:var(--color-black)}code{background:var(--color-bg-soft);border:1px solid var(--color-line);border-radius:4px;padding:1px 5px;font-size:var(--text-md)}pre{background:#1c1c1c;color:#e8e8e0;border:2px solid var(--color-black);border-radius:var(--radius);padding:var(--space-3) var(--space-4);overflow-x:auto;font-size:var(--text-md);line-height:1.5}.tag{display:inline-flex;font-size:var(--text-sm);font-weight:700;padding:3px 9px;border-radius:999px;border:1px solid var(--color-black);background:var(--tag-green);color:var(--color-black)}a{color:var(--color-primary);text-decoration:underline;text-underline-offset:2px}.scope{background:var(--tag-blue)}
+</style>
+</head>
+<body><main class="page">
+<header class="hero">
+<p class="eyebrow">ANT-MCP</p>
+<h1>Antiek Memory MCP programme</h1>
+<p>Expose Antiek memory to external LLM clients through bounded MCP resources and tools, with retrieval gating, attribution, prompt-injection defense, and tool-manifest drift checks.</p>
+<span class="tag">closed with hermetic tests</span>
+</header>
+
+<section class="block"><h2>Sprint roster</h2>
+<table>
+<thead><tr><th>Sprint</th><th>Scope</th><th>Proof surface</th></tr></thead>
+<tbody>
+<tr><td><a href="sprint-mcp-01.html">MCP-SPR-01</a></td><td>Server bootstrap, protocol shape, substrate fixture boundary.</td><td><code>tests/test_mcp_server.py</code></td></tr>
+<tr><td><a href="sprint-mcp-02.html">MCP-SPR-02</a></td><td>Personal/public search tools and public notes resource.</td><td><code>tests/test_mcp_tools.py</code>, <code>tests/test_mcp_resources.py</code></td></tr>
+<tr><td><a href="sprint-mcp-03.html">MCP-SPR-03</a></td><td>Citation, attribution recording, and gated book chunks.</td><td><code>tests/test_mcp_tools.py</code>, <code>tests/test_mcp_resources.py</code></td></tr>
+<tr><td><a href="sprint-mcp-04.html">MCP-SPR-04</a></td><td>Untrusted content envelopes, tool-description manifest, E2E lifecycle.</td><td><code>tests/test_mcp_defenses.py</code>, <code>tests/test_mcp_e2e.py</code></td></tr>
+</tbody>
+</table></section>
+
+<section class="block"><h2>Programme exit</h2>
+<pre><code>cd /Users/slimydog/Desktop/Antiek
+.venv/bin/python -m pytest tests/test_mcp_server.py tests/test_mcp_tools.py tests/test_mcp_resources.py tests/test_mcp_defenses.py tests/test_mcp_e2e.py -v
+.venv/bin/python -m mypy services/mcp_server/ --strict
+.venv/bin/python -m ruff check services/mcp_server/</code></pre>
+<p class="scope"><strong>Scope boundary:</strong> OAuth token validation, rate limiting, and multi-user isolation remain Sprint 22 work. This programme proves the single-operator MCP memory surface.</p>
+</section>
+</main></body>
+</html>

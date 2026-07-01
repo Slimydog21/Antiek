@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>MCP-SPR-01 · Server bootstrap</title>
+<style>
+:root{--color-primary:#1d4aff;--color-accent:#f9bd2b;--color-success:#1a7f4f;--color-black:#151515;--color-ink:#2c2c2c;--color-muted:#6b6b6b;--color-line:#cfcfcf;--color-bg:#fafaf7;--color-bg-card:#fff;--color-bg-soft:#f3f1ea;--tag-blue:#e5ecff;--tag-green:#d9efe2;--radius:6px;--radius-sm:4px;--border:2px solid var(--color-black);--border-thin:1px solid var(--color-line);--shadow-card:4px 4px 0 0 var(--color-black);--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-7:28px;--space-8:32px;--text-sm:12px;--text-md:13px;--text-base:14px;--text-body:15px;--text-lg:16px;--text-2xl:22px;--text-3xl:32px}
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Inter",sans-serif;font-size:var(--text-body);line-height:1.55;color:var(--color-ink);background:var(--color-bg)}.page{max-width:1100px;margin:0 auto;padding:var(--space-8) var(--space-7)}header.hero,section.block{border:var(--border);border-radius:var(--radius);background:var(--color-bg-card);box-shadow:var(--shadow-card);padding:var(--space-7);margin-bottom:var(--space-5)}.eyebrow{font-size:var(--text-sm);letter-spacing:.08em;text-transform:uppercase;color:var(--color-muted);font-weight:600;margin:0 0 var(--space-1)}h1{margin:0 0 var(--space-1);font-size:var(--text-3xl);line-height:1.15;color:var(--color-black)}h2{margin:0 0 var(--space-1);font-size:var(--text-2xl);color:var(--color-black)}p{margin:0 0 var(--space-3)}ul{margin:0 0 var(--space-3);padding-left:var(--space-5)}li{margin-bottom:var(--space-1)}.tag{display:inline-flex;align-items:center;gap:var(--space-1);font-size:var(--text-sm);font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid var(--color-black);background:var(--tag-green);color:var(--color-black);white-space:nowrap}.milestone{display:grid;grid-template-columns:36px 1fr;gap:var(--space-3);padding:var(--space-3) 0;border-bottom:var(--border-thin)}.milestone:last-child{border-bottom:none}.num{width:32px;height:32px;border:2px solid var(--color-black);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;background:var(--color-accent);font-size:var(--text-base)}.title{font-size:var(--text-lg);font-weight:700;color:var(--color-black);margin-bottom:var(--space-1)}.criteria{margin:var(--space-1) 0 0;padding:var(--space-2) var(--space-3);background:var(--color-bg-soft);border-left:3px solid var(--color-primary);border-radius:0 var(--radius-sm) var(--radius-sm) 0;font-size:13.5px}.file{display:inline-block;background:var(--color-bg-soft);border:1px solid var(--color-line);border-radius:var(--radius-sm);padding:2px 8px;font-family:ui-monospace,monospace;color:var(--color-ink);font-size:var(--text-sm);margin:2px}pre,code{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace}code{background:var(--color-bg-soft);border:1px solid var(--color-line);border-radius:var(--radius-sm);padding:1px 5px;font-size:var(--text-md)}pre{background:#1c1c1c;color:#e8e8e0;border:2px solid var(--color-black);border-radius:var(--radius);padding:var(--space-3) var(--space-4);overflow-x:auto;font-size:var(--text-md);line-height:1.5}.sprint-nav{display:flex;justify-content:space-between;margin-top:var(--space-6)}a{color:var(--color-primary);text-decoration:underline;text-underline-offset:2px}
+</style>
+</head>
+<body><main class="page">
+<header class="hero">
+<p class="eyebrow"><a href="index.html">&lt;- ANT-MCP</a> · MCP-SPR-01</p>
+<h1>Server bootstrap</h1>
+<p>Establish the Antiek MCP server boundary, typed resource/tool registration, and hermetic substrate fixtures used by later search, citation, and defense sprints.</p>
+<span class="tag">Wave 1 · bootstrap</span>
+</header>
+
+<section class="block"><h2>Goal</h2>
+<p><strong>External MCP clients can list Antiek resources and tools from a deterministic local server without network dependencies or live user data.</strong></p>
+</section>
+
+<section class="block"><h2>Technical milestones</h2>
+<div class="milestone"><div class="num">1</div><div>
+<div class="title">Server shell</div>
+<p>Define the MCP server module, instruction contract, and list/read/call dispatch boundary.</p>
+<div><span class="file">services/mcp_server/server.py</span><span class="file">tests/test_mcp_server.py</span></div>
+</div></div>
+<div class="milestone"><div class="num">2</div><div>
+<div class="title">Hermetic substrate fixtures</div>
+<p>Seed personal, public, and gated records in temporary storage so tests never depend on production data.</p>
+<div><span class="file">tests/test_mcp_server.py</span><span class="file">tests/test_mcp_resources.py</span></div>
+</div></div>
+<div class="milestone"><div class="num">3</div><div>
+<div class="title">Typed failures</div>
+<p>Return explicit typed errors for missing resources, invalid inputs, and gated content.</p>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>Unknown resources fail closed.</li><li>Invalid tool inputs return typed errors.</li><li>Tests run without network or external services.</li></ul></div>
+</div></div>
+</section>
+
+<section class="block"><h2>Verification gates</h2>
+<pre><code>pytest tests/test_mcp_server.py -v
+mypy services/mcp_server/ --strict
+ruff check services/mcp_server/</code></pre>
+</section>
+
+<div class="sprint-nav"><a href="index.html">&lt;- Overview</a><a href="sprint-mcp-02.html">Next -&gt; MCP-SPR-02</a></div>
+</main></body>
+</html>
