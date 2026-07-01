@@ -185,7 +185,12 @@ def search(
         consumers don't need adapter code.
     """
     if top_k < 1:
-        raise ValueError(f"top_k must be >= 1, got {top_k}")
+        # A request for <=0 results is a DEFINED empty result, not an error:
+        # asking for nothing sensibly returns nothing. Mirrors the empty-scope
+        # return below, so no call site has to guard a degenerate count before
+        # searching (SPR-03 define-errors-out). A caller that wants a hard error
+        # on a bad count validates before calling.
+        return {"query": query, "top_k": top_k, "results": [], "node_matches": []}
 
     # Union the single-id scope into the set scope (a caller may pass
     # either or both). An EXPLICITLY-EMPTY set means "no documents in

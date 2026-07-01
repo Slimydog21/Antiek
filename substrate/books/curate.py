@@ -56,7 +56,9 @@ def curate_reading_list(
     if not prompt.strip():
         return []
     if limit < 1:
-        raise ValueError(f"limit must be >= 1, got {limit}")
+        # A reading list of <=0 books is the empty list, not an error — mirrors
+        # the empty-prompt return above (SPR-03 define-errors-out).
+        return []
 
     query_vec = list(model.encode(prompt))
     dim = model.dimension

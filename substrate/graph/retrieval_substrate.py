@@ -394,7 +394,10 @@ class DuckDbVssSubstrate:
         document_ids: Sequence[str] | None, policy_tag: str,
     ) -> dict[str, Any]:
         if top_k < 1:
-            raise ValueError(f"top_k must be >= 1, got {top_k}")
+            # Same DEFINED empty as search()/the fallback path — a <=0 top_k must
+            # behave identically whether or not the HNSW index is loaded, so the
+            # two backends never diverge on a degenerate count (SPR-03).
+            return {"query": text, "top_k": top_k, "results": [], "node_matches": []}
 
         # Honest empty for an explicitly-empty document scope (mirrors search()).
         scoped_ids: list[str] | None = None
