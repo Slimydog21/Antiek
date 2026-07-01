@@ -40,16 +40,17 @@ ASR/TTS endpoint. We:
 | Service | Route | Backend TODAY | Intended future backend |
 |---|---|---|---|
 | ASR-in (speech → text) | `POST /voice/transcribe` (`interfaces/research/api/read_voice.py`) | **LIVE — Whisper-1** (`acquisition/voice/client.py:WhisperTranscriber`), gated on the operator OpenAI key (honest 503 when absent) | **MiMo-V2.5-ASR** — a backend swap behind the SAME route via the injected `Transcriber` Protocol; no new route, no new credential |
-| TTS-out (text → speech) | `POST /speech/tts` (`interfaces/research/api/speech.py`) → client `apps/reading/src/api/tts.ts` | **live-when-keyed — OpenAI TTS.** The route directly calls `OpenAITTSProvider.synthesize()` → OpenAI `/v1/audio/speech` (gpt-4o-mini-tts), gated on `OPENAI_API_KEY` (503 when absent). NOT the dispatch `tts` tier; OpenAITTSProvider is not bootstrap-registered (its dispatch-shaped `.call()` is an unused scaffold). Client shape fixture-verified; a keyed live round-trip was not exercised this sprint. | **MiMo-V2.5-TTS** — swap the provider behind the same `/speech/tts` route |
+| TTS-out (text → speech) | `POST /speech/tts` (`interfaces/research/api/speech.py`) → client `apps/reading/src/api/tts.ts` | **live-when-keyed — OpenAI TTS.** The route directly calls `OpenAITTSProvider.synthesize()` → OpenAI `/v1/audio/speech` (gpt-4o-mini-tts), gated on `OPENAI_API_KEY` (503 when absent). NOT the dispatch `tts` tier; OpenAITTSProvider is not bootstrap-registered (its dispatch-shaped `.call()` is an unused scaffold). Client shape and backend HTTP adapter success/error paths are fixture-verified; a keyed live round-trip was not exercised this sprint. | **MiMo-V2.5-TTS** — swap the provider behind the same `/speech/tts` route |
 
 "I called the real endpoint and it returned" ≠ "I asserted the client shape
 against a fixture." ASR-in is the former (Whisper is genuinely serving
 `/voice/transcribe` today). TTS-out is live-when-keyed (the `/speech/tts` route
 makes a real OpenAI `/v1/audio/speech` call when `OPENAI_API_KEY` is set), but
-this sprint only fixture-verified the client shape — a keyed round-trip was not
-exercised. Today both real backends are OpenAI-family (Whisper + OpenAI TTS);
-MiMo-V2.5-ASR/TTS are the intended future swaps behind the same routes — a
-backend change, not new infrastructure and not a new credential.
+this sprint fixture-verified only the client shape and the backend adapter's
+success/error mapping — a keyed round-trip was not exercised. Today both real
+backends are OpenAI-family (Whisper + OpenAI TTS); MiMo-V2.5-ASR/TTS are the
+intended future swaps behind the same routes — a backend change, not new
+infrastructure and not a new credential.
 
 ## Why call a service instead of self-hosting the voice models
 

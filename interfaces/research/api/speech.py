@@ -28,8 +28,8 @@ def register_speech_routes(app: FastAPI) -> None:
     async def tts(req: TtsRequest) -> Response:
         from substrate.dispatch.providers.openai_tts import OpenAITTSProvider
 
-        provider = OpenAITTSProvider()
         try:
+            provider = OpenAITTSProvider()
             audio = provider.synthesize(req.text, voice=req.voice)
         except RuntimeError as exc:  # no API key
             raise HTTPException(status_code=503, detail=f"tts_unavailable: {exc}") from exc

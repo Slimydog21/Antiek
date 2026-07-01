@@ -160,11 +160,11 @@ export async function assertServable(chunkId: string): Promise<void> {
 }
 
 /**
- * Low-level synthesis: text → spoken-audio Blob via the dispatch `tts` tier.
- * The backend /speech/tts route reads the `tts` tier config and routes to the
- * registered provider (MiMo-V2.5-TTS intended). Returns the audio Blob the
- * caller plays; throws `TtsError` on empty text, a 503 (service not provisioned
- * — the stubbed-today case), or any other failure.
+ * Low-level synthesis: text → spoken-audio Blob via the shared `/speech/tts`
+ * route. The backend route directly calls `OpenAITTSProvider.synthesize()`
+ * today; MiMo-V2.5-TTS is the intended future provider behind the same route.
+ * Returns the audio Blob the caller plays; throws `TtsError` on empty text, a
+ * 503 (service not provisioned), or any other failure.
  *
  * Empty/whitespace text is a no-op-not-a-crash at the boundary: we throw
  * `TtsError("empty")` BEFORE the network call so a silent caller bug surfaces as

@@ -83,10 +83,15 @@ describe("synthesizeSpeech — text → audio via the tts tier (fixtured)", () =
     });
   });
 
-  it("any other non-ok response surfaces as a network TtsError", async () => {
-    mockFetch.mockResolvedValue({ ok: false, status: 500 } as unknown as Response);
-    await expect(synthesizeSpeech("anything")).rejects.toMatchObject({ kind: "network" });
-  });
+  it.each([400, 500])(
+    "HTTP %s from the route surfaces as a network TtsError",
+    async (status) => {
+      mockFetch.mockResolvedValue({ ok: false, status } as unknown as Response);
+      await expect(synthesizeSpeech("anything")).rejects.toMatchObject({
+        kind: "network",
+      });
+    },
+  );
 });
 
 describe("length/time box — how X minutes maps to narration scope", () => {
