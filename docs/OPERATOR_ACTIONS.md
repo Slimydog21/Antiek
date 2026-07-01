@@ -508,7 +508,20 @@ Remaining:
 1. Verify all Sprint 17-21 substrate is on `main` (git log audit).
 2. Run `ansible-playbook deploy.yml` for the Hetzner VM.
 3. Verify `antiek.ai` + `api.antiek.ai` are serving the post-Sprint-21
-   binary.
+   binary. Use the packaged public-surface probe after deploy:
+
+   ```bash
+   ./.venv/bin/python -m tools.ops.phase1_deploy_probe \
+     --api-url https://api.antiek.ai \
+     --marketplace-url https://antiek.ai/marketplace \
+     --expected-sha "$(git rev-parse HEAD)" \
+     --json
+   ```
+
+The probe checks `/health` for the post-Sprint-21 shape, a real deployed
+`build_sha`, non-empty `registered_providers`, and a public non-authenticated
+marketplace page. It is support evidence only and does not close OA-009 until
+the deploy and evidence record are complete.
 
 #### Once closed
 
