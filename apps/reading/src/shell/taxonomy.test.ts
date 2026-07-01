@@ -264,6 +264,35 @@ describe("Sprint 25+ economics dashboard route integrity", () => {
     expect(modeById("PrivacyDashboard")?.label).toBe("Privacy dashboard");
   });
 
+  it("keeps mounted daily-work and coordination surfaces in global discovery", () => {
+    const map = readSrc("modes/Map/index.tsx");
+    const palette = readSrc("components/CommandPalette.tsx");
+    const routes = [
+      "/home",
+      "/deep-research",
+      "/write",
+      "/library",
+      "/library/browse",
+      "/readings",
+      "/meta-readings",
+      "/read/meta-reading",
+      "/biography",
+      "/settings",
+      "/coordination",
+      "/coordination/cost-consent",
+      "/map",
+      "/cross-graph/citations",
+    ];
+
+    for (const route of routes) {
+      expect(map, `Application map must list ${route}`).toContain(`path: "${route}"`);
+      expect(palette, `CommandPalette must list ${route}`).toContain(`path: "${route}"`);
+    }
+    expect(palette).toMatch(
+      /id: "route:home",[\s\S]*?path: "\/home",[\s\S]*?workflow: "shared"/,
+    );
+  });
+
   it("keeps CreatorPayouts on the scoped /me/payouts contract", () => {
     const app = readSrc("App.tsx");
     const component = readSrc("modes/CreatorPayouts/index.tsx");
