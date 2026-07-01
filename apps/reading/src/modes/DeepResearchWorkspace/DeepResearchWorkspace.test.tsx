@@ -85,6 +85,9 @@ describe("PlanEditor — the glass-box gate", () => {
     fireEvent.change(screen.getByLabelText("max depth"), { target: { value: "4.5" } });
     expect(save.disabled).toBe(true);
 
+    fireEvent.change(screen.getByLabelText("max depth"), { target: { value: "9007199254740992" } });
+    expect(save.disabled).toBe(true);
+
     fireEvent.change(screen.getByLabelText("max depth"), { target: { value: "4" } });
     expect(save.disabled).toBe(false);
   });
