@@ -527,6 +527,18 @@ artefact must be filed by an external firm.
 3. They file `docs/sprint23_red_team.md` per the template at the
    same path.
 
+After the external firm files the report, run the packaged verifier:
+
+```bash
+./.venv/bin/python -m tools.ops.red_team_external_report_probe --json
+```
+
+The probe fails the checked-in template, requires an external author, review
+date, substrate version, PASS evidence for all four attack classes, filled
+calibration fields, and a final GO recommendation. It also confirms the local
+internal harness still returns GO. It does not replace the external review and
+does not close OA-008 by itself.
+
 Budget: $15-30K for a focused 2-week engagement.
 
 #### Once closed
