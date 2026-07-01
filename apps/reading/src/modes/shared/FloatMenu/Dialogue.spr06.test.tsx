@@ -43,6 +43,7 @@ vi.mock("../../../hooks/useVoiceCapture", () => ({
 }));
 
 import FloatMenu from "./FloatMenu";
+import { dialogueSessionKey, loadDialogueSession } from "./dialogueTurnStorage";
 import { regionOfSelection, streamDialogueOverSelection } from "./floatMenuActions";
 import type { FloatMenuSelection } from "./useFloatMenuSelection";
 import { useFloatMenuSelection } from "./useFloatMenuSelection";
@@ -297,5 +298,62 @@ describe("DialoguePanel streams, recovers, and persists honestly (M2 + M4)", () 
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(2));
     const secondBody = JSON.parse((apiFetchMock.mock.calls[1][1] as RequestInit).body as string);
     expect(secondBody.history).toEqual([{ question: "first question", answer: "first answer" }]);
+  });
+});
+
+describe("dialogue session storage is bounded to valid session state", () => {
+  const anchoredSelection: FloatMenuSelection = {
+    text: "discuss this",
+    rect: { top: 0, left: 0, width: 1, height: 1 },
+    provenance: ANCHORED,
+  };
+
+  it("drops malformed saved turns instead of hydrating corrupt dialogue history", () => {
+    const key = dialogueSessionKey("inv-1", anchoredSelection);
+    sessionStorage.setItem(
+      key,
+      JSON.stringify({
+        turns: [{ question: "saved question" }],
+        threadNodeId: "question-bad",
+      }),
+    );
+
+    expect(loadDialogueSession(key)).toBeNull();
+  });
+
+  it("drops saved state whose thread anchor is not a string or null", () => {
+    const key = dialogueSessionKey("inv-1", anchoredSelection);
+    sessionStorage.setItem(
+      key,
+      JSON.stringify({
+        turns: [{ question: "saved question", answer: "saved answer" }],
+        threadNodeId: { node_id: "question-bad" },
+      }),
+    );
+
+    expect(loadDialogueSession(key)).toBeNull();
+  });
+
+  it("restores valid saved turns while tolerating unknown future fields", () => {
+    const key = dialogueSessionKey("inv-1", anchoredSelection);
+    sessionStorage.setItem(
+      key,
+      JSON.stringify({
+        turns: [
+          {
+            question: "saved question",
+            answer: "saved answer",
+            future_field: "kept by newer code",
+          },
+        ],
+        threadNodeId: "question-abc",
+        future_field: "kept by newer code",
+      }),
+    );
+
+    expect(loadDialogueSession(key)).toEqual({
+      turns: [{ question: "saved question", answer: "saved answer", future_field: "kept by newer code" }],
+      threadNodeId: "question-abc",
+    });
   });
 });
