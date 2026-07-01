@@ -70,17 +70,25 @@ interface MarketplaceSnapshot {
   health_signals: string[];
 }
 
-const USD = (cents: number) =>
-  `$${(cents / 100).toLocaleString(undefined, {
+const nonNegativeFiniteNumber = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+
+const safeNumber = (value: unknown): number => nonNegativeFiniteNumber(value) ?? 0;
+
+const USD = (cents: unknown) =>
+  `$${(safeNumber(cents) / 100).toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
 
-const PCT = (frac: number) => `${(frac * 100).toFixed(1)}%`;
+const PCT = (frac: unknown) => `${(safeNumber(frac) * 100).toFixed(1)}%`;
+const COUNT = (value: unknown) => String(safeNumber(value));
 
 function bucketLabel(b: EarningsBucket): string {
-  const lo = b.lower_cents;
-  const hi = b.upper_cents;
+  const lo = safeNumber(b.lower_cents);
+  const hi = b.upper_cents === -1 ? -1 : safeNumber(b.upper_cents);
   if (hi === -1) return `${USD(lo)}+`;
   if (lo === 0) return `< ${USD(hi)}`;
   return `${USD(lo)} – ${USD(hi - 1)}`;
@@ -138,7 +146,7 @@ export default function MarketplaceMetrics() {
               />
 
               <Section title="Creators (§13.9 user-as-IP-holder)">
-                <Stat label="Total creators" value={data.creators.creator_count} />
+                <Stat label="Total creators" value={COUNT(data.creators.creator_count)} />
                 <Stat
                   label="Total paid"
                   value={USD(data.creators.total_paid_cents)}
@@ -175,7 +183,7 @@ export default function MarketplaceMetrics() {
                             {bucketLabel(b)}
                           </span>
                           <span className="font-mono text-ink dark:text-bright">
-                            {b.creator_count} creators
+                            {COUNT(b.creator_count)} creators
                           </span>
                         </li>
                       ))}
@@ -187,19 +195,19 @@ export default function MarketplaceMetrics() {
               <Section title="Publishers (§9.10 pre-onboarded escrow)">
                 <Stat
                   label="Pre-onboarded"
-                  value={data.publishers.status_counts.pre_onboarded}
+                  value={COUNT(data.publishers.status_counts.pre_onboarded)}
                 />
                 <Stat
                   label="Invited"
-                  value={data.publishers.status_counts.invited}
+                  value={COUNT(data.publishers.status_counts.invited)}
                 />
                 <Stat
                   label="Claimed"
-                  value={data.publishers.status_counts.claimed}
+                  value={COUNT(data.publishers.status_counts.claimed)}
                 />
                 <Stat
                   label="Opted out"
-                  value={data.publishers.status_counts.opted_out}
+                  value={COUNT(data.publishers.status_counts.opted_out)}
                 />
                 <Stat
                   label="Claim rate"
@@ -228,23 +236,23 @@ export default function MarketplaceMetrics() {
               <Section title="Advertisers (§9.6 retention)">
                 <Stat
                   label="Current period"
-                  value={data.advertisers.advertiser_count_current}
+                  value={COUNT(data.advertisers.advertiser_count_current)}
                 />
                 <Stat
                   label="Prior period"
-                  value={data.advertisers.advertiser_count_prior}
+                  value={COUNT(data.advertisers.advertiser_count_prior)}
                 />
                 <Stat
                   label="Retained"
-                  value={data.advertisers.retained_advertiser_count}
+                  value={COUNT(data.advertisers.retained_advertiser_count)}
                 />
                 <Stat
                   label="New"
-                  value={data.advertisers.new_advertiser_count}
+                  value={COUNT(data.advertisers.new_advertiser_count)}
                 />
                 <Stat
                   label="Churned"
-                  value={data.advertisers.churned_advertiser_count}
+                  value={COUNT(data.advertisers.churned_advertiser_count)}
                 />
                 <Stat
                   label="Retention rate"
