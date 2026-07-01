@@ -185,15 +185,15 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
 
         if _session_live_provider_passed(record, steps):
             live_provider_sessions.add(session_id)
-        elif bool(record.get("live_provider_ai")):
+        elif record.get("live_provider_ai") is True:
             failures.append(
                 prefix
                 + "live_provider_ai=true requires provider-backed steps 3 and 4 to pass"
             )
-        if bool(record.get("live_provider_ai")) and _provider_status(record) != "ready":
+        if record.get("live_provider_ai") is True and _provider_status(record) != "ready":
             failures.append(prefix + "live_provider_ai=true requires provider_status=ready")
 
-        if bool(record.get("citation_traced")):
+        if record.get("citation_traced") is True:
             citation_trace_sessions.add(session_id)
 
         if _entry_door_token(record.get("entry_door")) in NON_LIBRARY_ENTRY_DOORS:
@@ -308,7 +308,7 @@ def _invalid_boolean_fields(record: dict[str, Any]) -> list[str]:
 
 
 def _session_live_provider_passed(record: dict[str, Any], steps: dict[Any, Any]) -> bool:
-    if not bool(record.get("live_provider_ai")):
+    if record.get("live_provider_ai") is not True:
         return False
     return _step_status(steps.get("3")) == "pass" and _step_status(steps.get("4")) == "pass"
 
