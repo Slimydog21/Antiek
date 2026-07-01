@@ -72,6 +72,17 @@ function titleFromPreference(preference: TelemetryPreference | undefined, catego
   return phrase.charAt(0).toUpperCase() + phrase.slice(1);
 }
 
+function normalizedEpsilon(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return 0;
+  }
+  return Math.min(value, EPSILON_CAP);
+}
+
+function formatEpsilon(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
 export default function PrivacyDashboard() {
   const [data, setData] = useState<TrustCenterData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -245,7 +256,7 @@ export default function PrivacyDashboard() {
 
   const totalEpsilon = data
     ? Object.values(data.differential_privacy_epsilon_budgets).reduce(
-        (a, b) => a + b,
+        (a, b) => a + normalizedEpsilon(b),
         0,
       )
     : 0;
@@ -253,15 +264,15 @@ export default function PrivacyDashboard() {
     ? (preferencesKnown
         ? Object.values(preferences).map((preference) => ({
             category: preference.surface_name,
-            epsilon: preference.epsilon_per_day,
+            epsilon: normalizedEpsilon(preference.epsilon_per_day),
             sensitivity: preference.sensitivity,
             preference,
           }))
         : Object.entries(data.differential_privacy_epsilon_budgets).map(
             ([category, epsilon]) => ({
               category,
-              epsilon,
-              sensitivity: sensitivityForBudget(category, epsilon),
+              epsilon: normalizedEpsilon(epsilon),
+              sensitivity: sensitivityForBudget(category, normalizedEpsilon(epsilon)),
               preference: undefined,
             }),
           ))
@@ -447,7 +458,7 @@ function TelemetrySection({
           {title}
         </h3>
         <span className="text-xs font-mono text-shadow-1 dark:text-moonlight">
-          Privacy budget: {epsilon}/day
+          Privacy budget: {formatEpsilon(epsilon)}/day
         </span>
       </div>
       <p className="text-sm text-ink dark:text-bright leading-relaxed">{description}</p>

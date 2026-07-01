@@ -403,6 +403,39 @@ describe("PrivacyDashboard", () => {
     expect(screen.queryByText(/dispatch_tier_telemetry/i)).toBeNull();
   });
 
+  it("sanitizes malformed epsilon budgets before rendering privacy promises", async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === "/trust-center") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            ...TRUST_RESPONSE,
+            differential_privacy_epsilon_budgets: {
+              skill_invocation_frequency: Number.NaN,
+              source_tier_preference_signals: Number.POSITIVE_INFINITY,
+              query_content_telemetry: -1,
+              dispatch_tier_telemetry: 14,
+            },
+          }),
+        });
+      }
+      if (path === "/trust-center/deletion-requests") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ requests: [] }),
+        });
+      }
+      return Promise.resolve({ ok: false, status: 503, json: async () => ({}) });
+    });
+
+    render(<PrivacyDashboard />);
+
+    expect(await screen.findByText("Daily privacy budget total: 10.00 of 10.00")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/NaN|Infinity|Privacy budget: -/);
+    expect(screen.getAllByText("Privacy budget: 0/day").length).toBeGreaterThan(0);
+    expect(screen.getByText("Privacy budget: 10/day")).toBeTruthy();
+  });
+
   it("updates a telemetry preference through the privacy toggle", async () => {
     render(<PrivacyDashboard />);
 
