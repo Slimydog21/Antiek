@@ -789,7 +789,11 @@ class ActionType(StrEnum):
 #     rlm.session_started, rlm.iteration, rlm.sub_call_dispatched,
 #     rlm.session_completed, and rlm.session_failed make long-document RLM
 #     sessions reconstructable before the full execution bridge lands.
-EVENT_SCHEMA_VERSION: int = 32
+# v33: RLM Sprint 13 investigation routing. ``investigation.start_requested``
+#     now carries ``investigation_kind`` so operators can request either the
+#     legacy Loop-One phase chain or the open-ended RLM orchestration lane.
+#     The default remains ``loop_one`` for back-compat with existing clients.
+EVENT_SCHEMA_VERSION: int = 33
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -2240,6 +2244,11 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     question: str
     context: str = ""
     topic_slug: str | None = None
+    # Sprint 13: routing hint consumed by the investigation coordinator.
+    # ``loop_one`` preserves the existing 9-phase chain; ``rlm`` selects the
+    # open-ended RLM orchestration lane for survey/research questions that do
+    # not decompose cleanly into the fixed role pipeline.
+    investigation_kind: Literal["loop_one", "rlm"] = "loop_one"
     # Cap on parallel evidence_retrieve dispatches (one per sub-question
     # from the Decomposer). The orchestrator clamps to this max; the
     # actual count is min(decomposition_length, max_sub_questions).
