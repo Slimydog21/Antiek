@@ -2,6 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 
 import { track } from "../../lib/analytics";
 
+function parseFiniteNonNegativeNumber(value: string): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function formatUsd(value: number): string {
+  return (Number.isFinite(value) && value >= 0 ? value : 0).toFixed(2);
+}
+
 /**
  * Pricing surface (master-spec §13.5 + PostHog Wedge 6 template,
  * §5.6 PostHog design philosophy).
@@ -104,11 +113,16 @@ export default function PricingPage() {
             >
               <input
                 type="range"
+                aria-label="Private tokens per month"
                 min={0}
                 max={50_000_000}
                 step={100_000}
                 value={privateTokensMonthly}
-                onChange={(e) => setPrivateTokensMonthly(Number(e.target.value))}
+                onChange={(e) =>
+                  setPrivateTokensMonthly(
+                    (prev) => parseFiniteNonNegativeNumber(e.target.value) ?? prev,
+                  )
+                }
                 className="w-full"
               />
             </CalculatorRow>
@@ -119,11 +133,16 @@ export default function PricingPage() {
             >
               <input
                 type="range"
+                aria-label="Public tokens per month"
                 min={0}
                 max={20_000_000}
                 step={100_000}
                 value={publicTokensMonthly}
-                onChange={(e) => setPublicTokensMonthly(Number(e.target.value))}
+                onChange={(e) =>
+                  setPublicTokensMonthly(
+                    (prev) => parseFiniteNonNegativeNumber(e.target.value) ?? prev,
+                  )
+                }
                 className="w-full"
               />
             </CalculatorRow>
@@ -132,11 +151,16 @@ export default function PricingPage() {
             >
               <input
                 type="range"
+                aria-label="Provider raw cost per million tokens"
                 min={1}
                 max={20}
                 step={1}
                 value={pricePerMilTokens}
-                onChange={(e) => setPricePerMilTokens(Number(e.target.value))}
+                onChange={(e) =>
+                  setPricePerMilTokens(
+                    (prev) => parseFiniteNonNegativeNumber(e.target.value) ?? prev,
+                  )
+                }
                 className="w-full"
               />
             </CalculatorRow>
@@ -223,7 +247,7 @@ function CostRow({
       }`}
     >
       <span>{label}</span>
-      <span className="font-mono">${value.toFixed(2)}</span>
+      <span className="font-mono">${formatUsd(value)}</span>
     </div>
   );
 }
