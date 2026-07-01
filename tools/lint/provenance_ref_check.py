@@ -112,8 +112,33 @@ def _field_reads(tree: ast.AST) -> list[tuple[int, str]]:
     return out
 
 
+def _dict_ref_key_sites(tree: ast.AST) -> list[tuple[int, str]]:
+    out: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict):
+            continue
+        for key in node.keys:
+            if (
+                isinstance(key, ast.Constant)
+                and isinstance(key.value, str)
+                and _is_ref_field(key.value)
+            ):
+                out.append((key.lineno, key.value))
+    return out
+
+
 def _target_field_sites(tree: ast.AST) -> list[tuple[int, str]]:
-    return _field_reads(tree)
+    return _field_reads(tree) + _dict_ref_key_sites(tree)
+
+
+def _expr_contains_validator_call(
+    tree: ast.AST,
+    validator_names: frozenset[str],
+) -> bool:
+    return any(
+        isinstance(node, ast.Call) and _is_validator_call(node, validator_names)
+        for node in ast.walk(tree)
+    )
 
 
 def _assigned_names(target: ast.AST) -> set[str]:
@@ -276,11 +301,53 @@ def _raw_field_aliases(func: ast.FunctionDef | ast.AsyncFunctionDef) -> dict[str
     return aliases
 
 
+def _validator_aliases(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+    validator_names: frozenset[str],
+) -> set[str]:
+    aliases: set[str] = set()
+    assignments: list[tuple[set[str], ast.AST]] = []
+    for node in ast.walk(func):
+        target_names: set[str]
+        value: ast.AST | None
+        if isinstance(node, ast.Assign):
+            target_names = {
+                name
+                for target in node.targets
+                for name in _assigned_names(target)
+            }
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            target_names = _assigned_names(node.target)
+            value = node.value
+        elif isinstance(node, ast.NamedExpr):
+            target_names = _assigned_names(node.target)
+            value = node.value
+        else:
+            continue
+        if value is None or not target_names:
+            continue
+        assignments.append((target_names, value))
+        if _expr_contains_validator_call(value, validator_names):
+            aliases.update(target_names)
+    changed = True
+    while changed:
+        changed = False
+        for target_names, value in assignments:
+            if not (_names_in(value) & aliases):
+                continue
+            before = len(aliases)
+            aliases.update(target_names)
+            changed = changed or len(aliases) != before
+    return aliases
+
+
 def _validated_fields(
     func: ast.FunctionDef | ast.AsyncFunctionDef,
     validator_names: frozenset[str],
 ) -> set[str]:
     aliases = _raw_field_aliases(func)
+    validator_aliases = _validator_aliases(func, validator_names)
     out: set[str] = set()
     for node in ast.walk(func):
         if not isinstance(node, ast.Call) or not _is_validator_call(node, validator_names):
@@ -290,6 +357,20 @@ def _validated_fields(
         for field, field_aliases in aliases.items():
             if names & field_aliases:
                 out.add(field)
+    for node in ast.walk(func):
+        if not isinstance(node, ast.Dict):
+            continue
+        for key, value in zip(node.keys, node.values):
+            if not (
+                isinstance(key, ast.Constant)
+                and isinstance(key.value, str)
+                and _is_ref_field(key.value)
+            ):
+                continue
+            if _expr_contains_validator_call(value, validator_names):
+                out.add(key.value)
+            elif _names_in(value) & validator_aliases:
+                out.add(key.value)
     return out
 
 
