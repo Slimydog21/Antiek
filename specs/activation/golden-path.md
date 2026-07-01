@@ -81,8 +81,10 @@ quality judge. It checks that the log has the required fields, 10 distinct valid
 sessions, at least 5 sessions with live provider-backed AI, at least 3 sessions
 with citation/source tracing, at least 1 session from a non-Library door, and a
 concrete follow-up issue for every logged failure or irritation. A green result
-means the log satisfies the mechanical closure rule; the operator's session
-notes still carry the qualitative verdict.
+also requires the final record to declare `"verdict": "ACTIVATE"`. The
+validator does not judge answer quality; it only checks that the operator's
+qualitative verdict is present and belongs to the allowed set. A `"REPAIR"`
+verdict must include non-empty `"blocking_issue_ids"`.
 
 Minimal record shape:
 
@@ -99,6 +101,7 @@ Minimal record shape:
   "live_provider_ai": true,
   "citation_traced": true,
   "minutes_reading": 22,
+  "verdict": "ACTIVATE",
   "steps": {
     "1": {"status": "pass"},
     "2": {"status": "pass"},
@@ -114,6 +117,11 @@ Minimal record shape:
 For pre-key walks, steps 3 and 4 may use `"status": "inert"`; those sessions do
 not satisfy the live-provider count. Any step with `"status": "fail"` or a
 non-empty `"irritation"` must include `"followup_issue": "..."`.
+
+Only the final record needs `"verdict"`. It must be one of `"ACTIVATE"`,
+`"REPAIR"`, or `"ROLL BACK CLAIM"`. `"REPAIR"` is explicit non-closure and must
+also include `"blocking_issue_ids": ["READ-..."]`; `"ROLL BACK CLAIM"` is also
+explicit non-closure. Only `"ACTIVATE"` can make the validator exit 0.
 
 ## CI proxy
 
