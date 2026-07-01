@@ -377,13 +377,24 @@ def emit_brainstorm_blocks(req: BrainstormBlocksRequest) -> dict:
         insights=req.insights, questions=req.questions, data_points=req.data_points,
     )
     with _translate(), _write("write/brainstorm_blocks") as con:
-        if con.execute(
-            "SELECT 1 FROM deliverable_sections WHERE section_id = ?", [req.section_id]
-        ).fetchone() is None:
+        row = con.execute(
+            "SELECT s.deliverable_id, d.investigation_root_id "
+            "FROM deliverable_sections s JOIN deliverables d "
+            "ON s.deliverable_id = d.deliverable_id WHERE s.section_id = ?",
+            [req.section_id],
+        ).fetchone()
+        if row is None:
             raise HTTPException(status_code=404, detail="section not found")
+        deliverable_id, investigation_root_id = row
+        if req.deliverable_id is not None and req.deliverable_id != deliverable_id:
+            raise HTTPException(
+                status_code=400,
+                detail="section belongs to a different deliverable",
+            )
         result = drivers_to_blocks(
             con, section_id=req.section_id, drivers=drivers,
-            deliverable_id=req.deliverable_id,
+            deliverable_id=deliverable_id,
+            investigation_id=investigation_root_id or "__operator__",
         )
     return {
         "block_ids": result.block_ids,
