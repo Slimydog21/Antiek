@@ -1,11 +1,12 @@
 """Gate ledger — a typed VIEW over ``docs/operator_gate_actions.md`` (SPR-05 M1).
 
-The eight binding gates (G1-G8) that block Antiek's activation are canonical in
-one human-edited markdown file. Four product specs each re-describe the same
-gates from their own angle — Read frames G2/G3 as "disbursement blocked," Speak
-as "public publishing blocked," Write as "G8 blocks RL." Four descriptions of
-the same gates drift. This module presents them **once**, parsed from the single
-source, and pairs each gate with a per-product impact column.
+The original activation gates (G1-G8) are canonical in one human-edited markdown
+file that now also records appended operator/legal follow-on gate-actions
+(G9-G12). Four product specs each re-describe the original activation gates from
+their own angle — Read frames G2/G3 as "disbursement blocked," Speak as "public
+publishing blocked," Write as "G8 blocks RL." Four descriptions of the same
+gates drift. This module presents the original G1-G8 gates **once**, parsed from
+the single source, and pairs each gate with a per-product impact column.
 
 The load-bearing invariant: **the ledger is derived on read; it never stores a
 second copy of gate state and has no write path back to the markdown.** If the
@@ -110,7 +111,7 @@ class Gate:
     authoritative nuance carrier. ``status`` is the coarse enum. ``impacts`` is
     the per-product impact metadata (not gate state — see module docstring)."""
 
-    gate_id: str          # "G1".."G8"
+    gate_id: str          # original activation gate: "G1".."G8"
     title: str            # the section header title
     status: GateStatus    # coarse bucket
     status_raw: str       # verbatim status string (the nuance)

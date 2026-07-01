@@ -14,8 +14,9 @@ import type { RoadmapView } from "./Roadmap";
  * never writes:
  *
  *  - Gate ledger: a view over docs/operator_gate_actions.md (GET
- *    /coordination/gates). The eight binding gates, once, with a per-product
- *    impact column. No per-product gate duplication.
+ *    /coordination/gates). The original G1-G8 activation gates, once, with a
+ *    per-product impact column. Appended G9-G12 operator/legal follow-ons remain
+ *    in the source doc; no per-product gate duplication.
  *  - Roadmap: the five specs' rosters + SPR-01's dependency DAG (GET
  *    /coordination/roadmap). 45 sprints reconciled, DRW critical path explicit,
  *    unblocked-now derived from dependency state.
