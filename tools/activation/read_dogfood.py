@@ -170,6 +170,8 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
         failures.extend(step_failures)
         step_status_failures = _step_status_failures(prefix, steps)
         failures.extend(step_status_failures)
+        live_provider_evidence_failures = _live_provider_evidence_failures(prefix, record, steps)
+        failures.extend(live_provider_evidence_failures)
         citation_evidence_failures = _citation_evidence_failures(prefix, record, steps)
         failures.extend(citation_evidence_failures)
 
@@ -196,6 +198,7 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
             and not missing_steps
             and not step_failures
             and not step_status_failures
+            and not live_provider_evidence_failures
             and not citation_evidence_failures
             and not issue_failures
             and _has_minimum_reading_time(minutes_reading)
@@ -379,7 +382,42 @@ def _invalid_boolean_fields(record: dict[str, Any]) -> list[str]:
 def _session_live_provider_passed(record: dict[str, Any], steps: dict[Any, Any]) -> bool:
     if record.get("live_provider_ai") is not True:
         return False
-    return _step_status(steps.get("3")) == "pass" and _step_status(steps.get("4")) == "pass"
+    return (
+        _step_status(steps.get("3")) == "pass"
+        and _step_status(steps.get("4")) == "pass"
+        and not _live_provider_evidence_failures("", record, steps)
+    )
+
+
+def _live_provider_evidence_failures(
+    prefix: str,
+    record: dict[str, Any],
+    steps: dict[Any, Any],
+) -> list[str]:
+    if record.get("live_provider_ai") is not True:
+        return []
+    if _step_status(steps.get("3")) != "pass" or _step_status(steps.get("4")) != "pass":
+        return []
+
+    failures: list[str] = []
+    step_3 = steps.get("3")
+    step_4 = steps.get("4")
+    first_answer = (
+        _required_text(step_3.get("first_answer"))
+        if isinstance(step_3, dict)
+        else ""
+    )
+    research_id = ""
+    if isinstance(step_4, dict):
+        research_id = (
+            _required_text(step_4.get("investigation_id"))
+            or _required_text(step_4.get("session_id"))
+        )
+    if not first_answer:
+        failures.append(prefix + "live provider step 3 requires first_answer")
+    if not research_id:
+        failures.append(prefix + "live provider step 4 requires investigation_id or session_id")
+    return failures
 
 
 def _session_citation_traced(record: dict[str, Any], steps: dict[Any, Any]) -> bool:

@@ -27,6 +27,9 @@ def _session(
             "chunk_id": f"chunk-{idx}",
             "result_url": f"https://app.example/read/source-doc-{idx}?chunk=chunk-{idx}",
         })
+    if live:
+        steps["3"]["first_answer"] = f"First useful answer for passage {idx}."
+        steps["4"]["investigation_id"] = f"child-investigation-{idx}"
     return {
         "session_id": f"session-{idx}",
         "date": "2026-06-30",
@@ -330,6 +333,33 @@ def test_live_provider_sessions_require_dialogue_and_research_steps_to_pass() ->
         for f in report.failures
     )
     assert any(">=5 valid sessions with live_provider_ai=true" in f for f in report.failures)
+
+
+def test_live_provider_steps_require_answer_and_research_id_evidence() -> None:
+    record = _session(1, live=True, citation=True, entry_door="search")
+    record["steps"]["3"] = {"status": "pass"}
+    record["steps"]["4"] = {"status": "pass"}
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.valid_sessions == 0
+    assert report.live_provider_sessions == 0
+    assert any("live provider step 3 requires first_answer" in f for f in report.failures)
+    assert any(
+        "live provider step 4 requires investigation_id or session_id" in f
+        for f in report.failures
+    )
+
+
+def test_live_provider_step_4_accepts_session_id_evidence() -> None:
+    record = _session(1, live=True, citation=True, entry_door="search")
+    del record["steps"]["4"]["investigation_id"]
+    record["steps"]["4"]["session_id"] = "research-session-1"
+
+    report = validate_sessions([record])
+
+    assert not any("live provider step 4 requires" in f for f in report.failures)
 
 
 def test_live_provider_session_requires_ready_provider_status() -> None:
