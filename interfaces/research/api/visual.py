@@ -123,7 +123,10 @@ def dispatch_visual_role(
         return (None, evt)
 
     try:
-        result = parse_visual_response(raw.raw_text)
+        result = parse_visual_response(
+            raw.raw_text,
+            expected_page_or_frame_id=context.frame.page_or_frame_id,
+        )
     except VisualValidationError as exc:
         evt = _envelope(
             VisualRoleFailedPayload(
