@@ -41,7 +41,17 @@ beforeEach(() => {
       });
     }
     if (path === "/stats") {
-      return okJson({ counts: { payout_transfers: 2, ip_holders: 1 }, warnings: [] });
+      return okJson({
+        counts: {
+          investigations: Number.POSITIVE_INFINITY,
+          notebooks: Number.NaN,
+          outcomes: -4,
+          skill_rules: "1500.8",
+          payout_transfers: "bad",
+          ip_holders: 1,
+        },
+        warnings: [],
+      });
     }
     if (path === "/trust-center/deletion-requests") {
       return okJson({ requests: [{ request_id: "dr-1", status: "pending" }] });
@@ -69,7 +79,7 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("OperatorDashboard", () => {
-  it("sanitizes malformed payout and escrow amounts", async () => {
+  it("sanitizes malformed payout, escrow, and snapshot metrics", async () => {
     render(
       <MemoryRouter>
         <OperatorDashboard />
@@ -79,8 +89,9 @@ describe("OperatorDashboard", () => {
     expect(await screen.findByText("Malformed Publisher")).toBeTruthy();
     expect(screen.getByText("transferred")).toBeTruthy();
     expect(screen.getByText("failed")).toBeTruthy();
-    expect(document.body.textContent).not.toMatch(/NaN|Infinity|\$-/);
+    expect(document.body.textContent).not.toMatch(/NaN|Infinity|\$-|-4/);
     expect(screen.getAllByText("$0.00").length).toBeGreaterThan(0);
     expect(screen.getByText("$2.50")).toBeTruthy();
+    expect(screen.getByText("1,500")).toBeTruthy();
   });
 });
