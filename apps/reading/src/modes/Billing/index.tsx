@@ -31,6 +31,21 @@ interface BillingSummary {
 
 const FREE_TIER_CAP = 5_000_000;
 
+function nonNegativeFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
+function safeTokenCount(value: unknown): number {
+  return Math.floor(nonNegativeFiniteNumber(value) ?? 0);
+}
+
+function formatUsd(value: string): string {
+  const parsed = Number(value);
+  return `$${(Number.isFinite(parsed) && parsed >= 0 ? parsed : 0).toFixed(4)}`;
+}
+
 function currentPeriod(): string {
   const d = new Date();
   const yyyy = d.getFullYear();
@@ -72,8 +87,10 @@ export default function Billing() {
   }, [reload]);
 
   const pctConsumed = data
-    ? Math.min(100, Math.round((data.free_tokens_consumed / FREE_TIER_CAP) * 100))
+    ? Math.min(100, Math.round((safeTokenCount(data.free_tokens_consumed) / FREE_TIER_CAP) * 100))
     : 0;
+  const freeTokensConsumed = safeTokenCount(data?.free_tokens_consumed);
+  const freeTokensRemaining = safeTokenCount(data?.free_tokens_remaining);
 
   return (
     <div className="flex flex-col h-screen">
@@ -143,11 +160,11 @@ export default function Billing() {
                   />
                 </div>
                 <p className="text-xs font-mono text-ink-soft dark:text-starlight">
-                  {data.free_tokens_consumed.toLocaleString()} /{" "}
+                  {freeTokensConsumed.toLocaleString()} /{" "}
                   {FREE_TIER_CAP.toLocaleString()} tokens · {pctConsumed}%
                 </p>
                 <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
-                  remaining: {data.free_tokens_remaining.toLocaleString()}
+                  remaining: {freeTokensRemaining.toLocaleString()}
                 </p>
               </section>
 
@@ -170,15 +187,15 @@ export default function Billing() {
                 <h2 className="text-base font-serif text-ink dark:text-bright">
                   Totals
                 </h2>
-                <Row label="Total raw provider cost" value={data.total_raw_usd} />
-                <Row label="Total margin" value={data.total_margin_usd} />
+                <Row label="Total raw provider cost" value={formatUsd(data.total_raw_usd)} />
+                <Row label="Total margin" value={formatUsd(data.total_margin_usd)} />
                 <Row
                   label="Total billable"
-                  value={data.total_billable_usd}
+                  value={formatUsd(data.total_billable_usd)}
                   emphasize
                 />
                 <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
-                  {data.record_count} usage records aggregated this period
+                  {safeTokenCount(data.record_count)} usage records aggregated this period
                 </p>
               </section>
             </>
@@ -203,8 +220,8 @@ function CostCard({
           {margin} margin
         </span>
       </div>
-      <Row label="Raw" value={`$${raw}`} small />
-      <Row label="Margin" value={`$${marginValue}`} small />
+      <Row label="Raw" value={formatUsd(raw)} small />
+      <Row label="Margin" value={formatUsd(marginValue)} small />
     </div>
   );
 }
