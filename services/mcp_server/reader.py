@@ -9,14 +9,11 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any
+from collections.abc import Callable
+from importlib import import_module
+from typing import Any, Protocol, cast
 
 import duckdb
-
-from substrate.books.serve_guard import serve_full_text_guarded
-from substrate.event_log import default_events_dir, trajectory
-from substrate.graph.retrieval_gate import is_chunk_body_withheld
-from substrate.schemas.events import ActionType
 
 from .errors import (
     BookChunkNotFoundError,
@@ -24,6 +21,69 @@ from .errors import (
     NoteNotFoundError,
     PublicNoteNotFoundError,
 )
+
+_USER_REGISTERED = "user.registered"
+_USER_IDENTITY_ATTACHED = "user.identity_attached"
+_GRAPH_SCOPE_CHANGED = "graph.scope_changed"
+
+
+class _ServedFullText(Protocol):
+    full_text: str | None
+    tier: str | None
+    ad_eligible: bool
+    canonical_url: str | None
+    license: str | None
+
+
+def connect_readonly(db_path: str) -> duckdb.DuckDBPyConnection:
+    """Open a read-only substrate connection without importing legacy types.
+
+    ``runtime.db_lock`` still carries repo-wide mypy baseline debt. The MCP
+    package owns a narrow typed adapter so its strict gate covers MCP code
+    instead of inheriting unrelated substrate typing work.
+    """
+    module = import_module("runtime.db_lock")
+    connect_read = cast(
+        Callable[[str], duckdb.DuckDBPyConnection],
+        module.connect_read,
+    )
+    return connect_read(db_path)
+
+
+def _default_events_dir() -> str:
+    module = import_module("substrate.event_log")
+    default_events_dir = cast(Callable[[], str], module.default_events_dir)
+    return default_events_dir()
+
+
+def _trajectory(investigation_id: str, *, events_dir: str | None = None) -> list[dict[str, Any]]:
+    module = import_module("substrate.event_log")
+    trajectory = cast(
+        Callable[..., list[dict[str, Any]]],
+        module.trajectory,
+    )
+    return trajectory(investigation_id, events_dir=events_dir)
+
+
+def _serve_full_text_guarded(
+    con: duckdb.DuckDBPyConnection,
+    document_id: str,
+) -> _ServedFullText:
+    module = import_module("substrate.books.serve_guard")
+    serve = cast(
+        Callable[[duckdb.DuckDBPyConnection, str], _ServedFullText],
+        module.serve_full_text_guarded,
+    )
+    return serve(con, document_id)
+
+
+def _is_chunk_body_withheld(content_class: str | None) -> tuple[bool, str | None]:
+    module = import_module("substrate.graph.retrieval_gate")
+    predicate = cast(
+        Callable[[str | None], tuple[bool, str | None]],
+        module.is_chunk_body_withheld,
+    )
+    return predicate(content_class)
 
 
 def _resolve_db_path() -> str:
@@ -43,7 +103,7 @@ def _resolve_db_path() -> str:
 
 def _resolve_events_dir() -> str:
     """Resolve the Antiek event-log directory for read-only MCP resources."""
-    return default_events_dir()
+    return _default_events_dir()
 
 
 def _iter_event_log_rows(*, events_dir: str | None = None) -> list[dict[str, Any]]:
@@ -61,16 +121,16 @@ def _iter_event_log_rows(*, events_dir: str | None = None) -> list[dict[str, Any
             investigation_ids.add(name[: -len(".parquet")])
 
     for investigation_id in sorted(investigation_ids):
-        rows.extend(trajectory(investigation_id, events_dir=root))
+        rows.extend(_trajectory(investigation_id, events_dir=root))
 
     rows.sort(key=lambda row: (row.get("emitted_at") or "", row.get("event_id") or ""))
     return rows
 
 
 _ACCOUNT_EVENT_TYPES: frozenset[str] = frozenset({
-    ActionType.USER_REGISTERED.value,
-    ActionType.USER_IDENTITY_ATTACHED.value,
-    ActionType.GRAPH_SCOPE_CHANGED.value,
+    _USER_REGISTERED,
+    _USER_IDENTITY_ATTACHED,
+    _GRAPH_SCOPE_CHANGED,
 })
 
 
@@ -115,18 +175,18 @@ def get_account_scope(
     """Reconstruct the latest account/scope summary from typed events."""
     events = list_account_events(user_id, events_dir=events_dir)
     registered = next(
-        (event for event in events if event["action_type"] == ActionType.USER_REGISTERED.value),
+        (event for event in events if event["action_type"] == _USER_REGISTERED),
         None,
     )
     identities = [
         event["payload"]
         for event in events
-        if event["action_type"] == ActionType.USER_IDENTITY_ATTACHED.value
+        if event["action_type"] == _USER_IDENTITY_ATTACHED
     ]
     scope_events = [
         event
         for event in events
-        if event["action_type"] == ActionType.GRAPH_SCOPE_CHANGED.value
+        if event["action_type"] == _GRAPH_SCOPE_CHANGED
     ]
     latest_scope = scope_events[-1] if scope_events else None
 
@@ -236,7 +296,7 @@ def get_public_note(
     (doc_id, title, author, metadata_json, tier, doc_type,
      owner, content_class, ip_holder_id, acquired_at) = row
 
-    served = serve_full_text_guarded(con, note_id)
+    served = _serve_full_text_guarded(con, note_id)
     if served.full_text is None:
         raise LicensingRequiredError(note_id, content_class)
 
@@ -330,7 +390,7 @@ def get_book_chunk(
 
     doc_id, title, author, content_class, ip_holder_id = doc_row
 
-    withheld, _label = is_chunk_body_withheld(content_class)
+    withheld, _label = _is_chunk_body_withheld(content_class)
     if withheld:
         raise LicensingRequiredError(chunk_id, content_class)
 

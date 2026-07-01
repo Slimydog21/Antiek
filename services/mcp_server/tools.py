@@ -12,17 +12,71 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from importlib import import_module
+from typing import Any, cast
 
 import duckdb
-
-from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
 
 from .defenses import wrap_untrusted_content
 from .errors import EmptyQueryError, LicensingRequiredError, SourceNotFoundError
 from .fastmcp_compat import FastMCP
-from .reader import _resolve_db_path
+from .reader import _is_chunk_body_withheld, _resolve_db_path, _trajectory, connect_readonly
+
+_MCP_ATTRIBUTION_RECORDED = "mcp.attribution.recorded"
+
+
+def _non_privileged_chunk_sql_clause(*, table_alias: str) -> tuple[str, list[Any]]:
+    module = import_module("substrate.graph.retrieval_gate")
+    clause = cast(
+        Callable[..., tuple[str, list[Any]]],
+        module.non_privileged_chunk_sql_clause,
+    )
+    return clause(table_alias=table_alias)
+
+
+def _make_mcp_attribution_payload(
+    *,
+    source_id: str,
+    consumer_id: str,
+    timestamp: str,
+    session_dwell_seconds: float,
+    source_kind: str,
+) -> Any:
+    module = import_module("substrate.schemas.events")
+    payload_type = cast(
+        Callable[..., Any],
+        module.MCPAttributionRecordedPayload,
+    )
+    return payload_type(
+        source_id=source_id,
+        consumer_id=consumer_id,
+        timestamp=timestamp,
+        session_dwell_seconds=session_dwell_seconds,
+        source_kind=source_kind,
+    )
+
+
+def _emit_typed(
+    investigation_id: str,
+    payload: Any,
+    *,
+    document_id: str,
+    role: str,
+    policy_id: str,
+    events_dir: str | None = None,
+) -> str:
+    module = import_module("substrate.event_log")
+    emit_typed = cast(Callable[..., str], module.emit_typed)
+    return emit_typed(
+        investigation_id,
+        payload,
+        document_id=document_id,
+        role=role,
+        policy_id=policy_id,
+        events_dir=events_dir,
+    )
 
 # ---------------------------------------------------------------------------
 # BM25-style scoring helpers
@@ -291,7 +345,7 @@ def search_public(
     if not query_terms:
         query_terms = _tokenize(query)
 
-    gate_sql, gate_params = non_privileged_chunk_sql_clause(table_alias="d")
+    gate_sql, gate_params = _non_privileged_chunk_sql_clause(table_alias="d")
 
     rows = con.execute(
         f"""
@@ -510,11 +564,8 @@ def _matching_attribution_event(
     events_dir: str | None = None,
 ) -> dict[str, Any] | None:
     """Return the existing event for the MCP idempotency key, if any."""
-    from substrate.event_log import trajectory
-    from substrate.schemas.events import ActionType
-
-    for event in trajectory(investigation_id, events_dir=events_dir):
-        if event.get("action_type") != ActionType.MCP_ATTRIBUTION_RECORDED.value:
+    for event in _trajectory(investigation_id, events_dir=events_dir):
+        if event.get("action_type") != _MCP_ATTRIBUTION_RECORDED:
             continue
         payload = event.get("payload") or {}
         if (
@@ -573,22 +624,18 @@ def record_attribution(
             **source,
         }
 
-    from substrate.event_log import emit_typed
-    from substrate.graph.retrieval_gate import is_chunk_body_withheld
-    from substrate.schemas.events import MCPAttributionRecordedPayload
-
-    withheld, _label = is_chunk_body_withheld(source["content_class"])
+    withheld, _label = _is_chunk_body_withheld(source["content_class"])
     if withheld:
         raise LicensingRequiredError(source["source_id"], source["content_class"])
 
-    payload = MCPAttributionRecordedPayload(
+    payload = _make_mcp_attribution_payload(
         source_id=source["source_id"],
         consumer_id=consumer_id,
         timestamp=timestamp,
         session_dwell_seconds=session_dwell_seconds,
         source_kind=source["source_kind"],
     )
-    event_id = emit_typed(
+    event_id = _emit_typed(
         investigation_id,
         payload,
         document_id=source["document_id"],
@@ -598,7 +645,7 @@ def record_attribution(
     )
     return {
         "event_id": event_id,
-        "action_type": payload.action_type,
+        "action_type": _MCP_ATTRIBUTION_RECORDED,
         "idempotent": False,
         **source,
     }
@@ -622,10 +669,8 @@ def register_tools(mcp: FastMCP) -> None:
     )
     def search_personal_tool(user_id: str, query: str, top_k: int = 5) -> str:
         """Search a user's personal notes."""
-        from runtime.db_lock import connect_read
-
         db_path = _resolve_db_path()
-        con = connect_read(db_path)
+        con = connect_readonly(db_path)
         try:
             result = search_personal(con, query, user_id=user_id, top_k=top_k)
         finally:
@@ -642,10 +687,8 @@ def register_tools(mcp: FastMCP) -> None:
     )
     def search_public_tool(query: str, top_k: int = 5) -> str:
         """Search the public knowledge graph."""
-        from runtime.db_lock import connect_read
-
         db_path = _resolve_db_path()
-        con = connect_read(db_path)
+        con = connect_readonly(db_path)
         try:
             result = search_public(con, query, top_k=top_k)
         finally:
@@ -662,10 +705,8 @@ def register_tools(mcp: FastMCP) -> None:
     )
     def cite_source_tool(id: str, id_type: str = "chunk") -> str:
         """Resolve source citation metadata."""
-        from runtime.db_lock import connect_read
-
         db_path = _resolve_db_path()
-        con = connect_read(db_path)
+        con = connect_readonly(db_path)
         try:
             result = cite_source(con, id, id_type=id_type)
         finally:
@@ -689,10 +730,8 @@ def register_tools(mcp: FastMCP) -> None:
         session_dwell_seconds: float = 0.0,
     ) -> str:
         """Record an MCP attribution event."""
-        from runtime.db_lock import connect_read
-
         db_path = _resolve_db_path()
-        con = connect_read(db_path)
+        con = connect_readonly(db_path)
         try:
             result = record_attribution(
                 con,

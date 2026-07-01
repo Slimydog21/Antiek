@@ -16,6 +16,7 @@ from .errors import NoteNotFoundError
 from .fastmcp_compat import FastMCP
 from .reader import (
     _resolve_db_path,
+    connect_readonly,
     get_account_scope,
     get_book_chunk,
     get_note,
@@ -37,10 +38,8 @@ def register_resources(mcp: FastMCP) -> None:
     )
     def private_note(user_id: str, note_id: str) -> str:
         """Fetch a single private note as JSON."""
-        from runtime.db_lock import connect_read
-
         db_path = _resolve_db_path()
-        con = connect_read(db_path)
+        con = connect_readonly(db_path)
         try:
             note = get_note(con, user_id, note_id)
         except NoteNotFoundError:
@@ -58,10 +57,8 @@ def register_resources(mcp: FastMCP) -> None:
     )
     def user_notes(user_id: str) -> str:
         """List all notes for a user as JSON."""
-        from runtime.db_lock import connect_read
-
         db_path = _resolve_db_path()
-        con = connect_read(db_path)
+        con = connect_readonly(db_path)
         try:
             notes = list_user_notes(con, user_id)
         finally:
@@ -108,10 +105,8 @@ def register_resources(mcp: FastMCP) -> None:
     )
     def public_note(note_id: str) -> str:
         """Fetch a public note with attribution metadata as JSON."""
-        from runtime.db_lock import connect_read
-
         db_path = _resolve_db_path()
-        con = connect_read(db_path)
+        con = connect_readonly(db_path)
         try:
             note = get_public_note(con, note_id)
         finally:
@@ -132,10 +127,8 @@ def register_resources(mcp: FastMCP) -> None:
     )
     def book_chunk(isbn: str, chunk_id: str) -> str:
         """Fetch a book chunk with §9.0 retrieval-time gating as JSON."""
-        from runtime.db_lock import connect_read
-
         db_path = _resolve_db_path()
-        con = connect_read(db_path)
+        con = connect_readonly(db_path)
         try:
             chunk = get_book_chunk(con, isbn, chunk_id)
         finally:
