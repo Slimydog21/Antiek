@@ -2,11 +2,13 @@
 
 **Generated 2026-05-23 as a companion to `docs/operator_gate_actions.md`.**
 
-`operator_gate_actions.md` covers the eight gates that **engineering cannot
-close** (legal, calendar, external party). **This document covers the
-inverse**: the spec items that **engineering deliberately has NOT shipped**
-because the spec itself defers them behind an explicit ratification or
-unlock criterion. The substrate primitives may already exist; the
+`operator_gate_actions.md` covers the original eight gates (G1-G8) plus
+appended personal-reading-lane follow-on gate-actions (G9-G12) that
+**engineering cannot close** (legal, calendar, external party, content-rights
+checks). **This document covers the inverse**: the spec items that
+**engineering deliberately has NOT shipped** because the spec itself defers
+them behind an explicit ratification or unlock criterion. The substrate
+primitives may already exist; the
 **activation, the production-grade implementation, or the next-layer
 build-out is what's deferred**.
 
