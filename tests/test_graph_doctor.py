@@ -13,7 +13,7 @@ from datetime import datetime
 import duckdb
 import pytest
 
-from tools.graph_doctor import GraphMetrics, collect, derive_edge_temporal, render
+from tools.graph_doctor import GraphMetrics, collect, derive_edge_temporal, main, render
 
 NOW = datetime(2026, 7, 1)
 PAST = datetime(2026, 1, 1)
@@ -91,3 +91,52 @@ def test_metrics_is_dataclass_serializable():
     m = GraphMetrics(counts={"documents": 1})
     from dataclasses import asdict
     assert asdict(m)["counts"]["documents"] == 1
+
+
+def test_column_drift_is_noted_not_crashed(tmp_path):
+    # A renamed/dropped column must NOT crash the doctor (observability never
+    # fails a build); the drift is surfaced as a schema note instead.
+    path = str(tmp_path / "drift.duckdb")
+    con = duckdb.connect(path)
+    con.execute("CREATE TABLE documents(document_id TEXT PRIMARY KEY)")
+    con.execute("CREATE TABLE chunks(chunk_id TEXT PRIMARY KEY, document_id TEXT)")
+    con.execute("CREATE TABLE nodes(node_id TEXT PRIMARY KEY)")
+    # edges without superseded_by -> the temporal-split SELECT cannot bind
+    con.execute("CREATE TABLE edges(edge_id TEXT PRIMARY KEY, source_node_id TEXT, "
+                "target_node_id TEXT, valid_until TIMESTAMP)")
+    con.execute("CREATE TABLE syntheses(synthesis_id TEXT PRIMARY KEY)")
+    con.execute("CREATE TABLE synthesis_substrate_manifest(synthesis_id TEXT, "
+                "entity_kind TEXT, entity_id TEXT)")
+    con.execute("CREATE TABLE ip_holders(ip_holder_id TEXT PRIMARY KEY)")
+    con.close()
+    m = collect(path, NOW)  # must not raise
+    assert any("edge temporal" in n for n in m.schema_notes)
+    assert "schema notes" in render(m)
+
+
+def test_type_drift_valid_until_is_noted_not_crashed(tmp_path):
+    # valid_until VARCHAR (type drift): the name binds so a name-only guard would
+    # crash comparing str > datetime; the boundary type-check notes it instead.
+    path = str(tmp_path / "typedrift.duckdb")
+    con = duckdb.connect(path)
+    con.execute("CREATE TABLE documents(document_id TEXT PRIMARY KEY)")
+    con.execute("CREATE TABLE chunks(chunk_id TEXT PRIMARY KEY, document_id TEXT)")
+    con.execute("CREATE TABLE nodes(node_id TEXT PRIMARY KEY)")
+    con.execute("CREATE TABLE edges(edge_id TEXT, source_node_id TEXT, "
+                "target_node_id TEXT, valid_until VARCHAR, superseded_by TEXT)")
+    con.execute("INSERT INTO edges VALUES ('e1','n1','n2','2026-01-01',NULL)")
+    con.execute("CREATE TABLE syntheses(synthesis_id TEXT PRIMARY KEY)")
+    con.execute("CREATE TABLE synthesis_substrate_manifest(synthesis_id TEXT, "
+                "entity_kind TEXT, entity_id TEXT)")
+    con.execute("CREATE TABLE ip_holders(ip_holder_id TEXT PRIMARY KEY)")
+    con.close()
+    m = collect(path, NOW)  # must not raise
+    assert any("not a TIMESTAMP" in n for n in m.schema_notes)
+
+
+def test_corrupt_graph_file_is_noted_and_never_fails_build(tmp_path):
+    path = tmp_path / "corrupt.duckdb"
+    path.write_bytes(b"not a duckdb file at all")
+    m = collect(str(path), NOW)  # must not raise
+    assert any("cannot open graph" in n for n in m.schema_notes)
+    assert main(["--graph", str(path)]) == 0  # observability never fails a build

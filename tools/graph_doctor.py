@@ -49,6 +49,11 @@ class GraphMetrics:
     edges_live: int = 0
     edges_superseded: int = 0
     edges_expired: int = 0
+    # Surfaces the doctor could not read (renamed/dropped table or column). The
+    # doctor is observability — it never crashes and never fails a build — so
+    # schema drift is *reported*, not raised. The tools/lint/*_integrity GATES
+    # are where drift fails loud.
+    schema_notes: list[str] = field(default_factory=list)
 
     @property
     def total_orphans(self) -> int:
@@ -85,38 +90,50 @@ def derive_edge_temporal(
 def collect(graph_path: str, now: datetime) -> GraphMetrics:
     import duckdb
 
-    con = duckdb.connect(graph_path, read_only=True)
     m = GraphMetrics()
     try:
-        def scalar(sql: str) -> int:
+        con = duckdb.connect(graph_path, read_only=True)
+    except duckdb.Error as exc:
+        m.schema_notes.append(f"cannot open graph ({type(exc).__name__})")
+        return m
+    try:
+        def scalar(sql: str, what: str) -> int:
             try:
                 r = con.execute(sql).fetchone()
                 return int(r[0]) if r and r[0] is not None else 0
-            except duckdb.CatalogException:
+            except duckdb.Error as exc:
+                m.schema_notes.append(f"{what}: unreadable ({type(exc).__name__})")
                 return 0
 
         for t in ("documents", "chunks", "nodes", "edges", "syntheses", "ip_holders"):
-            m.counts[t] = scalar(f"SELECT count(*) FROM {t}")
+            m.counts[t] = scalar(f"SELECT count(*) FROM {t}", f"count({t})")
 
         m.documents_without_chunks = scalar(
             "SELECT count(*) FROM documents d "
-            "WHERE NOT EXISTS (SELECT 1 FROM chunks c WHERE c.document_id = d.document_id)"
+            "WHERE NOT EXISTS (SELECT 1 FROM chunks c WHERE c.document_id = d.document_id)",
+            "documents_without_chunks",
         )
         m.isolated_nodes = scalar(
             "SELECT count(*) FROM nodes n WHERE NOT EXISTS ("
             "  SELECT 1 FROM edges e WHERE e.source_node_id = n.node_id "
-            "     OR e.target_node_id = n.node_id)"
+            "     OR e.target_node_id = n.node_id)",
+            "isolated_nodes",
         )
         m.syntheses_without_manifest = scalar(
             "SELECT count(*) FROM syntheses s WHERE NOT EXISTS ("
             "  SELECT 1 FROM synthesis_substrate_manifest m "
-            "  WHERE m.synthesis_id = s.synthesis_id)"
+            "  WHERE m.synthesis_id = s.synthesis_id)",
+            "syntheses_without_manifest",
         )
         try:
             edge_rows = con.execute(
                 "SELECT superseded_by, valid_until FROM edges"
             ).fetchall()
-        except duckdb.CatalogException:
+        except duckdb.Error as exc:
+            m.schema_notes.append(f"edge temporal split: unreadable ({type(exc).__name__})")
+            edge_rows = []
+        if any(vu is not None and not isinstance(vu, datetime) for _, vu in edge_rows):
+            m.schema_notes.append("edge temporal split: valid_until is not a TIMESTAMP")
             edge_rows = []
         m.edges_live, m.edges_superseded, m.edges_expired = derive_edge_temporal(
             edge_rows, now
@@ -146,6 +163,9 @@ def render(m: GraphMetrics) -> str:
         "",
         f"total orphan-shape rows: {m.total_orphans:,}",
     ]
+    if m.schema_notes:
+        lines += ["", "schema notes (drift — some surfaces unreadable):"]
+        lines += [f"  - {n}" for n in m.schema_notes]
     return "\n".join(lines)
 
 
