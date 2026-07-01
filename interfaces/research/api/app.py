@@ -1989,7 +1989,11 @@ def create_app(
         from orchestration.loop_one import (
             register_handlers as _register_loop_one,
         )
+        from orchestration.loop_one.rlm_orchestrator import (
+            register_handlers as _register_rlm_investigation,
+        )
         _loop_coordinator = _register_loop_one(bus)
+        _register_rlm_investigation(bus)
         # ANT-DRL-06: Path A convergence — DRW gather then Loop 1 tail.
         from interfaces.research.api.cascade_routes import (
             set_synthesis_tail_runner,

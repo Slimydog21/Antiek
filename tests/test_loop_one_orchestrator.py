@@ -463,7 +463,40 @@ async def test_loop_one_ignores_rlm_investigation_kind(app_and_bus, async_client
 
     rows = trajectory(inv)
     action_types = [row["action_type"] for row in rows]
-    assert action_types == [ActionType.INVESTIGATION_START_REQUESTED.value]
+    assert ActionType.DECOMPOSE_QUESTION_REQUESTED.value not in action_types
+    assert action_types == [
+        ActionType.INVESTIGATION_START_REQUESTED.value,
+        ActionType.INVESTIGATION_FAILED.value,
+    ]
+    assert "RLM track requires" in rows[-1]["payload"]["reason"]
+
+
+@pytest.mark.asyncio
+async def test_rlm_investigation_kind_emits_rlm_session_events(
+    monkeypatch,
+    app_and_bus,
+    async_client,
+):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    _, bus = app_and_bus
+    inv = "inv-rlm-session-events"
+
+    await _post_start(
+        async_client,
+        investigation_id=inv,
+        question="Survey neutral-atom quantum computing.",
+        investigation_kind="rlm",
+    )
+    await bus.wait_for_handlers(timeout=2.0)
+
+    action_types = [row["action_type"] for row in trajectory(inv)]
+    assert ActionType.DECOMPOSE_QUESTION_REQUESTED.value not in action_types
+    assert action_types == [
+        ActionType.INVESTIGATION_START_REQUESTED.value,
+        ActionType.RLM_SESSION_STARTED.value,
+        ActionType.RLM_ITERATION.value,
+        ActionType.RLM_SESSION_COMPLETED.value,
+    ]
 
 
 @pytest.mark.asyncio
@@ -473,13 +506,13 @@ async def test_loop_one_happy_path_emits_completed(
     _, bus = app_and_bus
     inv = "inv-loop-happy"
     monkeypatch.setattr(
-        "orchestration.loop_one.orchestrator._render_chunks_block_for_sub_question",
-        lambda _q, top_k=5, policy_tag="attribution_eligible": (
-            "[chunk-1] Source tier: 1 | Document: PsiQuantum photonic quantum "
-            "roadmap | Section: Fixture | Similarity: 1.000\n\n"
-            "PsiQuantum photonic quantum roadmap evidence: Quantum X holds "
-            "at threshold, the photonic substrate is established by primary "
-            "sources, and execution capability is documented.\n"
+            "orchestration.loop_one.orchestrator._render_chunks_block_for_sub_question",
+            lambda _q, top_k=5, policy_tag="attribution_eligible": (
+                "[chunk-1] tier=1: PsiQuantum photonic quantum roadmap "
+                "fixture evidence. "
+                "PsiQuantum photonic quantum roadmap evidence: Quantum X holds "
+                "at threshold, the photonic substrate is established by primary "
+                "sources, and execution capability is documented.\n"
         ),
     )
 
