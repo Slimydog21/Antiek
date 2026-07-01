@@ -91,6 +91,8 @@ at §9.10 must be reviewed by counsel **before any notification email sends**.
 
 ### Inputs needed for the lawyer
 
+The assembled handoff lives at `docs/g2_counsel_packet.md`.
+
 1. **Plain-English summary of the §9.10 architecture** — pre-onboarded escrow
    pattern, opt-in-only payout activation, costless 30-day opt-out, segregated
    regulated accounts.
@@ -99,12 +101,17 @@ at §9.10 must be reviewed by counsel **before any notification email sends**.
    ./.venv/bin/python -c "
    from substrate.ip_holders import IpHolder, render_notification_email
    from datetime import datetime, timezone
+   from decimal import Decimal
    h = IpHolder(
      ip_holder_id='mit-press',
      display_name='MIT Press',
-     contact_email='legal@mitpress.mit.edu',
+     legal_contact_email='legal@mitpress.mit.edu',
      status='pre_onboarded',
-     escrow_balance_usd=0.0,
+     escrow_balance_usd=Decimal('0.00'),
+     escrow_account_ref=None,
+     notification_sent_at=None,
+     claimed_at=None,
+     opted_out_at=None,
      created_at=datetime.now(timezone.utc).isoformat(),
    )
    print(render_notification_email(h))
