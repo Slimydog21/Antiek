@@ -63,6 +63,13 @@ function parseParagraphIndex(key: string, paragraphCount: number): number | null
   return Number.isSafeInteger(idx) && idx < paragraphCount ? idx : null;
 }
 
+function blockIdsFor(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((id): id is string => typeof id === "string" && id.trim().length > 0);
+}
+
 /** A block reference may be a node reference (graph-node block) or an outline
  * block reference (user-originated). Resolve it to a display label + whether it
  * traces to a source document. */
@@ -117,9 +124,10 @@ export default function Xray({
   // block → every paragraph using it" inversion, complete across the section).
   const blockToParagraphs = useMemo(() => {
     const m = new Map<string, number[]>();
-    for (const [k, ids] of Object.entries(proseProvenance)) {
+    for (const [k, rawIds] of Object.entries(proseProvenance)) {
       const idx = parseParagraphIndex(k, paragraphs.length);
       if (idx === null) continue;
+      const ids = blockIdsFor(rawIds);
       for (const id of ids) {
         const arr = m.get(id) ?? [];
         arr.push(idx);
@@ -218,7 +226,7 @@ export default function Xray({
 
       <ol className="space-y-2">
         {paragraphs.map((para, idx) => {
-          const ids = proseProvenance[String(idx)] ?? [];
+          const ids = blockIdsFor(proseProvenance[String(idx)]);
           const open = selectedParagraph === idx;
           return (
             <li
