@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sprint 21 — Synquery integration and Phase 8 enforcing</title>
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+
+<nav class="topnav">
+    <div class="topnav-inner">
+        <span class="topnav-title">Antiek docs</span>
+        <a href="../index.html">Index</a>
+        <a href="../spec-exa-browserbase.html">Exa &amp; Browserbase spec</a>
+        <a href="sprint-17.html">S17</a>
+        <a href="sprint-18.html">S18</a>
+        <a href="sprint-19.html">S19</a>
+        <a href="sprint-20.html">S20</a>
+        <a href="sprint-21.html" class="active">S21</a>
+        <a href="sprint-22.html">S22</a>
+    </div>
+</nav>
+
+<main>
+<article>
+
+<p class="kicker">Sprint 21 &middot; operator-gated &middot; scoped substrate verified 2026-07-01 &middot; PMF and G6 gated</p>
+<h1>Sprint 21 — Synquery Integration &amp; Phase 8 Enforcing</h1>
+
+<div class="meta">
+    <p><strong>Theme</strong>. Sprint 21 has two independent workstreams: Synquery expert-network integration after creation-surface PMF signal, and Phase 8 enforcing only if Sprint 20's autoresearch Wedge 1 verdict ratifies. Ubiquitous AI continues to broaden across operator surfaces.</p>
+    <p><strong>Current reconciliation</strong>. Synquery adapter substrate, Phase 8 gate substrate, AI sidecar undo/action coverage, and billing substrate tests passed locally. The sprint remains operator-gated because creation-surface PMF, real Synquery booking, transcript ingestion, and G6 ratification are external/operator decisions.</p>
+</div>
+
+<div class="toc">
+    <div class="toc-title">On this page</div>
+    <ol>
+        <li><a href="#objective">Strategic objective</a></li>
+        <li><a href="#phases">Progressive phases</a></li>
+        <li><a href="#deliverables">Specific deliverables</a></li>
+        <li><a href="#status">Status reconciliation</a></li>
+        <li><a href="#acceptance">Acceptance &amp; exit criteria</a></li>
+    </ol>
+</div>
+
+<h2 id="objective">1. Strategic objective <a class="section-anchor" href="#objective">#</a></h2>
+
+<p>Sprint 21 is split into two independent workstreams. The first is the Synquery expert-network integration that slipped from Sprint 18 because publisher onboarding and expert sourcing have unrelated workflows and failure modes. Synquery activates only after creation-surface PMF signal that operators want to commission expert calls. The second is Phase 8 enforcing, conditional on Sprint 20's Wedge 1 ratification verdict.</p>
+
+<h2 id="phases">2. Progressive phases <a class="section-anchor" href="#phases">#</a></h2>
+
+<h3>2.1 Creation-surface PMF gate check</h3>
+<p>The operator decides whether the creation surface has produced enough demand-shape for expert calls. Inputs include distinct deliverables produced, surviving open questions that require interviews, and willingness to pay for expert calls.</p>
+<p><strong>Exit</strong>: gate verdict is on paper. Pass proceeds to Synquery activation; fail reschedules Synquery.</p>
+
+<h3>2.2 Synquery API client</h3>
+<p>Per &sect;11.6, the substrate identifies questions where expert interviews are more appropriate than autonomous research. The operator clicks find-an-expert, Synquery returns matching experts and booking flow, the interview happens through Synquery, and the transcript returns to Antiek as a new ingested tier-2 source.</p>
+<p><strong>Exit</strong>: operator can find and book an expert through Antiek; transcript ingests into the substrate as a tier-2 source.</p>
+
+<h3>2.3 Phase 8 enforcing mode</h3>
+<p>Per <code>integration_autoresearch.md</code> Wedge 2, Phase 8's skill-patch accept/reject gate flips from shadow to enforcing. Minimum cohort size stays at 50. Failed patches are rejected at the patch-application step and their rejection reasons are recorded as typed events.</p>
+<p><strong>Exit</strong>: at least one real skill patch has been rejected by the enforcing gate and the operator agrees the rejection was correct.</p>
+
+<h3>2.4 Ubiquitous AI across all surfaces</h3>
+<p>The Sprint 19 AI sidecar broadens across research workstation, document wrestle, notebook, brainstorming workstation, creation studio, and interview surfaces. The same context-aware capabilities and UI-action undo affordance flow through the event log.</p>
+<p><strong>Exit</strong>: the AI sidecar is present and functional on every operator surface.</p>
+
+<h3>2.5 Synquery cost discipline</h3>
+<p>Expert calls are expensive. The intended cap model defaults to a per-deliverable Synquery spend cap of <code>$1,000</code>, operator-overridable and hard-capped at <code>$5,000</code>. Cost events must flow through the same cost discipline that protects the rest of the substrate.</p>
+<p><strong>Exit</strong>: a Synquery booking is enforced against the cap and an over-cap attempt is blocked at the API surface.</p>
+
+<h2 id="deliverables">3. Specific deliverables <a class="section-anchor" href="#deliverables">#</a></h2>
+
+<ul>
+    <li><code>tools/synquery/</code> &mdash; API client, booking flow, transcript ingestion path.</li>
+    <li><code>compounding/skill_growth/gate.py</code> &mdash; shadow-to-enforcing transition.</li>
+    <li><code>apps/reading/src/components/AISidecar.tsx</code> &mdash; presence on every surface and UI-action capability complete.</li>
+    <li><code>substrate/billing/</code> &mdash; Synquery cost line and per-deliverable cap.</li>
+</ul>
+
+<h2 id="status">4. Status reconciliation <a class="section-anchor" href="#status">#</a></h2>
+
+<div class="callout warn">
+    <strong>Operator-gated, not complete</strong>
+    <p>Local substrate and scoped tests are green. The sprint cannot close until the operator records the PMF gate, enables Synquery against real external workflow, books and completes at least one expert call, ingests the transcript, and closes G6 autoresearch ratification before enforcing Phase 8.</p>
+</div>
+
+<p>Fresh deterministic gates:</p>
+
+<pre><code>.venv/bin/python -m pytest \
+  tests/test_synquery.py \
+  tests/test_api_sprint17_21_endpoints.py \
+  tests/test_phase8_gate.py \
+  tests/test_phase8_calibration_status.py \
+  tests/test_gepa_phase8_bridge.py \
+  tests/test_gepa_phase8_applier_e2e.py \
+  tests/test_ai_actions.py \
+  tests/test_api_ai_undo.py \
+  tests/test_billing_pipeline.py -q
+
+65 passed, 1 warning in 5.47s
+
+cd apps/reading &amp;&amp; npm test -- AISidecar CommandPalette WorkspaceStore --run
+
+2 files passed; 28 tests passed</code></pre>
+
+<p>G6 remains open in <code>docs/operator_gate_actions.md</code>. That gate blocks Phase 8 enforcing and autoresearch Wedges 2&ndash;4. The Synquery adapter is feature-flagged off by default via <code>ANTIEK_SYNQUERY_ENABLED</code>, matching the PMF-gated activation model.</p>
+
+<h2 id="acceptance">5. Acceptance &amp; exit criteria <a class="section-anchor" href="#acceptance">#</a></h2>
+
+<ul>
+    <li>If PMF gate passed: operator has booked and completed at least one expert call via Synquery; transcript ingested.</li>
+    <li>If Wedge 1 ratified: Phase 8 gate is enforcing in production; at least one rejection is on record.</li>
+    <li>Ubiquitous AI sidecar reaches every surface.</li>
+    <li>Cost discipline holds across the new expert-call spend line.</li>
+</ul>
+
+</article>
+</main>
+
+</body>
+</html>
