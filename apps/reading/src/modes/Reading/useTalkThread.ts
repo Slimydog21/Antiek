@@ -64,13 +64,21 @@ function record(value: unknown): Record<string, unknown> | null {
 
 function isCitation(value: unknown): value is BookCitation {
   const c = record(value);
+  if (
+    c === null ||
+    typeof c.chunk_id !== "string" ||
+    typeof c.document_id !== "string" ||
+    typeof c.page_resolved !== "boolean" ||
+    typeof c.snippet !== "string"
+  ) {
+    return false;
+  }
+  if (c.page_index === null) return c.page_resolved === false;
+  if (c.page_resolved === false) return false;
   return (
-    c !== null &&
-    typeof c.chunk_id === "string" &&
-    typeof c.document_id === "string" &&
-    (typeof c.page_index === "number" || c.page_index === null) &&
-    typeof c.page_resolved === "boolean" &&
-    typeof c.snippet === "string"
+    typeof c.page_index === "number" &&
+    Number.isSafeInteger(c.page_index) &&
+    c.page_index >= 0
   );
 }
 

@@ -203,6 +203,69 @@ describe("TalkToBook (M2)", () => {
     expect(screen.getByText(/Ask a cited question about this book/)).toBeTruthy();
   });
 
+  it.each([2.5, -1, Number.MAX_SAFE_INTEGER + 1])(
+    "resets saved state with malformed citation page index %s",
+    (page_index) => {
+      window.sessionStorage.setItem(
+        "antiek.read.talk.doc-x",
+        JSON.stringify({
+          active_branch_id: "trunk",
+          branches: [
+            {
+              branch_id: "trunk",
+              forked_from: null,
+              messages: [
+                {
+                  id: "turn-bad-page",
+                  question: "saved question",
+                  answer: "Saved answer.",
+                  citations: [cite({ page_index, page_resolved: true })],
+                  grounded: true,
+                },
+              ],
+            },
+          ],
+        }),
+      );
+
+      render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
+
+      expect(screen.queryByTestId("talk-turn-count")).toBeNull();
+      fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
+      expect(screen.getByText(/Ask a cited question about this book/)).toBeTruthy();
+    },
+  );
+
+  it("resets saved state with an inconsistent unresolved citation page", () => {
+    window.sessionStorage.setItem(
+      "antiek.read.talk.doc-x",
+      JSON.stringify({
+        active_branch_id: "trunk",
+        branches: [
+          {
+            branch_id: "trunk",
+            forked_from: null,
+            messages: [
+              {
+                id: "turn-inconsistent-page",
+                question: "saved question",
+                answer: "Saved answer.",
+                citations: [cite({ page_index: 6, page_resolved: false })],
+                grounded: true,
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
+
+    expect(screen.queryByTestId("talk-turn-count")).toBeNull();
+    fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
+    expect(screen.getByText(/Ask a cited question about this book/)).toBeTruthy();
+  });
+
   it("resets saved state whose active branch no longer exists", () => {
     window.sessionStorage.setItem(
       "antiek.read.talk.doc-x",
