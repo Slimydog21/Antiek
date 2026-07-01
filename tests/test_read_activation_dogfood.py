@@ -12,6 +12,21 @@ def _session(
     citation: bool = False,
     entry_door: str = "library",
 ) -> dict:
+    steps = {
+        "1": {"status": "pass"},
+        "2": {"status": "pass"},
+        "3": {"status": "pass" if live else "inert"},
+        "4": {"status": "pass" if live else "inert"},
+        "5": {"status": "pass"},
+        "6": {"status": "pass"},
+        "7": {"status": "pass"},
+    }
+    if citation:
+        steps["5"].update({
+            "source_document_id": f"source-doc-{idx}",
+            "chunk_id": f"chunk-{idx}",
+            "result_url": f"https://app.example/read/source-doc-{idx}?chunk=chunk-{idx}",
+        })
     return {
         "session_id": f"session-{idx}",
         "date": "2026-06-30",
@@ -24,15 +39,7 @@ def _session(
         "live_provider_ai": live,
         "citation_traced": citation,
         "minutes_reading": 22,
-        "steps": {
-            "1": {"status": "pass"},
-            "2": {"status": "pass"},
-            "3": {"status": "pass" if live else "inert"},
-            "4": {"status": "pass" if live else "inert"},
-            "5": {"status": "pass"},
-            "6": {"status": "pass"},
-            "7": {"status": "pass"},
-        },
+        "steps": steps,
     }
 
 
@@ -233,6 +240,42 @@ def test_citation_trace_flag_requires_citation_step_to_pass() -> None:
         "citation_traced=true requires step 5 to pass" in f
         for f in report.failures
     )
+
+
+def test_citation_trace_requires_source_chunk_and_result_url() -> None:
+    record = _session(1, citation=True)
+    record["steps"]["5"] = {"status": "pass"}
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.valid_sessions == 0
+    assert report.citation_trace_sessions == 0
+    assert any("citation step 5 requires source_document_id" in f for f in report.failures)
+    assert any("citation step 5 requires chunk_id or anchor" in f for f in report.failures)
+    assert any("citation step 5 requires result_url" in f for f in report.failures)
+
+
+def test_citation_trace_accepts_anchor_instead_of_chunk_id() -> None:
+    record = _session(1, citation=True)
+    step = record["steps"]["5"]
+    del step["chunk_id"]
+    step["anchor"] = "nearest-heading-7"
+
+    report = validate_sessions([record])
+
+    assert not any("citation step 5 requires chunk_id or anchor" in f for f in report.failures)
+
+
+def test_citation_trace_result_url_must_be_http_url() -> None:
+    record = _session(1, citation=True)
+    record["steps"]["5"]["result_url"] = "/read/source-doc-1"
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.citation_trace_sessions == 0
+    assert any("citation step 5 result_url must be an http(s) URL" in f for f in report.failures)
 
 
 def test_non_library_entry_accepts_human_spelled_command_palette() -> None:
