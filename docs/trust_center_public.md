@@ -1,6 +1,7 @@
 # Trust Center
 
-**Last updated:** 2026-05-22 _(scaffold — see "What this is, what it isn't" below)_
+**Last updated:** 2026-07-01 _(counsel-pending compliance copy; live
+privacy/deletion control-plane references reconciled below)_
 
 Antiek is built on engineering-grade privacy. This page is the
 public, operator-maintained accounting of *what is collected, why,
@@ -10,12 +11,20 @@ spec §13.3 + §13.7.
 
 ## What this is, what it isn't
 
-This is the **scaffold** of the production Trust Center. The
-operator and counsel (when engaged) edit the bracketed sections
-to land the binding compliance language. The structure here matches
-the §13.7 requirement set — privacy architecture description, ε
-registry per surface, data retention policy, deletion SLA, incident
-response process, privacy dashboard tutorial.
+This is the **counsel-pending compliance copy** for the production
+Trust Center. The operator and counsel (when engaged) edit the
+bracketed sections to land the binding legal language. The structure
+here matches the §13.7 requirement set — privacy architecture
+description, ε registry per surface, data retention policy, deletion
+SLA, incident response process, privacy dashboard tutorial.
+
+The control-plane references in this page are current as of 2026-07-01:
+`/trust-center`, `/trust-center/telemetry-preferences`, and
+`/trust-center/deletion-requests` are wired in the API; the deletion
+worker CLI is `python -m substrate.deletion_worker`; and telemetry
+preference deletion routes through `ANTIEK_TELEMETRY_PREFERENCES_PATH`
+or the adjacent `telemetry_preferences.sqlite` file. Publication at
+`antiek.ai/trust` still waits on OA-013 and counsel-cleared wording.
 
 **This page is NOT compliance advice.** It is the operator's
 public commitment to architectural separation, audited via the
