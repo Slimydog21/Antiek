@@ -9,7 +9,7 @@
  * aloud control (M3 wiring).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 import type { AskBookResponse, BookCitation } from "../../api/books";
 import TalkToBook from "./TalkToBook";
@@ -49,6 +49,16 @@ function answer(over: Partial<AskBookResponse> = {}): AskBookResponse {
     context_chunk_count: 1,
     ...over,
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 }
 
 beforeEach(() => {
@@ -124,6 +134,31 @@ describe("TalkToBook (M2)", () => {
     // A branch picker appears with the trunk + the new tangent.
     await screen.findByTestId("talk-branches");
     expect(screen.getByRole("button", { name: "main" })).toBeTruthy();
+  });
+
+  it("completes an in-flight tangent turn on its original branch even after switching back to main", async () => {
+    const tangentReply = deferred<AskBookResponse>();
+    askBookMock
+      .mockResolvedValueOnce(answer({ answer: "Main answer." }))
+      .mockReturnValueOnce(tangentReply.promise);
+    await openAndAsk(vi.fn(), "main question", "Main answer.");
+
+    fireEvent.click(screen.getByRole("button", { name: "↳ what about that?" }));
+    await screen.findByTestId("talk-branches");
+    fireEvent.change(screen.getByPlaceholderText("Ask about this book…"), {
+      target: { value: "tangent question" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "main" }));
+    await act(async () => {
+      tangentReply.resolve(answer({ answer: "Tangent answer." }));
+      await tangentReply.promise;
+    });
+
+    expect(screen.queryByText("Tangent answer.")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "tangent 1" }));
+    expect(await screen.findByText("Tangent answer.")).toBeTruthy();
   });
 
   it("persists the conversation across a re-mount (the bookmark carries it)", async () => {
