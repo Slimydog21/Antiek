@@ -34,6 +34,7 @@ import {
   workflowForPath,
   type ModeId,
 } from "./workflowTaxonomy";
+import { OPERATOR_ROUTES } from "./operatorRoutes";
 
 const _here = dirname(fileURLToPath(import.meta.url));
 const readSrc = (rel: string): string =>
@@ -42,8 +43,8 @@ const readSrc = (rel: string): string =>
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 
-const literalPaths = (src: string): Set<string> =>
-  new Set([...src.matchAll(/path:\s*"([^"]+)"/g)].map((match) => match[1]));
+const operatorRoutePaths = (): Set<string> =>
+  new Set(OPERATOR_ROUTES.map((route) => route.path));
 
 /**
  * The real mode set, derived from the filesystem at build time.
@@ -229,23 +230,22 @@ describe("Sprint 25+ economics dashboard route integrity", () => {
   });
 
   it("lists each dashboard in operator discovery surfaces", () => {
-    const map = readSrc("modes/Map/index.tsx");
-    const palette = readSrc("components/CommandPalette.tsx");
+    const routes = operatorRoutePaths();
     for (const dashboard of dashboards) {
-      expect(map).toContain(`path: "${dashboard.route}"`);
-      expect(palette).toContain(`path: "${dashboard.route}"`);
+      expect(routes, `operator discovery must list ${dashboard.route}`).toContain(
+        dashboard.route,
+      );
     }
   });
 
   it("keeps trust and privacy discovery copy user-facing", () => {
-    const map = readSrc("modes/Map/index.tsx");
-    const palette = readSrc("components/CommandPalette.tsx");
+    const routes = operatorRoutePaths();
+    const routeRegistry = readSrc("shell/operatorRoutes.ts");
     const settings = readSrc("modes/Settings/index.tsx");
     const taxonomy = readSrc("shell/workflowTaxonomy.ts");
     const paletteStories = readSrc("components/CommandPalette.stories.tsx");
     const discoveryCopy = [
-      map,
-      palette,
+      routeRegistry,
       settings,
       taxonomy,
       paletteStories,
@@ -260,8 +260,7 @@ describe("Sprint 25+ economics dashboard route integrity", () => {
     expect(discoveryCopy).not.toMatch(/\(\/privacy\)|\(\/trust\)/i);
 
     for (const route of ["/privacy", "/trust"]) {
-      expect(map).toContain(`path: "${route}"`);
-      expect(palette).toContain(`path: "${route}"`);
+      expect(routes, `operator discovery must list ${route}`).toContain(route);
     }
 
     expect(modeById("PrivacyDashboard")?.label).toBe("Privacy dashboard");
@@ -271,8 +270,7 @@ describe("Sprint 25+ economics dashboard route integrity", () => {
     const app = readSrc("App.tsx");
     const map = readSrc("modes/Map/index.tsx");
     const palette = readSrc("components/CommandPalette.tsx");
-    const mapRoutes = literalPaths(map);
-    const paletteRoutes = literalPaths(palette);
+    const routes = operatorRoutePaths();
     const pinnedMountedRoutes = [
       "/home",
       "/deep-research",
@@ -289,26 +287,21 @@ describe("Sprint 25+ economics dashboard route integrity", () => {
       "/map",
       "/cross-graph/citations",
     ];
-    const mapOnly = [...mapRoutes].filter((route) => !paletteRoutes.has(route));
-    const paletteOnly = [...paletteRoutes].filter((route) => !mapRoutes.has(route));
 
-    expect(mapOnly, "Application map routes missing from CommandPalette").toEqual([]);
-    expect(paletteOnly, "CommandPalette routes missing from Application map").toEqual([]);
+    expect(map).toContain("operatorRouteGroups");
+    expect(palette).toContain("OPERATOR_ROUTES");
 
-    for (const route of [...mapRoutes]) {
+    for (const route of [...routes]) {
       expect(app, `App.tsx must mount discovery route ${route}`).toContain(
         `<Route path="${route}"`,
       );
     }
 
     for (const route of pinnedMountedRoutes) {
-      expect(mapRoutes, `Application map must list ${route}`).toContain(route);
-      expect(paletteRoutes, `CommandPalette must list ${route}`).toContain(route);
+      expect(routes, `operator discovery must list ${route}`).toContain(route);
     }
 
-    expect(palette).toMatch(
-      /id: "route:home",[\s\S]*?path: "\/home",[\s\S]*?workflow: "shared"/,
-    );
+    expect(OPERATOR_ROUTES.find((route) => route.id === "home")?.workflow).toBe("shared");
   });
 
   it("keeps CreatorPayouts on the scoped /me/payouts contract", () => {
@@ -478,9 +471,9 @@ describe("Write door re-home (Write SPR-07)", () => {
  */
 describe("Research one-monitor consolidation (Research SPR-05)", () => {
   it("the retired /investigations door is not advertised from Map", () => {
-    const map = readSrc("modes/Map/index.tsx");
-    expect(map).not.toContain('path: "/investigations"');
-    expect(map).toContain('path: "/my-research"');
+    const routes = operatorRoutePaths();
+    expect(routes).not.toContain("/investigations");
+    expect(routes).toContain("/my-research");
   });
 
   it("InvestigationsIndex points at the canonical MyResearch route", () => {
@@ -524,10 +517,10 @@ describe("Speak one-door consolidation (Speak SPR-08)", () => {
   });
 
   it("shared discovery does not re-advertise the retired /interviews door", () => {
-    const map = readSrc("modes/Map/index.tsx");
+    const routes = operatorRoutePaths();
     const chrome = readSrc("shell/SceneChrome.tsx");
-    expect(map).not.toContain('path: "/interviews"');
-    expect(map).toContain('path: "/speak"');
+    expect(routes).not.toContain("/interviews");
+    expect(routes).toContain("/speak");
     expect(chrome).not.toContain('to: "/interviews"');
     expect(chrome).toContain('to: "/speak"');
   });
