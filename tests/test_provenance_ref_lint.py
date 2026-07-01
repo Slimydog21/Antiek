@@ -440,6 +440,29 @@ def parse(obj):
     assert any("question_id" in violation for violation in violations)
 
 
+def test_lint_catches_ref_shaped_constructor_keyword_from_raw_alias(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "constructor_role" / "parser.py",
+        """
+from dataclasses import dataclass
+
+@dataclass
+class ParsedQuestion:
+    question_id: str
+
+def parse(obj):
+    raw = obj.get("qid")
+    return ParsedQuestion(question_id=raw)
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any("question_id" in violation for violation in violations)
+
+
 def test_lint_allows_new_ref_shaped_fields_routed_through_validator(
     tmp_path: Path,
 ) -> None:
@@ -455,6 +478,91 @@ def parse(obj, canonical):
         "claim_id": claim_id,
         "note_ids": note_ids,
     }
+""",
+    )
+
+    assert find_violations(tmp_path) == []
+
+
+def test_lint_allows_ref_shaped_constructor_keyword_from_validator_alias(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "constructor_good_role" / "parser.py",
+        """
+from dataclasses import dataclass
+from substrate.provenance import validate_ref
+
+@dataclass
+class ParsedQuestion:
+    question_id: str | None
+
+def parse(obj, canonical):
+    raw = obj.get("qid")
+    question_id = validate_ref(raw, canonical)
+    return ParsedQuestion(question_id=question_id)
+""",
+    )
+
+    assert find_violations(tmp_path) == []
+
+
+def test_lint_allows_ref_shaped_constructor_keyword_from_generated_id(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "generated_role" / "parser.py",
+        """
+from dataclasses import dataclass
+
+@dataclass
+class ExtractedNote:
+    note_id: str
+
+def _new_note_id():
+    return "n-123"
+
+def parse(obj):
+    return ExtractedNote(note_id=_new_note_id())
+""",
+    )
+
+    assert find_violations(tmp_path) == []
+
+
+def test_lint_allows_ref_shaped_output_key_from_generated_id_alias(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "generated_alias_role" / "parser.py",
+        """
+def new_random_id(prefix):
+    return prefix + "-123"
+
+def parse(obj):
+    cluster_id = new_random_id("cluster")
+    return {"cluster_id": cluster_id}
+""",
+    )
+
+    assert find_violations(tmp_path) == []
+
+
+def test_lint_ignores_control_ref_keywords_that_are_not_parser_outputs(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "delegating_role" / "parser.py",
+        """
+def _parse_child(obj, *, expected_question_id=None, canonical_note_ids=None):
+    return {"text": str(obj)}
+
+def parse(obj, expected_question_id, canonical_note_ids):
+    return _parse_child(
+        obj,
+        expected_question_id=expected_question_id,
+        canonical_note_ids=canonical_note_ids,
+    )
 """,
     )
 
