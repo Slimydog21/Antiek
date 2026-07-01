@@ -608,8 +608,7 @@ def test_lint_allows_ref_shaped_output_key_from_generated_id_alias(
     _write(
         tmp_path / "roles" / "generated_alias_role" / "parser.py",
         """
-def new_random_id(prefix):
-    return prefix + "-123"
+from substrate.graph.ops import new_random_id
 
 def parse(obj):
     cluster_id = new_random_id("cluster")
@@ -618,6 +617,63 @@ def parse(obj):
     )
 
     assert find_violations(tmp_path) == []
+
+
+def test_lint_rejects_generated_id_helper_that_accepts_model_input(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "generated_arg_role" / "parser.py",
+        """
+def _new_question_id(raw):
+    return raw
+
+def parse(obj):
+    return {"question_id": _new_question_id(obj.get("qid"))}
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any("question_id" in violation for violation in violations)
+
+
+def test_lint_rejects_new_random_id_with_model_emitted_prefix(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "dynamic_generated_role" / "parser.py",
+        """
+from substrate.graph.ops import new_random_id
+
+def parse(obj):
+    cluster_id = new_random_id(obj.get("prefix"))
+    return {"cluster_id": cluster_id}
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any("cluster_id" in violation for violation in violations)
+
+
+def test_lint_rejects_shadowed_generated_id_factory(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "shadowed_generated_role" / "parser.py",
+        """
+from substrate.graph.ops import new_random_id
+
+def parse(obj, new_random_id):
+    cluster_id = new_random_id("cluster")
+    return {"cluster_id": cluster_id}
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any("cluster_id" in violation for violation in violations)
 
 
 def test_lint_ignores_control_ref_keywords_that_are_not_parser_outputs(
