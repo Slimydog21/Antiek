@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
+
+from substrate.telemetry_preferences import (
+    PreferenceStore,
+    SqlitePreferenceStore,
+    default_preference_store,
+    delete_preferences_for_user,
+)
 
 from .worker import (
     CASCADE_TARGETS,
@@ -107,7 +115,12 @@ def load_requests_for_cycle(con) -> list[DeletionRequest]:
     ]
 
 
-def cascade_delete_user(con, user_id: str) -> dict[str, int]:
+def cascade_delete_user(
+    con,
+    user_id: str,
+    *,
+    preference_store: PreferenceStore,
+) -> dict[str, int]:
     """Delete user-owned rows in dependency order.
 
     Ownership is direct (`owner_user_id`) or derived through owned parent rows.
@@ -207,6 +220,10 @@ def cascade_delete_user(con, user_id: str) -> dict[str, int]:
         [user_id],
     )
     counts["documents"] = _delete(con, "documents", "owner_user_id = ?", [user_id])
+    counts["user_telemetry_preferences"] = delete_preferences_for_user(
+        preference_store,
+        user_id=user_id,
+    )
     return counts
 
 
@@ -233,16 +250,58 @@ def persist_cycle_results(con, results: list[DeletionResult]) -> None:
             )
 
 
-def run_db_cycle(con, *, now: datetime | None = None) -> list[DeletionResult]:
+def run_db_cycle(
+    con,
+    *,
+    now: datetime | None = None,
+    preference_store: PreferenceStore | None = None,
+) -> list[DeletionResult]:
     """Load processable deletion requests, cascade them, and persist statuses."""
     requests = load_requests_for_cycle(con)
+
+    def _cascade(user_id: str) -> dict[str, int]:
+        if preference_store is None:
+            raise RuntimeError(
+                "deletion worker requires a telemetry preference store; "
+                "use run_db_cycle_at_path(...) or pass preference_store=..."
+            )
+        return cascade_delete_user(
+            con,
+            user_id,
+            preference_store=preference_store,
+        )
+
     results = [
         process_request(
             request,
-            cascade=lambda user_id: cascade_delete_user(con, user_id),
+            cascade=_cascade,
             now=now,
         )
         for request in requests
     ]
     persist_cycle_results(con, results)
     return results
+
+
+def default_preference_store_for_graph_db(db_path: str | Path) -> SqlitePreferenceStore:
+    """Return the telemetry-preference store for one graph DB path."""
+    return default_preference_store(db_path)
+
+
+def run_db_cycle_at_path(
+    db_path: str | Path,
+    *,
+    now: datetime | None = None,
+    preference_store: PreferenceStore | None = None,
+) -> list[DeletionResult]:
+    """Run one deletion-worker cycle for a graph DB path.
+
+    When no preference store is injected, this uses the shared telemetry
+    preference resolver: `ANTIEK_TELEMETRY_PREFERENCES_PATH` first, otherwise
+    `telemetry_preferences.sqlite` beside `db_path`.
+    """
+    from runtime.db_lock import connect_write
+
+    store = preference_store or default_preference_store_for_graph_db(db_path)
+    with connect_write(str(db_path), purpose="deletion_worker:cycle") as con:
+        return run_db_cycle(con, now=now, preference_store=store)

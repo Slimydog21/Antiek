@@ -6135,18 +6135,9 @@ def create_app(
         enabled: bool
 
     def _telemetry_preference_store():
-        import os
-        from pathlib import Path
+        from substrate.telemetry_preferences import default_preference_store
 
-        from substrate.graph import default_db_path, ensure_initialized
-        from substrate.telemetry_preferences import SqlitePreferenceStore
-
-        override = os.environ.get("ANTIEK_TELEMETRY_PREFERENCES_PATH", "").strip()
-        if override:
-            return SqlitePreferenceStore(override)
-        duckdb_path = Path(default_db_path())
-        ensure_initialized(str(duckdb_path))
-        return SqlitePreferenceStore(str(duckdb_path.with_name("telemetry_preferences.sqlite")))
+        return default_preference_store()
 
     def _preference_response(
         *,

@@ -15,9 +15,15 @@ from substrate.deletion_worker import (
     DeletionResultKind,
     process_request,
     run_db_cycle,
+    run_db_cycle_at_path,
     run_one_cycle,
 )
 from substrate.graph import ensure_initialized, init_database
+from substrate.telemetry_preferences import (
+    InMemoryPreferenceStore,
+    SqlitePreferenceStore,
+    set_preference,
+)
 
 
 def _request_at(days_ago: float, *, status=DeletionRequestStatus.PENDING) -> DeletionRequest:
@@ -205,6 +211,19 @@ def test_clock_injection_controls_age():
 def test_db_cycle_completes_old_pending_request_and_deletes_owned_rows(tmp_path):
     db_path = str(tmp_path / "antiek.duckdb")
     ensure_initialized(db_path)
+    preference_store = InMemoryPreferenceStore()
+    set_preference(
+        preference_store,
+        user_id="u-delete",
+        surface_name="skill_invocation_frequency",
+        enabled=False,
+    )
+    set_preference(
+        preference_store,
+        user_id="u-keep",
+        surface_name="skill_invocation_frequency",
+        enabled=False,
+    )
     with connect_write(db_path, purpose="test:deletion_worker") as con:
         con.execute(
             """
@@ -350,6 +369,7 @@ def test_db_cycle_completes_old_pending_request_and_deletes_owned_rows(tmp_path)
         results = run_db_cycle(
             con,
             now=datetime(2026, 5, 20, tzinfo=UTC),
+            preference_store=preference_store,
         )
 
         assert [r.kind for r in results] == [DeletionResultKind.COMPLETED], results[
@@ -367,6 +387,7 @@ def test_db_cycle_completes_old_pending_request_and_deletes_owned_rows(tmp_path)
         assert results[0].rows_deleted["documents"] == 1
         assert results[0].rows_deleted["interviews"] == 1
         assert results[0].rows_deleted["interview_projects"] == 1
+        assert results[0].rows_deleted["user_telemetry_preferences"] == 1
         assert con.execute(
             "SELECT status FROM deletion_requests WHERE request_id = 'del-owned'",
         ).fetchone()[0] == "completed"
@@ -400,6 +421,104 @@ def test_db_cycle_completes_old_pending_request_and_deletes_owned_rows(tmp_path)
         assert con.execute(
             "SELECT COUNT(*) FROM interview_projects WHERE project_id = 'project-other'",
         ).fetchone()[0] == 1
+        assert preference_store.list_for_user("u-delete") == []
+        assert len(preference_store.list_for_user("u-keep")) == 1
+
+
+def test_db_cycle_at_path_deletes_adjacent_telemetry_preferences(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.delenv("ANTIEK_TELEMETRY_PREFERENCES_PATH", raising=False)
+    db_path = tmp_path / "antiek.duckdb"
+    ensure_initialized(str(db_path))
+    preference_store = SqlitePreferenceStore(
+        str(tmp_path / "telemetry_preferences.sqlite"),
+    )
+    set_preference(
+        preference_store,
+        user_id="u-delete",
+        surface_name="skill_invocation_frequency",
+        enabled=False,
+    )
+    set_preference(
+        preference_store,
+        user_id="u-keep",
+        surface_name="skill_invocation_frequency",
+        enabled=False,
+    )
+    with connect_write(str(db_path), purpose="test:deletion_worker_path_seed") as con:
+        con.execute(
+            """
+            INSERT INTO deletion_requests
+                (request_id, user_id, status, requested_at, updated_at, reason)
+            VALUES (
+                'del-prefs', 'u-delete', 'pending',
+                TIMESTAMP '2026-05-01 00:00:00',
+                TIMESTAMP '2026-05-01 00:00:00',
+                'test'
+            )
+            """
+        )
+
+    results = run_db_cycle_at_path(
+        db_path,
+        now=datetime(2026, 5, 20, tzinfo=UTC),
+    )
+
+    assert [r.kind for r in results] == [DeletionResultKind.COMPLETED]
+    assert results[0].rows_deleted["user_telemetry_preferences"] == 1
+    reopened = SqlitePreferenceStore(str(tmp_path / "telemetry_preferences.sqlite"))
+    assert reopened.list_for_user("u-delete") == []
+    assert len(reopened.list_for_user("u-keep")) == 1
+
+
+def test_db_cycle_at_path_honors_telemetry_preferences_env_override(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "antiek.duckdb"
+    override_path = tmp_path / "override_prefs.sqlite"
+    adjacent_path = tmp_path / "telemetry_preferences.sqlite"
+    monkeypatch.setenv("ANTIEK_TELEMETRY_PREFERENCES_PATH", str(override_path))
+    ensure_initialized(str(db_path))
+    override_store = SqlitePreferenceStore(str(override_path))
+    adjacent_store = SqlitePreferenceStore(str(adjacent_path))
+    set_preference(
+        override_store,
+        user_id="u-delete",
+        surface_name="skill_invocation_frequency",
+        enabled=False,
+    )
+    set_preference(
+        adjacent_store,
+        user_id="u-delete",
+        surface_name="skill_invocation_frequency",
+        enabled=False,
+    )
+    with connect_write(str(db_path), purpose="test:deletion_worker_env_seed") as con:
+        con.execute(
+            """
+            INSERT INTO deletion_requests
+                (request_id, user_id, status, requested_at, updated_at, reason)
+            VALUES (
+                'del-prefs-env', 'u-delete', 'pending',
+                TIMESTAMP '2026-05-01 00:00:00',
+                TIMESTAMP '2026-05-01 00:00:00',
+                'test'
+            )
+            """
+        )
+
+    results = run_db_cycle_at_path(
+        db_path,
+        now=datetime(2026, 5, 20, tzinfo=UTC),
+    )
+
+    assert [r.kind for r in results] == [DeletionResultKind.COMPLETED]
+    assert results[0].rows_deleted["user_telemetry_preferences"] == 1
+    assert SqlitePreferenceStore(str(override_path)).list_for_user("u-delete") == []
+    assert len(SqlitePreferenceStore(str(adjacent_path)).list_for_user("u-delete")) == 1
 
 
 def test_db_cycle_respects_cancellation_window(tmp_path):
@@ -485,11 +604,40 @@ def test_db_cycle_confirmed_row_respects_cancellation_window(tmp_path):
         ).fetchone()[0] == 1
 
 
+def test_db_cycle_requires_preference_store_before_cascade(tmp_path):
+    db_path = str(tmp_path / "antiek.duckdb")
+    ensure_initialized(db_path)
+    with connect_write(db_path, purpose="test:deletion_worker_store_required") as con:
+        con.execute(
+            """
+            INSERT INTO deletion_requests
+                (request_id, user_id, status, requested_at, updated_at, reason)
+            VALUES (
+                'del-needs-store', 'u-needs-store', 'pending',
+                TIMESTAMP '2026-05-01 00:00:00',
+                TIMESTAMP '2026-05-01 00:00:00',
+                'test'
+            )
+            """
+        )
+
+        results = run_db_cycle(
+            con,
+            now=datetime(2026, 5, 20, tzinfo=UTC),
+        )
+
+        assert [r.kind for r in results] == [DeletionResultKind.FAILED]
+        assert "telemetry preference store" in (results[0].error or "")
+        assert con.execute(
+            "SELECT status FROM deletion_requests WHERE request_id = 'del-needs-store'",
+        ).fetchone()[0] == "failed"
+
+
 def test_db_cycle_persists_failed_status_on_cascade_error(tmp_path, monkeypatch):
     db_path = str(tmp_path / "antiek.duckdb")
     ensure_initialized(db_path)
 
-    def fail_cascade(con, user_id: str) -> dict[str, int]:
+    def fail_cascade(con, user_id: str, **kwargs) -> dict[str, int]:
         raise RuntimeError(f"cascade unavailable for {user_id}")
 
     monkeypatch.setattr(deletion_db, "cascade_delete_user", fail_cascade)
@@ -510,6 +658,7 @@ def test_db_cycle_persists_failed_status_on_cascade_error(tmp_path, monkeypatch)
         results = run_db_cycle(
             con,
             now=datetime(2026, 5, 20, tzinfo=UTC),
+            preference_store=InMemoryPreferenceStore(),
         )
 
         assert [r.kind for r in results] == [DeletionResultKind.FAILED]

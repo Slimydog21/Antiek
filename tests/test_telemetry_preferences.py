@@ -7,6 +7,7 @@ from substrate.telemetry_preferences import (
     InMemoryPreferenceStore,
     SqlitePreferenceStore,
     apply_defaults_from_registry,
+    default_preference_store,
     is_enabled,
     set_preference,
 )
@@ -86,6 +87,20 @@ def test_sqlite_upsert_replaces_existing(tmp_path):
     rows = store.list_for_user("u-1")
     assert len(rows) == 1
     assert rows[0].enabled is False
+
+
+def test_default_preference_store_honors_env_override(tmp_path, monkeypatch):
+    override_path = tmp_path / "override.sqlite"
+    graph_path = tmp_path / "graph.duckdb"
+    monkeypatch.setenv("ANTIEK_TELEMETRY_PREFERENCES_PATH", str(override_path))
+
+    store = default_preference_store(graph_path)
+    set_preference(store, user_id="u-1", surface_name="surf", enabled=False)
+
+    assert override_path.exists()
+    assert not (tmp_path / "telemetry_preferences.sqlite").exists()
+    reopened = SqlitePreferenceStore(str(override_path))
+    assert reopened.get(user_id="u-1", surface_name="surf") is not None
 
 
 # ── EpsilonRegistry-driven defaults ────────────────────────────
