@@ -58,6 +58,16 @@ class PromoteResult:
     block_ids: list[str] = field(default_factory=list)
 
 
+def _deliverable_investigation_id(con: LockedConnection, deliverable_id: str) -> str | None:
+    row = con.execute(
+        "SELECT investigation_root_id FROM deliverables WHERE deliverable_id = ?",
+        [deliverable_id],
+    ).fetchone()
+    if row is None:
+        raise OutlineBlockError(f"deliverable not found: {deliverable_id!r}")
+    return row[0]
+
+
 def promote_to_outline(
     con: LockedConnection,
     *,
@@ -98,12 +108,7 @@ def promote_to_outline(
         ).fetchone()
         start_index = int(row[0] if row else 0)
     elif deliverable_id:
-        row = con.execute(
-            "SELECT 1 FROM deliverables WHERE deliverable_id = ?",
-            [deliverable_id],
-        ).fetchone()
-        if row is None:
-            raise OutlineBlockError(f"deliverable not found: {deliverable_id!r}")
+        _deliverable_investigation_id(con, deliverable_id)
         did = deliverable_id
         row = con.execute(
             "SELECT COALESCE(MAX(section_index), -1) + 1 "
@@ -124,6 +129,11 @@ def promote_to_outline(
             title=(objective[:120] if objective else None),
         )
     result = PromoteResult(deliverable_id=did, section_id=sid)
+    event_investigation_id = (
+        _deliverable_investigation_id(con, did)
+        if deliverable_id or section_id
+        else investigation_id
+    ) or investigation_id
     for i, spec in enumerate(specs):
         obid = place_block(
             con,
@@ -134,7 +144,7 @@ def promote_to_outline(
             content=spec.content,
             block_index=start_index + i,
             deliverable_id=did,
-            investigation_id=investigation_id,
+            investigation_id=event_investigation_id,
         )
         result.block_ids.append(obid)
     return result

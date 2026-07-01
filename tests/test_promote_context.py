@@ -12,6 +12,7 @@ provenance-preservation core is what's unit-tested here.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import tempfile
@@ -107,7 +108,10 @@ def test_promotion_preserves_provenance(db):
 def test_promote_can_land_inside_existing_deliverable(db):
     with connect_write(db["path"], purpose="t") as con:
         did = insert_deliverable(
-            con, title="Existing piece", deliverable_kind="general_essay",
+            con,
+            title="Existing piece",
+            deliverable_kind="general_essay",
+            investigation_root_id="inv-write-root",
         )
         result = promote_to_outline(
             con,
@@ -139,6 +143,13 @@ def test_promote_can_land_inside_existing_deliverable(db):
     assert section[1] == 0
     assert "loose context" in section[2]
     assert len(blocks) == 1
+    jsonl = os.path.join(
+        os.environ["ANTIEK_RESEARCH_EVENTS_DIR"],
+        "inv-write-root.jsonl",
+    )
+    assert os.path.exists(jsonl)
+    events = [json.loads(line) for line in open(jsonl)]
+    assert any(e["action_type"] == "outline_block.placed" for e in events)
 
 
 def test_promote_can_append_to_existing_section(db):
