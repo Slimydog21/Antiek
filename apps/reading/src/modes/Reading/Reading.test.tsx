@@ -20,6 +20,7 @@ const {
   startInvestigationMock,
   apiFetchMock,
   getChunkMock,
+  voiceNotePropsMock,
 } = vi.hoisted(() => ({
   getBookMock: vi.fn(),
   getFullTextMock: vi.fn(),
@@ -39,6 +40,7 @@ const {
     Promise.resolve(new Response(JSON.stringify({ text: "reply" }), { status: 200 })),
   ),
   getChunkMock: vi.fn(),
+  voiceNotePropsMock: vi.fn(),
 }));
 
 vi.mock("../../api/books", async (orig) => {
@@ -72,6 +74,17 @@ vi.mock("../../lib/api", async (orig) => {
 // companion in its honest empty state for the gesture tests.
 vi.mock("../../hooks/useInvestigation", () => ({
   useInvestigation: useInvestigationMock,
+}));
+
+vi.mock("./VoiceNote", () => ({
+  default: (props: { documentId: string; pageIndex: number; investigationId: string }) => {
+    voiceNotePropsMock(props);
+    return (
+      <div data-testid="voice-note-probe">
+        VoiceNote {props.documentId} p{props.pageIndex} {props.investigationId}
+      </div>
+    );
+  },
 }));
 
 vi.mock("react-router-dom", async (orig) => {
@@ -290,6 +303,7 @@ describe("BookReader", () => {
       completedAt: null,
       reconnects: 0,
     });
+    voiceNotePropsMock.mockClear();
   });
 
   it("renders a servable book's full text with a working pager", async () => {
@@ -395,6 +409,40 @@ describe("BookReader", () => {
     // Seeds from the current page index (0) and hands off to the research.
     expect(spinResearchMock).toHaveBeenCalledWith("doc-1", 0, expect.stringContaining("opening"));
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith("/inv/inv-child-xyz"));
+  });
+
+  it("mounts voice notes on the active page with the book's reading thread", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+
+    await renderReader();
+    await waitFor(() => expect(screen.getByText("The opening of the book.")).toBeTruthy());
+    expect(screen.queryByTestId("voice-note-probe")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Voice note/ }));
+    await waitFor(() => expect(screen.getByTestId("voice-note-probe")).toBeTruthy());
+    expect(voiceNotePropsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        documentId: "doc-1",
+        pageIndex: 0,
+        investigationId: "read-doc-1",
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Next/ }));
+    await waitFor(() => expect(screen.getByText("The second page.")).toBeTruthy());
+    await waitFor(() => {
+      expect(voiceNotePropsMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          documentId: "doc-1",
+          pageIndex: 1,
+          investigationId: "read-doc-1",
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Close voice note/ }));
+    expect(screen.queryByTestId("voice-note-probe")).toBeNull();
   });
 
   // ── Read SPR-06 M2/M3: companion rail + inline rabbit-hole ──────────
