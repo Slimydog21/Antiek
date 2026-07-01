@@ -69,4 +69,19 @@ describe("InvestigationSidebar", () => {
     expect(screen.getAllByText("$0").length).toBeGreaterThanOrEqual(3);
     expect(document.body.textContent).not.toMatch(/NaN|Infinity|\$-/);
   });
+
+  it("accepts numeric-string investigation costs", () => {
+    listState.current.investigations = [
+      inv({
+        investigation_id: "inv-string",
+        question: "String cost",
+        cost_usd_total: "0.0123" as unknown as number,
+      }),
+    ];
+
+    renderSidebar();
+
+    expect(screen.getByText("String cost")).toBeTruthy();
+    expect(screen.getByText("$0.0123")).toBeTruthy();
+  });
 });
