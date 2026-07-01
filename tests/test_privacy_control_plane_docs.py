@@ -57,6 +57,10 @@ def test_operator_actions_reflect_privacy_integration_evidence():
     assert "Fresh-session drift audit, 2026-07-01" in text
     assert "92be39b9" in text
     assert "52 passed" in text
+    assert "Current state is closed" in text
+    assert "Historical investigation questions" in text
+    assert "What the operator needs to investigate" not in text
+    assert "remaining integration risks below still need fresh evidence" not in text
     assert "python -m substrate.deletion_worker" in text
     assert '"/trust-center"' in api
     assert '"/trust-center/telemetry-preferences"' in api

@@ -476,30 +476,27 @@ sessions:
   `RevSharePayoutRouter`, `route_impression_revenue`, `export_tax_year`
 - `apps/reading/src/App.tsx` — route registrations for new React modes
 
-Current state is mixed: the privacy/trust integrations and several
-marketplace/payout/operator router registrations have persisted, while
-the remaining integration risks below still need fresh evidence before
-this action can close.
+Current state is closed: the historically reverted API, UI, and
+Stripe package-root integrations persisted through the fresh-session
+drift audit recorded below.
 
 **Diagnosis:** parallel commits on the branch (sometimes 8+ between
 sessions) include design-token sync work that touches these files;
 those commits overwrite agent-session edits.
 
-**What the operator needs to investigate:**
-1. Is there a pre-commit hook or linter pass auto-rewriting these files?
-2. Are the parallel commits coming from a script (the lostpixel /
+**Historical investigation questions:**
+1. Was there a pre-commit hook or linter pass auto-rewriting these files?
+2. Were the parallel commits coming from a script (the lostpixel /
    design-token / brand sync pipeline)?
-3. Could the substrate edits be moved to NEW files (under new module
-   names) that the parallel commits don't touch?
+3. Could future high-churn integrations move to NEW files (under new
+   module names) that the parallel commits do not touch?
 
 **Tactical workaround already deployed:** the session-substrate
 work lives in NEW dirs (`substrate/quality_gate/`,
-`substrate/voice_style/`, etc.) which survive the revert. The API
-+ UI integration layer needs a similar architectural decoupling —
-e.g., a new `interfaces/research/api/phase2_router.py` that mounts
-a sub-router into the FastAPI app, where `app.py`'s only edit is a
-single `app.include_router(phase2_router)` line that's less prone
-to overwrite.
+`substrate/voice_style/`, etc.) which survive the revert. The tracked
+API/UI/package-root integrations now also have committed regression
+tests, so future drift should fail the merge bar rather than silently
+reopening this action.
 
 **Fresh evidence, 2026-07-01:** the privacy/trust integration edits
 have persisted across multiple commits on `reader/integration`:
