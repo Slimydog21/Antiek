@@ -44,6 +44,20 @@ const PROPOSED_BANNER_TEXT =
 
 type ErrorSource = "load" | "generate" | "promotion";
 
+function resolvedCitationPageIndex(citation: BookCitation): number | undefined {
+  return citation.page_resolved &&
+    citation.page_index !== null &&
+    Number.isSafeInteger(citation.page_index) &&
+    citation.page_index >= 0
+    ? citation.page_index
+    : undefined;
+}
+
+function citationButtonLabel(citation: BookCitation): string {
+  const page = resolvedCitationPageIndex(citation);
+  return page !== undefined ? `open at p.${page + 1}` : "open the book";
+}
+
 export default function MetaReading() {
   const navigate = useNavigate();
   const openDocument = useOpenDocument();
@@ -115,11 +129,9 @@ export default function MetaReading() {
   // at the saved position (honest — no fake page jump).
   const openCitation = useCallback(
     (c: BookCitation) => {
+      const page = resolvedCitationPageIndex(c);
       openDocument(c.document_id, {
-        page:
-          c.page_resolved && c.page_index !== null && c.page_index >= 0
-            ? c.page_index
-            : undefined,
+        page,
         chunkId: c.chunk_id,
       });
     },
@@ -328,9 +340,7 @@ export default function MetaReading() {
                           title={c.snippet}
                           className="rounded bg-aurora/15 text-aurora-deep dark:text-aurora px-2 py-0.5 text-[11px] font-mono hover:bg-aurora/25"
                         >
-                          {c.page_resolved && c.page_index !== null
-                            ? `open at p.${c.page_index + 1}`
-                            : "open the book"}
+                          {citationButtonLabel(c)}
                         </button>
                       </li>
                     ))}

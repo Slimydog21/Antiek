@@ -165,6 +165,18 @@ describe("MetaReading (M4)", () => {
     expect(navigateMock).toHaveBeenCalledWith("/read/doc-mr?chunk=c1");
   });
 
+  it.each([2.5, -1, Number.MAX_SAFE_INTEGER + 1])(
+    "a malformed resolved citation page %s opens without a fabricated page",
+    async (page_index) => {
+      await generate({ citations: [cite({ page_index, page_resolved: true })] });
+      fireEvent.click(screen.getByRole("button", { name: "open the book" }));
+
+      expect(screen.queryByRole("button", { name: /open at p\./ })).toBeNull();
+      expect(window.sessionStorage.getItem("antiek.read.pos.doc-mr")).toBeNull();
+      expect(navigateMock).toHaveBeenCalledWith("/read/doc-mr?chunk=c1");
+    },
+  );
+
   it("the deliverable is generated + saved (the endpoint persists it); the surface shows it read-only", async () => {
     await generate();
     // The report renders; there is NO editable input for it (read-only).
