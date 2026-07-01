@@ -249,8 +249,33 @@ The operator runs ≥20 mutations against the synthesizer's golden traces,
 exports the resulting `PromptMutationOutcome` rows to JSON, and then
 closes the gate with:
 
-Add this to the end of the local mutation-run script once `runner.iterations`
-contains the ≥20 `PromptMutationOutcome` rows:
+First run the no-op calibration cohort required by
+`docs/integration_autoresearch.md` §5.3. Add this to the end of the local
+no-op mutation-run script once `runner.iterations` contains the calibration
+`PromptMutationOutcome` rows:
+
+```python
+from pathlib import Path
+from tools.prompt_autoresearch import write_outcomes_json
+
+write_outcomes_json(
+    Path("reports/autoresearch/synthesizer-noop-outcomes.json"),
+    role="synthesizer",
+    outcomes=runner.iterations,
+)
+```
+
+Then render the calibration note:
+
+```bash
+./.venv/bin/python -m tools.prompt_autoresearch.calibration_cli \
+  --role synthesizer \
+  --outcomes reports/autoresearch/synthesizer-noop-outcomes.json \
+  --output reports/autoresearch/synthesizer-calibration.md
+```
+
+After the mutation cohort runs with ε set at or above the calibration
+report's recommended epsilon, export those mutation outcomes:
 
 ```python
 from pathlib import Path
