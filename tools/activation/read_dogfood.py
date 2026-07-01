@@ -71,6 +71,7 @@ NON_LIBRARY_ENTRY_DOORS: frozenset[str] = frozenset(
         "command_palette",
         "drw_citation",
         "write_trace",
+        "write_trace_to_source",
         "citation",
         "deep_research_workspace",
         "unified_search",
@@ -195,7 +196,7 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
         if bool(record.get("citation_traced")):
             citation_trace_sessions.add(session_id)
 
-        if str(record.get("entry_door", "")).strip() in NON_LIBRARY_ENTRY_DOORS:
+        if _entry_door_token(record.get("entry_door")) in NON_LIBRARY_ENTRY_DOORS:
             non_library_sessions.add(session_id)
 
     closure_failures = _closure_failures(
@@ -261,6 +262,16 @@ def _step_status(raw_step: Any) -> str:
 
 def _provider_status(record: dict[str, Any]) -> str:
     return str(record.get("provider_status") or "").strip().lower()
+
+
+def _entry_door_token(value: Any) -> str:
+    return (
+        str(value or "")
+        .strip()
+        .lower()
+        .replace("-", "_")
+        .replace(" ", "_")
+    )
 
 
 def _session_core_steps_pass(steps: dict[Any, Any]) -> bool:

@@ -71,6 +71,32 @@ def test_citation_tracing_requires_explicit_session_evidence() -> None:
     )
 
 
+def test_non_library_entry_accepts_human_spelled_command_palette() -> None:
+    records = [
+        _session(i, live=i <= 5, citation=i <= 3, entry_door="library")
+        for i in range(1, 11)
+    ]
+    records[-1]["entry_door"] = "Command Palette"
+
+    report = validate_sessions(records)
+
+    assert report.closure_ready is True
+    assert report.non_library_sessions == 1
+
+
+def test_non_library_entry_accepts_write_trace_to_source_label() -> None:
+    records = [
+        _session(i, live=i <= 5, citation=i <= 3, entry_door="library")
+        for i in range(1, 11)
+    ]
+    records[-1]["entry_door"] = "Write trace-to-source"
+
+    report = validate_sessions(records)
+
+    assert report.closure_ready is True
+    assert report.non_library_sessions == 1
+
+
 def test_not_enough_live_provider_sessions_blocks_closure() -> None:
     records = [_session(i, live=i <= 4, citation=True) for i in range(1, 11)]
     records[0]["entry_door"] = "search"
