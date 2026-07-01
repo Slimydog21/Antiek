@@ -8,6 +8,7 @@ graph; and the SPR-05 plan_from_gap integration.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import tempfile
 
@@ -27,6 +28,7 @@ from substrate.gap_detection.contradiction import negation_verifier
 from substrate.graph import ops
 from substrate.graph.insight_question import promote_insight, promote_question
 from substrate.graph.schema import init_database_at_path
+from substrate.research_bridge.gap import _parse_cluster_response
 
 
 class _ConstEmbedding:
@@ -239,3 +241,24 @@ def test_candidate_feeds_cascade_planner_seed(db):
     report = plan_from_gap(gaps[0], decomposer=_Dec())
     assert report.tree.seed_kind == "gap"
     assert report.tree.seed_provenance["gap_id"] == gaps[0].gap_id
+
+
+def test_research_bridge_cluster_parser_validates_question_ids_with_shared_helper():
+    payload = {
+        "clusters": [
+            {
+                "label": "Evidence gaps",
+                "priority_rank": 0,
+                "question_ids": ["q-1", "q-fabricated", " q-2 ", "q-1", 42],
+            }
+        ]
+    }
+
+    clusters = _parse_cluster_response(
+        json.dumps(payload),
+        valid_question_ids={"q-1", "q-2"},
+        run_id="rgrun-test",
+    )
+
+    assert len(clusters) == 1
+    assert clusters[0].question_ids == ("q-1", "q-2")
