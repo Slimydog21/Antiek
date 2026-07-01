@@ -167,9 +167,11 @@ async def async_client(app_and_bus):
 
 
 async def _post_request(ac, *, investigation_id, evidence_block=None):
+    if evidence_block is None:
+        evidence_block = _evidence_block("chunk-1", "chunk-2")
     payload = {
         "action_type": "parameter_extract.requested",
-        "evidence_block": evidence_block or _evidence_block(),
+        "evidence_block": evidence_block,
     }
     r = await ac.post(
         "/events/typed",

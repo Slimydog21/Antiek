@@ -530,6 +530,8 @@ def test_shortest_path_finds_2_hop(db_path):
     assert p["path_nodes"][0] == a
     assert p["path_nodes"][-1] == c
     assert p["path_relations"] == ["r1", "r2"]
+    assert len(p["edge_ids"]) == 2
+    assert all(edge_id for edge_id in p["edge_ids"])
 
 
 def test_top_n_paths_returns_up_to_n(db_path):
@@ -541,6 +543,7 @@ def test_top_n_paths_returns_up_to_n(db_path):
         con.close()
     assert 1 <= len(paths) <= 3
     assert all(p["depth"] >= 2 for p in paths)
+    assert all(len(p["edge_ids"]) == p["depth"] for p in paths)
 
 
 def test_dfs_with_depth_finds_path(db_path):
@@ -551,6 +554,7 @@ def test_dfs_with_depth_finds_path(db_path):
     finally:
         con.close()
     assert any(p["depth"] == 2 for p in paths)
+    assert all(len(p["edge_ids"]) == p["depth"] for p in paths)
 
 
 def test_bfs_semantic_stop_through_waypoint(db_path):
@@ -564,6 +568,7 @@ def test_bfs_semantic_stop_through_waypoint(db_path):
         con.close()
     assert paths
     assert all("waypoint" in p and p["waypoint"] == "B" for p in paths)
+    assert all(len(p["edge_ids"]) == p["depth"] for p in paths)
 
 
 def test_traverse_dispatcher_picks_algorithm(db_path):

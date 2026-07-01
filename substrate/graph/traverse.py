@@ -136,15 +136,19 @@ def _flag_hub_concerns(path: dict, threshold: float = 0.6) -> list[str]:
 
 def _format_path(row: Any) -> dict:
     """Format a raw recursive-CTE row into the dict shape every algorithm
-    returns. ``path_nodes`` + ``path_relations`` are DuckDB list types
+    returns. ``path_nodes`` + ``path_relations`` + ``edge_ids`` are DuckDB list types
     that already round-trip as Python lists."""
     nodes = row[0] if isinstance(row[0], list) else list(row[0])
     relations = row[1] if isinstance(row[1], list) else list(row[1])
+    edge_ids = row[4] if len(row) > 4 and isinstance(row[4], list) else (
+        list(row[4]) if len(row) > 4 else []
+    )
     return {
         "path_nodes": nodes,
         "path_relations": relations,
         "depth": int(row[2]),
         "avg_confidence": round(float(row[3]), 3),
+        "edge_ids": edge_ids,
     }
 
 
@@ -184,6 +188,7 @@ def shortest_path(
                 1 AS depth,
                 [e.source_node_id, e.target_node_id] AS path_nodes,
                 [e.relation] AS path_relations,
+                [e.edge_id] AS edge_ids,
                 e.extraction_confidence AS confidence
             FROM edges e
             WHERE e.source_node_id = ?
@@ -195,6 +200,7 @@ def shortest_path(
                 p.depth + 1,
                 list_append(p.path_nodes, e.target_node_id),
                 list_append(p.path_relations, e.relation),
+                list_append(p.edge_ids, e.edge_id),
                 (p.confidence + e.extraction_confidence) / 2.0
             FROM edges e
             JOIN paths p ON e.source_node_id = p.target_node_id
@@ -204,7 +210,7 @@ def shortest_path(
               AND NOT list_contains(p.path_nodes, e.target_node_id)
               AND e.target_node_id <> p.source_node_id
         )
-        SELECT path_nodes, path_relations, depth, confidence
+        SELECT path_nodes, path_relations, depth, confidence, edge_ids
         FROM paths
         WHERE target_node_id = ?
         ORDER BY depth ASC
@@ -245,6 +251,7 @@ def top_n_paths(
                 1 AS depth,
                 [e.source_node_id, e.target_node_id] AS path_nodes,
                 [e.relation] AS path_relations,
+                [e.edge_id] AS edge_ids,
                 e.extraction_confidence AS confidence
             FROM edges e
             WHERE e.source_node_id = ?
@@ -256,6 +263,7 @@ def top_n_paths(
                 p.depth + 1,
                 list_append(p.path_nodes, e.target_node_id),
                 list_append(p.path_relations, e.relation),
+                list_append(p.edge_ids, e.edge_id),
                 (p.confidence + e.extraction_confidence) / 2.0
             FROM edges e
             JOIN paths p ON e.source_node_id = p.target_node_id
@@ -264,7 +272,7 @@ def top_n_paths(
               AND e.extraction_confidence >= ?
               AND NOT list_contains(p.path_nodes, e.target_node_id)
         )
-        SELECT path_nodes, path_relations, depth, confidence
+        SELECT path_nodes, path_relations, depth, confidence, edge_ids
         FROM paths
         WHERE target_node_id = ?
         ORDER BY depth ASC, confidence DESC
@@ -303,6 +311,7 @@ def dfs_with_depth(
                 1 AS depth,
                 [e.source_node_id, e.target_node_id] AS path_nodes,
                 [e.relation] AS path_relations,
+                [e.edge_id] AS edge_ids,
                 e.extraction_confidence AS confidence
             FROM edges e
             WHERE e.source_node_id = ?
@@ -314,6 +323,7 @@ def dfs_with_depth(
                 p.depth + 1,
                 list_append(p.path_nodes, e.target_node_id),
                 list_append(p.path_relations, e.relation),
+                list_append(p.edge_ids, e.edge_id),
                 (p.confidence + e.extraction_confidence) / 2.0
             FROM edges e
             JOIN paths p ON e.source_node_id = p.target_node_id
@@ -322,7 +332,7 @@ def dfs_with_depth(
               AND e.extraction_confidence >= ?
               AND NOT list_contains(p.path_nodes, e.target_node_id)
         )
-        SELECT path_nodes, path_relations, depth, confidence
+        SELECT path_nodes, path_relations, depth, confidence, edge_ids
         FROM paths
         WHERE target_node_id = ?
         ORDER BY depth DESC, confidence DESC
@@ -378,11 +388,13 @@ def bfs_semantic_stop(
         for p2 in phase2:
             full_nodes = p1["path_nodes"] + p2["path_nodes"][1:]
             full_rels = p1["path_relations"] + p2["path_relations"]
+            full_edge_ids = p1.get("edge_ids", []) + p2.get("edge_ids", [])
             full_depth = p1["depth"] + p2["depth"]
             full_conf = (p1["avg_confidence"] + p2["avg_confidence"]) / 2.0
             path: dict[str, Any] = {
                 "path_nodes": full_nodes,
                 "path_relations": full_rels,
+                "edge_ids": full_edge_ids,
                 "depth": full_depth,
                 "avg_confidence": round(float(full_conf), 3),
                 "waypoint": waypoint_label,

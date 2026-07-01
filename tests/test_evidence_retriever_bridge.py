@@ -215,8 +215,10 @@ async def _post_evidence_request(
     ac, *, investigation_id, sub_question,
     category="market_sizing", evidence_type_required="quantitative",
     top_k=3, chunks_block="[chunk-1] tier=1: some text",
-    subgraph_block='{"edge_ids": ["edge-1"]}',
+    subgraph_block=None,
 ):
+    if subgraph_block is None:
+        subgraph_block = json.dumps({"edges": [{"edge_id": "edge-1"}]})
     payload: dict[str, Any] = {
         "action_type": "evidence.retrieve.requested",
         "sub_question": sub_question,
