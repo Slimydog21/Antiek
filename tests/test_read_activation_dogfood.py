@@ -223,6 +223,27 @@ def test_deployed_build_url_must_be_http_url() -> None:
     assert any("url must be an http(s) URL" in f for f in report.failures)
 
 
+def test_invalid_session_does_not_inflate_evidence_counters() -> None:
+    record = _session(1, live=True, citation=True, entry_door="search")
+    record["date"] = "June 30, 2026"
+
+    report = validate_sessions([record])
+
+    assert report.valid_sessions == 0
+    assert report.live_provider_sessions == 0
+    assert report.citation_trace_sessions == 0
+    assert report.non_library_sessions == 0
+    assert any("date must be YYYY-MM-DD" in f for f in report.failures)
+    assert not any(
+        "live_provider_ai=true requires provider-backed steps 3 and 4 to pass" in f
+        for f in report.failures
+    )
+    assert not any(
+        "citation_traced=true requires step 5 to pass" in f
+        for f in report.failures
+    )
+
+
 def test_unknown_step_status_is_rejected_explicitly() -> None:
     record = _session(1)
     record["steps"]["7"] = {"status": "passed"}
@@ -288,6 +309,9 @@ def test_malformed_session_issue_excludes_session_from_valid_count() -> None:
 
     assert report.closure_ready is False
     assert report.valid_sessions == 0
+    assert report.live_provider_sessions == 0
+    assert report.citation_trace_sessions == 0
+    assert report.non_library_sessions == 0
     assert any("issues[1] lacks concrete followup_issue" in f for f in report.failures)
 
 
