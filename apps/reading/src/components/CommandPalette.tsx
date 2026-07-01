@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { apiFetch } from "../lib/api";
+import { apiFetch, type ParkedQuestionEntry } from "../lib/api";
+import {
+  dispatchBrainstormQuestionSelection,
+} from "../modes/BrainstormStation/WatchForLaterPanel";
 import { openNotebook } from "../workspace/actions";
 import {
   buildShareableUrl,
@@ -86,6 +89,7 @@ interface PaletteParkedQuestion {
   title: string;
   subtitle: string;
   path: string;
+  question: ParkedQuestionEntry;
 }
 
 /** S8-full extension — workspace-system action (open panel, reset
@@ -442,13 +446,15 @@ export default function CommandPalette() {
 
       if (pResp?.ok) {
         const data = await pResp.json();
-        const items: PaletteParkedQuestion[] = (data.parked ?? []).map(
-          (q: { question_id: string; question_text: string }) => ({
+        const questions: ParkedQuestionEntry[] = data.questions ?? data.parked ?? [];
+        const items: PaletteParkedQuestion[] = questions.map(
+          (q) => ({
             kind: "parked_question" as const,
             id: `pq:${q.question_id}`,
             title: q.question_text,
             subtitle: `Parked question · ${q.question_id.slice(0, 8)}`,
             path: `/brainstorm`,
+            question: q,
           }),
         );
         setParked(items);
@@ -684,6 +690,9 @@ export default function CommandPalette() {
     if (entry.kind === "action") {
       entry.run();
     } else {
+      if (entry.kind === "parked_question") {
+        dispatchBrainstormQuestionSelection(entry.question);
+      }
       navigate(entry.path);
     }
     setOpen(false);
