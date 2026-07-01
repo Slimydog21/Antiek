@@ -1,0 +1,64 @@
+{
+  "spec_dir": "docs/htmlspec/antiek-memory-mcp",
+  "target_branch": "reader/integration",
+  "status": "done",
+  "recorded_at": "2026-07-01T20:01:54Z",
+  "verified_code_sha": "3f0c4494",
+  "mode": "verification_closure",
+  "sprints": {
+    "MCP-SPR-01": {
+      "status": "done",
+      "round": 2,
+      "verified_code_sha": "3f0c4494",
+      "gate_results": {
+        "pytest_server": "19 passed",
+        "mypy_strict": "pass",
+        "ruff": "pass"
+      }
+    },
+    "MCP-SPR-02": {
+      "status": "done",
+      "round": 2,
+      "verified_code_sha": "3f0c4494",
+      "gate_results": {
+        "pytest_tools_resources": "53 passed",
+        "mypy_strict": "pass",
+        "ruff": "pass"
+      }
+    },
+    "MCP-SPR-03": {
+      "status": "done",
+      "round": 2,
+      "verified_code_sha": "3f0c4494",
+      "gate_results": {
+        "pytest_tools_resources": "53 passed",
+        "mypy_strict": "pass",
+        "ruff": "pass"
+      }
+    },
+    "MCP-SPR-04": {
+      "status": "done",
+      "round": 2,
+      "verified_code_sha": "3f0c4494",
+      "gate_results": {
+        "pytest_defenses_e2e": "55 passed",
+        "programme_pytest": "127 passed",
+        "mypy_strict": "pass",
+        "ruff": "pass"
+      }
+    }
+  },
+  "out_of_scope": [
+    "OAuth token validation",
+    "Rate limiting",
+    "Multi-user isolation"
+  ],
+  "worker_cli_check": {
+    "conclave": "ok",
+    "grok": "installed",
+    "glm-cc": "installed",
+    "mimo": "installed",
+    "claude": "installed",
+    "codex": "installed"
+  }
+}
