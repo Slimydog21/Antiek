@@ -2,6 +2,7 @@ import { Link, useLocation } from "react-router-dom";
 
 import { LemonDropdown, LemonMenuItem } from "../lemon/LemonDropdown";
 import LemonButton from "../lemon/LemonButton";
+import { operatorRouteForPath } from "../../shell/operatorRoutes";
 
 /**
  * Topbar — slim (44 px) horizontal bar that sits above the dock row.
@@ -27,15 +28,9 @@ function defaultBreadcrumbsFor(pathname: string): Crumb[] {
   if (pathname === "/" || pathname === "")
     return [{ label: "Research" }];
 
-  const exact: Record<string, string> = {
-    "/operator/advertiser-campaigns": "Advertiser console",
-    "/operator/payouts/dashboard": "Payout dashboard",
-    "/me/payouts": "Creator payouts",
-    "/cross-graph/citations": "Cross-graph citations",
-    "/coordination/cost-consent": "Cost & consent",
-  };
-  if (exact[pathname]) {
-    return [{ label: exact[pathname] }];
+  const exact = operatorRouteForPath(pathname);
+  if (exact) {
+    return [{ label: exact.title }];
   }
 
   const segments = pathname.split("/").filter(Boolean);

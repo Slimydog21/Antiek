@@ -312,3 +312,7 @@ export function operatorRouteGroups(): { title: OperatorRouteGroup; routes: Oper
     routes: OPERATOR_ROUTES.filter((route) => route.group === title),
   }));
 }
+
+export function operatorRouteForPath(path: string): OperatorRouteEntry | undefined {
+  return OPERATOR_ROUTES.find((route) => route.path === path);
+}

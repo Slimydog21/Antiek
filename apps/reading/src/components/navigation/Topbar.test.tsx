@@ -2,6 +2,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
+import { OPERATOR_ROUTES } from "../../shell/operatorRoutes";
 import Topbar from "./Topbar";
 
 afterEach(() => {
@@ -9,6 +10,20 @@ afterEach(() => {
 });
 
 describe("Topbar", () => {
+  it.each(OPERATOR_ROUTES.filter((route) => route.path !== "/").map((route) => [
+    route.path,
+    route.title,
+  ]))("uses the shared operator route title for %s", (path, expected) => {
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <Topbar />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toBeTruthy();
+    expect(screen.getByText(expected)).toBeTruthy();
+  });
+
   it("uses the canonical privacy dashboard breadcrumb label", () => {
     render(
       <MemoryRouter initialEntries={["/privacy"]}>
