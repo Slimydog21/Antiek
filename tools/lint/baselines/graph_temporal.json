@@ -1,0 +1,4 @@
+{
+  "_comment": "Shrink-only baseline for tools/lint/graph_temporal_integrity.py. Each entry grandfathers a pre-existing temporal violation (inverted window / self-supersession / supersession cycle / duplicate live edge). The list may only ever shrink: remove a key once the underlying edge data is repaired; re-mint with `python tools/lint/graph_temporal_integrity.py --graph <db> --update-baseline` ONLY for a deliberate, reviewed grandfather, never to silence a live regression.",
+  "baselined_keys": []
+}
