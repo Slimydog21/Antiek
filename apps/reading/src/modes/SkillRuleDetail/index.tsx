@@ -18,10 +18,28 @@ interface SkillRuleDetail {
   rule_text: string;
   rule_kind: string;
   domain: string;
-  epsilon_budget_consumed: number;
-  source_user_count: number;
+  epsilon_budget_consumed: unknown;
+  source_user_count: unknown;
   confidence: string;
   extracted_at: string | null;
+}
+
+function finiteNonNegativeNumber(value: unknown): number | null {
+  const number =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(number) && number >= 0 ? number : null;
+}
+
+function formatEpsilon(value: unknown): string {
+  return (finiteNonNegativeNumber(value) ?? 0).toFixed(4);
+}
+
+function formatContributorCount(value: unknown): string {
+  return Math.floor(finiteNonNegativeNumber(value) ?? 0).toLocaleString();
 }
 
 export default function SkillRuleDetail() {
@@ -103,11 +121,11 @@ export default function SkillRuleDetail() {
                 <Metric label="Rule kind" value={rule.rule_kind} />
                 <Metric
                   label="Distinct contributors"
-                  value={`${rule.source_user_count}`}
+                  value={formatContributorCount(rule.source_user_count)}
                 />
                 <Metric
                   label="Cumulative ε"
-                  value={rule.epsilon_budget_consumed.toFixed(4)}
+                  value={formatEpsilon(rule.epsilon_budget_consumed)}
                 />
                 <Metric label="Confidence" value={rule.confidence} />
                 <Metric
