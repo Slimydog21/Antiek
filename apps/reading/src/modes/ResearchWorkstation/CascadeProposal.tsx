@@ -16,6 +16,7 @@ import {
   type PlanNode,
   type PlanTree,
 } from "../../api/research";
+import { ApiError } from "../../lib/api";
 
 /**
  * CascadeProposal — the Research door's "break this into sub-questions" mode
@@ -93,6 +94,21 @@ function subQuestions(tree: PlanTree): PlanNode[] {
   return leaves;
 }
 
+function failureReason(error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null;
+  const body = error.body.trim();
+  if (!body) return null;
+  try {
+    const parsed = JSON.parse(body) as { detail?: unknown };
+    if (typeof parsed.detail === "string" && parsed.detail.trim()) {
+      return parsed.detail.trim();
+    }
+  } catch {
+    // Fall through to the bounded plain-text body below.
+  }
+  return body.length <= 240 ? body : `${body.slice(0, 237)}...`;
+}
+
 export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }: Props) {
   const [plan, setPlan] = useState<PlanState | null>(null);
   // Phase gates the human-in-the-loop: a plan block is editable ONLY once
@@ -120,8 +136,17 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
       setPhase("ready");
     } catch (e) {
       // Classify the backend envelope (or network throw) — never collapse to
-      // setFailed("") which masked every failure as "no provider configured".
-      setFailure(classifyClientError(e));
+      // "no provider configured". Legacy string detail (for example
+      // decompose_failed) rides as the reason only after classification falls
+      // back to unknown.
+      const classified = classifyClientError(e);
+      setFailure({
+        ...classified,
+        message:
+          classified.code === "unknown"
+            ? (classified.message ?? failureReason(e) ?? undefined)
+            : classified.message,
+      });
       setPhase("ready");
     }
   }, [problem]);
@@ -165,7 +190,14 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
       const r = await launchPlan(plan.rootNodeId);
       onLaunched(r.session_id);
     } catch (e) {
-      setFailure(classifyClientError(e));
+      const classified = classifyClientError(e);
+      setFailure({
+        ...classified,
+        message:
+          classified.code === "unknown"
+            ? (classified.message ?? failureReason(e) ?? undefined)
+            : classified.message,
+      });
       setPhase("ready");
     }
   }, [plan, onLaunched]);
