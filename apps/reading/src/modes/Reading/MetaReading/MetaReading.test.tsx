@@ -10,19 +10,31 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 
-import type { BookCitation, MetaReadingResponse } from "../../../api/books";
+import type { BookCitation, MetaReadingResponse, SavedMetaReading } from "../../../api/books";
 import MetaReading from "./index";
 
-const { generateMock, navigateMock, acceptPromotionMock } = vi.hoisted(() => ({
+type Deferred<T> = {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason?: unknown) => void;
+};
+
+const { generateMock, getSavedMetaReadingMock, navigateMock, acceptPromotionMock } = vi.hoisted(() => ({
   generateMock: vi.fn(),
+  getSavedMetaReadingMock: vi.fn(),
   navigateMock: vi.fn(),
   acceptPromotionMock: vi.fn(),
 }));
 
 vi.mock("../../../api/books", async (orig) => {
   const actual = await orig<typeof import("../../../api/books")>();
-  return { ...actual, generateMetaReading: generateMock };
+  return {
+    ...actual,
+    generateMetaReading: generateMock,
+    getSavedMetaReading: getSavedMetaReadingMock,
+  };
 });
 
 vi.mock("../../../lib/researchSuggestion", async (orig) => {
@@ -71,8 +83,34 @@ function deliverable(over: Partial<MetaReadingResponse> = {}): MetaReadingRespon
   };
 }
 
+function savedMetaReading(over: Partial<SavedMetaReading> = {}): SavedMetaReading {
+  return {
+    asset_id: "mr-saved",
+    prompt: "saved free will prompt",
+    report: "A saved synthesis of your books.",
+    citations: [cite()],
+    length_unit: "minutes",
+    length_amount: 8,
+    truncated: false,
+    corpus_scope: "hard",
+    corpus_document_ids: ["doc-mr"],
+    ...over,
+  };
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 beforeEach(() => {
   generateMock.mockReset();
+  getSavedMetaReadingMock.mockReset();
   navigateMock.mockReset();
   acceptPromotionMock.mockReset();
   window.sessionStorage.clear();
@@ -86,6 +124,18 @@ async function generate(over: Partial<MetaReadingResponse> = {}, prompt = "free 
     target: { value: prompt },
   });
   fireEvent.click(screen.getByRole("button", { name: "Make the reading" }));
+  await screen.findByTestId("meta-reading-deliverable");
+}
+
+async function reopenSaved(over: Partial<SavedMetaReading> = {}) {
+  getSavedMetaReadingMock.mockResolvedValue(savedMetaReading(over));
+  render(
+    <MemoryRouter initialEntries={["/read/meta-reading/mr-saved"]}>
+      <Routes>
+        <Route path="/read/meta-reading/:assetId" element={<MetaReading />} />
+      </Routes>
+    </MemoryRouter>,
+  );
   await screen.findByTestId("meta-reading-deliverable");
 }
 
@@ -175,5 +225,78 @@ describe("MetaReading (M4)", () => {
     expect(await screen.findByText(/readable corpus is empty/)).toBeTruthy();
     // No deliverable section, no report.
     expect(screen.queryByTestId("meta-reading-deliverable")).toBeNull();
+  });
+
+  it("reopens a saved asset as read-only, not as a generator", async () => {
+    await reopenSaved();
+    expect(getSavedMetaReadingMock).toHaveBeenCalledWith("mr-saved");
+    expect(generateMock).not.toHaveBeenCalled();
+    expect(screen.getByText("A saved synthesis of your books.")).toBeTruthy();
+    expect(screen.queryByPlaceholderText(/What should this reading be about/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Make the reading" })).toBeNull();
+    expect(screen.getByTestId("read-aloud").getAttribute("data-minutes")).toBe("8");
+  });
+
+  it("saved-asset promotion uses the saved prompt and remains explicit", async () => {
+    acceptPromotionMock.mockResolvedValue({ investigation_id: "inv-from-saved" });
+    await reopenSaved();
+    expect(acceptPromotionMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /Chase it as a research/ }));
+    await screen.findByTestId("promote-done");
+    expect(acceptPromotionMock).toHaveBeenCalledWith({
+      assetId: "mr-saved",
+      prompt: "saved free will prompt",
+      documentId: "doc-mr",
+    });
+  });
+
+  it("clears stale saved-asset report and promotion state while loading a different saved asset", async () => {
+    const next = deferred<SavedMetaReading>();
+    getSavedMetaReadingMock.mockImplementation((id: string) => {
+      if (id === "mr-saved-a") {
+        return Promise.resolve(
+          savedMetaReading({
+            asset_id: "mr-saved-a",
+            prompt: "first prompt",
+            report: "First saved synthesis.",
+            corpus_document_ids: ["doc-a"],
+          }),
+        );
+      }
+      return next.promise;
+    });
+    acceptPromotionMock.mockResolvedValue({ investigation_id: "inv-from-first" });
+
+    const view = render(
+      <MemoryRouter>
+        <Routes location="/read/meta-reading/mr-saved-a">
+          <Route path="/read/meta-reading/:assetId" element={<MetaReading />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await screen.findByText("First saved synthesis.");
+    fireEvent.click(screen.getByRole("button", { name: /Chase it as a research/ }));
+    await screen.findByTestId("promote-done");
+
+    view.rerender(
+      <MemoryRouter>
+        <Routes location="/read/meta-reading/mr-saved-b">
+          <Route path="/read/meta-reading/:assetId" element={<MetaReading />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText("First saved synthesis.")).toBeNull();
+    expect(screen.queryByTestId("promote-done")).toBeNull();
+
+    next.resolve(
+      savedMetaReading({
+        asset_id: "mr-saved-b",
+        prompt: "second prompt",
+        report: "Second saved synthesis.",
+        corpus_document_ids: ["doc-b"],
+      }),
+    );
+    expect(await screen.findByText("Second saved synthesis.")).toBeTruthy();
   });
 });

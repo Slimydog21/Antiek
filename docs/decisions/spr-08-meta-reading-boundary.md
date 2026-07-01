@@ -169,6 +169,9 @@ The PROPOSED boundary is a HARD corpus boundary **at the planner** that is
   re-opened / narrated / promoted — it is substrate truth. (The *running
   talk-to-book chat thread* is the opposite case: ephemeral session view-state,
   kept in `sessionStorage` per the `usePosition` precedent, NOT an event.)
+- **Saved-asset reopen.** `/read/meta-reading/:assetId` reopens the persisted
+  asset as a read-only reading surface: no prompt box, no length box, and no
+  generator button. Promotion to Research remains suggest-only and explicit.
 
 ## Reconsider-if
 
