@@ -25,6 +25,8 @@ export interface EdgesProps {
   questions: DistilledNode[];
   /** node_id → resolved canvas position (top-left). */
   positions: Map<string, BlockPosition>;
+  /** Child investigation ids known to exist in the investigation tree. */
+  launchedChildIds?: ReadonlySet<string>;
   /** Total canvas extent so the SVG covers it. */
   width: number;
   height: number;
@@ -33,7 +35,13 @@ export interface EdgesProps {
 /** A child-research marker sits this far below its parent block's bottom. */
 const CHILD_DROP = 64;
 
-export default function Edges({ questions, positions, width, height }: EdgesProps) {
+export default function Edges({
+  questions,
+  positions,
+  launchedChildIds = new Set<string>(),
+  width,
+  height,
+}: EdgesProps) {
   const onCanvas = new Set(positions.keys());
   const edges = deriveLineageEdges(questions, onCanvas);
 
@@ -65,14 +73,22 @@ export default function Edges({ questions, positions, width, height }: EdgesProp
           x: parent.x + BLOCK_WIDTH / 2,
           y: parent.y + BLOCK_HEIGHT + CHILD_DROP,
         };
+        const childState = launchedChildIds.has(edge.toChildInvestigationId)
+          ? "launched"
+          : "reserved";
         return (
-          <g key={edge.id} data-edge-from={edge.fromNodeId} data-edge-to={edge.toChildInvestigationId}>
+          <g
+            key={edge.id}
+            data-edge-from={edge.fromNodeId}
+            data-edge-to={edge.toChildInvestigationId}
+            data-child-state={childState}
+          >
             <path
               d={splinePath(from, to)}
               fill="none"
               className="stroke-sun-deep dark:stroke-sun"
               strokeWidth={2}
-              strokeDasharray="4 3"
+              strokeDasharray={childState === "reserved" ? "4 3" : undefined}
             />
             {/* The child-research marker (the leaf endpoint). A circle + a
                 tiny "deeper research" caption; honest about being a spawned
@@ -89,7 +105,7 @@ export default function Edges({ questions, positions, width, height }: EdgesProp
               className="fill-shadow-1 dark:fill-moonlight"
               style={{ fontSize: 10, fontFamily: "ui-monospace, monospace" }}
             >
-              spawned a deeper research
+              {childState === "launched" ? "launched deeper research" : "reserved deeper research"}
             </text>
           </g>
         );
