@@ -8,6 +8,15 @@ import {
 
 type ThoughtPartnerReply = {
   text: string;
+  shape: "challenge" | "synthesis" | "extension" | "unknown";
+  challenges: Array<{ condition: string; note_ids: string[] }>;
+  synthesisText: string | null;
+  extensions: Array<{
+    sub_question: string;
+    tag?: string | null;
+    rationale?: string | null;
+  }>;
+  policyId: string | null;
   threadNodeId: string | null;
 };
 
@@ -98,11 +107,42 @@ export default function ThoughtPartnerPanel() {
       }
       const data = (await response.json()) as {
         text?: string;
+        shape?: string;
+        challenges?: Array<{ condition?: string; note_ids?: string[] }>;
+        synthesis_text?: string | null;
+        extensions?: Array<{
+          sub_question?: string;
+          tag?: string | null;
+          rationale?: string | null;
+        }>;
+        policy_id?: string | null;
         thread_node_id?: string | null;
       };
       if (generation !== requestGenerationRef.current) return;
+      const shape =
+        data.shape === "challenge" ||
+        data.shape === "synthesis" ||
+        data.shape === "extension"
+          ? data.shape
+          : "unknown";
       setReply({
         text: data.text ?? "",
+        shape,
+        challenges: (data.challenges ?? [])
+          .map((challenge) => ({
+            condition: challenge.condition?.trim() ?? "",
+            note_ids: challenge.note_ids ?? [],
+          }))
+          .filter((challenge) => challenge.condition),
+        synthesisText: data.synthesis_text?.trim() || null,
+        extensions: (data.extensions ?? [])
+          .map((extension) => ({
+            sub_question: extension.sub_question?.trim() ?? "",
+            tag: extension.tag?.trim() || null,
+            rationale: extension.rationale?.trim() || null,
+          }))
+          .filter((extension) => extension.sub_question),
+        policyId: data.policy_id ?? null,
         threadNodeId: data.thread_node_id ?? null,
       });
     } catch (e: unknown) {
@@ -172,11 +212,55 @@ export default function ThoughtPartnerPanel() {
       {reply && (
         <section className="rounded-md border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-1 p-3">
           <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
-            Reply
+            Reply{reply.shape !== "unknown" ? ` · ${reply.shape}` : ""}
           </p>
-          <p className="mt-2 whitespace-pre-line text-sm font-serif leading-relaxed text-ink dark:text-bright">
-            {reply.text}
-          </p>
+          {reply.shape === "challenge" && reply.challenges.length > 0 ? (
+            <ul className="mt-2 space-y-2">
+              {reply.challenges.map((challenge, index) => (
+                <li
+                  key={`${challenge.condition}-${index}`}
+                  className="text-sm font-serif leading-relaxed text-ink dark:text-bright"
+                >
+                  <span>{challenge.condition}</span>
+                  {challenge.note_ids.length > 0 && (
+                    <span className="ml-2 font-mono text-[10.5px] text-ink-mute dark:text-moonlight">
+                      {challenge.note_ids.join(", ")}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : reply.shape === "extension" && reply.extensions.length > 0 ? (
+            <ul className="mt-2 space-y-2">
+              {reply.extensions.map((extension, index) => (
+                <li
+                  key={`${extension.sub_question}-${index}`}
+                  className="text-sm font-serif leading-relaxed text-ink dark:text-bright"
+                >
+                  <span>{extension.sub_question}</span>
+                  {extension.tag && (
+                    <span className="ml-2 font-mono text-[10.5px] text-ink-mute dark:text-moonlight">
+                      {extension.tag}
+                    </span>
+                  )}
+                  {extension.rationale && (
+                    <p className="mt-1 text-xs font-sans leading-relaxed text-ink-mute dark:text-moonlight">
+                      {extension.rationale}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 whitespace-pre-line text-sm font-serif leading-relaxed text-ink dark:text-bright">
+              {reply.synthesisText ?? reply.text}
+            </p>
+          )}
+          {reply.policyId && (
+            <p className="mt-2 text-[10.5px] font-mono text-ink-mute dark:text-moonlight">
+              policy: {reply.policyId}
+            </p>
+          )}
           {reply.threadNodeId && (
             <p className="mt-2 text-[10.5px] font-mono text-ink-mute dark:text-moonlight">
               anchored thread: {reply.threadNodeId}
