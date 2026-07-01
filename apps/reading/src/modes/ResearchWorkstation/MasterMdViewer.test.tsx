@@ -74,6 +74,7 @@ import { SITESEE_CITED_CLASS } from "../../reading-physics/augmentations/sitesee
 import { anchorKey } from "../../reading-physics/facets/decorations";
 import type { ClaimId } from "../../reading-physics/types";
 import type { ParsedClaim } from "../../lib/synthesisParser";
+import { useWorkspace } from "../../workspace/WorkspaceStore";
 import {
   COLLAPSE_SECTION_ID_ATTR,
   PASSAGE_CHUNK_ID_ATTR,
@@ -100,6 +101,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  useWorkspace.getState().reset();
   getChunkMock.mockReset();
   getAttributionReportMock.mockReset();
   getConsentViewMock.mockReset();
@@ -689,6 +691,15 @@ describe("MasterMdViewer — marginalia anchored widget wiring (SPR-07)", () => 
       );
       expect(screen.getByText("exact quoted passage")).toBeTruthy();
       expect(screen.queryByText("restricted source")).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: "Follow this" }));
+      const panels = Object.values(useWorkspace.getState().panels);
+      expect(panels).toHaveLength(1);
+      expect(panels[0].kind).toBe("ChaseThread");
+      expect(panels[0].props).toMatchObject({
+        spawnContext: "exact quoted passage",
+        parentInvestigationId: "inv-1",
+      });
     } finally {
       geomSpy.mockRestore();
     }
