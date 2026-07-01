@@ -3,13 +3,14 @@
   "source_spec_section": "docs/sprint-breakdown.html#sprint-20",
   "target_branch": "reader/integration",
   "status": "operator_gated",
-  "recorded_at": "2026-07-01T20:26:27Z",
+  "recorded_at": "2026-07-01T21:10:40Z",
   "verified_code_sha": "commit containing this record",
   "mode": "status_reconciliation",
   "deterministic_evidence": {
     "backend_gate": "81 passed: tests/test_dispatch_tier_verdict.py tests/test_prompt_autoresearch_verdict.py tests/test_phase8_gate.py tests/test_phase8_calibration_status.py tests/test_gepa_phase8_bridge.py tests/test_gepa_phase8_applier_e2e.py",
-    "trajectory_replay_frontend_gate": "8 passed: npm test -- TrajectoryReplay --run from apps/reading",
-    "trajectory_replay_files": "apps/reading/src/components/TrajectoryReplay.tsx and apps/reading/src/components/TrajectoryReplay.stories.tsx exist",
+    "trajectory_replay_frontend_gate": "9 passed: npm test -- TrajectoryReplay Replay.realTrajectory --run from apps/reading",
+    "trajectory_replay_route_gate": "Replay route fetches /trajectory/:investigationId, renders a realistic six-event multi-step investigation, sorts chronologically, and scrubs to the terminal event",
+    "trajectory_replay_files": "apps/reading/src/components/TrajectoryReplay.tsx, apps/reading/src/components/TrajectoryReplay.stories.tsx, and apps/reading/src/modes/Replay/Replay.realTrajectory.test.tsx exist",
     "phase8_gate_files": "compounding/skill_growth/gate.py exists with Phase 8 gate tests",
     "dispatch_verdict_files": "tools/dispatch_tier_verdict exists with dispatch-tier verdict tests",
     "operator_gate_record": "docs/operator_gate_actions.md records G5 as provisionally closed with a fresh-traffic re-open trigger"
