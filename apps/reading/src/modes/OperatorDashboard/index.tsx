@@ -15,8 +15,8 @@ interface PublisherSummary {
 }
 
 interface StatsResponse {
-  counts: Record<string, number>;
-  warnings: string[];
+  counts?: Record<string, unknown> | null;
+  warnings?: unknown[] | null;
 }
 
 interface DeletionRequest {
@@ -38,9 +38,13 @@ interface CompositeSnapshot {
 }
 
 function nonNegativeFiniteNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
-    : null;
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function centsToUsd(value: unknown): string {
@@ -51,6 +55,10 @@ function centsToUsd(value: unknown): string {
 function decimalUsd(value: string): string {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? `$${parsed.toFixed(2)}` : "$0.00";
+}
+
+function countLabel(value: unknown): string {
+  return Math.floor(nonNegativeFiniteNumber(value) ?? 0).toLocaleString();
 }
 
 /**
@@ -243,7 +251,7 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
             className="border border-rule dark:border-charcoal-1 rounded-md px-2 py-2 text-center"
           >
             <p className="text-xl font-serif text-ink dark:text-bright">
-              {(counts[k] ?? 0).toLocaleString()}
+              {countLabel(counts[k])}
             </p>
             <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
               {label}
