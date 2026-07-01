@@ -31,9 +31,13 @@ interface ListResponse {
 const STATUS_FILTERS = ["all", "in_progress", "completed", "failed"] as const;
 
 function finiteNonNegativeNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
-    : null;
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function clampMaxSubQuestions(value: unknown): number {
