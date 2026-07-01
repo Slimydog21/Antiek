@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from statistics import pstdev
 
@@ -40,6 +41,13 @@ def calibrate_epsilon(
         raise ValueError("role must be a non-empty string")
     if not outcomes:
         raise ValueError("at least one no-op outcome is required")
+    if (
+        isinstance(floor_epsilon, bool)
+        or not isinstance(floor_epsilon, int | float)
+        or not math.isfinite(float(floor_epsilon))
+        or floor_epsilon < 0.0
+    ):
+        raise ValueError("floor_epsilon must be a non-negative finite number")
     deltas = [outcome.delta for outcome in outcomes]
     mean_delta = sum(deltas) / len(deltas)
     sigma = pstdev(deltas) if len(deltas) > 1 else 0.0

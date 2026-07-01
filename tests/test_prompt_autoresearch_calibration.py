@@ -55,6 +55,17 @@ def test_calibration_raises_epsilon_above_floor_for_noisy_noop_runs():
     assert report.recommended_epsilon == report.two_sigma
 
 
+def test_calibration_rejects_invalid_floor_epsilon():
+    outcomes = [_outcome("noop-a", 0.0)]
+
+    try:
+        calibrate_epsilon("synthesizer", outcomes, floor_epsilon=-0.01)
+    except ValueError as exc:
+        assert "floor_epsilon must be a non-negative finite number" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected invalid floor epsilon to be rejected")
+
+
 def test_calibration_markdown_records_recommended_epsilon():
     report = calibrate_epsilon(
         "synthesizer",
@@ -85,3 +96,24 @@ def test_calibration_cli_writes_markdown_from_outcome_json(tmp_path):
     md = output_path.read_text(encoding="utf-8")
     assert "Prompt autoresearch calibration" in md
     assert "Recommended epsilon" in md
+
+
+def test_calibration_cli_rejects_invalid_floor_epsilon(tmp_path, capsys):
+    from tools.prompt_autoresearch.calibration_cli import main
+
+    outcomes_path = tmp_path / "noop-outcomes.json"
+    write_outcomes_json(
+        outcomes_path,
+        role="synthesizer",
+        outcomes=[_outcome("noop-0", 0.0)],
+    )
+
+    rc = main([
+        "--outcomes",
+        str(outcomes_path),
+        "--floor-epsilon",
+        "-0.01",
+    ])
+
+    assert rc == 2
+    assert "floor_epsilon must be a non-negative finite number" in capsys.readouterr().err
