@@ -234,6 +234,55 @@ def test_runner_accepts_when_delta_exceeds_epsilon(monkeypatch):
     assert runner.baseline_total_score == outcome.candidate_score
 
 
+def test_runner_emits_iteration_completed_event(monkeypatch):
+    monkeypatch.delenv("ANTIEK_ENV", raising=False)
+    events: list[dict] = []
+    runner = PromptAutoresearchRunner(
+        role="synthesizer",
+        epsilon=0.05,
+        baseline_total_score=0.5,
+        event_sink=events.append,
+    )
+    mutation = PromptMutation(
+        mutation_id="mutation-event",
+        role="synthesizer",
+        parent_baseline_id="baseline-0",
+        proposed_prompt="Improved prompt",
+        rationale="strip padding",
+        proposed_at="2026-07-01T00:00:00Z",
+    )
+
+    outcome = runner.run_iteration(
+        mutation,
+        execute_fn=lambda p: ("Concise synthesis citing chunk-A.", Decimal("0.02")),
+        corpus_terms=["concise"],
+        expected_claim_ids=["chunk-A"],
+        rubric_judge_fn=lambda t: 0.95,
+    )
+
+    assert len(events) == 1
+    assert events[0]["event"] == "prompt_autoresearch.iteration_completed"
+    assert events[0]["role"] == "synthesizer"
+    assert events[0]["mutation_id"] == "mutation-event"
+    assert events[0]["accepted"] is True
+    assert events[0]["baseline_score"] == 0.5
+    assert events[0]["candidate_score"] == outcome.candidate_score
+    assert events[0]["delta"] == outcome.delta
+    assert events[0]["epsilon_required"] == 0.05
+    assert events[0]["cost_usd"] == "0.02"
+    assert events[0]["mutation_rationale"] == "strip padding"
+    assert events[0]["parent_baseline_id"] == "baseline-0"
+    assert events[0]["proposed_at"] == "2026-07-01T00:00:00Z"
+    assert events[0]["composite_breakdown"] == {
+        "rubric": outcome.composite_breakdown.rubric,
+        "voice_style": outcome.composite_breakdown.voice_style,
+        "sector_vocab": outcome.composite_breakdown.sector_vocab,
+        "grounding": outcome.composite_breakdown.grounding,
+        "total": outcome.composite_breakdown.total,
+    }
+    assert events[0]["emitted_at"].endswith("Z")
+
+
 def test_runner_rejects_when_delta_below_epsilon(monkeypatch):
     monkeypatch.delenv("ANTIEK_ENV", raising=False)
     runner = PromptAutoresearchRunner(
@@ -262,9 +311,11 @@ def test_runner_rejects_when_delta_below_epsilon(monkeypatch):
 
 def test_runner_records_budget_breach_as_rejection(monkeypatch):
     monkeypatch.delenv("ANTIEK_ENV", raising=False)
+    events: list[dict] = []
     runner = PromptAutoresearchRunner(
         role="synthesizer",
         budget=BudgetCap(per_iteration_cap_usd=Decimal("0.10")),
+        event_sink=events.append,
     )
     mutation = PromptMutation(
         mutation_id=make_id(),
@@ -285,6 +336,11 @@ def test_runner_records_budget_breach_as_rejection(monkeypatch):
     assert outcome.mutation_rationale == "tries something costly"
     assert outcome.parent_baseline_id is None
     assert outcome.proposed_at == mutation.proposed_at
+    assert len(events) == 1
+    assert events[0]["event"] == "prompt_autoresearch.iteration_completed"
+    assert events[0]["accepted"] is False
+    assert events[0]["candidate_score"] == outcome.baseline_score
+    assert events[0]["notes"] == outcome.notes
 
 
 def test_runner_budget_breach_outcome_round_trips_to_verdict_json(monkeypatch, tmp_path):
