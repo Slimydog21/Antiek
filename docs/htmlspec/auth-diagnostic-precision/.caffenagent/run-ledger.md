@@ -17,7 +17,7 @@ Open **Tasks pane (Ctrl+T)** for recursive subagent tree, styles, and lineage. M
 | SPR-03 | Callback error surface | 2 | done | 2 | 9caba16e |
 | SPR-04 | Auth probe | 2 | done | 2 | 9caba16e |
 | SPR-05 | Playwright login e2e | 3 | done | 2 | 9caba16e |
-| SPR-06 | Multi-email allowlist | 3 | blocked | 2 | dc79ceeb |
+| SPR-06 | Multi-email allowlist | 3 | done through M2; M3 operator-gated | 2 | dc79ceeb |
 
 ### SPR-01 — Failure-mode matrix
 - **Status:** done.
@@ -26,5 +26,12 @@ Open **Tasks pane (Ctrl+T)** for recursive subagent tree, styles, and lineage. M
 - **Round 2:** Sharpened by `dc79ceeb` (`fix(auth-diag): sharpen — callback tests, matrix, prod_parity auth_probe hook`).
 - **Verification:** `docs/diagnostics/auth-failure-mode-matrix.md` is 143 lines and carries 13 immutable failure-id rows; `apps/reading/src/lib/authDiagnosticCodes.ts` points to matrix commit `59ee895ec78c69ab06ccdbbdd5927fcdff866432`.
 
-### Remaining operator block
-- **SPR-06 M3:** production SSH allowlist update for `the@faisalnazer.com` remains blocked on operator approval. Local multi-email middleware behavior is covered by tests per `state.json`.
+## 2026-07-01 re-verification
+
+- Matrix now has 143 lines and retains the Layer A/B/OPS failure rows plus the allowlist-vs-fetch impossibility lemma.
+- `npm test -- auth.test --run` passed 1 file / 11 tests.
+- `uv run --extra dev pytest tests/test_magic_link_auth.py tests/test_api_auth_state.py tests/test_auth_probe.py tests/test_prod_parity.py -q` passed 74 tests.
+- `LOGIN_E2E=1 npx playwright test --project=login-real` passed 2 tests.
+- Auth diagnostic local HTML link audit passed.
+
+SPR-06 M3 remains an operator gate: production SSH/prod-email allowlist verification must be recorded in `docs/operator_gate_actions.md` after approval.
