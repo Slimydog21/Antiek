@@ -84,7 +84,7 @@ def test_parse_challenge_filters_fabricated_note_ids():
     assert parsed.challenges[0].note_ids == ["n-1"]
 
 
-def test_parse_challenge_drops_fully_fabricated_note_ids():
+def test_parse_challenge_drops_fully_fabricated_note_ids_when_canonical_set_supplied():
     response = json.dumps({
         "shape": "challenge",
         "challenges": [
@@ -101,7 +101,24 @@ def test_parse_challenge_drops_fully_fabricated_note_ids():
         canonical_note_ids=("n-1",),
     )
     assert parsed.shape == "challenge"
-    assert parsed.challenges[0].note_ids == []
+    assert parsed.challenges == []
+
+
+def test_parse_challenge_keeps_uncanonicalized_note_ids_without_canonical_set():
+    response = json.dumps({
+        "shape": "challenge",
+        "challenges": [
+            {
+                "condition": "If the benchmark only holds in one lab, the cross-lab thesis fails",
+                "note_ids": ["n-made-up"],
+            },
+        ],
+        "synthesis_text": "",
+        "extensions": [],
+    })
+    parsed = parse_thought_partner_response(response)
+    assert parsed.shape == "challenge"
+    assert parsed.challenges[0].note_ids == ["n-made-up"]
 
 
 def test_parse_synthesis_shape():

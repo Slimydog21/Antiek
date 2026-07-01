@@ -49,8 +49,8 @@ def parse_thought_partner_response(
     + parser are co-evolving.
 
     When ``canonical_note_ids`` is supplied, challenge citations are filtered
-    to the selected notes. Fabricated note ids are dropped before the UI can
-    render a clickable reference.
+    to the selected notes. A challenge with no remaining selected-note citation
+    is dropped before the UI can render unsupported opposition.
     """
     obj = extract_json_object(text)
     if obj is None:
@@ -77,6 +77,8 @@ def parse_thought_partner_response(
         )
         if canonical_note_ids is not None:
             note_ids = validate_refs(note_ids, canonical_note_ids).valid
+            if not note_ids:
+                continue
         challenges.append(Challenge(condition=condition, note_ids=list(note_ids)))
 
     synthesis_text = obj.get("synthesis_text")
