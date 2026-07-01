@@ -30,6 +30,18 @@ interface ListResponse {
 
 const STATUS_FILTERS = ["all", "in_progress", "completed", "failed"] as const;
 
+function finiteNonNegativeNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
+function clampMaxSubQuestions(value: unknown): number {
+  return typeof value === "number" && Number.isSafeInteger(value)
+    ? Math.max(1, Math.min(20, value))
+    : 1;
+}
+
 export default function InvestigationsIndex() {
   const navigate = useNavigate();
   const [rows, setRows] = useState<InvestigationRow[]>([]);
@@ -109,7 +121,7 @@ export default function InvestigationsIndex() {
   }, [reload]);
 
   const totalCost = useMemo(
-    () => rows.reduce((acc, r) => acc + (r.cost_usd_total ?? 0), 0),
+    () => rows.reduce((acc, r) => acc + (finiteNonNegativeNumber(r.cost_usd_total) ?? 0), 0),
     [rows],
   );
 
@@ -148,10 +160,14 @@ export default function InvestigationsIndex() {
             />
             <div className="grid grid-cols-3 gap-2 items-end">
               <div className="space-y-1 col-span-2">
-                <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
+                <label
+                  htmlFor="investigation-topic-slug"
+                  className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight"
+                >
                   Topic slug (optional)
                 </label>
                 <input
+                  id="investigation-topic-slug"
                   type="text"
                   value={draftTopic}
                   onChange={(e) => setDraftTopic(e.target.value)}
@@ -160,16 +176,20 @@ export default function InvestigationsIndex() {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
+                <label
+                  htmlFor="investigation-max-sub-questions"
+                  className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight"
+                >
                   Max sub-questions (1-20)
                 </label>
                 <input
+                  id="investigation-max-sub-questions"
                   type="number"
                   min={1}
                   max={20}
                   value={draftMaxSubQs}
                   onChange={(e) =>
-                    setDraftMaxSubQs(Math.max(1, Math.min(20, Number(e.target.value))))
+                    setDraftMaxSubQs(clampMaxSubQuestions(Number(e.target.value)))
                   }
                   className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
                 />
@@ -228,58 +248,62 @@ export default function InvestigationsIndex() {
           {rows.length > 0 && (
             <section className="border border-rule dark:border-charcoal-1 rounded-md divide-y divide-rule dark:divide-charcoal-1">
               {rows.map((r) => (
-                <article
-                  key={r.investigation_id}
-                  className="px-4 py-3 hover:bg-ice-1 dark:bg-charcoal-2 transition-colors"
-                >
-                  <div className="flex items-baseline justify-between gap-3">
-                    <Link
-                      to={`/inv/${encodeURIComponent(r.investigation_id)}`}
-                      className="flex-1 min-w-0"
-                    >
-                      <p className="text-sm font-serif text-ink dark:text-bright truncate">
-                        {r.question ?? r.investigation_id}
-                      </p>
-                      <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
-                        {r.investigation_id}
-                        {r.parent_investigation_id ? (
-                          <> · parent: {r.parent_investigation_id.slice(0, 12)}</>
-                        ) : null}
-                      </p>
-                    </Link>
-                    <div className="text-right shrink-0 space-y-0.5">
-                      <span
-                        className={`text-[10px] uppercase tracking-wider font-mono px-2 py-0.5 rounded ${
-                          r.status === "completed"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : r.status === "failed"
-                              ? "bg-red-50 text-emperor"
-                              : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright"
-                        }`}
-                      >
-                        {r.status}
-                      </span>
-                      <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
-                        ${r.cost_usd_total.toFixed(4)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-2 flex items-center gap-3 text-[11px] font-mono text-shadow-1 dark:text-moonlight">
-                    <Link
-                      to={`/replay/${encodeURIComponent(r.investigation_id)}`}
-                      className="hover:underline hover:text-ink dark:text-bright"
-                    >
-                      replay →
-                    </Link>
-                    {r.started_at && <span>started {r.started_at}</span>}
-                    {r.completed_at && <span>done {r.completed_at}</span>}
-                  </div>
-                </article>
+                <InvestigationListRow key={r.investigation_id} row={r} />
               ))}
             </section>
           )}
         </div>
       </main>
     </div>
+  );
+}
+
+function InvestigationListRow({ row: r }: { row: InvestigationRow }) {
+  const costUsd = finiteNonNegativeNumber(r.cost_usd_total) ?? 0;
+  return (
+    <article className="px-4 py-3 hover:bg-ice-1 dark:bg-charcoal-2 transition-colors">
+      <div className="flex items-baseline justify-between gap-3">
+        <Link
+          to={`/inv/${encodeURIComponent(r.investigation_id)}`}
+          className="flex-1 min-w-0"
+        >
+          <p className="text-sm font-serif text-ink dark:text-bright truncate">
+            {r.question ?? r.investigation_id}
+          </p>
+          <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
+            {r.investigation_id}
+            {r.parent_investigation_id ? (
+              <> · parent: {r.parent_investigation_id.slice(0, 12)}</>
+            ) : null}
+          </p>
+        </Link>
+        <div className="text-right shrink-0 space-y-0.5">
+          <span
+            className={`text-[10px] uppercase tracking-wider font-mono px-2 py-0.5 rounded ${
+              r.status === "completed"
+                ? "bg-emerald-100 text-emerald-700"
+                : r.status === "failed"
+                  ? "bg-red-50 text-emperor"
+                  : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright"
+            }`}
+          >
+            {r.status}
+          </span>
+          <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
+            ${costUsd.toFixed(4)}
+          </p>
+        </div>
+      </div>
+      <div className="mt-2 flex items-center gap-3 text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+        <Link
+          to={`/replay/${encodeURIComponent(r.investigation_id)}`}
+          className="hover:underline hover:text-ink dark:text-bright"
+        >
+          replay →
+        </Link>
+        {r.started_at && <span>started {r.started_at}</span>}
+        {r.completed_at && <span>done {r.completed_at}</span>}
+      </div>
+    </article>
   );
 }
