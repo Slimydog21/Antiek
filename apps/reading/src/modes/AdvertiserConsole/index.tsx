@@ -40,20 +40,32 @@ const STATUS_COLOR: Record<string, string> = {
   rejected: "bg-emperor/20 text-emperor",
 };
 
-const USD = (cents: number) =>
-  `$${(cents / 100).toLocaleString(undefined, {
+const nonNegativeFiniteNumber = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+
+const USD = (cents: unknown) =>
+  `$${((nonNegativeFiniteNumber(cents) ?? 0) / 100).toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
 
-const CTR = (impressions: number, clicks: number) => {
-  if (impressions === 0) return "—";
-  return `${((clicks / impressions) * 100).toFixed(2)}%`;
+const COUNT = (value: unknown) =>
+  (nonNegativeFiniteNumber(value) ?? 0).toLocaleString();
+
+const CTR = (impressions: unknown, clicks: unknown) => {
+  const safeImpressions = nonNegativeFiniteNumber(impressions) ?? 0;
+  const safeClicks = nonNegativeFiniteNumber(clicks) ?? 0;
+  if (safeImpressions === 0) return "—";
+  return `${((safeClicks / safeImpressions) * 100).toFixed(2)}%`;
 };
 
-const eCPM = (impressions: number, spend_cents: number) => {
-  if (impressions === 0) return "—";
-  return USD(Math.round((spend_cents / impressions) * 1000));
+const eCPM = (impressions: unknown, spend_cents: unknown) => {
+  const safeImpressions = nonNegativeFiniteNumber(impressions) ?? 0;
+  const safeSpendCents = nonNegativeFiniteNumber(spend_cents) ?? 0;
+  if (safeImpressions === 0) return "—";
+  return USD(Math.round((safeSpendCents / safeImpressions) * 1000));
 };
 
 export default function AdvertiserConsole() {
@@ -89,9 +101,9 @@ export default function AdvertiserConsole() {
 
   const totals = campaigns.reduce(
     (acc, c) => ({
-      impressions: acc.impressions + c.impressions,
-      clicks: acc.clicks + c.clicks,
-      spend_cents: acc.spend_cents + c.spend_cents,
+      impressions: acc.impressions + (nonNegativeFiniteNumber(c.impressions) ?? 0),
+      clicks: acc.clicks + (nonNegativeFiniteNumber(c.clicks) ?? 0),
+      spend_cents: acc.spend_cents + (nonNegativeFiniteNumber(c.spend_cents) ?? 0),
     }),
     { impressions: 0, clicks: 0, spend_cents: 0 },
   );
@@ -124,7 +136,7 @@ export default function AdvertiserConsole() {
             <Card label="Total campaigns" value={campaigns.length} />
             <Card
               label="Total impressions"
-              value={totals.impressions.toLocaleString()}
+              value={COUNT(totals.impressions)}
             />
             <Card label="Total spend" value={USD(totals.spend_cents)} />
           </section>
@@ -191,8 +203,8 @@ export default function AdvertiserConsole() {
                       </a>
                     </p>
                     <div className="grid grid-cols-4 gap-4 text-xs font-mono">
-                      <Metric label="impressions" value={c.impressions.toLocaleString()} />
-                      <Metric label="clicks" value={c.clicks.toLocaleString()} />
+                      <Metric label="impressions" value={COUNT(c.impressions)} />
+                      <Metric label="clicks" value={COUNT(c.clicks)} />
                       <Metric label="CTR" value={CTR(c.impressions, c.clicks)} />
                       <Metric label="eCPM" value={eCPM(c.impressions, c.spend_cents)} />
                     </div>
