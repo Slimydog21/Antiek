@@ -4,10 +4,11 @@
   "target_branch": "reader/integration",
   "status": "operator_gated",
   "recorded_at": "2026-07-01T20:26:27Z",
-  "verified_code_sha": "a71298dd",
+  "verified_code_sha": "commit containing this record",
   "mode": "status_reconciliation",
   "deterministic_evidence": {
     "backend_gate": "81 passed: tests/test_dispatch_tier_verdict.py tests/test_prompt_autoresearch_verdict.py tests/test_phase8_gate.py tests/test_phase8_calibration_status.py tests/test_gepa_phase8_bridge.py tests/test_gepa_phase8_applier_e2e.py",
+    "trajectory_replay_frontend_gate": "8 passed: npm test -- TrajectoryReplay --run from apps/reading",
     "trajectory_replay_files": "apps/reading/src/components/TrajectoryReplay.tsx and apps/reading/src/components/TrajectoryReplay.stories.tsx exist",
     "phase8_gate_files": "compounding/skill_growth/gate.py exists with Phase 8 gate tests",
     "dispatch_verdict_files": "tools/dispatch_tier_verdict exists with dispatch-tier verdict tests",
@@ -22,7 +23,6 @@
   ],
   "not_claimed": [
     "Full repository test suite was not rerun in this S20 pass.",
-    "Direct TrajectoryReplay component tests were not present; only implementation/story evidence and adjacent workspace contract coverage were observed.",
     "No external artifact was published by this local reconciliation pass.",
     "No production dispatch event-log re-run was performed.",
     "No autoresearch Wedge 1 operator ratification decision was made."
