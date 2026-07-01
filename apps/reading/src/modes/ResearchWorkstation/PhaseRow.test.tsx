@@ -57,4 +57,24 @@ describe("PhaseRow", () => {
     expect(screen.getByText("$0.012346")).toBeTruthy();
     expect(screen.getByText("1.6s")).toBeTruthy();
   });
+
+  it("accepts numeric-string dispatch metrics", () => {
+    render(
+      <PhaseRow
+        event={dispatchEvent({
+          provider: "anthropic",
+          model: "claude",
+          target_role: "decomposer",
+          input_tokens: "1200",
+          output_tokens: "84",
+          cost_usd: "0.0123456",
+          latency_ms: "1650",
+        })}
+      />,
+    );
+
+    expect(screen.getByText("in=1200 out=84")).toBeTruthy();
+    expect(screen.getByText("$0.012346")).toBeTruthy();
+    expect(screen.getByText("1.6s")).toBeTruthy();
+  });
 });
