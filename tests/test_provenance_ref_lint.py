@@ -172,5 +172,31 @@ def parse_bad(obj):
     assert not any("parse_good" in violation for violation in violations)
 
 
+def test_lint_does_not_let_one_parser_field_validate_for_another(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "mixed_role" / "parser.py",
+        """
+from substrate.provenance import validate_refs
+
+def parse(obj, canonical):
+    source_chunk_ids = validate_refs(
+        obj.get("source_chunk_ids", []),
+        canonical,
+    ).valid
+    return {
+        "source_chunk_ids": source_chunk_ids,
+        "question_id": obj.get("question_id"),
+    }
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any("question_id" in violation for violation in violations)
+    assert not any("source_chunk_ids" in violation for violation in violations)
+
+
 def test_lint_passes_on_current_tree() -> None:
     assert find_violations() == []

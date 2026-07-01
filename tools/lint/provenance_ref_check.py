@@ -61,30 +61,130 @@ def _imports_validator(tree: ast.Module) -> bool:
     return False
 
 
-def _calls_validator(tree: ast.Module) -> bool:
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        func = node.func
-        if isinstance(func, ast.Name) and func.id in {"validate_ref", "validate_refs"}:
-            return True
-        if isinstance(func, ast.Attribute) and func.attr in {"validate_ref", "validate_refs"}:
-            return True
+def _is_validator_call(node: ast.Call) -> bool:
+    func = node.func
+    if isinstance(func, ast.Name):
+        return func.id in {"validate_ref", "validate_refs"}
+    if isinstance(func, ast.Attribute):
+        return func.attr in {"validate_ref", "validate_refs"}
     return False
 
 
-def _target_field_sites(tree: ast.Module) -> list[tuple[int, str]]:
+def _field_gets(tree: ast.AST) -> list[tuple[int, str]]:
     out: list[tuple[int, str]] = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.keyword) and node.arg in _TARGET_FIELDS:
-            out.append((node.lineno, node.arg))
-        elif (
-            isinstance(node, ast.Constant)
-            and isinstance(node.value, str)
-            and node.value in _TARGET_FIELDS
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+            and node.args[0].value in _TARGET_FIELDS
         ):
-            out.append((node.lineno, node.value))
+            continue
+        out.append((node.lineno, node.args[0].value))
     return out
+
+
+def _target_field_sites(tree: ast.AST) -> list[tuple[int, str]]:
+    return _field_gets(tree)
+
+
+def _assigned_names(target: ast.AST) -> set[str]:
+    if isinstance(target, ast.Name):
+        return {target.id}
+    if isinstance(target, (ast.Tuple, ast.List)):
+        return {
+            name
+            for elt in target.elts
+            for name in _assigned_names(elt)
+        }
+    return set()
+
+
+def _names_in(tree: ast.AST) -> set[str]:
+    return {
+        node.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Name)
+    }
+
+
+def _fields_in(tree: ast.AST) -> set[str]:
+    return {
+        field
+        for _, field in _field_gets(tree)
+    }
+
+
+def _raw_field_aliases(func: ast.FunctionDef | ast.AsyncFunctionDef) -> dict[str, set[str]]:
+    aliases: dict[str, set[str]] = {}
+    assignments: list[tuple[set[str], ast.AST]] = []
+    for node in ast.walk(func):
+        target_names: set[str]
+        value: ast.AST | None
+        if isinstance(node, ast.Assign):
+            target_names = {
+                name
+                for target in node.targets
+                for name in _assigned_names(target)
+            }
+            value = node.value
+        elif isinstance(node, ast.AnnAssign):
+            target_names = _assigned_names(node.target)
+            value = node.value
+        elif isinstance(node, ast.NamedExpr):
+            target_names = _assigned_names(node.target)
+            value = node.value
+        else:
+            continue
+        if value is None or not target_names:
+            continue
+        assignments.append((target_names, value))
+        for field in _fields_in(value):
+            aliases.setdefault(field, set()).update(target_names)
+    changed = True
+    while changed:
+        changed = False
+        for target_names, value in assignments:
+            names = _names_in(value)
+            for field, field_aliases in aliases.items():
+                if not names & field_aliases:
+                    continue
+                before = len(field_aliases)
+                field_aliases.update(target_names)
+                changed = changed or len(field_aliases) != before
+    return aliases
+
+
+def _validated_fields(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    aliases = _raw_field_aliases(func)
+    out: set[str] = set()
+    for node in ast.walk(func):
+        if not isinstance(node, ast.Call) or not _is_validator_call(node):
+            continue
+        out.update(_fields_in(node))
+        names = _names_in(node)
+        for field, field_aliases in aliases.items():
+            if names & field_aliases:
+                out.add(field)
+    return out
+
+
+def _unvalidated_field_sites(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+    validator_imported: bool,
+) -> list[tuple[int, str]]:
+    sites = _target_field_sites(func)
+    if not sites:
+        return []
+    validated = _validated_fields(func) if validator_imported else set()
+    return [
+        (line, field)
+        for line, field in sites
+        if field not in validated
+    ]
 
 
 def _parser_functions(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
@@ -105,10 +205,8 @@ def _scan_file(rel: str, path: Path) -> list[str]:
     violations: list[str] = []
     validator_imported = _imports_validator(tree)
     for func in _parser_functions(tree):
-        sites = _target_field_sites(func)
+        sites = _unvalidated_field_sites(func, validator_imported)
         if not sites:
-            continue
-        if validator_imported and _calls_validator(func):
             continue
         first_line, first_field = min(sites)
         violations.append(
