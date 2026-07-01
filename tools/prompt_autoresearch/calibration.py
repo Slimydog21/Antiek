@@ -48,6 +48,18 @@ def calibrate_epsilon(
         or floor_epsilon < 0.0
     ):
         raise ValueError("floor_epsilon must be a non-negative finite number")
+    accepted = [
+        outcome.mutation_id
+        for outcome in outcomes
+        if outcome.accepted
+    ]
+    if accepted:
+        offenders = ", ".join(accepted[:5])
+        suffix = "" if len(accepted) <= 5 else f", ... (+{len(accepted) - 5} more)"
+        raise ValueError(
+            "no-op calibration outcomes must all be rejected; accepted "
+            f"outcome(s): {offenders}{suffix}"
+        )
     deltas = [outcome.delta for outcome in outcomes]
     mean_delta = sum(deltas) / len(deltas)
     sigma = pstdev(deltas) if len(deltas) > 1 else 0.0
