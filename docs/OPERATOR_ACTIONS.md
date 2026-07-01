@@ -732,9 +732,22 @@ The React Trust Center component at
 What's missing:
 
 1. Verify the production deploy serves `/trust` (Cloudflare Pages or
-   the operator's equivalent).
+   the operator's equivalent). Use the packaged probe for unauthenticated
+   route/API evidence:
+
+   ```bash
+   ./.venv/bin/python -m tools.ops.trust_center_probe \
+     --app-url https://antiek.ai/trust \
+     --api-url https://api.antiek.ai/trust-center \
+     --json
+   ```
+
 2. Make the `/trust` route reachable from `antiek.ai/trust` (or
    whatever the production domain is).
+
+The probe is support evidence only: it verifies the public route and
+publication payload shape, but does not close OA-013 until it has been run
+against production and the deployment evidence is recorded.
 
 #### Once closed
 
