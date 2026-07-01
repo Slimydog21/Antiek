@@ -814,6 +814,10 @@ distinct from operating funds."*
 2. Open a segregated account specifically for IP-holder escrow.
 3. Document the mechanical separation (account-number reference)
    in `tools/stripe_connect/accounts.py::segregated_account_ref`.
+4. Configure `RevSharePayoutRouter(segregated_account_ref=...)` in production.
+   The substrate now refuses to complete publisher/creator payout operations
+   without a `segregated_account_ref`; otherwise-payable rev-share lines stay
+   escrowed before any provider transfer.
 
 #### Once closed
 

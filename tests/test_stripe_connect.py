@@ -10,6 +10,7 @@ from tools.stripe_connect import (
     BillingEvent,
     MockStripeProvider,
     PricingTier,
+    SegregatedEscrowAccountRequired,
     StripeAccountStatus,
     StripeConnectAccount,
     StripeOperationsLog,
@@ -118,6 +119,7 @@ def test_operations_log_marks_complete():
         amount_usd_cents=500,
         substrate_ref="user-creator-1",
         idempotency_key="key-2",
+        segregated_account_ref="escrow-regulated-001",
     )
     log.mark_complete(idempotency_key="key-2", provider_ref="tr_real_abc")
     entry = log._find_by_idem("key-2")
@@ -125,6 +127,35 @@ def test_operations_log_marks_complete():
     assert entry["status"] == "completed"
     assert entry["completed_at"] is not None
     assert entry["provider_ref"] == "tr_real_abc"
+
+
+def test_operations_log_refuses_payout_completion_without_segregated_account():
+    log = StripeOperationsLog()
+    log.append_intent(
+        op_type="publisher_payout",
+        amount_usd_cents=500,
+        substrate_ref="ipholder-1",
+        idempotency_key="key-missing-escrow",
+    )
+
+    with pytest.raises(SegregatedEscrowAccountRequired):
+        log.mark_complete(
+            idempotency_key="key-missing-escrow",
+            provider_ref="tr_real_abc",
+        )
+
+
+def test_operations_log_allows_non_payout_completion_without_segregated_account():
+    log = StripeOperationsLog()
+    log.append_intent(
+        op_type="consumer_token_charge",
+        amount_usd_cents=500,
+        substrate_ref="user-1",
+        idempotency_key="key-charge",
+    )
+
+    log.mark_complete(idempotency_key="key-charge", provider_ref="ch_real_abc")
+    assert log._find_by_idem("key-charge")["status"] == "completed"
 
 
 # ── Mock provider ────────────────────────────────────────────────────
