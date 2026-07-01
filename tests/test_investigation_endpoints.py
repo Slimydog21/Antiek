@@ -423,6 +423,26 @@ async def test_post_records_research_tier_on_start_event(async_client):
 
 
 @pytest.mark.asyncio
+async def test_post_records_rlm_investigation_kind_on_start_event(async_client):
+    r = await async_client.post(
+        "/investigations",
+        json={
+            "question": "Survey neutral-atom quantum computing.",
+            "investigation_id": "inv-kind-rlm",
+            "investigation_kind": "rlm",
+        },
+    )
+    assert r.status_code == 202, r.text
+    rows = trajectory("inv-kind-rlm")
+    start = [
+        x for x in rows
+        if x["action_type"] == ActionType.INVESTIGATION_START_REQUESTED.value
+    ]
+    assert len(start) == 1
+    assert start[0]["payload"]["investigation_kind"] == "rlm"
+
+
+@pytest.mark.asyncio
 async def test_get_status_surfaces_chosen_research_tier(async_client):
     """GET /investigations/{id} reads the chosen tier back out — queryable
     after the fact, not recomputed."""
