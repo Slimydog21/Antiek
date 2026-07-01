@@ -206,6 +206,29 @@ def test_accepts_emitted_at_field():
     assert v.hermes_score.synthesis_count == 1
 
 
+def test_measurement_window_uses_parsed_utc_timestamp_order():
+    """Offset-bearing ISO strings must not be min/maxed lexicographically."""
+    events = [
+        _dispatch_synthesis(
+            "hermes",
+            "grok-4.3",
+            inv="later-in-utc",
+            ts="2026-05-20T12:00:00+02:00",
+        ),
+        _dispatch_synthesis(
+            "hermes",
+            "grok-4.3",
+            inv="earlier-in-utc",
+            ts="2026-05-20T09:30:00Z",
+        ),
+    ]
+
+    v = analyse_events(events=events)
+
+    assert v.measurement_window_started == "2026-05-20T09:30:00Z"
+    assert v.measurement_window_ended == "2026-05-20T10:00:00Z"
+
+
 def test_rejects_malformed_synthesis_costs():
     events = [
         _dispatch_synthesis("hermes", "grok-4.3", inv="neg", cost_usd=-0.01),
