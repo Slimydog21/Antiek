@@ -3,15 +3,18 @@ import LemonCard from "../../components/lemon/LemonCard";
 import type { Event } from "../../generated/types";
 
 function finiteNonNegativeNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
-    : null;
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function nonNegativeSafeInteger(value: unknown): number | null {
-  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
-    ? value
-    : null;
+  const parsed = finiteNonNegativeNumber(value);
+  return parsed !== null && Number.isSafeInteger(parsed) ? parsed : null;
 }
 
 /**
@@ -224,10 +227,10 @@ function DispatchRow({ event }: { event: Event }) {
     provider?: string;
     model?: string;
     target_role?: string;
-    input_tokens?: number;
-    output_tokens?: number;
-    cost_usd?: number;
-    latency_ms?: number;
+    input_tokens?: unknown;
+    output_tokens?: unknown;
+    cost_usd?: unknown;
+    latency_ms?: unknown;
   };
   const inputTokens = nonNegativeSafeInteger(p.input_tokens);
   const outputTokens = nonNegativeSafeInteger(p.output_tokens);
