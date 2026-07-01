@@ -13,6 +13,14 @@ export interface TocPanelProps {
   onJump: (pageIndex: number) => void;
 }
 
+function resolvedTocPageIndex(entry: TocItem): number | null {
+  return entry.page_index !== null &&
+    Number.isSafeInteger(entry.page_index) &&
+    entry.page_index >= 0
+    ? entry.page_index
+    : null;
+}
+
 export default function TocPanel({ toc, currentPageIndex, onJump }: TocPanelProps) {
   if (toc.length === 0) {
     return (
@@ -24,14 +32,17 @@ export default function TocPanel({ toc, currentPageIndex, onJump }: TocPanelProp
   return (
     <nav aria-label="Table of contents" className="space-y-0.5">
       {toc.map((entry, i) => {
-        const resolvable = entry.page_index !== null;
-        const active = resolvable && entry.page_index === currentPageIndex;
+        const pageIndex = resolvedTocPageIndex(entry);
+        const resolvable = pageIndex !== null;
+        const active = pageIndex === currentPageIndex;
         return (
           <button
             key={`${entry.title}-${i}`}
             type="button"
             disabled={!resolvable}
-            onClick={() => resolvable && onJump(entry.page_index as number)}
+            onClick={() => {
+              if (pageIndex !== null) onJump(pageIndex);
+            }}
             style={{ paddingLeft: `${8 + entry.level * 14}px` }}
             className={`w-full text-left pr-2 py-1 rounded text-[13px] font-serif truncate transition-colors ${
               active
