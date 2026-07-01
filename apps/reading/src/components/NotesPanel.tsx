@@ -24,6 +24,18 @@ interface NotesPanelProps {
   documentId: string | null;
 }
 
+function finiteNonNegativeNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
+function nonNegativeSafeInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
 /**
  * Right-column chat feed. Shows the live wrestling trajectory:
  *
@@ -194,12 +206,16 @@ function FeedRow({
 
     case "dispatch.call": {
       const p = event.payload as DispatchCallPayload;
+      const inputTokens = nonNegativeSafeInteger(p.input_tokens);
+      const outputTokens = nonNegativeSafeInteger(p.output_tokens);
+      const costUsd = finiteNonNegativeNumber(p.cost_usd) ?? 0;
+      const latencyMs = finiteNonNegativeNumber(p.latency_ms) ?? 0;
       return (
         <SystemRow
           eventId={event.event_id}
           emittedAt={event.emitted_at}
           icon="→"
-          text={`${p.provider}/${p.model}  in=${p.input_tokens} out=${p.output_tokens} $${p.cost_usd.toFixed(5)} ${p.latency_ms}ms`}
+          text={`${p.provider}/${p.model}  in=${inputTokens ?? "?"} out=${outputTokens ?? "?"} $${costUsd.toFixed(5)} ${Math.round(latencyMs)}ms`}
           tone="muted"
         />
       );
