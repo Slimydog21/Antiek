@@ -198,7 +198,11 @@ export function ProjectTree({
     // their panel-or-route behaviour unchanged.
     if (n.kind === "document") {
       e.preventDefault();
-      openDocument(n.id, e.metaKey || e.ctrlKey ? { mode: "inspect" } : undefined);
+      if (e.metaKey || e.ctrlKey) {
+        openDocument(n.id, { mode: "inspect" });
+      } else {
+        openDocument(n.id);
+      }
       return;
     }
     if (e.metaKey || e.ctrlKey) {
@@ -358,6 +362,10 @@ function NodeRow({
     document: "📄",
     notebook: "❍",
   };
+  const openTitle =
+    node.kind === "document"
+      ? "Click to open in Reader. Cmd/Ctrl+Click to inspect original."
+      : "Click to open. Cmd/Ctrl+Click to open as floating panel.";
 
   return (
     <div className="flex items-center group">
@@ -366,7 +374,7 @@ function NodeRow({
         onClick={onClick}
         data-node-id={node.id}
         className="flex-1 flex items-center gap-2 px-3 py-1.5 hover:bg-sun/20 dark:hover:bg-sun/10 text-left min-w-0"
-        title="Click to open. Cmd/Ctrl+Click to open as floating panel."
+        title={openTitle}
       >
         <span aria-hidden="true" className="text-ink-mute dark:text-moonlight shrink-0">
           {icon[node.kind]}
@@ -384,7 +392,7 @@ function NodeRow({
           e.stopPropagation();
           onPin();
         }}
-        aria-label={pinned ? "Unpin" : "Pin"}
+        aria-label={pinned ? `Unpin ${node.title}` : `Pin ${node.title}`}
         className={
           "px-2 py-1.5 shrink-0 text-[13px] " +
           (pinned

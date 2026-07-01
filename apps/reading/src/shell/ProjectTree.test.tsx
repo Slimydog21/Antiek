@@ -1,18 +1,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 
 import type { BookSummary } from "../api/books";
 import type { InvestigationSummary } from "../lib/api";
 import { usePinned } from "../components/navigation/pinnedStore";
+import { useWorkspace } from "../workspace/WorkspaceStore";
 import ProjectTree from "./ProjectTree";
+import type { Workflow } from "./workflowTaxonomy";
 
-const { listBooksMock, listInvestigationsMock, navigateMock } = vi.hoisted(() => ({
+const {
+  listBooksMock,
+  listInvestigationsMock,
+  openDocumentMock,
+} = vi.hoisted(() => ({
   listBooksMock: vi.fn(),
   listInvestigationsMock: vi.fn<
     () => Promise<{ count: number; investigations: InvestigationSummary[] }>
   >(),
-  navigateMock: vi.fn(),
+  openDocumentMock: vi.fn(),
 }));
 
 vi.mock("../api/books", async (orig) => {
@@ -25,10 +37,10 @@ vi.mock("../lib/api", async (orig) => {
   return { ...actual, listInvestigations: listInvestigationsMock };
 });
 
-vi.mock("react-router-dom", async (orig) => {
-  const actual = await orig<typeof import("react-router-dom")>();
-  return { ...actual, useNavigate: () => navigateMock };
-});
+vi.mock("../lib/openDocument", async (orig) => ({
+  ...(await orig<typeof import("../lib/openDocument")>()),
+  useOpenDocument: () => openDocumentMock,
+}));
 
 const fabricatedIds = [
   "nvda-q4",
@@ -60,16 +72,10 @@ const liveBook: BookSummary = {
   taken_down: false,
 };
 
-beforeEach(() => {
-  listBooksMock.mockReset();
-  listInvestigationsMock.mockReset();
-  navigateMock.mockReset();
-  usePinned.getState().clear();
-  listBooksMock.mockResolvedValue({ books: [], count: 0 });
-  listInvestigationsMock.mockResolvedValue({ count: 0, investigations: [] });
-});
-
-afterEach(() => cleanup());
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname}</div>;
+}
 
 function expectNoFabricatedIds(container: HTMLElement) {
   for (const id of fabricatedIds) {
@@ -77,13 +83,35 @@ function expectNoFabricatedIds(container: HTMLElement) {
   }
 }
 
-function renderTree(workflow: "research" | "read" | "write" | "speak") {
+function renderTree(workflow: Exclude<Workflow, "shared"> = "read") {
   return render(
-    <MemoryRouter>
-      <ProjectTree workflow={workflow} />
+    <MemoryRouter initialEntries={["/library"]}>
+      <Routes>
+        <Route
+          path="*"
+          element={
+            <>
+              <ProjectTree workflow={workflow} />
+              <LocationProbe />
+            </>
+          }
+        />
+      </Routes>
     </MemoryRouter>,
   );
 }
+
+beforeEach(() => {
+  listBooksMock.mockReset();
+  listInvestigationsMock.mockReset();
+  openDocumentMock.mockReset();
+  usePinned.getState().clear();
+  useWorkspace.getState().reset();
+  listBooksMock.mockResolvedValue({ books: [], count: 0 });
+  listInvestigationsMock.mockResolvedValue({ count: 0, investigations: [] });
+});
+
+afterEach(cleanup);
 
 describe("ProjectTree", () => {
   it("renders live research investigations and routes with the seeded id", async () => {
@@ -99,11 +127,13 @@ describe("ProjectTree", () => {
       "inv-live-seeded",
     );
     fireEvent.click(row);
-    expect(navigateMock).toHaveBeenCalledWith("/inv/inv-live-seeded");
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/inv/inv-live-seeded",
+    );
     expectNoFabricatedIds(container);
   });
 
-  it("renders live read documents and routes with the seeded id", async () => {
+  it("opens a live document through the one Reader door on normal click", async () => {
     listBooksMock.mockResolvedValue({ books: [liveBook], count: 1 });
 
     const { container } = renderTree("read");
@@ -114,8 +144,72 @@ describe("ProjectTree", () => {
       "doc-live-seeded",
     );
     fireEvent.click(row);
-    expect(navigateMock).toHaveBeenCalledWith("/wrestle/doc-live-seeded");
+    expect(openDocumentMock).toHaveBeenCalledTimes(1);
+    expect(openDocumentMock).toHaveBeenCalledWith("doc-live-seeded");
+    expect(useWorkspace.getState().floatingIds).toEqual([]);
+    expect(screen.getByTestId("location").textContent).toBe("/library");
     expectNoFabricatedIds(container);
+  });
+
+  it("opens a live document in inspect mode on Cmd/Ctrl-click", async () => {
+    listBooksMock.mockResolvedValue({ books: [liveBook], count: 1 });
+
+    renderTree("read");
+
+    fireEvent.click(await screen.findByText("Live seeded document"), {
+      metaKey: true,
+    });
+
+    expect(openDocumentMock).toHaveBeenCalledTimes(1);
+    expect(openDocumentMock).toHaveBeenCalledWith("doc-live-seeded", {
+      mode: "inspect",
+    });
+    expect(useWorkspace.getState().floatingIds).toEqual([]);
+  });
+
+  it("floats investigations on Cmd/Ctrl-click and keeps normal click as route navigation", async () => {
+    const secondInvestigation: InvestigationSummary = {
+      ...liveInvestigation,
+      investigation_id: "inv-live-secondary",
+      question: "Second live investigation",
+    };
+    listInvestigationsMock.mockResolvedValue({
+      count: 2,
+      investigations: [liveInvestigation, secondInvestigation],
+    });
+
+    renderTree("research");
+
+    fireEvent.click(await screen.findByText("Live seeded investigation"), {
+      ctrlKey: true,
+    });
+    const floatingId = useWorkspace.getState().floatingIds[0];
+    expect(useWorkspace.getState().panels[floatingId]).toMatchObject({
+      kind: "Trajectory",
+      props: { id: "inv-live-seeded" },
+      mode: "floating",
+      title: "Live seeded investigation",
+    });
+    expect(screen.getByTestId("location").textContent).toBe("/library");
+
+    fireEvent.click(screen.getByText("Second live investigation"));
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/inv/inv-live-secondary",
+    );
+  });
+
+  it("pins item-specific rows with accessible labels and moves them above Recent", async () => {
+    listBooksMock.mockResolvedValue({ books: [liveBook], count: 1 });
+
+    renderTree("read");
+
+    await screen.findByText("Live seeded document");
+    fireEvent.click(screen.getByLabelText("Pin Live seeded document"));
+
+    expect(usePinned.getState().isPinned("document:doc-live-seeded")).toBe(true);
+    expect(screen.getByLabelText("Unpin Live seeded document")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Pinned\s*1/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Recent\s*0/ })).toBeTruthy();
   });
 
   it("renders an honest empty state for workflows without a recents data layer", () => {
@@ -131,7 +225,9 @@ describe("ProjectTree", () => {
     const { container } = renderTree("research");
 
     await waitFor(() =>
-      expect(screen.getByText(/Could not load recent items: backend unavailable/)).toBeTruthy(),
+      expect(
+        screen.getByText(/Could not load recent items: backend unavailable/),
+      ).toBeTruthy(),
     );
     expect(screen.queryByText("No recent items yet.")).toBeNull();
     expect(screen.queryByText("Loading recent items...")).toBeNull();
