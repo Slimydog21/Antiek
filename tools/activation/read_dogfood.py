@@ -170,6 +170,8 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
         failures.extend(step_failures)
         step_status_failures = _step_status_failures(prefix, steps)
         failures.extend(step_status_failures)
+        citation_evidence_failures = _citation_evidence_failures(prefix, record, steps)
+        failures.extend(citation_evidence_failures)
 
         issue_failures: list[str] = []
         for issue_index, issue in enumerate(record.get("issues") or [], start=1):
@@ -194,6 +196,7 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
             and not missing_steps
             and not step_failures
             and not step_status_failures
+            and not citation_evidence_failures
             and not issue_failures
             and _has_minimum_reading_time(minutes_reading)
         )
@@ -214,7 +217,11 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
         citation_traced = _session_citation_traced(record, steps)
         if session_is_valid and citation_traced:
             citation_trace_sessions.add(session_id)
-        elif record.get("citation_traced") is True and not citation_traced:
+        elif (
+            record.get("citation_traced") is True
+            and not citation_traced
+            and _step_status(steps.get("5")) != "pass"
+        ):
             failures.append(prefix + "citation_traced=true requires step 5 to pass")
 
         if (
@@ -378,7 +385,36 @@ def _session_live_provider_passed(record: dict[str, Any], steps: dict[Any, Any])
 def _session_citation_traced(record: dict[str, Any], steps: dict[Any, Any]) -> bool:
     if record.get("citation_traced") is not True:
         return False
-    return _step_status(steps.get("5")) == "pass"
+    return (
+        _step_status(steps.get("5")) == "pass"
+        and not _citation_evidence_failures("", record, steps)
+    )
+
+
+def _citation_evidence_failures(
+    prefix: str,
+    record: dict[str, Any],
+    steps: dict[Any, Any],
+) -> list[str]:
+    if record.get("citation_traced") is not True:
+        return []
+    step = steps.get("5")
+    if not isinstance(step, dict) or _step_status(step) != "pass":
+        return []
+
+    failures: list[str] = []
+    source_document_id = _required_text(step.get("source_document_id"))
+    anchor = _required_text(step.get("chunk_id")) or _required_text(step.get("anchor"))
+    result_url = _required_text(step.get("result_url"))
+    if not source_document_id:
+        failures.append(prefix + "citation step 5 requires source_document_id")
+    if not anchor:
+        failures.append(prefix + "citation step 5 requires chunk_id or anchor")
+    if not result_url:
+        failures.append(prefix + "citation step 5 requires result_url")
+    elif not _is_http_url(result_url):
+        failures.append(prefix + "citation step 5 result_url must be an http(s) URL")
+    return failures
 
 
 def _has_minimum_reading_time(value: Any) -> bool:
