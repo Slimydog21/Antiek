@@ -17,15 +17,19 @@
  *  - a SINGLE node renders with no edges (rigor #3).
  *  - M4 theme grouping is real: selected blocks emit block.positioned
  *    events with a shared region_id and reload into a rendered ThemeRegion.
+ *  - cite-source routing preserves the graph node's source document and chunk
+ *    locator through the one Reader URL.
  *
  * No browser-local side store is touched — the grep gate confirms it; this
  * suite confirms the only write is the typed-event POST.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useLocation, useParams } from "react-router-dom";
 
 import type { DistilledNode } from "../../../lib/api";
 import type { Event } from "../../../generated/types";
+import { useOpenDocument } from "../../../lib/openDocument";
 
 const { getDistillationMock, getTrajectoryMock, postTypedEventMock } = vi.hoisted(() => ({
   getDistillationMock: vi.fn(),
@@ -116,6 +120,34 @@ function blockEl(nodeId: string): HTMLElement {
   return el as HTMLElement;
 }
 
+function ReaderProbe() {
+  const { documentId } = useParams<{ documentId: string }>();
+  const location = useLocation();
+  return (
+    <div>
+      <span data-testid="reader-document-id">{documentId}</span>
+      <span data-testid="reader-search">{location.search}</span>
+    </div>
+  );
+}
+
+function RoutedCanvas() {
+  const { investigationId = "inv-1" } = useParams<{ investigationId: string }>();
+  const openDocument = useOpenDocument();
+  return (
+    <Canvas
+      investigationId={investigationId}
+      onCiteSource={(node) => {
+        if (!node.source_document_id) return;
+        openDocument(
+          node.source_document_id,
+          node.chunk_id ? { chunkId: node.chunk_id } : undefined,
+        );
+      }}
+    />
+  );
+}
+
 describe("Canvas — renders real graph nodes + auto-layout (M1/M2, rigor #3)", () => {
   it("renders one block per insight + question, auto-laid-out (no (0,0) pile-up)", async () => {
     getDistillationMock.mockResolvedValue({
@@ -133,6 +165,40 @@ describe("Canvas — renders real graph nodes + auto-layout (M1/M2, rigor #3)", 
     // Auto-layout: distinct positions, neither at (0,0).
     expect(i1.style.left).not.toBe("0px");
     expect(i2.style.left === i1.style.left && i2.style.top === i1.style.top).toBe(false);
+  });
+});
+
+describe("Canvas — cite-source routing (SPR-07 provenance locator)", () => {
+  it("routes cite source through the one Reader with the node's chunk locator", async () => {
+    getDistillationMock.mockResolvedValue({
+      investigation_id: "inv-1",
+      insights: [
+        insight("i1", "GPUs gate scale.", {
+          source_document_id: "doc-source-9",
+          chunk_id: "chunk-source-9",
+        }),
+      ],
+      questions: [],
+    });
+    getTrajectoryMock.mockResolvedValue({ investigation_id: "inv-1", count: 0, events: [] });
+
+    render(
+      <MemoryRouter initialEntries={["/drw/inv-1"]}>
+        <Routes>
+          <Route path="/drw/:investigationId" element={<RoutedCanvas />} />
+          <Route path="/read/:documentId" element={<ReaderProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.getByText("GPUs gate scale.")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "cite source" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("reader-document-id").textContent).toBe("doc-source-9");
+      const params = new URLSearchParams(screen.getByTestId("reader-search").textContent ?? "");
+      expect(params.get("chunk")).toBe("chunk-source-9");
+    });
   });
 });
 
