@@ -33,9 +33,9 @@ import type { DispatchedAction } from "./ai/aiActions";
  */
 
 interface UsageSummary {
-  free_tokens_consumed: number;
-  free_tokens_remaining: number;
-  record_count: number;
+  free_tokens_consumed: unknown;
+  free_tokens_remaining: unknown;
+  record_count: unknown;
 }
 
 interface DispatchEvent {
@@ -57,9 +57,17 @@ interface ThoughtPartnerReply {
 }
 
 function finiteNonNegativeNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
-    : null;
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function tokenCountLabel(value: unknown): string {
+  return Math.floor(finiteNonNegativeNumber(value) ?? 0).toLocaleString();
 }
 
 export default function AISidecar() {
@@ -102,9 +110,9 @@ export default function AISidecar() {
       if (u?.ok) {
         const data = await u.json();
         setUsage({
-          free_tokens_consumed: data.free_tokens_consumed ?? 0,
-          free_tokens_remaining: data.free_tokens_remaining ?? 5_000_000,
-          record_count: data.record_count ?? 0,
+          free_tokens_consumed: finiteNonNegativeNumber(data.free_tokens_consumed) ?? 0,
+          free_tokens_remaining: finiteNonNegativeNumber(data.free_tokens_remaining) ?? 0,
+          record_count: finiteNonNegativeNumber(data.record_count) ?? 0,
         });
       } else {
         setContextError(`Failed to load usage (HTTP ${u.status}).`);
@@ -245,7 +253,11 @@ export default function AISidecar() {
   const freePct = usage
     ? Math.min(
         100,
-        Math.round((usage.free_tokens_consumed / 5_000_000) * 100),
+        Math.round(
+          ((finiteNonNegativeNumber(usage.free_tokens_consumed) ?? 0) /
+            5_000_000) *
+            100,
+        ),
       )
     : 0;
 
@@ -284,7 +296,7 @@ export default function AISidecar() {
             </div>
             <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
               {usage
-                ? `${usage.free_tokens_consumed.toLocaleString()} / 5,000,000 tokens`
+                ? `${tokenCountLabel(usage.free_tokens_consumed)} / 5,000,000 tokens`
                 : "–"}
             </p>
           </section>
