@@ -29,12 +29,39 @@ export function dialogueSessionKey(
   return `antiek:dialogue:${investigationId}:${anchor}`;
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function isStoredDialogueTurn(value: unknown): value is StoredDialogueTurn {
+  const turn = record(value);
+  return (
+    turn !== null &&
+    typeof turn.question === "string" &&
+    typeof turn.answer === "string"
+  );
+}
+
+function isStoredDialogueSession(value: unknown): value is StoredDialogueSession {
+  const session = record(value);
+  return (
+    session !== null &&
+    Array.isArray(session.turns) &&
+    session.turns.every(isStoredDialogueTurn) &&
+    (session.threadNodeId === undefined ||
+      session.threadNodeId === null ||
+      typeof session.threadNodeId === "string")
+  );
+}
+
 export function loadDialogueSession(key: string): StoredDialogueSession | null {
   try {
     const raw = sessionStorage.getItem(key);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as StoredDialogueSession;
-    if (!Array.isArray(parsed.turns)) return null;
+    const parsed = JSON.parse(raw);
+    if (!isStoredDialogueSession(parsed)) return null;
     return {
       turns: parsed.turns,
       threadNodeId: parsed.threadNodeId ?? null,
