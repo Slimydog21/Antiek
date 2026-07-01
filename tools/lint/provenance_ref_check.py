@@ -84,6 +84,33 @@ def _validator_call_names(tree: ast.Module) -> frozenset[str]:
     return frozenset(names)
 
 
+def _generated_id_factories(tree: ast.Module) -> dict[str, str]:
+    factories: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        module = node.module or ""
+        if module not in {"substrate.graph.ops", "graph.ops"}:
+            continue
+        for alias in node.names:
+            if alias.name == "new_random_id":
+                factories[alias.asname or alias.name] = "prefixed-random"
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if not (
+                node.name.startswith("_new_")
+                and node.name.endswith("_id")
+                and not node.args.posonlyargs
+                and not node.args.args
+                and not node.args.kwonlyargs
+                and node.args.vararg is None
+                and node.args.kwarg is None
+            ):
+                continue
+            factories[node.name] = "zero-arg-local"
+    return factories
+
+
 def _is_validator_call(node: ast.Call, validator_names: frozenset[str]) -> bool:
     return (_qualified_name(node.func) or "") in validator_names
 
@@ -201,17 +228,28 @@ def _expr_contains_validator_call(
     )
 
 
-def _is_generated_id_call(node: ast.Call) -> bool:
+def _is_generated_id_call(node: ast.Call, factories: dict[str, str]) -> bool:
     name = _qualified_name(node.func) or ""
-    short_name = name.rsplit(".", 1)[-1]
-    return name == "new_random_id" or (
-        short_name.startswith("_new_") and short_name.endswith("_id")
-    )
+    kind = factories.get(name)
+    if kind == "zero-arg-local":
+        return not node.args and not node.keywords
+    if kind == "prefixed-random":
+        return (
+            len(node.args) == 1
+            and not node.keywords
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+            and bool(node.args[0].value)
+        )
+    return False
 
 
-def _expr_contains_generated_id_call(tree: ast.AST) -> bool:
+def _expr_contains_generated_id_call(
+    tree: ast.AST,
+    factories: dict[str, str],
+) -> bool:
     return any(
-        isinstance(node, ast.Call) and _is_generated_id_call(node)
+        isinstance(node, ast.Call) and _is_generated_id_call(node, factories)
         for node in ast.walk(tree)
     )
 
@@ -273,8 +311,24 @@ def _validator_imported_names_in_stmt(stmt: ast.stmt) -> set[str]:
     return out
 
 
+def _generated_id_imported_names_in_stmt(stmt: ast.stmt) -> set[str]:
+    out: set[str] = set()
+    if isinstance(stmt, ast.ImportFrom) and (stmt.module or "") in {
+        "substrate.graph.ops",
+        "graph.ops",
+    }:
+        for alias in stmt.names:
+            if alias.name == "new_random_id":
+                out.add(alias.asname or alias.name)
+    return out
+
+
 def _non_validator_imported_names_in_stmt(stmt: ast.stmt) -> set[str]:
-    return _imported_names_in_stmt(stmt) - _validator_imported_names_in_stmt(stmt)
+    return (
+        _imported_names_in_stmt(stmt)
+        - _validator_imported_names_in_stmt(stmt)
+        - _generated_id_imported_names_in_stmt(stmt)
+    )
 
 
 def _module_shadowed_names(tree: ast.Module) -> set[str]:
@@ -319,6 +373,17 @@ def _without_shadowed_validator_names(
         for name in validator_names
         if name.split(".", 1)[0] not in shadowed_names
     )
+
+
+def _without_shadowed_generated_factories(
+    factories: dict[str, str],
+    shadowed_names: set[str],
+) -> dict[str, str]:
+    return {
+        name: kind
+        for name, kind in factories.items()
+        if name.split(".", 1)[0] not in shadowed_names
+    }
 
 
 def _names_in(tree: ast.AST) -> set[str]:
@@ -417,7 +482,10 @@ def _validator_aliases(
     return aliases
 
 
-def _generated_id_aliases(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+def _generated_id_aliases(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+    factories: dict[str, str],
+) -> set[str]:
     aliases: set[str] = set()
     assignments: list[tuple[set[str], ast.AST]] = []
     for node in ast.walk(func):
@@ -441,7 +509,7 @@ def _generated_id_aliases(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[s
         if value is None or not target_names:
             continue
         assignments.append((target_names, value))
-        if _expr_contains_generated_id_call(value):
+        if _expr_contains_generated_id_call(value, factories):
             aliases.update(target_names)
     changed = True
     while changed:
@@ -458,11 +526,12 @@ def _generated_id_aliases(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[s
 def _validated_fields(
     func: ast.FunctionDef | ast.AsyncFunctionDef,
     validator_names: frozenset[str],
+    generated_factories: dict[str, str],
     class_fields: dict[str, tuple[str, ...]],
 ) -> set[str]:
     aliases = _raw_field_aliases(func)
     validator_aliases = _validator_aliases(func, validator_names)
-    generated_id_aliases = _generated_id_aliases(func)
+    generated_id_aliases = _generated_id_aliases(func, generated_factories)
     out: set[str] = set()
     for node in ast.walk(func):
         if not isinstance(node, ast.Call) or not _is_validator_call(node, validator_names):
@@ -484,7 +553,7 @@ def _validated_fields(
                 continue
             if (
                 _expr_contains_validator_call(value, validator_names)
-                or _expr_contains_generated_id_call(value)
+                or _expr_contains_generated_id_call(value, generated_factories)
             ):
                 out.add(key.value)
             elif _names_in(value) & (validator_aliases | generated_id_aliases):
@@ -501,7 +570,7 @@ def _validated_fields(
                 continue
             if (
                 _expr_contains_validator_call(keyword.value, validator_names)
-                or _expr_contains_generated_id_call(keyword.value)
+                or _expr_contains_generated_id_call(keyword.value, generated_factories)
             ):
                 out.add(keyword.arg)
             elif _names_in(keyword.value) & (validator_aliases | generated_id_aliases):
@@ -523,7 +592,7 @@ def _validated_fields(
                 continue
             if (
                 _expr_contains_validator_call(value, validator_names)
-                or _expr_contains_generated_id_call(value)
+                or _expr_contains_generated_id_call(value, generated_factories)
             ):
                 out.add(field)
             elif _names_in(value) & (validator_aliases | generated_id_aliases):
@@ -534,12 +603,18 @@ def _validated_fields(
 def _unvalidated_field_sites(
     func: ast.FunctionDef | ast.AsyncFunctionDef,
     validator_names: frozenset[str],
+    generated_factories: dict[str, str],
     class_fields: dict[str, tuple[str, ...]],
 ) -> list[tuple[int, str]]:
     sites = _target_field_sites(func, class_fields)
     if not sites:
         return []
-    validated = _validated_fields(func, validator_names, class_fields)
+    validated = _validated_fields(
+        func,
+        validator_names,
+        generated_factories,
+        class_fields,
+    )
     return [
         (line, field)
         for line, field in sites
@@ -564,14 +639,25 @@ def _scan_file(rel: str, path: Path) -> list[str]:
 
     violations: list[str] = []
     validator_names = _validator_call_names(tree)
+    generated_factories = _generated_id_factories(tree)
     class_fields = _class_field_order(tree)
     module_shadows = _module_shadowed_names(tree)
     for func in _parser_functions(tree):
+        shadowed_names = module_shadows | _function_shadowed_names(func)
         effective_validator_names = _without_shadowed_validator_names(
             validator_names,
-            module_shadows | _function_shadowed_names(func),
+            shadowed_names,
         )
-        sites = _unvalidated_field_sites(func, effective_validator_names, class_fields)
+        effective_generated_factories = _without_shadowed_generated_factories(
+            generated_factories,
+            shadowed_names,
+        )
+        sites = _unvalidated_field_sites(
+            func,
+            effective_validator_names,
+            effective_generated_factories,
+            class_fields,
+        )
         if not sites:
             continue
         first_lines_by_field: dict[str, int] = {}
