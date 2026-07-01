@@ -222,6 +222,34 @@ def test_outcome_json_rejects_non_finite_composite_score(tmp_path):
         raise AssertionError("expected non-finite grounding score to be rejected")
 
 
+def test_outcome_json_rejects_out_of_range_composite_score(tmp_path):
+    path = tmp_path / "outcomes.json"
+    payload = _outcome_json()
+    payload["composite_breakdown"]["total"] = 1.2
+    path.write_text(json.dumps([payload]), encoding="utf-8")
+
+    try:
+        load_outcomes_json(path)
+    except ValueError as exc:
+        assert "outcomes[0].composite_breakdown.total must be in [0, 1]" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected out-of-range total score to be rejected")
+
+
+def test_outcome_json_rejects_negative_epsilon(tmp_path):
+    path = tmp_path / "outcomes.json"
+    payload = _outcome_json()
+    payload["epsilon_required"] = -0.01
+    path.write_text(json.dumps([payload]), encoding="utf-8")
+
+    try:
+        load_outcomes_json(path)
+    except ValueError as exc:
+        assert "outcomes[0].epsilon_required must be non-negative" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected negative epsilon to be rejected")
+
+
 def test_outcome_json_rejects_non_finite_cost(tmp_path):
     path = tmp_path / "outcomes.json"
     payload = _outcome_json()

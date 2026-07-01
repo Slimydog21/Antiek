@@ -68,6 +68,16 @@ def test_composite_score_combines_correctly():
     assert pytest.approx(cs.total) == 0.4 * 0.8 + 0.3 + 0.2 + 0.1
 
 
+def test_composite_score_rejects_out_of_range_rubric():
+    with pytest.raises(ValueError, match="rubric_score must be a number in \\[0, 1\\]"):
+        composite_score(
+            "text",
+            rubric_score=1.5,
+            corpus_terms=[],
+            expected_claim_ids=[],
+        )
+
+
 # ── Budget ──────────────────────────────────────────────────────────
 
 
