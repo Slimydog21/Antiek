@@ -11,8 +11,8 @@ schema below. Do NOT remove sections; mark them closed instead.
 Do NOT execute these actions yourself — flag them and stop.
 
 This file is paired with:
-- `docs/operator_gate_actions.md` — the original 8-gate framing
-  (G1-G8) for Phase 2 activation
+- `docs/operator_gate_actions.md` — the original G1-G8 activation
+  gates plus appended G9-G13 follow-on gate-actions
 - `docs/phase2_execution_audit_v4_2026_05_23.md` — the current
   exhaustive audit (supersedes v3; v3 §7's item count is stale — at
   least three of its "unexecuted" items are verifiably shipped on main:

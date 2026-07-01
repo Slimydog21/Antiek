@@ -46,6 +46,8 @@ def test_operator_actions_reflect_privacy_integration_evidence():
     assert statuses.count("CLOSED") == 1
     assert "Not closed:** 19 total — 17 OPEN, 1 PARTIALLY DONE" in compact_text
     assert "OA-010 | Integration-revert pattern resolved | CLOSED" in text
+    assert "G9-G13 follow-on gate-actions" in text
+    assert "original 8-gate framing" not in text
     assert "interfaces/research/api/app.py" in text
     assert "/trust-center/telemetry-preferences" in text
     assert "/trust-center/deletion-requests" in text
