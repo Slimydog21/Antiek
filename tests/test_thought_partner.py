@@ -187,7 +187,10 @@ def test_parse_challenge_shape():
         "synthesis_text": "",
         "extensions": [],
     })
-    parsed = parse_thought_partner_response(response)
+    parsed = parse_thought_partner_response(
+        response,
+        canonical_note_ids=("n-1", "n-3"),
+    )
     assert parsed.shape == "challenge"
     assert len(parsed.challenges) == 1
     assert parsed.challenges[0].condition.startswith("If gate error")
@@ -236,7 +239,7 @@ def test_parse_challenge_drops_fully_fabricated_note_ids_when_canonical_set_supp
     assert parsed.challenges == []
 
 
-def test_parse_challenge_keeps_uncanonicalized_note_ids_without_canonical_set():
+def test_parse_challenge_drops_note_ids_without_canonical_set():
     response = json.dumps({
         "shape": "challenge",
         "challenges": [
@@ -250,7 +253,7 @@ def test_parse_challenge_keeps_uncanonicalized_note_ids_without_canonical_set():
     })
     parsed = parse_thought_partner_response(response)
     assert parsed.shape == "challenge"
-    assert parsed.challenges[0].note_ids == ["n-made-up"]
+    assert parsed.challenges == []
 
 
 def test_parse_synthesis_shape():
@@ -312,7 +315,7 @@ def test_parse_drops_empty_challenge_conditions():
             {"condition": "valid one", "note_ids": ["n-2"]},
         ],
     })
-    parsed = parse_thought_partner_response(response)
+    parsed = parse_thought_partner_response(response, canonical_note_ids=("n-2",))
     assert len(parsed.challenges) == 1
     assert parsed.challenges[0].condition == "valid one"
 
