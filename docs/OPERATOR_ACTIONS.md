@@ -927,6 +927,19 @@ After OA-001 (lawyer review) closes:
    send the notification email via Resend.
 4. The email payload is what counsel reviewed in OA-001.
 
+After sending, run the packaged verifier against the production graph:
+
+```bash
+./.venv/bin/python -m tools.ops.first_cohort_notification_probe \
+  --db-path /path/to/production.duckdb \
+  --json
+```
+
+The probe requires the OA-001/G2 lawyer-review decision artifact and verifies
+that MIT Press, Cambridge University Press, and Princeton University Press have
+crossed the notification boundary with `notification_sent_at` populated. It
+does not send email and does not close OA-015 by itself.
+
 #### Once closed
 
 `ip_holders` rows for the three universities are in `invited` state
