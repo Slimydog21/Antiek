@@ -1,0 +1,35 @@
+{
+  "spec_file": "docs/html/sprints/sprint-21.html",
+  "source_spec_section": "docs/sprint-breakdown.html#sprint-21",
+  "target_branch": "reader/integration",
+  "status": "operator_gated",
+  "recorded_at": "2026-07-01T20:29:21Z",
+  "verified_code_sha": "639debdd",
+  "mode": "status_reconciliation",
+  "deterministic_evidence": {
+    "backend_gate": "65 passed: tests/test_synquery.py tests/test_api_sprint17_21_endpoints.py tests/test_phase8_gate.py tests/test_phase8_calibration_status.py tests/test_gepa_phase8_bridge.py tests/test_gepa_phase8_applier_e2e.py tests/test_ai_actions.py tests/test_api_ai_undo.py tests/test_billing_pipeline.py",
+    "frontend_gate": "28 passed: npm test -- AISidecar CommandPalette WorkspaceStore --run from apps/reading",
+    "synquery_files": "tools/synquery contains feature-flagged adapter/client and booking mock coverage",
+    "phase8_files": "compounding/skill_growth/gate.py exists with shadow/enforcing tests",
+    "ai_sidecar_records": "docs/decisions/posthog-wedge-4-verdict.md accepts current structured AI sidecar undo surface",
+    "operator_gate_record": "docs/operator_gate_actions.md records G6 autoresearch Wedge 1 verdict as open"
+  },
+  "operator_only_remaining": [
+    "Operator records creation-surface PMF gate verdict before activating Synquery.",
+    "Operator enables Synquery against the real external workflow and books/completes at least one expert call.",
+    "Returned Synquery transcript ingests as a tier-2 source.",
+    "Operator closes G6 autoresearch Wedge 1 ratify-or-reject verdict.",
+    "If G6 ratifies, Phase 8 enforcing runs in production and records at least one correct rejection.",
+    "Synquery expert-call hard cap is proven against a live or contract-equivalent booking path."
+  ],
+  "not_claimed": [
+    "Full repository test suite was not rerun in this S21 pass.",
+    "Real Synquery API calls, booking, payment, and transcript webhook were not exercised.",
+    "Phase 8 enforcing was not activated in production because G6 remains open.",
+    "The AI sidecar was not manually verified on every operator surface in browser."
+  ],
+  "notes": [
+    "The standalone Sprint 21 HTML page was missing even though docs/html/index.html linked to it; this pass restored that page from docs/sprint-breakdown.html#sprint-21.",
+    "A bounded Grok audit attempt failed with a read_file tool_output_error, so it is not used as acceptance evidence."
+  ]
+}
