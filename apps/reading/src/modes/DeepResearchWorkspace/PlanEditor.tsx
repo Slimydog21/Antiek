@@ -248,7 +248,8 @@ function parseOptionalInteger(value: string): number | undefined {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
   if (!/^[1-9]\d*$/.test(trimmed)) return undefined;
-  return Number.parseInt(trimmed, 10);
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
 function splitQuestions(value: string): string[] {
