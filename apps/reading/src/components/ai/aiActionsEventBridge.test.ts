@@ -181,10 +181,10 @@ describe("AISidecar event-log bridge", () => {
     const p = postTypedEventMock.mock.calls[0][0].payload as { target_kind: string; next_state: Record<string, unknown> };
     expect(p.target_kind).toBe("investigation_chase");
     expect(p.next_state.open).toBe(true);
-    expect(p.next_state.question).toBe(
+    expect(p.next_state.spawn_context).toBe(
       "What is the dispatch tier verdict criterion?",
     );
-    expect(p.next_state.investigation_id).toBe("inv-parent");
+    expect(p.next_state.parent_investigation_id).toBe("inv-parent");
   });
 
   it("toast WITH context does NOT emit events (transient action)", async () => {
