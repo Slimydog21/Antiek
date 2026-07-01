@@ -228,7 +228,7 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
     failures.extend(closure_failures)
     final_verdict = _final_verdict(records)
     if not closure_failures:
-        failures.extend(_final_verdict_failures(final_verdict))
+        failures.extend(_final_verdict_failures(final_verdict, records))
 
     return DogfoodReport(
         total_sessions=len(records),
@@ -427,15 +427,30 @@ def _final_verdict(records: list[dict[str, Any]]) -> str | None:
     return raw_verdict
 
 
-def _final_verdict_failures(final_verdict: str | None) -> list[str]:
+def _final_verdict_failures(
+    final_verdict: str | None, records: list[dict[str, Any]]
+) -> list[str]:
     allowed = ", ".join(ALLOWED_FINAL_VERDICTS)
     if final_verdict is None:
         return [f"final verdict required once closure evidence passes: {allowed}"]
     if final_verdict not in ALLOWED_FINAL_VERDICTS:
         return [f"final verdict must be one of: {allowed}"]
+    if final_verdict == "REPAIR" and not _blocking_issue_ids(records[-1]):
+        return ["REPAIR verdict requires at least one blocking_issue_ids entry"]
     if final_verdict != "ACTIVATE":
         return [f"closure requires final verdict ACTIVATE; found {final_verdict}"]
     return []
+
+
+def _blocking_issue_ids(record: dict[str, Any]) -> tuple[str, ...]:
+    issue_ids = record.get("blocking_issue_ids")
+    if not isinstance(issue_ids, list):
+        return ()
+    return tuple(
+        issue_id
+        for raw_issue_id in issue_ids
+        if (issue_id := _required_text(raw_issue_id))
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
