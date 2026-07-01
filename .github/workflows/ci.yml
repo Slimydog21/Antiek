@@ -172,6 +172,15 @@ jobs:
         run: |
           python tools/lint/owner_boundary_check.py
 
+      - name: Provenance parser-ref check
+        # SPR-01 (Karpathy Deep Lens). Forbid a role parser from surfacing a
+        # model-emitted *_id / *_ids provenance reference without routing that
+        # exact field through substrate.provenance.validate_ref(s). This keeps
+        # hallucinated parser references out of canonical IDs, and matches the
+        # path:line + exit-code contract of the other AST lints in this block.
+        run: |
+          python tools/lint/provenance_ref_check.py
+
       - name: Serve-guard boundary check
         # SPR-02 (arxiv-ingest): forbid direct serve_full_text() calls
         # outside the allowlist (substrate/books/serve.py where it is
