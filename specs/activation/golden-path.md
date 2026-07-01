@@ -114,13 +114,37 @@ Minimal record shape:
   "minutes_reading": 22,
   "verdict": "ACTIVATE",
   "steps": {
-    "1": {"status": "pass"},
-    "2": {"status": "pass"},
-    "3": {"status": "pass"},
-    "4": {"status": "pass"},
-    "5": {"status": "pass"},
-    "6": {"status": "pass"},
-    "7": {"status": "pass"}
+    "1": {
+      "status": "pass",
+      "visible_content_note": "visible heading and structured blocks"
+    },
+    "2": {
+      "status": "pass",
+      "selected_text": "highlighted passage text",
+      "menu_labels": ["Ask", "Investigate", "Trace source"]
+    },
+    "3": {
+      "status": "pass",
+      "first_answer": "first provider-backed answer"
+    },
+    "4": {
+      "status": "pass",
+      "investigation_id": "research-session-1"
+    },
+    "5": {
+      "status": "pass",
+      "source_document_id": "source-doc-1",
+      "chunk_id": "chunk-1",
+      "result_url": "https://app.example/read/source-doc-1?chunk=chunk-1"
+    },
+    "6": {
+      "status": "pass",
+      "return_context_note": "back/return preserved reading context"
+    },
+    "7": {
+      "status": "pass",
+      "operator_note": "read for 22 minutes; no blocking friction"
+    }
   }
 }
 ```
