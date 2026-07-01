@@ -225,6 +225,41 @@ def _resolve_region_text_from_db(
     return row[0] if row else None
 
 
+def _resolve_document_text_from_db(
+    db_path: str,
+    document_id: str,
+) -> str | None:
+    """Reconstruct document text from graph chunks in chunk order.
+
+    RLM-mode wrestling needs the whole document as a REPL variable, not
+    just the selected region. The graph already stores chunk text keyed
+    by document_id; this resolver gives the future RLM bridge a stable
+    source without depending on the trajectory log.
+    """
+    try:
+        import duckdb
+        con = duckdb.connect(db_path, read_only=True)
+    except Exception:
+        return None
+    try:
+        rows = con.execute(
+            """
+            SELECT text
+            FROM chunks
+            WHERE document_id = ?
+            ORDER BY chunk_index ASC, chunk_id ASC
+            """,
+            [document_id],
+        ).fetchall()
+    except Exception:
+        return None
+    finally:
+        con.close()
+    if not rows:
+        return None
+    return "\n\n".join(str(row[0]) for row in rows if row and row[0] is not None)
+
+
 def _resolve_region_text_from_trajectory(
     investigation_id: str,
     region_id: str,
