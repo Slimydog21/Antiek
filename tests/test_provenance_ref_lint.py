@@ -53,6 +53,26 @@ def parse(obj):
     assert any("question_id" in violation for violation in violations)
 
 
+def test_lint_catches_research_bridge_gap_question_ids_without_validator(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "substrate" / "research_bridge" / "gap.py",
+        """
+def parse_gap(obj):
+    return {"question_ids": obj.get("question_ids", [])}
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any(
+        "substrate/research_bridge/gap.py" in violation
+        and "question_ids" in violation
+        for violation in violations
+    )
+
+
 def test_lint_catches_parser_that_surfaces_echoed_ids_without_validator(
     tmp_path: Path,
 ) -> None:
