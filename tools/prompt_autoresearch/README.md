@@ -87,6 +87,18 @@ callback when constructing the runner. The runner emits one
 `prompt_autoresearch.iteration_completed` event for every accepted,
 rejected, or budget-rejected iteration; the callback owns persistence.
 
+```python
+from pathlib import Path
+from tools.prompt_autoresearch import PromptAutoresearchRunner, jsonl_event_sink
+
+runner = PromptAutoresearchRunner(
+    role="synthesizer",
+    event_sink=jsonl_event_sink(
+        Path("reports/autoresearch/synthesizer-events.jsonl")
+    ),
+)
+```
+
 Then render the calibration note:
 
 ```bash
