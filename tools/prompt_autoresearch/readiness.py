@@ -8,6 +8,7 @@ from pathlib import Path
 
 from tools.golden_traces import load_trace
 from tools.prompt_autoresearch.budget import BudgetCap
+from tools.prompt_autoresearch.markdown import markdown_code_span
 
 
 @dataclass(frozen=True)
@@ -227,8 +228,8 @@ def render_readiness_markdown(report: ReadinessReport) -> str:
     for item in report.items:
         lines.append(
             "| "
-            f"`{_markdown_table_cell(item.id)}` | "
-            f"`{_markdown_table_cell(item.status)}` | "
+            f"{markdown_code_span(_markdown_table_cell(item.id))} | "
+            f"{markdown_code_span(_markdown_table_cell(item.status))} | "
             f"{_markdown_table_cell(item.evidence)} |"
         )
     lines.append("")

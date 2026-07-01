@@ -34,6 +34,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from tools.prompt_autoresearch.markdown import markdown_code_span, markdown_inline
 from tools.prompt_autoresearch.runner import PromptMutationOutcome
 
 # Verdict thresholds, per §15.6 + the §16 "no consensus hedging" discipline.
@@ -227,11 +228,11 @@ def render_verdict_markdown(verdict: Verdict) -> str:
     """Render the verdict as a markdown document the operator commits."""
     _validate_verdict(verdict)
     lines: list[str] = []
-    lines.append(f"# Autoresearch Wedge 1 verdict — `{verdict.role}` (§15.6)")
+    lines.append(f"# Autoresearch Wedge 1 verdict — {markdown_code_span(verdict.role)} (§15.6)")
     lines.append("")
-    lines.append(f"**Decision:** `{verdict.decision}`")
+    lines.append(f"**Decision:** {markdown_code_span(verdict.decision)}")
     lines.append("")
-    lines.append(verdict.rationale)
+    lines.append(markdown_inline(verdict.rationale))
     lines.append("")
     lines.append("## Summary")
     lines.append("")
@@ -243,24 +244,29 @@ def render_verdict_markdown(verdict: Verdict) -> str:
     lines.append(f"- Median delta: **{verdict.median_delta:+.4f}**")
     if verdict.best_mutation_id:
         lines.append(
-            f"- Best mutation: `{verdict.best_mutation_id}` "
+            f"- Best mutation: {markdown_code_span(verdict.best_mutation_id)} "
             f"(Δ = {verdict.best_mutation_delta:+.4f})"
         )
         if verdict.best_mutation_rationale:
-            lines.append(f"- Best mutation rationale: {verdict.best_mutation_rationale}")
+            lines.append(
+                f"- Best mutation rationale: {markdown_inline(verdict.best_mutation_rationale)}"
+            )
         if verdict.best_mutation_parent_baseline_id:
             lines.append(
-                f"- Best mutation parent baseline: `{verdict.best_mutation_parent_baseline_id}`"
+                "- Best mutation parent baseline: "
+                f"{markdown_code_span(verdict.best_mutation_parent_baseline_id)}"
             )
         if verdict.best_mutation_proposed_at:
-            lines.append(f"- Best mutation proposed at: `{verdict.best_mutation_proposed_at}`")
+            lines.append(
+                f"- Best mutation proposed at: {markdown_code_span(verdict.best_mutation_proposed_at)}"
+            )
     lines.append(f"- Total cost: ${verdict.total_cost_usd:.4f}")
     lines.append("")
     if verdict.sub_metric_regressions:
         lines.append("## Sub-metric regressions (REJECT triggers)")
         lines.append("")
         for r in verdict.sub_metric_regressions:
-            lines.append(f"- {r}")
+            lines.append(f"- {markdown_inline(r)}")
         lines.append("")
     lines.append("## Next steps")
     lines.append("")

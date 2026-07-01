@@ -419,6 +419,37 @@ def test_render_reject_includes_regression_list():
     assert "grounding" in md
 
 
+def test_render_verdict_escapes_dynamic_inline_content():
+    verdict = Verdict(
+        role="synth`role\nextra",
+        decision="reject",
+        iteration_count=20,
+        acceptance_rate=0.0,
+        mean_delta=-0.10,
+        median_delta=-0.10,
+        best_mutation_id="m`0\nnext",
+        best_mutation_delta=-0.10,
+        total_cost_usd=1.0,
+        rationale="# forged heading\nuse **bold** | table",
+        sub_metric_regressions=["grounding | dropped\n# hidden"],
+        accepted_count=0,
+        rejected_count=20,
+        best_mutation_rationale="tighten **citations**\nnext",
+        best_mutation_parent_baseline_id="base`1",
+        best_mutation_proposed_at="2026-07-01T00:00:00Z",
+    )
+
+    md = render_verdict_markdown(verdict)
+
+    assert "# Autoresearch Wedge 1 verdict — `` synth`role extra `` (§15.6)" in md
+    assert "- Best mutation: `` m`0 next ``" in md
+    assert "Best mutation parent baseline: `` base`1 ``" in md
+    assert "\\# forged heading use \\*\\*bold\\*\\* \\| table" in md
+    assert "tighten \\*\\*citations\\*\\* next" in md
+    assert "grounding \\| dropped \\# hidden" in md
+    assert "\n# forged heading" not in md
+
+
 def test_outcome_json_round_trips(tmp_path):
     outcome = _mk_outcome(
         mutation_id="m-roundtrip",
