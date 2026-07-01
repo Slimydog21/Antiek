@@ -37,6 +37,7 @@ sys.path.insert(0, os.path.dirname(_HERE))
 
 from interfaces.research.api import EventBroadcaster, create_app  # noqa: E402
 from processing.embedding import _reset_default_provider  # noqa: E402
+from runtime.db_lock import connect_write  # noqa: E402
 from substrate.dispatch import (  # noqa: E402
     DispatchConfig,
     NormalizedUsage,
@@ -48,6 +49,7 @@ from substrate.dispatch import (  # noqa: E402
     reset_provider_registry,
 )
 from substrate.event_log import trajectory  # noqa: E402
+from substrate.graph import ensure_initialized, insert_chunk, insert_document  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     ActionType,
     Event,
@@ -58,8 +60,9 @@ from substrate.schemas import (  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _isolate_state(tmp_path, monkeypatch):
+    db_path = str(tmp_path / "graph.duckdb")
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
-    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(tmp_path / "graph.duckdb"))
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
     monkeypatch.setenv("ANTIEK_EMBEDDING_PROVIDER", "hash")
     monkeypatch.setenv("ANTIEK_RESEARCH_PHASE_LOG_DIR", str(tmp_path / "phase_logs"))
     monkeypatch.setenv("ANTIEK_RESEARCH_DIR", str(tmp_path / "research"))
@@ -76,6 +79,37 @@ def _isolate_state(tmp_path, monkeypatch):
         "## Open Questions\n\n(Findings will be added.)\n\n"
         "## Monitoring Checklist\n\n(Findings will be added.)\n"
     )
+    ensure_initialized(db_path)
+    con = connect_write(db_path, purpose="test/loop_one_seed")
+    try:
+        insert_document(
+            con,
+            document_id="doc-loop-one-psi",
+            source_tier=1,
+            document_type="primary_source",
+            title="PsiQuantum roadmap evidence packet",
+            raw_text=(
+                "PsiQuantum photonic quantum roadmap primary evidence. "
+                "Quantum X threshold, addressable quantum market, execution "
+                "risks, regulatory exposure, and fault-tolerance evidence."
+            ),
+        )
+        insert_chunk(
+            con,
+            document_id="doc-loop-one-psi",
+            chunk_id="chunk-1",
+            chunk_index=0,
+            section_path="loop-one-fixture",
+            token_count=64,
+            text=(
+                "PsiQuantum's photonic quantum roadmap has primary evidence "
+                "for Quantum X at threshold. The addressable quantum market "
+                "is material, execution risks are named, and regulatory "
+                "exposure is bounded by documented controls."
+            ),
+        )
+    finally:
+        con.close()
     _reset_default_provider()
     reset_provider_registry()
     yield
