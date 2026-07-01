@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sprint 22 — Multi-user pivot and two-graph architecture</title>
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+
+<nav class="topnav">
+    <div class="topnav-inner">
+        <span class="topnav-title">Antiek docs</span>
+        <a href="../index.html">Index</a>
+        <a href="../spec-exa-browserbase.html">Exa &amp; Browserbase spec</a>
+        <a href="sprint-17.html">S17</a>
+        <a href="sprint-18.html">S18</a>
+        <a href="sprint-19.html">S19</a>
+        <a href="sprint-20.html">S20</a>
+        <a href="sprint-21.html">S21</a>
+        <a href="sprint-22.html" class="active">S22</a>
+    </div>
+</nav>
+
+<main>
+<article>
+
+<p class="kicker">Sprint 22+ &middot; strategic-gated &middot; substrate slice verified 2026-07-01 &middot; six-month compounding gate</p>
+<h1>Sprint 22 — Multi-User Pivot &amp; Two-Graph Architecture</h1>
+
+<div class="meta">
+    <p><strong>Theme</strong>. Sprint 22 is the architectural inflection from single-operator Antiek to personal-graph-as-memory plus collective public graph. It is explicitly gated on six months of solo-operator compounding evidence.</p>
+    <p><strong>Current reconciliation</strong>. Local multi-user, graph routing, auth-decision, federation-probe, and DP preference substrate tests passed. The sprint is not shipped and should not be activated until the compounding gate and real second-user evidence exist.</p>
+</div>
+
+<div class="toc">
+    <div class="toc-title">On this page</div>
+    <ol>
+        <li><a href="#gate">Binding gate</a></li>
+        <li><a href="#phases">Progressive phases</a></li>
+        <li><a href="#deliverables">Specific deliverables</a></li>
+        <li><a href="#status">Status reconciliation</a></li>
+        <li><a href="#acceptance">Acceptance &amp; exit criteria</a></li>
+    </ol>
+</div>
+
+<h2 id="gate">1. Binding gate <a class="section-anchor" href="#gate">#</a></h2>
+
+<div class="callout warn">
+    <strong>Six-month compounding gate</strong>
+    <p>Sprint 22 ships only after six months of operator-graph accumulation demonstrates the compounding curve. Premature multi-user risks graph contamination before the moat has been proven. Sprint 20's visible-artifact growth motion is the demonstration input.</p>
+</div>
+
+<h2 id="phases">2. Progressive phases <a class="section-anchor" href="#phases">#</a></h2>
+
+<h3>2.1 Auth integration — Clerk or Supabase</h3>
+<p>Sign-up, sign-in, session management, and OAuth scope mapping for Antiek Memory MCP per-user resources. The Clerk versus Supabase choice remains an operator-decided spike.</p>
+<p><strong>Exit</strong>: a second user can register and sign in independently of the operator.</p>
+
+<h3>2.2 Per-user personal graph at storage level</h3>
+<p>Per-user DuckDB files with per-partition encryption keys. Private-facing notes cannot write into the collective graph by schema design. This is a physical separation claim, not a tagging convention.</p>
+<p><strong>Exit</strong>: a synthetic cross-user-read attempt fails at the database boundary.</p>
+
+<h3>2.3 Collective graph aggregation</h3>
+<p>Public-facing notes flow into the collective graph through quality gates covering verification, voice-style scoring, and source-tier validation. Pre-onboarded IP-holder content sits alongside operator-curated corpus material.</p>
+<p><strong>Exit</strong>: a second user's published note appears in collective graph search, attributable and ad-eligible.</p>
+
+<h3>2.4 DuckLake catalog separation activated</h3>
+<p>The catalog Postgres becomes operational for per-user file routing. Stage 1 opens the Stage 2 path if per-user file count later approaches operating-system handle limits.</p>
+<p><strong>Exit</strong>: catalog-routed queries reach the right per-user DuckDB and backups stay within the backup window.</p>
+
+<h3>2.5 Cross-graph writes flow through shared substrate</h3>
+<p>Skill patches discovered in a user's private-facing notes propagate as discovered rules through the shared-substrate writer queue, never as the original private content. Differential-privacy guarantees must hold at this boundary.</p>
+<p><strong>Exit</strong>: a skill patch derived from User B's private graph reaches shared substrate without exfiltrating original private content.</p>
+
+<h3>2.6 Privacy dashboard and Trust Center</h3>
+<p>The privacy dashboard gives a real-time view of telemetry collected from the user's private graph, category toggles, and deletion control. The public Trust Center documents privacy architecture, DP parameters, retention, deletion SLA, incident response, and dashboard behavior.</p>
+<p><strong>Exit</strong>: a user can inspect, disable, and delete telemetry; a prospective user can read the public Trust Center without an account.</p>
+
+<h3>2.7 Differential privacy enforcement live</h3>
+<p>The DP shuffler enforces per-surface epsilon budgets in production. Any DP claim above the binding cap is rejected.</p>
+<p><strong>Exit</strong>: production telemetry routes through the shuffler at the documented epsilon for each surface.</p>
+
+<h2 id="deliverables">3. Specific deliverables <a class="section-anchor" href="#deliverables">#</a></h2>
+
+<ul>
+    <li><code>substrate/multi_user/</code> &mdash; Clerk/Supabase auth integration.</li>
+    <li><code>substrate/graph/per_user_storage.py</code> &mdash; per-user DuckDB and encryption keys.</li>
+    <li><code>substrate/cross_graph/</code> &mdash; writer queue with DP shuffler in front.</li>
+    <li><code>substrate/ducklake/</code> &mdash; catalog Postgres and per-user routing.</li>
+    <li><code>apps/reading/src/modes/PrivacyDashboard/</code> &mdash; telemetry controls and delete-all flow.</li>
+    <li><code>apps/reading/src/modes/TrustCenter/</code> &mdash; public-facing trust documentation.</li>
+</ul>
+
+<h2 id="status">4. Status reconciliation <a class="section-anchor" href="#status">#</a></h2>
+
+<div class="callout warn">
+    <strong>Strategic-gated, not shipped</strong>
+    <p>Substrate slices exist and scoped tests are green. The sprint remains gated because the six-month solo-operator compounding proof, second-user activation, public Trust Center publication, and production privacy guarantees are not established by local tests.</p>
+</div>
+
+<p>Fresh deterministic gate:</p>
+
+<pre><code>.venv/bin/python -m pytest \
+  tests/test_multi_user.py \
+  tests/test_auth_vendor_decision_probe.py \
+  tests/test_federation_exchange_probe.py \
+  tests/test_dp_preference_learning.py -q
+
+52 passed in 1.53s</code></pre>
+
+<p>The test slice verifies important substrate mechanics. It does not prove product activation, public compliance posture, or the strategic compounding gate.</p>
+
+<h2 id="acceptance">5. Acceptance &amp; exit criteria <a class="section-anchor" href="#acceptance">#</a></h2>
+
+<ul>
+    <li>Two real users are live on independent personal graphs.</li>
+    <li>The architectural-incapability claim holds under a cross-graph leak attempt.</li>
+    <li>Trust Center is publicly published and accurately describes the architecture.</li>
+    <li>Substrate is in Stage 1 of the transition matrix.</li>
+    <li>SOC 2 Type II is explicitly deferred; substrate-controls work is the foundation either way.</li>
+</ul>
+
+</article>
+</main>
+
+</body>
+</html>
