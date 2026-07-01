@@ -48,6 +48,11 @@ def test_operator_actions_reflect_privacy_integration_evidence():
     assert "OA-010 | Integration-revert pattern resolved | CLOSED" in text
     assert "G9-G13 follow-on gate-actions" in text
     assert "original 8-gate framing" not in text
+    assert "docs/phase2_execution_audit_v5_2026_07_01.md" in text
+    assert "the current reconciliation layer" in compact_text
+    assert "docs/phase2_execution_audit_v3_2026_05_23.md" in text
+    assert "the historical exhaustive audit" in compact_text
+    assert "the current exhaustive audit" not in compact_text
     assert "interfaces/research/api/app.py" in text
     assert "/trust-center/telemetry-preferences" in text
     assert "/trust-center/deletion-requests" in text
