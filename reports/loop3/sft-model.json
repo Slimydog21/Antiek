@@ -1,0 +1,12 @@
+{
+  "policy_id": "",
+  "base_architecture": "",
+  "rl_target_base_architecture": "",
+  "model_artifact": "",
+  "training_dataset_ref": "",
+  "heldout_eval_ref": "",
+  "model_sha256": "",
+  "train_loss": "",
+  "heldout_eval_score": "",
+  "produced_at": ""
+}
