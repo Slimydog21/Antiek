@@ -200,10 +200,17 @@ async def _post_synthesize(
     *,
     investigation_id,
     constraints=None,
-    evidence_block="[evidence]",
+    evidence_block=None,
     parameters_block="[parameters]",
-    substrate_block="[substrate]",
+    substrate_block=None,
 ):
+    if evidence_block is None:
+        evidence_block = _evidence_block("chunk-1")
+    if substrate_block is None:
+        substrate_block = _connector_block(
+            path_nodes=["n-1", "n-2"],
+            edge_ids=["e-1"],
+        )
     payload = {
         "action_type": "synthesize.requested",
         "question": "Is X causally linked to Y?",
