@@ -168,7 +168,11 @@ cd ~/Desktop/Antiek
 ## Out of scope for this commit
 
 - **Operator-production hot paths (HP-6 through HP-10).** Need operator access + dataset stubs. Each is one bench module + the verdict-doc update; the harness shape is ready.
-- **Cross-run regression detection.** Today the harness writes JSON; comparing JSON across runs to flag regressions is the next concern (would slot into the `antiek check` CLI as a `perf` subcommand).
+- **Cross-run regression detection.** Built on 2026-07-01: `antiek check perf`
+  still snapshots with `--save` by default, and now also compares two saved
+  JSON runs with `--baseline`, `--current`, and `--max-regression-pct`. This is
+  deliberately on-demand, not a CI gate: blocking CI still needs an operator
+  baseline and drift policy.
 - **CI wiring.** The benchmarks are runnable on demand. Wiring them into CI as a perf-regression gate requires a baseline + an acceptable-drift policy + operator buy-in on what to do when a PR regresses perf. Not in this commit.
 
 ## Self-ratification

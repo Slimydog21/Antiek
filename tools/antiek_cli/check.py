@@ -19,6 +19,8 @@ Usage::
     python -m tools.antiek_cli check doctest --scope substrate/
     python -m tools.antiek_cli check props
     python -m tools.antiek_cli check invariants
+    python -m tools.antiek_cli check perf
+    python -m tools.antiek_cli check perf --baseline base.json --current head.json
     python -m tools.antiek_cli check all --scope substrate/
 
 Each subcommand exits 0 on success, non-zero on failure. ``all`` runs
@@ -150,10 +152,61 @@ def run_invariants(scope: str, strict: bool = False) -> StageResult:
                 ["./.venv/bin/python", "-m", "substrate.invariants"])
 
 
-def run_perf(scope: str, strict: bool = False) -> StageResult:
+def run_perf(
+    scope: str,
+    strict: bool = False,
+    *,
+    baseline: str | None = None,
+    current: str | None = None,
+    max_regression_pct: float = 25.0,
+) -> StageResult:
     """Run the ARE-12 hot-path benchmark harness. Writes per-run JSON
     to tools/benchmarks/hot_paths/results/. Skips if the harness
-    package is absent on this branch."""
+    package is absent on this branch. With ``baseline`` + ``current``,
+    compare two saved JSON runs instead."""
+    if baseline or current:
+        if not baseline or not current:
+            print("Perf comparison error: --baseline and --current must be passed together")
+            return StageResult(
+                name="perf",
+                rc=2,
+                elapsed_s=0.0,
+                skipped_reason="--baseline and --current must be passed together",
+            )
+        if max_regression_pct < 0:
+            print("Perf comparison error: --max-regression-pct must be >= 0")
+            return StageResult(
+                name="perf",
+                rc=2,
+                elapsed_s=0.0,
+                skipped_reason="--max-regression-pct must be >= 0",
+            )
+        from tools.benchmarks.hot_paths.compare import compare_runs
+
+        t0 = time.monotonic()
+        try:
+            findings = compare_runs(
+                Path(baseline),
+                Path(current),
+                max_regression_pct=max_regression_pct,
+            )
+        except (OSError, ValueError) as exc:
+            print(f"Perf comparison error: {exc}")
+            return StageResult(
+                name="perf",
+                rc=2,
+                elapsed_s=time.monotonic() - t0,
+                skipped_reason=str(exc),
+            )
+        if findings:
+            print("Perf regressions:")
+            for finding in findings:
+                print(f"  {finding.format_line()}")
+            return StageResult(name="perf", rc=1, elapsed_s=time.monotonic() - t0)
+        print(
+            f"Perf comparison PASS: no metric regressed by > {max_regression_pct:.1f}%"
+        )
+        return StageResult(name="perf", rc=0, elapsed_s=time.monotonic() - t0)
     harness_main = PROJECT_ROOT / "tools" / "benchmarks" / "hot_paths" / "__main__.py"
     if not harness_main.exists():
         return StageResult(
@@ -193,6 +246,21 @@ def _build_parser() -> argparse.ArgumentParser:
                         help=f"target path; default {DEFAULT_SCOPE!r}")
         sp.add_argument("--strict", action="store_true",
                         help="enable strict mode (mypy --strict)")
+        if name == "perf":
+            sp.add_argument(
+                "--baseline",
+                help="saved hot-path benchmark JSON to compare from",
+            )
+            sp.add_argument(
+                "--current",
+                help="saved hot-path benchmark JSON to compare against baseline",
+            )
+            sp.add_argument(
+                "--max-regression-pct",
+                type=float,
+                default=25.0,
+                help="fail if any metric is more than this percent slower",
+            )
         if name == "all":
             sp.add_argument("--continue-on-error", action="store_true",
                             help="run every stage even if an earlier one fails")
@@ -222,6 +290,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "all":
         return _run_all(scope=args.scope, strict=args.strict,
                         continue_on_error=args.continue_on_error)
+    if args.cmd == "perf":
+        result = run_perf(
+            args.scope,
+            strict=args.strict,
+            baseline=args.baseline,
+            current=args.current,
+            max_regression_pct=args.max_regression_pct,
+        )
+        print(result.format_report_line())
+        if result.is_skip:
+            return 0
+        return result.rc
     result = RUNNERS[args.cmd](args.scope, strict=args.strict)
     print(result.format_report_line())
     if result.is_skip:
