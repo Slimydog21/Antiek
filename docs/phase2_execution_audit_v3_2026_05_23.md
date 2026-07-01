@@ -1,5 +1,15 @@
 # Phase 2 Execution Audit (v3) — 2026-05-23
 
+> **Supersession note (2026-07-01):** This is a historical audit snapshot.
+> The current reconciliation layer is
+> `docs/phase2_execution_audit_v5_2026_07_01.md` plus
+> `docs/OPERATOR_ACTIONS.md`. In particular, this file's 2026-05-23
+> statement that the PrivacyDashboard telemetry-preference UI and
+> `/trust-center/telemetry-preferences` endpoint were still missing is no
+> longer current; both are now present and guarded by
+> `tests/test_privacy_control_plane_docs.py` and
+> `apps/reading/src/modes/PrivacyDashboard/PrivacyDashboard.test.tsx`.
+
 This is the third pass on the same question. v1 covered deliverables
 per sprint; v2 added phase-by-phase exit criteria + §15 strategic
 open questions + §16 REJECTs + a 78-item flat enumeration of
@@ -78,8 +88,8 @@ items from the v2 §8 flat list. Quoting the v2 line numbers:
 | 2 | `substrate/graph/per_user_storage.py` (Sprint 22 deliverable name) | `substrate/graph_per_user/` (lifecycle.py covers create/open/close/delete; key_provider.py covers KMS abstraction) | Lifted to its own dir because edits to `substrate/graph/` revert per the integration-revert pattern; functionality matches the spec deliverable |
 | 7 | Per-graph encryption keys via KMS integration | `substrate/graph_per_user/key_provider.py` (KeyProvider Protocol + InMemoryKeyProvider + KMSStubKeyProvider) | Production swaps a real KMS client into KMSStubKeyProvider; substrate contract is stable. No actual KMS keys provisioned. |
 | 11 | §13.9 quality gate (verification + voice-style scoring + source-tier validation) | `substrate/quality_gate/` (gate.py + checks.py) | Three pluggable checks; composite verdict PASS_PUBLIC / REROUTE_PRIVATE / REJECT |
-| 19 | Per-telemetry-category opt-in/opt-out toggle (UI affordance + backend storage) | `substrate/telemetry_preferences/preferences.py` (backend storage) | UI affordance still missing in `PrivacyDashboard/index.tsx` — needs an additional UI iteration |
-| 20 | `user_telemetry_preferences` table + endpoints | `substrate/telemetry_preferences/preferences.py` (SqlitePreferenceStore + InMemoryPreferenceStore) | Endpoints would need `app.py` edits, which revert. Substrate ready. |
+| 19 | Per-telemetry-category opt-in/opt-out toggle (UI affordance + backend storage) | `substrate/telemetry_preferences/preferences.py` (backend storage) | Historical v3 state: UI affordance still missing in `PrivacyDashboard/index.tsx`; superseded on 2026-07-01 by live PrivacyDashboard toggles + `/trust-center/telemetry-preferences` API coverage |
+| 20 | `user_telemetry_preferences` table + endpoints | `substrate/telemetry_preferences/preferences.py` (SqlitePreferenceStore + InMemoryPreferenceStore) | Historical v3 state: endpoints still needed `app.py` edits; superseded on 2026-07-01 by live `/trust-center/telemetry-preferences` list + patch endpoints |
 | 21 | Deletion worker enforcing 30-day SLA | `substrate/deletion_worker/worker.py` (process_request + run_one_cycle) | Pure-functional; production wires a scheduler (systemd timer or operator-run cycle) + real DB cascade |
 | 27 | §5.5 voice-rubric module wired to AdSlot.shouldSuppress | `substrate/voice_style/rubric.py` + `suppression.py` | AdSlot still takes the predicate as a caller prop; the predicate value now has a real implementation to call |
 | 29 | Topic-classification → ad-inventory selection wiring | `substrate/ad_targeting/matcher.py` | score_campaign + match_candidates; no production wiring yet (no ad pages, no impressions) |
@@ -281,8 +291,8 @@ appended. Total: **69 items** (v2 had 78; this session closed 9).
 16. Application-layer routing through DuckLake catalog at query time
 17. Test that User B's skill patch reaches shared substrate without B's private content
 18. DP shuffler wiring in front of cross-graph writer queue
-19. ~~Per-telemetry-category opt-in/opt-out toggle backend storage~~ — SUBSTRATE CLOSED (`telemetry_preferences/`); UI affordance in PrivacyDashboard still missing
-20. ~~`user_telemetry_preferences` table~~ — SUBSTRATE CLOSED; endpoint still missing (app.py reverts)
+19. ~~Per-telemetry-category opt-in/opt-out toggle backend storage~~ — SUBSTRATE CLOSED (`telemetry_preferences/`); historical v3 note said the PrivacyDashboard UI affordance was still missing; superseded on 2026-07-01 by live UI/API coverage
+20. ~~`user_telemetry_preferences` table~~ — SUBSTRATE CLOSED; historical v3 note said the endpoint was still missing; superseded on 2026-07-01 by live `/trust-center/telemetry-preferences` list + patch endpoints
 21. ~~Deletion worker enforcing 30-day SLA~~ — SUBSTRATE CLOSED (`deletion_worker/`); production scheduler (systemd timer) + real DB cascade not yet wired
 22. Trust Center publicly published at antiek.ai/trust
 23. Live wiring of /trust-center endpoint to substrate.trust_center.build_publication (reverts)

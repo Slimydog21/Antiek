@@ -97,3 +97,20 @@ def test_operator_actions_reflect_privacy_integration_evidence():
     assert "RevSharePayoutRouter" in stripe_connect
     assert "route_impression_revenue" in stripe_connect
     assert "export_tax_year" in stripe_connect
+
+
+def test_historical_v3_audit_marks_privacy_gap_superseded():
+    text = (
+        REPO / "docs" / "phase2_execution_audit_v3_2026_05_23.md"
+    ).read_text(encoding="utf-8")
+    compact_text = " ".join(text.split())
+
+    assert "Supersession note (2026-07-01)" in text
+    assert "docs/phase2_execution_audit_v5_2026_07_01.md" in text
+    assert "/trust-center/telemetry-preferences" in text
+    assert "PrivacyDashboard telemetry-preference UI" in compact_text
+    assert "superseded on 2026-07-01 by live UI/API coverage" in compact_text
+    assert (
+        "superseded on 2026-07-01 by live `/trust-center/telemetry-preferences` "
+        "list + patch endpoints"
+    ) in compact_text
