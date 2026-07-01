@@ -10,7 +10,11 @@ import {
 } from "../../lib/api";
 import ParkedQuestion from "./ParkedQuestion";
 import WatchForLaterFolder from "./WatchForLaterFolder";
-import { BRAINSTORM_SELECT_QUESTION_EVENT } from "./WatchForLaterPanel";
+import {
+  BRAINSTORM_SELECT_QUESTION_EVENT,
+  dispatchBrainstormQuestionSelection,
+  getBrainstormQuestionSelection,
+} from "./WatchForLaterPanel";
 
 /**
  * Mode E — Brainstorming Workstation.
@@ -22,9 +26,8 @@ import { BRAINSTORM_SELECT_QUESTION_EVENT } from "./WatchForLaterPanel";
  *   - Watch-for-later folder: parked unsharpened open questions
  *     across all investigations
  *   - Launch-investigation affordance per parked question
- *   - Voice-note input placeholder (full ship Sprint 18)
- *   - Thought-partner pane placeholder (full ship Sprint 18 with
- *     the new `thought_partner` role)
+ *   - Thought-partner pane that talks to the selected parked question
+ *     through the real `/thought-partner` endpoint
  *
  * Three columns:
  *   Left  — Watch-for-later folder (parked questions)
@@ -58,6 +61,8 @@ export default function BrainstormStation() {
   }, [reload]);
 
   useEffect(() => {
+    const latest = getBrainstormQuestionSelection();
+    if (latest) setSelected(latest);
     const onSelect = (event: Event) => {
       const question = (event as CustomEvent<{ question?: ParkedQuestionEntry }>).detail
         ?.question;
@@ -92,8 +97,8 @@ export default function BrainstormStation() {
   // S10 row 10.8 — BrainstormStation wraps the main parked-question
   // view in PanelHost with the spec's two side panels as starters.
   // The watch-list panel self-fetches (mirrors the parent's `parked`
-  // state independently); the thought-partner panel surfaces a CTA
-  // to ⌘/ the AISidecar (the actual thought-partner pane).
+  // state independently); the thought-partner panel shares the selected
+  // parked question through the browser selection bridge.
   return (
     <PanelHost
       starters={[
@@ -131,7 +136,10 @@ export default function BrainstormStation() {
               loading={loading}
               error={error}
               selectedId={selected?.question_id ?? null}
-              onSelect={setSelected}
+              onSelect={(question) => {
+                setSelected(question);
+                dispatchBrainstormQuestionSelection(question);
+              }}
             />
           </div>
         )}
@@ -170,6 +178,5 @@ function EmptyState({ parkedCount }: { parkedCount: number }) {
   );
 }
 
-// ThoughtPartnerPlaceholder superseded by ThoughtPartnerPanel
-// (registered as PanelKind="BrainstormThoughtPartner" + opened as a
-// docked-right starter via PanelHost).
+// ThoughtPartnerPanel is registered as PanelKind="BrainstormThoughtPartner"
+// and opened as a docked-right starter via PanelHost.

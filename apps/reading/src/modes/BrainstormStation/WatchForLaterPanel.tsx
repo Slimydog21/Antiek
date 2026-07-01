@@ -5,6 +5,25 @@ import WatchForLaterFolder from "./WatchForLaterFolder";
 
 export const BRAINSTORM_SELECT_QUESTION_EVENT = "antiek:brainstorm:select-question";
 
+let latestBrainstormQuestionSelection: ParkedQuestionEntry | null = null;
+
+export function dispatchBrainstormQuestionSelection(question: ParkedQuestionEntry) {
+  latestBrainstormQuestionSelection = question;
+  window.dispatchEvent(
+    new CustomEvent(BRAINSTORM_SELECT_QUESTION_EVENT, {
+      detail: { question },
+    }),
+  );
+}
+
+export function getBrainstormQuestionSelection(): ParkedQuestionEntry | null {
+  return latestBrainstormQuestionSelection;
+}
+
+export function resetBrainstormQuestionSelection() {
+  latestBrainstormQuestionSelection = null;
+}
+
 /**
  * BrainstormStation's "watch for later" parked-questions list as a
  * PanelKind. Self-fetches the parked-question list (PanelHost freezes
@@ -39,6 +58,23 @@ export default function WatchForLaterPanel() {
     return () => clearInterval(t);
   }, [reload]);
 
+  useEffect(() => {
+    const applySelection = (question: ParkedQuestionEntry) => {
+      setSelected(question);
+    };
+    const latest = getBrainstormQuestionSelection();
+    if (latest) applySelection(latest);
+    const onSelect = (event: Event) => {
+      const question = (event as CustomEvent<{ question?: ParkedQuestionEntry }>)
+        .detail?.question;
+      if (question) applySelection(question);
+    };
+    window.addEventListener(BRAINSTORM_SELECT_QUESTION_EVENT, onSelect);
+    return () => {
+      window.removeEventListener(BRAINSTORM_SELECT_QUESTION_EVENT, onSelect);
+    };
+  }, []);
+
   return (
     <div className="h-full overflow-y-auto bg-ice-1 dark:bg-charcoal-2">
       <WatchForLaterFolder
@@ -48,11 +84,7 @@ export default function WatchForLaterPanel() {
         selectedId={selected?.question_id ?? null}
         onSelect={(question) => {
           setSelected(question);
-          window.dispatchEvent(
-            new CustomEvent(BRAINSTORM_SELECT_QUESTION_EVENT, {
-              detail: { question },
-            }),
-          );
+          dispatchBrainstormQuestionSelection(question);
         }}
       />
     </div>
