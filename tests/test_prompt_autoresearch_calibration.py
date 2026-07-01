@@ -173,6 +173,26 @@ def test_calibration_cli_writes_markdown_from_outcome_json(tmp_path):
     assert "Recommended epsilon" in md
 
 
+def test_calibration_cli_rejects_unwritable_output_path(tmp_path, capsys):
+    from tools.prompt_autoresearch.calibration_cli import main
+
+    outcomes_path = tmp_path / "noop-outcomes.json"
+    output_path = tmp_path / "calibration-dir"
+    output_path.mkdir()
+    write_outcomes_json(
+        outcomes_path,
+        role="synthesizer",
+        outcomes=[_outcome("noop-0", 0.0)],
+    )
+
+    rc = main(["--outcomes", str(outcomes_path), "--output", str(output_path)])
+
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "could not write calibration markdown" in err
+    assert str(output_path) in err
+
+
 def test_calibration_cli_rejects_invalid_floor_epsilon(tmp_path, capsys):
     from tools.prompt_autoresearch.calibration_cli import main
 

@@ -47,8 +47,15 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(markdown, encoding="utf-8")
+        try:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(markdown, encoding="utf-8")
+        except OSError as exc:
+            print(
+                f"error: could not write verdict markdown: {args.output}: {exc}",
+                file=sys.stderr,
+            )
+            return 2
     else:
         print(markdown)
     return 0

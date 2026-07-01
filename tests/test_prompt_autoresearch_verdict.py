@@ -667,6 +667,29 @@ def test_verdict_cli_writes_markdown_from_json(tmp_path):
     assert "**Decision:** `ratify`" in md
 
 
+def test_verdict_cli_rejects_unwritable_output_path(tmp_path, capsys):
+    from tools.prompt_autoresearch.verdict_cli import main
+
+    outcomes_path = tmp_path / "outcomes.json"
+    output_path = tmp_path / "verdict-dir"
+    output_path.mkdir()
+    write_outcomes_json(
+        outcomes_path,
+        role="synthesizer",
+        outcomes=[
+            _mk_outcome(mutation_id=f"m-{i}", delta=0.10, accepted=True)
+            for i in range(MIN_MUTATIONS)
+        ],
+    )
+
+    rc = main(["--outcomes", str(outcomes_path), "--output", str(output_path)])
+
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "could not write verdict markdown" in err
+    assert str(output_path) in err
+
+
 def test_verdict_cli_requires_role_when_json_is_bare_array(tmp_path, capsys):
     from tools.prompt_autoresearch.verdict_cli import main
 
