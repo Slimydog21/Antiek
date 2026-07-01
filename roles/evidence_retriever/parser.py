@@ -152,8 +152,9 @@ def _parse_source_tier(obj: Any, ctx: str) -> int | None:
 def _parse_claim(
     obj: Any,
     idx: int,
-    canonical_chunk_ids: Iterable[str] | None = None,
-    canonical_edge_ids: Iterable[str] | None = None,
+    *,
+    canonical_chunk_ids: Iterable[str],
+    canonical_edge_ids: Iterable[str],
 ) -> ParsedClaim:
     ctx = f"supporting_claims[{idx}]"
     if not isinstance(obj, dict):
@@ -165,35 +166,29 @@ def _parse_claim(
             f"{ctx}: evidence_type {evidence_type!r} not in "
             f"{sorted(EVIDENCE_TYPES)}"
         )
-    raw_chunk_ids = _require_str_list(obj.get("chunk_ids"), "chunk_ids", ctx)
-    if canonical_chunk_ids is None:
-        chunk_ids = tuple(raw_chunk_ids)
-    else:
-        try:
-            chunk_ids = validate_refs(
-                raw_chunk_ids,
-                canonical_chunk_ids,
-                on_invalid="raise" if canonical_edge_ids is not None else "drop",
-            ).valid
-        except InvalidReference as exc:
-            raise EvidenceValidationError(f"{ctx}.chunk_ids: {exc}") from exc
+    chunk_ids = tuple(_require_str_list(obj.get("chunk_ids"), "chunk_ids", ctx))
+    try:
+        chunk_ids = validate_refs(
+            chunk_ids,
+            canonical_chunk_ids,
+            on_invalid="raise",
+        ).valid
+    except InvalidReference as exc:
+        raise EvidenceValidationError(f"{ctx}.chunk_ids: {exc}") from exc
     if not chunk_ids and evidence_type != "gap":
         raise EvidenceValidationError(
             f"{ctx}: chunk_ids cannot be empty when evidence_type="
             f"{evidence_type!r} (gap claims may have empty chunk_ids)"
         )
-    raw_edge_ids = _require_str_list(obj.get("edge_ids"), "edge_ids", ctx)
-    if canonical_edge_ids is None:
-        edge_ids = tuple(raw_edge_ids)
-    else:
-        try:
-            edge_ids = validate_refs(
-                raw_edge_ids,
-                canonical_edge_ids,
-                on_invalid="raise" if canonical_chunk_ids is not None else "drop",
-            ).valid
-        except InvalidReference as exc:
-            raise EvidenceValidationError(f"{ctx}.edge_ids: {exc}") from exc
+    edge_ids = tuple(_require_str_list(obj.get("edge_ids"), "edge_ids", ctx))
+    try:
+        edge_ids = validate_refs(
+            edge_ids,
+            canonical_edge_ids,
+            on_invalid="raise",
+        ).valid
+    except InvalidReference as exc:
+        raise EvidenceValidationError(f"{ctx}.edge_ids: {exc}") from exc
     confidence = _require_str(obj.get("confidence"), "confidence", ctx)
     if confidence not in EVIDENCE_CONFIDENCE_LEVELS:
         raise EvidenceValidationError(
@@ -238,8 +233,8 @@ def parse_evidence_response(
     text: str,
     *,
     expected_sub_question: str | None = None,
-    canonical_chunk_ids: Iterable[str] | None = None,
-    canonical_edge_ids: Iterable[str] | None = None,
+    canonical_chunk_ids: Iterable[str] = (),
+    canonical_edge_ids: Iterable[str] = (),
 ) -> EvidenceResult:
     """Parse + validate an Evidence Retriever raw response.
 
@@ -283,7 +278,12 @@ def parse_evidence_response(
     if not isinstance(claims_raw, list):
         raise EvidenceValidationError("top: supporting_claims must be a list")
     claims = tuple(
-        _parse_claim(c, i, canonical_chunk_ids, canonical_edge_ids)
+        _parse_claim(
+            c,
+            i,
+            canonical_chunk_ids=canonical_chunk_ids,
+            canonical_edge_ids=canonical_edge_ids,
+        )
         for i, c in enumerate(claims_raw)
     )
 

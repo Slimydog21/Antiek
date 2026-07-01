@@ -151,8 +151,21 @@ def _good_response() -> dict:
     }
 
 
+_CANONICAL_CHUNK_IDS = ("chunk-1", "chunk-2")
+_CANONICAL_EDGE_IDS = ("edge-1",)
+
+
+def _parse_good(payload: dict, *, expected_sub_question: str | None = None):
+    return parse_evidence_response(
+        json.dumps(payload),
+        expected_sub_question=expected_sub_question,
+        canonical_chunk_ids=_CANONICAL_CHUNK_IDS,
+        canonical_edge_ids=_CANONICAL_EDGE_IDS,
+    )
+
+
 def test_parse_happy_path():
-    out = parse_evidence_response(json.dumps(_good_response()))
+    out = _parse_good(_good_response())
     assert isinstance(out, EvidenceResult)
     assert out.sub_question == "What is X?"
     assert out.insufficient_evidence is False
@@ -183,14 +196,19 @@ def test_parse_gap_claim_accepts_empty_chunk_ids():
     payload = _good_response()
     payload["supporting_claims"][0]["evidence_type"] = "gap"
     payload["supporting_claims"][0]["chunk_ids"] = []
-    out = parse_evidence_response(json.dumps(payload))
+    out = _parse_good(payload)
     assert out.supporting_claims[0].evidence_type == "gap"
     assert out.supporting_claims[0].chunk_ids == ()
 
 
 def test_parse_expected_sub_question_match():
     raw = json.dumps(_good_response())
-    out = parse_evidence_response(raw, expected_sub_question="What is X?")
+    out = parse_evidence_response(
+        raw,
+        expected_sub_question="What is X?",
+        canonical_chunk_ids=_CANONICAL_CHUNK_IDS,
+        canonical_edge_ids=_CANONICAL_EDGE_IDS,
+    )
     assert out.sub_question == "What is X?"
 
 
@@ -230,9 +248,7 @@ def test_parse_null_sub_question_falls_back_to_expected():
     than failing the parse."""
     payload = _good_response()
     payload["sub_question"] = None
-    out = parse_evidence_response(
-        json.dumps(payload), expected_sub_question="What is X?",
-    )
+    out = _parse_good(payload, expected_sub_question="What is X?")
     assert out.sub_question == "What is X?"
 
 
@@ -240,9 +256,7 @@ def test_parse_missing_sub_question_falls_back_to_expected():
     """``sub_question`` key entirely absent → same fallback."""
     payload = _good_response()
     del payload["sub_question"]
-    out = parse_evidence_response(
-        json.dumps(payload), expected_sub_question="What is X?",
-    )
+    out = _parse_good(payload, expected_sub_question="What is X?")
     assert out.sub_question == "What is X?"
 
 
@@ -289,7 +303,7 @@ def test_parse_bad_confidence_rejected():
     payload = _good_response()
     payload["supporting_claims"][0]["confidence"] = "very-high"
     with pytest.raises(EvidenceValidationError, match="confidence"):
-        parse_evidence_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_parse_source_tier_zero_rejected():
@@ -298,20 +312,20 @@ def test_parse_source_tier_zero_rejected():
     payload = _good_response()
     payload["supporting_claims"][0]["source_tier_min"] = 0
     with pytest.raises(EvidenceValidationError, match="source_tier_min"):
-        parse_evidence_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_parse_source_tier_six_rejected():
     payload = _good_response()
     payload["supporting_claims"][0]["source_tier_min"] = 6
     with pytest.raises(EvidenceValidationError, match="source_tier_min"):
-        parse_evidence_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_parse_source_tier_null_accepted():
     payload = _good_response()
     payload["supporting_claims"][0]["source_tier_min"] = None
-    out = parse_evidence_response(json.dumps(payload))
+    out = _parse_good(payload)
     assert out.supporting_claims[0].source_tier_min is None
 
 
@@ -321,7 +335,7 @@ def test_parse_source_tier_bool_rejected():
     payload = _good_response()
     payload["supporting_claims"][0]["source_tier_min"] = True
     with pytest.raises(EvidenceValidationError, match="bool"):
-        parse_evidence_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_parse_non_string_chunk_id_rejected():
@@ -353,6 +367,11 @@ def test_parse_hallucinated_edge_id_rejected_against_canonical_set():
         )
 
 
+def test_parse_refs_rejected_without_canonical_sets():
+    with pytest.raises(EvidenceValidationError, match="canonical set"):
+        parse_evidence_response(json.dumps(_good_response()))
+
+
 def test_parse_non_gap_claim_with_empty_chunks_rejected():
     payload = _good_response()
     payload["supporting_claims"][0]["chunk_ids"] = []
@@ -368,42 +387,43 @@ def test_parse_rejects_fabricated_chunk_ids_with_canonical_set():
         "chunk-fake",
         "chunk-1",
     ]
-    out = parse_evidence_response(
-        json.dumps(payload),
-        canonical_chunk_ids={"chunk-1"},
-    )
-    assert out.supporting_claims[0].chunk_ids == ("chunk-1",)
+    with pytest.raises(EvidenceValidationError, match="canonical set"):
+        parse_evidence_response(
+            json.dumps(payload),
+            canonical_chunk_ids={"chunk-1"},
+        )
 
     payload["supporting_claims"][0]["chunk_ids"] = ["chunk-fake"]
-    with pytest.raises(EvidenceValidationError, match="chunk_ids cannot be empty"):
+    with pytest.raises(EvidenceValidationError, match="canonical set"):
         parse_evidence_response(
             json.dumps(payload),
             canonical_chunk_ids={"chunk-1"},
         )
 
 
-def test_parse_filters_fabricated_edge_ids_when_canonical_set_supplied():
+def test_parse_rejects_fabricated_edge_ids_when_canonical_set_supplied():
     payload = _good_response()
     payload["supporting_claims"][0]["edge_ids"] = ["edge-1", "edge-fake"]
-    out = parse_evidence_response(
-        json.dumps(payload),
-        canonical_edge_ids={"edge-1"},
-    )
-    assert out.supporting_claims[0].edge_ids == ("edge-1",)
+    with pytest.raises(EvidenceValidationError, match="canonical set"):
+        parse_evidence_response(
+            json.dumps(payload),
+            canonical_chunk_ids=_CANONICAL_CHUNK_IDS,
+            canonical_edge_ids={"edge-1"},
+        )
 
 
 def test_parse_evidentiary_gaps_not_a_list_rejected():
     payload = _good_response()
     payload["evidentiary_gaps"] = {"not": "a list"}
     with pytest.raises(EvidenceValidationError, match="evidentiary_gaps"):
-        parse_evidence_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_parse_insufficient_evidence_wrong_type_rejected():
     payload = _good_response()
     payload["insufficient_evidence"] = "false"  # string, not bool
     with pytest.raises(EvidenceValidationError, match="insufficient_evidence"):
-        parse_evidence_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 # ---------------------------------------------------------------------------
