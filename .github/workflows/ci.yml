@@ -133,6 +133,7 @@ jobs:
         # Sub-second on the full tree.
         run: |
           python tools/lint/boundary_check.py
+          python tools/lint/o11y_vendor_check.py
 
       - name: One-owner-per-layer boundary check
         # SPR-03 (Antiek Flywheel Foundation). Sibling of the vendor-SDK
