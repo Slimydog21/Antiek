@@ -111,6 +111,26 @@ def test_live_provider_session_requires_ready_provider_status() -> None:
     )
 
 
+def test_live_provider_flag_must_be_explicit_boolean() -> None:
+    record = _session(1)
+    del record["live_provider_ai"]
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert any("missing required fields: live_provider_ai" in f for f in report.failures)
+
+
+def test_citation_traced_flag_must_be_explicit_boolean() -> None:
+    record = _session(1)
+    record["citation_traced"] = "false"
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert any("citation_traced must be a boolean" in f for f in report.failures)
+
+
 def test_unknown_step_status_is_rejected_explicitly() -> None:
     record = _session(1)
     record["steps"]["7"] = {"status": "passed"}

@@ -58,9 +58,12 @@ REQUIRED_SESSION_FIELDS: tuple[str, ...] = (
     "document_id",
     "entry_door",
     "provider_status",
+    "live_provider_ai",
+    "citation_traced",
     "minutes_reading",
     "steps",
 )
+REQUIRED_BOOLEAN_FIELDS: tuple[str, ...] = ("live_provider_ai", "citation_traced")
 REQUIRED_STEPS: tuple[str, ...] = tuple(str(i) for i in range(1, 8))
 NON_LIBRARY_ENTRY_DOORS: frozenset[str] = frozenset(
     {
@@ -134,6 +137,8 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
         missing = _missing_required_fields(record)
         if missing:
             failures.append(prefix + "missing required fields: " + ", ".join(missing))
+        for field in _invalid_boolean_fields(record):
+            failures.append(prefix + f"{field} must be a boolean")
 
         steps = record.get("steps")
         if not isinstance(steps, dict):
@@ -265,9 +270,21 @@ def _missing_required_fields(record: dict[str, Any]) -> list[str]:
             if field not in record:
                 missing.append(field)
             continue
+        if field in REQUIRED_BOOLEAN_FIELDS:
+            if field not in record:
+                missing.append(field)
+            continue
         if not record.get(field):
             missing.append(field)
     return missing
+
+
+def _invalid_boolean_fields(record: dict[str, Any]) -> list[str]:
+    return [
+        field
+        for field in REQUIRED_BOOLEAN_FIELDS
+        if field in record and not isinstance(record.get(field), bool)
+    ]
 
 
 def _session_live_provider_passed(record: dict[str, Any], steps: dict[Any, Any]) -> bool:
