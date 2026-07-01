@@ -21,6 +21,12 @@ from .decomposer_env import (
     DecomposerRollout,
     DecomposerTask,
 )
+from .evidence_retriever_env import (
+    EvidenceRetrieverEnvironment,
+    EvidenceRetrieverReward,
+    EvidenceRetrieverRollout,
+    EvidenceRetrieverTask,
+)
 from .parameter_extractor_env import (
     ParameterExtractorEnvironment,
     ParameterExtractorReward,
@@ -43,6 +49,10 @@ __all__ = [
     "DecomposerReward",
     "DecomposerRollout",
     "DecomposerTask",
+    "EvidenceRetrieverEnvironment",
+    "EvidenceRetrieverReward",
+    "EvidenceRetrieverRollout",
+    "EvidenceRetrieverTask",
     "ParameterExtractorEnvironment",
     "ParameterExtractorReward",
     "ParameterExtractorRollout",
