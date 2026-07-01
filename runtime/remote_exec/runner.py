@@ -165,6 +165,7 @@ class RemoteResearchRunner:
                 payload={"parent_investigation_id": plan.parent_investigation_id,
                          "sub_question": plan.sub_question},
                 role="user_agent", events_dir=self._events_dir,
+                correlation_id=plan.correlation_id,
             )
 
         # Aggregate-cap gate: refuse the launch with a surfaced reason rather
@@ -176,7 +177,8 @@ class RemoteResearchRunner:
             st.error = reason
             log_event(investigation_id, ActionType.INVESTIGATION_CHASE_HALTED,
                       payload={"reason": "aggregate_budget", "detail": reason},
-                      role="user_agent", events_dir=self._events_dir)
+                      role="user_agent", events_dir=self._events_dir,
+                      correlation_id=plan.correlation_id)
             await st.queue.put(StepEvent(investigation_id, 0, "status",
                                          text=reason, state=RunState.BUDGET_HALTED))
             await st.queue.put(StepEvent(investigation_id, 0, "done",
@@ -196,7 +198,8 @@ class RemoteResearchRunner:
             st.state = RunState.RUNNING
             log_event(iid, ActionType.INVESTIGATION_START_REQUESTED,
                       payload={"sub_question": st.sub_question, "runner": "remote_exec"},
-                      role="user_agent", events_dir=self._events_dir)
+                      role="user_agent", events_dir=self._events_dir,
+                      correlation_id=st.plan.correlation_id)
             await self._push(st, StepEvent(iid, 0, "status", text="running",
                                            state=RunState.RUNNING))
             try:
@@ -209,6 +212,7 @@ class RemoteResearchRunner:
                         record_remote_dispatch(
                             investigation_id=iid, event=rev, budget=self.budget,
                             events_dir=self._events_dir,
+                            correlation_id=st.plan.correlation_id,
                         )
                     if rev.kind == "step" and self.budget.steps(iid) > st.plan.budget.max_steps:
                         raise BudgetExceeded(
@@ -228,7 +232,8 @@ class RemoteResearchRunner:
                 log_event(iid, ActionType.INVESTIGATION_CHASE_HALTED,
                           payload={"reason": exc.scope, "detail": str(exc),
                                    "spent_usd": self.budget.spent(iid)},
-                          role="user_agent", events_dir=self._events_dir)
+                          role="user_agent", events_dir=self._events_dir,
+                          correlation_id=st.plan.correlation_id)
                 await self._finish(st, None, None, halted=True)
                 return
             except asyncio.CancelledError:
@@ -243,7 +248,8 @@ class RemoteResearchRunner:
                 st.error = f"{type(exc).__name__}: {exc}"
                 log_event(iid, ActionType.INVESTIGATION_FAILED,
                           payload={"error": st.error}, role="user_agent",
-                          events_dir=self._events_dir)
+                          events_dir=self._events_dir,
+                          correlation_id=st.plan.correlation_id)
                 await self._push(st, StepEvent(iid, 0, "error", text=st.error,
                                                state=RunState.FAILED))
                 await self._finish(st, None, None, already_logged=True)
@@ -263,7 +269,8 @@ class RemoteResearchRunner:
         await self._teardown(st)
         if action is not None and not already_logged:
             log_event(iid, action, payload=payload or {}, role="user_agent",
-                      events_dir=self._events_dir)
+                      events_dir=self._events_dir,
+                      correlation_id=st.plan.correlation_id)
         if self._seal_on_complete:
             try:
                 seal_investigation(iid, events_dir=self._events_dir)

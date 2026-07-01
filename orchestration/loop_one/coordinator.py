@@ -67,6 +67,7 @@ async def broadcast_emit(
     synthesis_id: str | None = None,
     phase: int | None = None,
     document_id: str | None = None,
+    correlation_id: str | None = None,
 ) -> str | None:
     """Emit a typed event into the JSONL log AND broadcast it through
     the broadcaster so subscribed handlers (bridges) fire.
@@ -87,6 +88,7 @@ async def broadcast_emit(
         role=role,
         policy_id=policy_id,
         document_id=document_id,
+        correlation_id=correlation_id,
     )
     if eid is None:
         return None

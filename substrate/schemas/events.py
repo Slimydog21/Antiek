@@ -4021,6 +4021,7 @@ class Event(BaseModel):
 
     event_id: str
     investigation_id: str
+    correlation_id: str | None = None
     synthesis_id: str | None = None
     phase: int | None = Field(default=None, ge=1, le=9)
     role: str | None = None

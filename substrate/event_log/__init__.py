@@ -18,6 +18,8 @@ from ..schemas.events import (  # re-exported from the canonical schema source
 from .events import (
     EventEmitter,
     action_counts,
+    correlation_context,
+    current_correlation_id,
     default_events_dir,
     emit_typed,
     log_event,
@@ -34,6 +36,8 @@ __all__ = [
     "Event",
     "EventEmitter",
     "action_counts",
+    "correlation_context",
+    "current_correlation_id",
     "default_events_dir",
     "emit_typed",
     "log_event",

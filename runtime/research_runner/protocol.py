@@ -82,6 +82,7 @@ class ResearchPlan:
     investigation_id: str
     sub_question: str
     parent_investigation_id: str | None = None
+    correlation_id: str | None = None
     budget: BudgetCap = field(default_factory=BudgetCap)
     metadata: dict[str, Any] = field(default_factory=dict)
 

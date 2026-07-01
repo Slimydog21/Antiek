@@ -69,6 +69,7 @@ def record_remote_dispatch(
     events_dir: str | None = None,
     parent_event_id: str | None = None,
     context_pack_event_id: str | None = None,
+    correlation_id: str | None = None,
 ) -> str | None:
     """Charge the budget for one remote step and emit its ``DispatchCall``
     event, both from the *same* realized cost on the ``RemoteStepEvent``.
@@ -115,6 +116,7 @@ def record_remote_dispatch(
         role=role,
         policy_id=f"{provider}/{model}",
         events_dir=events_dir,
+        correlation_id=correlation_id,
     )
 
 
