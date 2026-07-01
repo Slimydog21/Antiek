@@ -5,6 +5,12 @@ import { getInvestigationStatus, getTrajectory } from "../lib/api";
 import type { InvestigationStatus } from "../lib/api";
 import { useEventStream } from "./useEventStream";
 
+function finiteNonNegativeNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
 export interface InvestigationState {
   id: string;
   status: "loading" | "in_progress" | "completed" | "failed" | "not_found";
@@ -138,7 +144,7 @@ export function useInvestigation(
         terminal = { type: at, row: e };
       } else if (at === "dispatch.call") {
         const p = e.payload as { cost_usd?: number } | undefined;
-        if (typeof p?.cost_usd === "number") cost += p.cost_usd;
+        cost += finiteNonNegativeNumber(p?.cost_usd) ?? 0;
       }
     }
     return {
