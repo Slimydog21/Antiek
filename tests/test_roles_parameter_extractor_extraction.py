@@ -139,23 +139,29 @@ def _qualitative_param(**overrides) -> dict:
     return base
 
 
+_CANONICAL_SOURCE_CHUNK_IDS = ("chunk-1", "chunk-3")
+
+
+def _parse_params(payloads: list[dict]):
+    return parse_parameter_extractor_response(
+        json.dumps({"parameters": payloads}),
+        canonical_source_chunk_ids=_CANONICAL_SOURCE_CHUNK_IDS,
+    )
+
+
 def test_value_type_json_null_normalized_to_literal_string():
     """The upstream drift handler: a JSON-null value_type signals
     qualitative, normalized to the literal four-character "null"."""
     payload = _qualitative_param()
     payload["metric_value"]["value_type"] = None  # JSON null
-    out = parse_parameter_extractor_response(
-        json.dumps({"parameters": [payload]}),
-    )
+    out = _parse_params([payload])
     assert out.parameters[0].metric_value.value_type == "null"
 
 
 def test_unit_json_null_normalized_to_absent():
     payload = _qualitative_param()
     payload["metric_value"]["unit"] = None
-    out = parse_parameter_extractor_response(
-        json.dumps({"parameters": [payload]}),
-    )
+    out = _parse_params([payload])
     assert out.parameters[0].metric_value.unit is None
 
 
@@ -214,7 +220,10 @@ def test_qualitative_without_descriptor_rejected():
     payload = _qualitative_param()
     payload["qualitative_descriptor"] = ""  # empty
     with pytest.raises(ParameterValidationError, match="qualitative_descriptor"):
-        parse_parameter_extractor_response(json.dumps({"parameters": [payload]}))
+        parse_parameter_extractor_response(
+            json.dumps({"parameters": [payload]}),
+            canonical_source_chunk_ids=("chunk-3",),
+        )
 
 
 def test_categorical_with_int_value_rejected():
@@ -241,11 +250,20 @@ def test_hallucinated_source_chunk_ids_rejected_against_canonical_set():
         )
 
 
+def test_source_chunk_ids_rejected_without_canonical_set():
+    payload = _numeric_param(source_chunk_ids=["chunk-1"])
+    with pytest.raises(ParameterValidationError, match="canonical set"):
+        parse_parameter_extractor_response(json.dumps({"parameters": [payload]}))
+
+
 def test_bad_constraint_strictness_rejected():
     payload = _numeric_param()
     payload["constraint_strictness"] = "mandatory"
     with pytest.raises(ParameterValidationError, match="constraint_strictness"):
-        parse_parameter_extractor_response(json.dumps({"parameters": [payload]}))
+        parse_parameter_extractor_response(
+            json.dumps({"parameters": [payload]}),
+            canonical_source_chunk_ids=("chunk-1",),
+        )
 
 
 def test_bad_evidence_status_rejected():
@@ -269,9 +287,7 @@ def test_bool_value_not_accepted_as_scalar():
 
 
 def test_scalar_parameter_parsed():
-    out = parse_parameter_extractor_response(
-        json.dumps({"parameters": [_numeric_param()]}),
-    )
+    out = _parse_params([_numeric_param()])
     assert len(out.parameters) == 1
     p = out.parameters[0]
     assert p.metric_value.value_type == "scalar"
@@ -283,9 +299,7 @@ def test_range_parameter_parsed():
     payload = _numeric_param(
         metric_value={"value_type": "range", "value": [0.05, 0.15], "unit": "%"},
     )
-    out = parse_parameter_extractor_response(
-        json.dumps({"parameters": [payload]}),
-    )
+    out = _parse_params([payload])
     assert out.parameters[0].metric_value.value == [0.05, 0.15]
 
 
@@ -293,9 +307,7 @@ def test_categorical_single_parameter_parsed():
     payload = _numeric_param(
         metric_value={"value_type": "categorical", "value": "us_only"},
     )
-    out = parse_parameter_extractor_response(
-        json.dumps({"parameters": [payload]}),
-    )
+    out = _parse_params([payload])
     assert out.parameters[0].metric_value.value == "us_only"
 
 
@@ -303,16 +315,12 @@ def test_categorical_list_parameter_parsed():
     payload = _numeric_param(
         metric_value={"value_type": "categorical", "value": ["us", "canada"]},
     )
-    out = parse_parameter_extractor_response(
-        json.dumps({"parameters": [payload]}),
-    )
+    out = _parse_params([payload])
     assert out.parameters[0].metric_value.value == ["us", "canada"]
 
 
 def test_qualitative_parameter_parsed():
-    out = parse_parameter_extractor_response(
-        json.dumps({"parameters": [_qualitative_param()]}),
-    )
+    out = _parse_params([_qualitative_param()])
     p = out.parameters[0]
     assert p.metric_value.value_type == "null"
     assert p.metric_value.value is None
@@ -325,9 +333,7 @@ def test_qualitative_parameter_parsed():
 
 
 def _parse_one(payload: dict):
-    return parse_parameter_extractor_response(
-        json.dumps({"parameters": [payload]}),
-    ).parameters[0]
+    return _parse_params([payload]).parameters[0]
 
 
 def test_converter_scalar_with_unit_becomes_numeric_range():
@@ -411,12 +417,10 @@ def test_converter_strictness_flows_through():
 
 
 def test_converter_mixed_batch_produces_mixed_constraints():
-    out = parse_parameter_extractor_response(json.dumps({
-        "parameters": [
-            _numeric_param(),
-            _qualitative_param(),
-        ],
-    }))
+    out = _parse_params([
+        _numeric_param(),
+        _qualitative_param(),
+    ])
     constraints = parameters_to_constraints(out.parameters)
     kinds = {c.kind for c in constraints}
     assert kinds == {"numeric_range", "must_attribute"}

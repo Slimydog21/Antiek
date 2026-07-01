@@ -229,7 +229,7 @@ def _parse_parameter(
     obj: Any,
     idx: int,
     *,
-    canonical_source_chunk_ids: set[str] | frozenset[str] | tuple[str, ...] | None,
+    canonical_source_chunk_ids: set[str] | frozenset[str] | tuple[str, ...],
 ) -> ParsedParameter:
     ctx = f"parameters[{idx}]"
     if not isinstance(obj, dict):
@@ -249,15 +249,14 @@ def _parse_parameter(
     source_chunk_ids = tuple(_require_str_list(
         obj.get("source_chunk_ids"), "source_chunk_ids", ctx,
     ))
-    if canonical_source_chunk_ids is not None:
-        try:
-            source_chunk_ids = validate_refs(
-                source_chunk_ids,
-                canonical_source_chunk_ids,
-                on_invalid="raise",
-            ).valid
-        except InvalidReference as exc:
-            raise ParameterValidationError(f"{ctx}.source_chunk_ids: {exc}") from exc
+    try:
+        source_chunk_ids = validate_refs(
+            source_chunk_ids,
+            canonical_source_chunk_ids,
+            on_invalid="raise",
+        ).valid
+    except InvalidReference as exc:
+        raise ParameterValidationError(f"{ctx}.source_chunk_ids: {exc}") from exc
     if not source_chunk_ids:
         raise ParameterValidationError(
             f"{ctx}: source_chunk_ids cannot be empty — every parameter "
@@ -302,7 +301,7 @@ def _parse_parameter(
 def parse_parameter_extractor_response(
     text: str,
     *,
-    canonical_source_chunk_ids: set[str] | frozenset[str] | tuple[str, ...] | None = None,
+    canonical_source_chunk_ids: set[str] | frozenset[str] | tuple[str, ...] = (),
 ) -> ParameterExtractResult:
     """Parse + validate a Parameter Extractor raw response."""
     obj = _extract_json_object(text)
