@@ -177,7 +177,7 @@ test.describe("Golden path — activation SPR-01 on the one Reader (cassette AI)
     await page.setViewportSize({ width: 1280, height: 900 });
 
     // ── STEP 1: Open a paper — rich typography (fixture stands in for SPR-02 ingest)
-    await loadStory(page, "reader--the-one-reader--every-block-type");
+    await loadStory(page, "reader-the-one-reader--every-block-type");
     await expect(page.locator("[data-reader-root]")).toBeVisible({ timeout: 8_000 });
     await expect(page.locator('h1[data-block-type="heading"]')).toBeVisible();
     await expect(page.locator('table[data-block-type="table"]')).toBeVisible();
