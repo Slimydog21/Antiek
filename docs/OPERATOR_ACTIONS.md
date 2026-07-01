@@ -441,6 +441,18 @@ external claims are admitted only on explicit self-service privacy routes
 (`/auth/whoami`, deletion requests, and telemetry preferences); every
 other API path still requires operator scope.
 
+An engineering-side verifier now exists:
+
+```bash
+python tools/ops/auth_vendor_decision_probe.py --json
+```
+
+It validates the eventual `docs/decisions/oa-006-auth-vendor.md` closure
+artifact for a binary Clerk/Supabase choice, ISO sign-up date, integration
+checklist coverage, trusted-claims boundary notes, and rollback/security
+coverage. The probe does **not** choose the vendor and does **not** close
+OA-006 by itself.
+
 #### Once closed
 
 Commit `docs/decisions/oa-006-auth-vendor.md` with the choice + the
