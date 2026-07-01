@@ -127,7 +127,7 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
     non_library_sessions: set[str] = set()
 
     for index, record in enumerate(records, start=1):
-        session_id = str(record.get("session_id") or f"<record-{index}>")
+        session_id = _required_text(record.get("session_id")) or f"<record-{index}>"
         prefix = f"{session_id}: "
 
         if session_id in seen_session_ids:
@@ -294,9 +294,13 @@ def _missing_required_fields(record: dict[str, Any]) -> list[str]:
             if field not in record:
                 missing.append(field)
             continue
-        if not record.get(field):
+        if not _required_text(record.get(field)):
             missing.append(field)
     return missing
+
+
+def _required_text(value: Any) -> str:
+    return str(value or "").strip()
 
 
 def _invalid_boolean_fields(record: dict[str, Any]) -> list[str]:
