@@ -28,11 +28,15 @@ class RefValidationResult:
     invalid: tuple[str, ...]
 
 
-def _canonicalize(canonical_set: Iterable[str]) -> frozenset[str]:
-    return frozenset(str(ref).strip() for ref in canonical_set if str(ref).strip())
+def _canonicalize(canonical_set: Iterable[object]) -> frozenset[str]:
+    return frozenset(
+        ref.strip()
+        for ref in canonical_set
+        if isinstance(ref, str) and ref.strip()
+    )
 
 
-def validate_ref(candidate: object, canonical_set: Iterable[str]) -> str | None:
+def validate_ref(candidate: object, canonical_set: Iterable[object]) -> str | None:
     """Return the normalized ref when it is canonical, otherwise ``None``."""
     if not isinstance(candidate, str):
         return None
@@ -44,7 +48,7 @@ def validate_ref(candidate: object, canonical_set: Iterable[str]) -> str | None:
 
 def validate_refs(
     candidates: Iterable[object],
-    canonical_set: Iterable[str],
+    canonical_set: Iterable[object],
     *,
     on_invalid: str = "drop",
 ) -> RefValidationResult:
