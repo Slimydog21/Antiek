@@ -525,15 +525,11 @@ def test_parse_grounder_response_extracts_clean_json():
     assert reason is None
 
 
-def test_parse_grounder_response_rejects_fabricated_id_against_canonical_set():
-    grounded, cid, conf, reason = _parse_grounder_response(
-        '{"grounded": true, "located_chunk_id": "chunk-fabricated", "confidence": 0.8}',
-        canonical_chunk_ids=["chunk-real"],
-    )
-    assert grounded is True
-    assert cid is None
-    assert conf == pytest.approx(0.8)
-    assert reason is None
+def test_parse_grounder_response_canonical_chunks_reject_fabricated_id():
+    assert _parse_grounder_response(
+        '{"grounded": true, "located_chunk_id": "chunk-fake", "confidence": 0.8}',
+        canonical_chunk_ids=["chunk-1"],
+    ) == (False, None, 0.0, "ambiguous")
 
 
 def test_parse_grounder_response_extracts_failed():

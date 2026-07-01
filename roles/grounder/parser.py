@@ -35,7 +35,6 @@ except ImportError:  # pragma: no cover — direct-script fallback
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from substrate.provenance.validate_refs import validate_ref
 
-
 # Closed failure-reason set — mirrors the Literal on
 # ``ClaimGroundingCheckFailedPayload.reason``. The bridge enforces this
 # at write time via the Pydantic Literal; the parser enforces it earlier
@@ -84,9 +83,9 @@ def parse_grounder_response(
     uncertain":
 
     - Malformed input → ``(False, None, 0.0, "ambiguous")``.
-    - grounded=true with non-string chunk_id → chunk_id None.
-    - When ``canonical_chunk_ids`` is supplied, a chunk_id outside that set
-      is dropped at parse time rather than trusted as provenance.
+    - grounded=true with non-string chunk_id → chunk_id None. When
+      ``canonical_chunk_ids`` is supplied, a missing or off-context
+      chunk_id becomes an ambiguous failure immediately.
     - Confidence out of [0, 1] → clamped.
     - Failure reason not in GROUNDING_FAILURE_REASONS → coerced to
       ``ambiguous``.
@@ -107,6 +106,8 @@ def parse_grounder_response(
         except (TypeError, ValueError):
             confidence = 0.0
         confidence = max(0.0, min(1.0, confidence))
+        if canonical_chunk_ids is not None and chunk_id is None:
+            return GroundingVerdict(False, None, 0.0, "ambiguous")
         return GroundingVerdict(True, chunk_id, confidence, None)
 
     reason = obj.get("reason")

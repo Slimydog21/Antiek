@@ -131,7 +131,7 @@ def _render_chunks_for_prompt(chunks: list[dict[str, Any]]) -> str:
 def _parse_grounder_response(
     text: str,
     *,
-    canonical_chunk_ids: list[str] | None = None,
+    canonical_chunk_ids: list[str] | tuple[str, ...] | None = None,
 ) -> tuple[bool, str | None, float, str | None]:
     """Back-compat shim. The real parser lives at
     ``roles.grounder.parse_grounder_response`` (Sprint 4 day 4-5
@@ -263,16 +263,15 @@ def make_grounding_handler(
             return
 
         # 4. Parse + emit.
-        grounded, chunk_id, confidence, reason = _parse_grounder_response(
+        grounded, located_chunk_id, confidence, reason = _parse_grounder_response(
             response_text,
             canonical_chunk_ids=searched_chunk_ids,
         )
-
-        if grounded and chunk_id and chunk_id in searched_chunk_ids:
+        if grounded and located_chunk_id:
             await _emit_grounding_passed(
                 event,
                 challenge=challenge,
-                located_chunk_id=chunk_id,
+                located_chunk_id=located_chunk_id,
                 confidence=confidence,
                 policy_id=policy_id,
                 broadcaster=broadcaster,

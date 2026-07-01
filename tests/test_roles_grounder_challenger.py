@@ -18,9 +18,9 @@ end paths through the role modules.
 
 from __future__ import annotations
 
-import dataclasses
 import os
 import sys
+from dataclasses import FrozenInstanceError
 
 import pytest
 
@@ -106,13 +106,21 @@ def test_parse_grounder_response_passed():
     assert v.reason is None
 
 
-def test_parse_grounder_response_rejects_fabricated_chunk_id():
+def test_parse_grounder_response_rejects_noncanonical_located_chunk():
     v = parse_grounder_response(
-        '{"grounded": true, "located_chunk_id": "chunk-fake", "confidence": 0.8}',
-        canonical_chunk_ids={"chunk-real"},
+        '{"grounded": true, "located_chunk_id": "chunk-made-up", "confidence": 0.8}',
+        canonical_chunk_ids=("chunk-1",),
+    )
+    assert v == GroundingVerdict(False, None, 0.0, "ambiguous")
+
+
+def test_parse_grounder_response_trims_canonical_located_chunk():
+    v = parse_grounder_response(
+        '{"grounded": true, "located_chunk_id": " chunk-1 ", "confidence": 0.8}',
+        canonical_chunk_ids=("chunk-1",),
     )
     assert v.grounded is True
-    assert v.located_chunk_id is None
+    assert v.located_chunk_id == "chunk-1"
     assert v.confidence == pytest.approx(0.8)
 
 
@@ -201,7 +209,7 @@ def test_compose_challenge_rejects_empty_claim():
 
 def test_challenge_dataclass_is_frozen():
     ch = compose_challenge(claim_text="x")
-    with pytest.raises(dataclasses.FrozenInstanceError):
+    with pytest.raises(FrozenInstanceError):
         ch.claim_text = "mutated"  # type: ignore[misc]
 
 
