@@ -15,6 +15,7 @@ than fabricating prose, and is not asserted.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 
@@ -242,6 +243,50 @@ def test_brainstorm_emit_blocks(client, seed):
     # All brainstorm blocks are user-originated (no node_id / fabricated source).
     blocks = client.get(f"/write/sections/{seed['section_id']}/blocks").json()["blocks"]
     assert all(b["provenance_kind"] == "brainstorm" and b["node_id"] is None for b in blocks)
+
+
+def test_brainstorm_emit_blocks_uses_piece_backing_investigation(client):
+    with connect_write(default_db_path(), purpose="test/connected_piece") as con:
+        did = insert_deliverable(
+            con,
+            title="Connected memo",
+            deliverable_kind="research_memo",
+            investigation_root_id="inv-write-root",
+        )
+        sec = insert_section(con, deliverable_id=did, section_index=0, title="S1")
+
+    r = client.post("/write/brainstorm/emit-blocks", json={
+        "section_id": sec,
+        "deliverable_id": did,
+        "insights": ["the write graph should stay connected"],
+        "questions": [],
+        "data_points": [],
+    })
+    assert r.status_code == 201
+    jsonl = os.path.join(
+        os.environ["ANTIEK_RESEARCH_EVENTS_DIR"],
+        "inv-write-root.jsonl",
+    )
+    assert os.path.exists(jsonl)
+    events = [json.loads(line) for line in open(jsonl)]
+    assert any(e["action_type"] == "outline_block.placed" for e in events)
+
+
+def test_brainstorm_emit_blocks_rejects_mismatched_deliverable(client, seed):
+    with connect_write(default_db_path(), purpose="test/other_piece") as con:
+        other = insert_deliverable(
+            con, title="Other", deliverable_kind="research_memo",
+        )
+
+    r = client.post("/write/brainstorm/emit-blocks", json={
+        "section_id": seed["section_id"],
+        "deliverable_id": other,
+        "insights": ["wrong target"],
+        "questions": [],
+        "data_points": [],
+    })
+    assert r.status_code == 400
+    assert "different deliverable" in r.json()["detail"]
 
 
 # ── SPR-08 — context promote ───────────────────────────────────────
