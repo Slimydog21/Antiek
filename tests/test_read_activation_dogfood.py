@@ -154,7 +154,19 @@ def test_citation_traced_flag_must_be_explicit_boolean() -> None:
     report = validate_sessions([record])
 
     assert report.closure_ready is False
+    assert report.citation_trace_sessions == 0
     assert any("citation_traced must be a boolean" in f for f in report.failures)
+
+
+def test_malformed_live_provider_flag_does_not_inflate_report_counter() -> None:
+    record = _session(1, live=True)
+    record["live_provider_ai"] = "false"
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.live_provider_sessions == 0
+    assert any("live_provider_ai must be a boolean" in f for f in report.failures)
 
 
 def test_unknown_step_status_is_rejected_explicitly() -> None:
