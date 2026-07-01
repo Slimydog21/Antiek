@@ -127,6 +127,7 @@ def canonical_arxiv_throttle() -> ArxivThrottle:
 # can legitimately take a while; 300s mirrors db_lock's DEFAULT_TIMEOUT_S.
 DEFAULT_LOCK_TIMEOUT_S = 300.0
 DEFAULT_LOCK_POLL_INTERVAL_S = 0.1
+DEFAULT_HTTP_TIMEOUT_S = 20.0
 
 
 def default_lock_path() -> str:
@@ -670,7 +671,12 @@ def arxiv_governed_client(
     headers) pass through to ``httpx.Client``."""
     import httpx as _httpx
 
-    client = _httpx.Client(follow_redirects=follow_redirects, **client_kwargs)
+    timeout = client_kwargs.pop("timeout", DEFAULT_HTTP_TIMEOUT_S)
+    client = _httpx.Client(
+        follow_redirects=follow_redirects,
+        timeout=timeout,  # default matches acquisition/papers/core.py DEFAULT_TIMEOUT_S (20s)
+        **client_kwargs,
+    )
     return install_arxiv_request_hook(
         client,
         throttle=throttle,

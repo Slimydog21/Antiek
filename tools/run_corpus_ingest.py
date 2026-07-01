@@ -916,7 +916,10 @@ def _fetch_paper_pdf(rec, *, throttle, source: str) -> bytes:
                     "plos": "plos"}.get(source, f"biorxiv_{source}")
     throttle.before_request(throttle_key)
     url = rec.pdf_url
-    with httpx.Client(follow_redirects=True) as c:
+    with httpx.Client(
+        follow_redirects=True,
+        timeout=30.0,  # match the existing PDF fetch request timeout below
+    ) as c:
         r = c.get(url, headers={"User-Agent": "Antiek/0.1 (acquisition.papers)"}, timeout=30.0)
     if r.status_code in (429, 503):
         throttle.note_response(throttle_key, r.status_code, dict(r.headers))

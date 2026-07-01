@@ -225,7 +225,9 @@ class ExaClient:
         }
 
         owns_client = self._client is None
-        client = self._client or httpx.Client()
+        client = self._client or httpx.Client(
+            timeout=self._timeout_s,  # instance default; same pattern as acquisition/papers/core.py DEFAULT_TIMEOUT_S
+        )
         try:
             attempt = 0
             while True:
