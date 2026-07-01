@@ -9,6 +9,12 @@ mechanical, not architectural.
 Sprint 9 day 5 port of ``researchmaxx/environments/decomposer_env.py``.
 """
 
+from .connector_env import (
+    ConnectorEnvironment,
+    ConnectorReward,
+    ConnectorRollout,
+    ConnectorTask,
+)
 from .decomposer_env import (
     DecomposerEnvironment,
     DecomposerReward,
@@ -23,6 +29,10 @@ from .synthesizer_env import (
 )
 
 __all__ = [
+    "ConnectorEnvironment",
+    "ConnectorReward",
+    "ConnectorRollout",
+    "ConnectorTask",
     "DecomposerEnvironment",
     "DecomposerReward",
     "DecomposerRollout",
