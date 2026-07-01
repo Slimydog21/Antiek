@@ -335,6 +335,16 @@ def test_parser_accepts_when_investigation_id_matches():
     assert out.investigation_id == "inv-test"
 
 
+def test_parser_normalizes_expected_investigation_id_with_shared_ref_validator():
+    d = _well_formed_decomp()
+    d["investigation_id"] = " inv-test "
+    out = parse_decomposer_response(
+        json.dumps(d),
+        expected_investigation_id="inv-test",
+    )
+    assert out.investigation_id == "inv-test"
+
+
 # ---------------------------------------------------------------------------
 # 5. Drift detection
 # ---------------------------------------------------------------------------
