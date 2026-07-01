@@ -1,8 +1,9 @@
 # PostHog Feel — verification report (FEEL-S6)
 
-**Programme:** `docs/htmlspec/posthog-feel/`  
-**Repo:** `apps/reading` on `main`  
-**Date:** 2026-06-03
+**Programme:** `docs/htmlspec/posthog-feel/`<br>
+**Repo:** `apps/reading` on `reader/integration`<br>
+**Date:** 2026-06-03<br>
+**Reverified:** 2026-07-01 with `npm run e2e:feel` and FEEL spec ref-lint
 
 ## Operator sign-off question
 
