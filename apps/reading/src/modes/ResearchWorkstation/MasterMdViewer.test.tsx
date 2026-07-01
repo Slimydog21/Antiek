@@ -74,7 +74,12 @@ import { SITESEE_CITED_CLASS } from "../../reading-physics/augmentations/sitesee
 import { anchorKey } from "../../reading-physics/facets/decorations";
 import type { ClaimId } from "../../reading-physics/types";
 import type { ParsedClaim } from "../../lib/synthesisParser";
-import { COLLAPSE_SECTION_ID_ATTR } from "./readingGeometryPass";
+import {
+  COLLAPSE_SECTION_ID_ATTR,
+  PASSAGE_CHUNK_ID_ATTR,
+  PASSAGE_END_ATTR,
+  PASSAGE_START_ATTR,
+} from "./readingGeometryPass";
 
 // jsdom does not implement ResizeObserver, but MasterMdViewer's geometry pass
 // (Living-Roadmap SPR-02 round 2) constructs one on mount. Install a minimal
@@ -581,6 +586,109 @@ describe("MasterMdViewer — marginalia anchored widget wiring (SPR-07)", () => 
       expect(screen.getByText("spoken marginalia transcript")).toBeTruthy();
       expect(screen.getByText("voice clip")).toBeTruthy();
       expect(screen.queryByText("withheld quoted passage")).toBeNull();
+    } finally {
+      geomSpy.mockRestore();
+    }
+  });
+
+  it("stamps exact servable marginalia passage markers for geometry resolution", async () => {
+    getChunkMock.mockResolvedValue(
+      chunk({
+        chunk_id: "c1",
+        document_title: "A Servable Book",
+        text: "alpha exact quoted passage omega",
+        servable: true,
+        servability: null,
+      }),
+    );
+
+    const observers: CapturedRO[] = [];
+    class StubResizeObserver {
+      private readonly rec: CapturedRO;
+      constructor(callback: ResizeObserverCallback) {
+        this.rec = { callback, observed: [], disconnected: false };
+        observers.push(this.rec);
+      }
+      observe(el: Element) {
+        this.rec.observed.push(el);
+      }
+      unobserve() {}
+      disconnect() {
+        this.rec.disconnected = true;
+      }
+    }
+    (globalThis as { ResizeObserver?: unknown }).ResizeObserver =
+      StubResizeObserver as unknown as typeof ResizeObserver;
+
+    const geomSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        const isArticle = this.tagName === "ARTICLE";
+        const isPassage =
+          this.getAttribute(PASSAGE_CHUNK_ID_ATTR) === "c1" &&
+          this.getAttribute(PASSAGE_START_ATTR) === "6" &&
+          this.getAttribute(PASSAGE_END_ATTR) === "26";
+        const r = isPassage
+          ? { top: 220, left: 48, width: 1, height: 16 }
+          : isArticle
+            ? { top: 0, left: 0, width: 800, height: 4000 }
+            : { top: 0, left: 0, width: 0, height: 0 };
+        return {
+          top: r.top,
+          left: r.left,
+          width: r.width,
+          height: r.height,
+          right: r.left + r.width,
+          bottom: r.top + r.height,
+          x: r.left,
+          y: r.top,
+          toJSON() {
+            return r;
+          },
+        } as DOMRect;
+      });
+
+    try {
+      const { container } = render(
+        <MasterMdViewer
+          synthesis={synth()}
+          synthesisId="syn-1"
+          events={[
+            eventOf(
+              "marginalia.noted",
+              {
+                note_id: "mn-servable",
+                note_text: "This passage carries the exact point.",
+                excerpt: "exact quoted passage",
+                chunk_id: "c1",
+              },
+              { event_id: "ev-note-servable", synthesis_id: "syn-1" },
+            ),
+          ]}
+        />,
+      );
+
+      await screen.findByText(/A Servable Book/);
+      await waitFor(() =>
+        expect(
+          container.querySelector(
+            `[${PASSAGE_CHUNK_ID_ATTR}="c1"][${PASSAGE_START_ATTR}="6"][${PASSAGE_END_ATTR}="26"]`,
+          ),
+        ).toBeTruthy(),
+      );
+      expect(observers).toHaveLength(1);
+      act(() => {
+        observers[0].callback([], observers[0] as unknown as ResizeObserver);
+      });
+      await act(async () => {
+        await new Promise((resolve) => window.setTimeout(resolve, 150));
+      });
+
+      await waitFor(() =>
+        expect(screen.getByText("This passage carries the exact point.")).toBeTruthy(),
+      );
+      expect(screen.getByText("exact quoted passage")).toBeTruthy();
+      expect(screen.queryByText("restricted source")).toBeNull();
     } finally {
       geomSpy.mockRestore();
     }
