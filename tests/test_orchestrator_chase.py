@@ -14,12 +14,13 @@ import sys
 import tempfile
 
 import pytest
+from pydantic import ValidationError
 
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from substrate.schemas import (
+from substrate.schemas import (  # noqa: E402
     TYPED_PAYLOAD_ACTION_TYPES,
     ActionType,
     InvestigationChaseHaltedPayload,
@@ -57,15 +58,32 @@ def test_chase_halted_payload_round_trip():
 
 
 def test_chase_halted_payload_rejects_unknown_reason():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         InvestigationChaseHaltedPayload(reason="bogus")  # type: ignore[arg-type]
 
 
 def test_start_payload_carries_chase_fields_default_off():
     p = InvestigationStartRequestedPayload(question="Q?")
+    assert p.investigation_kind == "loop_one"
     assert p.chase_mode == "off"
     assert p.chase_value == 0
     assert p.chase_budget_usd == 2.0
+
+
+def test_start_payload_accepts_rlm_investigation_kind():
+    p = InvestigationStartRequestedPayload(
+        question="Survey the neutral-atom computing field",
+        investigation_kind="rlm",
+    )
+    assert p.investigation_kind == "rlm"
+
+
+def test_start_payload_rejects_bad_investigation_kind():
+    with pytest.raises(ValidationError):
+        InvestigationStartRequestedPayload(
+            question="Q?",
+            investigation_kind="nine_phase",  # type: ignore[arg-type]
+        )
 
 
 def test_start_payload_accepts_chase_depth():
@@ -81,7 +99,7 @@ def test_start_payload_accepts_chase_depth():
 
 
 def test_start_payload_rejects_bad_mode():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         InvestigationStartRequestedPayload(
             question="Q?", chase_mode="forever",  # type: ignore[arg-type]
         )

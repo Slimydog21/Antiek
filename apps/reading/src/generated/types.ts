@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 32;
+export const EVENT_SCHEMA_VERSION = 33;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -1542,6 +1542,7 @@ export interface InvestigationStartRequestedPayload {
   question: string;
   context?: string;
   topic_slug?: string | null;
+  investigation_kind?: "loop_one" | "rlm";
   max_sub_questions?: number;
   parent_investigation_id?: string | null;
   spawn_context?: string | null;
