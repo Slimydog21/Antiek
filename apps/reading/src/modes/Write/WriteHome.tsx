@@ -323,13 +323,16 @@ export default function WriteHome() {
           </div>
         </header>
 
-        {onRamp === "context" && (
+        {onRamp === "context" && detail && (
           <div className="mb-4 rounded-md border border-rule dark:border-charcoal-1">
             <p className="px-4 pt-3 text-xs text-ink-mute dark:text-moonlight">
               The outline-optional path: drop blocks and state an objective,
               then generate directly. No fabricated sources — blocks first.
             </p>
-            <ContextWindow />
+            <ContextWindow
+              deliverableId={detail.deliverable_id}
+              onPromoted={refresh}
+            />
           </div>
         )}
 

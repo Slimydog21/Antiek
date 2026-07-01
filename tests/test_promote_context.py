@@ -24,7 +24,13 @@ if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
 from runtime.db_lock import connect_write
-from substrate.graph.ops import insert_chunk, insert_document, insert_node
+from substrate.graph.ops import (
+    insert_chunk,
+    insert_deliverable,
+    insert_document,
+    insert_node,
+    insert_section,
+)
 from substrate.graph.schema import init_database_at_path
 from substrate.write.outline_block import list_section_blocks
 from substrate.write.promote_context import ContextBlockSpec, promote_to_outline
@@ -96,3 +102,84 @@ def test_promotion_preserves_provenance(db):
     # The user-originated block carries no fabricated source.
     assert user_chain.status == "user_originated"
     assert blocks["user_authored"].node_id is None
+
+
+def test_promote_can_land_inside_existing_deliverable(db):
+    with connect_write(db["path"], purpose="t") as con:
+        did = insert_deliverable(
+            con, title="Existing piece", deliverable_kind="general_essay",
+        )
+        result = promote_to_outline(
+            con,
+            title="Ignored for existing piece",
+            deliverable_kind="general_essay",
+            objective="turn this loose context into a section",
+            deliverable_id=did,
+            specs=[
+                ContextBlockSpec(
+                    block_kind="insight",
+                    provenance_kind="graph_node",
+                    node_id=db["node"],
+                ),
+            ],
+        )
+
+    assert result.deliverable_id == did
+    con = _read(db["path"])
+    try:
+        section = con.execute(
+            "SELECT deliverable_id, section_index, title FROM deliverable_sections "
+            "WHERE section_id = ?",
+            [result.section_id],
+        ).fetchone()
+        blocks = list_section_blocks(con, result.section_id)
+    finally:
+        con.close()
+    assert section[0] == did
+    assert section[1] == 0
+    assert "loose context" in section[2]
+    assert len(blocks) == 1
+
+
+def test_promote_can_append_to_existing_section(db):
+    with connect_write(db["path"], purpose="t") as con:
+        did = insert_deliverable(
+            con, title="Existing piece", deliverable_kind="general_essay",
+        )
+        sid = insert_section(con, deliverable_id=did, section_index=0, title="Body")
+        first = promote_to_outline(
+            con,
+            title="First",
+            deliverable_kind="general_essay",
+            section_id=sid,
+            specs=[
+                ContextBlockSpec(
+                    block_kind="insight",
+                    provenance_kind="graph_node",
+                    node_id=db["node"],
+                ),
+            ],
+        )
+        second = promote_to_outline(
+            con,
+            title="Second",
+            deliverable_kind="general_essay",
+            deliverable_id=did,
+            section_id=sid,
+            specs=[
+                ContextBlockSpec(
+                    block_kind="user_authored",
+                    provenance_kind="brainstorm",
+                    content="a second thought",
+                ),
+            ],
+        )
+
+    assert first.section_id == sid
+    assert second.section_id == sid
+    con = _read(db["path"])
+    try:
+        blocks = list_section_blocks(con, sid)
+    finally:
+        con.close()
+    assert [b.block_index for b in blocks] == [0, 1]

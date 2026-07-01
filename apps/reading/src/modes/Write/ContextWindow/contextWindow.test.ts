@@ -37,6 +37,23 @@ describe("contextToPromoteRequest", () => {
     expect(req.blocks).toHaveLength(1);
     expect(req.blocks[0].node_id).toBe("node-1");
   });
+
+  it("can target an existing piece and section without changing block provenance", () => {
+    const state: ContextWindowState = {
+      title: "A section from context",
+      objective: "turn this into the next section",
+      items: [{ label: "x", block_kind: "insight", node_id: "node-1" }],
+    };
+    const req = contextToPromoteRequest(state, "book_chapter", {
+      deliverableId: "dlv-open",
+      sectionId: "sec-open",
+    });
+    expect(req.deliverable_id).toBe("dlv-open");
+    expect(req.section_id).toBe("sec-open");
+    expect(req.deliverable_kind).toBe("book_chapter");
+    expect(req.blocks[0].provenance_kind).toBe("graph_node");
+    expect(req.blocks[0].node_id).toBe("node-1");
+  });
 });
 
 describe("generatability — no-blocks-no-fabrication gate", () => {

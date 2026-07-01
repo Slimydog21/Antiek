@@ -27,9 +27,17 @@ import {
  */
 export interface ContextWindowProps {
   className?: string;
+  deliverableId?: string;
+  sectionId?: string;
+  onPromoted?: () => Promise<void> | void;
 }
 
-export function ContextWindow({ className }: ContextWindowProps) {
+export function ContextWindow({
+  className,
+  deliverableId,
+  sectionId,
+  onPromoted,
+}: ContextWindowProps) {
   const [state, setState] = useState<ContextWindowState>({
     title: "", objective: "", items: [],
   });
@@ -58,7 +66,10 @@ export function ContextWindow({ className }: ContextWindowProps) {
     setError(null);
     setResult(null);
     try {
-      const promoted = await promoteContext(contextToPromoteRequest(state));
+      const promoted = await promoteContext(
+        contextToPromoteRequest(state, "general_essay", { deliverableId, sectionId }),
+      );
+      await onPromoted?.();
       const gen = await generateSection(promoted.section_id);
       setResult(gen);
     } catch (e) {
@@ -72,7 +83,10 @@ export function ContextWindow({ className }: ContextWindowProps) {
     setBusy(true);
     setError(null);
     try {
-      await promoteContext(contextToPromoteRequest(state));
+      await promoteContext(
+        contextToPromoteRequest(state, "general_essay", { deliverableId, sectionId }),
+      );
+      await onPromoted?.();
     } catch (e) {
       setError(String(e));
     } finally {

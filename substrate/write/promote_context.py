@@ -37,7 +37,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
     from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
     from substrate.graph.ops import insert_deliverable, insert_section  # type: ignore[no-redef]
 
-from .outline_block import place_block
+from .outline_block import OutlineBlockError, place_block
 
 
 @dataclass(frozen=True)
@@ -114,19 +114,63 @@ def promote_to_outline(
     specs: list[ContextBlockSpec],
     objective: str = "",
     investigation_id: str = "__operator__",
+    deliverable_id: str | None = None,
+    section_id: str | None = None,
 ) -> PromoteResult:
-    """Turn a context-window session into a structured deliverable with
-    one section holding the placed blocks (provenance preserved). The
-    objective is recorded on the deliverable metadata so the freeform
-    intent survives the promotion."""
-    did = insert_deliverable(
-        con, title=title, deliverable_kind=deliverable_kind,
-        metadata={"promoted_from": "context_window", "objective": objective},
-    )
-    sid = insert_section(
-        con, deliverable_id=did, section_index=0,
-        title=(objective[:120] if objective else None),
-    )
+    """Turn a context-window session into structured outline blocks.
+
+    Default behavior creates a new deliverable with one section. When an
+    existing ``deliverable_id`` is supplied, promotion creates a new section
+    inside that piece instead. When ``section_id`` is supplied, it appends to
+    that exact section. All paths preserve block provenance.
+    """
+    start_index = 0
+    if section_id:
+        row = con.execute(
+            "SELECT deliverable_id FROM deliverable_sections WHERE section_id = ?",
+            [section_id],
+        ).fetchone()
+        if row is None:
+            raise OutlineBlockError(f"section not found: {section_id!r}")
+        did = row[0]
+        if deliverable_id and deliverable_id != did:
+            raise OutlineBlockError(
+                f"section {section_id!r} belongs to deliverable {did!r}, "
+                f"not {deliverable_id!r}"
+            )
+        sid = section_id
+        row = con.execute(
+            "SELECT COALESCE(MAX(block_index), -1) + 1 "
+            "FROM outline_blocks WHERE section_id = ?",
+            [sid],
+        ).fetchone()
+        start_index = int(row[0] if row else 0)
+    elif deliverable_id:
+        row = con.execute(
+            "SELECT 1 FROM deliverables WHERE deliverable_id = ?",
+            [deliverable_id],
+        ).fetchone()
+        if row is None:
+            raise OutlineBlockError(f"deliverable not found: {deliverable_id!r}")
+        did = deliverable_id
+        row = con.execute(
+            "SELECT COALESCE(MAX(section_index), -1) + 1 "
+            "FROM deliverable_sections WHERE deliverable_id = ?",
+            [did],
+        ).fetchone()
+        sid = insert_section(
+            con, deliverable_id=did, section_index=int(row[0] if row else 0),
+            title=(objective[:120] if objective else title[:120]),
+        )
+    else:
+        did = insert_deliverable(
+            con, title=title, deliverable_kind=deliverable_kind,
+            metadata={"promoted_from": "context_window", "objective": objective},
+        )
+        sid = insert_section(
+            con, deliverable_id=did, section_index=0,
+            title=(objective[:120] if objective else None),
+        )
     result = PromoteResult(deliverable_id=did, section_id=sid)
     for i, spec in enumerate(specs):
         obid = place_block(
@@ -136,7 +180,7 @@ def promote_to_outline(
             provenance_kind=spec.provenance_kind,
             node_id=spec.node_id,
             content=spec.content,
-            block_index=i,
+            block_index=start_index + i,
             deliverable_id=did,
             investigation_id=investigation_id,
         )
