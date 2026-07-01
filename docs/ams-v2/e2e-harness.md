@@ -43,7 +43,7 @@ context sees the mocked session. Krea is stubbed to graceful-absence so the
 |---|---|
 | `e2e/_ams/visible.ts` | `assertSceneVisible` / `assertWindowOpen` / `assertLabeled` / `assertHotkeyOverlay` / `assertContrast` + pure pixel helpers (`decodePng`, `regionVariance`, `isSolidColor`, `contrastRatio`). |
 | `e2e/_ams/auth.ts` | `loginAndGotoApp(page, route)` + `installAuthMock(page)` — the real-app boot + the `/auth/me` mock. |
-| `e2e/ams-shell.spec.ts` | The 5 regression anchors (scene/window/igloo/hotkeys/penguin), each `test.fixme` naming the sprint that flips it green. |
+| `e2e/ams-shell.spec.ts` | The 5 regression anchors (scene/window/igloo/hotkeys/penguin). They were SPR-01 `test.fixme` placeholders; SPR-10 un-fixme'd them and they now run as ordinary `ams-real` Playwright tests. |
 | `e2e/_ams/visible.pixel.test.ts` | Vitest calibration: a synthetic solid-ice/space buffer reads SOLID (so `assertSceneVisible` would FAIL on an occluded scene); a gradient reads NOT solid. |
 | `playwright.config.ts` | Adds the `ams-real` project + the vite-preview webServer (additive; the Storybook `chromium` project is unchanged). |
 
@@ -65,8 +65,10 @@ cd apps/reading && npx vitest run e2e/_ams/visible.pixel.test.ts --environment n
 
 ## Sandbox / CI note (RULE 3)
 
-The 5 anchors are `test.fixme`, so they do **not** run until a later sprint
-un-fixmes the one it owns. That means a CI sandbox that can't boot the SPA
-stays green. **SPR-10** runs them for real (un-fixme'd) against a built SPA with
-`AMS_APP_URL` set or the vite-preview server, and mechanically checks "all five
-un-fixme'd and green."
+The 5 `ams-shell.spec.ts` anchors are no longer `test.fixme`; they run as part
+of `npm run e2e:ams` / the `ams-real` project. The only remaining `test.fixme`
+in the AMS-v2 matrix is the operator-only custom-hotkey OS/browser collision
+audit, which cannot be proven in CI because it depends on the operator's actual
+machine, browser, and extensions. A CI sandbox that cannot boot the SPA still
+stays honest by failing the real-app gate rather than silently treating the
+anchors as skipped.

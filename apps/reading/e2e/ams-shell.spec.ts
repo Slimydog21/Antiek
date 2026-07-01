@@ -4,12 +4,11 @@
  * WHAT THIS IS
  * ------------
  * Five tests that load the REAL app authenticated on the default route (via
- * loginAndGotoApp → mocked /auth/me, no app-code bypass) and encode each v1
- * failure as an EXPECTED-FAIL anchor. Each anchor is a real, executing test
- * body that calls a real helper from _ams/visible.ts against the real page —
- * so when its `test.fixme` is removed it genuinely red/green-flips. The comment
- * on each names the EXACT later sprint that turns it green; SPR-10's capstone
- * mechanically checks "all five un-fixme'd and green."
+ * loginAndGotoApp → mocked /auth/me, no app-code bypass) and keep each v1
+ * failure as a live regression anchor. Each anchor is a real, executing test
+ * body that calls a real helper from _ams/visible.ts against the real page.
+ * SPR-10's capstone un-fixme'd all five after their owning sprints turned them
+ * green; keep them executable so the invisible-shell failure cannot recur.
  *
  * Today (origin/main) these are the operator-verified v1 complaints:
  *   1. scene NOT visible   — opaque route bodies occlude the z-0 mountain → SPR-03
@@ -18,9 +17,9 @@
  *   4. no ⌘ overlay default / vim chords present                            → SPR-08
  *   5. penguin emote carries a white background                            → SPR-06
  *
- * They are marked `test.fixme` so they DON'T block CI now (the bugs are owned
- * by later sprints), but are impossible to forget. This spec imports ONLY from
- * _ams/ — it edits no app component (SPR-01 writes zero app code).
+ * These anchors used to be `test.fixme` placeholders in SPR-01. They are now
+ * ordinary Playwright tests and should stay that way. This spec imports ONLY
+ * from _ams/ — it edits no app component.
  *
  * RUN: this spec belongs to the `ams-real` Playwright project, which needs a
  * served real SPA. See docs/ams-v2/e2e-harness.md. When AMS_APP_URL is unset
