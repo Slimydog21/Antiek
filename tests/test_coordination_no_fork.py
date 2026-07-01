@@ -65,6 +65,14 @@ def test_all_eight_gates_present() -> None:
 
 def test_operator_gate_actions_summary_tracks_appended_follow_ons() -> None:
     md = canonical_gate_path().read_text(encoding="utf-8")
+    master_spec = (canonical_gate_path().parents[0] / "master-product-spec.md").read_text(
+        encoding="utf-8",
+    )
+    engineering_deferrals = (
+        canonical_gate_path().parents[0] / "engineering_deferrals.md"
+    ).read_text(encoding="utf-8")
+    master_compact = " ".join(master_spec.split())
+    deferrals_compact = " ".join(engineering_deferrals.split())
     quick_gate_ids = [
         line.split("|")[1].strip().split()[0]
         for line in md.splitlines()
@@ -83,6 +91,10 @@ def test_operator_gate_actions_summary_tracks_appended_follow_ons() -> None:
     assert "12 gate-actions" not in md
     assert "The nine gates" not in md
     assert "of the 8 gates" not in md
+    assert "plus appended personal-reading-lane follow-on gate-actions" in master_compact
+    assert "plus appended personal-reading-lane follow-on gate-actions" in deferrals_compact
+    assert "the eight binding gates (G1" not in master_compact
+    assert "covers the eight gates" not in deferrals_compact
 
 
 # ── 2. Mutation of a fixture copy is reflected (no stale second copy) ─────────

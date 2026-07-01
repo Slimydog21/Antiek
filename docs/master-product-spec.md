@@ -49,11 +49,12 @@ as execution proceeds.
 
 For current execution state, consult these companion docs in this order:
 
-- **`docs/operator_gate_actions.md`** — the eight binding gates (G1–G8)
-  that engineering cannot close (legal review, publisher opt-in, calendar-
-  bound compounding window, etc.). Each gate has Status / Owner /
-  Blocks-what / Action-needed. **Read first** if you are the operator;
-  this is your action checklist.
+- **`docs/operator_gate_actions.md`** — the original eight binding gates
+  (G1-G8) plus appended personal-reading-lane follow-on gate-actions
+  (G9-G12) that engineering cannot close (legal review, publisher opt-in,
+  calendar-bound compounding window, content-rights checks, etc.). Each gate
+  has Status / Owner / Blocks-what / Action-needed. **Read first** if you are
+  the operator; this is your action checklist.
 - **`docs/engineering_deferrals.md`** — the eleven deferrals (D1–D11)
   where engineering deliberately has NOT shipped because the spec defers
   the work behind an explicit ratification or unlock criterion (Sprint 22
