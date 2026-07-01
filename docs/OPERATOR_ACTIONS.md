@@ -674,13 +674,29 @@ activate:
 1. Pick a cloud KMS (AWS KMS / GCP Cloud KMS / HashiCorp Vault).
 2. Provision a master key with the alias prefix `alias/antiek-graph-`.
 3. Set the cloud credentials in production env vars.
-4. Wire `KMSStubKeyProvider(client=boto3.client('kms'))` (or equivalent)
+4. Install the optional AWS SDK extra if using AWS KMS:
+   `pip install -e '.[kms]'`.
+5. Wire `KMSStubKeyProvider(client=boto3.client('kms'))` (or equivalent)
    into the per-user storage lifecycle in production.
+6. Verify the production round-trip:
+
+   ```python
+   import boto3
+   from substrate.graph_per_user import KMSStubKeyProvider
+
+   kp = KMSStubKeyProvider(client=boto3.client("kms"))
+   material = kp.generate_data_key(graph_id="test-graph")
+   plaintext = kp.decrypt_data_key(material=material)
+   assert material.key_id == "alias/antiek-graph-test-graph"
+   assert material.wrapped_data_key
+   assert plaintext
+   ```
 
 #### Once closed
 
 A successful `kp.generate_data_key(graph_id="test-graph")` call in
-production that round-trips a wrapped key is the closure proof.
+production that decrypts the wrapped key via `decrypt_data_key` is the
+closure proof.
 Commit `docs/decisions/oa-011-kms-deployed.md`. Mark OA-011 CLOSED.
 
 #### Cross-references

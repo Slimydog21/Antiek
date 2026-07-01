@@ -124,6 +124,10 @@ mcp = [
 # substrate.ducklake.PostgresCatalogBackend so core/dev installs do not require
 # libpq or a running database.
 postgres = ["psycopg[binary]>=3.2"]
+# Optional AWS KMS client for production per-graph key wiring. The substrate
+# accepts any AWS-KMS-compatible client; this extra installs the canonical SDK
+# when the operator chooses AWS KMS for OA-011.
+kms = ["boto3>=1.34"]
 
 # Dev / test
 dev = [
