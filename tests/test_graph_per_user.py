@@ -14,6 +14,7 @@ from substrate.ducklake import (
 )
 from substrate.graph_per_user import (
     InMemoryKeyProvider,
+    KeyMaterial,
     KeyProviderError,
     KMSStubKeyProvider,
     close_user_graph,
@@ -51,6 +52,22 @@ def test_inmemory_rotate_replaces_wrapped_key():
     assert rotated.wrapped_data_key != orig.wrapped_data_key
 
 
+def test_inmemory_decrypt_data_key_round_trips_material():
+    p = InMemoryKeyProvider()
+    material = p.generate_data_key(graph_id="u-1")
+
+    assert p.decrypt_data_key(material=material) == material.wrapped_data_key
+
+
+def test_inmemory_decrypt_rejects_stale_material():
+    p = InMemoryKeyProvider()
+    material = p.generate_data_key(graph_id="u-1")
+    p.rotate(graph_id="u-1")
+
+    with pytest.raises(KeyProviderError, match="does not match"):
+        p.decrypt_data_key(material=material)
+
+
 def test_inmemory_rotate_unknown_raises():
     p = InMemoryKeyProvider()
     with pytest.raises(KeyProviderError, match="cannot rotate"):
@@ -73,10 +90,17 @@ def test_kms_stub_delegates_to_client():
     class FakeClient:
         def __init__(self) -> None:
             self.calls: list[tuple] = []
+            self.plaintexts: dict[bytes, bytes] = {}
 
         def generate_data_key(self, *, KeyId, KeySpec):  # noqa: N803
             self.calls.append(("gen", KeyId, KeySpec))
-            return {"CiphertextBlob": b"wrapped-" + KeyId.encode()}
+            wrapped = b"wrapped-" + KeyId.encode()
+            self.plaintexts[wrapped] = b"plain-" + KeyId.encode()
+            return {"CiphertextBlob": wrapped}
+
+        def decrypt(self, *, CiphertextBlob, KeyId):  # noqa: N803
+            self.calls.append(("decrypt", KeyId, CiphertextBlob))
+            return {"Plaintext": self.plaintexts[CiphertextBlob]}
 
         def disable_key(self, *, KeyId):  # noqa: N803
             self.calls.append(("disable", KeyId))
@@ -86,6 +110,7 @@ def test_kms_stub_delegates_to_client():
     material = p.generate_data_key(graph_id="u-1")
     assert material.key_id == "alias/antiek-graph-u-1"
     assert material.wrapped_data_key.startswith(b"wrapped-")
+    assert p.decrypt_data_key(material=material) == b"plain-alias/antiek-graph-u-1"
     p.revoke(graph_id="u-1")
     assert client.calls[-1][0] == "disable"
 
@@ -98,6 +123,22 @@ def test_kms_stub_propagates_client_failure():
     p = KMSStubKeyProvider(client=BadClient())
     with pytest.raises(KeyProviderError, match="KMS generate_data_key failed"):
         p.generate_data_key(graph_id="u-1")
+
+
+def test_kms_stub_propagates_decrypt_failure():
+    class BadClient:
+        def decrypt(self, **kwargs):
+            raise RuntimeError("KMS unavailable")
+
+    p = KMSStubKeyProvider(client=BadClient())
+    with pytest.raises(KeyProviderError, match="KMS decrypt failed"):
+        p.decrypt_data_key(
+            material=KeyMaterial(
+                graph_id="u-1",
+                key_id="alias/antiek-graph-u-1",
+                wrapped_data_key=b"wrapped",
+            )
+        )
 
 
 # ── Lifecycle ───────────────────────────────────────────────────

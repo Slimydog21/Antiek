@@ -36,6 +36,7 @@ class KeyProvider(Protocol):
     """The substrate operations the per-user storage needs."""
 
     def generate_data_key(self, *, graph_id: str) -> KeyMaterial: ...
+    def decrypt_data_key(self, *, material: KeyMaterial) -> bytes: ...
     def lookup(self, *, graph_id: str) -> KeyMaterial | None: ...
     def rotate(self, *, graph_id: str) -> KeyMaterial: ...
     def revoke(self, *, graph_id: str) -> None: ...
@@ -68,6 +69,16 @@ class InMemoryKeyProvider:
         with self._lock:
             return self.keys.get(graph_id)
 
+    def decrypt_data_key(self, *, material: KeyMaterial) -> bytes:
+        with self._lock:
+            stored = self.keys.get(material.graph_id)
+            if stored != material:
+                raise KeyProviderError(
+                    f"wrapped key material for graph_id {material.graph_id!r} "
+                    "does not match the in-memory key store",
+                )
+            return material.wrapped_data_key
+
     def rotate(self, *, graph_id: str) -> KeyMaterial:
         with self._lock:
             if graph_id not in self.keys:
@@ -95,8 +106,8 @@ class KMSStubKeyProvider:
     injected at construction time; this class shapes the substrate
     contract so production wiring is a Drop-in.
 
-    Tests can pass a fake client with `generate_data_key`,
-    `describe_key`, and `disable_key` methods.
+    Tests can pass a fake client with `generate_data_key`, `decrypt`,
+    and `disable_key` methods.
     """
 
     client: object  # actual KMS client; substrate doesn't import any SDK
@@ -127,6 +138,23 @@ class KMSStubKeyProvider:
             key_id=alias,
             wrapped_data_key=bytes(wrapped),
         )
+
+    def decrypt_data_key(self, *, material: KeyMaterial) -> bytes:
+        try:
+            resp = self.client.decrypt(
+                CiphertextBlob=material.wrapped_data_key,
+                KeyId=material.key_id,
+            )  # type: ignore[attr-defined]
+        except Exception as e:
+            raise KeyProviderError(
+                f"KMS decrypt failed for {material.key_id!r}: {e}",
+            ) from e
+        plaintext = resp.get("Plaintext") if isinstance(resp, dict) else None
+        if not isinstance(plaintext, (bytes, bytearray)):
+            raise KeyProviderError(
+                f"KMS response missing Plaintext for {material.key_id!r}",
+            )
+        return bytes(plaintext)
 
     def lookup(self, *, graph_id: str) -> KeyMaterial | None:
         # KMS doesn't store wrapped data keys; the substrate's
