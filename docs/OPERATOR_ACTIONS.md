@@ -884,7 +884,18 @@ platforms targeted by topic. Operator-driven; tooling stays light."*
    target audience matches Antiek's research-reader profile.
 2. Run manual sales conversations.
 3. Close ≥ 3 paying advertisers at a combined monthly run-rate >
-   $5K.
+   $5K. After campaign rows are active, run the packaged verifier:
+
+   ```bash
+   ./.venv/bin/python -m tools.ops.advertiser_run_rate_probe \
+     --store-path /path/to/advertisers.sqlite \
+     --json
+   ```
+
+The probe requires at least three unique advertisers with active campaigns and
+aggregate `daily_budget_cents × 30 >= 500_000`. It is support evidence only and
+does not close OA-016 until the operator signs the advertisers and records the
+production proof.
 
 #### Once closed
 
