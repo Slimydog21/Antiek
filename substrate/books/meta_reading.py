@@ -101,7 +101,9 @@ class LengthBox:
 def budget_for(unit: LengthUnit, amount: int) -> LengthBox:
     """Resolve an "X pages" / "X minutes" request to a word budget, applying
     the degenerate bound. Throws ``MetaReadingError`` with the stated bound on
-    a 0/negative or above-cap request — never a silent clamp."""
+    a 0/negative, fractional, or above-cap request — never a silent clamp."""
+    if not isinstance(amount, int) or isinstance(amount, bool):
+        raise MetaReadingError(f"Length must be a whole number; got {amount!r}.")
     if unit == "pages":
         if amount < MIN_PAGES:
             raise MetaReadingError(

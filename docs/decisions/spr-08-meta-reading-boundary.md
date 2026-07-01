@@ -40,8 +40,8 @@ corpus scope**, made concrete as four properties:
 
 2. **Hard length-box (X pages / X minutes).** Built to size up front via a word
    budget, **not** post-hoc trimmed. If the synthesis cannot fit, it is labelled
-   `truncated`. Degenerate sizes (0 / negative / above the cap) are **rejected
-   with a stated bound**, never silently clamped.
+   `truncated`. Degenerate sizes (0 / negative / fractional / above the cap) are
+   **rejected with a stated bound**, never silently clamped or rounded.
 
 3. **One-shot READ-ONLY cited report.** Not an editable living document. It is
    generated once, saved as a re-openable Read asset, and its citations open the
@@ -160,7 +160,9 @@ The PROPOSED boundary is a HARD corpus boundary **at the planner** that is
   research tier choosing the provider — §16, no new runtime). The deliverable is
   persisted through the **single-writer typed-event funnel** as
   `read.meta_reading.generated` (schema v21) — substrate truth, re-openable; NOT
-  a client side-store, NOT a new table/silo.
+  a client side-store, NOT a new table/silo. Fractional length boxes are rejected
+  before dispatch; the UI preserves `4.5` long enough to show the whole-number
+  error instead of truncating it to `4`.
 - **§9.0.** The synthesis is grounded on owned **servable** chunks; the
   retrieval gate (`search.py` `RESTRICTED_CONTENT_CLASSES`) excludes withheld
   content, so a withheld body never enters the report or a citation — enforced

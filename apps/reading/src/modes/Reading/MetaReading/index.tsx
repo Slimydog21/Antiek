@@ -211,7 +211,10 @@ export default function MetaReading() {
                     max={META_READING_LENGTH_BOUNDS[unit].max}
                     step={1}
                     value={amount}
-                    onChange={(e) => setAmount(parseInt(e.target.value, 10) || 0)}
+                    onChange={(e) => {
+                      const next = e.target.value === "" ? 0 : Number(e.target.value);
+                      setAmount(Number.isNaN(next) ? 0 : next);
+                    }}
                     aria-label="Length amount"
                     className="w-16 bg-ice-0 dark:bg-charcoal-1 rounded px-2 py-1 text-sm outline-none border border-rule dark:border-charcoal-1"
                   />
