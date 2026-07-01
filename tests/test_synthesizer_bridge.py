@@ -25,6 +25,8 @@ from __future__ import annotations
 import json
 import os
 import sys
+from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -49,6 +51,7 @@ from substrate.schemas import (  # noqa: E402
     ActionType,
     Event,
     SynthesizeDeliveredPayload,
+    SynthesizeRequestedPayload,
 )
 
 
@@ -118,6 +121,63 @@ def _patch_dispatch_config(monkeypatch, config: DispatchConfig) -> None:
         router.DispatchConfig, "from_yaml",
         classmethod(lambda cls, path: config),
     )
+
+
+def test_canonical_synthesis_refs_empty_blocks_do_not_disable_validation():
+    import interfaces.research.api.synthesizer as bridge
+
+    refs = bridge._canonical_refs_from_request(
+        SynthesizeRequestedPayload(
+            question="What should we conclude?",
+            decomposition_block="not json and no ids",
+            evidence_block="not json and no chunk ids",
+            parameters_block="not json and no source ids",
+            substrate_block="not json and no graph refs",
+            constraints=[],
+        )
+    )
+
+    assert refs.supporting_chunk_ids == ()
+    assert refs.path_node_ids == ()
+    assert refs.path_edge_ids == ()
+
+
+def test_dispatch_parse_empty_canonical_refs_rejects_model_refs(monkeypatch):
+    import interfaces.research.api.synthesizer as bridge
+
+    monkeypatch.setattr(
+        bridge,
+        "dispatch",
+        lambda *args, **kwargs: SimpleNamespace(
+            text=json.dumps(_good_thesis()),
+            provider="stub-provider",
+            model="stub-model",
+        ),
+    )
+    event = Event(
+        event_id="evt-synth-requested",
+        investigation_id="inv-synth-empty-canonical",
+        action_type=ActionType.SYNTHESIZE_REQUESTED,
+        payload=SynthesizeRequestedPayload(
+            question="What should we conclude?",
+            decomposition_block="not json and no ids",
+            evidence_block="not json and no chunk ids",
+            parameters_block="not json and no source ids",
+            substrate_block="not json and no graph refs",
+            constraints=[],
+        ),
+        param_version="0.1.0",
+        emitted_at=datetime.now(timezone.utc),
+    )
+
+    parsed, policy_id = bridge._dispatch_and_parse(
+        "prompt",
+        event,
+        canonical_refs=bridge.CanonicalSynthesisRefs(),
+    )
+
+    assert parsed is None
+    assert policy_id == "stub-provider/stub-model"
 
 
 @pytest.fixture

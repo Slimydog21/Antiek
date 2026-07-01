@@ -77,7 +77,7 @@ PARAMETER_EXTRACTOR_UNEXPECTED_POLICY_ID = (
 
 def _canonical_source_chunk_ids_from_evidence_block(
     evidence_block: str,
-) -> tuple[str, ...] | None:
+) -> tuple[str, ...]:
     evidence = _load_json_block(evidence_block)
     chunk_ids = _ordered_unique(
         _collect_values_for_keys(
@@ -85,7 +85,7 @@ def _canonical_source_chunk_ids_from_evidence_block(
             {"chunk_ids", "source_chunk_ids", "supporting_chunk_ids"},
         )
     )
-    return chunk_ids or None
+    return chunk_ids
 
 
 def _load_json_block(raw: str) -> Any:
@@ -161,46 +161,6 @@ def _empty_delivered_payload() -> ParameterExtractDeliveredPayload:
         parameters=[],
         constraints=[],
     )
-
-
-def _extract_canonical_chunk_ids(evidence_block: str) -> tuple[str, ...]:
-    """Return chunk ids present in the JSON-stringified evidence block.
-
-    The upstream Evidence Retriever emits nested JSON with ``chunk_ids`` lists.
-    Keep this parser structural: if the block is not JSON, do not regex-guess
-    citations from prose.
-    """
-    try:
-        evidence = json.loads(evidence_block)
-    except json.JSONDecodeError:
-        return ()
-
-    out: list[str] = []
-    seen: set[str] = set()
-
-    def visit(value: Any) -> None:
-        if isinstance(value, dict):
-            for key, item in value.items():
-                if key in {"chunk_id", "chunk_ids", "source_chunk_ids"}:
-                    collect(item)
-                else:
-                    visit(item)
-        elif isinstance(value, list):
-            for item in value:
-                visit(item)
-
-    def collect(value: Any) -> None:
-        if isinstance(value, str):
-            cleaned = value.strip()
-            if cleaned and cleaned not in seen:
-                out.append(cleaned)
-                seen.add(cleaned)
-        elif isinstance(value, list):
-            for item in value:
-                collect(item)
-
-    visit(evidence)
-    return tuple(out)
 
 
 def _parameter_extractor_timeout_s() -> float:

@@ -80,8 +80,8 @@ _CHUNK_ID_LINE_RE = re.compile(
 
 @dataclass(frozen=True)
 class CanonicalEvidenceRefs:
-    chunk_ids: tuple[str, ...] | None = None
-    edge_ids: tuple[str, ...] | None = None
+    chunk_ids: tuple[str, ...] = ()
+    edge_ids: tuple[str, ...] = ()
 
 
 def _canonical_refs_from_request(
@@ -102,8 +102,8 @@ def _canonical_refs_from_request(
         _collect_values_for_keys(subgraph, {"edge_id", "edge_ids"})
     )
     return CanonicalEvidenceRefs(
-        chunk_ids=chunk_ids or None,
-        edge_ids=edge_ids or None,
+        chunk_ids=chunk_ids,
+        edge_ids=edge_ids,
     )
 
 

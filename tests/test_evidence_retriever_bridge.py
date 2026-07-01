@@ -32,6 +32,8 @@ import json
 import os
 import sys
 import typing
+from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -62,6 +64,7 @@ from substrate.schemas import (  # noqa: E402
     Event,
     EvidenceConfidence,
     EvidenceRetrieveDeliveredPayload,
+    EvidenceRetrieveRequestedPayload,
     EvidenceType,
 )
 
@@ -134,6 +137,65 @@ def _patch_dispatch_config(monkeypatch, config: DispatchConfig) -> None:
     )
 
 
+def test_canonical_refs_empty_blocks_do_not_disable_validation():
+    import interfaces.research.api.evidence_retriever as bridge
+    from substrate.schemas import EvidenceRetrieveRequestedPayload
+
+    refs = bridge._canonical_refs_from_request(
+        EvidenceRetrieveRequestedPayload(
+            sub_question="What is X?",
+            category="market_sizing",
+            evidence_type_required="quantitative",
+            top_k=3,
+            chunks_block="not json and no chunk ids",
+            subgraph_block="not json and no edge ids",
+        )
+    )
+
+    assert refs.chunk_ids == ()
+    assert refs.edge_ids == ()
+
+
+def test_dispatch_parse_empty_canonical_refs_rejects_model_refs(monkeypatch):
+    import interfaces.research.api.evidence_retriever as bridge
+
+    sub_question = "What is X?"
+    monkeypatch.setattr(
+        bridge,
+        "dispatch",
+        lambda *args, **kwargs: SimpleNamespace(
+            text=json.dumps(_good_response(sub_question)),
+            provider="stub-provider",
+            model="stub-model",
+        ),
+    )
+    event = Event(
+        event_id="evt-evidence-requested",
+        investigation_id="inv-evidence-empty-canonical",
+        action_type=ActionType.EVIDENCE_RETRIEVE_REQUESTED,
+        payload=EvidenceRetrieveRequestedPayload(
+            sub_question=sub_question,
+            category="market_sizing",
+            evidence_type_required="quantitative",
+            top_k=3,
+            chunks_block="not json and no chunk ids",
+            subgraph_block="not json and no edge ids",
+        ),
+        param_version="0.1.0",
+        emitted_at=datetime.now(timezone.utc),
+    )
+
+    parsed, policy_id = bridge._dispatch_and_parse(
+        "prompt",
+        event,
+        sub_question=sub_question,
+        canonical_refs=bridge.CanonicalEvidenceRefs(),
+    )
+
+    assert parsed is None
+    assert policy_id == "stub-provider/stub-model"
+
+
 @pytest.fixture
 def app_and_bus():
     bus = EventBroadcaster()
@@ -153,7 +215,7 @@ async def _post_evidence_request(
     ac, *, investigation_id, sub_question,
     category="market_sizing", evidence_type_required="quantitative",
     top_k=3, chunks_block="[chunk-1] tier=1: some text",
-    subgraph_block="(no subgraph)",
+    subgraph_block='{"edge_ids": ["edge-1"]}',
 ):
     payload: dict[str, Any] = {
         "action_type": "evidence.retrieve.requested",

@@ -26,6 +26,8 @@ from __future__ import annotations
 import json
 import os
 import sys
+from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -50,6 +52,7 @@ from substrate.graph import ensure_initialized, insert_edge, insert_node  # noqa
 from substrate.schemas import (  # noqa: E402
     ActionType,
     ConnectorDeliveredPayload,
+    ConnectorRequestedPayload,
     Event,
 )
 
@@ -202,6 +205,39 @@ def _good_response(
         "paths": paths_list,
         "natural_language_relationships": nl_list,
     }
+
+
+def test_dispatch_parse_empty_canonical_edges_rejects_model_edge_refs(monkeypatch):
+    import interfaces.research.api.connector as bridge
+
+    monkeypatch.setattr(
+        bridge,
+        "dispatch",
+        lambda *args, **kwargs: SimpleNamespace(
+            text=json.dumps(_good_response(edge_id="edge-made-up")),
+            provider="stub-provider",
+            model="stub-model",
+        ),
+    )
+    event = Event(
+        event_id="evt-connector-requested",
+        investigation_id="inv-connector-empty-canonical",
+        action_type=ActionType.CONNECTOR_REQUESTED,
+        payload=ConnectorRequestedPayload(),
+        param_version="0.1.0",
+        emitted_at=datetime.now(timezone.utc),
+    )
+
+    parsed, policy_id = bridge._dispatch_and_parse(
+        "prompt",
+        event,
+        canonical_matched_node_ids=("n-tsmc",),
+        canonical_path_node_ids=("n-tsmc", "n-asml"),
+        canonical_edge_ids=(),
+    )
+
+    assert parsed is None
+    assert policy_id == "stub-provider/stub-model"
 
 
 # ---------------------------------------------------------------------------
