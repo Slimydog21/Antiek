@@ -9,6 +9,7 @@ Bounded closure. Do not claim “engine fine across platform” without a filled
 | Event bus `DECOMPOSE_QUESTION_REQUESTED` | `decomposer.py:170` | `test_roles_decomposer_extraction.py` | optional | **tested** (bridge) |
 | Loop1 orchestrator start → phase-1 decompose → full phase chain | `orchestration/loop_one/orchestrator.py:393-428` | `tests/test_loop_one_orchestrator.py` (stubbed full phase chain; phase-1 and phase-6 failure guards) | yes for live-provider E2E | **tested** (hermetic stubs; live providers not proved) |
 | `plan_from_gap` / `plan_from_note` | `planner.py:141-166` | `test_cascade_planner.py`, `test_gap_detection.py` | uses injected decomposer | **tested** (fake only) |
+| Reading UI auto-flow client | `apps/reading/src/api/research.ts:createPlan`; `CascadeProposal.tsx` | `apps/reading/src/api/research.test.ts`; `CascadeProposal.test.tsx` | N/A | **tested** — auto calls omit `sub_questions`; manual calls preserve them |
 
 ## Closure sentence (allowed)
 
@@ -18,4 +19,3 @@ Cascade **auto-decompose** contract bugs are fixed and covered by hermetic tests
 
 - Full `POST /investigations` → decompose → phase-2 with live providers and no stubs.
 - Paraphrase-regen parity between cascade and event bus.
-- Reading UI always omits `sub_questions` on auto flow (verify `apps/reading/src/api/research.ts`).
