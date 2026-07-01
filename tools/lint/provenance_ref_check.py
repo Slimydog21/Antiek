@@ -87,21 +87,35 @@ def _target_field_sites(tree: ast.Module) -> list[tuple[int, str]]:
     return out
 
 
+def _parser_functions(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and "parse" in node.name
+    ]
+
+
 def _scan_file(rel: str, path: Path) -> list[str]:
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"))
     except (OSError, SyntaxError):
         return []
 
-    sites = _target_field_sites(tree)
-    if not sites or (_imports_validator(tree) and _calls_validator(tree)):
-        return []
-
-    first_line, first_field = min(sites)
-    return [
-        f"{rel}:{first_line}: role parser surfaces {first_field!r} without "
-        "substrate.provenance.validate_ref(s)"
-    ]
+    violations: list[str] = []
+    validator_imported = _imports_validator(tree)
+    for func in _parser_functions(tree):
+        sites = _target_field_sites(func)
+        if not sites:
+            continue
+        if validator_imported and _calls_validator(func):
+            continue
+        first_line, first_field = min(sites)
+        violations.append(
+            f"{rel}:{first_line}: parser function {func.name!r} surfaces "
+            f"{first_field!r} without substrate.provenance.validate_ref(s)"
+        )
+    return violations
 
 
 def _parser_files(root: Path) -> list[tuple[str, Path]]:
