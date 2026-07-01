@@ -46,6 +46,10 @@ function isReaderPageIndex(page: number): boolean {
   return Number.isSafeInteger(page) && page >= 0;
 }
 
+function isRegionOffset(offset: number): boolean {
+  return Number.isSafeInteger(offset) && offset >= 0;
+}
+
 /**
  * Build the `/read/:documentId` target (path + search) the one Reader mounts
  * on, encoding the opts the Reader reads back. Pure (no navigation, no
@@ -91,7 +95,10 @@ export function encodeRegion(region: import("../types/document_model.gen").Regio
     region.char_start !== undefined &&
     region.char_start !== null &&
     region.char_end !== undefined &&
-    region.char_end !== null
+    region.char_end !== null &&
+    isRegionOffset(region.char_start) &&
+    isRegionOffset(region.char_end) &&
+    region.char_end >= region.char_start
   ) {
     return `${head}:${region.char_start}-${region.char_end}`;
   }
@@ -113,9 +120,9 @@ export function decodeRegion(
   if (parts.length >= 3) {
     const m = parts[2].match(/^(\d+)-(\d+)$/);
     if (m) {
-      const start = parseInt(m[1], 10);
-      const end = parseInt(m[2], 10);
-      if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+      const start = Number(m[1]);
+      const end = Number(m[2]);
+      if (isRegionOffset(start) && isRegionOffset(end) && end >= start) {
         region.char_start = start;
         region.char_end = end;
       }

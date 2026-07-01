@@ -29,7 +29,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import Reader from "../components/reader/Reader";
 import { allBlocksDocument } from "../components/reader/fixtures/allBlocks";
-import { buildReaderTarget, seedReadPosition } from "../lib/openDocument";
+import { buildReaderTarget, decodeRegion, seedReadPosition } from "../lib/openDocument";
 
 // Load-bearing imports: the real SPR-01 contract types. If the contract is
 // deleted or its surface changes, this file fails to compile under `tsc
@@ -560,6 +560,41 @@ describe("oneReader conformance — unification proof (SPR-09 M3)", () => {
     expect(target).toEqual({
       path: "/read/doc-source-42",
       search: "?chunk=chunk-7&hl=doc-source-42%3Achunk-7%3A100-240",
+    });
+  });
+
+  it.each([
+    { char_start: 100.5, char_end: 240 },
+    { char_start: -1, char_end: 240 },
+    { char_start: 240, char_end: 100 },
+    { char_start: Number.MAX_SAFE_INTEGER + 1, char_end: Number.MAX_SAFE_INTEGER + 2 },
+  ])(
+    "does not export malformed highlight range %o into the canonical /read target",
+    (range) => {
+      const target = buildReaderTarget("doc-source-42", {
+        highlight: {
+          document_id: "doc-source-42",
+          block_id: "chunk-7",
+          ...range,
+        },
+      });
+
+      expect(target).toEqual({
+        path: "/read/doc-source-42",
+        search: "?hl=doc-source-42%3Achunk-7",
+      });
+    },
+  );
+
+  it.each([
+    "doc-source-42:chunk-7:100.5-240",
+    "doc-source-42:chunk-7:-1-240",
+    "doc-source-42:chunk-7:240-100",
+    "doc-source-42:chunk-7:9007199254740992-9007199254740993",
+  ])("decodes malformed highlight range %s as a whole-block region", (token) => {
+    expect(decodeRegion(token)).toEqual({
+      document_id: "doc-source-42",
+      block_id: "chunk-7",
     });
   });
 
