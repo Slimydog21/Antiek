@@ -110,6 +110,13 @@ describe("parseSynthesis — inline-rubric quality score (M3)", () => {
     ]);
     expect(synth!.qualityScore).toBeNull();
   });
+
+  it("ignores a non-finite rubric final_score", () => {
+    const synth = withRubric([
+      ev("rubric.scored", { final_score: Number.NaN, notes: "voice=0.80" }),
+    ]);
+    expect(synth!.qualityScore).toBeNull();
+  });
 });
 
 // ── SPR-10 M2 — reuse provenance, READ from knowledge.reused (never invented) ──

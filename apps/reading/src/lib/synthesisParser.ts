@@ -404,7 +404,11 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
   // SPR-11 M3: attach the persisted inline-rubric verdict when one exists.
   // A rubric.scored event must carry a numeric final_score; without it we
   // leave qualityScore null rather than guess a value (rigor #1).
-  if (rubricPayload && typeof rubricPayload.final_score === "number") {
+  if (
+    rubricPayload &&
+    typeof rubricPayload.final_score === "number" &&
+    Number.isFinite(rubricPayload.final_score)
+  ) {
     const notes = typeof rubricPayload.notes === "string" ? rubricPayload.notes : "";
     result.qualityScore = {
       composite: Math.max(0, Math.min(1, rubricPayload.final_score)),
