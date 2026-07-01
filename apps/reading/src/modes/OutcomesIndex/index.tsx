@@ -24,6 +24,21 @@ interface OutcomeRow {
   observed_at: string;
 }
 
+function observerLabel(observer: string): string {
+  if (observer === "__operator__") return "You";
+  return observer || "Reviewer";
+}
+
+function observerFilterParam(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return trimmed.toLowerCase() === "you" ? "__operator__" : trimmed;
+}
+
+function reviewTitle(row: OutcomeRow, index: number): string {
+  return `Review ${index + 1} from ${row.observed_at || "an earlier session"}`;
+}
+
 export default function OutcomesIndex() {
   const navigate = useNavigate();
   const [rows, setRows] = useState<OutcomeRow[]>([]);
@@ -37,12 +52,12 @@ export default function OutcomesIndex() {
     try {
       const params = new URLSearchParams();
       if (observerFilter.trim()) {
-        params.set("observer", observerFilter.trim());
+        params.set("observer", observerFilterParam(observerFilter));
       }
       params.set("limit", "200");
       const resp = await apiFetch(`/outcomes?${params.toString()}`);
       if (!resp.ok) {
-        throw new Error(`GET /outcomes failed: HTTP ${resp.status}`);
+        throw new Error(`Could not load review history (HTTP ${resp.status}).`);
       }
       const data = await resp.json();
       setRows(data.outcomes ?? []);
@@ -66,22 +81,22 @@ export default function OutcomesIndex() {
               Outcomes audit
             </h1>
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-              Cross-investigation grading history. Per master-spec
-              §13.8: outcomes are first-class signals that feed the
-              Phase 8 skill-growth gate — replay first, grade second.
+              Review history across your research. Open any row to see the
+              graded answer, the replay, and the notes behind the decision.
             </p>
           </header>
 
           <section className="border border-rule dark:border-charcoal-1 rounded-md p-4">
             <label className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight block mb-1">
-              Filter by observer
+              Filter by reviewer
             </label>
             <input
               type="text"
               value={observerFilter}
               onChange={(e) => setObserverFilter(e.target.value)}
-              placeholder="__operator__ — leave blank for all"
-              className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
+              aria-label="Filter by reviewer"
+              placeholder="Type “you” or an exact reviewer handle"
+              className="w-full text-sm font-serif text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
             />
           </section>
 
@@ -96,19 +111,13 @@ export default function OutcomesIndex() {
           )}
 
           {!loading && rows.length === 0 && !error && (
-            // SPR-06 M3 — the empty state explains what Outcomes IS (the
-            // cross-investigation grading / quality history of your
-            // investigations), so a first-time user isn't confused by a blank
-            // tab. Reuses the SHIPPED outcomes data (GET /outcomes →
-            // middleware.backtest.db.load_outcomes_for_synthesis, read by the
-            // Phase 8 gate); no new grading concept/table/rubric is introduced.
             <p className="text-sm text-shadow-1 dark:text-moonlight italic">
-              This is the grading / quality history of your
-              investigations — each row is a synthesis you graded
-              validated, falsified, or indeterminate, kept as the
-              cross-investigation record the Phase 8 gate reads. Nothing
-              graded yet for this filter; grade a synthesis at
-              /outcomes/&lt;synthesis_id&gt; and it appears here.
+              {observerFilter.trim()
+                ? "No reviews match this filter yet."
+                : "No reviews yet."}{" "}
+              Once you grade an answer as validated, falsified, or
+              indeterminate, it appears here with a link back to the full
+              review.
             </p>
           )}
 
@@ -123,30 +132,35 @@ export default function OutcomesIndex() {
               columns={[
                 {
                   key: "synthesis",
-                  header: "Synthesis",
+                  header: "Review",
                   width: "55%",
-                  render: (r) => (
-                    <span className="font-mono text-ink dark:text-bright truncate inline-block max-w-full">
-                      {r.synthesis_id}
-                    </span>
+                  render: (r, i) => (
+                    <div>
+                      <p className="font-serif text-ink dark:text-bright truncate">
+                        {reviewTitle(r, i)}
+                      </p>
+                      <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
+                        Open the graded answer and replay
+                      </p>
+                    </div>
                   ),
                 },
                 {
                   key: "observed",
-                  header: "Observed",
+                  header: "Reviewed by",
                   render: (r) => (
-                    <span className="font-mono text-[12px] text-ink-soft dark:text-starlight">
-                      {r.observed_at} · {r.observer}
+                    <span className="font-serif text-[12px] text-ink-soft dark:text-starlight">
+                      {observerLabel(r.observer)}
                     </span>
                   ),
                 },
                 {
                   key: "outcome",
-                  header: "Outcome id",
+                  header: "Action",
                   align: "right",
-                  render: (r) => (
-                    <span className="font-mono text-[11px] text-ink-mute dark:text-moonlight">
-                      {r.outcome_id.slice(0, 12)}
+                  render: () => (
+                    <span className="font-serif text-[12px] text-ink-soft dark:text-starlight">
+                      Open details
                     </span>
                   ),
                 },
