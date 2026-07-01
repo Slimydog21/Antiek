@@ -484,6 +484,7 @@ describe("DIALOGUE keeps the user prompt distinct from the model reply (§9)", (
     });
     // AIActionFailure renders role="alert" with the no-provider sentence.
     expect(screen.getByRole("alert").textContent).toMatch(/provider isn|no result/i);
+    expect(screen.getByRole("alert").textContent).toMatch(/activation SPR-03/i);
   });
 });
 
