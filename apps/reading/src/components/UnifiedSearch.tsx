@@ -94,6 +94,12 @@ function resolvedReaderPageIndex(hit: CorpusSearchHit): number | null {
   return hit.page_index;
 }
 
+function finiteNonNegativeNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
 export default function UnifiedSearch({
   variant = "library",
   themeContext,
@@ -122,6 +128,7 @@ export default function UnifiedSearch({
   const searchGenRef = useRef(0);
   const searchStartedAtRef = useRef<number | null>(null);
   const celebratedRef = useRef(false);
+  const liveCost = finiteNonNegativeNumber(start.liveCost) ?? 0;
 
   const themedQuery = useCallback(
     (raw: string) => {
@@ -576,7 +583,7 @@ export default function UnifiedSearch({
           </p>
           <p className="text-xs font-mono text-ink-mute dark:text-moonlight">
             {start.events.length} event{start.events.length === 1 ? "" : "s"} · $
-            {start.liveCost.toFixed(4)}
+            {liveCost.toFixed(4)}
           </p>
           <button
             type="button"

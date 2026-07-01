@@ -288,6 +288,21 @@ describe("UnifiedSearch — M2 Enter escalates (cassette)", () => {
     expect(screen.getByText(/Researching/i)).toBeTruthy();
     expect(navigateMock).not.toHaveBeenCalled();
   });
+
+  it("does not render malformed inline live cost as NaN or Infinity", () => {
+    resetInvestigationState({
+      startedId: "inv-live",
+      phase: "streaming",
+      events: [{ action_type: "dispatch.call", payload: { cost_usd: Number.NaN } } as Event],
+      liveCost: Number.NaN,
+    });
+
+    renderSearch();
+
+    expect(screen.getByTestId("unified-search-research-live")).toBeTruthy();
+    expect(document.body.textContent).toContain("$0.0000");
+    expect(document.body.textContent).not.toMatch(/NaN|Infinity|\$-/);
+  });
 });
 
 describe("UnifiedSearch — M3 every result opens via openDocument", () => {
