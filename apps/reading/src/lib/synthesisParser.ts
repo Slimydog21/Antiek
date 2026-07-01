@@ -264,6 +264,10 @@ function subScoreFromNotes(notes: string, key: string): number | null {
   return Number.isFinite(v) && v >= 0 && v <= 1 ? v : null;
 }
 
+function finiteNumberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 /**
  * Walk events to extract the canonical synthesis structure + sum costs.
  * Returns `null` when the investigation has no synthesize.delivered yet
@@ -312,7 +316,8 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
       if (q) question = q;
     } else if (at === "dispatch.call") {
       const c = (p as { cost_usd?: number } | undefined)?.cost_usd;
-      if (typeof c === "number") totalCost += c;
+      const finiteCost = finiteNumberOrNull(c);
+      if (finiteCost !== null && finiteCost >= 0) totalCost += finiteCost;
     } else if (at === "rubric.scored") {
       rubricPayload = p as RubricScoredPayload;
     } else if (at === "knowledge.reused") {
@@ -328,7 +333,7 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
           unitId,
           sourceInvestigationId:
             typeof sources[i] === "string" ? sources[i] : null,
-          score: typeof scores[i] === "number" ? scores[i] : null,
+          score: finiteNumberOrNull(scores[i]),
         });
       });
     } else if (at === COMPOUNDING_MEASURED_ACTION_TYPE) {
