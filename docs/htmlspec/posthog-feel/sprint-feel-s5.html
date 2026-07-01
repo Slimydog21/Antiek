@@ -26,7 +26,7 @@
   <div class="cell"><div class="label">Depends on</div><div class="value">S2, S4</div></div>
   <div class="cell"><div class="label">Blocks</div><div class="value">S6</div></div>
   <div class="cell"><div class="label">Substrate</div><div class="value">none</div></div>
-  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">CLOSED · VERIFIED</div></div>
 </div>
 
 <h2>1 · Goal</h2>
@@ -47,6 +47,7 @@
   <li>Reduced-motion: ring remains; transform lift suppressed (S2/S4).</li>
   <li>NavRail igloo keeps visible “Home” label (AMS regression).</li>
 </ul>
+<p><strong>2026-07-01 proof:</strong> <code>npm test -- feel-focus --run</code> and <code>npx playwright test --project=chromium feel-focus-ring.spec.ts</code> passed, including the real Tab-key focus-ring path.</p>
 
 <h2>5 · Rigor</h2>
 <ul>

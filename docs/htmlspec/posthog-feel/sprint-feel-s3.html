@@ -26,7 +26,7 @@
   <div class="cell"><div class="label">Depends on</div><div class="value">FEEL-S1</div></div>
   <div class="cell"><div class="label">Blocks</div><div class="value">S6</div></div>
   <div class="cell"><div class="label">Substrate</div><div class="value">none</div></div>
-  <div class="cell"><div class="label">Status</div><div class="value">PROPOSED</div></div>
+  <div class="cell"><div class="label">Status</div><div class="value">CLOSED · VERIFIED</div></div>
 </div>
 
 <h2>1 · Goal</h2>
@@ -51,6 +51,7 @@
   <li><code>ams-v2-experience-matrix</code> criterion <code>windows</code> still passes.</li>
   <li>Glass sample inside window still shows scene in pixel band (existing test).</li>
 </ul>
+<p><strong>2026-07-01 proof:</strong> <code>npx playwright test --project=ams-real feel-experience-matrix.spec.ts windows-default.spec.ts</code> passed, including the title-bar cascade and AMS window coexistence checks.</p>
 
 <h2>5 · Rigor</h2>
 <ul>
