@@ -166,7 +166,14 @@ def write_outcomes_json(
 
 def load_outcomes_json(path: Path) -> tuple[str | None, list[PromptMutationOutcome]]:
     """Load either ``[{...}]`` or ``{"role": "...", "outcomes": [{...}]}``."""
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ValueError(f"could not read outcomes JSON: {path}") from exc
+    try:
+        raw = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"outcomes JSON is malformed: {path}") from exc
     role: str | None = None
     if isinstance(raw, dict):
         if "role" in raw:
