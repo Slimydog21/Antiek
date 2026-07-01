@@ -48,6 +48,10 @@ import {
   type ResolvedMarginNote,
 } from "../../reading-physics/augmentations/marginalia";
 import {
+  makeChaseLauncherAugmentation,
+  type ChaseLaunchSpec,
+} from "../../reading-physics/augmentations/chase-launcher";
+import {
   CollapseState,
   collapsePipelineFor,
   fingerprintPlan,
@@ -64,6 +68,7 @@ import {
 import { collectAnchoredWidgets, collectDecorations } from "../../reading-physics/registry";
 import type { Anchor, ClaimId, ChunkId, LayoutMap, ReadingContext, RenderContext } from "../../reading-physics/types";
 import { useOpenDocument } from "../../lib/openDocument";
+import { useWorkspace } from "../../workspace/WorkspaceStore";
 import {
   sourcePageNumberFromSectionPath,
   zeroBasedReaderPageFromSourcePage,
@@ -211,6 +216,45 @@ function passageAnchorsByChunkFromNotes(
   return byChunk;
 }
 
+function parentInvestigationIdFromEvents(
+  events: readonly Event[],
+  synthesisId: string | null,
+): string | null {
+  for (const event of events) {
+    if (synthesisId && event.synthesis_id && event.synthesis_id !== synthesisId) {
+      continue;
+    }
+    const id = asNonEmptyString(event.investigation_id);
+    if (id) return id;
+  }
+  return null;
+}
+
+function chaseSpecsFromResolvedMarginNotes(
+  notes: readonly ResolvedMarginNote[],
+  parentInvestigationId: string | null,
+): ChaseLaunchSpec[] {
+  if (!parentInvestigationId) return [];
+  const specs: ChaseLaunchSpec[] = [];
+  const seen = new Set<string>();
+  for (const note of notes) {
+    if (note.resolution.kind !== "match") continue;
+    const anchor = note.resolution.candidate.anchor;
+    if (anchor.kind !== "passage") continue;
+    const key = `${anchor.chunkId}:${anchor.start}:${anchor.end}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    specs.push({
+      chunkId: anchor.chunkId,
+      start: anchor.start,
+      end: anchor.end,
+      passageText: note.resolution.candidate.excerpt,
+      parentInvestigationId,
+    });
+  }
+  return specs;
+}
+
 // ── Living-Roadmap SPR-02 — the recompute debounce (M3) ──────────────────────
 //
 // WHAT TRIGGERS A RECOMPUTE, and what does NOT (the honest M3 model). The base
@@ -278,6 +322,14 @@ export default function MasterMdViewer({
   const marginaliaPassagesByChunk = useMemo(
     () => passageAnchorsByChunkFromNotes(resolvedMarginNotes),
     [resolvedMarginNotes],
+  );
+  const parentInvestigationId = useMemo(
+    () => parentInvestigationIdFromEvents(events, synthesisId),
+    [events, synthesisId],
+  );
+  const chaseLaunchSpecs = useMemo(
+    () => chaseSpecsFromResolvedMarginNotes(resolvedMarginNotes, parentInvestigationId),
+    [resolvedMarginNotes, parentInvestigationId],
   );
 
   // ── Living-Roadmap SPR-02 — the surface GEOMETRY PASS (M1/M3) ──────────────
@@ -381,6 +433,11 @@ export default function MasterMdViewer({
         <MarginaliaLayer
           synthesis={synthesis}
           notes={resolvedMarginNotes}
+          layoutMap={layoutMap}
+        />
+        <ChaseLauncherLayer
+          synthesis={synthesis}
+          specs={chaseLaunchSpecs}
           layoutMap={layoutMap}
         />
         {/* Header band */}
@@ -727,6 +784,103 @@ function MarginaliaLayer({
         );
       })}
     </div>
+  );
+}
+
+function ChaseLauncherLayer({
+  synthesis,
+  specs,
+  layoutMap,
+}: {
+  synthesis: ParsedSynthesis;
+  specs: readonly ChaseLaunchSpec[];
+  layoutMap: LayoutMap;
+}) {
+  if (specs.length === 0) return null;
+
+  const ctx: ReadingContext = {
+    synthesis: {
+      question: synthesis.question,
+      claims: synthesis.components.map((claim) => ({
+        claimId: String(claim.index) as ClaimId,
+        chunkIds: claim.chunkIds as ChunkId[],
+      })),
+    },
+    layout: layoutMap,
+    substrate: {
+      getChunk: () =>
+        Promise.reject(
+          new Error("substrate.getChunk is not wired in the chase-launcher render pass"),
+        ),
+    },
+  };
+  const augmentations = specs.map((spec) => makeChaseLauncherAugmentation(spec));
+  const widgets = collectAnchoredWidgets(augmentations, ctx).all.map(
+    (placed) => placed.widget,
+  );
+  const enacted = resolveAnchoredWidgets(widgets, layoutMap).filter(
+    (widget) => widget.rect !== null,
+  );
+  if (enacted.length === 0) return null;
+
+  const renderCtx: RenderContext = {
+    pass: "main",
+    layout: layoutMap,
+    components: { ChaseLauncher: SurfaceChaseLauncher },
+  };
+
+  return (
+    <div className="pointer-events-none absolute inset-0" aria-label="Follow-up research">
+      {enacted.map((widget) => {
+        if (!widget.rect) return null;
+        const node = renderEnacted(widget, renderCtx);
+        if (!node) return null;
+        return (
+          <aside
+            key={widget.widget.id}
+            className="pointer-events-auto absolute w-40"
+            style={{
+              top: `${widget.rect.top}px`,
+              left: `${widget.rect.left + widget.rect.width + 12}px`,
+            }}
+          >
+            {node}
+          </aside>
+        );
+      })}
+    </div>
+  );
+}
+
+function SurfaceChaseLauncher({
+  passageText,
+  parentInvestigationId,
+  reservedChildId,
+}: {
+  readonly passageText: string;
+  readonly parentInvestigationId: string;
+  readonly reservedChildId?: string | null;
+}) {
+  const openPanel = useWorkspace((state) => state.open);
+  return (
+    <button
+      type="button"
+      className="rounded border border-rule bg-ice-0/95 px-2 py-1 text-left font-mono text-[10px] uppercase tracking-wide text-ink shadow-sm hover:bg-ice-2 dark:border-charcoal-1 dark:bg-charcoal-2/95 dark:text-bright dark:hover:bg-charcoal-1"
+      title={`Follow this: ${passageText}`}
+      onClick={() =>
+        openPanel(
+          "ChaseThread",
+          {
+            spawnContext: passageText,
+            parentInvestigationId,
+            reservedChildId: reservedChildId ?? null,
+          },
+          { mode: "floating", title: "Follow this" },
+        )
+      }
+    >
+      Follow this
+    </button>
   );
 }
 
