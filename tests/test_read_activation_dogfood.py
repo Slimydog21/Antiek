@@ -361,6 +361,26 @@ def test_deployed_build_date_must_be_iso_day() -> None:
     assert any("date must be YYYY-MM-DD" in f for f in report.failures)
 
 
+def test_deployed_build_sha_must_be_git_sha_shaped() -> None:
+    record = _session(1, live=True, citation=True, entry_door="search")
+    record["build_sha"] = "latest"
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.valid_sessions == 0
+    assert any("build_sha must be a 6-40 character git SHA" in f for f in report.failures)
+
+
+def test_deployed_build_sha_accepts_full_git_sha() -> None:
+    record = _session(1, live=True, citation=True, entry_door="search")
+    record["build_sha"] = "0123456789abcdef0123456789abcdef01234567"
+
+    report = validate_sessions([record])
+
+    assert not any("build_sha must" in f for f in report.failures)
+
+
 def test_deployed_build_url_must_be_http_url() -> None:
     record = _session(1, live=True, citation=True, entry_door="search")
     record["url"] = "/read/doc-1"
