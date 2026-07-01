@@ -142,8 +142,53 @@ def _keyword_ref_sites(tree: ast.AST) -> list[tuple[int, str]]:
     return out
 
 
-def _target_field_sites(tree: ast.AST) -> list[tuple[int, str]]:
-    return _field_reads(tree) + _dict_ref_key_sites(tree) + _keyword_ref_sites(tree)
+def _class_field_order(tree: ast.Module) -> dict[str, tuple[str, ...]]:
+    out: dict[str, tuple[str, ...]] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef):
+            continue
+        fields: list[str] = []
+        for stmt in node.body:
+            if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name):
+                fields.append(stmt.target.id)
+        if fields:
+            out[node.name] = tuple(fields)
+    return out
+
+
+def _positional_constructor_ref_sites(
+    tree: ast.AST,
+    class_fields: dict[str, tuple[str, ...]],
+) -> list[tuple[int, str]]:
+    out: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = _qualified_name(node.func)
+        if name is None:
+            continue
+        fields = class_fields.get(name.rsplit(".", 1)[-1])
+        if not fields:
+            continue
+        for idx, value in enumerate(node.args):
+            if idx >= len(fields):
+                break
+            field = fields[idx]
+            if _is_ref_field(field):
+                out.append((value.lineno, field))
+    return out
+
+
+def _target_field_sites(
+    tree: ast.AST,
+    class_fields: dict[str, tuple[str, ...]],
+) -> list[tuple[int, str]]:
+    return (
+        _field_reads(tree)
+        + _dict_ref_key_sites(tree)
+        + _keyword_ref_sites(tree)
+        + _positional_constructor_ref_sites(tree, class_fields)
+    )
 
 
 def _expr_contains_validator_call(
@@ -413,6 +458,7 @@ def _generated_id_aliases(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[s
 def _validated_fields(
     func: ast.FunctionDef | ast.AsyncFunctionDef,
     validator_names: frozenset[str],
+    class_fields: dict[str, tuple[str, ...]],
 ) -> set[str]:
     aliases = _raw_field_aliases(func)
     validator_aliases = _validator_aliases(func, validator_names)
@@ -460,17 +506,40 @@ def _validated_fields(
                 out.add(keyword.arg)
             elif _names_in(keyword.value) & (validator_aliases | generated_id_aliases):
                 out.add(keyword.arg)
+    for node in ast.walk(func):
+        if not isinstance(node, ast.Call):
+            continue
+        name = _qualified_name(node.func)
+        if name is None:
+            continue
+        fields = class_fields.get(name.rsplit(".", 1)[-1])
+        if not fields:
+            continue
+        for idx, value in enumerate(node.args):
+            if idx >= len(fields):
+                break
+            field = fields[idx]
+            if not _is_ref_field(field):
+                continue
+            if (
+                _expr_contains_validator_call(value, validator_names)
+                or _expr_contains_generated_id_call(value)
+            ):
+                out.add(field)
+            elif _names_in(value) & (validator_aliases | generated_id_aliases):
+                out.add(field)
     return out
 
 
 def _unvalidated_field_sites(
     func: ast.FunctionDef | ast.AsyncFunctionDef,
     validator_names: frozenset[str],
+    class_fields: dict[str, tuple[str, ...]],
 ) -> list[tuple[int, str]]:
-    sites = _target_field_sites(func)
+    sites = _target_field_sites(func, class_fields)
     if not sites:
         return []
-    validated = _validated_fields(func, validator_names)
+    validated = _validated_fields(func, validator_names, class_fields)
     return [
         (line, field)
         for line, field in sites
@@ -495,13 +564,14 @@ def _scan_file(rel: str, path: Path) -> list[str]:
 
     violations: list[str] = []
     validator_names = _validator_call_names(tree)
+    class_fields = _class_field_order(tree)
     module_shadows = _module_shadowed_names(tree)
     for func in _parser_functions(tree):
         effective_validator_names = _without_shadowed_validator_names(
             validator_names,
             module_shadows | _function_shadowed_names(func),
         )
-        sites = _unvalidated_field_sites(func, effective_validator_names)
+        sites = _unvalidated_field_sites(func, effective_validator_names, class_fields)
         if not sites:
             continue
         first_lines_by_field: dict[str, int] = {}

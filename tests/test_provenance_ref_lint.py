@@ -463,6 +463,30 @@ def parse(obj):
     assert any("question_id" in violation for violation in violations)
 
 
+def test_lint_catches_ref_shaped_positional_constructor_arg_from_raw_alias(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "positional_constructor_role" / "parser.py",
+        """
+from dataclasses import dataclass
+
+@dataclass
+class ParsedQuestion:
+    question_id: str
+    text: str
+
+def parse(obj):
+    raw = obj.get("qid")
+    return ParsedQuestion(raw, "body")
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any("question_id" in violation for violation in violations)
+
+
 def test_lint_allows_new_ref_shaped_fields_routed_through_validator(
     tmp_path: Path,
 ) -> None:
@@ -478,6 +502,30 @@ def parse(obj, canonical):
         "claim_id": claim_id,
         "note_ids": note_ids,
     }
+""",
+    )
+
+    assert find_violations(tmp_path) == []
+
+
+def test_lint_allows_ref_shaped_positional_constructor_arg_from_validator_alias(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "positional_constructor_good_role" / "parser.py",
+        """
+from dataclasses import dataclass
+from substrate.provenance import validate_ref
+
+@dataclass
+class ParsedQuestion:
+    question_id: str | None
+    text: str
+
+def parse(obj, canonical):
+    raw = obj.get("qid")
+    question_id = validate_ref(raw, canonical)
+    return ParsedQuestion(question_id, "body")
 """,
     )
 
@@ -501,6 +549,30 @@ def parse(obj, canonical):
     raw = obj.get("qid")
     question_id = validate_ref(raw, canonical)
     return ParsedQuestion(question_id=question_id)
+""",
+    )
+
+    assert find_violations(tmp_path) == []
+
+
+def test_lint_allows_ref_shaped_positional_constructor_arg_from_generated_id(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "positional_generated_role" / "parser.py",
+        """
+from dataclasses import dataclass
+
+@dataclass
+class ExtractedNote:
+    note_id: str
+    text: str
+
+def _new_note_id():
+    return "n-123"
+
+def parse(obj):
+    return ExtractedNote(_new_note_id(), "body")
 """,
     )
 
