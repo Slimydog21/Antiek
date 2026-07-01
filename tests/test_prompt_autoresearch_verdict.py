@@ -54,6 +54,31 @@ def test_empty_outcomes_insufficient_data():
     assert v.iteration_count == 0
 
 
+def test_compute_verdict_rejects_invalid_thresholds():
+    outcome = _mk_outcome(mutation_id="m-0", delta=0.10, accepted=True)
+
+    try:
+        compute_verdict("synthesizer", [outcome], min_mutations=0)
+    except ValueError as exc:
+        assert "min_mutations must be a positive integer" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected invalid min_mutations to be rejected")
+
+    try:
+        compute_verdict("synthesizer", [outcome], min_acceptance_rate=1.5)
+    except ValueError as exc:
+        assert "min_acceptance_rate must be a number in [0, 1]" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected invalid min_acceptance_rate to be rejected")
+
+    try:
+        compute_verdict("synthesizer", [outcome], min_mean_delta=-0.01)
+    except ValueError as exc:
+        assert "min_mean_delta must be a non-negative finite number" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected invalid min_mean_delta to be rejected")
+
+
 def test_below_min_mutations_insufficient_data():
     outs = [
         _mk_outcome(mutation_id=f"m-{i}", delta=0.10, accepted=True)
