@@ -1,20 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiFetch } from "../../lib/api";
-
-/**
- * Privacy Dashboard (master-spec §13.3 — first-class product surface).
- *
- * "Real-time view of every telemetry collected from the user's
- * private graph, with toggles per category and a 'delete everything'
- * button that actually deletes everything within 30 days."
- *
- * The dashboard reads ε budgets from the live ``/trust-center``
- * endpoint so any future telemetry surface that registers with the
- * EpsilonRegistry appears here automatically. Per master-spec §13.3:
- * 'we are architecturally incapable of leaking your data' rather
- * than 'we promise not to.'
- */
+import {
+  EPSILON_CAP,
+  formatBudgetDescription,
+  formatBudgetLabel,
+  formatComplianceLabel,
+  formatSensitivityLabel,
+  formatSystemControl,
+  sensitivityForBudget,
+  type PrivacySensitivity,
+} from "../../lib/trustCopy";
 
 interface TrustCenterData {
   differential_privacy_epsilon_budgets: Record<string, number>;
@@ -23,27 +19,6 @@ interface TrustCenterData {
   compliance_frameworks: string[];
   loop_3_unlock_status: Record<string, boolean>;
 }
-
-const CATEGORY_DESCRIPTIONS: Record<string, string> = {
-  skill_invocation_frequency:
-    "Which substrate skills fire and at what rate. Low sensitivity; " +
-    "the DP randomizer ensures no single invocation is identifying.",
-  source_tier_preference_signals:
-    "Which source tiers (Tier 1 = peer-reviewed primary, " +
-    "Tier 5 = anonymous) you accept versus reject. The shuffled " +
-    "aggregate informs the dispatch router's tier hints.",
-  query_content_telemetry:
-    "The text of your research queries and the content of your " +
-    "private notes. Per master-spec §13.3: NOT COLLECTED at any ε " +
-    "that preserves utility — Antiek chooses no collection.",
-};
-
-const SENSITIVITY_BY_EPSILON = (eps: number): "low" | "medium" | "high" | "forbidden" => {
-  if (eps === 0) return "forbidden";
-  if (eps <= 1.0) return "high";
-  if (eps <= 2.0) return "medium";
-  return "low";
-};
 
 interface DeletionRequest {
   request_id: string;
@@ -57,16 +32,32 @@ export default function PrivacyDashboard() {
   const [data, setData] = useState<TrustCenterData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingDeletion, setPendingDeletion] = useState<DeletionRequest | null>(null);
+  const [deletionStatusKnown, setDeletionStatusKnown] = useState(false);
+  const [deletionBusy, setDeletionBusy] = useState(false);
+  const reloadSeq = useRef(0);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (options?: {
+    preserveDataOnFailure?: boolean;
+    preservePendingOnFailure?: boolean;
+    suppressPendingOnSuccess?: boolean;
+  }) => {
+    const requestId = reloadSeq.current + 1;
+    reloadSeq.current = requestId;
     try {
       const [tc, dr] = await Promise.all([
         apiFetch("/trust-center"),
         apiFetch("/trust-center/deletion-requests").catch(() => null),
       ]);
+      if (requestId !== reloadSeq.current) return false;
       if (!tc.ok) {
-        throw new Error(`GET /trust-center failed: HTTP ${tc.status}`);
+        if (!options?.preserveDataOnFailure) setData(null);
+        if (!options?.preservePendingOnFailure) {
+          setPendingDeletion(null);
+          setDeletionStatusKnown(false);
+        }
+        throw new Error(`Could not load privacy settings (HTTP ${tc.status}).`);
       }
+      setError(null);
       setData(await tc.json());
 
       if (dr?.ok) {
@@ -74,10 +65,28 @@ export default function PrivacyDashboard() {
         const pending = (drData.requests ?? []).find(
           (r: DeletionRequest) => r.status === "pending",
         );
-        setPendingDeletion(pending ?? null);
+        setDeletionStatusKnown(true);
+        if (options?.suppressPendingOnSuccess) {
+          setPendingDeletion(null);
+        } else if (pending) {
+          setPendingDeletion(pending);
+        } else if (!options?.preservePendingOnFailure) {
+          setPendingDeletion(null);
+        }
+      } else {
+        setDeletionStatusKnown(false);
+        if (!options?.preservePendingOnFailure) setPendingDeletion(null);
       }
+      return true;
     } catch (e: unknown) {
+      if (requestId !== reloadSeq.current) return false;
+      if (!options?.preserveDataOnFailure) setData(null);
+      if (!options?.preservePendingOnFailure) {
+        setPendingDeletion(null);
+        setDeletionStatusKnown(false);
+      }
       setError(e instanceof Error ? e.message : String(e));
+      return false;
     }
   }, []);
 
@@ -86,6 +95,8 @@ export default function PrivacyDashboard() {
   }, [reload]);
 
   const requestDeletion = async () => {
+    if (deletionBusy || !deletionStatusKnown) return;
+    setDeletionBusy(true);
     try {
       const resp = await apiFetch("/trust-center/deletion-requests", {
         method: "POST",
@@ -93,27 +104,42 @@ export default function PrivacyDashboard() {
         body: JSON.stringify({ reason: null }),
       });
       if (!resp.ok) {
-        throw new Error(`POST deletion request: HTTP ${resp.status}`);
+        throw new Error(`Could not request deletion (HTTP ${resp.status}).`);
       }
-      await reload();
+      setPendingDeletion(await resp.json());
+      setDeletionStatusKnown(true);
+      await reload({
+        preserveDataOnFailure: true,
+        preservePendingOnFailure: true,
+      });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDeletionBusy(false);
     }
   };
 
   const cancelDeletion = async () => {
-    if (!pendingDeletion) return;
+    if (!pendingDeletion || deletionBusy) return;
+    setDeletionBusy(true);
     try {
       const resp = await apiFetch(
         `/trust-center/deletion-requests/${encodeURIComponent(pendingDeletion.request_id)}/cancel`,
         { method: "POST" },
       );
       if (!resp.ok) {
-        throw new Error(`Cancel deletion: HTTP ${resp.status}`);
+        throw new Error(`Could not cancel deletion (HTTP ${resp.status}).`);
       }
-      await reload();
+      setPendingDeletion(null);
+      setDeletionStatusKnown(true);
+      await reload({
+        preserveDataOnFailure: true,
+        suppressPendingOnSuccess: true,
+      });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDeletionBusy(false);
     }
   };
 
@@ -133,15 +159,14 @@ export default function PrivacyDashboard() {
               Privacy dashboard
             </h1>
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-              Every telemetry signal Antiek collects from your private
-              graph is listed below with its live ε budget pulled from
-              the substrate's published trust posture. The substrate
-              is architecturally incapable of crossing these boundaries.
+              Every privacy signal Antiek collects is listed below with
+              its live daily privacy budget. Categories marked as never
+              collected do not leave your private workspace.
             </p>
             {data && (
               <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
-                substrate-wide daily ε total: {totalEpsilon.toFixed(2)}{" "}
-                (master-spec §16.2 cap: 10.00)
+                Daily privacy budget total: {totalEpsilon.toFixed(2)} of{" "}
+                {EPSILON_CAP.toFixed(2)}
               </p>
             )}
           </header>
@@ -157,15 +182,10 @@ export default function PrivacyDashboard() {
               ([category, epsilon]) => (
                 <TelemetrySection
                   key={category}
-                  title={category.replace(/_/g, " ")}
-                  description={
-                    CATEGORY_DESCRIPTIONS[category] ??
-                    "Telemetry surface registered by the substrate. " +
-                    "ε budget reflects the EpsilonRegistry's per-day " +
-                    "cap for this category."
-                  }
+                  title={formatBudgetLabel(category)}
+                  description={formatBudgetDescription(category)}
                   epsilon={epsilon}
-                  sensitivity={SENSITIVITY_BY_EPSILON(epsilon)}
+                  sensitivity={sensitivityForBudget(category, epsilon)}
                 />
               ),
             )}
@@ -175,6 +195,8 @@ export default function PrivacyDashboard() {
           {data && (
             <DeleteEverything
               pendingDeletion={pendingDeletion}
+              deletionStatusKnown={deletionStatusKnown}
+              deletionBusy={deletionBusy}
               deletionSlaDays={data.deletion_sla_days}
               onRequest={requestDeletion}
               onCancel={cancelDeletion}
@@ -195,7 +217,7 @@ function TelemetrySection({
   title: string;
   description: string;
   epsilon: number;
-  sensitivity: "low" | "medium" | "high" | "forbidden";
+  sensitivity: PrivacySensitivity;
 }) {
   const isForbidden = sensitivity === "forbidden";
   return (
@@ -205,18 +227,18 @@ function TelemetrySection({
           {title}
         </h3>
         <span className="text-xs font-mono text-shadow-1 dark:text-moonlight">
-          ε = {epsilon}/day
+          Privacy budget: {epsilon}/day
         </span>
       </div>
       <p className="text-sm text-ink dark:text-bright leading-relaxed">{description}</p>
       <div className="flex items-center gap-3 pt-1">
         {isForbidden ? (
           <span className="text-xs font-mono text-emerald-700 bg-emerald-50 px-2 py-1 rounded">
-            never collected (architectural)
+            Never collected
           </span>
         ) : (
           <span className="text-xs font-mono text-ink dark:text-bright bg-ice-3 dark:bg-charcoal-1 px-2 py-1 rounded">
-            collected · noisy aggregate · ε-bounded
+            Collected as a noisy aggregate
           </span>
         )}
         <span
@@ -230,7 +252,7 @@ function TelemetrySection({
                   : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright"
           }`}
         >
-          sensitivity: {sensitivity}
+          Sensitivity: {formatSensitivityLabel(sensitivity)}
         </span>
       </div>
     </section>
@@ -245,11 +267,12 @@ function ArchitecturalGuarantees({ data }: { data: TrustCenterData }) {
       </h2>
       <ul className="text-sm text-ink dark:text-bright leading-relaxed space-y-2 list-disc pl-5">
         {data.substrate_controls.map((c) => (
-          <li key={c}>{c}</li>
+          <li key={c}>{formatSystemControl(c)}</li>
         ))}
       </ul>
       <p className="text-xs text-shadow-1 dark:text-moonlight font-mono leading-relaxed pt-2">
-        Compliance posture: {data.compliance_frameworks.join(" · ")}
+        Compliance posture:{" "}
+        {data.compliance_frameworks.map(formatComplianceLabel).join(" · ")}
       </p>
     </section>
   );
@@ -257,11 +280,15 @@ function ArchitecturalGuarantees({ data }: { data: TrustCenterData }) {
 
 function DeleteEverything({
   pendingDeletion,
+  deletionStatusKnown,
+  deletionBusy,
   deletionSlaDays,
   onRequest,
   onCancel,
 }: {
   pendingDeletion: DeletionRequest | null;
+  deletionStatusKnown: boolean;
+  deletionBusy: boolean;
   deletionSlaDays: number;
   onRequest: () => void;
   onCancel: () => void;
@@ -270,41 +297,43 @@ function DeleteEverything({
     <section className="border border-red-200 rounded-md px-5 py-4 space-y-3 bg-red-50">
       <h2 className="text-base font-serif text-red-900">Delete everything</h2>
       <p className="text-sm text-red-900 leading-relaxed">
-        Schedules deletion of your private partition, telemetry, and
-        billing records within {deletionSlaDays} days. Public-graph
-        contributions you've made stay attributed to your account
-        unless you also opt out of cross-user surfacing (separate
-        setting). Master-spec §13.3 commits the substrate to this SLA.
+        Schedules deletion of your saved content, personalization data,
+        privacy signals, and billing records within {deletionSlaDays} days.
+        Public contributions stay attributed to your account unless you
+        also turn off cross-user sharing.
       </p>
       {pendingDeletion ? (
         <div className="space-y-2">
           <p className="text-sm font-mono text-red-900">
-            Pending — request_id = {pendingDeletion.request_id} ·
-            requested {pendingDeletion.requested_at}
+            Pending deletion request · requested{" "}
+            {new Date(pendingDeletion.requested_at).toLocaleDateString()}
           </p>
           <p className="text-sm text-red-900">
             Cancellation window: {pendingDeletion.cancellation_window_days} days.
-            Deletion proceeds {Math.max(
-              0,
-              deletionSlaDays - pendingDeletion.cancellation_window_days,
-            )}{" "}
-            days after this request unless cancelled.
+            Deletion completes within {deletionSlaDays} days of the original
+            request unless cancelled.
           </p>
           <button
             type="button"
             onClick={onCancel}
+            disabled={deletionBusy}
             className="px-3 py-1.5 rounded-md border border-red-300 text-red-900 text-xs font-medium hover:bg-emperor/20 transition-colors"
           >
-            Cancel deletion request
+            {deletionBusy ? "Cancelling deletion..." : "Cancel deletion request"}
           </button>
         </div>
       ) : (
         <button
           type="button"
           onClick={onRequest}
-          className="px-3 py-1.5 rounded-md bg-red-700 text-white text-xs font-medium hover:bg-red-800 transition-colors"
+          disabled={deletionBusy || !deletionStatusKnown}
+          className="px-3 py-1.5 rounded-md bg-red-700 text-white text-xs font-medium hover:bg-red-800 disabled:bg-red-300 disabled:cursor-not-allowed transition-colors"
         >
-          Request deletion
+          {deletionBusy
+            ? "Requesting deletion..."
+            : deletionStatusKnown
+              ? "Request deletion"
+              : "Deletion status unavailable"}
         </button>
       )}
     </section>

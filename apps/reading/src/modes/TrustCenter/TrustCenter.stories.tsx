@@ -3,12 +3,10 @@ import type { Meta, StoryObj } from "@storybook/react";
 import TrustCenter from "./index";
 
 /**
- * Trust Center — public-facing transparency surface (master-spec §13.7).
+ * Trust Center — public-facing transparency surface.
  *
- * Renders ε budgets, substrate controls, compliance frameworks, and
- * Loop 3 unlock status. In Storybook the backend fetch fails
- * silently; the page sits in its loading state with the static
- * intro copy + headline visible.
+ * In Storybook, the backend fetch usually fails and the page shows
+ * the header plus its friendly load error instead of live sections.
  */
 const meta = {
   title: "Trust / TrustCenter",
@@ -22,4 +20,4 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const LoadingState: Story = {};
+export const BackendUnavailable: Story = {};
