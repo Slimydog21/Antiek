@@ -649,7 +649,9 @@ event; the spec is amended when each unlocks.
 
 ### 11.1 Wedge 1 (prompt autoresearch) unlock criteria
 
-- [ ] `roles/synthesizer/program.md` written and operator-reviewed
+- [ ] `roles/synthesizer/program.md` written and operator-reviewed,
+      with the review note recorded at
+      `reports/autoresearch/synthesizer-program-review.md`
 - [ ] `tools/prompt_autoresearch/` scaffolded (~600 LOC Python)
 - [ ] No-op mutator calibration run on file; ε for accept > 2σ no-op variance
 - [ ] ≥5 golden traces of synthesizer behavior captured (operator may

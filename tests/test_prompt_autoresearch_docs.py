@@ -16,6 +16,7 @@ def test_prompt_autoresearch_readme_documents_activation_workflow():
     assert "write_outcomes_json" in text
     assert "synthesizer-noop-outcomes.json" in text
     assert "synthesizer-outcomes.json" in text
+    assert "synthesizer-program-review.md" in text
     assert "What this does not prove" in text
 
 
@@ -25,6 +26,10 @@ def test_operator_gate_docs_start_with_readiness_audit():
 
         assert "tools.prompt_autoresearch.readiness_cli" in text
         assert "tools.prompt_autoresearch.calibration_cli" in text
+        assert "synthesizer-program-review.md" in text
         assert text.index("tools.prompt_autoresearch.readiness_cli") < text.index(
+            "tools.prompt_autoresearch.calibration_cli"
+        )
+        assert text.index("synthesizer-program-review.md") < text.index(
             "tools.prompt_autoresearch.calibration_cli"
         )

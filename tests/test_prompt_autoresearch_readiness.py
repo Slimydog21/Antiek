@@ -112,6 +112,52 @@ def test_wedge1_readiness_requires_generated_calibration_report(tmp_path):
     assert "contains calibration summary fields" in calibration.evidence
 
 
+def test_wedge1_readiness_requires_operator_program_review_note(tmp_path):
+    program_path = tmp_path / "roles/synthesizer/program.md"
+    program_path.parent.mkdir(parents=True)
+    program_path.write_text(
+        "Voice discipline and style discipline for synthesizer.\n",
+        encoding="utf-8",
+    )
+    review_path = tmp_path / "reports/autoresearch/synthesizer-program-review.md"
+    review_path.parent.mkdir(parents=True)
+
+    report = audit_wedge1_readiness(tmp_path)
+    program = next(item for item in report.items if item.id == "program")
+
+    assert program.status == "operator_bound"
+    assert "synthesizer-program-review.md" in program.evidence
+
+    review_path.write_text("reviewed informally\n", encoding="utf-8")
+
+    report = audit_wedge1_readiness(tmp_path)
+    program = next(item for item in report.items if item.id == "program")
+
+    assert program.status == "operator_bound"
+    assert "does not record the required operator review fields" in program.evidence
+
+    review_path.write_text(
+        "\n".join(
+            [
+                "# Synthesizer program review",
+                "",
+                "- Reviewer: Operator",
+                "- Reviewed_at: 2026-07-01T00:00:00Z",
+                "- Verdict: operator_approved",
+                "- Reviewed artifact: roles/synthesizer/program.md",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    report = audit_wedge1_readiness(tmp_path)
+    program = next(item for item in report.items if item.id == "program")
+
+    assert program.status == "satisfied"
+    assert "records operator review" in program.evidence
+
+
 def _write_valid_trace(path: Path, index: int) -> None:
     input_payload = {"question": f"question-{index}"}
     output_payload = {"answer": f"answer-{index}"}

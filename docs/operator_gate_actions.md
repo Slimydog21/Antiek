@@ -259,6 +259,22 @@ The readiness audit is read-only. It should show which criteria are
 already mechanically satisfied and which remain operator-bound before
 any calibration or mutation cohort work starts.
 
+If the `program` row is still operator-bound, review
+`roles/synthesizer/program.md` and record the sign-off note that the
+readiness audit expects:
+
+```markdown
+# Synthesizer program review
+
+- Reviewer: Operator
+- Reviewed_at: 2026-07-01T00:00:00Z
+- Verdict: operator_approved
+- Reviewed artifact: roles/synthesizer/program.md
+```
+
+Save it as `reports/autoresearch/synthesizer-program-review.md`, then
+re-run the readiness audit before calibration.
+
 First run the no-op calibration cohort required by
 `docs/integration_autoresearch.md` §5.3. Add this to the end of the local
 no-op mutation-run script once `runner.iterations` contains the calibration
