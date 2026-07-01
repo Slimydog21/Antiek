@@ -56,6 +56,12 @@ interface ThoughtPartnerReply {
   text: string;
 }
 
+function finiteNonNegativeNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
 export default function AISidecar() {
   // S8 refactor: when AISidecar is mounted as a PanelKind, the
   // workspace mounts/unmounts it directly — being mounted IS "open".
@@ -125,7 +131,7 @@ export default function AISidecar() {
             tier: e.payload?.tier ?? "?",
             provider: e.payload?.provider ?? "?",
             model: e.payload?.model ?? "?",
-            latency_ms: e.payload?.latency_ms ?? 0,
+            latency_ms: finiteNonNegativeNumber(e.payload?.latency_ms) ?? 0,
             fell_back: (e.payload?.fallback_chain_index ?? 0) > 0,
           }));
         setRecentCalls(events);
