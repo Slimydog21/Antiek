@@ -27,6 +27,17 @@ function defaultBreadcrumbsFor(pathname: string): Crumb[] {
   if (pathname === "/" || pathname === "")
     return [{ label: "Research" }];
 
+  const exact: Record<string, string> = {
+    "/operator/advertiser-campaigns": "Advertiser console",
+    "/operator/payouts/dashboard": "Payout dashboard",
+    "/me/payouts": "Creator payouts",
+    "/cross-graph/citations": "Cross-graph citations",
+    "/coordination/cost-consent": "Cost & consent",
+  };
+  if (exact[pathname]) {
+    return [{ label: exact[pathname] }];
+  }
+
   const segments = pathname.split("/").filter(Boolean);
   const known: Record<string, string> = {
     wrestle: "Wrestle",
@@ -35,25 +46,29 @@ function defaultBreadcrumbsFor(pathname: string): Crumb[] {
     brainstorm: "Brainstorm",
     notebooks: "Notebooks",
     notebook: "Notebook",
+    login: "Login",
     documents: "Documents",
     billing: "Billing",
     stats: "Substrate stats",
-    map: "Map",
+    map: "Application map",
     backtest: "Backtest",
     privacy: "Privacy dashboard",
     pricing: "Pricing",
-    operator: "Operator",
-    outcomes: "Outcomes",
+    operator: "Operator dashboard",
+    outcomes: "Outcomes audit",
     replay: "Replay",
     interview: "Interview",
     interviews: "Interviews",
-    "loop-3": "Loop 3",
-    "skill-rules": "Skill Rules",
-    federation: "Federation",
+    "loop-3": "Loop 3 checklist",
+    "skill-rules": "Skill rules",
+    federation: "Federation config",
+    coordination: "Coordination",
     "cross-graph": "Cross-graph",
     citations: "Citations",
     investigations: "Investigations",
-    payouts: "Payouts",
+    payouts: "Payouts audit",
+    marketplace: "Marketplace metrics",
+    settings: "Settings",
     trust: "Trust Center",
     inv: "Investigation",
   };
