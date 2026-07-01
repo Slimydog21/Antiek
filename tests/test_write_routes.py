@@ -123,6 +123,90 @@ def test_place_and_list_blocks(client, seed):
     assert blocks["blocks"][0]["node_id"] == seed["node"]
 
 
+def test_outline_composition_events_use_piece_backing_investigation(client, seed):
+    with connect_write(default_db_path(), purpose="test/connected_outline") as con:
+        did = insert_deliverable(
+            con,
+            title="Connected outline",
+            deliverable_kind="research_memo",
+            investigation_root_id="inv-write-root",
+        )
+        sec1 = insert_section(con, deliverable_id=did, section_index=0, title="S1")
+        sec2 = insert_section(con, deliverable_id=did, section_index=1, title="S2")
+
+    placed = client.post("/write/blocks", json={
+        "section_id": sec1,
+        "deliverable_id": did,
+        "block_kind": "insight",
+        "provenance_kind": "graph_node",
+        "node_id": seed["node"],
+        "block_index": 0,
+    })
+    assert placed.status_code == 201, placed.text
+    obid = placed.json()["outline_block_id"]
+    moved = client.post(f"/write/blocks/{obid}/move", json={
+        "to_section_id": sec2,
+        "to_index": 0,
+    })
+    assert moved.status_code == 202, moved.text
+    deleted = client.delete(f"/write/blocks/{obid}")
+    assert deleted.status_code == 200, deleted.text
+
+    jsonl = os.path.join(
+        os.environ["ANTIEK_RESEARCH_EVENTS_DIR"],
+        "inv-write-root.jsonl",
+    )
+    assert os.path.exists(jsonl)
+    actions = [json.loads(line)["action_type"] for line in open(jsonl)]
+    assert "outline_block.placed" in actions
+    assert "outline_block.moved" in actions
+    assert "outline_block.removed" in actions
+
+
+def test_move_block_rejects_cross_deliverable_target(client, seed):
+    with connect_write(default_db_path(), purpose="test/cross_deliverable_move") as con:
+        other_did = insert_deliverable(
+            con, title="Other", deliverable_kind="research_memo",
+        )
+        other_sec = insert_section(
+            con, deliverable_id=other_did, section_index=0, title="Other S1",
+        )
+    placed = client.post("/write/blocks", json={
+        "section_id": seed["section_id"],
+        "deliverable_id": seed["deliverable_id"],
+        "block_kind": "insight",
+        "provenance_kind": "graph_node",
+        "node_id": seed["node"],
+        "block_index": 0,
+    })
+    assert placed.status_code == 201, placed.text
+    obid = placed.json()["outline_block_id"]
+
+    moved = client.post(f"/write/blocks/{obid}/move", json={
+        "to_section_id": other_sec,
+        "to_index": 0,
+    })
+    assert moved.status_code == 400
+    assert "across deliverables" in moved.json()["detail"]
+
+
+def test_place_block_rejects_mismatched_deliverable(client, seed):
+    with connect_write(default_db_path(), purpose="test/mismatch_place") as con:
+        other = insert_deliverable(
+            con, title="Other", deliverable_kind="research_memo",
+        )
+    r = client.post("/write/blocks", json={
+        "section_id": seed["section_id"],
+        "deliverable_id": other,
+        "block_kind": "insight",
+        "provenance_kind": "graph_node",
+        "node_id": seed["node"],
+        "block_index": 0,
+    })
+    assert r.status_code == 400
+    assert "different deliverable" in r.json()["detail"]
+
+
 def test_list_blocks_carries_node_label_for_id_free_render(client, seed):
     """The routed outline (Product Depth SPR-07) renders block TEXT, never an
     id. A graph-node block carries no `content` (its text is on the node), so
