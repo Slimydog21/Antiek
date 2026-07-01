@@ -5950,6 +5950,133 @@ def create_app(
             ],
         )
 
+    # ── Sprint 22 Phase 6: per-category telemetry preferences ──
+    class TelemetryPreferenceResponse(BaseModel):
+        surface_name: str
+        epsilon_per_day: float
+        sensitivity: str
+        description: str
+        opt_in_required: bool
+        enabled: bool
+        updated_at: str | None = None
+
+    class TelemetryPreferenceListResponse(BaseModel):
+        preferences: list[TelemetryPreferenceResponse]
+
+    class TelemetryPreferenceUpdateBody(BaseModel):
+        enabled: bool
+
+    def _telemetry_preference_store():
+        import os
+        from pathlib import Path
+
+        from substrate.graph import default_db_path, ensure_initialized
+        from substrate.telemetry_preferences import SqlitePreferenceStore
+
+        override = os.environ.get("ANTIEK_TELEMETRY_PREFERENCES_PATH", "").strip()
+        if override:
+            return SqlitePreferenceStore(override)
+        duckdb_path = Path(default_db_path())
+        ensure_initialized(str(duckdb_path))
+        return SqlitePreferenceStore(str(duckdb_path.with_name("telemetry_preferences.sqlite")))
+
+    def _preference_response(
+        *,
+        surface: dict[str, Any],
+        pref: Any | None,
+    ) -> TelemetryPreferenceResponse:
+        default_enabled = not bool(surface["opt_in_required"])
+        if surface["sensitivity"] == "forbidden":
+            default_enabled = False
+        return TelemetryPreferenceResponse(
+            surface_name=surface["surface_name"],
+            epsilon_per_day=float(surface["epsilon_per_day"]),
+            sensitivity=surface["sensitivity"],
+            description=surface["description"],
+            opt_in_required=bool(surface["opt_in_required"]),
+            enabled=bool(pref.enabled) if pref is not None else default_enabled,
+            updated_at=pref.updated_at if pref is not None else None,
+        )
+
+    @app.get(
+        "/trust-center/telemetry-preferences",
+        response_model=TelemetryPreferenceListResponse,
+    )
+    async def list_telemetry_preferences(
+        request: Request,
+    ) -> TelemetryPreferenceListResponse:
+        """List every telemetry surface with the calling user's current
+        opt-in/out preference. Defaults are seeded from the live epsilon
+        registry so newly registered surfaces become visible without a
+        hardcoded API edit."""
+        from substrate.telemetry_preferences import (
+            apply_defaults_from_registry,
+            list_preferences,
+        )
+        from substrate.trust_center import (
+            default_registry,
+            list_surface_descriptions,
+        )
+
+        user_id = getattr(request.state, "user_id", None) or "__operator__"
+        registry = default_registry()
+        store = _telemetry_preference_store()
+        apply_defaults_from_registry(store, user_id=user_id, registry=registry)
+        prefs = {
+            pref.surface_name: pref
+            for pref in list_preferences(store, user_id=user_id)
+        }
+        return TelemetryPreferenceListResponse(
+            preferences=[
+                _preference_response(
+                    surface=surface,
+                    pref=prefs.get(surface["surface_name"]),
+                )
+                for surface in list_surface_descriptions(registry=registry)
+            ],
+        )
+
+    @app.patch(
+        "/trust-center/telemetry-preferences/{surface_name}",
+        response_model=TelemetryPreferenceResponse,
+    )
+    async def update_telemetry_preference(
+        surface_name: str,
+        request: Request,
+        req: Any = Body(...),
+    ) -> TelemetryPreferenceResponse:
+        """Toggle one telemetry category for the calling user.
+        Forbidden surfaces cannot be enabled even by explicit request."""
+        from substrate.telemetry_preferences import set_preference
+        from substrate.trust_center import default_registry, list_surface_descriptions
+
+        body = TelemetryPreferenceUpdateBody.model_validate(req)
+        user_id = getattr(request.state, "user_id", None) or "__operator__"
+        registry = default_registry()
+        surfaces = {
+            surface["surface_name"]: surface
+            for surface in list_surface_descriptions(registry=registry)
+        }
+        surface = surfaces.get(surface_name)
+        if surface is None:
+            raise HTTPException(status_code=404, detail="telemetry surface not found")
+        if surface["sensitivity"] == "forbidden" and body.enabled:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "forbidden_surface",
+                    "message": "This telemetry category is never collected.",
+                },
+            )
+
+        pref = set_preference(
+            _telemetry_preference_store(),
+            user_id=user_id,
+            surface_name=surface_name,
+            enabled=body.enabled,
+        )
+        return _preference_response(surface=surface, pref=pref)
+
     @app.post(
         "/trust-center/deletion-requests/{request_id}/cancel",
         response_model=DeletionRequestResponse,

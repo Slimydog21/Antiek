@@ -45,8 +45,63 @@ const DELETION_RESPONSE = {
   ],
 };
 
+const PREFERENCES_RESPONSE = {
+  preferences: [
+    {
+      surface_name: "skill_invocation_frequency",
+      epsilon_per_day: 2,
+      sensitivity: "low",
+      description: "Skill invocation frequency",
+      opt_in_required: false,
+      enabled: true,
+      updated_at: "2026-07-01T06:00:00Z",
+    },
+    {
+      surface_name: "source_tier_preference_signals",
+      epsilon_per_day: 1,
+      sensitivity: "medium",
+      description: "Source tier preferences",
+      opt_in_required: true,
+      enabled: false,
+      updated_at: "2026-07-01T06:00:00Z",
+    },
+    {
+      surface_name: "query_content_telemetry",
+      epsilon_per_day: 0,
+      sensitivity: "forbidden",
+      description: "Not collected",
+      opt_in_required: false,
+      enabled: false,
+      updated_at: "2026-07-01T06:00:00Z",
+    },
+  ],
+};
+
+const TRUST_RESPONSE_WITH_DYNAMIC = {
+  ...TRUST_RESPONSE,
+  differential_privacy_epsilon_budgets: {
+    ...TRUST_RESPONSE.differential_privacy_epsilon_budgets,
+    dispatch_tier_telemetry: 0.5,
+  },
+};
+
+const PREFERENCES_RESPONSE_WITH_DYNAMIC = {
+  preferences: [
+    ...PREFERENCES_RESPONSE.preferences,
+    {
+      surface_name: "dispatch_tier_telemetry",
+      epsilon_per_day: 0.5,
+      sensitivity: "high",
+      description: "dispatch tier hint sampling",
+      opt_in_required: true,
+      enabled: false,
+      updated_at: "2026-07-01T06:00:00Z",
+    },
+  ],
+};
+
 beforeEach(() => {
-  apiFetchMock.mockReset().mockImplementation((path: string) => {
+  apiFetchMock.mockReset().mockImplementation((path: string, init?: RequestInit) => {
     if (path === "/trust-center") {
       return Promise.resolve({
         ok: true,
@@ -57,6 +112,25 @@ beforeEach(() => {
       return Promise.resolve({
         ok: true,
         json: async () => DELETION_RESPONSE,
+      });
+    }
+    if (path === "/trust-center/telemetry-preferences") {
+      return Promise.resolve({
+        ok: true,
+        json: async () => PREFERENCES_RESPONSE,
+      });
+    }
+    if (
+      path === "/trust-center/telemetry-preferences/skill_invocation_frequency" &&
+      init?.method === "PATCH"
+    ) {
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({
+          ...PREFERENCES_RESPONSE.preferences[0],
+          enabled: false,
+          updated_at: "2026-07-01T07:00:00Z",
+        }),
       });
     }
     return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
@@ -80,6 +154,8 @@ describe("PrivacyDashboard", () => {
     expect(screen.getByText("Sensitivity: Low")).toBeTruthy();
     expect(screen.getByText("Sensitivity: Medium")).toBeTruthy();
     expect(screen.getByText("Sensitivity: Not collected")).toBeTruthy();
+    expect(screen.getByText("Noisy aggregate on")).toBeTruthy();
+    expect(screen.getByText("Noisy aggregate off")).toBeTruthy();
     expect(screen.getByText("Encryption at rest with managed keys")).toBeTruthy();
     expect(
       screen.getByText("Access checks run before retrieved content is shown"),
@@ -136,6 +212,10 @@ describe("PrivacyDashboard", () => {
       })
       .mockResolvedValueOnce({
         ok: true,
+        json: async () => PREFERENCES_RESPONSE,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
         json: async () => ({}),
       })
       .mockResolvedValueOnce({
@@ -146,6 +226,10 @@ describe("PrivacyDashboard", () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ requests: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => PREFERENCES_RESPONSE,
       });
 
     render(<PrivacyDashboard />);
@@ -172,6 +256,10 @@ describe("PrivacyDashboard", () => {
       })
       .mockResolvedValueOnce({
         ok: true,
+        json: async () => PREFERENCES_RESPONSE,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
         json: async () => ({
           request_id: "del-created-1",
           status: "pending",
@@ -188,6 +276,10 @@ describe("PrivacyDashboard", () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ requests: [] }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => PREFERENCES_RESPONSE,
       });
 
     render(<PrivacyDashboard />);
@@ -210,6 +302,12 @@ describe("PrivacyDashboard", () => {
           json: async () => TRUST_RESPONSE,
         });
       }
+      if (path === "/trust-center/telemetry-preferences") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => PREFERENCES_RESPONSE,
+        });
+      }
       return Promise.resolve({ ok: false, status: 503, json: async () => ({}) });
     });
 
@@ -219,5 +317,77 @@ describe("PrivacyDashboard", () => {
     expect(
       screen.getByRole("button", { name: "Deletion status unavailable" }),
     ).toHaveProperty("disabled", true);
+  });
+
+  it("shows a visible unavailable state when preference loading fails", async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === "/trust-center") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => TRUST_RESPONSE,
+        });
+      }
+      if (path === "/trust-center/deletion-requests") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ requests: [] }),
+        });
+      }
+      return Promise.resolve({ ok: false, status: 503, json: async () => ({}) });
+    });
+
+    render(<PrivacyDashboard />);
+
+    expect(
+      await screen.findByText("Could not load privacy preferences; toggles unavailable."),
+    ).toBeTruthy();
+    expect(screen.getAllByText("Preference unavailable")).toHaveLength(2);
+  });
+
+  it("uses registry metadata for newly registered telemetry surfaces", async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === "/trust-center") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => TRUST_RESPONSE_WITH_DYNAMIC,
+        });
+      }
+      if (path === "/trust-center/deletion-requests") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({ requests: [] }),
+        });
+      }
+      if (path === "/trust-center/telemetry-preferences") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => PREFERENCES_RESPONSE_WITH_DYNAMIC,
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+    });
+
+    render(<PrivacyDashboard />);
+
+    expect(await screen.findByText("Dispatch tier hint sampling")).toBeTruthy();
+    expect(screen.getByText("Sensitivity: High")).toBeTruthy();
+    expect(screen.queryByText(/dispatch_tier_telemetry/i)).toBeNull();
+  });
+
+  it("updates a telemetry preference through the privacy toggle", async () => {
+    render(<PrivacyDashboard />);
+
+    expect(await screen.findByText("Skill Use Frequency")).toBeTruthy();
+    const aggregateOn = screen.getByLabelText(/Noisy aggregate on/i);
+    await userEvent.click(aggregateOn);
+
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      "/trust-center/telemetry-preferences/skill_invocation_frequency",
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ enabled: false }),
+      }),
+    );
+    expect(await screen.findAllByText("Noisy aggregate off")).toHaveLength(2);
   });
 });
