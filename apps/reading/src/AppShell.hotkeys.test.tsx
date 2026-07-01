@@ -116,4 +116,36 @@ describe("AppShell SPR-08 — the HotkeyHud is mounted + HELP_TOGGLE-driven", ()
     });
     expect(document.body.querySelectorAll('[role="dialog"]')).toHaveLength(1);
   });
+
+  it("opens and closes the AISidecar panel through the global shell shortcut", () => {
+    mountShell();
+
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "/",
+          metaKey: true,
+          bubbles: true,
+        }),
+      );
+    });
+
+    const opened = useWorkspace.getState().panels["shortcuts:aisidecar"];
+    expect(opened?.kind).toBe("AISidecar");
+    expect(opened?.mode).toBe("docked-right");
+    expect(useWorkspace.getState().dockRightIds).toContain("shortcuts:aisidecar");
+
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "/",
+          metaKey: true,
+          bubbles: true,
+        }),
+      );
+    });
+
+    expect(useWorkspace.getState().panels["shortcuts:aisidecar"]).toBeUndefined();
+    expect(useWorkspace.getState().dockRightIds).not.toContain("shortcuts:aisidecar");
+  });
 });
