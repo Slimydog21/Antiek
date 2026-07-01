@@ -691,6 +691,51 @@ async def test_distillation_handler_prefers_chunk_text_from_graph(
     # integration test confirms the end-to-end still works.
 
 
+@pytest.mark.asyncio
+async def test_below_threshold_ratified_distillation_uses_legacy_path(
+    monkeypatch, app_and_bus, async_client
+):
+    """Sprint 11 RLM gate: even when ratified, small documents must stay
+    on the existing single-call wrestling path."""
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    _, bus = app_and_bus
+    register_provider(_StubSynthesizer(
+        '{"rendered_text": "legacy ok", "claims": ['
+        '{"text": "legacy claim", "confidence": "low"}]}'
+    ))
+    _patch_dispatch_config(monkeypatch, _wrestling_config("stub-synthesis"))
+
+    await _post_document_loaded(
+        async_client,
+        investigation_id="inv-small-rlm-gate",
+        document_id="doc-small-rlm-gate",
+        size_bytes=1_000,
+    )
+    await _post_region(
+        async_client,
+        investigation_id="inv-small-rlm-gate",
+        document_id="doc-small-rlm-gate",
+        region_id="r-small-rlm-gate",
+        text_excerpt="short document text",
+    )
+    await _post_distillation_request(
+        async_client,
+        investigation_id="inv-small-rlm-gate",
+        document_id="doc-small-rlm-gate",
+        region_id="r-small-rlm-gate",
+        user_prompt="summarize",
+    )
+    await bus.wait_for_handlers(timeout=5.0)
+
+    rows = trajectory("inv-small-rlm-gate")
+    assert [r["action_type"] for r in rows if r["action_type"].startswith("rlm.")] == []
+    delivered = [r for r in rows if r["action_type"] == "distillation.delivered"]
+    assert len(delivered) == 1
+    event = Event.model_validate(delivered[0])
+    assert event.policy_id == "stub-synthesis/stub-model"
+    assert event.payload.rendered_text == "legacy ok"
+
+
 def test_resolve_region_text_from_db_returns_chunk_text(tmp_path):
     """Direct test: writing a chunk under the deterministic id makes
     _resolve_region_text_from_db return its text."""
