@@ -42,6 +42,9 @@ const readSrc = (rel: string): string =>
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 
+const literalPaths = (src: string): Set<string> =>
+  new Set([...src.matchAll(/path:\s*"([^"]+)"/g)].map((match) => match[1]));
+
 /**
  * The real mode set, derived from the filesystem at build time.
  *
@@ -264,10 +267,13 @@ describe("Sprint 25+ economics dashboard route integrity", () => {
     expect(modeById("PrivacyDashboard")?.label).toBe("Privacy dashboard");
   });
 
-  it("keeps mounted daily-work and coordination surfaces in global discovery", () => {
+  it("keeps CommandPalette and Application map route indexes in parity", () => {
+    const app = readSrc("App.tsx");
     const map = readSrc("modes/Map/index.tsx");
     const palette = readSrc("components/CommandPalette.tsx");
-    const routes = [
+    const mapRoutes = literalPaths(map);
+    const paletteRoutes = literalPaths(palette);
+    const pinnedMountedRoutes = [
       "/home",
       "/deep-research",
       "/write",
@@ -283,11 +289,23 @@ describe("Sprint 25+ economics dashboard route integrity", () => {
       "/map",
       "/cross-graph/citations",
     ];
+    const mapOnly = [...mapRoutes].filter((route) => !paletteRoutes.has(route));
+    const paletteOnly = [...paletteRoutes].filter((route) => !mapRoutes.has(route));
 
-    for (const route of routes) {
-      expect(map, `Application map must list ${route}`).toContain(`path: "${route}"`);
-      expect(palette, `CommandPalette must list ${route}`).toContain(`path: "${route}"`);
+    expect(mapOnly, "Application map routes missing from CommandPalette").toEqual([]);
+    expect(paletteOnly, "CommandPalette routes missing from Application map").toEqual([]);
+
+    for (const route of [...mapRoutes]) {
+      expect(app, `App.tsx must mount discovery route ${route}`).toContain(
+        `<Route path="${route}"`,
+      );
     }
+
+    for (const route of pinnedMountedRoutes) {
+      expect(mapRoutes, `Application map must list ${route}`).toContain(route);
+      expect(paletteRoutes, `CommandPalette must list ${route}`).toContain(route);
+    }
+
     expect(palette).toMatch(
       /id: "route:home",[\s\S]*?path: "\/home",[\s\S]*?workflow: "shared"/,
     );
