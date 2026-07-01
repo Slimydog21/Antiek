@@ -33,17 +33,22 @@ import { useReaderContext } from "../ReaderContext";
 export default function Citation({ span }: { span: CitationSpan }) {
   const { openDocument, resolveSourceTitle } = useReaderContext();
   const regionBlockKey = ["block", "id"].join("_") as keyof Region;
+  const passageStart = span.char_start;
+  const passageEnd = span.char_end;
   const hasPassageOffsets =
-    typeof span.char_start === "number" &&
-    typeof span.char_end === "number" &&
-    span.char_end >= span.char_start;
+    typeof passageStart === "number" &&
+    typeof passageEnd === "number" &&
+    Number.isSafeInteger(passageStart) &&
+    Number.isSafeInteger(passageEnd) &&
+    passageStart >= 0 &&
+    passageEnd >= passageStart;
   const chunkAttrs = {
     [CHUNK_ID_ATTR]: span.chunk_id || "",
     ...(hasPassageOffsets
       ? {
           [PASSAGE_CHUNK_ID_ATTR]: span.chunk_id,
-          [PASSAGE_START_ATTR]: String(span.char_start),
-          [PASSAGE_END_ATTR]: String(span.char_end),
+          [PASSAGE_START_ATTR]: String(passageStart),
+          [PASSAGE_END_ATTR]: String(passageEnd),
         }
       : {}),
   };
@@ -91,8 +96,8 @@ export default function Citation({ span }: { span: CitationSpan }) {
             ? {
                 highlight: Object.assign({
                   document_id: span.source_document_id,
-                  char_start: span.char_start,
-                  char_end: span.char_end,
+                  char_start: passageStart,
+                  char_end: passageEnd,
                 } as Region, { [regionBlockKey]: span.chunk_id }),
               }
             : {}),

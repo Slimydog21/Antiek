@@ -176,6 +176,42 @@ describe("Reader — citation as a first-class clickable marker (M3)", () => {
     expect(cite!.getAttribute(PASSAGE_END_ATTR)).toBeNull();
   });
 
+  it.each([
+    { char_start: 100.5, char_end: 240 },
+    { char_start: -1, char_end: 240 },
+    { char_start: 240, char_end: 100 },
+    { char_start: Number.MAX_SAFE_INTEGER + 1, char_end: Number.MAX_SAFE_INTEGER + 2 },
+  ])("does not preserve malformed citation source offsets %o", (range) => {
+    const openDocument = vi.fn();
+    const doc = {
+      ...allBlocksDocument,
+      blocks: [
+        {
+          type: "paragraph" as const,
+          block_id: "p-bad-offset",
+          spans: [
+            {
+              type: "citation" as const,
+              source_document_id: "doc-source-bad",
+              chunk_id: "chunk-bad",
+              marker: "[bad]",
+              ...range,
+            },
+          ],
+        },
+      ],
+    };
+    const { container } = renderDoc(doc, { openDocument });
+    const cite = container.querySelector("button[data-citation-marker]")!;
+
+    expect(cite.getAttribute(PASSAGE_CHUNK_ID_ATTR)).toBeNull();
+    expect(cite.getAttribute(PASSAGE_START_ATTR)).toBeNull();
+    expect(cite.getAttribute(PASSAGE_END_ATTR)).toBeNull();
+
+    fireEvent.click(cite);
+    expect(openDocument).toHaveBeenCalledWith("doc-source-bad", { chunkId: "chunk-bad" });
+  });
+
   it("clicking a citation with source offsets preserves the cited passage", () => {
     const openDocument = vi.fn();
     const { container } = renderDoc(allBlocksDocument, { openDocument });
