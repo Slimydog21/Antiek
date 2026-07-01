@@ -1,0 +1,21 @@
+[invariant]
+id = "escape-hatch-observability"
+status = "guarded"
+owner = "ARE-W1"
+statement = """
+Audited bypasses must leave a mechanically visible trail. escape_hatch is the
+substrate analogue of Rust unsafe: it permits exceptional operations only when
+the caller supplies a reason, logs the first hit, and increments per-reason
+counters that audit and invariant surfaces can read. COST IF VIOLATED: a direct
+DuckDB write, raw network call, or benchmark bypass could be marked as reviewed
+yet disappear from reports, recreating the unannotated-bypass risk the marker
+was introduced to avoid.
+"""
+guard = "tests/test_escape_hatch.py::test_escape_hatch_observability_report_surface"
+guard_kind = "pytest"
+assertion = "Each escape_hatch entry increments the exported counter_snapshot per reason, preserving repeated hits and distinct bypass reasons for audit/invariant reporting."
+sunset = ""
+
+[non_vacuity]
+method = "negative_control"
+detail = "tests/test_escape_hatch.py::test_escape_hatch_observability_report_surface enters two reasons with asymmetric hit counts and asserts counter_snapshot exposes exactly those counts; dropping the increment, collapsing reasons, or returning an empty report fails the guard."

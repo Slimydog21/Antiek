@@ -8,6 +8,7 @@ Coverage:
 - Empty / whitespace reason raises at construction
 - Exceptions inside the hatch propagate (do not get swallowed)
 - counter_snapshot returns a defensive copy
+- counter_snapshot reports every hit per reason for invariant/audit surfaces
 - reset_counters_for_tests clears both counters and seen-set
 - Thread-safety smoke test — concurrent hatch entries do not drop counts
 """
@@ -193,6 +194,20 @@ def test_counter_snapshot_is_defensive_copy() -> None:
     snap2 = counter_snapshot()
     assert "fabricated" not in snap2
     assert snap2["snapshot-test"] == 1
+
+
+def test_escape_hatch_observability_report_surface() -> None:
+    with escape_hatch(reason="raw-duckdb-maintenance"):
+        pass
+    with escape_hatch(reason="raw-duckdb-maintenance"):
+        pass
+    with escape_hatch(reason="benchmark-bypasses-retry-budget"):
+        pass
+
+    assert counter_snapshot() == {
+        "raw-duckdb-maintenance": 2,
+        "benchmark-bypasses-retry-budget": 1,
+    }
 
 
 def test_reset_clears_both_counters_and_seen(
