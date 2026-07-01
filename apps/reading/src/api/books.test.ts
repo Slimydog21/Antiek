@@ -422,6 +422,14 @@ describe("books api — spin-research boundary", () => {
     });
   });
 
+  it.each([1.5, -1, Number.MAX_SAFE_INTEGER + 1, Number.POSITIVE_INFINITY])(
+    "rejects malformed page index %s before sending a spin request",
+    async (pageIndex) => {
+      await expect(spinResearch("doc-1", pageIndex)).rejects.toThrow(/page_index/);
+      expect(apiFetchMock).not.toHaveBeenCalled();
+    },
+  );
+
   it("parses future servability values without narrowing them away", async () => {
     const futureResponse = { ...spinResearchResponse(), servability: "future_open" };
     apiFetchMock.mockResolvedValueOnce(
