@@ -27,6 +27,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -478,6 +479,21 @@ async def test_rlm_investigation_kind_emits_rlm_session_events(
     async_client,
 ):
     monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    import orchestration.loop_one.rlm_orchestrator as rlm_orchestrator
+
+    def fake_dispatch(prompt, role, **kwargs):
+        if "## REPL state" in prompt:
+            text = "\n".join([
+                "graph = search_graph(question, top_k=2)",
+                "sub_answers = llm_batch([question, 'Name one reading priority'])",
+                "answer['content'] = 'RLM answer: ' + graph + ' :: ' + str(sub_answers)",
+                "answer['ready'] = True",
+            ])
+        else:
+            text = f"sub-answer for {prompt[:24]}"
+        return SimpleNamespace(text=text, tier="test", cost_usd=0.01)
+
+    monkeypatch.setattr(rlm_orchestrator, "dispatch", fake_dispatch)
     _, bus = app_and_bus
     inv = "inv-rlm-session-events"
 
@@ -494,6 +510,7 @@ async def test_rlm_investigation_kind_emits_rlm_session_events(
     assert action_types == [
         ActionType.INVESTIGATION_START_REQUESTED.value,
         ActionType.RLM_SESSION_STARTED.value,
+        ActionType.RLM_SUB_CALL_DISPATCHED.value,
         ActionType.RLM_ITERATION.value,
         ActionType.RLM_SESSION_COMPLETED.value,
     ]
