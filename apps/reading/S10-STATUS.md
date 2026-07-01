@@ -28,8 +28,15 @@ sense for routes that have natural side surfaces.
 |------|------|---------|
 | `/` + `/inv/:id` | `modes/ResearchWorkstation/index.tsx` | `InvestigationSidebar` docked-left + `Chat` docked-bottom (when an investigation is loaded) |
 | `/wrestle/:id` | `modes/WrestleApp/index.tsx` | `Notes` docked-left + `CrossDocs` docked-right |
+| `/create/:id?` | `modes/CreationStudio/index.tsx` | `DeliverableSidebar` docked-left + `BlockPalette` docked-right |
+| `/brainstorm` | `modes/BrainstormStation/index.tsx` | `BrainstormWatchList` docked-left + `BrainstormThoughtPartner` docked-right |
+| `/interview/:id` | `modes/Interview/index.tsx` | `InterviewRecording` docked-left + `InterviewTranscript` docked-right + `InterviewNotes` docked-bottom |
+| `/replay/:id` | `modes/Replay/index.tsx` | `ReplayStepList` docked-left |
 
-These were ported in S5 + S6.
+RW/Wrestle were ported in S5 + S6. The Create, Brainstorm, Interview, and
+Replay opt-in wraps are now covered by
+`src/workspace/PanelHostStarterContracts.test.tsx` so future route rewrites
+cannot quietly flatten those workstation surfaces.
 
 ### Not wrapped (intentional — no clear side surfaces)
 
@@ -59,25 +66,21 @@ to one of these, the wrap is a 3-line change inside the route's
 | `/federation` | Graph viewer |
 | `/cross-graph/citations` | Citation list |
 | `/loop-3` | KPI dashboard |
-| `/interview/:id` | Recording + transcript (could benefit from PanelHost in a future pass; not blocking S10) |
 | `/interviews` | Index |
-| `/replay/:id` | Linear playback (could benefit from a step-list docked-left in a future pass) |
-| `/create/:id?` | Lego-block creation (could benefit from a block-palette docked-left in a future pass) |
-| `/brainstorm` | Parked questions surface (could benefit from a `Chase` floating-panel CTA in a future pass) |
 
-The "could benefit" routes are flagged as opt-in opportunities for
-whoever owns them. None of them are blocking the redesign's
-operator-visible exit criteria.
+The remaining direct-render routes are either index/detail pages with no clear
+side surfaces or future product calls that need new panel kinds before wrapping.
+None of them are blocking the redesign's operator-visible exit criteria.
 
 ### What the S10 spec table called out vs reality
 
 The S10 spec (`docs/ui_redesign_posthog/sprint_10_migration.html`)
 enumerated 28 routes. Of those:
 
-- **2 already wrapped** (S5 + S6): RW + Wrestle
-- **26 visually swept** (S10-light): cards/buttons/inputs match brand
+- **6 wrapped**: RW, Wrestle, Create, Brainstorm, Interview, Replay
+- **22 visually swept** (S10-light): cards/buttons/inputs match brand
 - **0 structural failures**: every route renders correctly inside AppShell
-- **5 "could-benefit" candidates** noted above for opt-in future work
+- **0 stale opt-in candidates** from the original status table remain unwrapped
 
 The redesign's exit criterion — "every route lives inside the new
 chrome" — holds. Routes that need their own panel layout get it
