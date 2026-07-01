@@ -4069,6 +4069,16 @@ def create_app(
         count: int
         questions: list[ParkedQuestionEntry]
 
+    def _event_log_investigation_ids(events_dir: str) -> list[str]:
+        import os as _os
+
+        ids = {
+            filename.rsplit(".", 1)[0]
+            for filename in _os.listdir(events_dir)
+            if filename.endswith((".jsonl", ".parquet"))
+        }
+        return sorted(ids)
+
     @app.get("/watch-for-later", response_model=WatchForLaterResponse)
     async def list_watch_for_later(
         limit: Annotated[int, Query(ge=1, le=500)] = 100,
@@ -4094,11 +4104,8 @@ def create_app(
         parked: dict[str, ParkedQuestionEntry] = {}
         sharpened_ids: set[str] = set()
 
-        for filename in _os.listdir(events_dir):
-            if not filename.startswith("inv-") or not filename.endswith(".jsonl"):
-                continue
-            src_inv = filename[:-len(".jsonl")]
-            for r in trajectory(src_inv):
+        for src_inv in _event_log_investigation_ids(events_dir):
+            for r in trajectory(src_inv, events_dir=events_dir):
                 at = r.get("action_type")
                 payload = r.get("payload") or {}
                 qid = payload.get("question_id")
@@ -4153,27 +4160,50 @@ def create_app(
 
         found_text: str | None = None
         found_source_inv: str | None = None
+        found_document_id: str | None = None
         qi_action = ActionType.QUESTION_IDENTIFIED.value
-        for filename in _os.listdir(events_dir):
-            if not filename.startswith("inv-") or not filename.endswith(".jsonl"):
-                continue
-            src_inv = filename[:-len(".jsonl")]
-            for r in trajectory(src_inv):
+        sharpened_actions = {
+            ActionType.QUESTION_ESCALATED_TO_RESEARCH.value,
+            ActionType.QUESTION_RESOLVED_BY_DOC.value,
+            ActionType.CROSS_DOC_QUESTION_ANSWERED.value,
+        }
+        question_is_sharpened = False
+        for src_inv in _event_log_investigation_ids(events_dir):
+            for r in trajectory(src_inv, events_dir=events_dir):
                 payload = r.get("payload") or {}
+                if (
+                    r.get("action_type") in sharpened_actions
+                    and payload.get("question_id") == question_id
+                ):
+                    question_is_sharpened = True
                 if (
                     r.get("action_type") == qi_action
                     and payload.get("question_id") == question_id
                 ):
                     found_text = payload.get("question_text")
                     found_source_inv = src_inv
-                    break
-            if found_text is not None:
+                    found_document_id = r.get("document_id")
+            if found_text is not None and question_is_sharpened:
                 break
+
+        if question_is_sharpened:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Question {question_id} is already sharpened",
+            )
 
         if found_text is None or found_source_inv is None:
             raise HTTPException(
                 status_code=404,
                 detail=f"No parked question with question_id={question_id}",
+            )
+        if found_document_id is None:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Parked question is missing document_id; cannot emit "
+                    "document-scoped escalation event."
+                ),
             )
 
         child_inv_id = f"inv-{_uuid.uuid4().hex[:12]}"
@@ -4191,6 +4221,7 @@ def create_app(
                 ),
                 role="operator",
                 policy_id="operator/brainstorm",
+                document_id=found_document_id,
             )
         except Exception as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -4212,10 +4243,11 @@ def create_app(
                 ),
                 role="operator",
                 policy_id="operator/brainstorm",
+                document_id=found_document_id,
             )
 
         # Broadcast the start event so the Loop 1 orchestrator picks it up.
-        for row in reversed(trajectory(child_inv_id)):
+        for row in reversed(trajectory(child_inv_id, events_dir=events_dir)):
             if row.get("event_id") == start_event_id:
                 try:
                     event = Event.model_validate(row)
