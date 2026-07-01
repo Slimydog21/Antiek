@@ -29,6 +29,7 @@ from orchestration.rlm.bridge import is_ratified
 from orchestration.rlm.session import RLM_DEFAULT_MAX_ITERATIONS
 from substrate.dispatch import ProviderError, dispatch
 from substrate.event_log import emit_typed, trajectory
+from substrate.graph.rlm_tools import search_graph
 from substrate.schemas import (
     DistillationDeliveredPayload,
     DistillationRequestedPayload,
@@ -199,7 +200,7 @@ async def maybe_handle_rlm_distillation(
 
     repl.registry.install("llm_query", llm_query)
     repl.registry.install("llm_batch", llm_batch)
-    repl.registry.install("search_graph", lambda query, top_k=5: [])
+    repl.registry.install("search_graph", search_graph)
 
     last_codegen_cost = Decimal("0.00")
 

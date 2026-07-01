@@ -412,3 +412,76 @@ def test_rlm_wrestling_timeout_emits_failure_without_delivery(tmp_path, monkeypa
         for row in trajectory("inv-rlm-wrestle-timeout")
         if row["action_type"] == "distillation.delivered"
     ] == []
+
+
+def test_rlm_wrestling_exposes_search_graph_tool(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    db = str(tmp_path / "graph.duckdb")
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db)
+    monkeypatch.setattr(
+        "substrate.dispatch.router.DispatchConfig.from_yaml",
+        classmethod(lambda cls, path: _dispatch_config()),
+    )
+    monkeypatch.setattr(
+        "interfaces.research.api.rlm_wrestling.search_graph",
+        lambda query, top_k=5: f"tool result for {query} top_k={top_k}",
+    )
+    code = (
+        "evidence = search_graph('constraint', top_k=3)\n"
+        "answer['content'] = '{"
+        "\"rendered_text\": \"' + evidence + '\", "
+        "\"claims\": [{\"text\": \"Graph evidence was available.\", "
+        "\"confidence\": \"moderate\"}]"
+        "}'\n"
+        "answer['ready'] = True"
+    )
+    register_provider(_CodeProvider(code))
+
+    ensure_initialized(db)
+    con = connect_write(db, purpose="test_seed")
+    try:
+        insert_document(
+            con,
+            document_id="doc-long-search",
+            source_tier=4,
+            document_type="pdf",
+        )
+        insert_chunk(
+            con,
+            document_id="doc-long-search",
+            chunk_index=0,
+            text="S" * 270_000,
+        )
+    finally:
+        con.close()
+
+    bus = _RecordingBroadcaster()
+    event = _event(
+        investigation_id="inv-rlm-wrestle-search",
+        document_id="doc-long-search",
+    )
+
+    handled = asyncio.run(
+        maybe_handle_rlm_distillation(
+            event=event,
+            request=event.payload,
+            broadcaster=bus,
+            db_path=db,
+            resolve_document_text=_resolve_document_text_from_db,
+            resolve_region_text=_resolve_region_text,
+            parse_claims_response=_parse_claims_response,
+            sha256_prefix=_sha256_prefix,
+        )
+    )
+
+    assert handled is True
+    delivered_rows = [
+        row
+        for row in trajectory("inv-rlm-wrestle-search")
+        if row["action_type"] == "distillation.delivered"
+    ]
+    assert len(delivered_rows) == 1
+    delivered = Event.model_validate(delivered_rows[0])
+    assert delivered.payload.rendered_text == "tool result for constraint top_k=3"
+    assert delivered.payload.claims[0].text == "Graph evidence was available."
