@@ -44,6 +44,7 @@ export default function MetaReading() {
   // meta-reading asset (read-only) rather than acting as the generator. The
   // saved asset is loaded from the event log via the substrate read-path.
   const { assetId } = useParams<{ assetId?: string }>();
+  const isSavedAsset = Boolean(assetId);
   const [prompt, setPrompt] = useState("");
   const [unit, setUnit] = useState<LengthUnit>("pages");
   const [amount, setAmount] = useState(3);
@@ -62,6 +63,8 @@ export default function MetaReading() {
     let cancelled = false;
     setBusy(true);
     setError(null);
+    setDeliverable(null);
+    setPromoted(null);
     void getSavedMetaReading(assetId)
       .then((saved) => {
         if (cancelled) return;
@@ -168,54 +171,58 @@ export default function MetaReading() {
             </p>
           </header>
 
-          {/* The ask + the HARD length-box. */}
-          <section className="space-y-3 rounded-md border border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 px-4 py-3">
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="What should this reading be about? (e.g. how my books treat free will)"
-              rows={3}
-              className="w-full bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright rounded-md px-3 py-2 text-sm resize-none outline-none border border-rule dark:border-charcoal-1"
-            />
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-2 text-[13px] text-ink dark:text-bright">
-                Length
-                <input
-                  type="number"
-                  min={1}
-                  value={amount}
-                  onChange={(e) => setAmount(parseInt(e.target.value, 10) || 0)}
-                  aria-label="Length amount"
-                  className="w-16 bg-ice-0 dark:bg-charcoal-1 rounded px-2 py-1 text-sm outline-none border border-rule dark:border-charcoal-1"
-                />
-              </label>
-              <div role="radiogroup" aria-label="Length unit" className="flex items-center gap-1">
-                {(["pages", "minutes"] as LengthUnit[]).map((u) => (
-                  <button
-                    key={u}
-                    type="button"
-                    role="radio"
-                    aria-checked={unit === u}
-                    onClick={() => setUnit(u)}
-                    className={`px-3 py-1 rounded-md text-xs font-mono ${
-                      unit === u
-                        ? "bg-ink text-white"
-                        : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright hover:bg-ice-4"
-                    }`}
-                  >
-                    {u}
-                  </button>
-                ))}
+          {!isSavedAsset && (
+            /* The ask + the HARD length-box. Hidden on saved-asset routes:
+               /read/meta-reading/:assetId is a read-only reopen, not a second
+               generator for overwriting the asset in place. */
+            <section className="space-y-3 rounded-md border border-rule dark:border-charcoal-1 bg-ice-1 dark:bg-charcoal-2 px-4 py-3">
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="What should this reading be about? (e.g. how my books treat free will)"
+                rows={3}
+                className="w-full bg-ice-0 dark:bg-charcoal-1 text-ink dark:text-bright rounded-md px-3 py-2 text-sm resize-none outline-none border border-rule dark:border-charcoal-1"
+              />
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="flex items-center gap-2 text-[13px] text-ink dark:text-bright">
+                  Length
+                  <input
+                    type="number"
+                    min={1}
+                    value={amount}
+                    onChange={(e) => setAmount(parseInt(e.target.value, 10) || 0)}
+                    aria-label="Length amount"
+                    className="w-16 bg-ice-0 dark:bg-charcoal-1 rounded px-2 py-1 text-sm outline-none border border-rule dark:border-charcoal-1"
+                  />
+                </label>
+                <div role="radiogroup" aria-label="Length unit" className="flex items-center gap-1">
+                  {(["pages", "minutes"] as LengthUnit[]).map((u) => (
+                    <button
+                      key={u}
+                      type="button"
+                      role="radio"
+                      aria-checked={unit === u}
+                      onClick={() => setUnit(u)}
+                      className={`px-3 py-1 rounded-md text-xs font-mono ${
+                        unit === u
+                          ? "bg-ink text-white"
+                          : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright hover:bg-ice-4"
+                      }`}
+                    >
+                      {u}
+                    </button>
+                  ))}
+                </div>
+                <LemonButton type="button" variant="primary" size="sm" disabled={busy || !prompt.trim()} onClick={() => void generate()}>
+                  {busy ? "Reading your corpus…" : "Make the reading"}
+                </LemonButton>
               </div>
-              <LemonButton type="button" variant="primary" size="sm" disabled={busy || !prompt.trim()} onClick={() => void generate()}>
-                {busy ? "Reading your corpus…" : "Make the reading"}
-              </LemonButton>
-            </div>
-            <p className="text-[12px] text-shadow-1 dark:text-moonlight">
-              Built to about {unit === "pages" ? `${amount} page(s)` : `${amount} minute(s)`} up
-              front — a hard budget, not a trim afterward.
-            </p>
-          </section>
+              <p className="text-[12px] text-shadow-1 dark:text-moonlight">
+                Built to about {unit === "pages" ? `${amount} page(s)` : `${amount} minute(s)`} up
+                front — a hard budget, not a trim afterward.
+              </p>
+            </section>
+          )}
 
           {error && (
             <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded" role="alert">
