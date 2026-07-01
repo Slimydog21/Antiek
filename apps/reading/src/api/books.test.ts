@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * books api — Read client boundaries.
  *
  * Surface tests pin component-level call shapes. This file pins API-client wire
- * contracts: meta-reading defaults/errors and personal-space filing suggestions.
+ * contracts: talk-to-book defaults/errors, meta-reading defaults/errors, and
+ * personal-space filing suggestions.
  */
 
 const apiFetchMock = vi.hoisted(() => vi.fn());
@@ -14,7 +15,24 @@ vi.mock("../lib/api", () => ({
   apiFetch: apiFetchMock,
 }));
 
-import { generateMetaReading, getFileSuggestion } from "./books";
+import { askBook, generateMetaReading, getFileSuggestion } from "./books";
+
+function askBookResponse() {
+  return {
+    answer: "Page seven discusses entanglement.",
+    citations: [
+      {
+        chunk_id: "chunk-7",
+        document_id: "doc-1",
+        page_index: 6,
+        page_resolved: true,
+        snippet: "the cited passage",
+      },
+    ],
+    grounded: true,
+    context_chunk_count: 1,
+  };
+}
 
 function metaReadingResponse() {
   return {
@@ -32,7 +50,7 @@ function metaReadingResponse() {
   };
 }
 
-function postedMetaReadingBody(): Record<string, unknown> {
+function postedJsonBody(): Record<string, unknown> {
   const [, init] = apiFetchMock.mock.calls[0] as [string, RequestInit];
   expect(typeof init.body).toBe("string");
   return JSON.parse(init.body as string) as Record<string, unknown>;
@@ -43,6 +61,67 @@ beforeEach(() => {
   apiFetchMock.mockResolvedValue(
     new Response(JSON.stringify(metaReadingResponse()), { status: 200 }),
   );
+});
+
+describe("books api — talk-to-book boundary", () => {
+  it("asks one encoded book with empty history and the default deep tier", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(askBookResponse()), { status: 200 }),
+    );
+
+    const result = await askBook("doc with space", "what is on page seven?");
+
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = apiFetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/books/doc%20with%20space/ask");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toMatchObject({ "Content-Type": "application/json" });
+    expect(postedJsonBody()).toEqual({
+      question: "what is on page seven?",
+      history: [],
+      research_tier: "deep",
+    });
+    expect(result).toEqual(askBookResponse());
+  });
+
+  it("preserves explicit history and fast tier for multi-turn continuation", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(askBookResponse()), { status: 200 }),
+    );
+
+    await askBook("doc-1", "what about that?", {
+      history: [{ question: "first question", answer: "first answer" }],
+      researchTier: "fast",
+    });
+
+    expect(postedJsonBody()).toEqual({
+      question: "what about that?",
+      history: [{ question: "first question", answer: "first answer" }],
+      research_tier: "fast",
+    });
+  });
+
+  it("surfaces an unknown book as the reader's book_not_found branch", async () => {
+    apiFetchMock.mockResolvedValueOnce(new Response("missing", { status: 404 }));
+
+    await expect(askBook("missing-doc", "anything")).rejects.toThrow("book_not_found");
+  });
+
+  it("surfaces provider unavailability as the reader-facing talk-to-book message", async () => {
+    apiFetchMock.mockResolvedValueOnce(new Response("no model", { status: 503 }));
+
+    await expect(askBook("doc-1", "anything")).rejects.toThrow(
+      /Talk-to-book isn.t available right now\./,
+    );
+  });
+
+  it("keeps unexpected ask failures loud with the endpoint name", async () => {
+    apiFetchMock.mockResolvedValueOnce(new Response("boom", { status: 500 }));
+
+    await expect(askBook("doc-1", "anything")).rejects.toThrow(
+      "POST /books/{id}/ask: HTTP 500",
+    );
+  });
 });
 
 describe("books api — meta-reading boundary", () => {
@@ -58,7 +137,7 @@ describe("books api — meta-reading boundary", () => {
     expect(url).toBe("/api/corpus/meta-reading");
     expect(init.method).toBe("POST");
     expect(init.headers).toMatchObject({ "Content-Type": "application/json" });
-    expect(postedMetaReadingBody()).toEqual({
+    expect(postedJsonBody()).toEqual({
       prompt: "free will across my books",
       length_unit: "pages",
       length_amount: 3,
@@ -79,7 +158,7 @@ describe("books api — meta-reading boundary", () => {
     });
 
     expect(apiFetchMock).toHaveBeenCalledTimes(1);
-    expect(postedMetaReadingBody()).toEqual({
+    expect(postedJsonBody()).toEqual({
       prompt: "owned corpus with explicit picks",
       length_unit: "minutes",
       length_amount: 12,
