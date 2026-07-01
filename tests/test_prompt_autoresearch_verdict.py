@@ -646,3 +646,26 @@ def test_verdict_cli_requires_role_when_json_is_bare_array(tmp_path, capsys):
 
     assert rc == 2
     assert "--role is required" in capsys.readouterr().err
+
+
+def test_verdict_cli_rejects_missing_outcomes_file(tmp_path, capsys):
+    from tools.prompt_autoresearch.verdict_cli import main
+
+    missing = tmp_path / "missing.json"
+
+    rc = main(["--role", "synthesizer", "--outcomes", str(missing)])
+
+    assert rc == 2
+    assert f"could not read outcomes JSON: {missing}" in capsys.readouterr().err
+
+
+def test_verdict_cli_rejects_malformed_outcomes_json(tmp_path, capsys):
+    from tools.prompt_autoresearch.verdict_cli import main
+
+    outcomes_path = tmp_path / "malformed.json"
+    outcomes_path.write_text("{not-json", encoding="utf-8")
+
+    rc = main(["--role", "synthesizer", "--outcomes", str(outcomes_path)])
+
+    assert rc == 2
+    assert f"outcomes JSON is malformed: {outcomes_path}" in capsys.readouterr().err
