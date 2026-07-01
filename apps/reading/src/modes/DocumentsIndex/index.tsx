@@ -29,6 +29,63 @@ interface DocumentRow {
 const TIER_FILTERS = ["all", 1, 2, 3, 4, 5] as const;
 type TierFilter = (typeof TIER_FILTERS)[number];
 
+function sourceTierLabel(tier: number): string {
+  if (tier === 1) return "Primary source";
+  if (tier === 2) return "Strong source";
+  if (tier === 3) return "Useful source";
+  if (tier === 4) return "Needs review";
+  if (tier === 5) return "Unverified";
+  return "Unrated source";
+}
+
+function documentTypeLabel(documentType: string | null): string {
+  if (!documentType) return "Source";
+  if (documentType.toLowerCase() === "pdf") return "PDF";
+  return documentType
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function contentClassLabel(contentClass: string | null): string | null {
+  if (!contentClass) return null;
+  if (contentClass === "public_domain") return "Public domain";
+  if (contentClass === "platform_authored") return "Platform-authored";
+  if (contentClass === "opt_in_licensed") return "Publisher licensed";
+  if (contentClass === "publisher_opted_in") return "Publisher licensed";
+  if (contentClass === "source_declared_open") return "Open source";
+  if (contentClass === "restricted_pending_opt_in") return "Preview only";
+  if (contentClass === "gated_metadata_only") return "Preview only";
+  if (contentClass === "taken_down") return "Unavailable";
+  if (contentClass === "personal_reading") return "Private reading";
+  if (contentClass === "user_owned") return "Private";
+  if (contentClass === "user_public_contribution") return "Public contribution";
+  return "Unknown rights";
+}
+
+function sourceSummary(row: DocumentRow): string {
+  return [
+    documentTypeLabel(row.document_type),
+    contentClassLabel(row.content_class),
+  ].filter(Boolean).join(" · ");
+}
+
+function researchHandleLabel(investigationId: string): string {
+  const handle = visibleResearchHandle(investigationId);
+  return handle ? `Research handle ${handle}` : "Linked research";
+}
+
+function visibleResearchHandle(investigationId: string): string {
+  return investigationId.replace(/^inv-/, "");
+}
+
+function researchFilterParam(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  return trimmed.startsWith("inv-") ? trimmed : `inv-${trimmed}`;
+}
+
 export default function DocumentsIndex() {
   const openDocument = useOpenDocument();
   // SPR-09 window-adaptation contract: in a WorkspaceWindow, fill the host
@@ -50,12 +107,12 @@ export default function DocumentsIndex() {
         params.set("source_tier", String(tierFilter));
       }
       if (investigationFilter.trim()) {
-        params.set("investigation_id", investigationFilter.trim());
+        params.set("investigation_id", researchFilterParam(investigationFilter));
       }
       params.set("limit", "500");
       const resp = await apiFetch(`/documents?${params.toString()}`);
       if (!resp.ok) {
-        throw new Error(`GET /documents: HTTP ${resp.status}`);
+        throw new Error(`Could not load documents (HTTP ${resp.status}).`);
       }
       const data = await resp.json();
       setRows(data.documents ?? []);
@@ -91,10 +148,9 @@ export default function DocumentsIndex() {
               Documents
             </h1>
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-              Substrate-attached documents (PDFs + web sources +
-              transcripts). Tier reflects source quality per master-
-              spec §9.5: Tier 1 peer-reviewed primary, Tier 5
-              anonymous.
+              Review the sources attached to your workspace: PDFs, web pages,
+              transcripts, and imported references. Quality labels show how
+              much confidence the app has in each source before you open it.
             </p>
           </header>
 
@@ -108,7 +164,7 @@ export default function DocumentsIndex() {
                   {counts[t - 1]}
                 </p>
                 <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
-                  Tier {t}
+                  {sourceTierLabel(t)}
                 </p>
               </div>
             ))}
@@ -127,7 +183,7 @@ export default function DocumentsIndex() {
                       : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright hover:bg-ice-4 dark:bg-charcoal-1"
                   }`}
                 >
-                  {t === "all" ? "all" : `tier ${t}`}
+                  {t === "all" ? "All" : sourceTierLabel(t)}
                 </button>
               ))}
             </div>
@@ -135,8 +191,9 @@ export default function DocumentsIndex() {
               type="text"
               value={investigationFilter}
               onChange={(e) => setInvestigationFilter(e.target.value)}
-              placeholder="filter by investigation_id"
-              className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
+              aria-label="Filter by research handle"
+              placeholder="Paste research handle to filter"
+              className="w-full text-sm font-serif text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
             />
           </section>
 
@@ -170,12 +227,10 @@ export default function DocumentsIndex() {
                   render: (r) => (
                     <div>
                       <p className="font-serif text-ink dark:text-bright truncate">
-                        {r.title ?? r.document_id}
+                        {r.title ?? "Untitled source"}
                       </p>
                       <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight truncate">
-                        {r.document_id}
-                        {r.document_type && <> · {r.document_type}</>}
-                        {r.content_class && <> · {r.content_class}</>}
+                        {sourceSummary(r)}
                       </p>
                       {r.source_uri && (
                         <p className="text-[10px] font-mono text-ink-mute dark:text-moonlight truncate">
@@ -187,21 +242,21 @@ export default function DocumentsIndex() {
                 },
                 {
                   key: "investigation",
-                  header: "Investigation",
+                  header: "Research",
                   render: (r) =>
                     r.investigation_id ? (
-                      <span className="font-mono text-[12px] text-ink-soft dark:text-starlight">
-                        {r.investigation_id.slice(0, 12)}
+                      <span className="font-serif text-[12px] text-ink-soft dark:text-starlight">
+                        {researchHandleLabel(r.investigation_id)}
                       </span>
                     ) : (
-                      <span className="font-mono text-[11px] text-ink-mute dark:text-moonlight italic">
-                        unassigned
+                      <span className="font-serif text-[12px] text-ink-mute dark:text-moonlight italic">
+                        No linked research
                       </span>
                     ),
                 },
                 {
                   key: "tier",
-                  header: "Tier",
+                  header: "Quality",
                   align: "right",
                   render: (r) => (
                     <LemonTag
@@ -213,7 +268,7 @@ export default function DocumentsIndex() {
                             : "sun"
                       }
                     >
-                      tier {r.source_tier}
+                      {sourceTierLabel(r.source_tier)}
                     </LemonTag>
                   ),
                 },
