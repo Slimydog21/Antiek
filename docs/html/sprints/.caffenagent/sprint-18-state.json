@@ -1,0 +1,31 @@
+{
+  "spec_file": "docs/html/sprints/sprint-18.html",
+  "target_branch": "reader/integration",
+  "status": "operator_gated",
+  "recorded_at": "2026-07-01T20:21:11Z",
+  "verified_code_sha": "61945576",
+  "mode": "status_reconciliation",
+  "deterministic_evidence": {
+    "python_s18_scoped": "112 passed: tests/test_retrieval_time_gate.py tests/test_clis_exa_and_legal_gate.py tests/test_ip_holders.py tests/test_stripe_connect.py tests/test_api_sprint18_19_endpoints.py tests/test_event_payloads_v6_exa_browserbase_precursor.py tests/test_passage_dialogue.py",
+    "frontend_brainstorm": "9 passed: npm test -- ThoughtPartnerPanel WatchForLaterFolder ParkedQuestion --run",
+    "legal_gate": "tests/test_retrieval_time_gate.py and tests/test_clis_exa_and_legal_gate.py cover SQL-WHERE gating and audit CLI behavior",
+    "publisher_architecture": "tests/test_ip_holders.py and tests/test_stripe_connect.py cover escrow / Stripe architecture; G2 and G3 still gate real external activation",
+    "brainstorming_workstation": "apps/reading/src/modes/BrainstormStation and roles/thought_partner covered by frontend and backend dialogue tests",
+    "typed_precursor": "tests/test_event_payloads_v6_exa_browserbase_precursor.py covers DiscoveryProposedPayload, DiscoverySelectedPayload, FetchFallbackEscalatedPayload, and ActionType union membership"
+  },
+  "operator_only_remaining": [
+    "Production verification that the retrieval-time legal gate is deployed live.",
+    "Operator edits registry.py, restarts substrate, runs manual ingest_url(banned_url, ...), and observes rejected_by_legal_gate plus typed JSONL event.",
+    "G2 counsel review before external email / Stripe payout activation.",
+    "G3 first publisher opt-in before any real publisher payout activation."
+  ],
+  "not_claimed": [
+    "Full repository test suite was not rerun in this S18 pass.",
+    "publisher.antiek.ai live DNS / production serving was not verified.",
+    "Real Stripe Connect activation was not verified because it is intentionally gated by G2/G3."
+  ],
+  "notes": [
+    "The status label was changed from next to operator-gated to reflect current substrate evidence without overstating production/operator proof.",
+    "A read-only Grok audit attempt against the custom caffenagent path hit a stale tool name: glob_file_search. Bounded Grok prompts with --agent general-purpose and --no-subagents worked."
+  ]
+}
