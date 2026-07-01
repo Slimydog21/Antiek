@@ -2,6 +2,81 @@
   "spec_dir": "docs/specs/ant-h2v",
   "platform_spec_dir": "docs/htmlspec/antiek-hard-to-vary-execution",
   "pr": 52,
+  "pr_url": "https://github.com/Slimydog21/Antiek/pull/52",
   "consolidation_branch": "prcrouch/ant-exec-platform",
-  "status": "ready_for_operator_merge"
+  "status": "done",
+  "recorded_at": "2026-07-01T20:09:18Z",
+  "verified_code_sha": "c9e020c3",
+  "github_pr_state": "MERGED",
+  "sprints": {
+    "SPR-01": {
+      "status": "done",
+      "gate_results": {
+        "agent_protocol_docs": "present"
+      }
+    },
+    "SPR-02": {
+      "status": "done",
+      "gate_results": {
+        "cascade_repro_contract": "pass"
+      }
+    },
+    "SPR-03": {
+      "status": "done",
+      "gate_results": {
+        "dispatch_decomposer_regression": "1 passed"
+      }
+    },
+    "SPR-04": {
+      "status": "done",
+      "gate_results": {
+        "cascade_create_plan_light": "2 passed"
+      }
+    },
+    "SPR-05": {
+      "status": "done",
+      "gate_results": {
+        "api_error_boundary": "covered by cascade light route"
+      }
+    },
+    "SPR-06": {
+      "status": "done",
+      "gate_results": {
+        "audit_decomposer_call_sites": "AUDIT_OK"
+      }
+    },
+    "SPR-07": {
+      "status": "done",
+      "gate_results": {
+        "operator_verify_card": "documented",
+        "live_provider_e2e": "not automated"
+      }
+    },
+    "SPR-08": {
+      "status": "done",
+      "gate_results": {
+        "platform_matrix": "present",
+        "loop_one_orchestrator": "5 passed"
+      }
+    }
+  },
+  "verification": {
+    "profile": "CANONICAL_VERIFY_OK: profile",
+    "cascade": "CANONICAL_VERIFY_OK: cascade",
+    "agent_gates": "CANONICAL_VERIFY_OK: agent-gates",
+    "loop_one_orchestrator": "5 passed"
+  },
+  "github_checks_at_merge": [
+    "agent-execution-gates: SUCCESS",
+    "pytest: SUCCESS",
+    "mypy --strict + ruff (declared scope, baselined): SUCCESS",
+    "keystone: SUCCESS",
+    "tsc: SUCCESS",
+    "Cloudflare Pages: SUCCESS",
+    "Strix Security Review: SUCCESS"
+  ],
+  "not_proven_by_automation": [
+    "Live provider auto-decompose E2E",
+    "Live provider Loop1 E2E"
+  ]
 }
