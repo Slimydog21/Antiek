@@ -103,6 +103,18 @@ describe("TalkToBook (M2)", () => {
     expect(jump).not.toHaveBeenCalled();
   });
 
+  it.each([2.5, -1, Number.MAX_SAFE_INTEGER + 1])(
+    "a malformed resolved page index %s is shown honestly, never jumped",
+    async (page_index) => {
+      askBookMock.mockResolvedValue(answer({ citations: [cite({ page_index, page_resolved: true })] }));
+      const jump = vi.fn();
+      await openAndAsk(jump);
+      expect(screen.getByText("in the book (page not pinpointed)")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: /p\./ })).toBeNull();
+      expect(jump).not.toHaveBeenCalled();
+    },
+  );
+
   it("continues the multi-turn conversation, sending prior turns as history", async () => {
     askBookMock
       .mockResolvedValueOnce(answer({ answer: "First answer." }))

@@ -297,17 +297,23 @@ function CitationChip({
   citation: BookCitation;
   onJumpToPage: (pageIndex: number) => void;
 }) {
-  const resolved = citation.page_resolved && citation.page_index !== null;
-  if (resolved) {
+  const pageIndex =
+    citation.page_resolved &&
+    citation.page_index !== null &&
+    Number.isSafeInteger(citation.page_index) &&
+    citation.page_index >= 0
+      ? citation.page_index
+      : null;
+  if (pageIndex !== null) {
     return (
       <li>
         <button
           type="button"
-          onClick={() => onJumpToPage(citation.page_index as number)}
+          onClick={() => onJumpToPage(pageIndex)}
           title={citation.snippet}
           className="rounded bg-aurora/15 text-aurora-deep dark:text-aurora px-1.5 py-0.5 text-[11px] font-mono hover:bg-aurora/25"
         >
-          p.{(citation.page_index as number) + 1}
+          p.{pageIndex + 1}
         </button>
       </li>
     );
