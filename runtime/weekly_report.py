@@ -563,7 +563,10 @@ def collect_acquisition_cost(
     for f in sorted(budget_path.glob("exa_*.json")):
         try:
             stem_date = f.stem.replace("exa_", "")
-            day = datetime.strptime(stem_date, "%Y-%m-%d").replace(tzinfo=UTC)
+            # Naive UTC, matching the window bounds (start/end are tzinfo-naive
+            # per _window_default). A tz-aware ``day`` here raised
+            # "can't compare offset-naive and offset-aware datetimes".
+            day = datetime.strptime(stem_date, "%Y-%m-%d")
         except ValueError:
             continue
         if day < start.replace(hour=0, minute=0, second=0, microsecond=0):
