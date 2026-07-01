@@ -14,7 +14,9 @@ from tools.prompt_autoresearch import (
     composite_score,
     deterministic_voice_style_score,
     grounding_preserved_rate,
+    load_outcomes_json,
     sector_vocab_overlap,
+    write_outcomes_json,
 )
 from tools.prompt_autoresearch.runner import ProductionEnvironmentRefusal, make_id
 
@@ -277,3 +279,43 @@ def test_runner_records_budget_breach_as_rejection(monkeypatch):
     )
     assert outcome.accepted is False
     assert "budget exceeded" in outcome.notes
+
+
+def test_runner_budget_breach_outcome_round_trips_to_verdict_json(monkeypatch, tmp_path):
+    monkeypatch.delenv("ANTIEK_ENV", raising=False)
+    runner = PromptAutoresearchRunner(
+        role="synthesizer",
+        budget=BudgetCap(per_iteration_cap_usd=Decimal("0.10")),
+        baseline_total_score=0.50,
+    )
+    mutation = PromptMutation(
+        mutation_id=make_id(),
+        role="synthesizer",
+        parent_baseline_id=None,
+        proposed_prompt="Expensive prompt",
+        rationale="tries something costly",
+    )
+
+    outcome = runner.run_iteration(
+        mutation,
+        execute_fn=lambda p: ("text", Decimal("0.50")),
+        corpus_terms=[],
+        expected_claim_ids=[],
+        rubric_judge_fn=lambda t: 1.0,
+    )
+
+    assert outcome.accepted is False
+    assert outcome.baseline_score == 0.50
+    assert outcome.candidate_score == 0.50
+    assert outcome.delta == 0.0
+    assert runner.iterations == [outcome]
+    assert runner.baseline_total_score == 0.50
+
+    path = tmp_path / "outcomes.json"
+    write_outcomes_json(path, role="synthesizer", outcomes=runner.iterations)
+
+    role, loaded = load_outcomes_json(path)
+    assert role == "synthesizer"
+    assert len(loaded) == 1
+    assert loaded[0].mutation_id == outcome.mutation_id
+    assert loaded[0].accepted is False
