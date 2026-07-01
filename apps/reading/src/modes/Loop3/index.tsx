@@ -18,6 +18,20 @@ interface Loop3Status {
   all_criteria_met: boolean;
   env_unlocked: boolean;
   fully_unlocked: boolean;
+  evidence?: Loop3Evidence;
+}
+
+interface Loop3Evidence {
+  criteria: Record<string, boolean>;
+  statuses: Record<string, {
+    criterion: string;
+    status: string;
+    passed: boolean;
+    summary: string;
+  }>;
+  all_evidence_passed: boolean;
+  events_dir: string;
+  open_weight_policy_file: string;
 }
 
 const CRITERIA_ORDER = [
@@ -135,6 +149,47 @@ export default function Loop3() {
                   value={status.fully_unlocked}
                   highlight={status.fully_unlocked}
                 />
+              </section>
+
+              <section className="border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-sm font-mono text-ink dark:text-bright">
+                    verifier evidence
+                  </h2>
+                  <span
+                    className={`text-[10px] uppercase font-mono px-2 py-0.5 rounded ${
+                      status.evidence?.all_evidence_passed
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-ice-3 dark:bg-charcoal-1 text-shadow-1 dark:text-moonlight"
+                    }`}
+                  >
+                    {status.evidence?.all_evidence_passed ? "PASS" : "FAIL"}
+                  </span>
+                </div>
+                <div className="grid gap-2">
+                  {CRITERIA_ORDER.map((c) => {
+                    const evidence = status.evidence?.statuses[c];
+                    return (
+                      <div
+                        key={c}
+                        className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-3 text-xs"
+                      >
+                        <span className="font-mono text-ink dark:text-bright truncate">
+                          {c}
+                        </span>
+                        <span
+                          className={`text-right break-words ${
+                            evidence?.passed
+                              ? "text-emerald-700"
+                              : "text-shadow-1 dark:text-moonlight"
+                          }`}
+                        >
+                          {evidence?.summary ?? "not checked"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </section>
 
               <section className="space-y-3">
