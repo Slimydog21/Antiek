@@ -170,6 +170,26 @@ def test_followups_from_dispatch(speak_env):
     assert fus[0].follow_up_for_prior_turn is True
 
 
+def test_followups_from_dispatch_rejects_out_of_range_must_cover_index(speak_env):
+    db, proj = speak_env["db_path"], speak_env["project_id"]
+    s = ai.start_async_interview(db, project_id=proj, interview_guide=GUIDE)
+    iid = s.interview_id
+    _consent(db, iid)
+    ai.submit_answer(db, interview_id=iid, question_id="q1",
+                     transcript="He emigrated in 1971 with two suitcases.", embedder=StubEmbedding())
+
+    def fake_dispatch(*, prompt, system, role, investigation_id):
+        return json.dumps({
+            "interviewer_text": "What did he tell you about the journey itself?",
+            "should_end": False,
+            "must_cover_remaining_indices": [len(GUIDE["must_cover"])],
+            "follow_up_for_prior_turn": True,
+        })
+
+    with pytest.raises(ValueError, match="configured guide range"):
+        ai.next_followups(db, interview_id=iid, dispatch_fn=fake_dispatch)
+
+
 # ── M4 consent gate ─────────────────────────────────────────────────────
 
 
