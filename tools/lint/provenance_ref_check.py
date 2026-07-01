@@ -44,6 +44,12 @@ _BRIDGE_VALIDATED_EXCEPTIONS: frozenset[str] = frozenset({
     "roles/grounder/parser.py",
 })
 
+_EXTRA_PARSER_FILES: tuple[str, ...] = (
+    # Research bridge gap clustering parses model-emitted question_ids outside
+    # roles/*/parser.py, so it belongs under the same provenance-ref guard.
+    "substrate/research_bridge/gap.py",
+)
+
 
 def _imports_validator(tree: ast.Module) -> bool:
     for node in ast.walk(tree):
@@ -97,15 +103,24 @@ def _scan_file(rel: str, path: Path) -> list[str]:
     ]
 
 
+def _parser_files(root: Path) -> list[tuple[str, Path]]:
+    out: list[tuple[str, Path]] = []
+    roles_dir = root / "roles"
+    if roles_dir.exists():
+        for path in sorted(roles_dir.glob("*/parser.py")):
+            rel = path.relative_to(root).as_posix()
+            if rel not in _BRIDGE_VALIDATED_EXCEPTIONS:
+                out.append((rel, path))
+    for rel in _EXTRA_PARSER_FILES:
+        path = root / rel
+        if path.exists():
+            out.append((rel, path))
+    return sorted(out)
+
+
 def find_violations(root: Path = _REPO) -> list[str]:
     out: list[str] = []
-    roles_dir = root / "roles"
-    if not roles_dir.exists():
-        return out
-    for path in sorted(roles_dir.glob("*/parser.py")):
-        rel = path.relative_to(root).as_posix()
-        if rel in _BRIDGE_VALIDATED_EXCEPTIONS:
-            continue
+    for rel, path in _parser_files(root):
         out.extend(_scan_file(rel, path))
     return sorted(out)
 
