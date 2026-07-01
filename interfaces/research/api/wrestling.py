@@ -337,6 +337,26 @@ def make_distillation_handler(
             return  # defensive — handler is keyed on action_type but check anyway
 
         request = event.payload
+        try:
+            from .rlm_wrestling import maybe_handle_rlm_distillation
+
+            handled_by_rlm = await maybe_handle_rlm_distillation(
+                event=event,
+                request=request,
+                broadcaster=broadcaster,
+                db_path=resolved_db,
+                resolve_document_text=_resolve_document_text_from_db,
+                resolve_region_text=_resolve_region_text,
+                parse_claims_response=_parse_claims_response,
+                sha256_prefix=_sha256_prefix,
+            )
+            if handled_by_rlm:
+                return
+        except Exception as exc:  # pragma: no cover - RLM must not break legacy wrestling
+            print(
+                f"wrestling.distillation[rlm-bridge]: skipped — {exc!r}",
+                flush=True,
+            )
 
         region_text = _resolve_region_text(
             event.investigation_id, event.document_id, request.region_id,
