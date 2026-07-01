@@ -414,9 +414,11 @@ The cluster contains:
   follow-up:** `marginalia.noted` now preserves the voice clip reference
   (`voice_transcript`, `voice_event_id`, `audio_ref`), and `MasterMdViewer` reads
   persisted notes, re-resolves them through `reResolveNote`, and mounts the
-  bounded/restricted chunk gutter card through `makeMarginaliaAugmentation`;
-  exact servable passage marginalia in the synthesis surface still waits on a
-  rendered passage marker for the exact anchor.
+  bounded/restricted chunk gutter card through `makeMarginaliaAugmentation`.
+  **Later 2026-07-01 follow-up:** exact servable passage marginalia is also
+  live in the synthesis surface: `bc05781b` stamps `data-passage-*` markers for
+  resolved note anchors, and `d36bd62c` positions exact-note `ChaseThread`
+  launchers through the layout-map resolution of those passage anchors.
 - **The review-state resolver + review gesture + policy toggle**
   (`docs/decisions/spr-08-review-state-resolution-gap.md`) — ✅ **SIGNAL +
   RESOLVER + V1 GESTURE + POLICY TOGGLE CLOSED.** `claim.reviewed` now ships as

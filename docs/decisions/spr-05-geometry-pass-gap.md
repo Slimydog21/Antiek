@@ -125,19 +125,18 @@ this live map.
 - **QualityCue** (header widget) — already live pre-this-sprint; now runs against
   the live map (byte-equivalent, it is geometry-independent).
 
-**What is still DORMANT, and exactly why (rigor #1 — do not round up):**
-- **Bounded marginalia is mounted in `MasterMdViewer` as of 2026-07-01.**
+**What is now live, and the exact scope (rigor #1 — do not round up):**
+- **Marginalia is mounted in `MasterMdViewer` as of 2026-07-01, including the
+  exact servable passage path.**
   Completed research answers adapt persisted `marginalia.noted` events into
   `MarginNoteAuthored`, re-resolve each note through `reResolveNote`, and feed
   the successful resolutions to `makeMarginaliaAugmentation` through the same
-  anchored-widgets facet. The mounted proof is the bounded/restricted chunk path:
-  source citations stamp `data-chunk-id`, the geometry pass measures
-  `{kind:"chunk"}`, and the gutter card renders without leaking the withheld
-  excerpt. The exact passage marker gap remains closed in the structured Reader
-  (`data-passage-*` spans with `char_start` / `char_end`), but a servable
-  passage-level marginalia card in the synthesis surface still requires a
-  rendered passage marker for that exact `{kind:"passage"}` anchor; do not round
-  bounded marginalia up into full exact-passage synthesis marginalia.
+  anchored-widgets facet. The bounded/restricted chunk path uses
+  `data-chunk-id` and renders without leaking the withheld excerpt. The servable
+  exact-passage path is now also proved: `MasterMdViewer` stamps
+  `data-passage-*` markers for resolved `{kind:"passage", chunkId, start, end}`
+  note anchors (`bc05781b`), and the same marker resolves the visible marginalia
+  card plus the follow-up chase launcher (`d36bd62c`).
 - The **collapse ⌘/Ctrl+wheel gesture is now bound as of 2026-07-01.** The
   surface toggles ephemeral `CollapseState` for the claim section under the
   pointer, measures the section band through `readingGeometryPass.ts`, and folds
@@ -146,11 +145,13 @@ this live map.
   `MasterMdViewer.test.tsx`). The visible compressed fingerprint/color band is
   also live: collapsed decorated claims render an aria-hidden, color-only strip
   beside the article, carrying decoration classes but no body/title text.
-- **AccrualView is mounted in `MasterMdViewer` as of 2026-07-01** through the
-  same anchored-widgets facet when the surface has a persisted synthesis id. The
-  remaining dormant gutter work is `ChaseThread` plus exact servable passage
-  marginalia in the synthesis surface; both can consume the live map once their
-  real anchors are present.
+- **AccrualView and exact-note ChaseThread launchers are mounted in
+  `MasterMdViewer` as of 2026-07-01** through the same anchored-widgets facet.
+  AccrualView mounts when the surface has a persisted synthesis id. Exact-note
+  chase launchers consume the real servable passage marker and open the existing
+  `ChaseThread` panel seeded with that quote (`d36bd62c`). This closes the
+  previously named dormant gutter work for exact marginalia/chase-on-note
+  anchors without claiming a new arbitrary-selection chase surface.
 
 **M3 recompute strategy (recorded per the milestone — corrected in round 2 to
 the honest model).** Round 1 mounted a `window` scroll/resize listener feeding a
@@ -218,12 +219,12 @@ model:
   superseded and record the wiring commit + which widgets went live.~~ DONE
   2026-05-27 (see "What actually shipped" — closing commit on branch
   `caffen/lr-spr02`, orchestrator-committed on green).
-- **Marginalia needs to light up as visible UI** → `data-chunk-id` source
+- ~~**Marginalia needs to light up as visible UI** → `data-chunk-id` source
   citation markers and exact `data-passage-*` citation markers are now live
   (2026-07-01), and the geometry pass measures `{kind:"chunk"}` plus
-  `{kind:"passage", chunkId, start, end}`. The remaining named wedge is mounting
-  the relevant gutter widgets in the synthesis/reader surface and feeding them
-  the existing live layout-map.
+  `{kind:"passage", chunkId, start, end}`. The relevant gutter widgets in the
+  synthesis surface are mounted for marginalia plus exact-note chase launchers
+  and fed by the existing live layout-map.~~ DONE (`bc05781b`, `d36bd62c`).
 - ~~**Collapse needs visible fingerprint chrome** → the gesture/state/layout-map
   transform path is live and the color-only fingerprint strip now paints decorated
   collapsed claims (2026-07-01).~~ DONE.
