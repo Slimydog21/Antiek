@@ -537,10 +537,15 @@ def test_live_provider_session_requires_ready_provider_status() -> None:
     report = validate_sessions(records)
 
     assert report.closure_ready is False
+    assert report.valid_sessions == 9
+    assert report.live_provider_sessions == 4
+    assert report.non_library_sessions == 0
     assert any(
         "live_provider_ai=true requires provider_status=ready" in f
         for f in report.failures
     )
+    assert any(">=10 valid sessions" in f for f in report.failures)
+    assert any(">=5 valid sessions with live_provider_ai=true" in f for f in report.failures)
 
 
 def test_live_provider_flag_must_be_explicit_boolean() -> None:
