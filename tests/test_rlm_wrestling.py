@@ -176,3 +176,74 @@ def test_rlm_wrestling_emits_lifecycle_and_delivered(tmp_path, monkeypatch):
     assert delivered.policy_id == "rlm-wrestling/evented-loop"
     assert delivered.payload.rendered_text == "RLM result"
     assert delivered.payload.claims[0].text == "Constraint found."
+
+
+def test_rlm_wrestling_emits_sub_call_for_llm_batch(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    db = str(tmp_path / "graph.duckdb")
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db)
+    monkeypatch.setattr(
+        "substrate.dispatch.router.DispatchConfig.from_yaml",
+        classmethod(lambda cls, path: _dispatch_config()),
+    )
+    code = (
+        "partials = llm_batch(['a', 'b', 'c', 'd', 'e'])\n"
+        "answer['content'] = '{"
+        "\"rendered_text\": \"RLM batch result\", "
+        "\"claims\": [{\"text\": \"Batch constraint found.\", "
+        "\"confidence\": \"moderate\"}]"
+        "}'\n"
+        "answer['ready'] = True"
+    )
+    register_provider(_CodeProvider(code))
+
+    ensure_initialized(db)
+    con = connect_write(db, purpose="test_seed")
+    try:
+        insert_document(
+            con,
+            document_id="doc-long-batch",
+            source_tier=4,
+            document_type="pdf",
+        )
+        insert_chunk(
+            con,
+            document_id="doc-long-batch",
+            chunk_index=0,
+            text="B" * 270_000,
+        )
+    finally:
+        con.close()
+
+    bus = _RecordingBroadcaster()
+    event = _event(
+        investigation_id="inv-rlm-wrestle-batch",
+        document_id="doc-long-batch",
+    )
+
+    handled = asyncio.run(
+        maybe_handle_rlm_distillation(
+            event=event,
+            request=event.payload,
+            broadcaster=bus,
+            db_path=db,
+            resolve_document_text=_resolve_document_text_from_db,
+            resolve_region_text=_resolve_region_text,
+            parse_claims_response=_parse_claims_response,
+            sha256_prefix=_sha256_prefix,
+        )
+    )
+
+    assert handled is True
+    assert [e.payload.action_type for e in bus.events] == [
+        "rlm.session_started",
+        "rlm.sub_call_dispatched",
+        "rlm.iteration",
+        "rlm.session_completed",
+        "distillation.delivered",
+    ]
+    sub_call = bus.events[1].payload
+    assert sub_call.prompt_count == 5
+    assert sub_call.target_role == "synthesizer"
+    assert sub_call.parent_event_id == event.event_id
