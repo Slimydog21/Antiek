@@ -17,3 +17,14 @@ def test_prompt_autoresearch_readme_documents_activation_workflow():
     assert "synthesizer-noop-outcomes.json" in text
     assert "synthesizer-outcomes.json" in text
     assert "What this does not prove" in text
+
+
+def test_operator_gate_docs_start_with_readiness_audit():
+    for rel in ("docs/OPERATOR_ACTIONS.md", "docs/operator_gate_actions.md"):
+        text = Path(rel).read_text(encoding="utf-8")
+
+        assert "tools.prompt_autoresearch.readiness_cli" in text
+        assert "tools.prompt_autoresearch.calibration_cli" in text
+        assert text.index("tools.prompt_autoresearch.readiness_cli") < text.index(
+            "tools.prompt_autoresearch.calibration_cli"
+        )
