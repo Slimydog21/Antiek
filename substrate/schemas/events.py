@@ -708,7 +708,34 @@ class ActionType(str, Enum):
 #     at the read side. The payload carries document_id + document_type + the
 #     applied content_class ONLY — NEVER raw_text (§9.0: events carry no body).
 #     specs/antiek-personal-lane/ SPR-01. 2026-05-31.
-EVENT_SCHEMA_VERSION: int = 27
+# v28: Majors-Observability SPR-01 — additive high-cardinality enrichment of
+#     THREE existing orchestration payloads. NO new event type, NO new
+#     ActionType, trajectory row count UNCHANGED (widen, do not add). Every
+#     added field is OPTIONAL with a default so schema-v<=27 trajectories that
+#     never carried them still validate + round-trip:
+#       - EvidenceRetrieveDeliveredPayload gains ``chunk_count`` (int|None,
+#         default None — the merged-deduped retrieval-context chunk count that
+#         reached the evidence retriever; THREE honest states: None=search
+#         unavailable / pre-SPR-01 / unpopulated, 0=searched-and-empty ("why was
+#         synthesis thin"), N=N chunks) and ``latency_ms`` (int|None, default
+#         None).
+#       - SynthesizeDeliveredPayload gains ``latency_ms`` (int|None) plus
+#         ``provider`` / ``model`` (str|None). provider/model are LEFT None this
+#         sprint: the orchestrator/bridge does not thread them onto the
+#         delivered event; they are recovered by correlating to the sibling
+#         dispatch.call event (SPR-04). A placeholder would make a future
+#         bisector trust a dimension that is a lie — so the field exists but
+#         stays honest-None until a genuine emit-site value is available.
+#       - PhaseExitPayload gains ``latency_ms`` (int|None) — the phase
+#         wall-clock computed from the enter/exit timestamp pair the phase log
+#         already records. ``phase`` STAYS on the envelope; it is NOT duplicated
+#         into the payload.
+#     Field naming / casing carry DispatchCallPayload's vocabulary and its
+#     ``ge=0`` lower bound; every new field is made OPTIONAL (provider/model:
+#     str|None; latency_ms/chunk_count: int|None Field(ge=0)) so old rows and
+#     not-yet-populated emits validate as None.
+#     specs/antiek-majors-observability/ SPR-01. 2026-07-01.
+EVENT_SCHEMA_VERSION: int = 28
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -2010,6 +2037,23 @@ class SynthesizeDeliveredPayload(_PayloadBase):
     # converged.
     constraint_loop_status: ConstraintLoopStatus = "single_pass"
     constraint_loop_iterations: int = Field(default=1, ge=1)
+    # ── Majors-Observability SPR-01 additive enrichment (all OPTIONAL) ──
+    # Phase-6 synthesis role wall-clock. Left None this sprint (the phase.exit
+    # event carries phase-6 wall-clock from the enter/exit pair). Same ``ge=0``
+    # lower bound as DispatchCallPayload.latency_ms, made Optional so v<=27 rows
+    # and not-yet-populated emits validate as None.
+    latency_ms: int | None = Field(ge=0, default=None)
+    # provider/model of the policy that produced the synthesis artifact. LEFT
+    # None this sprint: the synthesize.delivered event is emitted by the
+    # synthesizer bridge, which does not thread provider/model onto the
+    # delivered payload. This dimension is recovered by correlating to the
+    # sibling ``dispatch.call`` event (which DOES record provider/model) —
+    # SPR-04's job. Deliberately NOT a "provider=unknown" placeholder: a fake
+    # value would make the future bisector trust a dimension that is a lie.
+    # Same string typing as DispatchCallPayload's ``provider`` / ``model``,
+    # made Optional so old rows validate and so a genuine future emit can set it.
+    provider: str | None = None
+    model: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -2450,6 +2494,26 @@ class EvidenceRetrieveDeliveredPayload(_PayloadBase):
     supporting_claims: list[SupportingClaim] = Field(default_factory=list)
     evidentiary_gaps: list[EvidentiaryGap] = Field(default_factory=list)
     insufficient_evidence: bool = False
+    # ── Majors-Observability SPR-01 additive enrichment (all OPTIONAL) ──
+    # ``chunk_count`` = number of merged-deduped retrieval-context chunks the
+    # orchestrator's hybrid search delivered to the evidence retriever for this
+    # sub-question (see orchestration/loop_one/orchestrator.py
+    # ``_render_chunks_block_for_sub_question``). THREE honest states, so a
+    # downstream bisector (SPR-03) never conflates them:
+    #   None → unknown: corpus search was UNAVAILABLE (an exception), OR the
+    #          row predates SPR-01, OR the value was never populated;
+    #   0    → the search RAN and genuinely returned nothing (the direct "was
+    #          synthesis starved of evidence" signal);
+    #   N    → N chunks reached the retriever.
+    # Default None (NOT 0) so schema-v<=27 rows validate as "unknown" rather
+    # than being mislabeled "searched-and-empty".
+    chunk_count: int | None = Field(ge=0, default=None)
+    # Phase-2 role wall-clock. Left None this sprint (the phase.exit event
+    # carries the phase-2 wall-clock from the enter/exit pair); the field
+    # exists for forward-additive population. Same ``ge=0`` lower bound as
+    # DispatchCallPayload.latency_ms, made Optional so v<=27 rows and
+    # not-yet-populated emits validate as None.
+    latency_ms: int | None = Field(ge=0, default=None)
 
 
 # ---------------------------------------------------------------------------
@@ -2548,6 +2612,15 @@ class PhaseExitPayload(_PayloadBase):
     action_type: Literal[ActionType.PHASE_EXIT] = ActionType.PHASE_EXIT
     exited_at: str
     outputs_hash: str | None = None
+    # ── Majors-Observability SPR-01 additive enrichment (OPTIONAL) ──
+    # Phase wall-clock in milliseconds, computed from the (entered_at,
+    # exited_at) pair the phase log already records — no new timer. This is the
+    # "one wide event" that answers "how slow was phase 6" directly, without a
+    # join to a separate timing event. ``phase`` STAYS on the envelope and is
+    # NOT duplicated here. Same ``ge=0`` lower bound as
+    # DispatchCallPayload.latency_ms, made Optional so schema-v<=27 rows (and
+    # any exit where entered_at is unrecoverable) validate with None.
+    latency_ms: int | None = Field(ge=0, default=None)
 
 
 class PhaseVerifyPayload(_PayloadBase):

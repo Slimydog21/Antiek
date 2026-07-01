@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 27;
+export const EVENT_SCHEMA_VERSION = 28;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -1180,6 +1180,7 @@ export interface PhaseExitPayload {
   action_type: "phase.exit";
   exited_at: string;
   outputs_hash?: string | null;
+  latency_ms?: number | null;
 }
 
 /**
@@ -1348,6 +1349,8 @@ export interface EvidenceRetrieveDeliveredPayload {
   supporting_claims?: SupportingClaim[];
   evidentiary_gaps?: EvidentiaryGap[];
   insufficient_evidence?: boolean;
+  chunk_count?: number | null;
+  latency_ms?: number | null;
 }
 
 /**
@@ -1457,6 +1460,9 @@ export interface SynthesizeDeliveredPayload {
   conviction_level?: number | null;
   constraint_loop_status?: "single_pass" | "passed" | "regressed" | "max_iterations_reached" | "escalated" | "preflight_failed";
   constraint_loop_iterations?: number;
+  latency_ms?: number | null;
+  provider?: string | null;
+  model?: string | null;
 }
 
 /**

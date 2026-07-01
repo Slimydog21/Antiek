@@ -93,19 +93,55 @@ def _result_to_payload_lists(
     return claims, gaps
 
 
+# The orchestrator's ``_render_chunks_block_for_sub_question`` renders each
+# merged-deduped chunk as ``### chunk_id: {cid}`` + body, joining chunks with
+# ``\n---\n``. We reconstruct the count at the delivered emit by counting the
+# ``### chunk_id:`` header at the START of each ``---``-delimited SEGMENT (not
+# every matching line), so a chunk BODY that itself contains such a line — real
+# for Antiek's self-referential spec corpus — does not inflate the count.
+# Fallback strings are mapped honestly (SPR-01, three-state ``chunk_count``):
+#   "(corpus search unavailable…)"       → None  (search failed → UNKNOWN, not 0)
+#   "(corpus search returned no matches…)" → 0     (searched, genuinely empty)
+_CHUNK_HEADER_PREFIX = "### chunk_id:"
+
+
+def _chunk_count_from_block(chunks_block: str | None) -> int | None:
+    """Merged-deduped chunk count the request delivered into the evidence-
+    retrieval context (SPR-01). Returns None when the count is genuinely
+    UNKNOWN (empty/absent block, or the corpus-search-unavailable fallback),
+    0 when the search ran but returned nothing, else the number of chunks."""
+    if not chunks_block:
+        return None
+    if chunks_block.startswith("(corpus search unavailable"):
+        return None
+    if chunks_block.startswith("(corpus search returned no matches"):
+        return 0
+    return sum(
+        1
+        for segment in chunks_block.split("\n---\n")
+        if segment.lstrip().startswith(_CHUNK_HEADER_PREFIX)
+    )
+
+
 def _empty_delivered_payload(
-    sub_question: str, answer: str = "(parse_failed)",
+    sub_question: str,
+    answer: str = "(parse_failed)",
+    *,
+    chunk_count: int | None = None,
 ) -> EvidenceRetrieveDeliveredPayload:
     """Fallback shape when the dispatch / parser fails. The
     trajectory shows the request was answered (the bridge ran), the
     answer is empty + ``insufficient_evidence=True``, downstream can
-    tell from the flag that this was a failure shape."""
+    tell from the flag that this was a failure shape. ``chunk_count``
+    still reflects how many chunks the retrieval context carried, even
+    on the failure path (SPR-01)."""
     return EvidenceRetrieveDeliveredPayload(
         sub_question=sub_question,
         answer=answer,
         supporting_claims=[],
         evidentiary_gaps=[],
         insufficient_evidence=True,
+        chunk_count=chunk_count,
     )
 
 
@@ -180,13 +216,22 @@ def make_evidence_retriever_handler(broadcaster: EventBroadcaster):
             subgraph_block=req.subgraph_block,
         )
 
+        # SPR-01: the merged-deduped retrieval-context chunk count the
+        # orchestrator delivered on the request, reconstructed from the
+        # rendered block. Carried on the delivered event so a later query
+        # tool can answer "did retrieval return anything for this
+        # sub-question" without re-running the search.
+        chunk_count = _chunk_count_from_block(req.chunks_block)
+
         result, policy_id = _dispatch_and_parse(
             prompt, event, sub_question=sub_question,
         )
         if result is None:
             await _emit_delivered(
                 event,
-                payload=_empty_delivered_payload(sub_question=sub_question),
+                payload=_empty_delivered_payload(
+                    sub_question=sub_question, chunk_count=chunk_count,
+                ),
                 policy_id=policy_id,
                 broadcaster=broadcaster,
             )
@@ -201,6 +246,7 @@ def make_evidence_retriever_handler(broadcaster: EventBroadcaster):
                 supporting_claims=claims,
                 evidentiary_gaps=gaps,
                 insufficient_evidence=result.insufficient_evidence,
+                chunk_count=chunk_count,
             ),
             policy_id=policy_id,
             broadcaster=broadcaster,

@@ -948,6 +948,12 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
                         status=status,
                     ),
                     synthesis_id=f"syn-{ctx.investigation_id}",
+                    # SPR-01: this emit is inside _run_phase_8 — the phase is
+                    # genuinely known, so stamp it on the envelope like every
+                    # other orchestration emit (the postcondition filters on
+                    # action_type only, so the phase dimension is purely
+                    # additive; verified in tests/test_phase_runner_postconditions).
+                    phase=8,
                     role="auto_patch",
                     policy_id="orchestrator-deterministic",
                 )

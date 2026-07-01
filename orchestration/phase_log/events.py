@@ -67,16 +67,22 @@ def emit_phase_exit(
     phase: int,
     exited_at: str,
     outputs_hash: str | None = None,
+    latency_ms: int | None = None,
     parent_event_id: str | None = None,
 ) -> str | None:
     """Emit one PHASE_EXIT event. ``outputs_hash`` is the SHA-256 of
     the phase's output artifacts (paths + contents) when the caller
-    computed one; None when the phase produced no concrete outputs."""
+    computed one; None when the phase produced no concrete outputs.
+
+    ``latency_ms`` (SPR-01, additive-optional) is the phase wall-clock
+    from the enter/exit pair; None when the caller could not derive it
+    (e.g. no recorded ``entered_at``)."""
     return emit_typed(
         investigation_id,
         PhaseExitPayload(
             exited_at=exited_at,
             outputs_hash=outputs_hash,
+            latency_ms=latency_ms,
         ),
         parent_event_id=parent_event_id,
         phase=int(phase),
