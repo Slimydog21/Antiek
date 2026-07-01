@@ -44,8 +44,8 @@ This spec is constrained by Antiek's existing decisions: the dispatch-tier model
 **Why:** Sprint 10 includes "first real-LLM run." The moment you run a real LLM you need an eval harness. Antiek's `middleware/constraint_check/` and `middleware/outcomes/RUBRIC_SCORED` define the rubric schema but the *runner* is unspecified. Building one from scratch is wasted work when `prime eval run` already does (a) parallel rollouts, (b) per-example logging, (c) cost tracking, (d) a dashboard, (e) re-running against multiple models for ablations.
 
 **Scope:**
-- Build `tests/eval/antiek_rubric_to_verifiers.py`: a thin adapter that wraps an Antiek `RUBRIC_SCORED` definition as a verifiers `Rubric`. Adapter must preserve the deterministic / judged / final split (do not collapse to a single scalar — Antiek tracks them separately for reasons).
-- Build the first concrete eval set: 50 hand-curated (sub-question, expected extraction shape) pairs from arXiv abstracts in `acquisition/arxiv/`. Store at `tests/eval/datasets/parameter_extractor_v0.jsonl`. **Curated, not synthetic** — synthetic eval sets that you trained the prompt against are how Goodhart wins.
+- Build `tools/eval/antiek_rubric_to_verifiers.py`: a thin adapter that wraps an Antiek `RUBRIC_SCORED` definition as a verifiers-compatible rubric result. Adapter must preserve the deterministic / judged / final split (do not collapse to a single scalar — Antiek tracks them separately for reasons).
+- Build the first concrete eval set: 50 hand-curated (sub-question, expected extraction shape) pairs from arXiv abstracts in `acquisition/arxiv/`. Store at `tests/fixtures/parameter_extractor_v0.jsonl`. **Curated, not synthetic** — synthetic eval sets that you trained the prompt against are how Goodhart wins.
 - Wire `prime eval run` to invoke against `substrate/dispatch/router.dispatch(role='parameter_extractor', ...)`. The eval calls Antiek's router, not Prime's provider directly — preserves dispatch as the source of truth for which model is used.
 
 **Cost:** ~3 days including the curated 50-example set (the dataset is most of the work).
