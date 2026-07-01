@@ -42,13 +42,6 @@ _TARGET_FIELDS: frozenset[str] = frozenset({
 def _is_ref_field(field: str) -> bool:
     return field in _TARGET_FIELDS or field.endswith(("_id", "_ids"))
 
-_BRIDGE_VALIDATED_EXCEPTIONS: frozenset[str] = frozenset({
-    # The grounder parser is deliberately a pure response-shape parser; the
-    # canonical searched chunk ids exist only in interfaces/research/api/grounding.py,
-    # which validates located_chunk_id via substrate.provenance.validate_ref.
-    "roles/grounder/parser.py",
-})
-
 _EXTRA_PARSER_FILES: tuple[str, ...] = (
     # Research bridge gap clustering parses model-emitted question_ids outside
     # roles/*/parser.py, so it belongs under the same provenance-ref guard.
@@ -239,8 +232,7 @@ def _parser_files(root: Path) -> list[tuple[str, Path]]:
     if roles_dir.exists():
         for path in sorted(roles_dir.glob("*/parser.py")):
             rel = path.relative_to(root).as_posix()
-            if rel not in _BRIDGE_VALIDATED_EXCEPTIONS:
-                out.append((rel, path))
+            out.append((rel, path))
     for rel in _EXTRA_PARSER_FILES:
         path = root / rel
         if path.exists():
