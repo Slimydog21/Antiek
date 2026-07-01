@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { LemonButton } from "../../components/lemon";
 import { spinResearch } from "../../api/books";
 import { track } from "../../lib/analytics";
+import AIActionFailure from "../../shared/AIActionFailure";
 
 /**
  * ResearchThis (Read SPR-08) — spin a deep research from the current
@@ -66,9 +67,17 @@ export default function ResearchThis({ documentId, pageIndex, passageText }: Res
         {busy ? "Spinning research…" : "Research this page"}
       </LemonButton>
       {error && (
-        <span className="text-[11px] font-mono text-emperor" role="alert">
-          {error === "book_not_found" ? "Book not found." : error}
-        </span>
+        error === "book_not_found" ? (
+          <span className="text-[11px] font-mono text-emperor" role="alert">
+            Book not found.
+          </span>
+        ) : (
+          <AIActionFailure
+            title="Couldn’t start page research"
+            reason={error}
+            onRetry={() => void spin()}
+          />
+        )
       )}
     </div>
   );

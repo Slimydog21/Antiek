@@ -75,4 +75,18 @@ describe("ResearchThis", () => {
     expect(navigateMock).not.toHaveBeenCalled();
     expect(trackMock).not.toHaveBeenCalled();
   });
+
+  it("frames spin failures as retryable engine failures, not raw text", async () => {
+    spinResearchMock.mockRejectedValue(new Error("Spin research isn’t available right now."));
+
+    render(<ResearchThis documentId="doc-1" pageIndex={2} passageText="selected passage" />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Research this page" }));
+
+    expect(await screen.findByText(/Couldn’t start page research/i)).toBeTruthy();
+    expect(screen.getByText(/Engine: Spin research isn’t available right now/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(navigateMock).not.toHaveBeenCalled();
+    expect(trackMock).not.toHaveBeenCalled();
+  });
 });
