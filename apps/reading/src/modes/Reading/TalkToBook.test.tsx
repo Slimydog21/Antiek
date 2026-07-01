@@ -140,6 +140,72 @@ describe("TalkToBook (M2)", () => {
     expect(screen.getByText("A persisted answer.")).toBeTruthy();
   });
 
+  it("resets a malformed saved conversation instead of crashing the bookmark", () => {
+    window.sessionStorage.setItem(
+      "antiek.read.talk.doc-x",
+      JSON.stringify({
+        active_branch_id: "trunk",
+        branches: [{ branch_id: "trunk", forked_from: null, messages: [{ id: "bad" }] }],
+      }),
+    );
+
+    render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
+
+    expect(screen.queryByTestId("talk-turn-count")).toBeNull();
+    fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
+    expect(screen.getByText(/Ask anything about this book/)).toBeTruthy();
+  });
+
+  it("resets saved state whose active branch no longer exists", () => {
+    window.sessionStorage.setItem(
+      "antiek.read.talk.doc-x",
+      JSON.stringify({
+        active_branch_id: "missing",
+        branches: [{ branch_id: "trunk", forked_from: null, messages: [] }],
+      }),
+    );
+
+    render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
+
+    expect(screen.queryByTestId("talk-turn-count")).toBeNull();
+    fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
+    expect(screen.getByText(/Ask anything about this book/)).toBeTruthy();
+  });
+
+  it("restores a valid saved branch without refetching", () => {
+    window.sessionStorage.setItem(
+      "antiek.read.talk.doc-x",
+      JSON.stringify({
+        active_branch_id: "trunk",
+        branches: [
+          {
+            branch_id: "trunk",
+            forked_from: null,
+            messages: [
+              {
+                id: "turn-saved",
+                question: "saved question",
+                answer: "Saved answer.",
+                citations: [{ ...cite(), future_field: 42 }],
+                grounded: true,
+                future_field: "kept by newer code",
+              },
+            ],
+            future_field: "kept by newer code",
+          },
+        ],
+        future_field: "kept by newer code",
+      }),
+    );
+
+    render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
+
+    expect(screen.getByTestId("talk-turn-count").textContent).toBe("1");
+    fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
+    expect(screen.getByText("Saved answer.")).toBeTruthy();
+    expect(askBookMock).not.toHaveBeenCalled();
+  });
+
   it("mounts a read-aloud control for the answer (M3 wiring)", async () => {
     askBookMock.mockResolvedValue(answer());
     await openAndAsk();
