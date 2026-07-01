@@ -84,7 +84,7 @@ def test_final_verdict_must_be_allowed_value() -> None:
     assert any("final verdict must be one of" in f for f in report.failures)
 
 
-def test_repair_verdict_is_explicit_non_closure() -> None:
+def test_repair_verdict_requires_blocking_issue_ids() -> None:
     records = [
         _session(i, live=i <= 5, citation=i <= 3, entry_door="library")
         for i in range(1, 11)
@@ -97,7 +97,30 @@ def test_repair_verdict_is_explicit_non_closure() -> None:
     assert report.closure_ready is False
     assert report.final_verdict == "REPAIR"
     assert any(
+        "REPAIR verdict requires at least one blocking_issue_ids entry" in f
+        for f in report.failures
+    )
+
+
+def test_repair_verdict_with_blocking_issue_ids_is_explicit_non_closure() -> None:
+    records = [
+        _session(i, live=i <= 5, citation=i <= 3, entry_door="library")
+        for i in range(1, 11)
+    ]
+    records[-1]["entry_door"] = "command_palette"
+    records[-1]["verdict"] = "REPAIR"
+    records[-1]["blocking_issue_ids"] = ["READ-421", "  READ-422  "]
+
+    report = validate_sessions(records)
+
+    assert report.closure_ready is False
+    assert report.final_verdict == "REPAIR"
+    assert any(
         "closure requires final verdict ACTIVATE; found REPAIR" in f
+        for f in report.failures
+    )
+    assert not any(
+        "REPAIR verdict requires at least one blocking_issue_ids entry" in f
         for f in report.failures
     )
 
