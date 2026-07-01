@@ -89,7 +89,7 @@ export default function ThoughtPartnerPanel() {
         if (generation !== requestGenerationRef.current) return;
         const detail =
           response.status === 503
-            ? "No provider keys configured yet. The thought partner will answer once dispatch is activated."
+            ? "No provider keys configured yet. The thought partner will answer after activation SPR-03 provider-key setup."
             : `Thought partner unavailable (HTTP ${response.status}).`;
         setError(detail);
         return;

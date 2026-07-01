@@ -122,6 +122,7 @@ describe("ThoughtPartnerPanel", () => {
     await userEvent.click(screen.getByRole("button", { name: "Ask thought partner" }));
 
     expect(await screen.findByText(/No provider keys configured yet/)).toBeTruthy();
+    expect(screen.getByText(/activation SPR-03/i)).toBeTruthy();
     expect(screen.queryByText("Reply")).toBeNull();
   });
 

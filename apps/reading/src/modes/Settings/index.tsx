@@ -81,7 +81,7 @@ export default function Settings() {
                   ? "Checking provider registry..."
                   : providerKeys.status === "error"
                     ? "Could not read /health; agentic paths should be treated as unavailable."
-                    : "No model providers are registered, so agentic research and generation stay inert."}
+                    : "No model providers are registered, so agentic research and generation stay inert until activation SPR-03 provider-key setup."}
               </p>
             )}
 
