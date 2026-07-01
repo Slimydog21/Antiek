@@ -121,6 +121,59 @@ def _assigned_names(target: ast.AST) -> set[str]:
     return set()
 
 
+def _assigned_names_in_stmt(stmt: ast.stmt) -> set[str]:
+    if isinstance(stmt, ast.Assign):
+        return {
+            name
+            for target in stmt.targets
+            for name in _assigned_names(target)
+        }
+    if isinstance(stmt, ast.AnnAssign):
+        return _assigned_names(stmt.target)
+    if isinstance(stmt, ast.AugAssign):
+        return _assigned_names(stmt.target)
+    return set()
+
+
+def _module_shadowed_names(tree: ast.Module) -> set[str]:
+    return {
+        name
+        for stmt in tree.body
+        for name in _assigned_names_in_stmt(stmt)
+    }
+
+
+def _function_shadowed_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    shadows: set[str] = set()
+    args = (
+        list(func.args.posonlyargs)
+        + list(func.args.args)
+        + list(func.args.kwonlyargs)
+    )
+    if func.args.vararg is not None:
+        args.append(func.args.vararg)
+    if func.args.kwarg is not None:
+        args.append(func.args.kwarg)
+    shadows.update(arg.arg for arg in args)
+    for node in ast.walk(func):
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            shadows.update(_assigned_names_in_stmt(node))
+        elif isinstance(node, ast.NamedExpr):
+            shadows.update(_assigned_names(node.target))
+    return shadows
+
+
+def _without_shadowed_validator_names(
+    validator_names: frozenset[str],
+    shadowed_names: set[str],
+) -> frozenset[str]:
+    return frozenset(
+        name
+        for name in validator_names
+        if name.split(".", 1)[0] not in shadowed_names
+    )
+
+
 def _names_in(tree: ast.AST) -> set[str]:
     return {
         node.id
@@ -225,8 +278,13 @@ def _scan_file(rel: str, path: Path) -> list[str]:
 
     violations: list[str] = []
     validator_names = _validator_call_names(tree)
+    module_shadows = _module_shadowed_names(tree)
     for func in _parser_functions(tree):
-        sites = _unvalidated_field_sites(func, validator_names)
+        effective_validator_names = _without_shadowed_validator_names(
+            validator_names,
+            module_shadows | _function_shadowed_names(func),
+        )
+        sites = _unvalidated_field_sites(func, effective_validator_names)
         if not sites:
             continue
         first_lines_by_field: dict[str, int] = {}

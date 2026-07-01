@@ -211,6 +211,42 @@ def parse(obj, canonical, helper):
     assert any("question_id" in violation for violation in violations)
 
 
+def test_lint_rejects_shadowed_validator_parameter(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "roles" / "shadowed_param_role" / "parser.py",
+        """
+from substrate.provenance import validate_ref
+
+def parse(obj, canonical, validate_ref):
+    question_id = validate_ref(obj.get("question_id"), canonical)
+    return {"question_id": question_id}
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any("question_id" in violation for violation in violations)
+
+
+def test_lint_rejects_shadowed_validator_assignment(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "roles" / "shadowed_assignment_role" / "parser.py",
+        """
+from substrate.provenance import validate_ref
+
+validate_ref = lambda candidate, canonical: candidate
+
+def parse(obj, canonical):
+    question_id = validate_ref(obj.get("question_id"), canonical)
+    return {"question_id": question_id}
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any("question_id" in violation for violation in violations)
+
+
 def test_lint_does_not_let_one_parser_function_validate_for_another(
     tmp_path: Path,
 ) -> None:
