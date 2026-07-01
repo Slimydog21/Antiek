@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -27,13 +28,20 @@ vi.mock("../../workspace/PanelHost", () => ({
 import Replay from ".";
 
 class MockWebSocket {
+  static instances: MockWebSocket[] = [];
+
   onopen: (() => void) | null = null;
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
   onmessage: ((message: { data: string }) => void) | null = null;
 
   constructor() {
+    MockWebSocket.instances.push(this);
     setTimeout(() => this.onopen?.(), 0);
+  }
+
+  deliver(payload: unknown) {
+    this.onmessage?.({ data: JSON.stringify(payload) });
   }
 
   close() {
@@ -128,6 +136,7 @@ function mountReplay() {
 
 afterEach(() => {
   cleanup();
+  MockWebSocket.instances = [];
   apiFetchMock.mockReset();
   vi.unstubAllGlobals();
 });
@@ -166,5 +175,79 @@ describe("Replay route with a realistic multi-step trajectory", () => {
       screen.getAllByText(/investigation.completed/).length,
     ).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/sealed/)).toBeTruthy();
+  });
+
+  it("drops malformed fetched trajectory events instead of replaying poisoned rows", async () => {
+    vi.stubGlobal("WebSocket", MockWebSocket);
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        events: [
+          REALISTIC_MULTI_STEP_TRAJECTORY[0],
+          {
+            event_id: "evt-poisoned-action",
+            investigation_id: "inv-real-multi-step",
+            action_type: "not.a.real.action",
+            payload: { action_type: "not.a.real.action" },
+            param_version: "0.1.0",
+            emitted_at: "2026-07-01T12:00:07Z",
+          },
+          {
+            ...REALISTIC_MULTI_STEP_TRAJECTORY[1],
+            event_id: "evt-poisoned-mismatch",
+            payload: { action_type: "phase.enter" },
+          },
+        ],
+      }),
+    });
+
+    mountReplay();
+
+    await waitFor(() => {
+      expect(screen.getByText("· 1 events")).toBeTruthy();
+    });
+    expect(screen.getByText(/event_id: evt-006-complete/)).toBeTruthy();
+    expect(screen.queryByText(/evt-poisoned/)).toBeNull();
+  });
+
+  it("drops malformed live WebSocket frames while appending valid new events", async () => {
+    vi.stubGlobal("WebSocket", MockWebSocket);
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ events: [] }),
+    });
+
+    mountReplay();
+
+    await waitFor(() => {
+      expect(screen.getByText("· 0 events")).toBeTruthy();
+      expect(MockWebSocket.instances.length).toBe(1);
+    });
+
+    const ws = MockWebSocket.instances[0];
+    const valid = REALISTIC_MULTI_STEP_TRAJECTORY[0];
+    act(() => {
+      ws.deliver({ type: "ping" });
+      ws.deliver({
+        event_id: "evt-live-poisoned-action",
+        investigation_id: "inv-real-multi-step",
+        action_type: "not.a.real.action",
+        payload: { action_type: "not.a.real.action" },
+        param_version: "0.1.0",
+        emitted_at: "2026-07-01T12:00:07Z",
+      });
+      ws.deliver({
+        ...valid,
+        event_id: "evt-live-poisoned-mismatch",
+        payload: { action_type: "phase.enter" },
+      });
+      ws.deliver(valid);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("· 1 events")).toBeTruthy();
+    });
+    expect(screen.getByText(/event_id: evt-006-complete/)).toBeTruthy();
+    expect(screen.queryByText(/evt-live-poisoned/)).toBeNull();
   });
 });
