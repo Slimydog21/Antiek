@@ -3,6 +3,9 @@ import { render, fireEvent } from "@testing-library/react";
 
 import { AssignHotkey } from "./AssignHotkey";
 import { readCustomHotkeys } from "../../workspace/persistence";
+import { installLocalStorageMock } from "../../test/localStorage";
+
+let restoreLocalStorage: (() => void) | null = null;
 
 beforeAll(() => {
   if (!window.matchMedia) {
@@ -39,8 +42,15 @@ function buttonByText(re: RegExp): HTMLButtonElement | undefined {
 }
 
 describe("AssignHotkey — SPR-08", () => {
-  beforeEach(() => window.localStorage.clear());
-  afterEach(() => window.localStorage.clear());
+  beforeEach(() => {
+    restoreLocalStorage = installLocalStorageMock();
+    window.localStorage.clear();
+  });
+  afterEach(() => {
+    window.localStorage.clear();
+    restoreLocalStorage?.();
+    restoreLocalStorage = null;
+  });
 
   it("opens a capture dialog and saves a free ⌘+key combo, persisting it", () => {
     const { unmount } = render(<AssignHotkey {...PROPS} />);

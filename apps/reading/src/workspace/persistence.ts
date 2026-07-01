@@ -23,7 +23,12 @@
  * Schema-version mismatch at hydration → log + ignore the snapshot.
  */
 
-import type { WorkspaceSnapshot } from "./panel.types";
+import type { PanelDescriptor, PanelKind, PanelMode, WorkspaceSnapshot } from "./panel.types";
+import {
+  detectConflict,
+  requiresModifierReason,
+  SAFE_ASSIGNABLE,
+} from "../components/hotkeys/bindings";
 
 const LS_PREFIX = "antiek.workspace.";
 
@@ -41,6 +46,157 @@ export type PersistScope =
   | { kind: "global" }
   | { kind: "route"; route: string }
   | { kind: "investigation"; id: string };
+
+const PANEL_MODES = new Set<PanelMode>([
+  "docked-left",
+  "docked-right",
+  "docked-bottom",
+  "floating",
+  "popout",
+]);
+
+const PANEL_KINDS = new Set<PanelKind>([
+  "FakeSidebar",
+  "FakeNotebook",
+  "FakeChat",
+  "InvestigationSidebar",
+  "Trajectory",
+  "MasterMdViewer",
+  "Chat",
+  "Chase",
+  "ChaseThread",
+  "PdfViewer",
+  "Notes",
+  "CrossDocs",
+  "ClaimInspector",
+  "Notebook",
+  "NotebookEditor",
+  "AISidecar",
+  "CommandPalette",
+  "ProjectTree",
+  "Stats",
+  "DeliverableSidebar",
+  "BlockPalette",
+  "ReplayStepList",
+  "InterviewRecording",
+  "InterviewTranscript",
+  "InterviewNotes",
+  "Lightbox",
+  "BrainstormWatchList",
+  "BrainstormThoughtPartner",
+]);
+
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((x) => typeof x === "string");
+}
+
+function isRect(value: unknown): value is PanelDescriptor["rect"] {
+  const rect = record(value);
+  return (
+    rect !== null &&
+    isFiniteNumber(rect.x) &&
+    isFiniteNumber(rect.y) &&
+    isFiniteNumber(rect.width) &&
+    isFiniteNumber(rect.height)
+  );
+}
+
+function isSize(value: unknown): value is PanelDescriptor["size"] {
+  const size = record(value);
+  return (
+    size !== null &&
+    isFiniteNumber(size.width) &&
+    isFiniteNumber(size.height)
+  );
+}
+
+function isPanelDescriptor(id: string, value: unknown): value is PanelDescriptor {
+  const panel = record(value);
+  return (
+    panel !== null &&
+    panel.id === id &&
+    typeof panel.kind === "string" &&
+    PANEL_KINDS.has(panel.kind as PanelKind) &&
+    record(panel.props) !== null &&
+    typeof panel.mode === "string" &&
+    PANEL_MODES.has(panel.mode as PanelMode) &&
+    isFiniteNumber(panel.zIndex) &&
+    isRect(panel.rect) &&
+    isSize(panel.size) &&
+    typeof panel.pinned === "boolean" &&
+    typeof panel.title === "string"
+  );
+}
+
+function isPanelMap(value: unknown): value is WorkspaceSnapshot["panels"] {
+  const panels = record(value);
+  return (
+    panels !== null &&
+    Object.entries(panels).every(([id, panel]) => isPanelDescriptor(id, panel))
+  );
+}
+
+function dockIdsMatchPanels(
+  panels: WorkspaceSnapshot["panels"],
+  dockLeftIds: string[],
+  dockRightIds: string[],
+  dockBottomIds: string[],
+): boolean {
+  const idsByMode: Record<"docked-left" | "docked-right" | "docked-bottom", string[]> = {
+    "docked-left": dockLeftIds,
+    "docked-right": dockRightIds,
+    "docked-bottom": dockBottomIds,
+  };
+  const seen = new Set<string>();
+
+  for (const [mode, ids] of Object.entries(idsByMode) as Array<
+    ["docked-left" | "docked-right" | "docked-bottom", string[]]
+  >) {
+    for (const id of ids) {
+      if (seen.has(id)) return false;
+      seen.add(id);
+      if (panels[id]?.mode !== mode) return false;
+    }
+  }
+
+  return Object.values(panels).every((panel) => {
+    if (panel.mode === "docked-left") return dockLeftIds.includes(panel.id);
+    if (panel.mode === "docked-right") return dockRightIds.includes(panel.id);
+    if (panel.mode === "docked-bottom") return dockBottomIds.includes(panel.id);
+    return !seen.has(panel.id);
+  });
+}
+
+function isPersistedSnapshot(value: unknown): value is PersistedSnapshot {
+  const snapshot = record(value);
+  if (
+    snapshot === null ||
+    snapshot.schemaVersion !== 1 ||
+    !isPanelMap(snapshot.panels) ||
+    !isStringArray(snapshot.dockLeftIds) ||
+    !isStringArray(snapshot.dockRightIds) ||
+    !isStringArray(snapshot.dockBottomIds) ||
+    !isFiniteNumber(snapshot.dockBottomHeight)
+  ) {
+    return false;
+  }
+  return dockIdsMatchPanels(
+    snapshot.panels,
+    snapshot.dockLeftIds,
+    snapshot.dockRightIds,
+    snapshot.dockBottomIds,
+  );
+}
 
 function lsKey(scope: PersistScope): string {
   if (scope.kind === "global") return LS_PREFIX + "global";
@@ -116,9 +272,8 @@ export function readScope(scope: PersistScope): PersistedSnapshot | null {
   try {
     const raw = window.localStorage.getItem(lsKey(scope));
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as PersistedSnapshot;
-    if (typeof parsed !== "object" || parsed === null) return null;
-    return parsed;
+    const parsed = JSON.parse(raw);
+    return isPersistedSnapshot(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -181,10 +336,8 @@ export function encodeWsParam(snapshot: PersistedSnapshot): string {
 export function decodeWsParam(raw: string): PersistedSnapshot | null {
   try {
     const json = decodeURIComponent(escape(atob(raw)));
-    const parsed = JSON.parse(json) as PersistedSnapshot;
-    if (typeof parsed !== "object" || parsed === null) return null;
-    if (parsed.schemaVersion !== 1) return null;
-    return parsed;
+    const parsed = JSON.parse(json);
+    return isPersistedSnapshot(parsed) ? parsed : null;
   } catch {
     return null;
   }
@@ -268,10 +421,64 @@ export interface PersistedCustomHotkeys {
   bindings: PersistedCustomHotkey[];
 }
 
+const ENTITY_KINDS = new Set<PersistedCustomHotkey["entityKind"]>([
+  "investigation",
+  "document",
+  "deliverable",
+  "project",
+  "mode",
+]);
+
 const EMPTY_CUSTOM_HOTKEYS: PersistedCustomHotkeys = {
   schemaVersion: 1,
   bindings: [],
 };
+
+function isPersistedCustomHotkey(value: unknown): value is PersistedCustomHotkey {
+  const binding = record(value);
+  const spec = typeof binding?.spec === "string" ? binding.spec : "";
+  return (
+    binding !== null &&
+    typeof binding.id === "string" &&
+    typeof binding.spec === "string" &&
+    requiresModifierReason(spec) === null &&
+    SAFE_ASSIGNABLE.isWithinRange(spec) &&
+    detectConflict(spec, []) === null &&
+    typeof binding.route === "string" &&
+    typeof binding.entityId === "string" &&
+    typeof binding.entityKind === "string" &&
+    ENTITY_KINDS.has(binding.entityKind as PersistedCustomHotkey["entityKind"]) &&
+    typeof binding.label === "string"
+  );
+}
+
+function isPersistedCustomHotkeys(value: unknown): value is PersistedCustomHotkeys {
+  const blob = record(value);
+  if (
+    blob === null ||
+    blob.schemaVersion !== 1 ||
+    !Array.isArray(blob.bindings) ||
+    !blob.bindings.every(isPersistedCustomHotkey)
+  ) {
+    return false;
+  }
+
+  const seenSpecs: { id: string; spec: string }[] = [];
+  const seenIds = new Set<string>();
+  const seenEntities = new Set<string>();
+  for (const binding of blob.bindings) {
+    if (seenIds.has(binding.id)) return false;
+    if (seenEntities.has(binding.entityId)) return false;
+    if (detectConflict(binding.spec, seenSpecs)?.kind === "custom") {
+      return false;
+    }
+    seenIds.add(binding.id);
+    seenEntities.add(binding.entityId);
+    seenSpecs.push({ id: binding.id, spec: binding.spec });
+  }
+
+  return true;
+}
 
 /** Read the custom-hotkeys blob. Returns an empty (v1) envelope on miss,
  *  parse error, or schema-version mismatch (forward-compat: ignore + log). */
@@ -280,22 +487,19 @@ export function readCustomHotkeys(): PersistedCustomHotkeys {
   try {
     const raw = window.localStorage.getItem(CUSTOM_HOTKEYS_KEY);
     if (!raw) return { ...EMPTY_CUSTOM_HOTKEYS };
-    const parsed = JSON.parse(raw) as PersistedCustomHotkeys;
-    if (typeof parsed !== "object" || parsed === null) {
-      return { ...EMPTY_CUSTOM_HOTKEYS };
-    }
-    if (parsed.schemaVersion !== 1) {
+    const parsed = JSON.parse(raw);
+    const parsedRecord = record(parsed);
+    if (parsedRecord?.schemaVersion !== 1) {
       if (typeof console !== "undefined") {
         // eslint-disable-next-line no-console
         console.warn(
           "[antiek/persistence] ignoring custom-hotkeys with mismatched schemaVersion:",
-          parsed.schemaVersion,
+          parsedRecord?.schemaVersion,
         );
       }
       return { ...EMPTY_CUSTOM_HOTKEYS };
     }
-    if (!Array.isArray(parsed.bindings)) return { ...EMPTY_CUSTOM_HOTKEYS };
-    return parsed;
+    return isPersistedCustomHotkeys(parsed) ? parsed : { ...EMPTY_CUSTOM_HOTKEYS };
   } catch {
     return { ...EMPTY_CUSTOM_HOTKEYS };
   }

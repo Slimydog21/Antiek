@@ -12,6 +12,9 @@ import {
   emitProductActivate,
   type ProductActivateDetail,
 } from "../components/hotkeys/bindings";
+import { installLocalStorageMock } from "../test/localStorage";
+
+let restoreLocalStorage: (() => void) | null = null;
 
 /** Helper: dispatch a keydown on window, optionally from a text-editing
  *  element so we can exercise the isTextEditing guard. */
@@ -241,21 +244,27 @@ describe("shortcuts handler — SPR-08 (uniform ⌘+key, no chords)", () => {
 });
 
 describe("shortcuts boot-hydration — M2 reload-persistence (the live handler reads the blob on mount)", () => {
+  beforeEach(() => {
+    restoreLocalStorage = installLocalStorageMock();
+  });
+
   afterEach(() => {
     window.localStorage.clear();
     setCustomHotkeys([]);
     vi.useRealTimers();
+    restoreLocalStorage?.();
+    restoreLocalStorage = null;
   });
 
   it("a persisted custom binding fires after a fresh install WITHOUT any AssignHotkey surface mounted", () => {
-    // Simulate a prior session: a custom ⌥J → /inv/persisted is in localStorage.
+    // Simulate a prior session: a custom ⌘. → /inv/persisted is in localStorage.
     setCustomHotkeys([]); // live map empty (as on a cold boot)
     writeCustomHotkeys({
       schemaVersion: 1,
       bindings: [
         {
           id: "p1",
-          spec: "alt+j",
+          spec: "mod+.",
           route: "/inv/persisted",
           entityId: "persisted",
           entityKind: "investigation",
@@ -269,12 +278,12 @@ describe("shortcuts boot-hydration — M2 reload-persistence (the live handler r
     const uninstall = installShortcuts(navigate as never);
 
     // The live map now holds the persisted binding (no consumer mounted).
-    expect(getCustomHotkeys().some((b) => b.spec === "alt+j")).toBe(true);
+    expect(getCustomHotkeys().some((b) => b.spec === "mod+.")).toBe(true);
 
     // Pressing it navigates — identical to clicking the entity.
     const evt = new KeyboardEvent("keydown", {
-      key: "j",
-      altKey: true,
+      key: ".",
+      metaKey: true,
       bubbles: true,
       cancelable: true,
     });

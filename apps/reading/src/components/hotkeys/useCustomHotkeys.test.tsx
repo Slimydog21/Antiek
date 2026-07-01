@@ -4,6 +4,7 @@ import { renderHook, act } from "@testing-library/react";
 import { useCustomHotkeys } from "./useCustomHotkeys";
 import { getCustomHotkeys } from "../../workspace/shortcuts";
 import { readCustomHotkeys } from "../../workspace/persistence";
+import { installLocalStorageMock } from "../../test/localStorage";
 
 const ENTITY = {
   entityId: "inv-1",
@@ -12,12 +13,17 @@ const ENTITY = {
   label: "My investigation",
 };
 
+let restoreLocalStorage: (() => void) | null = null;
+
 describe("useCustomHotkeys — SPR-08 (⌘+key only)", () => {
   beforeEach(() => {
+    restoreLocalStorage = installLocalStorageMock();
     window.localStorage.clear();
   });
   afterEach(() => {
     window.localStorage.clear();
+    restoreLocalStorage?.();
+    restoreLocalStorage = null;
   });
 
   it("assigns a free ⌘+key combo and persists it (versioned blob)", () => {
