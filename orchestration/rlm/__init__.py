@@ -26,6 +26,7 @@ from .bridge import (
     is_ratified,
     maybe_escalate_to_rlm,
 )
+from .events import RLMEventEmitter, make_rlm_event
 from .session import (
     RLM_DOC_THRESHOLD_TOKENS,
     RLM_SESSION_COST_USD_CAP,
@@ -45,6 +46,7 @@ from .session import (
 __all__ = [
     "RLM_BYTES_PER_TOKEN_ESTIMATE",
     "RLM_DOC_THRESHOLD_TOKENS",
+    "RLMEventEmitter",
     "RLM_SESSION_COST_USD_CAP",
     "RLMBridgeDecision",
     "RLMRatificationRequired",
@@ -55,6 +57,7 @@ __all__ = [
     "estimate_tokens_from_bytes",
     "is_ratified",
     "iteration_payload",
+    "make_rlm_event",
     "iterate_session",
     "maybe_escalate_to_rlm",
     "session_completed_payload",
