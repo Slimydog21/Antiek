@@ -21,7 +21,7 @@ Pre-network `TypeError` in `DispatchDecomposer.decompose` from keyword-only API 
 ## Canonical verify
 
 ```bash
-cd /Users/slimydog/Desktop/Antiek
+cd <repo-root>
 .venv/bin/python scripts/repro_cascade_decompose_contract.py
 .venv/bin/python -m pytest tests/test_cascade_planner.py::test_dispatch_decomposer_maps_stub_response -q
 .venv/bin/python -m pytest tests/test_cascade_create_plan_light.py -q

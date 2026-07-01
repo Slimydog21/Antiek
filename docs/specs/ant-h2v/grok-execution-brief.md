@@ -1,6 +1,8 @@
 # Grok execution brief — ANT-H2V
 
-Generated 2026-06-02. Open master spec: `file:///Users/slimydog/Desktop/Antiek/docs/specs/ant-h2v/index.html`
+Generated 2026-06-02. `<repo-root>` means the output of
+`git rev-parse --show-toplevel`. Open master spec:
+`<repo-root>/docs/specs/ant-h2v/index.html`
 
 ## Operator vision
 
@@ -29,7 +31,7 @@ Execute with **technical precision** (file:line, exception types), **exhaustive 
 ## Canonical verify (after code sprints)
 
 ```bash
-cd /Users/slimydog/Desktop/Antiek
+cd <repo-root>
 # Env card — paste in every handoff
 pwd
 .venv/bin/python -V
