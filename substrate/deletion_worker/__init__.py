@@ -27,6 +27,12 @@ from .worker import (
     process_request,
     run_one_cycle,
 )
+from .db import (
+    cascade_delete_user,
+    load_requests_for_cycle,
+    persist_cycle_results,
+    run_db_cycle,
+)
 
 __all__ = [
     "CASCADE_TARGETS",
@@ -39,4 +45,8 @@ __all__ = [
     "SLA_DAYS",
     "process_request",
     "run_one_cycle",
+    "cascade_delete_user",
+    "load_requests_for_cycle",
+    "persist_cycle_results",
+    "run_db_cycle",
 ]

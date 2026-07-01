@@ -18,14 +18,19 @@ CASCADE_TARGETS: tuple[str, ...] = (
     "notebook_blocks",
     "notebooks",
     "section_blocks",
+    "outline_blocks",
+    "interviews",
+    "interview_projects",
     "deliverable_sections",
     "deliverables",
     "claim_evidence",
     "claims",
+    "edges",
+    "chunk_tier_overrides",
+    "url_alias",
+    "book_assets",
     "chunks",
     "documents",
-    "interviews",
-    "interview_projects",
     "investigations",
     "user_telemetry_preferences",
     "personal_graph_metadata",
@@ -119,7 +124,10 @@ def process_request(
             reason=f"status={req.status.value}",
         )
 
-    if req.status == DeletionRequestStatus.PENDING:
+    if req.status in {
+        DeletionRequestStatus.PENDING,
+        DeletionRequestStatus.CONFIRMED,
+    }:
         if age < timedelta(days=CANCELLATION_WINDOW_DAYS):
             remaining = CANCELLATION_WINDOW_DAYS - age.days
             return DeletionResult(
