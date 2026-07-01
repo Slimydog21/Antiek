@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 
 from tools.dispatch_tier_verdict.analyzer import (
     PASS_RATE_GAP_THRESHOLD_PP,
+    ProviderScore,
+    Verdict,
     analyse_events,
     render_verdict_markdown,
 )
@@ -340,3 +342,51 @@ def test_renders_markdown_with_decision_and_table():
     assert "hermes-grok" in md
     assert "## Per-provider scores" in md
     assert "## Next steps" in md
+
+
+def test_render_rejects_invalid_decision():
+    verdict = Verdict(
+        measurement_window_started="2026-05-20T12:00:00Z",
+        measurement_window_ended="2026-05-20T12:05:00Z",
+        scores=[],
+        opus_score=None,
+        hermes_score=None,
+        gap_pp=None,
+        decision="maybe",
+        rationale="invalid decision",
+    )
+
+    try:
+        render_verdict_markdown(verdict)
+    except ValueError as exc:
+        assert "dispatch verdict decision must be one of" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected invalid verdict decision to be rejected")
+
+
+def test_render_rejects_impossible_provider_counts():
+    score = ProviderScore(
+        provider="hermes-grok",
+        model="grok-4.3",
+        synthesis_count=1,
+        verified_count=2,
+        passed_count=1,
+        total_cost_usd=0.01,
+    )
+    verdict = Verdict(
+        measurement_window_started="2026-05-20T12:00:00Z",
+        measurement_window_ended="2026-05-20T12:05:00Z",
+        scores=[score],
+        opus_score=None,
+        hermes_score=score,
+        gap_pp=None,
+        decision="insufficient_data",
+        rationale="invalid counts",
+    )
+
+    try:
+        render_verdict_markdown(verdict)
+    except ValueError as exc:
+        assert "verified_count cannot exceed synthesis_count" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected impossible provider counts to be rejected")
