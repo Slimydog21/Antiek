@@ -42,6 +42,10 @@ import { getBookFullText } from "../api/books";
  *  mechanism), so the reader opens on the requested page. */
 const READ_POS_KEY = (documentId: string) => `antiek.read.pos.${documentId}`;
 
+function isReaderPageIndex(page: number): boolean {
+  return Number.isSafeInteger(page) && page >= 0;
+}
+
 /**
  * Build the `/read/:documentId` target (path + search) the one Reader mounts
  * on, encoding the opts the Reader reads back. Pure (no navigation, no
@@ -62,7 +66,7 @@ export function buildReaderTarget(
 ): { path: string; search: string } {
   const path = `/read/${encodeURIComponent(documentId)}`;
   const params = new URLSearchParams();
-  if (opts?.page !== undefined && opts.page !== null && opts.page >= 0) {
+  if (opts?.page !== undefined && opts.page !== null && isReaderPageIndex(opts.page)) {
     params.set("page", String(opts.page));
   }
   if (opts?.chunkId) {
@@ -125,7 +129,7 @@ export function decodeRegion(
  *  Best-effort: private-mode storage failures are swallowed (the reader still
  *  opens, just at its saved page). */
 export function seedReadPosition(documentId: string, page: number | undefined | null): void {
-  if (page === undefined || page === null || page < 0) return;
+  if (page === undefined || page === null || !isReaderPageIndex(page)) return;
   try {
     window.sessionStorage.setItem(READ_POS_KEY(documentId), String(page));
   } catch {
