@@ -4,6 +4,7 @@ import { LemonButton } from "../../components/lemon";
 import { askBook } from "../../api/books";
 import type { BookCitation } from "../../api/books";
 import ReadAloud from "../../components/voice/ReadAloud";
+import AIActionFailure from "../../shared/AIActionFailure";
 import { useTalkThread } from "./useTalkThread";
 import type { TalkMessage } from "./useTalkThread";
 
@@ -189,9 +190,11 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
           </p>
         )}
         {error && (
-          <p className="text-[13px] text-emperor" role="alert">
-            {error}
-          </p>
+          <AIActionFailure
+            title="Couldn’t ask this book"
+            reason={error}
+            onRetry={() => setError(null)}
+          />
         )}
       </div>
 

@@ -232,4 +232,19 @@ describe("TalkToBook (M2)", () => {
     await openAndAsk(vi.fn(), "anything", "No readable text here.");
     expect(screen.getByText(/isn’t grounded in the book’s text/)).toBeTruthy();
   });
+
+  it("frames ask failures as retryable engine failures and adds no fake answer", async () => {
+    askBookMock.mockRejectedValue(new Error("Talk-to-book isn’t available right now."));
+    render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
+    fireEvent.change(screen.getByPlaceholderText("Ask about this book…"), {
+      target: { value: "what does this book say?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+
+    expect(await screen.findByText(/Couldn’t ask this book/i)).toBeTruthy();
+    expect(screen.getByText(/Engine: Talk-to-book isn’t available right now/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(screen.queryByText("the book")).toBeNull();
+  });
 });
