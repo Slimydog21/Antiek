@@ -34,6 +34,7 @@ def _client():
 
 def test_status_starts_all_false(isolated_db, monkeypatch):
     monkeypatch.delenv("ANTIEK_LOOP3_UNLOCKED", raising=False)
+    monkeypatch.setenv("ANTIEK_LOOP3_EVENTS_DIR", isolated_db + "-events")
     client = _client()
     resp = client.get("/loop-3/status")
     assert resp.status_code == 200
@@ -43,6 +44,13 @@ def test_status_starts_all_false(isolated_db, monkeypatch):
     assert body["fully_unlocked"] is False
     for met in body["criteria"].values():
         assert met is False
+    assert body["evidence"]["all_evidence_passed"] is False
+    for met in body["evidence"]["criteria"].values():
+        assert met is False
+    assert (
+        body["evidence"]["statuses"]["eval_headroom"]["summary"]
+        == "eval_set_min_examples: 50 >= 200"
+    )
 
 
 # ── POST /loop-3/checklist flips a single criterion ─────────────────
@@ -50,6 +58,7 @@ def test_status_starts_all_false(isolated_db, monkeypatch):
 
 def test_checklist_post_flips_one_criterion(isolated_db, monkeypatch):
     monkeypatch.delenv("ANTIEK_LOOP3_UNLOCKED", raising=False)
+    monkeypatch.setenv("ANTIEK_LOOP3_EVENTS_DIR", isolated_db + "-events")
     client = _client()
     resp = client.post(
         "/loop-3/checklist",
@@ -68,6 +77,9 @@ def test_checklist_post_flips_one_criterion(isolated_db, monkeypatch):
     assert body["all_criteria_met"] is False
     # env still unset.
     assert body["env_unlocked"] is False
+    # Manual checklist state does not rewrite read-only verifier evidence.
+    assert body["evidence"]["criteria"]["trajectory_volume"] is False
+    assert body["evidence"]["all_evidence_passed"] is False
 
 
 def test_checklist_rejects_unknown_criterion(isolated_db):

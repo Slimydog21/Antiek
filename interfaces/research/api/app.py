@@ -5834,6 +5834,28 @@ def create_app(
         all_criteria_met: bool
         env_unlocked: bool
         fully_unlocked: bool
+        evidence: dict[str, Any] = Field(default_factory=dict)
+
+    def _loop3_evidence_payload() -> dict[str, Any]:
+        from substrate.loop_3.evidence_status import snapshot as evidence_snapshot
+
+        evidence = evidence_snapshot()
+        return {
+            "criteria": evidence.criteria,
+            "statuses": {
+                key: {
+                    "criterion": value.criterion,
+                    "status": value.status,
+                    "passed": value.passed,
+                    "summary": value.summary,
+                    "result": value.result,
+                }
+                for key, value in evidence.statuses.items()
+            },
+            "all_evidence_passed": evidence.all_evidence_passed,
+            "events_dir": evidence.events_dir,
+            "open_weight_policy_file": evidence.open_weight_policy_file,
+        }
 
     @app.get("/loop-3/status", response_model=Loop3StatusResponse)
     async def get_loop3_status() -> Loop3StatusResponse:
@@ -5852,6 +5874,7 @@ def create_app(
             all_criteria_met=snap.all_criteria_met,
             env_unlocked=snap.env_unlocked,
             fully_unlocked=snap.fully_unlocked,
+            evidence=_loop3_evidence_payload(),
         )
 
     @app.post("/loop-3/checklist", response_model=Loop3StatusResponse)
@@ -5894,6 +5917,7 @@ def create_app(
             all_criteria_met=snap.all_criteria_met,
             env_unlocked=snap.env_unlocked,
             fully_unlocked=snap.fully_unlocked,
+            evidence=_loop3_evidence_payload(),
         )
 
     # ── Sprint 30+ payout transfers audit endpoint (§13.7 + §9.10) ──
