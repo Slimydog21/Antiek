@@ -9,6 +9,12 @@
 
 import { API_BASE, apiFetch } from "../lib/api";
 
+function assertNonNegativeSafeInteger(value: number, field: string): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new RangeError(`${field} must be a non-negative safe integer`);
+  }
+}
+
 export type Servability =
   | "public_domain"
   | "platform_authored"
@@ -215,6 +221,7 @@ export async function spinResearch(
   pageIndex: number,
   passageText?: string,
 ): Promise<SpinResearchResponse> {
+  assertNonNegativeSafeInteger(pageIndex, "page_index");
   const safePassageText = passageText?.trim() || null;
   const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/spin-research`, {
     method: "POST",
