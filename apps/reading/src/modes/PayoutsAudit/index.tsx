@@ -34,6 +34,17 @@ const STATUS_FILTERS = [
   "pending",
 ] as const;
 
+function nonNegativeFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
+function centsToUsd(value: unknown): string {
+  const cents = nonNegativeFiniteNumber(value) ?? 0;
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
 export default function PayoutsAudit() {
   const [rows, setRows] = useState<PayoutRow[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -74,7 +85,7 @@ export default function PayoutsAudit() {
       const k = r.status;
       acc[k] = acc[k] ?? { count: 0, amount_cents: 0 };
       acc[k].count += 1;
-      acc[k].amount_cents += r.amount_usd_cents;
+      acc[k].amount_cents += nonNegativeFiniteNumber(r.amount_usd_cents) ?? 0;
     }
     return acc;
   }, [rows]);
@@ -137,7 +148,7 @@ export default function PayoutsAudit() {
                   {s.replace(/_/g, " ")}
                 </p>
                 <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
-                  ${((totals[s]?.amount_cents ?? 0) / 100).toFixed(2)}
+                  {centsToUsd(totals[s]?.amount_cents)}
                 </p>
               </div>
             ))}
@@ -193,7 +204,7 @@ export default function PayoutsAudit() {
                   </div>
                   <div className="col-span-3 text-right">
                     <p className="text-sm font-mono text-ink dark:text-bright">
-                      ${(r.amount_usd_cents / 100).toFixed(2)}
+                      {centsToUsd(r.amount_usd_cents)}
                     </p>
                     <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
                       {r.initiated_at ?? "—"}
