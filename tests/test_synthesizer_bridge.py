@@ -115,6 +115,19 @@ def _synth_config(provider_name: str) -> DispatchConfig:
     )
 
 
+def _costly_synth_config(provider_name: str) -> DispatchConfig:
+    synthesis = TierConfig(
+        name="synthesis", provider=provider_name, model="stub-synth-model",
+        max_tokens=8192, temperature=0.2, context_budget_tokens=256_000,
+        pricing=TierPricing(input_per_mtok=0.0, output_per_mtok=200_000.0),
+        fallback=None,
+    )
+    return DispatchConfig(
+        role_tiers={"synthesizer": "synthesis"},
+        tiers={"synthesis": synthesis},
+    )
+
+
 def _patch_dispatch_config(monkeypatch, config: DispatchConfig) -> None:
     import substrate.dispatch.router as router
     monkeypatch.setattr(
@@ -462,6 +475,39 @@ async def test_long_synthesis_constraint_revision_reinvokes_rlm(
     assert provider.call_count == 2
 
     assert len(rlm_started) == 2
+
+
+@pytest.mark.asyncio
+async def test_long_synthesis_rlm_cost_cap_falls_back(
+    monkeypatch, app_and_bus, async_client,
+):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    import interfaces.research.api.synthesizer as bridge
+
+    monkeypatch.setattr(bridge, "SYNTHESIS_CONTEXT_BUDGET_TOKENS", 10)
+    _, bus = app_and_bus
+    inv = "inv-synth-rlm-cost-cap"
+    thesis = _good_thesis(attributed=True, summary="TOO_EXPENSIVE")
+    code = (
+        f"answer['content'] = {json.dumps(json.dumps(thesis))}\n"
+        "answer['ready'] = True"
+    )
+    register_provider(_StubSynthesizer([code]))
+    _patch_dispatch_config(monkeypatch, _costly_synth_config("stub-synthesizer"))
+
+    await _post_synthesize(async_client, investigation_id=inv)
+    await bus.wait_for_handlers(timeout=5.0)
+
+    delivered_row = next(
+        r for r in trajectory(inv)
+        if r["action_type"] == ActionType.SYNTHESIZE_DELIVERED.value
+    )
+    delivered = Event.model_validate(delivered_row)
+    assert delivered.policy_id == bridge.RLM_SYNTHESIS_POLICY_ID
+    payload = delivered.payload
+    assert payload.implicit_recommendation == "insufficient_evidence"
+    assert payload.thesis_components == []
+    assert payload.constraint_loop_status == "single_pass"
 
 
 # ---------------------------------------------------------------------------
