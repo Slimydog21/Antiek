@@ -110,6 +110,55 @@ def test_distill_confirmed_transcript_yields_anchored_notes():
     assert result.transcript_text == "the corrected text"
 
 
+def test_dispatch_note_distiller_filters_fabricated_capture_refs(monkeypatch):
+    from interfaces.research.api.read_voice import DispatchNoteDistiller
+
+    class _DispatchResult:
+        text = (
+            '{"notes": [{"text": "voice note insight", "confidence": "high", '
+            '"source_event_ids": ["cap-1", "cap-made-up"]}]}'
+        )
+
+    seen_prompt: dict[str, str] = {}
+
+    def _fake_dispatch(prompt, role, *, investigation_id):
+        seen_prompt["prompt"] = prompt
+        assert role == "note_taker"
+        assert investigation_id == "inv-voice"
+        return _DispatchResult()
+
+    monkeypatch.setattr("interfaces.research.api.read_voice.dispatch", _fake_dispatch)
+    notes = DispatchNoteDistiller("inv-voice").distill(
+        "confirmed voice transcript",
+        source_event_ids=("cap-1",),
+    )
+
+    assert "Source event ids you may attribute to: cap-1" in seen_prompt["prompt"]
+    assert len(notes) == 1
+    assert notes[0].source_event_ids == ("cap-1",)
+
+
+def test_dispatch_note_distiller_drops_fully_fabricated_capture_refs(monkeypatch):
+    from interfaces.research.api.read_voice import DispatchNoteDistiller
+
+    class _DispatchResult:
+        text = (
+            '{"notes": [{"text": "voice note insight", "confidence": "high", '
+            '"source_event_ids": ["cap-made-up"]}]}'
+        )
+
+    def _fake_dispatch(prompt, role, *, investigation_id):
+        return _DispatchResult()
+
+    monkeypatch.setattr("interfaces.research.api.read_voice.dispatch", _fake_dispatch)
+    notes = DispatchNoteDistiller("inv-voice").distill(
+        "confirmed voice transcript",
+        source_event_ids=("cap-1",),
+    )
+
+    assert notes == []
+
+
 def test_distill_emits_note_emerged_events():
     from substrate.event_log import trajectory
 
@@ -148,6 +197,45 @@ def test_voice_note_endpoint_refuses_unconfirmed_transcript():
     )
     assert resp.status_code == 400
     assert "unconfirmed_transcript" in resp.json()["detail"]
+
+
+def test_voice_note_endpoint_threads_capture_event_id(monkeypatch):
+    seen_sources: dict[str, tuple[str, ...]] = {}
+
+    class _RouteDistiller:
+        def __init__(self, investigation_id):
+            self.investigation_id = investigation_id
+
+        def distill(self, text, *, source_event_ids):
+            seen_sources["source_event_ids"] = source_event_ids
+            return [
+                ExtractedNote(
+                    note_id="note-1", text=f"insight: {text}",
+                    confidence="high", source_event_ids=source_event_ids,
+                )
+            ]
+
+    monkeypatch.setattr(
+        "interfaces.research.api.read_voice.DispatchNoteDistiller",
+        _RouteDistiller,
+    )
+    resp = _client().post(
+        "/books/doc-1/voice-note",
+        json={
+            "page_index": 0,
+            "transcript": "corrected transcript",
+            "audio_ref": "voice-blob://sha256/cap.webm",
+            "capture_event_id": "evt-voice-cap-1",
+            "confirmed": True,
+            "investigation_id": "inv-voice",
+        },
+    )
+
+    assert resp.status_code == 201, resp.text
+    assert seen_sources["source_event_ids"] == ("evt-voice-cap-1",)
+    body = resp.json()
+    assert body["note_count"] == 1
+    assert body["emitted_event_ids"]
 
 
 def test_transcribe_endpoint_503_without_key(monkeypatch):

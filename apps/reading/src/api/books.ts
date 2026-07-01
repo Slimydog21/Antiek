@@ -152,6 +152,7 @@ export async function saveVoiceNote(
     transcript: string;
     investigation_id: string;
     audio_ref?: string | null;
+    capture_event_id?: string | null;
   },
 ): Promise<VoiceNoteResult> {
   const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/voice-note`, {

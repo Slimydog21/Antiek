@@ -42,27 +42,21 @@ class DispatchNoteDistiller:
         self.investigation_id = investigation_id
 
     def distill(self, text: str, *, source_event_ids: tuple[str, ...]) -> list[ExtractedNote]:
+        ids = ", ".join(source_event_ids) if source_event_ids else "(none)"
         prompt = (
             NOTE_TAKER_SYSTEM_PROMPT
             + "\n\nThe following is a reader's spoken note about a book "
             "passage, transcribed and confirmed by the reader:\n\n"
             + text
+            + "\n\nSource event ids you may attribute to: "
+            + ids
             + "\n\nNow produce the JSON object."
         )
         result = dispatch(prompt, "note_taker", investigation_id=self.investigation_id)
-        notes = parse_notes_response(result.text)
-        # Thread the capture-event provenance onto each note.
-        if source_event_ids:
-            notes = [
-                ExtractedNote(
-                    note_id=n.note_id,
-                    text=n.text,
-                    confidence=n.confidence,
-                    source_event_ids=source_event_ids,
-                )
-                for n in notes
-            ]
-        return notes
+        return parse_notes_response(
+            result.text,
+            canonical_source_event_ids=source_event_ids or None,
+        )
 
 
 class TranscribeResponse(BaseModel):
@@ -81,6 +75,7 @@ class VoiceNoteRequest(BaseModel):
     page_index: int = Field(ge=0)
     transcript: str = Field(min_length=1)
     audio_ref: str | None = None
+    capture_event_id: str | None = None
     # The reader MUST confirm/correct the transcript before distillation.
     confirmed: bool = False
     investigation_id: str = Field(min_length=1, max_length=128)
@@ -185,6 +180,7 @@ def register_read_voice_routes(app: FastAPI) -> None:
                 distiller=DispatchNoteDistiller(req.investigation_id),
                 investigation_id=req.investigation_id,
                 audio_ref=req.audio_ref,
+                capture_event_id=req.capture_event_id,
                 confirmed=req.confirmed,
             )
         except UnconfirmedTranscript as exc:
