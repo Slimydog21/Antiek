@@ -41,6 +41,24 @@ open-weight from model-name appearance alone.
 - [ ] SFT model is registered in `substrate/dispatch/config.yaml` as an addressable model (even if not yet routed for production traffic).
 - [ ] SFT loss curves and held-out eval scores are recorded in `docs/training_log.md` (does not exist yet).
 
+**Evidence command:**
+
+```bash
+./.venv/bin/python -m compounding.verification.sft_readiness \
+  --metadata reports/loop3/sft-model.json \
+  --dispatch-config substrate/dispatch/config.yaml \
+  --training-log docs/training_log.md
+```
+
+`reports/loop3/sft-model.json` is intentionally a placeholder until a real SFT
+run exists. Passing evidence requires a real slash-delimited `policy_id`, base
+architecture, matching RL target base architecture, model artifact reference,
+model hash, training/eval dataset refs, numeric train-loss and held-out eval
+metrics, matching dispatch config registration, and a `docs/training_log.md`
+entry that references the model, base architecture, RL target architecture, and
+metrics. The command verifies the SFT evidence chain only; it does not train,
+upload, or independently reproduce the SFT run.
+
 **Why this matters:** RL from a zero-shot base model is wildly inefficient and unstable. SFT is the standard precondition. Skipping SFT is the textbook way to burn $X thousand on training a worse model than the one you started with.
 
 **Current state:** Not started.
