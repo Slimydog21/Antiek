@@ -410,9 +410,11 @@ substrate seam.
 The FastAPI middleware also has an opt-in trusted-claims adapter gated
 by `ANTIEK_EXTERNAL_AUTH_VENDOR` and
 `ANTIEK_EXTERNAL_AUTH_HEADER_SECRET`. It verifies an HMAC on
-`X-Antiek-Verified-Claims` before normalizing the payload. Until
-route-level multi-user authorization lands, that adapter only accepts
-external claims carrying the `operator` scope.
+`X-Antiek-Verified-Claims` before normalizing the payload. External
+claims carrying `operator` can use the existing operator API. Non-operator
+external claims are admitted only on explicit self-service privacy routes
+(`/auth/whoami`, deletion requests, and telemetry preferences); every
+other API path still requires operator scope.
 
 #### Once closed
 

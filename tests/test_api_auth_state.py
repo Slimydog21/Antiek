@@ -181,9 +181,8 @@ def test_external_provider_bad_signature_rejected(monkeypatch):
     assert resp.status_code == 401
 
 
-def test_external_provider_non_operator_claims_rejected_for_current_api(monkeypatch):
-    """Until route-level authz lands, external user claims do not unlock
-    operator-scoped endpoints."""
+def test_external_provider_non_operator_claims_can_read_whoami(monkeypatch):
+    """External non-operator claims are accepted on explicit self-service routes."""
     secret = "trusted-hop-secret"
     monkeypatch.setenv("ANTIEK_EXTERNAL_AUTH_VENDOR", "supabase")
     monkeypatch.setenv("ANTIEK_EXTERNAL_AUTH_HEADER_SECRET", secret)
@@ -204,6 +203,42 @@ def test_external_provider_non_operator_claims_rejected_for_current_api(monkeypa
     client = _client()
     resp = client.get(
         "/auth/whoami",
+        headers={
+            "X-Antiek-Verified-Claims": encoded,
+            "X-Antiek-Verified-Claims-Signature": signature,
+        },
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["user_id"] == "supabase:9e7d03ec-0f16-4e52-b615-6f94807d5133"
+    assert body["is_operator"] is False
+    assert body["auth_method"] == "external_supabase"
+    assert body["scopes"] == ["authenticated", "private_research"]
+
+
+def test_external_provider_non_operator_claims_rejected_for_operator_api(monkeypatch):
+    """The same non-operator identity must not unlock broad operator routes."""
+    secret = "trusted-hop-secret"
+    monkeypatch.setenv("ANTIEK_EXTERNAL_AUTH_VENDOR", "supabase")
+    monkeypatch.setenv("ANTIEK_EXTERNAL_AUTH_HEADER_SECRET", secret)
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
+    encoded = encode_verified_claims_header({
+        "sub": "9e7d03ec-0f16-4e52-b615-6f94807d5133",
+        "email": "reader@example.com",
+        "app_metadata": {"antiek_scopes": ["private_research"]},
+    })
+    signature = sign_verified_claims_header(
+        vendor="supabase",
+        encoded_claims=encoded,
+        secret=secret,
+    )
+
+    client = _client()
+    resp = client.get(
+        "/investigations",
         headers={
             "X-Antiek-Verified-Claims": encoded,
             "X-Antiek-Verified-Claims-Signature": signature,
