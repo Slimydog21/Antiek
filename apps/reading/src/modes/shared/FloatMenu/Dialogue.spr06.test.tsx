@@ -224,6 +224,7 @@ describe("DialoguePanel streams, recovers, and persists honestly (M2 + M4)", () 
       fireEvent.click(screen.getByText("Ask"));
     });
     await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/provider isn|no result/i));
+    expect(screen.getByRole("alert").textContent).toMatch(/activation SPR-03/i);
   });
 
   it("an un-anchored selection is labelled honestly as NOT saved", async () => {

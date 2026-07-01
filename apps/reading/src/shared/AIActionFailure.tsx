@@ -68,7 +68,7 @@ export default function AIActionFailure({
           <>
             {title} — the engine returned no result. This usually means the
             model provider isn&rsquo;t configured. Try again, or check
-            provider keys.
+            provider keys for activation SPR-03.
           </>
         )}
       </p>
