@@ -207,6 +207,31 @@ describe("readingGeometryPass — M1: measured DOM → non-null rect through cre
     expect(map.resolve(chunkAnchor("c1"))).toEqual(r);
   });
 
+  it("drops malformed passage offset markers instead of minting unsafe anchors", () => {
+    const root = makeArticle([]);
+    const unsafe = document.createElement("span");
+    unsafe.setAttribute(CHUNK_ID_ATTR, "unsafe-chunk");
+    unsafe.setAttribute(PASSAGE_CHUNK_ID_ATTR, "unsafe-chunk");
+    unsafe.setAttribute(PASSAGE_START_ATTR, "9007199254740992");
+    unsafe.setAttribute(PASSAGE_END_ATTR, "9007199254740993");
+    installRect(unsafe, { top: 240, left: 48, width: 140, height: 18 });
+    root.appendChild(unsafe);
+
+    const fractional = document.createElement("span");
+    fractional.setAttribute(CHUNK_ID_ATTR, "fractional-chunk");
+    fractional.setAttribute(PASSAGE_CHUNK_ID_ATTR, "fractional-chunk");
+    fractional.setAttribute(PASSAGE_START_ATTR, "12.5");
+    fractional.setAttribute(PASSAGE_END_ATTR, "31");
+    installRect(fractional, { top: 280, left: 48, width: 140, height: 18 });
+    root.appendChild(fractional);
+
+    const map = buildLayoutMap(root);
+    expect(map.resolve(passageAnchor("unsafe-chunk", 9007199254740992, 9007199254740993))).toBeNull();
+    expect(map.resolve(passageAnchor("fractional-chunk", 12.5, 31))).toBeNull();
+    expect(map.resolve(chunkAnchor("unsafe-chunk"))).not.toBeNull();
+    expect(map.resolve(chunkAnchor("fractional-chunk"))).not.toBeNull();
+  });
+
   it("goes through baseGeometryFromMap → createLayoutMap (the designed seam, not a parallel build)", () => {
     const root = makeArticle([
       { claimId: "1", rect: { top: 100, left: 20, width: 600, height: 40 } },

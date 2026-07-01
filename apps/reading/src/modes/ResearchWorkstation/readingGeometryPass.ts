@@ -90,7 +90,7 @@ export {
 function passageOffset(raw: string | null): number | null {
   if (raw === null || raw.trim() === "") return null;
   const n = Number(raw);
-  return Number.isInteger(n) && n >= 0 ? n : null;
+  return Number.isSafeInteger(n) && n >= 0 ? n : null;
 }
 
 function anchorsFromNode(node: HTMLElement): Anchor[] {
