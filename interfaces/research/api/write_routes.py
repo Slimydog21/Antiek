@@ -506,7 +506,8 @@ def generate_section_draft(
     surfaces a clear 503 rather than fabricating prose."""
     with _read() as con:
         row = con.execute(
-            "SELECT d.deliverable_id, d.title, d.deliverable_kind, s.title, "
+            "SELECT d.deliverable_id, d.title, d.deliverable_kind, "
+            "d.investigation_root_id, s.title, "
             "s.prose_text, s.prose_provenance "
             "FROM deliverable_sections s JOIN deliverables d "
             "ON s.deliverable_id = d.deliverable_id WHERE s.section_id = ?",
@@ -514,7 +515,16 @@ def generate_section_draft(
         ).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="section not found")
-        deliverable_id, dtitle, dkind, stitle, existing_prose, existing_prov_raw = row
+        (
+            deliverable_id,
+            dtitle,
+            dkind,
+            investigation_root_id,
+            stitle,
+            existing_prose,
+            existing_prov_raw,
+        ) = row
+        generation_investigation_id = investigation_root_id or deliverable_id
         blocks = list_section_blocks(con, section_id)
 
         def _resolve_label(node_id: str) -> str:
@@ -537,7 +547,10 @@ def generate_section_draft(
     try:
         from substrate.write.draft_generation import default_dispatch_fn, persist_section_draft
         result = generate_section(
-            ctx=ctx, dispatch_fn=default_dispatch_fn(investigation_id=deliverable_id),
+            ctx=ctx,
+            dispatch_fn=default_dispatch_fn(
+                investigation_id=generation_investigation_id,
+            ),
             section_id=section_id,
         )
         if req and req.paragraph_index is not None:
@@ -582,7 +595,7 @@ def generate_section_draft(
                 deliverable_id=deliverable_id,
                 result=result,
                 report=report,
-                investigation_id=deliverable_id,
+                investigation_id=generation_investigation_id,
             )
     return {
         "status": result.status, "section_id": section_id,
