@@ -126,6 +126,11 @@ class RLMSession:
             "at": _now_iso(),
         })
 
+    def fail(self) -> None:
+        """Mark the session failed without adding an iteration row."""
+        self.state.status = "failed"
+        self.state.completed_at = _now_iso()
+
     def attach_tool_to_sub_llm(self, sub_llm_name: str, tool_name: str) -> None:
         """Attach a tool to a sub-LLM. Per tool-isolation invariant,
         the substrate refuses to attach a tool to the root REPL
