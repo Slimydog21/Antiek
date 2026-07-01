@@ -63,6 +63,28 @@ def test_all_eight_gates_present() -> None:
     assert ledger.gate_ids() == ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8")
 
 
+def test_operator_gate_actions_summary_tracks_appended_follow_ons() -> None:
+    md = canonical_gate_path().read_text(encoding="utf-8")
+    quick_gate_ids = [
+        line.split("|")[1].strip().split()[0]
+        for line in md.splitlines()
+        if (
+            line.startswith("| G")
+            and line.split("|")[1].strip().split()[0][1:].isdigit()
+        )
+    ]
+
+    assert quick_gate_ids == [f"G{i}" for i in range(1, 14)]
+    assert "Current total: 13 gate-actions" in md
+    assert "Original G1-G8" in md
+    assert "G13 is closed" in md
+    assert "G9, G10, and G12 remain open" in md
+    assert "G11 is enforced in code" in md
+    assert "12 gate-actions" not in md
+    assert "The nine gates" not in md
+    assert "of the 8 gates" not in md
+
+
 # ── 2. Mutation of a fixture copy is reflected (no stale second copy) ─────────
 
 def _write_fixture(tmp_path: Path, body: str) -> Path:

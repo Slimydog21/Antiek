@@ -27,7 +27,11 @@ checklist with minimum inputs and an explicit owner.
 | G12 Bernays per-title copyright-renewal check | ❌ open (operator, per-title) | Making any 1927–1930 Bernays title servable — the in-copyright titles must NEVER be relabeled to a servable class without a per-title US renewal-records check |
 | G13 Auth diagnostic matrix | ✅ closed 2026-06-02 | Login failure triage now points to `docs/diagnostics/auth-failure-mode-matrix.md`; do not conflate Layer A transport with Layer B allowlist silence |
 
-**4 closed, 2 calendar/data-bound, 4 that need operator/counsel effort (G2, G3, G6, G9), plus 3 personal-reading-lane operator gate-actions (G10 Stripe Press, G11 X no-training, G12 Bernays renewal).**
+**Current total: 13 gate-actions.** Original G1-G8: 3 closed (G1, G4, G5),
+2 calendar/data-bound (G7, G8), and 3 still requiring operator action (G2, G3,
+G6). Appended follow-ons: G13 is closed; G9, G10, and G12 remain open
+operator/counsel actions; G11 is enforced in code and remains a standing
+operator duty.
 
 ## Highest-leverage next action
 
@@ -42,7 +46,7 @@ for the §14.4 measurement, the §13.4 compounding-curve demonstration (G7), and
 the §15.3 voice-latency assessment. Substrate is healthy now (the May 17-18
 read-only-filesystem outage is resolved); operator usage is the bottleneck.
 
-The nine gates, with their current state and the action required:
+The original eight gates, with their current state and the action required:
 
 ---
 
