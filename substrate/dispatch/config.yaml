@@ -157,6 +157,7 @@ role_tiers:
   # quality, citation discipline, and voice gate compliance are user-facing.
   creative_writer: synthesis
   user_agent: pro
+  thought_partner: pro
   note_taker: flash
   challenger: pro
   grounder: flash

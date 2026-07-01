@@ -86,19 +86,23 @@ describe("ThoughtPartnerPanel", () => {
 
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(1));
     expect(apiFetchMock).toHaveBeenCalledWith(
-      "/thought-partner",
+      "/brainstorm/thought-partner",
       expect.objectContaining({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           investigation_id: "inv-source",
-          passage: QUESTION.question_text,
-          follow_up: "Synthesize this into a sharper direction",
-          system_context: [
-            "BrainstormStation thought-partner panel",
-            "parked_question_id=q-memory",
-            "anchor_region_id=region-1",
-          ].join("\n"),
+          user_prompt: "Synthesize this into a sharper direction",
+          selected_notes: [
+            {
+              note_id: "q-memory",
+              note_text: QUESTION.question_text,
+              source_event_ids: ["event-parent"],
+              source_investigation_id: "inv-source",
+              source_document_id: "doc-source",
+              anchor_region_id: "region-1",
+            },
+          ],
         }),
       }),
     );

@@ -1272,6 +1272,20 @@ class ThoughtPartnerRequest(BaseModel):
     history: list[dict[str, str]] = []
 
 
+class BrainstormThoughtPartnerRequest(BaseModel):
+    """Surface E Brainstorming Workstation thought-partner request.
+
+    This is distinct from ``ThoughtPartnerRequest`` above, which is the
+    passage-dialogue endpoint. Here the user selects notes or a parked
+    question and asks for a challenge, synthesis, or extension.
+    """
+
+    user_prompt: str
+    selected_notes: list[dict[str, Any]] = []
+    investigation_id: str | None = None
+    sector_style_guide: str | None = None
+
+
 class CrossGraphCitationRequest(BaseModel):
     """Record a citation from one user's investigation to another
     user's public note (master-spec §13.9 Phase 3 federation)."""
@@ -5617,6 +5631,16 @@ def create_app(
         # the same thread by re-deriving this from the same Region.
         thread_node_id: str | None = None
 
+    class BrainstormThoughtPartnerResponseBody(BaseModel):
+        # Human-readable projection for existing UI rendering.
+        text: str
+        # Structured role output for notebook/lego-block follow-on workflows.
+        shape: str
+        challenges: list[dict[str, Any]] = []
+        synthesis_text: str | None = None
+        extensions: list[dict[str, Any]] = []
+        policy_id: str
+
     def _dialogue_inputs(req: ThoughtPartnerRequest) -> tuple[str, str, list]:
         """Normalise the request into (passage, follow_up, history). Back-compat:
         when ``passage`` is absent the legacy ``prompt`` is BOTH the passage and
@@ -5730,6 +5754,101 @@ def create_app(
             ) from exc
         node_id = _persist_thread(region, passage, investigation_id, req.source_chunk_id)
         return ThoughtPartnerResponseBody(text=result.text, thread_node_id=node_id)
+
+    def _brainstorm_text_projection(parsed) -> str:
+        if parsed.shape == "challenge" and parsed.challenges:
+            return "\n".join(
+                f"- {challenge.condition} [{', '.join(challenge.note_ids)}]"
+                for challenge in parsed.challenges
+            )
+        if parsed.shape == "extension" and parsed.extensions:
+            return "\n".join(
+                f"- {extension.sub_question}"
+                + (f" ({extension.tag})" if extension.tag else "")
+                + (f": {extension.rationale}" if extension.rationale else "")
+                for extension in parsed.extensions
+            )
+        if parsed.synthesis is not None:
+            return parsed.synthesis.text
+        return ""
+
+    @app.post(
+        "/brainstorm/thought-partner",
+        response_model=BrainstormThoughtPartnerResponseBody,
+    )
+    async def post_brainstorm_thought_partner(
+        req: BrainstormThoughtPartnerRequest = Body(...),
+    ) -> BrainstormThoughtPartnerResponseBody:
+        """Surface E thought-partner turn.
+
+        Dispatches the structured ``roles/thought_partner`` program through
+        the single router path and parses the JSON into challenge/synthesis/
+        extension fields. No provider key means honest 503, same as the
+        passage-dialogue endpoint.
+        """
+        from roles.thought_partner import (
+            THOUGHT_PARTNER_SYSTEM_PROMPT,
+            compose_thought_partner_prompt,
+            parse_thought_partner_response,
+        )
+        from substrate.dispatch.router import ProviderError, dispatch
+
+        user_prompt = req.user_prompt.strip()
+        if not user_prompt:
+            raise HTTPException(status_code=400, detail="user_prompt must not be empty")
+        if not req.selected_notes:
+            raise HTTPException(status_code=400, detail="selected_notes must not be empty")
+
+        role_prompt = compose_thought_partner_prompt(
+            user_prompt=user_prompt,
+            selected_notes=req.selected_notes,
+            sector_style_guide=req.sector_style_guide,
+        )
+        full_prompt = (
+            f"{THOUGHT_PARTNER_SYSTEM_PROMPT}\n\n"
+            "USER-SIDE CONTEXT:\n"
+            f"{role_prompt}"
+        )
+        investigation_id = req.investigation_id or "brainstorm-thought-partner"
+        try:
+            result = dispatch(
+                full_prompt,
+                role="thought_partner",
+                investigation_id=investigation_id,
+            )
+        except ProviderError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"dispatch_unavailable: {exc}",
+            ) from exc
+
+        canonical_note_ids = tuple(
+            str(note.get("note_id", "")).strip()
+            for note in req.selected_notes
+            if str(note.get("note_id", "")).strip()
+        )
+        parsed = parse_thought_partner_response(
+            result.text,
+            canonical_note_ids=canonical_note_ids,
+        )
+        return BrainstormThoughtPartnerResponseBody(
+            text=_brainstorm_text_projection(parsed),
+            shape=parsed.shape,
+            challenges=[
+                {"condition": challenge.condition, "note_ids": challenge.note_ids}
+                for challenge in parsed.challenges
+            ],
+            synthesis_text=parsed.synthesis.text if parsed.synthesis else None,
+            extensions=[
+                {
+                    "sub_question": extension.sub_question,
+                    "tag": extension.tag,
+                    "rationale": extension.rationale,
+                }
+                for extension in parsed.extensions
+            ],
+            policy_id=f"{result.provider}/{result.model}",
+        )
 
     @app.post("/thought-partner/stream")
     async def post_thought_partner_stream(

@@ -15,9 +15,9 @@ type ThoughtPartnerReply = {
  * BrainstormStation's active thought-partner panel.
  *
  * It binds to the selected watch-for-later question and sends a real
- * `/thought-partner` turn. The backend owns provider dispatch and returns an
- * honest 503 when no model key is configured; this panel surfaces that state
- * instead of fabricating a canned "assistant" answer.
+ * `/brainstorm/thought-partner` turn. The backend owns provider dispatch and
+ * returns an honest 503 when no model key is configured; this panel surfaces
+ * that state instead of fabricating a canned "assistant" answer.
  */
 export default function ThoughtPartnerPanel() {
   const [selectedQuestion, setSelectedQuestion] =
@@ -67,22 +67,24 @@ export default function ThoughtPartnerPanel() {
     setError(null);
     setReply(null);
     try {
-      const response = await apiFetch("/thought-partner", {
+      const response = await apiFetch("/brainstorm/thought-partner", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           investigation_id: selectedQuestion.source_investigation_id,
-          passage: selectedQuestionText,
-          follow_up: prompt.trim(),
-          system_context: [
-            "BrainstormStation thought-partner panel",
-            `parked_question_id=${selectedQuestion.question_id}`,
-            selectedQuestion.anchor_region_id
-              ? `anchor_region_id=${selectedQuestion.anchor_region_id}`
-              : null,
-          ]
-            .filter(Boolean)
-            .join("\n"),
+          user_prompt: prompt.trim(),
+          selected_notes: [
+            {
+              note_id: selectedQuestion.question_id,
+              note_text: selectedQuestionText,
+              source_event_ids: selectedQuestion.parent_event_id
+                ? [selectedQuestion.parent_event_id]
+                : [],
+              source_investigation_id: selectedQuestion.source_investigation_id,
+              source_document_id: selectedQuestion.source_document_id,
+              anchor_region_id: selectedQuestion.anchor_region_id,
+            },
+          ],
         }),
       });
       if (!response.ok) {

@@ -428,6 +428,7 @@ def test_config_role_tiers_covers_every_dispatching_role():
         "connector", "synthesizer", "user_agent", "note_taker",
         "challenger", "grounder", "tier_assigner", "constraint_checker",
         "verifier", "knowledge_extractor", "creative_writer",
+        "thought_partner",
     }
     missing = required_roles - set(config.role_tiers)
     assert not missing, (
