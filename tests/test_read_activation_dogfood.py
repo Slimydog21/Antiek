@@ -79,6 +79,40 @@ def test_live_provider_sessions_require_dialogue_and_research_steps_to_pass() ->
     assert any(">=5 valid sessions with live_provider_ai=true" in f for f in report.failures)
 
 
+def test_live_provider_session_requires_ready_provider_status() -> None:
+    records = [_session(i, live=i <= 5, citation=True) for i in range(1, 11)]
+    records[0]["entry_door"] = "search"
+    records[0]["provider_status"] = "absent"
+
+    report = validate_sessions(records)
+
+    assert report.closure_ready is False
+    assert any(
+        "live_provider_ai=true requires provider_status=ready" in f
+        for f in report.failures
+    )
+
+
+def test_unknown_step_status_is_rejected_explicitly() -> None:
+    record = _session(1)
+    record["steps"]["7"] = {"status": "passed"}
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert any("step 7 status must be one of" in f for f in report.failures)
+
+
+def test_only_provider_backed_steps_can_be_inert() -> None:
+    record = _session(1)
+    record["steps"]["5"] = {"status": "inert"}
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert any("step 5 cannot be inert" in f for f in report.failures)
+
+
 def test_reading_session_must_last_at_least_twenty_minutes() -> None:
     records = [_session(i, live=i <= 5, citation=True) for i in range(1, 11)]
     records[0]["entry_door"] = "search"
