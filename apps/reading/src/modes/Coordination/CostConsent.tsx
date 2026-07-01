@@ -93,13 +93,25 @@ export interface ConsentView {
  *  micro-cent precision visible — these are realized costs, not rounded). */
 function usd(s: string): string {
   const n = Number(s);
-  if (!Number.isFinite(n)) return `$${s}`;
+  if (!Number.isFinite(n) || n < 0) return "$0.0000";
   // Up to 4 decimals so a $0.0001 dispatch cost is not rounded to $0.00.
   return `$${n.toFixed(n < 1 ? 4 : 2)}`;
 }
 
 function centsToUsd(c: number): string {
-  return `$${(c / 100).toFixed(2)}`;
+  return `$${(Number.isFinite(c) && c >= 0 ? c / 100 : 0).toFixed(2)}`;
+}
+
+function percentFromRate(rate: string | null): string | null {
+  if (rate === null) return null;
+  const n = Number(rate);
+  return Number.isFinite(n) && n >= 0 ? `+${(n * 100).toFixed(0)}%` : null;
+}
+
+function percentFromFraction(value: number): string {
+  return `${(Number.isFinite(value) && value >= 0 ? value * 100 : 0).toFixed(
+    0,
+  )}%`;
 }
 
 const workflowLabel: Record<string, string> = {
@@ -169,9 +181,7 @@ export function CostSection({ cost }: { cost: CostView }) {
               {usd(w.margined_cost_usd)}
             </span>
             <span className="text-[11px] text-shadow-1 dark:text-moonlight">
-              {w.margin_rate !== null
-                ? `+${(Number(w.margin_rate) * 100).toFixed(0)}%`
-                : "applied"}
+              {percentFromRate(w.margin_rate) ?? "applied"}
             </span>
           </span>
         ) : (
@@ -379,7 +389,7 @@ export function ConsentSection({ consent }: { consent: ConsentView }) {
                 Claim rate
               </span>
               <p className="font-mono text-sm text-ink dark:text-bright">
-                {(consent.escrow_report.claim_rate * 100).toFixed(0)}%
+                {percentFromFraction(consent.escrow_report.claim_rate)}
               </p>
             </div>
           </div>
