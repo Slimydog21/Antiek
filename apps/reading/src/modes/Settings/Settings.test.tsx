@@ -78,6 +78,7 @@ describe("Settings", () => {
     expect(
       screen.getByText(/No model providers are registered/i),
     ).toBeTruthy();
+    expect(screen.getByText(/activation SPR-03/i)).toBeTruthy();
   });
 
   it("refreshes provider status through the shared health hook", () => {

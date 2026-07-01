@@ -186,7 +186,7 @@ export default function AISidecar() {
         // Honest transport failure — not model output (SPR-06: no fake CHALLENGE shape).
         const detail =
           resp.status === 503
-            ? "No provider keys configured yet — Dialogue lights up after activation."
+            ? "No provider keys configured yet — Dialogue lights up after activation SPR-03 provider-key setup."
             : `Thought-partner unavailable (HTTP ${resp.status}).`;
         setReply({
           shape: "SYNTHESIS",
