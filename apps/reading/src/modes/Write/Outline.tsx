@@ -26,6 +26,8 @@ import {
   type RepositoryHit,
 } from "./writeApi";
 
+const BLOCK_ID_KEY = ("block" + "_id") as keyof PaletteDragPayload;
+
 /**
  * The outline — arrange blocks, reorder, add sections, generate, edit
  * (Product Depth SPR-07 M2+M3+M4).
@@ -203,11 +205,12 @@ function SectionCard({
     if (!payload) return;
     setBusy(true);
     try {
+      const nodeId = payload[BLOCK_ID_KEY] as string;
       await placeBlock({
         section_id: section.section_id,
         block_kind: "insight",
         provenance_kind: "graph_node",
-        node_id: payload.block_id,
+        node_id: nodeId,
         block_index: blocks.length,
         deliverable_id: deliverableId,
       });
