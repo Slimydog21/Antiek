@@ -38,6 +38,7 @@ try:
         ProviderError,
         RawProviderResponse,
     )
+    from .breaker import default_breaker
 except ImportError:  # pragma: no cover
     import sys
     _here = os.path.dirname(os.path.abspath(__file__))
@@ -47,6 +48,7 @@ except ImportError:  # pragma: no cover
         Provider,
         ProviderError,
     )
+    from dispatch.breaker import default_breaker  # type: ignore[no-redef]
     from event_log import emit_typed  # type: ignore[no-redef]
     from schemas import DispatchCallPayload  # type: ignore[no-redef]
 
@@ -466,6 +468,37 @@ def dispatch(
             current = current.fallback
             chain_index += 1
             continue
+        # Circuit breaker (SPR-04): a provider whose breaker is OPEN is skipped
+        # fast and the tier-fallback chain carries the call — the same
+        # "skip + fall through" mechanism the unregistered/no-key path uses
+        # above. No retry (I-NORETRY); the breaker only decides whether to call.
+        if default_breaker.is_open(current.provider):
+            last_error = ProviderError(
+                f"provider {current.provider!r} circuit breaker is OPEN "
+                "(recent infra failures); skipping and falling back.",
+                provider=current.provider, model=current.model or "<none>",
+                latency_ms=0, retryable=True,
+            )
+            _emit_dispatch_call(
+                investigation_id=investigation_id,
+                parent_event_id=parent_event_id,
+                role=role,
+                tier=tier_name,
+                provider=current.provider,
+                model=current.model,
+                usage=NormalizedUsage(input_tokens=0, output_tokens=0),
+                cost_usd=0.0,
+                latency_ms=0,
+                verification_required=verification_required,
+                fallback_chain_index=chain_index,
+                prompt_hash=prompt_hash,
+                finish_reason="error",
+                context_pack_event_id=context_pack_event_id,
+            )
+            current = current.fallback
+            chain_index += 1
+            continue
+
         effective_max_tokens = max_tokens if max_tokens is not None else current.max_tokens
 
         t_start = time.monotonic()
@@ -496,12 +529,17 @@ def dispatch(
                 finish_reason="error",
                 context_pack_event_id=context_pack_event_id,
             )
+            # Count this genuine provider-call failure toward the breaker. Config
+            # conditions (unregistered/no-key) never reach here — they fall
+            # through at get_provider above — so every failure counted is real.
+            default_breaker.record_failure(current.provider)
             last_error = e
             current = current.fallback
             chain_index += 1
             continue
 
         # Success: normalize, cost, emit, return.
+        default_breaker.record_success(current.provider)
         usage = provider.normalize_usage(raw.raw_usage)
         finish = normalize_finish_reason(raw.finish_reason)
         cost = _compute_cost_usd(usage, current.pricing)
