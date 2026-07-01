@@ -8,7 +8,11 @@ layer (interfaces/research/api/app.py middleware), not at substrate.
 
 from __future__ import annotations
 
+import base64
 import enum
+import hashlib
+import hmac
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -44,6 +48,9 @@ class AuthVendor(enum.StrEnum):
 
     CLERK = "clerk"
     SUPABASE = "supabase"
+
+
+TRUSTED_CLAIMS_SIGNATURE_VERSION = "v1"
 
 
 class AuthProvider(Protocol):
@@ -122,6 +129,70 @@ def _provider_scopes(claims: Mapping[str, Any]) -> frozenset[str]:
     scopes.update(_string_list(claims.get("scp")))
     scopes.update(_metadata_scopes(claims))
     return frozenset(scopes)
+
+
+def encode_verified_claims_header(claims: Mapping[str, Any]) -> str:
+    """Encode verified provider claims for the trusted-header adapter.
+
+    The adapter intentionally transports claims as base64url JSON rather than
+    raw JSON so middleware/proxy header quoting cannot change the signed bytes.
+    """
+    payload = json.dumps(
+        dict(claims),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("ascii")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def sign_verified_claims_header(
+    *,
+    vendor: AuthVendor | str,
+    encoded_claims: str,
+    secret: str,
+) -> str:
+    """Sign a trusted-claims header payload with an operator-held secret."""
+    if not secret:
+        raise AuthError("trusted claims header secret must be non-empty")
+    try:
+        auth_vendor = vendor if isinstance(vendor, AuthVendor) else AuthVendor(vendor)
+    except ValueError as exc:
+        raise AuthError(f"unsupported auth vendor: {vendor!r}") from exc
+    signed = f"{auth_vendor.value}\n{encoded_claims}".encode("ascii")
+    digest = hmac.new(secret.encode("utf-8"), signed, hashlib.sha256).hexdigest()
+    return f"{TRUSTED_CLAIMS_SIGNATURE_VERSION}.{digest}"
+
+
+def decode_trusted_claims_header(
+    *,
+    vendor: AuthVendor | str,
+    encoded_claims: str,
+    signature: str,
+    secret: str,
+) -> UserClaims:
+    """Verify + decode claims from the trusted external-auth adapter.
+
+    This still assumes an upstream component already verified the provider JWT.
+    The HMAC here only protects the hop between that verifier and Antiek's API,
+    preventing direct callers from spoofing ``X-Antiek-Verified-Claims``.
+    """
+    expected = sign_verified_claims_header(
+        vendor=vendor,
+        encoded_claims=encoded_claims,
+        secret=secret,
+    )
+    if not hmac.compare_digest(signature, expected):
+        raise AuthError("trusted claims header signature mismatch")
+    padded = encoded_claims + ("=" * (-len(encoded_claims) % 4))
+    try:
+        decoded = base64.urlsafe_b64decode(padded.encode("ascii"))
+        payload = json.loads(decoded)
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise AuthError("trusted claims header payload is malformed") from exc
+    if not isinstance(payload, dict):
+        raise AuthError("trusted claims header payload must be a JSON object")
+    return normalize_verified_claims(vendor=vendor, claims=payload)
 
 
 def normalize_verified_claims(

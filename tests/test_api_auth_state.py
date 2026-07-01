@@ -11,6 +11,10 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
+from substrate.multi_user import (
+    encode_verified_claims_header,
+    sign_verified_claims_header,
+)
 
 
 def _client():
@@ -27,6 +31,8 @@ def test_whoami_unauthenticated_local_path(monkeypatch):
         "ANTIEK_OPERATOR_TOKEN",
         "ANTIEK_OPERATOR_EMAIL",
         "ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID",
+        "ANTIEK_EXTERNAL_AUTH_VENDOR",
+        "ANTIEK_EXTERNAL_AUTH_HEADER_SECRET",
     ):
         monkeypatch.delenv(env, raising=False)
 
@@ -104,6 +110,106 @@ def test_cloudflare_email_mismatch_rejected(monkeypatch):
         "/auth/whoami",
         headers={"Cf-Access-Authenticated-User-Email": "intruder@elsewhere.com"},
     )
+    assert resp.status_code == 401
+
+
+# ── External provider trusted-claims path ───────────────────────────
+
+
+def test_whoami_external_provider_operator_claims_path(monkeypatch):
+    """Trusted Clerk/Supabase claims can authorize the current operator API
+    only when they carry explicit operator scope."""
+    secret = "trusted-hop-secret"
+    monkeypatch.setenv("ANTIEK_EXTERNAL_AUTH_VENDOR", "clerk")
+    monkeypatch.setenv("ANTIEK_EXTERNAL_AUTH_HEADER_SECRET", secret)
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
+    encoded = encode_verified_claims_header({
+        "sub": "user_2abc",
+        "email": "operator@example.com",
+        "public_metadata": {"antiek_scopes": ["operator", "private_research"]},
+    })
+    signature = sign_verified_claims_header(
+        vendor="clerk",
+        encoded_claims=encoded,
+        secret=secret,
+    )
+
+    client = _client()
+    resp = client.get(
+        "/auth/whoami",
+        headers={
+            "X-Antiek-Verified-Claims": encoded,
+            "X-Antiek-Verified-Claims-Signature": signature,
+        },
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["user_id"] == "clerk:user_2abc"
+    assert body["is_operator"] is True
+    assert body["auth_method"] == "external_clerk"
+    assert body["scopes"] == ["authenticated", "operator", "private_research"]
+
+
+def test_external_provider_bad_signature_rejected(monkeypatch):
+    monkeypatch.setenv("ANTIEK_EXTERNAL_AUTH_VENDOR", "supabase")
+    monkeypatch.setenv("ANTIEK_EXTERNAL_AUTH_HEADER_SECRET", "right-secret")
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
+    encoded = encode_verified_claims_header({
+        "sub": "9e7d03ec-0f16-4e52-b615-6f94807d5133",
+        "app_metadata": {"antiek_scopes": ["operator"]},
+    })
+    bad_signature = sign_verified_claims_header(
+        vendor="supabase",
+        encoded_claims=encoded,
+        secret="wrong-secret",
+    )
+
+    client = _client()
+    resp = client.get(
+        "/auth/whoami",
+        headers={
+            "X-Antiek-Verified-Claims": encoded,
+            "X-Antiek-Verified-Claims-Signature": bad_signature,
+        },
+    )
+
+    assert resp.status_code == 401
+
+
+def test_external_provider_non_operator_claims_rejected_for_current_api(monkeypatch):
+    """Until route-level authz lands, external user claims do not unlock
+    operator-scoped endpoints."""
+    secret = "trusted-hop-secret"
+    monkeypatch.setenv("ANTIEK_EXTERNAL_AUTH_VENDOR", "supabase")
+    monkeypatch.setenv("ANTIEK_EXTERNAL_AUTH_HEADER_SECRET", secret)
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
+    encoded = encode_verified_claims_header({
+        "sub": "9e7d03ec-0f16-4e52-b615-6f94807d5133",
+        "email": "reader@example.com",
+        "app_metadata": {"antiek_scopes": ["private_research"]},
+    })
+    signature = sign_verified_claims_header(
+        vendor="supabase",
+        encoded_claims=encoded,
+        secret=secret,
+    )
+
+    client = _client()
+    resp = client.get(
+        "/auth/whoami",
+        headers={
+            "X-Antiek-Verified-Claims": encoded,
+            "X-Antiek-Verified-Claims-Signature": signature,
+        },
+    )
+
     assert resp.status_code == 401
 
 
