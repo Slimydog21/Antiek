@@ -187,7 +187,7 @@ def _dispatch_and_parse(
     *,
     canonical_matched_node_ids: tuple[str, ...],
     canonical_path_node_ids: tuple[str, ...],
-    canonical_edge_ids: tuple[str, ...] | None,
+    canonical_edge_ids: tuple[str, ...],
 ) -> tuple[ConnectorResult | None, str]:
     try:
         result = dispatch(
