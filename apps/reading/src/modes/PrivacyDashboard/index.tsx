@@ -47,6 +47,22 @@ const KNOWN_BUDGET_CATEGORIES = new Set([
   "query_content_telemetry",
 ]);
 
+const LOOP_3_CRITERIA = [
+  "trajectory_volume",
+  "sft_readiness",
+  "validated_reward",
+  "open_weight_justification",
+  "eval_headroom",
+] as const;
+
+const LOOP_3_LABELS: Record<string, string> = {
+  trajectory_volume: "Trajectory volume",
+  sft_readiness: "SFT readiness",
+  validated_reward: "Reward validation",
+  open_weight_justification: "Open-weight rationale",
+  eval_headroom: "Evaluation headroom",
+};
+
 function titleFromPreference(preference: TelemetryPreference | undefined, category: string) {
   if (!preference || KNOWN_BUDGET_CATEGORIES.has(category)) {
     return formatBudgetLabel(category);
@@ -307,6 +323,8 @@ export default function PrivacyDashboard() {
 
           {data && <ArchitecturalGuarantees data={data} />}
 
+          {data && <TrainingGate data={data} />}
+
           {data && (
             <DeleteEverything
               pendingDeletion={pendingDeletion}
@@ -320,6 +338,84 @@ export default function PrivacyDashboard() {
         </div>
       </main>
     </div>
+  );
+}
+
+function TrainingGate({ data }: { data: TrustCenterData }) {
+  const checklist = data.loop_3_unlock_status ?? {};
+  const evidence = data.loop_3_evidence_status ?? {};
+  const checklistCount = LOOP_3_CRITERIA.filter((c) => checklist[c]).length;
+  const evidenceCount = LOOP_3_CRITERIA.filter((c) => evidence[c]).length;
+  const allEvidencePassed = data.loop_3_all_evidence_passed === true;
+
+  return (
+    <section className="border border-rule dark:border-charcoal-1 rounded-md px-5 py-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-base font-serif text-ink dark:text-bright">
+          Model training gate
+        </h2>
+        <span
+          className={`text-xs font-mono px-2 py-1 rounded ${
+            allEvidencePassed
+              ? "bg-emerald-50 text-emerald-700"
+              : "bg-ice-3 dark:bg-charcoal-1 text-shadow-1 dark:text-moonlight"
+          }`}
+        >
+          {allEvidencePassed ? "Evidence complete" : "Evidence incomplete"}
+        </span>
+      </div>
+      <p className="text-sm text-ink dark:text-bright leading-relaxed">
+        Training remains locked until operator review and automated evidence
+        checks both pass.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <GateStat label="Operator checklist" value={`${checklistCount}/5`} />
+        <GateStat label="Evidence checks" value={`${evidenceCount}/5`} />
+      </div>
+      <div className="grid gap-2 pt-1">
+        {LOOP_3_CRITERIA.map((criterion) => {
+          const checklistMet = checklist[criterion] === true;
+          const evidenceMet = evidence[criterion] === true;
+          return (
+            <div
+              key={criterion}
+              className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 text-xs"
+            >
+              <span className="text-ink dark:text-bright">
+                {LOOP_3_LABELS[criterion]}
+              </span>
+              <StatusPill met={checklistMet} label="Reviewed" />
+              <StatusPill met={evidenceMet} label="Verified" />
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function GateStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border border-rule dark:border-charcoal-1 rounded px-3 py-2">
+      <p className="text-sm font-serif text-ink dark:text-bright">{value}</p>
+      <p className="text-[10px] font-mono uppercase text-shadow-1 dark:text-moonlight">
+        {label}
+      </p>
+    </div>
+  );
+}
+
+function StatusPill({ met, label }: { met: boolean; label: string }) {
+  return (
+    <span
+      className={`font-mono px-2 py-0.5 rounded ${
+        met
+          ? "bg-emerald-50 text-emerald-700"
+          : "bg-ice-3 dark:bg-charcoal-1 text-shadow-1 dark:text-moonlight"
+      }`}
+    >
+      {met ? label : `Not ${label.toLowerCase()}`}
+    </span>
   );
 }
 
