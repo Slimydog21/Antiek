@@ -16,7 +16,20 @@
 - [ ] **≥10,000 sealed investigations** in `~/.antiek/research_events/*.parquet`.
 - [ ] **≥80% of LLM events** have a `policy_id` resolvable to an open-weight model (i.e., a model checkpoint we could actually fine-tune). Closed-weight-only trajectories cannot train an open-weight policy.
 
-**Evidence required:** Output of a query script in `compounding/verification/` reporting both counts. Commit the script.
+**Evidence required:** Output of the committed query script reporting both counts:
+
+```bash
+./.venv/bin/python -m compounding.verification.trajectory_volume \
+  --events-dir ~/.antiek/research_events \
+  --open-weight-policy-file reports/loop3/open-weight-policy-ids.json
+```
+
+Do not pass `--include-live-jsonl`, `--min-sealed-investigations`, or
+`--min-open-weight-policy-fraction` for unlock evidence. The committed output
+must show the default thresholds (`min_sealed_investigations: 10000` and
+`min_open_weight_policy_fraction: 0.800`). The policy registry must be
+explicit. The script deliberately does not infer that a `policy_id` is
+open-weight from model-name appearance alone.
 
 **Current state (2026-05-17):** 0 production investigations. Zero open-weight policy coverage.
 
