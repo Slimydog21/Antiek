@@ -152,6 +152,14 @@ def test_runner_refuses_production_env(monkeypatch):
         )
 
 
+def test_runner_requires_valid_acceptance_state():
+    with pytest.raises(ValueError, match="epsilon must be a non-negative finite number"):
+        PromptAutoresearchRunner(role="synthesizer", epsilon=-0.01)
+
+    with pytest.raises(ValueError, match="baseline_total_score must be a number in \\[0, 1\\]"):
+        PromptAutoresearchRunner(role="synthesizer", baseline_total_score=1.5)
+
+
 def test_runner_rejects_cross_role_mutation_before_execution(monkeypatch):
     monkeypatch.delenv("ANTIEK_ENV", raising=False)
     runner = PromptAutoresearchRunner(role="synthesizer")
