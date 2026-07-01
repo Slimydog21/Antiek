@@ -403,12 +403,14 @@ async def async_client(app_and_bus):
 async def _post_start(
     ac, *, investigation_id: str, question: str,
     topic_slug: str | None = "psi-quantum-demo",
+    investigation_kind: str = "loop_one",
 ) -> None:
     payload = {
         "action_type": "investigation.start_requested",
         "question": question,
         "context": "",
         "topic_slug": topic_slug,
+        "investigation_kind": investigation_kind,
         "max_sub_questions": 4,
     }
     r = await ac.post(
@@ -444,6 +446,24 @@ async def _await_terminal(bus, investigation_id: str, *, timeout: float = 10.0):
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_loop_one_ignores_rlm_investigation_kind(app_and_bus, async_client):
+    _, bus = app_and_bus
+    inv = "inv-rlm-not-loop-one"
+
+    await _post_start(
+        async_client,
+        investigation_id=inv,
+        question="Survey neutral-atom quantum computing.",
+        investigation_kind="rlm",
+    )
+    await bus.wait_for_handlers(timeout=2.0)
+
+    rows = trajectory(inv)
+    action_types = [row["action_type"] for row in rows]
+    assert action_types == [ActionType.INVESTIGATION_START_REQUESTED.value]
 
 
 @pytest.mark.asyncio
