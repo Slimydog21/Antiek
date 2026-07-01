@@ -253,6 +253,16 @@ The operator runs ≥20 mutations against the synthesizer's golden traces,
 exports the resulting `PromptMutationOutcome` rows to JSON, and then
 closes the gate with:
 
+First audit the current unlock checklist:
+
+```bash
+./.venv/bin/python -m tools.prompt_autoresearch.readiness_cli --repo-root .
+```
+
+The readiness audit is read-only. It should show which criteria are
+already mechanically satisfied and which remain operator-bound before
+any calibration or mutation cohort work starts.
+
 First run the no-op calibration cohort required by
 `docs/integration_autoresearch.md` §5.3. Add this to the end of the local
 no-op mutation-run script once `runner.iterations` contains the calibration
