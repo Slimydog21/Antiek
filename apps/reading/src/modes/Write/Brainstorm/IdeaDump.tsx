@@ -24,13 +24,21 @@ export interface IdeaDumpProps {
   sectionId: string;
   deliverableId?: string;
   className?: string;
+  disabledReason?: string;
+  onEmitted?: () => Promise<void> | void;
 }
 
 function lines(text: string): string[] {
   return text.split("\n").map((l) => l.trim()).filter(Boolean);
 }
 
-export function IdeaDump({ sectionId, deliverableId, className }: IdeaDumpProps) {
+export function IdeaDump({
+  sectionId,
+  deliverableId,
+  className,
+  disabledReason,
+  onEmitted,
+}: IdeaDumpProps) {
   const [idea, setIdea] = useState("");
   const [insights, setInsights] = useState("");
   const [questions, setQuestions] = useState("");
@@ -41,8 +49,10 @@ export function IdeaDump({ sectionId, deliverableId, className }: IdeaDumpProps)
   const [error, setError] = useState<string | null>(null);
 
   const hasDrivers = lines(insights).length + lines(questions).length + lines(data).length > 0;
+  const canEmit = hasDrivers && !disabledReason;
 
   async function onEmit() {
+    if (!canEmit) return;
     setBusy(true);
     setError(null);
     setResult(null);
@@ -55,6 +65,7 @@ export function IdeaDump({ sectionId, deliverableId, className }: IdeaDumpProps)
         data_points: lines(data),
       });
       setResult(r);
+      await onEmitted?.();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -115,11 +126,14 @@ export function IdeaDump({ sectionId, deliverableId, className }: IdeaDumpProps)
         <button
           type="button"
           onClick={onEmit}
-          disabled={busy || !hasDrivers}
+          disabled={busy || !canEmit}
           className="px-3 py-1.5 bg-ink hover:bg-shadow-2 disabled:bg-glacial-1 text-white text-sm rounded"
         >
           {busy ? "Taking notes…" : "Emit lego blocks"}
         </button>
+        {disabledReason && (
+          <span className="text-xs text-ink-mute">{disabledReason}</span>
+        )}
         {!hasDrivers && (
           <span className="text-xs text-ink-mute">Add at least one insight, question, or data point.</span>
         )}

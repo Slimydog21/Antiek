@@ -24,11 +24,13 @@ const {
   generateSectionMock,
   placeBlockMock,
   moveBlockMock,
+  emitBrainstormBlocksMock,
 } = vi.hoisted(() => ({
   getSectionBlocksMock: vi.fn(),
   generateSectionMock: vi.fn(),
   placeBlockMock: vi.fn(),
   moveBlockMock: vi.fn(),
+  emitBrainstormBlocksMock: vi.fn(),
 }));
 
 vi.mock("./writeApi", async (orig) => ({
@@ -37,6 +39,7 @@ vi.mock("./writeApi", async (orig) => ({
   generateSection: generateSectionMock,
   placeBlock: placeBlockMock,
   moveBlock: moveBlockMock,
+  emitBrainstormBlocks: emitBrainstormBlocksMock,
 }));
 
 // createSection lives on the shared lib/api — keep it inert in these tests.
@@ -83,6 +86,14 @@ beforeEach(() => {
   generateSectionMock.mockReset();
   placeBlockMock.mockReset().mockResolvedValue("oblk-new");
   moveBlockMock.mockReset().mockResolvedValue(undefined);
+  emitBrainstormBlocksMock.mockReset().mockResolvedValue({
+    block_ids: ["oblk-brainstorm"],
+    insight_count: 1,
+    question_count: 0,
+    data_count: 0,
+    skipped_duplicates: 0,
+    flagged_unverified: [],
+  });
 });
 afterEach(cleanup);
 
@@ -105,6 +116,30 @@ describe("Outline — no id, honest generate, real editor", () => {
     expect((gen as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/add at least one block/i)).toBeTruthy();
     expect(generateSectionMock).not.toHaveBeenCalled();
+  });
+
+  it("emits brainstorm drivers into the real section and refreshes blocks", async () => {
+    getSectionBlocksMock.mockResolvedValue([]);
+    const onChanged = vi.fn();
+    render(
+      <Outline deliverableId="dlv-1" sections={[section()]} onChanged={onChanged} />,
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: /brainstorm blocks/i }));
+    await userEvent.type(screen.getAllByPlaceholderText("one per line")[0], "The moat is data");
+    await userEvent.click(screen.getByRole("button", { name: /emit lego blocks/i }));
+
+    await waitFor(() =>
+      expect(emitBrainstormBlocksMock).toHaveBeenCalledWith({
+        section_id: "sec-1",
+        deliverable_id: "dlv-1",
+        insights: ["The moat is data"],
+        questions: [],
+        data_points: [],
+      }),
+    );
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(screen.getByText(/Placed 1 block/)).toBeTruthy();
   });
 
   it("surfaces AIActionFailure (no fake draft) when generation 503s without keys", async () => {

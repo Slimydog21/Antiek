@@ -231,7 +231,10 @@ export default function WriteHome() {
               Think aloud here. The drivers you confirm become blocks you can
               outline and draft from — start a piece first to land them on it.
             </p>
-            <IdeaDump sectionId="__brainstorm__" />
+            <IdeaDump
+              sectionId="__brainstorm__"
+              disabledReason="Start a piece first to land blocks on a real section."
+            />
           </div>
         )}
 
