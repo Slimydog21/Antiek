@@ -380,6 +380,7 @@ export function CompletedInvestigationContent({
           </div>
           <MasterMdViewer
             synthesis={synth}
+            investigationId={investigation.id}
             synthesisId={synthesisId}
             events={investigation.events}
             reviewDueEnabled={reviewDuePolicyEnabled}

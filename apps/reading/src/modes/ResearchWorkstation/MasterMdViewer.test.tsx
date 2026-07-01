@@ -14,6 +14,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 import type { ChunkResponse } from "../../lib/api";
 import type {
@@ -221,6 +222,26 @@ describe("MasterMdViewer — no static save-to-notebook in the research flow (SP
     // "automatically generated, not statically"; the auto-notebook is the surface.
     expect(screen.queryByText(/save to notebook/i)).toBeNull();
     expect(screen.queryByRole("button", { name: /save to notebook/i })).toBeNull();
+  });
+
+  it("links to the proposed auto-notebook when the research id is known", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(
+      <MemoryRouter>
+        <MasterMdViewer synthesis={synth()} investigationId="inv-auto-1" />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText("The claim holds.")).toBeTruthy());
+    const link = screen.getByRole("link", { name: "Auto-notebook" });
+    expect(link.getAttribute("href")).toBe("/notebook/auto/inv-auto-1");
+    expect(screen.queryByRole("button", { name: /save to notebook/i })).toBeNull();
+  });
+
+  it("does not fabricate an auto-notebook link without an investigation id", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(<MasterMdViewer synthesis={synth()} />);
+    await waitFor(() => expect(screen.getByText("The claim holds.")).toBeTruthy());
+    expect(screen.queryByRole("link", { name: "Auto-notebook" })).toBeNull();
   });
 });
 

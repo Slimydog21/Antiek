@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { WheelEvent } from "react";
+import { Link } from "react-router-dom";
 
 import { toast } from "../../components/lemon/LemonToast";
 import type { Event } from "../../generated/types";
@@ -283,6 +284,7 @@ const GEOMETRY_RECOMPUTE_DEBOUNCE_MS = 100;
 
 export default function MasterMdViewer({
   synthesis,
+  investigationId = null,
   synthesisId = null,
   events = EMPTY_EVENTS,
   reviewDueClaims = [],
@@ -291,6 +293,7 @@ export default function MasterMdViewer({
   reviewClaimPendingIds = [],
 }: {
   synthesis: ParsedSynthesis;
+  investigationId?: string | null;
   synthesisId?: string | null;
   events?: readonly Event[];
   reviewDueClaims?: readonly ReviewDueClaimView[];
@@ -471,6 +474,17 @@ export default function MasterMdViewer({
                 operator sign-off decision (flagged in the handoff), coupled to the
                 auto-notebook ratification. NOTE: the auto-notebook is PROPOSED
                 (sign-off pending) — see docs/decisions/spr-06-auto-notebook-proposed.md. */}
+            {investigationId && (
+              <>
+                <span className="text-ink-mute dark:text-moonlight">·</span>
+                <Link
+                  to={`/notebook/auto/${encodeURIComponent(investigationId)}`}
+                  className="text-aurora underline decoration-dotted underline-offset-2 hover:decoration-solid"
+                >
+                  Auto-notebook
+                </Link>
+              </>
+            )}
           </div>
           {/* SPR-11 M3 → SPR-04 M4 — the quiet quality cue, now a DECLARED
               anchored widget the surface PLACES via the anchored-widgets facet

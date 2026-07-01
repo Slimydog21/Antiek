@@ -63,6 +63,10 @@ open-questions register, awaiting sign-off.
   stays reachable as its own surface — only the *save-FROM-research* button is
   gone, and no dead handler remains (that `openNotebook("NotebookEditor", …)`
   call site was the only static save into the research flow).
+- **Reachability is route-backed, not snapshot-backed.** The completed research
+  synthesis header links to `/notebook/auto/:investigationId` when the
+  workstation host knows the investigation id. This opens the derived view; it
+  does not write a notebook row or save a static snapshot.
 
 ## Why labeled "proposed" / why kept reversible
 
