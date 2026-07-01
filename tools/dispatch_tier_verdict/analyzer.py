@@ -131,22 +131,9 @@ def _within_window(
     since: datetime | None,
     until: datetime | None,
 ) -> bool:
-    # The substrate emits events with `emitted_at`. Older test
-    # fixtures used `created_at` / `ts`; accept all three so the
-    # analyzer works against both shapes.
-    ts = record.get("emitted_at") or record.get("created_at") or record.get("ts")
-    if not isinstance(ts, str):
+    dt = _event_datetime(record)
+    if dt is None:
         return False
-    try:
-        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-    except ValueError:
-        return False
-    # Tolerate naive datetimes on the event side (some old fixtures
-    # are tz-less). Assume UTC. The CLI parses --since with explicit
-    # UTC; tests pass aware datetimes; this branch handles only
-    # legacy data.
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=UTC)
     if since:
         since_aware = since if since.tzinfo else since.replace(tzinfo=UTC)
         if dt < since_aware:
@@ -156,6 +143,30 @@ def _within_window(
         if dt > until_aware:
             return False
     return True
+
+
+def _event_datetime(record: dict) -> datetime | None:
+    # The substrate emits events with `emitted_at`. Older test
+    # fixtures used `created_at` / `ts`; accept all three so the
+    # analyzer works against both shapes.
+    ts = record.get("emitted_at") or record.get("created_at") or record.get("ts")
+    if not isinstance(ts, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    # Tolerate naive datetimes on the event side (some old fixtures
+    # are tz-less). Assume UTC. The CLI parses --since with explicit
+    # UTC; tests pass aware datetimes; this branch handles only
+    # legacy data.
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
+
+
+def _format_event_datetime(dt: datetime) -> str:
+    return dt.isoformat().replace("+00:00", "Z")
 
 
 def analyse_events(
@@ -199,16 +210,15 @@ def analyse_events(
     # (G5 follow-up Sprint 21 substrate audit).
     self_grade_outcomes: dict[tuple[str, str], list[float]] = {}
 
-    ts_min: str | None = None
-    ts_max: str | None = None
+    ts_min: datetime | None = None
+    ts_max: datetime | None = None
 
     for ev in iterator:
         if not _within_window(ev, since=since, until=until):
             continue
-        ts = ev.get("emitted_at") or ev.get("created_at") or ev.get("ts")
-        if isinstance(ts, str):
-            ts_min = ts if ts_min is None or ts < ts_min else ts_min
-            ts_max = ts if ts_max is None or ts > ts_max else ts_max
+        if (dt := _event_datetime(ev)) is not None:
+            ts_min = dt if ts_min is None or dt < ts_min else ts_min
+            ts_max = dt if ts_max is None or dt > ts_max else ts_max
 
         payload = ev.get("payload") or {}
         action = ev.get("action_type") or payload.get("action_type")
@@ -365,8 +375,8 @@ def analyse_events(
         )
 
     return Verdict(
-        measurement_window_started=ts_min or "(unknown)",
-        measurement_window_ended=ts_max or "(unknown)",
+        measurement_window_started=_format_event_datetime(ts_min) if ts_min else "(unknown)",
+        measurement_window_ended=_format_event_datetime(ts_max) if ts_max else "(unknown)",
         scores=scores,
         opus_score=opus,
         hermes_score=hermes,
