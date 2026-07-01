@@ -83,6 +83,17 @@ describe("ProductsLauncher — open in window (M5)", () => {
     expect(screen.queryByText("Privacy & deletion")).toBeNull();
   });
 
+  it("uses the canonical Trust Center label in Run & settings", () => {
+    const onClose = renderLauncher();
+
+    fireEvent.click(screen.getByRole("button", { name: "Trust Center" }));
+
+    expect(navigateMock).toHaveBeenCalledWith("/trust");
+    expect(onClose).toHaveBeenCalled();
+    expect(useWindows.getState().order.length).toBe(0);
+    expect(screen.queryByText("Trust & safety")).toBeNull();
+  });
+
   it("a non-window-eligible built mode does NOT render a ⊞ button", () => {
     renderLauncher();
     // Sources is a built mode but not contract-verified for windows.
