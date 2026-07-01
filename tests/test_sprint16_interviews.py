@@ -54,13 +54,13 @@ def _client(temp_substrate):
 
 def test_insert_interview_project_returns_id(temp_substrate):
     from runtime.db_lock import connect_write
-    from substrate.graph import insert_interview_project
+    from substrate.graph.ops import InterviewWriter
     from substrate.graph.schema import init_database_at_path
 
     init_database_at_path(temp_substrate["db_path"])
     with connect_write(temp_substrate["db_path"], purpose="test") as con:
-        pid = insert_interview_project(
-            con, title="A biographical project",
+        pid = InterviewWriter(con).project(
+            title="A biographical project",
             topic_description="Long-form bio interviews",
         )
     assert pid.startswith("ivp-")
@@ -70,19 +70,15 @@ def test_append_interview_turn_promotes_status_on_first(temp_substrate):
     import duckdb
 
     from runtime.db_lock import connect_write
-    from substrate.graph import (
-        append_interview_turn,
-        insert_interview,
-        insert_interview_project,
-    )
+    from substrate.graph.ops import InterviewWriter
     from substrate.graph.schema import init_database_at_path
 
     init_database_at_path(temp_substrate["db_path"])
     with connect_write(temp_substrate["db_path"], purpose="test") as con:
-        pid = insert_interview_project(con, title="P")
-        iid = insert_interview(con, project_id=pid, informant_handle="alice")
-        count = append_interview_turn(
-            con, interview_id=iid, role="interviewer", text="Hello.",
+        pid = InterviewWriter(con).project(title="P")
+        iid = InterviewWriter(con).interview(project_id=pid, informant_handle="alice")
+        count = InterviewWriter(con).turn(
+            interview_id=iid, role="interviewer", text="Hello.",
         )
     assert count == 1
     con = duckdb.connect(temp_substrate["db_path"])
@@ -99,34 +95,30 @@ def test_append_interview_turn_promotes_status_on_first(temp_substrate):
 
 def test_append_interview_turn_unknown_id_raises(temp_substrate):
     from runtime.db_lock import connect_write
-    from substrate.graph import append_interview_turn
+    from substrate.graph.ops import InterviewWriter
     from substrate.graph.schema import init_database_at_path
 
     init_database_at_path(temp_substrate["db_path"])
     with connect_write(temp_substrate["db_path"], purpose="test") as con:
         with pytest.raises(ValueError, match="not found"):
-            append_interview_turn(
-                con, interview_id="intv-nope",
+            InterviewWriter(con).turn(
+                interview_id="intv-nope",
                 role="interviewer", text="x",
             )
 
 
 def test_append_interview_turn_invalid_role_raises(temp_substrate):
     from runtime.db_lock import connect_write
-    from substrate.graph import (
-        append_interview_turn,
-        insert_interview,
-        insert_interview_project,
-    )
+    from substrate.graph.ops import InterviewWriter
     from substrate.graph.schema import init_database_at_path
 
     init_database_at_path(temp_substrate["db_path"])
     with connect_write(temp_substrate["db_path"], purpose="test") as con:
-        pid = insert_interview_project(con, title="P")
-        iid = insert_interview(con, project_id=pid)
+        pid = InterviewWriter(con).project(title="P")
+        iid = InterviewWriter(con).interview(project_id=pid)
         with pytest.raises(ValueError, match="unknown turn role"):
-            append_interview_turn(
-                con, interview_id=iid, role="moderator", text="x",
+            InterviewWriter(con).turn(
+                interview_id=iid, role="moderator", text="x",
             )
 
 

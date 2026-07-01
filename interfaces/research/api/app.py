@@ -3212,7 +3212,7 @@ def create_app(
     ) -> InterviewProjectSummary:
 
         from runtime.db_lock import connect_write
-        from substrate.graph.ops import insert_interview_project
+        from substrate.graph.ops import InterviewWriter
 
         db = _resolve_db_path()
         guide = {
@@ -3220,8 +3220,7 @@ def create_app(
             "framing": req.framing or "",
         }
         with connect_write(db, purpose="interview_projects/create") as con:
-            pid = insert_interview_project(
-                con,
+            pid = InterviewWriter(con).project(
                 title=req.title,
                 topic_description=req.topic_description,
                 deliverable_id=req.deliverable_id,
@@ -3328,7 +3327,7 @@ def create_app(
     )
     async def post_invite_interview(req: InviteInterviewRequest) -> InterviewSummary:
         from runtime.db_lock import connect_write
-        from substrate.graph.ops import insert_interview
+        from substrate.graph.ops import InterviewWriter
 
         db = _resolve_db_path()
         with connect_write(db, purpose="interviews/invite") as con:
@@ -3340,8 +3339,7 @@ def create_app(
                 raise HTTPException(
                     status_code=404, detail="interview project not found",
                 )
-            iid = insert_interview(
-                con,
+            iid = InterviewWriter(con).interview(
                 project_id=req.project_id,
                 informant_handle=req.informant_handle,
                 informant_email=req.informant_email,
@@ -3412,13 +3410,12 @@ def create_app(
         interview_id: str, req: InterviewTurnRequest,
     ) -> InterviewTurnResponse:
         from runtime.db_lock import connect_write
-        from substrate.graph.ops import append_interview_turn
+        from substrate.graph.ops import InterviewWriter
 
         db = _resolve_db_path()
         with connect_write(db, purpose="interviews/turn") as con:
             try:
-                count = append_interview_turn(
-                    con,
+                count = InterviewWriter(con).turn(
                     interview_id=interview_id,
                     role=req.role,
                     text=req.text,
@@ -3442,7 +3439,7 @@ def create_app(
         interview_id: str, req: CompleteInterviewRequest,
     ) -> InterviewSummary:
         from runtime.db_lock import connect_write
-        from substrate.graph.ops import complete_interview
+        from substrate.graph.ops import InterviewWriter
 
         db = _resolve_db_path()
         with connect_write(db, purpose="interviews/complete") as con:
@@ -3454,8 +3451,7 @@ def create_app(
                 raise HTTPException(
                     status_code=404, detail="interview not found",
                 )
-            complete_interview(
-                con,
+            InterviewWriter(con).complete(
                 interview_id=interview_id,
                 transcript_document_id=req.transcript_document_id,
             )

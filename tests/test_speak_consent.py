@@ -15,7 +15,7 @@ import tempfile
 import pytest
 
 from runtime.db_lock import connect_write
-from substrate.graph.ops import insert_interview, insert_interview_project
+from substrate.graph.ops import InterviewWriter
 from substrate.graph.schema import init_database
 from substrate.speak import consent as consent_mod
 from substrate.speak import publish_gate, subject_consent, takedown, third_party
@@ -34,8 +34,8 @@ def speak_db(monkeypatch):
     con = connect_write(db_path, purpose="speak_consent_test")
     init_database(con)
     ensure_speak_schema(con)
-    project_id = insert_interview_project(con, title="Dad's biography", project_id="proj-dad")
-    interview_id = insert_interview(con, project_id=project_id, informant_handle="uncle-fawzi")
+    project_id = InterviewWriter(con).project(title="Dad's biography", project_id="proj-dad")
+    interview_id = InterviewWriter(con).interview(project_id=project_id, informant_handle="uncle-fawzi")
     try:
         yield {"con": con, "project_id": project_id, "interview_id": interview_id}
     finally:

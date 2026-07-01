@@ -25,7 +25,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from substrate.graph.ops import insert_interview_project
+from substrate.graph.ops import InterviewWriter
 
 from .events import SPEAK_PROJECT_CREATED, record_speak_event
 from .schema import ensure_speak_schema
@@ -63,8 +63,7 @@ def create_project(
         raise ValueError(f"unknown publish_intent: {publish_intent!r}")
     if subject_status not in _SUBJECT_STATUSES:
         raise ValueError(f"unknown subject_status: {subject_status!r}")
-    pid = insert_interview_project(
-        con,
+    pid = InterviewWriter(con).project(
         title=title,
         topic_description=topic_description,
         interview_guide=interview_guide,

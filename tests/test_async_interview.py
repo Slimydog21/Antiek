@@ -15,7 +15,7 @@ import pytest
 
 from orchestration.interview.orchestrator import ConsentRequired
 from runtime.db_lock import connect_write
-from substrate.graph.ops import insert_interview_project
+from substrate.graph.ops import InterviewWriter
 from substrate.graph.schema import init_database
 from substrate.speak import async_interview as ai
 from substrate.speak.async_interview import AsrError, PendingTranscript
@@ -61,7 +61,7 @@ def speak_env(monkeypatch):
     with connect_write(db_path, purpose="async_test_setup") as con:
         init_database(con)
         ensure_speak_schema(con)
-        insert_interview_project(con, title="Dad's biography", project_id="proj-dad")
+        InterviewWriter(con).project(title="Dad's biography", project_id="proj-dad")
     return {"db_path": db_path, "project_id": "proj-dad"}
 
 

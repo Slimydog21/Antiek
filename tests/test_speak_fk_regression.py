@@ -22,7 +22,7 @@ import tempfile
 import pytest
 
 from runtime.db_lock import connect_write
-from substrate.graph.ops import insert_interview, insert_interview_project
+from substrate.graph.ops import InterviewWriter
 from substrate.graph.schema import init_database
 from substrate.speak.consent import ConsentScope, record_consent
 from substrate.speak.schema import ANTIEK_SPEAK_SCHEMA_SQL, ensure_speak_schema
@@ -60,8 +60,8 @@ def test_speak_schema_declares_no_parent_referencing_fks():
 def test_updating_interview_with_consent_child_does_not_deadlock(db):
     """Runtime guard: reproduce the crashed path end to end."""
     with connect_write(db, purpose="speak_fk_regression") as con:
-        project_id = insert_interview_project(con, title="Dad's biography")
-        interview_id = insert_interview(con, project_id=project_id, informant_handle="aunt")
+        project_id = InterviewWriter(con).project(title="Dad's biography")
+        interview_id = InterviewWriter(con).interview(project_id=project_id, informant_handle="aunt")
         # A consent child row for this interview — the exact precondition
         # that made the parent un-updatable when an FK was declared.
         record_consent(con, interview_id=interview_id, scopes=[ConsentScope.RECORD])

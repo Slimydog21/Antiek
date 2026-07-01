@@ -595,102 +595,102 @@ def update_section_prose(
 # ---------------------------------------------------------------------------
 
 
-def insert_interview_project(
-    con: LockedConnection,
-    *,
-    title: str,
-    topic_description: str | None = None,
-    deliverable_id: str | None = None,
-    interview_guide: Any | None = None,
-    owner_user_id: str = "__operator__",
-    project_id: str | None = None,
-) -> str:
-    """Create a new interview project. Returns the ``project_id``."""
-    _assert_write_locked(con)
-    pid = project_id or new_random_id("ivp")
-    con.execute(
-        "INSERT INTO interview_projects "
-        "(project_id, title, topic_description, deliverable_id, "
-        " interview_guide, owner_user_id) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
-        [pid, title, topic_description, deliverable_id,
-         _maybe_json(interview_guide), owner_user_id],
-    )
-    return pid
+class InterviewWriter:
+    """Cohesive writer for the interview lifecycle, bound to a locked connection.
 
+    The write lock is asserted ONCE at construction — not re-checked on every
+    call — and the id-derivation + JSON coercion the four former
+    ``insert_interview_*`` free functions each repeated are absorbed here. A
+    caller runs a whole interview (``project → interview → turn → complete``)
+    through one writer instead of threading ``con`` and re-deriving ids at every
+    step (SPR-04 pull-complexity-down; supersedes the four free functions).
+    """
 
-def insert_interview(
-    con: LockedConnection,
-    *,
-    project_id: str,
-    informant_handle: str | None = None,
-    informant_email: str | None = None,
-    interview_id: str | None = None,
-) -> str:
-    """Invite an informant; creates an ``invited``-status row."""
-    _assert_write_locked(con)
-    iid = interview_id or new_random_id("intv")
-    con.execute(
-        "INSERT INTO interviews "
-        "(interview_id, project_id, informant_handle, informant_email, "
-        " status) VALUES (?, ?, ?, ?, 'invited')",
-        [iid, project_id, informant_handle, informant_email],
-    )
-    return iid
+    def __init__(self, con: LockedConnection) -> None:
+        # Lock asserted here, once, so the lifecycle methods below don't each
+        # re-check it — holding the writer IS the single-writer guarantee.
+        _assert_write_locked(con)
+        self._con = con
 
+    def project(
+        self,
+        *,
+        title: str,
+        topic_description: str | None = None,
+        deliverable_id: str | None = None,
+        interview_guide: Any | None = None,
+        owner_user_id: str = "__operator__",
+        project_id: str | None = None,
+    ) -> str:
+        """Create a new interview project. Returns the ``project_id``."""
+        pid = project_id or new_random_id("ivp")
+        self._con.execute(
+            "INSERT INTO interview_projects "
+            "(project_id, title, topic_description, deliverable_id, "
+            " interview_guide, owner_user_id) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            [pid, title, topic_description, deliverable_id,
+             _maybe_json(interview_guide), owner_user_id],
+        )
+        return pid
 
-def append_interview_turn(
-    con: LockedConnection,
-    *,
-    interview_id: str,
-    role: str,  # "interviewer" | "informant"
-    text: str,
-) -> int:
-    """Append one turn to the interview transcript. Returns the new
-    turn count. Promotes the status from ``invited`` to
-    ``in_progress`` on the first turn."""
-    _assert_write_locked(con)
-    if role not in ("interviewer", "informant"):
-        raise ValueError(f"unknown turn role: {role!r}")
-    row = con.execute(
-        "SELECT transcript_turns, status FROM interviews "
-        "WHERE interview_id = ?", [interview_id],
-    ).fetchone()
-    if row is None:
-        raise ValueError(f"interview {interview_id!r} not found")
-    existing_json, status = row
-    turns = []
-    if existing_json:
-        try:
-            turns = json.loads(existing_json)
-        except (TypeError, ValueError):
-            turns = []
-    turns.append({
-        "role": role,
-        "text": text,
-        "ts": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-    })
-    new_status = "in_progress" if status == "invited" else status
-    started_at_sql = "CURRENT_TIMESTAMP" if status == "invited" else "started_at"
-    con.execute(
-        f"UPDATE interviews SET transcript_turns = ?, status = ?, "
-        f"started_at = {started_at_sql} WHERE interview_id = ?",
-        [_maybe_json(turns), new_status, interview_id],
-    )
-    return len(turns)
+    def interview(
+        self,
+        *,
+        project_id: str,
+        informant_handle: str | None = None,
+        informant_email: str | None = None,
+        interview_id: str | None = None,
+    ) -> str:
+        """Invite an informant; creates an ``invited``-status row."""
+        iid = interview_id or new_random_id("intv")
+        self._con.execute(
+            "INSERT INTO interviews "
+            "(interview_id, project_id, informant_handle, informant_email, "
+            " status) VALUES (?, ?, ?, ?, 'invited')",
+            [iid, project_id, informant_handle, informant_email],
+        )
+        return iid
 
+    def turn(self, *, interview_id: str, role: str, text: str) -> int:
+        """Append one turn to the interview transcript. Returns the new turn
+        count. Promotes ``invited`` → ``in_progress`` on the first turn."""
+        if role not in ("interviewer", "informant"):
+            raise ValueError(f"unknown turn role: {role!r}")
+        row = self._con.execute(
+            "SELECT transcript_turns, status FROM interviews "
+            "WHERE interview_id = ?", [interview_id],
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"interview {interview_id!r} not found")
+        existing_json, status = row
+        turns = []
+        if existing_json:
+            try:
+                turns = json.loads(existing_json)
+            except (TypeError, ValueError):
+                turns = []
+        turns.append({
+            "role": role,
+            "text": text,
+            "ts": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        })
+        new_status = "in_progress" if status == "invited" else status
+        started_at_sql = "CURRENT_TIMESTAMP" if status == "invited" else "started_at"
+        self._con.execute(
+            f"UPDATE interviews SET transcript_turns = ?, status = ?, "
+            f"started_at = {started_at_sql} WHERE interview_id = ?",
+            [_maybe_json(turns), new_status, interview_id],
+        )
+        return len(turns)
 
-def complete_interview(
-    con: LockedConnection,
-    *,
-    interview_id: str,
-    transcript_document_id: str | None = None,
-) -> None:
-    """Mark interview complete and link to its transcript document."""
-    _assert_write_locked(con)
-    con.execute(
-        "UPDATE interviews SET status = 'completed', "
-        "completed_at = CURRENT_TIMESTAMP, transcript_document_id = ? "
-        "WHERE interview_id = ?",
-        [transcript_document_id, interview_id],
-    )
+    def complete(
+        self, *, interview_id: str, transcript_document_id: str | None = None,
+    ) -> None:
+        """Mark interview complete and link to its transcript document."""
+        self._con.execute(
+            "UPDATE interviews SET status = 'completed', "
+            "completed_at = CURRENT_TIMESTAMP, transcript_document_id = ? "
+            "WHERE interview_id = ?",
+            [transcript_document_id, interview_id],
+        )
