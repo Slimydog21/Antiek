@@ -14,8 +14,8 @@ import { apiFetch } from "../../lib/api";
  */
 
 interface StatsResponse {
-  counts: Record<string, number>;
-  warnings: string[];
+  counts?: Record<string, unknown> | null;
+  warnings?: unknown[] | null;
 }
 
 const TABLE_GROUPS: { title: string; tables: string[] }[] = [
@@ -44,6 +44,27 @@ const TABLE_GROUPS: { title: string; tables: string[] }[] = [
     tables: ["deletion_requests"],
   },
 ];
+
+function tableCountLabel(counts: StatsResponse["counts"], table: string): string {
+  const value = counts?.[table];
+  const count =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : 0;
+  if (!Number.isFinite(count) || count < 0) {
+    return "0";
+  }
+  return Math.floor(count).toLocaleString();
+}
+
+function warningMessages(data: StatsResponse): string[] {
+  if (!Array.isArray(data.warnings)) {
+    return [];
+  }
+  return data.warnings.map((warning) => String(warning));
+}
 
 export default function Stats() {
   // SPR-09 window-adaptation contract: when hosted inside a WorkspaceWindow,
@@ -74,6 +95,8 @@ export default function Stats() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  const warnings = data ? warningMessages(data) : [];
 
   return (
     <div className={`flex flex-col ${inWindow ? "h-full" : "h-screen"}`}>
@@ -112,13 +135,13 @@ export default function Stats() {
             <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
           )}
 
-          {data && data.warnings.length > 0 && (
+          {warnings.length > 0 && (
             <section className="border border-amber-200 bg-sun/10 rounded-md p-4 space-y-1">
               <p className="text-xs font-mono uppercase text-amber-900">
                 Warnings
               </p>
               <ul className="text-xs text-amber-900 list-disc pl-5 space-y-0.5">
-                {data.warnings.map((w, i) => (
+                {warnings.map((w, i) => (
                   <li key={i}>{w}</li>
                 ))}
               </ul>
@@ -142,7 +165,7 @@ export default function Stats() {
                       className="px-3 py-2 text-center"
                     >
                       <p className="text-2xl font-serif text-ink dark:text-bright">
-                        {(data.counts[t] ?? 0).toLocaleString()}
+                        {tableCountLabel(data.counts, t)}
                       </p>
                       <p className="text-[10px] font-mono text-shadow-1 dark:text-moonlight uppercase">
                         {t.replace(/_/g, " ")}
