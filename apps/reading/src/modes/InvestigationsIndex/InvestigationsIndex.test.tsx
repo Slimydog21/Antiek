@@ -1,0 +1,101 @@
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
+
+import { apiFetch } from "../../lib/api";
+import InvestigationsIndex from "./index";
+
+const { navigateMock } = vi.hoisted(() => ({
+  navigateMock: vi.fn(),
+}));
+
+vi.mock("../../lib/api", () => ({
+  apiFetch: vi.fn(),
+}));
+
+vi.mock("react-router-dom", async (orig) => {
+  const actual = await orig<typeof import("react-router-dom")>();
+  return { ...actual, useNavigate: () => navigateMock };
+});
+
+const apiFetchMock = vi.mocked(apiFetch);
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
+
+function renderIndex() {
+  return render(
+    <MemoryRouter>
+      <InvestigationsIndex />
+    </MemoryRouter>,
+  );
+}
+
+describe("InvestigationsIndex", () => {
+  it("sanitizes malformed investigation costs", async () => {
+    apiFetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        count: 4,
+        investigations: [
+          row("inv-valid", "Valid cost", 0.0123),
+          row("inv-nan", "Malformed cost A", Number.NaN),
+          row("inv-inf", "Malformed cost B", Number.POSITIVE_INFINITY),
+          row("inv-neg", "Malformed cost C", -1),
+        ],
+      }),
+    } as Response);
+
+    renderIndex();
+
+    expect(await screen.findByText("Valid cost")).toBeTruthy();
+    expect(screen.getByText("4 shown · $0.01 total cost")).toBeTruthy();
+    expect(screen.getByText("$0.0123")).toBeTruthy();
+    expect(screen.getAllByText("$0.0000").length).toBeGreaterThanOrEqual(3);
+    expect(document.body.textContent).not.toMatch(/NaN|Infinity|\$-/);
+  });
+
+  it("clamps malformed max sub-question input before submitting", async () => {
+    apiFetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ count: 0, investigations: [] }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ investigation_id: "inv-created" }),
+      } as Response);
+
+    renderIndex();
+
+    await screen.findByText("No investigations match this filter.");
+    fireEvent.change(screen.getByPlaceholderText("What's the question? (≥ 3 chars)"), {
+      target: { value: "What should we research next?" },
+    });
+    fireEvent.change(screen.getByLabelText("Max sub-questions (1-20)"), {
+      target: { value: "" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Start investigation" }));
+
+    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith("/inv/inv-created"));
+    const [, init] = apiFetchMock.mock.calls[1];
+    expect(JSON.parse(init?.body as string)).toMatchObject({
+      max_sub_questions: 1,
+    });
+  });
+});
+
+function row(id: string, question: string, cost: number) {
+  return {
+    investigation_id: id,
+    question,
+    status: "completed",
+    started_at: null,
+    completed_at: null,
+    cost_usd_total: cost,
+    parent_investigation_id: null,
+  };
+}
