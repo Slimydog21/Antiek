@@ -177,10 +177,15 @@ def _parse_keyword_mapping(
         )
 
     matched_node_id = _opt_str(obj.get("matched_node_id"), "matched_node_id", ctx)
-    if canonical_node_ids is not None:
-        matched_node_id = validate_ref(matched_node_id, canonical_node_ids)
-    if matched_node_id is not None and canonical_matched_node_ids is not None:
-        validated = validate_ref(matched_node_id, canonical_matched_node_ids)
+    if matched_node_id is not None:
+        effective_canonical_ids = (
+            canonical_matched_node_ids
+            if canonical_matched_node_ids is not None
+            else canonical_node_ids
+        )
+        if effective_canonical_ids is None:
+            effective_canonical_ids = ()
+        validated = validate_ref(matched_node_id, effective_canonical_ids)
         if validated is None:
             raise ConnectorValidationError(
                 f"{ctx}.matched_node_id: reference {matched_node_id!r} "
@@ -205,43 +210,46 @@ def _parse_path(
     canonical_edge_ids: Iterable[str] | None = None,
     *,
     canonical_path_node_ids: Iterable[str] | None = None,
-    strict_edge_ids: bool = False,
 ) -> ParsedGraphPath:
     ctx = f"paths[{idx}]"
     if not isinstance(obj, dict):
         raise ConnectorValidationError(f"{ctx}: expected an object")
     raw_nodes = _opt_str_list(obj.get("path_nodes"), "path_nodes", ctx)
-    if canonical_node_ids is None:
-        nodes = tuple(raw_nodes)
-    else:
-        nodes = validate_refs(raw_nodes, canonical_node_ids).valid
-        if raw_nodes and not nodes:
-            raise ConnectorValidationError(
-                f"{ctx}: path_nodes resolved to empty after canonical validation"
-            )
+    effective_node_ids = (
+        canonical_path_node_ids
+        if canonical_path_node_ids is not None
+        else canonical_node_ids
+    )
+    if effective_node_ids is None:
+        effective_node_ids = ()
+    try:
+        nodes = validate_refs(
+            raw_nodes,
+            effective_node_ids,
+            on_invalid="raise",
+        ).valid
+    except InvalidReference as exc:
+        raise ConnectorValidationError(f"{ctx}.path_nodes: {exc}") from exc
+    if raw_nodes and not nodes:
+        raise ConnectorValidationError(
+            f"{ctx}: path_nodes resolved to empty after canonical validation"
+        )
     relations = tuple(_opt_str_list(obj.get("path_relations"), "path_relations", ctx))
     labels = tuple(_opt_str_list(obj.get("node_labels"), "node_labels", ctx))
     raw_edge_ids = _opt_str_list(obj.get("edge_ids"), "edge_ids", ctx)
-    if canonical_edge_ids is None:
-        edge_ids = tuple(raw_edge_ids)
-    else:
-        try:
-            edge_ids = validate_refs(
-                raw_edge_ids,
-                canonical_edge_ids,
-                on_invalid="raise" if strict_edge_ids else "drop",
-            ).valid
-        except InvalidReference as exc:
-            raise ConnectorValidationError(f"{ctx}.edge_ids: {exc}") from exc
-    if canonical_path_node_ids is not None:
-        try:
-            nodes = validate_refs(
-                raw_nodes,
-                canonical_path_node_ids,
-                on_invalid="raise",
-            ).valid
-        except InvalidReference as exc:
-            raise ConnectorValidationError(f"{ctx}.path_nodes: {exc}") from exc
+    effective_edge_ids = canonical_edge_ids if canonical_edge_ids is not None else ()
+    try:
+        edge_ids = validate_refs(
+            raw_edge_ids,
+            effective_edge_ids,
+            on_invalid="raise",
+        ).valid
+    except InvalidReference as exc:
+        raise ConnectorValidationError(f"{ctx}.edge_ids: {exc}") from exc
+    if raw_edge_ids and not edge_ids:
+        raise ConnectorValidationError(
+            f"{ctx}: edge_ids resolved to empty after canonical validation"
+        )
     depth_raw = obj.get("depth")
     if not isinstance(depth_raw, int) or isinstance(depth_raw, bool) or depth_raw < 0:
         raise ConnectorValidationError(
@@ -292,7 +300,7 @@ def parse_connector_response(
     canonical_node_ids: Iterable[str] | None = None,
     canonical_matched_node_ids: Iterable[str] | None = None,
     canonical_path_node_ids: Iterable[str] | None = None,
-    canonical_edge_ids: Iterable[str] | None = None,
+    canonical_edge_ids: Iterable[str] = (),
 ) -> ConnectorResult:
     """Parse + validate a Connector role's raw response."""
     obj = _extract_json_object(text)
@@ -336,10 +344,6 @@ def parse_connector_response(
             canonical_node_ids,
             canonical_edge_ids,
             canonical_path_node_ids=canonical_path_node_ids,
-            strict_edge_ids=(
-                canonical_path_node_ids is not None
-                and canonical_node_ids is None
-            ),
         )
         for i, p in enumerate(paths_raw)
     )

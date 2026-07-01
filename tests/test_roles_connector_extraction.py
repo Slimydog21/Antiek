@@ -153,8 +153,22 @@ def _good_response() -> dict:
     }
 
 
+_CANONICAL_MATCHED_NODE_IDS = ("n-tsmc",)
+_CANONICAL_PATH_NODE_IDS = ("n-tsmc", "n-asml")
+_CANONICAL_EDGE_IDS = ("e-1",)
+
+
+def _parse_good(payload: dict):
+    return parse_connector_response(
+        json.dumps(payload),
+        canonical_matched_node_ids=_CANONICAL_MATCHED_NODE_IDS,
+        canonical_path_node_ids=_CANONICAL_PATH_NODE_IDS,
+        canonical_edge_ids=_CANONICAL_EDGE_IDS,
+    )
+
+
 def test_parser_happy_path():
-    out = parse_connector_response(json.dumps(_good_response()))
+    out = _parse_good(_good_response())
     assert out.selected_algorithm == "top_n_shortest_paths"
     assert len(out.keyword_mappings) == 1
     assert len(out.paths) == 1
@@ -171,7 +185,7 @@ def test_parser_bad_algorithm_rejected():
     payload = _good_response()
     payload["selected_algorithm"] = "made_up_algorithm"
     with pytest.raises(ConnectorValidationError, match="selected_algorithm"):
-        parse_connector_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_parser_low_confidence_discipline():
@@ -187,7 +201,7 @@ def test_parser_low_confidence_accepted_when_flagged():
     payload = _good_response()
     payload["keyword_mappings"][0]["similarity"] = 0.5
     payload["keyword_mappings"][0]["low_confidence"] = True
-    out = parse_connector_response(json.dumps(payload))
+    out = _parse_good(payload)
     assert out.keyword_mappings[0].low_confidence is True
 
 
@@ -195,27 +209,29 @@ def test_parser_source_path_index_out_of_range_rejected():
     payload = _good_response()
     payload["natural_language_relationships"][0]["source_path_index"] = 5
     with pytest.raises(ConnectorValidationError, match="out of range"):
-        parse_connector_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_parser_rejects_fabricated_matched_node_id_with_canonical_set():
     payload = _good_response()
     payload["keyword_mappings"][0]["matched_node_id"] = "n-fake"
-    out = parse_connector_response(
-        json.dumps(payload),
-        canonical_node_ids={"n-tsmc", "n-asml"},
-    )
-    assert out.keyword_mappings[0].matched_node_id is None
+    with pytest.raises(ConnectorValidationError, match="canonical set"):
+        parse_connector_response(
+            json.dumps(payload),
+            canonical_node_ids={"n-tsmc", "n-asml"},
+            canonical_edge_ids={"e-1"},
+        )
 
 
 def test_parser_rejects_fabricated_path_nodes_with_canonical_set():
     payload = _good_response()
     payload["paths"][0]["path_nodes"] = ["n-tsmc", "n-fake", "n-tsmc"]
-    out = parse_connector_response(
-        json.dumps(payload),
-        canonical_node_ids={"n-tsmc"},
-    )
-    assert out.paths[0].path_nodes == ("n-tsmc",)
+    with pytest.raises(ConnectorValidationError, match="canonical set"):
+        parse_connector_response(
+            json.dumps(payload),
+            canonical_node_ids={"n-tsmc"},
+            canonical_edge_ids={"e-1"},
+        )
 
     payload["paths"][0]["path_nodes"] = ["n-fake"]
     with pytest.raises(ConnectorValidationError, match="path_nodes"):
@@ -228,11 +244,13 @@ def test_parser_rejects_fabricated_path_nodes_with_canonical_set():
 def test_parser_filters_fabricated_edge_ids_with_canonical_set():
     payload = _good_response()
     payload["paths"][0]["edge_ids"] = ["e-1", "e-fake"]
-    out = parse_connector_response(
-        json.dumps(payload),
-        canonical_edge_ids={"e-1"},
-    )
-    assert out.paths[0].edge_ids == ("e-1",)
+    with pytest.raises(ConnectorValidationError, match="canonical set"):
+        parse_connector_response(
+            json.dumps(payload),
+            canonical_matched_node_ids=("n-tsmc",),
+            canonical_path_node_ids=("n-tsmc", "n-asml"),
+            canonical_edge_ids={"e-1"},
+        )
 
 
 def test_parser_hallucinated_matched_node_id_rejected_against_canonical_set():
@@ -271,11 +289,16 @@ def test_parser_hallucinated_edge_id_rejected_against_canonical_set():
         )
 
 
+def test_parser_refs_rejected_without_canonical_sets():
+    with pytest.raises(ConnectorValidationError, match="canonical set"):
+        parse_connector_response(json.dumps(_good_response()))
+
+
 def test_parser_negative_source_path_index_rejected():
     payload = _good_response()
     payload["natural_language_relationships"][0]["source_path_index"] = -1
     with pytest.raises(ConnectorValidationError, match="non-negative"):
-        parse_connector_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_parser_similarity_out_of_range_rejected():
@@ -296,27 +319,27 @@ def test_parser_missing_paths_rejected():
     payload = _good_response()
     del payload["paths"]
     with pytest.raises(ConnectorValidationError, match="paths"):
-        parse_connector_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_parser_path_with_negative_depth_rejected():
     payload = _good_response()
     payload["paths"][0]["depth"] = -1
     with pytest.raises(ConnectorValidationError, match="non-negative"):
-        parse_connector_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_parser_path_with_out_of_range_avg_confidence_rejected():
     payload = _good_response()
     payload["paths"][0]["avg_confidence"] = 1.5
     with pytest.raises(ConnectorValidationError, match="outside"):
-        parse_connector_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_parser_optional_algorithm_rationale_absent_ok():
     payload = _good_response()
     del payload["algorithm_rationale"]
-    out = parse_connector_response(json.dumps(payload))
+    out = _parse_good(payload)
     assert out.algorithm_rationale is None
 
 
@@ -327,7 +350,10 @@ def test_parser_empty_paths_with_empty_nl_relationships_ok():
     payload = _good_response()
     payload["paths"] = []
     payload["natural_language_relationships"] = []
-    out = parse_connector_response(json.dumps(payload))
+    out = parse_connector_response(
+        json.dumps(payload),
+        canonical_matched_node_ids=_CANONICAL_MATCHED_NODE_IDS,
+    )
     assert out.paths == ()
     assert out.natural_language_relationships == ()
 

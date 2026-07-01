@@ -181,6 +181,7 @@ def _good_response(
     source_node_id: str = "n-tsmc",
     target_node_id: str = "n-asml",
     edge_id: str = "e-1",
+    include_edge_ids: bool = True,
 ) -> dict:
     paths_list = [{
         "path_nodes": [source_node_id, target_node_id],
@@ -188,7 +189,7 @@ def _good_response(
         "path_relations": ["sources_from"],
         "depth": 1,
         "avg_confidence": 0.95,
-        "edge_ids": [edge_id],
+        "edge_ids": [edge_id] if include_edge_ids else [],
     }] if with_paths else []
     nl_list = [{
         "text": "TSMC sources EUV lithography systems from ASML.",
@@ -256,6 +257,7 @@ async def test_connector_happy_path(monkeypatch, app_and_bus, async_client, db_p
         source_node_id=src,
         target_node_id=tgt,
         edge_id=eid,
+        include_edge_ids=False,
     ))))
     _patch_dispatch_config(monkeypatch, _connector_config("stub-connector"))
 
