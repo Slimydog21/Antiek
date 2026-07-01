@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from tools.prompt_autoresearch.readiness import (
@@ -32,7 +33,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    report = audit_wedge1_readiness(args.repo_root)
+    repo_root = args.repo_root
+    if not repo_root.is_dir():
+        print(
+            f"error: --repo-root must be an existing directory: {repo_root}",
+            file=sys.stderr,
+        )
+        return 2
+
+    report = audit_wedge1_readiness(repo_root)
     if args.json:
         print(json.dumps({
             "all_satisfied": report.all_satisfied,
