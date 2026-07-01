@@ -193,6 +193,8 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
         failures.extend(reading_work_evidence_failures)
         inert_provider_evidence_failures = _inert_provider_evidence_failures(prefix, steps)
         failures.extend(inert_provider_evidence_failures)
+        provider_status_failures = _provider_status_failures(prefix, record)
+        failures.extend(provider_status_failures)
         live_provider_evidence_failures = _live_provider_evidence_failures(prefix, record, steps)
         failures.extend(live_provider_evidence_failures)
         citation_evidence_failures = _citation_evidence_failures(prefix, record, steps)
@@ -226,6 +228,7 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
             and not return_context_evidence_failures
             and not reading_work_evidence_failures
             and not inert_provider_evidence_failures
+            and not provider_status_failures
             and not live_provider_evidence_failures
             and not citation_evidence_failures
             and not issue_failures
@@ -242,9 +245,6 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
                 prefix
                 + "live_provider_ai=true requires provider-backed steps 3 and 4 to pass"
             )
-        if record.get("live_provider_ai") is True and _provider_status(record) != "ready":
-            failures.append(prefix + "live_provider_ai=true requires provider_status=ready")
-
         citation_traced = _session_citation_traced(record, steps)
         if session_is_valid and citation_traced:
             citation_trace_sessions.add(session_id)
@@ -425,6 +425,12 @@ def _has_non_empty_string_list(value: Any) -> bool:
 
 def _provider_status(record: dict[str, Any]) -> str:
     return str(record.get("provider_status") or "").strip().lower()
+
+
+def _provider_status_failures(prefix: str, record: dict[str, Any]) -> list[str]:
+    if record.get("live_provider_ai") is True and _provider_status(record) != "ready":
+        return [prefix + "live_provider_ai=true requires provider_status=ready"]
+    return []
 
 
 def _entry_door_token(value: Any) -> str:
