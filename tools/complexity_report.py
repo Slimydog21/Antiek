@@ -201,10 +201,12 @@ class ModuleMetrics:
     public_symbols: int
     param_count: int
     interface_surface: float
+    flat_interface_surface: int
     statements: int
     branch_points: int
     depth: int
     ratio: float
+    flat_ratio: float
     churn: int
     rank_score: float
     fenced: bool
@@ -438,6 +440,7 @@ def analyze_source(path: Path, source: str) -> dict[str, Any]:
             "public_symbols": 0,
             "param_count": 0,
             "interface_surface": 0.0,
+            "flat_interface_surface": 0,
             "statements": 0,
             "branch_points": 0,
             "depth": 1,
@@ -447,6 +450,11 @@ def analyze_source(path: Path, source: str) -> dict[str, Any]:
     statements, branches = implementation_depth(tree)
     depth = max(statements + branches, 1)  # divide-by-zero defined out of existence
     surface = W_TOP_SYMBOL * top_symbols + W_METHOD * method_symbols + W_PARAM * params
+    # Flat (unweighted) surface = the spec's default. Carried alongside the
+    # cohesion-discounted score so a reader can see exactly how much the discount
+    # moved each module and confirm the weights are not cherry-picked (rigor #1;
+    # independent-verifier request).
+    flat_surface = top_symbols + method_symbols + params
     return {
         "kind": _classify_kind(path, tree),
         "top_symbols": top_symbols,
@@ -454,6 +462,7 @@ def analyze_source(path: Path, source: str) -> dict[str, Any]:
         "public_symbols": top_symbols + method_symbols,
         "param_count": params,
         "interface_surface": round(surface, 3),
+        "flat_interface_surface": flat_surface,
         "statements": statements,
         "branch_points": branches,
         "depth": depth,
@@ -604,7 +613,9 @@ def build_report(
         a = analyze_source(py, source)
         depth = int(a["depth"])  # already floored at 1
         surface = float(a["interface_surface"])
+        flat_surface = int(a["flat_interface_surface"])
         ratio = surface / depth
+        flat_ratio = flat_surface / depth
         churn = churn_counts.get(rel, 0)
         rank_score = ratio * math.log1p(churn)
         rows.append(
@@ -616,10 +627,12 @@ def build_report(
                 public_symbols=int(a["public_symbols"]),
                 param_count=int(a["param_count"]),
                 interface_surface=surface,
+                flat_interface_surface=flat_surface,
                 statements=int(a["statements"]),
                 branch_points=int(a["branch_points"]),
                 depth=depth,
                 ratio=round(ratio, 6),
+                flat_ratio=round(flat_ratio, 6),
                 churn=churn,
                 rank_score=round(rank_score, 6),
                 fenced=_is_fenced(rel, fence_prefixes),
@@ -715,12 +728,12 @@ def render_markdown(report: dict[str, Any], top: int) -> str:
     lines.append("")
     lines.append(f"## Top {top} genuine offenders (kind=normal — the shallow-and-hot head)")
     lines.append("")
-    lines.append("| # | module | surface | depth | branch | ratio | churn | rank | fenced |")
-    lines.append("|--:|--------|--------:|------:|-------:|------:|------:|-----:|:------:|")
+    lines.append("| # | module | surface | depth | ratio | flat_ratio | churn | rank | fenced |")
+    lines.append("|--:|--------|--------:|------:|------:|-----------:|------:|-----:|:------:|")
     for i, m in enumerate(normal[:top], 1):
         lines.append(
             f"| {i} | `{m['module']}` | {m['interface_surface']:g} | {m['depth']} | "
-            f"{m['branch_points']} | {m['ratio']:.3f} | {m['churn']} | {m['rank_score']:.3f} | "
+            f"{m['ratio']:.3f} | {m['flat_ratio']:.3f} | {m['churn']} | {m['rank_score']:.3f} | "
             f"{'🔒' if m['fenced'] else ''} |"
         )
     lines.append("")

@@ -1,6 +1,6 @@
 # Substrate complexity ranking — Ousterhout deep/shallow lens
 
-- Generated: `2026-07-01T13:54:01.395196+00:00`  ·  tool commit `1c4d5df9aa2d`
+- Generated: `2026-07-01T14:00:00.174194+00:00`  ·  tool commit `3ea76fc7264d`
 - Modules scanned: **335** under `substrate/` (275 normal · 60 re-export/package shells)
 - Churn window: N=500 (scanned 500)  ·  single `git log --name-only` pass, one commit = one increment per path (no --follow; renames start fresh)
 - Fence dated `2026-07-01`; index files globbed: 1
@@ -9,38 +9,38 @@
 
 ## Top 30 genuine offenders (kind=normal — the shallow-and-hot head)
 
-| # | module | surface | depth | branch | ratio | churn | rank | fenced |
-|--:|--------|--------:|------:|-------:|------:|------:|-----:|:------:|
-| 1 | `substrate/graph/ops.py` | 66 | 198 | 44 | 0.333 | 3 | 0.462 |  |
-| 2 | `substrate/schemas/events.py` | 167 | 1170 | 7 | 0.143 | 17 | 0.413 |  |
-| 3 | `substrate/dispatch/base.py` | 10.5 | 29 | 0 | 0.362 | 2 | 0.398 | 🔒 |
-| 4 | `substrate/dispatch/research_tier.py` | 7 | 21 | 2 | 0.333 | 2 | 0.366 | 🔒 |
-| 5 | `substrate/speak/ids.py` | 9.5 | 18 | 1 | 0.528 | 1 | 0.366 | 🔒 |
-| 6 | `substrate/graph/search.py` | 16.5 | 107 | 19 | 0.154 | 8 | 0.339 |  |
-| 7 | `substrate/books/ingest.py` | 6.5 | 32 | 4 | 0.203 | 4 | 0.327 |  |
-| 8 | `substrate/marketplace_metrics/from_conn.py` | 7 | 15 | 0 | 0.467 | 1 | 0.323 |  |
-| 9 | `substrate/contracts/reading_surface.py` | 5 | 11 | 0 | 0.455 | 1 | 0.315 |  |
-| 10 | `substrate/books/voice_note.py` | 14.5 | 51 | 7 | 0.284 | 2 | 0.312 |  |
-| 11 | `substrate/graph/retrieval_gate.py` | 4 | 25 | 4 | 0.160 | 6 | 0.311 |  |
-| 12 | `substrate/ad_inventory/attribution.py` | 16 | 85 | 13 | 0.188 | 4 | 0.303 |  |
-| 13 | `substrate/cross_graph/event_emit.py` | 29 | 68 | 10 | 0.426 | 1 | 0.296 | 🔒 |
-| 14 | `substrate/multi_user/partition.py` | 11.5 | 27 | 2 | 0.426 | 1 | 0.295 | 🔒 |
-| 15 | `substrate/seams/servability_gate.py` | 5.5 | 13 | 2 | 0.423 | 1 | 0.293 |  |
-| 16 | `substrate/books/passage_research.py` | 15 | 75 | 17 | 0.200 | 3 | 0.277 |  |
-| 17 | `substrate/rights/arxiv_tiers.py` | 7 | 28 | 4 | 0.250 | 2 | 0.275 |  |
-| 18 | `substrate/billing/cap_enforcement.py` | 7 | 19 | 2 | 0.368 | 1 | 0.255 | 🔒 |
-| 19 | `substrate/rights/register.py` | 7.5 | 53 | 12 | 0.142 | 5 | 0.254 |  |
-| 20 | `substrate/ad_inventory/reader_slots.py` | 9.5 | 42 | 5 | 0.226 | 2 | 0.248 |  |
-| 21 | `substrate/ip_holders/opt_in_accrual.py` | 2.5 | 7 | 0 | 0.357 | 1 | 0.248 |  |
-| 22 | `substrate/graph/retrieval_substrate.py` | 21.5 | 209 | 39 | 0.103 | 10 | 0.247 |  |
-| 23 | `substrate/write/folders.py` | 17.5 | 78 | 11 | 0.224 | 2 | 0.246 | 🔒 |
-| 24 | `substrate/results.py` | 20.5 | 58 | 0 | 0.353 | 1 | 0.245 |  |
-| 25 | `substrate/ad_inventory/targeting.py` | 5.5 | 25 | 6 | 0.220 | 2 | 0.242 |  |
-| 26 | `substrate/books/servability.py` | 4.5 | 30 | 4 | 0.150 | 4 | 0.241 |  |
-| 27 | `substrate/speak/project.py` | 16.5 | 48 | 4 | 0.344 | 1 | 0.238 | 🔒 |
-| 28 | `substrate/ad_inventory/event_emit.py` | 6.5 | 19 | 1 | 0.342 | 1 | 0.237 |  |
-| 29 | `substrate/speak/contracts.py` | 7.5 | 22 | 0 | 0.341 | 1 | 0.236 | 🔒 |
-| 30 | `substrate/write/outline_block.py` | 32 | 149 | 30 | 0.215 | 2 | 0.236 | 🔒 |
+| # | module | surface | depth | ratio | flat_ratio | churn | rank | fenced |
+|--:|--------|--------:|------:|------:|-----------:|------:|-----:|:------:|
+| 1 | `substrate/graph/ops.py` | 66 | 198 | 0.333 | 0.591 | 3 | 0.462 |  |
+| 2 | `substrate/schemas/events.py` | 167 | 1170 | 0.143 | 0.143 | 17 | 0.413 |  |
+| 3 | `substrate/dispatch/base.py` | 10.5 | 29 | 0.362 | 0.586 | 2 | 0.398 | 🔒 |
+| 4 | `substrate/dispatch/research_tier.py` | 7 | 21 | 0.333 | 0.381 | 2 | 0.366 | 🔒 |
+| 5 | `substrate/speak/ids.py` | 9.5 | 18 | 0.528 | 0.667 | 1 | 0.366 | 🔒 |
+| 6 | `substrate/graph/search.py` | 16.5 | 107 | 0.154 | 0.252 | 8 | 0.339 |  |
+| 7 | `substrate/books/ingest.py` | 6.5 | 32 | 0.203 | 0.375 | 4 | 0.327 |  |
+| 8 | `substrate/marketplace_metrics/from_conn.py` | 7 | 15 | 0.467 | 0.800 | 1 | 0.323 |  |
+| 9 | `substrate/contracts/reading_surface.py` | 5 | 11 | 0.455 | 0.818 | 1 | 0.315 |  |
+| 10 | `substrate/books/voice_note.py` | 14.5 | 51 | 0.284 | 0.451 | 2 | 0.312 |  |
+| 11 | `substrate/graph/retrieval_gate.py` | 4 | 25 | 0.160 | 0.240 | 6 | 0.311 |  |
+| 12 | `substrate/ad_inventory/attribution.py` | 16 | 85 | 0.188 | 0.271 | 4 | 0.303 |  |
+| 13 | `substrate/cross_graph/event_emit.py` | 29 | 68 | 0.426 | 0.647 | 1 | 0.296 | 🔒 |
+| 14 | `substrate/multi_user/partition.py` | 11.5 | 27 | 0.426 | 0.630 | 1 | 0.295 | 🔒 |
+| 15 | `substrate/seams/servability_gate.py` | 5.5 | 13 | 0.423 | 0.615 | 1 | 0.293 |  |
+| 16 | `substrate/books/passage_research.py` | 15 | 75 | 0.200 | 0.307 | 3 | 0.277 |  |
+| 17 | `substrate/rights/arxiv_tiers.py` | 7 | 28 | 0.250 | 0.321 | 2 | 0.275 |  |
+| 18 | `substrate/billing/cap_enforcement.py` | 7 | 19 | 0.368 | 0.579 | 1 | 0.255 | 🔒 |
+| 19 | `substrate/rights/register.py` | 7.5 | 53 | 0.142 | 0.226 | 5 | 0.254 |  |
+| 20 | `substrate/ad_inventory/reader_slots.py` | 9.5 | 42 | 0.226 | 0.333 | 2 | 0.248 |  |
+| 21 | `substrate/ip_holders/opt_in_accrual.py` | 2.5 | 7 | 0.357 | 0.571 | 1 | 0.248 |  |
+| 22 | `substrate/graph/retrieval_substrate.py` | 21.5 | 209 | 0.103 | 0.187 | 10 | 0.247 |  |
+| 23 | `substrate/write/folders.py` | 17.5 | 78 | 0.224 | 0.346 | 2 | 0.246 | 🔒 |
+| 24 | `substrate/results.py` | 20.5 | 58 | 0.353 | 0.603 | 1 | 0.245 |  |
+| 25 | `substrate/ad_inventory/targeting.py` | 5.5 | 25 | 0.220 | 0.280 | 2 | 0.242 |  |
+| 26 | `substrate/books/servability.py` | 4.5 | 30 | 0.150 | 0.200 | 4 | 0.241 |  |
+| 27 | `substrate/speak/project.py` | 16.5 | 48 | 0.344 | 0.542 | 1 | 0.238 | 🔒 |
+| 28 | `substrate/ad_inventory/event_emit.py` | 6.5 | 19 | 0.342 | 0.526 | 1 | 0.237 |  |
+| 29 | `substrate/speak/contracts.py` | 7.5 | 22 | 0.341 | 0.500 | 1 | 0.236 | 🔒 |
+| 30 | `substrate/write/outline_block.py` | 32 | 149 | 0.215 | 0.369 | 2 | 0.236 | 🔒 |
 
 ## Re-export / package shells (scored separately — known-acceptable shallow pattern)
 
@@ -257,183 +257,183 @@ _Filter: unfenced AND kind=='normal' (reexport/package_init/parse_error excluded
 | 147 | `substrate/ad_inventory/inventory_persistence.py` | 0.208 | 1 | 0.144 | normal |  |
 | 148 | `substrate/ad_inventory/ad_bidding.py` | 0.205 | 1 | 0.142 | normal |  |
 | 149 | `substrate/write/style_profile.py` | 0.129 | 2 | 0.142 | normal | 🔒 |
-| 150 | `substrate/research_bridge/ingest_file.py` | 0.128 | 2 | 0.141 | normal | 🔒 |
-| 151 | `substrate/legal_gate/gate.py` | 0.203 | 1 | 0.141 | normal |  |
-| 152 | `substrate/ingest_checkpoint.py` | 0.127 | 2 | 0.140 | normal |  |
-| 153 | `substrate/quality_gate/gate.py` | 0.123 | 2 | 0.136 | normal |  |
-| 154 | `substrate/research_artifact/export.py` | 0.194 | 1 | 0.135 | normal |  |
-| 155 | `substrate/loop_3/checklist_store.py` | 0.193 | 1 | 0.134 | normal | 🔒 |
-| 156 | `substrate/coordination/gate_ledger.py` | 0.121 | 2 | 0.133 | normal | 🔒 |
-| 157 | `substrate/ad_inventory/advertiser_onboarding.py` | 0.188 | 1 | 0.130 | normal |  |
-| 158 | `substrate/research_artifact/hooks.py` | 0.188 | 1 | 0.130 | normal |  |
-| 159 | `substrate/billing/tax_reports.py` | 0.187 | 1 | 0.129 | normal | 🔒 |
-| 160 | `substrate/speak/drw_gap_source.py` | 0.117 | 2 | 0.129 | normal | 🔒 |
-| 161 | `substrate/eval/groundedness/scorer.py` | 0.117 | 2 | 0.128 | normal |  |
-| 162 | `substrate/ad_inventory/transfer_initiator.py` | 0.184 | 1 | 0.128 | normal |  |
-| 163 | `substrate/speak/independence.py` | 0.184 | 1 | 0.128 | normal | 🔒 |
-| 164 | `substrate/invariants/__init__.py` | 0.116 | 2 | 0.128 | package_init |  |
-| 165 | `substrate/graph/traverse.py` | 0.184 | 1 | 0.128 | normal |  |
-| 166 | `substrate/books/page_anchor.py` | 0.115 | 2 | 0.127 | normal |  |
-| 167 | `substrate/marketplace_metrics/book_escrow.py` | 0.078 | 4 | 0.126 | normal |  |
-| 168 | `substrate/contracts/interviewer.py` | 0.113 | 2 | 0.124 | normal |  |
-| 169 | `substrate/cross_graph/partner_identity.py` | 0.178 | 1 | 0.123 | normal | 🔒 |
-| 170 | `substrate/graph/schema.py` | 0.063 | 6 | 0.123 | normal |  |
-| 171 | `substrate/ducklake/migration.py` | 0.178 | 1 | 0.123 | normal |  |
-| 172 | `substrate/edit/authoring_trajectory.py` | 0.112 | 2 | 0.123 | normal | 🔒 |
-| 173 | `substrate/cross_graph/outbound_transport.py` | 0.176 | 1 | 0.122 | normal | 🔒 |
-| 174 | `substrate/autoresearch/proposal.py` | 0.175 | 1 | 0.122 | normal |  |
-| 175 | `substrate/research_artifact/blocks.py` | 0.174 | 1 | 0.121 | normal |  |
-| 176 | `substrate/dispatch/providers/vision_anthropic.py` | 0.173 | 1 | 0.120 | normal | 🔒 |
-| 177 | `substrate/ad_inventory/attribution_explain.py` | 0.108 | 2 | 0.118 | normal |  |
-| 178 | `substrate/loop_3/sft_runner.py` | 0.170 | 1 | 0.118 | normal | 🔒 |
-| 179 | `substrate/anti_gaming/view_fraud.py` | 0.167 | 1 | 0.116 | normal | 🔒 |
-| 180 | `substrate/cross_graph/federation_config_store.py` | 0.167 | 1 | 0.116 | normal | 🔒 |
-| 181 | `substrate/dispatch/providers/vision_bootstrap.py` | 0.167 | 1 | 0.116 | normal | 🔒 |
-| 182 | `substrate/research_bridge/db_path.py` | 0.167 | 1 | 0.116 | normal | 🔒 |
-| 183 | `substrate/collective_graph/eligibility.py` | 0.083 | 3 | 0.116 | normal | 🔒 |
-| 184 | `substrate/contracts/accrual.py` | 0.071 | 4 | 0.115 | normal |  |
-| 185 | `substrate/cross_graph/inbound.py` | 0.164 | 1 | 0.114 | normal | 🔒 |
-| 186 | `substrate/write/outline.py` | 0.103 | 2 | 0.113 | normal | 🔒 |
-| 187 | `substrate/books/serve.py` | 0.070 | 4 | 0.113 | normal |  |
-| 188 | `substrate/eval/groundedness/provenance.py` | 0.102 | 2 | 0.112 | normal |  |
-| 189 | `substrate/contracts/nodes.py` | 0.081 | 3 | 0.112 | normal |  |
-| 190 | `substrate/graph_per_user/lifecycle.py` | 0.161 | 1 | 0.111 | normal | 🔒 |
-| 191 | `substrate/rights_audit.py` | 0.100 | 2 | 0.110 | normal |  |
-| 192 | `substrate/rev_share/splits.py` | 0.158 | 1 | 0.109 | normal |  |
-| 193 | `substrate/context_pack/note_budget.py` | 0.157 | 1 | 0.109 | normal |  |
-| 194 | `substrate/notebooks/__init__.py` | 0.154 | 1 | 0.106 | package_init |  |
-| 195 | `substrate/research_artifact/import_notes.py` | 0.097 | 2 | 0.106 | normal |  |
-| 196 | `substrate/speak/publish.py` | 0.153 | 1 | 0.106 | normal | 🔒 |
-| 197 | `substrate/anti_gaming/red_team.py` | 0.153 | 1 | 0.106 | normal | 🔒 |
-| 198 | `substrate/billing/aggregator.py` | 0.153 | 1 | 0.106 | normal | 🔒 |
-| 199 | `substrate/rev_share/rollover.py` | 0.151 | 1 | 0.105 | normal |  |
-| 200 | `substrate/ingest_budget.py` | 0.095 | 2 | 0.105 | normal |  |
-| 201 | `substrate/speak/schema.py` | 0.150 | 1 | 0.104 | normal | 🔒 |
-| 202 | `substrate/context_pack/assembler.py` | 0.075 | 3 | 0.104 | normal |  |
-| 203 | `substrate/speak/async_interview.py` | 0.148 | 1 | 0.103 | normal | 🔒 |
-| 204 | `substrate/research_artifact/build_body.py` | 0.147 | 1 | 0.102 | normal |  |
-| 205 | `substrate/research_bridge/versioning.py` | 0.092 | 2 | 0.101 | normal | 🔒 |
-| 206 | `substrate/research_bridge/schema.py` | 0.145 | 1 | 0.101 | normal | 🔒 |
-| 207 | `substrate/anti_gaming/click_fraud.py` | 0.143 | 1 | 0.099 | normal | 🔒 |
-| 208 | `substrate/books/curate.py` | 0.143 | 1 | 0.099 | normal |  |
-| 209 | `substrate/marketplace_metrics/advertiser_retention.py` | 0.143 | 1 | 0.099 | normal |  |
-| 210 | `substrate/ad_inventory/frame_attention_accrual.py` | 0.090 | 2 | 0.099 | normal |  |
-| 211 | `substrate/cross_graph_writer/queue.py` | 0.141 | 1 | 0.098 | normal |  |
-| 212 | `substrate/gap_detection/candidates.py` | 0.140 | 1 | 0.097 | normal |  |
-| 213 | `substrate/speak/publish_gate.py` | 0.140 | 1 | 0.097 | normal | 🔒 |
-| 214 | `substrate/dedup.py` | 0.088 | 2 | 0.096 | normal |  |
-| 215 | `substrate/deletion_worker/worker.py` | 0.138 | 1 | 0.096 | normal |  |
-| 216 | `substrate/anti_gaming/attribution_fraud.py` | 0.136 | 1 | 0.095 | normal | 🔒 |
-| 217 | `substrate/coordination/roadmap.py` | 0.068 | 3 | 0.094 | normal | 🔒 |
-| 218 | `substrate/voice_style/constructions.py` | 0.085 | 2 | 0.094 | normal |  |
-| 219 | `substrate/ai_actions/actions.py` | 0.135 | 1 | 0.094 | normal |  |
-| 220 | `substrate/unit_dedup.py` | 0.085 | 2 | 0.093 | normal |  |
-| 221 | `substrate/anti_gaming/verdict.py` | 0.134 | 1 | 0.093 | normal | 🔒 |
-| 222 | `substrate/contracts/context_pack.py` | 0.133 | 1 | 0.092 | normal |  |
-| 223 | `substrate/multi_user/skill_accumulator.py` | 0.133 | 1 | 0.092 | normal | 🔒 |
-| 224 | `substrate/dispatch/providers/anthropic.py` | 0.083 | 2 | 0.092 | normal | 🔒 |
-| 225 | `substrate/speak/interviewer_context.py` | 0.083 | 2 | 0.092 | normal | 🔒 |
-| 226 | `substrate/write/brainstorm_blocks.py` | 0.083 | 2 | 0.092 | normal | 🔒 |
-| 227 | `substrate/dp_shuffler/production.py` | 0.132 | 1 | 0.091 | normal |  |
-| 228 | `substrate/books/serve_guard.py` | 0.057 | 4 | 0.091 | normal |  |
-| 229 | `substrate/edit/harvest_authoring.py` | 0.081 | 2 | 0.089 | normal | 🔒 |
-| 230 | `substrate/books/takedown.py` | 0.125 | 1 | 0.087 | normal |  |
-| 231 | `substrate/ad_inventory/auction_model.py` | 0.124 | 1 | 0.086 | normal |  |
-| 232 | `substrate/seams/thread.py` | 0.077 | 2 | 0.085 | normal |  |
-| 233 | `substrate/event_log/events.py` | 0.119 | 1 | 0.083 | normal |  |
-| 234 | `substrate/loop_3/verifiers_env.py` | 0.118 | 1 | 0.082 | normal | 🔒 |
-| 235 | `substrate/dp_shuffler/preference_learning.py` | 0.117 | 1 | 0.081 | normal |  |
-| 236 | `substrate/loop_3/trajectory_harvest.py` | 0.117 | 1 | 0.081 | normal | 🔒 |
-| 237 | `substrate/research_artifact/schema.py` | 0.117 | 1 | 0.081 | normal |  |
-| 238 | `substrate/loop_3/unlock_gate.py` | 0.116 | 1 | 0.081 | normal | 🔒 |
-| 239 | `substrate/corpus_audit.py` | 0.038 | 7 | 0.079 | normal |  |
-| 240 | `substrate/coordination/consent_view.py` | 0.072 | 2 | 0.079 | normal | 🔒 |
-| 241 | `substrate/research_artifact/compose.py` | 0.114 | 1 | 0.079 | normal |  |
-| 242 | `substrate/public_notes_ingest/pipeline.py` | 0.113 | 1 | 0.078 | normal |  |
-| 243 | `substrate/rev_share/mixed_attribution.py` | 0.113 | 1 | 0.078 | normal |  |
-| 244 | `substrate/ad_targeting/matcher.py` | 0.112 | 1 | 0.078 | normal |  |
-| 245 | `substrate/contracts/note_taker.py` | 0.111 | 1 | 0.077 | normal |  |
-| 246 | `substrate/ad_inventory/auction_features.py` | 0.109 | 1 | 0.076 | normal |  |
-| 247 | `substrate/write/provenance.py` | 0.069 | 2 | 0.076 | normal | 🔒 |
-| 248 | `substrate/speak/payout_verifier.py` | 0.109 | 1 | 0.075 | normal | 🔒 |
-| 249 | `substrate/multi_user/skill_writer.py` | 0.109 | 1 | 0.075 | normal | 🔒 |
-| 250 | `substrate/auth/email_provider.py` | 0.107 | 1 | 0.074 | normal |  |
-| 251 | `substrate/gap_detection/contradiction.py` | 0.106 | 1 | 0.073 | normal |  |
-| 252 | `substrate/research_artifact/context.py` | 0.067 | 2 | 0.073 | normal |  |
-| 253 | `substrate/coordination/cost_view.py` | 0.066 | 2 | 0.072 | normal | 🔒 |
-| 254 | `substrate/legal_gate/predicate.py` | 0.104 | 1 | 0.072 | normal |  |
-| 255 | `substrate/contracts/conformance.py` | 0.100 | 1 | 0.069 | normal |  |
-| 256 | `substrate/attribution/compute.py` | 0.050 | 3 | 0.069 | normal |  |
-| 257 | `substrate/write/block_search.py` | 0.050 | 3 | 0.069 | normal | 🔒 |
-| 258 | `substrate/marketplace_metrics/dashboard.py` | 0.099 | 1 | 0.068 | normal |  |
-| 259 | `substrate/constants.py` | 0.038 | 5 | 0.067 | normal |  |
-| 260 | `substrate/research_bridge/detect_external.py` | 0.096 | 1 | 0.067 | normal | 🔒 |
-| 261 | `substrate/research_bridge/eval/scoring.py` | 0.095 | 1 | 0.066 | normal | 🔒 |
-| 262 | `substrate/autoresearch/wedge3_sweep.py` | 0.094 | 1 | 0.065 | normal |  |
-| 263 | `substrate/dispatch/providers/vision_openai.py` | 0.093 | 1 | 0.065 | normal | 🔒 |
-| 264 | `substrate/research_bridge/llm_dispatch.py` | 0.093 | 1 | 0.064 | normal | 🔒 |
-| 265 | `substrate/graph/rlm_tools.py` | 0.057 | 2 | 0.063 | normal |  |
-| 266 | `substrate/attribution/algorithms.py` | 0.090 | 1 | 0.062 | normal |  |
-| 267 | `substrate/context_pack/note_retrieval.py` | 0.089 | 1 | 0.062 | normal |  |
-| 268 | `substrate/context_pack/style_guide.py` | 0.056 | 2 | 0.062 | normal |  |
-| 269 | `substrate/write/trace.py` | 0.056 | 2 | 0.061 | normal | 🔒 |
-| 270 | `substrate/books/personal_space.py` | 0.055 | 2 | 0.060 | normal |  |
-| 271 | `substrate/public_graph/__init__.py` | 0.087 | 1 | 0.060 | package_init | 🔒 |
-| 272 | `substrate/dispatch/providers/openai_compat.py` | 0.086 | 1 | 0.060 | normal | 🔒 |
-| 273 | `substrate/contracts/servable.py` | 0.039 | 3 | 0.055 | normal |  |
-| 274 | `substrate/multi_user/crdt_scaffold/access_control.py` | 0.077 | 1 | 0.053 | normal | 🔒 |
-| 275 | `substrate/trust_center/default_registry.py` | 0.077 | 1 | 0.053 | normal |  |
-| 276 | `substrate/research_bridge/eval/labels.py` | 0.076 | 1 | 0.053 | normal | 🔒 |
-| 277 | `substrate/eval/groundedness/harness.py` | 0.046 | 2 | 0.051 | normal |  |
-| 278 | `substrate/payouts/ledger.py` | 0.072 | 1 | 0.050 | normal |  |
-| 279 | `substrate/speak/corroboration.py` | 0.071 | 1 | 0.049 | normal | 🔒 |
-| 280 | `substrate/marketplace_metrics/creator_distribution.py` | 0.070 | 1 | 0.049 | normal |  |
-| 281 | `substrate/dispatch/multi_cloud.py` | 0.069 | 1 | 0.048 | normal | 🔒 |
-| 282 | `substrate/write/migrate_outline_block.py` | 0.067 | 1 | 0.047 | normal | 🔒 |
-| 283 | `substrate/voice_style/ab_runner.py` | 0.066 | 1 | 0.046 | normal |  |
-| 284 | `substrate/research_bridge/extractor.py` | 0.066 | 1 | 0.046 | normal | 🔒 |
-| 285 | `substrate/research_bridge/ingest.py` | 0.064 | 1 | 0.045 | normal | 🔒 |
-| 286 | `substrate/contracts/outline_block.py` | 0.040 | 2 | 0.044 | normal |  |
-| 287 | `substrate/ai_actions/handlers.py` | 0.061 | 1 | 0.042 | normal |  |
-| 288 | `substrate/research_bridge/gap.py` | 0.060 | 1 | 0.042 | normal | 🔒 |
-| 289 | `substrate/contracts/dependency_map.py` | 0.056 | 1 | 0.039 | normal |  |
-| 290 | `substrate/dispatch/providers/bootstrap.py` | 0.034 | 2 | 0.037 | normal | 🔒 |
-| 291 | `substrate/research_bridge/extractors.py` | 0.033 | 2 | 0.036 | normal | 🔒 |
-| 292 | `substrate/graph/backfill_insight_question.py` | 0.030 | 2 | 0.032 | normal |  |
-| 293 | `substrate/notebooks/tiptap_codec.py` | 0.046 | 1 | 0.032 | normal |  |
-| 294 | `substrate/research_artifact/__main__.py` | 0.042 | 1 | 0.029 | normal |  |
-| 295 | `substrate/research_artifact/render.py` | 0.041 | 1 | 0.028 | normal |  |
-| 296 | `substrate/write/clustering.py` | 0.024 | 2 | 0.027 | normal | 🔒 |
-| 297 | `substrate/synthesis_rubric/scorer.py` | 0.031 | 1 | 0.022 | normal |  |
-| 298 | `substrate/research_bridge/source_detection.py` | 0.027 | 1 | 0.018 | normal | 🔒 |
-| 299 | `substrate/cli/__main__.py` | 0.026 | 1 | 0.018 | normal |  |
-| 300 | `substrate/cli/compact.py` | 0.023 | 1 | 0.016 | normal |  |
-| 301 | `substrate/cli/hooks.py` | 0.020 | 1 | 0.014 | normal |  |
-| 302 | `substrate/legal_gate/audit.py` | 0.010 | 1 | 0.007 | normal |  |
-| 303 | `substrate/ad_inventory/__main__.py` | 0.007 | 1 | 0.005 | normal |  |
-| 304 | `substrate/cross_graph/__main__.py` | 0.007 | 1 | 0.005 | normal | 🔒 |
-| 305 | `substrate/cross_graph/__init__.py` | 8.000 | 0 | 0.000 | package_init | 🔒 |
-| 306 | `substrate/auth/__init__.py` | 5.333 | 0 | 0.000 | package_init |  |
-| 307 | `substrate/cross_graph_writer/__init__.py` | 4.000 | 0 | 0.000 | package_init |  |
-| 308 | `substrate/multi_user/__init__.py` | 4.000 | 0 | 0.000 | package_init | 🔒 |
-| 309 | `substrate/ad_targeting/__init__.py` | 3.000 | 0 | 0.000 | package_init |  |
-| 310 | `substrate/attribution/__init__.py` | 3.000 | 0 | 0.000 | package_init |  |
-| 311 | `substrate/dp_shuffler/__init__.py` | 3.000 | 0 | 0.000 | package_init |  |
-| 312 | `substrate/public_notes_ingest/__init__.py` | 3.000 | 0 | 0.000 | package_init |  |
-| 313 | `substrate/billing/__init__.py` | 2.667 | 0 | 0.000 | package_init | 🔒 |
-| 314 | `substrate/collective_graph/__init__.py` | 2.500 | 0 | 0.000 | package_init | 🔒 |
-| 315 | `substrate/synthesis_rubric/__init__.py` | 1.000 | 0 | 0.000 | package_init |  |
-| 316 | `substrate/dispatch/providers/__init__.py` | 0.750 | 0 | 0.000 | package_init | 🔒 |
-| 317 | `substrate/integrations.py` | 0.375 | 0 | 0.000 | normal |  |
-| 318 | `substrate/ownership.py` | 0.219 | 0 | 0.000 | normal |  |
-| 319 | `substrate/exhaustive.py` | 0.214 | 0 | 0.000 | normal |  |
-| 320 | `substrate/result_helpers.py` | 0.211 | 0 | 0.000 | normal |  |
-| 321 | `substrate/errors.py` | 0.182 | 0 | 0.000 | normal |  |
-| 322 | `substrate/voice_style/suppression.py` | 0.167 | 0 | 0.000 | normal |  |
-| 323 | `substrate/speak/gate_status.py` | 0.158 | 0 | 0.000 | normal | 🔒 |
-| 324 | `substrate/ad_inventory/payout.py` | 0.145 | 0 | 0.000 | normal |  |
-| 325 | `substrate/ducklake/stage.py` | 0.143 | 0 | 0.000 | normal |  |
-| 326 | `substrate/auth/magic_link.py` | 0.114 | 0 | 0.000 | normal |  |
+| 150 | `substrate/legal_gate/gate.py` | 0.203 | 1 | 0.141 | normal |  |
+| 151 | `substrate/ingest_checkpoint.py` | 0.127 | 2 | 0.140 | normal |  |
+| 152 | `substrate/quality_gate/gate.py` | 0.123 | 2 | 0.136 | normal |  |
+| 153 | `substrate/research_artifact/export.py` | 0.194 | 1 | 0.135 | normal |  |
+| 154 | `substrate/loop_3/checklist_store.py` | 0.193 | 1 | 0.134 | normal | 🔒 |
+| 155 | `substrate/coordination/gate_ledger.py` | 0.121 | 2 | 0.133 | normal | 🔒 |
+| 156 | `substrate/ad_inventory/advertiser_onboarding.py` | 0.188 | 1 | 0.130 | normal |  |
+| 157 | `substrate/research_artifact/hooks.py` | 0.188 | 1 | 0.130 | normal |  |
+| 158 | `substrate/billing/tax_reports.py` | 0.187 | 1 | 0.129 | normal | 🔒 |
+| 159 | `substrate/speak/drw_gap_source.py` | 0.117 | 2 | 0.129 | normal | 🔒 |
+| 160 | `substrate/eval/groundedness/scorer.py` | 0.117 | 2 | 0.128 | normal |  |
+| 161 | `substrate/ad_inventory/transfer_initiator.py` | 0.184 | 1 | 0.128 | normal |  |
+| 162 | `substrate/speak/independence.py` | 0.184 | 1 | 0.128 | normal | 🔒 |
+| 163 | `substrate/invariants/__init__.py` | 0.116 | 2 | 0.128 | package_init |  |
+| 164 | `substrate/graph/traverse.py` | 0.184 | 1 | 0.128 | normal |  |
+| 165 | `substrate/books/page_anchor.py` | 0.115 | 2 | 0.127 | normal |  |
+| 166 | `substrate/marketplace_metrics/book_escrow.py` | 0.078 | 4 | 0.126 | normal |  |
+| 167 | `substrate/contracts/interviewer.py` | 0.113 | 2 | 0.124 | normal |  |
+| 168 | `substrate/cross_graph/partner_identity.py` | 0.178 | 1 | 0.123 | normal | 🔒 |
+| 169 | `substrate/graph/schema.py` | 0.063 | 6 | 0.123 | normal |  |
+| 170 | `substrate/ducklake/migration.py` | 0.178 | 1 | 0.123 | normal |  |
+| 171 | `substrate/edit/authoring_trajectory.py` | 0.112 | 2 | 0.123 | normal | 🔒 |
+| 172 | `substrate/cross_graph/outbound_transport.py` | 0.176 | 1 | 0.122 | normal | 🔒 |
+| 173 | `substrate/autoresearch/proposal.py` | 0.175 | 1 | 0.122 | normal |  |
+| 174 | `substrate/research_artifact/blocks.py` | 0.174 | 1 | 0.121 | normal |  |
+| 175 | `substrate/dispatch/providers/vision_anthropic.py` | 0.173 | 1 | 0.120 | normal | 🔒 |
+| 176 | `substrate/ad_inventory/attribution_explain.py` | 0.108 | 2 | 0.118 | normal |  |
+| 177 | `substrate/loop_3/sft_runner.py` | 0.170 | 1 | 0.118 | normal | 🔒 |
+| 178 | `substrate/anti_gaming/view_fraud.py` | 0.167 | 1 | 0.116 | normal | 🔒 |
+| 179 | `substrate/cross_graph/federation_config_store.py` | 0.167 | 1 | 0.116 | normal | 🔒 |
+| 180 | `substrate/dispatch/providers/vision_bootstrap.py` | 0.167 | 1 | 0.116 | normal | 🔒 |
+| 181 | `substrate/research_bridge/db_path.py` | 0.167 | 1 | 0.116 | normal | 🔒 |
+| 182 | `substrate/collective_graph/eligibility.py` | 0.083 | 3 | 0.116 | normal | 🔒 |
+| 183 | `substrate/contracts/accrual.py` | 0.071 | 4 | 0.115 | normal |  |
+| 184 | `substrate/cross_graph/inbound.py` | 0.164 | 1 | 0.114 | normal | 🔒 |
+| 185 | `substrate/write/outline.py` | 0.103 | 2 | 0.113 | normal | 🔒 |
+| 186 | `substrate/books/serve.py` | 0.070 | 4 | 0.113 | normal |  |
+| 187 | `substrate/eval/groundedness/provenance.py` | 0.102 | 2 | 0.112 | normal |  |
+| 188 | `substrate/contracts/nodes.py` | 0.081 | 3 | 0.112 | normal |  |
+| 189 | `substrate/graph_per_user/lifecycle.py` | 0.161 | 1 | 0.111 | normal | 🔒 |
+| 190 | `substrate/rights_audit.py` | 0.100 | 2 | 0.110 | normal |  |
+| 191 | `substrate/rev_share/splits.py` | 0.158 | 1 | 0.109 | normal |  |
+| 192 | `substrate/context_pack/note_budget.py` | 0.157 | 1 | 0.109 | normal |  |
+| 193 | `substrate/notebooks/__init__.py` | 0.154 | 1 | 0.106 | package_init |  |
+| 194 | `substrate/research_artifact/import_notes.py` | 0.097 | 2 | 0.106 | normal |  |
+| 195 | `substrate/speak/publish.py` | 0.153 | 1 | 0.106 | normal | 🔒 |
+| 196 | `substrate/anti_gaming/red_team.py` | 0.153 | 1 | 0.106 | normal | 🔒 |
+| 197 | `substrate/billing/aggregator.py` | 0.153 | 1 | 0.106 | normal | 🔒 |
+| 198 | `substrate/rev_share/rollover.py` | 0.151 | 1 | 0.105 | normal |  |
+| 199 | `substrate/ingest_budget.py` | 0.095 | 2 | 0.105 | normal |  |
+| 200 | `substrate/speak/schema.py` | 0.150 | 1 | 0.104 | normal | 🔒 |
+| 201 | `substrate/context_pack/assembler.py` | 0.075 | 3 | 0.104 | normal |  |
+| 202 | `substrate/speak/async_interview.py` | 0.148 | 1 | 0.103 | normal | 🔒 |
+| 203 | `substrate/research_artifact/build_body.py` | 0.147 | 1 | 0.102 | normal |  |
+| 204 | `substrate/research_bridge/schema.py` | 0.145 | 1 | 0.101 | normal | 🔒 |
+| 205 | `substrate/anti_gaming/click_fraud.py` | 0.143 | 1 | 0.099 | normal | 🔒 |
+| 206 | `substrate/books/curate.py` | 0.143 | 1 | 0.099 | normal |  |
+| 207 | `substrate/marketplace_metrics/advertiser_retention.py` | 0.143 | 1 | 0.099 | normal |  |
+| 208 | `substrate/ad_inventory/frame_attention_accrual.py` | 0.090 | 2 | 0.099 | normal |  |
+| 209 | `substrate/cross_graph_writer/queue.py` | 0.141 | 1 | 0.098 | normal |  |
+| 210 | `substrate/gap_detection/candidates.py` | 0.140 | 1 | 0.097 | normal |  |
+| 211 | `substrate/speak/publish_gate.py` | 0.140 | 1 | 0.097 | normal | 🔒 |
+| 212 | `substrate/dedup.py` | 0.088 | 2 | 0.096 | normal |  |
+| 213 | `substrate/deletion_worker/worker.py` | 0.138 | 1 | 0.096 | normal |  |
+| 214 | `substrate/anti_gaming/attribution_fraud.py` | 0.136 | 1 | 0.095 | normal | 🔒 |
+| 215 | `substrate/coordination/roadmap.py` | 0.068 | 3 | 0.094 | normal | 🔒 |
+| 216 | `substrate/voice_style/constructions.py` | 0.085 | 2 | 0.094 | normal |  |
+| 217 | `substrate/ai_actions/actions.py` | 0.135 | 1 | 0.094 | normal |  |
+| 218 | `substrate/unit_dedup.py` | 0.085 | 2 | 0.093 | normal |  |
+| 219 | `substrate/anti_gaming/verdict.py` | 0.134 | 1 | 0.093 | normal | 🔒 |
+| 220 | `substrate/contracts/context_pack.py` | 0.133 | 1 | 0.092 | normal |  |
+| 221 | `substrate/multi_user/skill_accumulator.py` | 0.133 | 1 | 0.092 | normal | 🔒 |
+| 222 | `substrate/dispatch/providers/anthropic.py` | 0.083 | 2 | 0.092 | normal | 🔒 |
+| 223 | `substrate/speak/interviewer_context.py` | 0.083 | 2 | 0.092 | normal | 🔒 |
+| 224 | `substrate/write/brainstorm_blocks.py` | 0.083 | 2 | 0.092 | normal | 🔒 |
+| 225 | `substrate/dp_shuffler/production.py` | 0.132 | 1 | 0.091 | normal |  |
+| 226 | `substrate/books/serve_guard.py` | 0.057 | 4 | 0.091 | normal |  |
+| 227 | `substrate/edit/harvest_authoring.py` | 0.081 | 2 | 0.089 | normal | 🔒 |
+| 228 | `substrate/research_bridge/ingest_file.py` | 0.128 | 1 | 0.089 | normal | 🔒 |
+| 229 | `substrate/books/takedown.py` | 0.125 | 1 | 0.087 | normal |  |
+| 230 | `substrate/ad_inventory/auction_model.py` | 0.124 | 1 | 0.086 | normal |  |
+| 231 | `substrate/seams/thread.py` | 0.077 | 2 | 0.085 | normal |  |
+| 232 | `substrate/event_log/events.py` | 0.119 | 1 | 0.083 | normal |  |
+| 233 | `substrate/loop_3/verifiers_env.py` | 0.118 | 1 | 0.082 | normal | 🔒 |
+| 234 | `substrate/dp_shuffler/preference_learning.py` | 0.117 | 1 | 0.081 | normal |  |
+| 235 | `substrate/loop_3/trajectory_harvest.py` | 0.117 | 1 | 0.081 | normal | 🔒 |
+| 236 | `substrate/research_artifact/schema.py` | 0.117 | 1 | 0.081 | normal |  |
+| 237 | `substrate/loop_3/unlock_gate.py` | 0.116 | 1 | 0.081 | normal | 🔒 |
+| 238 | `substrate/corpus_audit.py` | 0.038 | 7 | 0.079 | normal |  |
+| 239 | `substrate/coordination/consent_view.py` | 0.072 | 2 | 0.079 | normal | 🔒 |
+| 240 | `substrate/research_artifact/compose.py` | 0.114 | 1 | 0.079 | normal |  |
+| 241 | `substrate/public_notes_ingest/pipeline.py` | 0.113 | 1 | 0.078 | normal |  |
+| 242 | `substrate/rev_share/mixed_attribution.py` | 0.113 | 1 | 0.078 | normal |  |
+| 243 | `substrate/ad_targeting/matcher.py` | 0.112 | 1 | 0.078 | normal |  |
+| 244 | `substrate/contracts/note_taker.py` | 0.111 | 1 | 0.077 | normal |  |
+| 245 | `substrate/ad_inventory/auction_features.py` | 0.109 | 1 | 0.076 | normal |  |
+| 246 | `substrate/write/provenance.py` | 0.069 | 2 | 0.076 | normal | 🔒 |
+| 247 | `substrate/speak/payout_verifier.py` | 0.109 | 1 | 0.075 | normal | 🔒 |
+| 248 | `substrate/multi_user/skill_writer.py` | 0.109 | 1 | 0.075 | normal | 🔒 |
+| 249 | `substrate/auth/email_provider.py` | 0.107 | 1 | 0.074 | normal |  |
+| 250 | `substrate/gap_detection/contradiction.py` | 0.106 | 1 | 0.073 | normal |  |
+| 251 | `substrate/research_artifact/context.py` | 0.067 | 2 | 0.073 | normal |  |
+| 252 | `substrate/coordination/cost_view.py` | 0.066 | 2 | 0.072 | normal | 🔒 |
+| 253 | `substrate/legal_gate/predicate.py` | 0.104 | 1 | 0.072 | normal |  |
+| 254 | `substrate/contracts/conformance.py` | 0.100 | 1 | 0.069 | normal |  |
+| 255 | `substrate/attribution/compute.py` | 0.050 | 3 | 0.069 | normal |  |
+| 256 | `substrate/write/block_search.py` | 0.050 | 3 | 0.069 | normal | 🔒 |
+| 257 | `substrate/marketplace_metrics/dashboard.py` | 0.099 | 1 | 0.068 | normal |  |
+| 258 | `substrate/constants.py` | 0.038 | 5 | 0.067 | normal |  |
+| 259 | `substrate/research_bridge/eval/scoring.py` | 0.095 | 1 | 0.066 | normal | 🔒 |
+| 260 | `substrate/autoresearch/wedge3_sweep.py` | 0.094 | 1 | 0.065 | normal |  |
+| 261 | `substrate/dispatch/providers/vision_openai.py` | 0.093 | 1 | 0.065 | normal | 🔒 |
+| 262 | `substrate/research_bridge/llm_dispatch.py` | 0.093 | 1 | 0.064 | normal | 🔒 |
+| 263 | `substrate/research_bridge/versioning.py` | 0.092 | 1 | 0.064 | normal | 🔒 |
+| 264 | `substrate/graph/rlm_tools.py` | 0.057 | 2 | 0.063 | normal |  |
+| 265 | `substrate/attribution/algorithms.py` | 0.090 | 1 | 0.062 | normal |  |
+| 266 | `substrate/context_pack/note_retrieval.py` | 0.089 | 1 | 0.062 | normal |  |
+| 267 | `substrate/context_pack/style_guide.py` | 0.056 | 2 | 0.062 | normal |  |
+| 268 | `substrate/write/trace.py` | 0.056 | 2 | 0.061 | normal | 🔒 |
+| 269 | `substrate/books/personal_space.py` | 0.055 | 2 | 0.060 | normal |  |
+| 270 | `substrate/public_graph/__init__.py` | 0.087 | 1 | 0.060 | package_init | 🔒 |
+| 271 | `substrate/dispatch/providers/openai_compat.py` | 0.086 | 1 | 0.060 | normal | 🔒 |
+| 272 | `substrate/contracts/servable.py` | 0.039 | 3 | 0.055 | normal |  |
+| 273 | `substrate/multi_user/crdt_scaffold/access_control.py` | 0.077 | 1 | 0.053 | normal | 🔒 |
+| 274 | `substrate/trust_center/default_registry.py` | 0.077 | 1 | 0.053 | normal |  |
+| 275 | `substrate/research_bridge/eval/labels.py` | 0.076 | 1 | 0.053 | normal | 🔒 |
+| 276 | `substrate/eval/groundedness/harness.py` | 0.046 | 2 | 0.051 | normal |  |
+| 277 | `substrate/payouts/ledger.py` | 0.072 | 1 | 0.050 | normal |  |
+| 278 | `substrate/speak/corroboration.py` | 0.071 | 1 | 0.049 | normal | 🔒 |
+| 279 | `substrate/marketplace_metrics/creator_distribution.py` | 0.070 | 1 | 0.049 | normal |  |
+| 280 | `substrate/dispatch/multi_cloud.py` | 0.069 | 1 | 0.048 | normal | 🔒 |
+| 281 | `substrate/write/migrate_outline_block.py` | 0.067 | 1 | 0.047 | normal | 🔒 |
+| 282 | `substrate/voice_style/ab_runner.py` | 0.066 | 1 | 0.046 | normal |  |
+| 283 | `substrate/research_bridge/extractor.py` | 0.066 | 1 | 0.046 | normal | 🔒 |
+| 284 | `substrate/research_bridge/ingest.py` | 0.064 | 1 | 0.045 | normal | 🔒 |
+| 285 | `substrate/contracts/outline_block.py` | 0.040 | 2 | 0.044 | normal |  |
+| 286 | `substrate/ai_actions/handlers.py` | 0.061 | 1 | 0.042 | normal |  |
+| 287 | `substrate/research_bridge/gap.py` | 0.060 | 1 | 0.042 | normal | 🔒 |
+| 288 | `substrate/contracts/dependency_map.py` | 0.056 | 1 | 0.039 | normal |  |
+| 289 | `substrate/dispatch/providers/bootstrap.py` | 0.034 | 2 | 0.037 | normal | 🔒 |
+| 290 | `substrate/graph/backfill_insight_question.py` | 0.030 | 2 | 0.032 | normal |  |
+| 291 | `substrate/notebooks/tiptap_codec.py` | 0.046 | 1 | 0.032 | normal |  |
+| 292 | `substrate/research_artifact/__main__.py` | 0.042 | 1 | 0.029 | normal |  |
+| 293 | `substrate/research_artifact/render.py` | 0.041 | 1 | 0.028 | normal |  |
+| 294 | `substrate/write/clustering.py` | 0.024 | 2 | 0.027 | normal | 🔒 |
+| 295 | `substrate/research_bridge/extractors.py` | 0.033 | 1 | 0.023 | normal | 🔒 |
+| 296 | `substrate/synthesis_rubric/scorer.py` | 0.031 | 1 | 0.022 | normal |  |
+| 297 | `substrate/research_bridge/source_detection.py` | 0.027 | 1 | 0.018 | normal | 🔒 |
+| 298 | `substrate/cli/__main__.py` | 0.026 | 1 | 0.018 | normal |  |
+| 299 | `substrate/cli/compact.py` | 0.023 | 1 | 0.016 | normal |  |
+| 300 | `substrate/cli/hooks.py` | 0.020 | 1 | 0.014 | normal |  |
+| 301 | `substrate/legal_gate/audit.py` | 0.010 | 1 | 0.007 | normal |  |
+| 302 | `substrate/ad_inventory/__main__.py` | 0.007 | 1 | 0.005 | normal |  |
+| 303 | `substrate/cross_graph/__main__.py` | 0.007 | 1 | 0.005 | normal | 🔒 |
+| 304 | `substrate/cross_graph/__init__.py` | 8.000 | 0 | 0.000 | package_init | 🔒 |
+| 305 | `substrate/auth/__init__.py` | 5.333 | 0 | 0.000 | package_init |  |
+| 306 | `substrate/cross_graph_writer/__init__.py` | 4.000 | 0 | 0.000 | package_init |  |
+| 307 | `substrate/multi_user/__init__.py` | 4.000 | 0 | 0.000 | package_init | 🔒 |
+| 308 | `substrate/ad_targeting/__init__.py` | 3.000 | 0 | 0.000 | package_init |  |
+| 309 | `substrate/attribution/__init__.py` | 3.000 | 0 | 0.000 | package_init |  |
+| 310 | `substrate/dp_shuffler/__init__.py` | 3.000 | 0 | 0.000 | package_init |  |
+| 311 | `substrate/public_notes_ingest/__init__.py` | 3.000 | 0 | 0.000 | package_init |  |
+| 312 | `substrate/billing/__init__.py` | 2.667 | 0 | 0.000 | package_init | 🔒 |
+| 313 | `substrate/collective_graph/__init__.py` | 2.500 | 0 | 0.000 | package_init | 🔒 |
+| 314 | `substrate/synthesis_rubric/__init__.py` | 1.000 | 0 | 0.000 | package_init |  |
+| 315 | `substrate/dispatch/providers/__init__.py` | 0.750 | 0 | 0.000 | package_init | 🔒 |
+| 316 | `substrate/integrations.py` | 0.375 | 0 | 0.000 | normal |  |
+| 317 | `substrate/ownership.py` | 0.219 | 0 | 0.000 | normal |  |
+| 318 | `substrate/exhaustive.py` | 0.214 | 0 | 0.000 | normal |  |
+| 319 | `substrate/result_helpers.py` | 0.211 | 0 | 0.000 | normal |  |
+| 320 | `substrate/errors.py` | 0.182 | 0 | 0.000 | normal |  |
+| 321 | `substrate/voice_style/suppression.py` | 0.167 | 0 | 0.000 | normal |  |
+| 322 | `substrate/speak/gate_status.py` | 0.158 | 0 | 0.000 | normal | 🔒 |
+| 323 | `substrate/ad_inventory/payout.py` | 0.145 | 0 | 0.000 | normal |  |
+| 324 | `substrate/ducklake/stage.py` | 0.143 | 0 | 0.000 | normal |  |
+| 325 | `substrate/auth/magic_link.py` | 0.114 | 0 | 0.000 | normal |  |
+| 326 | `substrate/research_bridge/detect_external.py` | 0.096 | 0 | 0.000 | normal | 🔒 |
 | 327 | `substrate/escape_hatch.py` | 0.088 | 0 | 0.000 | normal |  |
 | 328 | `substrate/loop_3/rubric_verifier.py` | 0.083 | 0 | 0.000 | normal | 🔒 |
 | 329 | `substrate/cli/queue.py` | 0.069 | 0 | 0.000 | normal |  |
