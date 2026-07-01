@@ -28,7 +28,6 @@ import hashlib
 import os
 import sys
 import uuid
-from datetime import UTC
 from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate.
@@ -506,43 +505,20 @@ def make_document_loaded_handler(
                 # docs skip emission to avoid noise.
                 if broadcaster is not None:
                     try:
-                        import uuid as _uuid
-                        from datetime import datetime as _dt
+                        from orchestration.rlm.events import RLMEventEmitter
 
-                        from substrate.schemas.events import (
-                            ActionType as _AT,
-                        )
-                        from substrate.schemas.events import (
-                            Event as _TypedEvent,
-                        )
-
-                        bridge_payload = decision.to_typed_payload()
-                        bridge_event = _TypedEvent(
-                            event_id=f"evt-{_uuid.uuid4().hex[:12]}",
+                        emitter = RLMEventEmitter(
+                            broadcaster.broadcast,
                             investigation_id=(
                                 event.investigation_id or "__no_investigation__"
                             ),
-                            action_type=_AT.RLM_BRIDGE_DECIDED,
-                            payload=bridge_payload,
                             param_version="wrestling-v0",
-                            emitted_at=_dt.now(UTC),
                             document_id=event.document_id,
                         )
-                        await broadcaster.broadcast(bridge_event)
+                        await emitter.emit(decision.to_typed_payload())
                         started_payload = decision.to_session_started_payload()
                         if started_payload is not None:
-                            started_event = _TypedEvent(
-                                event_id=f"evt-{_uuid.uuid4().hex[:12]}",
-                                investigation_id=(
-                                    event.investigation_id or "__no_investigation__"
-                                ),
-                                action_type=_AT.RLM_SESSION_STARTED,
-                                payload=started_payload,
-                                param_version="wrestling-v0",
-                                emitted_at=_dt.now(UTC),
-                                document_id=event.document_id,
-                            )
-                            await broadcaster.broadcast(started_event)
+                            await emitter.emit(started_payload)
                     except Exception as exc:  # pragma: no cover — emit must never block ingestion
                         print(
                             f"wrestling.document_loaded[rlm-bridge]: "
