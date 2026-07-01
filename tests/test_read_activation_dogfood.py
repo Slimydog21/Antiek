@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+from pathlib import Path
 
 from tools.activation.read_dogfood import load_jsonl, validate_sessions
 
@@ -736,3 +738,17 @@ def test_jsonl_loader_accepts_comments_and_blank_lines(tmp_path) -> None:
     )
 
     assert load_jsonl(path) == [first, second]
+
+
+def test_activation_spec_minimal_record_shape_is_validator_compatible() -> None:
+    spec_path = Path("specs/activation/golden-path.md")
+    spec = spec_path.read_text(encoding="utf-8")
+    match = re.search(r"Minimal record shape:\n\n```json\n(?P<json>.*?)\n```", spec, re.S)
+    assert match is not None
+
+    record = json.loads(match.group("json"))
+    report = validate_sessions([record])
+
+    assert report.valid_sessions == 1
+    assert all(failure.startswith("closure requires ") for failure in report.failures)
+    assert not any("missing required fields" in failure for failure in report.failures)
