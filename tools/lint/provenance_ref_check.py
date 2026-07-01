@@ -49,22 +49,36 @@ _EXTRA_PARSER_FILES: tuple[str, ...] = (
 )
 
 
-def _imports_validator(tree: ast.Module) -> bool:
+def _qualified_name(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        base = _qualified_name(node.value)
+        if base is None:
+            return None
+        return f"{base}.{node.attr}"
+    return None
+
+
+def _validator_call_names(tree: ast.Module) -> frozenset[str]:
+    names: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and node.module == "substrate.provenance":
-            imported = {alias.name for alias in node.names}
-            if {"validate_ref", "validate_refs"} & imported:
-                return True
-    return False
+            for alias in node.names:
+                if alias.name in {"validate_ref", "validate_refs"}:
+                    names.add(alias.asname or alias.name)
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name != "substrate.provenance":
+                    continue
+                local = alias.asname or "substrate.provenance"
+                names.add(f"{local}.validate_ref")
+                names.add(f"{local}.validate_refs")
+    return frozenset(names)
 
 
-def _is_validator_call(node: ast.Call) -> bool:
-    func = node.func
-    if isinstance(func, ast.Name):
-        return func.id in {"validate_ref", "validate_refs"}
-    if isinstance(func, ast.Attribute):
-        return func.attr in {"validate_ref", "validate_refs"}
-    return False
+def _is_validator_call(node: ast.Call, validator_names: frozenset[str]) -> bool:
+    return (_qualified_name(node.func) or "") in validator_names
 
 
 def _field_reads(tree: ast.AST) -> list[tuple[int, str]]:
@@ -162,11 +176,14 @@ def _raw_field_aliases(func: ast.FunctionDef | ast.AsyncFunctionDef) -> dict[str
     return aliases
 
 
-def _validated_fields(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+def _validated_fields(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+    validator_names: frozenset[str],
+) -> set[str]:
     aliases = _raw_field_aliases(func)
     out: set[str] = set()
     for node in ast.walk(func):
-        if not isinstance(node, ast.Call) or not _is_validator_call(node):
+        if not isinstance(node, ast.Call) or not _is_validator_call(node, validator_names):
             continue
         out.update(_fields_in(node))
         names = _names_in(node)
@@ -178,12 +195,12 @@ def _validated_fields(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
 
 def _unvalidated_field_sites(
     func: ast.FunctionDef | ast.AsyncFunctionDef,
-    validator_imported: bool,
+    validator_names: frozenset[str],
 ) -> list[tuple[int, str]]:
     sites = _target_field_sites(func)
     if not sites:
         return []
-    validated = _validated_fields(func) if validator_imported else set()
+    validated = _validated_fields(func, validator_names) if validator_names else set()
     return [
         (line, field)
         for line, field in sites
@@ -207,9 +224,9 @@ def _scan_file(rel: str, path: Path) -> list[str]:
         return []
 
     violations: list[str] = []
-    validator_imported = _imports_validator(tree)
+    validator_names = _validator_call_names(tree)
     for func in _parser_functions(tree):
-        sites = _unvalidated_field_sites(func, validator_imported)
+        sites = _unvalidated_field_sites(func, validator_names)
         if not sites:
             continue
         first_lines_by_field: dict[str, int] = {}

@@ -164,6 +164,53 @@ def parse(obj, canonical):
     assert find_violations(tmp_path) == []
 
 
+def test_lint_allows_aliased_validator_import(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "roles" / "aliased_role" / "parser.py",
+        """
+from substrate.provenance import validate_refs as check_refs
+
+def parse(obj, canonical):
+    source_chunk_ids = check_refs(obj.get("source_chunk_ids", []), canonical).valid
+    return {"source_chunk_ids": source_chunk_ids}
+""",
+    )
+
+    assert find_violations(tmp_path) == []
+
+
+def test_lint_allows_namespaced_validator_import(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "roles" / "namespaced_role" / "parser.py",
+        """
+import substrate.provenance as provenance
+
+def parse(obj, canonical):
+    question_id = provenance.validate_ref(obj.get("question_id"), canonical)
+    return {"question_id": question_id}
+""",
+    )
+
+    assert find_violations(tmp_path) == []
+
+
+def test_lint_rejects_unrelated_validate_ref_attribute(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "roles" / "spoofed_role" / "parser.py",
+        """
+from substrate.provenance import validate_ref
+
+def parse(obj, canonical, helper):
+    question_id = helper.validate_ref(obj.get("question_id"), canonical)
+    return {"question_id": question_id}
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any("question_id" in violation for violation in violations)
+
+
 def test_lint_does_not_let_one_parser_function_validate_for_another(
     tmp_path: Path,
 ) -> None:
