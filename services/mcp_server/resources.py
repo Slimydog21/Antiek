@@ -11,10 +11,9 @@ from __future__ import annotations
 
 import json
 
-from mcp.server.fastmcp import FastMCP
-
 from .defenses import wrap_untrusted_content
 from .errors import NoteNotFoundError
+from .fastmcp_compat import FastMCP
 from .reader import _resolve_db_path, get_book_chunk, get_note, get_public_note, list_user_notes
 
 

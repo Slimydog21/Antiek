@@ -11,8 +11,7 @@ process must not introduce a second writer.
 
 from __future__ import annotations
 
-from mcp.server.fastmcp import FastMCP
-
+from .fastmcp_compat import FastMCP
 from .resources import register_resources
 from .tools import register_tools
 

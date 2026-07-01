@@ -16,12 +16,12 @@ from dataclasses import dataclass
 from typing import Any
 
 import duckdb
-from mcp.server.fastmcp import FastMCP
 
 from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
 
 from .defenses import wrap_untrusted_content
 from .errors import EmptyQueryError, LicensingRequiredError, SourceNotFoundError
+from .fastmcp_compat import FastMCP
 from .reader import _resolve_db_path
 
 # ---------------------------------------------------------------------------
