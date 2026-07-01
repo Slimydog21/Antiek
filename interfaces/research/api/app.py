@@ -1526,6 +1526,8 @@ def create_app(
         "/health",
         "/auth/request",
         "/auth/callback",
+        "/auth/external/callback",
+        "/auth/external/session",
         # Temporary agent / computer-use access (Codex + Hermes
         # computer-use): a logged-out browser must reach the dev-login
         # bootstrap to acquire its session, same as /auth/callback. The
@@ -1664,11 +1666,20 @@ def create_app(
                     cookie_claims = None
                 if cookie_claims is not None:
                     cookie_email = cookie_claims.email.strip().lower()
-                    if not operator_emails or cookie_email in operator_emails:
+                    if cookie_claims.user_id == "__operator__" and (
+                        not operator_emails or cookie_email in operator_emails
+                    ):
                         _attach_operator(
                             request,
                             method="antiek_session_cookie",
                             email=cookie_claims.email,
+                        )
+                        return await call_next(request)
+                    if cookie_claims.user_id != "__operator__":
+                        _attach_claims(
+                            request,
+                            method="antiek_session_cookie",
+                            claims=cookie_claims,
                         )
                         return await call_next(request)
 

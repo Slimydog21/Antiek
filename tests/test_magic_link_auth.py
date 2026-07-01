@@ -115,7 +115,23 @@ def test_session_cookie_round_trip(monkeypatch):
     claims = verify_session_cookie(cookie)
     assert claims.user_id == "__operator__"
     assert claims.email == _OPERATOR
+    assert "operator" in claims.scopes
     assert claims.issued_at <= int(time.time())
+
+
+def test_session_cookie_round_trip_preserves_external_scopes(monkeypatch):
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", _SECRET)
+    cookie = mint_session_cookie(
+        user_id="supabase:reader-a",
+        email="Reader@Example.COM",
+        scopes=frozenset({"authenticated", "private_research"}),
+    )
+
+    claims = verify_session_cookie(cookie)
+
+    assert claims.user_id == "supabase:reader-a"
+    assert claims.email == "reader@example.com"
+    assert claims.scopes == frozenset({"authenticated", "private_research"})
 
 
 def test_session_cookie_rejects_wrong_secret(monkeypatch):
