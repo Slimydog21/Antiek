@@ -23,6 +23,10 @@ from .client import (
 )
 
 
+DEFAULT_SYNQUERY_SPEND_CAP_USD = 1000.0
+HARD_SYNQUERY_SPEND_CAP_USD = 5000.0
+
+
 @dataclass(frozen=True)
 class SynqueryRequest:
     """Input to the adapter: an Antiek open-question that the
@@ -89,6 +93,7 @@ class SynqueryAdapter:
                 "§14.1: Synquery activates only after creation-surface "
                 "PMF signal."
             )
+        effective_cap = _effective_spend_cap(request.operator_budget_usd)
         experts = self.client.search_experts(
             topic_query=request.question_text,
             limit=10,
@@ -96,7 +101,7 @@ class SynqueryAdapter:
         # Filter to experts whose hour rate fits the operator's budget.
         affordable = [
             e for e in experts
-            if e.rate_usd_per_hour * 1.0 <= request.operator_budget_usd
+            if e.rate_usd_per_hour * 1.0 <= effective_cap
         ]
         return SynqueryResponse(
             request_question_id=request.question_id,
@@ -110,12 +115,19 @@ class SynqueryAdapter:
         expert_id: str,
         scheduling_window_iso: str,
         duration_minutes: int = 60,
+        expert_rate_usd_per_hour: float | None = None,
     ) -> SynqueryResponse:
         """Operator picks an expert; the adapter books the interview.
         Booking returns a handle; completed transcripts enter through
         ``ingest_completed_transcript`` when Synquery calls back."""
         if not feature_flag_enabled():
             raise SynqueryAPIError("Synquery feature-flag disabled")
+        effective_cap = _effective_spend_cap(request.operator_budget_usd)
+        _enforce_booking_cap(
+            effective_cap=effective_cap,
+            expert_rate_usd_per_hour=expert_rate_usd_per_hour,
+            duration_minutes=duration_minutes,
+        )
         booking = self.client.book_interview(
             expert_id=expert_id,
             duration_minutes=duration_minutes,
@@ -232,3 +244,38 @@ class SynqueryAdapter:
 def _title_for_transcript(transcript: SynqueryTranscriptIngest) -> str:
     expert = transcript.expert_display_name or transcript.expert_id
     return f"Synquery expert interview: {expert}"[:200]
+
+
+def _effective_spend_cap(operator_budget_usd: float) -> float:
+    if operator_budget_usd <= 0:
+        raise SynqueryAPIError(
+            "Synquery operator_budget_usd must be positive; default cap is "
+            f"${DEFAULT_SYNQUERY_SPEND_CAP_USD:,.0f} and hard cap is "
+            f"${HARD_SYNQUERY_SPEND_CAP_USD:,.0f}."
+        )
+    if operator_budget_usd > HARD_SYNQUERY_SPEND_CAP_USD:
+        raise SynqueryAPIError(
+            "Synquery operator_budget_usd exceeds hard cap: "
+            f"${operator_budget_usd:,.2f} > ${HARD_SYNQUERY_SPEND_CAP_USD:,.2f}"
+        )
+    return float(operator_budget_usd)
+
+
+def _enforce_booking_cap(
+    *,
+    effective_cap: float,
+    expert_rate_usd_per_hour: float | None,
+    duration_minutes: int,
+) -> None:
+    if duration_minutes <= 0:
+        raise SynqueryAPIError("Synquery duration_minutes must be positive")
+    if expert_rate_usd_per_hour is None:
+        return
+    if expert_rate_usd_per_hour < 0:
+        raise SynqueryAPIError("Synquery expert_rate_usd_per_hour must be non-negative")
+    estimated_cost = expert_rate_usd_per_hour * (duration_minutes / 60.0)
+    if estimated_cost > effective_cap:
+        raise SynqueryAPIError(
+            "Synquery booking exceeds spend cap: "
+            f"estimated ${estimated_cost:,.2f} > cap ${effective_cap:,.2f}"
+        )
