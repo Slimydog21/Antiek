@@ -90,7 +90,7 @@ export const RankingExample: Story = {
         kind: "route",
         id: "route:trust",
         title: "Trust Center",
-        subtitle: "ε budgets · deletion SLA · unlock status",
+        subtitle: "Published privacy, deletion, and training commitments",
         path: "/trust",
       },
       {

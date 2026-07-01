@@ -25,7 +25,7 @@ const GROUPS: { title: string; routes: RouteEntry[] }[] = [
       { path: "/create", title: "Creation studio", description: "Mode C — lego-block writing" },
       { path: "/brainstorm", title: "Brainstorm station", description: "Mode E — watch-for-later + thought partner" },
       { path: "/my-research", title: "My research", description: "One monitor over running + completed research" },
-      { path: "/documents", title: "Documents", description: "Substrate-attached sources by tier" },
+      { path: "/documents", title: "Documents", description: "Saved sources by quality tier" },
       { path: "/notebooks", title: "Notebooks", description: "Wedge 2 literate-analysis surface" },
       { path: "/sources", title: "Sources", description: "Acquisition adapters" },
       { path: "/speak", title: "Speak", description: "One door for interview projects + invited voices" },
@@ -35,8 +35,8 @@ const GROUPS: { title: string; routes: RouteEntry[] }[] = [
   {
     title: "Governance",
     routes: [
-      { path: "/privacy", title: "Privacy dashboard", description: "ε budgets + delete-all (§13.3)" },
-      { path: "/trust", title: "Trust Center", description: "Substrate-wide DP + control posture" },
+      { path: "/privacy", title: "Privacy dashboard", description: "Privacy budgets and deletion controls" },
+      { path: "/trust", title: "Trust Center", description: "Published privacy, deletion, and training commitments" },
       { path: "/federation", title: "Federation config", description: "Cross-substrate citation policy (§13.9 Phase 3)" },
       { path: "/loop-3", title: "Loop 3 checklist", description: "RL unlock criteria + env gate (§14.2)" },
       { path: "/operator", title: "Operator dashboard", description: "Composite operator-facing snapshot" },

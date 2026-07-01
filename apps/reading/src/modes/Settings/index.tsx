@@ -97,10 +97,10 @@ export default function Settings() {
 
         <LemonCard title="Control surfaces" elevation="z1" colour="glacial">
           <div className="p-4 grid gap-2 sm:grid-cols-2">
-            <ControlLink href="/trust" title="Trust Center" body="DP budget posture, deletion SLA, unlock status" />
-            <ControlLink href="/privacy" title="Privacy dashboard" body="ε exposure and delete-all controls" />
+            <ControlLink href="/trust" title="Trust Center" body="Published privacy, deletion, and training commitments" />
+            <ControlLink href="/privacy" title="Privacy dashboard" body="Privacy budgets and deletion controls" />
             <ControlLink href="/coordination/cost-consent" title="Cost + consent" body="Unified spend, escrow, and consent status" />
-            <ControlLink href="/operator" title="Operator dashboard" body="Substrate-level operations snapshot" />
+            <ControlLink href="/operator" title="Operator dashboard" body="Operations snapshot" />
           </div>
         </LemonCard>
       </div>

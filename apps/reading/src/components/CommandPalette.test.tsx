@@ -62,6 +62,29 @@ afterEach(() => {
 });
 
 describe("CommandPalette", () => {
+  it("describes trust and privacy routes without raw implementation labels", async () => {
+    renderPalette();
+
+    window.dispatchEvent(new Event("antiek:palette:toggle"));
+    await userEvent.type(await screen.findByRole("textbox"), "privacy");
+
+    expect(await screen.findByText("Privacy dashboard")).toBeTruthy();
+    expect(screen.getByText("Privacy budgets and deletion controls")).toBeTruthy();
+    expect(screen.queryByText(/ε exposure/i)).toBeNull();
+    expect(screen.queryByText(/delete-all/i)).toBeNull();
+    expect(screen.queryByText(/\(\/privacy\)/i)).toBeNull();
+
+    await userEvent.clear(screen.getByRole("textbox"));
+    await userEvent.type(screen.getByRole("textbox"), "trust");
+
+    expect(await screen.findByText("Trust Center")).toBeTruthy();
+    expect(
+      screen.getByText("Published privacy, deletion, and training commitments"),
+    ).toBeTruthy();
+    expect(screen.queryByText(/deletion SLA/i)).toBeNull();
+    expect(screen.queryByText(/\(\/trust\)/i)).toBeNull();
+  });
+
   it("opens a parked question in Brainstorm with the thought-partner selection seeded", async () => {
     renderPalette();
 

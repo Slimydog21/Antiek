@@ -227,6 +227,29 @@ describe("Sprint 25+ economics dashboard route integrity", () => {
     }
   });
 
+  it("keeps trust and privacy discovery copy user-facing", () => {
+    const map = readSrc("modes/Map/index.tsx");
+    const palette = readSrc("components/CommandPalette.tsx");
+    const settings = readSrc("modes/Settings/index.tsx");
+    const taxonomy = readSrc("shell/workflowTaxonomy.ts");
+    const paletteStories = readSrc("components/CommandPalette.stories.tsx");
+    const discoveryCopy = [
+      map,
+      palette,
+      settings,
+      taxonomy,
+      paletteStories,
+    ].join("\n");
+
+    expect(discoveryCopy).toContain("Privacy budgets and deletion controls");
+    expect(discoveryCopy).toContain(
+      "Published privacy, deletion, and training commitments",
+    );
+    expect(discoveryCopy).not.toMatch(/ε exposure|delete-all|deletion SLA|DP budget/i);
+    expect(discoveryCopy).not.toMatch(/Substrate-level operations snapshot/i);
+    expect(discoveryCopy).not.toMatch(/\(\/privacy\)|\(\/trust\)/i);
+  });
+
   it("keeps CreatorPayouts on the scoped /me/payouts contract", () => {
     const app = readSrc("App.tsx");
     const component = readSrc("modes/CreatorPayouts/index.tsx");

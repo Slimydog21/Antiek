@@ -153,7 +153,7 @@ const ROUTE_INDEX: PaletteRoute[] = [
     kind: "route",
     id: "route:privacy",
     title: "Privacy dashboard",
-    subtitle: "ε exposure + delete-all (/privacy)",
+    subtitle: "Privacy budgets and deletion controls",
     path: "/privacy",
   },
   {
@@ -174,7 +174,7 @@ const ROUTE_INDEX: PaletteRoute[] = [
     kind: "route",
     id: "route:trust",
     title: "Trust Center",
-    subtitle: "ε budgets · deletion SLA · unlock status (/trust)",
+    subtitle: "Published privacy, deletion, and training commitments",
     path: "/trust",
   },
   {

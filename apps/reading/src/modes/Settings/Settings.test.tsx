@@ -59,6 +59,16 @@ describe("Settings", () => {
     expect(screen.getByText("/coordination/cost-consent")).toBeTruthy();
   });
 
+  it("links to trust and privacy controls with plain copy", () => {
+    render(<Settings />);
+
+    expect(screen.getByText("Published privacy, deletion, and training commitments")).toBeTruthy();
+    expect(screen.getByText("Privacy budgets and deletion controls")).toBeTruthy();
+    expect(screen.queryByText(/ε exposure/i)).toBeNull();
+    expect(screen.queryByText(/DP budget/i)).toBeNull();
+    expect(screen.queryByText(/Substrate-level/i)).toBeNull();
+  });
+
   it("surfaces the no-provider state without pretending agentic work is available", () => {
     providerKeysRef.current = { status: "absent", refresh: refreshMock };
 
