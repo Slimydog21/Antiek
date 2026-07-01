@@ -252,10 +252,12 @@ describe("PenguinMascot SPR-06 — autonomous roam", () => {
     const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
     const startLeft = parseFloat(el.style.left);
     const startTop = parseFloat(el.style.top);
-    // Settle (1800ms) → first leg begins: position is retargeted + the foot
-    // bob is on while walking.
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.8);
+    // REST_MIN (300ms) → first leg begins: position is retargeted + the foot
+    // bob is on while walking. Stay inside the first deterministic leg; later
+    // legs deliberately use a random rest window.
     act(() => {
-      vi.advanceTimersByTime(1900);
+      vi.advanceTimersByTime(350);
     });
     const movedLeft = parseFloat(el.style.left);
     const movedTop = parseFloat(el.style.top);
@@ -270,11 +272,11 @@ describe("PenguinMascot SPR-06 — autonomous roam", () => {
     expect(movedLeft).toBeLessThanOrEqual(1200 - 80);
     expect(movedTop).toBeGreaterThanOrEqual(0);
     expect(movedTop).toBeLessThanOrEqual(800 - 80);
-    // End of this stroll leg only (800ms stroll + slack) — not a multi-leg
-    // elapse that would land mid-walk on a later hop.
+    // End of this stroll leg only (800ms stroll + slack).
     act(() => {
-      vi.advanceTimersByTime(900);
+      vi.advanceTimersByTime(850);
     });
+    randomSpy.mockRestore();
     expect(container.querySelector(".werner-waddle")).toBeNull();
     expect(el.style.transition).toBe("");
   });

@@ -29,6 +29,8 @@ vi.mock("../../workspace/PanelHost", () => ({
 import BrainstormStation from ".";
 import WatchForLaterPanel, {
   BRAINSTORM_SELECT_QUESTION_EVENT,
+  dispatchBrainstormQuestionSelection,
+  resetBrainstormQuestionSelection,
 } from "./WatchForLaterPanel";
 
 const QUESTION: ParkedQuestionEntry = {
@@ -40,6 +42,14 @@ const QUESTION: ParkedQuestionEntry = {
   parent_event_id: "event-parent",
   parked_at: "2026-07-01T00:00:00Z",
 };
+const SECOND_QUESTION: ParkedQuestionEntry = {
+  ...QUESTION,
+  question_id: "q-second",
+  question_text: "How should a note become a writing block?",
+  source_investigation_id: "inv-second",
+  source_document_id: null,
+  anchor_region_id: null,
+};
 
 beforeEach(() => {
   apiMocks.listWatchForLater.mockReset().mockResolvedValue({
@@ -50,6 +60,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetBrainstormQuestionSelection();
 });
 
 describe("BrainstormStation watch-list selection bridge", () => {
@@ -89,5 +100,37 @@ describe("BrainstormStation watch-list selection bridge", () => {
     expect(screen.getAllByText(QUESTION.question_text).length).toBeGreaterThan(0);
     expect(screen.getAllByText("inv-source").length).toBeGreaterThan(0);
     expect(screen.getByText("q-bridge")).toBeTruthy();
+  });
+
+  it("BrainstormStation replays the latest selected question when the route mounts after selection", async () => {
+    dispatchBrainstormQuestionSelection(QUESTION);
+
+    render(
+      <MemoryRouter>
+        <BrainstormStation />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Parked question")).toBeTruthy();
+    expect(screen.getAllByText(QUESTION.question_text).length).toBeGreaterThan(0);
+    expect(screen.getByText("q-bridge")).toBeTruthy();
+  });
+
+  it("WatchForLaterPanel follows selection events emitted outside the dock", async () => {
+    apiMocks.listWatchForLater.mockResolvedValue({
+      questions: [QUESTION, SECOND_QUESTION],
+    });
+
+    render(<WatchForLaterPanel />);
+    expect(await screen.findByText(QUESTION.question_text)).toBeTruthy();
+
+    dispatchBrainstormQuestionSelection(SECOND_QUESTION);
+
+    await waitFor(() => {
+      const selectedButton = screen
+        .getByText(SECOND_QUESTION.question_text)
+        .closest("button");
+      expect(selectedButton?.className).toContain("border-ink");
+    });
   });
 });
