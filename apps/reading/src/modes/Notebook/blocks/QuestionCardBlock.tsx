@@ -2,6 +2,51 @@ import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
 import { stringAttr } from "./attrHelpers";
+import {
+  dispatchBrainstormQuestionSelection,
+} from "../../BrainstormStation/WatchForLaterPanel";
+import type { ParkedQuestionEntry } from "../../../lib/api";
+
+export function openNotebookQuestionInBrainstorm({
+  parkedQuestionId,
+  text,
+}: {
+  parkedQuestionId: string;
+  text: string;
+}) {
+  const question: ParkedQuestionEntry = {
+    question_id: parkedQuestionId,
+    question_text: text,
+    source_investigation_id: "notebook",
+    source_document_id: null,
+    anchor_region_id: null,
+    parked_at: new Date().toISOString(),
+    parent_event_id: null,
+  };
+  dispatchBrainstormQuestionSelection(question);
+  window.history.pushState({}, "", "/brainstorm");
+  window.dispatchEvent(
+    typeof PopStateEvent === "undefined"
+      ? new Event("popstate")
+      : new PopStateEvent("popstate", { state: {} }),
+  );
+}
+
+export async function openNotebookQuestionInChase(text: string) {
+  const { useWorkspace } = await import("../../../workspace/WorkspaceStore");
+  useWorkspace.getState().open(
+    "Chase",
+    {
+      spawnContext: text,
+      parentInvestigationId: "notebook",
+    },
+    {
+      mode: "floating",
+      title: "Chase",
+      id: `chase:${text.slice(0, 32)}`,
+    },
+  );
+}
 
 /**
  * Question-card block — captures an emergent question that the
@@ -9,8 +54,8 @@ import { stringAttr } from "./attrHelpers";
  * resolves at render time in the full backend.
  *
  * Visual: aurora left bar (the "open thread" colour), inline question
- * text + an "ask later" affordance that will hand off to the
- * Brainstorm parked-questions surface in a follow-up.
+ * text + affordances for chasing free-form questions or opening a real
+ * parked question in the Brainstorm surface.
  */
 function QuestionCardNodeView({ node, deleteNode }: NodeViewProps) {
   const text = (node.attrs.text as string | null) ?? "";
@@ -33,29 +78,29 @@ function QuestionCardNodeView({ node, deleteNode }: NodeViewProps) {
             </span>
           )}
         </p>
-        {/* S7 WP-7.3 acceptance: each block exposes a "contextual open
-            as panel" affordance. For a question card, opening as a
-            panel chases the question — opens BrainstormStation routed
-            with the question text as the active parked item. */}
-        {text && (
+        {/* S7 WP-7.3 acceptance: each block exposes a contextual open
+            affordance. A real parked-question id opens Brainstorm so the
+            watch folder + thought partner share the selected question; a
+            free-text question without a parked id falls back to Chase. */}
+        {text && parkedId && (
           <button
             type="button"
-            onClick={() => {
-              // Chase the question via the Chase panel (RW S5 flow).
-              import("../../../workspace/WorkspaceStore").then(
-                ({ useWorkspace }) => {
-                  useWorkspace.getState().open(
-                    "Chase",
-                    { question: text },
-                    {
-                      mode: "floating",
-                      title: "Chase",
-                      id: `chase:${text.slice(0, 32)}`,
-                    },
-                  );
-                },
-              );
-            }}
+            onClick={() =>
+              openNotebookQuestionInBrainstorm({
+                parkedQuestionId: parkedId,
+                text,
+              })
+            }
+            className="text-[10px] font-mono text-aurora hover:underline shrink-0 mt-1"
+            title="Open this parked question in Brainstorm"
+          >
+            brainstorm
+          </button>
+        )}
+        {text && !parkedId && (
+          <button
+            type="button"
+            onClick={() => void openNotebookQuestionInChase(text)}
             className="text-[10px] font-mono text-aurora hover:underline shrink-0 mt-1"
             title="Chase this question in a floating panel"
           >
