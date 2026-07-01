@@ -978,24 +978,23 @@ describe("BookReader", () => {
   // legacy body (or an honest notice) with NO throw and NO blank:
   //   1. an UNKNOWN block `type` → rejected by the tightened structuredDoc gate
   //      → null → legacy fallback (degrades BEFORE the renderer);
-  //   2. a `paragraph` missing `spans` → passes the gate (known type) but throws
-  //      in InlineSpans during render → caught by the ReaderErrorBoundary →
-  //      legacy fallback;
-  //   3. a `math` missing `tex` → passes the gate but throws in renderMath →
-  //      caught by the boundary → legacy fallback.
+  //   2. a `paragraph` missing `spans` → rejected by the renderability gate
+  //      before InlineSpans can throw;
+  //   3. a `math` missing `tex` → rejected by the renderability gate before
+  //      renderMath can throw.
   // The legacy fallback renders body.full_text ("The opening of the book."), so
   // the reading surface is present (not blank); the rich article is absent
   // (degraded); §9.0 attribution still rides the legacy column for a servable.
-  //
-  // The boundary throws are EXPECTED — React logs the caught error to
-  // console.error. We silence it for the duration so a real failure (an
-  // unexpected throw) is still visible, while the expected degrade stays quiet.
-  function withSilencedErrorBoundary(fn: () => Promise<void>): () => Promise<void> {
+  // These routine malformed inputs should not throw through React or warn; the
+  // boundary remains for unexpected residual failures only.
+  function withNoReaderConsoleNoise(fn: () => Promise<void>): () => Promise<void> {
     return async () => {
       const spy = vi.spyOn(console, "error").mockImplementation(() => {});
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       try {
         await fn();
+        expect(spy).not.toHaveBeenCalled();
+        expect(warn).not.toHaveBeenCalled();
       } finally {
         spy.mockRestore();
         warn.mockRestore();
@@ -1005,7 +1004,7 @@ describe("BookReader", () => {
 
   it(
     "D1: a SERVABLE doc with an UNKNOWN block type degrades to the legacy body (gate rejects it; not blank, no throw)",
-    withSilencedErrorBoundary(async () => {
+    withNoReaderConsoleNoise(async () => {
       getBookMock.mockResolvedValue(makeDetail());
       getFullTextMock.mockResolvedValue(
         makeBody({ structured_blocks: JSON.stringify({ id: "doc-1", title: "T", blocks: [{ type: "__unknown__" }] }) }),
@@ -1022,13 +1021,13 @@ describe("BookReader", () => {
   );
 
   it(
-    "D1: a SERVABLE doc with a `paragraph` missing `spans` degrades via the error boundary (not blank, no throw)",
-    withSilencedErrorBoundary(async () => {
+    "D1: a SERVABLE doc with a `paragraph` missing `spans` degrades before render (not blank, no throw)",
+    withNoReaderConsoleNoise(async () => {
       getBookMock.mockResolvedValue(makeDetail());
       getFullTextMock.mockResolvedValue(
         makeBody({
-          // Known `type` (passes the gate) but field-invalid: the renderer's
-          // InlineSpans throws mapping `undefined` spans → caught by the boundary.
+          // Known `type` but field-invalid: rejected before InlineSpans can
+          // throw mapping `undefined` spans.
           structured_blocks: JSON.stringify({
             id: "doc-1",
             title: "T",
@@ -1037,7 +1036,7 @@ describe("BookReader", () => {
         }),
       );
       const { container } = await renderReader();
-      // The boundary degraded to the legacy body — the surface is up, not blank.
+      // The pre-render gate degraded to the legacy body — the surface is up, not blank.
       await waitFor(() => expect(screen.getByText("The opening of the book.")).toBeTruthy());
       expect(richArticle(container)).toBeNull();
       // §9.0 attribution preserved on the fallback (servable).
@@ -1046,17 +1045,51 @@ describe("BookReader", () => {
   );
 
   it(
-    "D1: a SERVABLE doc with a `math` block missing `tex` degrades via the error boundary (not blank, no throw)",
-    withSilencedErrorBoundary(async () => {
+    "D1: a SERVABLE doc with a `math` block missing `tex` degrades before render (not blank, no throw)",
+    withNoReaderConsoleNoise(async () => {
       getBookMock.mockResolvedValue(makeDetail());
       getFullTextMock.mockResolvedValue(
         makeBody({
-          // Known `type` (passes the gate) but missing the required `tex` →
-          // renderMath throws → caught by the boundary → legacy fallback.
+          // Known `type` but missing the required `tex` → rejected before
+          // renderMath can throw.
           structured_blocks: JSON.stringify({
             id: "doc-1",
             title: "T",
             blocks: [{ type: "math" }],
+          }),
+        }),
+      );
+      const { container } = await renderReader();
+      await waitFor(() => expect(screen.getByText("The opening of the book.")).toBeTruthy());
+      expect(richArticle(container)).toBeNull();
+      expect(container.querySelector("[data-akb-asset-id]")).toBeTruthy();
+    }),
+  );
+
+  it(
+    "D1: a SERVABLE doc with a malformed list item degrades before render (not blank, no throw)",
+    withNoReaderConsoleNoise(async () => {
+      getBookMock.mockResolvedValue(makeDetail());
+      getFullTextMock.mockResolvedValue(
+        makeBody({
+          structured_blocks: JSON.stringify({
+            id: "doc-1",
+            title: "T",
+            blocks: [
+              {
+                type: "list",
+                items: [
+                  {
+                    blocks: [
+                      {
+                        type: "paragraph",
+                        spans: [{ type: "text", text: "schema-skewed list item" }],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
           }),
         }),
       );

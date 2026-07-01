@@ -16,7 +16,7 @@ import ChaseThread from "../ResearchWorkstation/ChaseThread";
 import ReadingColumn from "../../components/reader/ReadingColumn";
 import Reader, { deriveToc } from "../../components/reader/Reader";
 import ReaderErrorBoundary from "../../components/reader/ReaderErrorBoundary";
-import { allBlockTypesKnown } from "../../components/reader/knownBlockTypes";
+import { blocksRenderable } from "../../components/reader/knownBlockTypes";
 import PdfViewer from "../../components/PdfViewer";
 import type { Block, Document, InlineSpan, TocEntry } from "../../types/document_model.gen";
 import { decodeRegion, useOpenDocument } from "../../lib/openDocument";
@@ -156,18 +156,15 @@ export default function BookReader() {
   //     NEVER rich-render a gated/taken-down book, even if a stale/poisoned
   //     `structured_blocks` somehow rode along (the backend serves it null for a
   //     withheld body, but the client refuses regardless);
-  //   • the JSON must PARSE, carry a `blocks` array, AND every block must have a
-  //     KNOWN `type` discriminator (allBlockTypesKnown, sourced from the
-  //     generated `Block` union). A bad/wrong-shape blob — unparseable, no
-  //     `blocks` array, or a block whose `type` the dispatcher can't render
-  //     (`assertNever`) — degrades to null, taking the legacy text fallback
-  //     BEFORE the renderer can throw on it.
-  // This gate validates SHAPE only (parse + a known-`type` block array); it does
-  // NOT deep-validate every span/field, so a field-level skew within a known
-  // type (a `paragraph` missing `spans`, a `math` missing `tex`) can still slip
-  // through to render — that residual is caught by the ReaderErrorBoundary
-  // around the rich body, which degrades to the SAME legacy fallback. Together:
-  // never a blank, never a throw.
+  //   • the JSON must PARSE, carry a renderable `blocks` array, and use only
+  //     known block/span discriminators with required renderer fields present.
+  //     A bad/wrong-shape blob — unparseable, no `blocks` array, unknown type,
+  //     paragraph without `spans`, math without `tex`, etc. — degrades to null,
+  //     taking the legacy text fallback BEFORE the renderer can throw on it.
+  // The ReaderErrorBoundary remains the second line of defense for unexpected
+  // residual renderer failures, but routine schema skew should not produce
+  // React error spam during activation walks. Together: never a blank, never a
+  // throw.
   // A null result ⇒ the legacy `ReadingColumn` text path, byte-identical to
   // before. So the rich path is reachable for a servable, well-formed doc ONLY.
   const structuredDoc = useMemo<Document | null>(() => {
@@ -175,10 +172,9 @@ export default function BookReader() {
     try {
       const d = JSON.parse(body.structured_blocks);
       if (!d || !Array.isArray(d.blocks)) return null;
-      // Reject a doc carrying any unknown block `type` (schema-skew / poisoned)
-      // BEFORE it reaches the dispatcher's `assertNever` — take the clean
-      // legacy fallback instead of letting the renderer throw.
-      if (!allBlockTypesKnown(d.blocks)) return null;
+      // Reject malformed render-critical fields BEFORE they reach the rich
+      // renderer — take the clean legacy fallback instead.
+      if (!blocksRenderable(d.blocks)) return null;
       return d as Document;
     } catch {
       return null;
@@ -471,9 +467,8 @@ export default function BookReader() {
   const activePassageText = structuredDoc
     ? blocksToPlainText(activeWindow?.blocks ?? [])
     : (textPage?.text ?? "");
-  // D1 degrade text: if the rich <Reader> throws on a field-level skew the
-  // structuredDoc gate didn't catch (a paragraph missing `spans`, a math missing
-  // `tex`), the error boundary degrades to the legacy ReadingColumn with this
+  // D1 degrade text: if the rich <Reader> ever throws despite the structuredDoc
+  // gate, the error boundary degrades to the legacy ReadingColumn with this
   // text. The block pagination and the text pagination don't share page indices,
   // so a mid-doc throw can't be mapped to a single text page reliably; the honest
   // degrade renders the WHOLE gate-served body (same §9.0-served text) rather
@@ -702,14 +697,12 @@ export default function BookReader() {
                     useOpenDocument (SPR-05).
 
                     D1 — "never blank, never a throw": the structuredDoc gate
-                    rejects an unknown block `type` up front, but a field-level
-                    skew within a KNOWN type (a paragraph missing `spans`, a math
-                    missing `tex`) would still throw during render. With no
-                    boundary that throw unmounts the whole surface to blank. The
-                    ReaderErrorBoundary catches it and degrades to the SAME legacy
-                    ReadingColumn — same articleRef, same §9.0 attribution — that
-                    a null structuredDoc takes. resetKey=documentId lets a healthy
-                    book after a broken one render rich again. */
+                    rejects malformed render-critical fields up front. If an
+                    unexpected residual renderer failure still happens, the
+                    ReaderErrorBoundary degrades to the SAME legacy ReadingColumn
+                    — same articleRef, same §9.0 attribution — that a null
+                    structuredDoc takes. resetKey=documentId lets a healthy book
+                    after a broken one render rich again. */
                 <ReaderErrorBoundary
                   resetKey={documentId}
                   fallback={
