@@ -95,6 +95,24 @@ or the reward noise floor.
 - [ ] A one-page written argument exists for why the trained model must be open-weight rather than continuing with closed-weight APIs. Acceptable categories of argument: **cost** (with token-volume math), **latency** (with measurement), **policy/control** (e.g., regulatory), **privacy** (e.g., sensitive data), **capability** (the trained model demonstrably beats the closed alternative on the §D eval).
 - [ ] At least one of the above is *measured*, not asserted.
 
+**Evidence command:**
+
+```bash
+./.venv/bin/python -m compounding.verification.open_weight_justification \
+  --justification docs/decisions/loop3-open-weight-justification.md \
+  --measurements reports/loop3/open-weight-justification.json
+```
+
+`reports/loop3/open-weight-justification.json` is intentionally empty until
+measured evidence exists. Do not pass `--min-justification-words` for unlock
+evidence. Passing evidence requires a written affirmative `Decision: deploy
+open-weight...` argument of at least 350 words and at least one measured
+category from `cost`, `latency`, `policy_control`, `privacy`, or `capability`.
+A measurement must name a metric, date, source artifact, and the category-
+specific numeric values enforced by the verifier; assertion-only prose and
+arbitrary numeric fields do not pass. This command verifies evidence shape
+only and does not unlock Loop 3 by itself.
+
 **Why this matters:** Today every Antiek tier uses a closed-weight provider because it is the better choice — cheaper, smarter, or more reliable depending on tier. RL training produces an open-weight model. If there is no concrete reason to *deploy* an open-weight model, the training run produces an artifact for the trophy case. Don't train trophies.
 
 **Current state:** No argument exists. The Researchmaxx vision posits open-weight for the "tab model" product, but Antiek has not yet validated that posture against measurement.
