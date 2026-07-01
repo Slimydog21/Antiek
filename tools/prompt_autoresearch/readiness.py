@@ -42,6 +42,7 @@ def audit_wedge1_readiness(repo_root: Path) -> ReadinessReport:
         golden_trace_files,
     )
     calibration = root / "reports/autoresearch/synthesizer-calibration.md"
+    calibration_valid = _is_calibration_report(calibration)
     required_tool_files = [
         "runner.py",
         "score.py",
@@ -95,11 +96,11 @@ def audit_wedge1_readiness(repo_root: Path) -> ReadinessReport:
         ReadinessItem(
             id="calibration",
             label="no-op mutator calibration run on file",
-            status="satisfied" if calibration.is_file() else "operator_bound",
+            status="satisfied" if calibration_valid else "operator_bound",
             evidence=(
-                str(calibration.relative_to(root))
-                if calibration.is_file()
-                else "run no-op cohort and write reports/autoresearch/synthesizer-calibration.md"
+                f"{calibration.relative_to(root)} contains calibration summary fields"
+                if calibration_valid
+                else _calibration_evidence(root, calibration)
             ),
         ),
         ReadinessItem(
@@ -125,6 +126,29 @@ def audit_wedge1_readiness(repo_root: Path) -> ReadinessReport:
         ),
     ]
     return ReadinessReport(items=items)
+
+
+def _is_calibration_report(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    text = path.read_text(encoding="utf-8")
+    required_fragments = (
+        "# Prompt autoresearch calibration",
+        "- Iterations:",
+        "- σ:",
+        "- 2σ:",
+        "- Recommended epsilon:",
+    )
+    return all(fragment in text for fragment in required_fragments)
+
+
+def _calibration_evidence(root: Path, calibration: Path) -> str:
+    if not calibration.is_file():
+        return "run no-op cohort and write reports/autoresearch/synthesizer-calibration.md"
+    return (
+        f"{calibration.relative_to(root)} exists but is not a generated "
+        "calibration report"
+    )
 
 
 def _classify_golden_traces(

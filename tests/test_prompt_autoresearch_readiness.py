@@ -7,7 +7,9 @@ from pathlib import Path
 
 from tools.golden_traces import GoldenTrace, RoleCall, stable_json_hash
 from tools.prompt_autoresearch import (
+    CalibrationReport,
     audit_wedge1_readiness,
+    render_calibration_markdown,
     render_readiness_markdown,
 )
 
@@ -74,6 +76,40 @@ def test_wedge1_readiness_counts_only_loadable_golden_traces(tmp_path):
 
     assert golden.status == "satisfied"
     assert "5 loadable golden trace(s)" in golden.evidence
+
+
+def test_wedge1_readiness_requires_generated_calibration_report(tmp_path):
+    calibration_path = tmp_path / "reports/autoresearch/synthesizer-calibration.md"
+    calibration_path.parent.mkdir(parents=True)
+    calibration_path.write_text("operator note only\n", encoding="utf-8")
+
+    report = audit_wedge1_readiness(tmp_path)
+    calibration = next(item for item in report.items if item.id == "calibration")
+
+    assert calibration.status == "operator_bound"
+    assert "exists but is not a generated calibration report" in calibration.evidence
+
+    calibration_path.write_text(
+        render_calibration_markdown(
+            CalibrationReport(
+                role="synthesizer",
+                iteration_count=5,
+                mean_delta=0.0,
+                sigma=0.01,
+                two_sigma=0.02,
+                floor_epsilon=0.05,
+                recommended_epsilon=0.05,
+                rationale="test calibration report",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    report = audit_wedge1_readiness(tmp_path)
+    calibration = next(item for item in report.items if item.id == "calibration")
+
+    assert calibration.status == "satisfied"
+    assert "contains calibration summary fields" in calibration.evidence
 
 
 def _write_valid_trace(path: Path, index: int) -> None:
