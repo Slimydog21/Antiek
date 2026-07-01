@@ -201,8 +201,22 @@ def _good_thesis(**overrides) -> dict:
     return base
 
 
+_CANONICAL_SUPPORTING_CHUNK_IDS = ("chunk-1", "chunk-2")
+_CANONICAL_PATH_NODE_IDS = ("n-1", "n-2")
+_CANONICAL_PATH_EDGE_IDS = ("e-1",)
+
+
+def _parse_good(payload: dict):
+    return parse_synthesizer_response(
+        json.dumps(payload),
+        canonical_supporting_chunk_ids=_CANONICAL_SUPPORTING_CHUNK_IDS,
+        canonical_path_node_ids=_CANONICAL_PATH_NODE_IDS,
+        canonical_path_edge_ids=_CANONICAL_PATH_EDGE_IDS,
+    )
+
+
 def test_parser_happy_path():
-    out = parse_synthesizer_response(json.dumps(_good_thesis()))
+    out = _parse_good(_good_thesis())
     assert out.thesis_summary == "X is well-supported by primary evidence."
     assert out.implicit_recommendation == "proceed"
     assert len(out.thesis_components) == 1
@@ -227,7 +241,7 @@ def test_parser_insufficient_evidence_allows_empty_provenance():
         reasoning_paths_used=[],
         falsification_conditions=[],
     )
-    out = parse_synthesizer_response(json.dumps(payload))
+    out = _parse_good(payload)
     assert out.implicit_recommendation == "insufficient_evidence"
     assert out.falsification_conditions == ()
 
@@ -249,7 +263,7 @@ def test_parser_empty_falsifications_rejected_when_proceeding():
         SynthesizerValidationError,
         match="falsification_conditions must contain at least one",
     ):
-        parse_synthesizer_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_parser_empty_falsifications_allowed_when_insufficient_evidence():
@@ -269,7 +283,7 @@ def test_parser_empty_falsifications_allowed_when_insufficient_evidence():
         falsification_conditions=[],
         reasoning_paths_used=[],
     )
-    out = parse_synthesizer_response(json.dumps(payload))
+    out = _parse_good(payload)
     assert out.implicit_recommendation == "insufficient_evidence"
     assert out.falsification_conditions == ()
 
@@ -282,48 +296,48 @@ def test_parser_empty_falsifications_allowed_when_insufficient_evidence():
 def test_parser_bad_recommendation_undetermined_rejected():
     payload = _good_thesis(implicit_recommendation="undetermined")
     with pytest.raises(SynthesizerValidationError, match="implicit_recommendation"):
-        parse_synthesizer_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_parser_confidence_medium_rejected():
     payload = _good_thesis()
     payload["thesis_components"][0]["confidence"] = "medium"
     with pytest.raises(SynthesizerValidationError, match="confidence"):
-        parse_synthesizer_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_parser_bad_severity_rejected():
     payload = _good_thesis()
     payload["execution_risks"][0]["severity_if_manifested"] = "catastrophic"
     with pytest.raises(SynthesizerValidationError, match="severity_if_manifested"):
-        parse_synthesizer_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_parser_conviction_out_of_range_rejected():
     payload = _good_thesis(conviction_level=1.5)
     with pytest.raises(SynthesizerValidationError, match="conviction_level"):
-        parse_synthesizer_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_parser_effective_source_tier_zero_rejected():
     payload = _good_thesis()
     payload["thesis_components"][0]["effective_source_tier"] = 0
     with pytest.raises(SynthesizerValidationError, match="effective_source_tier"):
-        parse_synthesizer_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_parser_effective_source_tier_six_rejected():
     payload = _good_thesis()
     payload["thesis_components"][0]["effective_source_tier"] = 6
     with pytest.raises(SynthesizerValidationError, match="effective_source_tier"):
-        parse_synthesizer_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_parser_effective_source_tier_bool_rejected():
     payload = _good_thesis()
     payload["thesis_components"][0]["effective_source_tier"] = True
     with pytest.raises(SynthesizerValidationError, match="bool"):
-        parse_synthesizer_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 # ---------------------------------------------------------------------------
@@ -335,7 +349,7 @@ def test_tier_5_component_rejected():
     payload = _good_thesis()
     payload["thesis_components"][0]["effective_source_tier"] = 5
     with pytest.raises(SynthesizerValidationError, match="Tier 5"):
-        parse_synthesizer_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_null_tier_without_hedging_required_rejected():
@@ -344,7 +358,7 @@ def test_null_tier_without_hedging_required_rejected():
     payload["thesis_components"][0]["hedging_required"] = False
     payload["thesis_components"][0]["confidence"] = "unknown"
     with pytest.raises(SynthesizerValidationError, match="hedging_required"):
-        parse_synthesizer_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_null_tier_without_unknown_confidence_rejected():
@@ -353,7 +367,7 @@ def test_null_tier_without_unknown_confidence_rejected():
     payload["thesis_components"][0]["hedging_required"] = True
     payload["thesis_components"][0]["confidence"] = "moderate"
     with pytest.raises(SynthesizerValidationError, match="unknown"):
-        parse_synthesizer_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_null_tier_with_unknown_and_hedging_ok():
@@ -361,7 +375,7 @@ def test_null_tier_with_unknown_and_hedging_ok():
     payload["thesis_components"][0]["effective_source_tier"] = None
     payload["thesis_components"][0]["hedging_required"] = True
     payload["thesis_components"][0]["confidence"] = "unknown"
-    out = parse_synthesizer_response(json.dumps(payload))
+    out = _parse_good(payload)
     assert out.thesis_components[0].effective_source_tier is None
 
 
@@ -371,7 +385,7 @@ def test_tier_4_high_confidence_rejected():
     payload["thesis_components"][0]["hedging_required"] = True
     payload["thesis_components"][0]["confidence"] = "high"
     with pytest.raises(SynthesizerValidationError, match="Tier 4|confidence"):
-        parse_synthesizer_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_tier_4_without_hedging_rejected():
@@ -380,7 +394,7 @@ def test_tier_4_without_hedging_rejected():
     payload["thesis_components"][0]["hedging_required"] = False
     payload["thesis_components"][0]["confidence"] = "low"
     with pytest.raises(SynthesizerValidationError, match="hedging_required"):
-        parse_synthesizer_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_tier_4_with_low_and_hedging_ok():
@@ -388,7 +402,7 @@ def test_tier_4_with_low_and_hedging_ok():
     payload["thesis_components"][0]["effective_source_tier"] = 4
     payload["thesis_components"][0]["hedging_required"] = True
     payload["thesis_components"][0]["confidence"] = "low"
-    out = parse_synthesizer_response(json.dumps(payload))
+    out = _parse_good(payload)
     assert out.thesis_components[0].effective_source_tier == 4
 
 
@@ -397,7 +411,7 @@ def test_tier_3_without_hedging_rejected():
     payload["thesis_components"][0]["effective_source_tier"] = 3
     payload["thesis_components"][0]["hedging_required"] = False
     with pytest.raises(SynthesizerValidationError, match="hedging_required"):
-        parse_synthesizer_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_tier_2_without_hedging_ok():
@@ -405,12 +419,12 @@ def test_tier_2_without_hedging_ok():
     payload["thesis_components"][0]["effective_source_tier"] = 2
     payload["thesis_components"][0]["hedging_required"] = False
     payload["thesis_components"][0]["confidence"] = "moderate"
-    out = parse_synthesizer_response(json.dumps(payload))
+    out = _parse_good(payload)
     assert out.thesis_components[0].hedging_required is False
 
 
 def test_tier_1_without_hedging_ok():
-    out = parse_synthesizer_response(json.dumps(_good_thesis()))
+    out = _parse_good(_good_thesis())
     assert out.thesis_components[0].effective_source_tier == 1
     assert out.thesis_components[0].hedging_required is False
 
@@ -425,7 +439,7 @@ def test_component_with_no_provenance_rejected_under_proceed():
     payload["thesis_components"][0]["supporting_chunk_ids"] = []
     payload["thesis_components"][0]["supporting_path_indices"] = []
     with pytest.raises(SynthesizerValidationError, match="provenance"):
-        parse_synthesizer_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_hallucinated_supporting_chunk_ids_rejected_against_canonical_set():
@@ -438,7 +452,14 @@ def test_hallucinated_supporting_chunk_ids_rejected_against_canonical_set():
         parse_synthesizer_response(
             json.dumps(payload),
             canonical_supporting_chunk_ids=("chunk-1", "chunk-2"),
+            canonical_path_node_ids=_CANONICAL_PATH_NODE_IDS,
+            canonical_path_edge_ids=_CANONICAL_PATH_EDGE_IDS,
         )
+
+
+def test_supporting_chunk_ids_rejected_without_canonical_set():
+    with pytest.raises(SynthesizerValidationError, match="canonical set"):
+        parse_synthesizer_response(json.dumps(_good_thesis()))
 
 
 def test_path_only_provenance_ok():
@@ -447,7 +468,7 @@ def test_path_only_provenance_ok():
     payload = _good_thesis()
     payload["thesis_components"][0]["supporting_chunk_ids"] = []
     payload["thesis_components"][0]["supporting_path_indices"] = [0]
-    out = parse_synthesizer_response(json.dumps(payload))
+    out = _parse_good(payload)
     assert out.thesis_components[0].supporting_path_indices == (0,)
 
 
@@ -456,7 +477,7 @@ def test_supporting_path_indices_must_reference_existing_reasoning_path():
     payload["thesis_components"][0]["supporting_chunk_ids"] = []
     payload["thesis_components"][0]["supporting_path_indices"] = [1]
     with pytest.raises(SynthesizerValidationError, match="out of range"):
-        parse_synthesizer_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 # ---------------------------------------------------------------------------
@@ -468,14 +489,14 @@ def test_support_summary_below_minimum_length_rejected():
     payload = _good_thesis()
     payload["reasoning_paths_used"][0]["support_summary"] = "too short"  # 9 < 20
     with pytest.raises(SynthesizerValidationError, match="support_summary"):
-        parse_synthesizer_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_empty_path_node_ids_rejected():
     payload = _good_thesis()
     payload["reasoning_paths_used"][0]["path_node_ids"] = []
     with pytest.raises(SynthesizerValidationError, match="path_node_ids"):
-        parse_synthesizer_response(json.dumps(payload))
+        _parse_good(payload)
 
 
 def test_hallucinated_path_node_ids_rejected_against_canonical_set():
@@ -484,6 +505,7 @@ def test_hallucinated_path_node_ids_rejected_against_canonical_set():
     with pytest.raises(SynthesizerValidationError, match="canonical set"):
         parse_synthesizer_response(
             json.dumps(payload),
+            canonical_supporting_chunk_ids=_CANONICAL_SUPPORTING_CHUNK_IDS,
             canonical_path_node_ids=("n-1", "n-2"),
             canonical_path_edge_ids=("e-1",),
         )
@@ -495,6 +517,7 @@ def test_hallucinated_path_edge_ids_rejected_against_canonical_set():
     with pytest.raises(SynthesizerValidationError, match="canonical set"):
         parse_synthesizer_response(
             json.dumps(payload),
+            canonical_supporting_chunk_ids=_CANONICAL_SUPPORTING_CHUNK_IDS,
             canonical_path_node_ids=("n-1", "n-2"),
             canonical_path_edge_ids=("e-1",),
         )
@@ -503,6 +526,7 @@ def test_hallucinated_path_edge_ids_rejected_against_canonical_set():
 def test_canonical_path_refs_are_preserved():
     out = parse_synthesizer_response(
         json.dumps(_good_thesis()),
+        canonical_supporting_chunk_ids=_CANONICAL_SUPPORTING_CHUNK_IDS,
         canonical_path_node_ids=("n-1", "n-2"),
         canonical_path_edge_ids=("e-1",),
     )
@@ -514,7 +538,7 @@ def test_canonical_path_refs_are_preserved():
 def test_empty_reasoning_paths_ok():
     payload = _good_thesis(reasoning_paths_used=[])
     payload["thesis_components"][0]["supporting_path_indices"] = []
-    out = parse_synthesizer_response(json.dumps(payload))
+    out = _parse_good(payload)
     assert out.reasoning_paths_used == ()
 
 

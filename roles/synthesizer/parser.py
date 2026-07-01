@@ -227,7 +227,7 @@ def _parse_thesis_component(
     idx: int,
     *,
     allow_unprovenanced: bool,
-    canonical_supporting_chunk_ids: Iterable[str] | None,
+    canonical_supporting_chunk_ids: Iterable[str],
 ) -> ParsedThesisComponent:
     ctx = f"thesis_components[{idx}]"
     if not isinstance(obj, dict):
@@ -242,17 +242,16 @@ def _parse_thesis_component(
     chunks = tuple(_require_str_list(
         obj.get("supporting_chunk_ids"), "supporting_chunk_ids", ctx,
     ))
-    if canonical_supporting_chunk_ids is not None:
-        try:
-            chunks = validate_refs(
-                chunks,
-                canonical_supporting_chunk_ids,
-                on_invalid="raise",
-            ).valid
-        except InvalidReference as exc:
-            raise SynthesizerValidationError(
-                f"{ctx}.supporting_chunk_ids: {exc}"
-            ) from exc
+    try:
+        chunks = validate_refs(
+            chunks,
+            canonical_supporting_chunk_ids,
+            on_invalid="raise",
+        ).valid
+    except InvalidReference as exc:
+        raise SynthesizerValidationError(
+            f"{ctx}.supporting_chunk_ids: {exc}"
+        ) from exc
     paths = tuple(_require_int_list(
         obj.get("supporting_path_indices"), "supporting_path_indices", ctx,
     ))
@@ -398,8 +397,8 @@ def _parse_reasoning_path(
     obj: Any,
     idx: int,
     *,
-    canonical_path_node_ids: Iterable[str] | None,
-    canonical_path_edge_ids: Iterable[str] | None,
+    canonical_path_node_ids: Iterable[str],
+    canonical_path_edge_ids: Iterable[str],
 ) -> ParsedReasoningPath:
     ctx = f"reasoning_paths_used[{idx}]"
     if not isinstance(obj, dict):
@@ -407,15 +406,14 @@ def _parse_reasoning_path(
     nodes = tuple(_require_str_list(
         obj.get("path_node_ids"), "path_node_ids", ctx,
     ))
-    if canonical_path_node_ids is not None:
-        try:
-            nodes = validate_refs(
-                nodes,
-                canonical_path_node_ids,
-                on_invalid="raise",
-            ).valid
-        except InvalidReference as exc:
-            raise SynthesizerValidationError(f"{ctx}.path_node_ids: {exc}") from exc
+    try:
+        nodes = validate_refs(
+            nodes,
+            canonical_path_node_ids,
+            on_invalid="raise",
+        ).valid
+    except InvalidReference as exc:
+        raise SynthesizerValidationError(f"{ctx}.path_node_ids: {exc}") from exc
     if not nodes:
         raise SynthesizerValidationError(
             f"{ctx}: path_node_ids cannot be empty"
@@ -423,15 +421,14 @@ def _parse_reasoning_path(
     edges = tuple(_require_str_list(
         obj.get("path_edge_ids"), "path_edge_ids", ctx,
     ))
-    if canonical_path_edge_ids is not None:
-        try:
-            edges = validate_refs(
-                edges,
-                canonical_path_edge_ids,
-                on_invalid="raise",
-            ).valid
-        except InvalidReference as exc:
-            raise SynthesizerValidationError(f"{ctx}.path_edge_ids: {exc}") from exc
+    try:
+        edges = validate_refs(
+            edges,
+            canonical_path_edge_ids,
+            on_invalid="raise",
+        ).valid
+    except InvalidReference as exc:
+        raise SynthesizerValidationError(f"{ctx}.path_edge_ids: {exc}") from exc
     summary = _require_str(
         obj.get("support_summary"), "support_summary", ctx,
     )
@@ -466,9 +463,9 @@ def _validate_supporting_path_indices(
 def parse_synthesizer_response(
     text: str,
     *,
-    canonical_supporting_chunk_ids: Iterable[str] | None = None,
-    canonical_path_node_ids: Iterable[str] | None = None,
-    canonical_path_edge_ids: Iterable[str] | None = None,
+    canonical_supporting_chunk_ids: Iterable[str] = (),
+    canonical_path_node_ids: Iterable[str] = (),
+    canonical_path_edge_ids: Iterable[str] = (),
 ) -> ThesisResult:
     """Parse + validate a Synthesizer raw response."""
     obj = _extract_json_object(text)
