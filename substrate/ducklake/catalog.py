@@ -12,7 +12,7 @@ import sqlite3
 import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 
 def _now_iso() -> str:
@@ -136,6 +136,121 @@ class SqliteCatalogBackend:
                 (user_id,),
             )
             self._conn.commit()
+            return cur.rowcount > 0
+
+
+def _coerce_updated_at(value: object) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, datetime):
+        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return str(value)
+
+
+@dataclass
+class PostgresCatalogBackend:
+    """Postgres-backed catalog for the production DuckLake Stage 1 wiring.
+
+    ``psycopg`` is imported lazily so local/dev users keep the SQLite
+    stand-in without installing a Postgres driver. Production passes ``dsn``;
+    tests can pass a DB-API-like ``conn`` with ``execute`` + ``commit``.
+    """
+
+    dsn: str | None = None
+    conn: Any | None = None
+    _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def __post_init__(self) -> None:
+        if self.conn is None:
+            if not self.dsn:
+                raise ValueError("PostgresCatalogBackend requires dsn or conn")
+            try:
+                import psycopg  # type: ignore[import-not-found]
+            except ImportError as exc:
+                raise RuntimeError(
+                    "PostgresCatalogBackend requires psycopg; install "
+                    "`antiek[postgres]` on the production host",
+                ) from exc
+            self.conn = psycopg.connect(self.dsn)
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS catalog_entries (
+                user_id TEXT PRIMARY KEY,
+                db_path TEXT NOT NULL,
+                encryption_key_ref TEXT,
+                shard_id TEXT,
+                last_size_bytes BIGINT NOT NULL DEFAULT 0,
+                updated_at TIMESTAMPTZ NOT NULL
+            )
+        """)
+        self.conn.commit()
+
+    def upsert(self, entry: CatalogEntry) -> None:
+        assert self.conn is not None
+        with self._lock:
+            self.conn.execute("""
+                INSERT INTO catalog_entries
+                  (user_id, db_path, encryption_key_ref, shard_id, last_size_bytes, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT(user_id) DO UPDATE SET
+                  db_path=excluded.db_path,
+                  encryption_key_ref=excluded.encryption_key_ref,
+                  shard_id=excluded.shard_id,
+                  last_size_bytes=excluded.last_size_bytes,
+                  updated_at=excluded.updated_at
+            """, (
+                entry.user_id, entry.db_path, entry.encryption_key_ref,
+                entry.shard_id, entry.last_size_bytes, entry.updated_at,
+            ))
+            self.conn.commit()
+
+    def get(self, user_id: str) -> CatalogEntry | None:
+        assert self.conn is not None
+        with self._lock:
+            cur = self.conn.execute(
+                "SELECT user_id, db_path, encryption_key_ref, shard_id, last_size_bytes, updated_at "
+                "FROM catalog_entries WHERE user_id = %s",
+                (user_id,),
+            )
+            row = cur.fetchone()
+        if row is None:
+            return None
+        return CatalogEntry(
+            user_id=row[0],
+            db_path=row[1],
+            encryption_key_ref=row[2],
+            shard_id=row[3],
+            last_size_bytes=row[4],
+            updated_at=_coerce_updated_at(row[5]),
+        )
+
+    def all(self) -> list[CatalogEntry]:
+        assert self.conn is not None
+        with self._lock:
+            cur = self.conn.execute(
+                "SELECT user_id, db_path, encryption_key_ref, shard_id, last_size_bytes, updated_at "
+                "FROM catalog_entries"
+            )
+            rows = cur.fetchall()
+        return [
+            CatalogEntry(
+                user_id=r[0],
+                db_path=r[1],
+                encryption_key_ref=r[2],
+                shard_id=r[3],
+                last_size_bytes=r[4],
+                updated_at=_coerce_updated_at(r[5]),
+            )
+            for r in rows
+        ]
+
+    def remove(self, user_id: str) -> bool:
+        assert self.conn is not None
+        with self._lock:
+            cur = self.conn.execute(
+                "DELETE FROM catalog_entries WHERE user_id = %s",
+                (user_id,),
+            )
+            self.conn.commit()
             return cur.rowcount > 0
 
 

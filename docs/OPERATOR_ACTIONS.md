@@ -702,15 +702,20 @@ Commit `docs/decisions/oa-011-kms-deployed.md`. Mark OA-011 CLOSED.
 #### What the operator needs to do
 
 The DuckLake catalog primitive at `substrate/ducklake/catalog.py`
-ships with `SqliteCatalogBackend` as a stand-in. Production wires
-Postgres. To activate:
+ships with `SqliteCatalogBackend` as a stand-in and
+`PostgresCatalogBackend` as the optional production backend. Production
+wires Postgres. To activate:
 
 1. Provision a Postgres 16+ instance (Hetzner / RDS / Cloud SQL).
-2. Run the catalog table migration (the schema is in
-   `SqliteCatalogBackend.__post_init__`; port the DDL to Postgres).
-3. Write a `PostgresCatalogBackend` that conforms to the same
-   `CatalogBackend` Protocol.
-4. Point `DuckLakeCatalog` at the new backend in production.
+2. Install the optional driver on the production host:
+   `pip install -e '.[postgres]'`.
+3. Point `DuckLakeCatalog` at
+   `PostgresCatalogBackend(dsn=$ANTIEK_DUCKLAKE_POSTGRES_DSN)` in production.
+   The backend creates the `catalog_entries` table if absent and conforms to
+   the same `CatalogBackend` Protocol as the SQLite stand-in.
+4. Run a production round-trip:
+   `catalog.register(user_id="test-user", db_path=...)` +
+   `catalog.lookup("test-user")`.
 
 #### Once closed
 
