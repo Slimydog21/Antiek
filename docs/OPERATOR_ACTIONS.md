@@ -736,17 +736,16 @@ activate:
    into the per-user storage lifecycle in production.
 6. Verify the production round-trip:
 
-   ```python
-   import boto3
-   from substrate.graph_per_user import KMSStubKeyProvider
-
-   kp = KMSStubKeyProvider(client=boto3.client("kms"))
-   material = kp.generate_data_key(graph_id="test-graph")
-   plaintext = kp.decrypt_data_key(material=material)
-   assert material.key_id == "alias/antiek-graph-test-graph"
-   assert material.wrapped_data_key
-   assert plaintext
+   ```bash
+   ./.venv/bin/python -m tools.ops.kms_key_probe \
+     --region "$AWS_REGION" \
+     --json
    ```
+
+   The probe exercises `KMSStubKeyProvider.generate_data_key()` and
+   `decrypt_data_key()` against the configured KMS client. It reports key
+   alias and byte lengths only; it never prints wrapped or plaintext key
+   material.
 
 #### Once closed
 
