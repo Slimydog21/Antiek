@@ -299,6 +299,40 @@ def test_outcome_json_rejects_negative_epsilon(tmp_path):
         raise AssertionError("expected negative epsilon to be rejected")
 
 
+def test_outcome_json_rejects_delta_that_does_not_match_scores(tmp_path):
+    path = tmp_path / "outcomes.json"
+    payload = _outcome_json()
+    payload["baseline_score"] = 0.70
+    payload["candidate_score"] = 0.71
+    payload["delta"] = 0.20
+    path.write_text(json.dumps([payload]), encoding="utf-8")
+
+    try:
+        load_outcomes_json(path)
+    except ValueError as exc:
+        assert "outcomes[0].delta must equal candidate_score - baseline_score" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected inconsistent delta to be rejected")
+
+
+def test_outcome_json_rejects_accepted_flag_that_does_not_match_epsilon(tmp_path):
+    path = tmp_path / "outcomes.json"
+    payload = _outcome_json()
+    payload["baseline_score"] = 0.70
+    payload["candidate_score"] = 0.72
+    payload["delta"] = 0.02
+    payload["epsilon_required"] = 0.05
+    payload["accepted"] = True
+    path.write_text(json.dumps([payload]), encoding="utf-8")
+
+    try:
+        load_outcomes_json(path)
+    except ValueError as exc:
+        assert "outcomes[0].accepted must equal delta >= epsilon_required" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected inconsistent accepted flag to be rejected")
+
+
 def test_outcome_json_rejects_non_finite_cost(tmp_path):
     path = tmp_path / "outcomes.json"
     payload = _outcome_json()

@@ -11,6 +11,8 @@ from typing import Any
 from tools.prompt_autoresearch.runner import PromptMutationOutcome
 from tools.prompt_autoresearch.score import CompositeScore
 
+_FLOAT_TOLERANCE = 1e-9
+
 
 def _as_float(value: Any, *, field: str) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
@@ -94,13 +96,29 @@ def outcome_from_json(raw: Any, *, index: int) -> PromptMutationOutcome:
     if cost < Decimal("0"):
         raise ValueError(f"outcomes[{index}].cost_usd must be non-negative")
 
+    baseline_score = _as_unit_interval(raw.get("baseline_score"), field=f"outcomes[{index}].baseline_score")
+    candidate_score = _as_unit_interval(raw.get("candidate_score"), field=f"outcomes[{index}].candidate_score")
+    delta = _as_float(raw.get("delta"), field=f"outcomes[{index}].delta")
+    epsilon_required = _as_non_negative_float(raw.get("epsilon_required"), field=f"outcomes[{index}].epsilon_required")
+    accepted = _as_bool(raw.get("accepted"), field=f"outcomes[{index}].accepted")
+    expected_delta = candidate_score - baseline_score
+    if abs(delta - expected_delta) > _FLOAT_TOLERANCE:
+        raise ValueError(
+            f"outcomes[{index}].delta must equal candidate_score - baseline_score"
+        )
+    expected_accepted = delta >= epsilon_required
+    if accepted != expected_accepted:
+        raise ValueError(
+            f"outcomes[{index}].accepted must equal delta >= epsilon_required"
+        )
+
     return PromptMutationOutcome(
         mutation_id=_as_str(raw.get("mutation_id"), field=f"outcomes[{index}].mutation_id"),
-        accepted=_as_bool(raw.get("accepted"), field=f"outcomes[{index}].accepted"),
-        baseline_score=_as_unit_interval(raw.get("baseline_score"), field=f"outcomes[{index}].baseline_score"),
-        candidate_score=_as_unit_interval(raw.get("candidate_score"), field=f"outcomes[{index}].candidate_score"),
-        delta=_as_float(raw.get("delta"), field=f"outcomes[{index}].delta"),
-        epsilon_required=_as_non_negative_float(raw.get("epsilon_required"), field=f"outcomes[{index}].epsilon_required"),
+        accepted=accepted,
+        baseline_score=baseline_score,
+        candidate_score=candidate_score,
+        delta=delta,
+        epsilon_required=epsilon_required,
         composite_breakdown=_composite_from_json(raw.get("composite_breakdown"), index=index),
         cost_usd=cost,
         notes=str(raw.get("notes", "")),
