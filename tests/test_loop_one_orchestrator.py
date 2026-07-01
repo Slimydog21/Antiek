@@ -412,7 +412,40 @@ async def test_loop_one_ignores_rlm_investigation_kind(app_and_bus, async_client
 
     rows = trajectory(inv)
     action_types = [row["action_type"] for row in rows]
-    assert action_types == [ActionType.INVESTIGATION_START_REQUESTED.value]
+    assert ActionType.DECOMPOSE_QUESTION_REQUESTED.value not in action_types
+    assert action_types == [
+        ActionType.INVESTIGATION_START_REQUESTED.value,
+        ActionType.INVESTIGATION_FAILED.value,
+    ]
+    assert "RLM track requires" in rows[-1]["payload"]["reason"]
+
+
+@pytest.mark.asyncio
+async def test_rlm_investigation_kind_emits_rlm_session_events(
+    monkeypatch,
+    app_and_bus,
+    async_client,
+):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    _, bus = app_and_bus
+    inv = "inv-rlm-session-events"
+
+    await _post_start(
+        async_client,
+        investigation_id=inv,
+        question="Survey neutral-atom quantum computing.",
+        investigation_kind="rlm",
+    )
+    await bus.wait_for_handlers(timeout=2.0)
+
+    action_types = [row["action_type"] for row in trajectory(inv)]
+    assert ActionType.DECOMPOSE_QUESTION_REQUESTED.value not in action_types
+    assert action_types == [
+        ActionType.INVESTIGATION_START_REQUESTED.value,
+        ActionType.RLM_SESSION_STARTED.value,
+        ActionType.RLM_ITERATION.value,
+        ActionType.RLM_SESSION_COMPLETED.value,
+    ]
 
 
 @pytest.mark.asyncio

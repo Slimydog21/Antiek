@@ -1963,7 +1963,11 @@ def create_app(
         from orchestration.loop_one import (
             register_handlers as _register_loop_one,
         )
+        from orchestration.loop_one.rlm_orchestrator import (
+            register_handlers as _register_rlm_investigation,
+        )
         _register_loop_one(bus)
+        _register_rlm_investigation(bus)
 
     # ── Health ──────────────────────────────────────────────────
 
