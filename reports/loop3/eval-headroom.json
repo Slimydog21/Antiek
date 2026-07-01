@@ -1,0 +1,13 @@
+{
+  "eval_set_path": "tests/fixtures/parameter_extractor_v0.jsonl",
+  "current_policy_id": "",
+  "current_score": "",
+  "current_score_ref": "",
+  "ceiling_kind": "",
+  "ceiling_score": "",
+  "ceiling_ref": "",
+  "reward_noise_floor": "",
+  "reward_noise_floor_ref": "",
+  "gepa_plateaued": false,
+  "gepa_report_ref": ""
+}
