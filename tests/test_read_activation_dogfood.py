@@ -14,12 +14,16 @@ def _session(
 ) -> dict:
     steps = {
         "1": {"status": "pass"},
-        "2": {"status": "pass"},
+        "2": {
+            "status": "pass",
+            "selected_text": f"Selected passage text for session {idx}.",
+            "menu_labels": ["Ask", "Investigate", "Trace source"],
+        },
         "3": {"status": "pass" if live else "inert"},
         "4": {"status": "pass" if live else "inert"},
         "5": {"status": "pass"},
         "6": {"status": "pass"},
-        "7": {"status": "pass"},
+        "7": {"status": "pass", "operator_note": f"Read for continuity in session {idx}."},
     }
     if citation:
         steps["5"].update({
@@ -360,6 +364,65 @@ def test_live_provider_step_4_accepts_session_id_evidence() -> None:
     report = validate_sessions([record])
 
     assert not any("live provider step 4 requires" in f for f in report.failures)
+
+
+def test_selection_step_requires_selected_text_and_menu_labels() -> None:
+    record = _session(1, live=True, citation=True, entry_door="search")
+    record["steps"]["2"] = {"status": "pass"}
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.valid_sessions == 0
+    assert any("step 2 requires selected_text" in f for f in report.failures)
+    assert any("step 2 requires menu_labels" in f for f in report.failures)
+
+
+def test_selection_step_accepts_action_menu_labels_alias() -> None:
+    record = _session(1, live=True, citation=True, entry_door="search")
+    record["steps"]["2"] = {
+        "status": "pass",
+        "selected_text": "A passage selected from the reader.",
+        "action_menu_labels": ["Ask", "Investigate"],
+    }
+
+    report = validate_sessions([record])
+
+    assert not any("step 2 requires menu_labels" in f for f in report.failures)
+
+
+def test_selection_menu_labels_must_be_non_empty_strings() -> None:
+    record = _session(1, live=True, citation=True, entry_door="search")
+    record["steps"]["2"]["menu_labels"] = ["Ask", "   "]
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.valid_sessions == 0
+    assert any("step 2 requires menu_labels" in f for f in report.failures)
+
+
+def test_reading_work_step_requires_operator_note() -> None:
+    record = _session(1, live=True, citation=True, entry_door="search")
+    record["steps"]["7"] = {"status": "pass"}
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.valid_sessions == 0
+    assert any("step 7 requires operator_note" in f for f in report.failures)
+
+
+def test_reading_work_step_accepts_reading_note_alias() -> None:
+    record = _session(1, live=True, citation=True, entry_door="search")
+    record["steps"]["7"] = {
+        "status": "pass",
+        "reading_note": "Could return to the selected passage after asking.",
+    }
+
+    report = validate_sessions([record])
+
+    assert not any("step 7 requires operator_note" in f for f in report.failures)
 
 
 def test_live_provider_session_requires_ready_provider_status() -> None:
