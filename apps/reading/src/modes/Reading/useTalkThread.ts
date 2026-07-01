@@ -205,18 +205,35 @@ export function useTalkThread(documentId: string): UseTalkThread {
 
   const completeTurn = useCallback(
     (messageId: string, answer: string, citations: BookCitation[], grounded: boolean) => {
-      mutateActive((msgs) =>
-        msgs.map((m) => (m.id === messageId ? { ...m, answer, citations, grounded } : m)),
-      );
+      setState((prev) => ({
+        ...prev,
+        branches: prev.branches.map((b) =>
+          b.messages.some((m) => m.id === messageId)
+            ? {
+                ...b,
+                messages: b.messages.map((m) =>
+                  m.id === messageId ? { ...m, answer, citations, grounded } : m,
+                ),
+              }
+            : b,
+        ),
+      }));
     },
-    [mutateActive],
+    [],
   );
 
   const failTurn = useCallback(
     (messageId: string) => {
-      mutateActive((msgs) => msgs.filter((m) => m.id !== messageId));
+      setState((prev) => ({
+        ...prev,
+        branches: prev.branches.map((b) =>
+          b.messages.some((m) => m.id === messageId)
+            ? { ...b, messages: b.messages.filter((m) => m.id !== messageId) }
+            : b,
+        ),
+      }));
     },
-    [mutateActive],
+    [],
   );
 
   const branchFrom = useCallback(
