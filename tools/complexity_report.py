@@ -147,6 +147,12 @@ W_PARAM = 0.5
 # in-flight spec's run must never be *refactored* by a downstream AOD sprint —
 # they may be *reported*. Sourced from the master spec fence table; unioned at
 # run time with substrate/ paths cited in the globbed spec index.html files.
+# Prefixes must match ACTUAL substrate directory names (verified against the tree
+# — build_report records any that match zero modules as `unmatched_master_prefixes`
+# so naming drift can never again silently unfence a surface). The §9 ad-economics
+# / legal cluster is the strategically-consequential layer (CLAUDE.md) — its dirs
+# are legal_gate/, ad_inventory/, ad_targeting/, advertisers/, marketplace_metrics/,
+# billing/, NOT the shorter names an earlier draft assumed.
 MASTER_FENCE_PREFIXES: tuple[str, ...] = (
     "research_bridge/",
     "write/",
@@ -154,15 +160,17 @@ MASTER_FENCE_PREFIXES: tuple[str, ...] = (
     "speak/",
     "flywheel/",
     "cross_graph/",
+    "cross_graph_writer/",
     "coordination/",
     "loop_3/",
     "anti_gaming/",
     "dispatch/",
-    "marketplace/",
+    "marketplace_metrics/",
     "billing/",
-    "legal/",
-    "ad/",
-    "ads/",
+    "legal_gate/",
+    "ad_inventory/",
+    "ad_targeting/",
+    "advertisers/",
     "multi_user/",
     "federation/",
     "graph_per_user/",
@@ -652,6 +660,14 @@ def build_report(
         if not m.fenced and m.kind == "normal"
     ][:top]
 
+    # Dead-prefix self-check: any master fence prefix that matches ZERO modules is
+    # naming drift that would silently unfence a surface (the exact bug the SPR-01
+    # verifier caught). Surface it in the header so it can never recur unnoticed.
+    master_full = [f"{substrate_root}/{p}" for p in MASTER_FENCE_PREFIXES]
+    unmatched_master_prefixes = sorted(
+        mp for mp in master_full if not any(m.module.startswith(mp) for m in rows)
+    )
+
     return {
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now(UTC).isoformat(),
@@ -678,6 +694,7 @@ def build_report(
         "fence": {
             **fence_meta,
             "top_unfenced_filter": "unfenced AND kind=='normal' (reexport/package_init/parse_error excluded as non-refactorable)",
+            "unmatched_master_prefixes": unmatched_master_prefixes,
         },
         "calibration": calibration or {
             "status": "pending",
@@ -726,7 +743,9 @@ def render_markdown(report: dict[str, Any], top: int) -> str:
                  f"(top-symbol=×{report['metric']['weights']['W_TOP_SYMBOL']}, method=×{report['metric']['weights']['W_METHOD']}, param=×{report['metric']['weights']['W_PARAM']}). "
                  "Branch count is an input column, not the rank. Re-export/package shells are scored separately below.")
     lines.append("")
-    lines.append(f"## Top {top} genuine offenders (kind=normal — the shallow-and-hot head)")
+    lines.append(f"## Top {top} shallow-and-hot priority (kind=normal, by rank_score = ratio×churn)")
+    lines.append("")
+    lines.append("_Sorted by rank_score (shallowness × churn). A hot module can appear high on churn even at a median `ratio` — read the `ratio` column for pure shallowness; SPR-04 picks the shallowest load-bearing target._")
     lines.append("")
     lines.append("| # | module | surface | depth | ratio | flat_ratio | churn | rank | fenced |")
     lines.append("|--:|--------|--------:|------:|------:|-----------:|------:|-----:|:------:|")
@@ -847,6 +866,14 @@ def main(argv: list[str] | None = None) -> int:
     _write_json(args.out, report)
     md_path = args.out.parent / "ranking.md"
     md_path.write_text(render_markdown(report, args.top), encoding="utf-8")
+
+    unmatched = report["fence"]["unmatched_master_prefixes"]
+    if unmatched:
+        print(
+            f"⚠ fence drift: {len(unmatched)} master prefix(es) match zero modules "
+            f"(would silently unfence a surface): {', '.join(unmatched)}",
+            file=sys.stderr,
+        )
 
     if args.format == "md":
         sys.stdout.write(render_markdown(report, args.top))
