@@ -113,6 +113,7 @@ describe("Edges (SVG) — renders only real edges", () => {
     const group = container.querySelector('[data-edge-from="q1"]');
     expect(group).toBeTruthy();
     expect(group!.getAttribute("data-edge-to")).toBe("inv-child");
+    expect(group!.getAttribute("data-child-state")).toBe("reserved");
 
     // The REAL edge shape: M-start is the parent block's bottom-center, the
     // C-end is the child marker CHILD_DROP px directly below it. Asserting both
@@ -129,11 +130,35 @@ describe("Edges (SVG) — renders only real edges", () => {
     const d = path!.getAttribute("d")!;
     expect(d.startsWith(`M ${fromX} ${fromY}`)).toBe(true);
     expect(d.endsWith(`${toX} ${toY}`)).toBe(true);
+    expect(path!.getAttribute("stroke-dasharray")).toBe("4 3");
 
     // And the marker circle is at the to point (the honest leaf endpoint).
     const circle = container.querySelector("circle");
     expect(circle!.getAttribute("cx")).toBe(String(toX));
     expect(circle!.getAttribute("cy")).toBe(String(toY));
+    expect(container.textContent).toContain("reserved deeper research");
+  });
+
+  it("marks a child edge as launched when the investigation tree contains that child", () => {
+    const qs = [question("q1", { reserved_child_investigation_id: "inv-child" })];
+    const positions = new Map<string, BlockPosition>([["q1", pos(100, 100)]]);
+    const { container } = render(
+      <Edges
+        questions={qs}
+        positions={positions}
+        launchedChildIds={new Set(["inv-child"])}
+        width={800}
+        height={600}
+      />,
+    );
+
+    const group = container.querySelector('[data-edge-from="q1"]');
+    expect(group).toBeTruthy();
+    expect(group!.getAttribute("data-child-state")).toBe("launched");
+    const path = container.querySelector("path");
+    expect(path).toBeTruthy();
+    expect(path!.hasAttribute("stroke-dasharray")).toBe(false);
+    expect(container.textContent).toContain("launched deeper research");
   });
 
   it("renders NO svg at all when there are no real edges (single node / empty graph)", () => {

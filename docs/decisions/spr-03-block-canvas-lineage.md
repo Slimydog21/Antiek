@@ -51,9 +51,10 @@ first (rather than inventing one in the UI).
   fabrication is structurally impossible — there is no code path that invents an
   edge.
 - The investigation-tree signal (#2) is wired into `edgeModel.childInvestigationIds`
-  for a future consumer (e.g. distinguishing a *reserved* child from a *launched*
-  one), but the canvas draws **no** node-to-node edge from it because no such
-  relation exists.
+  and consumed by the edge layer's `launchedChildIds` prop to distinguish a
+  *reserved* child marker from a *launched* child marker. This is still a
+  question → child-research marker, not a node-to-node edge. The canvas draws
+  **no** node-to-node edge from the tree because no such relation exists.
 
 ## What would reverse / extend this
 
