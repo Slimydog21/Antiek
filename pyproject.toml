@@ -86,6 +86,17 @@ export = [
   "xhtml2pdf>=0.2.13",
   "ebooklib>=0.18",
 ]
+# NotDiamond advisory model-router (ANT-ND SPR-01), scoped to the Deep Research
+# Workspace research-runner role calls. Optional + lazy by the same discipline as
+# [browserbase]/[remote_exec]: the operator installs the SDK only when enabling
+# advisory routing. The lazy import inside runtime/notdiamond/adapter.py raises
+# NotDiamondNotInstalled when the SDK is missing — ND is advisory, so dispatch
+# runs unchanged without it. Exact-pinned for v1 per the name-squat caution
+# (Researchmaxx verifiers==0.0.0 incident); TODO(relax): widen to ~=1.7 once ND
+# ships a tracked, changelog'd stable 1.x line.
+notdiamond = [
+  "notdiamond==1.7.0",
+]
 
 # Dev / test
 dev = [
