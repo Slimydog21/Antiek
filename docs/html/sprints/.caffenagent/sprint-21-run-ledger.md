@@ -4,14 +4,17 @@
 - **Source spec section:** `docs/sprint-breakdown.html#sprint-21`
 - **Target branch:** `reader/integration`
 - **Status:** operator-gated
-- **Verified code SHA:** `639debdd`
-- **Recorded:** `2026-07-01T20:29:21Z`
+- **Verified code SHA:** commit containing this record
+- **Recorded:** `2026-07-01T21:03:20Z`
 - **Run mode:** status reconciliation over Sprint 21 acceptance criteria
 
 ## Fresh Gates
 
 - `.venv/bin/python -m pytest tests/test_synquery.py tests/test_api_sprint17_21_endpoints.py tests/test_phase8_gate.py tests/test_phase8_calibration_status.py tests/test_gepa_phase8_bridge.py tests/test_gepa_phase8_applier_e2e.py tests/test_ai_actions.py tests/test_api_ai_undo.py tests/test_billing_pipeline.py -q`
   - Passed: 65 tests, 1 warning.
+- `.venv/bin/python -m pytest tests/test_synquery.py -q`
+  - Passed: 12 tests.
+  - Added contract-equivalent completed transcript coverage: persists `expert_interview_transcript` as `source_tier=2`, stamps Synquery provenance metadata, chunks the transcript, and treats repeated webhook delivery as idempotent.
 - `cd apps/reading && npm test -- AISidecar CommandPalette WorkspaceStore --run`
   - Passed: 2 files / 28 tests.
 - `cd apps/reading && npm test -- AppShell.hotkeys AISidecar CommandPalette WorkspaceStore --run`
@@ -23,7 +26,7 @@
 |-----------|--------|----------|
 | PMF gate passed before Synquery activation | operator-gated | no PMF gate verdict found |
 | Expert call booked and completed via Synquery | substrate present / external workflow gated | `tools/synquery`; `tests/test_synquery.py`; real API not exercised |
-| Synquery transcript ingested | not proven | adapter comments identify webhook/ingest as follow-on; no live transcript proof found |
+| Synquery transcript ingested | contract-equivalent substrate verified / live callback gated | `tools/synquery/adapter.py`; `tests/test_synquery.py`; completed transcript payload persists a tier-2 document + chunks; real Synquery webhook not exercised |
 | Phase 8 enforcing in production with a correct rejection | blocked by G6 | `docs/operator_gate_actions.md` keeps G6 open; Phase 8 tests passed locally |
 | Ubiquitous AI sidecar reaches every surface | shell shortcut verified / browser route audit still optional | AppShell global shortcut opens AISidecar as a docked-right workspace panel; AISidecar, CommandPalette, WorkspaceStore frontend tests passed; PostHog Wedge 4 verdict accepted current structured action surface |
 | Expert-call cost discipline holds | partially verified | Synquery budget filtering and billing pipeline tests passed; live booking cap path not exercised |
@@ -38,9 +41,9 @@
 - Record the creation-surface PMF gate verdict.
 - Enable Synquery only after that gate passes.
 - Book and complete at least one real expert call through Synquery.
-- Ingest the returned transcript as a tier-2 source.
+- Route the returned live transcript through the verified tier-2 ingest contract.
 - Close G6 autoresearch Wedge 1 ratify-or-reject.
 - If G6 ratifies, activate Phase 8 enforcing and record at least one correct rejection.
 - Prove the expert-call hard cap on a live or contract-equivalent booking path.
 
-No autonomous local-only pass can honestly close the PMF, external Synquery, G6, or production-enforcing gates.
+No autonomous local-only pass can honestly close the PMF, external Synquery booking/payment/webhook, G6, or production-enforcing gates. The local substrate now has deterministic coverage for the transcript ingestion contract those live workflows should call.

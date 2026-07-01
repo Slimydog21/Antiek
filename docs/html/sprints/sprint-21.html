@@ -30,7 +30,7 @@
 
 <div class="meta">
     <p><strong>Theme</strong>. Sprint 21 has two independent workstreams: Synquery expert-network integration after creation-surface PMF signal, and Phase 8 enforcing only if Sprint 20's autoresearch Wedge 1 verdict ratifies. Ubiquitous AI continues to broaden across operator surfaces.</p>
-    <p><strong>Current reconciliation</strong>. Synquery adapter substrate, Phase 8 gate substrate, AI sidecar undo/action coverage, and billing substrate tests passed locally. The sprint remains operator-gated because creation-surface PMF, real Synquery booking, transcript ingestion, and G6 ratification are external/operator decisions.</p>
+    <p><strong>Current reconciliation</strong>. Synquery adapter substrate, contract-equivalent transcript ingestion, Phase 8 gate substrate, AI sidecar undo/action coverage, and billing substrate tests passed locally. The sprint remains operator-gated because creation-surface PMF, real Synquery booking/payment/webhook, and G6 ratification are external/operator decisions.</p>
 </div>
 
 <div class="toc">
@@ -83,7 +83,7 @@
 
 <div class="callout warn">
     <strong>Operator-gated, not complete</strong>
-    <p>Local substrate and scoped tests are green. The sprint cannot close until the operator records the PMF gate, enables Synquery against real external workflow, books and completes at least one expert call, ingests the transcript, and closes G6 autoresearch ratification before enforcing Phase 8.</p>
+    <p>Local substrate and scoped tests are green. Completed Synquery transcript payloads now have a verified tier-2 ingest contract that persists an <code>expert_interview_transcript</code> document and chunks. The sprint cannot close until the operator records the PMF gate, enables Synquery against real external workflow, books and completes at least one expert call, routes the live transcript through that contract, and closes G6 autoresearch ratification before enforcing Phase 8.</p>
 </div>
 
 <p>Fresh deterministic gates:</p>
@@ -101,16 +101,20 @@
 
 65 passed, 1 warning in 5.47s
 
+.venv/bin/python -m pytest tests/test_synquery.py -q
+
+12 passed
+
 cd apps/reading &amp;&amp; npm test -- AppShell.hotkeys AISidecar CommandPalette WorkspaceStore --run
 
 3 files passed; 31 tests passed</code></pre>
 
-<p>The AI sidecar reach claim now has a shell-level deterministic gate: <code>&#8984;/</code> opens and closes the <code>AISidecar</code> as a docked-right workspace panel from <code>AppShell</code>. G6 remains open in <code>docs/operator_gate_actions.md</code>. That gate blocks Phase 8 enforcing and autoresearch Wedges 2&ndash;4. The Synquery adapter is feature-flagged off by default via <code>ANTIEK_SYNQUERY_ENABLED</code>, matching the PMF-gated activation model.</p>
+<p>The AI sidecar reach claim now has a shell-level deterministic gate: <code>&#8984;/</code> opens and closes the <code>AISidecar</code> as a docked-right workspace panel from <code>AppShell</code>. G6 remains open in <code>docs/operator_gate_actions.md</code>. That gate blocks Phase 8 enforcing and autoresearch Wedges 2&ndash;4. The Synquery adapter is feature-flagged off by default via <code>ANTIEK_SYNQUERY_ENABLED</code>, matching the PMF-gated activation model; completed transcript ingestion is locally covered as a contract-equivalent tier-2 document path, not as a live vendor callback proof.</p>
 
 <h2 id="acceptance">5. Acceptance &amp; exit criteria <a class="section-anchor" href="#acceptance">#</a></h2>
 
 <ul>
-    <li>If PMF gate passed: operator has booked and completed at least one expert call via Synquery; transcript ingested.</li>
+    <li>If PMF gate passed: operator has booked and completed at least one expert call via Synquery; live transcript routed through the verified tier-2 ingest contract.</li>
     <li>If Wedge 1 ratified: Phase 8 gate is enforcing in production; at least one rejection is on record.</li>
     <li>Ubiquitous AI sidecar reaches every surface.</li>
     <li>Cost discipline holds across the new expert-call spend line.</li>
