@@ -6,6 +6,12 @@ import { useInvestigationTree } from "../../hooks/useInvestigationTree";
 import type { TreeNode } from "../../hooks/useInvestigationTree";
 import type { InvestigationSummary } from "../../lib/api";
 
+function finiteNonNegativeNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
 /**
  * Left sidebar showing past investigations as a tree. Each node carries
  * its question (truncated), status badge, and total cost. Click any
@@ -67,6 +73,7 @@ function TreeRow({
   const [expanded, setExpanded] = useState(true);
   const summary = node.summary;
   const isActive = activeId === node.investigationId;
+  const costUsd = finiteNonNegativeNumber(summary?.cost_usd_total) ?? 0;
   return (
     <li>
       <div className="flex items-start gap-1.5">
@@ -100,9 +107,7 @@ function TreeRow({
                 {truncate(summary?.question ?? node.investigationId, 60)}
               </div>
               <div className="font-mono text-[9px] text-ink-mute dark:text-moonlight mt-0.5">
-                {summary?.cost_usd_total
-                  ? `$${summary.cost_usd_total.toFixed(4)}`
-                  : "$0"}
+                {costUsd > 0 ? `$${costUsd.toFixed(4)}` : "$0"}
                 {summary?.started_at && ` · ${formatRelative(summary.started_at)}`}
               </div>
             </div>
