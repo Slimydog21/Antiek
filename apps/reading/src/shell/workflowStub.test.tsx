@@ -36,6 +36,15 @@ describe("WorkflowStub honesty (SPR-04 M5)", () => {
     }
   });
 
+  it("all four workflows have a built landing in the current build", () => {
+    expect(WORKFLOW_ORDER.map((wf) => [wf, workflowHasBuiltMode(wf)])).toEqual([
+      ["research", true],
+      ["read", true],
+      ["write", true],
+      ["speak", true],
+    ]);
+  });
+
   it("renders a misuse guard (NOT a fake 'not yet') for a built workflow", () => {
     // Research has built, routed surfaces today → the stub must refuse to
     // pretend it's unbuilt.

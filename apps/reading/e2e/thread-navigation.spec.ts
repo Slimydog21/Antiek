@@ -65,8 +65,9 @@ test.describe("SPR-06 — cross-workflow thread navigation", () => {
     await expect(page.locator('[data-testid="thread-jump"]')).toBeVisible({
       timeout: 5_000,
     });
-    // Initially the canonical entity is in focus at the Research origin; the
-    // Write segment is a navigable button.
+    // The full flywheel has multiple hops with the same canonical entity id;
+    // the breadcrumb highlights the last occurrence as current, so earlier
+    // Research/Write segments remain navigable buttons.
     const writeSegment = page.locator('[data-testid="thread-hop-write"]');
     await expect(writeSegment).toBeVisible();
     // Jump to Write. Because every hop shares the SAME entity id, the active
