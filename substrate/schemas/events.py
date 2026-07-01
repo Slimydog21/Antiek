@@ -44,7 +44,7 @@ Schema changes are load-bearing API changes (architecture_notes.md §7).
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_validator
@@ -54,7 +54,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_valid
 # ---------------------------------------------------------------------------
 
 
-class ActionType(str, Enum):
+class ActionType(StrEnum):
     """Typed enum of every action emitted as an event. Values stored in
     Parquet — must remain stable across refactors. Add new variants at the
     end of the relevant section; never repurpose."""
@@ -762,7 +762,13 @@ class ActionType(str, Enum):
 #     is inert until a Parallel key is configured). Widening is backward-
 #     compatible: all stored events remain valid. Caught by mypy --strict
 #     (declared-bar) during the 2026-07-02 restore merge. 2026-07-02.
-EVENT_SCHEMA_VERSION: int = 29
+# v30: Dispatch TTS tier schema alignment. ``substrate/dispatch/config.yaml``
+#     has carried a ``tts`` tier since the Sprint 17 voice-mode scaffold, but
+#     ``DispatchCallPayload.tier`` still rejected it. The OpenAI TTS provider's
+#     dispatch-shaped ``call`` path now emits successful ``dispatch.call`` rows,
+#     so the typed payload must accept ``tier="tts"`` and codegen must expose it
+#     to the TS surface. No event body shape changes beyond the literal union.
+EVENT_SCHEMA_VERSION: int = 30
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -812,7 +818,7 @@ class DispatchCallPayload(_PayloadBase):
     action_type: Literal[ActionType.DISPATCH_CALL] = ActionType.DISPATCH_CALL
     provider: str
     model: str
-    tier: Literal["flash", "pro", "synthesis", "verify", "local"]
+    tier: Literal["flash", "pro", "synthesis", "verify", "local", "tts"]
     target_role: str
     input_tokens: int = Field(ge=0)
     output_tokens: int = Field(ge=0)

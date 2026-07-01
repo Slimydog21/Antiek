@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 29;
+export const EVENT_SCHEMA_VERSION = 30;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -580,7 +580,7 @@ export interface DispatchCallPayload {
   action_type: "dispatch.call";
   provider: string;
   model: string;
-  tier: "flash" | "pro" | "synthesis" | "verify" | "local";
+  tier: "flash" | "pro" | "synthesis" | "verify" | "local" | "tts";
   target_role: string;
   input_tokens: number;
   output_tokens: number;

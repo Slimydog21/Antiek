@@ -30,11 +30,11 @@
  * this client, the request body, or the audio output. See `assertServable`.
  *
  * LIVE vs STUBBED: the backend /speech/tts route (interfaces/research/api/
- * speech.py) calls `OpenAITTSProvider.synthesize()`, a REAL OpenAI
- * `/v1/audio/speech` call that is LIVE WHEN `OPENAI_API_KEY` is set and returns
- * 503 when it is absent (the no-key path, not a stub). (The dispatch-shaped
- * `OpenAITTSProvider.call()` does raise NotImplementedError, but this route does
- * not use it.) The client + control shape here is verified against a recorded
+ * speech.py) calls `OpenAITTSProvider.synthesize()`, and the dispatch-shaped
+ * `OpenAITTSProvider.call()` delegates to the same REAL OpenAI
+ * `/v1/audio/speech` call when `OPENAI_API_KEY` is set. Both paths fail before
+ * network when the key is absent (the no-key path, not a stub). The client +
+ * control shape here is verified against a recorded
  * fixture (the tests inject a fake `fetch`/audio); a KEYED live round-trip was
  * NOT exercised this sprint — so the path is live-when-keyed, not stubbed, but
  * do not read these tests as proof playback works end-to-end.
