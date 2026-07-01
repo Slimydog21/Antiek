@@ -89,6 +89,23 @@ def _dispatch_config() -> DispatchConfig:
     )
 
 
+def _cost_cap_dispatch_config() -> DispatchConfig:
+    tier = TierConfig(
+        name="synthesis",
+        provider="rlm-code-stub",
+        model="stub-model",
+        max_tokens=512,
+        temperature=0.0,
+        context_budget_tokens=64_000,
+        pricing=TierPricing(input_per_mtok=0.0, output_per_mtok=200_000.0),
+        fallback=None,
+    )
+    return DispatchConfig(
+        role_tiers={"synthesizer": "synthesis"},
+        tiers={"synthesis": tier},
+    )
+
+
 def _event(*, investigation_id: str, document_id: str) -> Event:
     payload = DistillationRequestedPayload(
         user_prompt="What is the load-bearing constraint?",
@@ -247,3 +264,80 @@ def test_rlm_wrestling_emits_sub_call_for_llm_batch(tmp_path, monkeypatch):
     assert sub_call.prompt_count == 5
     assert sub_call.target_role == "synthesizer"
     assert sub_call.parent_event_id == event.event_id
+
+
+def test_rlm_wrestling_cost_cap_delivers_hedged_answer(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    db = str(tmp_path / "graph.duckdb")
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db)
+    monkeypatch.setattr(
+        "substrate.dispatch.router.DispatchConfig.from_yaml",
+        classmethod(lambda cls, path: _cost_cap_dispatch_config()),
+    )
+    code = (
+        "answer['content'] = '{"
+        "\"rendered_text\": \"expensive partial\", "
+        "\"claims\": [{\"text\": \"partial\", \"confidence\": \"low\"}]"
+        "}'\n"
+        "answer['ready'] = True"
+    )
+    register_provider(_CodeProvider(code))
+
+    ensure_initialized(db)
+    con = connect_write(db, purpose="test_seed")
+    try:
+        insert_document(
+            con,
+            document_id="doc-long-cost",
+            source_tier=4,
+            document_type="pdf",
+        )
+        insert_chunk(
+            con,
+            document_id="doc-long-cost",
+            chunk_index=0,
+            text="C" * 270_000,
+        )
+    finally:
+        con.close()
+
+    bus = _RecordingBroadcaster()
+    event = _event(
+        investigation_id="inv-rlm-wrestle-cost",
+        document_id="doc-long-cost",
+    )
+
+    handled = asyncio.run(
+        maybe_handle_rlm_distillation(
+            event=event,
+            request=event.payload,
+            broadcaster=bus,
+            db_path=db,
+            resolve_document_text=_resolve_document_text_from_db,
+            resolve_region_text=_resolve_region_text,
+            parse_claims_response=_parse_claims_response,
+            sha256_prefix=_sha256_prefix,
+        )
+    )
+
+    assert handled is True
+    assert [e.payload.action_type for e in bus.events] == [
+        "rlm.session_started",
+        "rlm.session_completed",
+        "distillation.delivered",
+    ]
+    completed = bus.events[1].payload
+    assert completed.status == "cost_capped"
+    assert completed.cost_usd_accumulated == 0.0
+
+    delivered_rows = [
+        row
+        for row in trajectory("inv-rlm-wrestle-cost")
+        if row["action_type"] == "distillation.delivered"
+    ]
+    assert len(delivered_rows) == 1
+    delivered = Event.model_validate(delivered_rows[0])
+    assert "cost cap" in delivered.payload.rendered_text
+    assert delivered.payload.claims[0].confidence == "unknown"
+    assert "configured cost cap" in delivered.payload.claims[0].text

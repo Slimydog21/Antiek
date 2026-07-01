@@ -10,6 +10,7 @@ This module is intentionally called from the existing wrestling
 
 from __future__ import annotations
 
+import json
 from contextlib import suppress
 from decimal import Decimal
 from threading import Lock
@@ -52,6 +53,26 @@ def _system_prompt(*, prompt_chars: int) -> str:
         "answer['content'] to a JSON string with rendered_text and claims, "
         "then set answer['ready'] = True when complete."
     )
+
+
+def _cost_cap_answer() -> str:
+    return json.dumps({
+        "rendered_text": (
+            "RLM wrestling stopped at the configured cost cap before a full "
+            "distillation could be completed. Treat this as a partial, "
+            "budget-limited answer and rerun with a narrower region or a "
+            "higher cap if needed."
+        ),
+        "claims": [
+            {
+                "text": (
+                    "The RLM session reached its configured cost cap before "
+                    "it could complete the long-document distillation."
+                ),
+                "confidence": "unknown",
+            }
+        ],
+    })
 
 
 async def maybe_handle_rlm_distillation(
@@ -221,11 +242,16 @@ async def maybe_handle_rlm_distillation(
     if loop_result.status not in {"completed", "cost_capped"}:
         return True
 
+    answer_text = (
+        _cost_cap_answer()
+        if loop_result.status == "cost_capped"
+        else loop_result.final_answer
+    )
     claims, rendered_text = parse_claims_response(
-        loop_result.final_answer,
+        answer_text,
         region_id=request.region_id,
     )
-    token_count = repl.summarise().answer_content_len
+    token_count = len(answer_text)
     policy_id = "rlm-wrestling/evented-loop"
     delivered_event_id = emit_typed(
         event.investigation_id,
