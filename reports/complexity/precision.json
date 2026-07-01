@@ -1,0 +1,21 @@
+{
+  "L1_L2_precision": "14/14 (100%)",
+  "sample": "all 14 actionable (unfenced-target) L1 leaks — the full actionable set is < 15, so every one is hand-verified",
+  "summary": "Every actionable leak is a genuine private-name import (the imported name, pre-alias, is underscore-private) — 0 false positives. 10 are cross-package true leaks; 4 are same-subpackage co-ownership candidates (still true positives — the import IS of a private name across a module boundary; whether to close is SPR-03/04's call per rigor #2). L2=0: the import-rooted detector is proven working on a crafted fixture (flags dedup._registry._field, excludes self._cache and public chains) — this codebase leaks by IMPORTING the private name (L1), not by attribute-walking (L2). L3 (--include-l3) found 0 re-implementations of the 8 seeded canonical dedup helpers.",
+  "table": [
+    {"caller": "acquisition/arxiv/enrich_openalex.py:64", "target": "substrate.graph.ops._maybe_json", "verdict": "true leak", "note": "acquisition depends on graph.ops's private JSON helper (cross-package)"},
+    {"caller": "acquisition/arxiv/oai_persist.py:52", "target": "substrate.graph.ops._maybe_json", "verdict": "true leak", "note": "same private helper, second caller"},
+    {"caller": "acquisition/substack/adapter.py:62", "target": "substrate.graph.ops._exists", "verdict": "true leak", "note": "private existence helper reused cross-package"},
+    {"caller": "substrate/attribution/compute.py:179", "target": "substrate.graph.retrieval_gate._NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES", "verdict": "true leak", "note": "attribution couples to a §9.0 retrieval-gate private constant — a real coupling to the strategically-consequential layer"},
+    {"caller": "substrate/contracts/servable.py:37", "target": "substrate.books.servability._SERVABLE_STATUSES", "verdict": "true leak", "note": "private status set imported across modules"},
+    {"caller": "acquisition/arxiv/oai_pmh.py:44", "target": "substrate.schemas.documents._TierTally", "verdict": "true leak", "note": "private schema class leaked into acquisition"},
+    {"caller": "acquisition/arxiv/oai_records.py:22", "target": "substrate.schemas.documents._TierTally", "verdict": "true leak", "note": "same private class, second caller"},
+    {"caller": "acquisition/arxiv/pdf_fetch.py:65", "target": "acquisition.openaccess.unpaywall._looks_like_pdf", "verdict": "true leak", "note": "cross-subpackage private predicate (arxiv <- openaccess)"},
+    {"caller": "acquisition/arxiv/rate_governor.py:59", "target": "acquisition.arxiv.throttle._ResponseLike", "verdict": "true leak (co-ownership candidate)", "note": "sibling within acquisition.arxiv; may be intentional co-ownership — SPR-03/04 decides"},
+    {"caller": "acquisition/search/exa/__main__.py:202", "target": "acquisition.search.retention._parse_event_ts", "verdict": "true leak (co-ownership candidate)", "note": "within acquisition.search; possibly intended"},
+    {"caller": "acquisition/urls/__main__.py:14", "target": "acquisition.urls.paulgraham._main", "verdict": "true leak (co-ownership candidate)", "note": "a __main__ delegating to a sibling's _main — common pattern, still a private-name import"},
+    {"caller": "processing/extraction/extract.py:62", "target": "interfaces.research.api.wrestling._extract_json_object", "verdict": "true leak", "note": "processing couples to an interface-layer private JSON extractor (fallback import w/ type:ignore)"},
+    {"caller": "roles/cascade_planner/approval.py:34", "target": "roles.cascade_planner.persist._json", "verdict": "true leak (co-ownership candidate)", "note": "within roles.cascade_planner; sibling co-ownership"},
+    {"caller": "substrate/unit_dedup.py:90", "target": "interfaces.research.api.cross_doc._cosine", "verdict": "true leak", "note": "the spec-anticipated case (rigor #2): a substrate module depends on an interface-layer private (imported as _unit_cosine) — a real inversion worth SPR-03/04 attention"}
+  ]
+}

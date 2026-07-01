@@ -1,0 +1,298 @@
+{
+  "actionable_count": 14,
+  "categories": {
+    "L1": "private-name import: from a first-party module, imported name (pre-alias) is underscore-private or withheld from __all__",
+    "L2": "deep attribute reach-through: chain depth>=2 rooted at a first-party import, through a private attr; self/cls excluded",
+    "L3": "logic re-implementation CANDIDATE (--include-l3): local def collides with a canonical helper owned elsewhere; needs human read"
+  },
+  "counts": {
+    "L1": 18,
+    "L2": 0,
+    "L3": 0
+  },
+  "fenced_count": 4,
+  "fenced_targets": [
+    {
+      "caller_line": 726,
+      "caller_path": "substrate/context_pack/knowledge_reuse.py",
+      "category": "L1",
+      "detail": "underscore-private name",
+      "leaked_name": "_emit_reuse_gated",
+      "target_fenced": true,
+      "target_module": "substrate.flywheel.reuse_gate",
+      "target_rank_score": 0.154933
+    },
+    {
+      "caller_line": 28,
+      "caller_path": "substrate/research_bridge/gap.py",
+      "category": "L1",
+      "detail": "underscore-private name",
+      "leaked_name": "_extract_json_object",
+      "target_fenced": true,
+      "target_module": "substrate.research_bridge.extractor",
+      "target_rank_score": 0.045565
+    },
+    {
+      "caller_line": 56,
+      "caller_path": "substrate/research_bridge/ingest_file.py",
+      "category": "L1",
+      "detail": "underscore-private name",
+      "leaked_name": "_chunk_paragraphs",
+      "target_fenced": true,
+      "target_module": "substrate.research_bridge.ingest",
+      "target_rank_score": 0.044634
+    },
+    {
+      "caller_line": 56,
+      "caller_path": "substrate/research_bridge/ingest_file.py",
+      "category": "L1",
+      "detail": "underscore-private name",
+      "leaked_name": "_split_paragraphs",
+      "target_fenced": true,
+      "target_module": "substrate.research_bridge.ingest",
+      "target_rank_score": 0.044634
+    }
+  ],
+  "files_scanned": 1263,
+  "first_party_modules_indexed": 674,
+  "generated_at": "2026-07-01T14:17:12.642972+00:00",
+  "include_l3": true,
+  "leaks": [
+    {
+      "caller_line": 64,
+      "caller_path": "acquisition/arxiv/enrich_openalex.py",
+      "category": "L1",
+      "detail": "underscore-private name",
+      "leaked_name": "_maybe_json",
+      "target_fenced": false,
+      "target_module": "substrate.graph.ops",
+      "target_rank_score": 0.462098
+    },
+    {
+      "caller_line": 52,
+      "caller_path": "acquisition/arxiv/oai_persist.py",
+      "category": "L1",
+      "detail": "underscore-private name",
+      "leaked_name": "_maybe_json",
+      "target_fenced": false,
+      "target_module": "substrate.graph.ops",
+      "target_rank_score": 0.462098
+    },
+    {
+      "caller_line": 62,
+      "caller_path": "acquisition/substack/adapter.py",
+      "category": "L1",
+      "detail": "underscore-private name",
+      "leaked_name": "_exists",
+      "target_fenced": false,
+      "target_module": "substrate.graph.ops",
+      "target_rank_score": 0.462098
+    },
+    {
+      "caller_line": 179,
+      "caller_path": "substrate/attribution/compute.py",
+      "category": "L1",
+      "detail": "underscore-private name",
+      "leaked_name": "_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES",
+      "target_fenced": false,
+      "target_module": "substrate.graph.retrieval_gate",
+      "target_rank_score": 0.311346
+    },
+    {
+      "caller_line": 37,
+      "caller_path": "substrate/contracts/servable.py",
+      "category": "L1",
+      "detail": "underscore-private name",
+      "leaked_name": "_SERVABLE_STATUSES",
+      "target_fenced": false,
+      "target_module": "substrate.books.servability",
+      "target_rank_score": 0.241416
+    },
+    {
+      "caller_line": 44,
+      "caller_path": "acquisition/arxiv/oai_pmh.py",
+      "category": "L1",
+      "detail": "underscore-private name",
+      "leaked_name": "_TierTally",
+      "target_fenced": false,
+      "target_module": "substrate.schemas.documents",
+      "target_rank_score": 0.152244
+    },
+    {
+      "caller_line": 22,
+      "caller_path": "acquisition/arxiv/oai_records.py",
+      "category": "L1",
+      "detail": "underscore-private name",
+      "leaked_name": "_TierTally",
+      "target_fenced": false,
+      "target_module": "substrate.schemas.documents",
+      "target_rank_score": 0.152244
+    },
+    {
+      "caller_line": 65,
+      "caller_path": "acquisition/arxiv/pdf_fetch.py",
+      "category": "L1",
+      "detail": "underscore-private name",
+      "leaked_name": "_looks_like_pdf",
+      "target_fenced": null,
+      "target_module": "acquisition.openaccess.unpaywall",
+      "target_rank_score": null
+    },
+    {
+      "caller_line": 59,
+      "caller_path": "acquisition/arxiv/rate_governor.py",
+      "category": "L1",
+      "detail": "underscore-private name",
+      "leaked_name": "_ResponseLike",
+      "target_fenced": null,
+      "target_module": "acquisition.arxiv.throttle",
+      "target_rank_score": null
+    },
+    {
+      "caller_line": 202,
+      "caller_path": "acquisition/search/exa/__main__.py",
+      "category": "L1",
+      "detail": "underscore-private name",
+      "leaked_name": "_parse_event_ts",
+      "target_fenced": null,
+      "target_module": "acquisition.search.retention",
+      "target_rank_score": null
+    },
+    {
+      "caller_line": 14,
+      "caller_path": "acquisition/urls/__main__.py",
+      "category": "L1",
+      "detail": "underscore-private name",
+      "leaked_name": "_main",
+      "target_fenced": null,
+      "target_module": "acquisition.urls.paulgraham",
+      "target_rank_score": null
+    },
+    {
+      "caller_line": 62,
+      "caller_path": "processing/extraction/extract.py",
+      "category": "L1",
+      "detail": "underscore-private name",
+      "leaked_name": "_extract_json_object",
+      "target_fenced": null,
+      "target_module": "interfaces.research.api.wrestling",
+      "target_rank_score": null
+    },
+    {
+      "caller_line": 34,
+      "caller_path": "roles/cascade_planner/approval.py",
+      "category": "L1",
+      "detail": "underscore-private name",
+      "leaked_name": "_json",
+      "target_fenced": null,
+      "target_module": "roles.cascade_planner.persist",
+      "target_rank_score": null
+    },
+    {
+      "caller_line": 90,
+      "caller_path": "substrate/unit_dedup.py",
+      "category": "L1",
+      "detail": "underscore-private name",
+      "leaked_name": "_cosine",
+      "target_fenced": null,
+      "target_module": "interfaces.research.api.cross_doc",
+      "target_rank_score": null
+    }
+  ],
+  "precision": {
+    "L1_L2_precision": "14/14 (100%)",
+    "sample": "all 14 actionable (unfenced-target) L1 leaks \u2014 the full actionable set is < 15, so every one is hand-verified",
+    "summary": "Every actionable leak is a genuine private-name import (the imported name, pre-alias, is underscore-private) \u2014 0 false positives. 10 are cross-package true leaks; 4 are same-subpackage co-ownership candidates (still true positives \u2014 the import IS of a private name across a module boundary; whether to close is SPR-03/04's call per rigor #2). L2=0: the import-rooted detector is proven working on a crafted fixture (flags dedup._registry._field, excludes self._cache and public chains) \u2014 this codebase leaks by IMPORTING the private name (L1), not by attribute-walking (L2). L3 (--include-l3) found 0 re-implementations of the 8 seeded canonical dedup helpers.",
+    "table": [
+      {
+        "caller": "acquisition/arxiv/enrich_openalex.py:64",
+        "note": "acquisition depends on graph.ops's private JSON helper (cross-package)",
+        "target": "substrate.graph.ops._maybe_json",
+        "verdict": "true leak"
+      },
+      {
+        "caller": "acquisition/arxiv/oai_persist.py:52",
+        "note": "same private helper, second caller",
+        "target": "substrate.graph.ops._maybe_json",
+        "verdict": "true leak"
+      },
+      {
+        "caller": "acquisition/substack/adapter.py:62",
+        "note": "private existence helper reused cross-package",
+        "target": "substrate.graph.ops._exists",
+        "verdict": "true leak"
+      },
+      {
+        "caller": "substrate/attribution/compute.py:179",
+        "note": "attribution couples to a \u00a79.0 retrieval-gate private constant \u2014 a real coupling to the strategically-consequential layer",
+        "target": "substrate.graph.retrieval_gate._NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES",
+        "verdict": "true leak"
+      },
+      {
+        "caller": "substrate/contracts/servable.py:37",
+        "note": "private status set imported across modules",
+        "target": "substrate.books.servability._SERVABLE_STATUSES",
+        "verdict": "true leak"
+      },
+      {
+        "caller": "acquisition/arxiv/oai_pmh.py:44",
+        "note": "private schema class leaked into acquisition",
+        "target": "substrate.schemas.documents._TierTally",
+        "verdict": "true leak"
+      },
+      {
+        "caller": "acquisition/arxiv/oai_records.py:22",
+        "note": "same private class, second caller",
+        "target": "substrate.schemas.documents._TierTally",
+        "verdict": "true leak"
+      },
+      {
+        "caller": "acquisition/arxiv/pdf_fetch.py:65",
+        "note": "cross-subpackage private predicate (arxiv <- openaccess)",
+        "target": "acquisition.openaccess.unpaywall._looks_like_pdf",
+        "verdict": "true leak"
+      },
+      {
+        "caller": "acquisition/arxiv/rate_governor.py:59",
+        "note": "sibling within acquisition.arxiv; may be intentional co-ownership \u2014 SPR-03/04 decides",
+        "target": "acquisition.arxiv.throttle._ResponseLike",
+        "verdict": "true leak (co-ownership candidate)"
+      },
+      {
+        "caller": "acquisition/search/exa/__main__.py:202",
+        "note": "within acquisition.search; possibly intended",
+        "target": "acquisition.search.retention._parse_event_ts",
+        "verdict": "true leak (co-ownership candidate)"
+      },
+      {
+        "caller": "acquisition/urls/__main__.py:14",
+        "note": "a __main__ delegating to a sibling's _main \u2014 common pattern, still a private-name import",
+        "target": "acquisition.urls.paulgraham._main",
+        "verdict": "true leak (co-ownership candidate)"
+      },
+      {
+        "caller": "processing/extraction/extract.py:62",
+        "note": "processing couples to an interface-layer private JSON extractor (fallback import w/ type:ignore)",
+        "target": "interfaces.research.api.wrestling._extract_json_object",
+        "verdict": "true leak"
+      },
+      {
+        "caller": "roles/cascade_planner/approval.py:34",
+        "note": "within roles.cascade_planner; sibling co-ownership",
+        "target": "roles.cascade_planner.persist._json",
+        "verdict": "true leak (co-ownership candidate)"
+      },
+      {
+        "caller": "substrate/unit_dedup.py:90",
+        "note": "the spec-anticipated case (rigor #2): a substrate module depends on an interface-layer private (imported as _unit_cosine) \u2014 a real inversion worth SPR-03/04 attention",
+        "target": "interfaces.research.api.cross_doc._cosine",
+        "verdict": "true leak"
+      }
+    ]
+  },
+  "ranking_joined": true,
+  "ranking_tool_commit": "9b84d12463acabe73582a735c8e154b12e2364fb",
+  "root": "/Users/slimydog/specs/antiek-ousterhout-deep-modules/.caffenagent/wt/SPR-02",
+  "schema_version": 1,
+  "tool": "tools/lint/info_hiding.py"
+}
