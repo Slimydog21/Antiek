@@ -21,6 +21,8 @@ def test_trust_center_public_names_live_deletion_worker_cli():
     assert "ANTIEK_TELEMETRY_PREFERENCES_PATH" in text
     assert "telemetry_preferences.sqlite" in text
     assert "Publication at `antiek.ai/trust` still waits on OA-013" in compact_text
+    assert "_None as of 2026-07-01._" in text
+    assert "_None as of 2026-05-22._" not in text
     assert "2026-05-22 _(scaffold" not in text
 
 
