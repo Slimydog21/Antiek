@@ -332,6 +332,25 @@ describe("UnifiedSearch — M3 every result opens via openDocument", () => {
 });
 
 describe("UnifiedSearch — M5 honest no-key escalate", () => {
+  it("while the provider probe is loading, local search works but escalation stays inert", async () => {
+    providerKeysRef.current = { status: "loading", refresh: vi.fn() };
+    corpusSearchMock.mockResolvedValue({
+      query: "stoic",
+      hits: [hit({ document_title: "Stoic Text" })],
+      count: 1,
+    });
+    renderSearch();
+    const input = screen.getByLabelText("Unified search");
+    fireEvent.change(input, { target: { value: "stoic" } });
+    expect((screen.getByRole("button", { name: "Research this" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await vi.advanceTimersByTimeAsync(200);
+    await screen.findByText("Stoic Text");
+    await vi.runOnlyPendingTimersAsync();
+    expect(submitMock).not.toHaveBeenCalled();
+  });
+
   it("with no provider key, local search still works", async () => {
     providerKeysRef.current = { status: "absent", refresh: vi.fn() };
     corpusSearchMock.mockResolvedValue({
