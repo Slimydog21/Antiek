@@ -10,6 +10,7 @@ LOCAL-ONLY enforcement: refuses to run if ANTIEK_ENV=production.
 
 from __future__ import annotations
 
+import math
 import os
 import uuid
 from collections.abc import Callable
@@ -97,6 +98,8 @@ class PromptAutoresearchRunner:
 
     def __post_init__(self) -> None:
         _require_text(self.role, field="role")
+        _validate_non_negative_number(self.epsilon, field="epsilon")
+        _validate_unit_interval(self.baseline_total_score, field="baseline_total_score")
 
     def run_iteration(
         self,
@@ -192,3 +195,19 @@ def make_id() -> str:
 def _require_text(value: str, *, field: str) -> None:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field} must be a non-empty string")
+
+
+def _validate_non_negative_number(value: float, *, field: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{field} must be a non-negative finite number")
+    number = float(value)
+    if not math.isfinite(number) or number < 0.0:
+        raise ValueError(f"{field} must be a non-negative finite number")
+
+
+def _validate_unit_interval(value: float, *, field: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{field} must be a number in [0, 1]")
+    number = float(value)
+    if not math.isfinite(number) or number < 0.0 or number > 1.0:
+        raise ValueError(f"{field} must be a number in [0, 1]")
