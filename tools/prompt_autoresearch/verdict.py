@@ -41,6 +41,7 @@ from tools.prompt_autoresearch.runner import PromptMutationOutcome
 MIN_MUTATIONS = 20
 MIN_ACCEPTANCE_RATE = 0.40
 MIN_MEAN_DELTA = 0.05  # mirrors the runner's default epsilon
+ALLOWED_DECISIONS = frozenset({"ratify", "reject", "insufficient_data"})
 
 
 @dataclass(frozen=True)
@@ -211,6 +212,7 @@ def _validate_thresholds(
 
 def render_verdict_markdown(verdict: Verdict) -> str:
     """Render the verdict as a markdown document the operator commits."""
+    _validate_verdict(verdict)
     lines: list[str] = []
     lines.append(f"# Autoresearch Wedge 1 verdict — `{verdict.role}` (§15.6)")
     lines.append("")
@@ -260,3 +262,37 @@ def render_verdict_markdown(verdict: Verdict) -> str:
     )
     lines.append("")
     return "\n".join(lines)
+
+
+def _validate_verdict(verdict: Verdict) -> None:
+    if not isinstance(verdict.role, str) or not verdict.role.strip():
+        raise ValueError("verdict role must be a non-empty string")
+    if verdict.decision not in ALLOWED_DECISIONS:
+        raise ValueError(
+            "verdict decision must be one of: "
+            + ", ".join(sorted(ALLOWED_DECISIONS))
+        )
+    if (
+        isinstance(verdict.iteration_count, bool)
+        or not isinstance(verdict.iteration_count, int)
+        or verdict.iteration_count < 0
+    ):
+        raise ValueError("verdict iteration_count must be a non-negative integer")
+    for field in (
+        "acceptance_rate",
+        "mean_delta",
+        "median_delta",
+        "best_mutation_delta",
+        "total_cost_usd",
+    ):
+        value = getattr(verdict, field)
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            raise ValueError(f"verdict {field} must be finite")
+        if not math.isfinite(float(value)):
+            raise ValueError(f"verdict {field} must be finite")
+    if verdict.acceptance_rate < 0.0 or verdict.acceptance_rate > 1.0:
+        raise ValueError("verdict acceptance_rate must be in [0, 1]")
+    if verdict.total_cost_usd < 0.0:
+        raise ValueError("verdict total_cost_usd must be non-negative")
+    if not isinstance(verdict.rationale, str) or not verdict.rationale.strip():
+        raise ValueError("verdict rationale must be a non-empty string")
