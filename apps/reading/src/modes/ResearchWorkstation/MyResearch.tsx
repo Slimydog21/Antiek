@@ -149,6 +149,12 @@ interface Aggregate {
   costUsd: number;
 }
 
+function finiteNonNegativeNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
 function aggregate(items: InvestigationSummary[]): Aggregate {
   let running = 0;
   let done = 0;
@@ -159,7 +165,7 @@ function aggregate(items: InvestigationSummary[]): Aggregate {
     if (ps.running) running += 1;
     else if (ps.label === "done") done += 1;
     else if (ps.label === "needs attention") attention += 1;
-    costUsd += s.cost_usd_total ?? 0;
+    costUsd += finiteNonNegativeNumber(s.cost_usd_total) ?? 0;
   }
   return { total: items.length, running, done, attention, costUsd };
 }
@@ -437,6 +443,7 @@ function ResearchRow({
   indented: boolean;
 }) {
   const ps = plainStatus(summary.status);
+  const costUsd = finiteNonNegativeNumber(summary.cost_usd_total) ?? 0;
   return (
     <article
       className={`px-4 py-3 transition-colors hover:bg-ice-1 dark:hover:bg-charcoal-1 ${
@@ -463,7 +470,7 @@ function ResearchRow({
             {ps.label}
           </LemonTag>
           <span className="font-mono text-[10px] text-shadow-1 dark:text-moonlight tabular-nums">
-            ${(summary.cost_usd_total ?? 0).toFixed(4)}
+            ${costUsd.toFixed(4)}
           </span>
         </div>
       </div>

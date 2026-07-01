@@ -184,6 +184,20 @@ describe("MyResearch — honest aggregate (M2)", () => {
     // 0.0123 + 0.0077 = 0.0200 — the real sum, rendered to 4dp.
     expect(screen.getByText("$0.0200")).toBeTruthy();
   });
+
+  it("ignores malformed cost totals in the aggregate and row display", () => {
+    listState.current.investigations = [
+      inv({ investigation_id: "inv-c1", status: "completed", cost_usd_total: 0.0123 }),
+      inv({ investigation_id: "inv-c2", status: "completed", cost_usd_total: Number.NaN }),
+      inv({ investigation_id: "inv-c3", status: "completed", cost_usd_total: Number.POSITIVE_INFINITY }),
+      inv({ investigation_id: "inv-c4", status: "completed", cost_usd_total: -1 }),
+    ];
+    renderMonitor();
+
+    expect(screen.getAllByText("$0.0123").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText("$0.0000").length).toBeGreaterThanOrEqual(3);
+    expect(document.body.textContent).not.toMatch(/NaN|Infinity|\$-/);
+  });
 });
 
 describe("MyResearch — honest no-key state + use-gate (M4)", () => {
