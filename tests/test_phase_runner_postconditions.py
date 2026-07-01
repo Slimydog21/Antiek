@@ -57,6 +57,7 @@ from substrate.schemas import (  # noqa: E402
     AutoPatchAppliedPayload,
     ConstraintCompliance,
     FalsificationCondition,
+    InvestigationStartRequestedPayload,
     MasterMdWrittenPayload,
     SynthesizeDeliveredPayload,
 )
@@ -128,6 +129,23 @@ def test_phase_1_happy_with_regex_citation(research_dir):
     ok, reason = check_phase_1("inv-p1", research_dir=research_dir)
     assert ok is True
     assert "OK" in reason
+
+
+def test_loop_one_artifact_phases_skip_for_rlm_investigation_kind(research_dir):
+    emit_typed(
+        "inv-rlm-skips",
+        InvestigationStartRequestedPayload(
+            question="Survey this corpus.",
+            investigation_kind="rlm",
+        ),
+        role="operator",
+        policy_id="test",
+    )
+
+    for check in (check_phase_1, check_phase_2, check_phase_3, check_phase_4, check_phase_5):
+        ok, reason = check("inv-rlm-skips", research_dir=research_dir)
+        assert ok is True
+        assert "investigation_kind='rlm'" in reason
 
 
 # ---------------------------------------------------------------------------

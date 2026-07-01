@@ -17,6 +17,12 @@ from interfaces.research.api.broadcast import EventBroadcaster
 from interfaces.research.rlm_dag import Dag
 from interfaces.research.rlm_dag import execute_dag as _execute_dag
 from interfaces.research.rlm_repl import ReplSummary, RLMRepl
+from orchestration.phase_runner import (
+    assert_ready_for_completion,
+    enter_phase,
+    exit_phase,
+    verify_phase,
+)
 from orchestration.rlm.runner import run_loop_with_timeout
 from orchestration.rlm.session import (
     RLM_DEFAULT_MAX_ITERATIONS,
@@ -32,13 +38,17 @@ from substrate.dispatch.base import ProviderError
 from substrate.graph.rlm_tools import search_graph as _search_graph
 from substrate.schemas import (
     ActionType,
+    ConstraintCompliance,
     Event,
+    InvestigationCompletedPayload,
     InvestigationFailedPayload,
     InvestigationStartRequestedPayload,
     RLMSubCallDispatchedPayload,
+    SynthesizeDeliveredPayload,
 )
 
 from .coordinator import broadcast_emit
+from .orchestrator import InvestigationContext, _run_phase_7
 
 RLM_INVESTIGATION_POLICY_ID = "rlm-orchestrator/root-repl"
 
@@ -227,6 +237,180 @@ def _default_generate_code(
     )
 
 
+def _synthesis_from_rlm_answer(final_answer: str) -> SynthesizeDeliveredPayload:
+    summary = final_answer.strip() or "RLM completed without a terminal answer."
+    return SynthesizeDeliveredPayload(
+        thesis_summary=summary,
+        implicit_recommendation="insufficient_evidence",
+        thesis_components=[],
+        falsification_conditions=[],
+        execution_risks=[],
+        constraint_compliance=ConstraintCompliance(
+            hard_constraints_satisfied=False,
+            soft_constraints_violated=[],
+            violations_justified=[],
+        ),
+        reasoning_paths_used=[],
+        constraint_loop_status="single_pass",
+        constraint_loop_iterations=1,
+    )
+
+
+async def _verify_phase_noop(
+    *,
+    investigation_id: str,
+    phase: int,
+    note: str,
+) -> bool:
+    enter_phase(investigation_id, phase, note=note)
+    exit_phase(investigation_id, phase)
+    outcome = verify_phase(investigation_id, phase)
+    return outcome.passed
+
+
+async def _verify_rlm_skipped_loop_one_phases(investigation_id: str) -> bool:
+    for phase in range(1, 6):
+        ok = await _verify_phase_noop(
+            investigation_id=investigation_id,
+            phase=phase,
+            note=(
+                "RLM-kind investigation: Loop-One artifact phase skipped; "
+                "RLM iteration events are the upstream evidence"
+            ),
+        )
+        if not ok:
+            return False
+    return True
+
+
+async def _deliver_terminal_answer(
+    *,
+    broadcaster: EventBroadcaster,
+    event: Event,
+    req: InvestigationStartRequestedPayload,
+    final_answer: str,
+) -> None:
+    synthesis = _synthesis_from_rlm_answer(final_answer)
+    await broadcast_emit(
+        broadcaster,
+        event.investigation_id,
+        synthesis,
+        role="rlm_orchestrator",
+        policy_id=RLM_INVESTIGATION_POLICY_ID,
+    )
+
+    if not await _verify_rlm_skipped_loop_one_phases(event.investigation_id):
+        await broadcast_emit(
+            broadcaster,
+            event.investigation_id,
+            InvestigationFailedPayload(
+                phase=1,
+                reason="RLM Loop-One skipped-phase verification failed",
+                last_completed_phase=None,
+            ),
+            role="rlm_orchestrator",
+            policy_id=RLM_INVESTIGATION_POLICY_ID,
+        )
+        return
+
+    if not await _verify_phase_noop(
+        investigation_id=event.investigation_id,
+        phase=6,
+        note="RLM terminal synthesis delivered",
+    ):
+        await broadcast_emit(
+            broadcaster,
+            event.investigation_id,
+            InvestigationFailedPayload(
+                phase=6,
+                reason="RLM terminal synthesis failed phase 6 verification",
+                last_completed_phase=None,
+            ),
+            role="rlm_orchestrator",
+            policy_id=RLM_INVESTIGATION_POLICY_ID,
+        )
+        return
+
+    ctx = InvestigationContext(
+        investigation_id=event.investigation_id,
+        question=req.question,
+        context=req.context,
+        topic_slug=req.topic_slug,
+        max_sub_questions=req.max_sub_questions,
+        synthesis=synthesis,
+        last_completed_phase=6,
+        parent_investigation_id=req.parent_investigation_id,
+        research_tier=req.research_tier,
+    )
+    if not await _run_phase_7(ctx):
+        await broadcast_emit(
+            broadcaster,
+            event.investigation_id,
+            InvestigationFailedPayload(
+                phase=ctx.failed_phase or 7,
+                reason=ctx.fail_reason or "RLM phase 7 delivery failed",
+                last_completed_phase=6,
+            ),
+            role="rlm_orchestrator",
+            policy_id=RLM_INVESTIGATION_POLICY_ID,
+        )
+        return
+
+    if not await _verify_phase_noop(
+        investigation_id=event.investigation_id,
+        phase=8,
+        note=(
+            "RLM insufficient-evidence terminal answer; Phase 8 no-op "
+            "verified by postcondition"
+        ),
+    ):
+        await broadcast_emit(
+            broadcaster,
+            event.investigation_id,
+            InvestigationFailedPayload(
+                phase=8,
+                reason="RLM phase 8 no-op verification failed",
+                last_completed_phase=7,
+            ),
+            role="rlm_orchestrator",
+            policy_id=RLM_INVESTIGATION_POLICY_ID,
+        )
+        return
+    ctx.last_completed_phase = 8
+
+    try:
+        assert_ready_for_completion(event.investigation_id)
+    except Exception as exc:
+        await broadcast_emit(
+            broadcaster,
+            event.investigation_id,
+            InvestigationFailedPayload(
+                phase=9,
+                reason=f"assert_ready_for_completion failed: {exc!r}",
+                last_completed_phase=8,
+            ),
+            role="rlm_orchestrator",
+            policy_id=RLM_INVESTIGATION_POLICY_ID,
+        )
+        return
+
+    await broadcast_emit(
+        broadcaster,
+        event.investigation_id,
+        InvestigationCompletedPayload(
+            thesis_summary=synthesis.thesis_summary,
+            implicit_recommendation=synthesis.implicit_recommendation,
+            constraint_loop_status=synthesis.constraint_loop_status,
+            constraint_loop_iterations=synthesis.constraint_loop_iterations,
+            master_md_path=ctx.master_md_path,
+            domains_patched=[],
+            total_phases_verified=ctx.last_completed_phase,
+        ),
+        role="rlm_orchestrator",
+        policy_id=RLM_INVESTIGATION_POLICY_ID,
+    )
+
+
 def make_rlm_investigation_handler(
     broadcaster: EventBroadcaster,
     *,
@@ -337,7 +521,7 @@ def make_rlm_investigation_handler(
             return result.text
 
         try:
-            await run_loop_with_timeout(
+            loop_result = await run_loop_with_timeout(
                 repl=repl,
                 generate_code=generate_code,
                 session=session,
@@ -356,6 +540,15 @@ def make_rlm_investigation_handler(
                     error_type=type(exc).__name__,
                     error_message=str(exc),
                 )
+            )
+            return
+
+        if loop_result.status == "completed":
+            await _deliver_terminal_answer(
+                broadcaster=broadcaster,
+                event=event,
+                req=req,
+                final_answer=loop_result.final_answer,
             )
 
     return handle_investigation_start
