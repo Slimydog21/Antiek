@@ -4,6 +4,9 @@ import { render, act } from "@testing-library/react";
 import { HotkeyHud } from "./HotkeyHud";
 import { SHORTCUT_EVENTS } from "../../workspace/shortcuts";
 import { writeCustomHotkeys } from "../../workspace/persistence";
+import { installLocalStorageMock } from "../../test/localStorage";
+
+let restoreLocalStorage: (() => void) | null = null;
 
 beforeAll(() => {
   if (!window.matchMedia) {
@@ -26,10 +29,13 @@ beforeAll(() => {
 
 describe("HotkeyHud — SPR-08", () => {
   beforeEach(() => {
+    restoreLocalStorage = installLocalStorageMock();
     window.localStorage.clear();
   });
   afterEach(() => {
     window.localStorage.clear();
+    restoreLocalStorage?.();
+    restoreLocalStorage = null;
   });
 
   it("renders a dialog listing built-in + product bindings when open", () => {
@@ -76,7 +82,7 @@ describe("HotkeyHud — SPR-08", () => {
       bindings: [
         {
           id: "c1",
-          spec: "alt+j",
+          spec: "mod+.",
           route: "/inv/x",
           entityId: "x",
           entityKind: "investigation",

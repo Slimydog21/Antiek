@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   applyOver,
@@ -8,12 +8,15 @@ import {
   decodeWsParam,
   encodeWsParam,
   project,
+  readCustomHotkeys,
   readScope,
   readWsFromUrl,
+  writeCustomHotkeys,
   writeScope,
 } from "./persistence";
 import type { PersistedSnapshot } from "./persistence";
 import { EMPTY_SNAPSHOT } from "./panel.types";
+import { installLocalStorageMock } from "../test/localStorage";
 
 const SAMPLE: PersistedSnapshot = {
   schemaVersion: 1,
@@ -47,12 +50,18 @@ const SAMPLE: PersistedSnapshot = {
   dockBottomHeight: 220,
 };
 
+let restoreLocalStorage: (() => void) | null = null;
+
 beforeEach(() => {
+  restoreLocalStorage = installLocalStorageMock();
   clearAll();
 });
 
 afterEach(() => {
   clearAll();
+  vi.restoreAllMocks();
+  restoreLocalStorage?.();
+  restoreLocalStorage = null;
 });
 
 describe("persistence — encode/decode URL", () => {
@@ -75,6 +84,35 @@ describe("persistence — encode/decode URL", () => {
     expect(decodeWsParam(raw)).toBeNull();
   });
 
+  it("rejects structurally malformed workspace snapshots from the URL", () => {
+    const malformed = {
+      ...SAMPLE,
+      panels: {
+        "demo:one": {
+          ...SAMPLE.panels["demo:one"],
+          rect: { x: 0, y: 0, width: "wide", height: 300 },
+        },
+      },
+    };
+    expect(decodeWsParam(btoa(JSON.stringify(malformed)))).toBeNull();
+  });
+
+  it("tolerates unknown future fields on valid URL snapshots", () => {
+    const raw = btoa(
+      JSON.stringify({
+        ...SAMPLE,
+        futureField: "kept by newer code",
+        panels: {
+          "demo:one": {
+            ...SAMPLE.panels["demo:one"],
+            futureField: "kept by newer code",
+          },
+        },
+      }),
+    );
+    expect(decodeWsParam(raw)?.panels["demo:one"].title).toBe("One");
+  });
+
   it("buildShareableUrl includes ?ws= and pathname", () => {
     const url = buildShareableUrl(SAMPLE);
     expect(url).toContain("?ws=");
@@ -93,10 +131,79 @@ describe("persistence — localStorage scopes", () => {
     expect(back?.dockLeftIds).toEqual(["demo:one"]);
   });
 
+  it("drops malformed localStorage snapshots instead of hydrating corrupt panels", () => {
+    window.localStorage.setItem(
+      "antiek.workspace.global",
+      JSON.stringify({
+        ...SAMPLE,
+        dockLeftIds: ["demo:one", 7],
+      }),
+    );
+    expect(readScope({ kind: "global" })).toBeNull();
+  });
+
+  it("drops snapshots with unknown panel kinds before registry render", () => {
+    window.localStorage.setItem(
+      "antiek.workspace.global",
+      JSON.stringify({
+        ...SAMPLE,
+        panels: {
+          "demo:one": {
+            ...SAMPLE.panels["demo:one"],
+            kind: "FuturePanel",
+          },
+        },
+      }),
+    );
+    expect(readScope({ kind: "global" })).toBeNull();
+  });
+
+  it("drops snapshots with dangling dock ids", () => {
+    window.localStorage.setItem(
+      "antiek.workspace.global",
+      JSON.stringify({
+        ...SAMPLE,
+        dockLeftIds: ["demo:one", "missing"],
+      }),
+    );
+    expect(readScope({ kind: "global" })).toBeNull();
+  });
+
+  it("drops snapshots when a dock id points at a panel in the wrong mode", () => {
+    window.localStorage.setItem(
+      "antiek.workspace.global",
+      JSON.stringify({
+        ...SAMPLE,
+        dockLeftIds: ["demo:one", "demo:two"],
+      }),
+    );
+    expect(readScope({ kind: "global" })).toBeNull();
+  });
+
+  it("drops snapshots when a docked panel is missing from its dock array", () => {
+    window.localStorage.setItem(
+      "antiek.workspace.global",
+      JSON.stringify({
+        ...SAMPLE,
+        dockLeftIds: [],
+      }),
+    );
+    expect(readScope({ kind: "global" })).toBeNull();
+  });
+
   it("writes + reads route scope independently of global", () => {
     writeScope({ kind: "global" }, SAMPLE);
     writeScope({ kind: "route", route: "/wrestle" }, {
       ...SAMPLE,
+      panels: {
+        ...SAMPLE.panels,
+        "other:notes": {
+          ...SAMPLE.panels["demo:one"],
+          id: "other:notes",
+          mode: "docked-right",
+          title: "Notes",
+        },
+      },
       dockRightIds: ["other:notes"],
     });
     expect(readScope({ kind: "global" })?.dockRightIds).toEqual([]);
@@ -146,5 +253,182 @@ describe("persistence — project + applyOver", () => {
       { ...SAMPLE, schemaVersion: 99 as 1 },
     );
     expect(Object.keys(layered.panels)).toHaveLength(0);
+  });
+});
+
+describe("persistence — custom hotkeys blob", () => {
+  it("reads a valid custom-hotkeys blob", () => {
+    writeCustomHotkeys({
+      schemaVersion: 1,
+      bindings: [
+        {
+          id: "hk-1",
+          spec: "mod+.",
+          route: "/inv/inv-1",
+          entityId: "inv-1",
+          entityKind: "investigation",
+          label: "Investigation",
+        },
+      ],
+    });
+
+    expect(readCustomHotkeys().bindings[0]?.route).toBe("/inv/inv-1");
+  });
+
+  it("drops malformed custom-hotkey bindings instead of seeding bad shortcuts", () => {
+    window.localStorage.setItem(
+      "antiek.workspace.custom-hotkeys",
+      JSON.stringify({
+        schemaVersion: 1,
+        bindings: [
+          {
+            id: "hk-bad",
+            spec: "mod+.",
+            route: "/inv/inv-1",
+            entityId: "inv-1",
+            entityKind: "spaceship",
+            label: "Investigation",
+          },
+        ],
+      }),
+    );
+
+    expect(readCustomHotkeys()).toEqual({ schemaVersion: 1, bindings: [] });
+  });
+
+  it("drops structurally valid but off-policy custom-hotkey specs", () => {
+    window.localStorage.setItem(
+      "antiek.workspace.custom-hotkeys",
+      JSON.stringify({
+        schemaVersion: 1,
+        bindings: [
+          {
+            id: "hk-alt",
+            spec: "alt+j",
+            route: "/inv/inv-1",
+            entityId: "inv-1",
+            entityKind: "investigation",
+            label: "Investigation",
+          },
+        ],
+      }),
+    );
+
+    expect(readCustomHotkeys()).toEqual({ schemaVersion: 1, bindings: [] });
+  });
+
+  it("drops custom-hotkey blobs with duplicate specs", () => {
+    window.localStorage.setItem(
+      "antiek.workspace.custom-hotkeys",
+      JSON.stringify({
+        schemaVersion: 1,
+        bindings: [
+          {
+            id: "hk-1",
+            spec: "mod+.",
+            route: "/inv/inv-1",
+            entityId: "inv-1",
+            entityKind: "investigation",
+            label: "Investigation 1",
+          },
+          {
+            id: "hk-2",
+            spec: "Mod+.",
+            route: "/inv/inv-2",
+            entityId: "inv-2",
+            entityKind: "investigation",
+            label: "Investigation 2",
+          },
+        ],
+      }),
+    );
+
+    expect(readCustomHotkeys()).toEqual({ schemaVersion: 1, bindings: [] });
+  });
+
+  it("drops custom-hotkey blobs with duplicate binding ids", () => {
+    window.localStorage.setItem(
+      "antiek.workspace.custom-hotkeys",
+      JSON.stringify({
+        schemaVersion: 1,
+        bindings: [
+          {
+            id: "hk-same",
+            spec: "mod+.",
+            route: "/inv/inv-1",
+            entityId: "inv-1",
+            entityKind: "investigation",
+            label: "Investigation 1",
+          },
+          {
+            id: "hk-same",
+            spec: "mod+,",
+            route: "/inv/inv-2",
+            entityId: "inv-2",
+            entityKind: "investigation",
+            label: "Investigation 2",
+          },
+        ],
+      }),
+    );
+
+    expect(readCustomHotkeys()).toEqual({ schemaVersion: 1, bindings: [] });
+  });
+
+  it("drops custom-hotkey blobs with duplicate entity ids", () => {
+    window.localStorage.setItem(
+      "antiek.workspace.custom-hotkeys",
+      JSON.stringify({
+        schemaVersion: 1,
+        bindings: [
+          {
+            id: "hk-1",
+            spec: "mod+.",
+            route: "/inv/inv-1",
+            entityId: "inv-1",
+            entityKind: "investigation",
+            label: "Investigation 1",
+          },
+          {
+            id: "hk-2",
+            spec: "mod+,",
+            route: "/inv/inv-1",
+            entityId: "inv-1",
+            entityKind: "investigation",
+            label: "Investigation 1 again",
+          },
+        ],
+      }),
+    );
+
+    expect(readCustomHotkeys()).toEqual({ schemaVersion: 1, bindings: [] });
+  });
+
+  it("tolerates unknown future fields on valid custom-hotkey bindings", () => {
+    window.localStorage.setItem(
+      "antiek.workspace.custom-hotkeys",
+      JSON.stringify({
+        schemaVersion: 1,
+        bindings: [
+          {
+            id: "hk-1",
+            spec: "mod+.",
+            route: "/inv/inv-1",
+            entityId: "inv-1",
+            entityKind: "investigation",
+            label: "Investigation",
+            futureField: "kept by newer code",
+          },
+        ],
+        futureField: "kept by newer code",
+      }),
+    );
+
+    expect(readCustomHotkeys().bindings[0]?.spec).toBe("mod+.");
+  });
+
+  it("the localStorage test helper coerces stored values like browser Storage", () => {
+    window.localStorage.setItem("coerced", undefined as unknown as string);
+    expect(window.localStorage.getItem("coerced")).toBe("undefined");
   });
 });
