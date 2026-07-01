@@ -34,12 +34,6 @@ interface PayoutDashboardData {
   unallocated_rounding_month_cents: number;
 }
 
-const USD = (cents: number) =>
-  `$${(cents / 100).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-
 const KIND_COLOR: Record<string, string> = {
   creator: "bg-emerald-50 text-emerald-700 border-emerald-200",
   publisher: "bg-blue-50 text-blue-700 border-blue-200",
@@ -51,6 +45,19 @@ const STATUS_BADGE: Record<string, string> = {
   escrow_only: "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight",
   forfeited: "bg-emperor/20 text-emperor",
 };
+
+const nonNegativeFiniteNumber = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+
+const safeCents = (value: unknown): number => nonNegativeFiniteNumber(value) ?? 0;
+
+const USD = (cents: unknown) =>
+  `$${(safeCents(cents) / 100).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 
 export default function PayoutDashboard() {
   const [data, setData] = useState<PayoutDashboardData | null>(null);
@@ -86,9 +93,9 @@ export default function PayoutDashboard() {
   const monthTotals = lines.reduce(
     (acc, l) => ({
       creator_cents:
-        acc.creator_cents + (l.recipient_kind === "creator" ? l.current_month_cents : 0),
+        acc.creator_cents + (l.recipient_kind === "creator" ? safeCents(l.current_month_cents) : 0),
       publisher_cents:
-        acc.publisher_cents + (l.recipient_kind === "publisher" ? l.current_month_cents : 0),
+        acc.publisher_cents + (l.recipient_kind === "publisher" ? safeCents(l.current_month_cents) : 0),
     }),
     { creator_cents: 0, publisher_cents: 0 },
   );
