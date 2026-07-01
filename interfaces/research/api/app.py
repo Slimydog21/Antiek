@@ -1485,8 +1485,9 @@ def create_app(
     #     X-Antiek-Verified-Claims + X-Antiek-Verified-Claims-Signature.
     #     The provider JWT must already be verified upstream; this layer
     #     verifies only the hop-local HMAC and normalizes to UserClaims.
-    #     Until route-level multi-user authz lands, this path requires
-    #     the normalized claims to carry the operator scope.
+    #     Non-operator claims are admitted only on explicitly user-
+    #     scoped self-service routes; every other API path still
+    #     requires operator scope.
     #
     # When BOTH env vars are unset, enforcement is bypassed and the
     # API is open (existing tests + local dev unchanged). When one
@@ -1546,6 +1547,28 @@ def create_app(
     _EXTERNAL_AUTH_CLAIMS_HEADER = "X-Antiek-Verified-Claims"
     _EXTERNAL_AUTH_SIGNATURE_HEADER = "X-Antiek-Verified-Claims-Signature"
     _SESSION_COOKIE_NAME = "ANTIEK_SESSION"
+    _EXTERNAL_USER_AUTH_EXACT_PATHS: set[str] = {
+        "/auth/whoami",
+        "/trust-center/deletion-requests",
+        "/trust-center/telemetry-preferences",
+    }
+    _EXTERNAL_USER_AUTH_PREFIXES: tuple[str, ...] = (
+        "/trust-center/deletion-requests/",
+        "/trust-center/telemetry-preferences/",
+    )
+
+    def _allows_external_user_claims(path: str) -> bool:
+        """Routes where a non-operator external identity is self-scoped.
+
+        Keep this list deliberately tiny until every route has explicit
+        authorization semantics. Deletion requests and telemetry preferences
+        query/write only request.state.user_id, so admitting the caller's own
+        identity is safe and moves Sprint 22's privacy control plane forward.
+        """
+        return (
+            path in _EXTERNAL_USER_AUTH_EXACT_PATHS
+            or any(path.startswith(prefix) for prefix in _EXTERNAL_USER_AUTH_PREFIXES)
+        )
 
     @app.middleware("http")
     async def _operator_auth_middleware(
@@ -1647,9 +1670,9 @@ def create_app(
 
         # Path 2: External provider adapter — already-verified claims
         # from Clerk/Supabase, protected for the origin hop by an
-        # operator-held HMAC secret. This is intentionally operator-
-        # scoped for now: broad non-operator API access waits for
-        # route-level user authorization.
+        # operator-held HMAC secret. Operator-scoped claims can use the
+        # existing operator API; non-operator claims are admitted only
+        # on the narrow self-service route set above.
         if external_auth_vendor and external_auth_secret:
             encoded_claims = request.headers.get(
                 _EXTERNAL_AUTH_CLAIMS_HEADER, "",
@@ -1672,7 +1695,10 @@ def create_app(
                     external_claims = None
                 if (
                     external_claims is not None
-                    and "operator" in external_claims.scopes
+                    and (
+                        "operator" in external_claims.scopes
+                        or _allows_external_user_claims(request.url.path)
+                    )
                 ):
                     _attach_claims(
                         request,

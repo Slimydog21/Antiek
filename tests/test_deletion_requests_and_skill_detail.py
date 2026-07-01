@@ -10,6 +10,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
+from substrate.multi_user import (
+    encode_verified_claims_header,
+    sign_verified_claims_header,
+)
 
 
 @pytest.fixture()
@@ -27,6 +31,34 @@ def isolated_db(monkeypatch):
 
 def _client():
     return TestClient(create_app(register_wrestling=False))
+
+
+def _external_headers(
+    monkeypatch,
+    *,
+    sub: str,
+    scopes: list[str] | None = None,
+) -> dict[str, str]:
+    secret = "trusted-hop-secret"
+    monkeypatch.setenv("ANTIEK_EXTERNAL_AUTH_VENDOR", "supabase")
+    monkeypatch.setenv("ANTIEK_EXTERNAL_AUTH_HEADER_SECRET", secret)
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
+    encoded = encode_verified_claims_header({
+        "sub": sub,
+        "email": f"{sub}@example.com",
+        "app_metadata": {"antiek_scopes": scopes or ["private_research"]},
+    })
+    signature = sign_verified_claims_header(
+        vendor="supabase",
+        encoded_claims=encoded,
+        secret=secret,
+    )
+    return {
+        "X-Antiek-Verified-Claims": encoded,
+        "X-Antiek-Verified-Claims-Signature": signature,
+    }
 
 
 # ── Skill rule detail endpoint ─────────────────────────────────────
@@ -176,3 +208,40 @@ def test_cannot_cancel_other_users_request(isolated_db, monkeypatch):
         f"/trust-center/deletion-requests/{other_request_id}/cancel",
     )
     assert resp.status_code == 403
+
+
+def test_external_user_deletion_requests_are_scoped_to_claims_user(
+    isolated_db, monkeypatch,
+):
+    client = _client()
+    user_a = _external_headers(monkeypatch, sub="reader-a")
+    create = client.post(
+        "/trust-center/deletion-requests",
+        json={"reason": "privacy export complete"},
+        headers=user_a,
+    )
+    assert create.status_code == 201
+    request_id = create.json()["request_id"]
+    assert create.json()["user_id"] == "supabase:reader-a"
+
+    listed = client.get("/trust-center/deletion-requests", headers=user_a)
+    assert listed.status_code == 200
+    assert [r["request_id"] for r in listed.json()["requests"]] == [request_id]
+
+    user_b = _external_headers(monkeypatch, sub="reader-b")
+    listed_b = client.get("/trust-center/deletion-requests", headers=user_b)
+    assert listed_b.status_code == 200
+    assert listed_b.json()["requests"] == []
+
+    forbidden = client.post(
+        f"/trust-center/deletion-requests/{request_id}/cancel",
+        headers=user_b,
+    )
+    assert forbidden.status_code == 403
+
+    cancelled = client.post(
+        f"/trust-center/deletion-requests/{request_id}/cancel",
+        headers=user_a,
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
