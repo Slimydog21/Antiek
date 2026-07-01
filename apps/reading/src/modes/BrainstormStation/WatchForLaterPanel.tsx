@@ -3,16 +3,16 @@ import { useCallback, useEffect, useState } from "react";
 import { listWatchForLater, type ParkedQuestionEntry } from "../../lib/api";
 import WatchForLaterFolder from "./WatchForLaterFolder";
 
+export const BRAINSTORM_SELECT_QUESTION_EVENT = "antiek:brainstorm:select-question";
+
 /**
  * BrainstormStation's "watch for later" parked-questions list as a
  * PanelKind. Self-fetches the parked-question list (PanelHost freezes
  * starter props at mount time, so we can't trust a parent-passed
  * `questions` prop to update).
  *
- * Selection is a self-managed concern — clicking a question shows it
- * inline below the list rather than syncing with the main slot.
- * Future improvement: wire selection through workspace store so the
- * main slot's ParkedQuestion view follows the operator's choice.
+ * Selection emits a small browser event so the route's main slot can
+ * show the selected question even though PanelHost freezes starter props.
  */
 export default function WatchForLaterPanel() {
   const [questions, setQuestions] = useState<ParkedQuestionEntry[]>([]);
@@ -46,7 +46,14 @@ export default function WatchForLaterPanel() {
         loading={loading}
         error={error}
         selectedId={selected?.question_id ?? null}
-        onSelect={setSelected}
+        onSelect={(question) => {
+          setSelected(question);
+          window.dispatchEvent(
+            new CustomEvent(BRAINSTORM_SELECT_QUESTION_EVENT, {
+              detail: { question },
+            }),
+          );
+        }}
       />
     </div>
   );

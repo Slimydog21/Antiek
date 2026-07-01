@@ -1,0 +1,93 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+
+import type { ParkedQuestionEntry } from "../../lib/api";
+
+const apiMocks = vi.hoisted(() => ({
+  listWatchForLater: vi.fn(),
+  launchParkedQuestion: vi.fn(),
+}));
+
+vi.mock("../../lib/api", async (orig) => ({
+  ...(await orig<typeof import("../../lib/api")>()),
+  listWatchForLater: apiMocks.listWatchForLater,
+  launchParkedQuestion: apiMocks.launchParkedQuestion,
+}));
+
+vi.mock("../../lib/analytics", () => ({
+  track: vi.fn(),
+}));
+
+vi.mock("../../workspace/PanelHost", () => ({
+  PanelHost: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="panel-host">{children}</div>
+  ),
+}));
+
+import BrainstormStation from ".";
+import WatchForLaterPanel, {
+  BRAINSTORM_SELECT_QUESTION_EVENT,
+} from "./WatchForLaterPanel";
+
+const QUESTION: ParkedQuestionEntry = {
+  question_id: "q-bridge",
+  question_text: "What would make retrieval feel like memory?",
+  source_investigation_id: "inv-source",
+  source_document_id: "doc-source",
+  anchor_region_id: "region-1",
+  parent_event_id: "event-parent",
+  parked_at: "2026-07-01T00:00:00Z",
+};
+
+beforeEach(() => {
+  apiMocks.listWatchForLater.mockReset().mockResolvedValue({
+    questions: [QUESTION],
+  });
+  apiMocks.launchParkedQuestion.mockReset();
+});
+
+afterEach(() => {
+  cleanup();
+});
+
+describe("BrainstormStation watch-list selection bridge", () => {
+  it("WatchForLaterPanel emits the selected parked question", async () => {
+    const seen: ParkedQuestionEntry[] = [];
+    const listener = (event: Event) => {
+      const question = (event as CustomEvent<{ question: ParkedQuestionEntry }>).detail
+        .question;
+      seen.push(question);
+    };
+    window.addEventListener(BRAINSTORM_SELECT_QUESTION_EVENT, listener);
+
+    render(<WatchForLaterPanel />);
+    await userEvent.click(await screen.findByText(QUESTION.question_text));
+
+    expect(seen).toEqual([QUESTION]);
+    window.removeEventListener(BRAINSTORM_SELECT_QUESTION_EVENT, listener);
+  });
+
+  it("BrainstormStation main pane follows a docked watch-list selection", async () => {
+    render(
+      <MemoryRouter>
+        <BrainstormStation />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(apiMocks.listWatchForLater).toHaveBeenCalled());
+    expect(screen.queryByText("Parked question")).toBeNull();
+
+    window.dispatchEvent(
+      new CustomEvent(BRAINSTORM_SELECT_QUESTION_EVENT, {
+        detail: { question: QUESTION },
+      }),
+    );
+
+    expect(await screen.findByText("Parked question")).toBeTruthy();
+    expect(screen.getAllByText(QUESTION.question_text).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("inv-source").length).toBeGreaterThan(0);
+    expect(screen.getByText("q-bridge")).toBeTruthy();
+  });
+});

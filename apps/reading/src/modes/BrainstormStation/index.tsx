@@ -10,6 +10,7 @@ import {
 } from "../../lib/api";
 import ParkedQuestion from "./ParkedQuestion";
 import WatchForLaterFolder from "./WatchForLaterFolder";
+import { BRAINSTORM_SELECT_QUESTION_EVENT } from "./WatchForLaterPanel";
 
 /**
  * Mode E — Brainstorming Workstation.
@@ -55,6 +56,18 @@ export default function BrainstormStation() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  useEffect(() => {
+    const onSelect = (event: Event) => {
+      const question = (event as CustomEvent<{ question?: ParkedQuestionEntry }>).detail
+        ?.question;
+      if (question) setSelected(question);
+    };
+    window.addEventListener(BRAINSTORM_SELECT_QUESTION_EVENT, onSelect);
+    return () => {
+      window.removeEventListener(BRAINSTORM_SELECT_QUESTION_EVENT, onSelect);
+    };
+  }, []);
 
   const handleLaunch = useCallback(
     async (q: ParkedQuestionEntry) => {
