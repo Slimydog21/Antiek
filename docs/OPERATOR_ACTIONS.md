@@ -67,7 +67,7 @@ next free number. Track the counter at the bottom of this file.
 | OA-007 | Stripe Connect real activation (MockProvider → RealProvider) | OPEN | Sprints 23-24 entire | Operator + Stripe |
 | OA-008 | External red-team firm engagement (Sprint 23-24 gate (c)) | OPEN | Sprints 23-24 entire | Operator + external firm |
 | OA-009 | Phase 1 (Sprints 17-21) committed + pushed + deployed | PARTIALLY DONE | Phase 2 entire | Operator |
-| OA-010 | Integration-revert pattern resolved | OPEN | Substrate → API → UI integration | Operator + infra |
+| OA-010 | Integration-revert pattern resolved | PARTIALLY MITIGATED | Remaining tracked-file integrations, especially DuckLake routing | Operator + infra |
 | OA-011 | KMS keys provisioned in production | OPEN | Per-user encryption at rest | Operator + cloud |
 | OA-012 | Postgres catalog deployed (DuckLake Stage 1) | OPEN | Sprint 22 substrate stage transition | Operator + DBA |
 | OA-013 | Trust Center publicly published at antiek.ai/trust | OPEN | Sprint 22 §13.7 deliverable | Operator + ops |
@@ -79,10 +79,11 @@ next free number. Track the counter at the bottom of this file.
 | OA-019 | SOC 2 PURSUE/DEFER decision recorded | OPEN | Sprint 25+ Phase 6 conditional | Operator |
 | OA-020 | Sprint 18 retrieval-time gating production deploy verified | OPEN | Activation of substrate-side G1 close | Operator + ops |
 
-**Total OPEN:** 19 (1 partially done, 1 awaiting operator test). One
-entry is closeable today (OA-005); a few are achievable within weeks
-(OA-001 → OA-002 → OA-015 chain); the longest-pole items (OA-003 G7
-compounding, OA-004 G8 Loop 3) are ≥ 6 months out.
+**Not closed:** 20 total — 17 OPEN, 1 PARTIALLY DONE, 1 AWAITING
+OPERATOR TEST, 1 PARTIALLY MITIGATED. One entry is closeable today
+(OA-005); a few are achievable within weeks (OA-001 → OA-002 → OA-015
+chain); the longest-pole items (OA-003 G7 compounding, OA-004 G8 Loop
+3) are ≥ 6 months out.
 
 ---
 
@@ -452,23 +453,29 @@ constitutes proof. Mark OA-009 status: CLOSED.
 
 ### OA-010 — Integration-revert pattern resolved
 
-**Status:** OPEN
+**Status:** PARTIALLY MITIGATED
 **Owner:** Operator + infrastructure
-**Blocks:** Substrate → API → UI integration for every Phase 2 module
+**Blocks:** Remaining tracked-file integrations, especially DuckLake routing
 **Surfaced by:** Phase 2 audit v2 §6.2; observed across multiple sessions
 **First flagged:** 2026-05-22
 
 #### What the operator needs to do
 
-Three tracked files keep getting reverted between agent sessions:
-- `interfaces/research/api/app.py` — my API endpoint additions
-  (`/trust-center` registry wiring, `/marketplace/snapshot`,
-  `/me/payouts`, `/operator/advertiser-campaigns`,
-  `/operator/payouts/dashboard`) never persist
-- `tools/stripe_connect/__init__.py` — re-exports for `RevSharePayoutRouter`,
-  `route_impression_revenue`, `export_tax_year` revert
-- `apps/reading/src/App.tsx` — route registrations for new React
-  modes revert
+Historically, three tracked files repeatedly reverted between agent
+sessions:
+
+- `interfaces/research/api/app.py` — API endpoint additions such as
+  `/trust-center`, `/marketplace/snapshot`, `/me/payouts`,
+  `/operator/advertiser-campaigns`, and
+  `/operator/payouts/dashboard`
+- `tools/stripe_connect/__init__.py` — re-exports for
+  `RevSharePayoutRouter`, `route_impression_revenue`, `export_tax_year`
+- `apps/reading/src/App.tsx` — route registrations for new React modes
+
+Current state is mixed: the privacy/trust integrations and several
+marketplace/payout/operator router registrations have persisted, while
+the remaining integration risks below still need fresh evidence before
+this action can close.
 
 **Diagnosis:** parallel commits on the branch (sometimes 8+ between
 sessions) include design-token sync work that touches these files;
@@ -489,6 +496,25 @@ e.g., a new `interfaces/research/api/phase2_router.py` that mounts
 a sub-router into the FastAPI app, where `app.py`'s only edit is a
 single `app.include_router(phase2_router)` line that's less prone
 to overwrite.
+
+**Fresh evidence, 2026-07-01:** the privacy/trust integration edits
+have persisted across multiple commits on `reader/integration`:
+
+- `interfaces/research/api/app.py` currently wires `/trust-center`,
+  `/trust-center/telemetry-preferences`, and
+  `/trust-center/deletion-requests`, plus router registrations for
+  creator payouts, marketplace snapshots, payout dashboard, and
+  operator advertiser campaigns.
+- `apps/reading/src/App.tsx` currently registers `/privacy`, `/trust`,
+  `/marketplace`, `/me/payouts`, and the operator campaign/payout routes.
+- `substrate/deletion_worker/__main__.py` provides the operator-run
+  deletion worker command: `python -m substrate.deletion_worker`.
+
+This does **not** close OA-010 yet. The still-open integration named by
+the 2026-05-23 audit is DuckLake query-time catalog routing in the
+production call path: the substrate router can consult a `DuckLakeCatalog`
+when configured, but production call sites still need proof that they
+instantiate/use the catalog-backed router.
 
 #### Once closed
 
@@ -585,15 +611,15 @@ proof. Mark OA-012 CLOSED.
 
 The React Trust Center component at
 `apps/reading/src/modes/TrustCenter/` exists; the route `/trust` in
-`App.tsx` is un-gated (auth bypass for the public surface). What's
-missing:
+`App.tsx` is un-gated (auth bypass for the public surface). The
+`/trust-center` API endpoint currently reads from
+`substrate.trust_center.build_publication()`.
+
+What's missing:
 
 1. Verify the production deploy serves `/trust` (Cloudflare Pages or
    the operator's equivalent).
-2. Verify that the `/trust-center` API endpoint reads from the
-   live `substrate/trust_center/build_publication()` (this needs
-   OA-010 resolved to keep the app.py wiring landed).
-3. Make the `/trust` route reachable from `antiek.ai/trust` (or
+2. Make the `/trust` route reachable from `antiek.ai/trust` (or
    whatever the production domain is).
 
 #### Once closed
@@ -863,5 +889,5 @@ not.
 
 ---
 
-**Counter:** next-free OA = OA-021. Last updated: 2026-05-23 by
-the Phase 2 audit v3 session.
+**Counter:** next-free OA = OA-021. Last updated: 2026-07-01 by
+the deletion/privacy control-plane update.

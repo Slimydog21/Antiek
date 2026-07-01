@@ -118,8 +118,14 @@ Per §13.3 the Privacy Dashboard exposes a **"delete everything"**
 button. When the user clicks it:
 
 - Personal graph (both partitions): scheduled for deletion within 30
-  days. The actual delete runs nightly; the SLA is the maximum
-  delay.
+  days. The operator/scheduler command is
+  `python -m substrate.deletion_worker`; it runs one locked deletion
+  cycle, emits JSON Lines for the operator log, and exits non-zero if
+  any request fails. The SLA is the maximum delay, not a promise that
+  deletion waits until day 30.
+- Explicit telemetry preferences: deleted by the same worker cycle
+  through the shared `ANTIEK_TELEMETRY_PREFERENCES_PATH` resolver, or
+  the `telemetry_preferences.sqlite` file beside the selected graph DB.
 - Public-facing notes the user previously promoted: hard-removed
   from the collective graph index; existing citations in syntheses
   return a 410 Gone with the original chunk text NOT restored.
