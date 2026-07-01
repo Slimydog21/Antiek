@@ -5,6 +5,12 @@ import type { ResearchTier } from "../lib/api";
 import type { Event } from "../generated/types";
 import { useEventStream } from "./useEventStream";
 
+function finiteNonNegativeNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
 /**
  * useStartInvestigation — the single sanctioned path for starting a NEW
  * investigation from the Research home, and for letting the AI be *felt*
@@ -91,7 +97,7 @@ export function useStartInvestigation(): StartInvestigationState {
     for (const e of stream.events) {
       if (e.action_type === "dispatch.call") {
         const p = e.payload as { cost_usd?: number } | undefined;
-        if (typeof p?.cost_usd === "number") cost += p.cost_usd;
+        cost += finiteNonNegativeNumber(p?.cost_usd) ?? 0;
       }
     }
     return cost;
