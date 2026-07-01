@@ -11,6 +11,7 @@ import type { PaletteDragPayload } from "../CreationStudio/BlockPalette";
 import { parsePaletteDrag } from "./Repository/dragToOutline";
 import { WriteEditor } from "./Editor/Editor";
 import { EDIT_CAPTURE_POLICY } from "./EditCapture";
+import { IdeaDump } from "./Brainstorm/IdeaDump";
 import SubAgentProposal from "./SubAgentProposal";
 import VoiceToDraft from "./VoiceToDraft";
 import Xray from "./Xray";
@@ -167,6 +168,9 @@ function SectionCard({
   );
   // M4: the spin-a-sub-agent proposal over a highlighted claim (null = closed).
   const [proposal, setProposal] = useState<{ text: string } | null>(null);
+  // SPR-05: section-scoped brainstorm drivers become real blocks in this
+  // section, not the no-piece "__brainstorm__" sentinel.
+  const [showBrainstorm, setShowBrainstorm] = useState(false);
 
   // M4: the FloatMenu host over the rendered editor. The page region is the
   // selection SCOPE; highlighting prose opens the SHARED FloatMenu with the
@@ -392,6 +396,13 @@ function SectionCard({
             await onChanged();
           }}
         />
+        <button
+          type="button"
+          onClick={() => setShowBrainstorm((value) => !value)}
+          className="text-xs text-ink-soft underline hover:text-ink dark:text-starlight"
+        >
+          {showBrainstorm ? "hide brainstorm" : "brainstorm blocks"}
+        </button>
         {/* M3: draft ↔ X-ray toggle (shown once there's persisted prose). */}
         {proseText && (
           <button
@@ -403,6 +414,19 @@ function SectionCard({
           </button>
         )}
       </div>
+
+      {showBrainstorm && (
+        <div className="mt-3 rounded-md border border-rule dark:border-charcoal-1">
+          <IdeaDump
+            sectionId={section.section_id}
+            deliverableId={deliverableId}
+            onEmitted={async () => {
+              await refreshBlocks();
+              await onChanged();
+            }}
+          />
+        </div>
+      )}
 
       {/* Honest failure (no key / abort) — never a fake draft. */}
       {genError && (

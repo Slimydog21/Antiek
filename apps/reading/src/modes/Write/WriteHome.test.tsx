@@ -134,6 +134,16 @@ describe("WriteHome — the re-homed door", () => {
     expect(screen.getByText(/brainstorm from an idea/i)).toBeTruthy();
   });
 
+  it("does not emit brainstorm blocks from the no-piece sentinel section", async () => {
+    mountAt("/write");
+    await userEvent.click(await screen.findByText(/brainstorm from an idea/i));
+    expect(
+      await screen.findByText(/Start a piece first to land blocks on a real section/i),
+    ).toBeTruthy();
+    const emit = screen.getByRole("button", { name: /emit lego blocks/i });
+    expect((emit as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("M1 — 'none' auto-spawns a research folder and creates the piece linked to it", async () => {
     mountAt("/write");
     // Naming the piece reveals the connect-to-research step (M1).
