@@ -10,10 +10,18 @@ REPO = Path(__file__).resolve().parents[1]
 
 def test_trust_center_public_names_live_deletion_worker_cli():
     text = (REPO / "docs" / "trust_center_public.md").read_text(encoding="utf-8")
+    compact_text = " ".join(text.split())
 
+    assert "Last updated:** 2026-07-01" in text
+    assert "counsel-pending compliance copy" in compact_text
+    assert "live privacy/deletion control-plane references" in compact_text
+    assert "/trust-center/telemetry-preferences" in text
+    assert "/trust-center/deletion-requests" in text
     assert "python -m substrate.deletion_worker" in text
     assert "ANTIEK_TELEMETRY_PREFERENCES_PATH" in text
     assert "telemetry_preferences.sqlite" in text
+    assert "Publication at `antiek.ai/trust` still waits on OA-013" in compact_text
+    assert "2026-05-22 _(scaffold" not in text
 
 
 def test_operator_actions_reflect_privacy_integration_evidence():
