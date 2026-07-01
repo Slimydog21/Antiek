@@ -13,11 +13,11 @@ import type { BookSummary } from "../../api/books";
  * §9.0 guarantee, inherited from the contract) NEVER a body. The only path that
  * can surface full text is `/books/{id}/full-text`, gated server-side.
  *
- * GRACEFUL DEGRADATION: the route is built by the parallel Unit A in the same
- * worktree but may not be registered in `create_app` yet (it 404s until wired).
- * A 404 (or a network failure) is surfaced as an honest, recoverable state via
- * `routeAbsent` — the view shows "the catalog isn't available yet", NEVER a
- * blank shelf masquerading as an empty corpus (honesty over a false-empty).
+ * GRACEFUL DEGRADATION: current builds register the route in `create_app`, but
+ * older/down deployments can still 404 it. A 404 is surfaced as an honest,
+ * recoverable `routeAbsent` state — the view shows "the catalog isn't
+ * available yet", NEVER a blank shelf masquerading as an empty corpus (honesty
+ * over a false-empty).
  */
 
 /** The library filter — matches Unit A's `filter` query param exactly. */
@@ -48,7 +48,7 @@ export interface UseLibraryResult {
   loading: boolean;
   /** A real, surfaced error (a non-404 failure). Distinct from `routeAbsent`. */
   error: string | null;
-  /** True when `/library` returned 404 — the backend route isn't wired yet.
+  /** True when `/library` returned 404 — the deployed catalog route is absent.
    *  The surface states this honestly rather than showing a false-empty shelf. */
   routeAbsent: boolean;
   /** Re-run the current query (e.g. a retry button). */
@@ -56,7 +56,8 @@ export interface UseLibraryResult {
 }
 
 /** Fetch one library page. Throws `library_route_absent` on a 404 so the hook
- *  can distinguish "not wired yet" from "empty corpus" and from a real error. */
+ *  can distinguish an absent catalog route from an empty corpus and from a real
+ *  error. */
 export async function fetchLibraryPage(args: UseLibraryArgs): Promise<LibraryPage> {
   const params = new URLSearchParams({
     filter: args.filter,
