@@ -11,8 +11,10 @@ import {
 import ParkedQuestion from "./ParkedQuestion";
 import WatchForLaterFolder from "./WatchForLaterFolder";
 import {
+  BRAINSTORM_WATCHLIST_CHANGED_EVENT,
   BRAINSTORM_SELECT_QUESTION_EVENT,
   dispatchBrainstormQuestionSelection,
+  dispatchBrainstormWatchlistChanged,
   getBrainstormQuestionSelection,
 } from "./WatchForLaterPanel";
 
@@ -59,6 +61,13 @@ export default function BrainstormStation() {
 
   useEffect(() => {
     void reload();
+    const onChanged = () => {
+      void reload();
+    };
+    window.addEventListener(BRAINSTORM_WATCHLIST_CHANGED_EVENT, onChanged);
+    return () => {
+      window.removeEventListener(BRAINSTORM_WATCHLIST_CHANGED_EVENT, onChanged);
+    };
   }, [reload]);
 
   useEffect(() => {
@@ -84,6 +93,7 @@ export default function BrainstormStation() {
         // The folder reloads to hide this question (now sharpened);
         // operator follows the launched investigation in Mode A.
         await reload();
+        dispatchBrainstormWatchlistChanged();
         navigate(`/inv/${handle.investigation_id}`);
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);

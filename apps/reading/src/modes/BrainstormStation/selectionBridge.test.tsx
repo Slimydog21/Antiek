@@ -29,6 +29,7 @@ vi.mock("../../workspace/PanelHost", () => ({
 import BrainstormStation from ".";
 import WatchForLaterPanel, {
   BRAINSTORM_SELECT_QUESTION_EVENT,
+  BRAINSTORM_WATCHLIST_CHANGED_EVENT,
   dispatchBrainstormQuestionSelection,
   dispatchBrainstormWatchlistChanged,
   resetBrainstormQuestionSelection,
@@ -150,5 +151,60 @@ describe("BrainstormStation watch-list selection bridge", () => {
 
     await waitFor(() => expect(apiMocks.listWatchForLater).toHaveBeenCalledTimes(2));
     expect(await screen.findByText(SECOND_QUESTION.question_text)).toBeTruthy();
+  });
+
+  it("BrainstormStation reloads its host state when the watch-list changes", async () => {
+    apiMocks.listWatchForLater
+      .mockResolvedValueOnce({ questions: [] })
+      .mockResolvedValueOnce({ questions: [QUESTION] });
+
+    render(
+      <MemoryRouter>
+        <BrainstormStation />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(/No parked questions yet/i)).toBeTruthy();
+
+    act(() => {
+      dispatchBrainstormWatchlistChanged();
+    });
+
+    await waitFor(() => expect(apiMocks.listWatchForLater).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(QUESTION.question_text)).toBeTruthy();
+  });
+
+  it("BrainstormStation broadcasts a watch-list change after launching a parked question", async () => {
+    apiMocks.launchParkedQuestion.mockResolvedValue({
+      investigation_id: "inv-child",
+      status: "in_progress",
+      start_event_id: "evt-start",
+    });
+    apiMocks.listWatchForLater
+      .mockResolvedValueOnce({ questions: [QUESTION] })
+      .mockResolvedValue({ questions: [] });
+    const watchlistChanges: Event[] = [];
+    const onWatchlistChanged = (event: Event) => {
+      watchlistChanges.push(event);
+    };
+    window.addEventListener(BRAINSTORM_WATCHLIST_CHANGED_EVENT, onWatchlistChanged);
+
+    try {
+      render(
+        <MemoryRouter>
+          <BrainstormStation />
+        </MemoryRouter>,
+      );
+      await waitFor(() => expect(apiMocks.listWatchForLater).toHaveBeenCalled());
+
+      dispatchBrainstormQuestionSelection(QUESTION);
+      await userEvent.click(await screen.findByRole("button", { name: /launch investigation/i }));
+
+      await waitFor(() =>
+        expect(apiMocks.launchParkedQuestion).toHaveBeenCalledWith(QUESTION.question_id),
+      );
+      await waitFor(() => expect(watchlistChanges).toHaveLength(1));
+    } finally {
+      window.removeEventListener(BRAINSTORM_WATCHLIST_CHANGED_EVENT, onWatchlistChanged);
+    }
   });
 });
