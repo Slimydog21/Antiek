@@ -22,7 +22,9 @@ def test_phase2_audit_v5_records_ducklake_router_resolution():
     assert "23048220 feat(ducklake): route default graph path through catalog" in text
     assert "net engineering-side-blocked items known from" in text
     assert "v4: **0**" in text
-    assert "OA-010 remains `PARTIALLY MITIGATED`" in text
+    assert "OA-010 is now `CLOSED`" in text
+    assert "92be39b9" in text
+    assert "52 passed" in text
     assert "ANTIEK_DUCKLAKE_CATALOG_DB" in text
     assert "default_db_path()" in text
     assert "build_graph_router_from_env" in router

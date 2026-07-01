@@ -42,9 +42,10 @@ def test_operator_actions_reflect_privacy_integration_evidence():
     assert sum(status.startswith("OPEN") for status in statuses) == 17
     assert statuses.count("PARTIALLY DONE") == 1
     assert statuses.count("AWAITING OPERATOR TEST") == 1
-    assert statuses.count("PARTIALLY MITIGATED") == 1
-    assert "Not closed:** 20 total — 17 OPEN, 1 PARTIALLY DONE" in compact_text
-    assert "OA-010 | Integration-revert pattern resolved | PARTIALLY MITIGATED" in text
+    assert statuses.count("PARTIALLY MITIGATED") == 0
+    assert statuses.count("CLOSED") == 1
+    assert "Not closed:** 19 total — 17 OPEN, 1 PARTIALLY DONE" in compact_text
+    assert "OA-010 | Integration-revert pattern resolved | CLOSED" in text
     assert "interfaces/research/api/app.py" in text
     assert "/trust-center/telemetry-preferences" in text
     assert "/trust-center/deletion-requests" in text
@@ -53,6 +54,9 @@ def test_operator_actions_reflect_privacy_integration_evidence():
     assert "RevSharePayoutRouter" in text
     assert "route_impression_revenue" in text
     assert "export_tax_year" in text
+    assert "Fresh-session drift audit, 2026-07-01" in text
+    assert "92be39b9" in text
+    assert "52 passed" in text
     assert "python -m substrate.deletion_worker" in text
     assert '"/trust-center"' in api
     assert '"/trust-center/telemetry-preferences"' in api

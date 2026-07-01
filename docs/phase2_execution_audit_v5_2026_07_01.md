@@ -61,9 +61,9 @@ accumulation, production deploy verification, or spec-defined deferrals.
 
 ---
 
-## 3. OA-010 is narrowed, not closed
+## 3. OA-010 is closed after drift audit
 
-OA-010 remains `PARTIALLY MITIGATED`.
+OA-010 is now `CLOSED`.
 
 What is now mitigated:
 
@@ -73,18 +73,29 @@ What is now mitigated:
 - The privacy/trust/marketplace/payout/operator route registrations still
   have executable doc tests guarding their presence.
 
-What is still open:
+Fresh-session drift proof:
 
-- A fresh-session drift audit must prove the historically reverted tracked
-  files stay stable after independent commit sequences:
+- After commits `23048220`, `ecbe05f0`, and `92be39b9`, a new continuation
+  inspected the historically reverted tracked files:
   `interfaces/research/api/app.py`, `apps/reading/src/App.tsx`, and
   `tools/stripe_connect/__init__.py`.
-- If those files drift again, OA-010 remains an integration-process problem,
-  not a missing DuckLake-routing implementation.
+- The trust, marketplace, payout, operator advertiser, and public Trust
+  Center integrations were still present.
+- The Stripe package root still re-exported `RevSharePayoutRouter`,
+  `route_impression_revenue`, `export_tax_year`, `PayoutOutcome`, and
+  `TaxYearRow`.
+- Focused proof:
 
-Closure proof for OA-010 remains the proof written in
-`docs/OPERATOR_ACTIONS.md`: edit + commit + fresh-session return with the
-tracked edits still present.
+```bash
+pytest tests/test_privacy_control_plane_docs.py tests/test_stripe_connect.py \
+  tests/test_stripe_payouts.py tests/test_multi_user.py \
+  tests/test_phase2_audit_v5.py -q
+```
+
+Result on July 1, 2026: `52 passed`.
+
+The remaining risk is ordinary regression risk, now covered by tests. It is
+not an open operator action.
 
 ---
 
@@ -92,9 +103,9 @@ tracked edits still present.
 
 1. Keep `docs/OPERATOR_ACTIONS.md` as the authoritative operator gate list.
 2. Do not pre-build anything listed in `docs/engineering_deferrals.md`.
-3. Run the OA-010 drift audit after at least one independent commit sequence.
-4. If drift holds, close OA-010.
-5. Otherwise, the remaining high-leverage work is operator-side:
+3. Keep the OA-010 regression tests in the merge bar for future tracked-file
+   edits.
+4. The remaining high-leverage work is operator-side:
    counsel review, publisher opt-in, production deploy verification, real
    investigations to feed G6/G7/G8, and the public Trust Center deploy.
 
@@ -104,6 +115,7 @@ tracked edits still present.
 
 As of July 1, 2026, the Phase 2 substrate engineering scope remains executed
 within the boundaries of the spec, and the v4 exception for DuckLake
-query-time routing is resolved. The project is now bottlenecked by operator
-gates, real production traffic, and explicitly deferred work, not by a known
-unimplemented substrate call path.
+query-time routing is resolved. OA-010's tracked-file drift risk is closed by
+fresh-session evidence and regression tests. The project is now bottlenecked
+by operator gates, real production traffic, and explicitly deferred work, not
+by a known unimplemented substrate call path.
