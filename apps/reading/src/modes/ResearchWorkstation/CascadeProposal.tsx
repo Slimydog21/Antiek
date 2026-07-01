@@ -12,6 +12,7 @@ import {
   type PlanNode,
   type PlanTree,
 } from "../../api/research";
+import { ApiError } from "../../lib/api";
 
 /**
  * CascadeProposal — the Research door's "break this into sub-questions" mode
@@ -89,6 +90,21 @@ function subQuestions(tree: PlanTree): PlanNode[] {
   return leaves;
 }
 
+function failureReason(error: unknown): string | null {
+  if (!(error instanceof ApiError)) return null;
+  const body = error.body.trim();
+  if (!body) return null;
+  try {
+    const parsed = JSON.parse(body) as { detail?: unknown };
+    if (typeof parsed.detail === "string" && parsed.detail.trim()) {
+      return parsed.detail.trim();
+    }
+  } catch {
+    // Fall through to the bounded plain-text body below.
+  }
+  return body.length <= 240 ? body : `${body.slice(0, 237)}...`;
+}
+
 export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }: Props) {
   const [plan, setPlan] = useState<PlanState | null>(null);
   // Phase gates the human-in-the-loop: a plan block is editable ONLY once
@@ -115,13 +131,11 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
       setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: false });
       setPhase("ready");
     } catch (e) {
-      // ApiError carries the HTTP body; we don't surface a stack trace. A
-      // 5xx with the propose call almost always means the decomposer's model
-      // provider isn't configured — let <AIActionFailure>'s no-reason branch
-      // say that honestly rather than guessing here.
-      setFailed("");
+      // ApiError carries the typed HTTP body; pass a concise reason through
+      // when the backend gave one (for example decompose_failed), otherwise use
+      // <AIActionFailure>'s no-reason branch for the no-key/no-result case.
+      setFailed(failureReason(e) ?? "");
       setPhase("ready");
-      void e;
     }
   }, [problem]);
 
@@ -163,8 +177,8 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
       await approvePlan(plan.rootNodeId);
       const r = await launchPlan(plan.rootNodeId);
       onLaunched(r.session_id);
-    } catch {
-      setFailed("");
+    } catch (e) {
+      setFailed(failureReason(e) ?? "");
       setPhase("ready");
     }
   }, [plan, onLaunched]);

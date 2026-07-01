@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type { CreatePlanResponse, PlanResponse } from "../../api/research";
+import { ApiError } from "../../lib/api";
 
 const {
   createPlanMock,
@@ -300,6 +301,20 @@ describe("CascadeProposal — honest no-key state (M4)", () => {
     // A retry and a one-shot escape hatch are both offered.
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Ask it as one question instead/i })).toBeTruthy();
+  });
+
+  it("surfaces a typed backend decompose_failed reason instead of guessing no provider", async () => {
+    createPlanMock.mockRejectedValue(
+      new ApiError(
+        "POST /research/plans failed: HTTP 502",
+        502,
+        JSON.stringify({ detail: "decompose_failed: TypeError: missing investigation_id" }),
+      ),
+    );
+    renderProposal();
+    expect(await screen.findByText(/Couldn’t break this into sub-questions/i)).toBeTruthy();
+    expect(screen.getByText(/Engine: decompose_failed: TypeError: missing investigation_id/i)).toBeTruthy();
+    expect(screen.queryByText(/model provider isn’t configured/i)).toBeNull();
   });
 
   it("falls back to one-shot when the AI can't split the problem (no sub-questions)", async () => {
