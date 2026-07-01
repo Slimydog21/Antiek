@@ -89,6 +89,18 @@ export class ApiError extends Error {
   }
 }
 
+function assertNonNegativeSafeInteger(value: number, field: string): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new RangeError(`${field} must be a non-negative safe integer`);
+  }
+}
+
+function assertPositiveSafeInteger(value: number, field: string): void {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new RangeError(`${field} must be a positive safe integer`);
+  }
+}
+
 export async function postTypedEvent(
   envelope: TypedEventEnvelope,
 ): Promise<EmittedEventResponse> {
@@ -141,6 +153,7 @@ export async function getTrajectory(
     window.location.origin,
   );
   if (limit !== undefined) {
+    assertPositiveSafeInteger(limit, "limit");
     url.searchParams.set("limit", String(limit));
   }
   const resp = await apiFetch(url.toString());
@@ -238,7 +251,10 @@ export async function listInvestigations(opts?: {
   status?: "in_progress" | "completed" | "failed";
 }): Promise<{ count: number; investigations: InvestigationSummary[] }> {
   const url = new URL(`${API_BASE}/investigations`, window.location.origin);
-  if (opts?.limit !== undefined) url.searchParams.set("limit", String(opts.limit));
+  if (opts?.limit !== undefined) {
+    assertPositiveSafeInteger(opts.limit, "limit");
+    url.searchParams.set("limit", String(opts.limit));
+  }
   if (opts?.status !== undefined) url.searchParams.set("status", opts.status);
   const resp = await apiFetch(url.toString());
   if (!resp.ok) {
@@ -273,7 +289,10 @@ export async function listWatchForLater(
   opts?: { limit?: number },
 ): Promise<{ count: number; questions: ParkedQuestionEntry[] }> {
   const url = new URL(`${API_BASE}/watch-for-later`, window.location.origin);
-  if (opts?.limit !== undefined) url.searchParams.set("limit", String(opts.limit));
+  if (opts?.limit !== undefined) {
+    assertPositiveSafeInteger(opts.limit, "limit");
+    url.searchParams.set("limit", String(opts.limit));
+  }
   const resp = await apiFetch(url.toString());
   if (!resp.ok) {
     throw new ApiError(
@@ -704,6 +723,7 @@ export async function attachBlock(req: {
   block_id: string;
   block_index: number;
 }): Promise<void> {
+  assertNonNegativeSafeInteger(req.block_index, "block_index");
   const resp = await apiFetch(`${API_BASE}/sections/attach-block`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -733,6 +753,7 @@ export async function searchBlocks(
   q: string,
   limit = 20,
 ): Promise<{ count: number; hits: BlockSearchHit[] }> {
+  assertPositiveSafeInteger(limit, "limit");
   const url = new URL(`${API_BASE}/blocks/search`, window.location.origin);
   url.searchParams.set("q", q);
   url.searchParams.set("limit", String(limit));
@@ -754,6 +775,7 @@ export async function reorderBlock(req: {
   new_section_id?: string;
   new_block_index: number;
 }): Promise<void> {
+  assertNonNegativeSafeInteger(req.new_block_index, "new_block_index");
   const resp = await apiFetch(`${API_BASE}/sections/reorder-block`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
