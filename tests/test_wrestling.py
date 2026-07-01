@@ -34,6 +34,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
 
 from interfaces.research.api import EventBroadcaster, create_app  # noqa: E402
+from interfaces.research.api.wrestling import _parse_claims_response  # noqa: E402
 from processing.embedding import _reset_default_provider  # noqa: E402
 from substrate.dispatch import (  # noqa: E402
     DispatchConfig,
@@ -181,6 +182,47 @@ async def _post_distillation_request(ac, *, investigation_id, document_id, regio
     )
     assert r.status_code == 201, r.text
     return r.json()["event_id"]
+
+
+# ---------------------------------------------------------------------------
+# Parser provenance validation
+# ---------------------------------------------------------------------------
+
+
+def test_parse_claims_response_drops_fabricated_attribution_region_id():
+    claims, _ = _parse_claims_response(
+        '{"rendered_text": "summary", "claims": ['
+        '{"text": "Claim.", "confidence": "high", '
+        '"attribution_region_ids": ["r-real", "r-fabricated"]}]}',
+        region_id="r-real",
+    )
+
+    assert len(claims) == 1
+    assert claims[0].attribution_region_ids == ["r-real"]
+
+
+def test_parse_claims_response_falls_back_when_all_attribution_refs_fabricated():
+    claims, _ = _parse_claims_response(
+        '{"rendered_text": "summary", "claims": ['
+        '{"text": "Claim.", "confidence": "high", '
+        '"attribution_region_ids": ["r-fabricated"]}]}',
+        region_id="r-real",
+    )
+
+    assert len(claims) == 1
+    assert claims[0].attribution_region_ids == ["r-real"]
+
+
+def test_parse_claims_response_trims_canonical_attribution_region_id():
+    claims, _ = _parse_claims_response(
+        '{"rendered_text": "summary", "claims": ['
+        '{"text": "Claim.", "confidence": "high", '
+        '"attribution_region_ids": [" r-real "]}]}',
+        region_id="r-real",
+    )
+
+    assert len(claims) == 1
+    assert claims[0].attribution_region_ids == ["r-real"]
 
 
 # ---------------------------------------------------------------------------

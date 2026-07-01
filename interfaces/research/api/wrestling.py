@@ -53,6 +53,7 @@ from substrate.graph import (  # noqa: E402
     insert_document,
     insert_node,
 )
+from substrate.provenance import validate_refs  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     ActionType,
     Claim,
@@ -145,7 +146,10 @@ def _parse_claims_response(
     highlighted, since that's the only ground we gave the model.
     """
     obj = _extract_json_object(text)
-    fallback_attribution = [region_id] if region_id else []
+    canonical_region_ids = (region_id,) if region_id else ()
+    fallback_attribution = list(
+        validate_refs(canonical_region_ids, canonical_region_ids).valid
+    )
 
     if obj is None:
         return (
@@ -175,7 +179,10 @@ def _parse_claims_response(
             if not isinstance(attribution, list):
                 attribution = fallback_attribution
             else:
-                attribution = [str(a) for a in attribution if isinstance(a, str)]
+                attribution = validate_refs(
+                    (a for a in attribution if isinstance(a, str)),
+                    fallback_attribution,
+                ).valid
                 if not attribution:
                     attribution = fallback_attribution
             claims.append(
