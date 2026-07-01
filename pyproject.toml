@@ -120,6 +120,10 @@ export = [
 mcp = [
   "mcp[cli]>=1.0",
 ]
+# Production DuckLake catalog backend. Lazy-imported by
+# substrate.ducklake.PostgresCatalogBackend so core/dev installs do not require
+# libpq or a running database.
+postgres = ["psycopg[binary]>=3.2"]
 
 # Dev / test
 dev = [

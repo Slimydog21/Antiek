@@ -22,6 +22,7 @@ from .catalog import (
     CatalogEntry,
     DuckLakeCatalog,
     InMemoryCatalogBackend,
+    PostgresCatalogBackend,
     SqliteCatalogBackend,
 )
 from .migration import (
@@ -45,6 +46,7 @@ __all__ = [
     "InMemoryCatalogBackend",
     "MigrationPlan",
     "NoSharding",
+    "PostgresCatalogBackend",
     "ShardingStrategy",
     "SqliteCatalogBackend",
     "SubstrateStage",
