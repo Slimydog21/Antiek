@@ -73,6 +73,26 @@ def parse_gap(obj):
     )
 
 
+def test_lint_catches_research_bridge_gap_cluster_id_without_validator(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "substrate" / "research_bridge" / "gap.py",
+        """
+def parse_gap(obj):
+    return {"cluster_id": obj.get("cluster_id")}
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any(
+        "substrate/research_bridge/gap.py" in violation
+        and "cluster_id" in violation
+        for violation in violations
+    )
+
+
 def test_lint_catches_parser_that_surfaces_echoed_ids_without_validator(
     tmp_path: Path,
 ) -> None:

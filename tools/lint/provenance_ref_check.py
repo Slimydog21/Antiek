@@ -25,6 +25,7 @@ _TARGET_FIELDS: frozenset[str] = frozenset({
     "attribution_region_ids",
     "anchor_block_id",
     "cited_chunk_ids",
+    "cluster_id",
     "investigation_id",
     "located_chunk_id",
     "matched_node_id",

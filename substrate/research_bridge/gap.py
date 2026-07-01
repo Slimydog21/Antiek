@@ -20,13 +20,13 @@ try:
         _extract_json_object,
     )
     from .source_detection import KNOWN_SOURCES
-    from ..provenance import validate_refs
+    from ..provenance import validate_ref, validate_refs
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
     from substrate.graph.ops import new_random_id  # type: ignore[no-redef]
-    from substrate.provenance import validate_refs  # type: ignore[no-redef]
+    from substrate.provenance import validate_ref, validate_refs  # type: ignore[no-redef]
     from substrate.research_bridge.extractor import (  # type: ignore[no-redef]
         EXTRACTOR_VERSION,
         LlmCallable,
@@ -218,8 +218,8 @@ def _parse_cascade_response(
             break
         if not isinstance(raw, dict):
             continue
-        cluster_id = str(raw.get("cluster_id") or "")
-        if cluster_id not in by_cluster_id:
+        cluster_id = validate_ref(raw.get("cluster_id"), by_cluster_id)
+        if cluster_id is None:
             continue
         prompt_text = str(raw.get("prompt_text") or "").strip()
         if not prompt_text:
