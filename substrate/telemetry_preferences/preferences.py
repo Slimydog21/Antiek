@@ -7,6 +7,7 @@ import sqlite3
 import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Protocol
 
 
@@ -190,6 +191,36 @@ def list_preferences(
     user_id: str,
 ) -> list[UserTelemetryPreferences]:
     return store.list_for_user(user_id)
+
+
+def delete_preferences_for_user(
+    store: PreferenceStore,
+    *,
+    user_id: str,
+) -> int:
+    """Delete every explicit telemetry preference for one user."""
+    return store.delete_for_user(user_id)
+
+
+def default_preference_store(
+    graph_db_path: str | Path | None = None,
+) -> SqlitePreferenceStore:
+    """Resolve the process-default telemetry preference store.
+
+    `ANTIEK_TELEMETRY_PREFERENCES_PATH` wins. Otherwise preferences live beside
+    the graph DuckDB file, matching the API's deployment layout.
+    """
+    override = os.environ.get("ANTIEK_TELEMETRY_PREFERENCES_PATH", "").strip()
+    if override:
+        return SqlitePreferenceStore(override)
+    if graph_db_path is None:
+        from substrate.graph import default_db_path, ensure_initialized
+
+        graph_path = Path(default_db_path())
+        ensure_initialized(str(graph_path))
+    else:
+        graph_path = Path(graph_db_path)
+    return SqlitePreferenceStore(str(graph_path.with_name("telemetry_preferences.sqlite")))
 
 
 def apply_defaults_from_registry(
