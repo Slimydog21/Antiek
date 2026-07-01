@@ -70,7 +70,11 @@ const frame = (id: string, seq: number) => ({
   event_id: id,
   investigation_id: "inv-1",
   action_type: "evidence.retrieve.delivered",
-  payload: { supporting_claims: [], evidentiary_gaps: [] },
+  payload: {
+    action_type: "evidence.retrieve.delivered",
+    supporting_claims: [],
+    evidentiary_gaps: [],
+  },
   param_version: "v1",
   emitted_at: `2026-05-26T00:00:0${seq}Z`,
 });
@@ -136,6 +140,32 @@ describe("useEventStream — reconnect / resume (M2)", () => {
     act(() => ws1.deliver(frame("e1", 1)));
     act(() => ws1.deliver({ type: "ping" }));
     expect(result.current.events.map((e) => e.event_id)).toEqual(["e1"]);
+  });
+
+  it("drops shape-invalid event frames instead of poisoning the event list", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { result } = renderHook(() => useEventStream("inv-1"));
+    const ws1 = FakeWebSocket.instances[0];
+    act(() => ws1.open());
+
+    act(() =>
+      ws1.deliver({
+        ...frame("bad-action", 1),
+        action_type: "not.a.real.action",
+        payload: { action_type: "not.a.real.action" },
+      }),
+    );
+    act(() =>
+      ws1.deliver({
+        ...frame("bad-mismatch", 2),
+        payload: { action_type: "phase.enter" },
+      }),
+    );
+    act(() => ws1.deliver(frame("e1", 3)));
+
+    expect(result.current.events.map((e) => e.event_id)).toEqual(["e1"]);
+    expect(warn).toHaveBeenCalledTimes(2);
+    warn.mockRestore();
   });
 
   it("backoff grows across CONSECUTIVE failed reconnects (1s → 2s), and resets on a successful open", () => {

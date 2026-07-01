@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
-import type { Event } from "../generated/types";
+import {
+  TYPED_PAYLOAD_ACTION_TYPES,
+  type ActionType,
+  type Event,
+} from "../generated/types";
 
 interface UseEventStreamState {
   events: Event[];
@@ -17,6 +21,29 @@ function isPingFrame(frame: unknown): frame is PingFrame {
     typeof frame === "object" &&
     frame !== null &&
     (frame as { type?: unknown }).type === "ping"
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isEventFrame(frame: unknown): frame is Event {
+  if (!isRecord(frame) || !isRecord(frame.payload)) return false;
+  if (
+    typeof frame.event_id !== "string" ||
+    typeof frame.investigation_id !== "string" ||
+    typeof frame.action_type !== "string" ||
+    typeof frame.param_version !== "string" ||
+    typeof frame.emitted_at !== "string"
+  ) {
+    return false;
+  }
+
+  const actionType = frame.action_type as ActionType;
+  return (
+    TYPED_PAYLOAD_ACTION_TYPES.has(actionType) &&
+    frame.payload.action_type === actionType
   );
 }
 
@@ -82,7 +109,11 @@ export function useEventStream(
         try {
           const frame: unknown = JSON.parse(e.data);
           if (isPingFrame(frame)) return;
-          setState((s) => ({ ...s, events: [...s.events, frame as Event] }));
+          if (!isEventFrame(frame)) {
+            console.warn("dropping malformed WS frame:", e.data);
+            return;
+          }
+          setState((s) => ({ ...s, events: [...s.events, frame] }));
         } catch (err) {
           // Malformed frame — drop with a console warning rather than
           // crash the subscription. The trajectory store is authoritative.
