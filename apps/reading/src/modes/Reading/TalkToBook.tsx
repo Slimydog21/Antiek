@@ -101,10 +101,10 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
         type="button"
         data-testid="talk-to-book-bookmark"
         onClick={() => setOpen(true)}
-        title="Talk to this book"
+        title="Ask this book"
         className="fixed bottom-6 right-6 z-30 flex items-center gap-2 rounded-full bg-ink text-white px-4 py-2 text-sm font-serif shadow-lg hover:opacity-90"
       >
-        Talk to this book
+        Ask this book
         {turnCount > 0 && (
           <span className="rounded-full bg-white/25 px-1.5 text-[11px] font-mono" data-testid="talk-turn-count">
             {turnCount}
@@ -118,11 +118,11 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
     <aside
       data-testid="talk-to-book"
       className="fixed bottom-6 right-6 z-30 flex flex-col w-96 max-h-[70vh] rounded-lg border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 shadow-2xl"
-      aria-label="Talk to this book"
+      aria-label="Ask this book"
     >
       <header className="flex items-center justify-between gap-2 border-b border-rule dark:border-charcoal-1 px-3 py-2">
         <span className="text-[13px] font-serif text-ink dark:text-bright truncate">
-          Talk to “{title ?? "this book"}”
+          Ask “{title ?? "this book"}”
         </span>
         <div className="flex items-center gap-2 shrink-0">
           {turnCount > 0 && (
@@ -171,8 +171,8 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
       <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2 flex flex-col gap-3">
         {thread.messages.length === 0 && (
           <p className="text-[13px] text-shadow-1 dark:text-moonlight italic">
-            Ask anything about this book. Answers cite the pages they come from —
-            click a citation to jump there.
+            Ask a cited question about this book. Answers return asynchronously —
+            click a citation to jump to its page.
           </p>
         )}
         {thread.messages.map((m) => (
