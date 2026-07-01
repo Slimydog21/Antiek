@@ -70,10 +70,10 @@ def _is_validator_call(node: ast.Call) -> bool:
     return False
 
 
-def _field_gets(tree: ast.AST) -> list[tuple[int, str]]:
+def _field_reads(tree: ast.AST) -> list[tuple[int, str]]:
     out: list[tuple[int, str]] = []
     for node in ast.walk(tree):
-        if not (
+        if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
             and node.func.attr == "get"
@@ -82,13 +82,20 @@ def _field_gets(tree: ast.AST) -> list[tuple[int, str]]:
             and isinstance(node.args[0].value, str)
             and node.args[0].value in _TARGET_FIELDS
         ):
+            out.append((node.lineno, node.args[0].value))
             continue
-        out.append((node.lineno, node.args[0].value))
+        if (
+            isinstance(node, ast.Subscript)
+            and isinstance(node.slice, ast.Constant)
+            and isinstance(node.slice.value, str)
+            and node.slice.value in _TARGET_FIELDS
+        ):
+            out.append((node.lineno, node.slice.value))
     return out
 
 
 def _target_field_sites(tree: ast.AST) -> list[tuple[int, str]]:
-    return _field_gets(tree)
+    return _field_reads(tree)
 
 
 def _assigned_names(target: ast.AST) -> set[str]:
@@ -114,7 +121,7 @@ def _names_in(tree: ast.AST) -> set[str]:
 def _fields_in(tree: ast.AST) -> set[str]:
     return {
         field
-        for _, field in _field_gets(tree)
+        for _, field in _field_reads(tree)
     }
 
 

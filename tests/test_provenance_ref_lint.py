@@ -198,5 +198,38 @@ def parse(obj, canonical):
     assert not any("source_chunk_ids" in violation for violation in violations)
 
 
+def test_lint_catches_subscripted_model_emitted_refs_without_validator(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "bad_subscript_role" / "parser.py",
+        """
+def parse(obj):
+    return {"question_id": obj["question_id"]}
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any("question_id" in violation for violation in violations)
+
+
+def test_lint_allows_subscripted_refs_routed_through_validator(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "good_subscript_role" / "parser.py",
+        """
+from substrate.provenance import validate_ref
+
+def parse(obj, canonical):
+    question_id = validate_ref(obj["question_id"], canonical)
+    return {"question_id": question_id}
+""",
+    )
+
+    assert find_violations(tmp_path) == []
+
+
 def test_lint_passes_on_current_tree() -> None:
     assert find_violations() == []
