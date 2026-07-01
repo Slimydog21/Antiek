@@ -227,6 +227,9 @@ def test_runner_accepts_when_delta_exceeds_epsilon(monkeypatch):
     )
     assert outcome.accepted is True
     assert outcome.candidate_score > outcome.baseline_score + runner.epsilon
+    assert outcome.mutation_rationale == "strip padding"
+    assert outcome.parent_baseline_id is None
+    assert outcome.proposed_at == mutation.proposed_at
     # Baseline should have advanced.
     assert runner.baseline_total_score == outcome.candidate_score
 
@@ -279,6 +282,9 @@ def test_runner_records_budget_breach_as_rejection(monkeypatch):
     )
     assert outcome.accepted is False
     assert "budget exceeded" in outcome.notes
+    assert outcome.mutation_rationale == "tries something costly"
+    assert outcome.parent_baseline_id is None
+    assert outcome.proposed_at == mutation.proposed_at
 
 
 def test_runner_budget_breach_outcome_round_trips_to_verdict_json(monkeypatch, tmp_path):
@@ -319,3 +325,5 @@ def test_runner_budget_breach_outcome_round_trips_to_verdict_json(monkeypatch, t
     assert len(loaded) == 1
     assert loaded[0].mutation_id == outcome.mutation_id
     assert loaded[0].accepted is False
+    assert loaded[0].mutation_rationale == "tries something costly"
+    assert loaded[0].proposed_at == mutation.proposed_at

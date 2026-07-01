@@ -74,6 +74,9 @@ class PromptMutationOutcome:
     epsilon_required: float
     composite_breakdown: CompositeScore
     cost_usd: Decimal
+    mutation_rationale: str = ""
+    parent_baseline_id: str | None = None
+    proposed_at: str = ""
     notes: str = ""
 
 
@@ -147,6 +150,9 @@ class PromptAutoresearchRunner:
                 epsilon_required=self.epsilon,
                 composite_breakdown=CompositeScore(0, 0, 0, 0, 0),
                 cost_usd=cost_usd,
+                mutation_rationale=mutation.rationale,
+                parent_baseline_id=mutation.parent_baseline_id,
+                proposed_at=mutation.proposed_at,
                 notes=f"budget exceeded: {exc}",
             )
             self.iterations.append(outcome)
@@ -171,6 +177,9 @@ class PromptAutoresearchRunner:
             epsilon_required=self.epsilon,
             composite_breakdown=cs,
             cost_usd=cost_usd,
+            mutation_rationale=mutation.rationale,
+            parent_baseline_id=mutation.parent_baseline_id,
+            proposed_at=mutation.proposed_at,
         )
         self.iterations.append(outcome)
 

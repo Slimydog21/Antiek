@@ -30,6 +30,9 @@ def _mk_outcome(
     voice_style: float = 0.85,
     sector_vocab: float = 0.85,
     grounding: float = 0.90,
+    mutation_rationale: str = "",
+    parent_baseline_id: str | None = None,
+    proposed_at: str = "",
 ) -> PromptMutationOutcome:
     return PromptMutationOutcome(
         mutation_id=mutation_id,
@@ -46,6 +49,9 @@ def _mk_outcome(
             total=0.70 + delta,
         ),
         cost_usd=Decimal("0.05"),
+        mutation_rationale=mutation_rationale,
+        parent_baseline_id=parent_baseline_id,
+        proposed_at=proposed_at,
     )
 
 
@@ -229,6 +235,9 @@ def test_outcome_json_round_trips(tmp_path):
         delta=0.12,
         accepted=True,
         rubric=0.90,
+        mutation_rationale="tighten citations",
+        parent_baseline_id="baseline-1",
+        proposed_at="2026-07-01T00:00:00Z",
     )
     path = tmp_path / "outcomes.json"
 
@@ -239,8 +248,40 @@ def test_outcome_json_round_trips(tmp_path):
     assert len(loaded) == 1
     assert loaded[0].mutation_id == outcome.mutation_id
     assert loaded[0].cost_usd == outcome.cost_usd
+    assert loaded[0].mutation_rationale == "tighten citations"
+    assert loaded[0].parent_baseline_id == "baseline-1"
+    assert loaded[0].proposed_at == "2026-07-01T00:00:00Z"
     assert loaded[0].composite_breakdown.rubric == 0.90
     assert outcome_to_json(loaded[0]) == outcome_to_json(outcome)
+
+
+def test_outcome_json_loads_legacy_rows_without_provenance(tmp_path):
+    path = tmp_path / "outcomes.json"
+    payload = _outcome_json()
+    payload.pop("mutation_rationale", None)
+    payload.pop("parent_baseline_id", None)
+    payload.pop("proposed_at", None)
+    path.write_text(json.dumps([payload]), encoding="utf-8")
+
+    _, loaded = load_outcomes_json(path)
+
+    assert loaded[0].mutation_rationale == ""
+    assert loaded[0].parent_baseline_id is None
+    assert loaded[0].proposed_at == ""
+
+
+def test_outcome_json_rejects_malformed_provenance(tmp_path):
+    path = tmp_path / "outcomes.json"
+    payload = _outcome_json()
+    payload["parent_baseline_id"] = 123
+    path.write_text(json.dumps([payload]), encoding="utf-8")
+
+    try:
+        load_outcomes_json(path)
+    except ValueError as exc:
+        assert "outcomes[0].parent_baseline_id must be a string when present" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected malformed provenance to be rejected")
 
 
 def test_outcome_json_rejects_non_finite_score(tmp_path):
@@ -377,6 +418,9 @@ def _outcome_json(mutation_id: str = "m-0") -> dict:
             "total": 0.80,
         },
         "cost_usd": "0.05",
+        "mutation_rationale": "test mutation",
+        "parent_baseline_id": "baseline-0",
+        "proposed_at": "2026-07-01T00:00:00Z",
     }
 
 
