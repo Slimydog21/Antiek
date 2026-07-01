@@ -193,8 +193,10 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
         if record.get("live_provider_ai") is True and _provider_status(record) != "ready":
             failures.append(prefix + "live_provider_ai=true requires provider_status=ready")
 
-        if record.get("citation_traced") is True:
+        if _session_citation_traced(record, steps):
             citation_trace_sessions.add(session_id)
+        elif record.get("citation_traced") is True:
+            failures.append(prefix + "citation_traced=true requires step 5 to pass")
 
         if _entry_door_token(record.get("entry_door")) in NON_LIBRARY_ENTRY_DOORS:
             non_library_sessions.add(session_id)
@@ -315,6 +317,12 @@ def _session_live_provider_passed(record: dict[str, Any], steps: dict[Any, Any])
     if record.get("live_provider_ai") is not True:
         return False
     return _step_status(steps.get("3")) == "pass" and _step_status(steps.get("4")) == "pass"
+
+
+def _session_citation_traced(record: dict[str, Any], steps: dict[Any, Any]) -> bool:
+    if record.get("citation_traced") is not True:
+        return False
+    return _step_status(steps.get("5")) == "pass"
 
 
 def _has_minimum_reading_time(value: Any) -> bool:
