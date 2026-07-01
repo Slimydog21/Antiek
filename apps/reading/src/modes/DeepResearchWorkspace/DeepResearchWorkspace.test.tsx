@@ -180,6 +180,13 @@ describe("ResearchPanel — steer controls", () => {
 
     expect((await screen.findByRole("alert")).textContent).toBe("Steer failed: budget already halted");
   });
+
+  it("sanitizes malformed per-research cost", () => {
+    render(<ResearchPanel research={running} costUsd={Number.NaN} onSteer={() => {}} />);
+
+    expect(screen.getByText("$0.0000")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/NaN|Infinity|\$-/);
+  });
 });
 
 describe("Monitor — launched child ids", () => {
@@ -231,6 +238,23 @@ describe("CostMeter — session spend against aggregate cap", () => {
 
     expect(screen.getByText("$0.5000")).toBeTruthy();
     expect(screen.getByText("Aggregate budget reached — new launches are blocked until the cap is lifted.")).toBeTruthy();
+  });
+
+  it("sanitizes malformed session cost values", () => {
+    render(
+      <CostMeter
+        cost={{
+          per_research: {},
+          session_total_usd: Number.NaN,
+          aggregate_spent_usd: Number.POSITIVE_INFINITY,
+          aggregate_cap_usd: -1,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("$0.0000")).toBeTruthy();
+    expect(screen.getByText("/ $0.00")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/NaN|Infinity|\$-/);
   });
 });
 
