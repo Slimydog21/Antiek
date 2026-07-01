@@ -439,10 +439,25 @@ def _final_verdict_failures(
         return [f"final verdict required once closure evidence passes: {allowed}"]
     if final_verdict not in ALLOWED_FINAL_VERDICTS:
         return [f"final verdict must be one of: {allowed}"]
-    if final_verdict == "REPAIR" and not _blocking_issue_ids(records[-1]):
-        return ["REPAIR verdict requires at least one blocking_issue_ids entry"]
+    if final_verdict == "REPAIR":
+        repair_failures = _blocking_issue_id_failures(records[-1])
+        if repair_failures:
+            return repair_failures
     if final_verdict != "ACTIVATE":
         return [f"closure requires final verdict ACTIVATE; found {final_verdict}"]
+    return []
+
+
+def _blocking_issue_id_failures(record: dict[str, Any]) -> list[str]:
+    issue_ids = record.get("blocking_issue_ids")
+    if not isinstance(issue_ids, list):
+        return ["REPAIR verdict requires blocking_issue_ids to be a list"]
+    if any(not isinstance(raw_issue_id, str) for raw_issue_id in issue_ids):
+        return ["blocking_issue_ids entries must be non-empty strings"]
+    if any(not raw_issue_id.strip() for raw_issue_id in issue_ids):
+        return ["blocking_issue_ids entries must be non-empty strings"]
+    if not _blocking_issue_ids(record):
+        return ["REPAIR verdict requires at least one blocking_issue_ids entry"]
     return []
 
 
@@ -453,7 +468,7 @@ def _blocking_issue_ids(record: dict[str, Any]) -> tuple[str, ...]:
     return tuple(
         issue_id
         for raw_issue_id in issue_ids
-        if (issue_id := _required_text(raw_issue_id))
+        if isinstance(raw_issue_id, str) and (issue_id := raw_issue_id.strip())
     )
 
 
