@@ -181,6 +181,33 @@ def test_trust_center_publishes_dp_budgets():
         assert epsilon <= 10.0
 
 
+def test_trust_center_endpoint_reads_live_epsilon_registry():
+    from substrate.dp_shuffler import SurfaceConfig
+    from substrate.trust_center import default_registry, reset_default_registry
+
+    reset_default_registry()
+    default_registry().register(SurfaceConfig(
+        surface_name="dispatch_tier_telemetry",
+        epsilon_per_day=0.5,
+        sensitivity="high",
+        description="dispatch tier hint sampling",
+        opt_in_required=True,
+    ))
+    try:
+        client = _client()
+        resp = client.get("/trust-center")
+    finally:
+        reset_default_registry()
+
+    assert resp.status_code == 200
+    assert (
+        resp.json()["differential_privacy_epsilon_budgets"][
+            "dispatch_tier_telemetry"
+        ]
+        == 0.5
+    )
+
+
 def test_trust_center_loop3_unlock_all_false():
     """Loop 3 unlock criteria all start False until operator
     affirmatively ratifies."""
