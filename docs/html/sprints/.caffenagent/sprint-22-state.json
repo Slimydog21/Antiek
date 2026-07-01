@@ -1,0 +1,35 @@
+{
+  "spec_file": "docs/html/sprints/sprint-22.html",
+  "source_spec_section": "docs/sprint-breakdown.html#sprint-22",
+  "target_branch": "reader/integration",
+  "status": "strategic_gated",
+  "recorded_at": "2026-07-01T20:31:22Z",
+  "verified_code_sha": "1b56913a",
+  "mode": "status_reconciliation",
+  "deterministic_evidence": {
+    "substrate_gate": "52 passed: tests/test_multi_user.py tests/test_auth_vendor_decision_probe.py tests/test_federation_exchange_probe.py tests/test_dp_preference_learning.py",
+    "multi_user_files": "substrate/multi_user and substrate/graph_per_user exist with graph routing and auth-decision probes",
+    "ducklake_files": "substrate/ducklake and tools/migration/stage0_to_stage1.py exist",
+    "trust_privacy_files": "apps/reading/src/modes/TrustCenter and PrivacyDashboard routes exist",
+    "dp_files": "DP preference learning and event payload tests exist for privacy-budget mechanics"
+  },
+  "operator_only_remaining": [
+    "Six months of solo-operator graph accumulation demonstrates compounding.",
+    "Operator chooses and records Clerk versus Supabase auth decision.",
+    "A second real user registers and uses an independent personal graph.",
+    "Public Trust Center is published and verified without authentication.",
+    "Production DP and deletion controls are exercised against real user telemetry.",
+    "Cross-graph leak attempt is run against the production architecture and fails at the intended boundary."
+  ],
+  "not_claimed": [
+    "Full repository test suite was not rerun in this S22 pass.",
+    "Sprint 22 is not shipped or activated.",
+    "No second real user was onboarded.",
+    "The six-month compounding gate was not satisfied by local tests.",
+    "SOC 2 Type II work was not started."
+  ],
+  "notes": [
+    "The standalone Sprint 22 page was missing even though docs nav linked to it; this pass restored the page from docs/sprint-breakdown.html#sprint-22.",
+    "The status is strategic_gated rather than operator_gated because the sprint is intentionally deferred behind a time-and-evidence gate."
+  ]
+}
