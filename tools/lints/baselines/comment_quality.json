@@ -1,0 +1,13 @@
+{
+  "generated_at": "2026-07-01T14:28:57.769136+00:00",
+  "lint": "comment_quality",
+  "schema_version": 1,
+  "violations": [
+    {
+      "col": 4,
+      "kind": "what_comment",
+      "line": 65,
+      "path": "substrate/marketplace_metrics/dashboard.py"
+    }
+  ]
+}
