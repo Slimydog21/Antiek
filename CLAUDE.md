@@ -79,6 +79,7 @@ Auth: magic-link via AgentMail. Per
 
 - Tests live in `tests/`. Run `./.venv/bin/python -m pytest tests/ -q`.
 - Frontend at `apps/reading/`. TS strict; run `npx tsc -b` to check.
+- Loop-1 observability/debugging runbook: `infrastructure/runbooks/debug-a-real-run.md`.
 - Don't add files to mainline branches; the operator's parallel-stream
   tooling commits in big batches, so collisions are common. Commit
   what's yours; let the parallel stream commit theirs.
