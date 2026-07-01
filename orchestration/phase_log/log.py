@@ -68,6 +68,28 @@ def _utc_iso_now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
+def _latency_ms_from_iso_pair(
+    entered_at: str | None, exited_at: str | None,
+) -> int | None:
+    """Phase wall-clock in milliseconds from the (entered_at, exited_at)
+    pair the phase log ALREADY records — no new monotonic timer, the
+    minimal addition (Majors-Observability SPR-01).
+
+    Returns None (never a fabricated number) when either timestamp is
+    absent — e.g. an ``exit`` on a phase never entered through this log —
+    or unparseable. Clamped at 0 so a backwards wall-clock adjustment can
+    never produce a negative (``PhaseExitPayload.latency_ms`` is
+    ``Field(ge=0)``)."""
+    if not entered_at or not exited_at:
+        return None
+    try:
+        t0 = datetime.fromisoformat(entered_at.replace("Z", "+00:00"))
+        t1 = datetime.fromisoformat(exited_at.replace("Z", "+00:00"))
+    except (ValueError, TypeError):  # pragma: no cover — malformed stamp
+        return None
+    return max(0, int(round((t1 - t0).total_seconds() * 1000.0)))
+
+
 def hash_paths(paths: Iterable[str]) -> str:
     """SHA-256 of the concatenated file contents in sorted-path order.
 
@@ -209,12 +231,19 @@ class PhaseLog:
             rec["outputs_hash"] = hash_paths(paths_list)
             rec["outputs_paths"] = paths_list
         self._save()
+        # SPR-01: phase wall-clock from the enter/exit pair already on ``rec``.
+        # Both accessed via .get so a malformed/legacy rec degrades to None
+        # (the helper is None-safe) rather than raising KeyError.
+        latency_ms = _latency_ms_from_iso_pair(
+            rec.get("entered_at"), rec.get("exited_at"),
+        )
         _safe_emit(
             emit_phase_exit,
             investigation_id=self.investigation_id,
             phase=phase_id,
             exited_at=rec["exited_at"],
             outputs_hash=rec.get("outputs_hash"),
+            latency_ms=latency_ms,
         )
 
     def verify(self, phase_id: int, *, evidence: str) -> None:
