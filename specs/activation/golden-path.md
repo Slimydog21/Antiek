@@ -49,6 +49,11 @@ id, and the result of each step.
 | 6 | Return to the original paper | Back/return flow preserves reading context closely enough for continued work | note whether scroll/selection/context survived |
 | 7 | Use the surface for actual reading work for at least 20 minutes | No dead end blocks the operator from reading, asking, tracing, or returning | free-form operator note with any friction |
 
+For no-key sessions where steps 3 or 4 are marked `"inert"`, record the exact
+UI boundary copy as `exact_no_key_copy`. The validator also accepts
+`no_key_copy`, `activation_boundary_copy`, or `boundary_copy` aliases so older
+operator notes can be normalized without losing the literal copy.
+
 ## Dogfood closure rule
 
 Activation SPR-07 closes only after **10 distinct operator sessions** satisfy the

@@ -34,6 +34,9 @@ def _session(
     if live:
         steps["3"]["first_answer"] = f"First useful answer for passage {idx}."
         steps["4"]["investigation_id"] = f"child-investigation-{idx}"
+    else:
+        steps["3"]["exact_no_key_copy"] = "Dialogue requires provider activation keys."
+        steps["4"]["exact_no_key_copy"] = "Research spin-out requires provider activation keys."
     return {
         "session_id": f"session-{idx}",
         "date": "2026-06-30",
@@ -364,6 +367,50 @@ def test_live_provider_step_4_accepts_session_id_evidence() -> None:
     report = validate_sessions([record])
 
     assert not any("live provider step 4 requires" in f for f in report.failures)
+
+
+def test_inert_dialogue_step_requires_exact_no_key_copy() -> None:
+    record = _session(1, live=False, citation=True, entry_door="search")
+    record["steps"]["3"] = {"status": "inert"}
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.valid_sessions == 0
+    assert any(
+        "inert provider step 3 requires exact no-key boundary copy" in f
+        for f in report.failures
+    )
+
+
+def test_inert_research_step_requires_exact_no_key_copy() -> None:
+    record = _session(1, live=False, citation=True, entry_door="search")
+    record["steps"]["4"] = {"status": "inert"}
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.valid_sessions == 0
+    assert any(
+        "inert provider step 4 requires exact no-key boundary copy" in f
+        for f in report.failures
+    )
+
+
+def test_inert_provider_steps_accept_boundary_copy_alias() -> None:
+    record = _session(1, live=False, citation=True, entry_door="search")
+    record["steps"]["3"] = {
+        "status": "inert",
+        "activation_boundary_copy": "Dialogue requires provider activation keys.",
+    }
+    record["steps"]["4"] = {
+        "status": "inert",
+        "boundary_copy": "Research spin-out requires provider activation keys.",
+    }
+
+    report = validate_sessions([record])
+
+    assert not any("inert provider step" in f for f in report.failures)
 
 
 def test_selection_step_requires_selected_text_and_menu_labels() -> None:
