@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 
+from tools.golden_traces import load_trace
 from tools.prompt_autoresearch.budget import BudgetCap
 
 
@@ -35,7 +36,11 @@ def audit_wedge1_readiness(repo_root: Path) -> ReadinessReport:
     """
     root = repo_root.resolve()
     program = root / "roles/synthesizer/program.md"
-    golden_traces = sorted((root / "tools/golden_traces/captured").glob("*.json"))
+    golden_trace_files = sorted((root / "tools/golden_traces/captured").glob("*.json"))
+    valid_golden_traces, invalid_golden_traces = _classify_golden_traces(
+        root,
+        golden_trace_files,
+    )
     calibration = root / "reports/autoresearch/synthesizer-calibration.md"
     required_tool_files = [
         "runner.py",
@@ -100,8 +105,11 @@ def audit_wedge1_readiness(repo_root: Path) -> ReadinessReport:
         ReadinessItem(
             id="golden_traces",
             label="at least five golden traces captured",
-            status="satisfied" if len(golden_traces) >= 5 else "operator_bound",
-            evidence=f"{len(golden_traces)} golden trace(s) found in tools/golden_traces/captured",
+            status="satisfied" if len(valid_golden_traces) >= 5 else "operator_bound",
+            evidence=_golden_trace_evidence(
+                valid_count=len(valid_golden_traces),
+                invalid_traces=invalid_golden_traces,
+            ),
         ),
         ReadinessItem(
             id="budget",
@@ -117,6 +125,33 @@ def audit_wedge1_readiness(repo_root: Path) -> ReadinessReport:
         ),
     ]
     return ReadinessReport(items=items)
+
+
+def _classify_golden_traces(
+    root: Path,
+    trace_files: list[Path],
+) -> tuple[list[Path], list[Path]]:
+    valid: list[Path] = []
+    invalid: list[Path] = []
+    for trace_file in trace_files:
+        try:
+            load_trace(trace_file)
+        except Exception:
+            invalid.append(trace_file.relative_to(root))
+        else:
+            valid.append(trace_file.relative_to(root))
+    return valid, invalid
+
+
+def _golden_trace_evidence(*, valid_count: int, invalid_traces: list[Path]) -> str:
+    evidence = (
+        f"{valid_count} loadable golden trace(s) found in "
+        "tools/golden_traces/captured"
+    )
+    if invalid_traces:
+        invalid = ", ".join(str(path) for path in invalid_traces)
+        evidence += f"; invalid trace file(s): {invalid}"
+    return evidence
 
 
 def render_readiness_markdown(report: ReadinessReport) -> str:
