@@ -1,11 +1,12 @@
 # Operator-only gate actions
 
-**Last touched 2026-05-23 (session-end snapshot).**
+**Last touched 2026-07-01 (gate-summary reconciliation).**
 
-The audit identified eight binding gates blocking activation of substrate that
-is already shipped in code. **Engineering cannot close these gates.** Each one
-requires the operator (or an external party) to act. This document is the
-checklist with minimum inputs and an explicit owner.
+The audit identified eight original binding gates (G1-G8) blocking activation
+of substrate that is already shipped in code. Later personal-reading-lane work
+added four follow-on operator gate-actions (G9-G12). **Engineering cannot close
+these gates.** Each one requires the operator (or an external party) to act.
+This document is the checklist with minimum inputs and an explicit owner.
 
 ## Quick status (skip to detail below)
 
@@ -24,7 +25,9 @@ checklist with minimum inputs and an explicit owner.
 | G11 X no-training constraint | ✅ enforced in code / ⏳ standing operator duty | Keeping ALL BYOK X content (`personal_reading`, `social_thread`) out of every training/RL export — X dev terms forbid training on X data |
 | G12 Bernays per-title copyright-renewal check | ❌ open (operator, per-title) | Making any 1927–1930 Bernays title servable — the in-copyright titles must NEVER be relabeled to a servable class without a per-title US renewal-records check |
 
-**3 closed, 2 calendar/data-bound, 4 that need operator/counsel effort (G2, G3, G6, G9), plus 3 personal-reading-lane operator gate-actions (G10 Stripe Press, G11 X no-training, G12 Bernays renewal).**
+**Current total: 12 gate-actions.** Original G1-G8: 3 closed (G1, G4, G5),
+2 calendar/data-bound (G7, G8), and 3 still requiring operator action (G2, G3,
+G6). Appended follow-ons: 4 operator/legal standing actions (G9, G10, G11, G12).
 
 ## Highest-leverage next action
 
@@ -39,7 +42,7 @@ for the §14.4 measurement, the §13.4 compounding-curve demonstration (G7), and
 the §15.3 voice-latency assessment. Substrate is healthy now (the May 17-18
 read-only-filesystem outage is resolved); operator usage is the bottleneck.
 
-The nine gates, with their current state and the action required:
+The original eight gates, with their current state and the action required:
 
 ---
 
@@ -370,10 +373,11 @@ on G2 + G3 immediately:
 - **G7 compounding demo** — ~Nov 2026 earliest
 - **G8 Loop 3 unlock** — gated by G6 + ≥500 graded outcomes; ≥3 months out
 
-**Bottom line:** of the 8 gates, **3 are now closed** (G1, G4, G5),
+**Bottom line for original G1-G8:** **3 are now closed** (G1, G4, G5),
 **2 close this month with operator effort** (G2, G3), **1 needs operator
 to run mutations** (G6), **1 closes in late 2026** (G7), **1 closes
-Q1 2027 at the earliest** (G8).
+Q1 2027 at the earliest** (G8). G9-G12 are appended operator/legal
+follow-ons from the personal-reading lane and remain tracked below.
 
 ---
 
