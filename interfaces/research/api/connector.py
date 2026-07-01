@@ -304,7 +304,7 @@ def make_connector_handler(
             for path in traversed_paths
             for edge_id in path.edge_ids
         )
-        canonical_edge_ids = edge_ids or None
+        canonical_edge_ids = edge_ids
 
         # ── 3. Dispatch + parse ──
         result, policy_id = _dispatch_and_parse(

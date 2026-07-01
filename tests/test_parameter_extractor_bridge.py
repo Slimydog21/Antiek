@@ -21,6 +21,8 @@ import json
 import os
 import sys
 import time
+from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -45,6 +47,7 @@ from substrate.schemas import (  # noqa: E402
     ActionType,
     Event,
     ParameterExtractDeliveredPayload,
+    ParameterExtractRequestedPayload,
 )
 
 
@@ -105,6 +108,47 @@ def _patch_dispatch_config(monkeypatch, config: DispatchConfig) -> None:
         router.DispatchConfig, "from_yaml",
         classmethod(lambda cls, path: config),
     )
+
+
+def test_canonical_source_chunks_empty_block_does_not_disable_validation():
+    import interfaces.research.api.parameter_extractor as bridge
+
+    assert bridge._canonical_source_chunk_ids_from_evidence_block(
+        "not json and no chunk ids"
+    ) == ()
+
+
+def test_dispatch_parse_empty_canonical_refs_rejects_model_source_refs(monkeypatch):
+    import interfaces.research.api.parameter_extractor as bridge
+
+    monkeypatch.setattr(
+        bridge,
+        "dispatch",
+        lambda *args, **kwargs: SimpleNamespace(
+            text=json.dumps({"parameters": [_scalar_param()]}),
+            provider="stub-provider",
+            model="stub-model",
+        ),
+    )
+    event = Event(
+        event_id="evt-parameter-requested",
+        investigation_id="inv-parameter-empty-canonical",
+        action_type=ActionType.PARAMETER_EXTRACT_REQUESTED,
+        payload=ParameterExtractRequestedPayload(
+            evidence_block="not json and no source ids",
+        ),
+        param_version="0.1.0",
+        emitted_at=datetime.now(timezone.utc),
+    )
+
+    parsed, policy_id = bridge._dispatch_and_parse(
+        "prompt",
+        event,
+        canonical_source_chunk_ids=(),
+    )
+
+    assert parsed is None
+    assert policy_id == "stub-provider/stub-model"
 
 
 @pytest.fixture

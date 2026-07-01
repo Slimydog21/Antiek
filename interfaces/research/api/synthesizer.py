@@ -85,9 +85,9 @@ from .broadcast import EventBroadcaster  # noqa: E402
 
 @dataclass(frozen=True)
 class CanonicalSynthesisRefs:
-    supporting_chunk_ids: tuple[str, ...] | None = None
-    path_node_ids: tuple[str, ...] | None = None
-    path_edge_ids: tuple[str, ...] | None = None
+    supporting_chunk_ids: tuple[str, ...] = ()
+    path_node_ids: tuple[str, ...] = ()
+    path_edge_ids: tuple[str, ...] = ()
 
 
 def _canonical_refs_from_request(
@@ -108,9 +108,9 @@ def _canonical_refs_from_request(
     path_node_ids = _ordered_unique(_collect_values_for_keys(substrate, {"path_nodes"}))
     path_edge_ids = _ordered_unique(_collect_values_for_keys(substrate, {"edge_ids"}))
     return CanonicalSynthesisRefs(
-        supporting_chunk_ids=chunk_ids or None,
-        path_node_ids=path_node_ids or None,
-        path_edge_ids=path_edge_ids or None,
+        supporting_chunk_ids=chunk_ids,
+        path_node_ids=path_node_ids,
+        path_edge_ids=path_edge_ids,
     )
 
 

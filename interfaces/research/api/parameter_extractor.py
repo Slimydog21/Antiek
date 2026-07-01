@@ -76,7 +76,7 @@ PARAMETER_EXTRACTOR_UNEXPECTED_POLICY_ID = (
 
 def _canonical_source_chunk_ids_from_evidence_block(
     evidence_block: str,
-) -> tuple[str, ...] | None:
+) -> tuple[str, ...]:
     evidence = _load_json_block(evidence_block)
     chunk_ids = _ordered_unique(
         _collect_values_for_keys(
@@ -84,7 +84,7 @@ def _canonical_source_chunk_ids_from_evidence_block(
             {"chunk_ids", "source_chunk_ids", "supporting_chunk_ids"},
         )
     )
-    return chunk_ids or None
+    return chunk_ids
 
 
 def _load_json_block(raw: str) -> Any:
@@ -181,7 +181,7 @@ def _parameter_extractor_timeout_s() -> float:
 def _dispatch_and_parse(
     prompt: str,
     event: Event,
-    canonical_source_chunk_ids: tuple[str, ...] | None = None,
+    canonical_source_chunk_ids: tuple[str, ...] = (),
 ) -> tuple[ParameterExtractResult | None, str]:
     """Run one parameter_extractor dispatch + parse. Returns
     ``(result, policy_id)`` on success, ``(None, fallback_id)`` on
@@ -220,7 +220,7 @@ def _dispatch_and_parse(
 async def _dispatch_and_parse_bounded(
     prompt: str,
     event: Event,
-    canonical_source_chunk_ids: tuple[str, ...] | None = None,
+    canonical_source_chunk_ids: tuple[str, ...] = (),
 ) -> tuple[ParameterExtractResult | None, str]:
     """Run dispatch+parse off-loop with a bounded wait.
 
