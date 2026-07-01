@@ -544,18 +544,31 @@ class WeeklyReport:
         }
 
 
+def _provider_count(data: dict[str, Any]) -> int:
+    """Normalize provider sidecar activity counts.
+
+    Exa records ``call_count``; Browserbase records ``session_count``.
+    Future providers can join via ``request_count`` without changing the
+    report shape.
+    """
+    for key in ("call_count", "session_count", "request_count"):
+        if key in data:
+            return int(data.get(key) or 0)
+    return 0
+
+
 def collect_acquisition_cost(
     start: datetime, end: datetime,
     *,
     budget_dir: str | None = None,
 ) -> dict[str, Any]:
-    """Sum discovery-layer spend from the Exa budget sidecars
-    (`~/.antiek/budgets/exa_<utc-date>.json`).
+    """Sum acquisition-layer spend from provider budget sidecars.
 
-    Per `docs/integration_exa_browserbase.md` §6.7: the operator
-    needs to see Exa spend alongside dispatch spend. The sidecars
-    are the source of truth — the events carry per-call cost but
-    the sidecars carry the realized daily totals.
+    Per `docs/integration_exa_browserbase.md` §6.7 and §7.7: the operator
+    needs to see discovery/escalation spend alongside dispatch spend. The
+    sidecars are the source of truth — they carry realized daily totals for
+    Exa calls, Browserbase sessions, and future acquisition providers using
+    the ``<provider>_<YYYY-MM-DD>.json`` convention.
     """
     if budget_dir:
         budget_path = Path(budget_dir)
@@ -567,12 +580,6 @@ def collect_acquisition_cost(
     by_day: list[dict[str, Any]] = []
     total_usd = 0.0
     total_calls = 0
-    start_utc = start if start.tzinfo else start.replace(tzinfo=UTC)
-    end_utc = end if end.tzinfo else end.replace(tzinfo=UTC)
-    start_day = start_utc.astimezone(UTC).replace(
-        hour=0, minute=0, second=0, microsecond=0,
-    )
-    end_utc = end_utc.astimezone(UTC)
 
     if not budget_path.exists():
         return {
@@ -592,15 +599,18 @@ def collect_acquisition_cost(
     _start_day = start.replace(hour=0, minute=0, second=0, microsecond=0)
 
     # Walk each provider sidecar in the date window. Format:
-    #   exa_<YYYY-MM-DD>.json
-    # Future providers extend by glob pattern.
-    for f in sorted(budget_path.glob("exa_*.json")):
+    #   <provider>_<YYYY-MM-DD>.json
+    # Providers may contain underscores, so split from the date suffix.
+    for f in sorted(budget_path.glob("*_????-??-??.json")):
         try:
-            stem_date = f.stem.replace("exa_", "")
+            stem_date = f.stem[-10:]
             # Naive UTC (a YYYY-MM-DD stem carries no tz); compared against the
             # tz-normalized bounds computed above.
             day = datetime.strptime(stem_date, "%Y-%m-%d")
         except ValueError:
+            continue
+        provider = f.stem[:-11]
+        if not provider:
             continue
         if day < _start_day:
             continue
@@ -611,16 +621,16 @@ def collect_acquisition_cost(
         except (ValueError, OSError):
             continue
         spent = float(data.get("spent_usd", 0.0))
-        calls = int(data.get("call_count", 0))
+        count = _provider_count(data)
         by_day.append({
             "date": stem_date,
-            "provider": "exa",
+            "provider": provider,
             "spent_usd": spent,
-            "call_count": calls,
+            "call_count": count,
             "cap_usd": float(data.get("cap_usd", 0.0)),
         })
         total_usd += spent
-        total_calls += calls
+        total_calls += count
 
     top_day = max(by_day, key=lambda r: r["spent_usd"], default=None)
     return {
@@ -803,15 +813,17 @@ def _md_acquisition_section(A: dict[str, Any]) -> list[str]:
         lines.append(_NO_EVENTS)
         return lines
     lines.append(
-        f"Total Exa spend in window: **${A['total_usd']:.4f}** "
-        f"across **{A['total_calls']}** calls "
-        f"over **{A['days_in_window']}** day(s)."
+        f"Total acquisition spend in window: **${A['total_usd']:.4f}** "
+        f"across **{A['total_calls']}** provider activity unit(s) "
+        f"over **{A['days_in_window']}** provider-day row(s)."
     )
     if A.get("top_day"):
         td = A["top_day"]
+        provider = td.get("provider", "exa")
         lines.append(
             f"Top-spending day: **{td['date']}** "
-            f"(${td['spent_usd']:.4f} / {td['call_count']} calls, "
+            f"({provider}, ${td['spent_usd']:.4f} / "
+            f"{td['call_count']} unit(s), "
             f"cap ${td['cap_usd']:.2f})."
         )
     lines.append("")

@@ -36,6 +36,23 @@ def _write_budget(budget_dir: Path, date_iso: str, spent: float, calls: int, cap
     }))
 
 
+def _write_provider_budget(
+    budget_dir: Path,
+    provider: str,
+    date_iso: str,
+    spent: float,
+    count_key: str,
+    count: int,
+    cap: float = 5.0,
+) -> None:
+    (budget_dir / f"{provider}_{date_iso}.json").write_text(json.dumps({
+        "date_stamp": date_iso,
+        "spent_usd": spent,
+        count_key: count,
+        "cap_usd": cap,
+    }))
+
+
 # ── collect_acquisition_cost ──────────────────────────────────────
 
 
@@ -73,6 +90,32 @@ def test_collect_sums_within_window(budget_dir):
     assert abs(A["total_usd"] - 1.70) < 1e-9
 
 
+def test_collect_sums_all_provider_sidecars(budget_dir):
+    now = datetime.now(UTC)
+    today = now.strftime("%Y-%m-%d")
+
+    _write_budget(budget_dir, today, 1.20, 240)
+    _write_provider_budget(
+        budget_dir, "browserbase", today, 0.60, "session_count", 2,
+    )
+    _write_provider_budget(
+        budget_dir, "future_provider", today, 0.25, "request_count", 5,
+    )
+
+    A = collect_acquisition_cost(
+        now - timedelta(days=7), now, budget_dir=str(budget_dir),
+    )
+
+    assert A["days_in_window"] == 3
+    assert A["total_calls"] == 247
+    assert abs(A["total_usd"] - 2.05) < 1e-9
+    assert {row["provider"] for row in A["by_day"]} == {
+        "exa",
+        "browserbase",
+        "future_provider",
+    }
+
+
 def test_collect_top_day_identifies_highest_spend(budget_dir):
     now = datetime.now(UTC)
     _write_budget(budget_dir, now.strftime("%Y-%m-%d"), 0.05, 10)
@@ -101,6 +144,7 @@ def test_collect_skips_unparseable_date(budget_dir):
     now = datetime.now(UTC)
     _write_budget(budget_dir, now.strftime("%Y-%m-%d"), 0.05, 10)
     (budget_dir / "exa_not-a-date.json").write_text("{}")
+    (budget_dir / "browserbase_not-a-date.json").write_text("{}")
     A = collect_acquisition_cost(
         now - timedelta(days=7), now, budget_dir=str(budget_dir),
     )
@@ -146,6 +190,7 @@ def test_md_section_renders_window_with_rows():
     assert "Top-spending day" in md
     assert "2026-05-20" in md
     assert "exa" in md
+    assert "Total acquisition spend" in md
 
 
 def test_full_report_markdown_includes_acquisition_section(budget_dir):
