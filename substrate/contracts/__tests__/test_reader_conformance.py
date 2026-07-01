@@ -68,7 +68,7 @@ FORBIDDEN_PROD_RENDERERS: frozenset[str] = frozenset(
     {
         "modes/ResearchWorkstation/MasterMdViewer.tsx::openByIdSeam",
         "modes/Reading/MetaReading/index.tsx::article",
-        "modes/DeepResearchWorkspace/index.tsx::canvasTextDiv",
+        "modes/DeepResearchWorkspace/BlockDetail.tsx::canvasTextDiv",
         "components/PdfViewer.tsx::asOpenTarget",
     }
 )
@@ -196,6 +196,12 @@ def test_no_second_document_renderer_in_prod_bundle():
     assert "useOpenDocument()" in drw
     assert re.search(r"openDocument\(\s*node\.source_document_id", drw)
     assert "onCiteSource={onCiteSource}" in drw
+    detail = _read_src("modes/DeepResearchWorkspace/BlockDetail.tsx")
+    assert re.search(r"\{node\.text\s*\|\|", detail)
+    assert "useOpenDocument()" not in detail
+    assert "openDocument(" not in detail
+    assert "openPdfPanel(" not in detail
+    assert re.search(r"<Reader\b", detail) is None
 
     hits: list[tuple[str, str]] = []
     for rel in _list_src_files():

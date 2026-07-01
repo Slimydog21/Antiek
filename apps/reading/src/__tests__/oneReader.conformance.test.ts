@@ -118,7 +118,7 @@ export const EXPECTED_OPEN_DOORS: Readonly<Record<string, string>> = {
 export const FORBIDDEN_PROD_RENDERERS: readonly string[] = [
   "modes/ResearchWorkstation/MasterMdViewer.tsx::openByIdSeam", // cmd-click PDF panel → now openDocument
   "modes/Reading/MetaReading/index.tsx::article", // bespoke <article> → converged to ReadingColumn (:254)
-  "modes/DeepResearchWorkspace/index.tsx::canvasTextDiv", // open-source seam → openDocument (actual div: BlockDetail.tsx:87, map §5)
+  "modes/DeepResearchWorkspace/BlockDetail.tsx::canvasTextDiv", // graph-node text host; source open stays in DRW.citeSource
   "components/PdfViewer.tsx::asOpenTarget", // PdfViewer mounted as an OPEN-a-document target — gone (survives as ingest only)
 ] as const;
 
@@ -158,6 +158,9 @@ describe("oneReader conformance — pinned sets (lockstep guards, run today)", (
     );
     expect(FORBIDDEN_PROD_RENDERERS).toContain(
       "modes/Reading/MetaReading/index.tsx::article",
+    );
+    expect(FORBIDDEN_PROD_RENDERERS).toContain(
+      "modes/DeepResearchWorkspace/BlockDetail.tsx::canvasTextDiv",
     );
     expect(FORBIDDEN_PROD_RENDERERS.length).toBeGreaterThanOrEqual(4);
     // ReadingColumn is the SANCTIONED legacy fallback (SPR-05 reconciliation) —
@@ -311,6 +314,14 @@ describe("oneReader conformance — door (b): no second document renderer reacha
     const blockCard = readSrc("modes/DeepResearchWorkspace/Canvas/BlockCard.tsx");
     // The button's onClick invokes the threaded onCiteSource(node).
     expect(blockCard).toMatch(/onClick=\{\(\)\s*=>\s*onCiteSource\(node\)\}/);
+    const detail = readSrc("modes/DeepResearchWorkspace/BlockDetail.tsx");
+    // BlockDetail is the graph-node text host. It must not become a second
+    // document opener/renderer; source opens stay on the BlockCard cite seam.
+    expect(detail).toMatch(/\{node\.text\s*\|\|/);
+    expect(detail).not.toMatch(/useOpenDocument\(\)/);
+    expect(detail).not.toMatch(/openDocument\(/);
+    expect(detail).not.toMatch(/openPdfPanel\(/);
+    expect(detail).not.toMatch(/<Reader\b/);
   });
 
   it("PdfViewer is no longer mounted as an OPEN-a-document target (survives as the ingest surface only)", () => {
