@@ -31,12 +31,16 @@ JSONL record shape (one object per session)::
       "verdict": "ACTIVATE",
       "steps": {
         "1": {"status": "pass"},
-        "2": {"status": "pass"},
+        "2": {
+          "status": "pass",
+          "selected_text": "highlighted passage text",
+          "menu_labels": ["Ask", "Investigate", "Trace source"]
+        },
         "3": {"status": "pass"},
         "4": {"status": "pass"},
         "5": {"status": "pass"},
         "6": {"status": "pass"},
-        "7": {"status": "pass"}
+        "7": {"status": "pass", "operator_note": "free-form reading note"}
       }
     }
 
@@ -170,6 +174,10 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
         failures.extend(step_failures)
         step_status_failures = _step_status_failures(prefix, steps)
         failures.extend(step_status_failures)
+        selection_evidence_failures = _selection_evidence_failures(prefix, steps)
+        failures.extend(selection_evidence_failures)
+        reading_work_evidence_failures = _reading_work_evidence_failures(prefix, steps)
+        failures.extend(reading_work_evidence_failures)
         live_provider_evidence_failures = _live_provider_evidence_failures(prefix, record, steps)
         failures.extend(live_provider_evidence_failures)
         citation_evidence_failures = _citation_evidence_failures(prefix, record, steps)
@@ -198,6 +206,8 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
             and not missing_steps
             and not step_failures
             and not step_status_failures
+            and not selection_evidence_failures
+            and not reading_work_evidence_failures
             and not live_provider_evidence_failures
             and not citation_evidence_failures
             and not issue_failures
@@ -296,6 +306,42 @@ def _step_status(raw_step: Any) -> str:
     if not isinstance(raw_step, dict):
         return ""
     return str(raw_step.get("status") or "").strip().lower()
+
+
+def _selection_evidence_failures(prefix: str, steps: dict[Any, Any]) -> list[str]:
+    step = steps.get("2")
+    if not isinstance(step, dict) or _step_status(step) != "pass":
+        return []
+
+    failures: list[str] = []
+    selected_text = _required_text(step.get("selected_text"))
+    menu_labels = step.get("menu_labels", step.get("action_menu_labels"))
+    if not selected_text:
+        failures.append(prefix + "step 2 requires selected_text")
+    if not _has_non_empty_string_list(menu_labels):
+        failures.append(prefix + "step 2 requires menu_labels")
+    return failures
+
+
+def _reading_work_evidence_failures(prefix: str, steps: dict[Any, Any]) -> list[str]:
+    step = steps.get("7")
+    if not isinstance(step, dict) or _step_status(step) != "pass":
+        return []
+
+    operator_note = _required_text(step.get("operator_note")) or _required_text(
+        step.get("reading_note")
+    )
+    if not operator_note:
+        return [prefix + "step 7 requires operator_note"]
+    return []
+
+
+def _has_non_empty_string_list(value: Any) -> bool:
+    return (
+        isinstance(value, list)
+        and bool(value)
+        and all(isinstance(item, str) and bool(item.strip()) for item in value)
+    )
 
 
 def _provider_status(record: dict[str, Any]) -> str:
