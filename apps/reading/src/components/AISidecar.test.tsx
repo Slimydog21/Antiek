@@ -25,9 +25,9 @@ beforeEach(() => {
     const path = String(input);
     if (path.includes("/billing/summary/")) {
       return okJson({
-        free_tokens_consumed: 1200,
-        free_tokens_remaining: 4_998_800,
-        record_count: 2,
+        free_tokens_consumed: Number.POSITIVE_INFINITY,
+        free_tokens_remaining: Number.NaN,
+        record_count: -1,
       });
     }
     if (path.includes("/trajectory")) {
@@ -61,10 +61,11 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("AISidecar", () => {
-  it("sanitizes malformed dispatch latency before rendering recent calls", async () => {
+  it("sanitizes malformed usage and dispatch latency before rendering", async () => {
     render(<AISidecar />);
 
     await screen.findByText("synthesis · openai/gpt-5.5");
+    expect(screen.getByText("0 / 5,000,000 tokens")).toBeTruthy();
     expect(screen.getByText("0ms")).toBeTruthy();
     expect(screen.getByText("1532ms")).toBeTruthy();
     await waitFor(() =>
