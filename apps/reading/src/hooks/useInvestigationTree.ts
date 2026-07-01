@@ -58,7 +58,11 @@ export function useInvestigationTree(
     const roots: TreeNode[] = [];
     for (const node of nodes.values()) {
       const parentId = parentOf.get(node.investigationId);
-      if (parentId && nodes.has(parentId)) {
+      if (
+        parentId &&
+        nodes.has(parentId) &&
+        !wouldCreateCycle(node.investigationId, parentId, parentOf)
+      ) {
         nodes.get(parentId)!.children.push(node);
       } else {
         roots.push(node);
@@ -78,6 +82,26 @@ export function useInvestigationTree(
   }, [investigations, localTree]);
 
   return tree;
+}
+
+function wouldCreateCycle(
+  childId: string,
+  parentId: string,
+  parentOf: Map<string, string | null>,
+): boolean {
+  let current: string | null = parentId;
+  const seen = new Set<string>();
+  while (current) {
+    if (current === childId) {
+      return true;
+    }
+    if (seen.has(current)) {
+      return true;
+    }
+    seen.add(current);
+    current = parentOf.get(current) ?? null;
+  }
+  return false;
 }
 
 /**
@@ -106,7 +130,18 @@ function readLocalTree(): TreeMap {
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return {};
-    return parsed as TreeMap;
+    const out: TreeMap = {};
+    for (const [childId, parentId] of Object.entries(parsed)) {
+      if (
+        typeof childId === "string" &&
+        childId.trim().length > 0 &&
+        typeof parentId === "string" &&
+        parentId.trim().length > 0
+      ) {
+        out[childId] = parentId;
+      }
+    }
+    return out;
   } catch {
     return {};
   }
