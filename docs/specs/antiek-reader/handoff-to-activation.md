@@ -25,7 +25,7 @@
 | Unification proof (4 entry points) | **REAL** | `oneReader.conformance.test.ts` M3 block | — |
 | Highlight Dialogue (SPR-06) | **INERT** | `apps/reading/src/modes/shared/FloatMenu/floatMenuActions.ts:184` | **activation SPR-03 provider keys** |
 | Research loop / deep-research spin-out (SPR-04) | **INERT** | `FloatMenu` → `startInvestigation` (`floatMenuActions.ts:27-28`); backend `interfaces/research/api/cascade_routes.py` | **activation SPR-03 provider keys** |
-| Enter-escalate agentic search (SPR-08) | **INERT** | `apps/reading/src/components/UnifiedSearch.tsx` + `useStartInvestigation` | **activation SPR-03 provider keys** |
+| Enter-escalate agentic search (SPR-08) | **INERT** | `apps/reading/src/components/UnifiedSearch.tsx` + `useStartInvestigation`; `UnifiedSearch.test.tsx` guards absent-key and loading-key probes | **activation SPR-03 provider keys** |
 | Operator dogfood closure | **NOT THIS SPRINT** | activation SPR-07 | **10 distinct operator sessions** |
 
 ---
