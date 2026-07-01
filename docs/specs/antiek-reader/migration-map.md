@@ -44,7 +44,7 @@ none of the `FORBIDDEN_PROD_RENDERERS` entries is importable in the prod bundle.
 | `PdfViewer` — pdf.js canvas renderer (`page.render`) | `components/PdfViewer.tsx:114` (canvas render); mounted by `modes/WrestleApp/index.tsx:137` (ingest) **and** `modes/Reading/index.tsx:649` (the one Reader's "view original" secondary view of the ALREADY-OPEN doc — renders `pdfBytes`, not a by-id open) | **Survives as INGEST + the Reader's own preserved-original view**, never as an open-a-document-by-id target (see §3). NOT in `FORBIDDEN_PROD_RENDERERS` — it is the annotation/region-selection surface + the secondary original view, not a second body reader. The by-id OPEN seam was `openPdfPanel` / `open("PdfViewer", {documentId})`; that is what is forbidden (sharpen r2 §5a #9), not the `<PdfViewer pdfBytes>` mount. |
 | `MasterMdViewer` — research master-markdown SYNTHESIS reader (takes a `ParsedSynthesis` prop; never opens a doc by id) | `modes/ResearchWorkstation/MasterMdViewer.tsx:191` (default export); cmd-click open seam `:762`→`:774` (was `openPdfPanel`) | **SPR-05 (DONE):** folded the cmd-click by-id open seam into `openDocument`. MasterMdViewer SURVIVES as a synthesis-summary view (§5a #5). Forbidden entry sharpened to `MasterMdViewer.tsx::openByIdSeam`. **NOTE (corrected by sharpen r2 §5a #9):** SPR-05 routed THIS caller, but `openPdfPanel` was NOT gone tree-wide — `RegionEmbedBlock.tsx` survived as a live caller. r2 routed that last one + the `openHouse` direct-navigate; see §5a #9. |
 | `MetaReading` bespoke `<article>` body | `modes/Reading/MetaReading/index.tsx:251` (was `<article … whitespace-pre-wrap>`) | **SPR-05 (DONE):** the bespoke `<article>` report body was CONVERGED to the sanctioned `ReadingColumn` (§5a #6); no second document `<article>`. Forbidden entry kept: `modes/Reading/MetaReading/index.tsx::article`. |
-| DRW canvas ad-hoc text div — `{node.text}` rendered in a `font-serif` div | `modes/DeepResearchWorkspace/BlockDetail.tsx:87`–`88` (`<div … leading-relaxed>{node.text}`) | **SPR-05 (DONE):** the div renders a GRAPH NODE (not a document); its OPEN-the-source seam (`onCiteSource`) was wired live → `openDocument(node.source_document_id)` (§5a #7). **NOTE (discrepancy):** `FORBIDDEN_PROD_RENDERERS` locates this in `index.tsx::canvasTextDiv`; the div lives in sibling `BlockDetail.tsx:87` — same surface, bridged here. |
+| DRW canvas ad-hoc text div — `{node.text}` rendered in a `font-serif` div | `modes/DeepResearchWorkspace/BlockDetail.tsx:87`–`88` (`<div … leading-relaxed>{node.text}`) | **SPR-05 (DONE):** the div renders a GRAPH NODE (not a document); its OPEN-the-source seam (`onCiteSource`) was wired live → `openDocument(node.source_document_id)` (§5a #7). **SPR-09 sharpen:** `FORBIDDEN_PROD_RENDERERS` now targets `BlockDetail.tsx::canvasTextDiv` directly, and both TS/Python conformance assert that `BlockDetail` does not import/mount `Reader`, `openDocument`, or `openPdfPanel`. |
 
 ---
 
@@ -200,21 +200,16 @@ fallback (which would have left abstract-only blocks + a tracked gap) — the ga
 
 ## 5 · Reconciliation note (intellectual honesty)
 
-Three places where the verified `file:line` diverges from what
-`EXPECTED_OPEN_DOORS` / `FORBIDDEN_PROD_RENDERERS` assumed — surfaced so SPR-05/09
-fix the call site, not the map:
+Two places where the verified `file:line` diverges from what
+`EXPECTED_OPEN_DOORS` assumed — surfaced so SPR-05/09 fix the call site, not
+the map. The former `DRW.canvasTextDiv` discrepancy is closed: both lockstep
+conformance harnesses now pin `BlockDetail.tsx::canvasTextDiv` directly.
 
-1. **`DRW.canvasTextDiv` lives in `BlockDetail.tsx:87`, not `index.tsx`.**
-   `FORBIDDEN_PROD_RENDERERS` names `modes/DeepResearchWorkspace/index.tsx::canvasTextDiv`.
-   The ad-hoc `{node.text}` div is actually in the sibling `BlockDetail.tsx`
-   (the overlay panel `index.tsx:231` mounts). Same surface; SPR-09's
-   forbidden-import check should target `BlockDetail.tsx` (or both). The Python
-   set string is kept as-is for lockstep; this note is the bridge.
-2. **`DRW.citeSource` button is in `Canvas/BlockCard.tsx:117`, host-wired from `index.tsx`.**
+1. **`DRW.citeSource` button is in `Canvas/BlockCard.tsx:117`, host-wired from `index.tsx`.**
    `EXPECTED_OPEN_DOORS` attributes it to `index.tsx (BlockCard detail)`. The
    affordance (`onCiteSource`) is defined on `BlockCard`; `index.tsx` supplies
    the handler. Both files are load-bearing for this door.
-3. **`Write.traceToSource`'s OPEN action is `WriteHome.tsx:116`; `Xray.tsx` is a VIEW, not the open call.**
+2. **`Write.traceToSource`'s OPEN action is `WriteHome.tsx:116`; `Xray.tsx` is a VIEW, not the open call.**
    `EXPECTED_OPEN_DOORS` lists `Citation.tsx + Xray.tsx + WriteHome.tsx`.
    `Citation.tsx:38` emits the intent, `traceIntent.ts:28` is the bus,
    `WriteHome.tsx:116` does the `openDocument(target.document_id, { chunkId })`
