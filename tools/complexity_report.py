@@ -820,6 +820,41 @@ def _write_json(path: Path, report: dict[str, Any]) -> None:
         fh.write("\n")
 
 
+# Regression tolerance for --check-regression. A module may drift a little from
+# float/churn noise; we fail only on a genuine deepening-reversal: the ratio grew
+# (got SHALLOWER) by more than max(abs, rel×baseline). Choices, stated (rigor #1):
+# 0.02 absolute swallows tiny noise; 15% relative lets a very-deep module (ratio
+# ~0.03) move proportionally without a false alarm while still catching a real
+# regression on a mid-ratio module.
+REGRESSION_ABS_TOL = 0.02
+REGRESSION_REL_TOL = 0.15
+
+
+def check_regression(
+    baseline_modules: list[dict[str, Any]],
+    current_modules: list[dict[str, Any]],
+    *,
+    abs_tol: float = REGRESSION_ABS_TOL,
+    rel_tol: float = REGRESSION_REL_TOL,
+) -> list[tuple[str, float, float]]:
+    """Touched-only ratchet: return (module, baseline_ratio, current_ratio) for
+    every module that got SHALLOWER (ratio increased beyond tolerance) vs the
+    baseline. New modules and modules that got deeper/unchanged are grandfathered
+    — no flag-day. This is what SPR-07 wires as the CI floor: a touched module's
+    deep/shallow ratio cannot regress."""
+    base = {m["module"]: float(m["ratio"]) for m in baseline_modules}
+    out: list[tuple[str, float, float]] = []
+    for m in current_modules:
+        name = m["module"]
+        if name not in base:
+            continue  # new module — nothing to regress against
+        b = base[name]
+        c = float(m["ratio"])
+        if c > b + max(abs_tol, b * rel_tol):
+            out.append((name, b, c))
+    return sorted(out, key=lambda r: r[2] - r[1], reverse=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="complexity_report",
@@ -833,18 +868,42 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--fence-source", default="specs", help="dir globbed for */index.html fence citations")
     parser.add_argument("--format", choices=("json", "md"), default="json", help="stdout format")
     parser.add_argument("--calibration-file", type=Path, default=None, help="optional calibration JSON to embed")
-    parser.add_argument("--check-regression", action="store_true", help="reserved for SPR-07")
+    parser.add_argument("--check-regression", action="store_true", help="fail if a touched module's ratio got shallower vs --baseline (SPR-07 CI floor)")
+    parser.add_argument("--baseline", type=Path, default=None, help="baseline ranking.json for --check-regression (default: --out)")
     args = parser.parse_args(argv)
-
-    if args.check_regression:
-        print("--check-regression: not implemented in SPR-01 (reserved for SPR-07).", file=sys.stderr)
-        return 0
 
     repo = args.repo.resolve()
     substrate_dir = repo / args.root
     if not substrate_dir.is_dir():
         print(f"✗ root not found: {substrate_dir}", file=sys.stderr)
         return 2
+
+    if args.check_regression:
+        baseline_path = args.baseline or args.out
+        try:
+            baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"✗ could not read baseline {baseline_path}: {exc}", file=sys.stderr)
+            return 2
+        current = build_report(
+            root_repo=repo, substrate_root=args.root, window=args.window,
+            fence_source=args.fence_source, top=args.top,
+        )
+        regressions = check_regression(baseline.get("modules", []), current["modules"])
+        shared = len({m["module"] for m in baseline.get("modules", [])} & {m["module"] for m in current["modules"]})
+        if regressions:
+            print("✗ deep/shallow ratio REGRESSION — module(s) got shallower vs baseline:", file=sys.stderr)
+            for mod, b, c in regressions:
+                print(f"    {mod}: ratio {b:.3f} → {c:.3f}  (+{c - b:.3f})", file=sys.stderr)
+            print(
+                f"\n{len(regressions)} of {shared} shared modules regressed. Deepen the "
+                f"module, or (operator, after a deliberate change) re-baseline: "
+                f"`python -m tools.complexity_report --root {args.root} --out {baseline_path}`.",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"✓ no ratio regressions on {shared} shared modules (baseline {baseline_path})")
+        return 0
 
     calibration: dict[str, Any] | None = None
     if args.calibration_file is not None:

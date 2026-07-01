@@ -128,6 +128,22 @@ Auth: magic-link via AgentMail. Per
   (operator-only; do not run in CI).
 <!-- END: craft-signature -->
 
+<!-- BEGIN: aod-complexity-floor (managed by SPR-07 of antiek-ousterhout-deep-modules) -->
+- **Complexity floor: deep/shallow ratio can't regress on a touched module.**
+  `tools/complexity_report.py` ranks every `substrate/` module by an Ousterhout
+  deep/shallow ratio (`interface_surface / max(depth,1)`, LOW = deep) × git
+  churn; the committed baseline is `reports/complexity/ranking.json`. The
+  touched-only ratchet is `python -m tools.complexity_report --root substrate
+  --check-regression --baseline reports/complexity/ranking.json` — it fails only
+  if an already-present module got SHALLOWER (ratio rose beyond a small
+  tolerance); new/deeper modules are grandfathered (no flag-day). Companion
+  read-only audits: `tools/lint/info_hiding.py` (interface-leak report →
+  `leaks.json`) and `tools/lint/comment_quality.py` (what-vs-why, informational).
+  To re-baseline after a deliberate change: re-run without `--check-regression`
+  and commit `ranking.json` (operator-reviewed; the ratio is a candidate list,
+  not a verdict — read `ratio` for shallowness, `rank_score` for priority).
+<!-- END: aod-complexity-floor -->
+
 ## What changed in the 2026-05-23 session
 
 | Commit | What |

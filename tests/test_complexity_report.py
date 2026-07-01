@@ -17,6 +17,7 @@ import pytest
 from tools.complexity_report import (
     analyze_source,
     build_report,
+    check_regression,
     implementation_depth,
     render_markdown,
 )
@@ -306,3 +307,27 @@ def test_report_is_json_serializable(tmp_path: Path) -> None:
     )
     # must round-trip (house convention: deterministic, sort_keys-friendly)
     json.dumps(report, sort_keys=True)
+
+
+# --------------------------------------------------------------------------- #
+# Regression ratchet (SPR-07 CI floor)                                         #
+# --------------------------------------------------------------------------- #
+
+def test_check_regression_flags_shallower_module() -> None:
+    base = [{"module": "a.py", "ratio": 0.10}, {"module": "b.py", "ratio": 0.50}]
+    cur = [{"module": "a.py", "ratio": 0.40}, {"module": "b.py", "ratio": 0.49}]
+    regressions = check_regression(base, cur)
+    assert [r[0] for r in regressions] == ["a.py"]  # a got shallower; b got (slightly) deeper
+
+
+def test_check_regression_grandfathers_new_and_deeper() -> None:
+    base = [{"module": "a.py", "ratio": 0.30}]
+    cur = [{"module": "a.py", "ratio": 0.10}, {"module": "new.py", "ratio": 9.0}]
+    # a.py got deeper, new.py is new → no regression
+    assert check_regression(base, cur) == []
+
+
+def test_check_regression_within_tolerance_ok() -> None:
+    base = [{"module": "a.py", "ratio": 0.20}]
+    cur = [{"module": "a.py", "ratio": 0.21}]  # +0.01 < abs_tol 0.02
+    assert check_regression(base, cur) == []
