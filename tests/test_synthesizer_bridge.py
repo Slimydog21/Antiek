@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import httpx
@@ -167,7 +167,7 @@ def test_dispatch_parse_empty_canonical_refs_rejects_model_refs(monkeypatch):
             constraints=[],
         ),
         param_version="0.1.0",
-        emitted_at=datetime.now(timezone.utc),
+        emitted_at=datetime.now(UTC),
     )
 
     parsed, policy_id = bridge._dispatch_and_parse(
@@ -178,6 +178,18 @@ def test_dispatch_parse_empty_canonical_refs_rejects_model_refs(monkeypatch):
 
     assert parsed is None
     assert policy_id == "stub-provider/stub-model"
+
+
+def test_rlm_synthesis_gate_requires_ratification_and_budget(monkeypatch):
+    import interfaces.research.api.synthesizer as bridge
+
+    monkeypatch.setattr(bridge, "SYNTHESIS_CONTEXT_BUDGET_TOKENS", 10)
+    monkeypatch.delenv("ANTIEK_RLM_RATIFIED", raising=False)
+    assert bridge._should_use_rlm_synthesis("x" * 1000) is False
+
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    assert bridge._should_use_rlm_synthesis("x") is False
+    assert bridge._should_use_rlm_synthesis("x" * 1000) is True
 
 
 @pytest.fixture
@@ -308,6 +320,58 @@ def _must_attribute_spec(*, strictness: str = "hard") -> dict:
         "description": "every claim must cite at least one chunk",
         "config": {},
     }
+
+
+@pytest.mark.asyncio
+async def test_long_substrate_uses_rlm_then_constraint_loop_wraps(
+    monkeypatch, app_and_bus, async_client,
+):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    import interfaces.research.api.synthesizer as bridge
+
+    monkeypatch.setattr(bridge, "SYNTHESIS_CONTEXT_BUDGET_TOKENS", 10)
+    _, bus = app_and_bus
+    inv = "inv-synth-rlm-long"
+    thesis = _good_thesis(attributed=True, summary="RLM_SYNTHESIS")
+    code = (
+        f"answer['content'] = {json.dumps(json.dumps(thesis))}\n"
+        "answer['ready'] = True"
+    )
+    register_provider(_StubSynthesizer([code]))
+    _patch_dispatch_config(monkeypatch, _synth_config("stub-synthesizer"))
+    rlm_started: list[Event] = []
+
+    async def capture_rlm_started(event: Event) -> None:
+        rlm_started.append(event)
+
+    bus.register_handler("rlm.session_started", capture_rlm_started)
+
+    await _post_synthesize(
+        async_client,
+        investigation_id=inv,
+        constraints=[_must_attribute_spec()],
+    )
+    await bus.wait_for_handlers(timeout=5.0)
+
+    delivered = [
+        r for r in trajectory(inv)
+        if r["action_type"] == ActionType.SYNTHESIZE_DELIVERED.value
+    ]
+    assert len(delivered) == 1
+    event = Event.model_validate(delivered[0])
+    assert event.policy_id == bridge.RLM_SYNTHESIS_POLICY_ID
+    payload = event.payload
+    assert payload.thesis_summary == "RLM_SYNTHESIS"
+    assert payload.constraint_loop_status == "single_pass"
+    assert payload.constraint_loop_iterations == 1
+
+    assert len(rlm_started) == 1
+    assert rlm_started[0].payload.root_role == "synthesizer"
+    resolved = [
+        r for r in trajectory(inv)
+        if r["action_type"] == ActionType.CONSTRAINT_LOOP_RESOLVED.value
+    ]
+    assert len(resolved) == 1
 
 
 # ---------------------------------------------------------------------------
