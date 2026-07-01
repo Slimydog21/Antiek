@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -27,6 +28,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
         extract_json_object as _extract_json_object,  # type: ignore[no-redef]
     )
 
+from substrate.provenance import validate_ref
 
 # Closed failure-reason set — mirrors the Literal on
 # ``ClaimGroundingCheckFailedPayload.reason``. The bridge enforces this
@@ -65,16 +67,20 @@ class GroundingVerdict:
     reason: str | None
 
 
-def parse_grounder_response(text: str) -> GroundingVerdict:
+def parse_grounder_response(
+    text: str,
+    *,
+    canonical_chunk_ids: Iterable[str] | None = None,
+) -> GroundingVerdict:
     """Parse the LLM's JSON response. Returns a GroundingVerdict.
 
     Conservative defaults per the role prompt's "default to false when
     uncertain":
 
     - Malformed input → ``(False, None, 0.0, "ambiguous")``.
-    - grounded=true with non-string chunk_id → chunk_id None
-      (bridge will treat as ambiguous failure when validating against
-      its search results).
+    - grounded=true with non-string chunk_id → chunk_id None. When
+      ``canonical_chunk_ids`` is supplied, a missing or off-context
+      chunk_id becomes an ambiguous failure immediately.
     - Confidence out of [0, 1] → clamped.
     - Failure reason not in GROUNDING_FAILURE_REASONS → coerced to
       ``ambiguous``.
@@ -88,11 +94,15 @@ def parse_grounder_response(text: str) -> GroundingVerdict:
         chunk_id = obj.get("located_chunk_id")
         if not isinstance(chunk_id, str):
             chunk_id = None
+        elif canonical_chunk_ids is not None:
+            chunk_id = validate_ref(chunk_id, canonical_chunk_ids)
         try:
             confidence = float(obj.get("confidence", 0.0))
         except (TypeError, ValueError):
             confidence = 0.0
         confidence = max(0.0, min(1.0, confidence))
+        if canonical_chunk_ids is not None and chunk_id is None:
+            return GroundingVerdict(False, None, 0.0, "ambiguous")
         return GroundingVerdict(True, chunk_id, confidence, None)
 
     reason = obj.get("reason")

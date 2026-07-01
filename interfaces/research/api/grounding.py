@@ -53,7 +53,6 @@ from substrate.context_pack import LayerSource, assemble_context_pack  # noqa: E
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized, search  # noqa: E402
-from substrate.provenance import validate_ref  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     ActionType,
     ClaimChallengeRaisedPayload,
@@ -129,13 +128,15 @@ def _render_chunks_for_prompt(chunks: list[dict]) -> str:
 
 def _parse_grounder_response(
     text: str,
+    *,
+    canonical_chunk_ids: list[str] | tuple[str, ...] | None = None,
 ) -> tuple[bool, str | None, float, str | None]:
     """Back-compat shim. The real parser lives at
     ``roles.grounder.parse_grounder_response`` (Sprint 4 day 4-5
     extraction). Existing tests import this name + the tuple shape;
     keep the wrapper to avoid disturbing the test suite during the
     role-module promotion."""
-    v = parse_grounder_response(text)
+    v = parse_grounder_response(text, canonical_chunk_ids=canonical_chunk_ids)
     return v.grounded, v.located_chunk_id, v.confidence, v.reason
 
 
@@ -260,9 +261,10 @@ def make_grounding_handler(
             return
 
         # 4. Parse + emit.
-        grounded, chunk_id, confidence, reason = _parse_grounder_response(response_text)
-
-        located_chunk_id = validate_ref(chunk_id, searched_chunk_ids)
+        grounded, located_chunk_id, confidence, reason = _parse_grounder_response(
+            response_text,
+            canonical_chunk_ids=searched_chunk_ids,
+        )
         if grounded and located_chunk_id:
             await _emit_grounding_passed(
                 event,

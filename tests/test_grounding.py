@@ -525,6 +525,13 @@ def test_parse_grounder_response_extracts_clean_json():
     assert reason is None
 
 
+def test_parse_grounder_response_canonical_chunks_reject_fabricated_id():
+    assert _parse_grounder_response(
+        '{"grounded": true, "located_chunk_id": "chunk-fake", "confidence": 0.8}',
+        canonical_chunk_ids=["chunk-1"],
+    ) == (False, None, 0.0, "ambiguous")
+
+
 def test_parse_grounder_response_extracts_failed():
     grounded, cid, conf, reason = _parse_grounder_response(
         '{"grounded": false, "reason": "paraphrased_not_stated"}'
