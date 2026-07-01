@@ -91,7 +91,10 @@ CREATE TABLE IF NOT EXISTS chunks (
     section_path  TEXT,
     text          TEXT NOT NULL,
     embedding     FLOAT[],          -- nullable; populated by processing/embedding
-    token_count   INTEGER NOT NULL DEFAULT 0
+    token_count   INTEGER NOT NULL DEFAULT 0,
+    -- Sprint 19 multi-user substrate plumbing: every graph row carries
+    -- the owner now, while application-layer multi-user routing stays off.
+    owner_user_id TEXT NOT NULL DEFAULT '__operator__'
 );
 
 -- ============================================================
@@ -118,7 +121,8 @@ CREATE TABLE IF NOT EXISTS nodes (
     )),
     created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     degree_cached    INTEGER NOT NULL DEFAULT 0,
-    metadata         TEXT
+    metadata         TEXT,
+    owner_user_id    TEXT NOT NULL DEFAULT '__operator__'
 );
 
 -- ============================================================
@@ -143,7 +147,8 @@ CREATE TABLE IF NOT EXISTS edges (
         'depth', 'cross_domain', 'constraint'
     )),
     investigation_id       TEXT,
-    metadata               TEXT
+    metadata               TEXT,
+    owner_user_id          TEXT NOT NULL DEFAULT '__operator__'
 );
 
 -- ============================================================
@@ -1127,6 +1132,16 @@ ALTER TABLE documents ADD COLUMN IF NOT EXISTS structured_blocks TEXT;
 """
 
 
+# Sprint 19 — multi-user substrate plumbing. Existing DuckDB files get the
+# owner column on graph tables that predate the Sprint 19 DDL. ``documents``
+# already carried this default from Sprint 11 prep.
+ANTIEK_GRAPH_SCHEMA_V15_OWNER_COLUMNS_SQL = """
+ALTER TABLE chunks ADD COLUMN IF NOT EXISTS owner_user_id TEXT DEFAULT '__operator__';
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS owner_user_id TEXT DEFAULT '__operator__';
+ALTER TABLE edges ADD COLUMN IF NOT EXISTS owner_user_id TEXT DEFAULT '__operator__';
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -1199,6 +1214,10 @@ def init_database(con: LockedConnection) -> None:
     # idempotent ALTER ... ADD COLUMN IF NOT EXISTS; ADDITIVE — a NULL column
     # means "not yet upgraded to the model", read-side falls back to raw_text.
     con.execute(ANTIEK_GRAPH_SCHEMA_V14_STRUCTURED_BLOCKS_SQL)
+    # Sprint 19 — account owner columns on graph tables. Runs after the V9
+    # nodes/edges rebuild so both fresh and migrated DBs converge on the same
+    # table shape without activating the Sprint 22+ multi-user pivot.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V15_OWNER_COLUMNS_SQL)
     # Sprint 22 Phase 6 — deletion worker can persist terminal failed rows.
     # DuckDB cannot alter CHECK constraints in place, so existing DBs need a
     # small rebuild while fresh DBs already carry the wider V1 definition.

@@ -112,6 +112,22 @@ def test_init_database_is_idempotent(db_path):
     init_database_at_path(db_path)
 
 
+def test_graph_tables_have_owner_user_id_defaults(db_path):
+    con = connect_read(db_path)
+    try:
+        for table in ("documents", "chunks", "nodes", "edges"):
+            cols = {
+                row[1]: {"type": row[2], "notnull": bool(row[3]), "default": row[4]}
+                for row in con.execute(f"PRAGMA table_info('{table}')").fetchall()
+            }
+            owner = cols["owner_user_id"]
+            assert owner["type"] == "VARCHAR"
+            assert owner["notnull"] is True
+            assert owner["default"] == "'__operator__'"
+    finally:
+        con.close()
+
+
 def test_init_database_rejects_non_locked_connection(tmp_path):
     """The only-writer invariant: init_database must run under
     runtime.db_lock.connect_write."""
@@ -181,6 +197,74 @@ def test_insert_document_round_trips(db_path):
             "SELECT document_id, source_tier, document_type, title FROM documents"
         ).fetchone()
         assert row == ("doc-1", 2, "peer_reviewed_paper", "X causes Y")
+    finally:
+        rcon.close()
+
+
+def test_insert_helpers_persist_owner_user_id(db_path):
+    con = connect_write(db_path, purpose="test")
+    try:
+        insert_document(
+            con,
+            document_id="doc-owned",
+            source_tier=2,
+            document_type="report",
+            owner_user_id="user-doc",
+        )
+        cid = insert_chunk(
+            con,
+            document_id="doc-owned",
+            chunk_index=0,
+            text="owned chunk",
+            owner_user_id="user-chunk",
+        )
+        src = insert_node(
+            con,
+            canonical_label="Owned source",
+            node_type="entity",
+            graph_scope="depth",
+            investigation_id="inv-owner",
+            owner_user_id="user-node",
+        )
+        tgt = insert_node(
+            con,
+            canonical_label="Owned target",
+            node_type="entity",
+            graph_scope="depth",
+            investigation_id="inv-owner",
+            owner_user_id="user-node",
+        )
+        eid = insert_edge(
+            con,
+            source_node_id=src,
+            target_node_id=tgt,
+            relation="supports",
+            source_tier=2,
+            extraction_confidence=0.9,
+            graph_scope="depth",
+            investigation_id="inv-owner",
+            chunk_id=cid,
+            source_document_id="doc-owned",
+            owner_user_id="user-edge",
+        )
+    finally:
+        con.close()
+
+    rcon = connect_read(db_path)
+    try:
+        assert rcon.execute(
+            "SELECT owner_user_id FROM documents WHERE document_id = 'doc-owned'"
+        ).fetchone()[0] == "user-doc"
+        assert rcon.execute(
+            "SELECT owner_user_id FROM chunks WHERE chunk_id = ?", [cid]
+        ).fetchone()[0] == "user-chunk"
+        assert rcon.execute(
+            "SELECT DISTINCT owner_user_id FROM nodes WHERE node_id IN (?, ?)",
+            [src, tgt],
+        ).fetchall() == [("user-node",)]
+        assert rcon.execute(
+            "SELECT owner_user_id FROM edges WHERE edge_id = ?", [eid]
+        ).fetchone()[0] == "user-edge"
     finally:
         rcon.close()
 
