@@ -183,7 +183,14 @@ def test_median_computed():
 
 def test_renders_markdown_with_decision_and_metrics():
     outs = [
-        _mk_outcome(mutation_id=f"m-{i}", delta=0.10, accepted=True)
+        _mk_outcome(
+            mutation_id=f"m-{i}",
+            delta=0.10,
+            accepted=True,
+            mutation_rationale="tighten citations" if i == 0 else "",
+            parent_baseline_id="baseline-1" if i == 0 else None,
+            proposed_at="2026-07-01T00:00:00Z" if i == 0 else "",
+        )
         for i in range(MIN_MUTATIONS)
     ]
     v = compute_verdict("synthesizer", outs)
@@ -191,6 +198,9 @@ def test_renders_markdown_with_decision_and_metrics():
     assert "# Autoresearch Wedge 1 verdict — `synthesizer` (§15.6)" in md
     assert "**Decision:** `ratify`" in md
     assert "## Summary" in md
+    assert "Best mutation rationale: tighten citations" in md
+    assert "Best mutation parent baseline: `baseline-1`" in md
+    assert "Best mutation proposed at: `2026-07-01T00:00:00Z`" in md
     assert "## Next steps" in md
     assert "Wedges 2-4 unlock" in md
 
@@ -216,6 +226,30 @@ def test_render_verdict_rejects_invalid_decision():
         assert "verdict decision must be one of" in str(exc)
     else:  # pragma: no cover - defensive assertion path
         raise AssertionError("expected invalid verdict decision to be rejected")
+
+
+def test_render_verdict_rejects_malformed_best_mutation_provenance():
+    verdict = Verdict(
+        role="synthesizer",
+        decision="ratify",
+        iteration_count=20,
+        acceptance_rate=1.0,
+        mean_delta=0.10,
+        median_delta=0.10,
+        best_mutation_id="m-0",
+        best_mutation_delta=0.10,
+        total_cost_usd=1.0,
+        rationale="valid rationale",
+        sub_metric_regressions=[],
+        best_mutation_parent_baseline_id=123,  # type: ignore[arg-type]
+    )
+
+    try:
+        render_verdict_markdown(verdict)
+    except ValueError as exc:
+        assert "best_mutation_parent_baseline_id must be a string when present" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected malformed best-mutation provenance to be rejected")
 
 
 def test_render_reject_includes_regression_list():
