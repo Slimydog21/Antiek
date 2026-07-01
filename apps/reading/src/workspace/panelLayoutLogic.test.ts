@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  CASCADE_PANEL_STEP_PX,
+  CASCADE_PANEL_WRAP_PX,
+  cascadeOffset,
+} from "../design/elevation";
+import {
   clampRectToViewport,
   defaultDockedSize,
   initialFloatingRect,
@@ -114,13 +119,26 @@ describe("reorderArray", () => {
 });
 
 describe("initialFloatingRect", () => {
-  it("cascades position by stack index (~22px per panel)", () => {
+  it("cascades position by the shared elevation panel contract", () => {
     const r0 = initialFloatingRect(0);
     const r1 = initialFloatingRect(1);
     expect(r1.x).toBeGreaterThan(r0.x);
     expect(r1.y).toBeGreaterThan(r0.y);
-    expect(r1.x - r0.x).toBe(22);
-    expect(r1.y - r0.y).toBe(22);
+    expect(r1.x - r0.x).toBe(CASCADE_PANEL_STEP_PX);
+    expect(r1.y - r0.y).toBe(CASCADE_PANEL_STEP_PX);
+    expect({
+      x: r1.x - r0.x,
+      y: r1.y - r0.y,
+    }).toEqual(cascadeOffset(1, "panels"));
+  });
+
+  it("wraps through the same cascade offset as the elevation contract", () => {
+    const base = initialFloatingRect(0);
+    const wrapped = initialFloatingRect(10);
+    const expected = cascadeOffset(10, "panels");
+    expect(CASCADE_PANEL_WRAP_PX).toBe(CASCADE_PANEL_STEP_PX * 10 - expected.x);
+    expect(wrapped.x - base.x).toBe(expected.x);
+    expect(wrapped.y - base.y).toBe(expected.y);
   });
 
   it("returns the same default size", () => {
