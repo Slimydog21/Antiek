@@ -146,6 +146,7 @@ export default function ClaimCard({
             import("../workspace/actions").then(({ openClaimInspector }) => {
               openClaimInspector({
                 claimId: claim.claim_id,
+                claim,
                 investigationId,
                 documentId,
               });

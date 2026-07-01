@@ -176,7 +176,7 @@ describe("Reader — citation as a first-class clickable marker (M3)", () => {
     expect(cite!.getAttribute(PASSAGE_END_ATTR)).toBeNull();
   });
 
-  it("clicking a citation invokes the resolver with source_document_id + chunkId", () => {
+  it("clicking a citation with source offsets preserves the cited passage", () => {
     const openDocument = vi.fn();
     const { container } = renderDoc(allBlocksDocument, { openDocument });
     const cite = container.querySelector(
@@ -184,10 +184,18 @@ describe("Reader — citation as a first-class clickable marker (M3)", () => {
     )!;
     fireEvent.click(cite);
     expect(openDocument).toHaveBeenCalledTimes(1);
-    expect(openDocument).toHaveBeenCalledWith("doc-source-42", { chunkId: "chunk-7" });
+    expect(openDocument).toHaveBeenCalledWith("doc-source-42", {
+      chunkId: "chunk-7",
+      highlight: {
+        document_id: "doc-source-42",
+        block_id: "chunk-7",
+        char_start: 100,
+        char_end: 240,
+      },
+    });
   });
 
-  it("a citation inside a table cell is ALSO clickable (deep nesting via context)", () => {
+  it("a citation without source offsets stays chunk-only", () => {
     const openDocument = vi.fn();
     const { container } = renderDoc(allBlocksDocument, { openDocument });
     const cellCite = container.querySelector(

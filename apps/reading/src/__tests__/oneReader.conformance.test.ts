@@ -530,6 +530,22 @@ describe("oneReader conformance — unification proof (SPR-09 M3)", () => {
     expect(targets[0].search).toBe("");
   });
 
+  it("a citation passage range survives into the canonical /read target", () => {
+    const target = buildReaderTarget("doc-source-42", {
+      chunkId: "chunk-7",
+      highlight: {
+        document_id: "doc-source-42",
+        block_id: "chunk-7",
+        char_start: 100,
+        char_end: 240,
+      },
+    });
+    expect(target).toEqual({
+      path: "/read/doc-source-42",
+      search: "?chunk=chunk-7&hl=doc-source-42%3Achunk-7%3A100-240",
+    });
+  });
+
   it("all four entry points share one Reader mount invariant (same document_id → identical [data-reader-root] DOM)", () => {
     // Doors agree on resolver targets (test above); BookReader always mounts the
     // same <Reader> for a servable structured doc — mechanical equality, not eyeballed.
