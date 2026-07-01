@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 30;
+export const EVENT_SCHEMA_VERSION = 32;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -100,11 +100,19 @@ export const ActionType = {
   ARTIFACT_GENERATED: "artifact.generated",
   ARTIFACT_INTERACTED: "artifact.interacted",
   RLM_BRIDGE_DECIDED: "rlm.bridge.decided",
+  RLM_SESSION_STARTED: "rlm.session_started",
+  RLM_ITERATION: "rlm.iteration",
+  RLM_SUB_CALL_DISPATCHED: "rlm.sub_call_dispatched",
+  RLM_SESSION_COMPLETED: "rlm.session_completed",
+  RLM_SESSION_FAILED: "rlm.session_failed",
   QUALITY_GATE_EVALUATED: "quality_gate.evaluated",
   CROSS_GRAPH_CITATION_RECORDED: "cross_graph.citation.recorded",
   REV_SHARE_DECIDED: "rev_share.decided",
   PREFERENCE_OBSERVATION_RECORDED: "preference.observation.recorded",
   SKILL_RULE_PROMOTED: "skill_rule.promoted",
+  USER_REGISTERED: "user.registered",
+  USER_IDENTITY_ATTACHED: "user.identity_attached",
+  GRAPH_SCOPE_CHANGED: "graph.scope_changed",
   DISCOVERY_PROPOSED: "discovery.proposed",
   DISCOVERY_SELECTED: "discovery.selected",
   FETCH_FALLBACK_ESCALATED: "fetch.fallback.escalated",
@@ -557,6 +565,46 @@ export interface ClaimGroundednessVerdict {
   supported: boolean;
   cited_chunk_ids?: string[];
   rationale?: string;
+}
+
+/**
+ * Audit-only user lifecycle event for Sprint 19 plumbing.
+ *
+ * This payload records that the substrate learned about a user account.
+ * It does not grant access, create a graph, or activate multi-user mode.
+ */
+export interface UserRegisteredPayload {
+  action_type: "user.registered";
+  user_id: string;
+  email?: string | null;
+  auth_provider: string;
+  provider_subject: string;
+  registered_at: string;
+}
+
+/**
+ * Audit-only event linking an external identity to an Antiek user.
+ */
+export interface UserIdentityAttachedPayload {
+  action_type: "user.identity_attached";
+  user_id: string;
+  identity_provider: string;
+  provider_subject: string;
+  attached_at: string;
+  email?: string | null;
+}
+
+/**
+ * Audit-only event for a user's graph-routing scope transition.
+ */
+export interface GraphScopeChangedPayload {
+  action_type: "graph.scope_changed";
+  user_id: string;
+  previous_scope?: "operator" | "personal" | "collective" | "shared_substrate" | null;
+  new_scope: "operator" | "personal" | "collective" | "shared_substrate";
+  changed_at: string;
+  changed_by: string;
+  reason?: string;
 }
 
 /**
@@ -1655,6 +1703,74 @@ export interface RLMBridgeDecidedPayload {
 }
 
 /**
+ * First event in a ratified RLM session.
+ *
+ * It records the session identity, root attribution role, document anchor, and
+ * budget envelope. The full document text never belongs in the event log.
+ */
+export interface RLMSessionStartedPayload {
+  action_type: "rlm.session_started";
+  session_id: string;
+  root_role: string;
+  document_id_ref?: string | null;
+  threshold_tokens: number;
+  estimated_tokens?: number | null;
+  max_iterations: number;
+  cost_cap_usd: number;
+}
+
+/**
+ * One root RLM iteration: LLM-written code was attempted and summarized.
+ */
+export interface RLMIterationPayload {
+  action_type: "rlm.iteration";
+  session_id: string;
+  iteration: number;
+  summary: string;
+  cost_usd: number;
+}
+
+/**
+ * A sub-LLM call made from inside an RLM session.
+ *
+ * Tools attach to sub-LLMs only; the root REPL is not granted tools. This
+ * event records the sub-call boundary without storing prompt text.
+ */
+export interface RLMSubCallDispatchedPayload {
+  action_type: "rlm.sub_call_dispatched";
+  session_id: string;
+  target_role: string;
+  tier: string;
+  prompt_count: number;
+  parent_event_id?: string | null;
+  cost_usd?: number;
+}
+
+/**
+ * Terminal success or cost-cap completion event for an RLM session.
+ */
+export interface RLMSessionCompletedPayload {
+  action_type: "rlm.session_completed";
+  session_id: string;
+  status: "completed" | "cost_capped";
+  iteration_count: number;
+  cost_usd_accumulated: number;
+  final_summary: string;
+}
+
+/**
+ * Terminal failure event for an RLM session.
+ */
+export interface RLMSessionFailedPayload {
+  action_type: "rlm.session_failed";
+  session_id: string;
+  iteration_count: number;
+  cost_usd_accumulated: number;
+  error_type: string;
+  error_message: string;
+}
+
+/**
  * Quality-gate verdict for §13.9 public-graph promotion of a
  * notebook block. Carries the per-rubric pass/fail and the headline
  * accept decision; downstream gates aggregate these into operator-
@@ -2591,6 +2707,9 @@ export interface DocumentFiledIntoInvestigationPayload {
  * ``payload.action_type`` selects the right variant.
  */
 export type TypedPayload =
+  | UserRegisteredPayload
+  | UserIdentityAttachedPayload
+  | GraphScopeChangedPayload
   | DispatchCallPayload
   | ContextPackAssembledPayload
   | KnowledgeReusedPayload
@@ -2662,6 +2781,11 @@ export type TypedPayload =
   | PageAttributionComputedPayload
   | MCPAttributionRecordedPayload
   | RLMBridgeDecidedPayload
+  | RLMSessionStartedPayload
+  | RLMIterationPayload
+  | RLMSubCallDispatchedPayload
+  | RLMSessionCompletedPayload
+  | RLMSessionFailedPayload
   | QualityGateEvaluatedPayload
   | CrossGraphCitationRecordedPayload
   | RevShareDecidedPayload
@@ -2777,6 +2901,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "fetch.fallback.escalated",
   "graph.edge.inserted",
   "graph.node.inserted",
+  "graph.scope_changed",
   "graph.staleness.flagged",
   "graph.staleness.resolve",
   "graph.supersession.apply",
@@ -2817,6 +2942,11 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "reuse.gated",
   "rev_share.decided",
   "rlm.bridge.decided",
+  "rlm.iteration",
+  "rlm.session_completed",
+  "rlm.session_failed",
+  "rlm.session_started",
+  "rlm.sub_call_dispatched",
   "rubric.scored",
   "seam.read_to_research",
   "seam.read_to_write",
@@ -2838,6 +2968,8 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "synthesize.requested",
   "user.accept_distillation",
   "user.edit_distillation",
+  "user.identity_attached",
+  "user.registered",
   "user.reject_distillation",
   "verifier.lookup",
   "visual.claims_extracted",

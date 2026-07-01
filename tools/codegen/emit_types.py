@@ -140,6 +140,9 @@ NESTED_MODELS: tuple[type[BaseModel], ...] = (
 
 # Payload models, in the same order as the TypedPayload union.
 PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
+    schema_module.UserRegisteredPayload,
+    schema_module.UserIdentityAttachedPayload,
+    schema_module.GraphScopeChangedPayload,
     schema_module.DispatchCallPayload,
     schema_module.ContextPackAssembledPayload,
     schema_module.KnowledgeReusedPayload,  # AFF SPR-06 — flywheel reuse half
@@ -213,6 +216,11 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.PageAttributionComputedPayload,
     schema_module.MCPAttributionRecordedPayload,
     schema_module.RLMBridgeDecidedPayload,
+    schema_module.RLMSessionStartedPayload,
+    schema_module.RLMIterationPayload,
+    schema_module.RLMSubCallDispatchedPayload,
+    schema_module.RLMSessionCompletedPayload,
+    schema_module.RLMSessionFailedPayload,
     schema_module.QualityGateEvaluatedPayload,
     schema_module.CrossGraphCitationRecordedPayload,
     schema_module.RevShareDecidedPayload,

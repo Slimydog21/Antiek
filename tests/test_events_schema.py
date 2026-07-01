@@ -32,6 +32,7 @@ sys.path.insert(0, os.path.dirname(_HERE))
 from substrate.constants import CONFIDENCE_LEVELS  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.schemas import (  # noqa: E402
+    TYPED_PAYLOAD_ACTION_TYPES,
     WRESTLING_ACTION_TYPES,
     ActionType,
     ArtifactGeneratedPayload,
@@ -55,6 +56,11 @@ from substrate.schemas import (  # noqa: E402
     QuestionEscalatedToResearchPayload,
     QuestionIdentifiedPayload,
     QuestionResolvedByDocPayload,
+    RLMIterationPayload,
+    RLMSessionCompletedPayload,
+    RLMSessionFailedPayload,
+    RLMSessionStartedPayload,
+    RLMSubCallDispatchedPayload,
     UserAcceptDistillationPayload,
     UserEditDistillationPayload,
     UserRejectDistillationPayload,
@@ -377,6 +383,62 @@ def test_emit_typed_raises_when_wrestling_event_missing_document_id(tmp_path, mo
         )
 
 
+def test_rlm_session_payloads_are_typed_non_wrestling_events():
+    payloads = [
+        RLMSessionStartedPayload(
+            session_id="rlm-1",
+            root_role="wrestler",
+            document_id_ref="doc-1",
+            threshold_tokens=64_000,
+            estimated_tokens=128_000,
+            max_iterations=8,
+            cost_cap_usd=5.0,
+        ),
+        RLMIterationPayload(
+            session_id="rlm-1",
+            iteration=1,
+            summary="sliced chapter 2 and chapter 4",
+            cost_usd=0.12,
+        ),
+        RLMSubCallDispatchedPayload(
+            session_id="rlm-1",
+            target_role="grounder",
+            tier="flash",
+            prompt_count=5,
+            parent_event_id="evt-parent",
+            cost_usd=0.03,
+        ),
+        RLMSessionCompletedPayload(
+            session_id="rlm-1",
+            status="completed",
+            iteration_count=3,
+            cost_usd_accumulated=0.42,
+            final_summary="cross-chapter constraint extracted",
+        ),
+        RLMSessionFailedPayload(
+            session_id="rlm-1",
+            iteration_count=2,
+            cost_usd_accumulated=0.31,
+            error_type="TimeoutError",
+            error_message="iteration timed out",
+        ),
+    ]
+    for payload in payloads:
+        action = payload.action_type.value
+        assert action in TYPED_PAYLOAD_ACTION_TYPES
+        assert action not in WRESTLING_ACTION_TYPES
+        event = Event(
+            event_id=f"evt-{action}",
+            investigation_id="inv-rlm",
+            action_type=payload.action_type,
+            payload=payload,
+            param_version="rlm-test",
+            emitted_at=_now_naive(),
+        )
+        rebuilt = Event.model_validate_json(event.model_dump_json())
+        assert type(rebuilt.payload) is type(payload)
+
+
 # ---------------------------------------------------------------------------
 # 6. Sanity: every wrestling action_type declared in ActionType has both a
 # payload factory AND a membership in WRESTLING_ACTION_TYPES. Catches
@@ -413,7 +475,6 @@ def test_claim_confidence_levels_match_constants():
     """Claim.confidence must use the same vocabulary as
     ``substrate.constants.CONFIDENCE_LEVELS``. If one drifts from the
     other, downstream backtests stratify against an inconsistent set."""
-    c = Claim(claim_id="c", text="t", confidence="moderate", attribution_region_ids=[])
     # The schema-side Literal accepts the constants-side tuple values.
     for level in CONFIDENCE_LEVELS:
         Claim(claim_id="c", text="t", confidence=level, attribution_region_ids=[])
