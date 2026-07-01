@@ -1001,6 +1001,8 @@ def make_loop_one_handler(
         if not isinstance(event.payload, InvestigationStartRequestedPayload):
             return
         req = event.payload
+        if req.investigation_kind != "loop_one":
+            return
         ctx = InvestigationContext(
             investigation_id=event.investigation_id,
             question=req.question,
