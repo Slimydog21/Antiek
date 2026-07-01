@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import type { ParkedQuestionEntry } from "../../lib/api";
 import ThoughtPartnerPanel from "./ThoughtPartnerPanel";
 import {
+  BRAINSTORM_WATCHLIST_CHANGED_EVENT,
   dispatchBrainstormQuestionSelection,
   resetBrainstormQuestionSelection,
 } from "./WatchForLaterPanel";
@@ -193,6 +194,11 @@ describe("ThoughtPartnerPanel", () => {
   });
 
   it("parks an extension reply back into watch-for-later", async () => {
+    const watchlistChanges: Event[] = [];
+    const onWatchlistChanged = (event: Event) => {
+      watchlistChanges.push(event);
+    };
+    window.addEventListener(BRAINSTORM_WATCHLIST_CHANGED_EVENT, onWatchlistChanged);
     apiFetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -211,26 +217,31 @@ describe("ThoughtPartnerPanel", () => {
       }),
     });
 
-    render(<ThoughtPartnerPanel />);
-    selectQuestion();
-    await userEvent.type(
-      await screen.findByPlaceholderText("Challenge, synthesize, or extend this question..."),
-      "Extend this",
-    );
-    await userEvent.click(screen.getByRole("button", { name: "Ask thought partner" }));
+    try {
+      render(<ThoughtPartnerPanel />);
+      selectQuestion();
+      await userEvent.type(
+        await screen.findByPlaceholderText("Challenge, synthesize, or extend this question..."),
+        "Extend this",
+      );
+      await userEvent.click(screen.getByRole("button", { name: "Ask thought partner" }));
 
-    await userEvent.click(await screen.findByRole("button", { name: "Park for later" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Park for later" }));
 
-    await waitFor(() =>
-      expect(parkQuestionForLaterMock).toHaveBeenCalledWith({
-        investigation_id: "inv-source",
-        question_text: "What evidence would show retrieval feels like memory?",
-        source_document_id: "doc-source",
-        anchor_region_id: "region-1",
-        parent_event_id: "event-parent",
-      }),
-    );
-    expect(await screen.findByRole("button", { name: "Parked" })).toBeTruthy();
+      await waitFor(() =>
+        expect(parkQuestionForLaterMock).toHaveBeenCalledWith({
+          investigation_id: "inv-source",
+          question_text: "What evidence would show retrieval feels like memory?",
+          source_document_id: "doc-source",
+          anchor_region_id: "region-1",
+          parent_event_id: "event-parent",
+        }),
+      );
+      expect(watchlistChanges).toHaveLength(1);
+      expect(await screen.findByRole("button", { name: "Parked" })).toBeTruthy();
+    } finally {
+      window.removeEventListener(BRAINSTORM_WATCHLIST_CHANGED_EVENT, onWatchlistChanged);
+    }
   });
 
   it("surfaces the honest no-key state without fabricating a reply", async () => {
