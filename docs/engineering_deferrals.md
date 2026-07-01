@@ -305,6 +305,15 @@ This may not be a real deferral. §2.2 requires the chase be reachable;
 the SlideOver delivers it. A dedicated full-mode "ChaseTree" view is an
 optional polish item, not a spec gap.
 
+**2026-07-02 evidence hardening:** `ChaseSlideOver.test.tsx` now pins the
+floating panel contract directly: mounting does not auto-launch, the highlighted
+passage pre-fills the editable question, a refined question is sent as
+`question`, the original passage remains `context` / `spawn_context`, the parent
+investigation id is preserved, and `recordSpawnRelationship(child, parent)` runs
+after a successful child spawn. Focused verification:
+`cd apps/reading && npm test -- ChaseSlideOver ChaseThread SuggestedResearch DistillView --run`
+→ 20 passed.
+
 **Action when unlocked:** if the operator decides the SlideOver is
 insufficient, ship `apps/reading/src/modes/ChaseTree/` with the full
 tree-graph rendering. The `useInvestigationTree` hook already exposes
