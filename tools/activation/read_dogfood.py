@@ -9,7 +9,10 @@ for every failure or irritation.
 
 The tool makes that rule executable over a JSONL log so future agents cannot
 convert "CI is green" into "Read is done". It never records sessions itself and
-never judges answer quality; the operator's log remains the source of truth.
+never judges answer quality; the operator's log remains the source of truth. A
+mechanically complete log must end with an operator ``verdict``: ``ACTIVATE``,
+``REPAIR``, or ``ROLL BACK CLAIM``. ``REPAIR`` must also list concrete
+``blocking_issue_ids``.
 
 JSONL record shape (one object per session)::
 
@@ -25,6 +28,7 @@ JSONL record shape (one object per session)::
       "live_provider_ai": true,
       "citation_traced": true,
       "minutes_reading": 22,
+      "verdict": "ACTIVATE",
       "steps": {
         "1": {"status": "pass"},
         "2": {"status": "pass"},
