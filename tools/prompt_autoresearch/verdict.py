@@ -42,6 +42,7 @@ MIN_MUTATIONS = 20
 MIN_ACCEPTANCE_RATE = 0.40
 MIN_MEAN_DELTA = 0.05  # mirrors the runner's default epsilon
 ALLOWED_DECISIONS = frozenset({"ratify", "reject", "insufficient_data"})
+_FLOAT_TOLERANCE = 1e-9
 
 
 @dataclass(frozen=True)
@@ -320,6 +321,13 @@ def _validate_verdict(verdict: Verdict) -> None:
             raise ValueError(f"verdict {field} must be a non-negative integer")
     if verdict.accepted_count + verdict.rejected_count != verdict.iteration_count:
         raise ValueError("verdict accepted_count + rejected_count must equal iteration_count")
+    expected_acceptance_rate = (
+        verdict.accepted_count / verdict.iteration_count
+        if verdict.iteration_count
+        else 0.0
+    )
+    if abs(verdict.acceptance_rate - expected_acceptance_rate) > _FLOAT_TOLERANCE:
+        raise ValueError("verdict acceptance_rate must equal accepted_count / iteration_count")
     if verdict.total_cost_usd < 0.0:
         raise ValueError("verdict total_cost_usd must be non-negative")
     if not isinstance(verdict.rationale, str) or not verdict.rationale.strip():
