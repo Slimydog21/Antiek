@@ -25,12 +25,12 @@
 <main>
 <article>
 
-<p class="kicker">Sprint 20 &middot; operator-gated &middot; scoped substrate verified 2026-07-01 &middot; verdicts pending</p>
+<p class="kicker">Sprint 20 &middot; operator-gated &middot; scoped substrate verified 2026-07-02 local / 2026-07-01 UTC &middot; verdicts pending</p>
 <h1>Sprint 20 — Visible-Artifact Growth, Trajectory Replay, Dispatch Tier Verdict</h1>
 
 <div class="meta">
     <p><strong>Theme</strong>. Sprint 20 is where Sprint 17&ndash;19's measurement windows pay off or fail. Visible-artifact growth opens only if the operator publishes Antiek-produced work. The dispatch tier verdict needs fresh verified synthesis traffic. Autoresearch Wedge 1 requires an operator ratify-or-reject decision.</p>
-    <p><strong>Current reconciliation</strong>. Local implementation substrate exists for trajectory replay, dispatch verdict analysis, and the Phase 8 gate. The deterministic backend gate passed on 2026-07-01. The sprint remains operator-gated because the decisive publication and verdict artifacts cannot be completed by local code alone.</p>
+    <p><strong>Current reconciliation</strong>. Local implementation substrate exists for trajectory replay, dispatch verdict analysis, and the Phase 8 gate. The deterministic backend gate passed on 2026-07-01 UTC; trajectory replay now has route-level proof against a realistic multi-step investigation payload. The sprint remains operator-gated because the decisive publication and verdict artifacts cannot be completed by local code alone.</p>
 </div>
 
 <div class="toc">
@@ -91,7 +91,7 @@
 
 <div class="callout warn">
     <strong>Operator-gated, not complete</strong>
-    <p>The local substrate is present and the scoped backend test slice passed on 2026-07-01. The sprint cannot honestly close until the operator publishes at least one artifact, produces a fresh dispatch-tier verdict from verified synthesis traffic, and records the autoresearch Wedge 1 ratification decision.</p>
+    <p>The local substrate is present and the scoped backend test slice passed on 2026-07-01 UTC. The replay route now loads and scrubs a realistic six-event multi-step trajectory through the app's <code>/replay/:investigationId</code> path. The sprint cannot honestly close until the operator publishes at least one artifact, produces a fresh dispatch-tier verdict from verified synthesis traffic, and records the autoresearch Wedge 1 ratification decision.</p>
 </div>
 
 <p>Fresh deterministic gates:</p>
@@ -99,6 +99,10 @@
 <pre><code>cd apps/reading && npm test -- TrajectoryReplay --run
 
 1 file / 8 tests passed
+
+cd apps/reading &amp;&amp; npm test -- Replay.realTrajectory --run
+
+1 file / 1 test passed
 
 .venv/bin/python -m pytest \
   tests/test_dispatch_tier_verdict.py \
@@ -110,7 +114,7 @@
 
 81 passed in 0.70s</code></pre>
 
-<p>Implementation evidence exists for trajectory replay and Phase 8 shadow-mode substrate. Direct TrajectoryReplay component coverage now verifies empty-state honesty, chronological sorting, manual scrubbing, ReplayStepList jump handling, malformed jump no-op behavior, play/pause, autoplay progression, final-event stop behavior, and restart.</p>
+<p>Implementation evidence exists for trajectory replay and Phase 8 shadow-mode substrate. Direct TrajectoryReplay component coverage now verifies empty-state honesty, chronological sorting, manual scrubbing, ReplayStepList jump handling, malformed jump no-op behavior, play/pause, autoplay progression, final-event stop behavior, and restart. Route-level replay coverage now verifies that <code>/replay/:investigationId</code> fetches <code>/trajectory/:investigationId</code>, renders a realistic six-event multi-step investigation, sorts it chronologically, and scrubs to the terminal event.</p>
 
 <p>The dispatch verdict has a provisional closure record at <code>docs/decisions/dispatch-tier-verdict.md</code> and a follow-up at <code>docs/decisions/g5-dispatch-tier-verdict-followup.md</code>. That follow-up explicitly requires fresh operator investigations and a re-run once there are at least 20 verified syntheses per provider.</p>
 

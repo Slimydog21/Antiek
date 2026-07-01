@@ -5,13 +5,16 @@
 - **Target branch:** `reader/integration`
 - **Status:** operator-gated
 - **Verified code SHA:** commit containing this record
-- **Recorded:** `2026-07-01T20:26:27Z`
+- **Recorded:** `2026-07-01T21:10:40Z`
 - **Run mode:** status reconciliation over Sprint 20 acceptance criteria
 
 ## Fresh Gates
 
 - `cd apps/reading && npm test -- TrajectoryReplay --run`
   - Passed: 1 file / 8 tests.
+- `cd apps/reading && npm test -- Replay.realTrajectory --run`
+  - Passed: 1 file / 1 test.
+  - Added route-level proof: `/replay/:investigationId` fetches `/trajectory/:investigationId`, renders a realistic six-event multi-step investigation, sorts events chronologically, and scrubs to the terminal event.
 - `.venv/bin/python -m pytest tests/test_dispatch_tier_verdict.py tests/test_prompt_autoresearch_verdict.py tests/test_phase8_gate.py tests/test_phase8_calibration_status.py tests/test_gepa_phase8_bridge.py tests/test_gepa_phase8_applier_e2e.py -q`
   - Passed: 81 tests.
 
@@ -19,7 +22,7 @@
 
 | Criterion | Status | Evidence |
 |-----------|--------|----------|
-| Trajectory replay works against a real multi-step investigation | component verified / real-investigation proof still needed | `apps/reading/src/components/TrajectoryReplay.tsx`; `apps/reading/src/components/TrajectoryReplay.test.tsx`; Storybook story exists |
+| Trajectory replay works against a real multi-step investigation | route-level realistic trajectory verified / live production trajectory still operator-gated | `apps/reading/src/components/TrajectoryReplay.tsx`; `apps/reading/src/components/TrajectoryReplay.test.tsx`; `apps/reading/src/modes/Replay/Replay.realTrajectory.test.tsx`; Storybook story exists |
 | Dispatch verdict is on paper | provisional / fresh-traffic re-run still needed | `docs/decisions/dispatch-tier-verdict.md`; `docs/decisions/g5-dispatch-tier-verdict-followup.md`; dispatch verdict tests passed |
 | Autoresearch Wedge 1 verdict is on paper | operator-gated | prompt-autoresearch verdict tests passed; no Sprint 20 operator ratification document found |
 | Antiek-produced artifact is in the wild | operator-gated | external publication cannot be completed locally |
