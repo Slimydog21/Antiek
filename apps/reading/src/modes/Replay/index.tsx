@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom";
 import TrajectoryReplay from "../../components/TrajectoryReplay";
 import type { Event } from "../../generated/types";
 import { API_BASE, apiFetch } from "../../lib/api";
+import { isEventFrame, isPingFrame } from "../../lib/eventFrame";
 import { PanelHost } from "../../workspace/PanelHost";
 
 /**
@@ -44,8 +45,8 @@ export default function Replay() {
         );
       }
       const data = await resp.json();
-      const list: Event[] = (data.events ?? data) as Event[];
-      setEvents(Array.isArray(list) ? list : []);
+      const list: unknown = data.events ?? data;
+      setEvents(Array.isArray(list) ? list.filter(isEventFrame) : []);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
       setEvents([]);
@@ -100,17 +101,16 @@ export default function Replay() {
     ws.onmessage = (msg) => {
       if (cancelled) return;
       try {
-        const payload = JSON.parse(msg.data);
+        const payload: unknown = JSON.parse(msg.data);
         // Keepalive frames have `type === "ping"` — skip those.
-        if (payload && payload.type === "ping") return;
-        if (!payload || typeof payload !== "object") return;
-        if (!payload.event_id) return;
+        if (isPingFrame(payload)) return;
+        if (!isEventFrame(payload)) return;
         setEvents((prev) => {
           // Skip if we've already seen this event (re-subscribe races).
           if (prev.some((e) => e.event_id === payload.event_id)) {
             return prev;
           }
-          return [...prev, payload as Event];
+          return [...prev, payload];
         });
       } catch {
         // Malformed frame — drop. Live tail is best-effort.

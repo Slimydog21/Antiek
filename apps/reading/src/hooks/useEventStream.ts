@@ -1,50 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 
-import {
-  TYPED_PAYLOAD_ACTION_TYPES,
-  type ActionType,
-  type Event,
-} from "../generated/types";
+import type { Event } from "../generated/types";
+import { isEventFrame, isPingFrame } from "../lib/eventFrame";
 
 interface UseEventStreamState {
   events: Event[];
   status: "connecting" | "open" | "closed" | "error";
   reconnects: number;
-}
-
-interface PingFrame {
-  type: "ping";
-}
-
-function isPingFrame(frame: unknown): frame is PingFrame {
-  return (
-    typeof frame === "object" &&
-    frame !== null &&
-    (frame as { type?: unknown }).type === "ping"
-  );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isEventFrame(frame: unknown): frame is Event {
-  if (!isRecord(frame) || !isRecord(frame.payload)) return false;
-  if (
-    typeof frame.event_id !== "string" ||
-    typeof frame.investigation_id !== "string" ||
-    typeof frame.action_type !== "string" ||
-    typeof frame.param_version !== "string" ||
-    typeof frame.emitted_at !== "string"
-  ) {
-    return false;
-  }
-
-  const actionType = frame.action_type as ActionType;
-  return (
-    TYPED_PAYLOAD_ACTION_TYPES.has(actionType) &&
-    frame.payload.action_type === actionType
-  );
 }
 
 /**
