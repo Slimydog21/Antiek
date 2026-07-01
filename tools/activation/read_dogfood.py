@@ -178,7 +178,7 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
         if bool(record.get("live_provider_ai")) and _provider_status(record) != "ready":
             failures.append(prefix + "live_provider_ai=true requires provider_status=ready")
 
-        if bool(record.get("citation_traced")) or _step_status(steps.get("5")) == "pass":
+        if bool(record.get("citation_traced")):
             citation_trace_sessions.add(session_id)
 
         if str(record.get("entry_door", "")).strip() in NON_LIBRARY_ENTRY_DOORS:

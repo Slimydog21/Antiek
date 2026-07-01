@@ -48,9 +48,27 @@ def test_closure_ready_when_golden_path_rule_is_satisfied() -> None:
     assert report.closure_ready is True
     assert report.valid_sessions == 10
     assert report.live_provider_sessions == 5
-    assert report.citation_trace_sessions == 10  # step 5 passed in every session
+    assert report.citation_trace_sessions == 3
     assert report.non_library_sessions == 1
     assert report.failures == ()
+
+
+def test_citation_tracing_requires_explicit_session_evidence() -> None:
+    records = [
+        _session(i, live=i <= 5, citation=i <= 2, entry_door="library")
+        for i in range(1, 11)
+    ]
+    records[-1]["entry_door"] = "command_palette"
+
+    report = validate_sessions(records)
+
+    assert report.closure_ready is False
+    assert report.valid_sessions == 10
+    assert report.citation_trace_sessions == 2
+    assert any(
+        ">=3 valid sessions with citation/source tracing" in f
+        for f in report.failures
+    )
 
 
 def test_not_enough_live_provider_sessions_blocks_closure() -> None:
