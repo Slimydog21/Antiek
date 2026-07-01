@@ -58,7 +58,7 @@ def _normalize_confidence(raw: Any) -> str:
 def parse_notes_response(
     text: str,
     *,
-    canonical_source_event_ids: set[str] | frozenset[str] | tuple[str, ...] | None = None,
+    canonical_source_event_ids: set[str] | frozenset[str] | tuple[str, ...] = (),
 ) -> list[ExtractedNote]:
     """Parse the role response into ``ExtractedNote`` list.
 
@@ -92,11 +92,10 @@ def parse_notes_response(
             str(a).strip() for a in attribution
             if isinstance(a, str) and str(a).strip()
         )
-        if canonical_source_event_ids is not None:
-            cleaned_attrib = validate_refs(
-                cleaned_attrib,
-                canonical_source_event_ids,
-            ).valid
+        cleaned_attrib = validate_refs(
+            cleaned_attrib,
+            canonical_source_event_ids,
+        ).valid
         if not cleaned_attrib:
             # Rule 4: drop unattributed notes. Hallucination defense.
             continue

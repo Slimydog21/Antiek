@@ -203,7 +203,10 @@ def test_parse_notes_clean_json():
       ]
     }
     """
-    notes = parse_notes_response(text)
+    notes = parse_notes_response(
+        text,
+        canonical_source_event_ids=("evt-1", "evt-2"),
+    )
     assert len(notes) == 1
     n = notes[0]
     assert isinstance(n, ExtractedNote)
@@ -223,7 +226,7 @@ def test_parse_notes_drops_unattributed():
         '{"text": "no attribution field at all", "confidence": "high"}'
         ']}'
     )
-    notes = parse_notes_response(text)
+    notes = parse_notes_response(text, canonical_source_event_ids=("evt-1",))
     assert len(notes) == 1
     assert notes[0].text == "attributed"
 
@@ -246,6 +249,16 @@ def test_parse_notes_drops_hallucinated_source_event_ids():
     assert notes[0].source_event_ids == ("evt-1",)
 
 
+def test_parse_notes_drops_source_event_ids_without_canonical_set():
+    text = (
+        '{"notes": [{'
+        '"text": "untrusted", "confidence": "high", '
+        '"source_event_ids": ["evt-1"]'
+        '}]}'
+    )
+    assert parse_notes_response(text) == []
+
+
 def test_parse_notes_drops_empty_text():
     text = (
         '{"notes": ['
@@ -254,7 +267,7 @@ def test_parse_notes_drops_empty_text():
         '{"text": "real", "confidence": "high", "source_event_ids": ["evt-1"]}'
         ']}'
     )
-    notes = parse_notes_response(text)
+    notes = parse_notes_response(text, canonical_source_event_ids=("evt-1",))
     assert len(notes) == 1
     assert notes[0].text == "real"
 
@@ -263,13 +276,13 @@ def test_parse_notes_coerces_unknown_confidence():
     text = (
         '{"notes": [{"text": "x", "confidence": "medium", "source_event_ids": ["e"]}]}'
     )
-    notes = parse_notes_response(text)
+    notes = parse_notes_response(text, canonical_source_event_ids=("e",))
     assert notes[0].confidence == "unknown"
 
 
 def test_parse_notes_handles_code_fence():
     text = '```json\n{"notes": [{"text": "x", "confidence": "high", "source_event_ids": ["e"]}]}\n```'
-    notes = parse_notes_response(text)
+    notes = parse_notes_response(text, canonical_source_event_ids=("e",))
     assert len(notes) == 1
 
 

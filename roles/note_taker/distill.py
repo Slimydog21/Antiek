@@ -84,7 +84,7 @@ class DispatchDistiller:
         response_text = getattr(result, "text", None) or getattr(result, "response_text", "") or str(result)
         return self._parse(
             response_text,
-            canonical_source_event_ids=tuple(source_event_ids) or None,
+            canonical_source_event_ids=tuple(source_event_ids),
         )
 
     def _build_prompt(self, text: str, context: str, source_event_ids: Sequence[str]) -> str:
@@ -101,7 +101,7 @@ class DispatchDistiller:
     def _parse(
         response_text: str,
         *,
-        canonical_source_event_ids: tuple[str, ...] | None = None,
+        canonical_source_event_ids: tuple[str, ...] = (),
     ) -> Distillation:
         notes = parse_notes_response(
             response_text,
