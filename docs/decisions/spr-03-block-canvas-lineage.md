@@ -64,46 +64,32 @@ extending `LineageEdge` with a new `toKind` and a second clause in
 `deriveLineageEdges` — *only after* the relation lands in the substrate. Until
 then, drawing such an edge would be fabrication.
 
-## M4 theme grouping — DEFERRED
+## M4 theme grouping — BUILT
 
-M4 (whiteboard-style theme grouping into regions) is the sprint's explicitly
-**lowest-priority and cuttable** milestone (sprint page §M4). It is **deferred,
-not shipped** — and recorded here as deferred rather than claimed-met, because
-shipping a non-functional region render would be a false-met claim (a §9-style
-honesty failure in a UI costume).
+M4 (whiteboard-style theme grouping into regions) was the sprint's explicitly
+**lowest-priority and cuttable** milestone (sprint page §M4). It is now built
+on the existing typed-event seam: select two or more blocks, enter an optional
+label, and group them as a theme. The canvas emits one
+`block.positioned` event per selected block carrying a shared `region_id`
+and optional `region_label`; reload replays those events and mounts
+`ThemeRegion` from the derived member set. Selecting grouped blocks and choosing
+Ungroup emits the same event shape with `region_id: null` / `region_label: null`,
+removing membership without a side store.
 
-**Why deferred.** A region can only be populated by a *region-assign gesture*
-(a user action that tags one or more blocks with a shared `region_id`). SPR-03
-shipped **no such gesture**. Without it, `region_id` is always null — every
-block is ungrouped — so a region can never contain a member, and the region
-render would draw nothing (or, worse, a hollow box claimed as "grouping").
-Rather than ship a render path that can never fire, we cut it cleanly and leave
-a documented forward-compatible seam.
-
-**What shipped (the reserved seam).** The pieces a future M4 needs are in place
-and inert:
+**What shipped.** The original reserved pieces are now live:
 
 - **Schema fields** `region_id` / `region_label` on `BlockPositionPayload`
   (`substrate/schemas/events.py`) and on `BlockPosition`
-  (`canvasLayout.ts`) — reserved, always persisted as `null` today (the persist
-  call in `Canvas.tsx` hardcodes `region_id: null, region_label: null`). These
-  are a forward-compatible reserved seam; they are intentionally NOT removed.
-- **`ThemeRegion.tsx`** — the presentational region component, kept but **NOT
-  mounted** by `Canvas.tsx` (the canvas renders blocks + lineage edges only).
-  Its header marks it RESERVED. Its unit test (`ThemeRegion.test.tsx`) survives
-  as a reserved-seam unit test of a pure component.
+  (`canvasLayout.ts`) — group membership rides the same position event as
+  coordinates, so there is no side store.
+- **`ThemeRegion.tsx`** — the presentational region component is mounted by
+  `Canvas.tsx` only for non-empty derived region groups.
 - **`regionBounds`** in `canvasLayout.ts` — the pure geometry helper the region
-  render will use, kept and unit-tested.
+  render uses, unit-tested and exercised by `Canvas.test.tsx`.
 
-**Precise follow-up (what a future sprint adds).** Add a
-multi-select → "group as theme" → label gesture on the canvas that emits a
-`block.positioned` event for each selected block carrying a **shared**
-`region_id` (and an optional `region_label`). Then re-derive regions in
-`Canvas.tsx` by grouping resolved positions by `region_id`, and **mount**
-`ThemeRegion` behind the blocks. No schema change is needed — the fields already
-exist; only the gesture + the (previously removed) grouping derivation + the
-mount are net-new. Until that gesture lands, mounting `ThemeRegion` would render
-an empty layer, so it stays unmounted.
+The region gesture is still deliberately **not** node-to-node lineage. It tags
+blocks with a user-authored visual grouping region; it does not assert that one
+insight derives from another.
 
 ## Boundary note (defensibility)
 

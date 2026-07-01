@@ -1,13 +1,9 @@
 /**
- * RESERVED — M4 (theme grouping) is DEFERRED. This component + the
- * `region_id`/`region_label` schema fields are the forward-compatible seam; it
- * is NOT mounted today because SPR-03 shipped no region-assign gesture. A
- * future sprint adds a multi-select→group→label gesture that emits
- * `block.positioned` with a shared `region_id`, then mounts this. See
- * docs/decisions/spr-03-block-canvas-lineage.md.
- *
- * ThemeRegion — whiteboard-style theme grouping for the DRW block-canvas
- * (Living Roadmap SPR-03 M4, the lowest-priority + cuttable milestone).
+ * ThemeRegion — M4 theme grouping for the DRW block-canvas. Regions are
+ * mounted only after the canvas has real `region_id` membership from
+ * `block.positioned` events; there is no hollow placeholder layer.
+ * Whiteboard-style theme grouping for the DRW block-canvas (Living Roadmap
+ * SPR-03 M4, the lowest-priority + cuttable milestone).
  *
  * A region is a labelled rectangle drawn behind a set of blocks that share a
  * `regionId`. It does NOT own a store: grouping rides the SAME typed event as
