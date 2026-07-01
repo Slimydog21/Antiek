@@ -28,7 +28,11 @@ from substrate.gap_detection.contradiction import negation_verifier
 from substrate.graph import ops
 from substrate.graph.insight_question import promote_insight, promote_question
 from substrate.graph.schema import init_database_at_path
-from substrate.research_bridge.gap import _parse_cluster_response
+from substrate.research_bridge.gap import (
+    GapCluster,
+    _parse_cascade_response,
+    _parse_cluster_response,
+)
 
 
 class _ConstEmbedding:
@@ -262,3 +266,41 @@ def test_research_bridge_cluster_parser_validates_question_ids_with_shared_helpe
 
     assert len(clusters) == 1
     assert clusters[0].question_ids == ("q-1", "q-2")
+
+
+def test_research_bridge_cascade_parser_validates_cluster_id_with_shared_helper():
+    clusters = [
+        GapCluster(
+            cluster_id="rgcl-1",
+            label="Evidence gaps",
+            rationale=None,
+            priority_rank=0,
+            question_ids=("q-1",),
+        )
+    ]
+    payload = {
+        "prompts": [
+            {
+                "cluster_id": " rgcl-1 ",
+                "order_index": 0,
+                "prompt_text": "Investigate Evidence gaps for source corroboration.",
+                "target_provider": "grok",
+            },
+            {
+                "cluster_id": "rgcl-fabricated",
+                "order_index": 1,
+                "prompt_text": "Investigate fabricated cluster.",
+                "target_provider": "grok",
+            },
+        ]
+    }
+
+    prompts, grounding_drops = _parse_cascade_response(
+        json.dumps(payload),
+        clusters,
+        cluster_corpus={"rgcl-1": "Evidence gaps source corroboration"},
+    )
+
+    assert grounding_drops == 0
+    assert len(prompts) == 1
+    assert prompts[0].cluster_id == "rgcl-1"
