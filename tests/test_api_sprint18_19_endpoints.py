@@ -6,11 +6,42 @@ import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
+from substrate.multi_user import (
+    encode_verified_claims_header,
+    sign_verified_claims_header,
+)
 
 
 def _client():
     app = create_app(register_wrestling=False)
     return TestClient(app)
+
+
+def _external_headers(
+    monkeypatch,
+    *,
+    sub: str,
+) -> dict[str, str]:
+    secret = "trusted-hop-secret"
+    monkeypatch.setenv("ANTIEK_EXTERNAL_AUTH_VENDOR", "supabase")
+    monkeypatch.setenv("ANTIEK_EXTERNAL_AUTH_HEADER_SECRET", secret)
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
+    encoded = encode_verified_claims_header({
+        "sub": sub,
+        "email": f"{sub}@example.com",
+        "app_metadata": {"antiek_scopes": ["private_research"]},
+    })
+    signature = sign_verified_claims_header(
+        vendor="supabase",
+        encoded_claims=encoded,
+        secret=secret,
+    )
+    return {
+        "X-Antiek-Verified-Claims": encoded,
+        "X-Antiek-Verified-Claims-Signature": signature,
+    }
 
 
 @pytest.fixture()
@@ -300,6 +331,45 @@ def test_telemetry_preference_refuses_forbidden_enable(
     resp = client.patch(
         "/trust-center/telemetry-preferences/query_content_telemetry",
         json={"enabled": True},
+    )
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "forbidden_surface"
+
+
+def test_external_user_telemetry_preferences_are_scoped_to_claims_user(
+    isolated_telemetry_preferences, monkeypatch,
+):
+    client = _client()
+    user_a = _external_headers(monkeypatch, sub="reader-a")
+    patch_a = client.patch(
+        "/trust-center/telemetry-preferences/skill_invocation_frequency",
+        json={"enabled": False},
+        headers=user_a,
+    )
+    assert patch_a.status_code == 200, patch_a.text
+    assert patch_a.json()["enabled"] is False
+
+    list_a = client.get("/trust-center/telemetry-preferences", headers=user_a)
+    by_name_a = {p["surface_name"]: p for p in list_a.json()["preferences"]}
+    assert by_name_a["skill_invocation_frequency"]["enabled"] is False
+    assert by_name_a["skill_invocation_frequency"]["updated_at"] is not None
+
+    user_b = _external_headers(monkeypatch, sub="reader-b")
+    list_b = client.get("/trust-center/telemetry-preferences", headers=user_b)
+    by_name_b = {p["surface_name"]: p for p in list_b.json()["preferences"]}
+    assert by_name_b["skill_invocation_frequency"]["enabled"] is True
+    assert by_name_b["skill_invocation_frequency"]["updated_at"] is not None
+
+
+def test_external_user_telemetry_preferences_refuse_forbidden_enable(
+    isolated_telemetry_preferences, monkeypatch,
+):
+    client = _client()
+    resp = client.patch(
+        "/trust-center/telemetry-preferences/query_content_telemetry",
+        json={"enabled": True},
+        headers=_external_headers(monkeypatch, sub="reader-a"),
     )
 
     assert resp.status_code == 409
