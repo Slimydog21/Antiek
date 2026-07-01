@@ -1031,6 +1031,23 @@ is DEFER unless ≥ 1 enterprise deal is blocked on SOC 2.
 2. Decide PURSUE or DEFER.
 3. Commit `docs/soc2_decision.md` filled in per the template.
 
+#### Decision artifact probe
+
+After filling `docs/soc2_decision.md`, run:
+
+```bash
+./.venv/bin/python -m tools.ops.soc2_decision_probe \
+  --decision-path docs/soc2_decision.md \
+  --json
+```
+
+A PASS means the filed decision has no remaining template placeholders,
+contains the procurement-signal counts and ACV estimate, populates the
+substrate-readiness table, and is threshold-consistent with PURSUE vs
+DEFER. It does **not** make the decision and does **not** close OA-019
+unless the operator has actually reviewed the enterprise pipeline and
+committed the filled decision artifact.
+
 #### Once closed
 
 `docs/soc2_decision.md` populated with the decision + cited signal.
