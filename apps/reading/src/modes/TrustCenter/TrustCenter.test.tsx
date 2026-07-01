@@ -99,4 +99,26 @@ describe("TrustCenter", () => {
     ).toBeTruthy();
     expect(screen.queryByText(/GET \/trust-center failed/i)).toBeNull();
   });
+
+  it("sanitizes malformed epsilon values before rendering the public cap", async () => {
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ...TRUST_RESPONSE,
+        differential_privacy_epsilon_budgets: {
+          skill_invocation_frequency: Number.NaN,
+          source_tier_preference_signals: Number.POSITIVE_INFINITY,
+          query_content_telemetry: -1,
+          dispatch_tier_telemetry: 14.25,
+        },
+      }),
+    });
+
+    render(<TrustCenter />);
+
+    expect(await screen.findByText("Privacy budget")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/NaN|Infinity|Epsilon: -/);
+    expect(screen.getAllByText("Epsilon: 0").length).toBeGreaterThan(0);
+    expect(screen.getByText("Epsilon: 10")).toBeTruthy();
+  });
 });

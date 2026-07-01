@@ -17,6 +17,17 @@ interface TrustCenterData {
   loop_3_unlock_status: Record<string, boolean>;
 }
 
+function normalizedEpsilon(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return 0;
+  }
+  return Math.min(value, EPSILON_CAP);
+}
+
+function formatEpsilon(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
 export default function TrustCenter() {
   const [data, setData] = useState<TrustCenterData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +100,7 @@ export default function TrustCenter() {
                         {formatBudgetLabel(category)}
                       </span>
                       <span className="text-sm font-mono text-ink dark:text-bright">
-                        Epsilon: {epsilon}
+                        Epsilon: {formatEpsilon(normalizedEpsilon(epsilon))}
                       </span>
                     </li>
                   ))}
