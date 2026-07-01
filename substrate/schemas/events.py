@@ -241,6 +241,14 @@ class ActionType(StrEnum):
     # Skill-rule promotion to the shared substrate (substrate/multi_user/skill_writer.py).
     SKILL_RULE_PROMOTED = "skill_rule.promoted"
 
+    # ── Sprint 19 — multi-user substrate plumbing. These are audit
+    #    events only: they make account lifecycle and graph-routing
+    #    scope changes reconstructable without activating the Sprint 22+
+    #    multi-user pivot.
+    USER_REGISTERED = "user.registered"
+    USER_IDENTITY_ATTACHED = "user.identity_attached"
+    GRAPH_SCOPE_CHANGED = "graph.scope_changed"
+
     # ── Sprint 18 — Exa/Browserbase substrate-only precursor ──────────
     # Spec: docs/integration_exa_browserbase.md §18.3.
     # Discovery layer: discovery.proposed records "we considered this URL";
@@ -740,7 +748,11 @@ class ActionType(StrEnum):
 #     dispatch-shaped ``call`` path now emits successful ``dispatch.call`` rows,
 #     so the typed payload must accept ``tier="tts"`` and codegen must expose it
 #     to the TS surface. No event body shape changes beyond the literal union.
-EVENT_SCHEMA_VERSION: int = 30
+# v31: Sprint 19 multi-user substrate plumbing. Three audit-only typed events
+#     user.registered, user.identity_attached, and graph.scope_changed record
+#     account lifecycle and graph-routing scope changes without turning on the
+#     Sprint 22+ multi-user pivot.
+EVENT_SCHEMA_VERSION: int = 31
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -765,6 +777,52 @@ class _PayloadBase(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid", use_enum_values=True)
+
+
+# ── Multi-user substrate plumbing ───────────────────────────────────
+
+
+UserGraphScope = Literal["operator", "personal", "collective", "shared_substrate"]
+
+
+class UserRegisteredPayload(_PayloadBase):
+    """Audit-only user lifecycle event for Sprint 19 plumbing.
+
+    This payload records that the substrate learned about a user account.
+    It does not grant access, create a graph, or activate multi-user mode.
+    """
+
+    action_type: Literal[ActionType.USER_REGISTERED] = ActionType.USER_REGISTERED
+    user_id: str = Field(min_length=1)
+    email: str | None = None
+    auth_provider: str = Field(min_length=1)
+    provider_subject: str = Field(min_length=1)
+    registered_at: str = Field(min_length=1)
+
+
+class UserIdentityAttachedPayload(_PayloadBase):
+    """Audit-only event linking an external identity to an Antiek user."""
+
+    action_type: Literal[ActionType.USER_IDENTITY_ATTACHED] = (
+        ActionType.USER_IDENTITY_ATTACHED
+    )
+    user_id: str = Field(min_length=1)
+    identity_provider: str = Field(min_length=1)
+    provider_subject: str = Field(min_length=1)
+    attached_at: str = Field(min_length=1)
+    email: str | None = None
+
+
+class GraphScopeChangedPayload(_PayloadBase):
+    """Audit-only event for a user's graph-routing scope transition."""
+
+    action_type: Literal[ActionType.GRAPH_SCOPE_CHANGED] = ActionType.GRAPH_SCOPE_CHANGED
+    user_id: str = Field(min_length=1)
+    previous_scope: UserGraphScope | None = None
+    new_scope: UserGraphScope
+    changed_at: str = Field(min_length=1)
+    changed_by: str = Field(min_length=1)
+    reason: str = ""
 
 
 # ── Dispatch + context pack ─────────────────────────────────────────
@@ -3852,7 +3910,7 @@ class DocumentFiledIntoInvestigationPayload(_PayloadBase):
 
 
 TypedPayload = Annotated[
-    DispatchCallPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | MCPAttributionRecordedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ClaimReviewedPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
+    UserRegisteredPayload | UserIdentityAttachedPayload | GraphScopeChangedPayload | DispatchCallPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | MCPAttributionRecordedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ClaimReviewedPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
     Field(discriminator="action_type"),
 ]
 
@@ -3860,6 +3918,9 @@ TypedPayload = Annotated[
 # Action types currently covered by the typed union. Read-side
 # reconstruction switches on this set: typed if member, dict otherwise.
 TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
+    ActionType.USER_REGISTERED.value,
+    ActionType.USER_IDENTITY_ATTACHED.value,
+    ActionType.GRAPH_SCOPE_CHANGED.value,
     ActionType.DISPATCH_CALL.value,
     ActionType.CONTEXT_PACK_ASSEMBLED.value,
     # AFF SPR-06 — flywheel reuse half.
@@ -4105,6 +4166,11 @@ __all__ = [
     "Claim",
     "ConfidenceLevel",
     "ArtifactKind",
+    # Sprint 19 — multi-user substrate plumbing
+    "UserGraphScope",
+    "UserRegisteredPayload",
+    "UserIdentityAttachedPayload",
+    "GraphScopeChangedPayload",
     # Dispatch + context pack
     "DispatchCallPayload",
     "ContextPackAssembledPayload",
