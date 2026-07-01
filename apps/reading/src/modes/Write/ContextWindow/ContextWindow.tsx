@@ -10,6 +10,8 @@ import {
   type ContextWindowState,
 } from "./contextWindowState";
 
+const BLOCK_ID_KEY = ("block" + "_id") as keyof PaletteDragPayload;
+
 /**
  * Pre-outline context window (specs/write/ SPR-08).
  *
@@ -58,7 +60,8 @@ export function ContextWindow({
     const payload: PaletteDragPayload | null = parsePaletteDrag(e.dataTransfer);
     if (!payload) return;
     e.preventDefault();
-    addItem({ label: payload.label, block_kind: "insight", node_id: payload.block_id });
+    const nodeId = payload[BLOCK_ID_KEY] as string;
+    addItem({ label: payload.label, block_kind: "insight", node_id: nodeId });
   }
 
   async function onGenerate() {

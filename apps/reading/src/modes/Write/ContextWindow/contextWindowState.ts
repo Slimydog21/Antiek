@@ -49,7 +49,11 @@ export interface PromoteContextBody {
   blocks: PromoteBlockSpec[];
 }
 
-const _NODE_KINDS = new Set(["insight", "open_question", "claim"]);
+const _NODE_KINDS = new Set([
+  "insight",
+  "open_question",
+  "claim",
+]);
 
 /** Map a context item to a promote block spec, preserving provenance:
  * a node item → graph_node + node_id; a user item → user_authored +
