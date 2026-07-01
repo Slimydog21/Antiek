@@ -30,7 +30,7 @@
 
 <div class="meta">
     <p><strong>Theme</strong>. Sprint 21 has two independent workstreams: Synquery expert-network integration after creation-surface PMF signal, and Phase 8 enforcing only if Sprint 20's autoresearch Wedge 1 verdict ratifies. Ubiquitous AI continues to broaden across operator surfaces.</p>
-    <p><strong>Current reconciliation</strong>. Synquery adapter substrate, contract-equivalent transcript ingestion, Phase 8 gate substrate, AI sidecar undo/action coverage, and billing substrate tests passed locally. The sprint remains operator-gated because creation-surface PMF, real Synquery booking/payment/webhook, and G6 ratification are external/operator decisions.</p>
+    <p><strong>Current reconciliation</strong>. Synquery adapter substrate, contract-equivalent transcript ingestion, Phase 8 gate substrate, AI sidecar undo/action coverage, authenticated-route sidecar reach, and billing substrate tests passed locally. The sprint remains operator-gated because creation-surface PMF, real Synquery booking/payment/webhook, and G6 ratification are external/operator decisions.</p>
 </div>
 
 <div class="toc">
@@ -107,9 +107,13 @@
 
 cd apps/reading &amp;&amp; npm test -- AppShell.hotkeys AISidecar CommandPalette WorkspaceStore --run
 
-3 files passed; 31 tests passed</code></pre>
+3 files passed; 31 tests passed
 
-<p>The AI sidecar reach claim now has a shell-level deterministic gate: <code>&#8984;/</code> opens and closes the <code>AISidecar</code> as a docked-right workspace panel from <code>AppShell</code>. G6 remains open in <code>docs/operator_gate_actions.md</code>. That gate blocks Phase 8 enforcing and autoresearch Wedges 2&ndash;4. The Synquery adapter is feature-flagged off by default via <code>ANTIEK_SYNQUERY_ENABLED</code>, matching the PMF-gated activation model; completed transcript ingestion and booking spend caps are locally covered as contract-equivalent paths, not as live vendor callback/payment proof.</p>
+cd apps/reading &amp;&amp; npm test -- AppShell.hotkeys --run
+
+1 file passed; 40 tests passed</code></pre>
+
+<p>The AI sidecar reach claim now has deterministic gates: <code>&#8984;/</code> opens and closes the <code>AISidecar</code> as a docked-right workspace panel from <code>AppShell</code>, and the authenticated route matrix verifies the same shortcut from every <code>OPERATOR_ROUTES</code> path except <code>/trust</code>, which is public and intentionally outside <code>AppShell</code>. G6 remains open in <code>docs/operator_gate_actions.md</code>. That gate blocks Phase 8 enforcing and autoresearch Wedges 2&ndash;4. The Synquery adapter is feature-flagged off by default via <code>ANTIEK_SYNQUERY_ENABLED</code>, matching the PMF-gated activation model; completed transcript ingestion and booking spend caps are locally covered as contract-equivalent paths, not as live vendor callback/payment proof.</p>
 
 <h2 id="acceptance">5. Acceptance &amp; exit criteria <a class="section-anchor" href="#acceptance">#</a></h2>
 

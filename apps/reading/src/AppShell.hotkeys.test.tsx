@@ -60,6 +60,7 @@ import { AppShell } from "./AppShell";
 import { useWorkspace } from "./workspace/WorkspaceStore";
 import { SHORTCUT_EVENTS } from "./workspace/shortcuts";
 import { installLocalStorageMock } from "./test/localStorage";
+import { OPERATOR_ROUTES } from "./shell/operatorRoutes";
 
 let restoreLocalStorage: (() => void) | null = null;
 
@@ -75,9 +76,9 @@ afterEach(() => {
   restoreLocalStorage = null;
 });
 
-function mountShell() {
+function mountShell(initialEntry = "/") {
   return render(
-    <MemoryRouter initialEntries={["/"]}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <AppShell>
         <div data-testid="route-view">ROUTE</div>
       </AppShell>
@@ -148,4 +149,30 @@ describe("AppShell SPR-08 — the HotkeyHud is mounted + HELP_TOGGLE-driven", ()
     expect(useWorkspace.getState().panels["shortcuts:aisidecar"]).toBeUndefined();
     expect(useWorkspace.getState().dockRightIds).not.toContain("shortcuts:aisidecar");
   });
+
+  it.each(OPERATOR_ROUTES.filter((route) => route.path !== "/trust"))(
+    "opens the AISidecar from authenticated operator route $path",
+    (route) => {
+      mountShell(route.path);
+
+      act(() => {
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "/",
+            metaKey: true,
+            bubbles: true,
+          }),
+        );
+      });
+
+      const opened = useWorkspace.getState().panels["shortcuts:aisidecar"];
+      expect(opened?.kind, `${route.path} must open AISidecar`).toBe("AISidecar");
+      expect(opened?.mode, `${route.path} must dock AISidecar right`).toBe(
+        "docked-right",
+      );
+      expect(useWorkspace.getState().dockRightIds).toContain(
+        "shortcuts:aisidecar",
+      );
+    },
+  );
 });

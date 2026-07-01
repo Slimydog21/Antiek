@@ -5,7 +5,7 @@
 - **Target branch:** `reader/integration`
 - **Status:** operator-gated
 - **Verified code SHA:** commit containing this record
-- **Recorded:** `2026-07-01T21:06:56Z`
+- **Recorded:** `2026-07-01T21:14:28Z`
 - **Run mode:** status reconciliation over Sprint 21 acceptance criteria
 
 ## Fresh Gates
@@ -20,6 +20,9 @@
   - Passed: 2 files / 28 tests.
 - `cd apps/reading && npm test -- AppShell.hotkeys AISidecar CommandPalette WorkspaceStore --run`
   - Passed: 3 files / 31 tests.
+- `cd apps/reading && npm test -- AppShell.hotkeys --run`
+  - Passed: 1 file / 40 tests.
+  - Added route-matrix proof: every authenticated `OPERATOR_ROUTES` path can open the `AISidecar` docked-right via `Cmd-/`; `/trust` is public and intentionally outside `AppShell`.
 
 ## Acceptance Mapping
 
@@ -29,7 +32,7 @@
 | Expert call booked and completed via Synquery | substrate present / external workflow gated | `tools/synquery`; `tests/test_synquery.py`; real API not exercised |
 | Synquery transcript ingested | contract-equivalent substrate verified / live callback gated | `tools/synquery/adapter.py`; `tests/test_synquery.py`; completed transcript payload persists a tier-2 document + chunks; real Synquery webhook not exercised |
 | Phase 8 enforcing in production with a correct rejection | blocked by G6 | `docs/operator_gate_actions.md` keeps G6 open; Phase 8 tests passed locally |
-| Ubiquitous AI sidecar reaches every surface | shell shortcut verified / browser route audit still optional | AppShell global shortcut opens AISidecar as a docked-right workspace panel; AISidecar, CommandPalette, WorkspaceStore frontend tests passed; PostHog Wedge 4 verdict accepted current structured action surface |
+| Ubiquitous AI sidecar reaches every surface | authenticated route-matrix verified / manual browser audit still optional | AppShell global shortcut opens AISidecar as a docked-right workspace panel from every authenticated `OPERATOR_ROUTES` path; `/trust` is public and intentionally outside AppShell; AISidecar, CommandPalette, WorkspaceStore frontend tests passed; PostHog Wedge 4 verdict accepted current structured action surface |
 | Expert-call cost discipline holds | contract-equivalent cap verified / live booking gated | Synquery budget filtering, hard-cap rejection, estimated booking-cost rejection, and billing pipeline tests passed; live paid booking not exercised |
 
 ## Tool Notes
