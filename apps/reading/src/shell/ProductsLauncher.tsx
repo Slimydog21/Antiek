@@ -33,7 +33,7 @@ const BARE_ROUTES = new Set(
 // inventory without duplicating taxonomy.
 const RUN_LABELS: Record<string, string> = {
   OperatorDashboard: "Operator console",
-  TrustCenter: "Trust & safety",
+  TrustCenter: "Trust Center",
   PrivacyDashboard: "Privacy dashboard",
   Billing: "Billing & usage",
   Settings: "Settings",
