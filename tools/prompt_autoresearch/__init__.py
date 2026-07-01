@@ -26,6 +26,7 @@ from .calibration import (
     calibrate_epsilon,
     render_calibration_markdown,
 )
+from .events import jsonl_event_sink
 from .runner import (
     PromptAutoresearchRunner,
     PromptMutation,
@@ -66,6 +67,7 @@ __all__ = [
     "composite_score",
     "deterministic_voice_style_score",
     "grounding_preserved_rate",
+    "jsonl_event_sink",
     "load_outcomes_json",
     "outcome_from_json",
     "outcome_to_json",

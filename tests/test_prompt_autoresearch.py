@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from decimal import Decimal
 
 import pytest
@@ -14,6 +15,7 @@ from tools.prompt_autoresearch import (
     composite_score,
     deterministic_voice_style_score,
     grounding_preserved_rate,
+    jsonl_event_sink,
     load_outcomes_json,
     sector_vocab_overlap,
     write_outcomes_json,
@@ -281,6 +283,41 @@ def test_runner_emits_iteration_completed_event(monkeypatch):
         "total": outcome.composite_breakdown.total,
     }
     assert events[0]["emitted_at"].endswith("Z")
+
+
+def test_runner_can_persist_iteration_events_as_jsonl(monkeypatch, tmp_path):
+    monkeypatch.delenv("ANTIEK_ENV", raising=False)
+    events_path = tmp_path / "reports/autoresearch/events.jsonl"
+    runner = PromptAutoresearchRunner(
+        role="synthesizer",
+        epsilon=0.05,
+        baseline_total_score=0.5,
+        event_sink=jsonl_event_sink(events_path),
+    )
+    mutation = PromptMutation(
+        mutation_id="mutation-jsonl",
+        role="synthesizer",
+        parent_baseline_id=None,
+        proposed_prompt="Improved prompt",
+        rationale="persist event",
+    )
+
+    runner.run_iteration(
+        mutation,
+        execute_fn=lambda p: ("Concise synthesis citing chunk-A.", Decimal("0.02")),
+        corpus_terms=["concise"],
+        expected_claim_ids=["chunk-A"],
+        rubric_judge_fn=lambda t: 0.95,
+    )
+
+    rows = [
+        json.loads(line)
+        for line in events_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(rows) == 1
+    assert rows[0]["event"] == "prompt_autoresearch.iteration_completed"
+    assert rows[0]["mutation_id"] == "mutation-jsonl"
+    assert rows[0]["cost_usd"] == "0.02"
 
 
 def test_runner_rejects_when_delta_below_epsilon(monkeypatch):
