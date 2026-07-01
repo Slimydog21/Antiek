@@ -81,16 +81,26 @@ and the PR-2 grep is clean).
   exists in Speak; the shared marginalia author flow is now wired to blob
   storage + the typed event funnel.)
 
-## The exact next step
+## Closure update — exact synthesis passage mount
 
-1. **Exact servable synthesis passage mount:** bounded/restricted marginalia is
-   now visible in `MasterMdViewer` (persisted `marginalia.noted` →
-   `reResolveNote` → `makeMarginaliaAugmentation`). The remaining synthesis
-   surface gap is the servable exact-passage case: it needs a rendered
-   `data-passage-*` marker for the resolved `{kind:"passage"}` anchor, not a
-   fabricated chunk fallback.
-2. The augmentation already maps resolved notes → anchored widgets; no
-   augmentation change needed.
+**Closed 2026-07-01 on `reader/integration`.** The exact servable synthesis
+passage mount is now live:
+
+- `bc05781b` (`fix(read): mount exact marginalia passage anchors`) stamps
+  resolved exact-note passage anchors as `data-passage-*` markers in
+  `MasterMdViewer`, so the existing geometry pass can resolve the real
+  `{kind:"passage", chunkId, start, end}` anchor instead of fabricating a chunk
+  fallback.
+- `d36bd62c` (`fix(read): surface chase launchers on exact notes`) consumes those
+  same exact-note passage anchors through `makeChaseLauncherAugmentation` and
+  opens the existing `ChaseThread` panel with the exact quote as `spawnContext`.
+- The regression in `MasterMdViewer.test.tsx` proves the full path for a servable
+  quote: persisted `marginalia.noted` → `reResolveNote` → passage marker →
+  marginalia card → anchored `Follow this` launcher → `ChaseThread` workspace
+  panel seeded with the quote and parent investigation id.
+
+No marginalia augmentation change was needed; the surface now supplies the
+missing passage DOM marker and component map.
 
 ## Reconsider if
 
