@@ -57,6 +57,10 @@ import {
 
 export interface CanvasProps {
   investigationId: string;
+  /** Child investigation ids known to have launched. Used only to label the
+   *  existing reserved-child edge; absent ids stay "reserved" rather than
+   *  fabricated into a launched state. */
+  launchedChildIds?: ReadonlySet<string>;
   /** Click-to-detail seam for SPR-04 (anchors the float-menu in block detail).
    *  Optional. */
   onOpenDetail?: (node: DistilledNode) => void;
@@ -76,7 +80,12 @@ type LoadState =
       positions: Map<string, BlockPosition>;
     };
 
-export default function Canvas({ investigationId, onOpenDetail, onCiteSource }: CanvasProps) {
+export default function Canvas({
+  investigationId,
+  launchedChildIds,
+  onOpenDetail,
+  onCiteSource,
+}: CanvasProps) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
 
   const load = useCallback(async () => {
@@ -134,6 +143,7 @@ export default function Canvas({ investigationId, onOpenDetail, onCiteSource }: 
       insights={state.insights}
       questions={state.questions}
       initialPositions={state.positions}
+      launchedChildIds={launchedChildIds}
       onOpenDetail={onOpenDetail}
       onCiteSource={onCiteSource}
     />
@@ -145,6 +155,7 @@ function LoadedCanvas({
   insights,
   questions,
   initialPositions,
+  launchedChildIds,
   onOpenDetail,
   onCiteSource,
 }: {
@@ -152,6 +163,7 @@ function LoadedCanvas({
   insights: DistilledNode[];
   questions: DistilledNode[];
   initialPositions: Map<string, BlockPosition>;
+  launchedChildIds?: ReadonlySet<string>;
   onOpenDetail?: (node: DistilledNode) => void;
   onCiteSource?: (node: DistilledNode) => void;
 }) {
@@ -363,6 +375,7 @@ function LoadedCanvas({
         <Edges
           questions={questions}
           positions={positions}
+          launchedChildIds={launchedChildIds}
           width={extent.width}
           height={extent.height}
         />

@@ -55,6 +55,11 @@ first (rather than inventing one in the UI).
   *reserved* child marker from a *launched* child marker. This is still a
   question → child-research marker, not a node-to-node edge. The canvas draws
   **no** node-to-node edge from the tree because no such relation exists.
+- In the DRW session monitor, `Canvas` now receives `launchedChildIds` derived
+  from the live session's known `researches[].investigation_id` values. A
+  reserved child marker flips to launched only when its exact child
+  investigation id is present in that session set; unrelated session researches
+  do not change the marker.
 
 ## What would reverse / extend this
 
