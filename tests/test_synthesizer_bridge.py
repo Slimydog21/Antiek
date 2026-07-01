@@ -374,6 +374,51 @@ async def test_long_substrate_uses_rlm_then_constraint_loop_wraps(
     assert len(resolved) == 1
 
 
+@pytest.mark.asyncio
+async def test_long_synthesis_rlm_exposes_llm_batch(
+    monkeypatch, app_and_bus, async_client,
+):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    import interfaces.research.api.synthesizer as bridge
+
+    monkeypatch.setattr(bridge, "SYNTHESIS_CONTEXT_BUDGET_TOKENS", 10)
+    _, bus = app_and_bus
+    inv = "inv-synth-rlm-batch"
+    thesis = _good_thesis(attributed=True, summary="RLM_BATCH_SYNTHESIS")
+    code = (
+        "partials = llm_batch(['sub-question A', 'sub-question B'])\n"
+        f"answer['content'] = {json.dumps(json.dumps(thesis))}\n"
+        "answer['ready'] = True"
+    )
+    register_provider(_StubSynthesizer([code]))
+    _patch_dispatch_config(monkeypatch, _synth_config("stub-synthesizer"))
+    sub_calls: list[Event] = []
+
+    async def capture_sub_call(event: Event) -> None:
+        sub_calls.append(event)
+
+    bus.register_handler("rlm.sub_call_dispatched", capture_sub_call)
+
+    await _post_synthesize(async_client, investigation_id=inv)
+    await bus.wait_for_handlers(timeout=5.0)
+
+    assert len(sub_calls) == 1
+    assert sub_calls[0].payload.prompt_count == 2
+    delivered_row = next(
+        r for r in trajectory(inv)
+        if r["action_type"] == ActionType.SYNTHESIZE_DELIVERED.value
+    )
+    delivered = Event.model_validate(delivered_row)
+    assert delivered.payload.thesis_summary == "RLM_BATCH_SYNTHESIS"
+
+    dispatch_calls = [
+        row for row in trajectory(inv)
+        if row["action_type"] == "dispatch.call"
+    ]
+    assert len(dispatch_calls) == 3  # one codegen call + two llm_batch calls
+    assert all(row["parent_event_id"] for row in dispatch_calls)
+
+
 # ---------------------------------------------------------------------------
 # 1. Happy path, no constraints
 # ---------------------------------------------------------------------------

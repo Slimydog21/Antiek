@@ -42,6 +42,7 @@ import sys
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from decimal import Decimal
+from threading import Lock
 from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
@@ -63,6 +64,7 @@ from orchestration.rlm import (  # noqa: E402
     run_loop_with_timeout,
     session_failed_payload,
     session_started_payload,
+    sub_call_dispatched_payload,
 )
 from orchestration.rlm.bridge import is_ratified  # noqa: E402
 from orchestration.rlm.session import RLM_DEFAULT_MAX_ITERATIONS  # noqa: E402
@@ -83,6 +85,7 @@ from substrate.schemas import (  # noqa: E402
     ExecutionRisk,
     FalsificationCondition,
     ReasoningPathUsed,
+    RLMSubCallDispatchedPayload,
     SynthesizeDeliveredPayload,
     SynthesizeRequestedPayload,
     ThesisComponent,
@@ -624,6 +627,65 @@ async def _dispatch_rlm_and_parse(
         corpus={"prompt": prompt, "system_prompt": root_prompt},
         max_iterations=RLM_DEFAULT_MAX_ITERATIONS,
     )
+    pending_sub_calls: list[RLMSubCallDispatchedPayload] = []
+    pending_sub_calls_lock = Lock()
+
+    def queue_sub_call(*, prompt_count: int, tier: str, cost_usd: Decimal) -> None:
+        payload = sub_call_dispatched_payload(
+            session,
+            target_role="synthesizer",
+            tier=tier,
+            prompt_count=prompt_count,
+            parent_event_id=event.event_id,
+            cost_usd=cost_usd,
+        )
+        with pending_sub_calls_lock:
+            pending_sub_calls.append(payload)
+
+    async def flush_sub_calls() -> None:
+        with pending_sub_calls_lock:
+            payloads = list(pending_sub_calls)
+            pending_sub_calls.clear()
+        for payload in payloads:
+            await emitter.emit(payload)
+
+    def llm_query(prompt: str) -> str:
+        result = dispatch(
+            prompt,
+            "synthesizer",
+            investigation_id=event.investigation_id,
+            parent_event_id=event.event_id,
+        )
+        queue_sub_call(
+            prompt_count=1,
+            tier=result.tier,
+            cost_usd=Decimal(str(result.cost_usd)),
+        )
+        return result.text
+
+    def llm_batch(prompts: list[str]) -> list[str]:
+        outputs: list[str] = []
+        total_cost = Decimal("0.00")
+        tier = "batch"
+        for item in prompts:
+            result = dispatch(
+                str(item),
+                "synthesizer",
+                investigation_id=event.investigation_id,
+                parent_event_id=event.event_id,
+            )
+            outputs.append(result.text)
+            total_cost += Decimal(str(result.cost_usd))
+            tier = result.tier
+        queue_sub_call(
+            prompt_count=len(prompts),
+            tier=tier,
+            cost_usd=total_cost,
+        )
+        return outputs
+
+    repl.registry.install("llm_query", llm_query)
+    repl.registry.install("llm_batch", llm_batch)
     last_codegen_cost = Decimal("0.00")
 
     def generate_code(summary) -> str:
@@ -647,6 +709,7 @@ async def _dispatch_rlm_and_parse(
             iteration_summary=lambda summary, _code: (
                 f"RLM synthesis iteration {summary.iteration + 1}"
             ),
+            after_execute=flush_sub_calls,
         )
     except (ProviderError, KeyError) as exc:
         session.fail()
