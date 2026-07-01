@@ -14,7 +14,9 @@ from typing import Any
 import duckdb
 
 from substrate.books.serve_guard import serve_full_text_guarded
+from substrate.event_log import default_events_dir, trajectory
 from substrate.graph.retrieval_gate import is_chunk_body_withheld
+from substrate.schemas.events import ActionType
 
 from .errors import (
     BookChunkNotFoundError,
@@ -37,6 +39,117 @@ def _resolve_db_path() -> str:
             "Point it at the Antiek DuckDB file."
         )
     return path
+
+
+def _resolve_events_dir() -> str:
+    """Resolve the Antiek event-log directory for read-only MCP resources."""
+    return default_events_dir()
+
+
+def _iter_event_log_rows(*, events_dir: str | None = None) -> list[dict[str, Any]]:
+    """Read every live/sealed trajectory row in the event-log directory."""
+    root = events_dir or _resolve_events_dir()
+    if not os.path.isdir(root):
+        return []
+
+    rows: list[dict[str, Any]] = []
+    investigation_ids: set[str] = set()
+    for name in os.listdir(root):
+        if name.endswith(".jsonl"):
+            investigation_ids.add(name[: -len(".jsonl")])
+        elif name.endswith(".parquet"):
+            investigation_ids.add(name[: -len(".parquet")])
+
+    for investigation_id in sorted(investigation_ids):
+        rows.extend(trajectory(investigation_id, events_dir=root))
+
+    rows.sort(key=lambda row: (row.get("emitted_at") or "", row.get("event_id") or ""))
+    return rows
+
+
+_ACCOUNT_EVENT_TYPES: frozenset[str] = frozenset({
+    ActionType.USER_REGISTERED.value,
+    ActionType.USER_IDENTITY_ATTACHED.value,
+    ActionType.GRAPH_SCOPE_CHANGED.value,
+})
+
+
+def list_account_events(
+    user_id: str,
+    *,
+    events_dir: str | None = None,
+) -> list[dict[str, Any]]:
+    """Return typed account lifecycle/scope events for one user.
+
+    Sprint 19 keeps this read-only and event-log-backed: it lets MCP clients
+    reconstruct account and graph-scope state without enabling auth,
+    per-user routing, or the Sprint 22+ multi-user pivot.
+    """
+    user_id = user_id.strip()
+    if not user_id:
+        raise ValueError("user_id is required")
+
+    matched: list[dict[str, Any]] = []
+    for event in _iter_event_log_rows(events_dir=events_dir):
+        action_type = event.get("action_type")
+        if action_type not in _ACCOUNT_EVENT_TYPES:
+            continue
+        payload = event.get("payload") or {}
+        if not isinstance(payload, dict) or payload.get("user_id") != user_id:
+            continue
+        matched.append({
+            "event_id": event.get("event_id"),
+            "investigation_id": event.get("investigation_id"),
+            "action_type": action_type,
+            "emitted_at": event.get("emitted_at"),
+            "payload": payload,
+        })
+    return matched
+
+
+def get_account_scope(
+    user_id: str,
+    *,
+    events_dir: str | None = None,
+) -> dict[str, Any]:
+    """Reconstruct the latest account/scope summary from typed events."""
+    events = list_account_events(user_id, events_dir=events_dir)
+    registered = next(
+        (event for event in events if event["action_type"] == ActionType.USER_REGISTERED.value),
+        None,
+    )
+    identities = [
+        event["payload"]
+        for event in events
+        if event["action_type"] == ActionType.USER_IDENTITY_ATTACHED.value
+    ]
+    scope_events = [
+        event
+        for event in events
+        if event["action_type"] == ActionType.GRAPH_SCOPE_CHANGED.value
+    ]
+    latest_scope = scope_events[-1] if scope_events else None
+
+    return {
+        "user_id": user_id,
+        "registered": registered is not None,
+        "registered_at": (
+            registered["payload"].get("registered_at") if registered is not None else None
+        ),
+        "auth_provider": (
+            registered["payload"].get("auth_provider") if registered is not None else None
+        ),
+        "identity_count": len(identities),
+        "identities": identities,
+        "current_scope": (
+            latest_scope["payload"].get("new_scope") if latest_scope is not None else None
+        ),
+        "scope_changed_at": (
+            latest_scope["payload"].get("changed_at") if latest_scope is not None else None
+        ),
+        "scope_event_id": latest_scope["event_id"] if latest_scope is not None else None,
+        "event_count": len(events),
+    }
 
 
 def get_note(
