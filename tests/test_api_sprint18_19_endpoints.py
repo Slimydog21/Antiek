@@ -261,6 +261,10 @@ def test_trust_center_loop3_unlock_all_false():
     body = resp.json()
     for met in body["loop_3_unlock_status"].values():
         assert met is False
+    for met in body["loop_3_evidence_status"].values():
+        assert met is False
+    assert body["loop_3_all_evidence_passed"] is False
+    assert "eval_headroom" in body["loop_3_evidence_summaries"]
 
 
 def test_telemetry_preferences_seed_from_live_registry(
