@@ -140,11 +140,16 @@ def test_rlm_bridge_decision_to_payload_normalizes_reason():
         escalated=True,
         session_id="rlm-deadbeef",
         reason="escalated_to_rlm cap_usd=5.00",
+        root_role="wrestler",
     )
     p = d.to_typed_payload()
     assert isinstance(p, RLMBridgeDecidedPayload)
     assert p.reason == "escalated_to_rlm"
     assert p.session_id == "rlm-deadbeef"
+    started = d.to_session_started_payload()
+    assert started is not None
+    assert started.session_id == "rlm-deadbeef"
+    assert started.root_role == "wrestler"
 
 
 # ── QualityGateEvaluatedPayload ────────────────────────────────────

@@ -28,14 +28,13 @@ import hashlib
 import os
 import sys
 import uuid
+from datetime import UTC
 from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
-
-from datetime import UTC
 
 from processing.embedding import (  # noqa: E402
     EmbeddingProvider,
@@ -65,7 +64,7 @@ from substrate.schemas import (  # noqa: E402
     Event,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402
 
 # The role-tail prompt appended after the context pack. Asks for
 # structured JSON; the parser tolerates loose formatting (Markdown code
@@ -530,6 +529,20 @@ def make_document_loaded_handler(
                             document_id=event.document_id,
                         )
                         await broadcaster.broadcast(bridge_event)
+                        started_payload = decision.to_session_started_payload()
+                        if started_payload is not None:
+                            started_event = _TypedEvent(
+                                event_id=f"evt-{_uuid.uuid4().hex[:12]}",
+                                investigation_id=(
+                                    event.investigation_id or "__no_investigation__"
+                                ),
+                                action_type=_AT.RLM_SESSION_STARTED,
+                                payload=started_payload,
+                                param_version="wrestling-v0",
+                                emitted_at=_dt.now(UTC),
+                                document_id=event.document_id,
+                            )
+                            await broadcaster.broadcast(started_event)
                     except Exception as exc:  # pragma: no cover — emit must never block ingestion
                         print(
                             f"wrestling.document_loaded[rlm-bridge]: "

@@ -30,6 +30,7 @@ import os
 from dataclasses import dataclass
 
 from orchestration.rlm.session import (
+    RLM_DEFAULT_MAX_ITERATIONS,
     RLM_DOC_THRESHOLD_TOKENS,
     RLM_SESSION_COST_USD_CAP,
     RLMRatificationRequired,
@@ -57,6 +58,7 @@ class RLMBridgeDecision:
     escalated: bool
     session_id: str | None
     reason: str
+    root_role: str = "wrestler"
 
     def to_typed_payload(self) -> RLMBridgeDecidedPayload:  # noqa: F821
         """Materialize this decision as the canonical typed event
@@ -83,6 +85,28 @@ class RLMBridgeDecision:
             escalated=self.escalated,
             session_id=self.session_id,
             reason=reason,  # type: ignore[arg-type]
+        )
+
+    def to_session_started_payload(self) -> RLMSessionStartedPayload | None:  # noqa: F821
+        """Return the session-start payload for real escalations only.
+
+        Deferred and below-threshold decisions are represented solely by
+        ``rlm.bridge.decided``; ``rlm.session_started`` means a ratified RLM
+        session exists and has a session id.
+        """
+        if not self.escalated or self.session_id is None:
+            return None
+
+        from substrate.schemas.events import RLMSessionStartedPayload
+
+        return RLMSessionStartedPayload(
+            session_id=self.session_id,
+            root_role=self.root_role,
+            document_id_ref=self.document_id,
+            threshold_tokens=self.threshold_tokens,
+            estimated_tokens=self.estimated_tokens,
+            max_iterations=RLM_DEFAULT_MAX_ITERATIONS,
+            cost_cap_usd=float(RLM_SESSION_COST_USD_CAP),
         )
 
 
@@ -139,6 +163,7 @@ def maybe_escalate_to_rlm(
             escalated=False,
             session_id=None,
             reason="below_threshold",
+            root_role=root_role,
         )
 
     if not ratified:
@@ -152,6 +177,7 @@ def maybe_escalate_to_rlm(
             escalated=False,
             session_id=None,
             reason="deferred_pending_ratification",
+            root_role=root_role,
         )
 
     try:
@@ -173,6 +199,7 @@ def maybe_escalate_to_rlm(
             escalated=False,
             session_id=None,
             reason="deferred_pending_ratification",
+            root_role=root_role,
         )
 
     return RLMBridgeDecision(
@@ -187,4 +214,5 @@ def maybe_escalate_to_rlm(
         reason=(
             f"escalated_to_rlm cap_usd={RLM_SESSION_COST_USD_CAP}"
         ),
+        root_role=root_role,
     )
