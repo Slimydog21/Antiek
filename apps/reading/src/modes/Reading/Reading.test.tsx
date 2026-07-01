@@ -161,6 +161,14 @@ describe("paginate", () => {
     expect(pages[0].pageIndex).toBe(0);
   });
 
+  it.each(["## Page 0", "## Page 9007199254740992"])(
+    "does not treat malformed page marker %s as a real page boundary",
+    (marker) => {
+      const pages = paginate(`${marker}\n\nbody`);
+      expect(pages).toEqual([{ pageIndex: 0, pageNumber: 1, text: `${marker}\n\nbody` }]);
+    },
+  );
+
   it("returns nothing for empty body", () => {
     expect(paginate("")).toEqual([]);
   });

@@ -22,6 +22,13 @@ export interface PageWindow {
 
 const PAGE_MARKER = /^##\s+Page\s+(\d+)\s*$/i;
 
+function parsePageMarker(line: string): number | null {
+  const match = line.match(PAGE_MARKER);
+  if (!match) return null;
+  const pageNumber = Number(match[1]);
+  return Number.isSafeInteger(pageNumber) && pageNumber >= 1 ? pageNumber : null;
+}
+
 /**
  * Split served markdown into page windows on `## Page N` markers.
  *
@@ -38,12 +45,12 @@ export function paginate(markdown: string): PageWindow[] {
   let current: { pageNumber: number; buf: string[] } | null = null;
 
   for (const line of lines) {
-    const m = line.match(PAGE_MARKER);
-    if (m) {
+    const pageNumber = parsePageMarker(line);
+    if (pageNumber !== null) {
       if (current) {
         windows.push(finish(current));
       }
-      current = { pageNumber: parseInt(m[1], 10), buf: [] };
+      current = { pageNumber, buf: [] };
     } else if (current) {
       current.buf.push(line);
     }
