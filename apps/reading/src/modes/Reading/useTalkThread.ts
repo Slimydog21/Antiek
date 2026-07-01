@@ -56,13 +56,68 @@ function emptyState(): TalkThreadState {
   return { branches: [{ branch_id: TRUNK, forked_from: null, messages: [] }], active_branch_id: TRUNK };
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function isCitation(value: unknown): value is BookCitation {
+  const c = record(value);
+  return (
+    c !== null &&
+    typeof c.chunk_id === "string" &&
+    typeof c.document_id === "string" &&
+    (typeof c.page_index === "number" || c.page_index === null) &&
+    typeof c.page_resolved === "boolean" &&
+    typeof c.snippet === "string"
+  );
+}
+
+function isTalkMessage(value: unknown): value is TalkMessage {
+  const m = record(value);
+  return (
+    m !== null &&
+    typeof m.id === "string" &&
+    typeof m.question === "string" &&
+    (typeof m.answer === "string" || m.answer === null) &&
+    Array.isArray(m.citations) &&
+    m.citations.every(isCitation) &&
+    typeof m.grounded === "boolean"
+  );
+}
+
+function isTalkBranch(value: unknown): value is TalkBranch {
+  const b = record(value);
+  return (
+    b !== null &&
+    typeof b.branch_id === "string" &&
+    (typeof b.forked_from === "string" || b.forked_from === null) &&
+    Array.isArray(b.messages) &&
+    b.messages.every(isTalkMessage)
+  );
+}
+
+function isTalkThreadState(value: unknown): value is TalkThreadState {
+  const s = record(value);
+  if (
+    s === null ||
+    typeof s.active_branch_id !== "string" ||
+    !Array.isArray(s.branches) ||
+    s.branches.length === 0 ||
+    !s.branches.every(isTalkBranch)
+  ) {
+    return false;
+  }
+  return s.branches.some((b) => b.branch_id === s.active_branch_id);
+}
+
 function readStored(documentId: string): TalkThreadState {
   try {
     const raw = window.sessionStorage.getItem(KEY(documentId));
     if (!raw) return emptyState();
-    const parsed = JSON.parse(raw) as TalkThreadState;
-    if (!parsed.branches?.length || !parsed.active_branch_id) return emptyState();
-    return parsed;
+    const parsed = JSON.parse(raw);
+    return isTalkThreadState(parsed) ? parsed : emptyState();
   } catch {
     return emptyState();
   }
