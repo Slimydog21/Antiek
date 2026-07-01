@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import io
+import json
 from datetime import UTC, datetime, timedelta
 
 from runtime.db_lock import connect_write
 import substrate.deletion_worker.db as deletion_db
+import substrate.deletion_worker.__main__ as deletion_worker_cli_module
+from substrate.deletion_worker.__main__ import main as deletion_worker_cli
 from substrate.deletion_worker import (
     CANCELLATION_WINDOW_DAYS,
     CASCADE_TARGETS,
     SLA_DAYS,
     DeletionRequest,
     DeletionRequestStatus,
+    DeletionResult,
     DeletionResultKind,
     process_request,
     run_db_cycle,
@@ -707,3 +712,211 @@ def test_schema_migrates_legacy_deletion_request_check_to_failed(tmp_path):
             ("del-failed", "failed"),
             ("del-legacy", "pending"),
         ]
+
+
+def test_deletion_worker_cli_runs_cycle_and_emits_jsonl(tmp_path, monkeypatch):
+    monkeypatch.delenv("ANTIEK_TELEMETRY_PREFERENCES_PATH", raising=False)
+    db_path = tmp_path / "antiek.duckdb"
+    ensure_initialized(str(db_path))
+    preference_store = SqlitePreferenceStore(
+        str(tmp_path / "telemetry_preferences.sqlite"),
+    )
+    set_preference(
+        preference_store,
+        user_id="u-cli",
+        surface_name="skill_invocation_frequency",
+        enabled=False,
+    )
+    with connect_write(str(db_path), purpose="test:deletion_worker_cli_seed") as con:
+        con.execute(
+            """
+            INSERT INTO deletion_requests
+                (request_id, user_id, status, requested_at, updated_at, reason)
+            VALUES (
+                'del-cli', 'u-cli', 'pending',
+                TIMESTAMP '2026-05-01 00:00:00',
+                TIMESTAMP '2026-05-01 00:00:00',
+                'cli test'
+            )
+            """
+        )
+
+    out = io.StringIO()
+    rc = deletion_worker_cli(
+        ["--db", str(db_path), "--now", "2026-05-20T00:00:00+00:00"],
+        out=out,
+    )
+
+    assert rc == 0
+    payloads = [json.loads(line) for line in out.getvalue().splitlines()]
+    assert payloads == [
+        {
+            "kind": "completed",
+            "request_id": "del-cli",
+            "rows_deleted": {
+                "book_assets": 0,
+                "chunks": 0,
+                "claim_evidence": 0,
+                "claims": 0,
+                "deliverable_sections": 0,
+                "deliverables": 0,
+                "documents": 0,
+                "edges": 0,
+                "interview_projects": 0,
+                "interviews": 0,
+                "investigations": 0,
+                "notebook_blocks": 0,
+                "notebooks": 0,
+                "outline_blocks": 0,
+                "personal_graph_metadata": 0,
+                "section_blocks": 0,
+                "url_alias": 0,
+                "chunk_tier_overrides": 0,
+                "user_telemetry_preferences": 1,
+            },
+            "sla_remaining_days": 11,
+            "user_id": "u-cli",
+        },
+    ]
+    assert preference_store.list_for_user("u-cli") == []
+    with connect_write(str(db_path), purpose="test:deletion_worker_cli_assert") as con:
+        assert con.execute(
+            "SELECT status FROM deletion_requests WHERE request_id = 'del-cli'",
+        ).fetchone()[0] == "completed"
+
+
+def test_deletion_worker_cli_exits_nonzero_when_cycle_fails(monkeypatch):
+    failed = DeletionResult(
+        request_id="del-cli-fails",
+        user_id="u-cli-fails",
+        kind=DeletionResultKind.FAILED,
+        error="cascade unavailable",
+        sla_remaining_days=11,
+    )
+    monkeypatch.setattr(
+        deletion_worker_cli_module,
+        "_resolve_db_path",
+        lambda override: override or "antiek.duckdb",
+    )
+    monkeypatch.setattr(
+        deletion_worker_cli_module,
+        "run_db_cycle_at_path",
+        lambda db_path, now=None, preference_store=None: [failed],
+    )
+
+    out = io.StringIO()
+    rc = deletion_worker_cli(
+        ["--db", "unused.duckdb", "--now", "2026-05-20T00:00:00+00:00"],
+        out=out,
+    )
+
+    assert rc == 1
+    payload = json.loads(out.getvalue())
+    assert payload["kind"] == "failed"
+    assert payload["request_id"] == "del-cli-fails"
+    assert payload["error"] == "cascade unavailable"
+
+
+def test_deletion_worker_cli_rejects_db_with_env_pref_override(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "antiek.duckdb"
+    monkeypatch.setenv(
+        "ANTIEK_TELEMETRY_PREFERENCES_PATH",
+        str(tmp_path / "override.sqlite"),
+    )
+
+    out = io.StringIO()
+    rc = deletion_worker_cli(["--db", str(db_path)], out=out)
+
+    assert rc == 1
+    payload = json.loads(out.getvalue())
+    assert payload["kind"] == "failed"
+    assert payload["scope"] == "cycle"
+    assert "--telemetry-preferences" in payload["error"]
+
+
+def test_deletion_worker_cli_accepts_explicit_preference_override(
+    tmp_path,
+    monkeypatch,
+):
+    db_path = tmp_path / "antiek.duckdb"
+    pref_path = tmp_path / "explicit.sqlite"
+    wrong_env_path = tmp_path / "wrong-env.sqlite"
+    monkeypatch.setenv("ANTIEK_TELEMETRY_PREFERENCES_PATH", str(wrong_env_path))
+    ensure_initialized(str(db_path))
+    explicit_store = SqlitePreferenceStore(str(pref_path))
+    wrong_store = SqlitePreferenceStore(str(wrong_env_path))
+    set_preference(
+        explicit_store,
+        user_id="u-explicit",
+        surface_name="skill_invocation_frequency",
+        enabled=False,
+    )
+    set_preference(
+        wrong_store,
+        user_id="u-explicit",
+        surface_name="skill_invocation_frequency",
+        enabled=False,
+    )
+    with connect_write(str(db_path), purpose="test:deletion_worker_cli_pref_seed") as con:
+        con.execute(
+            """
+            INSERT INTO deletion_requests
+                (request_id, user_id, status, requested_at, updated_at, reason)
+            VALUES (
+                'del-cli-explicit', 'u-explicit', 'pending',
+                TIMESTAMP '2026-05-01 00:00:00',
+                TIMESTAMP '2026-05-01 00:00:00',
+                'cli explicit pref test'
+            )
+            """
+        )
+
+    out = io.StringIO()
+    rc = deletion_worker_cli(
+        [
+            "--db",
+            str(db_path),
+            "--telemetry-preferences",
+            str(pref_path),
+            "--now",
+            "2026-05-20T00:00:00+00:00",
+        ],
+        out=out,
+    )
+
+    assert rc == 0
+    payload = json.loads(out.getvalue())
+    assert payload["kind"] == "completed"
+    assert payload["rows_deleted"]["user_telemetry_preferences"] == 1
+    assert SqlitePreferenceStore(str(pref_path)).list_for_user("u-explicit") == []
+    assert len(SqlitePreferenceStore(str(wrong_env_path)).list_for_user("u-explicit")) == 1
+
+
+def test_deletion_worker_cli_bad_now_returns_cycle_failure(tmp_path):
+    out = io.StringIO()
+    rc = deletion_worker_cli(
+        ["--db", str(tmp_path / "antiek.duckdb"), "--now", "not-a-date"],
+        out=out,
+    )
+
+    assert rc == 1
+    payload = json.loads(out.getvalue())
+    assert payload["kind"] == "failed"
+    assert payload["scope"] == "cycle"
+    assert "Invalid isoformat" in payload["error"]
+
+
+def test_deletion_worker_cli_initializes_default_db_path(tmp_path, monkeypatch):
+    db_path = tmp_path / "antiek.duckdb"
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(db_path))
+    monkeypatch.delenv("ANTIEK_TELEMETRY_PREFERENCES_PATH", raising=False)
+
+    out = io.StringIO()
+    rc = deletion_worker_cli(["--now", "2026-05-20T00:00:00+00:00"], out=out)
+
+    assert rc == 0
+    assert out.getvalue() == ""
+    assert db_path.exists()
