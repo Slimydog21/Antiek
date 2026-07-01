@@ -14,7 +14,15 @@ import json
 from .defenses import wrap_untrusted_content
 from .errors import NoteNotFoundError
 from .fastmcp_compat import FastMCP
-from .reader import _resolve_db_path, get_book_chunk, get_note, get_public_note, list_user_notes
+from .reader import (
+    _resolve_db_path,
+    get_account_scope,
+    get_book_chunk,
+    get_note,
+    get_public_note,
+    list_account_events,
+    list_user_notes,
+)
 
 
 def register_resources(mcp: FastMCP) -> None:
@@ -59,6 +67,34 @@ def register_resources(mcp: FastMCP) -> None:
         finally:
             con.close()
         return json.dumps(notes, default=str)
+
+    @mcp.resource(
+        "antiek://account/events/{user_id}",
+        name="account_events",
+        title="Account Events",
+        description=(
+            "Typed account lifecycle and graph-scope events for one user. "
+            "Read-only Sprint 19 plumbing; does not activate multi-user auth."
+        ),
+        mime_type="application/json",
+    )
+    def account_events(user_id: str) -> str:
+        """List typed user.registered / identity / scope events as JSON."""
+        return json.dumps(list_account_events(user_id), default=str)
+
+    @mcp.resource(
+        "antiek://account/scope/{user_id}",
+        name="account_scope",
+        title="Account Scope",
+        description=(
+            "Reconstructed account registration and current graph-routing "
+            "scope from typed events."
+        ),
+        mime_type="application/json",
+    )
+    def account_scope(user_id: str) -> str:
+        """Fetch the reconstructed account/scope summary as JSON."""
+        return json.dumps(get_account_scope(user_id), default=str)
 
     @mcp.resource(
         "antiek://public/notes/{note_id}",

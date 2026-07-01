@@ -19,7 +19,13 @@ from typing import Any
 import duckdb
 import pytest
 
+from substrate.event_log import emit_typed
 from substrate.graph.schema import init_database_at_path
+from substrate.schemas import (
+    GraphScopeChangedPayload,
+    UserIdentityAttachedPayload,
+    UserRegisteredPayload,
+)
 
 
 @pytest.fixture()
@@ -65,6 +71,64 @@ def _insert_doc(
 
 
 @pytest.fixture()
+def _seed_account_events(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> str:
+    """Seed Sprint 19 typed account events for MCP account resources."""
+    events_dir = str(tmp_path / "events")
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", events_dir)
+
+    emit_typed(
+        "inv-account-user-42",
+        UserRegisteredPayload(
+            user_id="user-42",
+            email="reader@example.com",
+            auth_provider="supabase",
+            provider_subject="auth-user-42",
+            registered_at="2026-07-01T00:00:00Z",
+        ),
+        role="mcp/account_events_test",
+        events_dir=events_dir,
+    )
+    emit_typed(
+        "inv-account-user-42",
+        UserIdentityAttachedPayload(
+            user_id="user-42",
+            identity_provider="google",
+            provider_subject="google-oauth2|abc",
+            attached_at="2026-07-01T00:01:00Z",
+            email="reader@example.com",
+        ),
+        role="mcp/account_events_test",
+        events_dir=events_dir,
+    )
+    emit_typed(
+        "inv-account-user-42",
+        GraphScopeChangedPayload(
+            user_id="user-42",
+            previous_scope="operator",
+            new_scope="personal",
+            changed_at="2026-07-01T00:02:00Z",
+            changed_by="operator",
+            reason="created personal graph",
+        ),
+        role="mcp/account_events_test",
+        events_dir=events_dir,
+    )
+    emit_typed(
+        "inv-account-other",
+        UserRegisteredPayload(
+            user_id="user-other",
+            email=None,
+            auth_provider="supabase",
+            provider_subject="auth-other",
+            registered_at="2026-07-01T00:00:00Z",
+        ),
+        role="mcp/account_events_test",
+        events_dir=events_dir,
+    )
+    return events_dir
+
+
+@pytest.fixture()
 def _seed_public_notes(_init_db: str) -> str:
     """Seed public notes of various content classes."""
     con = duckdb.connect(_init_db)
@@ -107,6 +171,76 @@ def _seed_public_notes(_init_db: str) -> str:
     )
     con.close()
     return _init_db
+
+
+# ---------------------------------------------------------------------------
+# Sprint 19: account lifecycle resources from typed events
+# ---------------------------------------------------------------------------
+
+
+class TestAccountEventResources:
+    """MCP resources expose the Sprint 19 typed account-event plumbing."""
+
+    def test_list_account_events_filters_to_user(self, _seed_account_events: str) -> None:
+        from services.mcp_server.reader import list_account_events
+
+        events = list_account_events("user-42", events_dir=_seed_account_events)
+
+        assert [event["action_type"] for event in events] == [
+            "user.registered",
+            "user.identity_attached",
+            "graph.scope_changed",
+        ]
+        assert all(event["payload"]["user_id"] == "user-42" for event in events)
+
+    def test_get_account_scope_reconstructs_latest_scope(
+        self, _seed_account_events: str,
+    ) -> None:
+        from services.mcp_server.reader import get_account_scope
+
+        scope = get_account_scope("user-42", events_dir=_seed_account_events)
+
+        assert scope["registered"] is True
+        assert scope["registered_at"] == "2026-07-01T00:00:00Z"
+        assert scope["identity_count"] == 1
+        assert scope["current_scope"] == "personal"
+        assert scope["scope_changed_at"] == "2026-07-01T00:02:00Z"
+        assert scope["event_count"] == 3
+
+    async def test_account_event_templates_registered(self) -> None:
+        from services.mcp_server.server import mcp
+
+        templates = await mcp.list_resource_templates()
+        uris = {t.uriTemplate for t in templates}
+
+        assert "antiek://account/events/{user_id}" in uris
+        assert "antiek://account/scope/{user_id}" in uris
+
+    async def test_read_account_events_via_server(
+        self, _seed_account_events: str,
+    ) -> None:
+        from services.mcp_server.server import mcp
+
+        result = await mcp.read_resource("antiek://account/events/user-42")
+        events = json.loads(result[0].content)
+
+        assert [event["action_type"] for event in events] == [
+            "user.registered",
+            "user.identity_attached",
+            "graph.scope_changed",
+        ]
+
+    async def test_read_account_scope_via_server(
+        self, _seed_account_events: str,
+    ) -> None:
+        from services.mcp_server.server import mcp
+
+        result = await mcp.read_resource("antiek://account/scope/user-42")
+        scope = json.loads(result[0].content)
+
+        assert scope["user_id"] == "user-42"
+        assert scope["current_scope"] == "personal"
+        assert scope["identity_count"] == 1
 
 
 # ---------------------------------------------------------------------------
