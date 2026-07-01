@@ -708,7 +708,19 @@ class ActionType(str, Enum):
 #     at the read side. The payload carries document_id + document_type + the
 #     applied content_class ONLY — NEVER raw_text (§9.0: events carry no body).
 #     specs/antiek-personal-lane/ SPR-01. 2026-05-31.
-EVENT_SCHEMA_VERSION: int = 27
+# v28 (2026-07-01, specs/antiek-notdiamond/ SPR-02): DispatchCallPayload gains
+#     seven nullable ``nd_*`` attribution fields (nd_session_id,
+#     nd_recommended_provider, nd_recommended_model, nd_tradeoff,
+#     nd_decision_latency_ms, nd_bypassed [default False], nd_bypass_reason) so a
+#     NotDiamond advisory recommendation (SPR-03) can be joined to its eventual
+#     synthesis_rubric outcome (SPR-05 report / SPR-07 training CSV). Purely
+#     ADDITIVE + schema-on-read: pre-v28 rows lacking the keys deserialize to the
+#     defaults (nd_bypassed False, rest NULL). Single-writer preserved — the
+#     values are staged by ``record_nd_decision()`` via a ContextVar and drained
+#     by the sole emitter ``_emit_dispatch_call``; ND stays advisory (never
+#     authoritative, off the §16.1 REJECT list). No DuckDB migration: the event
+#     log is JSONL+Pydantic sealed to Parquet at investigation close.
+EVENT_SCHEMA_VERSION: int = 28
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -759,6 +771,22 @@ class DispatchCallPayload(_PayloadBase):
     prompt_hash: str
     finish_reason: Literal["stop", "length", "tool_use", "content_filter", "error"] | None = None
     context_pack_event_id: str | None = None
+    # ── NotDiamond advisory-routing attribution (ANT-ND SPR-02, schema v28) ──
+    # All nullable (nd_bypassed defaults False). Staged by ``record_nd_decision()``
+    # (substrate/dispatch/nd_attribution.py) and drained onto this payload by each
+    # DispatchCall emitter — ``_emit_dispatch_call`` (host-local) and
+    # ``record_remote_dispatch`` (remote-exec) — which add NO new event writer.
+    # WRITTEN by SPR-03's pre-dispatch route hook; READ by SPR-05 (§14.4-baseline report) and
+    # SPR-07 (training-CSV builder). NULL/default on every call ND did not advise.
+    # Additive + schema-on-read: pre-v28 rows lacking these keys deserialize to the
+    # defaults. ND is advisory only (never authoritative → off the §16.1 REJECT list).
+    nd_session_id: str | None = None  # ND per-call trace id; NULL when ND not called
+    nd_recommended_provider: str | None = None  # e.g. "anthropic"
+    nd_recommended_model: str | None = None  # e.g. "claude-opus-4-7"
+    nd_tradeoff: str | None = None  # "quality" | "cost" | "latency" | "ct_N"
+    nd_decision_latency_ms: int | None = Field(default=None, ge=0)  # select_model() duration
+    nd_bypassed: bool = False  # True if ND skipped (kill switch / latency budget / error)
+    nd_bypass_reason: str | None = None  # "disabled"|"shadow"|"timeout"|"error:<class>"|NULL
 
 
 class ContextLayer(BaseModel):

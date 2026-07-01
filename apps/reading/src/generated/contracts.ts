@@ -13,7 +13,7 @@ export const CONTRACT_SCHEMA_VERSION = 2;
 
 /**
  * One rendered layer of an assembled context pack: its kind, the source
- * that produced it, and whether it was truncated to fit the budget.
+ *     that produced it, and whether it was truncated to fit the budget.
  */
 export interface AssembledLayerContract {
   kind: "instruction" | "claim" | "insight" | "question" | "source" | "history" | "scratch";
@@ -24,9 +24,9 @@ export interface AssembledLayerContract {
 
 /**
  * A first-class ``insight`` graph node. ``node_id`` is content-addressed
- * and therefore stable: re-emitting the same insight resolves to the same
- * node, which is what lets one insight be *the same entity* across all four
- * workflows (the SPR-06 no-duplicate invariant rests on this).
+ *     and therefore stable: re-emitting the same insight resolves to the same
+ *     node, which is what lets one insight be *the same entity* across all four
+ *     workflows (the SPR-06 no-duplicate invariant rests on this).
  */
 export interface InsightNodeContract {
   node_id: string;
@@ -41,9 +41,9 @@ export interface InsightNodeContract {
 
 /**
  * A first-class ``question`` graph node. ``asks_about`` targets any
- * substantive node or an insight; ``resolved_by`` targets the insight(s)
- * that answer it. SPR-07 gap-detection reads these to find unanswered
- * questions and contradictions.
+ *     substantive node or an insight; ``resolved_by`` targets the insight(s)
+ *     that answer it. SPR-07 gap-detection reads these to find unanswered
+ *     questions and contradictions.
  */
 export interface QuestionNodeContract {
   node_id: string;
@@ -59,8 +59,8 @@ export interface QuestionNodeContract {
 
 /**
  * One emerged insight from the note-taker. Field-for-field identical to
- * ``roles.note_taker.parser.ExtractedNote`` (the in-tree dataclass), so a
- * conformance check can verify the role's output satisfies this shape.
+ *     ``roles.note_taker.parser.ExtractedNote`` (the in-tree dataclass), so a
+ *     conformance check can verify the role's output satisfies this shape.
  */
 export interface NoteTakerOutputContract {
   note_id: string;
@@ -71,8 +71,8 @@ export interface NoteTakerOutputContract {
 
 /**
  * The assembled context handed to a dispatch call: ordered layers within
- * a token budget. A consumer reads ``layers`` + ``total_tokens``; it does not
- * re-run assembly.
+ *     a token budget. A consumer reads ``layers`` + ``total_tokens``; it does not
+ *     re-run assembly.
  */
 export interface ContextPackContract {
   layers: AssembledLayerContract[];
@@ -82,9 +82,9 @@ export interface ContextPackContract {
 
 /**
  * A leaf composition unit in a deliverable outline. Either node-backed
- * (traces node → document → chunks) or user-originated (content set,
- * node_id null). The validator makes the no-orphan invariant part of the
- * contract, not just the implementation.
+ *     (traces node → document → chunks) or user-originated (content set,
+ *     node_id null). The validator makes the no-orphan invariant part of the
+ *     contract, not just the implementation.
  */
 export interface OutlineBlockContract {
   outline_block_id: string;
@@ -97,10 +97,10 @@ export interface OutlineBlockContract {
 
 /**
  * A corpus entry as Read's serving layer sees it. ``servable`` (whether
- * full text is returned) is *derived* from ``content_class``; the contract
- * states the derivation so a consumer cannot route around deny-by-default.
- * ``speak_derived`` entries are servable only after Speak's publish gate
- * passes — Read must check, not assume.
+ *     full text is returned) is *derived* from ``content_class``; the contract
+ *     states the derivation so a consumer cannot route around deny-by-default.
+ *     ``speak_derived`` entries are servable only after Speak's publish gate
+ *     passes — Read must check, not assume.
  */
 export interface ServableEntryContract {
   document_id: string;
@@ -113,9 +113,9 @@ export interface ServableEntryContract {
 
 /**
  * One accrual line as the single escrow writer consumes it. A
- * ``share_fraction`` is present for contributor splits and ``None`` for
- * direct publisher-impression accrual. ``slop_gated`` lines accrue ``0`` —
- * slop does not earn (≤0.70 rubric).
+ *     ``share_fraction`` is present for contributor splits and ``None`` for
+ *     direct publisher-impression accrual. ``slop_gated`` lines accrue ``0`` —
+ *     slop does not earn (≤0.70 rubric).
  */
 export interface AccrualContract {
   accrual_id: string;
@@ -132,8 +132,8 @@ export interface AccrualContract {
 
 /**
  * The output of one interview turn in the compounding interviewer.
- * ``corroboration`` tops out at ``multiply_attested`` — the contract has no
- * 'proven' value, by design.
+ *     ``corroboration`` tops out at ``multiply_attested`` — the contract has no
+ *     'proven' value, by design.
  */
 export interface InterviewerResultContract {
   interview_id: string;
@@ -147,9 +147,9 @@ export interface InterviewerResultContract {
 
 /**
  * The consent + rights state a speak-derived document carries. Read's
- * servability check (seam #4) serves full text only when ``publish`` is in
- * ``scopes``, ``verified_before_publish`` is True, and ``taken_down`` is
- * False.
+ *     servability check (seam #4) serves full text only when ``publish`` is in
+ *     ``scopes``, ``verified_before_publish`` is True, and ``taken_down`` is
+ *     False.
  */
 export interface ConsentContract {
   interview_id: string;
@@ -162,8 +162,8 @@ export interface ConsentContract {
 
 /**
  * One cell of the Speak economics matrix. ``contributor_split`` is the
- * fraction routed to contributors (0.70 for public); ``platform_margin`` is
- * the platform's take (0.10 public, 0.50 private-published).
+ *     fraction routed to contributors (0.70 for public); ``platform_margin`` is
+ *     the platform's take (0.10 public, 0.50 private-published).
  */
 export interface EconomicsCellContract {
   visibility: "public" | "private_published";

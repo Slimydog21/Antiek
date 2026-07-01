@@ -39,6 +39,7 @@ import os
 import sys
 
 try:
+    from ...dispatch.nd_attribution import consume_nd_decision
     from ...event_log import emit_typed
     from ...schemas.events import DispatchCallPayload
     from ..research_runner.budget import BudgetManager
@@ -48,6 +49,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from runtime.remote_exec.provider import RemoteStepEvent  # type: ignore[no-redef]
     from runtime.research_runner.budget import BudgetManager  # type: ignore[no-redef]
+    from substrate.dispatch.nd_attribution import consume_nd_decision  # type: ignore[no-redef]
     from substrate.event_log import emit_typed  # type: ignore[no-redef]
     from substrate.schemas.events import DispatchCallPayload  # type: ignore[no-redef]
 
@@ -94,6 +96,13 @@ def record_remote_dispatch(
     provider = event.provider or "remote_exec"
     model = event.model or "research-leaf"
     tier = event.data.get("tier", DEFAULT_REMOTE_TIER)
+    # ANT-ND SPR-02: this is the SECOND DispatchCall emitter (the §16
+    # research-fanout carve-out — remote research leaves, which are exactly ND's
+    # DRW scope). Drain the same ND attribution ContextVar so remote DispatchCall
+    # events attribute ND consistently AND the staged decision is cleared here
+    # too (no stale-leak onto a later call). Returns the nd_* defaults when
+    # nothing was staged, so today's behavior is byte-unchanged.
+    nd = consume_nd_decision()
     return emit_typed(
         investigation_id,
         DispatchCallPayload(
@@ -110,6 +119,7 @@ def record_remote_dispatch(
             prompt_hash=str(event.data.get("prompt_hash", "remote")),
             finish_reason=event.data.get("finish_reason"),
             context_pack_event_id=context_pack_event_id,
+            **nd,
         ),
         parent_event_id=parent_event_id,
         role=role,

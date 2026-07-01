@@ -38,6 +38,7 @@ try:
         ProviderError,
         RawProviderResponse,
     )
+    from .nd_attribution import consume_nd_decision
 except ImportError:  # pragma: no cover
     import sys
     _here = os.path.dirname(os.path.abspath(__file__))
@@ -47,6 +48,7 @@ except ImportError:  # pragma: no cover
         Provider,
         ProviderError,
     )
+    from dispatch.nd_attribution import consume_nd_decision  # type: ignore[no-redef]
     from event_log import emit_typed  # type: ignore[no-redef]
     from schemas import DispatchCallPayload  # type: ignore[no-redef]
 
@@ -304,6 +306,13 @@ def _emit_dispatch_call(
     context_pack_event_id: str | None,
 ) -> str | None:
     """Emit one DispatchCall event. Returns the event_id."""
+    # Drain any ND advisory attribution staged for THIS call (ANT-ND SPR-02).
+    # ``consume_nd_decision`` returns the seven nd_* defaults (nd_bypassed False,
+    # rest NULL) when nothing was staged, so pre-SPR-03 callers are unchanged.
+    # record_nd_decision only stages a ContextVar (it never emits), so no new
+    # event writer is added; the remote-exec emitter (record_remote_dispatch)
+    # drains the same ContextVar for the fan-out path.
+    nd = consume_nd_decision()
     return emit_typed(
         investigation_id,
         DispatchCallPayload(
@@ -320,6 +329,7 @@ def _emit_dispatch_call(
             prompt_hash=prompt_hash,
             finish_reason=finish_reason,  # type: ignore[arg-type]
             context_pack_event_id=context_pack_event_id,
+            **nd,
         ),
         parent_event_id=parent_event_id,
         role=role,
