@@ -116,6 +116,14 @@ export type PaletteEntry =
 const ROUTE_INDEX: PaletteRoute[] = [
   {
     kind: "route",
+    id: "route:home",
+    title: "Antiek home",
+    subtitle: "Front door to the four workflows (/home)",
+    path: "/home",
+    workflow: "shared",
+  },
+  {
+    kind: "route",
     id: "route:research",
     title: "Research workstation",
     subtitle: "Mode A — chat-first investigation surface (/)",
@@ -127,6 +135,20 @@ const ROUTE_INDEX: PaletteRoute[] = [
     title: "Document wrestler",
     subtitle: "Mode B — PDF reading + region selection (/wrestle)",
     path: "/wrestle",
+  },
+  {
+    kind: "route",
+    id: "route:deep-research",
+    title: "Deep Research Workspace",
+    subtitle: "Cascade monitor and steerable research sessions (/deep-research)",
+    path: "/deep-research",
+  },
+  {
+    kind: "route",
+    id: "route:write",
+    title: "Write home",
+    subtitle: "Blocks → outline → draft → editor loop (/write)",
+    path: "/write",
   },
   {
     kind: "route",
@@ -151,6 +173,41 @@ const ROUTE_INDEX: PaletteRoute[] = [
   },
   {
     kind: "route",
+    id: "route:library",
+    title: "Library",
+    subtitle: "Read shelf over the servable corpus (/library)",
+    path: "/library",
+  },
+  {
+    kind: "route",
+    id: "route:library-browse",
+    title: "Library browse",
+    subtitle: "Paginated catalog over every servable work (/library/browse)",
+    path: "/library/browse",
+  },
+  {
+    kind: "route",
+    id: "route:readings",
+    title: "Your readings",
+    subtitle: "Saved reads and created deliverables (/readings)",
+    path: "/readings",
+  },
+  {
+    kind: "route",
+    id: "route:meta-readings",
+    title: "All meta-docs",
+    subtitle: "Created deliverables only (/meta-readings)",
+    path: "/meta-readings",
+  },
+  {
+    kind: "route",
+    id: "route:meta-reading",
+    title: "Meta-reading",
+    subtitle: "Research across your owned reading space (/read/meta-reading)",
+    path: "/read/meta-reading",
+  },
+  {
+    kind: "route",
     id: "route:privacy",
     title: "Privacy dashboard",
     subtitle: "Privacy budgets and deletion controls",
@@ -167,7 +224,7 @@ const ROUTE_INDEX: PaletteRoute[] = [
     kind: "route",
     id: "route:operator",
     title: "Operator dashboard",
-    subtitle: "Pre-onboarded IP escrow (/operator)",
+    subtitle: "Composite operator-facing snapshot",
     path: "/operator",
   },
   {
@@ -181,15 +238,22 @@ const ROUTE_INDEX: PaletteRoute[] = [
     kind: "route",
     id: "route:settings",
     title: "Settings",
-    subtitle: "Application settings (/settings)",
+    subtitle: "Application settings and control links",
     path: "/settings",
   },
   {
     kind: "route",
     id: "route:coordination",
     title: "Coordination",
-    subtitle: "Gate ledger · roadmap · unified cost · escrow/consent (/coordination)",
+    subtitle: "Gate ledger, roadmap, unified cost, escrow, and consent",
     path: "/coordination",
+  },
+  {
+    kind: "route",
+    id: "route:cost-consent",
+    title: "Cost & consent",
+    subtitle: "Unified spend, escrow, and consent status",
+    path: "/coordination/cost-consent",
   },
   {
     kind: "route",
@@ -270,6 +334,13 @@ const ROUTE_INDEX: PaletteRoute[] = [
   },
   {
     kind: "route",
+    id: "route:biography",
+    title: "Biography",
+    subtitle: "Template that composes Research, Write, and Speak (/biography)",
+    path: "/biography",
+  },
+  {
+    kind: "route",
     id: "route:notebooks-index",
     title: "Notebooks",
     subtitle: "Wedge 2 literate-analysis surface (/notebooks)",
@@ -319,7 +390,7 @@ const ROUTE_INDEX: PaletteRoute[] = [
  */
 const ROUTE_INDEX_WITH_FACET: PaletteRoute[] = ROUTE_INDEX.map((r) => ({
   ...r,
-  workflow: workflowForPath(r.path),
+  workflow: r.workflow ?? workflowForPath(r.path),
 }));
 
 /**
