@@ -2,22 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 
 import { apiFetch } from "../../lib/api";
 
-/**
- * Trust Center (master-spec §13.7 + PostHog Wedge 7).
- *
- * Public-facing transparency surface. Reads the backend
- * /trust-center endpoint and renders the operator's published
- * privacy/control posture. Per master-spec §13.7:
- *
- *   "A Trust Center is not a marketing artifact. It is the
- *    operator's standing commitment to the architecture; if a
- *    bullet here is wrong, the bullet is wrong, not the page."
- *
- * Per §16.2 binding rejection: differential-privacy ε budgets are
- * capped at 10. The endpoint surfaces them; the UI renders them and
- * the cap.
- */
-
 interface TrustCenterData {
   differential_privacy_epsilon_budgets: Record<string, number>;
   deletion_sla_days: number;
@@ -28,6 +12,66 @@ interface TrustCenterData {
 
 const EPSILON_CAP = 10;
 
+const BUDGET_LABELS: Record<string, string> = {
+  skill_invocation_frequency: "Skill Use Frequency",
+  source_tier_preference_signals: "Source Preference Signals",
+  query_content_telemetry: "Search Content Telemetry",
+};
+
+const SYSTEM_CONTROL_LABELS: Record<string, string> = {
+  "encryption at rest (per-graph keys via KMS)":
+    "Encryption at rest with managed keys",
+  "access logging (append-only)": "Append-only access logs",
+  "change management (CI gates on schema)":
+    "Database changes pass automated checks",
+  "vulnerability scanning (Dependabot/Snyk)":
+    "Dependency and vulnerability scanning",
+  "backup testing (quarterly restore drill)": "Quarterly backup restore tests",
+  "retrieval-time policy_tag gating (§9.0)":
+    "Access checks run before retrieved content is shown",
+};
+
+const COMPLIANCE_LABELS: Record<string, string> = {
+  "GDPR Article 13/14 transparency": "GDPR transparency notice",
+  "CCPA notice + opt-out": "CCPA notice and opt-out",
+  "engineering-grade differential privacy (ε ≤ 10 hard cap)":
+    "Differential privacy with epsilon capped at 10",
+  "SOC 2 Type II — deferred (not required for consumer Phase 1)":
+    "SOC 2 Type II is not required for the consumer preview",
+};
+
+const TRAINING_CRITERION_LABELS: Record<string, string> = {
+  trajectory_volume: "Enough approved activity",
+  sft_readiness: "Training data quality review",
+  validated_reward: "Reward checks validated",
+  open_weight_justification: "Open model release justification",
+  eval_headroom: "Evaluation safety margin",
+};
+
+function formatTrustLabel(value: string): string {
+  return value
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function formatBudgetLabel(value: string): string {
+  return BUDGET_LABELS[value] ?? formatTrustLabel(value);
+}
+
+function formatSystemControl(value: string): string {
+  return SYSTEM_CONTROL_LABELS[value] ?? value;
+}
+
+function formatComplianceLabel(value: string): string {
+  return COMPLIANCE_LABELS[value] ?? value;
+}
+
+function formatTrainingCriterion(value: string): string {
+  return TRAINING_CRITERION_LABELS[value] ?? formatTrustLabel(value);
+}
+
 export default function TrustCenter() {
   const [data, setData] = useState<TrustCenterData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,8 +80,9 @@ export default function TrustCenter() {
     try {
       const resp = await apiFetch("/trust-center");
       if (!resp.ok) {
-        throw new Error(`GET /trust-center failed: HTTP ${resp.status}`);
+        throw new Error(`Could not load the Trust Center (HTTP ${resp.status}).`);
       }
+      setError(null);
       setData(await resp.json());
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -57,11 +102,10 @@ export default function TrustCenter() {
               Trust Center
             </h1>
             <p className="text-base text-ink dark:text-bright leading-relaxed">
-              Antiek's standing commitments — privacy architecture,
-              differential-privacy parameters, deletion SLA, and the
-              gates that govern when the system learns from your
-              behavior. The values below are pulled live from the
-              substrate; if a bullet is wrong, the bullet is wrong.
+              Antiek's public commitments for privacy, deletion,
+              compliance, and training controls. These values are
+              pulled live from the trust endpoint so the page reflects
+              the app's current policy.
             </p>
           </header>
 
@@ -73,13 +117,13 @@ export default function TrustCenter() {
 
           {data && (
             <>
-              <Section title="Differential-privacy ε budgets (§16.2)">
+              <Section title="Privacy budget">
                 <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-                  Antiek hard-caps ε at {EPSILON_CAP} for every
-                  category that ever leaves your private partition.
-                  Any future category that would exceed this is
-                  rejected at registration time. Categories you don't
-                  see below contribute zero ε (they are not collected).
+                  Antiek caps epsilon at {EPSILON_CAP} for every data
+                  category that can leave your private workspace. Any
+                  future category above the cap is blocked before it can
+                  be turned on. Categories not listed here are not
+                  collected for this purpose.
                 </p>
                 <ul className="divide-y divide-rule dark:divide-charcoal-1">
                   {Object.entries(
@@ -90,34 +134,33 @@ export default function TrustCenter() {
                       className="py-2 flex items-center justify-between"
                     >
                       <span className="text-sm font-mono text-ink dark:text-bright">
-                        {category}
+                        {formatBudgetLabel(category)}
                       </span>
                       <span className="text-sm font-mono text-ink dark:text-bright">
-                        ε = {epsilon}
+                        Epsilon: {epsilon}
                       </span>
                     </li>
                   ))}
                 </ul>
                 <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
-                  Hard cap: ε ≤ {EPSILON_CAP}. Beyond this is binding
-                  REJECT per master-spec §16.2.
+                  Hard cap: epsilon is always {EPSILON_CAP} or lower.
                 </p>
               </Section>
 
-              <Section title="Deletion SLA (§13.3)">
+              <Section title="Deletion window">
                 <p className="text-sm text-ink dark:text-bright leading-relaxed">
-                  Every deletion request — single-record or
-                  delete-all — is honored within {data.deletion_sla_days}{" "}
-                  days. The deletion path runs against the substrate,
-                  not just the UI; chunks, embeddings, derived skills,
-                  and per-user attribution shares all unwind.
+                  Every deletion request, whether for one record or the
+                  full account, is completed within {data.deletion_sla_days}{" "}
+                  days. Deletion applies to saved content, search data,
+                  personalization data, and attribution records, not just
+                  the visible page.
                 </p>
               </Section>
 
-              <Section title="Substrate controls (§13.7)">
+              <Section title="System controls">
                 <ul className="text-sm text-ink dark:text-bright space-y-1 list-disc pl-5">
                   {data.substrate_controls.map((c) => (
-                    <li key={c}>{c}</li>
+                    <li key={c}>{formatSystemControl(c)}</li>
                   ))}
                 </ul>
               </Section>
@@ -125,18 +168,17 @@ export default function TrustCenter() {
               <Section title="Compliance posture">
                 <ul className="text-sm text-ink dark:text-bright space-y-1 list-disc pl-5">
                   {data.compliance_frameworks.map((c) => (
-                    <li key={c}>{c}</li>
+                    <li key={c}>{formatComplianceLabel(c)}</li>
                   ))}
                 </ul>
               </Section>
 
-              <Section title="Loop 3 (RL training) unlock criteria">
+              <Section title="Training controls">
                 <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-                  Antiek does not train on your data until five
-                  criteria are independently satisfied AND the
-                  operator explicitly sets <code>ANTIEK_LOOP3_UNLOCKED=1</code>.
-                  Criteria-met alone is not enough; the operator
-                  authorizes the flip.
+                  Antiek does not train on your data until every
+                  requirement below is satisfied and the account owner
+                  gives explicit approval. Meeting the requirements is
+                  not enough on its own.
                 </p>
                 <ul className="divide-y divide-rule dark:divide-charcoal-1">
                   {Object.entries(data.loop_3_unlock_status).map(
@@ -146,7 +188,7 @@ export default function TrustCenter() {
                         className="py-2 flex items-center justify-between"
                       >
                         <span className="text-sm font-mono text-ink dark:text-bright">
-                          {criterion}
+                          {formatTrainingCriterion(criterion)}
                         </span>
                         <span
                           className={`text-xs font-mono px-2 py-0.5 rounded ${
@@ -155,7 +197,7 @@ export default function TrustCenter() {
                               : "bg-ice-3 dark:bg-charcoal-1 text-shadow-1 dark:text-moonlight"
                           }`}
                         >
-                          {met ? "MET" : "NOT MET"}
+                          {met ? "Met" : "Not met"}
                         </span>
                       </li>
                     ),
