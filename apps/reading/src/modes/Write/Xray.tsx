@@ -57,6 +57,12 @@ export function traceSourceLabel(trace: {
   return locator ? `Source: ${trace.documentTitle} · ${locator}` : `Source: ${trace.documentTitle}`;
 }
 
+function parseParagraphIndex(key: string, paragraphCount: number): number | null {
+  if (!/^\d+$/.test(key)) return null;
+  const idx = Number(key);
+  return Number.isSafeInteger(idx) && idx < paragraphCount ? idx : null;
+}
+
 /** A block reference may be a node reference (graph-node block) or an outline
  * block reference (user-originated). Resolve it to a display label + whether it
  * traces to a source document. */
@@ -112,7 +118,8 @@ export default function Xray({
   const blockToParagraphs = useMemo(() => {
     const m = new Map<string, number[]>();
     for (const [k, ids] of Object.entries(proseProvenance)) {
-      const idx = Number(k);
+      const idx = parseParagraphIndex(k, paragraphs.length);
+      if (idx === null) continue;
       for (const id of ids) {
         const arr = m.get(id) ?? [];
         arr.push(idx);
@@ -120,7 +127,7 @@ export default function Xray({
       }
     }
     return m;
-  }, [proseProvenance]);
+  }, [paragraphs.length, proseProvenance]);
 
   // Chain a block through to its source chunk/document (resolve_provenance via
   // the trace endpoint) — the X-ray is the visible proof, the chain is real.

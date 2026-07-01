@@ -93,6 +93,29 @@ describe("Xray — paragraph↔blocks over persisted provenance", () => {
     expect(uses.textContent).toMatch(/1, 2, 3/);
   });
 
+  it("drops malformed persisted provenance keys from the block use inversion", async () => {
+    render(
+      <Xray
+        proseText={`Para one [b: ${NODE}].\n\nPara two [b: ${NODE}].`}
+        proseProvenance={{
+          "0": [NODE],
+          "1": [NODE],
+          "2": [NODE],
+          "1junk": [NODE],
+          "9007199254740992": [NODE],
+        }}
+        blocks={[block()]}
+      />,
+    );
+    await userEvent.click(screen.getByTestId("xray-paragraph-0").querySelector("button")!);
+    await userEvent.click(screen.getByTestId("xray-paragraph-blocks-0").querySelector("button")!);
+    const uses = await screen.findByTestId("xray-block-uses");
+    expect(uses.textContent).toMatch(/1, 2/);
+    expect(uses.textContent).not.toContain("3");
+    expect(uses.textContent).not.toContain("NaN");
+    expect(uses.textContent).not.toContain("9007199254740993");
+  });
+
   it("does not render gated trace locator metadata even if the API sends it", async () => {
     vi.mocked(getTraceTarget).mockResolvedValueOnce({
       kind: "servable_snippet",
