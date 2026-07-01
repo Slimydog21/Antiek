@@ -1,5 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { MemoryRouter } from "react-router-dom";
 
+import type { ParsedSynthesis } from "../../lib/synthesisParser";
 import MasterMdViewer from "./MasterMdViewer";
 
 /**
@@ -57,4 +59,49 @@ export const Empty: Story = {
     markdown: "",
     investigationId: "inv-storybook-demo",
   },
+};
+
+const reuseSynthesis: ParsedSynthesis = {
+  thesisSummary: "Prior retrieval narrowed the question before this run started.",
+  components: [
+    {
+      index: 1,
+      claim: "The new answer reuses two prior insights without claiming a cold-baseline measurement.",
+      confidence: "high",
+      effectiveSourceTier: 2,
+      hedgingRequired: false,
+      chunkIds: [],
+      supportingPathIndices: [],
+    },
+  ],
+  falsificationConditions: [],
+  executionRisks: [],
+  recommendation: "proceed",
+  hardConstraintsSatisfied: true,
+  totalCostUsd: 0.04,
+  question: "What did this investigation build on?",
+  masterMdPath: null,
+  domainsPatched: [],
+  chunkCitations: {},
+  qualityScore: null,
+  reuseProvenance: [
+    { unitId: "ku-neutral-atom-gate-errors", sourceInvestigationId: "inv-prior-1", score: 0.91 },
+    { unitId: "ku-circuit-depth-normalisation", sourceInvestigationId: "inv-prior-2", score: 0.84 },
+  ],
+  compoundingStat: null,
+};
+
+export const ReuseProvenance: Story = {
+  tags: ["a11y-audit"],
+  render: () => (
+    <MemoryRouter>
+      <div className="max-w-3xl">
+        <MasterMdViewer
+          synthesis={reuseSynthesis}
+          investigationId="inv-storybook-reuse"
+          synthesisId="syn-storybook-reuse"
+        />
+      </div>
+    </MemoryRouter>
+  ),
 };

@@ -138,15 +138,22 @@ surface; it does **not** fetch or display a withheld source body. It uses a plai
 `getChunk` call. Source-opening anywhere in the viewer still flows through the
 existing §9.0-gated `getChunk` path (unchanged). The serve gate is not relaxed.
 
-## a11y (axe) — authoritative check is CI, not the build session
+## a11y (axe) — local story check plus CI authority
 
 The affordance is semantic markup — a collapsed `<details>/<summary>` with a
 `<ul>` of `<a>`/`<span>` — reusing the exact token classes of the already-passing
-`Appendix` (no new colour, no image-without-alt, no role hacks). The project's
-`@axe-core/playwright` gate runs in CI on this frontend change and is the
-**authoritative** a11y check. It was **not** run locally in the build session (no
-story/browser harness was exercised), so it is a known-unrun-locally gate — not
-asserted green by hand; the CI axe-core run is the real verification.
+`Appendix` (no new colour, no image-without-alt, no role hacks).
+
+On 2026-07-01, the reuse-provenance surface was added to the curated local axe
+story list as `loop-1-mastermdviewer--reuse-provenance` and verified with:
+
+```bash
+npx tsx scripts/a11y_audit.ts --storybook http://localhost:6006
+```
+
+The local run audited 42 stories with 0 serious/critical violations; the report
+is `docs/perf/a11y_audit.md`. The project's `@axe-core/playwright` gate remains
+the **authoritative** CI a11y check for this frontend surface.
 
 ## Files touched
 

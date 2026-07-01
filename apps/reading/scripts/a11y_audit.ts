@@ -92,6 +92,7 @@ const STORIES: string[] = [
   "navigation-appshell--empty",
   "shell-navrail-spr-04--bottom-rail",
   // S5 + S6 + S7 — mode panels
+  "loop-1-mastermdviewer--reuse-provenance",
   "loop-1-notebookeditor--blank",
   "loop-1-notebookeditor--with-sample-content",
   // Workspace demo
