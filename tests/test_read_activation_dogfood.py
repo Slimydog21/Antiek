@@ -169,6 +169,21 @@ def test_malformed_live_provider_flag_does_not_inflate_report_counter() -> None:
     assert any("live_provider_ai must be a boolean" in f for f in report.failures)
 
 
+def test_whitespace_only_required_string_is_missing() -> None:
+    record = _session(1, live=True, citation=True, entry_door="search")
+    record["session_id"] = "   "
+    record["operator"] = "   "
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.valid_sessions == 0
+    assert any(
+        "<record-1>: missing required fields: session_id, operator" in f
+        for f in report.failures
+    )
+
+
 def test_unknown_step_status_is_rejected_explicitly() -> None:
     record = _session(1)
     record["steps"]["7"] = {"status": "passed"}
