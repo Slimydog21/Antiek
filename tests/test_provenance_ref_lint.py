@@ -125,6 +125,24 @@ def parse(obj):
     assert any("anchor_block_id" in violation for violation in violations)
 
 
+def test_lint_catches_grounder_parser_without_validator(tmp_path: Path) -> None:
+    _write(
+        tmp_path / "roles" / "grounder" / "parser.py",
+        """
+def parse_grounder_response(obj):
+    return {"located_chunk_id": obj.get("located_chunk_id")}
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any(
+        "roles/grounder/parser.py" in violation
+        and "located_chunk_id" in violation
+        for violation in violations
+    )
+
+
 def test_lint_allows_parser_that_routes_refs_through_validator(
     tmp_path: Path,
 ) -> None:
