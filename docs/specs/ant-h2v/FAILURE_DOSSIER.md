@@ -45,7 +45,7 @@ Keyword calls match `render_full_prompt` (**123–140**, `roles/decomposer/promp
 ## Hermetic verification
 
 ```bash
-cd /Users/slimydog/Desktop/Antiek
+cd <repo-root>
 .venv/bin/python scripts/repro_cascade_decompose_contract.py
 ```
 
