@@ -417,8 +417,8 @@ def test_meta_reading_empty_corpus_is_honest(db):
 
 
 def test_meta_reading_endpoint_rejects_degenerate_length(db, client, monkeypatch):
-    """0-minute / above-cap requests are rejected with a STATED bound (422),
-    never silently clamped."""
+    """0-minute / fractional / above-cap requests are rejected with a STATED
+    bound (422), never silently clamped."""
     import sys
 
     monkeypatch.setattr(
@@ -430,6 +430,10 @@ def test_meta_reading_endpoint_rejects_degenerate_length(db, client, monkeypatch
     })
     # pydantic ge=1 on the request OR the substrate bound — either way refused.
     assert zero.status_code in (422,)
+    fractional = client.post("/corpus/meta-reading", json={
+        "prompt": "x", "length_unit": "pages", "length_amount": 4.5,
+    })
+    assert fractional.status_code == 422
     huge = client.post("/corpus/meta-reading", json={
         "prompt": "x", "length_unit": "pages", "length_amount": 9999,
     })

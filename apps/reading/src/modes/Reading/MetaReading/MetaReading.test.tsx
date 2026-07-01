@@ -220,6 +220,35 @@ describe("MetaReading (M4)", () => {
     expect(generateMock).not.toHaveBeenCalled();
   });
 
+  it("rejects fractional page boxes instead of silently truncating them", () => {
+    render(<MetaReading />);
+    fireEvent.change(screen.getByPlaceholderText(/What should this reading be about/), {
+      target: { value: "free will across my books" },
+    });
+    fireEvent.change(screen.getByLabelText("Length amount"), { target: { value: "4.5" } });
+
+    expect(screen.getByRole("alert").textContent).toContain("Length must be a whole number of pages");
+    const submit = screen.getByRole("button", { name: "Make the reading" }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    fireEvent.click(submit);
+    expect(generateMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects fractional minute boxes instead of silently truncating them", () => {
+    render(<MetaReading />);
+    fireEvent.change(screen.getByPlaceholderText(/What should this reading be about/), {
+      target: { value: "free will across my books" },
+    });
+    fireEvent.click(screen.getByRole("radio", { name: "minutes" }));
+    fireEvent.change(screen.getByLabelText("Length amount"), { target: { value: "7.5" } });
+
+    expect(screen.getByRole("alert").textContent).toContain("Length must be a whole number of minutes");
+    const submit = screen.getByRole("button", { name: "Make the reading" }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    fireEvent.click(submit);
+    expect(generateMock).not.toHaveBeenCalled();
+  });
+
   it("the promote-into-Research suggestion APPEARS but never auto-ships", async () => {
     await generate();
     // The suggestion is shown…

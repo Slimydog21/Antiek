@@ -15,6 +15,9 @@ export function validateLengthBox(unit: MetaReadingLengthUnit, amount: number): 
   if (!Number.isFinite(amount) || amount < bounds.min) {
     return `Length must be at least ${bounds.min} ${unit === "pages" ? "page" : "minute"}.`;
   }
+  if (!Number.isInteger(amount)) {
+    return `Length must be a whole number of ${unit}.`;
+  }
   if (amount > bounds.max) {
     return `Length is capped at ${bounds.max} ${unit}.`;
   }
