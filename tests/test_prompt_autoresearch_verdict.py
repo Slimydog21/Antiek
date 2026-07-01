@@ -308,6 +308,56 @@ def test_render_verdict_rejects_acceptance_rate_that_disagrees_with_counts():
         raise AssertionError("expected inconsistent acceptance rate to be rejected")
 
 
+def test_render_verdict_rejects_best_mutation_on_zero_iterations():
+    verdict = Verdict(
+        role="synthesizer",
+        decision="insufficient_data",
+        iteration_count=0,
+        acceptance_rate=0.0,
+        mean_delta=0.0,
+        median_delta=0.0,
+        best_mutation_id="m-impossible",
+        best_mutation_delta=0.0,
+        total_cost_usd=0.0,
+        rationale="no data",
+        sub_metric_regressions=[],
+        accepted_count=0,
+        rejected_count=0,
+    )
+
+    try:
+        render_verdict_markdown(verdict)
+    except ValueError as exc:
+        assert "best_mutation_id must be absent when iteration_count is zero" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected zero-iteration best mutation to be rejected")
+
+
+def test_render_verdict_rejects_missing_best_mutation_on_positive_iterations():
+    verdict = Verdict(
+        role="synthesizer",
+        decision="reject",
+        iteration_count=1,
+        acceptance_rate=0.0,
+        mean_delta=-0.10,
+        median_delta=-0.10,
+        best_mutation_id=None,
+        best_mutation_delta=-0.10,
+        total_cost_usd=0.05,
+        rationale="one failed mutation",
+        sub_metric_regressions=[],
+        accepted_count=0,
+        rejected_count=1,
+    )
+
+    try:
+        render_verdict_markdown(verdict)
+    except ValueError as exc:
+        assert "best_mutation_id must be present when iteration_count is positive" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected missing positive-iteration best mutation to be rejected")
+
+
 def test_render_reject_includes_regression_list():
     outs = [
         _mk_outcome(mutation_id=f"m-{i}", delta=0.10, accepted=True, grounding=0.30)

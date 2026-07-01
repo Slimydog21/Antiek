@@ -328,6 +328,13 @@ def _validate_verdict(verdict: Verdict) -> None:
     )
     if abs(verdict.acceptance_rate - expected_acceptance_rate) > _FLOAT_TOLERANCE:
         raise ValueError("verdict acceptance_rate must equal accepted_count / iteration_count")
+    if verdict.iteration_count == 0:
+        if verdict.best_mutation_id is not None:
+            raise ValueError("verdict best_mutation_id must be absent when iteration_count is zero")
+        if abs(verdict.best_mutation_delta) > _FLOAT_TOLERANCE:
+            raise ValueError("verdict best_mutation_delta must be zero when iteration_count is zero")
+    elif not isinstance(verdict.best_mutation_id, str) or not verdict.best_mutation_id.strip():
+        raise ValueError("verdict best_mutation_id must be present when iteration_count is positive")
     if verdict.total_cost_usd < 0.0:
         raise ValueError("verdict total_cost_usd must be non-negative")
     if not isinstance(verdict.rationale, str) or not verdict.rationale.strip():
