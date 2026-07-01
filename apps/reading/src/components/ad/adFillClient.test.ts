@@ -63,6 +63,27 @@ describe("fetchFill", () => {
     ]);
   });
 
+  it.each([1.5, -1, Number.MAX_SAFE_INTEGER + 1, Number.POSITIVE_INFINITY])(
+    "does not call the route for malformed page index %s",
+    async (pageIndex) => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+
+      const result = await fetchFill({
+        lens: "read",
+        documentId: "doc-1",
+        pageIndex,
+        positions: ["top"],
+      });
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        fills: [{ position: "top", kind: "house", house: null, revenue_usd_cents: 0 }],
+        served: false,
+      });
+    },
+  );
+
   it("falls back to neutral house fills when the live route fails", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 500 }) as Response));
 
