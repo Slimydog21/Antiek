@@ -17,7 +17,13 @@ Sprint 21 ships the API client + adapter behind a feature flag
 the operator's Synquery credits during dev iteration.
 """
 
-from .adapter import SynqueryAdapter, SynqueryRequest, SynqueryResponse
+from .adapter import (
+    SynqueryAdapter,
+    SynqueryRequest,
+    SynqueryResponse,
+    SynqueryTranscriptIngest,
+    SynqueryTranscriptResult,
+)
 from .client import (
     MockSynqueryClient,
     SynqueryAPIError,
@@ -35,4 +41,6 @@ __all__ = [
     "SynqueryInterview",
     "SynqueryRequest",
     "SynqueryResponse",
+    "SynqueryTranscriptIngest",
+    "SynqueryTranscriptResult",
 ]
