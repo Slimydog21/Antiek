@@ -17,7 +17,14 @@ Date: 2026-06-02. Persona: generalPurpose adversarial read.
   closure/failure dossiers now use `<repo-root>` / repo-relative paths instead
   of machine-specific absolute checkout paths, so they can be shared from the
   repo without leaking the executor's local checkout location.
+- **CI milestone for repro + audit:** `.github/workflows/agent_execution_gates.yml`
+  already runs `./scripts/canonical_verify.sh cascade`, which executes the
+  repro script, production adapter test, light HTTP route test, and decomposer
+  call-site audit (those scripts/tests shipped in the earlier ANT-H2V sprints).
+  Its path filters now include the cascade repro/audit scripts and cascade test
+  files, so changes to those gates trigger the fast hermetic ANT-H2V workflow
+  instead of relying on manual invocation.
 
 ## Residual gaps (executor backlog)
 
-1. Add CI milestone (optional SPR-09 or extend SPR-06) wiring `repro` + `audit` into pytest/CI.
+None.
