@@ -221,16 +221,6 @@ def _target_field_sites(
     )
 
 
-def _expr_contains_validator_call(
-    tree: ast.AST,
-    validator_names: frozenset[str],
-) -> bool:
-    return any(
-        isinstance(node, ast.Call) and _is_validator_call(node, validator_names)
-        for node in ast.walk(tree)
-    )
-
-
 def _is_generated_id_call(node: ast.Call, factories: dict[str, str]) -> bool:
     name = _qualified_name(node.func) or ""
     kind = factories.get(name)
@@ -247,14 +237,84 @@ def _is_generated_id_call(node: ast.Call, factories: dict[str, str]) -> bool:
     return False
 
 
-def _expr_contains_generated_id_call(
-    tree: ast.AST,
-    factories: dict[str, str],
+def _is_validator_result_expr(
+    node: ast.AST,
+    validator_names: frozenset[str],
 ) -> bool:
-    return any(
-        isinstance(node, ast.Call) and _is_generated_id_call(node, factories)
-        for node in ast.walk(tree)
+    if isinstance(node, ast.Call) and _is_validator_call(node, validator_names):
+        return True
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == "valid"
+        and isinstance(node.value, ast.Call)
+        and _is_validator_call(node.value, validator_names)
     )
+
+
+def _expr_is_trusted_ref_value(
+    node: ast.AST,
+    validator_names: frozenset[str],
+    generated_factories: dict[str, str],
+    trusted_aliases: set[str],
+) -> bool:
+    if _is_validator_result_expr(node, validator_names):
+        return True
+    if isinstance(node, ast.Call):
+        if _is_generated_id_call(node, generated_factories):
+            return True
+        if (
+            isinstance(node.func, ast.Name)
+            and node.func.id in {"tuple", "list", "set", "frozenset"}
+            and len(node.args) == 1
+            and not node.keywords
+        ):
+            return _expr_is_trusted_ref_value(
+                node.args[0],
+                validator_names,
+                generated_factories,
+                trusted_aliases,
+            )
+        return False
+    if isinstance(node, ast.Name):
+        return node.id in trusted_aliases
+    if isinstance(node, ast.Constant):
+        return node.value is None
+    if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+        return all(
+            _expr_is_trusted_ref_value(
+                elt,
+                validator_names,
+                generated_factories,
+                trusted_aliases,
+            )
+            for elt in node.elts
+        )
+    if isinstance(node, ast.BoolOp):
+        return all(
+            _expr_is_trusted_ref_value(
+                value,
+                validator_names,
+                generated_factories,
+                trusted_aliases,
+            )
+            for value in node.values
+        )
+    if isinstance(node, ast.IfExp):
+        return (
+            _expr_is_trusted_ref_value(
+                node.body,
+                validator_names,
+                generated_factories,
+                trusted_aliases,
+            )
+            and _expr_is_trusted_ref_value(
+                node.orelse,
+                validator_names,
+                generated_factories,
+                trusted_aliases,
+            )
+        )
+    return False
 
 
 def _assigned_names(target: ast.AST) -> set[str]:
@@ -444,9 +504,10 @@ def _raw_field_aliases(func: ast.FunctionDef | ast.AsyncFunctionDef) -> dict[str
     return aliases
 
 
-def _validator_aliases(
+def _trusted_ref_aliases(
     func: ast.FunctionDef | ast.AsyncFunctionDef,
     validator_names: frozenset[str],
+    generated_factories: dict[str, str],
 ) -> set[str]:
     aliases: set[str] = set()
     assignments: list[tuple[set[str], ast.AST]] = []
@@ -471,54 +532,23 @@ def _validator_aliases(
         if value is None or not target_names:
             continue
         assignments.append((target_names, value))
-        if _expr_contains_validator_call(value, validator_names):
+        if _expr_is_trusted_ref_value(
+            value,
+            validator_names,
+            generated_factories,
+            aliases,
+        ):
             aliases.update(target_names)
     changed = True
     while changed:
         changed = False
         for target_names, value in assignments:
-            if not (_names_in(value) & aliases):
-                continue
-            before = len(aliases)
-            aliases.update(target_names)
-            changed = changed or len(aliases) != before
-    return aliases
-
-
-def _generated_id_aliases(
-    func: ast.FunctionDef | ast.AsyncFunctionDef,
-    factories: dict[str, str],
-) -> set[str]:
-    aliases: set[str] = set()
-    assignments: list[tuple[set[str], ast.AST]] = []
-    for node in ast.walk(func):
-        target_names: set[str]
-        value: ast.AST | None
-        if isinstance(node, ast.Assign):
-            target_names = {
-                name
-                for target in node.targets
-                for name in _assigned_names(target)
-            }
-            value = node.value
-        elif isinstance(node, ast.AnnAssign):
-            target_names = _assigned_names(node.target)
-            value = node.value
-        elif isinstance(node, ast.NamedExpr):
-            target_names = _assigned_names(node.target)
-            value = node.value
-        else:
-            continue
-        if value is None or not target_names:
-            continue
-        assignments.append((target_names, value))
-        if _expr_contains_generated_id_call(value, factories):
-            aliases.update(target_names)
-    changed = True
-    while changed:
-        changed = False
-        for target_names, value in assignments:
-            if not (_names_in(value) & aliases):
+            if not _expr_is_trusted_ref_value(
+                value,
+                validator_names,
+                generated_factories,
+                aliases,
+            ):
                 continue
             before = len(aliases)
             aliases.update(target_names)
@@ -533,8 +563,11 @@ def _validated_fields(
     class_fields: dict[str, tuple[str, ...]],
 ) -> set[str]:
     aliases = _raw_field_aliases(func)
-    validator_aliases = _validator_aliases(func, validator_names)
-    generated_id_aliases = _generated_id_aliases(func, generated_factories)
+    trusted_aliases = _trusted_ref_aliases(
+        func,
+        validator_names,
+        generated_factories,
+    )
     out: set[str] = set()
     for node in ast.walk(func):
         if not isinstance(node, ast.Call) or not _is_validator_call(node, validator_names):
@@ -555,11 +588,13 @@ def _validated_fields(
             ):
                 continue
             if (
-                _expr_contains_validator_call(value, validator_names)
-                or _expr_contains_generated_id_call(value, generated_factories)
+                _expr_is_trusted_ref_value(
+                    value,
+                    validator_names,
+                    generated_factories,
+                    trusted_aliases,
+                )
             ):
-                out.add(key.value)
-            elif _names_in(value) & (validator_aliases | generated_id_aliases):
                 out.add(key.value)
     for node in ast.walk(func):
         if not isinstance(node, ast.Call):
@@ -572,11 +607,13 @@ def _validated_fields(
             if not _is_ref_field(keyword.arg):
                 continue
             if (
-                _expr_contains_validator_call(keyword.value, validator_names)
-                or _expr_contains_generated_id_call(keyword.value, generated_factories)
+                _expr_is_trusted_ref_value(
+                    keyword.value,
+                    validator_names,
+                    generated_factories,
+                    trusted_aliases,
+                )
             ):
-                out.add(keyword.arg)
-            elif _names_in(keyword.value) & (validator_aliases | generated_id_aliases):
                 out.add(keyword.arg)
     for node in ast.walk(func):
         if not isinstance(node, ast.Call):
@@ -594,12 +631,85 @@ def _validated_fields(
             if not _is_ref_field(field):
                 continue
             if (
-                _expr_contains_validator_call(value, validator_names)
-                or _expr_contains_generated_id_call(value, generated_factories)
+                _expr_is_trusted_ref_value(
+                    value,
+                    validator_names,
+                    generated_factories,
+                    trusted_aliases,
+                )
             ):
                 out.add(field)
-            elif _names_in(value) & (validator_aliases | generated_id_aliases):
-                out.add(field)
+    return out
+
+
+def _untrusted_output_field_sites(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+    validator_names: frozenset[str],
+    generated_factories: dict[str, str],
+    class_fields: dict[str, tuple[str, ...]],
+) -> list[tuple[int, str]]:
+    trusted_aliases = _trusted_ref_aliases(
+        func,
+        validator_names,
+        generated_factories,
+    )
+    out: list[tuple[int, str]] = []
+    for node in ast.walk(func):
+        if not isinstance(node, ast.Dict):
+            continue
+        for key, value in zip(node.keys, node.values):
+            if not (
+                isinstance(key, ast.Constant)
+                and isinstance(key.value, str)
+                and _is_ref_field(key.value)
+            ):
+                continue
+            if not _expr_is_trusted_ref_value(
+                value,
+                validator_names,
+                generated_factories,
+                trusted_aliases,
+            ):
+                out.append((key.lineno, key.value))
+    for node in ast.walk(func):
+        if not isinstance(node, ast.Call):
+            continue
+        for keyword in node.keywords:
+            if keyword.arg is None:
+                continue
+            if keyword.arg.startswith(("canonical_", "expected_")):
+                continue
+            if not _is_ref_field(keyword.arg):
+                continue
+            if not _expr_is_trusted_ref_value(
+                keyword.value,
+                validator_names,
+                generated_factories,
+                trusted_aliases,
+            ):
+                out.append((keyword.value.lineno, keyword.arg))
+    for node in ast.walk(func):
+        if not isinstance(node, ast.Call):
+            continue
+        name = _qualified_name(node.func)
+        if name is None:
+            continue
+        fields = class_fields.get(name.rsplit(".", 1)[-1])
+        if not fields:
+            continue
+        for idx, value in enumerate(node.args):
+            if idx >= len(fields):
+                break
+            field = fields[idx]
+            if not _is_ref_field(field):
+                continue
+            if not _expr_is_trusted_ref_value(
+                value,
+                validator_names,
+                generated_factories,
+                trusted_aliases,
+            ):
+                out.append((value.lineno, field))
     return out
 
 
@@ -618,11 +728,18 @@ def _unvalidated_field_sites(
         generated_factories,
         class_fields,
     )
-    return [
+    output_sites = _untrusted_output_field_sites(
+        func,
+        validator_names,
+        generated_factories,
+        class_fields,
+    )
+    unvalidated_sites = [
         (line, field)
         for line, field in sites
         if field not in validated
     ]
+    return sorted(set(unvalidated_sites + output_sites))
 
 
 def _parser_functions(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
