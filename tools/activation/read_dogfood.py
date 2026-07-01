@@ -331,6 +331,8 @@ def _field_format_failures(prefix: str, record: dict[str, Any]) -> list[str]:
     failures: list[str] = []
     if _required_text(record.get("date")) and not _is_iso_date(record.get("date")):
         failures.append(prefix + "date must be YYYY-MM-DD")
+    if _required_text(record.get("build_sha")) and not _is_git_sha(record.get("build_sha")):
+        failures.append(prefix + "build_sha must be a 6-40 character git SHA")
     if _required_text(record.get("url")) and not _is_http_url(record.get("url")):
         failures.append(prefix + "url must be an http(s) URL")
     return failures
@@ -343,6 +345,11 @@ def _is_iso_date(value: Any) -> bool:
     except ValueError:
         return False
     return parsed.isoformat() == text
+
+
+def _is_git_sha(value: Any) -> bool:
+    text = _required_text(value)
+    return 6 <= len(text) <= 40 and all(ch in "0123456789abcdefABCDEF" for ch in text)
 
 
 def _is_http_url(value: Any) -> bool:
