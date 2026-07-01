@@ -201,6 +201,28 @@ def test_whitespace_only_required_string_is_missing() -> None:
     )
 
 
+def test_deployed_build_date_must_be_iso_day() -> None:
+    record = _session(1, live=True, citation=True, entry_door="search")
+    record["date"] = "June 30, 2026"
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.valid_sessions == 0
+    assert any("date must be YYYY-MM-DD" in f for f in report.failures)
+
+
+def test_deployed_build_url_must_be_http_url() -> None:
+    record = _session(1, live=True, citation=True, entry_door="search")
+    record["url"] = "/read/doc-1"
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.valid_sessions == 0
+    assert any("url must be an http(s) URL" in f for f in report.failures)
+
+
 def test_unknown_step_status_is_rejected_explicitly() -> None:
     record = _session(1)
     record["steps"]["7"] = {"status": "passed"}

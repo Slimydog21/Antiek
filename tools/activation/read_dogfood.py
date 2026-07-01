@@ -43,11 +43,13 @@ or in the session-level ``issues`` list.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 REQUIRED_SESSION_FIELDS: tuple[str, ...] = (
     "session_id",
@@ -138,6 +140,8 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
         missing = _missing_required_fields(record)
         if missing:
             failures.append(prefix + "missing required fields: " + ", ".join(missing))
+        field_format_failures = _field_format_failures(prefix, record)
+        failures.extend(field_format_failures)
         invalid_boolean_fields = _invalid_boolean_fields(record)
         for field in invalid_boolean_fields:
             failures.append(prefix + f"{field} must be a boolean")
@@ -174,6 +178,7 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
         if (
             _session_core_steps_pass(steps)
             and not missing
+            and not field_format_failures
             and not invalid_boolean_fields
             and not missing_steps
             and not step_failures
@@ -299,6 +304,29 @@ def _missing_required_fields(record: dict[str, Any]) -> list[str]:
         if not _required_text(record.get(field)):
             missing.append(field)
     return missing
+
+
+def _field_format_failures(prefix: str, record: dict[str, Any]) -> list[str]:
+    failures: list[str] = []
+    if _required_text(record.get("date")) and not _is_iso_date(record.get("date")):
+        failures.append(prefix + "date must be YYYY-MM-DD")
+    if _required_text(record.get("url")) and not _is_http_url(record.get("url")):
+        failures.append(prefix + "url must be an http(s) URL")
+    return failures
+
+
+def _is_iso_date(value: Any) -> bool:
+    text = _required_text(value)
+    try:
+        parsed = dt.date.fromisoformat(text)
+    except ValueError:
+        return False
+    return parsed.isoformat() == text
+
+
+def _is_http_url(value: Any) -> bool:
+    parsed = urlparse(_required_text(value))
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 def _required_text(value: Any) -> str:
