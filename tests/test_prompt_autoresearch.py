@@ -78,6 +78,30 @@ def test_budget_records_iteration_cost():
     assert bc.iteration_count == 1
 
 
+def test_budget_rejects_negative_caps_and_costs():
+    try:
+        BudgetCap(total_cap_usd=Decimal("-1.00"))
+    except ValueError as exc:
+        assert "total_cap_usd must be non-negative" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected negative total cap to be rejected")
+
+    bc = BudgetCap()
+    try:
+        bc.will_breach(Decimal("-0.01"))
+    except ValueError as exc:
+        assert "projected_iteration_cost_usd must be non-negative" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected negative projected cost to be rejected")
+
+    try:
+        bc.record_iteration_cost(Decimal("-0.01"))
+    except ValueError as exc:
+        assert "cost_usd must be non-negative" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected negative iteration cost to be rejected")
+
+
 def test_budget_raises_on_per_iteration_cap_breach():
     bc = BudgetCap(per_iteration_cap_usd=Decimal("0.10"))
     with pytest.raises(BudgetExceeded):
