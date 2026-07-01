@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from roles._json_decode import extract_json_object
+from substrate.provenance import validate_refs
 
 VALID_SHAPES: frozenset[str] = frozenset({"challenge", "synthesis", "extension"})
 
@@ -35,13 +36,21 @@ class ThoughtPartnerResponse:
     extensions: list[Extension] = field(default_factory=list)
 
 
-def parse_thought_partner_response(text: str) -> ThoughtPartnerResponse:
+def parse_thought_partner_response(
+    text: str,
+    *,
+    canonical_note_ids: set[str] | frozenset[str] | tuple[str, ...] | None = None,
+) -> ThoughtPartnerResponse:
     """Parse the JSON response from the thought-partner role.
 
     Defensive: malformed JSON, missing shape, or unknown shape values
     all coerce to a synthesis-shape response with the raw text. This
     avoids silent failures during Sprint 18 iteration when the prompt
     + parser are co-evolving.
+
+    When ``canonical_note_ids`` is supplied, challenge citations are filtered
+    to the selected notes. Fabricated note ids are dropped before the UI can
+    render a clickable reference.
     """
     obj = extract_json_object(text)
     if obj is None:
@@ -62,8 +71,13 @@ def parse_thought_partner_response(text: str) -> ThoughtPartnerResponse:
         condition = str(c.get("condition", "")).strip()
         if not condition:
             continue
-        note_ids = [str(n) for n in (c.get("note_ids") or []) if n]
-        challenges.append(Challenge(condition=condition, note_ids=note_ids))
+        note_ids = tuple(
+            str(n).strip() for n in (c.get("note_ids") or [])
+            if isinstance(n, str) and str(n).strip()
+        )
+        if canonical_note_ids is not None:
+            note_ids = validate_refs(note_ids, canonical_note_ids).valid
+        challenges.append(Challenge(condition=condition, note_ids=list(note_ids)))
 
     synthesis_text = obj.get("synthesis_text")
     synthesis = None
