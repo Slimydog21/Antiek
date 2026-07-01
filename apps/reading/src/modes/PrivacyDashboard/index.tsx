@@ -18,6 +18,9 @@ interface TrustCenterData {
   substrate_controls: string[];
   compliance_frameworks: string[];
   loop_3_unlock_status: Record<string, boolean>;
+  loop_3_evidence_status?: Record<string, boolean>;
+  loop_3_evidence_summaries?: Record<string, string>;
+  loop_3_all_evidence_passed?: boolean;
 }
 
 interface DeletionRequest {

@@ -6687,6 +6687,9 @@ def create_app(
         substrate_controls: list[str]
         compliance_frameworks: list[str]
         loop_3_unlock_status: dict[str, bool]
+        loop_3_evidence_status: dict[str, bool]
+        loop_3_evidence_summaries: dict[str, str]
+        loop_3_all_evidence_passed: bool
 
     @app.get(
         "/trust-center",
@@ -6715,10 +6718,19 @@ def create_app(
                 "open_weight_justification": False,
                 "eval_headroom": False,
             }
+        evidence = _loop3_evidence_payload()
 
         from substrate.trust_center import build_publication
 
-        payload = build_publication(loop_3_unlock_status=loop_3_status)
+        payload = build_publication(
+            loop_3_unlock_status=loop_3_status,
+            loop_3_evidence_status=evidence["criteria"],
+            loop_3_evidence_summaries={
+                key: value["summary"]
+                for key, value in evidence["statuses"].items()
+            },
+            loop_3_all_evidence_passed=evidence["all_evidence_passed"],
+        )
         return TrustCenterPublication(**payload.as_dict())
 
     # ── Speak workflow (specs/speak/) — the fourth workflow's REST

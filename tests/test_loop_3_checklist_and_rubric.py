@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -131,7 +132,10 @@ def test_all_five_criteria_set_then_env_flips_fully_unlocks(
 # ── Trust Center reads from persistent checklist ──────────────────
 
 
-def test_trust_center_surfaces_real_unlock_state(isolated_db):
+def test_trust_center_surfaces_manual_and_evidence_unlock_state(
+    isolated_db, monkeypatch,
+):
+    monkeypatch.setenv("ANTIEK_LOOP3_EVENTS_DIR", isolated_db + "-events")
     client = _client()
     client.post(
         "/loop-3/checklist",
@@ -142,6 +146,12 @@ def test_trust_center_surfaces_real_unlock_state(isolated_db):
     # The Trust Center now reads from persistent state.
     assert body["loop_3_unlock_status"]["validated_reward"] is True
     assert body["loop_3_unlock_status"]["trajectory_volume"] is False
+    # The evidence fields are verifier-backed and do not mirror manual toggles.
+    assert body["loop_3_evidence_status"]["validated_reward"] is False
+    assert body["loop_3_all_evidence_passed"] is False
+    assert body["loop_3_evidence_summaries"]["validated_reward"] == (
+        f"events_dir_exists: {Path(isolated_db + '-events').resolve()}"
+    )
 
 
 # ── Rubric verifier — pre-unlock gate ──────────────────────────────

@@ -31,6 +31,14 @@ _DEFAULT_COMPLIANCE_FRAMEWORKS: tuple[str, ...] = (
     "SOC 2 Type II — deferred (not required for consumer Phase 1)",
 )
 
+_DEFAULT_LOOP_3_STATUS: dict[str, bool] = {
+    "trajectory_volume": False,
+    "sft_readiness": False,
+    "validated_reward": False,
+    "open_weight_justification": False,
+    "eval_headroom": False,
+}
+
 
 @dataclass(frozen=True)
 class TrustCenterPayload:
@@ -41,6 +49,9 @@ class TrustCenterPayload:
     substrate_controls: tuple[str, ...]
     compliance_frameworks: tuple[str, ...]
     loop_3_unlock_status: dict[str, bool]
+    loop_3_evidence_status: dict[str, bool]
+    loop_3_evidence_summaries: dict[str, str]
+    loop_3_all_evidence_passed: bool
 
     def as_dict(self) -> dict:
         return {
@@ -51,6 +62,9 @@ class TrustCenterPayload:
             "substrate_controls": list(self.substrate_controls),
             "compliance_frameworks": list(self.compliance_frameworks),
             "loop_3_unlock_status": dict(self.loop_3_unlock_status),
+            "loop_3_evidence_status": dict(self.loop_3_evidence_status),
+            "loop_3_evidence_summaries": dict(self.loop_3_evidence_summaries),
+            "loop_3_all_evidence_passed": self.loop_3_all_evidence_passed,
         }
 
 
@@ -58,6 +72,9 @@ def build_publication(
     *,
     registry: EpsilonRegistry | None = None,
     loop_3_unlock_status: dict[str, bool] | None = None,
+    loop_3_evidence_status: dict[str, bool] | None = None,
+    loop_3_evidence_summaries: dict[str, str] | None = None,
+    loop_3_all_evidence_passed: bool = False,
     substrate_controls: tuple[str, ...] | None = None,
     compliance_frameworks: tuple[str, ...] | None = None,
     deletion_sla_days: int = DEFAULT_DELETION_SLA_DAYS,
@@ -78,13 +95,10 @@ def build_publication(
         deletion_sla_days=deletion_sla_days,
         substrate_controls=substrate_controls or _DEFAULT_SUBSTRATE_CONTROLS,
         compliance_frameworks=compliance_frameworks or _DEFAULT_COMPLIANCE_FRAMEWORKS,
-        loop_3_unlock_status=dict(loop_3_unlock_status or {
-            "trajectory_volume": False,
-            "sft_readiness": False,
-            "validated_reward": False,
-            "open_weight_justification": False,
-            "eval_headroom": False,
-        }),
+        loop_3_unlock_status=dict(loop_3_unlock_status or _DEFAULT_LOOP_3_STATUS),
+        loop_3_evidence_status=dict(loop_3_evidence_status or _DEFAULT_LOOP_3_STATUS),
+        loop_3_evidence_summaries=dict(loop_3_evidence_summaries or {}),
+        loop_3_all_evidence_passed=loop_3_all_evidence_passed,
     )
 
 
