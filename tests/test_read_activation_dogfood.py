@@ -97,7 +97,64 @@ def test_repair_verdict_requires_blocking_issue_ids() -> None:
     assert report.closure_ready is False
     assert report.final_verdict == "REPAIR"
     assert any(
+        "REPAIR verdict requires blocking_issue_ids to be a list" in f
+        for f in report.failures
+    )
+
+
+def test_repair_verdict_rejects_empty_blocking_issue_ids() -> None:
+    records = [
+        _session(i, live=i <= 5, citation=i <= 3, entry_door="library")
+        for i in range(1, 11)
+    ]
+    records[-1]["entry_door"] = "command_palette"
+    records[-1]["verdict"] = "REPAIR"
+    records[-1]["blocking_issue_ids"] = []
+
+    report = validate_sessions(records)
+
+    assert report.closure_ready is False
+    assert report.final_verdict == "REPAIR"
+    assert any(
         "REPAIR verdict requires at least one blocking_issue_ids entry" in f
+        for f in report.failures
+    )
+
+
+def test_repair_verdict_rejects_blank_blocking_issue_ids() -> None:
+    records = [
+        _session(i, live=i <= 5, citation=i <= 3, entry_door="library")
+        for i in range(1, 11)
+    ]
+    records[-1]["entry_door"] = "command_palette"
+    records[-1]["verdict"] = "REPAIR"
+    records[-1]["blocking_issue_ids"] = ["READ-421", "   "]
+
+    report = validate_sessions(records)
+
+    assert report.closure_ready is False
+    assert report.final_verdict == "REPAIR"
+    assert any(
+        "blocking_issue_ids entries must be non-empty strings" in f
+        for f in report.failures
+    )
+
+
+def test_repair_verdict_rejects_non_string_blocking_issue_ids() -> None:
+    records = [
+        _session(i, live=i <= 5, citation=i <= 3, entry_door="library")
+        for i in range(1, 11)
+    ]
+    records[-1]["entry_door"] = "command_palette"
+    records[-1]["verdict"] = "REPAIR"
+    records[-1]["blocking_issue_ids"] = [123]
+
+    report = validate_sessions(records)
+
+    assert report.closure_ready is False
+    assert report.final_verdict == "REPAIR"
+    assert any(
+        "blocking_issue_ids entries must be non-empty strings" in f
         for f in report.failures
     )
 
