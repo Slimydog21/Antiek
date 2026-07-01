@@ -15,10 +15,20 @@ from .decomposer_env import (
     DecomposerRollout,
     DecomposerTask,
 )
+from .synthesizer_env import (
+    SynthesizerEnvironment,
+    SynthesizerReward,
+    SynthesizerRollout,
+    SynthesizerTask,
+)
 
 __all__ = [
     "DecomposerEnvironment",
     "DecomposerReward",
     "DecomposerRollout",
     "DecomposerTask",
+    "SynthesizerEnvironment",
+    "SynthesizerReward",
+    "SynthesizerRollout",
+    "SynthesizerTask",
 ]
