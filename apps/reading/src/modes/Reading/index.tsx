@@ -235,10 +235,10 @@ export default function BookReader() {
   // per (document, requested target) so manual paging after the jump is never
   // yanked back.
   //
-  // HONEST LIMITATION (rigor #1): a `?hl=` Region carries a `block_id`, but the
-  // frontend typed `Document` blocks are NOT id-stamped in this model
+  // HONEST LIMITATION (rigor #1): a `?hl=` Region carries an internal block
+  // handle, but the frontend typed `Document` blocks are NOT id-stamped in this model
   // (document_model.gen.ts: only FootnoteBlock carries an `id`), so a Region's
-  // block_id CANNOT be resolved to a page here. We therefore land on an
+  // block handle CANNOT be resolved to a page here. We therefore land on an
   // explicit `?page=` when supplied; otherwise, `?chunk=` may resolve to an
   // exact page through the chunk's `Page N` / `p.N` section_path. Without either, we
   // open at the saved page — never a fabricated block jump. Painting the exact
@@ -344,7 +344,7 @@ export default function BookReader() {
       // SPR-06 (M3): resolve a best-effort block-relative char range for hosts
       // that can also supply a real document block id. This reading page only
       // knows its representative chunk, so Dialogue stays un-persisted rather
-      // than fabricating Region.block_id from a chunk id.
+      // than fabricating a Region block handle from a chunk id.
       const { charStart, charEnd } = resolveCharRange(range, articleRef.current);
       return {
         documentId,

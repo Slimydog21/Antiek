@@ -13,7 +13,7 @@
  * asserts. We keep the REAL shortcuts module so SHORTCUT_EVENTS.HELP_TOGGLE
  * matches the event the HUD listens for, and stub only the keydown installer.
  */
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, act } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
@@ -59,11 +59,20 @@ vi.mock("./workspace/useWorkspaceHydration", () => ({
 import { AppShell } from "./AppShell";
 import { useWorkspace } from "./workspace/WorkspaceStore";
 import { SHORTCUT_EVENTS } from "./workspace/shortcuts";
+import { installLocalStorageMock } from "./test/localStorage";
+
+let restoreLocalStorage: (() => void) | null = null;
+
+beforeEach(() => {
+  restoreLocalStorage = installLocalStorageMock();
+});
 
 afterEach(() => {
   cleanup();
   useWorkspace.getState().reset();
   window.localStorage.clear();
+  restoreLocalStorage?.();
+  restoreLocalStorage = null;
 });
 
 function mountShell() {
