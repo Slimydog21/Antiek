@@ -93,6 +93,26 @@ def test_health_open_with_token_set(temp_substrate, monkeypatch):
     assert resp.status_code == 200
 
 
+def test_public_trust_center_open_with_token_set(temp_substrate, monkeypatch):
+    """The Trust Center is public compliance posture; user controls stay gated."""
+    client = _client_with_token(temp_substrate, "op_secret", monkeypatch)
+
+    resp = client.get("/trust-center")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["deletion_sla_days"] == 30
+    assert "query_content_telemetry" in body["differential_privacy_epsilon_budgets"]
+
+    private_resp = client.get("/trust-center/telemetry-preferences")
+    assert private_resp.status_code == 401
+    assert private_resp.json()["error"]["code"] == "operator_auth_required"
+
+    deletion_resp = client.get("/trust-center/deletion-requests")
+    assert deletion_resp.status_code == 401
+    assert deletion_resp.json()["error"]["code"] == "operator_auth_required"
+
+
 # ─────────────────────────────────────────────────────────────────────
 # 3. Everything else requires the bearer when token is set
 # ─────────────────────────────────────────────────────────────────────

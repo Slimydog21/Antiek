@@ -1545,6 +1545,10 @@ def create_app(
         # public by design so any MCP client can verify the tool
         # hashes without an account.
         "/.well-known/mcp-tools.json",
+        # Public Trust Center: apps/reading exposes /trust logged-out, and
+        # the API payload contains only compliance posture, DP budgets, and
+        # unlock booleans. User-scoped privacy controls remain gated below.
+        "/trust-center",
     }
     _OPERATOR_TOKEN_ENV = "ANTIEK_OPERATOR_TOKEN"
     _OPERATOR_EMAIL_ENV = "ANTIEK_OPERATOR_EMAIL"
