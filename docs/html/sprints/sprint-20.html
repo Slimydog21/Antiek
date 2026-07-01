@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sprint 20 — Visible-artifact growth, trajectory replay, dispatch verdict</title>
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+
+<nav class="topnav">
+    <div class="topnav-inner">
+        <span class="topnav-title">Antiek docs</span>
+        <a href="../index.html">Index</a>
+        <a href="../spec-exa-browserbase.html">Exa &amp; Browserbase spec</a>
+        <a href="sprint-17.html">S17</a>
+        <a href="sprint-18.html">S18</a>
+        <a href="sprint-19.html">S19</a>
+        <a href="sprint-20.html" class="active">S20</a>
+        <a href="sprint-21.html">S21</a>
+        <a href="sprint-22.html">S22</a>
+    </div>
+</nav>
+
+<main>
+<article>
+
+<p class="kicker">Sprint 20 &middot; operator-gated &middot; scoped substrate verified 2026-07-01 &middot; verdicts pending</p>
+<h1>Sprint 20 — Visible-Artifact Growth, Trajectory Replay, Dispatch Tier Verdict</h1>
+
+<div class="meta">
+    <p><strong>Theme</strong>. Sprint 20 is where Sprint 17&ndash;19's measurement windows pay off or fail. Visible-artifact growth opens only if the operator publishes Antiek-produced work. The dispatch tier verdict needs fresh verified synthesis traffic. Autoresearch Wedge 1 requires an operator ratify-or-reject decision.</p>
+    <p><strong>Current reconciliation</strong>. Local implementation substrate exists for trajectory replay, dispatch verdict analysis, and the Phase 8 gate. The deterministic backend gate passed on 2026-07-01. The sprint remains operator-gated because the decisive publication and verdict artifacts cannot be completed by local code alone.</p>
+</div>
+
+<div class="toc">
+    <div class="toc-title">On this page</div>
+    <ol>
+        <li><a href="#objective">Strategic objective</a></li>
+        <li><a href="#phases">Progressive phases</a></li>
+        <li><a href="#deliverables">Specific deliverables</a></li>
+        <li><a href="#status">Status reconciliation</a></li>
+        <li><a href="#acceptance">Acceptance &amp; exit criteria</a></li>
+        <li><a href="#unblocks">What this sprint unblocks</a></li>
+    </ol>
+</div>
+
+<h2 id="objective">1. Strategic objective <a class="section-anchor" href="#objective">#</a></h2>
+
+<p>Sprint 20 resolves three binary outcomes:</p>
+
+<ol>
+    <li><strong>Visible-artifact growth motion opens.</strong> The operator publishes outputs from Antiek under any byline or account. Peers ask what tool produced them. Individual-to-individual organic discovery either starts or does not.</li>
+    <li><strong>Dispatch tier-measurement verdict</strong> per &sect;14.4. Two weeks of synthesizer-on-Opus traffic versus Hermes baseline decides whether to flip synthesis back to Hermes-primary on cost grounds or keep Opus-primary on quality grounds.</li>
+    <li><strong>Autoresearch Wedge 1 ratification verdict</strong> per &sect;15.6. The operator reads Sprint 19's local prompt mutation report and decides whether the mutations clear the Lutke-gap test.</li>
+</ol>
+
+<h2 id="phases">2. Progressive phases <a class="section-anchor" href="#phases">#</a></h2>
+
+<h3>2.1 Operator publishes Antiek-produced outputs into the world</h3>
+<p>Per &sect;9.0.1 / &sect;13.4, the operator uses Antiek and publishes a substantive output under their personal account, Sanabil byline, or another chosen byline. The output must surface the voice/style discipline at a quality that distinguishes it from generic LLM output.</p>
+<p><strong>Exit</strong>: at least one substantive piece has been published outside Antiek.</p>
+
+<h3>2.2 Trajectory replay viewer — PostHog Wedge 5</h3>
+<p>A timeline scrubber and event-at-time renderer for re-reading investigations, watch-for-later trajectories, and operator-graded outcomes. This deliberately does not vendor rrweb: Antiek records typed events, not DOM mutations. The notebook remains the render target.</p>
+<p><strong>Exit</strong>: a past investigation can be scrubbed through its lifecycle and render meaningfully different intermediate states.</p>
+
+<h3>2.3 Dispatch tier-differentiation verdict</h3>
+<p>The end-of-window report compares verifier pass rates and cost-per-acceptable-synthesis per provider. The operator signs off on Hermes-back-to-primary or Opus-stays-primary. The verdict reshapes <code>substrate/dispatch/config.yaml</code> for the rest of the roadmap.</p>
+<p><strong>Exit</strong>: dispatch posture is decided and committed for the synthesizer tier.</p>
+
+<h3>2.4 Autoresearch Wedge 1 ratify-or-reject</h3>
+<p>The operator reads the Sprint 19 prompt-autoresearch mutation report and decides whether the proposed synthesizer prompts are distinguishably better than the existing prompts. Ratification unlocks Wedges 2&ndash;4; rejection drops them and keeps Phase 8 on its current unconditional patching path.</p>
+<p><strong>Exit</strong>: the verdict is on paper, signed by the operator, and reflected in the Sprint 21 plan.</p>
+
+<h3>2.5 Phase 8 gate shadow-mode</h3>
+<p>If Wedge 1 ratifies, <code>compounding/skill_growth/gate.py</code> runs the Phase 8 accept/reject gate in shadow mode: it computes and logs the decision but does not block patches. Minimum cohort size is 50; shadow notes carry the would-be decision for calibration.</p>
+<p><strong>Exit</strong>: shadow-mode decisions are calibrated against operator judgment for at least 30 days of Phase 8 patches.</p>
+
+<h2 id="deliverables">3. Specific deliverables <a class="section-anchor" href="#deliverables">#</a></h2>
+
+<ul>
+    <li><code>apps/reading/src/components/TrajectoryReplay.tsx</code> &mdash; timeline scrubber and event-at-time renderer.</li>
+    <li><code>docs/decisions/sprint20-dispatch-verdict.md</code> &mdash; final verdict on Opus versus Hermes for synthesis.</li>
+    <li><code>docs/decisions/sprint20-autoresearch-verdict.md</code> &mdash; Wedge 1 ratify-or-reject record.</li>
+    <li><code>compounding/skill_growth/gate.py</code> &mdash; Phase 8 gate shadow-mode substrate, conditional on ratification.</li>
+    <li><strong>External artifact</strong> &mdash; operator publishes substantive Antiek-produced piece(s).</li>
+</ul>
+
+<h2 id="status">4. Status reconciliation <a class="section-anchor" href="#status">#</a></h2>
+
+<div class="callout warn">
+    <strong>Operator-gated, not complete</strong>
+    <p>The local substrate is present and the scoped backend test slice passed on 2026-07-01. The sprint cannot honestly close until the operator publishes at least one artifact, produces a fresh dispatch-tier verdict from verified synthesis traffic, and records the autoresearch Wedge 1 ratification decision.</p>
+</div>
+
+<p>Fresh deterministic gate:</p>
+
+<pre><code>.venv/bin/python -m pytest \
+  tests/test_dispatch_tier_verdict.py \
+  tests/test_prompt_autoresearch_verdict.py \
+  tests/test_phase8_gate.py \
+  tests/test_phase8_calibration_status.py \
+  tests/test_gepa_phase8_bridge.py \
+  tests/test_gepa_phase8_applier_e2e.py -q
+
+81 passed in 0.70s</code></pre>
+
+<p>Implementation evidence exists for trajectory replay and Phase 8 shadow-mode substrate. Direct TrajectoryReplay component tests were not present in the repository during this reconciliation pass; the current frontend coverage is adjacent workspace-contract coverage plus Storybook surface evidence.</p>
+
+<p>The dispatch verdict has a provisional closure record at <code>docs/decisions/dispatch-tier-verdict.md</code> and a follow-up at <code>docs/decisions/g5-dispatch-tier-verdict-followup.md</code>. That follow-up explicitly requires fresh operator investigations and a re-run once there are at least 20 verified syntheses per provider.</p>
+
+<h2 id="acceptance">5. Acceptance &amp; exit criteria <a class="section-anchor" href="#acceptance">#</a></h2>
+
+<ul>
+    <li>Trajectory replay works against a real, multi-step investigation.</li>
+    <li>Dispatch verdict is on paper.</li>
+    <li>Autoresearch Wedge 1 verdict is on paper.</li>
+    <li>At least one Antiek-produced artifact is in the wild; the growth-motion experiment is live.</li>
+    <li>Phase 8 gate is in shadow-mode only if Wedge 1 ratified.</li>
+</ul>
+
+<h2 id="unblocks">6. What this sprint unblocks <a class="section-anchor" href="#unblocks">#</a></h2>
+
+<p>Sprint 21's Phase 8 enforcing mode is gated on the Wedge 1 ratification verdict. Sprint 21's Synquery integration is gated on the visible-artifact growth motion producing a creation-surface PMF signal that warrants paying for expert calls. The dispatch verdict shapes every cost model from Sprint 21 onward.</p>
+
+</article>
+</main>
+
+</body>
+</html>
