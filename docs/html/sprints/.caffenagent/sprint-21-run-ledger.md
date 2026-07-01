@@ -14,6 +14,8 @@
   - Passed: 65 tests, 1 warning.
 - `cd apps/reading && npm test -- AISidecar CommandPalette WorkspaceStore --run`
   - Passed: 2 files / 28 tests.
+- `cd apps/reading && npm test -- AppShell.hotkeys AISidecar CommandPalette WorkspaceStore --run`
+  - Passed: 3 files / 31 tests.
 
 ## Acceptance Mapping
 
@@ -23,7 +25,7 @@
 | Expert call booked and completed via Synquery | substrate present / external workflow gated | `tools/synquery`; `tests/test_synquery.py`; real API not exercised |
 | Synquery transcript ingested | not proven | adapter comments identify webhook/ingest as follow-on; no live transcript proof found |
 | Phase 8 enforcing in production with a correct rejection | blocked by G6 | `docs/operator_gate_actions.md` keeps G6 open; Phase 8 tests passed locally |
-| Ubiquitous AI sidecar reaches every surface | scoped verified / manual surface audit still needed | AISidecar, CommandPalette, WorkspaceStore frontend tests passed; PostHog Wedge 4 verdict accepted current structured action surface |
+| Ubiquitous AI sidecar reaches every surface | shell shortcut verified / browser route audit still optional | AppShell global shortcut opens AISidecar as a docked-right workspace panel; AISidecar, CommandPalette, WorkspaceStore frontend tests passed; PostHog Wedge 4 verdict accepted current structured action surface |
 | Expert-call cost discipline holds | partially verified | Synquery budget filtering and billing pipeline tests passed; live booking cap path not exercised |
 
 ## Tool Notes
