@@ -12,13 +12,23 @@ Open **Tasks pane (Ctrl+T)** for recursive subagent tree, styles, and lineage. M
 
 | Sprint | Title | Wave | Status | Rounds | Merge SHA |
 |--------|-------|------|--------|--------|-----------|
-| SPR-01 | Failure-mode matrix | 1 | in-progress | 1 | — |
-| SPR-02 | Login error taxonomy | 1 | pending | — | — |
-| SPR-03 | Callback error surface | 2 | pending | — | — |
-| SPR-04 | Auth probe | 2 | pending | — | — |
-| SPR-05 | Playwright login e2e | 3 | pending | — | — |
-| SPR-06 | Multi-email allowlist | 3 | pending | — | — |
+| SPR-01 | Failure-mode matrix | 1 | done | 2 | 87abe65 |
+| SPR-02 | Login error taxonomy | 1 | done | 2 | 87abe65 |
+| SPR-03 | Callback error surface | 2 | done | 2 | d691133 |
+| SPR-04 | Auth probe | 2 | done | 2 | d691133 |
+| SPR-05 | Playwright login e2e | 3 | done | 2 | 2a3612c |
+| SPR-06 | Multi-email allowlist | 3 | done through M2; M3 operator-gated | 2 | — |
 
 ### SPR-01 — Failure-mode matrix
 - **Worktree:** `.caffenagent/wt/SPR-01` · **Branch:** `caffen/SPR-01`
 - **Round 1:** Builder delivered matrix (147 lines), authDiagnosticCodes.ts, operator_gate_actions pointer
+
+## 2026-07-01 re-verification
+
+- Matrix now has 143 lines and retains the Layer A/B/OPS failure rows plus the allowlist-vs-fetch impossibility lemma.
+- `npm test -- auth.test --run` passed 1 file / 11 tests.
+- `uv run --extra dev pytest tests/test_magic_link_auth.py tests/test_api_auth_state.py tests/test_auth_probe.py tests/test_prod_parity.py -q` passed 74 tests.
+- `LOGIN_E2E=1 npx playwright test --project=login-real` passed 2 tests.
+- Auth diagnostic local HTML link audit passed.
+
+SPR-06 M3 remains an operator gate: production SSH/prod-email allowlist verification must be recorded in `docs/operator_gate_actions.md` after approval.
