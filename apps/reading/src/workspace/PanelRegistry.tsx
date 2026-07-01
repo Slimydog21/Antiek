@@ -68,7 +68,7 @@ export const PanelRegistry: Record<PanelKind, Renderer> = {
   PdfViewer,
   Notes: lazy(() => import("../components/NotesPanel")),
   CrossDocs: lazy(() => import("../components/CrossDocSidebar")),
-  ClaimInspector: lazy(() => import("../components/ClaimCard")),
+  ClaimInspector: lazy(() => import("../components/ClaimInspectorPanel")),
 
   // S7 — Notebook is also rendered at /notebook/:id (static App.tsx
   // import), so eager. NotebookEditor is panel-only → lazy (the TipTap

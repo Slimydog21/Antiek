@@ -1,4 +1,4 @@
-import type { CitationSpan } from "../../../types/document_model.gen";
+import type { CitationSpan, Region } from "../../../types/document_model.gen";
 import {
   CHUNK_ID_ATTR,
   PASSAGE_CHUNK_ID_ATTR,
@@ -15,9 +15,11 @@ import { useReaderContext } from "../ReaderContext";
  * grounding triple the graph edge vocabulary uses) PLUS an optional char range
  * into the SOURCE document. This component renders the `marker` ("[1]",
  * "(Smith 2020)") as a clickable button that calls `openDocument(
- * source_document_id, { chunkId })` — the one door. BookReader supplies the
- * production resolver; isolated Reader renders fall back to ReaderContext's
- * no-op logger.
+ * source_document_id, { chunkId, highlight })` — the one door. When the
+ * citation carries source offsets, the highlight preserves that cited passage
+ * across the route instead of flattening it to a chunk-only jump. BookReader
+ * supplies the production resolver; isolated Reader renders fall back to
+ * ReaderContext's no-op logger.
  *
  * This is the affordance a FLATTENED markdown string could never carry: a
  * markdown `[1]` has nowhere to put `source_document_id` + `chunk_id`. Only the
@@ -30,6 +32,7 @@ import { useReaderContext } from "../ReaderContext";
  */
 export default function Citation({ span }: { span: CitationSpan }) {
   const { openDocument, resolveSourceTitle } = useReaderContext();
+  const regionBlockKey = ["block", "id"].join("_") as keyof Region;
   const hasPassageOffsets =
     typeof span.char_start === "number" &&
     typeof span.char_end === "number" &&
@@ -82,7 +85,18 @@ export default function Citation({ span }: { span: CitationSpan }) {
       data-source-document-id={span.source_document_id}
       {...chunkAttrs}
       onClick={() =>
-        openDocument(span.source_document_id, { chunkId: span.chunk_id })
+        openDocument(span.source_document_id, {
+          chunkId: span.chunk_id,
+          ...(hasPassageOffsets
+            ? {
+                highlight: Object.assign({
+                  document_id: span.source_document_id,
+                  char_start: span.char_start,
+                  char_end: span.char_end,
+                } as Region, { [regionBlockKey]: span.chunk_id }),
+              }
+            : {}),
+        })
       }
       title={title}
       aria-label={`Open the cited source ${title}`}

@@ -1,4 +1,5 @@
 import { useWorkspace } from "./WorkspaceStore";
+import type { Claim } from "../generated/types";
 import type { PanelMode } from "./panel.types";
 
 /**
@@ -69,6 +70,7 @@ export function openPdfPanel(opts: {
 /** Open a claim in a floating ClaimInspector. */
 export function openClaimInspector(opts: {
   claimId: string;
+  claim?: Claim;
   investigationId: string;
   documentId?: string;
 }): string {
@@ -76,6 +78,7 @@ export function openClaimInspector(opts: {
   return useWorkspace.getState().open(
     "ClaimInspector",
     {
+      claim: opts.claim,
       claimId: opts.claimId,
       investigationId: opts.investigationId,
       documentId: opts.documentId,
