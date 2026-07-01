@@ -22,13 +22,31 @@ interface SkillRule {
   rule_text: string;
   rule_kind: string;
   domain: string;
-  epsilon_budget_consumed: number;
-  source_user_count: number;
+  epsilon_budget_consumed: unknown;
+  source_user_count: unknown;
   confidence: string;
   extracted_at: string | null;
 }
 
 const CONFIDENCE_ORDER = ["high", "moderate", "low"] as const;
+
+function finiteNonNegativeNumber(value: unknown): number | null {
+  const number =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(number) && number >= 0 ? number : null;
+}
+
+function formatEpsilon(value: unknown): string {
+  return (finiteNonNegativeNumber(value) ?? 0).toFixed(4);
+}
+
+function formatContributorCount(value: unknown): string {
+  return Math.floor(finiteNonNegativeNumber(value) ?? 0).toLocaleString();
+}
 
 export default function SkillRules() {
   const [rules, setRules] = useState<SkillRule[]>([]);
@@ -52,7 +70,7 @@ export default function SkillRules() {
         throw new Error(`GET /skill-rules failed: HTTP ${resp.status}`);
       }
       const data = await resp.json();
-      setRules(data.rules ?? []);
+      setRules(Array.isArray(data.rules) ? data.rules : []);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -193,8 +211,8 @@ export default function SkillRules() {
                   </span>
                 </div>
                 <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
-                  {r.domain} · {r.rule_kind} · users={r.source_user_count}
-                  {" · "}ε={r.epsilon_budget_consumed.toFixed(4)}
+                  {r.domain} · {r.rule_kind} · users={formatContributorCount(r.source_user_count)}
+                  {" · "}ε={formatEpsilon(r.epsilon_budget_consumed)}
                   {r.extracted_at ? ` · ${r.extracted_at}` : ""}
                 </p>
                 <p className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
