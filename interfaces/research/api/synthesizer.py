@@ -36,9 +36,11 @@ Failure-mode discipline:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sys
+from asyncio import AbstractEventLoop
 from dataclasses import dataclass
 from decimal import Decimal
 from threading import Lock
@@ -659,6 +661,32 @@ async def _dispatch_maybe_rlm_and_parse(
     )
 
 
+def _dispatch_maybe_rlm_and_parse_from_thread(
+    prompt: str,
+    event: Event,
+    *,
+    canonical_refs: CanonicalSynthesisRefs,
+    broadcaster: EventBroadcaster,
+    event_loop: AbstractEventLoop,
+) -> tuple[ThesisResult | None, str]:
+    if _should_use_rlm_synthesis(prompt):
+        future = asyncio.run_coroutine_threadsafe(
+            _dispatch_rlm_and_parse(
+                prompt,
+                event,
+                canonical_refs=canonical_refs,
+                broadcaster=broadcaster,
+            ),
+            event_loop,
+        )
+        return future.result()
+    return _dispatch_and_parse(
+        prompt,
+        event,
+        canonical_refs=canonical_refs,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Handler factory
 # ---------------------------------------------------------------------------
@@ -704,6 +732,7 @@ def make_synthesizer_handler(broadcaster: EventBroadcaster):
         # ``single_pass`` after one no-op iteration — that's exactly
         # the behavior we want for unconstrained syntheses.
         latest_result: ThesisResult = first_result
+        event_loop = asyncio.get_running_loop()
 
         def synthesizer_callable(violations, iteration):
             nonlocal latest_result
@@ -716,10 +745,12 @@ def make_synthesizer_handler(broadcaster: EventBroadcaster):
                 substrate_block=req.substrate_block,
                 extra_user_prefix=prefix,
             )
-            revised_result, _revised_policy = _dispatch_and_parse(
+            revised_result, _revised_policy = _dispatch_maybe_rlm_and_parse_from_thread(
                 revised_prompt,
                 event,
                 canonical_refs=canonical_refs,
+                broadcaster=broadcaster,
+                event_loop=event_loop,
             )
             if revised_result is None:
                 # Loop receives the previous claims unchanged. The
@@ -730,7 +761,8 @@ def make_synthesizer_handler(broadcaster: EventBroadcaster):
             latest_result = revised_result
             return _result_to_claims(revised_result)
 
-        loop_result: ConstraintLoopResult = run_constraint_loop(
+        loop_result: ConstraintLoopResult = await asyncio.to_thread(
+            run_constraint_loop,
             investigation_id=event.investigation_id,
             initial_claims=_result_to_claims(first_result),
             constraints=list(req.constraints),
