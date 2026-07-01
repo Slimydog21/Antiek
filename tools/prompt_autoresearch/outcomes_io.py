@@ -49,6 +49,22 @@ def _as_str(value: Any, *, field: str) -> str:
     return value
 
 
+def _optional_str(value: Any, *, field: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be a string when present")
+    return value
+
+
+def _optional_str_default(value: Any, *, field: str) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ValueError(f"{field} must be a string when present")
+    return value
+
+
 def outcome_to_json(outcome: PromptMutationOutcome) -> dict[str, Any]:
     """Convert a runner outcome into the stable verdict JSON shape."""
     scores = outcome.composite_breakdown
@@ -67,6 +83,9 @@ def outcome_to_json(outcome: PromptMutationOutcome) -> dict[str, Any]:
             "total": scores.total,
         },
         "cost_usd": str(outcome.cost_usd),
+        "mutation_rationale": outcome.mutation_rationale,
+        "parent_baseline_id": outcome.parent_baseline_id,
+        "proposed_at": outcome.proposed_at,
         "notes": outcome.notes,
     }
 
@@ -121,6 +140,9 @@ def outcome_from_json(raw: Any, *, index: int) -> PromptMutationOutcome:
         epsilon_required=epsilon_required,
         composite_breakdown=_composite_from_json(raw.get("composite_breakdown"), index=index),
         cost_usd=cost,
+        mutation_rationale=_optional_str_default(raw.get("mutation_rationale"), field=f"outcomes[{index}].mutation_rationale"),
+        parent_baseline_id=_optional_str(raw.get("parent_baseline_id"), field=f"outcomes[{index}].parent_baseline_id"),
+        proposed_at=_optional_str_default(raw.get("proposed_at"), field=f"outcomes[{index}].proposed_at"),
         notes=str(raw.get("notes", "")),
     )
 
