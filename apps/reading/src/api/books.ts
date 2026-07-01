@@ -185,12 +185,16 @@ export async function recordAdImpressions(
   impressions: ImpressionItem[],
 ): Promise<void> {
   if (impressions.length === 0) return;
-  await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/ad-impressions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id: sessionId, impressions }),
-    keepalive: true, // survive a page-unload flush
-  });
+  try {
+    await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/ad-impressions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, impressions }),
+      keepalive: true, // survive a page-unload flush
+    });
+  } catch {
+    // Best-effort flush: reading must continue if unload/network loses it.
+  }
 }
 
 export interface SpinResearchResponse {
@@ -198,7 +202,7 @@ export interface SpinResearchResponse {
   document_id: string;
   page_index: number;
   gated: boolean;
-  servability: Servability | string;
+  servability: Servability | (string & Record<never, never>);
   seed_preview: string;
 }
 
@@ -211,12 +215,14 @@ export async function spinResearch(
   pageIndex: number,
   passageText?: string,
 ): Promise<SpinResearchResponse> {
+  const safePassageText = passageText?.trim() || null;
   const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/spin-research`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ page_index: pageIndex, passage_text: passageText ?? null }),
+    body: JSON.stringify({ page_index: pageIndex, passage_text: safePassageText }),
   });
   if (resp.status === 404) throw new Error("book_not_found");
+  if (resp.status === 503) throw new Error("Spin research isn’t available right now.");
   if (!resp.ok) throw new Error(`POST /books/{id}/spin-research: HTTP ${resp.status}`);
   return (await resp.json()) as SpinResearchResponse;
 }
