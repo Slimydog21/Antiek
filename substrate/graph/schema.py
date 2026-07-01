@@ -524,7 +524,7 @@ CREATE INDEX IF NOT EXISTS idx_payout_transfers_recipient
 -- ============================================================
 -- deletion_requests — Persistent log of operator-initiated
 -- "delete everything" requests (Sprint 30+, master-spec §13.3).
--- Status state machine: pending → confirmed | cancelled | completed.
+-- Status state machine: pending → confirmed | cancelled | completed | failed.
 -- The 7-day cancellation window lives in code (substrate doesn't
 -- auto-confirm); the 30-day SLA from request to completion is the
 -- substrate's binding commitment.
@@ -533,7 +533,7 @@ CREATE TABLE IF NOT EXISTS deletion_requests (
     request_id      TEXT PRIMARY KEY,
     user_id         TEXT NOT NULL,
     status          TEXT NOT NULL DEFAULT 'pending' CHECK (status IN (
-        'pending', 'confirmed', 'cancelled', 'completed'
+        'pending', 'confirmed', 'cancelled', 'completed', 'failed'
     )),
     requested_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1199,6 +1199,13 @@ def init_database(con: LockedConnection) -> None:
     # idempotent ALTER ... ADD COLUMN IF NOT EXISTS; ADDITIVE — a NULL column
     # means "not yet upgraded to the model", read-side falls back to raw_text.
     con.execute(ANTIEK_GRAPH_SCHEMA_V14_STRUCTURED_BLOCKS_SQL)
+    # Sprint 22 Phase 6 — deletion worker can persist terminal failed rows.
+    # DuckDB cannot alter CHECK constraints in place, so existing DBs need a
+    # small rebuild while fresh DBs already carry the wider V1 definition.
+    from .migrate_deletion_requests_failed import (
+        migrate as _migrate_deletion_requests_failed,
+    )
+    _migrate_deletion_requests_failed(con)
 
 
 def init_database_at_path(db_path: str) -> None:
