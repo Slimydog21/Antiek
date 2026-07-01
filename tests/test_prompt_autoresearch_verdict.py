@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from decimal import Decimal
 
 from tools.prompt_autoresearch.runner import PromptMutationOutcome
@@ -166,3 +167,55 @@ def test_render_reject_includes_regression_list():
     md = render_verdict_markdown(v)
     assert "## Sub-metric regressions" in md
     assert "grounding" in md
+
+
+def _outcome_json(mutation_id: str = "m-0") -> dict:
+    return {
+        "mutation_id": mutation_id,
+        "accepted": True,
+        "baseline_score": 0.70,
+        "candidate_score": 0.80,
+        "delta": 0.10,
+        "epsilon_required": 0.05,
+        "composite_breakdown": {
+            "rubric": 0.85,
+            "voice_style": 0.85,
+            "sector_vocab": 0.85,
+            "grounding": 0.90,
+            "total": 0.80,
+        },
+        "cost_usd": "0.05",
+    }
+
+
+def test_verdict_cli_writes_markdown_from_json(tmp_path):
+    from tools.prompt_autoresearch.verdict_cli import main
+
+    outcomes_path = tmp_path / "outcomes.json"
+    output_path = tmp_path / "verdict.md"
+    outcomes_path.write_text(
+        json.dumps({
+            "role": "synthesizer",
+            "outcomes": [_outcome_json(f"m-{i}") for i in range(MIN_MUTATIONS)],
+        }),
+        encoding="utf-8",
+    )
+
+    rc = main(["--outcomes", str(outcomes_path), "--output", str(output_path)])
+
+    assert rc == 0
+    md = output_path.read_text(encoding="utf-8")
+    assert "# Autoresearch Wedge 1 verdict — `synthesizer` (§15.6)" in md
+    assert "**Decision:** `ratify`" in md
+
+
+def test_verdict_cli_requires_role_when_json_is_bare_array(tmp_path, capsys):
+    from tools.prompt_autoresearch.verdict_cli import main
+
+    outcomes_path = tmp_path / "outcomes.json"
+    outcomes_path.write_text(json.dumps([_outcome_json()]), encoding="utf-8")
+
+    rc = main(["--outcomes", str(outcomes_path)])
+
+    assert rc == 2
+    assert "--role is required" in capsys.readouterr().err
