@@ -85,6 +85,26 @@ def test_above_threshold_ratified_escalates(monkeypatch):
     assert d.session_id is not None
     assert d.session_id.startswith("rlm-")
     assert d.reason.startswith("escalated_to_rlm")
+    started = d.to_session_started_payload()
+    assert started is not None
+    assert started.session_id == d.session_id
+    assert started.document_id_ref == "doc-long-2"
+    assert started.root_role == "wrestler"
+    assert started.threshold_tokens == d.threshold_tokens
+    assert started.estimated_tokens == 128_000
+    assert started.cost_cap_usd == 5.0
+
+
+def test_non_escalation_has_no_session_started_payload(monkeypatch):
+    monkeypatch.delenv("ANTIEK_RLM_RATIFIED", raising=False)
+    d = maybe_escalate_to_rlm(
+        document_id="doc-long-1",
+        investigation_id="inv-1",
+        estimated_tokens=128_000,
+    )
+
+    assert d.escalated is False
+    assert d.to_session_started_payload() is None
 
 
 def test_decision_carries_inputs_back(monkeypatch):

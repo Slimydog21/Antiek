@@ -36,6 +36,10 @@ class _RecordingBroadcaster:
         self.events.append(event)
 
 
+def _action(event) -> str:
+    return event.action_type.value if hasattr(event.action_type, "value") else event.action_type
+
+
 def _make_doc_loaded_event(
     *,
     document_id: str,
@@ -88,10 +92,9 @@ def test_above_threshold_defer_emits_typed_event(isolated_db, monkeypatch):
 
     # One rlm.bridge.decided event should have been broadcast.
     bridge_events = [
-        e for e in bus.events
-        if (e.action_type.value if hasattr(e.action_type, "value") else e.action_type)
-        == "rlm.bridge.decided"
+        e for e in bus.events if _action(e) == "rlm.bridge.decided"
     ]
+    assert [_action(e) for e in bus.events] == ["rlm.bridge.decided"]
     assert len(bridge_events) == 1
     evt = bridge_events[0]
     assert evt.payload.reason == "deferred_pending_ratification"
@@ -120,9 +123,7 @@ def test_below_threshold_does_not_emit_event(isolated_db, monkeypatch):
     )
     asyncio.run(handler(event))
     bridge_events = [
-        e for e in bus.events
-        if (e.action_type.value if hasattr(e.action_type, "value") else e.action_type)
-        == "rlm.bridge.decided"
+        e for e in bus.events if _action(e) == "rlm.bridge.decided"
     ]
     assert bridge_events == []
 
@@ -145,16 +146,30 @@ def test_above_threshold_escalation_when_ratified(isolated_db, monkeypatch):
     )
     asyncio.run(handler(event))
     bridge_events = [
-        e for e in bus.events
-        if (e.action_type.value if hasattr(e.action_type, "value") else e.action_type)
-        == "rlm.bridge.decided"
+        e for e in bus.events if _action(e) == "rlm.bridge.decided"
+    ]
+    started_events = [
+        e for e in bus.events if _action(e) == "rlm.session_started"
+    ]
+    assert [_action(e) for e in bus.events] == [
+        "rlm.bridge.decided",
+        "rlm.session_started",
     ]
     assert len(bridge_events) == 1
+    assert len(started_events) == 1
     p = bridge_events[0].payload
     assert p.reason == "escalated_to_rlm"
     assert p.escalated is True
     assert p.session_id is not None
     assert p.session_id.startswith("rlm-")
+    started = started_events[0].payload
+    assert started.session_id == p.session_id
+    assert started.root_role == "wrestler"
+    assert started.document_id_ref == "doc-large-rat"
+    assert started.threshold_tokens == 64_000
+    assert started.estimated_tokens == 524_288
+    assert started.max_iterations == 8
+    assert started.cost_cap_usd == 5.0
 
 
 # ---------------------------------------------------------------------------
