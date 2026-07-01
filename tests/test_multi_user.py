@@ -8,22 +8,24 @@ from runtime.db_lock import connect_write
 from substrate.ducklake import DuckLakeCatalog, HashPrefixSharding, InMemoryCatalogBackend
 from substrate.ducklake.catalog import SqliteCatalogBackend
 from substrate.multi_user import (
-    AuthError,
     CATALOG_DB_ENV,
-    GraphRouter,
     GRAPH_USER_ID_ENV,
+    SHARD_HEX_CHARS_ENV,
+    AuthError,
+    AuthVendor,
+    GraphRouter,
     MockAuthProvider,
     PartitionInvariantViolation,
     PartitionKind,
-    SHARD_HEX_CHARS_ENV,
     UserClaims,
     assign_to_partition,
     build_graph_router_from_env,
     configured_ducklake_catalog,
-    default_personal_graph_handle,
     decode_token,
+    default_personal_graph_handle,
     extract_discovered_rule,
     move_to_partition,
+    normalize_verified_claims,
     propagate_to_shared_substrate,
     resolve_personal_graph,
     resolve_shared_substrate,
@@ -75,6 +77,73 @@ def test_decode_token_rejects_empty():
     provider = MockAuthProvider(tokens={})
     with pytest.raises(AuthError):
         decode_token(provider, "")
+
+
+def test_normalize_clerk_verified_claims_namespaces_identity_and_scopes():
+    claims = normalize_verified_claims(
+        vendor=AuthVendor.CLERK,
+        claims={
+            "sub": "user_2abc",
+            "email": "USER@example.COM",
+            "iat": 1_765_000_000,
+            "public_metadata": {
+                "antiek_scopes": ["private_research", "shared_substrate_write"],
+            },
+        },
+    )
+
+    assert claims.user_id == "clerk:user_2abc"
+    assert claims.email == "user@example.com"
+    assert claims.issued_at == "2025-12-06T05:46:40Z"
+    assert claims.scopes == frozenset({
+        "authenticated",
+        "private_research",
+        "shared_substrate_write",
+    })
+
+
+def test_normalize_supabase_verified_claims_reads_scope_and_app_metadata():
+    claims = normalize_verified_claims(
+        vendor="supabase",
+        claims={
+            "sub": "9e7d03ec-0f16-4e52-b615-6f94807d5133",
+            "email": "reader@example.com",
+            "scope": "private_research graph:read",
+            "app_metadata": {"antiek_scopes": "shared_substrate_write"},
+        },
+    )
+
+    assert claims.user_id == "supabase:9e7d03ec-0f16-4e52-b615-6f94807d5133"
+    assert claims.email == "reader@example.com"
+    assert claims.scopes == frozenset({
+        "authenticated",
+        "graph:read",
+        "private_research",
+        "shared_substrate_write",
+    })
+
+
+def test_normalize_verified_claims_rejects_missing_subject():
+    with pytest.raises(AuthError, match="missing non-empty 'sub'"):
+        normalize_verified_claims(vendor="clerk", claims={"email": "u@example.com"})
+
+
+def test_normalize_verified_claims_rejects_unsupported_vendor():
+    with pytest.raises(AuthError, match="unsupported auth vendor"):
+        normalize_verified_claims(
+            vendor="homegrown",
+            claims={"sub": "u1", "email": "u@example.com"},
+        )
+
+
+def test_normalize_verified_claims_does_not_grant_operator_implicitly():
+    claims = normalize_verified_claims(
+        vendor="supabase",
+        claims={"sub": "u1", "role": "service_role"},
+    )
+
+    assert claims.user_id == "supabase:u1"
+    assert claims.scopes == frozenset({"authenticated"})
 
 
 # ── Graph routing tests ──────────────────────────────────────────────
