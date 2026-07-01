@@ -136,6 +136,32 @@ def _node_dict(n: OutlineNode) -> dict:
     }
 
 
+def _section_owner(con: Any, section_id: str) -> tuple[str, str | None] | None:
+    row = con.execute(
+        "SELECT s.deliverable_id, d.investigation_root_id "
+        "FROM deliverable_sections s JOIN deliverables d "
+        "ON s.deliverable_id = d.deliverable_id WHERE s.section_id = ?",
+        [section_id],
+    ).fetchone()
+    if row is None:
+        return None
+    return row[0], row[1]
+
+
+def _outline_block_owner(con: Any, outline_block_id: str) -> tuple[str, str, str | None] | None:
+    row = con.execute(
+        "SELECT b.section_id, s.deliverable_id, d.investigation_root_id "
+        "FROM outline_blocks b JOIN deliverable_sections s "
+        "ON b.section_id = s.section_id JOIN deliverables d "
+        "ON s.deliverable_id = d.deliverable_id "
+        "WHERE b.outline_block_id = ?",
+        [outline_block_id],
+    ).fetchone()
+    if row is None:
+        return None
+    return row[0], row[1], row[2]
+
+
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
@@ -201,14 +227,20 @@ class GenerateSectionRequest(BaseModel):
 @write_router.post("/blocks", status_code=201)
 def place_outline_block(req: PlaceBlockRequest) -> dict:
     with _translate(), _write("write/place_block") as con:
-        if con.execute(
-            "SELECT 1 FROM deliverable_sections WHERE section_id = ?", [req.section_id]
-        ).fetchone() is None:
+        owner = _section_owner(con, req.section_id)
+        if owner is None:
             raise HTTPException(status_code=404, detail="section not found")
+        deliverable_id, investigation_root_id = owner
+        if req.deliverable_id is not None and req.deliverable_id != deliverable_id:
+            raise HTTPException(
+                status_code=400,
+                detail="section belongs to a different deliverable",
+            )
         obid = place_block(
             con, section_id=req.section_id, block_kind=req.block_kind,
             provenance_kind=req.provenance_kind, block_index=req.block_index,
-            node_id=req.node_id, content=req.content, deliverable_id=req.deliverable_id,
+            node_id=req.node_id, content=req.content, deliverable_id=deliverable_id,
+            investigation_id=investigation_root_id or "__operator__",
         )
     return {"outline_block_id": obid}
 
@@ -216,9 +248,23 @@ def place_outline_block(req: PlaceBlockRequest) -> dict:
 @write_router.post("/blocks/{outline_block_id}/move", status_code=202)
 def move_outline_block(outline_block_id: str, req: MoveBlockRequest) -> dict:
     with _translate(), _write("write/move_block") as con:
+        source = _outline_block_owner(con, outline_block_id)
+        if source is None:
+            raise HTTPException(status_code=404, detail="outline block not found")
+        _, source_deliverable_id, investigation_root_id = source
+        target = _section_owner(con, req.to_section_id)
+        if target is None:
+            raise HTTPException(status_code=404, detail="target section not found")
+        target_deliverable_id, _ = target
+        if target_deliverable_id != source_deliverable_id:
+            raise HTTPException(
+                status_code=400,
+                detail="cannot move outline block across deliverables",
+            )
         move_block(
             con, outline_block_id=outline_block_id,
             to_section_id=req.to_section_id, to_index=req.to_index,
+            investigation_id=investigation_root_id or "__operator__",
         )
     return {"status": "moved"}
 
@@ -226,7 +272,16 @@ def move_outline_block(outline_block_id: str, req: MoveBlockRequest) -> dict:
 @write_router.delete("/blocks/{outline_block_id}", status_code=200)
 def delete_outline_block(outline_block_id: str) -> dict:
     with _write("write/remove_block") as con:
-        removed = remove_block(con, outline_block_id=outline_block_id)
+        owner = _outline_block_owner(con, outline_block_id)
+        if owner is None:
+            removed = False
+        else:
+            _, _, investigation_root_id = owner
+            removed = remove_block(
+                con,
+                outline_block_id=outline_block_id,
+                investigation_id=investigation_root_id or "__operator__",
+            )
     if not removed:
         raise HTTPException(status_code=404, detail="outline block not found")
     return {"status": "removed"}
