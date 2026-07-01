@@ -12,6 +12,7 @@ test.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 
@@ -125,6 +126,7 @@ def composite_score(
     Per integration_autoresearch.md §5.3: 40% LLM-judged + 60%
     deterministic (voice/style + sector-vocab + grounding). The
     deterministic floor bounds the reward-hacking surface."""
+    _validate_unit_interval(rubric_score, field="rubric_score")
     vs = deterministic_voice_style_score(synthesis_text)
     sv = sector_vocab_overlap(synthesis_text, corpus_terms)
     gr = grounding_preserved_rate(synthesis_text, expected_claim_ids)
@@ -141,3 +143,11 @@ def composite_score(
         grounding=gr,
         total=total,
     )
+
+
+def _validate_unit_interval(value: float, *, field: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{field} must be a number in [0, 1]")
+    number = float(value)
+    if not math.isfinite(number) or number < 0.0 or number > 1.0:
+        raise ValueError(f"{field} must be a number in [0, 1]")

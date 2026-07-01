@@ -27,6 +27,20 @@ def _as_bool(value: Any, *, field: str) -> bool:
     return value
 
 
+def _as_unit_interval(value: Any, *, field: str) -> float:
+    number = _as_float(value, field=field)
+    if number < 0.0 or number > 1.0:
+        raise ValueError(f"{field} must be in [0, 1]")
+    return number
+
+
+def _as_non_negative_float(value: Any, *, field: str) -> float:
+    number = _as_float(value, field=field)
+    if number < 0.0:
+        raise ValueError(f"{field} must be non-negative")
+    return number
+
+
 def _as_str(value: Any, *, field: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"{field} must be a non-empty string")
@@ -59,11 +73,11 @@ def _composite_from_json(raw: Any, *, index: int) -> CompositeScore:
     if not isinstance(raw, dict):
         raise ValueError(f"outcomes[{index}].composite_breakdown must be an object")
     return CompositeScore(
-        rubric=_as_float(raw.get("rubric"), field=f"outcomes[{index}].composite_breakdown.rubric"),
-        voice_style=_as_float(raw.get("voice_style"), field=f"outcomes[{index}].composite_breakdown.voice_style"),
-        sector_vocab=_as_float(raw.get("sector_vocab"), field=f"outcomes[{index}].composite_breakdown.sector_vocab"),
-        grounding=_as_float(raw.get("grounding"), field=f"outcomes[{index}].composite_breakdown.grounding"),
-        total=_as_float(raw.get("total"), field=f"outcomes[{index}].composite_breakdown.total"),
+        rubric=_as_unit_interval(raw.get("rubric"), field=f"outcomes[{index}].composite_breakdown.rubric"),
+        voice_style=_as_unit_interval(raw.get("voice_style"), field=f"outcomes[{index}].composite_breakdown.voice_style"),
+        sector_vocab=_as_unit_interval(raw.get("sector_vocab"), field=f"outcomes[{index}].composite_breakdown.sector_vocab"),
+        grounding=_as_unit_interval(raw.get("grounding"), field=f"outcomes[{index}].composite_breakdown.grounding"),
+        total=_as_unit_interval(raw.get("total"), field=f"outcomes[{index}].composite_breakdown.total"),
     )
 
 
@@ -83,10 +97,10 @@ def outcome_from_json(raw: Any, *, index: int) -> PromptMutationOutcome:
     return PromptMutationOutcome(
         mutation_id=_as_str(raw.get("mutation_id"), field=f"outcomes[{index}].mutation_id"),
         accepted=_as_bool(raw.get("accepted"), field=f"outcomes[{index}].accepted"),
-        baseline_score=_as_float(raw.get("baseline_score"), field=f"outcomes[{index}].baseline_score"),
-        candidate_score=_as_float(raw.get("candidate_score"), field=f"outcomes[{index}].candidate_score"),
+        baseline_score=_as_unit_interval(raw.get("baseline_score"), field=f"outcomes[{index}].baseline_score"),
+        candidate_score=_as_unit_interval(raw.get("candidate_score"), field=f"outcomes[{index}].candidate_score"),
         delta=_as_float(raw.get("delta"), field=f"outcomes[{index}].delta"),
-        epsilon_required=_as_float(raw.get("epsilon_required"), field=f"outcomes[{index}].epsilon_required"),
+        epsilon_required=_as_non_negative_float(raw.get("epsilon_required"), field=f"outcomes[{index}].epsilon_required"),
         composite_breakdown=_composite_from_json(raw.get("composite_breakdown"), index=index),
         cost_usd=cost,
         notes=str(raw.get("notes", "")),
