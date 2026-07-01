@@ -27,7 +27,12 @@ from .bridge import (
     maybe_escalate_to_rlm,
 )
 from .events import RLMEventEmitter, make_rlm_event
-from .runner import RLMIterationRun, run_iteration_with_timeout
+from .runner import (
+    RLMIterationRun,
+    RLMLoopRun,
+    run_iteration_with_timeout,
+    run_loop_with_timeout,
+)
 from .session import (
     RLM_DOC_THRESHOLD_TOKENS,
     RLM_SESSION_COST_USD_CAP,
@@ -49,6 +54,7 @@ __all__ = [
     "RLM_DOC_THRESHOLD_TOKENS",
     "RLMEventEmitter",
     "RLMIterationRun",
+    "RLMLoopRun",
     "RLM_SESSION_COST_USD_CAP",
     "RLMBridgeDecision",
     "RLMRatificationRequired",
@@ -63,6 +69,7 @@ __all__ = [
     "iterate_session",
     "maybe_escalate_to_rlm",
     "run_iteration_with_timeout",
+    "run_loop_with_timeout",
     "session_completed_payload",
     "session_failed_payload",
     "session_started_payload",

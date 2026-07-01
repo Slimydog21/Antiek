@@ -11,6 +11,7 @@ from orchestration.rlm import (
     RLMEventEmitter,
     create_session,
     run_iteration_with_timeout,
+    run_loop_with_timeout,
 )
 from substrate.schemas.events import Event
 
@@ -136,3 +137,129 @@ def test_run_iteration_cost_cap_emits_completed(monkeypatch):
     assert len(seen) == 1
     assert seen[0].payload.action_type == "rlm.session_completed"
     assert seen[0].payload.status == "cost_capped"
+
+
+def test_run_loop_emits_iterations_then_completed(monkeypatch):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    session = create_session(
+        investigation_id="inv-rlm",
+        root_role="wrestler",
+        document_id="doc-rlm",
+    )
+    emitter, seen = _emitter()
+    repl = RLMRepl(max_iterations=4)
+
+    def generate(summary):
+        if summary.iteration >= 1:
+            return "answer['content'] = 'done'\nanswer['ready'] = True"
+        return "scratch = 'chapter 2'"
+
+    result = asyncio.run(
+        run_loop_with_timeout(
+            repl=repl,
+            generate_code=generate,
+            session=session,
+            emitter=emitter,
+            timeout_s=1.0,
+            cost_usd=Decimal("0.10"),
+            iteration_summary=lambda summary, _code: f"iteration {summary.iteration + 1}",
+        )
+    )
+
+    assert result.status == "completed"
+    assert result.final_answer == "done"
+    assert result.event_action_type == "rlm.session_completed"
+    assert session.state.status == "completed"
+    assert session.state.iteration_count == 2
+    assert [event.payload.action_type for event in seen] == [
+        "rlm.iteration",
+        "rlm.iteration",
+        "rlm.session_completed",
+    ]
+
+
+def test_run_loop_iteration_cap_force_completes(monkeypatch):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    session = create_session(investigation_id="inv-rlm", root_role="wrestler")
+    emitter, seen = _emitter()
+    repl = RLMRepl(max_iterations=2)
+
+    result = asyncio.run(
+        run_loop_with_timeout(
+            repl=repl,
+            generate_code=lambda _summary: "x = 1",
+            session=session,
+            emitter=emitter,
+            timeout_s=1.0,
+        )
+    )
+
+    assert result.status == "completed"
+    assert repl.answer["ready"] is True
+    assert session.state.status == "completed"
+    assert session.state.iteration_count == 2
+    assert seen[-1].payload.action_type == "rlm.session_completed"
+
+
+def test_run_loop_generator_failure_emits_failure(monkeypatch):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    session = create_session(investigation_id="inv-rlm", root_role="wrestler")
+    emitter, seen = _emitter()
+    repl = RLMRepl()
+
+    def generate(_summary):
+        raise RuntimeError("code generator unavailable")
+
+    result = asyncio.run(
+        run_loop_with_timeout(
+            repl=repl,
+            generate_code=generate,
+            session=session,
+            emitter=emitter,
+            timeout_s=1.0,
+        )
+    )
+
+    assert result.status == "failed"
+    assert session.state.status == "failed"
+    assert len(seen) == 1
+    assert seen[0].payload.action_type == "rlm.session_failed"
+    assert seen[0].payload.error_type == "RuntimeError"
+
+
+def test_run_loop_timeout_stops_without_completion_event(monkeypatch):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    session = create_session(investigation_id="inv-rlm", root_role="wrestler")
+    emitter, seen = _emitter()
+
+    class SlowRepl:
+        max_iterations = 4
+        iteration = 0
+        answer = {"content": "", "ready": False}
+
+        def is_finished(self) -> bool:
+            return False
+
+        def summarise(self):
+            return RLMRepl().summarise()
+
+        def execute(self, code: str) -> str:
+            time.sleep(0.05)
+            return ""
+
+        def final_answer(self) -> str:
+            return str(self.answer.get("content", ""))
+
+    result = asyncio.run(
+        run_loop_with_timeout(
+            repl=SlowRepl(),
+            generate_code=lambda _summary: "while True: pass",
+            session=session,
+            emitter=emitter,
+            timeout_s=0.001,
+        )
+    )
+
+    assert result.status == "timeout"
+    assert session.state.status == "failed"
+    assert [event.payload.action_type for event in seen] == ["rlm.session_failed"]
