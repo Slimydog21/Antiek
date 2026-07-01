@@ -26,6 +26,11 @@ ALLOWED_DECISIONS = frozenset({
     "flip_to_hermes_primary",
     "insufficient_data",
 })
+ALLOWED_EVIDENCE_SOURCES = frozenset({
+    "rubric_scored",
+    "self_grade",
+    "none",
+})
 
 # Canonical provider names per substrate/dispatch/config.yaml. Keep
 # the verdict report stable across runs by normalising aliases.
@@ -51,6 +56,7 @@ class ProviderScore:
     verified_count: int   # synthesis calls followed by a verify event
     passed_count: int     # of verified_count, how many passed
     total_cost_usd: float
+    evidence_source: str = "none"
 
     @property
     def verification_rate(self) -> float:
@@ -281,8 +287,10 @@ def analyse_events(
         # is the honest behaviour.
         if rubric_outcomes:
             outcomes = rubric_outcomes
+            evidence_source = "rubric_scored"
         else:
             outcomes = self_grade_outcomes.get(key, [])
+            evidence_source = "self_grade" if outcomes else "none"
         verified_count = len(outcomes)
         passed = sum(1 for s in outcomes if s >= PASS_THRESHOLD)
         scores.append(
@@ -293,6 +301,7 @@ def analyse_events(
                 verified_count=verified_count,
                 passed_count=passed,
                 total_cost_usd=bucket["cost"],
+                evidence_source=evidence_source,
             )
         )
     scores.sort(key=lambda s: s.synthesis_count, reverse=True)
@@ -308,7 +317,24 @@ def analyse_events(
         "or check that the verifier is firing on both providers."
     )
 
-    if opus and hermes and opus.verified_count >= 10 and hermes.verified_count >= 10:
+    if (
+        opus
+        and hermes
+        and opus.verified_count >= 10
+        and hermes.verified_count >= 10
+        and opus.evidence_source != hermes.evidence_source
+    ):
+        decision = "insufficient_data"
+        rationale = (
+            "Both providers reached the minimum graded synthesis volume, "
+            "but their evidence sources differ "
+            f"({opus.provider}: {opus.evidence_source}; "
+            f"{hermes.provider}: {hermes.evidence_source}). A rubric-scored "
+            "provider cannot be compared against a self-graded fallback "
+            "provider for the §14.4 verdict. Re-run after both providers "
+            "emit the same evidence type."
+        )
+    elif opus and hermes and opus.verified_count >= 10 and hermes.verified_count >= 10:
         gap_pp = (opus.pass_rate_overall - hermes.pass_rate_overall) * 100
         if abs(gap_pp) <= PASS_RATE_GAP_THRESHOLD_PP:
             decision = "flip_to_hermes_primary"
@@ -400,10 +426,10 @@ def render_verdict_markdown(verdict: Verdict) -> str:
     lines.append("## Per-provider scores")
     lines.append("")
     lines.append(
-        "| Provider | Model | Synthesis calls | Verified | Passed | Pass rate (overall) | Cost / pass |"
+        "| Provider | Model | Evidence | Synthesis calls | Verified | Passed | Pass rate (overall) | Cost / pass |"
     )
     lines.append(
-        "|---|---|---|---|---|---|---|"
+        "|---|---|---|---|---|---|---|---|"
     )
     for s in verdict.scores:
         cost_str = (
@@ -412,7 +438,7 @@ def render_verdict_markdown(verdict: Verdict) -> str:
             else "—"
         )
         lines.append(
-            f"| {s.provider} | {s.model} | {s.synthesis_count} | "
+            f"| {s.provider} | {s.model} | {s.evidence_source} | {s.synthesis_count} | "
             f"{s.verified_count} | {s.passed_count} | "
             f"{s.pass_rate_overall * 100:.1f}% | {cost_str} |"
         )
@@ -469,6 +495,11 @@ def _validate_provider_score(score: ProviderScore) -> None:
         raise ValueError("provider score provider must be a non-empty string")
     if not isinstance(score.model, str) or not score.model.strip():
         raise ValueError("provider score model must be a non-empty string")
+    if score.evidence_source not in ALLOWED_EVIDENCE_SOURCES:
+        raise ValueError(
+            "provider score evidence_source must be one of: "
+            + ", ".join(sorted(ALLOWED_EVIDENCE_SOURCES))
+        )
     for field in ("synthesis_count", "verified_count", "passed_count"):
         value = getattr(score, field)
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:

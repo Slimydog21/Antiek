@@ -269,6 +269,7 @@ def test_self_grade_fallback_when_no_rubric_scored():
     ]
     v = analyse_events(events=events)
     assert v.hermes_score is not None
+    assert v.hermes_score.evidence_source == "self_grade"
     assert v.hermes_score.verified_count == 1  # self-graded counts as verified
     assert v.hermes_score.passed_count == 1    # conviction 0.8 ≥ 0.5 → pass
 
@@ -318,8 +319,31 @@ def test_rubric_scored_overrides_self_grade():
     ]
     v = analyse_events(events=events)
     assert v.hermes_score is not None
+    assert v.hermes_score.evidence_source == "rubric_scored"
     assert v.hermes_score.verified_count == 1
     assert v.hermes_score.passed_count == 0  # rubric.scored 0.3 wins over self-grade
+
+
+def test_mixed_rubric_and_self_grade_evidence_refuses_decision():
+    """Rubric evidence and fallback self-grades are not comparable for G5."""
+    events: list[dict] = []
+    for i in range(12):
+        inv = f"opus-rubric-{i}"
+        events.append(_dispatch_synthesis("openrouter-opus", "claude-opus-4-7", inv=inv))
+        events.append(_verify_score(0.9, inv=inv))
+    for i in range(12):
+        inv = f"hermes-self-{i}"
+        events.append(_dispatch_synthesis("hermes", "grok-4.3", inv=inv))
+        events.append(_synthesize_delivered(inv=inv, recommendation="buy", conviction=0.9))
+
+    v = analyse_events(events=events)
+
+    assert v.opus_score is not None
+    assert v.opus_score.evidence_source == "rubric_scored"
+    assert v.hermes_score is not None
+    assert v.hermes_score.evidence_source == "self_grade"
+    assert v.decision == "insufficient_data"
+    assert "evidence sources differ" in v.rationale
 
 
 # ── Markdown renderer ────────────────────────────────────────────────
@@ -340,6 +364,8 @@ def test_renders_markdown_with_decision_and_table():
     assert "# Dispatch tier-differentiation verdict (§14.4)" in md
     assert "openrouter-opus" in md
     assert "hermes-grok" in md
+    assert "| Provider | Model | Evidence |" in md
+    assert "rubric_scored" in md
     assert "## Per-provider scores" in md
     assert "## Next steps" in md
 
