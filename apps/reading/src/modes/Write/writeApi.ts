@@ -65,13 +65,15 @@ export async function searchRepository(opts: {
   sourceDocumentId?: string;
   limit?: number;
 }): Promise<RepositoryHit[]> {
-  const url = new URL(`${API_BASE}/write/blocks/search`, window.location.origin);
-  if (opts.q) url.searchParams.set("q", opts.q);
-  if (opts.folderId) url.searchParams.set("folder_id", opts.folderId);
-  if (opts.sourceDocumentId) url.searchParams.set("source_document_id", opts.sourceDocumentId);
-  if (opts.limit) url.searchParams.set("limit", String(opts.limit));
+  const params = new URLSearchParams();
+  if (opts.q) params.set("q", opts.q);
+  if (opts.folderId) params.set("folder_id", opts.folderId);
+  if (opts.sourceDocumentId) params.set("source_document_id", opts.sourceDocumentId);
+  if (opts.limit) params.set("limit", String(opts.limit));
+  const qs = params.toString();
   const body = await _json<{ hits: RepositoryHit[] }>(
-    await apiFetch(url.toString()), "GET /write/blocks/search",
+    await apiFetch(`${API_BASE}/write/blocks/search${qs ? `?${qs}` : ""}`),
+    "GET /write/blocks/search",
   );
   return body.hits;
 }
