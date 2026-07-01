@@ -279,6 +279,46 @@ def parse(obj, canonical):
     assert any("question_id" in violation for violation in violations)
 
 
+def test_lint_rejects_module_import_shadowing_validator_namespace(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "shadowed_import_role" / "parser.py",
+        """
+from substrate import provenance
+import unrelated.provenance as provenance
+
+def parse(obj, canonical):
+    question_id = provenance.validate_ref(obj.get("question_id"), canonical)
+    return {"question_id": question_id}
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any("question_id" in violation for violation in violations)
+
+
+def test_lint_rejects_function_import_shadowing_validator_namespace(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "shadowed_function_import_role" / "parser.py",
+        """
+from substrate import provenance
+
+def parse(obj, canonical):
+    import unrelated.provenance as provenance
+    question_id = provenance.validate_ref(obj.get("question_id"), canonical)
+    return {"question_id": question_id}
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any("question_id" in violation for violation in violations)
+
+
 def test_lint_does_not_let_one_parser_function_validate_for_another(
     tmp_path: Path,
 ) -> None:

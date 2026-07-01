@@ -142,11 +142,49 @@ def _assigned_names_in_stmt(stmt: ast.stmt) -> set[str]:
     return set()
 
 
+def _imported_names_in_stmt(stmt: ast.stmt) -> set[str]:
+    if isinstance(stmt, ast.Import):
+        return {
+            alias.asname or alias.name.split(".", 1)[0]
+            for alias in stmt.names
+        }
+    if isinstance(stmt, ast.ImportFrom):
+        return {
+            alias.asname or alias.name
+            for alias in stmt.names
+        }
+    return set()
+
+
+def _validator_imported_names_in_stmt(stmt: ast.stmt) -> set[str]:
+    out: set[str] = set()
+    if isinstance(stmt, ast.ImportFrom) and stmt.module == "substrate.provenance":
+        for alias in stmt.names:
+            if alias.name in {"validate_ref", "validate_refs"}:
+                out.add(alias.asname or alias.name)
+    elif isinstance(stmt, ast.ImportFrom) and stmt.module == "substrate":
+        for alias in stmt.names:
+            if alias.name == "provenance":
+                out.add(alias.asname or alias.name)
+    elif isinstance(stmt, ast.Import):
+        for alias in stmt.names:
+            if alias.name == "substrate.provenance":
+                out.add(alias.asname or "substrate")
+    return out
+
+
+def _non_validator_imported_names_in_stmt(stmt: ast.stmt) -> set[str]:
+    return _imported_names_in_stmt(stmt) - _validator_imported_names_in_stmt(stmt)
+
+
 def _module_shadowed_names(tree: ast.Module) -> set[str]:
     return {
         name
         for stmt in tree.body
-        for name in _assigned_names_in_stmt(stmt)
+        for name in (
+            _assigned_names_in_stmt(stmt)
+            | _non_validator_imported_names_in_stmt(stmt)
+        )
     }
 
 
@@ -167,6 +205,8 @@ def _function_shadowed_names(func: ast.FunctionDef | ast.AsyncFunctionDef) -> se
             shadows.update(_assigned_names_in_stmt(node))
         elif isinstance(node, ast.NamedExpr):
             shadows.update(_assigned_names(node.target))
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            shadows.update(_non_validator_imported_names_in_stmt(node))
     return shadows
 
 
