@@ -1,0 +1,38 @@
+{
+  "spec_file": "docs/html/sprints/sprint-30.html",
+  "source_spec_section": "docs/sprint-breakdown.html#sprint-30",
+  "target_branch": "reader/integration",
+  "status": "thread_gated",
+  "recorded_at": "2026-07-01T20:40:46Z",
+  "verified_code_sha": "4a526b32",
+  "mode": "status_reconciliation",
+  "deterministic_evidence": {
+    "backend_gate": "162 passed: federation, partner identity, nonce ledger, programmatic gate, autoresearch Wedge 3, video frame extraction, DuckLake, billing tax reports",
+    "frontend_gate": "33 passed: npm test -- Federation taxonomy --run from apps/reading",
+    "federation_files": "substrate/federation and substrate/cross_graph federation paths exist with API and event tests",
+    "programmatic_gate": "tools/marketplace/programmatic_gate.py exists and is tested",
+    "autoresearch_wedge3": "tests/test_autoresearch_wedge3.py passed",
+    "thread_decision_template": "docs/sprint30_thread_decisions.md exists; prior 2026-05-21 snapshot exists"
+  },
+  "operator_only_remaining": [
+    "A partner Antiek instance agrees to a real slice exchange.",
+    "More than 200 active monthly-earning creators exist before long-tail economics activates.",
+    "Advertiser demand exceeds manual-curation capacity before programmatic activates.",
+    "At least 30% of citable source material is non-text before vision role activates.",
+    "At least 500 graded outcomes exist before autoresearch Wedge 3 config sweeps activate.",
+    "Per-user file count or catalog contention justifies Stage 2 before storage transition activates.",
+    "A fresh docs/sprint30_thread_decisions.md quarterly decision is filed with live marketplace numbers."
+  ],
+  "not_claimed": [
+    "Full repository test suite was not rerun in this S30+ pass.",
+    "No real federation partner exchange was executed.",
+    "Programmatic ad infrastructure was not activated.",
+    "Vision extraction was not activated against a production non-text corpus.",
+    "Autoresearch Wedge 3 was not run against 500 graded outcomes.",
+    "Stage 2 storage migration was not activated."
+  ],
+  "notes": [
+    "The standalone Sprint 30+ HTML page was added from docs/sprint-breakdown.html#sprint-30.",
+    "The status is thread_gated because each workstream has its own trigger and defer decisions are valid deliverables when triggers are absent."
+  ]
+}

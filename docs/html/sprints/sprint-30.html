@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sprint 30+ — Federation and thread decisions</title>
+<link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+
+<nav class="topnav">
+    <div class="topnav-inner">
+        <span class="topnav-title">Antiek docs</span>
+        <a href="../index.html">Index</a>
+        <a href="sprint-23-24.html">S23-24</a>
+        <a href="sprint-25.html">S25+</a>
+        <a href="sprint-30.html" class="active">S30+</a>
+    </div>
+</nav>
+
+<main>
+<article>
+
+<p class="kicker">Sprint 30+ &middot; thread-gated &middot; substrate verified 2026-07-01 &middot; trigger evidence required</p>
+<h1>Sprint 30+ — Cross-Graph Network Effects &amp; Federation</h1>
+
+<div class="meta">
+    <p><strong>Theme</strong>. Sprint 30+ is a portfolio of independent threads: federation, long-tail creator economics, programmatic ads, vision-capable extraction, autoresearch config sweeps, and possible Stage 2 storage transition. Each thread is triggered by measurable evidence, and a renewed defer/reject decision is a valid deliverable.</p>
+    <p><strong>Current reconciliation</strong>. Federation protocol primitives, partner identity, nonce replay defense, programmatic gate evaluation, autoresearch Wedge 3 sweep substrate, video frame extraction, DuckLake substrate, tax reporting, and the federation operator UI are present under scoped tests. The sprint remains thread-gated because the trigger evidence and partner/live-market conditions are absent.</p>
+</div>
+
+<div class="toc">
+    <div class="toc-title">On this page</div>
+    <ol>
+        <li><a href="#triggers">Thread triggers</a></li>
+        <li><a href="#threads">Threads</a></li>
+        <li><a href="#deliverables">Specific deliverables</a></li>
+        <li><a href="#status">Status reconciliation</a></li>
+        <li><a href="#acceptance">Acceptance &amp; exit criteria</a></li>
+    </ol>
+</div>
+
+<h2 id="triggers">1. Thread triggers <a class="section-anchor" href="#triggers">#</a></h2>
+
+<div class="callout warn">
+    <strong>Trigger discipline</strong>
+    <p>Federation requires a partner Antiek instance willing to negotiate a slice exchange. Long-tail creator economics require more than 200 active monthly-earning creators. Programmatic requires advertiser demand exceeding manual-curation capacity. Vision extraction requires at least 30% non-text citable material. Autoresearch Wedge 3 requires at least 500 graded outcomes. Threads without cleared triggers stay explicitly deferred.</p>
+</div>
+
+<h2 id="threads">2. Threads <a class="section-anchor" href="#threads">#</a></h2>
+
+<h3>2.1 Federation layer</h3>
+<p>Antiek instances can opt in to expose collective-graph slices under negotiated terms. The protocol is signed-resource-pull, not push. The receiving instance validates signatures and ingests under its own quality gate; no cross-instance write path exists.</p>
+<p><strong>Exit</strong>: two Antiek instances federate one slice successfully and the protocol passes adversarial review.</p>
+
+<h3>2.2 Long-tail user-as-IP-holder economics</h3>
+<p>The user-as-IP-holder path matures into hundreds or thousands of users earning meaningful rev-share. Anti-gaming hardens around creator clusters, payout-graph forensics, and non-trivial tax reporting volume.</p>
+<p><strong>Exit</strong>: long-tail creator economics run without per-case operator intervention and a sampled 1099 batch passes accountant review.</p>
+
+<h3>2.3 Programmatic auction</h3>
+<p>Programmatic display remains rejected unless scale warrants it. If triggered, integrate one SSP and run a brand-safety classifier in front of served ads. If not triggered, renew the rejection with current-quarter numbers.</p>
+<p><strong>Exit</strong>: programmatic is live or the rejection is renewed with cited numbers.</p>
+
+<h3>2.4 Vision-capable role</h3>
+<p>Frame-level analysis extracts claims from images and video. The visual verification rubric must include frame timestamp, visual-element bounding box, and surrounding-text grounding.</p>
+<p><strong>Exit</strong>: the substrate extracts claims from video frames and passes a 50-frame audit.</p>
+
+<h3>2.5 Autoresearch Wedge 3 config sweeps</h3>
+<p>Nightly sweeps over context-pack composition and dispatch-tier routing produce operator-reviewed config deltas. No automatic promotion occurs.</p>
+<p><strong>Exit</strong>: one proposed config delta survives operator review and improves held-out outcomes.</p>
+
+<h3>2.6 Stage 2 storage transition</h3>
+<p>If per-user DuckDB file count or catalog contention warrants it, user partitions move to a sharded model mediated by DuckLake catalog routing. Otherwise Stage 1 continues.</p>
+<p><strong>Exit</strong>: if triggered, Stage 2 is live without user-facing latency regression; otherwise Stage 1 remains adequate.</p>
+
+<h2 id="deliverables">3. Specific deliverables <a class="section-anchor" href="#deliverables">#</a></h2>
+
+<ul>
+    <li><code>substrate/federation/</code> &mdash; signed-resource-pull protocol and per-slice negotiation primitives.</li>
+    <li><code>substrate/anti_gaming/long_tail.py</code> &mdash; creator-cluster manipulation and payout-graph forensics.</li>
+    <li><code>substrate/ad_inventory/programmatic.py</code> &mdash; conditional SSP integration and brand-safety classifier.</li>
+    <li><code>substrate/roles/vision_extractor/</code> &mdash; frame-level claim extraction and verification extension.</li>
+    <li><code>substrate/autoresearch/wedge3_sweep.py</code> &mdash; conditional nightly config sweep.</li>
+    <li><code>substrate/ducklake/stage2_migration.py</code> &mdash; conditional sharded user partitions and catalog routing.</li>
+    <li><code>tools/stripe_connect/tax_export.py</code> &mdash; 1099 batch export and accountant-review format.</li>
+    <li><code>docs/sprint30_thread_decisions.md</code> &mdash; per-thread go/defer verdicts with cited numbers.</li>
+</ul>
+
+<h2 id="status">4. Status reconciliation <a class="section-anchor" href="#status">#</a></h2>
+
+<div class="callout warn">
+    <strong>Thread-gated, not activated</strong>
+    <p>The substrate has meaningful preparation, but no Sprint 30+ thread is live. Partner exchange, long-tail creator volume, programmatic demand, non-text corpus mix, 500 graded outcomes, and storage-pressure triggers remain unproven.</p>
+</div>
+
+<p>Fresh deterministic gates:</p>
+
+<pre><code>.venv/bin/python -m pytest \
+  tests/test_federation.py \
+  tests/test_federation_inbound.py \
+  tests/test_federation_outbound.py \
+  tests/test_federation_event_emit.py \
+  tests/test_federation_wired_hooks.py \
+  tests/test_api_federation.py \
+  tests/test_partner_identity.py \
+  tests/test_partner_identity_persistence.py \
+  tests/test_nonce_ledger_persistence.py \
+  tests/test_programmatic_gate.py \
+  tests/test_autoresearch_wedge3.py \
+  tests/test_video_frame_extraction.py \
+  tests/test_ducklake.py \
+  tests/test_billing_tax_reports.py -q
+
+162 passed, 1 warning in 10.34s
+
+cd apps/reading &amp;&amp; npm test -- Federation taxonomy --run
+
+1 file passed; 33 tests passed</code></pre>
+
+<p><code>docs/sprint30_thread_decisions.md</code> remains the standing template. The prior snapshot <code>docs/sprint30_thread_decisions_2026_05_21.md</code> records defer decisions from an earlier zero-state review; a fresh thread decision must be filed when Sprint 30+ planning actually opens.</p>
+
+<h2 id="acceptance">5. Acceptance &amp; exit criteria <a class="section-anchor" href="#acceptance">#</a></h2>
+
+<ul>
+    <li>Each thread is live or explicitly rejected with a documented current-quarter reason.</li>
+    <li>Compounding metrics do not regress after any federation activation.</li>
+    <li>Voice/style discipline holds at the federation boundary and in programmatic brand-safety if triggered.</li>
+    <li>Long-tail creator economics operate without per-case operator intervention.</li>
+    <li>The single-writer invariant survives federation; no cross-instance write path exists.</li>
+    <li>If Stage 2 transitions, per-user latency remains inside SLA; otherwise Stage 1 is documented as adequate.</li>
+</ul>
+
+</article>
+</main>
+
+</body>
+</html>
