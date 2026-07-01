@@ -106,11 +106,13 @@ describe("CascadeProposal — propose the sub-question tree (M1)", () => {
   it("POSTs the problem and renders the proposed sub-questions", async () => {
     createPlanMock.mockResolvedValue(CREATE_RESP);
     renderProposal();
-    await waitFor(() =>
-      expect(createPlanMock).toHaveBeenCalledWith(
-        expect.objectContaining({ problem: expect.stringMatching(/energy transition/i) }),
-      ),
-    );
+    await waitFor(() => expect(createPlanMock).toHaveBeenCalledOnce());
+    const request = createPlanMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(request).toEqual({ problem: expect.stringMatching(/energy transition/i) });
+    // The UX must omit sub_questions entirely so the backend's auto-decompose
+    // branch runs. [] would silently take the manual branch; an explicit
+    // undefined key is also a drift signal worth catching.
+    expect(Object.prototype.hasOwnProperty.call(request, "sub_questions")).toBe(false);
     expect(await screen.findByText(/critical-mineral supply/i)).toBeTruthy();
     expect(screen.getByText(/petro-state economies/i)).toBeTruthy();
     expect(screen.getByText(/chokepoints replace oil/i)).toBeTruthy();
