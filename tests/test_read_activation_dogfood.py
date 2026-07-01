@@ -42,6 +42,7 @@ def test_closure_ready_when_golden_path_rule_is_satisfied() -> None:
         for i in range(1, 11)
     ]
     records[-1]["entry_door"] = "command_palette"
+    records[-1]["verdict"] = "ACTIVATE"
 
     report = validate_sessions(records)
 
@@ -50,7 +51,73 @@ def test_closure_ready_when_golden_path_rule_is_satisfied() -> None:
     assert report.live_provider_sessions == 5
     assert report.citation_trace_sessions == 3
     assert report.non_library_sessions == 1
+    assert report.final_verdict == "ACTIVATE"
     assert report.failures == ()
+
+
+def test_mechanically_complete_log_requires_final_verdict() -> None:
+    records = [
+        _session(i, live=i <= 5, citation=i <= 3, entry_door="library")
+        for i in range(1, 11)
+    ]
+    records[-1]["entry_door"] = "command_palette"
+
+    report = validate_sessions(records)
+
+    assert report.closure_ready is False
+    assert report.final_verdict is None
+    assert any("final verdict required" in f for f in report.failures)
+
+
+def test_final_verdict_must_be_allowed_value() -> None:
+    records = [
+        _session(i, live=i <= 5, citation=i <= 3, entry_door="library")
+        for i in range(1, 11)
+    ]
+    records[-1]["entry_door"] = "command_palette"
+    records[-1]["verdict"] = "ship it"
+
+    report = validate_sessions(records)
+
+    assert report.closure_ready is False
+    assert report.final_verdict == "ship it"
+    assert any("final verdict must be one of" in f for f in report.failures)
+
+
+def test_repair_verdict_is_explicit_non_closure() -> None:
+    records = [
+        _session(i, live=i <= 5, citation=i <= 3, entry_door="library")
+        for i in range(1, 11)
+    ]
+    records[-1]["entry_door"] = "command_palette"
+    records[-1]["verdict"] = "REPAIR"
+
+    report = validate_sessions(records)
+
+    assert report.closure_ready is False
+    assert report.final_verdict == "REPAIR"
+    assert any(
+        "closure requires final verdict ACTIVATE; found REPAIR" in f
+        for f in report.failures
+    )
+
+
+def test_final_verdict_accepts_normalized_roll_back_claim() -> None:
+    records = [
+        _session(i, live=i <= 5, citation=i <= 3, entry_door="library")
+        for i in range(1, 11)
+    ]
+    records[-1]["entry_door"] = "command_palette"
+    records[-1]["verdict"] = "roll_back_claim"
+
+    report = validate_sessions(records)
+
+    assert report.closure_ready is False
+    assert report.final_verdict == "ROLL BACK CLAIM"
+    assert any(
+        "closure requires final verdict ACTIVATE; found ROLL BACK CLAIM" in f
+        for f in report.failures
+    )
 
 
 def test_citation_tracing_requires_explicit_session_evidence() -> None:
@@ -94,6 +161,7 @@ def test_non_library_entry_accepts_human_spelled_command_palette() -> None:
         for i in range(1, 11)
     ]
     records[-1]["entry_door"] = "Command Palette"
+    records[-1]["verdict"] = "ACTIVATE"
 
     report = validate_sessions(records)
 
@@ -107,6 +175,7 @@ def test_non_library_entry_accepts_write_trace_to_source_label() -> None:
         for i in range(1, 11)
     ]
     records[-1]["entry_door"] = "Write trace-to-source"
+    records[-1]["verdict"] = "ACTIVATE"
 
     report = validate_sessions(records)
 
