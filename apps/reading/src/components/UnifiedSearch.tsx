@@ -82,6 +82,18 @@ function isResearchHit(r: UnifiedSearchResult): r is ResearchSourceHit {
   return "kind" in r && r.kind === "research";
 }
 
+function resolvedReaderPageIndex(hit: CorpusSearchHit): number | null {
+  if (
+    !hit.page_resolved ||
+    hit.page_index === null ||
+    !Number.isSafeInteger(hit.page_index) ||
+    hit.page_index < 0
+  ) {
+    return null;
+  }
+  return hit.page_index;
+}
+
 export default function UnifiedSearch({
   variant = "library",
   themeContext,
@@ -228,10 +240,11 @@ export default function UnifiedSearch({
         );
         return;
       }
+      const page = resolvedReaderPageIndex(hit);
       openDocument(
         hit.document_id,
-        hit.page_resolved && hit.page_index !== null && hit.page_index >= 0
-          ? { page: hit.page_index, chunkId: hit.chunk_id }
+        page !== null
+          ? { page, chunkId: hit.chunk_id }
           : { chunkId: hit.chunk_id },
       );
     },
@@ -471,34 +484,37 @@ export default function UnifiedSearch({
             </p>
           ) : (
             <ul className="flex flex-col gap-1.5" aria-label="Local search results">
-              {localHits.map((h) => (
-                <li key={h.chunk_id}>
-                  <button
-                    type="button"
-                    onClick={() => openResult(h)}
-                    className="w-full text-left rounded px-2 py-1.5 hover:bg-ice-3 dark:hover:bg-charcoal-1"
-                  >
-                    <span className="block text-[13px] font-serif text-ink dark:text-bright truncate">
-                      <span className="text-[10px] font-mono uppercase text-shadow-1 mr-1">
-                        library
+              {localHits.map((h) => {
+                const page = resolvedReaderPageIndex(h);
+                return (
+                  <li key={h.chunk_id}>
+                    <button
+                      type="button"
+                      onClick={() => openResult(h)}
+                      className="w-full text-left rounded px-2 py-1.5 hover:bg-ice-3 dark:hover:bg-charcoal-1"
+                    >
+                      <span className="block text-[13px] font-serif text-ink dark:text-bright truncate">
+                        <span className="text-[10px] font-mono uppercase text-shadow-1 mr-1">
+                          library
+                        </span>
+                        {h.document_title ?? h.document_id}
+                        {page !== null ? (
+                          <span className="ml-2 text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                            p.{page + 1}
+                          </span>
+                        ) : (
+                          <span className="ml-2 text-[11px] font-mono text-shadow-1 dark:text-moonlight italic">
+                            open the book
+                          </span>
+                        )}
                       </span>
-                      {h.document_title ?? h.document_id}
-                      {h.page_resolved && h.page_index !== null ? (
-                        <span className="ml-2 text-[11px] font-mono text-shadow-1 dark:text-moonlight">
-                          p.{h.page_index + 1}
-                        </span>
-                      ) : (
-                        <span className="ml-2 text-[11px] font-mono text-shadow-1 dark:text-moonlight italic">
-                          open the book
-                        </span>
-                      )}
-                    </span>
-                    <span className="block text-[12px] text-shadow-1 dark:text-moonlight line-clamp-2">
-                      {h.snippet}
-                    </span>
-                  </button>
-                </li>
-              ))}
+                      <span className="block text-[12px] text-shadow-1 dark:text-moonlight line-clamp-2">
+                        {h.snippet}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
           {lastSearchLatencyMs !== null && (

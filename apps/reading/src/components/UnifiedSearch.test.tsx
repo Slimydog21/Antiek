@@ -304,6 +304,27 @@ describe("UnifiedSearch — M3 every result opens via openDocument", () => {
     });
   });
 
+  it.each([
+    { page_index: 4.5, label: "fractional" },
+    { page_index: 9007199254740992, label: "unsafe" },
+  ])("does not pass a $label local hit page index to openDocument", async ({ page_index }) => {
+    corpusSearchMock.mockResolvedValue({
+      query: "q",
+      hits: [hit({ page_index })],
+      count: 1,
+    });
+    renderSearch();
+    fireEvent.change(screen.getByLabelText("Unified search"), { target: { value: "q" } });
+    await vi.advanceTimersByTimeAsync(200);
+    await screen.findByText("Quantum Book");
+
+    expect(screen.getByText(/open the book/i)).toBeTruthy();
+    fireEvent.click(screen.getByText("Quantum Book").closest("button")!);
+    expect(openDocumentMock).toHaveBeenCalledWith("doc-1", {
+      chunkId: "c1",
+    });
+  });
+
   it("clicking a research source opens the same Reader door", async () => {
     resetInvestigationState({
       startedId: "inv-src",
