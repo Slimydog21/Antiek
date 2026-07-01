@@ -968,8 +968,24 @@ gating SQL.
 1. SSH to the production VM.
 2. Run a synthetic retrieval test with a `restricted_pending_opt_in`
    document and policy_tag = `attribution_eligible`.
-3. Verify the SQL excludes the restricted document.
-4. Commit `docs/decisions/oa-020-retrieval-gate-deployed.md`.
+   Use the packaged probe so the evidence runs through the deployed
+   `substrate.graph.search.search()` SQL path without touching the live graph:
+
+   ```bash
+   ./.venv/bin/python -m tools.ops.retrieval_gate_probe \
+     --db-path "/tmp/antiek-oa020-retrieval-gate-$(date +%Y%m%d%H%M%S).duckdb" \
+     --json
+   ```
+
+3. Verify the output reports `status: PASS`, `attribution_eligible` excludes
+   `doc-restricted`, `private_research` includes `doc-restricted`, and the
+   unknown policy tag still excludes `doc-restricted`.
+4. Commit `docs/decisions/oa-020-retrieval-gate-deployed.md` with the VM
+   hostname/deploy SHA, command, and probe output.
+
+The probe is support evidence only: it creates a synthetic DuckDB database and
+does not close OA-020 until it has been run on the production VM and the
+decision document above is committed.
 
 #### Once closed
 
