@@ -21,6 +21,12 @@ from .decomposer_env import (
     DecomposerRollout,
     DecomposerTask,
 )
+from .parameter_extractor_env import (
+    ParameterExtractorEnvironment,
+    ParameterExtractorReward,
+    ParameterExtractorRollout,
+    ParameterExtractorTask,
+)
 from .synthesizer_env import (
     SynthesizerEnvironment,
     SynthesizerReward,
@@ -37,6 +43,10 @@ __all__ = [
     "DecomposerReward",
     "DecomposerRollout",
     "DecomposerTask",
+    "ParameterExtractorEnvironment",
+    "ParameterExtractorReward",
+    "ParameterExtractorRollout",
+    "ParameterExtractorTask",
     "SynthesizerEnvironment",
     "SynthesizerReward",
     "SynthesizerRollout",
