@@ -2,6 +2,18 @@ import { useState } from "react";
 import LemonCard from "../../components/lemon/LemonCard";
 import type { Event } from "../../generated/types";
 
+function finiteNonNegativeNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
+function nonNegativeSafeInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
 /**
  * Renders one trajectory event. Variant-based: each substantive
  * action_type gets a dedicated rendering shape. Noise events
@@ -217,6 +229,10 @@ function DispatchRow({ event }: { event: Event }) {
     cost_usd?: number;
     latency_ms?: number;
   };
+  const inputTokens = nonNegativeSafeInteger(p.input_tokens);
+  const outputTokens = nonNegativeSafeInteger(p.output_tokens);
+  const costUsd = finiteNonNegativeNumber(p.cost_usd) ?? 0;
+  const latencyMs = finiteNonNegativeNumber(p.latency_ms) ?? 0;
   return (
     <div className="text-[11px] font-mono text-ink-mute dark:text-moonlight flex gap-2 flex-wrap">
       <span>→</span>
@@ -224,11 +240,11 @@ function DispatchRow({ event }: { event: Event }) {
       <span>·</span>
       <span>{p.provider}/{p.model}</span>
       <span>·</span>
-      <span>in={p.input_tokens} out={p.output_tokens}</span>
+      <span>in={inputTokens ?? "?"} out={outputTokens ?? "?"}</span>
       <span>·</span>
-      <span>${(p.cost_usd ?? 0).toFixed(6)}</span>
+      <span>${costUsd.toFixed(6)}</span>
       <span>·</span>
-      <span>{((p.latency_ms ?? 0) / 1000).toFixed(1)}s</span>
+      <span>{(latencyMs / 1000).toFixed(1)}s</span>
     </div>
   );
 }
