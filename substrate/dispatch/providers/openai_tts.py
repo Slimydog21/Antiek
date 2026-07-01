@@ -11,18 +11,22 @@ audio context)."""
 
 from __future__ import annotations
 
+import base64
 import os
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from substrate.dispatch.base import NormalizedUsage, ProviderError, RawProviderResponse
+
 # A poster turns (url, headers, json_body) into the raw audio bytes the
 # API returns. Injected so tests synthesize without a network call or a
 # real key burn; production uses the httpx default below.
-SpeechPoster = Callable[[str, dict, dict], bytes]
+SpeechPoster = Callable[[str, dict[str, str], dict[str, str]], bytes]
 
 
-def _httpx_poster(url: str, headers: dict, json_body: dict) -> bytes:
+def _httpx_poster(url: str, headers: dict[str, str], json_body: dict[str, str]) -> bytes:
     import httpx
 
     resp = httpx.post(url, headers=headers, json=json_body, timeout=60.0)
@@ -48,6 +52,7 @@ class OpenAITTSProvider:
     api_key: str | None = None
     base_url: str = "https://api.openai.com/v1"
     voice: str = "alloy"  # OpenAI's six pre-defined voices; operator can override
+    poster: SpeechPoster | None = None
 
     def __post_init__(self) -> None:
         if self.api_key is None:
@@ -60,7 +65,7 @@ class OpenAITTSProvider:
         prompt: str,  # the text to speak
         max_tokens: int,  # unused for TTS
         temperature: float,  # unused for TTS
-    ) -> Any:
+    ) -> RawProviderResponse:
         """Synthesize speech. Returns a RawProviderResponse-shaped
         result with `text` as a base64-encoded audio blob.
 
@@ -68,24 +73,44 @@ class OpenAITTSProvider:
         character count of the prompt; the cost computation in
         substrate.dispatch uses input_per_mtok pricing.
 
-        This stub raises if no API key + no httpx test transport are
-        configured. Full implementation lands when the operator wires
-        the real OpenAI key into env + the WebRTC client connects."""
+        The returned ``text`` is base64-encoded mp3 bytes so the synchronous
+        dispatch router can carry it without inventing a binary response path.
+        """
+        started = time.monotonic()
         if not self.api_key:
-            raise RuntimeError(
+            raise ProviderError(
                 "OPENAI_API_KEY missing. Set the env var to enable TTS. "
-                "Sprint 17 substrate scaffold; full wire-up requires "
-                "operator API key + browser-side WebRTC capture."
+                "The TTS adapter never burns credits without an operator key.",
+                provider=self.name,
+                model=model,
+                latency_ms=0,
+                retryable=False,
             )
-        # NOTE: real implementation would POST to /v1/audio/speech
-        # with the appropriate model + voice + input_text. The current
-        # scaffold raises rather than make a real call to avoid burning
-        # operator credits autonomously.
-        raise NotImplementedError(
-            "Full TTS dispatch wire-up is operator-driven. Substrate-side "
-            "tier config exists in substrate/dispatch/config.yaml (Sprint "
-            "17 addition); browser-side WebRTC capture in acquisition/voice/"
-            "; the wire-up between them is multi-day engineering."
+        try:
+            audio = self.synthesize(prompt, model=model)
+        except ProviderError:
+            raise
+        except Exception as exc:
+            raise ProviderError(
+                f"OpenAI TTS call failed: {exc}",
+                provider=self.name,
+                model=model,
+                latency_ms=int((time.monotonic() - started) * 1000),
+                retryable=True,
+            ) from exc
+
+        latency_ms = int((time.monotonic() - started) * 1000)
+        return RawProviderResponse(
+            text=base64.b64encode(audio).decode("ascii"),
+            raw_usage={
+                "input_characters": len(prompt),
+                "input_tokens": len(prompt),
+                "output_tokens": 0,
+                "audio_bytes": len(audio),
+            },
+            finish_reason="stop",
+            latency_ms=latency_ms,
+            extra={"mime_type": "audio/mpeg", "encoding": "base64"},
         )
 
     def synthesize(
@@ -110,19 +135,29 @@ class OpenAITTSProvider:
         """
         if not text.strip():
             raise ValueError("cannot synthesize empty text")
-        if poster is None and not self.api_key:
+        if poster is None and self.poster is None and not self.api_key:
             raise RuntimeError(
                 "OPENAI_API_KEY missing. Set the env var to enable TTS voice replies."
             )
-        post = poster or _httpx_poster
+        post = poster or self.poster or _httpx_poster
         return post(
             f"{self.base_url}/audio/speech",
             {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
             {"model": model, "voice": voice or self.voice, "input": text, "response_format": "mp3"},
         )
 
-    def normalize_usage(self, raw_usage: dict[str, Any]) -> dict[str, int]:
-        """TTS has no token usage in the traditional sense. Returns
-        zeros; the dispatch cost helper computes based on character
-        count of the input prompt (per substrate.dispatch tier config)."""
-        return {"input_tokens": 0, "output_tokens": 0, "cached_input_tokens": 0}
+    def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:
+        """Normalize TTS usage into the router's token-shaped accounting.
+
+        The TTS tier prices input text per million characters. The dispatch
+        router's cost math is token-shaped, so the adapter reports one
+        "input token" per input character for this provider only.
+        """
+        return NormalizedUsage(
+            input_tokens=int(
+                raw_usage.get("input_characters", raw_usage.get("input_tokens", 0)) or 0
+            ),
+            output_tokens=int(raw_usage.get("output_tokens", 0) or 0),
+            cached_input_tokens=0,
+            cache_creation_input_tokens=0,
+        )
