@@ -22,17 +22,19 @@ content does not (§13.3 de-identification claim).
 from .auth import (
     AuthError,
     AuthProvider,
+    AuthVendor,
     MockAuthProvider,
     UserClaims,
     decode_token,
+    normalize_verified_claims,
 )
 from .graph_router import (
     CATALOG_DB_ENV,
     DEFAULT_GRAPH_USER_ID,
     GRAPH_USER_ID_ENV,
+    SHARD_HEX_CHARS_ENV,
     GraphRouter,
     PersonalGraphHandle,
-    SHARD_HEX_CHARS_ENV,
     SharedSubstrateHandle,
     build_graph_router_from_env,
     configured_ducklake_catalog,
@@ -72,6 +74,7 @@ from .skill_writer import (
 __all__ = [
     "AuthError",
     "AuthProvider",
+    "AuthVendor",
     "CATALOG_DB_ENV",
     "ContributedDigest",
     "DEFAULT_GRAPH_USER_ID",
@@ -103,6 +106,7 @@ __all__ = [
     "drain_promotable_to_substrate",
     "extract_discovered_rule",
     "move_to_partition",
+    "normalize_verified_claims",
     "propagate_to_shared_substrate",
     "resolve_personal_graph",
     "resolve_shared_substrate",

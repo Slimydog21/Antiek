@@ -397,6 +397,16 @@ then:
 4. Add the session middleware
 5. Wire the sign-up/sign-in UI pages into `apps/reading/src/modes/Login/`
 
+#### Substrate support already packaged
+
+`substrate.multi_user.auth.normalize_verified_claims()` now accepts
+already-verified Clerk or Supabase JWT/session claims and normalizes
+them into the stable `UserClaims` contract used by the per-user graph
+router. This does **not** choose the vendor and it does **not** verify
+JWT signatures; the future HTTP adapter must still perform issuer,
+audience, expiry, and key-rotation checks before handing claims to the
+substrate seam.
+
 #### Once closed
 
 Commit `docs/decisions/oa-006-auth-vendor.md` with the choice + the
