@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -14,7 +15,10 @@ from tools.prompt_autoresearch.score import CompositeScore
 def _as_float(value: Any, *, field: str) -> float:
     if isinstance(value, bool) or not isinstance(value, int | float):
         raise ValueError(f"{field} must be a number")
-    return float(value)
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError(f"{field} must be finite")
+    return number
 
 
 def _as_bool(value: Any, *, field: str) -> bool:
@@ -71,6 +75,8 @@ def outcome_from_json(raw: Any, *, index: int) -> PromptMutationOutcome:
         cost = Decimal(str(raw.get("cost_usd", "0")))
     except Exception as exc:  # pragma: no cover - Decimal's exception type is version-specific.
         raise ValueError(f"outcomes[{index}].cost_usd must be decimal-compatible") from exc
+    if not cost.is_finite():
+        raise ValueError(f"outcomes[{index}].cost_usd must be finite")
 
     return PromptMutationOutcome(
         mutation_id=_as_str(raw.get("mutation_id"), field=f"outcomes[{index}].mutation_id"),

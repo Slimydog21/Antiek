@@ -194,6 +194,48 @@ def test_outcome_json_round_trips(tmp_path):
     assert outcome_to_json(loaded[0]) == outcome_to_json(outcome)
 
 
+def test_outcome_json_rejects_non_finite_score(tmp_path):
+    path = tmp_path / "outcomes.json"
+    payload = _outcome_json()
+    payload["delta"] = float("nan")
+    path.write_text(json.dumps([payload]), encoding="utf-8")
+
+    try:
+        load_outcomes_json(path)
+    except ValueError as exc:
+        assert "outcomes[0].delta must be finite" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected non-finite delta to be rejected")
+
+
+def test_outcome_json_rejects_non_finite_composite_score(tmp_path):
+    path = tmp_path / "outcomes.json"
+    payload = _outcome_json()
+    payload["composite_breakdown"]["grounding"] = float("inf")
+    path.write_text(json.dumps([payload]), encoding="utf-8")
+
+    try:
+        load_outcomes_json(path)
+    except ValueError as exc:
+        assert "outcomes[0].composite_breakdown.grounding must be finite" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected non-finite grounding score to be rejected")
+
+
+def test_outcome_json_rejects_non_finite_cost(tmp_path):
+    path = tmp_path / "outcomes.json"
+    payload = _outcome_json()
+    payload["cost_usd"] = "NaN"
+    path.write_text(json.dumps([payload]), encoding="utf-8")
+
+    try:
+        load_outcomes_json(path)
+    except ValueError as exc:
+        assert "outcomes[0].cost_usd must be finite" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected non-finite cost to be rejected")
+
+
 def _outcome_json(mutation_id: str = "m-0") -> dict:
     return {
         "mutation_id": mutation_id,
