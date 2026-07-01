@@ -32,4 +32,46 @@ describe("Topbar", () => {
     expect(screen.getByText("Substrate stats")).toBeTruthy();
     expect(screen.queryByText(/^Stats$/)).toBeNull();
   });
+
+  it.each([
+    ["/operator", "Operator dashboard", /^Operator$/],
+    ["/outcomes", "Outcomes audit", /^Outcomes$/],
+    ["/payouts", "Payouts audit", /^Payouts$/],
+    ["/loop-3", "Loop 3 checklist", /^Loop 3$/],
+    ["/skill-rules", "Skill rules", /^Skill Rules$/],
+    ["/federation", "Federation config", /^Federation$/],
+    ["/map", "Application map", /^Map$/],
+    ["/coordination", "Coordination", /^coordination$/],
+    ["/marketplace", "Marketplace metrics", /^marketplace$/],
+    ["/settings", "Settings", /^settings$/],
+    ["/login", "Login", /^login$/],
+  ])("uses the canonical shared-surface breadcrumb label for %s", (path, expected, oldLabel) => {
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <Topbar />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toBeTruthy();
+    expect(screen.getByText(expected)).toBeTruthy();
+    expect(screen.queryByText(oldLabel)).toBeNull();
+  });
+
+  it.each([
+    ["/operator/advertiser-campaigns", "Advertiser console", /advertiser-campaigns/],
+    ["/operator/payouts/dashboard", "Payout dashboard", /Payouts audit/],
+    ["/me/payouts", "Creator payouts", /Payouts audit/],
+    ["/cross-graph/citations", "Cross-graph citations", /^Cross-graph$/],
+    ["/coordination/cost-consent", "Cost & consent", /cost-consent/],
+  ])("uses the exact canonical breadcrumb label for %s", (path, expected, wrongLabel) => {
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <Topbar />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toBeTruthy();
+    expect(screen.getByText(expected)).toBeTruthy();
+    expect(screen.queryByText(wrongLabel)).toBeNull();
+  });
 });
