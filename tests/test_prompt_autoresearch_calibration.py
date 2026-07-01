@@ -14,10 +14,10 @@ from tools.prompt_autoresearch import (
 )
 
 
-def _outcome(mutation_id: str, delta: float) -> PromptMutationOutcome:
+def _outcome(mutation_id: str, delta: float, *, accepted: bool = False) -> PromptMutationOutcome:
     return PromptMutationOutcome(
         mutation_id=mutation_id,
-        accepted=False,
+        accepted=accepted,
         baseline_score=0.70,
         candidate_score=0.70 + delta,
         delta=delta,
@@ -65,6 +65,21 @@ def test_calibration_rejects_invalid_floor_epsilon():
         assert "floor_epsilon must be a non-negative finite number" in str(exc)
     else:  # pragma: no cover - defensive assertion path
         raise AssertionError("expected invalid floor epsilon to be rejected")
+
+
+def test_calibration_rejects_accepted_noop_outcomes():
+    outcomes = [
+        _outcome("noop-a", 0.0),
+        _outcome("accepted-not-noop", 0.10, accepted=True),
+    ]
+
+    try:
+        calibrate_epsilon("synthesizer", outcomes)
+    except ValueError as exc:
+        assert "no-op calibration outcomes must all be rejected" in str(exc)
+        assert "accepted-not-noop" in str(exc)
+    else:  # pragma: no cover - defensive assertion path
+        raise AssertionError("expected accepted no-op outcome to be rejected")
 
 
 def test_calibration_markdown_records_recommended_epsilon():
@@ -138,3 +153,24 @@ def test_calibration_cli_rejects_invalid_floor_epsilon(tmp_path, capsys):
 
     assert rc == 2
     assert "floor_epsilon must be a non-negative finite number" in capsys.readouterr().err
+
+
+def test_calibration_cli_rejects_accepted_noop_outcome(tmp_path, capsys):
+    from tools.prompt_autoresearch.calibration_cli import main
+
+    outcomes_path = tmp_path / "noop-outcomes.json"
+    write_outcomes_json(
+        outcomes_path,
+        role="synthesizer",
+        outcomes=[
+            _outcome("noop-0", 0.0),
+            _outcome("accepted-not-noop", 0.10, accepted=True),
+        ],
+    )
+
+    rc = main(["--outcomes", str(outcomes_path)])
+
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "no-op calibration outcomes must all be rejected" in err
+    assert "accepted-not-noop" in err
