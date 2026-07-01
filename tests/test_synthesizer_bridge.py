@@ -419,6 +419,51 @@ async def test_long_synthesis_rlm_exposes_llm_batch(
     assert all(row["parent_event_id"] for row in dispatch_calls)
 
 
+@pytest.mark.asyncio
+async def test_long_synthesis_constraint_revision_reinvokes_rlm(
+    monkeypatch, app_and_bus, async_client,
+):
+    monkeypatch.setenv("ANTIEK_RLM_RATIFIED", "1")
+    import interfaces.research.api.synthesizer as bridge
+
+    monkeypatch.setattr(bridge, "SYNTHESIS_CONTEXT_BUDGET_TOKENS", 10)
+    _, bus = app_and_bus
+    inv = "inv-synth-rlm-revision"
+    first = _good_thesis(attributed=False, summary="RLM_FIRST")
+    revised = _good_thesis(attributed=True, summary="RLM_REVISED")
+    provider = _StubSynthesizer([
+        f"answer['content'] = {json.dumps(json.dumps(first))}\nanswer['ready'] = True",
+        f"answer['content'] = {json.dumps(json.dumps(revised))}\nanswer['ready'] = True",
+    ])
+    register_provider(provider)
+    _patch_dispatch_config(monkeypatch, _synth_config("stub-synthesizer"))
+    rlm_started: list[Event] = []
+
+    async def capture_rlm_started(event: Event) -> None:
+        rlm_started.append(event)
+
+    bus.register_handler("rlm.session_started", capture_rlm_started)
+
+    await _post_synthesize(
+        async_client,
+        investigation_id=inv,
+        constraints=[_must_attribute_spec()],
+    )
+    await bus.wait_for_handlers(timeout=5.0)
+
+    delivered_row = next(
+        r for r in trajectory(inv)
+        if r["action_type"] == ActionType.SYNTHESIZE_DELIVERED.value
+    )
+    payload = Event.model_validate(delivered_row).payload
+    assert payload.thesis_summary == "RLM_REVISED"
+    assert payload.constraint_loop_status == "passed"
+    assert payload.constraint_loop_iterations == 2
+    assert provider.call_count == 2
+
+    assert len(rlm_started) == 2
+
+
 # ---------------------------------------------------------------------------
 # 1. Happy path, no constraints
 # ---------------------------------------------------------------------------
