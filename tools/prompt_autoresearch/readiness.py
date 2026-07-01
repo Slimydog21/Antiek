@@ -225,6 +225,15 @@ def render_readiness_markdown(report: ReadinessReport) -> str:
         "|---|---|---|",
     ]
     for item in report.items:
-        lines.append(f"| `{item.id}` | `{item.status}` | {item.evidence} |")
+        lines.append(
+            "| "
+            f"`{_markdown_table_cell(item.id)}` | "
+            f"`{_markdown_table_cell(item.status)}` | "
+            f"{_markdown_table_cell(item.evidence)} |"
+        )
     lines.append("")
     return "\n".join(lines)
+
+
+def _markdown_table_cell(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("|", "\\|").replace("\n", " ")

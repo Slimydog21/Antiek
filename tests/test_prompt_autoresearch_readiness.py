@@ -8,6 +8,8 @@ from pathlib import Path
 from tools.golden_traces import GoldenTrace, RoleCall, stable_json_hash
 from tools.prompt_autoresearch import (
     CalibrationReport,
+    ReadinessItem,
+    ReadinessReport,
     audit_wedge1_readiness,
     render_calibration_markdown,
     render_readiness_markdown,
@@ -37,6 +39,26 @@ def test_wedge1_readiness_markdown_names_operator_bound_items():
     assert "`golden_traces`" in md
 
 
+def test_wedge1_readiness_markdown_escapes_table_cells():
+    report = ReadinessReport(
+        items=[
+            ReadinessItem(
+                id="golden|traces",
+                label="unused label",
+                status="operator|bound",
+                evidence="tools/golden_traces/captured/broken|trace.json\nneeds review",
+            )
+        ]
+    )
+
+    md = render_readiness_markdown(report)
+
+    assert "`golden\\|traces`" in md
+    assert "`operator\\|bound`" in md
+    assert "broken\\|trace.json needs review" in md
+    assert "broken|trace.json" not in md
+
+
 def test_wedge1_readiness_cli_json_shape(capsys):
     from tools.prompt_autoresearch.readiness_cli import main
 
@@ -53,6 +75,19 @@ def test_wedge1_readiness_cli_json_shape(capsys):
         "budget",
         "local_only",
     }
+
+
+def test_wedge1_readiness_cli_rejects_missing_repo_root(tmp_path, capsys):
+    from tools.prompt_autoresearch.readiness_cli import main
+
+    missing_root = tmp_path / "missing"
+
+    rc = main(["--repo-root", str(missing_root)])
+
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "must be an existing directory" in captured.err
+    assert str(missing_root) in captured.err
 
 
 def test_wedge1_readiness_counts_only_loadable_golden_traces(tmp_path):
