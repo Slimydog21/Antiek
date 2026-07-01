@@ -177,6 +177,49 @@ describe("MetaReading (M4)", () => {
     });
   });
 
+  it("rejects over-cap page boxes locally before calling the generator", () => {
+    render(<MetaReading />);
+    fireEvent.change(screen.getByPlaceholderText(/What should this reading be about/), {
+      target: { value: "free will across my books" },
+    });
+    fireEvent.change(screen.getByLabelText("Length amount"), { target: { value: "61" } });
+
+    expect(screen.getByRole("alert").textContent).toContain("Length is capped at 60 pages");
+    const submit = screen.getByRole("button", { name: "Make the reading" }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    fireEvent.click(submit);
+    expect(generateMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects below-floor boxes locally before calling the generator", () => {
+    render(<MetaReading />);
+    fireEvent.change(screen.getByPlaceholderText(/What should this reading be about/), {
+      target: { value: "free will across my books" },
+    });
+    fireEvent.change(screen.getByLabelText("Length amount"), { target: { value: "0" } });
+
+    expect(screen.getByRole("alert").textContent).toContain("Length must be at least 1 page");
+    const submit = screen.getByRole("button", { name: "Make the reading" }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    fireEvent.click(submit);
+    expect(generateMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects over-cap minute boxes locally before calling the generator", () => {
+    render(<MetaReading />);
+    fireEvent.change(screen.getByPlaceholderText(/What should this reading be about/), {
+      target: { value: "free will across my books" },
+    });
+    fireEvent.click(screen.getByRole("radio", { name: "minutes" }));
+    fireEvent.change(screen.getByLabelText("Length amount"), { target: { value: "121" } });
+
+    expect(screen.getByRole("alert").textContent).toContain("Length is capped at 120 minutes");
+    const submit = screen.getByRole("button", { name: "Make the reading" }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    fireEvent.click(submit);
+    expect(generateMock).not.toHaveBeenCalled();
+  });
+
   it("the promote-into-Research suggestion APPEARS but never auto-ships", async () => {
     await generate();
     // The suggestion is shown…

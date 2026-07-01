@@ -9,6 +9,12 @@ import ReadingColumn from "../../../components/reader/ReadingColumn";
 import { useOpenDocument } from "../../../lib/openDocument";
 import { acceptPromotion, suggestPromotion } from "../../../lib/researchSuggestion";
 import AIActionFailure from "../../../shared/AIActionFailure";
+import {
+  META_READING_LENGTH_BOUNDS,
+  lengthBoundLabel,
+  validateLengthBox,
+  type MetaReadingLengthUnit,
+} from "./lengthBox";
 
 /**
  * MetaReading — the one-shot, READ-ONLY, page-cited synthesis over the OWNED
@@ -36,7 +42,6 @@ import AIActionFailure from "../../../shared/AIActionFailure";
 const PROPOSED_BANNER_TEXT =
   "Proposed — sign-off pending. Meta-reading is built to a proposed Research↔Read boundary: a one-shot, read-only synthesis over your OWNED books only (never the open internet). The boundary isn’t ratified yet, and reverts to a softer corpus scope if sign-off is withheld.";
 
-type LengthUnit = "pages" | "minutes";
 type ErrorSource = "load" | "generate" | "promotion";
 
 export default function MetaReading() {
@@ -48,7 +53,7 @@ export default function MetaReading() {
   const { assetId } = useParams<{ assetId?: string }>();
   const isSavedAsset = Boolean(assetId);
   const [prompt, setPrompt] = useState("");
-  const [unit, setUnit] = useState<LengthUnit>("pages");
+  const [unit, setUnit] = useState<MetaReadingLengthUnit>("pages");
   const [amount, setAmount] = useState(3);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +61,7 @@ export default function MetaReading() {
   const [deliverable, setDeliverable] = useState<MetaReadingResponse | null>(null);
   const [promoted, setPromoted] = useState<string | null>(null);
   const [promoting, setPromoting] = useState(false);
+  const lengthError = validateLengthBox(unit, amount);
 
   // Re-open a saved asset by id. Maps the saved shape onto MetaReadingResponse
   // (the read-only render path is identical); the generation-only fields
@@ -121,7 +127,8 @@ export default function MetaReading() {
   );
 
   const generate = useCallback(async () => {
-    if (!prompt.trim() || busy) return;
+    const currentLengthError = validateLengthBox(unit, amount);
+    if (!prompt.trim() || busy || currentLengthError) return;
     setBusy(true);
     setError(null);
     setErrorSource(null);
@@ -201,6 +208,8 @@ export default function MetaReading() {
                   <input
                     type="number"
                     min={1}
+                    max={META_READING_LENGTH_BOUNDS[unit].max}
+                    step={1}
                     value={amount}
                     onChange={(e) => setAmount(parseInt(e.target.value, 10) || 0)}
                     aria-label="Length amount"
@@ -208,7 +217,7 @@ export default function MetaReading() {
                   />
                 </label>
                 <div role="radiogroup" aria-label="Length unit" className="flex items-center gap-1">
-                  {(["pages", "minutes"] as LengthUnit[]).map((u) => (
+                  {(["pages", "minutes"] as MetaReadingLengthUnit[]).map((u) => (
                     <button
                       key={u}
                       type="button"
@@ -225,10 +234,15 @@ export default function MetaReading() {
                     </button>
                   ))}
                 </div>
-                <LemonButton type="button" variant="primary" size="sm" disabled={busy || !prompt.trim()} onClick={() => void generate()}>
+                <LemonButton type="button" variant="primary" size="sm" disabled={busy || !prompt.trim() || !!lengthError} onClick={() => void generate()}>
                   {busy ? "Reading your corpus…" : "Make the reading"}
                 </LemonButton>
               </div>
+              {lengthError && (
+                <p className="text-[12px] text-emperor" role="alert">
+                  {lengthError} Use {lengthBoundLabel(unit)}.
+                </p>
+              )}
               <p className="text-[12px] text-shadow-1 dark:text-moonlight">
                 Built to about {unit === "pages" ? `${amount} page(s)` : `${amount} minute(s)`} up
                 front — a hard budget, not a trim afterward.
