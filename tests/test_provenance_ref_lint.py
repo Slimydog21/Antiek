@@ -407,6 +407,39 @@ def parse(obj):
     assert any("note_ids" in violation for violation in violations)
 
 
+def test_lint_catches_ref_shaped_output_key_from_remapped_raw_field(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "remapped_role" / "parser.py",
+        """
+def parse(obj):
+    return {"question_id": obj.get("qid")}
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any("question_id" in violation for violation in violations)
+
+
+def test_lint_catches_ref_shaped_output_key_from_raw_alias(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "raw_alias_role" / "parser.py",
+        """
+def parse(obj):
+    raw = obj.get("qid")
+    return {"question_id": raw}
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any("question_id" in violation for violation in violations)
+
+
 def test_lint_allows_new_ref_shaped_fields_routed_through_validator(
     tmp_path: Path,
 ) -> None:
@@ -422,6 +455,24 @@ def parse(obj, canonical):
         "claim_id": claim_id,
         "note_ids": note_ids,
     }
+""",
+    )
+
+    assert find_violations(tmp_path) == []
+
+
+def test_lint_allows_ref_shaped_output_key_from_validator_alias(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "remapped_good_role" / "parser.py",
+        """
+from substrate.provenance import validate_ref
+
+def parse(obj, canonical):
+    raw = obj.get("qid")
+    question_id = validate_ref(raw, canonical)
+    return {"question_id": question_id}
 """,
     )
 
