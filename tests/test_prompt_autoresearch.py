@@ -152,6 +152,48 @@ def test_runner_refuses_production_env(monkeypatch):
         )
 
 
+def test_runner_rejects_cross_role_mutation_before_execution(monkeypatch):
+    monkeypatch.delenv("ANTIEK_ENV", raising=False)
+    runner = PromptAutoresearchRunner(role="synthesizer")
+    mutation = PromptMutation(
+        mutation_id=make_id(),
+        role="decomposer",
+        parent_baseline_id=None,
+        proposed_prompt="Wrong role prompt",
+        rationale="cross-role accident",
+    )
+    executed = False
+
+    def execute_fn(prompt: str) -> tuple[str, Decimal]:
+        nonlocal executed
+        executed = True
+        return prompt, Decimal("0.01")
+
+    with pytest.raises(ValueError, match="does not match runner role"):
+        runner.run_iteration(
+            mutation,
+            execute_fn=execute_fn,
+            corpus_terms=[],
+            expected_claim_ids=[],
+            rubric_judge_fn=lambda t: 1.0,
+        )
+
+    assert executed is False
+    assert runner.budget.iteration_count == 0
+    assert runner.iterations == []
+
+
+def test_prompt_mutation_requires_load_bearing_text_fields():
+    with pytest.raises(ValueError, match="proposed_prompt must be a non-empty string"):
+        PromptMutation(
+            mutation_id=make_id(),
+            role="synthesizer",
+            parent_baseline_id=None,
+            proposed_prompt="   ",
+            rationale="missing candidate",
+        )
+
+
 def test_runner_accepts_when_delta_exceeds_epsilon(monkeypatch):
     monkeypatch.delenv("ANTIEK_ENV", raising=False)
     runner = PromptAutoresearchRunner(
