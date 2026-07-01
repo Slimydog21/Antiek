@@ -20,13 +20,20 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from substrate.dispatch.json_repair import repair_json_string
-from substrate.dispatch.router import NormalizedUsage, TierPricing, _compute_cost_usd
-from substrate.errors import BudgetExceeded
-from substrate.event_log import log_event, trajectory
-from substrate.hot_path_timing import hot_path_timing, set_hot_path_timing_sink
-from substrate.loop_3 import build_env_from_trajectory
-from substrate.results import Err, Ok, is_err, is_ok
+from substrate.dispatch.json_repair import repair_json_string  # noqa: E402
+from substrate.dispatch.router import (  # noqa: E402
+    NormalizedUsage,
+    TierPricing,
+    _compute_cost_usd,
+)
+from substrate.errors import BudgetExceeded  # noqa: E402
+from substrate.event_log import log_event, trajectory  # noqa: E402
+from substrate.hot_path_timing import (  # noqa: E402
+    hot_path_timing,
+    set_hot_path_timing_sink,
+)
+from substrate.loop_3 import build_env_from_trajectory  # noqa: E402
+from substrate.results import Err, Ok, is_err, is_ok  # noqa: E402
 
 
 def _verifier_path() -> Callable[[], object]:
