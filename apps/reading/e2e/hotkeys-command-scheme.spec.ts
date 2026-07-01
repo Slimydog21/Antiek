@@ -21,7 +21,8 @@
  * NOTE on the modifier in Playwright: `page.keyboard.press("Meta+e")` sends
  * the Cmd modifier; the app's `isMod` matches metaKey OR ctrlKey, so this
  * drives the real ⌘E path. We use one product (Read → /library) for (a) and a
- * custom ⌥-combo (Alt+;) for (d) so it can't collide with a built-in/product.
+ * custom free ⌘ combo (Meta+.) for (d) so it stays inside the assignable policy
+ * without colliding with a built-in/product.
  */
 
 import { expect, test } from "@playwright/test";
@@ -92,10 +93,10 @@ test.describe("SPR-08 — uniform ⌘+key command scheme (real browser)", () => 
   test("(d) a persisted custom hotkey still navigates after reload", async ({ page }) => {
     await loginAndGotoApp(page, DEFAULT_ROUTE);
 
-    // Seed a persisted custom binding (⌥; → /library) the way useCustomHotkeys
+    // Seed a persisted custom binding (⌘. → /library) the way useCustomHotkeys
     // would, then RELOAD so the live handler hydrates it from localStorage on
-    // boot (workspace/shortcuts.ts hydrateCustomFromStorage). ⌥; (alt+";") is a
-    // free safe combo — not a built-in/product/reserved combo.
+    // boot (workspace/shortcuts.ts hydrateCustomFromStorage). ⌘. is a free safe
+    // combo — not a built-in/product/reserved combo.
     await page.evaluate(
       ([key]) => {
         window.localStorage.setItem(
@@ -105,7 +106,7 @@ test.describe("SPR-08 — uniform ⌘+key command scheme (real browser)", () => 
             bindings: [
               {
                 id: "e2e-custom-1",
-                spec: "alt+;",
+                spec: "mod+.",
                 route: "/library",
                 entityId: "e2e-entity",
                 entityKind: "investigation",
@@ -134,12 +135,12 @@ test.describe("SPR-08 — uniform ⌘+key command scheme (real browser)", () => 
       ([key]) => window.localStorage.getItem(key),
       [CUSTOM_HOTKEYS_KEY],
     );
-    expect(persisted, "the custom-hotkeys blob did not survive reload").toContain("alt+;");
+    expect(persisted, "the custom-hotkeys blob did not survive reload").toContain("mod+.");
 
-    // Press the custom combo (⌥;) → it navigates to the bound route, identical
+    // Press the custom combo (⌘.) → it navigates to the bound route, identical
     // to clicking the entity.
     await page.locator("body").click({ position: { x: 4, y: 4 } });
-    await page.keyboard.press("Alt+;");
+    await page.keyboard.press("Meta+.");
     await expect(page).toHaveURL(/\/library(\/|$|\?)/, { timeout: 5_000 });
   });
 });
