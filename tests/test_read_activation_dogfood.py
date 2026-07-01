@@ -184,7 +184,19 @@ def test_failure_or_irritation_requires_concrete_followup_issue() -> None:
     report = validate_sessions([record])
 
     assert report.closure_ready is False
+    assert report.valid_sessions == 0
     assert any("step 7 has failure/irritation without followup_issue" in f for f in report.failures)
+
+
+def test_malformed_session_issue_excludes_session_from_valid_count() -> None:
+    record = _session(1, live=True, citation=True, entry_door="search")
+    record["issues"] = [{"summary": "latency spike while opening citation"}]
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.valid_sessions == 0
+    assert any("issues[1] lacks concrete followup_issue" in f for f in report.failures)
 
 
 def test_jsonl_loader_accepts_comments_and_blank_lines(tmp_path) -> None:

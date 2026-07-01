@@ -137,7 +137,8 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
         missing = _missing_required_fields(record)
         if missing:
             failures.append(prefix + "missing required fields: " + ", ".join(missing))
-        for field in _invalid_boolean_fields(record):
+        invalid_boolean_fields = _invalid_boolean_fields(record)
+        for field in invalid_boolean_fields:
             failures.append(prefix + f"{field} must be a boolean")
 
         steps = record.get("steps")
@@ -151,16 +152,19 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
 
         step_failures = _step_followup_failures(prefix, steps)
         failures.extend(step_failures)
-        failures.extend(_step_status_failures(prefix, steps))
+        step_status_failures = _step_status_failures(prefix, steps)
+        failures.extend(step_status_failures)
 
+        issue_failures: list[str] = []
         for issue_index, issue in enumerate(record.get("issues") or [], start=1):
             if not isinstance(issue, dict):
-                failures.append(prefix + f"issues[{issue_index}] must be an object")
+                issue_failures.append(prefix + f"issues[{issue_index}] must be an object")
                 continue
             if not str(issue.get("followup_issue") or "").strip():
-                failures.append(
+                issue_failures.append(
                     prefix + f"issues[{issue_index}] lacks concrete followup_issue"
                 )
+        failures.extend(issue_failures)
 
         minutes_reading = record.get("minutes_reading")
         if not _has_minimum_reading_time(minutes_reading):
@@ -169,6 +173,11 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
         if (
             _session_core_steps_pass(steps)
             and not missing
+            and not invalid_boolean_fields
+            and not missing_steps
+            and not step_failures
+            and not step_status_failures
+            and not issue_failures
             and _has_minimum_reading_time(minutes_reading)
         ):
             valid_session_ids.add(session_id)
