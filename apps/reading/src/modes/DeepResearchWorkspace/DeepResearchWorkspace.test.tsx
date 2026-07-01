@@ -187,6 +187,12 @@ describe("ResearchPanel — steer controls", () => {
     expect(screen.getByText("$0.0000")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/NaN|Infinity|\$-/);
   });
+
+  it("accepts numeric-string per-research cost", () => {
+    render(<ResearchPanel research={running} costUsd="0.0123" onSteer={() => {}} />);
+
+    expect(screen.getByText("$0.0123")).toBeTruthy();
+  });
 });
 
 describe("Monitor — launched child ids", () => {
@@ -255,6 +261,23 @@ describe("CostMeter — session spend against aggregate cap", () => {
     expect(screen.getByText("$0.0000")).toBeTruthy();
     expect(screen.getByText("/ $0.00")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/NaN|Infinity|\$-/);
+  });
+
+  it("accepts numeric-string session cost values", () => {
+    render(
+      <CostMeter
+        cost={{
+          per_research: { "inv-1": 0.1 },
+          session_total_usd: "0.1000" as unknown as number,
+          aggregate_spent_usd: "8.5" as unknown as number,
+          aggregate_cap_usd: "10" as unknown as number,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("$0.1000")).toBeTruthy();
+    expect(screen.getByText("/ $10.00")).toBeTruthy();
+    expect(screen.getByText("Approaching the aggregate budget.")).toBeTruthy();
   });
 });
 
