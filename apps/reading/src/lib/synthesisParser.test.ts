@@ -46,6 +46,22 @@ describe("parseSynthesis — claim provenance for named-source render", () => {
     expect(synth!.chunkCitations["chunk-a"]).toEqual([1]);
   });
 
+  it("ignores non-finite and negative dispatch costs when summing total cost", () => {
+    const synth = parseSynthesis([
+      ev("synthesize.delivered", {
+        thesis_summary: "Because Y.",
+        implicit_recommendation: "proceed",
+        thesis_components: [],
+      }),
+      ev("dispatch.call", { cost_usd: 0.25 }),
+      ev("dispatch.call", { cost_usd: Number.NaN }),
+      ev("dispatch.call", { cost_usd: Number.POSITIVE_INFINITY }),
+      ev("dispatch.call", { cost_usd: -1 }),
+    ]);
+    expect(synth).not.toBeNull();
+    expect(synth!.totalCostUsd).toBe(0.25);
+  });
+
   it("returns null when there is no synthesis yet (caller falls back)", () => {
     expect(
       parseSynthesis([ev("investigation.start_requested", { question: "Q" })]),
@@ -205,6 +221,21 @@ describe("parseSynthesis — reuse provenance (SPR-10 M2)", () => {
       sourceInvestigationId: null,
       score: null,
     });
+  });
+
+  it("treats non-finite reuse scores as missing", () => {
+    const synth = withReuse([
+      ev("knowledge.reused", {
+        reused_unit_ids: ["unit-nan", "unit-inf"],
+        scores: [Number.NaN, Number.POSITIVE_INFINITY],
+        source_investigation_ids: ["inv-a", "inv-b"],
+        context_pack_event_id: "evt-1",
+      }),
+    ]);
+    expect(synth!.reuseProvenance).toEqual([
+      { unitId: "unit-nan", sourceInvestigationId: "inv-a", score: null },
+      { unitId: "unit-inf", sourceInvestigationId: "inv-b", score: null },
+    ]);
   });
 
   it("yields an EMPTY reuseProvenance when no knowledge.reused event is present", () => {
