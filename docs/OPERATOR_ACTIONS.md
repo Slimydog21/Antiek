@@ -965,6 +965,23 @@ negotiate a slice exchange.
 4. Pin their key in the partner's substrate registry; they pin
    yours.
 
+#### Synthetic support probe
+
+The local two-instance probe exercises the substrate support path
+without contacting a real partner:
+
+```bash
+./.venv/bin/python -m tools.ops.federation_exchange_probe \
+  --db-path /tmp/antiek-oa018-federation-$(date +%Y%m%d%H%M%S).duckdb \
+  --json
+```
+
+A PASS means two fresh DuckDB-backed Antiek instances can persist
+partner config, trust each other, sign an outbound citation, accept it
+inbound, persist the nonce, and reject replay. It does **not** close
+OA-018; the gate still requires a real partner instance and the first
+slice exchange evidence below.
+
 #### Once closed
 
 A successful first slice exchange documented in
