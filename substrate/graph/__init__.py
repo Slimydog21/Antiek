@@ -25,11 +25,16 @@ def default_db_path() -> str:
 
     1. ``ANTIEK_DUCKDB_PATH`` env var (operator override; used by
        tests to point at a tmp file).
-    2. ``substrate.constants.DUCKDB_PATH`` expanded via ``~``.
+    2. ``ANTIEK_DUCKLAKE_CATALOG_DB`` graph-router config, resolved
+       through ``substrate.multi_user.GraphRouter``.
+    3. ``substrate.constants.DUCKDB_PATH`` expanded via ``~``.
     """
     explicit = _os.environ.get("ANTIEK_DUCKDB_PATH")
     if explicit:
         return _os.path.expanduser(explicit)
+    if _os.environ.get("ANTIEK_DUCKLAKE_CATALOG_DB"):
+        from ..multi_user import default_personal_graph_handle
+        return default_personal_graph_handle().db_path
     from ..constants import DUCKDB_PATH as _DUCKDB_PATH  # local import to avoid cycle
     return _os.path.expanduser(_DUCKDB_PATH)
 

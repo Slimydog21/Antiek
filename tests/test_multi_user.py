@@ -6,14 +6,21 @@ import pytest
 
 from runtime.db_lock import connect_write
 from substrate.ducklake import DuckLakeCatalog, HashPrefixSharding, InMemoryCatalogBackend
+from substrate.ducklake.catalog import SqliteCatalogBackend
 from substrate.multi_user import (
     AuthError,
+    CATALOG_DB_ENV,
     GraphRouter,
+    GRAPH_USER_ID_ENV,
     MockAuthProvider,
     PartitionInvariantViolation,
     PartitionKind,
+    SHARD_HEX_CHARS_ENV,
     UserClaims,
     assign_to_partition,
+    build_graph_router_from_env,
+    configured_ducklake_catalog,
+    default_personal_graph_handle,
     decode_token,
     extract_discovered_rule,
     move_to_partition,
@@ -134,6 +141,102 @@ def test_graph_router_uses_sharding_strategy_for_uncatalogued_users():
     assert path.startswith("/tmp/test/")
     assert path.endswith("/alice.duckdb")
     assert len(path.removeprefix("/tmp/test/").split("/", 1)[0]) == 2
+
+
+def test_env_graph_router_uses_sqlite_catalog(tmp_path, monkeypatch):
+    catalog_path = tmp_path / "catalog.sqlite"
+    catalog = DuckLakeCatalog(backend=SqliteCatalogBackend(db_path=str(catalog_path)))
+    catalog.register(
+        user_id="alice",
+        db_path=str(tmp_path / "catalog" / "alice.duckdb"),
+        encryption_key_ref="key-alice",
+        shard_id="7",
+    )
+
+    monkeypatch.setenv(CATALOG_DB_ENV, str(catalog_path))
+    monkeypatch.setenv(GRAPH_USER_ID_ENV, "alice")
+    monkeypatch.setenv("ANTIEK_PERSONAL_GRAPHS_DIR", str(tmp_path / "fallback"))
+
+    router = build_graph_router_from_env()
+    handle = default_personal_graph_handle()
+
+    assert router.personal_graph_path("alice") == str(
+        tmp_path / "catalog" / "alice.duckdb"
+    )
+    assert handle.user_id == "alice"
+    assert handle.db_path == str(tmp_path / "catalog" / "alice.duckdb")
+    assert handle.encryption_key_ref == "key-alice"
+
+
+def test_configured_ducklake_catalog_is_cached(tmp_path, monkeypatch):
+    catalog_path = tmp_path / "catalog.sqlite"
+    monkeypatch.setenv(CATALOG_DB_ENV, str(catalog_path))
+
+    assert configured_ducklake_catalog() is configured_ducklake_catalog()
+
+
+def test_env_graph_router_falls_back_to_sharded_path(tmp_path, monkeypatch):
+    monkeypatch.delenv(CATALOG_DB_ENV, raising=False)
+    monkeypatch.setenv("ANTIEK_PERSONAL_GRAPHS_DIR", str(tmp_path))
+    monkeypatch.setenv(SHARD_HEX_CHARS_ENV, "2")
+
+    router = build_graph_router_from_env()
+    path = router.personal_graph_path("alice")
+
+    assert path.startswith(str(tmp_path))
+    assert path.endswith("/alice.duckdb")
+    assert len(path.removeprefix(str(tmp_path) + "/").split("/", 1)[0]) == 2
+
+
+def test_default_db_path_routes_through_catalog_when_configured(tmp_path, monkeypatch):
+    from substrate.graph import default_db_path
+
+    catalog_path = tmp_path / "catalog.sqlite"
+    routed_path = tmp_path / "stage2" / "operator.duckdb"
+    catalog = DuckLakeCatalog(backend=SqliteCatalogBackend(db_path=str(catalog_path)))
+    catalog.register(
+        user_id="__operator__",
+        db_path=str(routed_path),
+        encryption_key_ref="key-operator",
+    )
+
+    monkeypatch.delenv("ANTIEK_DUCKDB_PATH", raising=False)
+    monkeypatch.setenv(CATALOG_DB_ENV, str(catalog_path))
+
+    assert default_db_path() == str(routed_path)
+
+
+def test_default_db_path_ignores_partial_router_env_without_catalog(tmp_path, monkeypatch):
+    import os
+
+    from substrate.constants import DUCKDB_PATH
+    from substrate.graph import default_db_path
+
+    monkeypatch.delenv("ANTIEK_DUCKDB_PATH", raising=False)
+    monkeypatch.delenv(CATALOG_DB_ENV, raising=False)
+    monkeypatch.setenv(GRAPH_USER_ID_ENV, "alice")
+    monkeypatch.setenv("ANTIEK_PERSONAL_GRAPHS_DIR", str(tmp_path / "graphs"))
+    monkeypatch.setenv(SHARD_HEX_CHARS_ENV, "2")
+
+    assert default_db_path() == os.path.expanduser(DUCKDB_PATH)
+
+
+def test_default_db_path_keeps_explicit_duckdb_override(tmp_path, monkeypatch):
+    from substrate.graph import default_db_path
+
+    explicit_path = tmp_path / "explicit.duckdb"
+    catalog_path = tmp_path / "catalog.sqlite"
+    catalog = DuckLakeCatalog(backend=SqliteCatalogBackend(db_path=str(catalog_path)))
+    catalog.register(
+        user_id="__operator__",
+        db_path=str(tmp_path / "catalog.duckdb"),
+        encryption_key_ref="key-operator",
+    )
+
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(explicit_path))
+    monkeypatch.setenv(CATALOG_DB_ENV, str(catalog_path))
+
+    assert default_db_path() == str(explicit_path)
 
 
 def test_resolve_shared_substrate_returns_handle():

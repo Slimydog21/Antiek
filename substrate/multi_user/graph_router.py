@@ -21,9 +21,21 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from functools import lru_cache
 
-from substrate.ducklake.catalog import DuckLakeCatalog
-from substrate.ducklake.routing import NoSharding, ShardingStrategy, resolve_db_path
+from substrate.ducklake.catalog import DuckLakeCatalog, SqliteCatalogBackend
+from substrate.ducklake.routing import (
+    HashPrefixSharding,
+    NoSharding,
+    ShardingStrategy,
+    resolve_db_path,
+)
+
+
+CATALOG_DB_ENV = "ANTIEK_DUCKLAKE_CATALOG_DB"
+GRAPH_USER_ID_ENV = "ANTIEK_GRAPH_USER_ID"
+SHARD_HEX_CHARS_ENV = "ANTIEK_DUCKLAKE_SHARD_HEX_CHARS"
+DEFAULT_GRAPH_USER_ID = "__operator__"
 
 
 @dataclass(frozen=True)
@@ -112,3 +124,58 @@ def resolve_shared_substrate(router: GraphRouter) -> SharedSubstrateHandle:
     """Build a SharedSubstrateHandle. Only one writer at a time across
     the substrate; flock-coordinated."""
     return SharedSubstrateHandle(db_path=router.shared_substrate_path)
+
+
+def configured_ducklake_catalog() -> DuckLakeCatalog | None:
+    """Return the configured DuckLake catalog, if Stage-2 routing is enabled.
+
+    ``ANTIEK_DUCKLAKE_CATALOG_DB`` points at the SQLite catalog created by the
+    Stage 0 -> Stage 1 migration. Later Postgres promotion keeps this function as
+    the single construction point for the router's catalog dependency.
+    """
+    catalog_db = os.environ.get(CATALOG_DB_ENV)
+    if not catalog_db:
+        return None
+    return _sqlite_ducklake_catalog(os.path.expanduser(catalog_db))
+
+
+@lru_cache(maxsize=8)
+def _sqlite_ducklake_catalog(catalog_db: str) -> DuckLakeCatalog:
+    return DuckLakeCatalog(backend=SqliteCatalogBackend(db_path=catalog_db))
+
+
+def configured_sharding_strategy() -> ShardingStrategy:
+    """Return the routing fallback strategy requested by env."""
+    raw_hex_chars = os.environ.get(SHARD_HEX_CHARS_ENV)
+    if not raw_hex_chars:
+        return NoSharding()
+    try:
+        hex_chars = int(raw_hex_chars)
+    except ValueError as exc:
+        raise ValueError(
+            f"{SHARD_HEX_CHARS_ENV} must be a positive integer"
+        ) from exc
+    if hex_chars <= 0:
+        raise ValueError(f"{SHARD_HEX_CHARS_ENV} must be a positive integer")
+    return HashPrefixSharding(hex_chars=hex_chars)
+
+
+def build_graph_router_from_env() -> GraphRouter:
+    """Build the production graph router from process configuration."""
+    return GraphRouter(
+        catalog=configured_ducklake_catalog(),
+        sharding_strategy=configured_sharding_strategy(),
+    )
+
+
+def default_graph_user_id() -> str:
+    """Resolve the graph user for legacy single-user API call paths."""
+    return os.environ.get(GRAPH_USER_ID_ENV) or DEFAULT_GRAPH_USER_ID
+
+
+def default_personal_graph_handle() -> PersonalGraphHandle:
+    """Resolve the default personal graph through the configured router."""
+    return resolve_personal_graph(
+        build_graph_router_from_env(),
+        user_id=default_graph_user_id(),
+    )
