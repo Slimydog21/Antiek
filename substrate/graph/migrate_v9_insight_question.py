@@ -104,7 +104,8 @@ CREATE TABLE nodes_mig (
     )),
     created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     degree_cached    INTEGER NOT NULL DEFAULT 0,
-    metadata         TEXT
+    metadata         TEXT,
+    owner_user_id    TEXT NOT NULL DEFAULT '__operator__'
 )
 """
 
@@ -128,7 +129,8 @@ CREATE TABLE edges (
         'depth', 'cross_domain', 'constraint'
     )),
     investigation_id       TEXT,
-    metadata               TEXT
+    metadata               TEXT,
+    owner_user_id          TEXT NOT NULL DEFAULT '__operator__'
 )
 """
 
@@ -139,7 +141,7 @@ _EDGE_COLS = (
     "edge_id", "source_node_id", "target_node_id", "relation", "chunk_id",
     "source_document_id", "source_tier", "extraction_confidence",
     "extracted_at", "valid_from", "valid_until", "superseded_by",
-    "graph_scope", "investigation_id", "metadata",
+    "graph_scope", "investigation_id", "metadata", "owner_user_id",
 )
 
 _EDGE_INDEXES = (
@@ -220,6 +222,17 @@ def migrate(con: LockedConnection) -> bool:
 
     con.execute("BEGIN")
     try:
+        # Sprint 19 owner-column prep: make old narrow tables shape-compatible
+        # with the rebuilt schema before the staged copy. Missing values default
+        # to the single-operator owner; this does not activate multi-user mode.
+        con.execute(
+            "ALTER TABLE nodes ADD COLUMN IF NOT EXISTS "
+            "owner_user_id TEXT DEFAULT '__operator__'"
+        )
+        con.execute(
+            "ALTER TABLE edges ADD COLUMN IF NOT EXISTS "
+            "owner_user_id TEXT DEFAULT '__operator__'"
+        )
         # 1. new nodes table (wider CHECK), copy rows.
         con.execute(_NODES_REBUILD_SQL)
         con.execute("INSERT INTO nodes_mig BY NAME SELECT * FROM nodes")

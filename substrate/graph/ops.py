@@ -140,6 +140,7 @@ def insert_document(
     content_class: str | None = None,
     ip_holder_id: str | None = None,
     structured_blocks: str | None = None,
+    owner_user_id: str = "__operator__",
     on_conflict: OnConflict = "error",
     events_dir: str | None = None,
 ) -> str:
@@ -222,13 +223,13 @@ def insert_document(
         "INSERT INTO documents "
         "(document_id, source_uri, title, author, published_at, "
         " source_tier, document_type, investigation_id, raw_text, metadata, "
-        " content_class, ip_holder_id, structured_blocks) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " content_class, ip_holder_id, structured_blocks, owner_user_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             document_id, source_uri, title, author, published_at,
             int(source_tier), document_type, investigation_id, raw_text,
             _maybe_json(metadata), content_class, ip_holder_id,
-            structured_blocks,
+            structured_blocks, owner_user_id,
         ],
     )
 
@@ -377,6 +378,7 @@ def insert_chunk(
     section_path: str | None = None,
     embedding: Sequence[float] | None = None,
     token_count: int = 0,
+    owner_user_id: str = "__operator__",
     chunk_id: str | None = None,
 ) -> str:
     """Insert one chunk row. If ``chunk_id`` is not provided, a
@@ -395,12 +397,13 @@ def insert_chunk(
         return cid
     con.execute(
         "INSERT INTO chunks "
-        "(chunk_id, document_id, chunk_index, section_path, text, embedding, token_count) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "(chunk_id, document_id, chunk_index, section_path, text, embedding, "
+        " token_count, owner_user_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         [
             cid, document_id, int(chunk_index), section_path, text,
             list(embedding) if embedding is not None else None,
-            int(token_count),
+            int(token_count), owner_user_id,
         ],
     )
     return cid
@@ -420,6 +423,7 @@ def insert_node(
     investigation_id: str,
     embedding: Sequence[float] | None = None,
     metadata: Any | None = None,
+    owner_user_id: str = "__operator__",
     node_id: str | None = None,
     parent_event_id: str | None = None,
     on_conflict: OnConflict = "error",
@@ -437,12 +441,13 @@ def insert_node(
         return nid  # row exists; no INSERT, no event — fully idempotent
     con.execute(
         "INSERT INTO nodes "
-        "(node_id, canonical_label, node_type, embedding, graph_scope, metadata) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "(node_id, canonical_label, node_type, embedding, graph_scope, metadata, "
+        " owner_user_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
             nid, canonical_label, node_type,
             list(embedding) if embedding is not None else None,
-            graph_scope, _maybe_json(metadata),
+            graph_scope, _maybe_json(metadata), owner_user_id,
         ],
     )
     # Typed event AFTER the row commits — the Pydantic Literal validators
@@ -482,6 +487,7 @@ def insert_edge(
     source_document_id: str | None = None,
     valid_from: datetime | None = None,
     metadata: Any | None = None,
+    owner_user_id: str = "__operator__",
     edge_id: str | None = None,
     parent_event_id: str | None = None,
     on_conflict: OnConflict = "error",
@@ -505,13 +511,13 @@ def insert_edge(
         "INSERT INTO edges "
         "(edge_id, source_node_id, target_node_id, relation, chunk_id, "
         " source_document_id, source_tier, extraction_confidence, valid_from, "
-        " graph_scope, investigation_id, metadata) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " graph_scope, investigation_id, metadata, owner_user_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             eid, source_node_id, target_node_id, relation, chunk_id,
             source_document_id, int(source_tier), float(extraction_confidence),
             valid_from or datetime(1970, 1, 1),
-            graph_scope, investigation_id, _maybe_json(metadata),
+            graph_scope, investigation_id, _maybe_json(metadata), owner_user_id,
         ],
     )
     emit_typed(
