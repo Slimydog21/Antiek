@@ -65,6 +65,7 @@ class SessionClaims:
 
     user_id: str
     email: str
+    scopes: frozenset[str]
     issued_at: int  # unix seconds
 
 
@@ -198,18 +199,29 @@ def verify_magic_link_token(
 # ── Session cookies ──────────────────────────────────────────────────
 
 
-def mint_session_cookie(*, user_id: str, email: str) -> str:
+def mint_session_cookie(
+    *,
+    user_id: str,
+    email: str,
+    scopes: frozenset[str] | set[str] | list[str] | tuple[str, ...] | None = None,
+) -> str:
     """Mint a signed session-cookie value.
 
     Carries ``user_id`` + ``email`` so the middleware can reconstruct
     ``UserClaims`` without a DB lookup. Multi-user Sprint 22 will
     keep this shape and add a per-user scope list.
     """
+    normalized_scopes = sorted(
+        scope.strip()
+        for scope in (scopes or ("operator", "private_research", "shared_substrate_write"))
+        if isinstance(scope, str) and scope.strip()
+    )
     return _encode(
         _SESSION_AUDIENCE,
         {
             "user_id": user_id,
             "email": email.strip().lower(),
+            "scopes": normalized_scopes,
             "iat": int(time.time()),
         },
     )
@@ -234,7 +246,14 @@ def verify_session_cookie(
     )
     user_id = payload.get("user_id")
     email = payload.get("email")
+    raw_scopes = payload.get("scopes")
     iat = payload.get("iat")
     if not isinstance(user_id, str) or not isinstance(email, str) or not isinstance(iat, int):
         raise InvalidSessionCookie("session claims malformed")
-    return SessionClaims(user_id=user_id, email=email, issued_at=iat)
+    if raw_scopes is None:
+        scopes = frozenset({"operator", "private_research", "shared_substrate_write"})
+    elif isinstance(raw_scopes, list) and all(isinstance(scope, str) for scope in raw_scopes):
+        scopes = frozenset(scope.strip() for scope in raw_scopes if scope.strip())
+    else:
+        raise InvalidSessionCookie("session scopes malformed")
+    return SessionClaims(user_id=user_id, email=email, scopes=scopes, issued_at=iat)

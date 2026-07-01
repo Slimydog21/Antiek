@@ -246,6 +246,87 @@ def test_external_provider_non_operator_claims_can_read_whoami(monkeypatch):
     assert body["scopes"] == ["authenticated", "private_research"]
 
 
+def test_external_callback_mints_non_operator_session_cookie(monkeypatch):
+    """The Sprint 22 external-auth bridge turns verified provider claims into
+    an Antiek session cookie without promoting the user to operator."""
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", "session-secret-" + "x" * 48)
+    monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
+    headers = _external_headers(
+        monkeypatch,
+        vendor="supabase",
+        sub="reader-session",
+        scopes=["private_research"],
+    )
+
+    client = _client()
+    resp = client.get(
+        "/auth/external/callback?next=/privacy",
+        headers=headers,
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/privacy"
+    assert "ANTIEK_SESSION" in resp.cookies
+
+    who = client.get("/auth/whoami")
+    assert who.status_code == 200
+    body = who.json()
+    assert body["user_id"] == "supabase:reader-session"
+    assert body["is_operator"] is False
+    assert body["auth_method"] == "antiek_session_cookie"
+    assert body["scopes"] == ["authenticated", "private_research"]
+
+
+def test_external_callback_rejects_bad_signature(monkeypatch):
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", "session-secret-" + "x" * 48)
+    monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
+    monkeypatch.setenv("ANTIEK_EXTERNAL_AUTH_VENDOR", "supabase")
+    monkeypatch.setenv("ANTIEK_EXTERNAL_AUTH_HEADER_SECRET", "right-secret")
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
+    encoded = encode_verified_claims_header({"sub": "reader-session"})
+    signature = sign_verified_claims_header(
+        vendor="supabase",
+        encoded_claims=encoded,
+        secret="wrong-secret",
+    )
+
+    client = _client()
+    resp = client.get(
+        "/auth/external/callback",
+        headers={
+            "X-Antiek-Verified-Claims": encoded,
+            "X-Antiek-Verified-Claims-Signature": signature,
+        },
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 401
+
+
+def test_external_session_json_mints_cookie(monkeypatch):
+    monkeypatch.setenv("ANTIEK_AUTH_SECRET", "session-secret-" + "x" * 48)
+    monkeypatch.setenv("ANTIEK_COOKIE_INSECURE", "1")
+    headers = _external_headers(
+        monkeypatch,
+        vendor="clerk",
+        sub="reader-json",
+        scopes=["private_research"],
+    )
+
+    client = _client()
+    resp = client.post("/auth/external/session", headers=headers)
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["signed_in"] is True
+    assert body["user_id"] == "clerk:reader-json"
+    assert body["auth_method"] == "external_clerk_session"
+    assert "ANTIEK_SESSION" in resp.cookies
+
+
 def test_external_provider_non_operator_claims_rejected_for_operator_api(monkeypatch):
     """The same non-operator identity must not unlock broad operator routes."""
     secret = "trusted-hop-secret"

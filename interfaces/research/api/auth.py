@@ -47,6 +47,7 @@ from substrate.auth import (
     mint_session_cookie,
     verify_magic_link_token,
 )
+from substrate.multi_user.auth import decode_trusted_claims_header
 
 from .operator_allowlist import operator_allowlist_from_env
 
@@ -88,6 +89,15 @@ class AuthRequestResponse(BaseModel):
 class AuthMeResponse(BaseModel):
     """``GET /auth/me`` response."""
 
+    user_id: str
+    email: str | None
+    auth_method: str
+
+
+class ExternalAuthCallbackResponse(BaseModel):
+    """JSON response shape for clients that do not want a redirect."""
+
+    signed_in: bool = True
     user_id: str
     email: str | None
     auth_method: str
@@ -245,6 +255,10 @@ _DEV_LOGIN_TOKEN_ENV = "ANTIEK_DEV_LOGIN_TOKEN"
 # Shorter-lived than the 30-day magic-link session: a dev grant should
 # age out on its own even if the operator forgets to unset the token.
 _DEV_LOGIN_SESSION_MAX_AGE = 60 * 60 * 24 * 7  # 7 days
+_EXTERNAL_AUTH_VENDOR_ENV = "ANTIEK_EXTERNAL_AUTH_VENDOR"
+_EXTERNAL_AUTH_HEADER_SECRET_ENV = "ANTIEK_EXTERNAL_AUTH_HEADER_SECRET"
+_EXTERNAL_AUTH_CLAIMS_HEADER = "X-Antiek-Verified-Claims"
+_EXTERNAL_AUTH_SIGNATURE_HEADER = "X-Antiek-Verified-Claims-Signature"
 
 
 def _dev_login_token() -> str:
@@ -360,6 +374,67 @@ def register_auth_routes(
             **_cookie_kwargs(),
         )
         return response
+
+    def _external_claims_from_headers(request: Request):
+        vendor = os.environ.get(_EXTERNAL_AUTH_VENDOR_ENV, "").strip().lower()
+        secret = os.environ.get(_EXTERNAL_AUTH_HEADER_SECRET_ENV, "").strip()
+        encoded_claims = request.headers.get(_EXTERNAL_AUTH_CLAIMS_HEADER, "").strip()
+        signature = request.headers.get(_EXTERNAL_AUTH_SIGNATURE_HEADER, "").strip()
+        if not vendor or not secret:
+            raise HTTPException(status_code=404, detail="Not Found")
+        if not encoded_claims or not signature:
+            raise HTTPException(status_code=401, detail="missing external auth headers")
+        try:
+            return decode_trusted_claims_header(
+                vendor=vendor,
+                encoded_claims=encoded_claims,
+                signature=signature,
+                secret=secret,
+            )
+        except Exception as exc:  # noqa: BLE001 - invalid trusted-hop auth is a 401
+            raise HTTPException(status_code=401, detail="invalid external auth") from exc
+
+    def _set_claims_cookie(response: Response, *, claims, max_age: int) -> None:
+        response.set_cookie(
+            key=SESSION_COOKIE_NAME,
+            value=mint_session_cookie(
+                user_id=claims.user_id,
+                email=claims.email or "",
+                scopes=claims.scopes,
+            ),
+            max_age=max_age,
+            **_cookie_kwargs(),
+        )
+
+    @app.get("/auth/external/callback", tags=["auth"])
+    async def auth_external_callback(request: Request, next: str = "/") -> Response:
+        """Bridge a verified Clerk/Supabase login into an Antiek session cookie.
+
+        A provider-specific edge/server adapter must verify the provider JWT
+        first, then forward the normalized payload through Antiek's trusted
+        HMAC headers. This route verifies only the hop-local HMAC, mints an
+        Antiek session cookie carrying the stable ``UserClaims`` shape, and
+        redirects to the frontend.
+        """
+        claims = _external_claims_from_headers(request)
+        response = RedirectResponse(url=_resolve_redirect(next), status_code=302)
+        _set_claims_cookie(response, claims=claims, max_age=60 * 60 * 24 * 30)
+        return response
+
+    @app.post(
+        "/auth/external/session",
+        response_model=ExternalAuthCallbackResponse,
+        tags=["auth"],
+    )
+    async def auth_external_session(request: Request, response: Response) -> ExternalAuthCallbackResponse:
+        """JSON variant of the external-auth bridge for non-browser clients."""
+        claims = _external_claims_from_headers(request)
+        _set_claims_cookie(response, claims=claims, max_age=60 * 60 * 24 * 30)
+        return ExternalAuthCallbackResponse(
+            user_id=claims.user_id,
+            email=claims.email,
+            auth_method=f"external_{os.environ.get(_EXTERNAL_AUTH_VENDOR_ENV, '').strip().lower()}_session",
+        )
 
     @app.post("/auth/logout", tags=["auth"])
     async def auth_logout() -> Response:
