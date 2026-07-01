@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -12,6 +13,7 @@ from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database
 from substrate.ip_holders import (
     FIRST_COHORT_PUBLISHERS,
+    IpHolder,
     VALID_STATUSES,
     accrue_escrow,
     claim,
@@ -172,3 +174,25 @@ def test_notification_email_template_renders_for_pre_onboarded(db):
     assert "stole" not in email.lower()
     # Must surface the opt-out mechanism.
     assert "opt out" in email.lower()
+
+
+def test_g2_counsel_packet_fixture_shape_matches_ip_holder_dataclass():
+    """The G2 operator docs embed this fixture shape. Keep it executable."""
+    h = IpHolder(
+        ip_holder_id="mit-press",
+        display_name="MIT Press",
+        legal_contact_email="legal@mitpress.mit.edu",
+        status="pre_onboarded",
+        escrow_balance_usd=Decimal("0.00"),
+        escrow_account_ref=None,
+        notification_sent_at=None,
+        claimed_at=None,
+        opted_out_at=None,
+        created_at=datetime.now(UTC).isoformat(),
+    )
+
+    email = render_notification_email(h)
+
+    assert "MIT Press Legal Department" in email
+    assert "balance accrued to date is $0.00" in email
+    assert "legal@antiek.ai" in email
