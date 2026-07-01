@@ -21,6 +21,35 @@ def _client():
     return TestClient(create_app(register_wrestling=False))
 
 
+def _external_headers(
+    monkeypatch,
+    *,
+    vendor: str = "supabase",
+    sub: str = "reader-a",
+    scopes: list[str] | None = None,
+) -> dict[str, str]:
+    secret = "trusted-hop-secret"
+    monkeypatch.setenv("ANTIEK_EXTERNAL_AUTH_VENDOR", vendor)
+    monkeypatch.setenv("ANTIEK_EXTERNAL_AUTH_HEADER_SECRET", secret)
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_SERVICE_TOKEN_CLIENT_ID", raising=False)
+    encoded = encode_verified_claims_header({
+        "sub": sub,
+        "email": f"{sub}@example.com",
+        "app_metadata": {"antiek_scopes": scopes or ["private_research"]},
+    })
+    signature = sign_verified_claims_header(
+        vendor=vendor,
+        encoded_claims=encoded,
+        secret=secret,
+    )
+    return {
+        "X-Antiek-Verified-Claims": encoded,
+        "X-Antiek-Verified-Claims-Signature": signature,
+    }
+
+
 # ── Unauthenticated local path (default for tests + local dev) ─────
 
 
@@ -246,6 +275,36 @@ def test_external_provider_non_operator_claims_rejected_for_operator_api(monkeyp
     )
 
     assert resp.status_code == 401
+
+
+def test_external_provider_non_operator_claims_rejected_for_trust_center_sibling(
+    monkeypatch,
+):
+    """Self-service trust-center auth does not cover arbitrary sibling routes."""
+    client = _client()
+    resp = client.get(
+        "/stats",
+        headers=_external_headers(monkeypatch, sub="reader-a"),
+    )
+
+    assert resp.status_code == 401
+    assert resp.json()["error"]["code"] == "operator_auth_required"
+
+
+def test_external_provider_operator_claims_can_use_operator_api(monkeypatch):
+    """Operator-scoped external claims retain access to the operator API."""
+    client = _client()
+    resp = client.get(
+        "/does-not-exist",
+        headers=_external_headers(
+            monkeypatch,
+            vendor="clerk",
+            sub="operator-a",
+            scopes=["operator", "private_research"],
+        ),
+    )
+
+    assert resp.status_code == 404
 
 
 # ── /health bypass ───────────────────────────────────────────────────
