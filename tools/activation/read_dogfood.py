@@ -73,6 +73,7 @@ NON_LIBRARY_ENTRY_DOORS: frozenset[str] = frozenset(
         "unified_search",
     }
 )
+ALLOWED_STEP_STATUSES: frozenset[str] = frozenset({"pass", "fail", "inert"})
 
 
 @dataclass(frozen=True)
@@ -145,6 +146,7 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
 
         step_failures = _step_followup_failures(prefix, steps)
         failures.extend(step_failures)
+        failures.extend(_step_status_failures(prefix, steps))
 
         for issue_index, issue in enumerate(record.get("issues") or [], start=1):
             if not isinstance(issue, dict):
@@ -173,6 +175,8 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
                 prefix
                 + "live_provider_ai=true requires provider-backed steps 3 and 4 to pass"
             )
+        if bool(record.get("live_provider_ai")) and _provider_status(record) != "ready":
+            failures.append(prefix + "live_provider_ai=true requires provider_status=ready")
 
         if bool(record.get("citation_traced")) or _step_status(steps.get("5")) == "pass":
             citation_trace_sessions.add(session_id)
@@ -217,10 +221,32 @@ def _step_followup_failures(prefix: str, steps: dict[Any, Any]) -> list[str]:
     return failures
 
 
+def _step_status_failures(prefix: str, steps: dict[Any, Any]) -> list[str]:
+    failures: list[str] = []
+    for step_id, raw_step in sorted(steps.items(), key=lambda item: str(item[0])):
+        if not isinstance(raw_step, dict):
+            continue
+        status = _step_status(raw_step)
+        if status not in ALLOWED_STEP_STATUSES:
+            failures.append(
+                prefix
+                + f"step {step_id} status must be one of "
+                + ", ".join(sorted(ALLOWED_STEP_STATUSES))
+            )
+            continue
+        if status == "inert" and str(step_id) not in {"3", "4"}:
+            failures.append(prefix + f"step {step_id} cannot be inert")
+    return failures
+
+
 def _step_status(raw_step: Any) -> str:
     if not isinstance(raw_step, dict):
         return ""
     return str(raw_step.get("status") or "").strip().lower()
+
+
+def _provider_status(record: dict[str, Any]) -> str:
+    return str(record.get("provider_status") or "").strip().lower()
 
 
 def _session_core_steps_pass(steps: dict[Any, Any]) -> bool:
