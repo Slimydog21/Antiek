@@ -29,6 +29,30 @@ def parse(obj):
     assert "source_chunk_ids" in violations[0]
 
 
+def test_lint_catches_parser_that_surfaces_question_ids_without_validator(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "bad_plural_role" / "parser.py",
+        """
+def parse(obj):
+    return {"question_ids": obj.get("question_ids", [])}
+""",
+    )
+    _write(
+        tmp_path / "roles" / "bad_singular_role" / "parser.py",
+        """
+def parse(obj):
+    return {"question_id": obj.get("question_id")}
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any("question_ids" in violation for violation in violations)
+    assert any("question_id" in violation for violation in violations)
+
+
 def test_lint_allows_parser_that_routes_refs_through_validator(
     tmp_path: Path,
 ) -> None:

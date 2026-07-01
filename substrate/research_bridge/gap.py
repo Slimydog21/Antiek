@@ -20,11 +20,13 @@ try:
         _extract_json_object,
     )
     from .source_detection import KNOWN_SOURCES
+    from ..provenance import validate_refs
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
     from substrate.graph.ops import new_random_id  # type: ignore[no-redef]
+    from substrate.provenance import validate_refs  # type: ignore[no-redef]
     from substrate.research_bridge.extractor import (  # type: ignore[no-redef]
         EXTRACTOR_VERSION,
         LlmCallable,
@@ -176,10 +178,10 @@ def _parse_cluster_response(
             continue
         used_ranks.add(rank)
         raw_qids = raw.get("question_ids") or []
-        qids = tuple(
-            str(q) for q in raw_qids
-            if isinstance(q, str) and q in valid_question_ids
-        )
+        qids = validate_refs(
+            raw_qids if isinstance(raw_qids, list) else (),
+            valid_question_ids,
+        ).valid
         if not qids:
             continue
         rationale = raw.get("rationale")
