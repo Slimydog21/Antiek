@@ -11,6 +11,12 @@ import type { SessionCost } from "../../api/research";
 
 const WARN_FRACTION = 0.8;
 
+function finiteNonNegativeNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
 export default function CostMeter({ cost }: { cost: SessionCost | null }) {
   if (!cost) {
     return (
@@ -19,9 +25,9 @@ export default function CostMeter({ cost }: { cost: SessionCost | null }) {
       </div>
     );
   }
-  const sessionSpent = cost.session_total_usd;
-  const aggregateSpent = cost.aggregate_spent_usd;
-  const cap = cost.aggregate_cap_usd;
+  const sessionSpent = finiteNonNegativeNumber(cost.session_total_usd) ?? 0;
+  const aggregateSpent = finiteNonNegativeNumber(cost.aggregate_spent_usd) ?? 0;
+  const cap = finiteNonNegativeNumber(cost.aggregate_cap_usd) ?? 0;
   const frac = cap > 0 ? Math.min(1, aggregateSpent / cap) : 0;
   const atCap = cap > 0 && aggregateSpent >= cap;
   const warn = !atCap && frac >= WARN_FRACTION;

@@ -41,6 +41,12 @@ const STATE_CLASS: Record<ResearchRunState, string> = {
   budget_halted: "text-emperor",
 };
 
+function finiteNonNegativeNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
 export interface ResearchPanelProps {
   research: ResearchStatus;
   costUsd: number;
@@ -53,6 +59,7 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
   const [redirectText, setRedirectText] = useState("");
   const [steerError, setSteerError] = useState<string | null>(null);
   const terminal = TERMINAL_STATES.has(research.state);
+  const displayCostUsd = finiteNonNegativeNumber(costUsd) ?? 0;
   const isPaused = research.state === "paused";
   const isRunning = research.state === "running";
   const canSteer = !terminal && research.state !== "stopping";
@@ -80,7 +87,7 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
       </header>
 
       <div className="flex items-center justify-between text-[11px] text-shadow-1 dark:text-moonlight">
-        <span className="font-mono">${costUsd.toFixed(4)}</span>
+        <span className="font-mono">${displayCostUsd.toFixed(4)}</span>
         <span className="truncate font-mono opacity-60">{research.investigation_id.slice(-12)}</span>
       </div>
 
