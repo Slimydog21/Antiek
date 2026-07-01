@@ -25,6 +25,7 @@ scaffold provides:
 """
 
 from .accounts import (
+    SegregatedEscrowAccountRequired,
     StripeAccountStatus,
     StripeConnectAccount,
     StripeOperationsLog,
@@ -60,6 +61,7 @@ __all__ = [
     "PricingTier",
     "RealStripeProvider",
     "RevSharePayoutRouter",
+    "SegregatedEscrowAccountRequired",
     "StripeAccountStatus",
     "StripeConnectAccount",
     "StripeOperationsLog",

@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
-from typing import Iterable, Optional
+from typing import Optional
 
 from substrate.anti_gaming.verdict import FraudVerdict, FraudVerdictKind
 from substrate.rev_share.mixed_attribution import (
@@ -76,6 +76,7 @@ class RevSharePayoutRouter:
     operations_log: StripeOperationsLog = field(default_factory=StripeOperationsLog)
     rollover_ledger: RolloverLedger = field(default_factory=RolloverLedger)
     accounts: dict[str, StripeConnectAccount] = field(default_factory=dict)
+    segregated_account_ref: Optional[str] = None
     platform_residual_cents: int = 0
 
     def register_account(self, account: StripeConnectAccount) -> None:
@@ -177,6 +178,19 @@ def route_impression_revenue(
             ))
             continue
 
+        if not router.segregated_account_ref:
+            outcomes.append(PayoutOutcome(
+                recipient_ref=line.recipient_ref,
+                kind=line.kind,
+                amount_cents=line.amount_cents,
+                status="escrowed",
+                notes=(
+                    "segregated_account_ref missing; accrued in rollover ledger "
+                    "and held before provider transfer"
+                ),
+            ))
+            continue
+
         state, settled_cents = settle_or_rollover(
             router.rollover_ledger,
             recipient_ref=line.recipient_ref,
@@ -184,11 +198,12 @@ def route_impression_revenue(
         )
         if state == RolloverState.SETTLED and settled_cents > 0:
             idem = _idem_key(impression_id, line.recipient_ref)
-            entry = router.operations_log.append_intent(
+            router.operations_log.append_intent(
                 op_type=f"{line.kind}_payout",
                 amount_usd_cents=settled_cents,
                 substrate_ref=line.recipient_ref,
                 idempotency_key=idem,
+                segregated_account_ref=router.segregated_account_ref,
                 metadata={"impression_id": impression_id, "verdict_id": verdict.verdict_id},
             )
             provider_ref = router.provider.transfer_to_connect(

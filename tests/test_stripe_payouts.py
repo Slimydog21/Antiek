@@ -48,7 +48,10 @@ def _block_verdict() -> FraudVerdict:
 
 def _make_router_with_active_creator(creator_id: str = "u-1") -> RevSharePayoutRouter:
     provider = MockStripeProvider()
-    router = RevSharePayoutRouter(provider=provider)
+    router = RevSharePayoutRouter(
+        provider=provider,
+        segregated_account_ref="escrow-regulated-test",
+    )
     acct_id = provider.create_connect_account(
         display_name=creator_id,
         legal_contact_email=None,
@@ -134,6 +137,37 @@ def test_pass_above_threshold_transfers_via_stripe():
     assert len(router.provider.transfers) == 1
     # Platform residual collected the 3000.
     assert router.platform_residual_cents == 3000
+
+
+def test_pass_above_threshold_without_segregated_account_stays_escrowed():
+    provider = MockStripeProvider()
+    router = RevSharePayoutRouter(provider=provider)
+    acct_id = provider.create_connect_account(
+        display_name="u-1",
+        legal_contact_email=None,
+        account_kind="user_creator",
+    )
+    router.register_account(StripeConnectAccount(
+        connect_account_id=acct_id,
+        account_kind="user_creator",
+        substrate_ref="u-1",
+        status=StripeAccountStatus.ACTIVE,
+    ))
+
+    outcomes, _ = route_impression_revenue(
+        router,
+        impression_id="imp-1",
+        ad_revenue_cents=10_000,
+        attribution_shares={"doc-1": 1.0},
+        document_to_recipient={"doc-1": ("creator", "u-1")},
+        verdict=_pass_verdict(),
+        current_month_index=100,
+    )
+
+    assert outcomes[0].status == "escrowed"
+    assert "segregated_account_ref missing" in outcomes[0].notes
+    assert len(router.provider.transfers) == 0
+    assert router.rollover_ledger.entry_for("u-1").balance_cents == 7000
 
 
 def test_pass_below_threshold_rolls_over():

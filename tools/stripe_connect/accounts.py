@@ -25,6 +25,17 @@ class StripeAccountStatus(str, Enum):
     DISABLED = "disabled"        # operator/legal initiated tear-down
 
 
+PAYOUT_OP_TYPES = frozenset({
+    "publisher_payout",
+    "creator_payout",
+    "user_creator_payout",
+})
+
+
+class SegregatedEscrowAccountRequired(ValueError):
+    """Raised before a payout completion could commingle escrow funds."""
+
+
 @dataclass
 class StripeConnectAccount:
     """Antiek's local mirror of a Stripe Connect account. We do NOT
@@ -99,6 +110,14 @@ class StripeOperationsLog:
         entry = self._find_by_idem(idempotency_key)
         if entry is None:
             return
+        if (
+            entry["op_type"] in PAYOUT_OP_TYPES
+            and not entry.get("segregated_account_ref")
+        ):
+            raise SegregatedEscrowAccountRequired(
+                "payout completion requires segregated_account_ref "
+                f"for op_type={entry['op_type']!r}",
+            )
         entry["status"] = "completed"
         entry["completed_at"] = _now_iso()
         entry["provider_ref"] = provider_ref
