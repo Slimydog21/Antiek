@@ -21,6 +21,8 @@ mutation cohort, qualitative review, and final decision artifact.
   for acceptance epsilon.
 - `verdict.py` / `verdict_cli.py` — G6/OA-005 ratify/reject markdown
   generation from mutation outcomes.
+- `readiness.py` / `readiness_cli.py` — read-only audit of the Wedge 1
+  unlock checklist.
 
 ## Invariants
 
@@ -36,6 +38,15 @@ mutation cohort, qualitative review, and final decision artifact.
   `docs/engineering_deferrals.md`.
 
 ## Operator workflow
+
+### 0. Audit current readiness
+
+```bash
+./.venv/bin/python -m tools.prompt_autoresearch.readiness_cli --repo-root .
+```
+
+This command is read-only. It reports which unlock criteria are
+mechanically satisfied and which remain operator-bound.
 
 ### 1. Run the no-op calibration cohort
 
@@ -117,6 +128,8 @@ Focused gate:
   tests/test_prompt_autoresearch.py \
   tests/test_prompt_autoresearch_verdict.py \
   tests/test_prompt_autoresearch_calibration.py \
+  tests/test_prompt_autoresearch_docs.py \
+  tests/test_prompt_autoresearch_readiness.py \
   tests/test_phase8_gate.py \
   -q --tb=short
 ```
