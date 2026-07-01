@@ -59,6 +59,9 @@ class Verdict:
     total_cost_usd: float
     rationale: str
     sub_metric_regressions: list[str]
+    best_mutation_rationale: str = ""
+    best_mutation_parent_baseline_id: str | None = None
+    best_mutation_proposed_at: str = ""
 
 
 def compute_verdict(
@@ -180,6 +183,9 @@ def compute_verdict(
         total_cost_usd=total_cost,
         rationale=rationale,
         sub_metric_regressions=regressions,
+        best_mutation_rationale=best.mutation_rationale,
+        best_mutation_parent_baseline_id=best.parent_baseline_id,
+        best_mutation_proposed_at=best.proposed_at,
     )
 
 
@@ -231,6 +237,14 @@ def render_verdict_markdown(verdict: Verdict) -> str:
             f"- Best mutation: `{verdict.best_mutation_id}` "
             f"(Δ = {verdict.best_mutation_delta:+.4f})"
         )
+        if verdict.best_mutation_rationale:
+            lines.append(f"- Best mutation rationale: {verdict.best_mutation_rationale}")
+        if verdict.best_mutation_parent_baseline_id:
+            lines.append(
+                f"- Best mutation parent baseline: `{verdict.best_mutation_parent_baseline_id}`"
+            )
+        if verdict.best_mutation_proposed_at:
+            lines.append(f"- Best mutation proposed at: `{verdict.best_mutation_proposed_at}`")
     lines.append(f"- Total cost: ${verdict.total_cost_usd:.4f}")
     lines.append("")
     if verdict.sub_metric_regressions:
@@ -296,3 +310,12 @@ def _validate_verdict(verdict: Verdict) -> None:
         raise ValueError("verdict total_cost_usd must be non-negative")
     if not isinstance(verdict.rationale, str) or not verdict.rationale.strip():
         raise ValueError("verdict rationale must be a non-empty string")
+    for field in ("best_mutation_rationale", "best_mutation_proposed_at"):
+        value = getattr(verdict, field)
+        if not isinstance(value, str):
+            raise ValueError(f"verdict {field} must be a string")
+    if (
+        verdict.best_mutation_parent_baseline_id is not None
+        and not isinstance(verdict.best_mutation_parent_baseline_id, str)
+    ):
+        raise ValueError("verdict best_mutation_parent_baseline_id must be a string when present")
