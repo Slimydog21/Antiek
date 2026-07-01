@@ -4,8 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * books api — Read client boundaries.
  *
  * Surface tests pin component-level call shapes. This file pins API-client wire
- * contracts: talk-to-book defaults/errors, voice-note confirmation, meta-reading
- * defaults/errors, and personal-space filing suggestions.
+ * contracts: talk-to-book defaults/errors, voice-note confirmation, ad
+ * impressions, spin-research, meta-reading defaults/errors, and personal-space
+ * filing suggestions.
  */
 
 const apiFetchMock = vi.hoisted(() => vi.fn());
@@ -19,7 +20,9 @@ import {
   askBook,
   generateMetaReading,
   getFileSuggestion,
+  recordAdImpressions,
   saveVoiceNote,
+  spinResearch,
   transcribeAudio,
 } from "./books";
 
@@ -64,6 +67,17 @@ function voiceNoteResponse() {
     note_count: 2,
     notes: ["insight a", "question b"],
     emitted_event_ids: ["ev-1", "ev-2"],
+  };
+}
+
+function spinResearchResponse() {
+  return {
+    investigation_id: "inv-child",
+    document_id: "doc-spin",
+    page_index: 4,
+    gated: false,
+    servability: "public_domain",
+    seed_preview: "seed preview",
   };
 }
 
@@ -255,6 +269,188 @@ describe("books api — voice-note boundary", () => {
         investigation_id: "read-doc-1",
       }),
     ).rejects.toThrow("POST /books/{id}/voice-note: HTTP 500");
+  });
+});
+
+describe("books api — ad impression boundary", () => {
+  it("does nothing when there are no impressions to flush", async () => {
+    await recordAdImpressions("doc-1", "session-1", []);
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("posts reader impressions with session id and keepalive", async () => {
+    await recordAdImpressions("doc with space", "session-1", [
+      {
+        slot_id: "slot:doc:p0:top",
+        page_index: 0,
+        fill_kind: "house",
+        revenue_usd_cents: 0,
+        focused_dwell_ms: 1200,
+        tab_focused: true,
+      },
+      {
+        slot_id: "slot:doc:p0:bottom",
+        page_index: 0,
+        fill_kind: "ad",
+        revenue_usd_cents: 42,
+        focused_dwell_ms: 900,
+        tab_focused: true,
+      },
+    ]);
+
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = apiFetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/books/doc%20with%20space/ad-impressions");
+    expect(init.method).toBe("POST");
+    expect(init.keepalive).toBe(true);
+    expect(init.headers).toMatchObject({ "Content-Type": "application/json" });
+    expect(postedJsonBody()).toEqual({
+      session_id: "session-1",
+      impressions: [
+        {
+          slot_id: "slot:doc:p0:top",
+          page_index: 0,
+          fill_kind: "house",
+          revenue_usd_cents: 0,
+          focused_dwell_ms: 1200,
+          tab_focused: true,
+        },
+        {
+          slot_id: "slot:doc:p0:bottom",
+          page_index: 0,
+          fill_kind: "ad",
+          revenue_usd_cents: 42,
+          focused_dwell_ms: 900,
+          tab_focused: true,
+        },
+      ],
+    });
+  });
+
+  it("does not disrupt reading when the impression flush is rejected", async () => {
+    apiFetchMock.mockRejectedValueOnce(new Error("offline"));
+
+    await expect(
+      recordAdImpressions("doc-1", "session-1", [
+        {
+          slot_id: "slot:doc:p0:top",
+          page_index: 0,
+          fill_kind: "house",
+          revenue_usd_cents: 0,
+          focused_dwell_ms: 1200,
+          tab_focused: true,
+        },
+      ]),
+    ).resolves.toBeUndefined();
+  });
+
+  it("does not disrupt reading when the impression endpoint returns an error", async () => {
+    apiFetchMock.mockResolvedValueOnce(new Response("boom", { status: 500 }));
+
+    await expect(
+      recordAdImpressions("doc-1", "session-1", [
+        {
+          slot_id: "slot:doc:p0:top",
+          page_index: 0,
+          fill_kind: "ad",
+          revenue_usd_cents: 42,
+          focused_dwell_ms: 900,
+          tab_focused: true,
+        },
+      ]),
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe("books api — spin-research boundary", () => {
+  it("posts a gate-safe page spin request with passage text and parses the child research", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(spinResearchResponse()), { status: 200 }),
+    );
+
+    const result = await spinResearch("doc spin", 4, "selected passage");
+
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = apiFetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/books/doc%20spin/spin-research");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toMatchObject({ "Content-Type": "application/json" });
+    expect(postedJsonBody()).toEqual({
+      page_index: 4,
+      passage_text: "selected passage",
+    });
+    expect(result).toEqual(spinResearchResponse());
+  });
+
+  it("trims non-empty selected passage text", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(spinResearchResponse()), { status: 200 }),
+    );
+
+    await spinResearch("doc-1", 0, "  selected passage  ");
+
+    expect(postedJsonBody()).toEqual({
+      page_index: 0,
+      passage_text: "selected passage",
+    });
+  });
+
+  it("sends null passage text when the reader has no selected passage", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(spinResearchResponse()), { status: 200 }),
+    );
+
+    await spinResearch("doc-1", 0);
+
+    expect(postedJsonBody()).toEqual({
+      page_index: 0,
+      passage_text: null,
+    });
+  });
+
+  it("sends null passage text when the selected passage is empty", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(spinResearchResponse()), { status: 200 }),
+    );
+
+    await spinResearch("doc-1", 0, "   ");
+
+    expect(postedJsonBody()).toEqual({
+      page_index: 0,
+      passage_text: null,
+    });
+  });
+
+  it("parses future servability values without narrowing them away", async () => {
+    const futureResponse = { ...spinResearchResponse(), servability: "future_open" };
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(futureResponse), { status: 200 }),
+    );
+
+    await expect(spinResearch("doc-1", 0)).resolves.toEqual(futureResponse);
+  });
+
+  it("surfaces an unknown book as the reader's book_not_found branch", async () => {
+    apiFetchMock.mockResolvedValueOnce(new Response("missing", { status: 404 }));
+
+    await expect(spinResearch("missing-doc", 0)).rejects.toThrow("book_not_found");
+  });
+
+  it("surfaces provider unavailability as the reader-facing spin-research message", async () => {
+    apiFetchMock.mockResolvedValueOnce(new Response("no model", { status: 503 }));
+
+    await expect(spinResearch("doc-1", 0)).rejects.toThrow(
+      /Spin research isn.t available right now\./,
+    );
+  });
+
+  it("keeps unexpected spin failures loud with the endpoint name", async () => {
+    apiFetchMock.mockResolvedValueOnce(new Response("boom", { status: 500 }));
+
+    await expect(spinResearch("doc-1", 0)).rejects.toThrow(
+      "POST /books/{id}/spin-research: HTTP 500",
+    );
   });
 });
 
