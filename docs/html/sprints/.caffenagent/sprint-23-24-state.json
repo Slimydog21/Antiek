@@ -1,0 +1,37 @@
+{
+  "spec_file": "docs/html/sprints/sprint-23-24.html",
+  "source_spec_section": "docs/sprint-breakdown.html#sprint-2324",
+  "target_branch": "reader/integration",
+  "status": "external_gated",
+  "recorded_at": "2026-07-01T20:35:57Z",
+  "verified_code_sha": "1b863667",
+  "mode": "status_reconciliation",
+  "deterministic_evidence": {
+    "backend_gate": "268 passed: anti-gaming, red-team probe, rev-share, Stripe, advertiser, marketplace, KYC/tax, ad inventory, read ad escrow, voice-style tests",
+    "frontend_gate": "33 passed: npm test -- AdvertiserConsole CreatorPayouts PayoutDashboard MarketplaceMetrics AdSlot taxonomy --run from apps/reading",
+    "grok_smoke": "grok general-purpose no-subagents tiny smoke returned GROK_S2324_SMOKE_OK",
+    "internal_red_team_baseline": "docs/sprint23_red_team_internal_baseline.md records operator self-test only",
+    "external_red_team_template": "docs/sprint23_red_team.md remains template pending external reviewer"
+  },
+  "operator_only_remaining": [
+    "Sprint 22 multi-user pivot is stable and hardened against graph contamination.",
+    "At least one creator and one publisher accrue under attribution with rev-share still held.",
+    "External red-team firm files a passing docs/sprint23_red_team.md report.",
+    "At least three advertisers are paying and monthly run-rate exceeds $5K.",
+    "At least one above-threshold creator payout clears Stripe Connect.",
+    "Operator audits 20 payouts and records no reversed attributions.",
+    "Voice/style audit shows less than 5% regression on ad-bearing pages.",
+    "Legal counsel signs off on KYC and 1099 posture."
+  ],
+  "not_claimed": [
+    "Full repository test suite was not rerun in this S23-24 pass.",
+    "No real Stripe payout was initiated.",
+    "No advertiser contract or monthly run-rate was created locally.",
+    "The external red-team gate remains open.",
+    "Sprints 23-24 ads and rev-share are not live."
+  ],
+  "notes": [
+    "The standalone Sprints 23-24 HTML page was added from docs/sprint-breakdown.html#sprint-2324.",
+    "The status is external_gated because local code substrate is strong but every sprint-closing proof depends on external/legal/commercial evidence."
+  ]
+}
