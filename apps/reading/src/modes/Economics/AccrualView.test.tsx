@@ -130,6 +130,62 @@ describe("AccrualView — accrual shown, never paid (M2/M4)", () => {
     // No row is ever labelled with a positive owed dollar figure.
     expect(screen.queryByText(/owed[^.]*\$[1-9]/i)).toBeNull();
   });
+
+  it("sanitizes malformed attribution shares and escrow amounts", async () => {
+    getAttributionReportMock.mockResolvedValue(
+      report({
+        option_b: {
+          algorithm: "B",
+          shares: {
+            "doc-A": Number.NaN,
+            "doc-B": Number.POSITIVE_INFINITY,
+            "doc-C": 0.25,
+          },
+          document_titles: {
+            "doc-A": "Bad Share",
+            "doc-B": "Infinite Share",
+            "doc-C": "Measured Share",
+          },
+          document_count: 3,
+          claim_count: 3,
+          document_ip_holders: {
+            "doc-A": "ip-a",
+            "doc-B": "ip-b",
+            "doc-C": "ip-c",
+          },
+          document_ip_holder_status: {
+            "ip-a": "pre_onboarded",
+            "ip-b": "invited",
+            "ip-c": "claimed",
+          },
+        },
+      }),
+    );
+    getConsentViewMock.mockResolvedValue(
+      consent({
+        escrow_report: {
+          pre_onboarded: Number.POSITIVE_INFINITY,
+          invited: 0,
+          claimed: Number.NaN,
+          opted_out: 0,
+          claim_rate: 0,
+          total_escrow_accrued_cents: Number.POSITIVE_INFINITY,
+          total_escrow_paid_cents: Number.NaN,
+          unclaimed_escrow_cents: 0,
+          publishers_with_nontrivial_accrual: 0,
+        },
+      }),
+    );
+
+    render(<AccrualView synthesisId="syn-1" />);
+
+    await waitFor(() => expect(screen.getByText("Measured Share")).toBeTruthy());
+    expect(document.body.textContent).not.toMatch(/NaN|Infinity|\$-|-%/);
+    expect(screen.getAllByText(/0% of attribution/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/25% of attribution/)).toBeTruthy();
+    expect(screen.getByText(/Accrued so far:/)).toBeTruthy();
+    expect(screen.getByText(/0 opted in · 0 eligible once they opt in/)).toBeTruthy();
+  });
 });
 
 describe("AccrualView — NO money path (M4, BINDING)", () => {

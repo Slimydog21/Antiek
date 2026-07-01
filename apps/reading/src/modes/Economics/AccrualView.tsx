@@ -62,13 +62,21 @@ export interface AccrualViewProps {
   onPayoutRefused?: (reason: { openGates: string[] }) => void;
 }
 
-const USD = (cents: number) =>
-  `$${(cents / 100).toLocaleString(undefined, {
+const nonNegativeFiniteNumber = (value: unknown): number | null =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+
+const safeNumber = (value: unknown): number => nonNegativeFiniteNumber(value) ?? 0;
+
+const USD = (cents: unknown) =>
+  `$${(safeNumber(cents) / 100).toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
 
-const PCT = (frac: number) => `${(frac * 100).toFixed(0)}%`;
+const PCT = (frac: unknown) => `${(safeNumber(frac) * 100).toFixed(0)}%`;
+const COUNT = (value: unknown) => String(Math.floor(safeNumber(value)));
 
 /** A per-contributor accrual row: who grounds the synthesis, their share of
  *  the attribution, and what WOULD be owed (clearly not-yet-paid). */
@@ -95,7 +103,7 @@ function rowsFromOptionB(b: AttributionAlgorithmShares): AccrualRow[] {
         title: b.document_titles[documentId] || "an untitled source",
         ipHolderId,
         status: ipHolderId ? (b.document_ip_holder_status[ipHolderId] ?? "pre_onboarded") : null,
-        share,
+        share: safeNumber(share),
       };
     })
     .sort((a, b2) => b2.share - a.share);
@@ -285,8 +293,8 @@ export default function AccrualView({ synthesisId, onPayoutRefused }: AccrualVie
             Escrow accrues only for publishers who opt in. We'll pay for
             prospective use once a publisher opts in — there's no money waiting
             against anyone who hasn't.{" "}
-            {consent.escrow_report.claimed} opted in ·{" "}
-            {consent.escrow_report.pre_onboarded} eligible once they opt in.
+            {COUNT(consent.escrow_report.claimed)} opted in ·{" "}
+            {COUNT(consent.escrow_report.pre_onboarded)} eligible once they opt in.
           </p>
         </section>
       )}
