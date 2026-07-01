@@ -62,13 +62,19 @@ import {
   renderMinimap,
 } from "../../reading-physics/minimap";
 import { collectAnchoredWidgets, collectDecorations } from "../../reading-physics/registry";
-import type { ClaimId, ChunkId, LayoutMap, ReadingContext, RenderContext } from "../../reading-physics/types";
+import type { Anchor, ClaimId, ChunkId, LayoutMap, ReadingContext, RenderContext } from "../../reading-physics/types";
 import { useOpenDocument } from "../../lib/openDocument";
 import {
   sourcePageNumberFromSectionPath,
   zeroBasedReaderPageFromSourcePage,
 } from "../../lib/sectionPath";
-import { CHUNK_ID_ATTR, COLLAPSE_SECTION_ID_ATTR } from "./readingGeometryPass";
+import {
+  CHUNK_ID_ATTR,
+  COLLAPSE_SECTION_ID_ATTR,
+  PASSAGE_CHUNK_ID_ATTR,
+  PASSAGE_END_ATTR,
+  PASSAGE_START_ATTR,
+} from "./readingGeometryPass";
 import ChunkModal from "./ChunkModal";
 import { buildLayoutMap, measureCollapseSection } from "./readingGeometryPass";
 import type { ClaimReviewRating } from "./reviewState";
@@ -181,6 +187,30 @@ function composedReviewDueByClaim(
     : new Map();
 }
 
+type PassageAnchor = Extract<Anchor, { readonly kind: "passage" }>;
+
+function passageAnchorsByChunkFromNotes(
+  notes: readonly ResolvedMarginNote[],
+): Map<string, PassageAnchor[]> {
+  const byChunk = new Map<string, PassageAnchor[]>();
+  for (const note of notes) {
+    if (note.resolution.kind !== "match") continue;
+    const anchor = note.resolution.candidate.anchor;
+    if (anchor.kind !== "passage") continue;
+    const existing = byChunk.get(anchor.chunkId) ?? [];
+    if (
+      existing.some(
+        (known) => known.start === anchor.start && known.end === anchor.end,
+      )
+    ) {
+      continue;
+    }
+    existing.push(anchor);
+    byChunk.set(anchor.chunkId, existing);
+  }
+  return byChunk;
+}
+
 // ── Living-Roadmap SPR-02 — the recompute debounce (M3) ──────────────────────
 //
 // WHAT TRIGGERS A RECOMPUTE, and what does NOT (the honest M3 model). The base
@@ -245,6 +275,10 @@ export default function MasterMdViewer({
     [events, synthesisId],
   );
   const resolvedMarginNotes = useResolvedMarginNotes(synthesis, authoredMarginNotes);
+  const marginaliaPassagesByChunk = useMemo(
+    () => passageAnchorsByChunkFromNotes(resolvedMarginNotes),
+    [resolvedMarginNotes],
+  );
 
   // ── Living-Roadmap SPR-02 — the surface GEOMETRY PASS (M1/M3) ──────────────
   //
@@ -446,6 +480,7 @@ export default function MasterMdViewer({
                   )}
                   onReviewClaim={onReviewClaim}
                   reviewPending={reviewClaimPendingIds.includes(String(c.index))}
+                  marginaliaPassagesByChunk={marginaliaPassagesByChunk}
                 />
               ))}
             </div>
@@ -818,6 +853,7 @@ export function ClaimBlock({
   reviewDue,
   onReviewClaim,
   reviewPending = false,
+  marginaliaPassagesByChunk = new Map(),
 }: {
   claim: ParsedClaim;
   onChunkClick: (chunkId: string) => void;
@@ -833,6 +869,7 @@ export function ClaimBlock({
   reviewDue?: ResolvedDecoration | undefined;
   onReviewClaim?: (claim: ParsedClaim, rating: ClaimReviewRating) => void | Promise<void>;
   reviewPending?: boolean;
+  marginaliaPassagesByChunk?: ReadonlyMap<string, readonly PassageAnchor[]>;
 }) {
   // ENACT the declared review-due verdict. Off / no-data ⇒ no class added ⇒
   // the span is byte-identical to the pre-SPR-08 render. The closed-vocabulary
@@ -892,7 +929,11 @@ export function ClaimBlock({
             confidence={claim.confidence}
             tier={claim.effectiveSourceTier}
           />
-          <NamedSources chunkIds={claim.chunkIds} onPreview={onChunkClick} />
+          <NamedSources
+            chunkIds={claim.chunkIds}
+            onPreview={onChunkClick}
+            marginaliaPassagesByChunk={marginaliaPassagesByChunk}
+          />
           {reviewControls}
           {claim.supportingPathIndices.length > 0 && (
             <span className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
@@ -918,6 +959,8 @@ export function ClaimBlock({
 
 interface ResolvedSource {
   documentId: string;
+  /** Every chunk collapsed into this named source. */
+  chunkIds: string[];
   /** The source's title; null when the document carries no title. */
   title: string | null;
   /** A human locator (e.g. "p.12") derived from a chunk's section_path,
@@ -952,6 +995,7 @@ function groupByDocument(chunks: ChunkResponse[]): ResolvedSource[] {
     const existing = byDoc.get(c.document_id);
     const locator = locatorFromSectionPath(c.section_path);
     if (existing) {
+      if (!existing.chunkIds.includes(c.chunk_id)) existing.chunkIds.push(c.chunk_id);
       if (!existing.locator && locator) {
         existing.locator = locator;
         existing.representativeChunkId = c.chunk_id;
@@ -960,6 +1004,7 @@ function groupByDocument(chunks: ChunkResponse[]): ResolvedSource[] {
     }
     byDoc.set(c.document_id, {
       documentId: c.document_id,
+      chunkIds: [c.chunk_id],
       title: c.document_title,
       locator,
       representativeChunkId: c.chunk_id,
@@ -976,9 +1021,11 @@ function groupByDocument(chunks: ChunkResponse[]): ResolvedSource[] {
 function NamedSources({
   chunkIds,
   onPreview,
+  marginaliaPassagesByChunk,
 }: {
   chunkIds: string[];
   onPreview: (chunkId: string) => void;
+  marginaliaPassagesByChunk: ReadonlyMap<string, readonly PassageAnchor[]>;
 }) {
   const [sources, setSources] = useState<ResolvedSource[] | null>(null);
 
@@ -1045,6 +1092,9 @@ function NamedSources({
           key={s.documentId}
           source={s}
           onPreview={onPreview}
+          passageAnchors={s.chunkIds.flatMap(
+            (chunkId) => marginaliaPassagesByChunk.get(chunkId) ?? [],
+          )}
           decoration={decorationByChunk.get(
             anchorKey({ kind: "chunk", chunkId: s.representativeChunkId as ChunkId }),
           )}
@@ -1121,6 +1171,7 @@ function SourceCitation({
   source,
   onPreview,
   decoration,
+  passageAnchors,
 }: {
   source: ResolvedSource;
   onPreview: (chunkId: string) => void;
@@ -1132,6 +1183,7 @@ function SourceCitation({
    *  pass produced no decoration for this source (defensive; treated as the
    *  restricted branch so an un-annotated source never silently opens). */
   decoration: ResolvedDecoration | undefined;
+  passageAnchors: readonly PassageAnchor[];
 }) {
   const openDocument = useOpenDocument();
   const label = source.title ?? "an untitled source";
@@ -1148,6 +1200,7 @@ function SourceCitation({
   const ownerName =
     decoration?.ipHolderNames.length === 1 ? decoration.ipHolderNames[0] : null;
   const owner = ownerName ? `, published by ${ownerName}` : "";
+  const passageMarkers = <PassageAnchorMarkers anchors={passageAnchors} />;
 
   // ENACT the declared §9.0 verdict (PR-6: the augmentation read `servable`
   // from the substrate; the surface honors it, never re-decides it). The
@@ -1164,68 +1217,98 @@ function SourceCitation({
     // named source (so the reader knows what backs the claim) with an
     // honest "not available to open" state — never the content.
     return (
-      <span
-        {...{ [CHUNK_ID_ATTR]: source.representativeChunkId }}
-        className={`text-[11px] text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1 px-1.5 py-0.5 rounded inline-flex items-center gap-1 ${declaredClasses} ${historyTintClass}`.trim()}
-        title={decoration?.title ?? RESTRICTED_TITLE}
-      >
-        from {label}
-        {locator}
-        <span className="text-[10px] text-shadow-1 dark:text-moonlight">
-          · not available to open
+      <>
+        <span
+          {...{ [CHUNK_ID_ATTR]: source.representativeChunkId }}
+          className={`text-[11px] text-ink-soft dark:text-starlight bg-ice-2 dark:bg-charcoal-1 px-1.5 py-0.5 rounded inline-flex items-center gap-1 ${declaredClasses} ${historyTintClass}`.trim()}
+          title={decoration?.title ?? RESTRICTED_TITLE}
+        >
+          from {label}
+          {locator}
+          <span className="text-[10px] text-shadow-1 dark:text-moonlight">
+            · not available to open
+          </span>
         </span>
-      </span>
+        {passageMarkers}
+      </>
     );
   }
 
   return (
-    <button
-      {...{ [CHUNK_ID_ATTR]: source.representativeChunkId }}
-      onClick={(e) => {
-        // ⌘/Ctrl-click opens the source in the ONE Reader jumped to its page
-        // (SPR-05 — was openPdfPanel, the bespoke pdf.js panel; now the one door
-        // → the gated Reader). Plain click previews the chunk inline first (the
-        // modal path). This is MasterMdViewer's ONLY open-a-document-by-id seam;
-        // routing it here makes MasterMdViewer a pure synthesis-summary view (it
-        // no longer opens a document by id) — the survivor case the spec carves.
-        if (e.metaKey || e.ctrlKey) {
-          e.preventDefault();
-          void (async () => {
-            try {
-              const chunk = await getChunk(source.representativeChunkId);
-              if (!chunk.servable) {
-                toast.err(`${label} isn’t available to open.`);
-                return;
+    <>
+      <button
+        {...{ [CHUNK_ID_ATTR]: source.representativeChunkId }}
+        onClick={(e) => {
+          // ⌘/Ctrl-click opens the source in the ONE Reader jumped to its page
+          // (SPR-05 — was openPdfPanel, the bespoke pdf.js panel; now the one door
+          // → the gated Reader). Plain click previews the chunk inline first (the
+          // modal path). This is MasterMdViewer's ONLY open-a-document-by-id seam;
+          // routing it here makes MasterMdViewer a pure synthesis-summary view (it
+          // no longer opens a document by id) — the survivor case the spec carves.
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            void (async () => {
+              try {
+                const chunk = await getChunk(source.representativeChunkId);
+                if (!chunk.servable) {
+                  toast.err(`${label} isn’t available to open.`);
+                  return;
+                }
+                // `source.locator` is a 1-based source page label (e.g. "p.17");
+                // the reader's `page` opt is a 0-based index — convert honestly.
+                const page =
+                  zeroBasedReaderPageFromSourcePage(
+                    sourcePageNumberFromSectionPath(source.locator),
+                  ) ?? undefined;
+                openDocument(chunk.document_id, {
+                  page,
+                  chunkId: source.representativeChunkId,
+                });
+              } catch (err) {
+                toast.err(
+                  `Could not open ${label}: ${
+                    err instanceof Error ? err.message : String(err)
+                  }`,
+                );
               }
-              // `source.locator` is a 1-based source page label (e.g. "p.17");
-              // the reader's `page` opt is a 0-based index — convert honestly.
-              const page =
-                zeroBasedReaderPageFromSourcePage(
-                  sourcePageNumberFromSectionPath(source.locator),
-                ) ?? undefined;
-              openDocument(chunk.document_id, {
-                page,
-                chunkId: source.representativeChunkId,
-              });
-            } catch (err) {
-              toast.err(
-                `Could not open ${label}: ${
-                  err instanceof Error ? err.message : String(err)
-                }`,
-              );
-            }
-          })();
-          return;
-        }
-        onPreview(source.representativeChunkId);
-      }}
-      className={`text-[11px] text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 px-1.5 py-0.5 rounded transition-colors ${declaredClasses} ${historyTintClass}`.trim()}
-      title={decoration?.title ?? SERVABLE_TITLE}
-    >
-      from {label}
-      {locator}
-      {owner}
-    </button>
+            })();
+            return;
+          }
+          onPreview(source.representativeChunkId);
+        }}
+        className={`text-[11px] text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 px-1.5 py-0.5 rounded transition-colors ${declaredClasses} ${historyTintClass}`.trim()}
+        title={decoration?.title ?? SERVABLE_TITLE}
+      >
+        from {label}
+        {locator}
+        {owner}
+      </button>
+      {passageMarkers}
+    </>
+  );
+}
+
+function PassageAnchorMarkers({
+  anchors,
+}: {
+  anchors: readonly PassageAnchor[];
+}) {
+  if (anchors.length === 0) return null;
+  return (
+    <>
+      {anchors.map((anchor) => (
+        <span
+          key={`${anchor.chunkId}:${anchor.start}:${anchor.end}`}
+          aria-hidden="true"
+          {...{
+            [PASSAGE_CHUNK_ID_ATTR]: anchor.chunkId,
+            [PASSAGE_START_ATTR]: String(anchor.start),
+            [PASSAGE_END_ATTR]: String(anchor.end),
+          }}
+          className="inline-block h-[1em] w-px opacity-0"
+        />
+      ))}
+    </>
   );
 }
 
