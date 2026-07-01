@@ -24,12 +24,14 @@ Both pattern adoptions ship as **net-new modules** in `substrate/` with full tes
 |---|---|---|---|
 | `substrate/results.py` | 197 | 24 | `Ok[T]` / `Err[E]` Pydantic discriminated union + `ResultUnwrapError` + combinators |
 | `substrate/errors.py` | 117 | 13 | `SubstrateError` union: 5 variants (BudgetExceeded, SchemaMismatch, UpstreamUnavailable, VerifierTimeout, WriterContended) |
-| `substrate/escape_hatch.py` | 175 | 15 | `escape_hatch(reason=...)` as both decorator and context manager (`ContextDecorator`); per-reason single-warning + thread-safe counter |
+| `substrate/escape_hatch.py` | 210 | 16 | `escape_hatch(reason=...)` as both decorator and context manager (`ContextDecorator`); per-reason single-warning + thread-safe counter |
 | `tests/test_results.py` | 273 | — | Construction, predicates, extractors, combinators, match-case, JSON round-trip, frozen invariant, realistic boundary example |
 | `tests/test_errors.py` | 173 | — | Each variant constructs + serializes; union resolves on `kind` discriminator |
-| `tests/test_escape_hatch.py` | 211 | — | Context + decorator forms; warn-once; validation; exception propagation; thread-safety smoke |
+| `tests/test_escape_hatch.py` | 281 | — | Context + decorator forms; warn-once; validation; exception propagation; observability report surface; thread-safety smoke |
 
-**Test result:** 52/52 new tests pass. `mypy --strict` clean on all three modules. Substrate invariants suite: 6/6 pass, 0 violations.
+**Original test result:** 52/52 new tests passed. `mypy --strict` clean on all three modules. Substrate invariants suite: 6/6 pass, 0 violations.
+
+**2026-07-02 follow-on:** the escape-hatch observability guard adds a 16th escape-hatch test and registers `escape-hatch-observability` in the invariant registry. Verification: `tests/test_escape_hatch.py` 16/16 pass; `tests/test_invariant_registry_meta.py` 33 pass / 1 script-kind skip.
 
 ## Guide-level explanation (Rust-RFC style)
 
@@ -134,14 +136,14 @@ The thread-safety story: `_state_lock` is a `threading.Lock` protecting the `_se
 ## Unresolved questions
 
 1. **Should the existing `WriteLockTimeout` / `WriteCoordinatorTimeout` exception in `runtime/db_lock.py` be translated to a `WriterContended` `Result.Err` at the coordinator boundary?** Probably yes, but that is the deferred ARE-02 refactor work — it touches existing call sites and needs operator review of which sites flip to Result-return.
-2. **Should `substrate/escape_hatch.py` integrate with `substrate/invariants.py` so that bypass hits show up in the invariants report?** Possible follow-on; would be a small extension.
+2. **Resolved follow-on:** `substrate/invariants/escape-hatch-observability.toml` now registers the escape-hatch counter surface as a guarded invariant. Its guard proves `counter_snapshot()` exposes per-reason bypass hit counts for audit/invariant reporting.
 3. **Should the AST lint (`tools/lints/unannotated_bypass.py`) be shipped in the same wave?** The spec scheduled it inside ARE-05 milestone 5. It was held out of this commit because it requires careful audit-doc design and would have made the commit too big to review. Deferred to a follow-on session.
 
 ## Future possibilities
 
 - **`?` operator** via a `try_` decorator that destructures and short-circuits on `Err`, mirroring Rust's `?`. Cost is one decorator, benefit is shorter chain prose; weigh after first 10 boundary sites adopt the Result type.
 - **`Result[..., SubstrateError]` as the substrate-public-API return convention.** When ARE-02's deferred refactor runs, every substrate-boundary function's return type bumps to `Result[T, SubstrateError]` and the existing exception-raising paths translate to `Err(error=...)`.
-- **Stateful escape-hatch observability** — counter snapshots surfaced in `runtime/weekly_report.py` so operators see bypass trends without grepping logs.
+- **Stateful escape-hatch observability** — counter snapshots surfaced in `runtime/weekly_report.py` so operators see bypass trends without grepping logs. The invariant registry now guards the lower-level `counter_snapshot()` report surface; the weekly report integration remains separate.
 
 ## Ratification (per RFC discipline)
 
