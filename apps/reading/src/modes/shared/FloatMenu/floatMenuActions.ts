@@ -179,6 +179,28 @@ export interface DialogueReply {
   threadNodeId?: string | null;
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function nonNegativeSafeInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
 /** One prior turn carried into the next request (multi-turn). `question` is
  * user-sourced; `answer` is model-sourced — kept distinct (§9). */
 export interface DialogueHistoryTurn {
@@ -293,9 +315,7 @@ export async function dialogueOverSelection(args: {
       await resp.text(),
     );
   }
-  const data = await resp.json();
-  const reply: string = data.text ?? data.body ?? "";
-  return { prompt, reply, threadNodeId: data.thread_node_id ?? null };
+  return safeDialogueReply(await resp.json(), prompt);
 }
 
 /** One SSE frame from the streamed Dialogue endpoint. */
@@ -304,6 +324,47 @@ export type DialogueStreamEvent =
   | { kind: "thread"; node_id: string }
   | { kind: "done" }
   | { kind: "error"; status: number; detail: string };
+
+function safeDialogueReply(value: unknown, prompt: string): DialogueReply {
+  const data = record(value);
+  const reply =
+    typeof data?.text === "string"
+      ? data.text
+      : typeof data?.body === "string"
+        ? data.body
+        : null;
+  if (reply === null) {
+    throw new Error("Malformed dialogue response.");
+  }
+  return {
+    prompt,
+    reply,
+    threadNodeId: nullableString(data?.thread_node_id),
+  };
+}
+
+function safeDialogueStreamEvent(value: unknown): DialogueStreamEvent | null {
+  const data = record(value);
+  if (!data) return null;
+  switch (data.kind) {
+    case "token":
+      return typeof data.text === "string" ? { kind: "token", text: data.text } : null;
+    case "thread": {
+      const nodeId = nonEmptyString(data.node_id);
+      return nodeId ? { kind: "thread", node_id: nodeId } : null;
+    }
+    case "done":
+      return { kind: "done" };
+    case "error":
+      return {
+        kind: "error",
+        status: nonNegativeSafeInteger(data.status) ?? 0,
+        detail: nonEmptyString(data.detail) ?? "stream error",
+      };
+    default:
+      return null;
+  }
+}
 
 /** Stream a dialogue turn over the selection via /thought-partner/stream (M2).
  * Calls `onEvent` for each SSE frame as it arrives — `token` frames render
@@ -363,7 +424,8 @@ export async function streamDialogueOverSelection(
       for (const line of frame.split("\n")) {
         if (!line.startsWith("data: ")) continue;
         try {
-          onEvent(JSON.parse(line.slice("data: ".length)) as DialogueStreamEvent);
+          const event = safeDialogueStreamEvent(JSON.parse(line.slice("data: ".length)));
+          if (event) onEvent(event);
         } catch {
           // A malformed frame is dropped (defensive) — never crashes the stream.
         }
