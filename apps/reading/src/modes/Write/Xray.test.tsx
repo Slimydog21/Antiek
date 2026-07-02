@@ -173,7 +173,7 @@ describe("Xray — paragraph↔blocks over persisted provenance", () => {
       document_id: " doc-1 ",
       document_title: "  Source Book  ",
       chunk_ids: [" c1 ", "", 42 as unknown as string],
-      primary_chunk_index: "2" as unknown as number,
+      primary_chunk_index: "2.5" as unknown as number,
       primary_section_path: " ",
       servability_status: "",
       detail: "",
@@ -188,7 +188,8 @@ describe("Xray — paragraph↔blocks over persisted provenance", () => {
     await userEvent.click(screen.getByTestId("xray-paragraph-0").querySelector("button")!);
     await userEvent.click(screen.getByTestId("xray-paragraph-blocks-0").querySelector("button")!);
     const uses = await screen.findByTestId("xray-block-uses");
-    expect(uses.textContent).toContain("Source: Source Book · chunk 3");
+    expect(uses.textContent).toContain("Source: Source Book");
+    expect(uses.textContent).not.toContain("chunk 3.5");
     expect(uses.textContent).not.toContain("  Source Book  ");
   });
 
