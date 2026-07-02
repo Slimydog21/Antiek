@@ -179,20 +179,21 @@ function safeInvestigations(value: unknown): PaletteInvestigation[] {
     const investigationId = nonEmptyString(inv?.investigation_id);
     if (!investigationId) return [];
     const topic = nonEmptyString(inv?.topic) ?? investigationId;
+    const encodedInvestigationId = encodeURIComponent(investigationId);
     return [
       {
         kind: "investigation" as const,
         id: `inv:${investigationId}`,
         title: topic,
         subtitle: `Investigation · ${investigationId.slice(0, 8)}`,
-        path: `/inv/${investigationId}`,
+        path: `/inv/${encodedInvestigationId}`,
       },
       {
         kind: "investigation" as const,
         id: `replay:${investigationId}`,
         title: `Replay: ${topic}`,
         subtitle: `Trajectory · ${investigationId.slice(0, 8)}`,
-        path: `/replay/${investigationId}`,
+        path: `/replay/${encodedInvestigationId}`,
       },
     ];
   });
