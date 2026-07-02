@@ -24,8 +24,9 @@ beforeEach(() => {
         chunks: -12,
         nodes: "1500.9",
         edges: "not-a-count",
+        " ": 42,
       },
-      warnings: ["partial stats install"],
+      warnings: [" partial stats install ", "", { message: "leaky object" }],
     }),
   });
 });
@@ -38,7 +39,9 @@ describe("Stats", () => {
 
     expect(await screen.findByText("partial stats install")).toBeTruthy();
     expect(screen.getByText("1,500")).toBeTruthy();
-    expect(document.body.textContent).not.toMatch(/NaN|Infinity|-12/);
+    expect(document.body.textContent).not.toMatch(
+      /NaN|Infinity|-12|leaky object|object Object/,
+    );
     expect(screen.getAllByText("0").length).toBeGreaterThan(0);
   });
 });
