@@ -71,6 +71,15 @@ function discoverModeIds(): Set<ModeId> {
     if (m) ids.add(m[1]);
   }
 
+  // Interview is a live COMPONENT mode, same shape as the two Write modes:
+  // real components, no top-level index.tsx. Its routed index.tsx was retired
+  // when the Interview surface folded into Speak (SPR-08 one-door; the recording
+  // UI was deleted in AGH SPR-02 M6), but its InterviewTranscript / InterviewNotes
+  // panels stay registered + reachable in PanelRegistry.tsx. Discover it by its
+  // panel component so it stays mechanical (renaming/removing it breaks here too).
+  const interviewModules = import.meta.glob("../modes/Interview/InterviewTranscript.tsx");
+  if (Object.keys(interviewModules).length > 0) ids.add("Interview");
+
   return ids;
 }
 
