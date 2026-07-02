@@ -59,7 +59,11 @@ export function AdCreative({
       <Label>From the library</Label>
       {promo?.title ? (
         <a
-          href={promo.promoted_document_id ? `/read/${promo.promoted_document_id}` : "/library"}
+          href={
+            promo.promoted_document_id
+              ? `/read/${encodeURIComponent(promo.promoted_document_id)}`
+              : "/library"
+          }
           className="min-w-0 truncate font-serif text-sm text-ink dark:text-bright underline-offset-2 hover:underline"
         >
           <span className="italic">{promo.title}</span>
