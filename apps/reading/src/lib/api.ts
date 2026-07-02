@@ -794,6 +794,31 @@ function nullableString(value: unknown): string | null {
   return value == null ? null : nonEmptyString(value);
 }
 
+function safeNotebookImageUrl(value: unknown): string | null {
+  const url = nullableString(value);
+  if (!url) return null;
+  if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(url)) return url;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeNotebookContent(
+  blockType: NotebookBlockShape["block_type"],
+  content: unknown,
+): Record<string, unknown> {
+  const raw = record(content) ?? {};
+  if (blockType !== "image") return raw;
+  const url = safeNotebookImageUrl(raw.url);
+  return {
+    ...raw,
+    url: url ?? undefined,
+  };
+}
+
 function nonNegativeInteger(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
     ? value
@@ -814,12 +839,13 @@ function safeNotebookBlock(value: unknown): NotebookBlockShape | null {
   ) {
     return null;
   }
+  const typedBlockType = blockType as NotebookBlockShape["block_type"];
   return {
     block_id: blockId,
     block_index: blockIndex,
-    block_type: blockType as NotebookBlockShape["block_type"],
+    block_type: typedBlockType,
     ref_id: nullableString(block.ref_id),
-    content_json: record(block.content_json) ?? {},
+    content_json: safeNotebookContent(typedBlockType, block.content_json),
     created_at: nonEmptyString(block.created_at) ?? "",
   };
 }
