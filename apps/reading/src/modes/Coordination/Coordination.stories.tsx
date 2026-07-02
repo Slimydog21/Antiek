@@ -139,7 +139,7 @@ const drwSprints = [
   { n: 4, slug: "max-context-pack", status: "live" },
   { n: 5, slug: "cascade-planner", status: "live" },
   { n: 6, slug: "parallel-orchestration", status: "live" },
-  { n: 7, slug: "structural-gap-detection", status: "planned" },
+  { n: 7, slug: "structural-gap-detection", status: "live" },
   { n: 8, slug: "universal-ingest", status: "planned" },
   { n: 9, slug: "glassbox-monitor-ui", status: "planned" },
   { n: 10, slug: "reading-surface", status: "provisional" },
@@ -151,6 +151,7 @@ const readyNowIds = [
   ...drwSprints.map((d) => `drw:${d.n}`),
   ...Array.from({ length: 9 }, (_, i) => `read:${i + 1}`),
   ...Array.from({ length: 9 }, (_, i) => `write:${i + 1}`),
+  ...Array.from({ length: 9 }, (_, i) => `speak:${i + 1}`),
   ...Array.from({ length: 8 }, (_, i) => `unified:${i + 1}`),
 ];
 
@@ -226,8 +227,8 @@ export const CANONICAL_ROADMAP: RoadmapView = {
         node_id: `speak:${i + 1}`,
         status: "unknown",
         on_critical_path: false,
-        blocked_on: ["drw:7"],
-        unblocked: false,
+        blocked_on: [],
+        unblocked: true,
       })),
     },
     {
@@ -249,16 +250,11 @@ export const CANONICAL_ROADMAP: RoadmapView = {
     },
   ],
   unblocked_now: readyNowIds,
-  dependency_blockers: [
-    {
-      node_id: "drw:7",
-      blocked_sprints: Array.from({ length: 9 }, (_, i) => `speak:${i + 1}`),
-    },
-  ],
+  dependency_blockers: [],
   execution_focus: {
-    kind: "dependency_blocker",
-    node_id: "drw:7",
-    blocked_sprints: Array.from({ length: 9 }, (_, i) => `speak:${i + 1}`),
+    kind: "dependency_ready",
+    node_id: "drw:8",
+    blocked_sprints: [],
   },
   substrate_layers: [
     { name: "Write coordination (db_lock)", owner: "runtime/db_lock.py", status: "Hardened (substrate-execution SPR-01)" },

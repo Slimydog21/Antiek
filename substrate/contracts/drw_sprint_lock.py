@@ -26,7 +26,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to DRW_SPRINTS. The SPR-08 conformance gate records the
 # version a downstream citation was validated against.
-LOCK_VERSION: int = 2
+LOCK_VERSION: int = 3
 
 
 @dataclass(frozen=True)
@@ -89,7 +89,10 @@ DRW_SPRINTS: dict[int, Deliverable] = {
         7, "structural-gap-detection",
         "Structural gap detection (unanswered questions, contradictions)",
         (),
-        status="planned",
+        # Live after deterministic graph-derived gap detection, grounding
+        # guard, cascade-plan seeding, and Speak GapSource composition were
+        # covered by the canonical cascade gate.
+        status="live",
     ),
     8: Deliverable(
         8, "universal-ingest",
