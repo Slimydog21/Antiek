@@ -979,7 +979,27 @@ describe("BookReader", () => {
     await waitFor(() => expect(richArticle(container)).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Open the cited source [1]" }));
 
-    expect(navigateMock).toHaveBeenCalledWith("/read/doc-source-42?chunk=chunk-7");
+    expect(navigateMock).toHaveBeenCalledWith(
+      "/read/doc-source-42?chunk=chunk-7&from=doc-1&fromPage=0&fromTitle=A+Servable+Book",
+    );
+  });
+
+  it("a cited source opened with origin context can return to the original page", async () => {
+    getBookMock.mockResolvedValue(makeDetail({ document_id: "doc-source-42" }));
+    getFullTextMock.mockResolvedValue(
+      makeBody({
+        document_id: "doc-source-42",
+        title: "Source Work",
+      }),
+    );
+    await renderReader(
+      "/read/doc-source-42?chunk=chunk-7&from=doc-1&fromPage=1&fromTitle=A+Servable+Book",
+    );
+
+    await waitFor(() => expect(screen.getByText("The opening of the book.")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /Return to A Servable Book/ }));
+
+    expect(navigateMock).toHaveBeenCalledWith("/read/doc-1?page=1");
   });
 
   it("falls back to the legacy ReadingColumn when structured_blocks is NULL", async () => {

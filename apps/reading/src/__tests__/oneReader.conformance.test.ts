@@ -299,7 +299,8 @@ describe("oneReader conformance — door (b): no second document renderer reacha
     const idx = readSrc("modes/Reading/index.tsx");
     expect(idx).toMatch(/useOpenDocument\(\)/);
     expect(idx).not.toMatch(/openDocument=\{openDocumentStub\}/);
-    expect(idx).toMatch(/openDocument=\{openDocument\}/);
+    expect(idx).toMatch(/openCitationDocument/);
+    expect(idx).toMatch(/openDocument=\{openCitationDocument\}/);
     expect(idx).toMatch(/searchParams\.get\("chunk"\)/);
     expect(idx).toMatch(/chunkId=\{optChunk\}/);
   });
@@ -560,6 +561,23 @@ describe("oneReader conformance — unification proof (SPR-09 M3)", () => {
     expect(target).toEqual({
       path: "/read/doc-source-42",
       search: "?chunk=chunk-7&hl=doc-source-42%3Achunk-7%3A100-240",
+    });
+  });
+
+  it("a citation source jump can carry return-to-reading context", () => {
+    const target = buildReaderTarget("doc-source-42", {
+      chunkId: "chunk-7",
+      origin: {
+        documentId: "doc-original",
+        page: 4,
+        title: "Original Paper",
+      },
+    });
+
+    expect(target).toEqual({
+      path: "/read/doc-source-42",
+      search:
+        "?chunk=chunk-7&from=doc-original&fromPage=4&fromTitle=Original+Paper",
     });
   });
 

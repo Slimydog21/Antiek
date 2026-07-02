@@ -33,12 +33,20 @@ import type { Region } from "../types/document_model.gen";
  *                via codegen so frontend and backend never drift.
  * - `mode`     — `'read'` (the typeset reading register, default) or
  *                `'inspect'` (the provenance/raw view — "view original" toggle).
+ * - `origin`   — the Reader document/page the operator came from when opening
+ *                a cited source. This is view-state for return-to-reading
+ *                evidence, not a second document-open path.
  */
 export interface OpenDocumentOptions {
   page?: number;
   chunkId?: string;
   highlight?: Region;
   mode?: "read" | "inspect";
+  origin?: {
+    documentId: string;
+    page?: number;
+    title?: string | null;
+  };
 }
 
 /**

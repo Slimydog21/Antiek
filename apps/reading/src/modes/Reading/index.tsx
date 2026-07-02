@@ -5,6 +5,7 @@ import { LemonButton, LemonTag } from "../../components/lemon";
 import type { BookDetail, BookSummary, FullTextResponse, TocItem } from "../../api/books";
 import { getBook, getBookFullText, listBooks, servabilityLabel } from "../../api/books";
 import { getChunk } from "../../lib/api";
+import type { OpenDocument } from "../../lib/openDocument.contract";
 import FloatMenu from "../shared/FloatMenu/FloatMenu";
 import { useFloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
 import { resolveCharRange } from "../shared/FloatMenu/selectionCharRange";
@@ -89,6 +90,23 @@ export default function BookReader() {
     return raw && raw.trim() ? raw.trim() : null;
   }, [searchParams]);
   const optInspect = searchParams.get("mode") === "inspect";
+  const returnTarget = useMemo(() => {
+    const from = searchParams.get("from")?.trim();
+    if (!from) return null;
+    const rawPage = searchParams.get("fromPage");
+    const page =
+      rawPage !== null && /^\d+$/.test(rawPage)
+        ? Number(rawPage)
+        : undefined;
+    return {
+      documentId: from,
+      page:
+        page !== undefined && Number.isSafeInteger(page) && page >= 0
+          ? page
+          : undefined,
+      title: searchParams.get("fromTitle")?.trim() || null,
+    };
+  }, [searchParams]);
   const [chunkPageIndex, setChunkPageIndex] = useState<number | null>(null);
 
   const [book, setBook] = useState<BookDetail | null>(null);
@@ -409,6 +427,20 @@ export default function BookReader() {
     (docId: string) => openDocument(docId),
     [openDocument],
   );
+  const bookTitle = book?.title ?? null;
+  const openCitationDocument = useCallback<OpenDocument>(
+    (docId, opts) => {
+      openDocument(docId, {
+        ...opts,
+        origin: {
+          documentId,
+          page: pageIndex,
+          title: bookTitle,
+        },
+      });
+    },
+    [openDocument, documentId, pageIndex, bookTitle],
+  );
 
   // Tell the impression tracker which slots are showing on this page. It
   // flushes the previous page's impressions (with focused dwell) when the
@@ -577,9 +609,25 @@ export default function BookReader() {
             <h1 className="text-xl font-serif text-ink dark:text-bright truncate">
               {book.title ?? documentId}
             </h1>
-            <LemonTag colour={colour} dot>
-              {label}
-            </LemonTag>
+            <div className="flex items-center gap-2">
+              {returnTarget && (
+                <LemonButton
+                  type="button"
+                  variant="tertiary"
+                  size="sm"
+                  onClick={() =>
+                    openDocument(returnTarget.documentId, {
+                      page: returnTarget.page,
+                    })
+                  }
+                >
+                  ← Return to {returnTarget.title ?? "source"}
+                </LemonButton>
+              )}
+              <LemonTag colour={colour} dot>
+                {label}
+              </LemonTag>
+            </div>
           </header>
 
           {isArxivLinkBack ? (
@@ -721,7 +769,7 @@ export default function BookReader() {
                     blockStartIndex={activeWindow?.firstBlockIndex ?? 0}
                     assetId={book.servable_full_text ? documentId : null}
                     chunkId={optChunk}
-                    openDocument={openDocument}
+                    openDocument={openCitationDocument}
                   />
                 </ReaderErrorBoundary>
               ) : (
