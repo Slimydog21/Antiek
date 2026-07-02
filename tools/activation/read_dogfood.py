@@ -131,6 +131,7 @@ TEMPLATE_CITATION_RESULT_URLS: frozenset[str] = frozenset(
 class DogfoodReport:
     total_sessions: int
     valid_sessions: int
+    invalid_sessions: tuple[str, ...]
     live_provider_sessions: int
     citation_trace_sessions: int
     non_library_sessions: int
@@ -150,6 +151,8 @@ class DogfoodReport:
         return {
             "total_sessions": self.total_sessions,
             "valid_sessions": self.valid_sessions,
+            "invalid_session_count": len(self.invalid_sessions),
+            "invalid_sessions": list(self.invalid_sessions),
             "live_provider_sessions": self.live_provider_sessions,
             "citation_trace_sessions": self.citation_trace_sessions,
             "non_library_sessions": self.non_library_sessions,
@@ -180,6 +183,7 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
     failures: list[str] = []
     seen_session_ids: set[str] = set()
     valid_session_ids: set[str] = set()
+    invalid_session_ids: set[str] = set()
     live_provider_sessions: set[str] = set()
     citation_trace_sessions: set[str] = set()
     non_library_sessions: set[str] = set()
@@ -190,6 +194,7 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
 
         if session_id in seen_session_ids:
             failures.append(prefix + "duplicate session_id")
+            invalid_session_ids.add(session_id)
             continue
         seen_session_ids.add(session_id)
 
@@ -268,6 +273,8 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
         )
         if session_is_valid:
             valid_session_ids.add(session_id)
+        else:
+            invalid_session_ids.add(session_id)
 
         live_provider_passed = _session_live_provider_passed(record, steps)
         if session_is_valid and live_provider_passed:
@@ -307,6 +314,7 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
     return DogfoodReport(
         total_sessions=len(records),
         valid_sessions=len(valid_session_ids),
+        invalid_sessions=tuple(sorted(invalid_session_ids)),
         live_provider_sessions=len(live_provider_sessions),
         citation_trace_sessions=len(citation_trace_sessions),
         non_library_sessions=len(non_library_sessions),
@@ -896,11 +904,14 @@ def _print_report(report: DogfoodReport, *, as_json: bool) -> None:
     print(
         "read-dogfood: "
         f"{report.valid_sessions}/{report.total_sessions} valid sessions, "
+        f"{len(report.invalid_sessions)} invalid, "
         f"{report.live_provider_sessions} live-provider, "
         f"{report.citation_trace_sessions} citation-traced, "
         f"{report.non_library_sessions} non-library, "
         f"verdict={report.final_verdict or 'missing'}"
     )
+    if report.invalid_sessions:
+        print("  invalid sessions: " + ", ".join(report.invalid_sessions))
     remaining = report.remaining_requirements()
     if any(remaining.values()):
         print(
