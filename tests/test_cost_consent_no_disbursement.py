@@ -20,9 +20,10 @@ This file proves the invariants the spec calls its most dangerous to violate:
   their disbursement gate read from the gate ledger; toggling G2/G3 in a ledger
   fixture flips the labels; nothing is disbursable while a legal gate is open.
 
-* **Honest stubs** (rigor #1) — where the economics matrix isn't applicable, the
-  margin is stubbed (``margin_status == 'stubbed'``, ``margined_cost_usd is
-  None``), not fabricated.
+* **Honest stubs + real Speak margins** (rigor #1) — where the economics matrix
+  lacks context, the margin is stubbed (``margin_status == 'stubbed'``,
+  ``margined_cost_usd is None``), not fabricated. When Speak project policy is
+  supplied explicitly, the built matrix is applied.
 
 All tests are pure/fixture-driven — no live external calls, no real Stripe, no
 network. The cost view reads a fixture events dir; the consent view reads an
@@ -44,6 +45,7 @@ from substrate.coordination.cost_view import (
     MarginStatus,
     Workflow,
     build_cost_view,
+    speak_policy_by_investigation_from_db,
     workflow_for_role,
 )
 from substrate.coordination.gate_ledger import parse_gate_ledger
@@ -51,6 +53,7 @@ from substrate.event_log.events import emit_typed
 from substrate.graph.schema import ANTIEK_GRAPH_SCHEMA_V2_SPRINT18_SQL
 from substrate.ip_holders import accrue_escrow, create_pre_onboarded
 from substrate.schemas.events import DispatchCallPayload
+from substrate.speak.economics_mode import resolve_policy
 
 _REPO = Path(__file__).resolve().parents[1]
 
@@ -187,6 +190,74 @@ def test_margins_honestly_stubbed_where_matrix_not_applicable(events_dir: str) -
     research = cv.workflow(Workflow.RESEARCH)
     assert research.margin_status is MarginStatus.APPLIED
     assert research.margined_cost_usd == research.raw_cost_usd
+
+
+def test_speak_margin_applies_when_investigation_policy_context_is_complete(
+    events_dir: str,
+) -> None:
+    cv = build_cost_view(
+        events_dir=events_dir,
+        speak_policy_by_investigation={
+            "inv-2": resolve_policy("private", "public"),
+        },
+    )
+
+    speak = cv.workflow(Workflow.SPEAK)
+    assert speak.raw_cost_usd == Decimal("0.4")
+    assert speak.margin_status is MarginStatus.APPLIED
+    assert speak.margin_rate == Decimal("0.10")
+    assert speak.margined_cost_usd == Decimal("0.440")
+    assert "Speak economics matrix applied" in speak.margin_note
+
+
+def test_speak_margin_stays_stubbed_when_policy_context_is_partial(
+    events_dir: str,
+) -> None:
+    cv = build_cost_view(
+        events_dir=events_dir,
+        speak_policy_by_investigation={
+            "some-other-investigation": resolve_policy("private", "public"),
+        },
+    )
+
+    speak = cv.workflow(Workflow.SPEAK)
+    assert speak.raw_cost_usd == Decimal("0.4")
+    assert speak.margin_status is MarginStatus.STUBBED
+    assert speak.margined_cost_usd is None
+
+
+def test_speak_policy_context_resolves_followup_investigation_ids() -> None:
+    c = duckdb.connect(":memory:")
+    c.execute(
+        """
+        CREATE TABLE interviews (
+            interview_id TEXT,
+            project_id TEXT
+        )
+        """
+    )
+    c.execute(
+        """
+        CREATE TABLE speak_projects (
+            project_id TEXT,
+            invitation_mode TEXT,
+            publish_intent TEXT
+        )
+        """
+    )
+    c.execute("INSERT INTO interviews VALUES ('iv-1', 'proj-1')")
+    c.execute("INSERT INTO speak_projects VALUES ('proj-1', 'private', 'will_be_public')")
+
+    context = speak_policy_by_investigation_from_db(c)
+
+    assert context["speak-followup-iv-1"].inference_margin == Decimal("0.10")
+    assert context["proj-1"].inference_margin == Decimal("0.10")
+
+
+def test_speak_policy_context_missing_tables_fail_closed() -> None:
+    c = duckdb.connect(":memory:")
+
+    assert speak_policy_by_investigation_from_db(c) == {}
 
 
 # ── Gate ledger fixtures (toggle G2/G3) ──────────────────────────────────────

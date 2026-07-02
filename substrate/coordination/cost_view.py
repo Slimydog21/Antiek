@@ -27,15 +27,15 @@ Where the cost comes from (diligence — the exact symbols read):
   which would make the aggregate understate spend (rigor #3).
 
 Margins (M1, honesty #1): the Speak economics matrix
-(``substrate.speak.economics_mode``) defines the only built margins — public
-output ⇒ 10% inference margin (the algorithmic 70% contributor split is an
-*accrual* concern, surfaced by :mod:`substrate.coordination.consent_view`, not a
-cost margin), private-published ⇒ 50% margin. Read's ad-economics margin is a
-planned product deliverable; where it is not built we **stub it honestly** and do
-NOT fabricate a margined figure on a money screen. The cost view therefore
-reports *raw realized cost* per workflow always, and a *margined* figure only for
-the workflow whose margin policy is built (Speak), labeling the rest
-``margin_status="stubbed"``.
+(``substrate.speak.economics_mode``) defines the only built external margin —
+public output ⇒ 10% inference margin (the algorithmic 70% contributor split is
+an *accrual* concern, surfaced by :mod:`substrate.coordination.consent_view`, not
+a cost margin), private-published ⇒ 50% margin. The cost event does not carry
+project policy, so callers must pass an explicit investigation→Speak-policy map
+to apply it. Without that context the view stubs the Speak margin honestly; with
+complete context it applies the real matrix per dispatch event. Read's
+ad-economics margin is a planned product deliverable; where it is not built we
+**stub it honestly** and do NOT fabricate a margined figure on a money screen.
 
 Idle posture (honesty): cost is strictly proportional to emitted ``DispatchCall``
 events. An idle instance emits none, so every workflow and the aggregate read
@@ -63,8 +63,10 @@ from substrate.event_log.events import (
 )
 from substrate.schemas.events import ActionType
 from substrate.speak.economics_mode import (
+    EconomicsPolicy,
     MARGIN_PRIVATE_PUBLISHED,
     MARGIN_PUBLIC,
+    resolve_policy,
 )
 
 # ── Workflow enum (mirrors the SPR-04 taxonomy's four workflows) ─────────────
@@ -154,7 +156,8 @@ class WorkflowCost:
 
     ``raw_cost_usd`` is the sum of ``DispatchCall.cost_usd`` — always real.
     ``margined_cost_usd`` applies the economics-matrix margin where it is built
-    (Speak), else is ``None`` with ``margin_status=STUBBED`` (honesty #1).
+    and fully contextualized, else is ``None`` with ``margin_status=STUBBED``
+    (honesty #1).
     ``remote_exec_cost_usd`` is the slice of ``raw_cost_usd`` that came from a
     remote-exec provider — surfaced so a runaway fan-out is visible (rigor #3)."""
 
@@ -163,7 +166,7 @@ class WorkflowCost:
     call_count: int
     remote_exec_cost_usd: Decimal
     margin_status: MarginStatus
-    margin_rate: Decimal | None       # the applied rate, when APPLIED
+    margin_rate: Decimal | None       # the single applied rate, or None if mixed
     margined_cost_usd: Decimal | None # raw * (1 + rate), when APPLIED
     margin_note: str
 
@@ -211,14 +214,24 @@ def _is_remote_exec(provider: str | None) -> bool:
 
 # ── The reader ────────────────────────────────────────────────────────────────
 
-def _iter_dispatch_payloads(
+@dataclass(frozen=True)
+class _DispatchCostEntry:
+    investigation_id: str
+    payload: Mapping[str, object]
+
+
+def _iter_dispatch_entries(
     events_dir: str,
     *,
     investigation_ids: Iterable[str] | None = None,
-) -> Iterable[Mapping[str, object]]:
-    """Yield the ``payload`` dict of every ``DISPATCH_CALL`` event under
-    ``events_dir`` (or the given investigations). Reads via the canonical
-    :func:`substrate.event_log.events.trajectory` — never a second store."""
+) -> Iterable[_DispatchCostEntry]:
+    """Yield every ``DISPATCH_CALL`` payload with its trajectory id.
+
+    The investigation id is the only stable join key the event log gives the
+    cost view for external context such as Speak project policy. Reads via the
+    canonical :func:`substrate.event_log.events.trajectory` — never a second
+    store.
+    """
     import os
 
     dispatch = ActionType.DISPATCH_CALL.value
@@ -245,7 +258,7 @@ def _iter_dispatch_payloads(
                 continue
             payload = row.get("payload")
             if isinstance(payload, dict):
-                yield payload
+                yield _DispatchCostEntry(investigation_id=iid, payload=payload)
 
 
 def _to_decimal_usd(value: object) -> Decimal:
@@ -300,25 +313,88 @@ def _margin_for_workflow(wf: Workflow) -> tuple[MarginStatus, Decimal | None, st
     )
 
 
+def _speak_applied_note(rates: set[Decimal]) -> tuple[Decimal | None, str]:
+    if len(rates) == 1:
+        rate = next(iter(rates))
+        return (
+            rate,
+            f"Speak economics matrix applied from investigation policy context at {rate:.0%}.",
+        )
+    rendered = " / ".join(f"{rate:.0%}" for rate in sorted(rates))
+    return (
+        None,
+        f"Speak economics matrix applied per dispatch from mixed policy context ({rendered}).",
+    )
+
+
+def speak_policy_by_investigation_from_db(
+    con: object,
+) -> dict[str, EconomicsPolicy]:
+    """Resolve Speak dispatch investigation ids to their project economics.
+
+    Production Speak interviewer dispatches are logged as
+    ``speak-followup-{interview_id}`` (see ``substrate.speak.async_interview``).
+    The read-only join from ``interviews`` to ``speak_projects`` gives the
+    project policy. We also map ``project_id`` itself because other Speak
+    acquisition paths use the project id as their investigation scope.
+
+    Missing Speak tables mean no context has landed in that database yet; return
+    an empty mapping and let :func:`build_cost_view` keep Speak margins stubbed.
+    """
+    try:
+        rows = con.execute(
+            """
+            SELECT i.interview_id, i.project_id, p.invitation_mode, p.publish_intent
+            FROM interviews i
+            JOIN speak_projects p ON p.project_id = i.project_id
+            """
+        ).fetchall()
+    except Exception as exc:
+        msg = str(exc).lower()
+        if (
+            "interviews" in msg
+            or "speak_projects" in msg
+            or "does not exist" in msg
+            or "not found" in msg
+        ):
+            return {}
+        raise
+
+    out: dict[str, EconomicsPolicy] = {}
+    for interview_id, project_id, invitation_mode, publish_intent in rows:
+        publishing = "public" if publish_intent == "will_be_public" else "never_published"
+        policy = resolve_policy(str(invitation_mode), publishing)
+        out[f"speak-followup-{interview_id}"] = policy
+        out[str(project_id)] = policy
+    return out
+
+
 def build_cost_view(
     *,
     events_dir: str | None = None,
     investigation_ids: Iterable[str] | None = None,
+    speak_policy_by_investigation: Mapping[str, EconomicsPolicy] | None = None,
 ) -> CostView:
     """Aggregate realized ``DispatchCall`` cost per workflow + in aggregate.
 
     Reads the canonical event log (``trajectory``); sums ``payload.cost_usd``;
     groups by ``workflow_for_role(payload.target_role)``; slices the remote-exec
-    portion by ``payload.provider``. Idle ⇒ every figure is ``$0`` (no fabricated
-    baseline). The aggregate equals the sum of the per-workflow raw costs by
-    construction (asserted in the test)."""
+    portion by ``payload.provider``. When every Speak dispatch has an explicit
+    ``speak_policy_by_investigation`` entry, the Speak row applies the built
+    economics matrix; missing context keeps it stubbed. Idle ⇒ every figure is
+    ``$0`` (no fabricated baseline). The aggregate equals the sum of the
+    per-workflow raw costs by construction (asserted in the test)."""
     d = events_dir or default_events_dir()
 
     raw: dict[Workflow, Decimal] = {wf: Decimal("0") for wf in Workflow}
     counts: dict[Workflow, int] = {wf: 0 for wf in Workflow}
     remote: dict[Workflow, Decimal] = {wf: Decimal("0") for wf in Workflow}
+    margined: dict[Workflow, Decimal | None] = {wf: None for wf in Workflow}
+    applied_rates: dict[Workflow, set[Decimal]] = {wf: set() for wf in Workflow}
+    missing_speak_context = False
 
-    for payload in _iter_dispatch_payloads(d, investigation_ids=investigation_ids):
+    for entry in _iter_dispatch_entries(d, investigation_ids=investigation_ids):
+        payload = entry.payload
         role = payload.get("target_role")
         wf = workflow_for_role(role if isinstance(role, str) else None)
         cost = _to_decimal_usd(payload.get("cost_usd"))
@@ -327,13 +403,28 @@ def build_cost_view(
         provider = payload.get("provider")
         if _is_remote_exec(provider if isinstance(provider, str) else None):
             remote[wf] += cost
+        if wf is Workflow.SPEAK:
+            policy = (
+                speak_policy_by_investigation or {}
+            ).get(entry.investigation_id)
+            if policy is None:
+                missing_speak_context = True
+            else:
+                rate = policy.inference_margin
+                applied_rates[wf].add(rate)
+                current = margined[wf] or Decimal("0")
+                margined[wf] = current + (cost * (Decimal("1") + rate))
 
     per_workflow: list[WorkflowCost] = []
     for wf in Workflow:
         status, rate, note = _margin_for_workflow(wf)
-        margined: Decimal | None = None
-        if status is MarginStatus.APPLIED and rate is not None:
-            margined = (raw[wf] * (Decimal("1") + rate))
+        margined_cost: Decimal | None = None
+        if wf is Workflow.SPEAK and raw[wf] > 0 and not missing_speak_context:
+            status = MarginStatus.APPLIED
+            rate, note = _speak_applied_note(applied_rates[wf])
+            margined_cost = margined[wf]
+        elif status is MarginStatus.APPLIED and rate is not None:
+            margined_cost = raw[wf] * (Decimal("1") + rate)
         per_workflow.append(
             WorkflowCost(
                 workflow=wf,
@@ -342,7 +433,7 @@ def build_cost_view(
                 remote_exec_cost_usd=remote[wf],
                 margin_status=status,
                 margin_rate=rate if status is MarginStatus.APPLIED else None,
-                margined_cost_usd=margined,
+                margined_cost_usd=margined_cost,
                 margin_note=note,
             )
         )
@@ -366,5 +457,6 @@ __all__ = [
     "WorkflowCost",
     "CostView",
     "workflow_for_role",
+    "speak_policy_by_investigation_from_db",
     "build_cost_view",
 ]
