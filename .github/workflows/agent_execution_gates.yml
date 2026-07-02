@@ -39,6 +39,7 @@ on:
       - 'apps/reading/src/App.tsx'
       - 'interfaces/research/api/cascade_routes.py'
       - 'interfaces/research/api/coordination.py'
+      - 'interfaces/research/api/thread.py'
       - 'interfaces/research/api/books.py'
       - 'interfaces/research/api/library.py'
       - 'interfaces/research/api/read_voice.py'
@@ -97,6 +98,7 @@ on:
       - 'tests/remote_exec_fakes.py'
       - 'tests/test_speak_*.py'
       - 'tests/test_seam_*.py'
+      - 'tests/test_thread_*.py'
       - 'tests/test_integration_invariants.py'
       - 'tests/e2e/test_flywheel.py'
       - 'tests/properties/test_speak_properties.py'
@@ -142,6 +144,7 @@ on:
       - 'apps/reading/src/App.tsx'
       - 'interfaces/research/api/cascade_routes.py'
       - 'interfaces/research/api/coordination.py'
+      - 'interfaces/research/api/thread.py'
       - 'interfaces/research/api/books.py'
       - 'interfaces/research/api/library.py'
       - 'interfaces/research/api/read_voice.py'
@@ -200,6 +203,7 @@ on:
       - 'tests/remote_exec_fakes.py'
       - 'tests/test_speak_*.py'
       - 'tests/test_seam_*.py'
+      - 'tests/test_thread_*.py'
       - 'tests/test_integration_invariants.py'
       - 'tests/e2e/test_flywheel.py'
       - 'tests/properties/test_speak_properties.py'
@@ -352,6 +356,9 @@ jobs:
 
       - name: Canonical verify — unified coordination gate ledger
         run: ./scripts/canonical_verify.sh unified-coordination-gate-ledger
+
+      - name: Canonical verify — unified thread navigation
+        run: ./scripts/canonical_verify.sh unified-thread-navigation
 
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md

@@ -45,8 +45,13 @@ def test_unified_sprint_5_coordination_gate_ledger_is_live() -> None:
     assert lock.resolve_unified_sprint(5).status == "live"
 
 
+def test_unified_sprint_6_thread_navigation_is_live() -> None:
+    assert lock.resolve_unified_sprint(6).slug == "thread-navigation"
+    assert lock.resolve_unified_sprint(6).status == "live"
+
+
 def test_remaining_unified_sprints_stay_planned_until_promoted() -> None:
-    assert {lock.resolve_unified_sprint(n).status for n in range(6, 9)} == {"planned"}
+    assert {lock.resolve_unified_sprint(n).status for n in range(7, 9)} == {"planned"}
 
 
 def test_roadmap_consumes_unified_sprint_status_and_focus_advances() -> None:
@@ -58,11 +63,12 @@ def test_roadmap_consumes_unified_sprint_status_and_focus_advances() -> None:
     assert by_id["unified:3"].status.value == "live"
     assert by_id["unified:4"].status.value == "live"
     assert by_id["unified:5"].status.value == "live"
-    for n in range(6, 9):
+    assert by_id["unified:6"].status.value == "live"
+    for n in range(7, 9):
         assert by_id[f"unified:{n}"].status.value == "planned"
     assert roadmap.execution_focus() is not None
-    assert roadmap.execution_focus().node_id == "unified:6"
+    assert roadmap.execution_focus().node_id == "unified:7"
 
 
 def test_unified_lock_version_present() -> None:
-    assert isinstance(lock.UNIFIED_LOCK_VERSION, int) and lock.UNIFIED_LOCK_VERSION >= 5
+    assert isinstance(lock.UNIFIED_LOCK_VERSION, int) and lock.UNIFIED_LOCK_VERSION >= 6

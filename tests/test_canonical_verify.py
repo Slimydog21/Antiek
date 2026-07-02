@@ -296,3 +296,11 @@ def test_canonical_verify_unified_coordination_gate_ledger_hermetic() -> None:
     proc = _run("unified-coordination-gate-ledger")
     assert proc.returncode == 0, proc.stderr or proc.stdout
     assert "CANONICAL_VERIFY_OK: unified-coordination-gate-ledger" in proc.stdout
+
+
+def test_canonical_verify_unified_thread_navigation_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("unified-thread-navigation")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: unified-thread-navigation" in proc.stdout

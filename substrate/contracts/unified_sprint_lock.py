@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to UNIFIED_SPRINTS. Status changes are deliberate roadmap
 # events, not prose-only handoffs.
-UNIFIED_LOCK_VERSION: int = 5
+UNIFIED_LOCK_VERSION: int = 6
 
 
 @dataclass(frozen=True)
@@ -85,7 +85,18 @@ UNIFIED_SPRINTS: dict[int, UnifiedDeliverable] = {
         # unified-coordination-gate-ledger.
         status="live",
     ),
-    6: UnifiedDeliverable(6, "thread-navigation", "Thread navigation"),
+    6: UnifiedDeliverable(
+        6,
+        "thread-navigation",
+        "Thread navigation",
+        # Live: thread reconstruction derives a read-only trajectory from
+        # SPR-03 seam events, ordered/degenerated/provisional/unbuilt cases are
+        # tested, the no-duplicate guard rejects forked ids and inline content,
+        # the HTTP route serializes/refuses copied threads, and the frontend
+        # breadcrumb/jump suppresses forked continuity while using SPR-04 IA via
+        # unified-thread-navigation.
+        status="live",
+    ),
     7: UnifiedDeliverable(7, "cost-consent-surface", "Cost + consent surface"),
     8: UnifiedDeliverable(8, "flywheel-conformance", "Flywheel conformance"),
 }
