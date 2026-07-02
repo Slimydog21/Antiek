@@ -30,6 +30,9 @@ _READ_ACTIVATION_TRIGGER_PATHS = {
     "tools/activation/read_dogfood.py",
     "tests/test_read_activation_dogfood.py",
 }
+_OPERATOR_COORDINATION_TRIGGER_PATHS = {
+    "apps/reading/src/modes/OperatorDashboard/**",
+}
 _HANDOFF_FIXTURE = "tests/fixtures/agent_execution/handoff_pass.md"
 
 
@@ -199,6 +202,17 @@ def test_agent_gates_trigger_on_read_activation_dogfood_inputs() -> None:
         assert not missing, (
             f"agent_execution_gates.yml {event_name} does not trigger on "
             f"Read activation dogfood input(s): {missing}"
+        )
+
+
+def test_agent_gates_trigger_on_operator_coordination_summary_inputs() -> None:
+    """The Operator dashboard consumes the Coordination roadmap focus summary."""
+    for event_name in ("push", "pull_request"):
+        paths = _workflow_event_paths(event_name)
+        missing = sorted(_OPERATOR_COORDINATION_TRIGGER_PATHS - paths)
+        assert not missing, (
+            f"agent_execution_gates.yml {event_name} does not trigger on "
+            f"operator coordination summary input(s): {missing}"
         )
 
 
