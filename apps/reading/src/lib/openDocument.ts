@@ -42,6 +42,12 @@ import { getBookFullText } from "../api/books";
  *  mechanism), so the reader opens on the requested page. */
 const READ_POS_KEY = (documentId: string) => `antiek.read.pos.${documentId}`;
 
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 function isReaderPageIndex(page: number): boolean {
   return Number.isSafeInteger(page) && page >= 0;
 }
@@ -70,16 +76,19 @@ export function buildReaderTarget(
   documentId: string,
   opts?: OpenDocumentOptions,
 ): { path: string; search: string } {
-  const path = `/read/${encodeURIComponent(documentId)}`;
+  const resolvedDocumentId = nonEmptyString(documentId) ?? "";
+  const path = `/read/${encodeURIComponent(resolvedDocumentId)}`;
   const params = new URLSearchParams();
   if (opts?.page !== undefined && opts.page !== null && isReaderPageIndex(opts.page)) {
     params.set("page", String(opts.page));
   }
-  if (opts?.chunkId) {
-    params.set("chunk", opts.chunkId);
+  const chunkId = nonEmptyString(opts?.chunkId);
+  if (chunkId) {
+    params.set("chunk", chunkId);
   }
   if (opts?.highlight) {
-    params.set("hl", encodeRegion(opts.highlight));
+    const highlight = encodeRegion(opts.highlight);
+    if (highlight) params.set("hl", highlight);
   }
   if (opts?.mode && opts.mode !== "read") {
     params.set("mode", opts.mode);
@@ -107,7 +116,10 @@ export function buildReaderTarget(
  *  the char range; a sub-block highlight carries `:start-end`. Symmetric with
  *  `decodeRegion`. The pieces are encoded so an id containing a ':' survives. */
 export function encodeRegion(region: import("../types/document_model.gen").Region): string {
-  const head = `${encodeURIComponent(region.document_id)}:${encodeURIComponent(region.block_id)}`;
+  const documentId = nonEmptyString(region.document_id) ?? "";
+  const blockId = nonEmptyString(region.block_id) ?? "";
+  if (!documentId || !blockId) return "";
+  const head = `${encodeURIComponent(documentId)}:${encodeURIComponent(blockId)}`;
   if (
     region.char_start !== undefined &&
     region.char_start !== null &&
@@ -130,8 +142,8 @@ export function decodeRegion(
   if (!token) return null;
   const parts = token.split(":");
   if (parts.length < 2) return null;
-  const document_id = decodeURIComponent(parts[0]);
-  const block_id = decodeURIComponent(parts[1]);
+  const document_id = nonEmptyString(decodeURIComponent(parts[0]));
+  const block_id = nonEmptyString(decodeURIComponent(parts[1]));
   if (!document_id || !block_id) return null;
   const region: import("../types/document_model.gen").Region = { document_id, block_id };
   if (parts.length >= 3) {
@@ -234,9 +246,10 @@ export function useOpenDocument(): OpenDocument {
   const navigate = useNavigate();
   return useCallback<OpenDocument>(
     (documentId: string, opts?: OpenDocumentOptions): void => {
-      if (!documentId) return; // a door with no resolvable target is a no-op (honest)
-      seedReadPosition(documentId, opts?.page);
-      const { path, search } = buildReaderTarget(documentId, opts);
+      const resolvedDocumentId = nonEmptyString(documentId);
+      if (!resolvedDocumentId) return; // a door with no resolvable target is a no-op (honest)
+      seedReadPosition(resolvedDocumentId, opts?.page);
+      const { path, search } = buildReaderTarget(resolvedDocumentId, opts);
       navigate(`${path}${search}`);
     },
     [navigate],
