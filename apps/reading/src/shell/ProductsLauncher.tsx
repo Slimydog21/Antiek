@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { LemonTag } from "../components/lemon/LemonTag";
 import { openWindow, windowKindForRoute } from "../components/windows/openWindow";
 import { listDeliverables, type DeliverableSummary } from "../lib/api";
+import { destinationForMode } from "./modeDestinations";
 import {
   MODE_TAXONOMY,
   WORKFLOWS,
@@ -11,16 +12,6 @@ import {
   type ModeEntry,
   type Workflow,
 } from "./workflowTaxonomy";
-
-// The bare (param-free) routes the taxonomy declares. A param route's index
-// (everything before "/:") only navigates if it matches one of these — e.g.
-// /skill-rules/:ruleId → /skill-rules is real, so we land on the index
-// instead of misrouting to /operator.
-const BARE_ROUTES = new Set(
-  MODE_TAXONOMY.filter((m) => m.route && !m.route.includes(":")).map(
-    (m) => m.route!,
-  ),
-);
 
 // Local to the launcher surface only. Keeps the taxonomy (the shared source
 // for NavRail, ProjectTree, stubs, palette, and the future M2 rail-destination
@@ -212,24 +203,6 @@ export function ProductsLauncher({
   }, [flatItems.length]);
 
   if (!open) return null;
-
-  /** Built modes navigate only when the row names a real destination. A bare
-   *  route navigates directly. A param route resolves to its index only when
-   *  that index is itself a real route. Instance-only routes (for example
-   *  /read/:documentId or /replay/:investigationId) remain visible as honest
-   *  inventory, but a generic launcher click is a no-op instead of silently
-   *  falling back to a different workflow page. */
-  const destinationForMode = (m: ModeEntry): string | null => {
-    if (!m.built || !m.route) return null;
-    if (m.route.includes(":")) {
-      const index = m.route.split("/:")[0];
-      if (BARE_ROUTES.has(index)) {
-        return index;
-      }
-      return null;
-    }
-    return m.route;
-  };
 
   const openMode = (m: ModeEntry) => {
     const target = destinationForMode(m);

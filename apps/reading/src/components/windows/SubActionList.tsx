@@ -6,6 +6,7 @@ import {
   type ModeEntry,
   type Workflow,
 } from "../../shell/workflowTaxonomy";
+import { destinationForMode } from "../../shell/modeDestinations";
 import { useWindows } from "../../workspace/windowsStore";
 import { useInWindow } from "./windowHostContext";
 
@@ -47,23 +48,6 @@ export interface SubActionListProps {
   __windowId?: string;
 }
 
-/** Bare (param-free) routes the taxonomy declares — used to resolve a param
- *  route to its real index (mirrors ProductsLauncher.BARE_ROUTES). */
-const BARE_ROUTES = new Set(
-  MODE_TAXONOMY.filter((m) => m.route && !m.route.includes(":")).map(
-    (m) => m.route as string,
-  ),
-);
-
-/** Resolve a mode's clickable destination, or null if it isn't navigable from
- *  here (unbuilt, or a param route with no real bare index). */
-function destinationFor(m: ModeEntry): string | null {
-  if (!m.built || !m.route) return null;
-  if (!m.route.includes(":")) return m.route;
-  const index = m.route.split("/:")[0];
-  return BARE_ROUTES.has(index) ? index : null;
-}
-
 export default function SubActionList({ workflow, __windowId }: SubActionListProps) {
   const navigate = useNavigate();
   const closeWindow = useWindows((s) => s.close);
@@ -77,7 +61,7 @@ export default function SubActionList({ workflow, __windowId }: SubActionListPro
     : [];
 
   const onRow = (m: ModeEntry) => {
-    const dest = destinationFor(m);
+    const dest = destinationForMode(m);
     if (!dest) return;
     navigate(dest);
     if (__windowId) closeWindow(__windowId);
@@ -112,7 +96,7 @@ export default function SubActionList({ workflow, __windowId }: SubActionListPro
         ) : (
           <ul className="space-y-0.5">
             {modes.map((m) => {
-              const dest = destinationFor(m);
+              const dest = destinationForMode(m);
               const enabled = dest !== null;
               return (
                 <li key={m.id}>
