@@ -6,8 +6,8 @@ import LemonTextarea from "../../components/lemon/LemonTextarea";
 import { useInvestigation } from "../../hooks/useInvestigation";
 import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
 import { startInvestigation } from "../../lib/api";
+import { requireInvestigationId } from "../../lib/investigationData";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
-import { requireInvestigationId } from "./investigationData";
 import ThinkingStream from "./ThinkingStream";
 
 /**

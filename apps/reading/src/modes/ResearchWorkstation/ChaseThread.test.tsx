@@ -88,7 +88,7 @@ function renderChase(props: {
 describe("ChaseThread — reserved-id reuse (M2)", () => {
   it("launches INTO the reserved escalation id when present (no orphan)", async () => {
     startInvestigationMock.mockResolvedValue({
-      investigation_id: "inv-reserved",
+      investigation_id: " inv-reserved ",
       status: "in_progress",
       start_event_id: "e1",
     });
@@ -113,7 +113,7 @@ describe("ChaseThread — reserved-id reuse (M2)", () => {
 
   it("mints a FRESH child (no investigation_id) for a raw highlight", async () => {
     startInvestigationMock.mockResolvedValue({
-      investigation_id: "inv-fresh",
+      investigation_id: " inv-fresh ",
       status: "in_progress",
       start_event_id: "e2",
     });
@@ -128,6 +128,25 @@ describe("ChaseThread — reserved-id reuse (M2)", () => {
     // No reserved id ⇒ no investigation_id ⇒ substrate mints fresh.
     expect(arg.investigation_id).toBeUndefined();
     expect(arg.parent_investigation_id).toBe("inv-parent");
+    expect(recordSpawnMock).toHaveBeenCalledWith("inv-fresh", "inv-parent");
+  });
+
+  it("surfaces malformed launched ids instead of recording a child", async () => {
+    startInvestigationMock.mockResolvedValue({
+      investigation_id: " ",
+      status: "in_progress",
+      start_event_id: "e2",
+    });
+    renderChase({
+      spawnContext: "an unflagged passage",
+      parentInvestigationId: "inv-parent",
+    });
+
+    fireEvent.click(screen.getByText("Follow this"));
+
+    expect(await screen.findByText(/investigation_id must be a non-empty string/i)).toBeTruthy();
+    expect(recordSpawnMock).not.toHaveBeenCalled();
+    expect(screen.queryByText(/following the thread/)).toBeNull();
   });
 });
 
