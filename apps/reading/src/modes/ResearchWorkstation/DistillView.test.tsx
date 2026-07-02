@@ -59,14 +59,22 @@ describe("DistillView — first-class insights + questions (M2)", () => {
   it("renders both sections from the graph result", async () => {
     getDistillationMock.mockResolvedValue({
       investigation_id: "inv-1",
-      insights: [insight("i1", "GPUs gate scale.")],
-      questions: [question("q1", "What is the moat?")],
+      insights: [
+        insight(" i1 ", "GPUs gate scale."),
+        insight("i1", "Duplicate insight"),
+      ],
+      questions: [
+        question(" q1 ", "What is the moat?"),
+        question("q1", "Duplicate question"),
+      ],
     });
     render(<DistillView investigationId="inv-1" />);
     await waitFor(() => expect(screen.getByText("GPUs gate scale.")).toBeTruthy());
     expect(screen.getByText("Insights")).toBeTruthy();
     expect(screen.getByText("Open questions")).toBeTruthy();
     expect(screen.getByText("What is the moat?")).toBeTruthy();
+    expect(screen.queryByText("Duplicate insight")).toBeNull();
+    expect(screen.queryByText("Duplicate question")).toBeNull();
     // grounding shown in human terms, never a raw id label.
     expect(screen.getByText("grounded in a source")).toBeTruthy();
     expect(screen.queryByText("doc-1")).toBeNull();

@@ -1996,23 +1996,27 @@ function safeDistilledNode(value: unknown, fallbackKind: "insight" | "question")
   };
 }
 
+function safeDistilledNodes(
+  value: unknown,
+  fallbackKind: "insight" | "question",
+): DistilledNode[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.flatMap((item) => {
+    const node = safeDistilledNode(item, fallbackKind);
+    if (!node || seen.has(node.node_id)) return [];
+    seen.add(node.node_id);
+    return [node];
+  });
+}
+
 function safeDistillationResponse(
   value: unknown,
   fallbackInvestigationId: string,
 ): DistillationResponse {
   const body = record(value);
-  const insights = Array.isArray(body?.insights)
-    ? body.insights.flatMap((item) => {
-        const node = safeDistilledNode(item, "insight");
-        return node ? [node] : [];
-      })
-    : [];
-  const questions = Array.isArray(body?.questions)
-    ? body.questions.flatMap((item) => {
-        const node = safeDistilledNode(item, "question");
-        return node ? [node] : [];
-      })
-    : [];
+  const insights = safeDistilledNodes(body?.insights, "insight");
+  const questions = safeDistilledNodes(body?.questions, "question");
   return {
     investigation_id:
       nonEmptyString(body?.investigation_id) ?? fallbackInvestigationId,
