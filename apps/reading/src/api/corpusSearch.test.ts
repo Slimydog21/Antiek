@@ -120,6 +120,65 @@ describe("corpusSearch api boundary", () => {
     });
   });
 
+  it("dedupes duplicate sanitized document/chunk hits", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          query: "duplicate chunks",
+          hits: [
+            {
+              chunk_id: " chunk-1 ",
+              document_id: " doc-1 ",
+              document_title: "First title",
+              page_index: 1,
+              page_resolved: true,
+              snippet: "first hit",
+              similarity: 0.91,
+            },
+            {
+              chunk_id: "chunk-1",
+              document_id: "doc-1",
+              document_title: "Duplicate title",
+              page_index: 2,
+              page_resolved: true,
+              snippet: "duplicate hit",
+              similarity: 0.95,
+            },
+            {
+              chunk_id: "chunk-2",
+              document_id: "doc-1",
+              document_title: "Second chunk",
+              page_index: 3,
+              page_resolved: true,
+              snippet: "second chunk hit",
+              similarity: 0.7,
+            },
+          ],
+          count: 3,
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(corpusSearch("duplicate chunks")).resolves.toMatchObject({
+      hits: [
+        {
+          chunk_id: "chunk-1",
+          document_id: "doc-1",
+          document_title: "First title",
+          snippet: "first hit",
+        },
+        {
+          chunk_id: "chunk-2",
+          document_id: "doc-1",
+          document_title: "Second chunk",
+          snippet: "second chunk hit",
+        },
+      ],
+      count: 3,
+    });
+  });
+
   it("rejects malformed top-level responses instead of trusting casts", async () => {
     apiFetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify(["not", "an", "object"]), { status: 200 }),

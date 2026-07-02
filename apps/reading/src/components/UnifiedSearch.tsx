@@ -606,7 +606,7 @@ export default function UnifiedSearch({
               {localHits.map((h) => {
                 const page = resolvedReaderPageIndex(h);
                 return (
-                  <li key={h.chunk_id}>
+                  <li key={`${h.document_id}:${h.chunk_id}`}>
                     <button
                       type="button"
                       onClick={() => openResult(h)}
