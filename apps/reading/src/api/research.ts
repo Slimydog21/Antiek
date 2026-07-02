@@ -135,23 +135,23 @@ export interface SuggestionsResponse {
 
 // ── Request helpers ─────────────────────────────────────────────────────
 
-async function jsonOrThrow<T>(resp: Response, what: string): Promise<T> {
+async function jsonOrThrow(resp: Response, what: string): Promise<unknown> {
   if (!resp.ok) {
     throw new ApiError(`${what} failed: HTTP ${resp.status}`, resp.status, await resp.text());
   }
-  return resp.json() as Promise<T>;
+  return resp.json();
 }
 
-function post<T>(path: string, body: unknown): Promise<T> {
+function post(path: string, body: unknown): Promise<unknown> {
   return apiFetch(`${API_BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-  }).then((r) => jsonOrThrow<T>(r, `POST ${path}`));
+  }).then((r) => jsonOrThrow(r, `POST ${path}`));
 }
 
-function get<T>(path: string): Promise<T> {
-  return apiFetch(`${API_BASE}${path}`).then((r) => jsonOrThrow<T>(r, `GET ${path}`));
+function get(path: string): Promise<unknown> {
+  return apiFetch(`${API_BASE}${path}`).then((r) => jsonOrThrow(r, `GET ${path}`));
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -419,7 +419,7 @@ function safeSteerResponse(value: unknown): {
 // ── Plan lifecycle (SPR-05 over HTTP) ───────────────────────────────────
 
 export function getBudgetDefaults(): Promise<BudgetDefaults> {
-  return get<unknown>("/research/budget-defaults").then(safeBudgetDefaults);
+  return get("/research/budget-defaults").then(safeBudgetDefaults);
 }
 
 /** SPR-09: the daemon's scored gaps as suggested next researches. READ-ONLY —
@@ -427,7 +427,7 @@ export function getBudgetDefaults(): Promise<BudgetDefaults> {
  * goes through `startInvestigation` (the existing capped launch path), not
  * here. `limit` bounds the displayed count (rank + cap, never a flood). */
 export function getSuggestions(limit = 8): Promise<SuggestionsResponse> {
-  return get<unknown>(`/research/suggestions?limit=${encodeURIComponent(String(limit))}`)
+  return get(`/research/suggestions?limit=${encodeURIComponent(String(limit))}`)
     .then(safeSuggestionsResponse);
 }
 
@@ -436,11 +436,11 @@ export function createPlan(req: {
   sub_questions?: string[];
   max_depth?: number;
 }): Promise<CreatePlanResponse> {
-  return post<unknown>("/research/plans", req).then(safeCreatePlanResponse);
+  return post("/research/plans", req).then(safeCreatePlanResponse);
 }
 
 export function getPlan(rootId: string): Promise<PlanResponse> {
-  return get<unknown>(`/research/plans/${encodeURIComponent(rootId)}`).then(safePlanResponse);
+  return get(`/research/plans/${encodeURIComponent(rootId)}`).then(safePlanResponse);
 }
 
 export function editPlan(rootId: string, edit: {
@@ -451,12 +451,12 @@ export function editPlan(rootId: string, edit: {
   max_depth?: number;
   into?: string[];
 }): Promise<PlanResponse> {
-  return post<unknown>(`/research/plans/${encodeURIComponent(rootId)}/edit`, edit)
+  return post(`/research/plans/${encodeURIComponent(rootId)}/edit`, edit)
     .then(safePlanResponse);
 }
 
 export function approvePlan(rootId: string, approver = "__operator__"): Promise<ApproveResponse> {
-  return post<unknown>(`/research/plans/${encodeURIComponent(rootId)}/approve`, { approver })
+  return post(`/research/plans/${encodeURIComponent(rootId)}/approve`, { approver })
     .then(safeApproveResponse);
 }
 
@@ -466,17 +466,17 @@ export function launchPlan(rootId: string, req: {
   per_research_budget_usd?: number;
   aggregate_budget_usd?: number | null;
 } = {}): Promise<LaunchResponse> {
-  return post<unknown>(`/research/plans/${encodeURIComponent(rootId)}/launch`, req)
+  return post(`/research/plans/${encodeURIComponent(rootId)}/launch`, req)
     .then(safeLaunchResponse);
 }
 
 export function getSession(sessionId: string): Promise<SessionStatus> {
-  return get<unknown>(`/research/sessions/${encodeURIComponent(sessionId)}`)
+  return get(`/research/sessions/${encodeURIComponent(sessionId)}`)
     .then(safeSessionStatus);
 }
 
 export function getSessionCost(sessionId: string): Promise<SessionCost> {
-  return get<unknown>(`/research/sessions/${encodeURIComponent(sessionId)}/cost`)
+  return get(`/research/sessions/${encodeURIComponent(sessionId)}/cost`)
     .then(safeSessionCost);
 }
 
@@ -486,7 +486,7 @@ export function steerResearch(
   kind: SteerKind,
   payload?: Record<string, unknown>,
 ): Promise<{ session_id: string; investigation_id: string; state: ResearchRunState | null }> {
-  return post<unknown>(
+  return post(
     `/research/sessions/${encodeURIComponent(sessionId)}/researches/${encodeURIComponent(investigationId)}/steer`,
     { kind, payload: payload ?? null },
   ).then(safeSteerResponse);
