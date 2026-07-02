@@ -78,13 +78,13 @@ const SCENES: Record<Exclude<Workflow, "shared">, SceneDef> = {
   },
   read: {
     actions: [
-      { id: "add-sources", label: "Add sources", to: "/sources", primary: true },
-      { id: "documents", label: "Documents", to: "/documents" },
-      { id: "new-notebook", label: "New notebook", to: "/notebooks" },
+      { id: "open-library", label: "Open library", to: "/library", primary: true },
+      { id: "meta-docs", label: "Meta-docs", to: "/meta-readings" },
+      { id: "new-notebook", label: "Notebooks", to: "/notebooks" },
     ],
     tabs: [
       { id: "library", label: "Library", to: "/library" },
-      { id: "documents", label: "Documents", to: "/documents" },
+      { id: "meta-docs", label: "Meta-docs", to: "/meta-readings" },
       { id: "notebooks", label: "Notebooks", to: "/notebooks" },
     ],
   },

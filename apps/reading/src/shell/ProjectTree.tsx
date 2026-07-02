@@ -23,7 +23,7 @@ import {
  * workflow's tools.
  *
  *   Research → Investigations / Chase trees / Outcomes
- *   Read     → Library / Documents / Notebooks / Sources
+ *   Read     → Library / Meta-docs / Notebooks
  *   Write    → Deliverables / Block repository
  *   Speak    → People to remember / Their people / Voices
  *
@@ -54,9 +54,7 @@ const ALL_LINKS: Record<Exclude<Workflow, "shared">, Array<{ to: string; label: 
     // SPR-13 M4 — the personal space + its meta-docs tab, after the Library.
     { to: "/readings", label: "Your readings" },
     { to: "/meta-readings", label: "All meta-docs" },
-    { to: "/documents", label: "All documents" },
     { to: "/notebooks", label: "All notebooks" },
-    { to: "/sources", label: "All sources" },
   ],
   write: [{ to: "/write", label: "All pieces" }],
   speak: [
