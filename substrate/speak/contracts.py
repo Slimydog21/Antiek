@@ -8,24 +8,23 @@ codebase 2026-05-25:
              ``substrate.books.servability`` (``ServabilityStatus``,
              ``servability_of``, ``is_servable_full_text``). SPR-09
              builds against it directly; no seam needed here.
-  • Write  — ``OutlineBlock`` composition → the EVENT vocabulary
-             exists (``outline_block.*``) and the SUBSTRATE exists
-             (``deliverables`` / ``deliverable_sections`` /
-             ``section_blocks`` tables + the ``creative_writer`` role),
-             but ``substrate/write/`` is not yet a module. We define an
-             ``OutlineComposer`` Protocol so SPR-08 builds against a
-             contract; the default adapter writes ``section_blocks``
-             directly until Write ships its composer.
+  • Write  — ``OutlineBlock`` composition → **EXISTS** as
+             ``substrate.write.outline_block``. Speak keeps the
+             ``OutlineComposer`` Protocol as the seam, and the default
+             adapter now composes through ``WriteOutlineComposer`` into
+             Write's canonical ``outline_blocks`` layer. The historical
+             ``section_blocks`` writer remains only a fallback for old
+             deployments.
   • DRW    — structural gap detection (``substrate/gap_detection/``,
              "DRW SPR-07") → **ABSENT**. We define a ``GapSource``
              Protocol so SPR-04's open-question chasing builds against
              a contract; the default reads open questions + single-
              sourced claims from the Speak graph itself.
 
-Defining these as Protocols (not imports of not-yet-existing modules)
-is the honest move: Speak does not pretend a dependency is built, and
-when the real Write/DRW modules land they satisfy the Protocol with no
-change to Speak's call sites.
+Defining these as Protocols keeps the ownership honest: Speak depends on
+capabilities, not sibling implementation details. Write now satisfies the
+composer Protocol through its live module; DRW still remains a Protocol-backed
+gap source until that dependency lands.
 """
 
 from __future__ import annotations
@@ -68,7 +67,7 @@ class GapSource(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# Write SPR-01/06 — outline composition (substrate exists, module doesn't)
+# Write SPR-01/06 — outline composition (live Write module behind a seam)
 # ---------------------------------------------------------------------------
 
 

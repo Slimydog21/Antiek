@@ -19,7 +19,7 @@ import pytest
 from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database
 from substrate.seams.thread import reconstruct_thread
-from substrate.speak import biography, invitations, project
+from substrate.speak import biography, contracts as speak_contracts, invitations, project
 from substrate.speak.consent import ConsentScope, record_consent
 from substrate.speak.contracts import OutlineComposer
 from substrate.speak.schema import ensure_speak_schema
@@ -67,6 +67,16 @@ def test_write_composer_satisfies_contract(db):
 def test_default_composer_is_write_when_present(db):
     with _con(db) as con:
         assert isinstance(default_outline_composer(con), WriteOutlineComposer)
+
+
+def test_speak_contract_names_live_write_composer():
+    """The seam documentation must not regress to the pre-Write placeholder."""
+    text = speak_contracts.__doc__ or ""
+    assert "substrate.write.outline_block" in text
+    assert "WriteOutlineComposer" in text
+    assert "outline_blocks" in text
+    assert "substrate/write/`` is not yet a module" not in text
+    assert "module doesn't" not in text
 
 
 # --------------------------------------------------------------------------
