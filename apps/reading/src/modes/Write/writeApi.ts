@@ -301,6 +301,10 @@ function optionalRequestString(value: unknown): string | undefined {
   return nonEmptyString(value) ?? undefined;
 }
 
+function optionalRequestStringArray(value: unknown): string[] {
+  return safeStringArray(value);
+}
+
 export async function searchRepository(opts: {
   q?: string;
   folderId?: string;
@@ -308,9 +312,12 @@ export async function searchRepository(opts: {
   limit?: number;
 }): Promise<RepositoryHit[]> {
   const params = new URLSearchParams();
-  if (opts.q) params.set("q", opts.q);
-  if (opts.folderId) params.set("folder_id", opts.folderId);
-  if (opts.sourceDocumentId) params.set("source_document_id", opts.sourceDocumentId);
+  const query = optionalRequestString(opts.q);
+  const folderId = optionalRequestString(opts.folderId);
+  const sourceDocumentId = optionalRequestString(opts.sourceDocumentId);
+  if (query) params.set("q", query);
+  if (folderId) params.set("folder_id", folderId);
+  if (sourceDocumentId) params.set("source_document_id", sourceDocumentId);
   if (opts.limit !== undefined) {
     assertPositiveSafeInteger(opts.limit, "limit");
     params.set("limit", String(opts.limit));
@@ -562,11 +569,19 @@ export interface BrainstormEmitResult {
 export async function emitBrainstormBlocks(
   body: BrainstormEmitBody,
 ): Promise<BrainstormEmitResult> {
+  const requestBody: BrainstormEmitBody = {
+    section_id: requireNonEmptyString(body.section_id, "section_id"),
+    insights: optionalRequestStringArray(body.insights),
+    questions: optionalRequestStringArray(body.questions),
+    data_points: optionalRequestStringArray(body.data_points),
+  };
+  const deliverableId = optionalRequestString(body.deliverable_id);
+  if (deliverableId) requestBody.deliverable_id = deliverableId;
   return safeBrainstormEmitResult(await _json(
     await apiFetch(`${API_BASE}/write/brainstorm/emit-blocks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(requestBody),
     }),
     "POST /write/brainstorm/emit-blocks",
   ));

@@ -60,9 +60,9 @@ describe("writeApi client contracts", () => {
     apiFetchMock.mockResolvedValueOnce(jsonResponse({ hits: [hit] }));
 
     const result = await searchRepository({
-      q: "moral hazard",
-      folderId: "folder/one",
-      sourceDocumentId: "doc with space",
+      q: " moral hazard ",
+      folderId: " folder/one ",
+      sourceDocumentId: " doc with space ",
       limit: 5,
     });
 
@@ -79,6 +79,18 @@ describe("writeApi client contracts", () => {
     await expect(searchRepository({ limit: 9007199254740992 })).rejects.toThrow(/limit/);
 
     expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("omits blank repository search filters before sending requests", async () => {
+    apiFetchMock.mockResolvedValueOnce(jsonResponse({ hits: [] }));
+
+    await expect(searchRepository({
+      q: " ",
+      folderId: " ",
+      sourceDocumentId: " ",
+    })).resolves.toEqual([]);
+
+    expect(apiFetchMock).toHaveBeenCalledWith("/api/write/blocks/search");
   });
 
   it("sanitizes repository search results before they become outline sources", async () => {
@@ -486,11 +498,11 @@ describe("writeApi client contracts", () => {
     );
 
     await expect(emitBrainstormBlocks({
-      section_id: "sec-1",
-      deliverable_id: "deliv-1",
-      insights: ["Insight"],
-      questions: ["Question?"],
-      data_points: ["Revenue doubled"],
+      section_id: " sec-1 ",
+      deliverable_id: " deliv-1 ",
+      insights: [" Insight ", " "],
+      questions: [" Question? ", ""],
+      data_points: [" Revenue doubled ", " "],
     })).resolves.toEqual({
       block_ids: ["b1"],
       insight_count: 1,
@@ -508,6 +520,17 @@ describe("writeApi client contracts", () => {
       questions: ["Question?"],
       data_points: ["Revenue doubled"],
     });
+  });
+
+  it("rejects malformed brainstorm emission handles before sending requests", async () => {
+    await expect(emitBrainstormBlocks({
+      section_id: " ",
+      insights: ["Insight"],
+      questions: [],
+      data_points: [],
+    })).rejects.toThrow(/section_id/);
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
   it("surfaces API failures as ApiError with status, body, and endpoint label", async () => {
