@@ -575,7 +575,14 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
   // (AdvertiserConsole, CreatorPayouts, PayoutDashboard, MarketplaceMetrics)
   // were deleted — each fetched a backend route that does not exist and
   // rendered a shape no real route returns. The live §9 economics surfaces
-  // are OperatorDashboard (/operator) and PayoutsAudit (/payouts) above; the
+  // are OperatorDashboard (/operator) and PayoutsAudit (/payouts) above.
+  // Precise on CreatorPayouts (review note): PayoutsAudit is a COMPANION
+  // surface (operator transfer-log audit at /payouts/transfers), NOT a
+  // replacement for a creator self-service view — and a real
+  // /creator-payouts/{recipient_ref} route DOES exist, just with a
+  // different shape (rollover_balance_cents / kyc_state / total_paid_cents)
+  // than the orphan rendered. Revival = a self-service view repointed at
+  // that real route, not a claim that PayoutsAudit already covers it. The
   // deleted vision + its required backend contract is preserved in the
   // deletion commit body for a future ad-economics sprint to rebuild
   // against a real route.
