@@ -45,7 +45,7 @@ id, and the result of each step.
 | 2 | Select a passage | Selection is stable and the shared FloatMenu appears without layout jump | selected text, visible action labels: `Note`, `Dialogue`, `Search`, `Deep-research` |
 | 3 | Start Dialogue from the passage | With provider keys, a passage-anchored multi-turn thread returns a useful first answer; without keys, the UI states the activation boundary honestly | provider status, first answer or exact no-key copy |
 | 4 | Spin out research from the passage | With provider keys, research starts with the selected passage as seed and shows a recoverable running state; without keys, the UI states the activation boundary honestly | investigation/session id or exact no-key copy |
-| 5 | Click a citation/source marker | The cited real source opens in the same Reader at the cited chunk or nearest available anchor, with return-origin context in the URL | source document id, chunk id/anchor, resulting URL containing `from=<original document id>` |
+| 5 | Click a citation/source marker | The cited real source opens in the same Reader at the cited chunk or nearest available anchor. Reader-origin citation walks carry return-origin context; Write trace-to-source opens directly from the writing surface. | source document id, chunk id/anchor, resulting URL; include `from=<original document id>` for Reader-origin walks |
 | 6 | Return to the original paper | Back/return flow preserves reading context closely enough for continued work | note whether scroll/selection/context survived |
 | 7 | Use the surface for actual reading work for at least 20 minutes | No dead end blocks the operator from reading, asking, tracing, or returning | free-form operator note with any friction |
 
@@ -59,10 +59,12 @@ For step 1, record either a screenshot reference (`screenshot`,
 (`visible_content_note`, `structured_content_note`, or `render_note`). For step
 2, `menu_labels` must include the four shared FloatMenu actions: `Note`,
 `Dialogue`, `Search`, and `Deep-research`. For step 5, `result_url` must be an
-HTTP(S) `/read/{source_document_id}` URL carrying the
-recorded `chunk_id` or `anchor` and `from=<document_id>` return context. For
-step 6, record `return_context_note`; `context_note` and
-`scroll_context_note` are accepted aliases.
+HTTP(S) `/read/{source_document_id}` URL carrying the recorded `chunk_id` or
+`anchor`. Reader-origin citation walks must also carry `from=<document_id>`
+return context. `entry_door` values `write_trace` and `write_trace_to_source`
+are valid without `from=` because the operator entered from the Write surface,
+not from another Reader document. For step 6, record `return_context_note`;
+`context_note` and `scroll_context_note` are accepted aliases.
 
 ## Dogfood closure rule
 
