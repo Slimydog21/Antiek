@@ -139,6 +139,10 @@ class CascadeSession:
         # reached ``DeepResearchComplete`` because synthesis failed — the
         # split-brain / silent-synthesis hazard the ANT-DRL programme guards.
         self.synthesis_tail_error: Optional[str] = None
+        # WHICH completion step failed ("join_and_merge" vs "synthesis_tail")
+        # — lets ``terminal_status`` expose a merge failure as ``merge_error``
+        # without mislabeling it as a tail one (SPR-DRL-09 contract).
+        self._completion_failure_stage: Optional[str] = None
 
     # -- M1: launch with approval enforcement --------------------------
 
@@ -311,6 +315,7 @@ class CascadeSession:
         (the very pattern this method exists to kill); the error is already on the
         in-memory field + the ``logger.exception`` below regardless."""
         self.synthesis_tail_error = f"[{stage}] {type(exc).__name__}: {exc}"
+        self._completion_failure_stage = stage
         try:
             log_event(
                 self.session_id,
@@ -336,13 +341,23 @@ class CascadeSession:
     def terminal_status(self) -> dict:
         """The session's deep-research terminal contract, for status surfaces.
 
+        ``gather_complete`` is the gather-only terminal (all leaves done);
         ``deep_research_complete`` is the authoritative Path-A convergence
         check (gather leaves terminal AND the session parent satisfies
-        ``DeepResearchComplete``); ``synthesis_tail_error`` is the captured
-        failure string (None when the tail has not failed)."""
+        ``DeepResearchComplete``) — the SPR-DRL-09 gather-vs-product split;
+        ``synthesis_tail_error`` is the captured completion-failure string
+        for either stage (None when nothing failed), and ``merge_error``
+        narrows it to a ``join_and_merge`` failure so a merge failure is
+        distinguishable from a synthesis-tail one."""
         return {
+            "gather_complete": self.is_complete(),
             "deep_research_complete": self.is_deep_research_complete(),
             "synthesis_tail_error": self.synthesis_tail_error,
+            "merge_error": (
+                self.synthesis_tail_error
+                if self._completion_failure_stage == "join_and_merge"
+                else None
+            ),
         }
 
     def build_evidence_pack(

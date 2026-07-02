@@ -458,11 +458,14 @@ async def session_status(session_id: str) -> dict:
                 for s in live.status()
             ],
             "cost": cost,
-            # DRW parent-terminal observability (SPR-DRL-09 M3): surface whether
-            # the session reached DeepResearchComplete and any captured
-            # synthesis-tail failure, so a silent terminal failure cannot hide.
+            # DRW parent-terminal observability (SPR-DRL-09 M3): surface the
+            # gather-vs-product terminal split and any captured completion
+            # failure (merge vs synthesis tail), so a silent terminal failure
+            # cannot hide.
+            "gather_complete": terminal["gather_complete"],
             "deep_research_complete": terminal["deep_research_complete"],
             "synthesis_tail_error": terminal["synthesis_tail_error"],
+            "merge_error": terminal["merge_error"],
         }
     # Recovery from the event log (durability — session evicted / restart).
     rec = reconstruct_session(session_id)
