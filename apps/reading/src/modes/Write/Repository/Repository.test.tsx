@@ -60,7 +60,7 @@ describe("Write Repository", () => {
     expect(screen.queryByText("Invisible hit")).toBeNull();
   });
 
-  it("serializes sanitized drag payloads", async () => {
+  it("serializes sanitized drag payloads without flattening claim nodes to insights", async () => {
     render(<Repository />);
     const row = await screen.findByTitle("Drag into the outline");
     const data = new Map<string, string>();
@@ -74,7 +74,7 @@ describe("Write Repository", () => {
 
     expect(JSON.parse(data.get(DRAG_MIME) ?? "{}")).toEqual({
       from: "palette",
-      block_kind: "insight",
+      block_kind: "claim",
       block_id: "node-1",
       label: "Useful claim",
     });

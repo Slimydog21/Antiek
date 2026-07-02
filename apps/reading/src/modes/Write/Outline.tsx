@@ -12,6 +12,7 @@ import { parsePaletteDrag } from "./Repository/dragToOutline";
 import { WriteEditor } from "./Editor/Editor";
 import { EDIT_CAPTURE_POLICY } from "./EditCapture";
 import { IdeaDump } from "./Brainstorm/IdeaDump";
+import { repositoryBlockKind } from "./repositoryData";
 import {
   safeGenerationResult,
   safeOutlineBlocks,
@@ -88,7 +89,7 @@ export default function Outline({
       if (!sectionId) return;
       await placeBlock({
         section_id: sectionId,
-        block_kind: "insight",
+        block_kind: repositoryBlockKind(hit.node_type),
         provenance_kind: "graph_node",
         node_id: hit.node_id, // the SAME node — provenance preserved, no copy
         block_index: blockCount,
@@ -214,7 +215,7 @@ function SectionCard({
       const nodeId = payload[BLOCK_ID_KEY] as string;
       await placeBlock({
         section_id: section.section_id,
-        block_kind: "insight",
+        block_kind: repositoryBlockKind(payload.block_kind),
         provenance_kind: "graph_node",
         node_id: nodeId,
         block_index: blocks.length,
