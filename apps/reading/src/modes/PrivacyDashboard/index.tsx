@@ -72,15 +72,168 @@ function titleFromPreference(preference: TelemetryPreference | undefined, catego
   return phrase.charAt(0).toUpperCase() + phrase.slice(1);
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const text = nonEmptyString(item);
+        return text ? [text] : [];
+      })
+    : [];
+}
+
+function nonNegativeInteger(value: unknown): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
+}
+
 function normalizedEpsilon(value: unknown): number {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-    return 0;
-  }
-  return Math.min(value, EPSILON_CAP);
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0
+    ? Math.min(parsed, EPSILON_CAP)
+    : 0;
 }
 
 function formatEpsilon(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+function safeNumberMap(value: unknown): Record<string, number> {
+  const source = record(value);
+  if (!source) return {};
+  return Object.fromEntries(
+    Object.entries(source).flatMap(([key, rawValue]) => {
+      const safeKey = nonEmptyString(key);
+      return safeKey ? [[safeKey, normalizedEpsilon(rawValue)]] : [];
+    }),
+  );
+}
+
+function safeBooleanMap(value: unknown): Record<string, boolean> {
+  const source = record(value);
+  if (!source) return {};
+  return Object.fromEntries(
+    Object.entries(source).flatMap(([key, rawValue]) => {
+      const safeKey = nonEmptyString(key);
+      return safeKey ? [[safeKey, rawValue === true]] : [];
+    }),
+  );
+}
+
+function safeStringMap(value: unknown): Record<string, string> {
+  const source = record(value);
+  if (!source) return {};
+  return Object.fromEntries(
+    Object.entries(source).flatMap(([key, rawValue]) => {
+      const safeKey = nonEmptyString(key);
+      const safeValue = nonEmptyString(rawValue);
+      return safeKey && safeValue ? [[safeKey, safeValue]] : [];
+    }),
+  );
+}
+
+function safeTrustCenterData(value: unknown): TrustCenterData {
+  const body = record(value);
+  return {
+    differential_privacy_epsilon_budgets: safeNumberMap(
+      body?.differential_privacy_epsilon_budgets,
+    ),
+    deletion_sla_days: nonNegativeInteger(body?.deletion_sla_days),
+    substrate_controls: stringArray(body?.substrate_controls),
+    compliance_frameworks: stringArray(body?.compliance_frameworks),
+    loop_3_unlock_status: safeBooleanMap(body?.loop_3_unlock_status),
+    loop_3_evidence_status: safeBooleanMap(body?.loop_3_evidence_status),
+    loop_3_evidence_summaries: safeStringMap(body?.loop_3_evidence_summaries),
+    loop_3_all_evidence_passed: body?.loop_3_all_evidence_passed === true,
+  };
+}
+
+function safeDeletionRequest(value: unknown): DeletionRequest | null {
+  const request = record(value);
+  const requestId = nonEmptyString(request?.request_id);
+  const requestedAt = nonEmptyString(request?.requested_at);
+  if (!request || !requestId || !requestedAt) return null;
+  return {
+    request_id: requestId,
+    status: nonEmptyString(request.status) ?? "pending",
+    requested_at: requestedAt,
+    cancellation_window_days: nonNegativeInteger(request.cancellation_window_days),
+    deletion_sla_days: nonNegativeInteger(request.deletion_sla_days),
+  };
+}
+
+function safeDeletionRequests(value: unknown): DeletionRequest[] {
+  const body = record(value);
+  const requests = Array.isArray(body?.requests) ? body.requests : [];
+  return requests.flatMap((item) => {
+    const request = safeDeletionRequest(item);
+    return request ? [request] : [];
+  });
+}
+
+function safeSensitivity(value: unknown): PrivacySensitivity | null {
+  return value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "forbidden"
+    ? value
+    : null;
+}
+
+function safeTelemetryPreference(value: unknown): TelemetryPreference | null {
+  const preference = record(value);
+  const surfaceName = nonEmptyString(preference?.surface_name);
+  if (!preference || !surfaceName) return null;
+  const epsilon = normalizedEpsilon(preference.epsilon_per_day);
+  return {
+    surface_name: surfaceName,
+    epsilon_per_day: epsilon,
+    sensitivity:
+      safeSensitivity(preference.sensitivity) ??
+      sensitivityForBudget(surfaceName, epsilon),
+    description:
+      nonEmptyString(preference.description) ??
+      formatBudgetDescription(surfaceName),
+    opt_in_required: preference.opt_in_required === true,
+    enabled: preference.enabled === true,
+    updated_at: nullableString(preference.updated_at),
+  };
+}
+
+function safeTelemetryPreferences(value: unknown): Record<string, TelemetryPreference> {
+  const body = record(value);
+  const preferences = Array.isArray(body?.preferences) ? body.preferences : [];
+  return Object.fromEntries(
+    preferences.flatMap((item) => {
+      const preference = safeTelemetryPreference(item);
+      return preference ? [[preference.surface_name, preference]] : [];
+    }),
+  );
 }
 
 export default function PrivacyDashboard() {
@@ -121,12 +274,11 @@ export default function PrivacyDashboard() {
         throw new Error(`Could not load privacy settings (HTTP ${tc.status}).`);
       }
       setError(null);
-      setData(await tc.json());
+      setData(safeTrustCenterData(await tc.json()));
 
       if (dr?.ok) {
-        const drData = await dr.json();
-        const pending = (drData.requests ?? []).find(
-          (r: DeletionRequest) => r.status === "pending",
+        const pending = safeDeletionRequests(await dr.json()).find(
+          (r) => r.status === "pending",
         );
         setDeletionStatusKnown(true);
         if (options?.suppressPendingOnSuccess) {
@@ -141,15 +293,7 @@ export default function PrivacyDashboard() {
         if (!options?.preservePendingOnFailure) setPendingDeletion(null);
       }
       if (pref?.ok) {
-        const prefData = await pref.json();
-        setPreferences(
-          Object.fromEntries(
-            (prefData.preferences ?? []).map((p: TelemetryPreference) => [
-              p.surface_name,
-              p,
-            ]),
-          ),
-        );
+        setPreferences(safeTelemetryPreferences(await pref.json()));
         setPreferencesKnown(true);
         setPreferenceError(null);
       } else {
@@ -189,7 +333,7 @@ export default function PrivacyDashboard() {
       if (!resp.ok) {
         throw new Error(`Could not request deletion (HTTP ${resp.status}).`);
       }
-      setPendingDeletion(await resp.json());
+      setPendingDeletion(safeDeletionRequest(await resp.json()));
       setDeletionStatusKnown(true);
       await reload({
         preserveDataOnFailure: true,
@@ -241,12 +385,14 @@ export default function PrivacyDashboard() {
       if (!resp.ok) {
         throw new Error(`Could not update privacy preference (HTTP ${resp.status}).`);
       }
-      const updated = await resp.json();
-      setPreferences((current) => ({
-        ...current,
-        [updated.surface_name]: updated,
-      }));
-      setPreferencesKnown(true);
+      const updated = safeTelemetryPreference(await resp.json());
+      if (updated) {
+        setPreferences((current) => ({
+          ...current,
+          [updated.surface_name]: updated,
+        }));
+        setPreferencesKnown(true);
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

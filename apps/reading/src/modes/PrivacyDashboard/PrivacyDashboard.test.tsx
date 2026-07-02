@@ -436,6 +436,109 @@ describe("PrivacyDashboard", () => {
     expect(screen.getByText("Privacy budget: 10/day")).toBeTruthy();
   });
 
+  it("sanitizes privacy dashboard API payloads before rendering", async () => {
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === "/trust-center") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            differential_privacy_epsilon_budgets: {
+              " dispatch_tier_telemetry ": "4.25",
+              " ": 10,
+              malformed_budget: "Infinity",
+            },
+            deletion_sla_days: "12.9",
+            substrate_controls: [
+              " encryption at rest (per-graph keys via KMS) ",
+              "",
+              42,
+            ],
+            compliance_frameworks: [
+              " GDPR Article 13/14 transparency ",
+              null,
+            ],
+            loop_3_unlock_status: {
+              " trajectory_volume ": true,
+              sft_readiness: "yes",
+              " ": true,
+            },
+            loop_3_evidence_status: {
+              " trajectory_volume ": true,
+              eval_headroom: "yes",
+            },
+            loop_3_evidence_summaries: {
+              " trajectory_volume ": " sealed_investigation_count: 10 ",
+              " ": "Skipped summary",
+            },
+            loop_3_all_evidence_passed: "yes",
+          }),
+        });
+      }
+      if (path === "/trust-center/deletion-requests") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            requests: [
+              {
+                request_id: " del dirty ",
+                status: " pending ",
+                requested_at: " 2026-07-01T06:00:00Z ",
+                cancellation_window_days: "7.9",
+                deletion_sla_days: "12.9",
+              },
+              {
+                request_id: " ",
+                status: "pending",
+                requested_at: "Skipped request",
+              },
+            ],
+          }),
+        });
+      }
+      if (path === "/trust-center/telemetry-preferences") {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            preferences: [
+              {
+                surface_name: " dispatch_tier_telemetry ",
+                epsilon_per_day: "4.25",
+                sensitivity: "medium",
+                description: " query snippets ",
+                opt_in_required: "yes",
+                enabled: "yes",
+                updated_at: " ",
+              },
+              {
+                surface_name: " ",
+                description: "Skipped preference",
+              },
+            ],
+          }),
+        });
+      }
+      return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+    });
+
+    render(<PrivacyDashboard />);
+
+    expect(await screen.findByText("Query snippets")).toBeTruthy();
+    expect(screen.getByText("Daily privacy budget total: 4.25 of 10.00")).toBeTruthy();
+    expect(screen.getByText("Privacy budget: 4.25/day")).toBeTruthy();
+    expect(screen.getByText("Sensitivity: Medium")).toBeTruthy();
+    expect(screen.getByText("Noisy aggregate off")).toBeTruthy();
+    expect(screen.getByText("Encryption at rest with managed keys")).toBeTruthy();
+    expect(screen.getByText(/GDPR transparency notice/)).toBeTruthy();
+    expect(screen.getAllByText("1/5")).toHaveLength(2);
+    expect(screen.getByText(/Pending deletion request/)).toBeTruthy();
+    expect(screen.getByText(/Cancellation window: 7 days/)).toBeTruthy();
+    expect(screen.getByText(/Deletion completes within 12 days/)).toBeTruthy();
+
+    expect(document.body.textContent).not.toMatch(
+      /Skipped|NaN|Infinity|Privacy budget: -|del dirty|request_id|sealed_investigation_count/,
+    );
+  });
+
   it("updates a telemetry preference through the privacy toggle", async () => {
     render(<PrivacyDashboard />);
 
