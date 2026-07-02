@@ -134,8 +134,11 @@ verdict must include non-empty `"blocking_issue_ids"`.
 
 For orchestration, `--json` includes `remaining_requirements` with the four
 closure counters still missing: valid sessions, live-provider sessions,
-citation-traced sessions, and non-Library sessions. These numbers are planning
-guidance only; they do not replace the operator's qualitative verdict.
+citation-traced sessions, and non-Library sessions. It also includes
+`invalid_session_count` and `invalid_sessions`, so an operator or follow-on
+agent can distinguish "log more sessions" from "repair these logged rows."
+These numbers are planning guidance only; they do not replace the operator's
+qualitative verdict.
 
 Minimal record shape:
 

@@ -1062,3 +1062,13 @@ def test_activation_spec_minimal_record_shape_is_validator_compatible() -> None:
     assert report.valid_sessions == 1
     assert all(failure.startswith("closure requires ") for failure in report.failures)
     assert not any("missing required fields" in failure for failure in report.failures)
+
+
+def test_activation_spec_documents_json_repair_guidance() -> None:
+    spec = Path("specs/activation/golden-path.md").read_text(encoding="utf-8")
+    compact_spec = " ".join(spec.split())
+
+    assert "`invalid_session_count`" in spec
+    assert "`invalid_sessions`" in spec
+    assert '"log more sessions"' in compact_spec
+    assert '"repair these logged rows."' in compact_spec
