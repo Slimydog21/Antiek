@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/core";
 import { ReactNodeViewRenderer, NodeViewWrapper } from "@tiptap/react";
 import type { NodeViewProps } from "@tiptap/react";
+import { safeImageSrc } from "../../../lib/safeImageSrc";
 import { stringAttr } from "./attrHelpers";
 
 /**
@@ -10,7 +11,7 @@ import { stringAttr } from "./attrHelpers";
  * dropped images.
  */
 function ImageNodeView({ node, deleteNode }: NodeViewProps) {
-  const src = (node.attrs.src as string | null) ?? null;
+  const src = safeImageSrc(node.attrs.src);
   const alt = (node.attrs.alt as string | null) ?? "";
   const caption = (node.attrs.caption as string | null) ?? "";
   return (

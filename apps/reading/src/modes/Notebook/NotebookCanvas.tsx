@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import type { NotebookBlockResponse, NotebookResponse } from "./types";
+import { safeImageSrc } from "../../lib/safeImageSrc";
 import {
   openNotebookQuestionInBrainstorm,
   openNotebookQuestionInChase,
@@ -161,19 +162,6 @@ function safeBlockId(block: NotebookBlockResponse): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function safeImageUrl(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const url = value.trim();
-  if (!url) return null;
-  if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(url)) return url;
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === "http:" || parsed.protocol === "https:" ? url : null;
-  } catch {
-    return null;
-  }
-}
-
 function BlockControls({
   blockId,
   position,
@@ -237,7 +225,7 @@ function BlockControls({
 
 function BlockView({ block }: { block: NotebookBlockResponse }) {
   const imageUrl =
-    block.block_type === "image" ? safeImageUrl(block.content_json.url) : null;
+    block.block_type === "image" ? safeImageSrc(block.content_json.url) : null;
   switch (block.block_type) {
     case "prose":
       return (
