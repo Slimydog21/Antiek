@@ -20,6 +20,9 @@ import {
   askBook,
   generateMetaReading,
   getFileSuggestion,
+  getSavedMetaReading,
+  listPersonalSpace,
+  listPersonalSpaceCategories,
   recordAdImpressions,
   saveVoiceNote,
   spinResearch,
@@ -644,6 +647,77 @@ describe("books api — meta-reading boundary", () => {
     expect(result).toEqual(metaReadingResponse());
   });
 
+  it("sanitizes generated meta-reading artifacts before they enter reader state", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          asset_id: "  mr-1  ",
+          report: "  report  ",
+          citations: [
+            {
+              chunk_id: " chunk-1 ",
+              document_id: " doc-1 ",
+              page_index: "2",
+              page_resolved: true,
+              snippet: "  cited text  ",
+            },
+          ],
+          length_unit: "hours",
+          length_amount: "3",
+          word_budget: 900,
+          truncated: "yes",
+          corpus_scope: "wide",
+          corpus_document_ids: [" doc-1 ", "", 7],
+          empty: "no",
+          context_chunk_count: "bad",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const result = await generateMetaReading({
+      prompt: "dirty response",
+      length_unit: "pages",
+      length_amount: 3,
+    });
+
+    expect(result).toEqual({
+      asset_id: "mr-1",
+      report: "report",
+      citations: [
+        {
+          chunk_id: "chunk-1",
+          document_id: "doc-1",
+          page_index: null,
+          page_resolved: false,
+          snippet: "cited text",
+        },
+      ],
+      length_unit: "pages",
+      length_amount: 0,
+      word_budget: 900,
+      truncated: false,
+      corpus_scope: "hard",
+      corpus_document_ids: ["doc-1"],
+      empty: false,
+      context_chunk_count: 0,
+    });
+  });
+
+  it("rejects malformed generated meta-reading artifacts", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ asset_id: " ", report: "x" }), { status: 200 }),
+    );
+
+    await expect(
+      generateMetaReading({
+        prompt: "malformed",
+        length_unit: "pages",
+        length_amount: 3,
+      }),
+    ).rejects.toThrow("Malformed meta-reading response.");
+  });
+
   it("preserves explicit rollback scope, tier, and document picks", async () => {
     await generateMetaReading({
       prompt: "owned corpus with explicit picks",
@@ -723,6 +797,155 @@ describe("books api — meta-reading boundary", () => {
   });
 });
 
+describe("books api — saved meta-reading boundary", () => {
+  it("requests one encoded saved meta-reading and sanitizes its artifact payload", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          asset_id: "  mr-saved  ",
+          prompt: "  prompt  ",
+          report: "  saved report  ",
+          citations: [
+            {
+              chunk_id: " chunk-1 ",
+              document_id: " doc-1 ",
+              page_index: 4,
+              page_resolved: true,
+              snippet: "  cited text  ",
+            },
+          ],
+          length_unit: "hours",
+          length_amount: "5",
+          truncated: "true",
+          corpus_scope: "wide",
+          corpus_document_ids: [" doc-1 ", null, "doc-2"],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const result = await getSavedMetaReading("mr saved");
+
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+    expect(apiFetchMock.mock.calls[0][0]).toBe("/api/meta-readings/mr%20saved");
+    expect(result).toEqual({
+      asset_id: "mr-saved",
+      prompt: "prompt",
+      report: "saved report",
+      citations: [
+        {
+          chunk_id: "chunk-1",
+          document_id: "doc-1",
+          page_index: 4,
+          page_resolved: true,
+          snippet: "cited text",
+        },
+      ],
+      length_unit: "pages",
+      length_amount: 0,
+      truncated: false,
+      corpus_scope: "hard",
+      corpus_document_ids: ["doc-1", "doc-2"],
+    });
+  });
+
+  it("rejects malformed saved meta-reading artifacts", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ asset_id: "mr", prompt: " ", report: "x" }), {
+        status: 200,
+      }),
+    );
+
+    await expect(getSavedMetaReading("mr")).rejects.toThrow(
+      "Malformed saved meta-reading response.",
+    );
+  });
+});
+
+describe("books api — personal-space boundary", () => {
+  it("sanitizes the personal-space asset list", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          assets: [
+            {
+              asset_id: "  mr-1  ",
+              kind: "future_kind",
+              title: "  Meta read  ",
+              prompt: "  prompt  ",
+              document_ids: [" doc-1 ", "", 7],
+              emitted_at: "  2026-07-02T00:00:00Z  ",
+              open_route: "  /read/meta/mr-1  ",
+            },
+            {
+              asset_id: "bad",
+              kind: "saved_read",
+              title: "Bad",
+              open_route: " ",
+            },
+          ],
+          count: "2",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(listPersonalSpace()).resolves.toEqual({
+      assets: [
+        {
+          asset_id: "mr-1",
+          kind: "meta_reading",
+          title: "Meta read",
+          prompt: "prompt",
+          document_ids: ["doc-1"],
+          emitted_at: "2026-07-02T00:00:00Z",
+          open_route: "/read/meta/mr-1",
+        },
+      ],
+      count: 1,
+    });
+  });
+
+  it("sanitizes personal-space categories and falls back to recency ordering", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          categories: [
+            {
+              category_id: "  cat-1  ",
+              label: "  Philosophy  ",
+              asset_ids: [" mr-1 ", "", 5],
+              ordering: "future",
+            },
+            {
+              category_id: " ",
+              label: "Bad",
+              asset_ids: ["mr-2"],
+              ordering: "theme",
+            },
+          ],
+          ordering: "future",
+          stability_bound: "3",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(listPersonalSpaceCategories()).resolves.toEqual({
+      categories: [
+        {
+          category_id: "cat-1",
+          label: "Philosophy",
+          asset_ids: ["mr-1"],
+          ordering: "recency",
+        },
+      ],
+      ordering: "recency",
+      stability_bound: 0,
+    });
+  });
+});
+
 describe("books api — file suggestion boundary", () => {
   const suggestionResponse = {
     document_id: "doc with space",
@@ -747,6 +970,50 @@ describe("books api — file suggestion boundary", () => {
       "/api/meta-readings/file-suggestion?document_id=doc+with+space",
     );
     expect(result).toEqual(suggestionResponse);
+  });
+
+  it("sanitizes filing suggestions before they reach personal-space state", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          document_id: "  doc-1  ",
+          matches: [
+            {
+              investigation_id: " inv-1 ",
+              question: " q ",
+              score: 0.72,
+            },
+            {
+              investigation_id: " ",
+              question: "bad",
+              score: 1,
+            },
+            {
+              investigation_id: "inv-2",
+              question: "q2",
+              score: "0.5",
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(getFileSuggestion("doc-1")).resolves.toEqual({
+      document_id: "doc-1",
+      matches: [
+        {
+          investigation_id: "inv-1",
+          question: "q",
+          score: 0.72,
+        },
+        {
+          investigation_id: "inv-2",
+          question: "q2",
+          score: 0,
+        },
+      ],
+    });
   });
 
   it("escapes query-control characters in the document id", async () => {
