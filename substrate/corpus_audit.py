@@ -980,7 +980,7 @@ def _check_budget(con: Any, db_path: str, governor: BudgetGovernor | None) -> Ch
         name=CHECK_BUDGET,
         ok=not over,
         count=1 if over else 0,
-        offending=(("db_size_bytes=%d" % db_size,) if over else ()),
+        offending=((f"db_size_bytes={db_size}",) if over else ()),
         detail=(
             f"corpus within SPR-09 budget ceiling ({verdict.render()})"
             if not over
