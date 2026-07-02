@@ -20,8 +20,28 @@ import PhaseRow from "./PhaseRow";
  */
 
 function safeCostUsd(value: unknown): string {
-  const cost = typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  const cost = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
   return `$${cost.toFixed(4)}`;
+}
+
+function safeEvents(value: unknown): Event[] {
+  return Array.isArray(value) ? (value as Event[]) : [];
+}
+
+function safePhase(value: unknown): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
 }
 
 export default function TrajectoryView({
@@ -31,11 +51,12 @@ export default function TrajectoryView({
 }) {
   const [showDispatches, setShowDispatches] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const events = safeEvents(investigation.events);
 
   const filteredEvents = useMemo(() => {
-    if (showDispatches) return investigation.events;
-    return investigation.events.filter((e) => e.action_type !== "dispatch.call");
-  }, [investigation.events, showDispatches]);
+    if (showDispatches) return events;
+    return events.filter((e) => e.action_type !== "dispatch.call");
+  }, [events, showDispatches]);
 
   // Auto-scroll on new event arrival.
   useEffect(() => {
@@ -49,6 +70,7 @@ export default function TrajectoryView({
     <div className="flex flex-col h-full min-h-0">
       <TrajectoryHeader
         investigation={investigation}
+        eventCount={events.length}
         showDispatches={showDispatches}
         onToggleDispatches={() => setShowDispatches((v) => !v)}
       />
@@ -78,10 +100,12 @@ export default function TrajectoryView({
 
 function TrajectoryHeader({
   investigation,
+  eventCount,
   showDispatches,
   onToggleDispatches,
 }: {
   investigation: InvestigationState;
+  eventCount: number;
   showDispatches: boolean;
   onToggleDispatches: () => void;
 }) {
@@ -107,7 +131,7 @@ function TrajectoryHeader({
         </span>
         <span className="text-ink-mute dark:text-moonlight">·</span>
         <span className="text-shadow-1 dark:text-moonlight">
-          {investigation.events.length} events
+          {eventCount} events
         </span>
       </div>
       <button
@@ -144,7 +168,7 @@ function groupByPhase(events: Event[]): PhaseGroup[] {
   // (e.g. investigation.start_requested) are bucketed into phase 0.
   const buckets = new Map<number, Event[]>();
   for (const e of events) {
-    const phase = (e.phase ?? 0) as number;
+    const phase = safePhase(e.phase);
     if (!buckets.has(phase)) buckets.set(phase, []);
     buckets.get(phase)!.push(e);
   }
