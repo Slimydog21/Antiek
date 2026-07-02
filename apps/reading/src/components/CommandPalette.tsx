@@ -171,10 +171,19 @@ function finiteNonNegativeNumber(value: unknown): number | null {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
+function uniqueById<T extends { id: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.flatMap((item) => {
+    if (seen.has(item.id)) return [];
+    seen.add(item.id);
+    return [item];
+  });
+}
+
 function safeInvestigations(value: unknown): PaletteInvestigation[] {
   const body = record(value);
   const investigations = Array.isArray(body?.investigations) ? body.investigations : [];
-  return investigations.flatMap((item) => {
+  return uniqueById(investigations.flatMap((item) => {
     const inv = record(item);
     const investigationId = nonEmptyString(inv?.investigation_id);
     if (!investigationId) return [];
@@ -196,13 +205,13 @@ function safeInvestigations(value: unknown): PaletteInvestigation[] {
         path: `/replay/${encodedInvestigationId}`,
       },
     ];
-  });
+  }));
 }
 
 function safeDocuments(value: unknown): PaletteDocument[] {
   const body = record(value);
   const documents = Array.isArray(body?.documents) ? body.documents : [];
-  return documents.flatMap((item) => {
+  return uniqueById(documents.flatMap((item) => {
     const doc = record(item);
     const documentId = nonEmptyString(doc?.document_id);
     if (!documentId) return [];
@@ -214,13 +223,13 @@ function safeDocuments(value: unknown): PaletteDocument[] {
       subtitle: `Document · ${documentId.slice(0, 8)}`,
       path: `/read/${encodeURIComponent(documentId)}`,
     }];
-  });
+  }));
 }
 
 function safeNotebooks(value: unknown): PaletteNotebook[] {
   const body = record(value);
   const notebooks = Array.isArray(body?.notebooks) ? body.notebooks : [];
-  return notebooks.flatMap((item) => {
+  return uniqueById(notebooks.flatMap((item) => {
     const nb = record(item);
     const notebookId = nonEmptyString(nb?.notebook_id);
     if (!notebookId) return [];
@@ -231,13 +240,13 @@ function safeNotebooks(value: unknown): PaletteNotebook[] {
       subtitle: `Notebook · ${notebookId.slice(0, 8)}`,
       path: `/notebook/${encodeURIComponent(notebookId)}`,
     }];
-  });
+  }));
 }
 
 function safeDeliverables(value: unknown): PaletteDeliverable[] {
   const body = record(value);
   const deliverables = Array.isArray(body?.deliverables) ? body.deliverables : [];
-  return deliverables.flatMap((item) => {
+  return uniqueById(deliverables.flatMap((item) => {
     const d = record(item);
     const deliverableId = nonEmptyString(d?.deliverable_id);
     if (!deliverableId) return [];
@@ -250,7 +259,7 @@ function safeDeliverables(value: unknown): PaletteDeliverable[] {
       subtitle: `Piece · ${sectionCount} section${sectionCount === 1 ? "" : "s"}${linked}`,
       path: `/write/${encodeURIComponent(deliverableId)}`,
     }];
-  });
+  }));
 }
 
 function safeParkedQuestion(value: unknown): ParkedQuestionEntry | null {
@@ -279,7 +288,7 @@ function safeParkedQuestions(value: unknown): PaletteParkedQuestion[] {
     : Array.isArray(body?.parked)
       ? body.parked
       : [];
-  return rawQuestions.flatMap((item) => {
+  return uniqueById(rawQuestions.flatMap((item) => {
     const question = safeParkedQuestion(item);
     if (!question) return [];
     return [{
@@ -290,7 +299,7 @@ function safeParkedQuestions(value: unknown): PaletteParkedQuestion[] {
       path: "/brainstorm",
       question,
     }];
-  });
+  }));
 }
 
 /**
