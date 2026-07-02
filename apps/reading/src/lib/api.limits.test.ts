@@ -1001,8 +1001,26 @@ describe("api client notebook response boundary", () => {
               content_json: { text: "Skip" },
             },
             {
-              block_id: "",
+              block_id: "blk-image",
               block_index: 2,
+              block_type: "image",
+              content_json: {
+                url: " javascript:alert(1) ",
+                alt: "Unsafe image",
+              },
+            },
+            {
+              block_id: "blk-data-image",
+              block_index: 3,
+              block_type: "image",
+              content_json: {
+                url: " data:image/png;base64,AAAA ",
+                alt: "Inline image",
+              },
+            },
+            {
+              block_id: "",
+              block_index: 4,
               block_type: "note",
               content_json: { text: "Skip" },
             },
@@ -1028,6 +1046,22 @@ describe("api client notebook response boundary", () => {
           ref_id: null,
           content_json: { text: "Hello" },
           created_at: "2026-07-01T00:01:00Z",
+        },
+        {
+          block_id: "blk-image",
+          block_index: 2,
+          block_type: "image",
+          ref_id: null,
+          content_json: { url: undefined, alt: "Unsafe image" },
+          created_at: "",
+        },
+        {
+          block_id: "blk-data-image",
+          block_index: 3,
+          block_type: "image",
+          ref_id: null,
+          content_json: { url: "data:image/png;base64,AAAA", alt: "Inline image" },
+          created_at: "",
         },
       ],
     });

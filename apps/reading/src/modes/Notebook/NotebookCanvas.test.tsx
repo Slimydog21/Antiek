@@ -190,4 +190,52 @@ describe("NotebookCanvas question-card handoff", () => {
 
     expect(onMoveBlock).not.toHaveBeenCalled();
   });
+
+  it("does not render unsafe image block URLs", () => {
+    const data = notebook([
+      {
+        block_id: "img-unsafe",
+        block_index: 0,
+        block_type: "image",
+        ref_id: null,
+        content_json: {
+          url: "javascript:alert(1)",
+          alt: "Unsafe notebook image",
+        },
+        created_at: "2026-07-01T00:00:00Z",
+      },
+      {
+        block_id: "img-safe",
+        block_index: 1,
+        block_type: "image",
+        ref_id: null,
+        content_json: {
+          url: " https://img.example/notebook.png ",
+          alt: "Safe notebook image",
+        },
+        created_at: "2026-07-01T00:01:00Z",
+      },
+      {
+        block_id: "img-data",
+        block_index: 2,
+        block_type: "image",
+        ref_id: null,
+        content_json: {
+          url: " data:image/png;base64,AAAA ",
+          alt: "Inline notebook image",
+        },
+        created_at: "2026-07-01T00:02:00Z",
+      },
+    ]);
+
+    render(<NotebookCanvas notebook={data} onAppendBlock={vi.fn()} />);
+
+    expect(screen.queryByAltText("Unsafe notebook image")).toBeNull();
+    expect(screen.getByAltText("Safe notebook image").getAttribute("src")).toBe(
+      "https://img.example/notebook.png",
+    );
+    expect(screen.getByAltText("Inline notebook image").getAttribute("src")).toBe(
+      "data:image/png;base64,AAAA",
+    );
+  });
 });
