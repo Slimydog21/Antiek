@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { startInvestigation } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import Thinking from "../../shared/Thinking";
+import { safeRepositoryHits } from "./repositoryData";
 import { searchRepository, type RepositoryHit } from "./writeApi";
 
 /**
@@ -33,6 +34,12 @@ export interface SubAgentProposalProps {
   onReject: () => void;
 }
 
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 export default function SubAgentProposal({
   claimText,
   parentInvestigationId,
@@ -50,7 +57,7 @@ export default function SubAgentProposal({
     setSearching(true);
     searchRepository({ q: claimText, limit: 5 })
       .then((h) => {
-        if (!cancelled) setHits(h);
+        if (!cancelled) setHits(Array.isArray(h) ? safeRepositoryHits(h) : []);
       })
       .catch(() => {
         if (!cancelled) setHits([]);
@@ -74,7 +81,11 @@ export default function SubAgentProposal({
         spawn_context: claimText,
         parent_investigation_id: parentInvestigationId,
       });
-      onAccept(child.investigation_id);
+      const childInvestigationId = nonEmptyString(child.investigation_id);
+      if (!childInvestigationId) {
+        throw new Error("child investigation did not return an id");
+      }
+      onAccept(childInvestigationId);
     } catch (e) {
       const status = (e as { status?: number })?.status;
       setFailure({ reason: status === 503 ? null : e instanceof Error ? e.message : String(e) });
