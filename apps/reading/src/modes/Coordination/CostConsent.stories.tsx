@@ -9,7 +9,8 @@ import type { CostView, ConsentView } from "./CostConsent";
  * The fixtures below mirror the canonical wire shapes the coordination API
  * returns. They render the GATED REALITY the spec mandates:
  *   - cost is real, summed from the dispatch event log, with remote-exec
- *     surfaced and margins honestly stubbed where the matrix isn't applicable;
+ *     surfaced, Speak's contextual economics matrix applied, and margins
+ *     honestly stubbed where the matrix isn't applicable;
  *   - escrow accrues but is NOT disbursable while G2/G3 are open (the default
  *     fixture), a zero-buyer holder shows $0, and nothing presents as
  *     disbursable.
@@ -57,11 +58,11 @@ export const COST_FIXTURE: CostView = {
       raw_cost_usd: "0.40",
       call_count: 1,
       remote_exec_cost_usd: "0",
-      margin_status: "stubbed",
-      margin_rate: null,
-      margined_cost_usd: null,
+      margin_status: "applied",
+      margin_rate: "0.10",
+      margined_cost_usd: "0.440",
       margin_note:
-        "Speak economics matrix is per-project (public 10% / private-published 50%); a margined total needs a project context — raw cost shown, margin not fabricated.",
+        "Speak economics matrix applied from investigation policy context at 10%.",
     },
     {
       workflow: "unmapped",
@@ -198,7 +199,7 @@ const costMeta = {
 export default costMeta;
 type CostStory = StoryObj<typeof costMeta>;
 
-/** Cost with spend across workflows, remote-exec surfaced, margins stubbed. */
+/** Cost with spend across workflows, remote-exec surfaced, Speak margin applied. */
 export const Cost: CostStory = {
   args: { cost: COST_FIXTURE },
 };
