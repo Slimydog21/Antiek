@@ -97,6 +97,32 @@ beforeEach(() => {
         record_count: "2.9",
       });
     }
+    if (path === "/investigations?limit=200") {
+      return okJson({
+        investigations: [
+          {
+            investigation_id: " inv-a ",
+            status: " in_progress ",
+            cost_usd_total: "0.0125",
+          },
+          {
+            investigation_id: "inv-b",
+            status: "completed",
+            cost_usd_total: Number.NaN,
+          },
+          {
+            investigation_id: "inv-c",
+            status: "failed",
+            cost_usd_total: "0.0075",
+          },
+          {
+            investigation_id: " ",
+            status: "failed",
+            cost_usd_total: "999",
+          },
+        ],
+      });
+    }
     if (path.startsWith("/payouts/transfers")) {
       return okJson({
         transfers: [
@@ -305,6 +331,11 @@ describe("OperatorDashboard", () => {
     expect(
       screen.getByText("Training evidence 1/3 · evidence incomplete."),
     ).toBeTruthy();
+    expect(screen.getByText("Research workload")).toBeTruthy();
+    expect(
+      screen.getByText("3 visible · 1 in progress · 1 completed · 1 failed"),
+    ).toBeTruthy();
+    expect(screen.getByText("Visible research cost $0.0200.")).toBeTruthy();
     expect(screen.getByText("Billing usage")).toBeTruthy();
     expect(
       screen.getByText("2026-07 · billable $0.2750 · margin $0.0250"),
@@ -326,6 +357,7 @@ describe("OperatorDashboard", () => {
       .getAllByRole("link", { name: "open →" })
       .map((link) => link.getAttribute("href"));
     expect(openLinks).toContain("/coordination");
+    expect(openLinks).toContain("/investigations");
     expect(openLinks).toContain("/billing");
     expect(openLinks).toContain("/privacy");
     expect(openLinks).toContain("/marketplace");
