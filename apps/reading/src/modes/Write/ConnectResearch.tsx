@@ -5,6 +5,7 @@ import {
   startInvestigation,
   type InvestigationSummary,
 } from "../../lib/api";
+import { requireInvestigationId } from "../../lib/investigationData";
 
 /**
  * ConnectResearch — the M1 connect step (Write SPR-09).
@@ -116,10 +117,7 @@ export default function ConnectResearch({
         question: pieceTitle.trim() || "Untitled piece",
         context: "Auto-spawned research folder backing a Write piece (SPR-09 M1).",
       });
-      const spawnedId = nonEmptyString(spawned.investigation_id);
-      if (!spawnedId) {
-        throw new Error("spawned research folder did not return an id");
-      }
+      const spawnedId = requireInvestigationId(spawned.investigation_id);
       onConnect({
         investigationId: spawnedId,
         label: "a new research folder",

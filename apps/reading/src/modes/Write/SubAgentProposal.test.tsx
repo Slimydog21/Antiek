@@ -107,7 +107,9 @@ describe("SubAgentProposal", () => {
     await userEvent.click(await screen.findByRole("button", { name: /accept/i }));
 
     expect(await screen.findByRole("alert")).toBeTruthy();
-    expect(screen.getByRole("alert").textContent ?? "").toMatch(/did not return an id/i);
+    expect(screen.getByRole("alert").textContent ?? "").toMatch(
+      /investigation_id must be a non-empty string/i,
+    );
     expect(onAccept).not.toHaveBeenCalled();
   });
 });
