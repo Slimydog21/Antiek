@@ -24,6 +24,7 @@
 #   write-pre-outline-freeform — Write SPR-08 context window promote/generate
 #   write-style-conditioning — Write SPR-09 prompt-level style conditioning
 #   speak-consent-rights-gate — Speak SPR-01 consent + public publish gate
+#   speak-async-voice-interview — Speak SPR-02 async voice-note interview
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -47,7 +48,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -308,6 +309,22 @@ cmd_speak_consent_rights_gate() {
   echo "CANONICAL_VERIFY_OK: speak-consent-rights-gate"
 }
 
+cmd_speak_async_voice_interview() {
+  echo "== speak-async-voice-interview: async voice-note interview + single voice owner =="
+  "${PY}" -m pytest \
+    tests/test_async_interview.py \
+    tests/test_speak_invitee_voice.py \
+    tests/test_acquisition_voice.py \
+    tests/test_seam_voice_single_owner.py \
+    tests/test_contracts_speak_lock.py \
+    -q --tb=no
+  echo "== speak-async-voice-interview: invitee voice UI =="
+  (cd apps/reading && npm run test -- \
+    src/modes/SpeakInvite/SpeakInvite.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: speak-async-voice-interview"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -395,6 +412,7 @@ main() {
     write-pre-outline-freeform) cmd_write_pre_outline_freeform ;;
     write-style-conditioning) cmd_write_style_conditioning ;;
     speak-consent-rights-gate) cmd_speak_consent_rights_gate ;;
+    speak-async-voice-interview) cmd_speak_async_voice_interview ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;
