@@ -198,6 +198,23 @@ describe("useFrameAttention — exclusions + honesty (M3)", () => {
     expect(seconds[0]!.second.samples.map((s) => s.asset_id)).toEqual(["doc-1"]);
   });
 
+  it("trims DOM asset handles and counts whitespace-only handles as unresolved", () => {
+    const seconds: FrameAttentionResult[] = [];
+    assetEl(" doc-1 ", { left: 0, top: 0, width: VW, height: 200 }, { chunkId: " c1 " });
+    assetEl(" ", { left: 0, top: 250, width: VW, height: 200 });
+    renderHook(() =>
+      useFrameAttention({ lens: "read", onSecond: (r) => seconds.push(r) }),
+    );
+    vi.advanceTimersByTime(1000);
+
+    expect(seconds[0]!.unresolved).toBe(1);
+    expect(seconds[0]!.second.samples).toHaveLength(1);
+    expect(seconds[0]!.second.samples[0]).toMatchObject({
+      asset_id: "doc-1",
+      chunk_id: "c1",
+    });
+  });
+
   it("folds multiple chunks of one asset into its largest-footprint sample", () => {
     const seconds: FrameAttentionResult[] = [];
     // Two chunks of the SAME asset; the larger one wins the per-asset sample.
