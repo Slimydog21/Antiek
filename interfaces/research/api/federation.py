@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import duckdb
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from substrate.cross_graph.federation import (
     FederationConfig,
@@ -55,6 +55,7 @@ from substrate.cross_graph.partner_identity import (
     PartnerSubstrate,
     generate_shared_secret,
     load_registry,
+    normalize_partner_substrate_url,
     register_partner,
     revoke_partner,
     save_record,
@@ -77,6 +78,14 @@ class RegisterPartnerRequest(BaseModel):
     shared_secret_hex: str | None = Field(default=None, min_length=64, max_length=64)
     operator_notes: str = ""
     partner_id: str | None = Field(default=None, max_length=64)
+
+    @field_validator("substrate_url")
+    @classmethod
+    def _validate_substrate_url(cls, value: str) -> str:
+        try:
+            return normalize_partner_substrate_url(value)
+        except PartnerIdentityError as exc:
+            raise ValueError(str(exc)) from exc
 
 
 class TrustRequest(BaseModel):

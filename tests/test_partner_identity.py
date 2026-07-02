@@ -36,6 +36,33 @@ def test_register_partner_lands_in_pending_handshake():
     assert is_partner_trusted(reg, rec.partner_id) is False
 
 
+def test_register_partner_trims_substrate_url():
+    reg = PartnerRegistry()
+    rec = register_partner(
+        reg,
+        display_name="Partner Lab",
+        substrate_url="  https://partner.example.com/federation  ",
+        shared_secret_hex=generate_shared_secret(),
+    )
+    assert rec.substrate_url == "https://partner.example.com/federation"
+
+
+@pytest.mark.parametrize(
+    "substrate_url",
+    ["javascript:alert(1)", "data:text/html,owned", "/relative", "partner.example"],
+)
+def test_register_partner_rejects_non_http_substrate_urls(substrate_url):
+    reg = PartnerRegistry()
+    with pytest.raises(PartnerIdentityError, match="absolute http"):
+        register_partner(
+            reg,
+            display_name="Partner Lab",
+            substrate_url=substrate_url,
+            shared_secret_hex=generate_shared_secret(),
+        )
+    assert reg.records == []
+
+
 def test_duplicate_partner_id_refused():
     reg = PartnerRegistry()
     secret = generate_shared_secret()
