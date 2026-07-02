@@ -143,7 +143,7 @@ def test_every_open_door_routes_to_the_one_reader():
         assert not re.search(r"path:\s*[`'\"]/wrestle/\$\{", src), door
         if door in _PALETTE_ROUTE_DOORS:
             assert re.search(
-                r"/read/\$\{encodeURIComponent\(doc\.document_id\)\}", src
+                r"/read/\$\{encodeURIComponent\(documentId\)\}", src
             ), door
         else:
             assert "useOpenDocument()" in src, door
