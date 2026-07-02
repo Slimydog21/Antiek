@@ -94,6 +94,43 @@ describe("InterviewVoiceCapture", () => {
     expect(stopTrack).toHaveBeenCalled();
   });
 
+  it.each(["javascript:alert(1)", "data:text/html,owned", "/relative/audio.webm"])(
+    "does not pass unsafe audio_url values to the host: %s",
+    async (audio_url) => {
+      const onUploaded = vi.fn();
+      apiFetchMock.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ audio_url, transcript: " invite transcript " }),
+      } as Response);
+
+      render(<InterviewVoiceCapture sessionId="int-1" onUploaded={onUploaded} />);
+
+      await recordAndUpload();
+
+      await screen.findByText(/Upload complete/i);
+      expect(onUploaded).toHaveBeenCalledWith("invite transcript");
+      expect(onUploaded).not.toHaveBeenCalledWith(audio_url);
+      expect(stopTrack).toHaveBeenCalled();
+    },
+  );
+
+  it("trims and passes safe uploaded audio URLs to the host", async () => {
+    const onUploaded = vi.fn();
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ audio_url: " https://cdn.example/audio.webm " }),
+    } as Response);
+
+    render(<InterviewVoiceCapture sessionId="int-1" onUploaded={onUploaded} />);
+
+    await recordAndUpload();
+
+    await screen.findByText(/Upload complete/i);
+    expect(onUploaded).toHaveBeenCalledWith("https://cdn.example/audio.webm");
+  });
+
   it("keeps malformed upload error detail out of host callbacks", async () => {
     const onUploadError = vi.fn();
     apiFetchMock.mockResolvedValue({
