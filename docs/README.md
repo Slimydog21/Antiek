@@ -27,5 +27,13 @@ Additional docs land here as the build proceeds:
 - `migration_log.md` (planned) — what moved from where, when, why.
 - `schema_versions.md` (planned) — schema-version changes and their
   migration paths.
-- `decision_log.md` (planned) — short notes on choices made along
-  the way (e.g., "we chose write-lock over Redis queue because…").
+- `decisions/` — one markdown per closed gate or binding decision;
+  this fulfilled the once-planned `decision_log.md` role (browse it to
+  see what's been settled).
+
+Load-bearing doc families, in read order (mirrors `CLAUDE.md`):
+`operator_gate_actions.md` (gate register) → `agent-execution/`
+(HARD_TO_VARY protocol) → `master-product-spec.md` (the spec) →
+`sprint_track_reconciliation.md` → `decisions/` → `engineering_deferrals.md`
+(stable don't-re-implement IDs) → `OPERATOR_ACTIONS.md` (business track) →
+`roadmap/` (FLUID register, operator-ratified).
