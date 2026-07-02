@@ -46,18 +46,74 @@ const STATUS_BADGE: Record<string, string> = {
   forfeited: "bg-emperor/20 text-emperor",
 };
 
-const nonNegativeFiniteNumber = (value: unknown): number | null =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
     : null;
+}
 
-const safeCents = (value: unknown): number => nonNegativeFiniteNumber(value) ?? 0;
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nonNegativeFiniteNumber(value: unknown): number | null {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+const safeCents = (value: unknown): number =>
+  Math.floor(nonNegativeFiniteNumber(value) ?? 0);
 
 const USD = (cents: unknown) =>
   `$${(safeCents(cents) / 100).toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+
+function recipientKind(value: unknown): RevenueLine["recipient_kind"] | null {
+  return value === "creator" || value === "publisher" ? value : null;
+}
+
+function safeLine(value: unknown): RevenueLine | null {
+  const line = record(value);
+  const kind = recipientKind(line?.recipient_kind);
+  const recipientRef = nonEmptyString(line?.recipient_ref);
+  if (!line || !kind || !recipientRef) return null;
+  return {
+    recipient_kind: kind,
+    recipient_ref: recipientRef,
+    recipient_name: nonEmptyString(line.recipient_name) ?? recipientRef,
+    current_month_cents: safeCents(line.current_month_cents),
+    lifetime_cents: safeCents(line.lifetime_cents),
+    status: nonEmptyString(line.status) ?? "escrow_only",
+    kyc_complete: line.kyc_complete === true,
+  };
+}
+
+function safePayoutDashboardData(value: unknown): PayoutDashboardData {
+  const body = record(value);
+  const lines = Array.isArray(body?.lines)
+    ? body.lines.flatMap((item) => {
+        const line = safeLine(item);
+        return line ? [line] : [];
+      })
+    : [];
+  return {
+    current_month_label: nonEmptyString(body?.current_month_label) ?? "",
+    lines,
+    platform_residual_month_cents: safeCents(body?.platform_residual_month_cents),
+    unallocated_rounding_month_cents: safeCents(
+      body?.unallocated_rounding_month_cents,
+    ),
+  };
+}
 
 export default function PayoutDashboard() {
   const [data, setData] = useState<PayoutDashboardData | null>(null);
@@ -74,7 +130,7 @@ export default function PayoutDashboard() {
         }
         throw new Error(`HTTP ${resp.status}`);
       }
-      setData(await resp.json());
+      setData(safePayoutDashboardData(await resp.json()));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
