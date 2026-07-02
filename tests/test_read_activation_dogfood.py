@@ -890,8 +890,28 @@ def test_inert_template_is_jsonl_safe_and_validator_compatible(capsys) -> None:
     assert all(failure.startswith("closure requires ") for failure in report.failures)
 
 
-def test_live_citation_template_carries_non_library_trace_evidence() -> None:
+def test_live_citation_template_requires_operator_replacement() -> None:
     record = session_template("live-citation")
+    report = validate_sessions([record])
+
+    assert report.valid_sessions == 0
+    assert report.live_provider_sessions == 0
+    assert report.citation_trace_sessions == 0
+    assert report.non_library_sessions == 0
+    assert any("template first_answer" in failure for failure in report.failures)
+    assert any("template investigation_id" in failure for failure in report.failures)
+    assert any("template result_url" in failure for failure in report.failures)
+
+
+def test_replaced_live_citation_template_carries_non_library_trace_evidence() -> None:
+    record = session_template("live-citation")
+    record["steps"]["3"]["first_answer"] = "The dialogue grounded the highlighted claim."
+    record["steps"]["4"]["investigation_id"] = "inv-real-20260702-001"
+    record["steps"]["5"]["source_document_id"] = "source-doc-real"
+    record["steps"]["5"]["chunk_id"] = "chunk-real"
+    record["steps"]["5"]["result_url"] = (
+        "https://antiek.ai/read/source-doc-real?chunk=chunk-real&from=doc-1"
+    )
     report = validate_sessions([record])
 
     assert report.valid_sessions == 1
@@ -910,11 +930,12 @@ def test_write_trace_citation_template_omits_reader_return_origin() -> None:
     assert record["steps"]["5"]["result_url"] == (
         "https://antiek.ai/read/source-doc-1?chunk=chunk-1"
     )
-    assert report.valid_sessions == 1
-    assert report.live_provider_sessions == 1
-    assert report.citation_trace_sessions == 1
-    assert report.non_library_sessions == 1
+    assert report.valid_sessions == 0
+    assert report.live_provider_sessions == 0
+    assert report.citation_trace_sessions == 0
+    assert report.non_library_sessions == 0
     assert not any("from={document_id}" in failure for failure in report.failures)
+    assert any("template result_url" in failure for failure in report.failures)
 
 
 def test_write_trace_citation_template_cli_is_jsonl_safe(capsys) -> None:
@@ -949,8 +970,11 @@ def test_append_template_creates_log_file_and_parent_dirs(tmp_path, capsys) -> N
     assert records[0]["steps"]["5"]["result_url"].endswith(
         "?chunk=chunk-1&from=doc-1&fromPage=0"
     )
-    assert "read-dogfood: 1/1 valid sessions" in out
+    assert "read-dogfood: 0/1 valid sessions" in out
     assert "remaining:" in out
+    assert "template first_answer" in out
+    assert "template investigation_id" in out
+    assert "template result_url" in out
 
 
 def test_append_write_trace_template_preserves_direct_source_url(tmp_path, capsys) -> None:
@@ -966,7 +990,8 @@ def test_append_write_trace_template_preserves_direct_source_url(tmp_path, capsy
         "https://antiek.ai/read/source-doc-1?chunk=chunk-1"
     )
     assert "from=" not in records[0]["steps"]["5"]["result_url"]
-    assert "1 citation-traced, 1 non-library" in out
+    assert "0 citation-traced, 0 non-library" in out
+    assert "template result_url" in out
 
 
 def test_append_template_adds_line_to_existing_log(tmp_path) -> None:
@@ -988,9 +1013,10 @@ def test_append_template_can_print_json_report(tmp_path, capsys) -> None:
     report = json.loads(capsys.readouterr().out)
 
     assert report["total_sessions"] == 1
-    assert report["valid_sessions"] == 1
-    assert report["live_provider_sessions"] == 1
-    assert report["remaining_requirements"]["valid_sessions"] == 9
+    assert report["valid_sessions"] == 0
+    assert report["live_provider_sessions"] == 0
+    assert report["remaining_requirements"]["valid_sessions"] == 10
+    assert any("template first_answer" in failure for failure in report["failures"])
 
 
 def test_append_requires_template(tmp_path) -> None:

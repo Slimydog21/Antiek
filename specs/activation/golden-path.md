@@ -103,6 +103,11 @@ python tools/activation/read_dogfood.py --template live-citation
 python tools/activation/read_dogfood.py --template write-trace-citation
 ```
 
+Live and citation templates intentionally do **not** count as valid evidence
+until the placeholder first answer, child research id, and citation URL are
+replaced with real session values. An appended seed may therefore report
+`0/1 valid sessions`; that is the guard working, not a validator failure.
+
 Use `write-trace-citation` only for a session that starts from the Write
 surface trace-to-source affordance. Its step 5 URL opens the traced Reader
 source with chunk/anchor evidence but intentionally has no Reader-origin
