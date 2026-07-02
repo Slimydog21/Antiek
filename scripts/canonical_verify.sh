@@ -65,6 +65,15 @@ else
   exit 2
 fi
 
+TSX="${ROOT}/apps/reading/node_modules/.bin/tsx"
+
+require_tsx() {
+  if [[ ! -x "${TSX}" ]]; then
+    echo "FAIL: missing local tsx — run pnpm --dir apps/reading install" >&2
+    exit 2
+  fi
+}
+
 usage() {
   echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|speak-economics-matrix|speak-biography-authoring|speak-publishing-physical|drw-reading-surface-transfer|unified-substrate-contract-lock|unified-remote-exec-fanout|unified-seams-and-collisions|unified-navigation-ia-taxonomy|unified-coordination-gate-ledger|unified-thread-navigation|unified-cost-consent-surface|unified-flywheel-conformance|handoff <md>|agent-gates|deep-research|html-transport}" >&2
   exit 2
@@ -624,7 +633,8 @@ cmd_read_passage_research() {
 cmd_handoff() {
   local f="${1:?handoff markdown path required}"
   echo "== handoff: schema linter =="
-  npx --yes tsx tools/agent/verify_handoff.ts "$f"
+  require_tsx
+  "${TSX}" tools/agent/verify_handoff.ts "$f"
   echo "== handoff: session theater grep =="
   bash scripts/audit_agent_session.sh "$f"
   echo "CANONICAL_VERIFY_OK: handoff ($f)"
