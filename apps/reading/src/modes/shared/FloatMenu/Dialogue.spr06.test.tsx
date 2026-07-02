@@ -44,7 +44,11 @@ vi.mock("../../../hooks/useVoiceCapture", () => ({
 
 import FloatMenu from "./FloatMenu";
 import { dialogueSessionKey, loadDialogueSession } from "./dialogueTurnStorage";
-import { regionOfSelection, streamDialogueOverSelection } from "./floatMenuActions";
+import {
+  dialogueOverSelection,
+  regionOfSelection,
+  streamDialogueOverSelection,
+} from "./floatMenuActions";
 import type { FloatMenuSelection } from "./useFloatMenuSelection";
 import { useFloatMenuSelection } from "./useFloatMenuSelection";
 
@@ -172,6 +176,67 @@ describe("streamDialogueOverSelection consumes SSE frames (M2)", () => {
     const evs: { kind: string; status?: number }[] = [];
     await streamDialogueOverSelection({ investigationId: "inv-1", selection: sel }, (ev) => evs.push(ev));
     expect(evs).toEqual([{ kind: "error", status: 503, detail: "stream channel HTTP 503" }]);
+  });
+
+  it("sanitizes streamed frames before they reach dialogue state", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      sseResponse([
+        { kind: "token", text: "alpha " },
+        { kind: "token", text: 9 },
+        { kind: "thread", node_id: " question-abc " },
+        { kind: "thread", node_id: " " },
+        { kind: "error", status: "503", detail: 7 },
+        { kind: "done", extra: "ignored" },
+      ]),
+    );
+    const events: unknown[] = [];
+
+    await streamDialogueOverSelection(
+      { investigationId: "inv-1", selection: sel },
+      (ev) => events.push(ev),
+    );
+
+    expect(events).toEqual([
+      { kind: "token", text: "alpha " },
+      { kind: "thread", node_id: "question-abc" },
+      { kind: "error", status: 0, detail: "stream error" },
+      { kind: "done" },
+    ]);
+  });
+});
+
+describe("dialogueOverSelection sanitizes one-shot replies", () => {
+  const sel: FloatMenuSelection = {
+    text: "discuss this passage",
+    rect: { top: 0, left: 0, width: 1, height: 1 },
+    provenance: ANCHORED,
+  };
+
+  it("returns model text and a trimmed thread node id", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ text: "model reply", thread_node_id: " question-1 " }), {
+        status: 200,
+      }),
+    );
+
+    await expect(
+      dialogueOverSelection({ investigationId: "inv-1", selection: sel }),
+    ).resolves.toMatchObject({
+      reply: "model reply",
+      threadNodeId: "question-1",
+    });
+  });
+
+  it("rejects malformed one-shot replies instead of fabricating an empty model turn", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ text: null, body: null, thread_node_id: "question-1" }), {
+        status: 200,
+      }),
+    );
+
+    await expect(
+      dialogueOverSelection({ investigationId: "inv-1", selection: sel }),
+    ).rejects.toThrow("Malformed dialogue response.");
   });
 });
 
