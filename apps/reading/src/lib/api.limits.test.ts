@@ -662,6 +662,12 @@ describe("api client write deliverable response boundaries", () => {
               block_count: "3",
             },
             {
+              section_id: "sec-1",
+              deliverable_id: "dlv-1",
+              title: "Duplicate opening",
+              section_index: 99,
+            },
+            {
               section_id: "",
               deliverable_id: "dlv-1",
               title: "Invisible",

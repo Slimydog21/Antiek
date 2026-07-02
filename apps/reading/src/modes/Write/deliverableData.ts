@@ -67,10 +67,12 @@ export function safeDeliverableSummaries(
 }
 
 export function safeSections(sections: SectionResponse[]): SectionResponse[] {
+  const seen = new Set<string>();
   return sections.flatMap((section) => {
     const sectionId = nonEmptyString(section.section_id);
     const deliverableId = nonEmptyString(section.deliverable_id);
-    if (!sectionId || !deliverableId) return [];
+    if (!sectionId || !deliverableId || seen.has(sectionId)) return [];
+    seen.add(sectionId);
     return [
       {
         ...section,

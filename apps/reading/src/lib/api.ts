@@ -1272,10 +1272,13 @@ function safeDeliverableDetail(value: unknown): DeliverableDetailResponse {
   if (!summary || !body) {
     throw malformedApiResponse("Malformed API response: deliverable");
   }
+  const seen = new Set<string>();
   const sections = Array.isArray(body.sections)
     ? body.sections.flatMap((item) => {
         const section = safeSectionResponse(item);
-        return section ? [section] : [];
+        if (!section || seen.has(section.section_id)) return [];
+        seen.add(section.section_id);
+        return [section];
       })
     : [];
   return {
