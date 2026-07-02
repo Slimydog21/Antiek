@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation, useParams } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { emitTraceIntent } from "./Editor/traceIntent";
 import type { TraceTarget } from "./writeApi";
@@ -70,6 +70,23 @@ function ResearchProbe() {
 function LocationProbe() {
   const location = useLocation();
   return <div data-testid="location">{location.pathname}</div>;
+}
+
+function RouteSwitchProbe() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate("/write/dlv-fresh")}>
+      open fresh piece
+    </button>
+  );
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
 }
 
 beforeEach(() => {
@@ -274,6 +291,49 @@ describe("WriteHome — the re-homed door", () => {
     expect(await screen.findByText("(untitled section)")).toBeTruthy();
     expect(screen.queryByText("Invisible section")).toBeNull();
     expect(getSectionBlocksMock).toHaveBeenCalledWith("sec-1");
+  });
+
+  it("keeps stale open-piece responses from overwriting the active routed piece", async () => {
+    const stale = deferred<unknown>();
+    const fresh = deferred<unknown>();
+    getDeliverableMock.mockReturnValueOnce(stale.promise).mockReturnValueOnce(fresh.promise);
+
+    render(
+      <MemoryRouter initialEntries={["/write/dlv-stale"]}>
+        <RouteSwitchProbe />
+        <Routes>
+          <Route path="/write/:deliverableId" element={<WriteHome />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /open fresh piece/i }));
+    await act(async () => {
+      fresh.resolve({
+        deliverable_id: "dlv-fresh",
+        title: "Fresh memo",
+        deliverable_kind: "general_essay",
+        investigation_root_id: null,
+        status: "draft",
+        sections: [],
+      });
+    });
+
+    expect(await screen.findByText("Fresh memo")).toBeTruthy();
+
+    await act(async () => {
+      stale.resolve({
+        deliverable_id: "dlv-stale",
+        title: "Stale memo",
+        deliverable_kind: "general_essay",
+        investigation_root_id: null,
+        status: "draft",
+        sections: [],
+      });
+    });
+
+    expect(screen.getByText("Fresh memo")).toBeTruthy();
+    expect(screen.queryByText("Stale memo")).toBeNull();
   });
 
   it("does not emit brainstorm blocks from the no-piece sentinel section", async () => {
