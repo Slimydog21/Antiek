@@ -61,9 +61,8 @@ def test_os_semaphore_count_stays_at_baseline_under_faults(tmp_path, monkeypatch
             return [[0.0] * 8 for _ in xs]
 
     for _ in range(20):
-        with readonly_fs(copy_target):
-            with pytest.raises(RetrieverInfraError):
-                rs.DuckDbVssSubstrate.open(str(db), model=_StubModel())
+        with readonly_fs(copy_target), pytest.raises(RetrieverInfraError):
+            rs.DuckDbVssSubstrate.open(str(db), model=_StubModel())
 
     assert active_semaphore_count() == baseline
 

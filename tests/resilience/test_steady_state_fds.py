@@ -37,9 +37,8 @@ def test_fd_steady_state_under_repeated_readonly_fs_fault(tmp_path, monkeypatch)
             return [[0.0] * 8 for _ in xs]
 
     def drive_one_fault():
-        with readonly_fs(copy_target):
-            with pytest.raises(RetrieverInfraError):
-                rs.DuckDbVssSubstrate.open(str(db), model=_StubModel())
+        with readonly_fs(copy_target), pytest.raises(RetrieverInfraError):
+            rs.DuckDbVssSubstrate.open(str(db), model=_StubModel())
 
     # Warm up so lazy imports / module caches settle before the baseline.
     drive_one_fault()
