@@ -79,6 +79,7 @@ def test_operator_advertiser_campaign_create_and_list(isolated_store):
     assert body["sector"] == "recruiting"
     assert body["intent"] == "hiring_manager"
     assert body["target_topics"] == ["talent density", "org design"]
+    assert body["creative_url"] == "https://acme.example/hire"
     assert body["daily_budget_cents"] == 2500
     assert body["status"] == "active"
     assert body["impressions"] == 0
@@ -86,6 +87,43 @@ def test_operator_advertiser_campaign_create_and_list(isolated_store):
     assert body["spend_cents"] == 0
     assert listed.status_code == 200, listed.text
     assert listed.json()["campaigns"] == [body]
+
+
+def test_operator_advertiser_campaign_create_trims_creative_url(isolated_store):
+    c = _client()
+
+    created = c.post(
+        "/operator/advertiser-campaigns",
+        json=_campaign_payload(creative_url="  https://acme.example/hire  "),
+    )
+    listed = c.get("/operator/advertiser-campaigns")
+
+    assert created.status_code == 201, created.text
+    assert created.json()["creative_url"] == "https://acme.example/hire"
+    assert listed.status_code == 200, listed.text
+    assert listed.json()["campaigns"][0]["creative_url"] == "https://acme.example/hire"
+
+
+@pytest.mark.parametrize(
+    "creative_url",
+    [
+        "javascript:alert(1)",
+        "data:text/html,owned",
+        "/relative/path",
+        "example.com/no-scheme",
+        " ",
+    ],
+)
+def test_operator_advertiser_campaign_rejects_unsafe_creative_urls(
+    isolated_store,
+    creative_url,
+):
+    resp = _client().post(
+        "/operator/advertiser-campaigns",
+        json=_campaign_payload(creative_url=creative_url),
+    )
+
+    assert resp.status_code == 422
 
 
 def test_operator_advertiser_campaign_status_filter_and_patch(isolated_store):

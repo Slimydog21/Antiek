@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from substrate.advertisers import (
     Advertiser,
@@ -60,6 +61,15 @@ class CreateAdvertiserCampaignRequest(BaseModel):
     daily_budget_cents: int = Field(ge=0)
     status: CampaignStatus = CampaignStatus.DRAFT
     legal_gate_passed: bool = False
+
+    @field_validator("creative_url")
+    @classmethod
+    def _normalize_creative_url(cls, value: str) -> str:
+        normalized = value.strip()
+        parsed = urlparse(normalized)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise ValueError("creative_url must be an absolute http(s) URL")
+        return normalized
 
 
 class UpdateAdvertiserCampaignStatusRequest(BaseModel):
