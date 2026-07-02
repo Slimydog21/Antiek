@@ -35,7 +35,7 @@ describe("ResearchThis", () => {
 
   it("sends the page research request and hands off to the child investigation", async () => {
     spinResearchMock.mockResolvedValue({
-      investigation_id: "inv-child",
+      investigation_id: " inv-child ",
       document_id: "doc-1",
       page_index: 4,
       gated: false,
@@ -62,6 +62,26 @@ describe("ResearchThis", () => {
       has_passage: true,
     });
     expect(navigateMock).toHaveBeenCalledWith("/inv/inv-child");
+  });
+
+  it("surfaces malformed spun investigation ids instead of navigating", async () => {
+    spinResearchMock.mockResolvedValue({
+      investigation_id: " ",
+      document_id: "doc-1",
+      page_index: 4,
+      gated: false,
+      servability: "public_domain",
+      seed_preview: "seed",
+    });
+
+    render(<ResearchThis documentId="doc-1" pageIndex={4} passageText="selected passage" />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Research this page" }));
+
+    expect(await screen.findByText(/Couldn’t start page research/i)).toBeTruthy();
+    expect(screen.getByText(/Engine: investigation_id must be a non-empty string/i)).toBeTruthy();
+    expect(navigateMock).not.toHaveBeenCalled();
+    expect(trackMock).not.toHaveBeenCalled();
   });
 
   it("surfaces a missing book without navigating to a dead research", async () => {

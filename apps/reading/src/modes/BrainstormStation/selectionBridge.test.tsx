@@ -8,6 +8,8 @@ import type { ParkedQuestionEntry } from "../../lib/api";
 const apiMocks = vi.hoisted(() => ({
   listWatchForLater: vi.fn(),
   launchParkedQuestion: vi.fn(),
+  navigate: vi.fn(),
+  track: vi.fn(),
 }));
 
 vi.mock("../../lib/api", async (orig) => ({
@@ -17,7 +19,12 @@ vi.mock("../../lib/api", async (orig) => ({
 }));
 
 vi.mock("../../lib/analytics", () => ({
-  track: vi.fn(),
+  track: apiMocks.track,
+}));
+
+vi.mock("react-router-dom", async (orig) => ({
+  ...(await orig<typeof import("react-router-dom")>()),
+  useNavigate: () => apiMocks.navigate,
 }));
 
 vi.mock("../../workspace/PanelHost", () => ({
@@ -58,6 +65,8 @@ beforeEach(() => {
     questions: [QUESTION],
   });
   apiMocks.launchParkedQuestion.mockReset();
+  apiMocks.navigate.mockReset();
+  apiMocks.track.mockReset();
 });
 
 afterEach(() => {
@@ -175,7 +184,7 @@ describe("BrainstormStation watch-list selection bridge", () => {
 
   it("BrainstormStation broadcasts a watch-list change after launching a parked question", async () => {
     apiMocks.launchParkedQuestion.mockResolvedValue({
-      investigation_id: "inv-child",
+      investigation_id: " inv-child ",
       status: "in_progress",
       start_event_id: "evt-start",
     });
@@ -203,6 +212,43 @@ describe("BrainstormStation watch-list selection bridge", () => {
         expect(apiMocks.launchParkedQuestion).toHaveBeenCalledWith(QUESTION.question_id),
       );
       await waitFor(() => expect(watchlistChanges).toHaveLength(1));
+      expect(apiMocks.track).toHaveBeenCalledWith("brainstorm_question_launched");
+      expect(apiMocks.navigate).toHaveBeenCalledWith("/inv/inv-child");
+    } finally {
+      window.removeEventListener(BRAINSTORM_WATCHLIST_CHANGED_EVENT, onWatchlistChanged);
+    }
+  });
+
+  it("surfaces malformed launched ids instead of hiding the parked question", async () => {
+    apiMocks.launchParkedQuestion.mockResolvedValue({
+      investigation_id: " ",
+      status: "in_progress",
+      start_event_id: "evt-start",
+    });
+    apiMocks.listWatchForLater.mockResolvedValue({ questions: [QUESTION] });
+    const watchlistChanges: Event[] = [];
+    const onWatchlistChanged = (event: Event) => {
+      watchlistChanges.push(event);
+    };
+    window.addEventListener(BRAINSTORM_WATCHLIST_CHANGED_EVENT, onWatchlistChanged);
+
+    try {
+      render(
+        <MemoryRouter>
+          <BrainstormStation />
+        </MemoryRouter>,
+      );
+      await waitFor(() => expect(apiMocks.listWatchForLater).toHaveBeenCalled());
+
+      dispatchBrainstormQuestionSelection(QUESTION);
+      await userEvent.click(await screen.findByRole("button", { name: /launch investigation/i }));
+
+      expect(
+        await screen.findByText(/Launch failed: investigation_id must be a non-empty string/i),
+      ).toBeTruthy();
+      expect(watchlistChanges).toHaveLength(0);
+      expect(apiMocks.track).not.toHaveBeenCalled();
+      expect(apiMocks.navigate).not.toHaveBeenCalled();
     } finally {
       window.removeEventListener(BRAINSTORM_WATCHLIST_CHANGED_EVENT, onWatchlistChanged);
     }
