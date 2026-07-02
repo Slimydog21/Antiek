@@ -108,6 +108,41 @@ describe("ReplayStepList", () => {
     expect(document.body.textContent).not.toMatch(/bad-array/);
   });
 
+  it("drops blank and duplicate event ids before creating replay step buttons", async () => {
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        events: [
+          event(" replay-step ", "synthesize.delivered", {
+            emitted_at: " 2026-07-01T12:00:00Z ",
+          }),
+          event("replay-step", "evidence.retrieve.delivered", {
+            emitted_at: "2026-07-01T12:00:01Z",
+          }),
+          event(" ", "investigation.completed", {
+            emitted_at: "2026-07-01T12:00:02Z",
+          }),
+        ],
+      }),
+    });
+
+    render(<ReplayStepList investigationId="inv-1" />);
+
+    await waitFor(() => expect(screen.getByText("Steps · 1")).toBeTruthy());
+    expect(screen.getByText("synthesize ✓")).toBeTruthy();
+    expect(screen.queryByText("evidence · retrieve ✓")).toBeNull();
+    expect(screen.queryByText("investigation · completed")).toBeNull();
+
+    screen.getByText("synthesize ✓").closest("button")?.click();
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detail: { eventId: "replay-step" },
+      }),
+    );
+    dispatchSpy.mockRestore();
+  });
+
   it("keeps stale polled steps from overwriting the active investigation", async () => {
     const stale = deferred<{
       ok: true;
