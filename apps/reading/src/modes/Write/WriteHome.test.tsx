@@ -20,6 +20,7 @@ import type { TraceTarget } from "./writeApi";
 const {
   listDeliverablesMock, getDeliverableMock, getTraceTargetMock, listInvestigationsMock,
   startInvestigationMock, createDeliverableMock, promoteContextMock, generateSectionMock,
+  getSectionBlocksMock,
 } = vi.hoisted(() => ({
   listDeliverablesMock: vi.fn(),
   getDeliverableMock: vi.fn(),
@@ -29,6 +30,7 @@ const {
   createDeliverableMock: vi.fn(),
   promoteContextMock: vi.fn(),
   generateSectionMock: vi.fn(),
+  getSectionBlocksMock: vi.fn(),
 }));
 
 vi.mock("../../lib/api", async (orig) => ({
@@ -45,6 +47,7 @@ vi.mock("./writeApi", async (orig) => ({
   getTraceTarget: getTraceTargetMock,
   promoteContext: promoteContextMock,
   generateSection: generateSectionMock,
+  getSectionBlocks: getSectionBlocksMock,
 }));
 
 import WriteHome, { readerPageFromTraceSectionPath } from "./WriteHome";
@@ -77,6 +80,7 @@ beforeEach(() => {
     section_id: "sec-context",
     block_ids: ["oblk-context"],
   });
+  getSectionBlocksMock.mockReset().mockResolvedValue([]);
   generateSectionMock.mockReset().mockResolvedValue({
     status: "gap",
     section_id: "sec-context",
@@ -148,6 +152,80 @@ describe("WriteHome — the re-homed door", () => {
     expect(screen.queryByText(/select or create a deliverable/i)).toBeNull();
     // And the brainstorm on-ramp is offered as the outline-optional entry.
     expect(screen.getByText(/brainstorm from an idea/i)).toBeTruthy();
+  });
+
+  it("drops malformed listed pieces and trims the routable piece id", async () => {
+    listDeliverablesMock.mockResolvedValue({
+      count: 3,
+      deliverables: [
+        {
+          deliverable_id: " dlv-valid ",
+          title: "  Valid memo  ",
+          deliverable_kind: "not-a-kind",
+          investigation_root_id: " inv-root ",
+          status: "",
+          created_at: null,
+          updated_at: null,
+          section_count: "2",
+        },
+        {
+          deliverable_id: " ",
+          title: "Invisible memo",
+          deliverable_kind: "general_essay",
+          investigation_root_id: null,
+          status: "draft",
+          created_at: null,
+          updated_at: null,
+          section_count: 1,
+        },
+      ],
+    });
+
+    mountAt("/write");
+    const piece = await screen.findByText("Valid memo");
+    expect(screen.getByText("2 sections")).toBeTruthy();
+    expect(screen.queryByText("Invisible memo")).toBeNull();
+    await userEvent.click(piece);
+    await waitFor(() => expect(getDeliverableMock).toHaveBeenCalledWith("dlv-valid"));
+  });
+
+  it("sanitizes open-piece detail before rendering sections", async () => {
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: " dlv-open ",
+      title: " ",
+      deliverable_kind: "not-a-kind",
+      investigation_root_id: " ",
+      status: "",
+      sections: [
+        {
+          section_id: " sec-1 ",
+          deliverable_id: " dlv-open ",
+          parent_section_id: " ",
+          section_index: "0",
+          title: " ",
+          prose_text: null,
+          prose_provenance: [],
+          block_count: "2",
+        },
+        {
+          section_id: "",
+          deliverable_id: "dlv-open",
+          parent_section_id: null,
+          section_index: 1,
+          title: "Invisible section",
+          prose_text: null,
+          prose_provenance: null,
+          block_count: 0,
+        },
+      ],
+    });
+
+    mountAt("/write/dlv-open");
+
+    expect(await screen.findByText("Untitled piece")).toBeTruthy();
+    expect(await screen.findByText("(untitled section)")).toBeTruthy();
+    expect(screen.queryByText("Invisible section")).toBeNull();
+    expect(getSectionBlocksMock).toHaveBeenCalledWith("sec-1");
   });
 
   it("does not emit brainstorm blocks from the no-piece sentinel section", async () => {
