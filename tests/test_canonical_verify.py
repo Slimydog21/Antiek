@@ -258,6 +258,14 @@ def test_canonical_verify_speak_publishing_physical_hermetic() -> None:
     assert "CANONICAL_VERIFY_OK: speak-publishing-physical" in proc.stdout
 
 
+def test_canonical_verify_unified_substrate_contract_lock_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("unified-substrate-contract-lock")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: unified-substrate-contract-lock" in proc.stdout
+
+
 def test_canonical_verify_deep_research_hermetic() -> None:
     if not PY.is_file():
         return

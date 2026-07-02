@@ -49,6 +49,11 @@ on:
       - 'substrate/research_bridge/ingest_file.py'
       - 'substrate/research_bridge/versioning.py'
       - 'substrate/contracts/speak_sprint_lock.py'
+      - 'substrate/contracts/unified_sprint_lock.py'
+      - 'substrate/contracts/dependency_map.py'
+      - 'substrate/contracts/conformance.py'
+      - 'substrate/contracts/inventory.md'
+      - 'tools/codegen/check_conformance.py'
       - 'substrate/seams/**'
       - 'substrate/speak/**'
       - 'substrate/speak/drw_gap_source.py'
@@ -70,6 +75,11 @@ on:
       - 'tests/test_servability_drift_guard.py'
       - 'tests/test_passage_research.py'
       - 'tests/test_contracts_speak_lock.py'
+      - 'tests/test_contracts_unified_lock.py'
+      - 'tests/test_contracts_dependency_map.py'
+      - 'tests/test_contracts_drw_lock.py'
+      - 'tests/test_contracts_conformance.py'
+      - 'tests/test_conformance_gate.py'
       - 'tests/test_speak_*.py'
       - 'tests/test_seam_platform_authored_gate.py'
       - 'tests/properties/test_speak_properties.py'
@@ -133,6 +143,11 @@ on:
       - 'substrate/research_bridge/ingest_file.py'
       - 'substrate/research_bridge/versioning.py'
       - 'substrate/contracts/speak_sprint_lock.py'
+      - 'substrate/contracts/unified_sprint_lock.py'
+      - 'substrate/contracts/dependency_map.py'
+      - 'substrate/contracts/conformance.py'
+      - 'substrate/contracts/inventory.md'
+      - 'tools/codegen/check_conformance.py'
       - 'substrate/seams/**'
       - 'substrate/speak/**'
       - 'substrate/speak/drw_gap_source.py'
@@ -154,6 +169,11 @@ on:
       - 'tests/test_servability_drift_guard.py'
       - 'tests/test_passage_research.py'
       - 'tests/test_contracts_speak_lock.py'
+      - 'tests/test_contracts_unified_lock.py'
+      - 'tests/test_contracts_dependency_map.py'
+      - 'tests/test_contracts_drw_lock.py'
+      - 'tests/test_contracts_conformance.py'
+      - 'tests/test_conformance_gate.py'
       - 'tests/test_speak_*.py'
       - 'tests/test_seam_platform_authored_gate.py'
       - 'tests/properties/test_speak_properties.py'
@@ -301,8 +321,11 @@ jobs:
       - name: Canonical verify — speak publishing physical
         run: ./scripts/canonical_verify.sh speak-publishing-physical
 
+      - name: Canonical verify — unified substrate contract lock
+        run: ./scripts/canonical_verify.sh unified-substrate-contract-lock
+
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md
 
-      - name: Canonical verify — deep-research (P-43..P-49)
+      - name: Canonical verify — deep-research (P-44..P-50)
         run: ./scripts/canonical_verify.sh deep-research
