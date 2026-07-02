@@ -55,6 +55,7 @@ from .gate_ledger import (
     parse_gate_ledger,
 )
 from .roadmap import (
+    DependencyBlocker,
     Roadmap,
     SpecRoster,
     SprintRow,
@@ -72,6 +73,7 @@ __all__ = [
     "load_gate_ledger",
     "parse_gate_ledger",
     # roadmap
+    "DependencyBlocker",
     "Roadmap",
     "SprintRow",
     "SprintStatus",

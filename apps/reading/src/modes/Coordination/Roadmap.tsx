@@ -40,6 +40,11 @@ export interface SubstrateLayerView {
   status: string;
 }
 
+export interface DependencyBlockerView {
+  node_id: string;
+  blocked_sprints: string[];
+}
+
 export interface RoadmapView {
   total_sprints: number;
   superseded_count: number;
@@ -48,10 +53,11 @@ export interface RoadmapView {
   critical_path: string[];
   rosters: RosterView[];
   unblocked_now: string[];
+  dependency_blockers: DependencyBlockerView[];
   substrate_layers: SubstrateLayerView[];
 }
 
-interface DependencyBlockerView {
+interface ResolvedDependencyBlocker {
   node_id: string;
   blocked_sprints: SprintView[];
 }
@@ -65,7 +71,7 @@ const sprintStatusColour = (s: string): "muted" | "sun" | "default" => {
 const formatSprintLabel = (s: SprintView): string =>
   `${s.spec_label || s.spec} · SPR-${String(s.sprint).padStart(2, "0")}`;
 
-function dependencyBlockers(sprints: SprintView[]): DependencyBlockerView[] {
+function deriveDependencyBlockers(sprints: SprintView[]): ResolvedDependencyBlocker[] {
   const byBlocker = new Map<string, SprintView[]>();
   for (const sprint of sprints) {
     if (sprint.unblocked) continue;
@@ -85,6 +91,45 @@ function dependencyBlockers(sprints: SprintView[]): DependencyBlockerView[] {
   );
 }
 
+function resolveDependencyBlockers(
+  rawBlockers: DependencyBlockerView[],
+  sprintById: Map<string, SprintView>,
+  allSprints: SprintView[],
+): ResolvedDependencyBlocker[] {
+  const derived = deriveDependencyBlockers(allSprints);
+  const resolved = rawBlockers.flatMap((blocker) => {
+    const seen = new Set<string>();
+    const blocked_sprints = blocker.blocked_sprints.flatMap((nodeId) => {
+      if (seen.has(nodeId)) return [];
+      seen.add(nodeId);
+      const sprint = sprintById.get(nodeId);
+      return sprint &&
+        !sprint.unblocked &&
+        sprint.blocked_on.includes(blocker.node_id)
+        ? [sprint]
+        : [];
+    });
+    return blocked_sprints.length > 0
+      ? [{ node_id: blocker.node_id, blocked_sprints }]
+      : [];
+  });
+  if (resolved.length === 0) return derived;
+
+  const sorted = resolved.sort(
+    (a, b) =>
+      b.blocked_sprints.length - a.blocked_sprints.length ||
+      a.node_id.localeCompare(b.node_id),
+  );
+  const serialize = (blocker: ResolvedDependencyBlocker): string =>
+    `${blocker.node_id}:${blocker.blocked_sprints
+      .map((s) => s.node_id)
+      .sort()
+      .join(",")}`;
+  const sortedSignature = sorted.map(serialize).join("|");
+  const derivedSignature = derived.map(serialize).join("|");
+  return sortedSignature === derivedSignature ? sorted : derived;
+}
+
 export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
   const allSprints = roadmap.rosters.flatMap((r) => r.sprints);
   const sprintById = new Map(
@@ -98,7 +143,11 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
     return sprint?.unblocked ? [sprint] : [];
   });
   const blockedCount = allSprints.filter((s) => !s.unblocked).length;
-  const blockers = dependencyBlockers(allSprints);
+  const blockers = resolveDependencyBlockers(
+    roadmap.dependency_blockers,
+    sprintById,
+    allSprints,
+  );
 
   return (
     <section className="space-y-5">
@@ -172,7 +221,7 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
 function DependencyBlockersSection({
   blockers,
 }: {
-  blockers: DependencyBlockerView[];
+  blockers: ResolvedDependencyBlocker[];
 }) {
   if (blockers.length === 0) return null;
   return (

@@ -4,7 +4,13 @@ import { apiFetch } from "../../lib/api";
 import { GateLedger } from "./GateLedger";
 import type { CoordProduct, GateImpactView, GateView } from "./GateLedger";
 import { Roadmap } from "./Roadmap";
-import type { RoadmapView, RosterView, SprintView, SubstrateLayerView } from "./Roadmap";
+import type {
+  DependencyBlockerView,
+  RoadmapView,
+  RosterView,
+  SprintView,
+  SubstrateLayerView,
+} from "./Roadmap";
 
 /**
  * Coordination mode — one operator surface for "what's blocked and why"
@@ -174,6 +180,16 @@ function safeSubstrateLayer(value: unknown): SubstrateLayerView | null {
   };
 }
 
+function safeDependencyBlocker(value: unknown): DependencyBlockerView | null {
+  const blocker = record(value);
+  const nodeId = nonEmptyString(blocker?.node_id);
+  if (!blocker || !nodeId) return null;
+  return {
+    node_id: nodeId,
+    blocked_sprints: stringList(blocker.blocked_sprints),
+  };
+}
+
 function safeRoadmapView(value: unknown): RoadmapView {
   const body = record(value);
   const rosters = Array.isArray(body?.rosters)
@@ -190,6 +206,12 @@ function safeRoadmapView(value: unknown): RoadmapView {
     critical_path: stringList(body?.critical_path),
     rosters,
     unblocked_now: stringList(body?.unblocked_now),
+    dependency_blockers: Array.isArray(body?.dependency_blockers)
+      ? body.dependency_blockers.flatMap((item) => {
+          const blocker = safeDependencyBlocker(item);
+          return blocker ? [blocker] : [];
+        })
+      : [],
     substrate_layers: Array.isArray(body?.substrate_layers)
       ? body.substrate_layers.flatMap((item) => {
           const layer = safeSubstrateLayer(item);

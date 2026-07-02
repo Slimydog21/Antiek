@@ -341,6 +341,43 @@ def test_unblocked_now_entries_are_real_unblocked_rows() -> None:
         assert sprint.blocked_on == ()
 
 
+def test_dependency_blockers_are_derived_and_sorted() -> None:
+    """The operator-facing blocker summary is derived from blocked rows and
+    sorted by fan-out, so the next dependency to unblock is explicit."""
+    roadmap = build_roadmap()
+    blockers = roadmap.dependency_blockers()
+    by_id = {b.node_id: b for b in blockers}
+
+    assert blockers, "roadmap should surface dependency blockers"
+    assert blockers == tuple(
+        sorted(blockers, key=lambda b: (-len(b.blocked_sprints), b.node_id))
+    )
+    assert {"drw:5", "drw:6"} <= set(by_id)
+    assert {s.node_id for s in by_id["drw:5"].blocked_sprints} == {
+        f"read:{i}" for i in range(1, 10)
+    }
+    for blocker in blockers:
+        seen: set[str] = set()
+        for sprint in blocker.blocked_sprints:
+            assert sprint.node_id not in seen
+            seen.add(sprint.node_id)
+            assert not sprint.unblocked
+            assert blocker.node_id in sprint.blocked_on
+
+
+def test_roadmap_response_serializes_dependency_blockers() -> None:
+    """The HTTP adapter exposes the substrate-owned blocker summary without
+    duplicating sprint rows into a second roadmap."""
+    from interfaces.research.api.coordination import RoadmapResponse
+
+    response = RoadmapResponse.from_roadmap(build_roadmap())
+    by_id = {b.node_id: b for b in response.dependency_blockers}
+
+    assert "drw:5" in by_id
+    assert by_id["drw:5"].blocked_sprints == [f"read:{i}" for i in range(1, 10)]
+    assert all(isinstance(node_id, str) for node_id in by_id["drw:5"].blocked_sprints)
+
+
 def test_roadmap_reads_rosters_from_fixture_via_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The roadmap reads roster filenames from disk (it authors nothing). Point
     it at a fixture and it reflects the fixture's files."""

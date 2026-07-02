@@ -101,6 +101,20 @@ describe("Coordination", () => {
             },
           ],
           unblocked_now: [" drw:1 ", " drw:1 ", " read:2 ", " missing:9 ", " "],
+          dependency_blockers: [
+            {
+              node_id: " drw:10 ",
+              blocked_sprints: [" read:2 ", " read:2 ", " missing:9 ", " "],
+            },
+            {
+              node_id: " missing:9 ",
+              blocked_sprints: [" read:2 "],
+            },
+            {
+              node_id: " ",
+              blocked_sprints: ["read:2"],
+            },
+          ],
           substrate_layers: [
             {
               name: " db lock ",
@@ -132,9 +146,12 @@ describe("Coordination", () => {
     expect(screen.getByText("Dependency-ready")).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Dependency state" })).toBeTruthy();
     expect(screen.getByText("dependency-ready")).toBeTruthy();
+    expect(screen.getByText("Dependency blockers")).toBeTruthy();
+    expect(screen.getByText("drw:10")).toBeTruthy();
+    expect(screen.getByText("blocks 1 sprint")).toBeTruthy();
+    expect(screen.queryByText("missing:9")).toBeNull();
     expect(screen.getAllByText("lock the spine").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("drw:1")).toHaveLength(2);
-    expect(screen.queryByText("missing:9")).toBeNull();
     expect(screen.getByText("db lock")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(
       /Skipped sprint|Skipped roster|Skipped layer/,
