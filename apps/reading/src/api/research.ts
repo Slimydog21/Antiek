@@ -232,6 +232,12 @@ function optionalNonNegativeDepth(value: unknown, field: string): number | undef
   return depth;
 }
 
+function requirePositiveRequestInteger(value: unknown, field: string): number {
+  const amount = positiveSafeInteger(value);
+  if (amount === null) throw new RangeError(`${field} must be a positive safe integer`);
+  return amount;
+}
+
 function safePlanApproval(value: unknown): PlanApproval {
   const approval = record(value);
   return {
@@ -458,7 +464,8 @@ export function getBudgetDefaults(): Promise<BudgetDefaults> {
  * goes through `startInvestigation` (the existing capped launch path), not
  * here. `limit` bounds the displayed count (rank + cap, never a flood). */
 export function getSuggestions(limit = 8): Promise<SuggestionsResponse> {
-  return get(`/research/suggestions?limit=${encodeURIComponent(String(limit))}`)
+  const resolvedLimit = requirePositiveRequestInteger(limit, "limit");
+  return get(`/research/suggestions?limit=${encodeURIComponent(String(resolvedLimit))}`)
     .then(safeSuggestionsResponse);
 }
 

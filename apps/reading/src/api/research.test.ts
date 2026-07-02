@@ -483,6 +483,7 @@ describe("research api - cascade plan boundary", () => {
         },
       ],
     });
+    expect(apiFetchMock.mock.calls[1][0]).toBe("/api/research/suggestions?limit=8");
 
     apiFetchMock.mockResolvedValueOnce(
       new Response(
@@ -504,5 +505,20 @@ describe("research api - cascade plan boundary", () => {
       },
       launchable: false,
     });
+  });
+
+  it("bounds suggestion requests with positive safe integer limits", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ count: 0, suggestions: [] }), { status: 200 }),
+    );
+
+    await expect(getSuggestions(3)).resolves.toEqual({ count: 0, suggestions: [] });
+    expect(apiFetchMock.mock.calls[0][0]).toBe("/api/research/suggestions?limit=3");
+
+    expect(() => getSuggestions(0)).toThrow(/limit/);
+    expect(() => getSuggestions(-1)).toThrow(/limit/);
+    expect(() => getSuggestions(1.5)).toThrow(/limit/);
+    expect(() => getSuggestions(Number.POSITIVE_INFINITY)).toThrow(/limit/);
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
   });
 });
