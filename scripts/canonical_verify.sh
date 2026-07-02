@@ -73,6 +73,8 @@ cmd_cascade() {
     -q --tb=no
   echo "== cascade: universal ingest regression =="
   "${PY}" -m pytest tests/test_universal_ingest.py -q --tb=no
+  echo "== cascade: glass-box monitor UI regression =="
+  (cd apps/reading && npm run test -- src/modes/DeepResearchWorkspace/DeepResearchWorkspace.test.tsx --reporter=dot)
   echo "== cascade: light create-plan route =="
   "${PY}" -m pytest tests/test_cascade_create_plan_light.py -q --tb=no
   echo "== cascade: decomposer call-site audit =="
