@@ -129,7 +129,13 @@ describe("api client emitted-event response boundary", () => {
 
     await expect(
       postTypedEvent({
-        investigation_id: "inv-1",
+        investigation_id: " inv-1 ",
+        document_id: " doc-1 ",
+        synthesis_id: " ",
+        phase: 0,
+        role: " user_agent ",
+        policy_id: " policy-1 ",
+        parent_event_id: " parent-1 ",
         payload: {
           action_type: "ai.action.applied",
           target_kind: "ui_layout",
@@ -145,6 +151,21 @@ describe("api client emitted-event response boundary", () => {
       event_id: "evt-applied",
       action_type: "ai.action.applied",
     });
+    const typedCall = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    expect(typedCall[0]).toBe("/events/typed");
+    expect(JSON.parse(typedCall[1].body as string)).toMatchObject({
+      investigation_id: "inv-1",
+      document_id: "doc-1",
+      phase: 0,
+      role: "user_agent",
+      policy_id: "policy-1",
+      parent_event_id: "parent-1",
+      payload: {
+        action_type: "ai.action.applied",
+        target_id: "panel-1",
+      },
+    });
+    expect(JSON.parse(typedCall[1].body as string)).not.toHaveProperty("synthesis_id");
 
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(
@@ -158,12 +179,18 @@ describe("api client emitted-event response boundary", () => {
 
     await expect(
       undoAiAction({
-        event_id: "evt-applied",
-        investigation_id: "inv-1",
+        event_id: " evt-applied ",
+        investigation_id: " inv-1 ",
       }),
     ).resolves.toEqual({
       event_id: "evt-undone",
       action_type: "ai.action.undone",
+    });
+    const undoCall = vi.mocked(fetch).mock.calls[1] as [string, RequestInit];
+    expect(undoCall[0]).toBe("/ai/undo");
+    expect(JSON.parse(undoCall[1].body as string)).toEqual({
+      event_id: "evt-applied",
+      investigation_id: "inv-1",
     });
   });
 
@@ -189,6 +216,54 @@ describe("api client emitted-event response boundary", () => {
         },
       }),
     ).rejects.toMatchObject({ status: 502 });
+  });
+
+  it("rejects malformed typed-event and undo request handles before network", async () => {
+    await expect(
+      postTypedEvent({
+        investigation_id: " ",
+        payload: {
+          action_type: "ai.action.applied",
+          target_kind: "ui_layout",
+          target_id: "panel-1",
+          operator_prompt: "open panel",
+          prev_state: {},
+          next_state: { open: true },
+          prev_state_hash: "hash",
+          summary: "opened panel",
+        },
+      }),
+    ).rejects.toThrow("investigation_id must be a non-empty string");
+    await expect(
+      postTypedEvent({
+        investigation_id: "inv-1",
+        phase: -1,
+        payload: {
+          action_type: "ai.action.applied",
+          target_kind: "ui_layout",
+          target_id: "panel-1",
+          operator_prompt: "open panel",
+          prev_state: {},
+          next_state: { open: true },
+          prev_state_hash: "hash",
+          summary: "opened panel",
+        },
+      }),
+    ).rejects.toThrow(/phase/);
+    await expect(
+      undoAiAction({
+        event_id: " ",
+        investigation_id: "inv-1",
+      }),
+    ).rejects.toThrow("event_id must be a non-empty string");
+    await expect(
+      undoAiAction({
+        event_id: "evt-1",
+        investigation_id: " ",
+      }),
+    ).rejects.toThrow("investigation_id must be a non-empty string");
+
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 
