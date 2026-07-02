@@ -320,9 +320,10 @@ def collect_investigation_lifecycle(events: list[Event]) -> dict[str, Any]:
         elif at == ActionType.INVESTIGATION_COMPLETED.value:
             if isinstance(e.payload, InvestigationCompletedPayload):
                 completed.append(e.payload)
-        elif at == ActionType.INVESTIGATION_FAILED.value:
-            if isinstance(e.payload, InvestigationFailedPayload):
-                failed.append(e.payload)
+        elif at == ActionType.INVESTIGATION_FAILED.value and isinstance(
+            e.payload, InvestigationFailedPayload
+        ):
+            failed.append(e.payload)
 
     avg_phases_verified = (
         round(
@@ -355,7 +356,7 @@ def collect_constraint_distribution(events: list[Event]) -> dict[str, Any]:
         e.payload for e in events
         if isinstance(e.payload, SynthesizeDeliveredPayload)
     ]
-    status_counts: Counter = Counter()
+    status_counts: Counter[str] = Counter()
     iter_by_status: dict[str, list[int]] = defaultdict(list)
     for d in deliveries:
         status_counts[d.constraint_loop_status] += 1
@@ -397,8 +398,8 @@ def collect_phase_8_signal(
         e.payload for e in events
         if isinstance(e.payload, AutoPatchAppliedPayload)
     ]
-    status_counts: Counter = Counter()
-    domain_counts: Counter = Counter()
+    status_counts: Counter[str] = Counter()
+    domain_counts: Counter[str] = Counter()
     for p in patches:
         status_counts[p.status] += 1
         for d in p.patched:
@@ -429,9 +430,9 @@ def collect_dispatch_cost(events: list[Event]) -> dict[str, Any]:
         if isinstance(e.payload, DispatchCallPayload)
     ]
     cost_by_tier: dict[str, float] = defaultdict(float)
-    count_by_tier: Counter = Counter()
+    count_by_tier: Counter[str] = Counter()
     cost_by_model: dict[str, float] = defaultdict(float)
-    count_by_model: Counter = Counter()
+    count_by_model: Counter[str] = Counter()
     total_cost = 0.0
     for c in calls:
         cost_by_tier[c.tier] += c.cost_usd
