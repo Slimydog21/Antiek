@@ -16,10 +16,41 @@ beforeEach(() => {
 describe("corpusSearch api boundary", () => {
   it("does not burn a request for empty queries", async () => {
     await expect(corpusSearch("   ")).resolves.toEqual({
-      query: "   ",
+      query: "",
       hits: [],
       count: 0,
     });
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("trims query, document scope, and limit before sending", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ query: "  quantum mechanics  ", hits: [], count: 0 }), {
+        status: 200,
+      }),
+    );
+
+    await expect(
+      corpusSearch("  quantum mechanics  ", { limit: 7, documentId: " doc with space " }),
+    ).resolves.toEqual({
+      query: "quantum mechanics",
+      hits: [],
+      count: 0,
+    });
+
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+    expect(apiFetchMock.mock.calls[0][0]).toBe(
+      "/api/corpus/search?q=quantum+mechanics&limit=7&document_id=doc+with+space",
+    );
+  });
+
+  it("rejects malformed search request bounds and document scope before sending", async () => {
+    await expect(corpusSearch("query", { limit: 0 })).rejects.toThrow(/limit/);
+    await expect(corpusSearch("query", { limit: Number.POSITIVE_INFINITY })).rejects.toThrow(
+      /limit/,
+    );
+    await expect(corpusSearch("query", { documentId: " " })).rejects.toThrow(/documentId/);
 
     expect(apiFetchMock).not.toHaveBeenCalled();
   });
@@ -64,7 +95,7 @@ describe("corpusSearch api boundary", () => {
     );
 
     await expect(corpusSearch("quantum mechanics")).resolves.toEqual({
-      query: "  preserved backend query  ",
+      query: "preserved backend query",
       hits: [
         {
           chunk_id: "chunk-1",

@@ -1053,7 +1053,7 @@ describe("books api — curate boundary", () => {
       ),
     );
 
-    const result = await curateBooks("stoicism & fate", 7);
+    const result = await curateBooks(" stoicism & fate ", 7);
 
     expect(apiFetchMock).toHaveBeenCalledTimes(1);
     expect(apiFetchMock.mock.calls[0][0]).toBe(
@@ -1104,6 +1104,14 @@ describe("books api — curate boundary", () => {
         { document_id: "doc-2", title: null, author: null, score: 0.4 },
       ],
     });
+  });
+
+  it("rejects malformed curation requests before sending", async () => {
+    await expect(curateBooks(" ")).rejects.toThrow(/prompt/);
+    await expect(curateBooks("stoicism", 0)).rejects.toThrow(/limit/);
+    await expect(curateBooks("stoicism", Number.POSITIVE_INFINITY)).rejects.toThrow(/limit/);
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
   it("surfaces curation unavailability and unexpected failures", async () => {
@@ -1215,12 +1223,12 @@ describe("books api — meta-reading boundary", () => {
 
   it("preserves explicit rollback scope, tier, and document picks", async () => {
     await generateMetaReading({
-      prompt: "owned corpus with explicit picks",
+      prompt: " owned corpus with explicit picks ",
       length_unit: "minutes",
       length_amount: 12,
       research_tier: "fast",
       corpus_scope: "soft",
-      document_ids: ["doc-a", "doc-b"],
+      document_ids: [" doc-a ", " ", "doc-b"],
     });
 
     expect(apiFetchMock).toHaveBeenCalledTimes(1);
@@ -1232,6 +1240,32 @@ describe("books api — meta-reading boundary", () => {
       corpus_scope: "soft",
       document_ids: ["doc-a", "doc-b"],
     });
+  });
+
+  it("rejects malformed meta-reading requests before sending", async () => {
+    await expect(
+      generateMetaReading({
+        prompt: " ",
+        length_unit: "pages",
+        length_amount: 3,
+      }),
+    ).rejects.toThrow(/prompt/);
+    await expect(
+      generateMetaReading({
+        prompt: "valid",
+        length_unit: "pages",
+        length_amount: 0,
+      }),
+    ).rejects.toThrow(/length_amount/);
+    await expect(
+      generateMetaReading({
+        prompt: "valid",
+        length_unit: "pages",
+        length_amount: Number.POSITIVE_INFINITY,
+      }),
+    ).rejects.toThrow(/length_amount/);
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
   it("surfaces the backend's stated length-bound error", async () => {

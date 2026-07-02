@@ -48,6 +48,29 @@ function nonNegativeSafeInteger(value: unknown): number | null {
     : null;
 }
 
+function positiveSafeInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : null;
+}
+
+function requireNonEmptyRequestString(value: unknown, field: string): string {
+  const text = nonEmptyString(value);
+  if (!text) {
+    throw new TypeError(`${field} must be a non-empty string`);
+  }
+  return text;
+}
+
+function optionalPositiveRequestInteger(value: unknown, field: string): number | undefined {
+  if (value == null) return undefined;
+  const amount = positiveSafeInteger(value);
+  if (amount === null) {
+    throw new RangeError(`${field} must be a positive safe integer`);
+  }
+  return amount;
+}
+
 function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -86,7 +109,7 @@ function safeCorpusSearchResponse(value: unknown, fallbackQuery: string): Corpus
       })
     : [];
   return {
-    query: typeof body.query === "string" ? body.query : fallbackQuery,
+    query: nonEmptyString(body.query) ?? fallbackQuery,
     hits,
     count: nonNegativeSafeInteger(body.count) ?? hits.length,
   };
@@ -100,12 +123,16 @@ export async function corpusSearch(
   query: string,
   opts?: { limit?: number; documentId?: string },
 ): Promise<CorpusSearchResponse> {
-  if (!query.trim()) return { query, hits: [], count: 0 };
-  const params = new URLSearchParams({ q: query });
-  if (opts?.limit !== undefined) params.set("limit", String(opts.limit));
-  if (opts?.documentId !== undefined) params.set("document_id", opts.documentId);
+  const resolvedQuery = nonEmptyString(query);
+  if (!resolvedQuery) return { query: "", hits: [], count: 0 };
+  const params = new URLSearchParams({ q: resolvedQuery });
+  const limit = optionalPositiveRequestInteger(opts?.limit, "limit");
+  if (limit !== undefined) params.set("limit", String(limit));
+  if (opts?.documentId !== undefined) {
+    params.set("document_id", requireNonEmptyRequestString(opts.documentId, "documentId"));
+  }
   const resp = await apiFetch(`${API_BASE}/corpus/search?${params.toString()}`);
   if (resp.status === 503) throw new Error("Search is temporarily unavailable.");
   if (!resp.ok) throw new Error(`GET /corpus/search: HTTP ${resp.status}`);
-  return safeCorpusSearchResponse(await resp.json(), query);
+  return safeCorpusSearchResponse(await resp.json(), resolvedQuery);
 }
