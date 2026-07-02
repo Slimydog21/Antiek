@@ -57,6 +57,17 @@ function nonEmptyString(value: unknown): string | null {
     : null;
 }
 
+function optionalFiniteNonNegativeNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
+function validDateIso(value: Date): string | null {
+  const ms = value.getTime();
+  return Number.isFinite(ms) ? value.toISOString() : null;
+}
+
 function parseTimeMs(value: string): number | null {
   const ms = Date.parse(value);
   return Number.isFinite(ms) ? ms : null;
@@ -154,20 +165,28 @@ export async function emitClaimReviewed(args: {
   intervalDays?: number | null;
   dueLabel?: string | null;
 }): Promise<boolean> {
+  const investigationId = nonEmptyString(args.investigationId);
+  const synthesisId = nonEmptyString(args.synthesisId);
+  const claimId = nonEmptyString(args.claimId);
+  const reviewedAt = validDateIso(args.reviewedAt);
+  const nextDueAt = validDateIso(args.nextDueAt);
+  if (!investigationId || !synthesisId || !claimId || !reviewedAt || !nextDueAt) {
+    return false;
+  }
   const payload: ClaimReviewedPayload = {
     action_type: "claim.reviewed",
-    claim_id: args.claimId,
-    reviewed_at: args.reviewedAt.toISOString(),
-    next_due_at: args.nextDueAt.toISOString(),
-    rating: args.rating ?? null,
-    ease: args.ease ?? null,
-    interval_days: args.intervalDays ?? null,
-    due_label: args.dueLabel ?? null,
+    claim_id: claimId,
+    reviewed_at: reviewedAt,
+    next_due_at: nextDueAt,
+    rating: nonEmptyString(args.rating) ?? null,
+    ease: optionalFiniteNonNegativeNumber(args.ease),
+    interval_days: optionalFiniteNonNegativeNumber(args.intervalDays),
+    due_label: nonEmptyString(args.dueLabel) ?? null,
   };
   try {
     await postTypedEvent({
-      investigation_id: args.investigationId,
-      synthesis_id: args.synthesisId,
+      investigation_id: investigationId,
+      synthesis_id: synthesisId,
       payload,
     });
     return true;
