@@ -74,7 +74,10 @@ def test_routes_registered_and_health_unaffected():
     assert h.status_code == 200
     assert h.json()["status"] == "ok"
     # The Krea routes exist (no 404 for the path itself).
-    paths = {r.path for r in app.routes}  # type: ignore[attr-defined]
+    # Starlette ≥1.3 adds `_IncludedRouter` wrapper entries to ``app.routes``
+    # (alongside the flattened path-bearing routes) that carry no ``.path``;
+    # guard so the assertion checks real routes, not the wrappers.
+    paths = {r.path for r in app.routes if hasattr(r, "path")}  # type: ignore[attr-defined]
     assert "/krea/generate" in paths
     assert "/krea/jobs/{job_id}" in paths
     assert "/krea/scene" in paths
