@@ -22,6 +22,7 @@
 #   write-draft-generation-style — Write SPR-06 creative_writer + style gate
 #   write-trace-to-source — Write SPR-07 provenance trace + gated no-leak
 #   write-pre-outline-freeform — Write SPR-08 context window promote/generate
+#   write-style-conditioning — Write SPR-09 prompt-level style conditioning
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -45,7 +46,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -285,6 +286,16 @@ cmd_write_pre_outline_freeform() {
   echo "CANONICAL_VERIFY_OK: write-pre-outline-freeform"
 }
 
+cmd_write_style_conditioning() {
+  echo "== write-style-conditioning: prompt-level conditioning + no-training guard =="
+  "${PY}" -m pytest \
+    tests/test_style_conditioning.py \
+    tests/test_draft_generation.py \
+    tests/test_contracts_write_lock.py \
+    -q --tb=no
+  echo "CANONICAL_VERIFY_OK: write-style-conditioning"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -370,6 +381,7 @@ main() {
     write-draft-generation-style) cmd_write_draft_generation_style ;;
     write-trace-to-source) cmd_write_trace_to_source ;;
     write-pre-outline-freeform) cmd_write_pre_outline_freeform ;;
+    write-style-conditioning) cmd_write_style_conditioning ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;

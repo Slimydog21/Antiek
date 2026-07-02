@@ -176,3 +176,11 @@ def test_canonical_verify_write_pre_outline_freeform_hermetic() -> None:
     proc = _run("write-pre-outline-freeform")
     assert proc.returncode == 0, proc.stderr or proc.stdout
     assert "CANONICAL_VERIFY_OK: write-pre-outline-freeform" in proc.stdout
+
+
+def test_canonical_verify_write_style_conditioning_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("write-style-conditioning")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: write-style-conditioning" in proc.stdout
