@@ -80,6 +80,39 @@ vi.mock("../modes/ResearchWorkstation/MyResearch", () => ({
   default: () => <div data-testid="my-research-log">log</div>,
 }));
 
+vi.mock("../modes/ResearchWorkstation/VoiceChaseButton", () => ({
+  default: ({ onTranscript }: { onTranscript: (transcript: string) => void }) => (
+    <button
+      type="button"
+      onClick={() => onTranscript("spoken research question")}
+    >
+      Say it instead
+    </button>
+  ),
+}));
+
+vi.mock("../modes/ResearchWorkstation/CascadeProposal", () => ({
+  default: ({
+    problem,
+    onLaunched,
+    onFallBackToAsk,
+  }: {
+    problem: string;
+    onLaunched: (sessionId: string) => void;
+    onFallBackToAsk: () => void;
+  }) => (
+    <section data-testid="mock-cascade-proposal">
+      <p>Planning: {problem}</p>
+      <button type="button" onClick={() => onLaunched("cascade-session-1")}>
+        Launch cascade
+      </button>
+      <button type="button" onClick={onFallBackToAsk}>
+        Ask one question instead
+      </button>
+    </section>
+  ),
+}));
+
 const hit = (over: Partial<CorpusSearchHit> = {}): CorpusSearchHit => ({
   chunk_id: "c1",
   document_id: "doc-1",
@@ -302,6 +335,93 @@ describe("UnifiedSearch — M2 Enter escalates (cassette)", () => {
     expect(screen.getByTestId("unified-search-research-live")).toBeTruthy();
     expect(document.body.textContent).toContain("$0.0000");
     expect(document.body.textContent).not.toMatch(/NaN|Infinity|\$-/);
+  });
+});
+
+describe("UnifiedSearch — re-homed research affordances", () => {
+  it("voice capture fills the same research query instead of opening another composer", () => {
+    renderSearch("research");
+
+    fireEvent.click(screen.getByRole("button", { name: "Say it instead" }));
+
+    expect((screen.getByLabelText("Unified search") as HTMLInputElement).value).toBe(
+      "spoken research question",
+    );
+    expect(screen.queryByLabelText("Research question")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Ask" })).toBeNull();
+  });
+
+  it("plans a cascade from the same query and lands on the deep-research monitor", () => {
+    renderSearch("research");
+
+    fireEvent.change(screen.getByLabelText("Unified search"), {
+      target: { value: "map the disagreements across these sources" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Plan sub-questions" }));
+
+    expect(screen.getByTestId("unified-search-cascade-planner")).toBeTruthy();
+    expect(screen.getByText(/Planning: map the disagreements/i)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Launch cascade" }));
+
+    expect(navigateMock).toHaveBeenCalledWith("/deep-research/cascade-session-1");
+  });
+
+  it("backs out of cascade planning to the one-shot research path without clearing the query", () => {
+    renderSearch("research");
+
+    fireEvent.change(screen.getByLabelText("Unified search"), {
+      target: { value: "one focused question" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Plan sub-questions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ask one question instead" }));
+
+    expect(screen.queryByTestId("unified-search-cascade-planner")).toBeNull();
+    expect((screen.getByLabelText("Unified search") as HTMLInputElement).value).toBe(
+      "one focused question",
+    );
+  });
+
+  it("closes cascade planning when the unified query changes so a stale plan cannot launch", () => {
+    renderSearch("research");
+    const input = screen.getByLabelText("Unified search");
+
+    fireEvent.change(input, {
+      target: { value: "map the disagreements across these sources" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Plan sub-questions" }));
+    expect(screen.getByText(/Planning: map the disagreements/i)).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: "new research question" } });
+
+    expect(screen.queryByTestId("unified-search-cascade-planner")).toBeNull();
+    expect(screen.queryByText(/Planning: map the disagreements/i)).toBeNull();
+  });
+
+  it("does not start one-shot research while the cascade planner is open", () => {
+    submitMock.mockResolvedValue("inv-one-shot");
+    renderSearch("research");
+    const input = screen.getByLabelText("Unified search");
+
+    fireEvent.change(input, {
+      target: { value: "map the disagreements across these sources" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Plan sub-questions" }));
+
+    expect(
+      (screen.getByRole("button", { name: "Research this" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(submitMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps voice and cascade affordances off the library search variant", () => {
+    renderSearch("library");
+
+    expect(screen.queryByRole("button", { name: "Say it instead" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Plan sub-questions" })).toBeNull();
   });
 });
 

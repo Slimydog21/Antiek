@@ -13,6 +13,8 @@ import AIActionFailure from "../shared/AIActionFailure";
 import { CelebrateBurst, useCelebrate } from "../shared/delight";
 import GlassSurface from "../shell/GlassSurface";
 import MyResearch from "../modes/ResearchWorkstation/MyResearch";
+import VoiceChaseButton from "../modes/ResearchWorkstation/VoiceChaseButton";
+import CascadeProposal from "../modes/ResearchWorkstation/CascadeProposal";
 
 /**
  * UnifiedSearch — one agentic search box (antiek-reader SPR-08 M1–M5).
@@ -131,6 +133,7 @@ export default function UnifiedSearch({
   const [signal, setSignal] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [tier, setTier] = useState<ResearchTier>(DEFAULT_TIER);
+  const [planningCascade, setPlanningCascade] = useState(false);
   const [needsKeyDismissed, setNeedsKeyDismissed] = useState(false);
   const [lastSearchLatencyMs, setLastSearchLatencyMs] = useState<number | null>(
     null,
@@ -210,6 +213,7 @@ export default function UnifiedSearch({
   const onEscalate = useCallback(async () => {
     const q = query.trim();
     if (q.length < 3) return;
+    if (planningCascade) return;
 
     // Wait for the activation probe before escalating — never POST into the void.
     if (providerKeys.status === "loading") return;
@@ -220,9 +224,10 @@ export default function UnifiedSearch({
     }
 
     setResearchHits([]);
+    setPlanningCascade(false);
     const id = await start.submit({ question: q, researchTier: tier });
     if (id) setQuery(q);
-  }, [query, providerKeys.status, start, tier]);
+  }, [query, planningCascade, providerKeys.status, start, tier]);
 
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -241,6 +246,7 @@ export default function UnifiedSearch({
           setSearchError("That file has no readable text to search by.");
           return;
         }
+        setPlanningCascade(false);
         setQuery("");
         await runLocalSearch(text, `books like "${file.name}"`);
       } catch {
@@ -318,6 +324,12 @@ export default function UnifiedSearch({
     variant === "research"
       ? "Search your library — drop a file, or press Enter to research the web"
       : "Search your books — or drop a file to find books like it";
+  const canPlanCascade =
+    variant === "research" &&
+    query.trim().length >= 3 &&
+    !start.busy &&
+    !Boolean(start.startedId && !start.failed);
+  const showingCascadePlanner = canPlanCascade && planningCascade;
 
   const searchPanel = (
     <section
@@ -349,6 +361,7 @@ export default function UnifiedSearch({
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
+            setPlanningCascade(false);
             setNeedsKeyDismissed(false);
           }}
           onKeyDown={onKeyDown}
@@ -389,6 +402,7 @@ export default function UnifiedSearch({
           disabled={
             start.busy ||
             query.trim().length < 3 ||
+            planningCascade ||
             Boolean(start.startedId && !start.failed) ||
             escalateBlocked
           }
@@ -399,37 +413,58 @@ export default function UnifiedSearch({
       </div>
 
       {variant === "research" && (
-        <div
-          className="flex items-center gap-2"
-          role="radiogroup"
-          aria-label="Research depth"
-        >
-          <span className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
-            Depth
-          </span>
-          <div className="inline-flex rounded-hog border border-rule dark:border-charcoal-1 overflow-hidden">
-            {RESEARCH_TIER_OPTIONS.map((opt) => {
-              const active = tier === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  onClick={() => setTier(opt.value)}
-                  disabled={start.busy}
-                  title={opt.hint}
-                  className={
-                    "px-3 py-1 text-[12px] font-mono transition-colors disabled:opacity-50 " +
-                    (active
-                      ? "bg-sun text-ink"
-                      : "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright hover:bg-sun/10")
-                  }
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div
+            className="flex items-center gap-2"
+            role="radiogroup"
+            aria-label="Research depth"
+          >
+            <span className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+              Depth
+            </span>
+            <div className="inline-flex rounded-hog border border-rule dark:border-charcoal-1 overflow-hidden">
+              {RESEARCH_TIER_OPTIONS.map((opt) => {
+                const active = tier === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setTier(opt.value)}
+                    disabled={start.busy}
+                    title={opt.hint}
+                    className={
+                      "px-3 py-1 text-[12px] font-mono transition-colors disabled:opacity-50 " +
+                      (active
+                        ? "bg-sun text-ink"
+                        : "bg-ice-0 dark:bg-charcoal-2 text-ink dark:text-bright hover:bg-sun/10")
+                    }
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <VoiceChaseButton
+              disabled={start.busy || Boolean(start.startedId && !start.failed)}
+              onTranscript={(transcript) => {
+                setQuery(transcript);
+                setPlanningCascade(false);
+                setNeedsKeyDismissed(false);
+              }}
+            />
+            <LemonButton
+              type="button"
+              size="sm"
+              variant={planningCascade ? "primary" : "tertiary"}
+              disabled={!canPlanCascade}
+              onClick={() => setPlanningCascade(true)}
+            >
+              Plan sub-questions
+            </LemonButton>
           </div>
         </div>
       )}
@@ -562,6 +597,19 @@ export default function UnifiedSearch({
         </ul>
       )}
 
+      {showingCascadePlanner && (
+        <div
+          className="mt-3 border-t border-rule dark:border-charcoal-1 pt-3"
+          data-testid="unified-search-cascade-planner"
+        >
+          <CascadeProposal
+            problem={query.trim()}
+            onLaunched={(sessionId) => navigate(`/deep-research/${sessionId}`)}
+            onFallBackToAsk={() => setPlanningCascade(false)}
+          />
+        </div>
+      )}
+
       {start.startedId && !start.failed && (
         <div
           className="mt-3 text-center"
@@ -655,7 +703,10 @@ export default function UnifiedSearch({
                 <button
                   key={prompt}
                   type="button"
-                  onClick={() => setQuery(prompt)}
+                  onClick={() => {
+                    setQuery(prompt);
+                    setPlanningCascade(false);
+                  }}
                   className="w-full text-left text-[13px] font-serif text-ink dark:text-bright px-3 py-2 rounded-hog border-edge border-sun bg-ice-0 dark:bg-charcoal-2"
                 >
                   {prompt}
