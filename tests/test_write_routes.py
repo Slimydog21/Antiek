@@ -6,17 +6,19 @@ Exercises the router end-to-end via TestClient against a temp DB:
   • folders (views over nodes) + search — SPR-03
   • brainstorm → user-originated blocks — SPR-05
   • context promote — SPR-08
-  • generation: the no-blocks→gap path (no model needed) — SPR-06
+  • generation: no-blocks→gap, hermetic creative_writer dispatch,
+    paragraph-scoped repair, and connected-piece event routing — SPR-06/09
 
-The live generation path (a real model call) needs creative_writer wired
-into the dispatch config + credentials; that path returns 503 here rather
-than fabricating prose, and is not asserted.
+The route is wired through creative_writer. Local tests monkeypatch dispatch
+for hermetic generation proof; real provider credentials/output quality remain
+the matrix's operator-side live-provider proof, never faked green here.
 """
 
 from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 import sys
 
 import pytest
@@ -36,6 +38,26 @@ from substrate.graph.ops import (
     insert_node,
     insert_section,
 )
+
+
+def test_write_route_docs_name_wired_generation_path() -> None:
+    doc = __doc__ or ""
+    assert "hermetic creative_writer dispatch" in doc
+    assert "paragraph-scoped repair" in doc
+    assert "connected-piece event routing" in doc
+    assert "is not asserted" not in doc
+    assert "needs creative_writer wired" not in doc
+
+
+def test_frontend_generate_section_comment_names_wired_route() -> None:
+    src = (Path(_REPO) / "apps/reading/src/modes/Write/writeApi.ts").read_text()
+    marker = "/** Generate a section's prose from its attached blocks"
+    start = src.index(marker)
+    end = src.index("export async function generateSection", start)
+    comment = src[start:end]
+    assert "wired through creative_writer" in comment
+    assert "clear 503 rather than fabricated prose" in comment
+    assert "until creative_writer is wired" not in comment
 
 
 @pytest.fixture(autouse=True)
