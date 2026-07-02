@@ -61,6 +61,15 @@ describe("SubActionList — data-driven from MODE_TAXONOMY (M1)", () => {
     }
   });
 
+  it("keeps shared acquisition tools out of the Read product sub-actions", () => {
+    renderList({ workflow: "read" });
+
+    expect(document.querySelector('[data-subaction-id="Library"]')).toBeTruthy();
+    expect(document.querySelector('[data-subaction-id="Notebook"]')).toBeTruthy();
+    expect(document.querySelector('[data-subaction-id="DocumentsIndex"]')).toBeNull();
+    expect(document.querySelector('[data-subaction-id="Sources"]')).toBeNull();
+  });
+
   it("a built bare-route row navigates and closes the window", () => {
     // Seed a window so close() has something to remove (its absence is harmless,
     // but this mirrors the real product-activation flow).

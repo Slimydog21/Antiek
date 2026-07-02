@@ -229,9 +229,9 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
   },
 
   // ── READ ──────────────────────────────────────────────────────────
-  // Document-wrestling, the library/document index, sources, and the
-  // notebook surface are all "bring sources into the substrate and think
-  // about them" — the Read workflow.
+  // The Read workflow owns reading surfaces: bring-your-own PDF wrestling,
+  // notebooks, the Library shelf, and the one Reader. Raw acquisition and
+  // source-management tools are split below into the shared/More bucket.
   {
     id: "WrestleApp",
     workflow: "read",

@@ -28,7 +28,8 @@ import {
  *   Wrestle + Brainstorm → Research/Read (per taxonomy)
  *   Create               → Write
  *   Interview            → Speak
- *   Notebooks/Documents/Sources → the content tree (off the rail)
+ *   Notebooks/Meta-docs → the Read content tree
+ *   Documents/Sources    → More (shared acquisition/governance)
  *
  *   ┌────────┐
  *   │  ⌂     │  Werner mark

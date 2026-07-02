@@ -74,7 +74,7 @@ export const RailWithResearchTree: Story = {
   ),
 };
 
-/** Left rail + Read tree — the workflow nouns re-scope (library/docs/notebooks). */
+/** Left rail + Read tree — the workflow nouns re-scope (Library/Meta-docs/Notebooks). */
 export const RailWithReadTree: Story = {
   render: () => (
     <div className="h-screen flex bg-ice-2 dark:bg-space-2">
