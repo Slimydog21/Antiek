@@ -21,6 +21,7 @@
 #   write-brainstorm-interview — Write SPR-05 brainstorm drivers + section gate
 #   write-draft-generation-style — Write SPR-06 creative_writer + style gate
 #   write-trace-to-source — Write SPR-07 provenance trace + gated no-leak
+#   write-pre-outline-freeform — Write SPR-08 context window promote/generate
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -44,7 +45,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -267,6 +268,23 @@ cmd_write_trace_to_source() {
   echo "CANONICAL_VERIFY_OK: write-trace-to-source"
 }
 
+cmd_write_pre_outline_freeform() {
+  echo "== write-pre-outline-freeform: context promotion + provenance =="
+  "${PY}" -m pytest \
+    tests/test_promote_context.py \
+    tests/test_write_routes.py \
+    tests/test_contracts_write_lock.py \
+    -q --tb=no
+  echo "== write-pre-outline-freeform: context window UI + no-fabrication gate =="
+  (cd apps/reading && npm run test -- \
+    src/modes/Write/ContextWindow/contextWindow.test.ts \
+    src/modes/Write/ContextWindow/ContextWindow.test.tsx \
+    src/modes/Write/writeApi.test.ts \
+    src/modes/Write/WriteHome.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: write-pre-outline-freeform"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -351,6 +369,7 @@ main() {
     write-brainstorm-interview) cmd_write_brainstorm_interview ;;
     write-draft-generation-style) cmd_write_draft_generation_style ;;
     write-trace-to-source) cmd_write_trace_to_source ;;
+    write-pre-outline-freeform) cmd_write_pre_outline_freeform ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;

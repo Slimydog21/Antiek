@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to WRITE_SPRINTS. Status changes are deliberate roadmap
 # events, not prose-only handoffs.
-WRITE_LOCK_VERSION: int = 7
+WRITE_LOCK_VERSION: int = 8
 
 
 @dataclass(frozen=True)
@@ -98,7 +98,17 @@ WRITE_SPRINTS: dict[int, WriteDeliverable] = {
         # are covered by write-trace-to-source.
         status="live",
     ),
-    8: WriteDeliverable(8, "pre-outline-freeform", "Pre-outline freeform"),
+    8: WriteDeliverable(
+        8,
+        "pre-outline-freeform",
+        "Pre-outline freeform",
+        # Live: loose context-window blocks promote into the structured
+        # outline, provenance is preserved, existing piece/section targets are
+        # supported, objective-without-blocks refuses fabrication, and the UI
+        # reuses promote→generate rather than a parallel draft path. Covered by
+        # write-pre-outline-freeform.
+        status="live",
+    ),
     9: WriteDeliverable(9, "style-conditioning", "Style conditioning"),
 }
 

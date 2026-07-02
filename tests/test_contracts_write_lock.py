@@ -55,8 +55,13 @@ def test_write_sprint_7_trace_to_source_is_live() -> None:
     assert lock.resolve_write_sprint(7).status == "live"
 
 
+def test_write_sprint_8_pre_outline_freeform_is_live() -> None:
+    assert lock.resolve_write_sprint(8).slug == "pre-outline-freeform"
+    assert lock.resolve_write_sprint(8).status == "live"
+
+
 def test_remaining_write_sprints_stay_planned_until_promoted() -> None:
-    assert {lock.resolve_write_sprint(n).status for n in range(8, 10)} == {"planned"}
+    assert {lock.resolve_write_sprint(n).status for n in range(9, 10)} == {"planned"}
 
 
 def test_roadmap_consumes_write_sprint_status_and_focus_advances() -> None:
@@ -70,10 +75,11 @@ def test_roadmap_consumes_write_sprint_status_and_focus_advances() -> None:
     assert by_id["write:5"].status.value == "live"
     assert by_id["write:6"].status.value == "live"
     assert by_id["write:7"].status.value == "live"
-    assert by_id["write:8"].status.value == "planned"
+    assert by_id["write:8"].status.value == "live"
+    assert by_id["write:9"].status.value == "planned"
     assert roadmap.execution_focus() is not None
-    assert roadmap.execution_focus().node_id == "write:8"
+    assert roadmap.execution_focus().node_id == "write:9"
 
 
 def test_write_lock_version_present() -> None:
-    assert isinstance(lock.WRITE_LOCK_VERSION, int) and lock.WRITE_LOCK_VERSION >= 7
+    assert isinstance(lock.WRITE_LOCK_VERSION, int) and lock.WRITE_LOCK_VERSION >= 8
