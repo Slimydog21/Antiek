@@ -34,6 +34,7 @@
 #   speak-publishing-physical — Speak SPR-09 publish + physical quote
 #   unified-substrate-contract-lock — Unified SPR-01 contracts + dependency lock
 #   unified-remote-exec-fanout — Unified SPR-02 remote runner + §16 fanout
+#   unified-seams-and-collisions — Unified SPR-03 typed seams + collision guards
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -57,7 +58,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|speak-economics-matrix|speak-biography-authoring|speak-publishing-physical|unified-substrate-contract-lock|unified-remote-exec-fanout|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|speak-economics-matrix|speak-biography-authoring|speak-publishing-physical|unified-substrate-contract-lock|unified-remote-exec-fanout|unified-seams-and-collisions|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -465,6 +466,21 @@ cmd_unified_remote_exec_fanout() {
   echo "CANONICAL_VERIFY_OK: unified-remote-exec-fanout"
 }
 
+cmd_unified_seams_and_collisions() {
+  echo "== unified-seams-and-collisions: seam contracts + collision guards =="
+  "${PY}" -m pytest \
+    tests/test_seam_conformance.py \
+    tests/test_seam_no_copy.py \
+    tests/test_seam_voice_single_owner.py \
+    tests/test_seam_single_escrow_writer.py \
+    tests/test_seam_platform_authored_gate.py \
+    tests/test_integration_invariants.py \
+    tests/e2e/test_flywheel.py \
+    tests/test_contracts_unified_lock.py \
+    -q --tb=no
+  echo "CANONICAL_VERIFY_OK: unified-seams-and-collisions"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -562,6 +578,7 @@ main() {
     speak-publishing-physical) cmd_speak_publishing_physical ;;
     unified-substrate-contract-lock) cmd_unified_substrate_contract_lock ;;
     unified-remote-exec-fanout) cmd_unified_remote_exec_fanout ;;
+    unified-seams-and-collisions) cmd_unified_seams_and_collisions ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;

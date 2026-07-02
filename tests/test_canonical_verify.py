@@ -272,3 +272,11 @@ def test_canonical_verify_unified_remote_exec_fanout_hermetic() -> None:
     proc = _run("unified-remote-exec-fanout")
     assert proc.returncode == 0, proc.stderr or proc.stdout
     assert "CANONICAL_VERIFY_OK: unified-remote-exec-fanout" in proc.stdout
+
+
+def test_canonical_verify_unified_seams_and_collisions_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("unified-seams-and-collisions")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: unified-seams-and-collisions" in proc.stdout
