@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import { usePinned } from "../components/navigation/pinnedStore";
 import { useOpenDocument } from "../lib/openDocument";
+import { listDeliverables } from "../lib/api";
 import { LemonTag } from "../components/lemon/LemonTag";
 import { listBooks } from "../api/books";
 import type { BookSummary } from "../api/books";
-import type { InvestigationSummary } from "../lib/api";
+import type { DeliverableSummary, InvestigationSummary } from "../lib/api";
 import { useInvestigationList } from "../hooks/useInvestigationList";
 import {
   WORKFLOWS,
@@ -32,7 +33,7 @@ import {
  * This SUPERSEDES the flat Pinned/Recent/All tree at
  * components/navigation/ProjectTree.tsx; PanelRegistry now points here.
  */
-type NodeKind = "investigation" | "document" | "notebook";
+type NodeKind = "investigation" | "document" | "notebook" | "deliverable";
 
 type TreeNode = {
   kind: NodeKind;
@@ -56,7 +57,7 @@ const ALL_LINKS: Record<Exclude<Workflow, "shared">, Array<{ to: string; label: 
     { to: "/notebooks", label: "All notebooks" },
     { to: "/sources", label: "All sources" },
   ],
-  write: [{ to: "/create", label: "All deliverables" }],
+  write: [{ to: "/write", label: "All pieces" }],
   speak: [
     // Speak SPR-08 one door: the duplicate "All interviews" link is folded
     // into the Speak home (interviews live inside a project there now).
@@ -77,17 +78,21 @@ const routeForNode = (n: TreeNode): string => {
       return `/inv/${n.id}`;
     case "notebook":
       return `/notebook/${n.id}`;
+    case "deliverable":
+      return `/write/${encodeURIComponent(n.id)}`;
     case "document":
       throw new Error("document nodes open via openDocument, not a route (SPR-05)");
   }
 };
 
-const panelKindForNode = (n: TreeNode): "Trajectory" | "Notebook" => {
+const panelKindForNode = (n: TreeNode): "Trajectory" | "Notebook" | "DeliverablePreview" => {
   switch (n.kind) {
     case "investigation":
       return "Trajectory";
     case "notebook":
       return "Notebook";
+    case "deliverable":
+      return "DeliverablePreview";
     case "document":
       throw new Error("document nodes open via openDocument, not a panel (SPR-05)");
   }
@@ -120,6 +125,22 @@ function documentNode(book: BookSummary): TreeNode {
     kind: "document",
     id: book.document_id,
     title: book.title ?? "Untitled document",
+  };
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function deliverableNode(deliverable: DeliverableSummary): TreeNode | null {
+  const id = nonEmptyString(deliverable.deliverable_id);
+  if (!id) return null;
+  return {
+    kind: "deliverable",
+    id,
+    title: nonEmptyString(deliverable.title) ?? "Untitled piece",
   };
 }
 
@@ -170,13 +191,36 @@ export function ProjectTree({
   const research = useInvestigationList();
   const read = useReadDocuments();
   const openDocument = useOpenDocument();
+  const [writeRecent, setWriteRecent] = useState<TreeNode[]>([]);
 
   const pinnedKey = (n: TreeNode) => `${n.kind}:${n.id}`;
 
   const researchNodes = research.investigations.map(investigationNode);
   const readNodes = read.documents.map(documentNode);
+
+  useEffect(() => {
+    if (workflow !== "write") return;
+    let cancelled = false;
+    listDeliverables()
+      .then((body) => {
+        if (!cancelled) setWriteRecent(body.deliverables.flatMap((d) => deliverableNode(d) ?? []));
+      })
+      .catch(() => {
+        if (!cancelled) setWriteRecent([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workflow]);
+
   const recent =
-    workflow === "research" ? researchNodes : workflow === "read" ? readNodes : [];
+    workflow === "research"
+      ? researchNodes
+      : workflow === "read"
+        ? readNodes
+        : workflow === "write"
+          ? writeRecent
+          : [];
   const recentLoading =
     workflow === "research" ? research.loading : workflow === "read" ? read.loading : false;
   const recentError =
@@ -207,7 +251,8 @@ export function ProjectTree({
     }
     if (e.metaKey || e.ctrlKey) {
       e.preventDefault();
-      openPanel(panelKindForNode(n), { id: n.id }, { mode: "floating", title: n.title });
+      const props = n.kind === "deliverable" ? { deliverableId: n.id } : { id: n.id };
+      openPanel(panelKindForNode(n), props, { mode: "floating", title: n.title });
       return;
     }
     navigate(routeForNode(n));
@@ -361,10 +406,13 @@ function NodeRow({
     investigation: "⌕",
     document: "📄",
     notebook: "❍",
+    deliverable: "✎",
   };
   const openTitle =
     node.kind === "document"
       ? "Click to open in Reader. Cmd/Ctrl+Click to inspect original."
+      : node.kind === "deliverable"
+        ? "Click to open in Write. Cmd/Ctrl+Click to preview."
       : "Click to open. Cmd/Ctrl+Click to open as floating panel.";
 
   return (

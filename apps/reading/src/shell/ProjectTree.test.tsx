@@ -16,10 +16,12 @@ import ProjectTree from "./ProjectTree";
 import type { Workflow } from "./workflowTaxonomy";
 
 const {
+  listDeliverablesMock,
   listBooksMock,
   listInvestigationsMock,
   openDocumentMock,
 } = vi.hoisted(() => ({
+  listDeliverablesMock: vi.fn(),
   listBooksMock: vi.fn(),
   listInvestigationsMock: vi.fn<
     () => Promise<{ count: number; investigations: InvestigationSummary[] }>
@@ -34,7 +36,11 @@ vi.mock("../api/books", async (orig) => {
 
 vi.mock("../lib/api", async (orig) => {
   const actual = await orig<typeof import("../lib/api")>();
-  return { ...actual, listInvestigations: listInvestigationsMock };
+  return {
+    ...actual,
+    listDeliverables: listDeliverablesMock,
+    listInvestigations: listInvestigationsMock,
+  };
 });
 
 vi.mock("../lib/openDocument", async (orig) => ({
@@ -102,6 +108,7 @@ function renderTree(workflow: Exclude<Workflow, "shared"> = "read") {
 }
 
 beforeEach(() => {
+  listDeliverablesMock.mockReset().mockResolvedValue({ count: 0, deliverables: [] });
   listBooksMock.mockReset();
   listInvestigationsMock.mockReset();
   openDocumentMock.mockReset();
@@ -232,5 +239,46 @@ describe("ProjectTree", () => {
     expect(screen.queryByText("No recent items yet.")).toBeNull();
     expect(screen.queryByText("Loading recent items...")).toBeNull();
     expectNoFabricatedIds(container);
+  });
+
+  it("loads live Write pieces into the workflow tree and opens the Write loop", async () => {
+    listDeliverablesMock.mockResolvedValue({
+      count: 3,
+      deliverables: [
+        { deliverable_id: " dlv-live ", title: "  Live memo  " },
+        { deliverable_id: " ", title: "Skipped memo" },
+        { deliverable_id: "dlv-untitled", title: " " },
+      ],
+    });
+    renderTree("write");
+
+    expect(await screen.findByText("Live memo")).toBeTruthy();
+    expect(await screen.findByText("Untitled piece")).toBeTruthy();
+    expect(screen.queryByText("Skipped memo")).toBeNull();
+    expect(screen.getByRole("button", { name: /Recent\s*2/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Live memo"));
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe("/write/dlv-live");
+    });
+  });
+
+  it("opens Write pieces as floating previews on Cmd/Ctrl-click", async () => {
+    listDeliverablesMock.mockResolvedValue({
+      count: 1,
+      deliverables: [{ deliverable_id: "dlv-preview", title: "Preview memo" }],
+    });
+    renderTree("write");
+
+    fireEvent.click(await screen.findByText("Preview memo"), { metaKey: true });
+
+    const floatingId = useWorkspace.getState().floatingIds[0];
+    expect(useWorkspace.getState().panels[floatingId]).toMatchObject({
+      kind: "DeliverablePreview",
+      props: { deliverableId: "dlv-preview" },
+      mode: "floating",
+      title: "Preview memo",
+    });
+    expect(screen.getByTestId("location").textContent).toBe("/library");
   });
 });
