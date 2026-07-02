@@ -62,7 +62,13 @@ _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.p
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from roles.thought_partner import (  # noqa: E402
+    THOUGHT_PARTNER_SYSTEM_PROMPT,
+    compose_thought_partner_prompt,
+    parse_thought_partner_response,
+)
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
+from substrate.dispatch import ProviderError, dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     EVENT_SCHEMA_VERSION,
@@ -1003,17 +1009,15 @@ class ThoughtPartnerRequest(BaseModel):
     """One-shot thought-partner invocation (master-spec §4.5 + §11.7).
 
     AISidecar posts a free-form prompt; the substrate runs the
-    ``thought_partner`` role parser over a deterministic response
-    until a real dispatch tier wires through. Returns the shape +
-    text the parser produced.
+    ``thought_partner`` role through the dispatch tier and returns the
+    model text unchanged alongside the parser-derived response shape.
 
     `system_context` (UI-redesign S8 WP-8.4) is the serialised
     workspace state the operator's client ships so the model can
-    reference what panels are currently visible + emit structured
-    actions back. The substrate threads this verbatim into the
-    model's system message when dispatch tier wiring lands; the
-    Sprint 21 deterministic scaffold below simply accepts the field
-    so the client contract is stable before the model wiring."""
+    reference what panels are currently visible. The substrate threads
+    this verbatim into the model context. Any ``@@actions`` block in the
+    model response is parsed and dispatched client-side by AISidecar,
+    never extracted on the substrate."""
 
     prompt: str
     investigation_id: str | None = None
@@ -4890,76 +4894,39 @@ def create_app(
     async def post_thought_partner(
         req: ThoughtPartnerRequest = Body(...),
     ) -> ThoughtPartnerResponseBody:
-        """Run a single thought-partner turn. Sprint 21 scaffold:
-        until the dispatch tier wires through, this returns a
-        deterministic CHALLENGE-shaped reply so the AISidecar surface
-        is unblocked. The parser at ``roles/thought_partner/parser.py``
-        owns the shape vocabulary; this endpoint stays a thin shim.
+        """Run a single thought-partner turn through dispatch.
 
-        When the dispatch tier lands, ``req.system_context`` (the
-        operator's serialised workspace state from
-        ``aiActions.workspaceContextPrompt``) is threaded into the
-        model's system message and the model's reply is returned
-        unchanged (the @@actions block parses + dispatches client-
-        side, never on the substrate)."""
+        ``req.system_context`` is model context for the role. The model
+        response text is returned verbatim; AISidecar parses any
+        ``@@actions`` block client-side."""
         if not req.prompt.strip():
             raise HTTPException(
                 status_code=400, detail="prompt must not be empty",
             )
-        # Deterministic CHALLENGE reply per the parser shape set.
-        # ``req.system_context`` is accepted + reserved for when the
-        # dispatch tier wires through; the scaffold acknowledges
-        # receipt by including a tiny @@actions sentinel so the UI's
-        # tool-call protocol can be smoke-tested end-to-end without
-        # a real model.
-        #
-        # Prompt-keyword routing for richer smoke coverage: the
-        # scaffold inspects the operator's prompt and chooses an
-        # @@actions mix that exercises the part of the protocol they
-        # implicitly asked about. This is NOT intelligence — it's a
-        # canned dispatcher whose only purpose is letting the
-        # operator's e2e suite hit every action kind without a real
-        # model. The dispatch tier replaces this whole branch.
-        scaffold_text = (
-            "What's the one observation that, if false, would "
-            "make this whole question moot? Start there."
+        role_prompt = compose_thought_partner_prompt(
+            user_prompt=req.prompt,
+            selected_notes=[],
         )
+        assembled_prompt = THOUGHT_PARTNER_SYSTEM_PROMPT
         if req.system_context:
-            prompt_lower = req.prompt.lower()
-            actions_json: str
-            if "note" in prompt_lower or "notebook" in prompt_lower:
-                actions_json = (
-                    '[\n'
-                    '  {"kind": "add_to_notebook", '
-                    '"notebook_id": "scratch", '
-                    '"block": {"kind": "note", "text": "Scaffold note: real dispatch tier pending."}}\n'
-                    ']\n'
-                )
-            elif "open" in prompt_lower and "pdf" in prompt_lower:
-                actions_json = (
-                    '[\n'
-                    '  {"kind": "toast", "level": "info", '
-                    '"message": "Scaffold: would open PdfViewer; dispatch tier pending."}\n'
-                    ']\n'
-                )
-            elif "chase" in prompt_lower or "question" in prompt_lower:
-                actions_json = (
-                    '[\n'
-                    '  {"kind": "chase_question", '
-                    '"text": "What would falsify this claim?"}\n'
-                    ']\n'
-                )
-            else:
-                actions_json = (
-                    '[\n'
-                    '  {"kind": "toast", "level": "info", '
-                    '"message": "Thought-partner scaffold: real dispatch tier pending."}\n'
-                    ']\n'
-                )
-            scaffold_text += "\n\n@@actions\n" + actions_json + "@@end"
+            assembled_prompt += (
+                "\n\nSYSTEM CONTEXT:\n"
+                + req.system_context
+            )
+        assembled_prompt += "\n\n" + role_prompt
+        try:
+            result = dispatch(
+                assembled_prompt,
+                "thought_partner",
+                investigation_id=req.investigation_id or "__sidecar__",
+            )
+        except (ProviderError, KeyError) as exc:
+            raise HTTPException(status_code=503, detail=f"thought_partner_unavailable: {exc}") from exc
+
+        parsed = parse_thought_partner_response(result.text)
         return ThoughtPartnerResponseBody(
-            shape="challenge",
-            text=scaffold_text,
+            shape=parsed.shape,
+            text=result.text,
         )
 
     # ── Sprint 17 voice upload endpoint (§11.5) ──
