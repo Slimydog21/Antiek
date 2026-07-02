@@ -84,6 +84,33 @@ beforeEach(() => {
         ],
       });
     }
+    if (path === "/coordination/roadmap") {
+      return okJson({
+        operator_gate_focus: {
+          gate_id: " G2 ",
+          title: " Counsel review ",
+          status_raw: " OPEN ",
+          owner: " Legal ",
+          blocks: " payouts ",
+        },
+        read_activation: {
+          valid_sessions: "1",
+          total_sessions: "2.9",
+          live_provider_sessions: "0",
+          citation_trace_sessions: "1",
+          non_library_sessions: "0",
+          final_verdict: " ",
+          closure_ready: "true",
+          remaining_requirements: {
+            valid_sessions: "9",
+            live_provider_sessions: "5",
+            citation_trace_sessions: "2",
+            non_library_sessions: "1",
+          },
+          invalid_session_count: "1",
+        },
+      });
+    }
     return okJson({});
   });
 });
@@ -108,5 +135,23 @@ describe("OperatorDashboard", () => {
     expect(screen.getAllByText("$0.00").length).toBeGreaterThan(0);
     expect(screen.getByText("$2.50")).toBeTruthy();
     expect(screen.getByText("1,500")).toBeTruthy();
+    expect(screen.getByText("Coordination focus")).toBeTruthy();
+    expect(screen.getByText("G2 · Counsel review")).toBeTruthy();
+    expect(screen.getByText("OPEN · Legal")).toBeTruthy();
+    expect(screen.getByText("Blocks: payouts")).toBeTruthy();
+    expect(
+      screen.getByText("Read dogfood 1/2 valid · 0 live-provider · 1 citation-traced"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Remaining: 9 valid, 5 live-provider, 2 citation-traced, 1 non-library. 1 invalid session need repair.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole("link", { name: "open →" }).getAttribute("href")).toBe(
+      "/coordination",
+    );
+    expect(
+      screen.getByRole("link", { name: "cost + consent →" }).getAttribute("href"),
+    ).toBe("/coordination/cost-consent");
   });
 });

@@ -29,6 +29,28 @@ interface CompositeSnapshot {
   stats: StatsResponse | null;
   pendingDeletions: number;
   recentPayouts: PayoutTransfer[];
+  coordination: CoordinationSummary | null;
+}
+
+interface CoordinationSummary {
+  operatorGate: {
+    gate_id: string;
+    title: string;
+    status_raw: string;
+    owner: string | null;
+    blocks: string | null;
+  } | null;
+  readActivation: {
+    valid_sessions: number;
+    total_sessions: number;
+    live_provider_sessions: number;
+    citation_trace_sessions: number;
+    non_library_sessions: number;
+    final_verdict: string | null;
+    closure_ready: boolean;
+    remaining_requirements: Record<string, number>;
+    invalid_session_count: number;
+  } | null;
 }
 
 function nonNegativeFiniteNumber(value: unknown): number | null {
@@ -157,6 +179,46 @@ function safePayoutTransfers(value: unknown): PayoutTransfer[] {
   });
 }
 
+function numberRecord(value: unknown): Record<string, number> {
+  const body = record(value);
+  if (!body) return {};
+  return Object.fromEntries(
+    Object.entries(body).map(([key, raw]) => [key, safeCount(raw)]),
+  );
+}
+
+function safeCoordinationSummary(value: unknown): CoordinationSummary {
+  const body = record(value);
+  const operatorGate = record(body?.operator_gate_focus);
+  const readActivation = record(body?.read_activation);
+  const gateId = nonEmptyString(operatorGate?.gate_id);
+  return {
+    operatorGate:
+      operatorGate && gateId
+        ? {
+            gate_id: gateId,
+            title: nonEmptyString(operatorGate.title) ?? gateId,
+            status_raw: nonEmptyString(operatorGate.status_raw) ?? "",
+            owner: nullableString(operatorGate.owner),
+            blocks: nullableString(operatorGate.blocks),
+          }
+        : null,
+    readActivation: readActivation
+      ? {
+          valid_sessions: safeCount(readActivation.valid_sessions),
+          total_sessions: safeCount(readActivation.total_sessions),
+          live_provider_sessions: safeCount(readActivation.live_provider_sessions),
+          citation_trace_sessions: safeCount(readActivation.citation_trace_sessions),
+          non_library_sessions: safeCount(readActivation.non_library_sessions),
+          final_verdict: nullableString(readActivation.final_verdict),
+          closure_ready: readActivation.closure_ready === true,
+          remaining_requirements: numberRecord(readActivation.remaining_requirements),
+          invalid_session_count: safeCount(readActivation.invalid_session_count),
+        }
+      : null,
+  };
+}
+
 /**
  * Operator dashboard (master-spec §9.10 + §13.7).
  *
@@ -175,6 +237,7 @@ export default function OperatorDashboard() {
     stats: null,
     pendingDeletions: 0,
     recentPayouts: [],
+    coordination: null,
   });
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -188,11 +251,13 @@ export default function OperatorDashboard() {
         statsResp,
         deletionsResp,
         payoutsResp,
+        coordinationResp,
       ] = await Promise.all([
         apiFetch("/publishers"),
         apiFetch("/stats").catch(() => null),
         apiFetch("/trust-center/deletion-requests").catch(() => null),
         apiFetch("/payouts/transfers?limit=5").catch(() => null),
+        apiFetch("/coordination/roadmap").catch(() => null),
       ]);
 
       if (!publishersResp.ok) {
@@ -213,7 +278,12 @@ export default function OperatorDashboard() {
         recentPayouts = safePayoutTransfers(await payoutsResp.json());
       }
 
-      setSnapshot({ stats, pendingDeletions, recentPayouts });
+      let coordination: CoordinationSummary | null = null;
+      if (coordinationResp?.ok) {
+        coordination = safeCoordinationSummary(await coordinationResp.json());
+      }
+
+      setSnapshot({ stats, pendingDeletions, recentPayouts, coordination });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -395,7 +465,90 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
           </Link>
         </div>
       </div>
+      <CoordinationTile coordination={snapshot.coordination} />
     </section>
+  );
+}
+
+function CoordinationTile({
+  coordination,
+}: {
+  coordination: CoordinationSummary | null;
+}) {
+  const activation = coordination?.readActivation ?? null;
+  const remaining = activation?.remaining_requirements ?? {};
+  const remainingText = [
+    ["valid", remaining.valid_sessions],
+    ["live-provider", remaining.live_provider_sessions],
+    ["citation-traced", remaining.citation_trace_sessions],
+    ["non-library", remaining.non_library_sessions],
+  ]
+    .filter(([, value]) => Number(value) > 0)
+    .map(([label, value]) => `${value} ${label}`)
+    .join(", ");
+  return (
+    <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-3 space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-sm font-serif text-ink dark:text-bright">
+          Coordination focus
+        </h3>
+        <Link
+          to="/coordination"
+          className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+        >
+          open →
+        </Link>
+      </div>
+      {coordination?.operatorGate ? (
+        <div className="space-y-0.5">
+          <p className="text-xs font-mono text-ink dark:text-bright">
+            {coordination.operatorGate.gate_id} · {coordination.operatorGate.title}
+          </p>
+          <p className="text-xs text-ink-soft dark:text-starlight">
+            {coordination.operatorGate.status_raw || "open"}
+            {coordination.operatorGate.owner ? ` · ${coordination.operatorGate.owner}` : ""}
+          </p>
+          {coordination.operatorGate.blocks && (
+            <p className="text-xs text-ink-soft dark:text-starlight">
+              Blocks: {coordination.operatorGate.blocks}
+            </p>
+          )}
+        </div>
+      ) : (
+        <p className="text-xs italic text-shadow-1 dark:text-moonlight">
+          No open operator gate focus reported.
+        </p>
+      )}
+      {activation ? (
+        <div className="space-y-0.5 border-t border-rule dark:border-charcoal-1 pt-2">
+          <p className="text-xs font-mono text-ink dark:text-bright">
+            Read dogfood {activation.valid_sessions}/{activation.total_sessions} valid ·{" "}
+            {activation.live_provider_sessions} live-provider ·{" "}
+            {activation.citation_trace_sessions} citation-traced
+          </p>
+          <p className="text-xs text-ink-soft dark:text-starlight">
+            {activation.closure_ready
+              ? `Mechanically ready · verdict=${activation.final_verdict || "missing"}`
+              : remainingText
+                ? `Remaining: ${remainingText}.`
+                : "No closure evidence ready yet."}
+            {activation.invalid_session_count > 0
+              ? ` ${activation.invalid_session_count} invalid session${activation.invalid_session_count === 1 ? "" : "s"} need repair.`
+              : ""}
+          </p>
+          <Link
+            to="/coordination/cost-consent"
+            className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+          >
+            cost + consent →
+          </Link>
+        </div>
+      ) : (
+        <p className="text-xs italic text-shadow-1 dark:text-moonlight">
+          Activation dogfood status unavailable.
+        </p>
+      )}
+    </div>
   );
 }
 

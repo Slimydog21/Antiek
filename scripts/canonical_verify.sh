@@ -544,6 +544,7 @@ cmd_unified_coordination_gate_ledger() {
   (cd apps/reading && npm run test -- \
     src/modes/Coordination/Coordination.test.tsx \
     src/modes/Coordination/Roadmap.test.tsx \
+    src/modes/OperatorDashboard/OperatorDashboard.test.tsx \
     --reporter=dot)
   echo "CANONICAL_VERIFY_OK: unified-coordination-gate-ledger"
 }
