@@ -8,10 +8,13 @@ two copies, they drift, and the "one substrate" claim is a lie the data doesn't
 support.
 
 These tests exercise each committed handoff with a fake implementing the SPR-01
-contract (the real implementation is the product's sprint — out of scope here)
-and assert SAME-NODE-ID on both sides. The deciding rigor (rigor #3): a
-deliberate-copy fixture FAILS the guard. If the guard passed whether or not the
-entity was copied, it would prove nothing.
+contract and assert SAME-NODE-ID on both sides. That is deliberate: this file is
+the pure no-copy guard, while ``./scripts/canonical_verify.sh
+unified-seams-and-collisions`` also runs the live seam event parity,
+platform-authored publish gate, single-owner collision guards, and e2e flywheel
+composition. The deciding rigor (rigor #3): a deliberate-copy fixture FAILS the
+guard. If the guard passed whether or not the entity was copied, it would prove
+nothing.
 
 SPR-06's thread navigation depends on this guard; SPR-08's e2e flywheel test
 composes it.
@@ -32,10 +35,18 @@ from substrate.seams import (
 )
 
 # ---------------------------------------------------------------------------
-# Fakes standing in for the products' seam implementations (real impls live in
-# Read SPR-03 / Write SPR-03/07 / Speak SPR-08 — out of scope here). Each one
-# is the CORRECT, reference-preserving behavior. A copy variant is below.
+# Fakes standing in for the product seam implementations. The unified canonical
+# gate composes this pure guard with live seam event and flywheel tests. Each
+# fake here is the CORRECT, reference-preserving behavior. A copy variant is below.
 # ---------------------------------------------------------------------------
+
+
+def test_module_doc_names_unified_gate_and_live_companions():
+    doc = __doc__ or ""
+    assert "./scripts/canonical_verify.sh\nunified-seams-and-collisions" in doc
+    assert "live seam event parity" in doc
+    assert "e2e flywheel\ncomposition" in doc
+    assert "out of scope here" not in doc
 
 
 def _research_promotes_insight() -> InsightNodeContract:
