@@ -7,6 +7,7 @@ import {
   listPersonalSpace,
   listPersonalSpaceCategories,
 } from "../../../api/books";
+import { useOpenDocument } from "../../../lib/openDocument";
 import type {
   AssetCategory,
   PersonalAsset,
@@ -44,6 +45,7 @@ interface Props {
 
 export default function PersonalSpace({ metaDocsOnly = false }: Props) {
   const navigate = useNavigate();
+  const openDocument = useOpenDocument();
   const [assets, setAssets] = useState<PersonalAsset[]>([]);
   const [categories, setCategories] = useState<AssetCategory[]>([]);
   const [ordering, setOrdering] = useState<"theme" | "recency">("recency");
@@ -112,8 +114,16 @@ export default function PersonalSpace({ metaDocsOnly = false }: Props) {
   }, [categories, ordering, visibleAssets, visibleIds]);
 
   const openAsset = useCallback(
-    (a: PersonalAsset) => navigate(a.open_route),
-    [navigate],
+    (a: PersonalAsset) => {
+      if (a.kind === "saved_read") {
+        const documentId = savedReadDocumentId(a);
+        if (documentId) openDocument(documentId);
+        return;
+      }
+      const route = safeCreatedAssetRoute(a.open_route);
+      if (route) navigate(route);
+    },
+    [navigate, openDocument],
   );
 
   return (
@@ -224,7 +234,9 @@ function AssetRow({
   const [filing, setFiling] = useState(false);
   const [filedInto, setFiledInto] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
-  const writeRoute = asset.open_route.startsWith("/write/") ? asset.open_route : null;
+  const writeRoute = asset.open_route.startsWith("/write/")
+    ? safeCreatedAssetRoute(asset.open_route)
+    : null;
 
   // The doc this asset is about — the first owned doc, the match subject.
   const subjectDocId = asset.document_ids[0];
@@ -340,4 +352,27 @@ function AssetRow({
 
 function truncate(s: string, max = 40): string {
   return s.length <= max ? s : s.slice(0, max - 1) + "…";
+}
+
+function savedReadDocumentId(asset: PersonalAsset): string | null {
+  const primary = asset.document_ids[0]?.trim();
+  if (primary) return primary;
+  const match = asset.open_route.match(/^\/read\/([^/?#]+)(?:[?#].*)?$/);
+  if (!match || match[1] === "meta-reading") return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
+}
+
+function safeCreatedAssetRoute(route: string): string | null {
+  if (
+    route === "/read/meta-reading" ||
+    route.startsWith("/read/meta-reading/") ||
+    route.startsWith("/write/")
+  ) {
+    return route;
+  }
+  return null;
 }
