@@ -232,6 +232,51 @@ def test_reachability_seeds_red_then_green_route(tmp_path: Path) -> None:
     )
 
 
+def test_reachability_ignores_redirect_only_compat_routes(tmp_path: Path) -> None:
+    """A `<Navigate>` route is an alias, not a stranded product page."""
+    root = tmp_path / "tree"
+    gate = _build_reachability_tree(root)
+    src = root / "apps" / "reading" / "src"
+
+    assert _run([sys.executable, str(gate), "--write-baseline"], cwd=root).returncode == 0
+
+    (src / "App.tsx").write_text(
+        '<Route path="/read" />\n<Link to="/read">read</Link>\n'
+        '<Route path="/legacy" element={<Navigate to="/read" replace />} />\n'
+    )
+    proc = _run([sys.executable, str(gate)], cwd=root)
+
+    assert proc.returncode == 0, (
+        f"redirect-only compatibility route should not red reachability\n"
+        f"stdout={proc.stdout}\nstderr={proc.stderr}"
+    )
+
+
+def test_reachability_counts_window_open_popout_routes(tmp_path: Path) -> None:
+    """A `window.open('/_panel/...')` target is a real inbound route reference."""
+    root = tmp_path / "tree"
+    gate = _build_reachability_tree(root)
+    src = root / "apps" / "reading" / "src"
+
+    assert _run([sys.executable, str(gate), "--write-baseline"], cwd=root).returncode == 0
+
+    (src / "App.tsx").write_text(
+        '<Route path="/read" />\n<Link to="/read">read</Link>\n'
+        '<Route path="/_panel/:panelId" />\n'
+    )
+    (src / "popout.ts").write_text(
+        "export function openPopout(panelId: string) {\n"
+        "  window.open(`/_panel/${encodeURIComponent(panelId)}`);\n"
+        "}\n"
+    )
+    proc = _run([sys.executable, str(gate)], cwd=root)
+
+    assert proc.returncode == 0, (
+        f"window.open popout target should count as reachable\n"
+        f"stdout={proc.stdout}\nstderr={proc.stderr}"
+    )
+
+
 # =========================================================================== #
 # (b) Merge-age gate — synthesize a base 30 commits behind a fake origin/main
 #     -> red with the distance in the message; rebase to tip -> green.
