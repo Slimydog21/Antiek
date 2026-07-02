@@ -53,7 +53,7 @@ import re
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import httpx
@@ -380,10 +380,9 @@ def _default_fetch_pdf(arxiv_id: str) -> bytes:
 
         # Host-global rate gate: the send happens inside the governor's flock so
         # this fetch serializes against every other arXiv job on the box.
-        # ``governed_request`` returns the exact object ``_send`` produced (an
-        # ``httpx.Response``); its ``_ResponseLike`` return annotation erases the
-        # concrete type, so narrow it back to read ``.content`` / status.
-        r = cast("httpx.Response", governed_request(_send, throttle=throttle))
+        # ``governed_request`` is generic over the send's response type, so ``r``
+        # keeps the concrete ``httpx.Response`` for ``.content`` / status reads.
+        r = governed_request(_send, throttle=throttle)
     r.raise_for_status()
     return r.content
 

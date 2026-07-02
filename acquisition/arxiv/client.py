@@ -79,7 +79,7 @@ class ArxivPaper:
     # ``acquisition.arxiv.licenses`` for the URI → servable-class mapping.
     license_uri: str | None = None
     raw_id: str = ""  # the full <id> URI as returned by arXiv
-    metadata: dict = field(default_factory=dict)
+    metadata: dict[str, object] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -165,9 +165,9 @@ def _parse_entry(entry: ET.Element) -> ArxivPaper:
     version = full_id[len(base_id):] if full_id != base_id else ""
 
     authors = [
-        (a.find("a:name", _ATOM_NS).text or "").strip()
+        (name_el.text or "").strip()
         for a in entry.findall("a:author", _ATOM_NS)
-        if a.find("a:name", _ATOM_NS) is not None
+        if (name_el := a.find("a:name", _ATOM_NS)) is not None
     ]
     cats = [
         c.get("term", "") for c in entry.findall("a:category", _ATOM_NS)

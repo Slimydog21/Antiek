@@ -29,6 +29,7 @@ same one the mocked sequence exercises.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import xml.etree.ElementTree as ET
@@ -89,17 +90,23 @@ class HarvestState:
     resumption_token: str | None = None
     last_datestamp: str | None = None
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, str | None]:
         return {
             "resumption_token": self.resumption_token,
             "last_datestamp": self.last_datestamp,
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> HarvestState:
+    def from_dict(cls, d: dict[str, object]) -> HarvestState:
+        resumption_token = d.get("resumption_token")
+        last_datestamp = d.get("last_datestamp")
         return cls(
-            resumption_token=d.get("resumption_token"),
-            last_datestamp=d.get("last_datestamp"),
+            resumption_token=resumption_token
+            if isinstance(resumption_token, str)
+            else None,
+            last_datestamp=last_datestamp
+            if isinstance(last_datestamp, str)
+            else None,
         )
 
 
@@ -160,10 +167,8 @@ class OaiPmhHarvester:
         os.replace(tmp, self._state_path)
 
     def _clear_state(self) -> None:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             self._state_path.unlink()
-        except FileNotFoundError:
-            pass
 
     # -- across-crash high-water seed ----------------------------------------
 
