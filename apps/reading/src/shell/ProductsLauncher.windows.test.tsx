@@ -18,13 +18,22 @@ import { MemoryRouter } from "react-router-dom";
 import { ProductsLauncher } from "./ProductsLauncher";
 import { useWindows } from "../workspace/windowsStore";
 
-const { navigateMock } = vi.hoisted(() => ({ navigateMock: vi.fn() }));
+const { listDeliverablesMock, navigateMock } = vi.hoisted(() => ({
+  listDeliverablesMock: vi.fn(),
+  navigateMock: vi.fn(),
+}));
 vi.mock("react-router-dom", async (orig) => {
   const actual = await orig<typeof import("react-router-dom")>();
   return { ...actual, useNavigate: () => navigateMock };
 });
 
+vi.mock("../lib/api", async (orig) => ({
+  ...(await orig<typeof import("../lib/api")>()),
+  listDeliverables: listDeliverablesMock,
+}));
+
 beforeEach(() => {
+  listDeliverablesMock.mockReset().mockResolvedValue({ count: 0, deliverables: [] });
   navigateMock.mockReset();
   useWindows.getState().reset();
 });
@@ -98,5 +107,52 @@ describe("ProductsLauncher — open in window (M5)", () => {
     renderLauncher();
     // Sources is a built mode but not contract-verified for windows.
     expect(screen.queryByLabelText("Open Sources in a window")).toBeNull();
+  });
+
+  it("surfaces live Write pieces and opens them in the Write loop", async () => {
+    listDeliverablesMock.mockResolvedValue({
+      count: 3,
+      deliverables: [
+        {
+          deliverable_id: " dlv-live ",
+          title: "  Live memo  ",
+          investigation_root_id: " inv-live ",
+          section_count: 2,
+        },
+        { deliverable_id: "dlv-untitled", title: " ", section_count: 0 },
+        { deliverable_id: " ", title: "Skipped memo", section_count: 1 },
+      ],
+    });
+    const onClose = renderLauncher();
+
+    expect(await screen.findByText("Recent writing")).toBeTruthy();
+    fireEvent.click(await screen.findByText("Live memo"));
+
+    expect(navigateMock).toHaveBeenCalledWith("/write/dlv-live");
+    expect(onClose).toHaveBeenCalled();
+    expect(useWindows.getState().order.length).toBe(0);
+    expect(screen.queryByText("Skipped memo")).toBeNull();
+  });
+
+  it("filters Write pieces with the launcher query and Enter opens the active piece", async () => {
+    listDeliverablesMock.mockResolvedValue({
+      count: 2,
+      deliverables: [
+        { deliverable_id: "dlv-alpha", title: "Alpha memo", section_count: 1 },
+        { deliverable_id: "dlv-beta", title: "Beta memo", section_count: 0 },
+      ],
+    });
+    const onClose = renderLauncher();
+
+    const input = screen.getByPlaceholderText("Filter…");
+    await screen.findByText("Alpha memo");
+    fireEvent.change(input, { target: { value: "beta" } });
+    expect(screen.queryByText("Alpha memo")).toBeNull();
+    expect(screen.getByText("Beta memo")).toBeTruthy();
+
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(navigateMock).toHaveBeenCalledWith("/write/dlv-beta");
+    expect(onClose).toHaveBeenCalled();
   });
 });
