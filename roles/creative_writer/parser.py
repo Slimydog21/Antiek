@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from substrate.provenance import InvalidReference, validate_refs
+
 from .._json_decode import extract_json_object
 
 
@@ -58,26 +60,29 @@ def parse_creative_writer_response(
             raise CreativeWriterValidationError(
                 f"prose_provenance[{idx}] must be list of block_id strings"
             )
-        for bid in v:
-            if bid not in known_block_ids:
-                raise CreativeWriterValidationError(
-                    f"prose_provenance references unknown block_id {bid!r}"
-                )
-        provenance[idx] = list(v)
+        try:
+            provenance[idx] = list(
+                validate_refs(v, known_block_ids, on_invalid="raise").valid
+            )
+        except InvalidReference as exc:
+            raise CreativeWriterValidationError(
+                f"prose_provenance references unknown block_id: {exc}"
+            ) from exc
 
     uncited = data.get("uncited_blocks") or []
     if not isinstance(uncited, list) or not all(isinstance(b, str) for b in uncited):
         raise CreativeWriterValidationError(
             "uncited_blocks must be list of block_id strings"
         )
-    for bid in uncited:
-        if bid not in known_block_ids:
-            raise CreativeWriterValidationError(
-                f"uncited_blocks references unknown block_id {bid!r}"
-            )
+    try:
+        uncited = list(validate_refs(uncited, known_block_ids, on_invalid="raise").valid)
+    except InvalidReference as exc:
+        raise CreativeWriterValidationError(
+            f"uncited_blocks references unknown block_id: {exc}"
+        ) from exc
 
     return CreativeWriterResult(
         prose_text=prose_text.strip(),
         prose_provenance=provenance,
-        uncited_blocks=list(uncited),
+        uncited_blocks=uncited,
     )
