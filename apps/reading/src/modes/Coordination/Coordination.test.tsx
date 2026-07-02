@@ -128,8 +128,10 @@ describe("Coordination", () => {
 
     expect(screen.getByText("library browse")).toBeTruthy();
     expect(screen.getByText("waits on drw:10")).toBeTruthy();
-    expect(screen.getByText("1 ready now · 1 blocked by dependency state")).toBeTruthy();
-    expect(screen.getByText("Ready now")).toBeTruthy();
+    expect(screen.getByText("1 dependency-ready · 1 blocked by dependency state")).toBeTruthy();
+    expect(screen.getByText("Dependency-ready")).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Dependency state" })).toBeTruthy();
+    expect(screen.getByText("dependency-ready")).toBeTruthy();
     expect(screen.getAllByText("lock the spine").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("drw:1")).toHaveLength(2);
     expect(screen.queryByText("missing:9")).toBeNull();
