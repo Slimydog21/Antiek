@@ -28,7 +28,7 @@ export default function TrajectoryReplay({ events, playSpeed = 2 }: Props) {
     Number.isFinite(playSpeed) && playSpeed > 0 ? playSpeed : 2;
 
   const sortedEvents = useMemo(() => {
-    return [...events].sort((a, b) => {
+    return safeEvents(events).sort((a, b) => {
       const ta = a.emitted_at ?? "";
       const tb = b.emitted_at ?? "";
       return ta < tb ? -1 : ta > tb ? 1 : 0;
@@ -128,6 +128,24 @@ export default function TrajectoryReplay({ events, playSpeed = 2 }: Props) {
       {currentEvent && <EventFrame event={currentEvent} />}
     </div>
   );
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function safeEvents(events: Event[]): Event[] {
+  const seen = new Set<string>();
+  return events.flatMap((event) => {
+    const eventId = nonEmptyString(event.event_id);
+    if (eventId) {
+      if (seen.has(eventId)) return [];
+      seen.add(eventId);
+    }
+    return [event];
+  });
 }
 
 function EventFrame({ event }: { event: Event }) {

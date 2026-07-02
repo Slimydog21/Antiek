@@ -56,6 +56,22 @@ describe("TrajectoryReplay", () => {
     expect(screen.getAllByText(/phase.enter/).length).toBeGreaterThanOrEqual(1);
   });
 
+  it("dedupes replayed event ids before sorting and counting frames", () => {
+    render(
+      <TrajectoryReplay
+        events={[
+          replayEvent("event-repeat", "2026-07-01T12:00:03Z", "synthesize.delivered"),
+          replayEvent("event-repeat", "2026-07-01T12:00:01Z", "phase.enter"),
+          replayEvent("event-second", "2026-07-01T12:00:02Z", "dispatch.call"),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("1 / 2")).toBeTruthy();
+    expect(screen.getByText(/event_id: event-second/)).toBeTruthy();
+    expect(screen.queryByText(/phase.enter/)).toBeNull();
+  });
+
   it("scrubs with the range input and pauses on manual navigation", async () => {
     const user = userEvent.setup();
     render(<TrajectoryReplay events={UNSORTED_EVENTS} />);
