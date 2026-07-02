@@ -36,6 +36,7 @@
 #   unified-remote-exec-fanout — Unified SPR-02 remote runner + §16 fanout
 #   unified-seams-and-collisions — Unified SPR-03 typed seams + collision guards
 #   unified-navigation-ia-taxonomy — Unified SPR-04 workflow taxonomy + nav IA
+#   unified-coordination-gate-ledger — Unified SPR-05 gate ledger + roadmap
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -59,7 +60,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|speak-economics-matrix|speak-biography-authoring|speak-publishing-physical|unified-substrate-contract-lock|unified-remote-exec-fanout|unified-seams-and-collisions|unified-navigation-ia-taxonomy|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|speak-economics-matrix|speak-biography-authoring|speak-publishing-physical|unified-substrate-contract-lock|unified-remote-exec-fanout|unified-seams-and-collisions|unified-navigation-ia-taxonomy|unified-coordination-gate-ledger|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -496,6 +497,21 @@ cmd_unified_navigation_ia_taxonomy() {
   echo "CANONICAL_VERIFY_OK: unified-navigation-ia-taxonomy"
 }
 
+cmd_unified_coordination_gate_ledger() {
+  echo "== unified-coordination-gate-ledger: no-fork ledger + roadmap =="
+  "${PY}" -m pytest \
+    tests/test_coordination_no_fork.py \
+    tests/test_integration_invariants.py::test_invariant_5_no_fork_gate_ledger \
+    tests/test_contracts_unified_lock.py \
+    -q --tb=no
+  echo "== unified-coordination-gate-ledger: Coordination UI =="
+  (cd apps/reading && npm run test -- \
+    src/modes/Coordination/Coordination.test.tsx \
+    src/modes/Coordination/Roadmap.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: unified-coordination-gate-ledger"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -595,6 +611,7 @@ main() {
     unified-remote-exec-fanout) cmd_unified_remote_exec_fanout ;;
     unified-seams-and-collisions) cmd_unified_seams_and_collisions ;;
     unified-navigation-ia-taxonomy) cmd_unified_navigation_ia_taxonomy ;;
+    unified-coordination-gate-ledger) cmd_unified_coordination_gate_ledger ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;

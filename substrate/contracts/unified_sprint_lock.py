@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to UNIFIED_SPRINTS. Status changes are deliberate roadmap
 # events, not prose-only handoffs.
-UNIFIED_LOCK_VERSION: int = 4
+UNIFIED_LOCK_VERSION: int = 5
 
 
 @dataclass(frozen=True)
@@ -72,7 +72,19 @@ UNIFIED_SPRINTS: dict[int, UnifiedDeliverable] = {
         # parity are covered by unified-navigation-ia-taxonomy.
         status="live",
     ),
-    5: UnifiedDeliverable(5, "coordination-gate-ledger", "Coordination gate ledger"),
+    5: UnifiedDeliverable(
+        5,
+        "coordination-gate-ledger",
+        "Coordination gate ledger",
+        # Live: the typed gate ledger parses docs/operator_gate_actions.md on
+        # read, independent quick-status agreement catches source drift,
+        # fixture mutation proves no stale state copy, the module has no write
+        # path, per-product impacts are grounded, the 45-sprint roadmap/focus
+        # is derived, the HTTP adapter serializes without duplicating state,
+        # and the Coordination UI sanitizes/render gates + roadmap via
+        # unified-coordination-gate-ledger.
+        status="live",
+    ),
     6: UnifiedDeliverable(6, "thread-navigation", "Thread navigation"),
     7: UnifiedDeliverable(7, "cost-consent-surface", "Cost + consent surface"),
     8: UnifiedDeliverable(8, "flywheel-conformance", "Flywheel conformance"),
