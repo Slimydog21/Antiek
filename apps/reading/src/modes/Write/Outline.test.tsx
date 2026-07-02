@@ -328,8 +328,8 @@ describe("Outline — no id, honest generate, real editor", () => {
       section_id: " ",
       prose_text: "  Draft paragraph.\n\nSecond paragraph.  ",
       unsupported_paragraphs: ["0", 1.5, -1, Number.NaN],
-      fabricated_citations: [" cite-1 ", ""],
-      prose_provenance: { " 0 ": [" "], "1": [NODE_ID, " "] },
+      fabricated_citations: [" cite-1 ", "", "cite-1"],
+      prose_provenance: { " 0 ": [" "], "1": [NODE_ID, " ", NODE_ID] },
     });
     const { container } = render(
       <Outline

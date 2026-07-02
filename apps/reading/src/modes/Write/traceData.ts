@@ -29,6 +29,10 @@ function stringArray(value: unknown): string[] {
   });
 }
 
+function uniqueStringArray(value: unknown): string[] {
+  return Array.from(new Set(stringArray(value)));
+}
+
 export function safeTraceTarget(target: TraceTarget): TraceTarget {
   const fullTextAllowed = target.full_text_allowed === true;
   return {
@@ -36,7 +40,7 @@ export function safeTraceTarget(target: TraceTarget): TraceTarget {
     full_text_allowed: fullTextAllowed,
     document_id: fullTextAllowed ? nonEmptyString(target.document_id) : null,
     document_title: fullTextAllowed ? nonEmptyString(target.document_title) : null,
-    chunk_ids: fullTextAllowed ? stringArray(target.chunk_ids) : [],
+    chunk_ids: fullTextAllowed ? uniqueStringArray(target.chunk_ids) : [],
     primary_chunk_index: fullTextAllowed
       ? nonNegativeSafeInteger(target.primary_chunk_index)
       : null,

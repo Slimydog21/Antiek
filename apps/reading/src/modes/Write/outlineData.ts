@@ -40,6 +40,10 @@ function safeStringArray(value: unknown): string[] {
   });
 }
 
+function uniqueStringArray(value: unknown): string[] {
+  return Array.from(new Set(safeStringArray(value)));
+}
+
 function safeNumberArray(value: unknown): number[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
@@ -53,7 +57,7 @@ export function safeProseProvenance(value: unknown): Record<string, string[]> {
   return Object.fromEntries(
     Object.entries(value).flatMap(([key, rawIds]) => {
       const paragraph = nonEmptyString(key);
-      const ids = safeStringArray(rawIds);
+      const ids = uniqueStringArray(rawIds);
       return paragraph && ids.length ? [[paragraph, ids]] : [];
     }),
   );
@@ -100,7 +104,7 @@ export function safeGenerationResult(
     all_claims_cited:
       typeof result.all_claims_cited === "boolean" ? result.all_claims_cited : null,
     unsupported_paragraphs: safeNumberArray(result.unsupported_paragraphs),
-    fabricated_citations: safeStringArray(result.fabricated_citations),
+    fabricated_citations: uniqueStringArray(result.fabricated_citations),
     prose_provenance: safeProseProvenance(result.prose_provenance),
   };
 }

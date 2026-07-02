@@ -574,7 +574,7 @@ describe("WriteHome — the re-homed door", () => {
       full_text_allowed: true,
       document_id: " ",
       document_title: "  Source Book  ",
-      chunk_ids: [" c1 ", "", 99],
+      chunk_ids: [" c1 ", "", 99, "c1"],
       primary_chunk_index: "0",
       primary_section_path: "Page 1",
       servability_status: "servable",

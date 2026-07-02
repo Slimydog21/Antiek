@@ -48,8 +48,8 @@ beforeEach(() => {
     section_id: " ",
     prose_text: "  Draft paragraph.  ",
     unsupported_paragraphs: ["0", 1.5, -1, Number.NaN],
-    fabricated_citations: [" cite-1 ", ""],
-    prose_provenance: { "0": ["node-1"] },
+    fabricated_citations: [" cite-1 ", "", "cite-1"],
+    prose_provenance: { "0": ["node-1", "node-1"] },
   });
 });
 
