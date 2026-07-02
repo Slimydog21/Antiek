@@ -222,5 +222,8 @@ jobs:
       - name: Canonical verify — write draft generation style
         run: ./scripts/canonical_verify.sh write-draft-generation-style
 
+      - name: Canonical verify — write trace to source
+        run: ./scripts/canonical_verify.sh write-trace-to-source
+
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md

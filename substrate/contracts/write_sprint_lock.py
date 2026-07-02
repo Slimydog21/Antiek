@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to WRITE_SPRINTS. Status changes are deliberate roadmap
 # events, not prose-only handoffs.
-WRITE_LOCK_VERSION: int = 6
+WRITE_LOCK_VERSION: int = 7
 
 
 @dataclass(frozen=True)
@@ -88,7 +88,16 @@ WRITE_SPRINTS: dict[int, WriteDeliverable] = {
         # write-draft-generation-style.
         status="live",
     ),
-    7: WriteDeliverable(7, "trace-to-source", "Trace to source"),
+    7: WriteDeliverable(
+        7,
+        "trace-to-source",
+        "Trace to source",
+        # Live: block/citation trace intents, backend provenance→servability
+        # target resolution, public source-span opening, gated no-leak
+        # fallback, X-ray source labeling, and one-reader openDocument routing
+        # are covered by write-trace-to-source.
+        status="live",
+    ),
     8: WriteDeliverable(8, "pre-outline-freeform", "Pre-outline freeform"),
     9: WriteDeliverable(9, "style-conditioning", "Style conditioning"),
 }
