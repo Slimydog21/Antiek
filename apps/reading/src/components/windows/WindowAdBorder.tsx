@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-import AdBorder from "../../modes/Reading/AdBorder";
+import AdBorder, { normalizeAdFill } from "../../modes/Reading/AdBorder";
 import type { AdFillView } from "../../modes/Reading/AdBorder";
 import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
 
@@ -65,7 +65,7 @@ function effectiveFill(
   raw: AdFillView | undefined,
   isSuppressed: boolean,
 ): { fill: AdFillView; suppressedAd: AdFillView["ad"] | null } {
-  const fill = raw ?? HOUSE_FALLBACK;
+  const fill = normalizeAdFill(raw ?? HOUSE_FALLBACK);
   if (fill.kind === "ad" && fill.ad && isSuppressed) {
     return { fill: HOUSE_FALLBACK, suppressedAd: fill.ad };
   }
