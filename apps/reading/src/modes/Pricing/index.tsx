@@ -90,7 +90,7 @@ export default function PricingPage() {
             />
             <TierCard
               title="Paid private use"
-              caption="Brainstorming Workstation, private documents, private graph."
+              caption="Brainstorm station, private documents, private graph."
               margin="50% managed-service margin"
               points={[
                 "No ads. Content stays in your private partition.",
