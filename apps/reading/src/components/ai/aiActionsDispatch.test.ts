@@ -604,6 +604,106 @@ describe("AI tool-call · full dispatch round-trip", () => {
     window.localStorage.removeItem(etagKey);
   });
 
+  it("add_to_notebook trims notebook ids before storage, events, and event-log targets", async () => {
+    const nbId = "ai-test-nb-trimmed";
+    const lsKey = "antiek.notebook." + nbId;
+    const rawLsKey = "antiek.notebook.  " + nbId + "  ";
+    const events: Array<{ notebookId: string; etag: number }> = [];
+    const listener = (e: Event) => {
+      const ce = e as CustomEvent<{ notebookId: string; etag: number }>;
+      if (ce.detail) events.push(ce.detail);
+    };
+    window.addEventListener("antiek:notebook:appended", listener);
+
+    const { actions } = parseAssistantReply(
+      "x\n\n@@actions\n" +
+        JSON.stringify([
+          {
+            kind: "add_to_notebook",
+            notebook_id: `  ${nbId}  `,
+            block: { kind: "note", text: "trim target" },
+          },
+        ]) +
+        "\n@@end",
+    );
+
+    const dispatched = dispatchAiAction(actions[0], {
+      investigation_id: "__sidecar__",
+      operator_prompt: "add trimmed note",
+    });
+    await expect(dispatched.appliedEventId).resolves.toBe("evt-ai-applied-1");
+
+    expect(window.localStorage.getItem(lsKey)).toContain("trim target");
+    expect(window.localStorage.getItem(rawLsKey)).toBeNull();
+    expect(events[0]).toEqual({ notebookId: nbId, etag: 1 });
+    expect(postTypedEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payload: expect.objectContaining({
+          target_kind: "notebook",
+          target_id: nbId,
+        }),
+      }),
+    );
+
+    window.removeEventListener("antiek:notebook:appended", listener);
+    window.localStorage.removeItem(lsKey);
+    window.localStorage.removeItem(lsKey + ".etag");
+  });
+
+  it("add_to_notebook skips blank notebook ids without writing local storage", () => {
+    const { actions } = parseAssistantReply(
+      "x\n\n@@actions\n" +
+        JSON.stringify([
+          {
+            kind: "add_to_notebook",
+            notebook_id: "   ",
+            block: { kind: "note", text: "must not write" },
+          },
+        ]) +
+        "\n@@end",
+    );
+
+    const dispatched = dispatchAiAction(actions[0], {
+      investigation_id: "__sidecar__",
+      operator_prompt: "bad notebook id",
+    });
+
+    expect(dispatched.label).toBe("Skipped invalid notebook action");
+    expect(dispatched.undo).toBeNull();
+    expect(window.localStorage.getItem("antiek.notebook.   ")).toBeNull();
+    expect(postTypedEventMock).not.toHaveBeenCalled();
+  });
+
+  it("add_to_notebook degrades unknown block kinds to notes", () => {
+    const nbId = "ai-test-nb-unknown-block";
+    const lsKey = "antiek.notebook." + nbId;
+    const { actions } = parseAssistantReply(
+      "x\n\n@@actions\n" +
+        JSON.stringify([
+          {
+            kind: "add_to_notebook",
+            notebook_id: nbId,
+            block: {
+              kind: "unsupported_block",
+              text: "keep this text",
+              attrs: { text: "fallback text" },
+            },
+          },
+        ]) +
+        "\n@@end",
+    );
+
+    dispatchAiAction(actions[0]);
+
+    const stored = window.localStorage.getItem(lsKey) ?? "";
+    expect(stored).toContain("<antiek-note");
+    expect(stored).toContain("keep this text");
+    expect(stored).not.toContain("unsupported_block");
+
+    window.localStorage.removeItem(lsKey);
+    window.localStorage.removeItem(lsKey + ".etag");
+  });
+
   it("add_to_notebook degrades malformed reference blocks to notes", () => {
     const nbId = "ai-test-nb-bad-block";
     const lsKey = "antiek.notebook." + nbId;
