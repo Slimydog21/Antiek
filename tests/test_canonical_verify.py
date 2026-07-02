@@ -90,6 +90,14 @@ def test_canonical_verify_read_voice_notes_hermetic() -> None:
     assert "CANONICAL_VERIFY_OK: read-voice-notes" in proc.stdout
 
 
+def test_canonical_verify_read_rabbit_hole_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("read-rabbit-hole")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: read-rabbit-hole" in proc.stdout
+
+
 def test_canonical_verify_deep_research_hermetic() -> None:
     if not PY.is_file():
         return

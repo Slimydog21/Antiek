@@ -11,9 +11,10 @@
 #   read-curate          — Read SPR-04 prompt-to-curate servable-only gate
 #   read-ad-border       — Read SPR-05 ad-border slots + impression/accrual gate
 #   read-voice-notes     — Read SPR-06 voice-note capture + distillation gate
+#   read-rabbit-hole     — Read SPR-07 conversational rabbit-hole + voice replies
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
-#   deep-research        — ANT-DRL P-22..P-28 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
-#   html-transport       — ANT-AHT P-29 ResearchArtifact transport gates
+#   deep-research        — ANT-DRL P-23..P-29 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
+#   html-transport       — ANT-AHT P-30 ResearchArtifact transport gates
 #
 # USAGE (from repo root):
 #   ./scripts/canonical_verify.sh cascade
@@ -36,7 +37,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|handoff <md>|agent-gates|deep-research|html-transport}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|handoff <md>|agent-gates|deep-research|html-transport}" >&2
   exit 2
 }
 
@@ -157,6 +158,26 @@ cmd_read_voice_notes() {
   echo "CANONICAL_VERIFY_OK: read-voice-notes"
 }
 
+cmd_read_rabbit_hole() {
+  echo "== read-rabbit-hole: TTS + gated book-QA backend =="
+  "${PY}" -m pytest \
+    tests/test_tts_voice_reply.py \
+    tests/test_book_qa_meta_reading.py::test_talk_to_book_answer_cites_pages \
+    tests/test_book_qa_meta_reading.py::test_talk_to_book_cannot_cite_withheld_region \
+    tests/test_book_qa_meta_reading.py::test_talk_to_book_no_extractable_text_fails_gracefully \
+    tests/test_book_qa_meta_reading.py::test_talk_to_book_approximate_page_is_labelled \
+    tests/test_contracts_read_lock.py \
+    -q --tb=no
+  echo "== read-rabbit-hole: sidecar voice replies + book conversation UI =="
+  (cd apps/reading && npm run test -- \
+    src/components/AISidecar.test.tsx \
+    src/components/SpokenReply.test.tsx \
+    src/modes/Reading/TalkToBook.test.tsx \
+    src/api/books.test.ts \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: read-rabbit-hole"
+}
+
 cmd_handoff() {
   local f="${1:?handoff markdown path required}"
   echo "== handoff: schema linter =="
@@ -175,7 +196,7 @@ cmd_agent_gates() {
 }
 
 cmd_html_transport() {
-  echo "== html-transport: P-29 ANT-AHT bundle =="
+  echo "== html-transport: P-30 ANT-AHT bundle =="
   "${PY}" -m pytest \
     tests/test_research_artifact_template.py \
     tests/test_research_artifact_export.py \
@@ -192,19 +213,19 @@ cmd_html_transport() {
 }
 
 cmd_deep_research() {
-  echo "== deep-research: P-22 Loop 1 E2E =="
+  echo "== deep-research: P-23 Loop 1 E2E =="
   "${PY}" -m pytest tests/test_loop_one_orchestrator.py::test_loop_one_happy_path_emits_completed -q --tb=no
-  echo "== deep-research: P-23 invariant negative =="
+  echo "== deep-research: P-24 invariant negative =="
   "${PY}" -m pytest tests/test_deep_research_complete.py::test_drw_only_trajectory_fails_without_synthesis -q --tb=no
-  echo "== deep-research: P-24 session reconstruct =="
+  echo "== deep-research: P-25 session reconstruct =="
   "${PY}" -m pytest tests/test_cascade_session.py -q --tb=no
-  echo "== deep-research: P-25 PromotionFunnel serialize =="
+  echo "== deep-research: P-26 PromotionFunnel serialize =="
   "${PY}" -m pytest tests/test_research_runner.py::test_promotion_funnel_serialized_no_lock_timeout -q --tb=no
-  echo "== deep-research: P-26 knowledge.reused (two-run) =="
+  echo "== deep-research: P-27 knowledge.reused (two-run) =="
   "${PY}" -m pytest tests/test_flywheel_reuse.py::test_two_run_contract_gather_emits_knowledge_reused_on_second_start -q --tb=no
-  echo "== deep-research: P-27 Exa gather mock E2E =="
+  echo "== deep-research: P-28 Exa gather mock E2E =="
   "${PY}" -m pytest tests/test_exa_gather_loop.py -q --tb=short
-  echo "== deep-research: P-28 parent-terminal observability =="
+  echo "== deep-research: P-29 parent-terminal observability =="
   "${PY}" -m pytest tests/test_drw_parent_terminal.py -q --tb=short
   echo "CANONICAL_VERIFY_OK: deep-research"
 }
@@ -221,6 +242,7 @@ main() {
     read-curate) cmd_read_curate ;;
     read-ad-border) cmd_read_ad_border ;;
     read-voice-notes) cmd_read_voice_notes ;;
+    read-rabbit-hole) cmd_read_rabbit_hole ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     deep-research) cmd_deep_research ;;
