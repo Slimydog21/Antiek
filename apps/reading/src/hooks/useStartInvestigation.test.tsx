@@ -47,4 +47,49 @@ describe("useStartInvestigation", () => {
 
     expect(result.current.liveCost).toBe(0.375);
   });
+
+  it("accepts numeric-string live dispatch costs", () => {
+    useEventStreamMock.mockReturnValue({
+      events: [
+        event("e1", "dispatch.call", { cost_usd: "0.25" }),
+        event("e2", "dispatch.call", { cost_usd: "0.125" }),
+      ],
+      status: "open",
+      reconnects: 0,
+    });
+
+    const { result } = renderHook(() => useStartInvestigation());
+
+    expect(result.current.liveCost).toBe(0.375);
+  });
+
+  it("sanitizes streamed failure reasons", () => {
+    useEventStreamMock.mockReturnValue({
+      events: [
+        event("e1", "investigation.failed", { reason: ["not text"] }),
+      ],
+      status: "open",
+      reconnects: 0,
+    });
+
+    const { result } = renderHook(() => useStartInvestigation());
+
+    expect(result.current.failed).toBe(true);
+    expect(result.current.failureReason).toBe("");
+  });
+
+  it("trims valid streamed failure reasons", () => {
+    useEventStreamMock.mockReturnValue({
+      events: [
+        event("e1", "investigation.failed", { reason: " no provider " }),
+      ],
+      status: "open",
+      reconnects: 0,
+    });
+
+    const { result } = renderHook(() => useStartInvestigation());
+
+    expect(result.current.failed).toBe(true);
+    expect(result.current.failureReason).toBe("no provider");
+  });
 });

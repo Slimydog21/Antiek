@@ -6,8 +6,24 @@ import type { Event } from "../generated/types";
 import { useEventStream } from "./useEventStream";
 
 function finiteNonNegativeNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object"
+    ? (value as Record<string, unknown>)
     : null;
 }
 
@@ -96,7 +112,7 @@ export function useStartInvestigation(): StartInvestigationState {
     let cost = 0;
     for (const e of stream.events) {
       if (e.action_type === "dispatch.call") {
-        const p = e.payload as { cost_usd?: number } | undefined;
+        const p = record(e.payload);
         cost += finiteNonNegativeNumber(p?.cost_usd) ?? 0;
       }
     }
@@ -112,10 +128,8 @@ export function useStartInvestigation(): StartInvestigationState {
   const failureReason = useMemo<string | null>(() => {
     for (const e of stream.events) {
       if (e.action_type === "investigation.failed") {
-        const p = e.payload as { reason?: unknown } | undefined;
-        return typeof p?.reason === "string" && p.reason.trim().length > 0
-          ? p.reason
-          : "";
+        const p = record(e.payload);
+        return nonEmptyString(p?.reason) ?? "";
       }
     }
     return null;
