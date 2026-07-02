@@ -71,6 +71,17 @@ function assertPositiveSafeInteger(value: number, field: string): void {
   }
 }
 
+function requireNonEmptyString(value: unknown, field: string): string {
+  if (typeof value !== "string") {
+    throw new TypeError(`${field} must be a non-empty string`);
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new TypeError(`${field} must be a non-empty string`);
+  }
+  return trimmed;
+}
+
 export async function searchRepository(opts: {
   q?: string;
   folderId?: string;
@@ -109,7 +120,7 @@ export async function createFolder(name: string): Promise<string> {
     }),
     "POST /write/folders",
   );
-  return body.folder_id;
+  return requireNonEmptyString(body.folder_id, "folder_id");
 }
 
 export async function addFolderBlock(folderId: string, nodeId: string): Promise<void> {
@@ -135,7 +146,7 @@ export async function placeBlock(body: PlaceBlockBody): Promise<string> {
     }),
     "POST /write/blocks",
   );
-  return r.outline_block_id;
+  return requireNonEmptyString(r.outline_block_id, "outline_block_id");
 }
 
 /** One block as it sits in a section's outline.
