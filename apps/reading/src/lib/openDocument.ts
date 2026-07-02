@@ -63,6 +63,8 @@ function isRegionOffset(offset: number): boolean {
  *                  encoding of the SPR-01 `Region` the Reader anchors to.
  *  - `mode`      → `?mode=inspect` (the "view original" register). 'read' (the
  *                  default) is omitted to keep the URL clean.
+ *  - `origin`    → `?from=` + optional `?fromPage=` / `?fromTitle=`. Citation
+ *                  opens use this to make return-to-reading explicit.
  */
 export function buildReaderTarget(
   documentId: string,
@@ -81,6 +83,21 @@ export function buildReaderTarget(
   }
   if (opts?.mode && opts.mode !== "read") {
     params.set("mode", opts.mode);
+  }
+  const originDocumentId = opts?.origin?.documentId?.trim();
+  if (originDocumentId) {
+    params.set("from", originDocumentId);
+    if (
+      opts?.origin?.page !== undefined &&
+      opts.origin.page !== null &&
+      isReaderPageIndex(opts.origin.page)
+    ) {
+      params.set("fromPage", String(opts.origin.page));
+    }
+    const originTitle = opts?.origin?.title?.trim();
+    if (originTitle) {
+      params.set("fromTitle", originTitle);
+    }
   }
   const search = params.toString();
   return { path, search: search ? `?${search}` : "" };
