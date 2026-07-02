@@ -520,6 +520,17 @@ def record_prompt_answer(
 ) -> str:
     if not isinstance(con, LockedConnection):
         raise TypeError("record_prompt_answer requires a LockedConnection")
+    answer_document_id = answer_document_id.strip()
+    if not answer_document_id:
+        raise ValueError("answer_document_id must be non-empty")
+    exists = con.execute(
+        "SELECT 1 FROM documents WHERE document_id = ?",
+        [answer_document_id],
+    ).fetchone()
+    if exists is None:
+        raise ValueError(
+            f"answer_document_id {answer_document_id!r} does not exist"
+        )
     aid = new_random_id("rga")
     con.execute(
         "INSERT INTO research_gap_prompt_answers "
