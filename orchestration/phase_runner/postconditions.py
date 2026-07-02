@@ -154,7 +154,7 @@ def check_phase_1(
 ) -> tuple[bool, str]:
     """``orientation.md`` exists, is ≥ ``_ORIENTATION_MIN_CHARS``, and
     contains a ``## Prior Graph Knowledge`` section with at least one
-    chunk_/node_ regex citation."""
+    chunk/node regex citation."""
     research_dir = research_dir or default_research_dir(investigation_id)
     path = os.path.join(research_dir, "orientation.md")
     if not os.path.exists(path):
@@ -181,9 +181,9 @@ def check_phase_1(
         text[section_start: section_start + next_header.start()]
         if next_header else text[section_start:]
     )
-    if not re.search(r"chunk_\w+|node_\w+", section):
+    if not re.search(r"\bchunk[-_][A-Za-z0-9_-]+|\bnode[-_][A-Za-z0-9_-]+", section):
         return False, (
-            "Prior Graph Knowledge section has no chunk_/node_ regex citation"
+            "Prior Graph Knowledge section has no chunk/node regex citation"
         )
     return True, "orientation.md OK (regex citation in Prior Graph Knowledge)"
 

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
+import { ArtifactExport } from "../../components/ArtifactExport";
 import { toast } from "../../components/lemon/LemonToast";
 import { getChunk } from "../../lib/api";
 import type { ChunkResponse } from "../../lib/api";
@@ -195,6 +196,12 @@ export default function MasterMdViewer({
 }) {
   const [openChunkId, setOpenChunkId] = useState<string | null>(null);
 
+  // HPRJ SPR-05 M5 — the artifact-export affordance lives in the shared
+  // <ArtifactExport> (the ONE neutral export affordance; the rights filter is
+  // server-side and it surfaces the 403 reason). Rendered below when there's a
+  // synthesis id.
+  const synthesisId = synthesis.synthesisId;
+
   // SPR-08 M5 — the review-due decorations pass (default-off; empty map unless
   // the toggle is flipped AND review-state is wired). Computed once per render,
   // threaded into each ClaimBlock. Off ⇒ empty ⇒ byte-equivalent to today.
@@ -286,6 +293,14 @@ export default function MasterMdViewer({
             <h1 className="text-2xl leading-tight mb-3">
               {synthesis.question}
             </h1>
+          )}
+          {synthesisId && (
+            <div className="mb-3">
+              <ArtifactExport
+                basePath={`/api/syntheses/${synthesisId}`}
+                filenamePrefix={`synthesis-${synthesisId}`}
+              />
+            </div>
           )}
           <div className="flex items-center gap-3 text-xs font-mono text-shadow-1 dark:text-moonlight">
             <RecommendationBadge rec={synthesis.recommendation} />

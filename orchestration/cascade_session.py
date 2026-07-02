@@ -38,24 +38,15 @@ import asyncio
 import logging
 import os
 import sys
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Dict, List, Optional, Sequence, Tuple
+from typing import Any
 
 # orchestration/ is a top-level package and uses absolute imports (matching
 # orchestration/continuous/daemon.py). The sys.path nudge supports direct
 # script execution from inside the package.
 if __package__ in (None, ""):  # pragma: no cover — direct-script fallback
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from runtime.research_runner import (
-    BudgetCap, Command, Handle, HostLocalRunner, ResearchPlan, RunState, StepEvent,
-)
-from runtime.research_runner.promotion_funnel import PromotionFunnel
-from runtime.db_lock import connect_write
-from substrate.event_log import default_events_dir, log_event, trajectory
-from substrate.schemas.events import ActionType
-from substrate.graph.insight_question import graph_db_path
-from substrate.graph.ops import insert_edge
-from roles.cascade_planner.approval import assert_launchable
 from orchestration.invariants.deep_research_complete import (
     check_deep_research_complete,
 )
@@ -63,7 +54,22 @@ from orchestration.session_evidence_pack import (
     SessionEvidencePack,
     build_session_evidence_pack,
 )
-
+from roles.cascade_planner.approval import assert_launchable
+from runtime.db_lock import connect_write
+from runtime.research_runner import (
+    BudgetCap,
+    Command,
+    Handle,
+    HostLocalRunner,
+    ResearchPlan,
+    RunState,
+    StepEvent,
+)
+from runtime.research_runner.promotion_funnel import PromotionFunnel
+from substrate.event_log import default_events_dir, log_event, trajectory
+from substrate.graph.insight_question import graph_db_path
+from substrate.graph.ops import insert_edge
+from substrate.schemas.events import ActionType
 
 _SESSION_DONE = object()
 
@@ -83,7 +89,7 @@ class Leaf:
 
     investigation_id: str
     sub_question: str
-    question_node_id: Optional[str] = None
+    question_node_id: str | None = None
     budget: BudgetCap = field(default_factory=BudgetCap)
 
 
@@ -92,7 +98,7 @@ class ResearchState:
     investigation_id: str
     sub_question: str
     state: str
-    question_node_id: Optional[str] = None
+    question_node_id: str | None = None
 
 
 @dataclass
@@ -101,12 +107,12 @@ class SessionRecovery:
     in-memory runtime state — proof a refresh/restart loses nothing."""
 
     session_id: str
-    researches: List[ResearchState]
+    researches: list[ResearchState]
     # Reconstructed from the session's own trajectory: the
     # ``cascade.synthesis_tail.failed`` audit event, if one was emitted before
     # the session was evicted. None when no such event exists — we surface only
     # what is honestly recoverable, never a fabricated success or failure.
-    synthesis_tail_error: Optional[str] = None
+    synthesis_tail_error: str | None = None
 
     @property
     def all_terminal(self) -> bool:
@@ -121,32 +127,32 @@ class CascadeSession:
         session_id: str,
         *,
         runner: HostLocalRunner,
-        funnel: Optional[PromotionFunnel] = None,
-        events_dir: Optional[str] = None,
-        db_path: Optional[str] = None,
+        funnel: PromotionFunnel | None = None,
+        events_dir: str | None = None,
+        db_path: str | None = None,
     ):
         self.session_id = session_id
         self._runner = runner
         self._funnel = funnel
         self._events_dir = events_dir
         self._db_path = db_path or graph_db_path()
-        self._leaves: Dict[str, Leaf] = {}
-        self._handles: Dict[str, Handle] = {}
-        self._out: "asyncio.Queue" = asyncio.Queue()
-        self._pump_tasks: List[asyncio.Task] = []
+        self._leaves: dict[str, Leaf] = {}
+        self._handles: dict[str, Handle] = {}
+        self._out: asyncio.Queue[StepEvent | object] = asyncio.Queue()
+        self._pump_tasks: list[asyncio.Task[None]] = []
         # Set by background completion (``_run_to_completion``) when the Loop 1
         # synthesis tail raises. A non-None value means the session never
         # reached ``DeepResearchComplete`` because synthesis failed — the
         # split-brain / silent-synthesis hazard the ANT-DRL programme guards.
-        self.synthesis_tail_error: Optional[str] = None
+        self.synthesis_tail_error: str | None = None
         # WHICH completion step failed ("join_and_merge" vs "synthesis_tail")
         # — lets ``terminal_status`` expose a merge failure as ``merge_error``
         # without mislabeling it as a tail one (SPR-DRL-09 contract).
-        self._completion_failure_stage: Optional[str] = None
+        self._completion_failure_stage: str | None = None
 
     # -- M1: launch with approval enforcement --------------------------
 
-    async def launch(self, plan_root_node_id: str, leaves: Sequence[Leaf]) -> List[Handle]:
+    async def launch(self, plan_root_node_id: str, leaves: Sequence[Leaf]) -> list[Handle]:
         """Launch an approved plan as N investigations. Refuses an unapproved
         plan (SPR-05 gate). Each leaf is spawned_from the session parent."""
         assert_launchable(plan_root_node_id, db_path=self._db_path)
@@ -156,7 +162,7 @@ class CascadeSession:
                   payload={"plan_root_node_id": plan_root_node_id,
                            "leaf_count": len(leaves)},
                   role="user_agent", events_dir=self._events_dir)
-        handles: List[Handle] = []
+        handles: list[Handle] = []
         for leaf in leaves:
             self._leaves[leaf.investigation_id] = leaf
             plan = ResearchPlan(
@@ -180,7 +186,7 @@ class CascadeSession:
         """Multiplexed stream of every research's events. Ends when all
         researches have terminated. For durable reconnect, a fresh consumer
         first calls ``reconstruct_session`` then resubscribes here."""
-        async def _closer():
+        async def _closer() -> None:
             await asyncio.gather(*self._pump_tasks, return_exceptions=True)
             await self._out.put(_SESSION_DONE)
         closer = asyncio.create_task(_closer())
@@ -189,6 +195,7 @@ class CascadeSession:
                 item = await self._out.get()
                 if item is _SESSION_DONE:
                     return
+                assert isinstance(item, StepEvent)
                 yield item
         finally:
             closer.cancel()
@@ -203,7 +210,7 @@ class CascadeSession:
 
     # -- M4: aggregate cost --------------------------------------------
 
-    def aggregate_cost(self) -> dict:
+    def aggregate_cost(self) -> dict[str, object]:
         per = {iid: self._runner.cost(h).spent_usd for iid, h in self._handles.items()}
         return {
             "per_research": per,
@@ -214,7 +221,7 @@ class CascadeSession:
 
     # -- M5/M7: join, merge-on-complete, failure isolation -------------
 
-    async def join_and_merge(self) -> dict:
+    async def join_and_merge(self) -> dict[str, object]:
         """Wait for all researches; drain the promotion funnel; link each
         research's promoted insights to its sub-question node. One research
         failing does not abort the merge for its siblings."""
@@ -222,7 +229,7 @@ class CascadeSession:
         if self._funnel is not None:
             await self._funnel.drain_and_stop()
         linked = 0
-        for iid, leaf in self._leaves.items():
+        for _iid, leaf in self._leaves.items():
             if leaf.question_node_id is None:
                 continue
             try:
@@ -234,6 +241,7 @@ class CascadeSession:
     def _link_findings(self, leaf: Leaf) -> int:
         """Link insight nodes promoted under this research to its sub-question
         node via question --resolved_by--> insight edges."""
+        assert leaf.question_node_id is not None  # caller guards
         insight_ids = [
             ev.get("payload", {}).get("node_id")
             for ev in trajectory(leaf.investigation_id, events_dir=self._events_dir)
@@ -261,7 +269,7 @@ class CascadeSession:
             con.close()
         return n
 
-    def status(self) -> List[ResearchState]:
+    def status(self) -> list[ResearchState]:
         out = []
         for iid, leaf in self._leaves.items():
             h = self._handles.get(iid)
@@ -338,7 +346,7 @@ class CascadeSession:
             stage, self.session_id,
         )
 
-    def terminal_status(self) -> dict:
+    def terminal_status(self) -> dict[str, object]:
         """The session's deep-research terminal contract, for status surfaces.
 
         ``gather_complete`` is the gather-only terminal (all leaves done);
@@ -363,7 +371,7 @@ class CascadeSession:
     def build_evidence_pack(
         self,
         *,
-        plan_root_node_id: Optional[str] = None,
+        plan_root_node_id: str | None = None,
     ) -> SessionEvidencePack:
         """Merge session leaves + JSONL trajectories into a typed pack."""
         researches = [
@@ -394,20 +402,21 @@ class CascadeSession:
         )
         return self.is_deep_research_complete()
 
-    def drain_nowait(self) -> List[StepEvent]:
+    def drain_nowait(self) -> list[StepEvent]:
         """Pop all currently-buffered StepEvents without blocking (skips the
         internal sentinel). Lets a transport poll-and-drain the multiplexed
         stream and decide termination via ``is_complete`` — robust to a
         request/response server that only advances the loop while a request is
         in flight (the poller's ``await asyncio.sleep`` gives the research
         tasks loop time)."""
-        out: List[StepEvent] = []
+        out: list[StepEvent] = []
         while True:
             try:
                 item = self._out.get_nowait()
             except asyncio.QueueEmpty:
                 break
             if item is not _SESSION_DONE:
+                assert isinstance(item, StepEvent)
                 out.append(item)
         return out
 
@@ -424,7 +433,7 @@ _TERMINAL_ACTION = {
 }
 
 
-def _list_investigation_ids(events_dir: str) -> List[str]:
+def _list_investigation_ids(events_dir: str) -> list[str]:
     if not os.path.isdir(events_dir):
         return []
     seen = set()
@@ -436,13 +445,13 @@ def _list_investigation_ids(events_dir: str) -> List[str]:
     return sorted(seen)
 
 
-def reconstruct_session(session_id: str, *, events_dir: Optional[str] = None) -> SessionRecovery:
+def reconstruct_session(session_id: str, *, events_dir: str | None = None) -> SessionRecovery:
     """Rebuild a session's membership + per-research state from the event log
     alone — the durability guarantee. A child belongs to the session if its
     trajectory carries an ``investigation.spawned_from`` pointing at the
     session; its state is its terminal event (or ``running``)."""
     resolved = events_dir or default_events_dir()
-    researches: List[ResearchState] = []
+    researches: list[ResearchState] = []
     for iid in _list_investigation_ids(resolved):
         rows = trajectory(iid, events_dir=resolved)
         parent = None
@@ -472,13 +481,13 @@ def reconstruct_session(session_id: str, *, events_dir: Optional[str] = None) ->
 
 
 def _recover_synthesis_tail_error(
-    session_id: str, *, events_dir: Optional[str] = None
-) -> Optional[str]:
+    session_id: str, *, events_dir: str | None = None
+) -> str | None:
     """The last ``cascade.synthesis_tail.failed`` audit event recorded on the
     session's own trajectory, or None if none was emitted. Honest by
     construction: absence of the event yields None (we never fabricate a
     failure or a success the event log cannot prove)."""
-    last: Optional[str] = None
+    last: str | None = None
     for ev in trajectory(session_id, events_dir=events_dir):
         if ev.get("action_type") == SYNTHESIS_TAIL_FAILED:
             payload = ev.get("payload", {}) if isinstance(ev.get("payload"), dict) else {}

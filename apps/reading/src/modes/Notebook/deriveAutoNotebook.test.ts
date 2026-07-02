@@ -46,6 +46,7 @@ function question(
 
 function synthesisWith(thesis: string): ParsedSynthesis {
   return {
+    synthesisId: null,
     thesisSummary: thesis,
     components: [],
     falsificationConditions: [],

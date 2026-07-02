@@ -81,8 +81,9 @@ class PromotionFunnel:
     def __init__(self, *, db_path: str | None = None, embedding_provider: Any = None):
         self._db_path = db_path or graph_db_path()
         self._embedding_provider = embedding_provider
-        self._queue: asyncio.Queue = asyncio.Queue()
-        self._worker: asyncio.Task | None = None
+        # Items are StepEvents plus the _FUNNEL_DONE sentinel object.
+        self._queue: asyncio.Queue[Any] = asyncio.Queue()
+        self._worker: asyncio.Task[None] | None = None
         self.promoted_insights = 0
         self.promoted_questions = 0
         self.errors: list[str] = []

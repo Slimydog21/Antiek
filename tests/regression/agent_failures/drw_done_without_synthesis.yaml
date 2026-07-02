@@ -34,13 +34,14 @@ actual_failure: |
   appeared finished to poll-drain consumers.
 
 harness_check_that_now_catches: |
-  orchestration/invariants/deep_research_complete.py defines
-  check_deep_research_complete, which rejects trajectories missing
+  orchestration/invariants/deep_research_complete.py
+  (check_deep_research_complete) rejects trajectories missing
   investigation.completed and phase 6;
-  orchestration/cascade_session.py defines CascadeSession.is_deep_research_complete,
-  which returns False for MOCK-only leaves.
+  orchestration/cascade_session.py
+  (CascadeSession.is_deep_research_complete) returns False for
+  MOCK-only leaves.
 
-fix_commit: ANT-DRL-06
+fix_commit: bfed09db
 
 notes: |
   ANT-DRL SPR-DRL-01. fix_commit updates when this commit lands on main.

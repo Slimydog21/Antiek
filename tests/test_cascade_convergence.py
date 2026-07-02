@@ -217,7 +217,7 @@ async def test_pack_synthesis_tail_mechanical_phase8_when_skill_templates_missin
     _register_synth(bus)
     coordinator = register_handlers(bus)
 
-    from orchestration.session_evidence_pack import SessionEvidencePack, PackChunk, PackDocument
+    from orchestration.session_evidence_pack import PackChunk, PackDocument, SessionEvidencePack
 
     pack = SessionEvidencePack(
         session_id="session-hbm-fallback",

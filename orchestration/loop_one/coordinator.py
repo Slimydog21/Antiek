@@ -30,6 +30,7 @@ import asyncio
 import os
 import sys
 from collections.abc import Iterable
+from typing import Any
 
 # Direct import — orchestration depends on substrate.
 _PKG_ROOT = os.path.dirname(
@@ -59,7 +60,7 @@ DEFAULT_AWAITED_ACTION_TYPES: tuple[str, ...] = (
 async def broadcast_emit(
     broadcaster: EventBroadcaster,
     investigation_id: str,
-    payload,
+    payload: Any,
     *,
     role: str | None = None,
     policy_id: str | None = None,

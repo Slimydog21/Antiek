@@ -437,6 +437,28 @@ def test_path_only_provenance_ok():
     assert out.thesis_components[0].supporting_path_indices == (0, 2)
 
 
+def test_component_rejects_fabricated_chunk_ids_with_canonical_set():
+    payload = _good_thesis()
+    payload["thesis_components"][0]["supporting_chunk_ids"] = [
+        "chunk-1",
+        "chunk-fake",
+        "chunk-1",
+    ]
+    out = parse_synthesizer_response(
+        json.dumps(payload),
+        canonical_chunk_ids={"chunk-1"},
+    )
+    assert out.thesis_components[0].supporting_chunk_ids == ("chunk-1",)
+
+    payload["thesis_components"][0]["supporting_chunk_ids"] = ["chunk-fake"]
+    payload["thesis_components"][0]["supporting_path_indices"] = []
+    with pytest.raises(SynthesizerValidationError, match="provenance"):
+        parse_synthesizer_response(
+            json.dumps(payload),
+            canonical_chunk_ids={"chunk-1"},
+        )
+
+
 # ---------------------------------------------------------------------------
 # F. Parser — reasoning_paths_used
 # ---------------------------------------------------------------------------
@@ -454,6 +476,33 @@ def test_empty_path_node_ids_rejected():
     payload["reasoning_paths_used"][0]["path_node_ids"] = []
     with pytest.raises(SynthesizerValidationError, match="path_node_ids"):
         parse_synthesizer_response(json.dumps(payload))
+
+
+def test_reasoning_path_rejects_fabricated_node_ids_with_canonical_set():
+    payload = _good_thesis()
+    payload["reasoning_paths_used"][0]["path_node_ids"] = ["n-1", "n-fake"]
+    out = parse_synthesizer_response(
+        json.dumps(payload),
+        canonical_node_ids={"n-1"},
+    )
+    assert out.reasoning_paths_used[0].path_node_ids == ("n-1",)
+
+    payload["reasoning_paths_used"][0]["path_node_ids"] = ["n-fake"]
+    with pytest.raises(SynthesizerValidationError, match="path_node_ids"):
+        parse_synthesizer_response(
+            json.dumps(payload),
+            canonical_node_ids={"n-1"},
+        )
+
+
+def test_reasoning_path_filters_fabricated_edge_ids_with_canonical_set():
+    payload = _good_thesis()
+    payload["reasoning_paths_used"][0]["path_edge_ids"] = ["e-1", "e-fake"]
+    out = parse_synthesizer_response(
+        json.dumps(payload),
+        canonical_edge_ids={"e-1"},
+    )
+    assert out.reasoning_paths_used[0].path_edge_ids == ("e-1",)
 
 
 def test_empty_reasoning_paths_ok():

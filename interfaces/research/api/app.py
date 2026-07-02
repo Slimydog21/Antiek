@@ -70,6 +70,7 @@ from substrate.schemas import (  # noqa: E402
 )
 
 from .broadcast import EventBroadcaster  # noqa: E402
+from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Request / response models
@@ -1214,7 +1215,7 @@ def create_app(
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
         expected_token = os.environ.get(_OPERATOR_TOKEN_ENV, "").strip()
-        operator_emails = frozenset(p.strip().lower() for p in os.environ.get(_OPERATOR_EMAIL_ENV, "").split(",") if p.strip())
+        operator_emails = operator_allowlist_from_env(_OPERATOR_EMAIL_ENV)
         expected_st_client_id = os.environ.get(
             _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV, "",
         ).strip().lower()
@@ -1392,6 +1393,18 @@ def create_app(
     # SAME servable-corpus read path; §9.0 keeps gated bodies out of payloads).
     from .library import register_library_routes
     register_library_routes(app)
+    # HPRJ SPR-05 — synthesis-artifact export: GET /api/syntheses/{id}/artifact.html.
+    # Rights filter lives in the adapter (reuses SERVABLE_CONTENT_CLASSES); the
+    # route wires the in-path zero-script gate + 403-with-reason on refusal.
+    from .synthesis_artifact import register_synthesis_artifact_routes
+    register_synthesis_artifact_routes(app)
+    # HPRJ SPR-06 — notebook-artifact export: GET /api/notebooks/{id}/artifact
+    # (?format=html|antiek|antiek_html). Rights filter in adapt_notebook_for_export.
+    from .notebook_artifact import register_notebook_artifact_routes
+    register_notebook_artifact_routes(app)
+    # HPRJ SPR-06 — deliverable (Write surface) export: GET /api/deliverables/{id}/artifact
+    from .deliverable_artifact import register_deliverable_artifact_routes
+    register_deliverable_artifact_routes(app)
     # Read SPR-09 — ad-border surfaces: per-window frame-attention telemetry
     # (composes the SPR-05 accrual engine + the one escrow seam; accrues, never
     # disburses) + reader slot fill (house fill is the zero-buyer default).
@@ -1520,6 +1533,10 @@ def create_app(
         from orchestration.loop_one import (
             register_handlers as _register_loop_one,
         )
+        # ANT-DRL-06: Path A convergence wiring (DRW gather → Loop 1
+        # synthesis tail) now lives inside ``register_handlers`` itself
+        # (orchestration/loop_one/orchestrator.py), so a plain call wires
+        # everything — no inline closure needed here.
         _register_loop_one(bus)
 
     # ── Health ──────────────────────────────────────────────────
