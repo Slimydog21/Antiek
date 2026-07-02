@@ -87,8 +87,13 @@ export default function Canvas({
   onCiteSource,
 }: CanvasProps) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
+  const loadSeq = useRef(0);
+  const activeInvestigationId = useRef(investigationId);
+  activeInvestigationId.current = investigationId;
 
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
+    const targetId = investigationId;
     setState({ kind: "loading" });
     try {
       // Two reads: the graph nodes (distill) + the position events (trajectory).
@@ -104,15 +109,19 @@ export default function Canvas({
         : [];
       const persisted = replayPositions(events);
       const positions = resolvePositions(nodeIds, persisted);
-      setState({
-        kind: "loaded",
-        insights: distill.insights,
-        questions: distill.questions,
-        positions,
-      });
+      if (loadSeq.current === seq && activeInvestigationId.current === targetId) {
+        setState({
+          kind: "loaded",
+          insights: distill.insights,
+          questions: distill.questions,
+          positions,
+        });
+      }
     } catch (e) {
-      const reason = e instanceof ApiError ? e.body || null : null;
-      setState({ kind: "error", reason });
+      if (loadSeq.current === seq && activeInvestigationId.current === targetId) {
+        const reason = e instanceof ApiError ? e.body || null : null;
+        setState({ kind: "error", reason });
+      }
     }
   }, [investigationId]);
 

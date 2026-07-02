@@ -25,7 +25,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useLocation, useParams } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 
 import type { DistilledNode } from "../../../lib/api";
 import type { Event } from "../../../generated/types";
@@ -69,6 +69,14 @@ function question(node_id: string, text: string, extra: Partial<DistilledNode> =
     source_document_id: null, refinement_count: 0, escalated: false,
     reserved_child_investigation_id: null, ...extra,
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
 }
 
 /** Build a block.positioned trajectory Event (the read-back shape). */
@@ -148,6 +156,15 @@ function RoutedCanvas() {
   );
 }
 
+function RouteSwitchProbe() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate("/drw/inv-fresh")}>
+      open fresh canvas
+    </button>
+  );
+}
+
 describe("Canvas — renders real graph nodes + auto-layout (M1/M2, rigor #3)", () => {
   it("renders one block per insight + question, auto-laid-out (no (0,0) pile-up)", async () => {
     getDistillationMock.mockResolvedValue({
@@ -165,6 +182,60 @@ describe("Canvas — renders real graph nodes + auto-layout (M1/M2, rigor #3)", 
     // Auto-layout: distinct positions, neither at (0,0).
     expect(i1.style.left).not.toBe("0px");
     expect(i2.style.left === i1.style.left && i2.style.top === i1.style.top).toBe(false);
+  });
+
+  it("keeps stale graph loads from overwriting the active routed canvas", async () => {
+    const staleDistill = deferred<{
+      investigation_id: string;
+      insights: DistilledNode[];
+      questions: DistilledNode[];
+    }>();
+    const staleTrajectory = deferred<{ investigation_id: string; count: number; events: Event[] }>();
+    const freshDistill = deferred<{
+      investigation_id: string;
+      insights: DistilledNode[];
+      questions: DistilledNode[];
+    }>();
+    const freshTrajectory = deferred<{ investigation_id: string; count: number; events: Event[] }>();
+    getDistillationMock
+      .mockReturnValueOnce(staleDistill.promise)
+      .mockReturnValueOnce(freshDistill.promise);
+    getTrajectoryMock
+      .mockReturnValueOnce(staleTrajectory.promise)
+      .mockReturnValueOnce(freshTrajectory.promise);
+
+    render(
+      <MemoryRouter initialEntries={["/drw/inv-stale"]}>
+        <RouteSwitchProbe />
+        <Routes>
+          <Route path="/drw/:investigationId" element={<RoutedCanvas />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /open fresh canvas/i }));
+      freshDistill.resolve({
+        investigation_id: "inv-fresh",
+        insights: [insight("fresh", "Fresh canvas insight.")],
+        questions: [],
+      });
+      freshTrajectory.resolve({ investigation_id: "inv-fresh", count: 0, events: [] });
+    });
+
+    expect(await screen.findByText("Fresh canvas insight.")).toBeTruthy();
+
+    await act(async () => {
+      staleDistill.resolve({
+        investigation_id: "inv-stale",
+        insights: [insight("stale", "Stale canvas insight.")],
+        questions: [],
+      });
+      staleTrajectory.resolve({ investigation_id: "inv-stale", count: 0, events: [] });
+    });
+
+    expect(screen.getByText("Fresh canvas insight.")).toBeTruthy();
+    expect(screen.queryByText("Stale canvas insight.")).toBeNull();
   });
 });
 
