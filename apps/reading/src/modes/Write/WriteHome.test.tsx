@@ -339,6 +339,34 @@ describe("WriteHome — the re-homed door", () => {
     await waitFor(() => expect(screen.getByText("READER doc-1 ?page=0&chunk=c1")).toBeTruthy());
   });
 
+  it("does not navigate when an allowed trace lacks a usable document id", async () => {
+    const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
+    getTraceTargetMock.mockResolvedValue({
+      kind: "document",
+      full_text_allowed: true,
+      document_id: " ",
+      document_title: "  Source Book  ",
+      chunk_ids: [" c1 ", "", 99],
+      primary_chunk_index: "0",
+      primary_section_path: "Page 1",
+      servability_status: "servable",
+      detail: " ",
+    });
+    mountAt("/write");
+    await screen.findByPlaceholderText(/what are you writing/i);
+
+    emitTraceIntent({
+      sectionId: "sec-1",
+      outlineBlockId: "oblk-malformed",
+      nodeId: "node-1",
+      provenanceKind: "graph_node",
+    });
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    expect(screen.queryByText(/READER/)).toBeNull();
+    alertSpy.mockRestore();
+  });
+
   it("falls back honestly (no dead page) when the source is gated/unreachable", async () => {
     const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
     const gated: TraceTarget = {

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 
+import { safeTraceTarget } from "./traceData";
 import { getTraceTarget, type OutlineBlockView } from "./writeApi";
 
 /**
@@ -155,7 +156,7 @@ export default function Xray({
         return;
       }
       try {
-        const t = await getTraceTarget(outlineBlockId);
+        const t = safeTraceTarget(await getTraceTarget(outlineBlockId));
         setTrace({
           blockId,
           documentTitle: t.full_text_allowed ? t.document_title : null,

@@ -19,6 +19,7 @@ import Outline from "./Outline";
 import { ProjectTypeField } from "./ProjectType";
 import { onTraceIntent } from "./Editor/traceIntent";
 import { safeDeliverableDetail, safeDeliverableSummaries } from "./deliverableData";
+import { safeTraceTarget } from "./traceData";
 import { getTraceTarget, type RepositoryHit } from "./writeApi";
 import { useOpenDocument } from "../../lib/openDocument";
 import {
@@ -117,7 +118,7 @@ export default function WriteHome() {
       }
       void (async () => {
         try {
-          const target = await getTraceTarget(intent.outlineBlockId!);
+          const target = safeTraceTarget(await getTraceTarget(intent.outlineBlockId!));
           if (target.full_text_allowed && target.document_id) {
             openDocument(target.document_id, {
               // The trace's first chunk locates the cited region; the Reader
