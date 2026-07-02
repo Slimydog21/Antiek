@@ -55,8 +55,13 @@ def test_read_sprint_7_conversational_rabbit_hole_is_live() -> None:
     assert lock.resolve_read_sprint(7).status == "live"
 
 
+def test_read_sprint_8_research_from_passage_is_live() -> None:
+    assert lock.resolve_read_sprint(8).slug == "research-from-passage"
+    assert lock.resolve_read_sprint(8).status == "live"
+
+
 def test_remaining_read_sprints_stay_planned_until_promoted() -> None:
-    assert {lock.resolve_read_sprint(n).status for n in range(8, 10)} == {"planned"}
+    assert {lock.resolve_read_sprint(n).status for n in range(9, 10)} == {"planned"}
 
 
 def test_roadmap_consumes_read_sprint_status_and_focus_advances() -> None:
@@ -70,10 +75,11 @@ def test_roadmap_consumes_read_sprint_status_and_focus_advances() -> None:
     assert by_id["read:5"].status.value == "live"
     assert by_id["read:6"].status.value == "live"
     assert by_id["read:7"].status.value == "live"
-    assert by_id["read:8"].status.value == "planned"
+    assert by_id["read:8"].status.value == "live"
+    assert by_id["read:9"].status.value == "planned"
     assert roadmap.execution_focus() is not None
-    assert roadmap.execution_focus().node_id == "read:8"
+    assert roadmap.execution_focus().node_id == "read:9"
 
 
 def test_read_lock_version_present() -> None:
-    assert isinstance(lock.READ_LOCK_VERSION, int) and lock.READ_LOCK_VERSION >= 7
+    assert isinstance(lock.READ_LOCK_VERSION, int) and lock.READ_LOCK_VERSION >= 8

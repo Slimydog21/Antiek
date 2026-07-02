@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to READ_SPRINTS. Status changes are deliberate roadmap
 # events, not comments buried in a handoff.
-READ_LOCK_VERSION: int = 7
+READ_LOCK_VERSION: int = 8
 
 
 @dataclass(frozen=True)
@@ -93,7 +93,16 @@ READ_SPRINTS: dict[int, ReadDeliverable] = {
         # covered by read-rabbit-hole.
         status="live",
     ),
-    8: ReadDeliverable(8, "research-from-passage", "Research from passage"),
+    8: ReadDeliverable(
+        8,
+        "research-from-passage",
+        "Research from passage",
+        # Live: gate-safe server-side research seeds, gated-body no-leak,
+        # two-way passage↔research provenance, typed spin-research client,
+        # reader page handoff, and retryable failure states are covered by
+        # read-passage-research.
+        status="live",
+    ),
     9: ReadDeliverable(9, "ad-revenue-escrow", "Ad-revenue escrow"),
 }
 
