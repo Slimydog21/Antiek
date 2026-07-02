@@ -48,6 +48,32 @@ function safeTrajectoryEvents(value: unknown): Event[] {
   return Array.isArray(source) ? source.filter(isEventFrame) : [];
 }
 
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function safePhase(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function replayStepsFor(events: Event[]): StepEvent[] {
+  const seen = new Set<string>();
+  return events.flatMap((e) => {
+    if (!SIGNIFICANT_ACTIONS.has(e.action_type)) return [];
+    const eventId = nonEmptyString(e.event_id);
+    if (!eventId || seen.has(eventId)) return [];
+    seen.add(eventId);
+    return [{
+      event_id: eventId,
+      action_type: e.action_type,
+      phase: safePhase(e.phase),
+      emitted_at: nonEmptyString(e.emitted_at),
+    }];
+  });
+}
+
 export default function ReplayStepList({ investigationId }: Props) {
   const [steps, setSteps] = useState<StepEvent[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -74,16 +100,7 @@ export default function ReplayStepList({ investigationId }: Props) {
         return;
       }
       const raw = safeTrajectoryEvents(await resp.json());
-      const filtered: StepEvent[] = raw
-        .filter((e) =>
-          SIGNIFICANT_ACTIONS.has(e.action_type),
-        )
-        .map((e) => ({
-          event_id: e.event_id,
-          action_type: e.action_type,
-          phase: typeof e.phase === "number" && Number.isFinite(e.phase) ? e.phase : null,
-          emitted_at: e.emitted_at,
-        }));
+      const filtered = replayStepsFor(raw);
       if (loadSeq.current === seq) {
         setSteps(filtered);
         setError(null);
@@ -134,10 +151,10 @@ export default function ReplayStepList({ investigationId }: Props) {
             No significant steps yet.
           </p>
         )}
-        {steps.map((s, i) => (
+        {steps.map((s) => (
           <button
             type="button"
-            key={s.event_id || i}
+            key={s.event_id}
             onClick={() => {
               // TrajectoryReplay is a slider, not a scrollable list —
               // we dispatch a custom event with the target event_id;
