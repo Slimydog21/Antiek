@@ -38,6 +38,7 @@ import { toast } from "./lemon/LemonToast";
  *   - Investigations (GET /investigations)
  *   - Documents (GET /documents)
  *   - Notebooks (GET /notebooks)
+ *   - Write pieces (GET /deliverables)
  *   - Parked questions / watch-for-later (GET /watch-for-later)
  *
  * Per master-spec §5.6 PostHog philosophy: 'transparent intelligence,
@@ -84,6 +85,14 @@ interface PaletteNotebook {
   path: string;
 }
 
+interface PaletteDeliverable {
+  kind: "deliverable";
+  id: string;
+  title: string;
+  subtitle: string;
+  path: string;
+}
+
 interface PaletteParkedQuestion {
   kind: "parked_question";
   id: string;
@@ -111,6 +120,7 @@ export type PaletteEntry =
   | PaletteInvestigation
   | PaletteDocument
   | PaletteNotebook
+  | PaletteDeliverable
   | PaletteParkedQuestion
   | PaletteAction;
 
@@ -147,6 +157,16 @@ function nonEmptyString(value: unknown): string | null {
 
 function nullableString(value: unknown): string | null {
   return value == null ? null : nonEmptyString(value);
+}
+
+function finiteNonNegativeNumber(value: unknown): number | null {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function safeInvestigations(value: unknown): PaletteInvestigation[] {
@@ -206,6 +226,25 @@ function safeNotebooks(value: unknown): PaletteNotebook[] {
       title: nonEmptyString(nb?.title) ?? notebookId,
       subtitle: `Notebook · ${notebookId.slice(0, 8)}`,
       path: `/notebook/${encodeURIComponent(notebookId)}`,
+    }];
+  });
+}
+
+function safeDeliverables(value: unknown): PaletteDeliverable[] {
+  const body = record(value);
+  const deliverables = Array.isArray(body?.deliverables) ? body.deliverables : [];
+  return deliverables.flatMap((item) => {
+    const d = record(item);
+    const deliverableId = nonEmptyString(d?.deliverable_id);
+    if (!deliverableId) return [];
+    const sectionCount = Math.floor(finiteNonNegativeNumber(d?.section_count) ?? 0);
+    const linked = nonEmptyString(d?.investigation_root_id) ? " · linked research" : "";
+    return [{
+      kind: "deliverable" as const,
+      id: `dlv:${deliverableId}`,
+      title: nonEmptyString(d?.title) ?? "Untitled piece",
+      subtitle: `Piece · ${sectionCount} section${sectionCount === 1 ? "" : "s"}${linked}`,
+      path: `/write/${encodeURIComponent(deliverableId)}`,
     }];
   });
 }
@@ -289,6 +328,7 @@ export default function CommandPalette() {
   const [investigations, setInvestigations] = useState<PaletteInvestigation[]>([]);
   const [documents, setDocuments] = useState<PaletteDocument[]>([]);
   const [notebooks, setNotebooks] = useState<PaletteNotebook[]>([]);
+  const [deliverables, setDeliverables] = useState<PaletteDeliverable[]>([]);
   const [parked, setParked] = useState<PaletteParkedQuestion[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
   // S9 acceptance: destructive layout-reset commands confirm via a
@@ -303,10 +343,11 @@ export default function CommandPalette() {
 
   const loadIndex = useCallback(async () => {
     try {
-      const [iResp, dResp, nResp, pResp] = await Promise.all([
+      const [iResp, dResp, nResp, dlvResp, pResp] = await Promise.all([
         apiFetch("/investigations").catch(() => null),
         apiFetch("/documents").catch(() => null),
         apiFetch("/notebooks").catch(() => null),
+        apiFetch("/deliverables").catch(() => null),
         apiFetch("/watch-for-later").catch(() => null),
       ]);
 
@@ -329,6 +370,10 @@ export default function CommandPalette() {
 
       if (nResp?.ok) {
         setNotebooks(safeNotebooks(await nResp.json()));
+      }
+
+      if (dlvResp?.ok) {
+        setDeliverables(safeDeliverables(await dlvResp.json()));
       }
 
       if (pResp?.ok) {
@@ -551,9 +596,18 @@ export default function CommandPalette() {
       ...investigations,
       ...documents,
       ...notebooks,
+      ...deliverables,
       ...parked,
     ],
-    [workflowJumps, workspaceActions, investigations, documents, notebooks, parked],
+    [
+      workflowJumps,
+      workspaceActions,
+      investigations,
+      documents,
+      notebooks,
+      deliverables,
+      parked,
+    ],
   );
 
   const ranked = useMemo(
@@ -609,7 +663,7 @@ export default function CommandPalette() {
             setActiveIdx(0);
           }}
           onKeyDown={onKeyDown}
-          placeholder="Type a route, investigation, document, or notebook…"
+          placeholder="Type a route, investigation, document, notebook, or piece…"
           className="w-full px-4 py-3 text-base font-serif text-ink dark:text-bright placeholder:text-ink-mute dark:text-moonlight outline-none border-b border-rule dark:border-charcoal-1"
         />
         <ul className="max-h-[400px] overflow-y-auto">

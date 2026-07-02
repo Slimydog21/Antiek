@@ -37,7 +37,7 @@ export function leadingWorkflow(q: string): Workflow | null {
 
 /**
  * Read a palette entry's workflow facet. Routes + actions carry it
- * explicitly; substrate kinds (investigation/document/notebook/parked)
+ * explicitly; substrate kinds (investigation/document/notebook/deliverable/parked)
  * are inferred to the workflow they live in.
  */
 export function entryWorkflow<E extends FacetEntry>(e: E): Workflow | undefined {
@@ -45,6 +45,7 @@ export function entryWorkflow<E extends FacetEntry>(e: E): Workflow | undefined 
   if (e.kind === "investigation") return "research";
   if (e.kind === "document") return "read";
   if (e.kind === "notebook") return "read";
+  if (e.kind === "deliverable") return "write";
   if (e.kind === "parked_question") return "research";
   return undefined;
 }

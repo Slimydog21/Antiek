@@ -74,6 +74,15 @@ describe("palette workflow facet (SPR-04 M4)", () => {
         path: "/wrestle/1",
       }),
     ).toBe("read");
+    expect(
+      entryWorkflow({
+        kind: "deliverable",
+        id: "dlv:1",
+        title: "x",
+        subtitle: "y",
+        path: "/write/1",
+      }),
+    ).toBe("write");
   });
 
   it("M4 launcher/palette parity: core Run & settings surfaces (Settings, Coordination) are covered under shared workflow", () => {
