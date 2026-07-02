@@ -23,9 +23,10 @@ What this does NOT do (Sprint 12 scope):
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import cast
+from typing import Any
 
 import httpx
 
@@ -78,7 +79,11 @@ class Podcast:
 # ---------------------------------------------------------------------------
 
 
-def _detect_transcript_url(entry: dict) -> str | None:
+def _as_optional_str(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _detect_transcript_url(entry: Mapping[str, Any]) -> str | None:
     """Look for a transcript URL in an RSS entry. Supports:
       - <podcast:transcript url="..." type="text/plain | text/vtt | text/srt"/>
         (Podcasting 2.0 namespace, parsed by feedparser as
@@ -96,13 +101,13 @@ def _detect_transcript_url(entry: dict) -> str | None:
             continue
         if isinstance(val, list) and val:
             for v in val:
-                url = (
+                url = _as_optional_str(
                     v.get("url") if isinstance(v, dict) else getattr(v, "url", None)
                 )
                 if url:
                     return url
         elif isinstance(val, dict):
-            url = val.get("url")
+            url = _as_optional_str(val.get("url"))
             if url:
                 return url
     # Scan generic links for transcript-flavored MIME types
@@ -111,7 +116,9 @@ def _detect_transcript_url(entry: dict) -> str | None:
         for link in links:
             rel = (link.get("rel") if isinstance(link, dict) else getattr(link, "rel", None)) or ""
             mtype = (link.get("type") if isinstance(link, dict) else getattr(link, "type", None)) or ""
-            href = (link.get("href") if isinstance(link, dict) else getattr(link, "href", None)) or ""
+            href = _as_optional_str(
+                link.get("href") if isinstance(link, dict) else getattr(link, "href", None)
+            ) or ""
             if not href:
                 continue
             if (
@@ -123,7 +130,7 @@ def _detect_transcript_url(entry: dict) -> str | None:
     return None
 
 
-def _detect_audio_url(entry: dict) -> str | None:
+def _detect_audio_url(entry: Mapping[str, Any]) -> str | None:
     """Find the audio enclosure URL. feedparser exposes RSS enclosures
     as ``entry.enclosures``; we accept anything with audio/* MIME."""
     enclosures = (
@@ -137,7 +144,7 @@ def _detect_audio_url(entry: dict) -> str | None:
             enc.get("type") if isinstance(enc, dict)
             else getattr(enc, "type", None)
         ) or ""
-        href = (
+        href = _as_optional_str(
             enc.get("href") if isinstance(enc, dict)
             else getattr(enc, "href", enc.get("url") if isinstance(enc, dict) else None)
         )
@@ -150,7 +157,7 @@ def _detect_audio_url(entry: dict) -> str | None:
     return None
 
 
-def _parse_duration(entry: dict) -> int:
+def _parse_duration(entry: Mapping[str, Any]) -> int:
     """Parse ``itunes:duration`` into seconds. Accepts ``HH:MM:SS``,
     ``MM:SS``, or raw seconds string. Returns 0 when unparseable."""
     val = (
@@ -161,20 +168,22 @@ def _parse_duration(entry: dict) -> int:
         return 0
     s = str(val).strip()
     try:
-        parts = s.split(":")
-        parts = [int(p) for p in parts]
+        parts = [int(p) for p in s.split(":")]
         if len(parts) == 3:
-            return parts[0] * 3600 + parts[1] * 60 + parts[2]
+            hours, minutes, seconds = parts
+            return hours * 3600 + minutes * 60 + seconds
         if len(parts) == 2:
-            return parts[0] * 60 + parts[1]
+            minutes, seconds = parts
+            return minutes * 60 + seconds
         if len(parts) == 1:
-            return parts[0]
+            (seconds,) = parts
+            return seconds
     except ValueError:
         pass
     return 0
 
 
-def _parse_published(entry: dict) -> datetime | None:
+def _parse_published(entry: Mapping[str, Any]) -> datetime | None:
     """Parse the entry's published timestamp. feedparser already
     converts ``pubDate`` into ``published_parsed`` (time.struct_time);
     we convert to UTC datetime."""
@@ -186,7 +195,7 @@ def _parse_published(entry: dict) -> datetime | None:
         return None
     try:
         import time as _time
-        epoch = _time.mktime(parsed)  # type: ignore[arg-type]
+        epoch = _time.mktime(parsed)
         return datetime.fromtimestamp(epoch, tz=UTC)
     except (TypeError, ValueError):
         return None
@@ -204,7 +213,7 @@ def fetch_feed(
     long-running podcast has 500+ episodes and you only want the
     most recent N."""
     try:
-        import feedparser  # type: ignore[import-not-found]
+        import feedparser  # type: ignore[import-untyped]
     except ImportError as e:  # pragma: no cover
         raise ImportError(
             "acquisition.podcasts requires feedparser. Run "
@@ -223,7 +232,7 @@ def fetch_feed(
         def _send() -> httpx.Response:
             return client.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-        r = cast("httpx.Response", govern_if_arxiv(feed_url, _send, throttle=canonical_arxiv_throttle()))
+        r = govern_if_arxiv(feed_url, _send, throttle=canonical_arxiv_throttle())
     else:
         with httpx.Client(
             follow_redirects=True,
@@ -232,7 +241,7 @@ def fetch_feed(
             def _send() -> httpx.Response:
                 return c.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-            r = cast("httpx.Response", govern_if_arxiv(feed_url, _send, throttle=canonical_arxiv_throttle()))
+            r = govern_if_arxiv(feed_url, _send, throttle=canonical_arxiv_throttle())
     r.raise_for_status()
 
     parsed = feedparser.parse(r.content)
@@ -317,7 +326,7 @@ def fetch_episode_transcript(
             def _send() -> httpx.Response:
                 return client.get(transcript_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-            r = cast("httpx.Response", govern_if_arxiv(transcript_url, _send, throttle=canonical_arxiv_throttle()))
+            r = govern_if_arxiv(transcript_url, _send, throttle=canonical_arxiv_throttle())
         else:
             with httpx.Client(
                 follow_redirects=True,
@@ -326,7 +335,7 @@ def fetch_episode_transcript(
                 def _send() -> httpx.Response:
                     return c.get(transcript_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-                r = cast("httpx.Response", govern_if_arxiv(transcript_url, _send, throttle=canonical_arxiv_throttle()))
+                r = govern_if_arxiv(transcript_url, _send, throttle=canonical_arxiv_throttle())
         r.raise_for_status()
     except (httpx.HTTPError, httpx.TimeoutException):
         return ""

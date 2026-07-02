@@ -20,9 +20,10 @@ returned; we never fabricate a body.
 from __future__ import annotations
 
 import hashlib
+import importlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import cast
+from typing import Any, Protocol, cast
 
 import httpx
 
@@ -100,15 +101,18 @@ class Publication:
     description: str = ""
 
 
-def _require_feedparser():
+class _FeedParserModule(Protocol):
+    def parse(self, data: bytes) -> Any: ...
+
+
+def _require_feedparser() -> _FeedParserModule:
     try:
-        import feedparser  # type: ignore[import-not-found]
+        return cast(_FeedParserModule, importlib.import_module("feedparser"))
     except ImportError as exc:  # pragma: no cover - import guard
         raise ImportError(
             "acquisition.substack requires feedparser. Run "
             "`pip install -e '.[rss]'`."
         ) from exc
-    return feedparser
 
 
 def substack_doc_id(guid: str) -> str:
@@ -123,7 +127,7 @@ def substack_doc_id(guid: str) -> str:
     return f"doc-sub-{digest}"
 
 
-def _parse_published(entry) -> datetime | None:
+def _parse_published(entry: object) -> datetime | None:
     """Extract a UTC datetime from a feed entry, if present.
 
     Mirrors ``podcasts/client.py:_parse_published`` (feedparser converts
@@ -137,46 +141,56 @@ def _parse_published(entry) -> datetime | None:
             try:
                 import time as _time
 
-                epoch = _time.mktime(struct)  # type: ignore[arg-type]
+                epoch = _time.mktime(struct)
                 return datetime.fromtimestamp(epoch, tz=UTC)
             except (TypeError, ValueError, OverflowError):
                 continue
     return None
 
 
-def _entry_get(entry, key: str, default=""):
+def _entry_get(entry: object, key: str, default: object = "") -> object:
     if hasattr(entry, "get"):
         return entry.get(key, default)
     return getattr(entry, key, default)
 
 
-def _entry_guid(entry) -> str:
+def _entry_str(entry: object, key: str, default: str = "") -> str:
+    value = _entry_get(entry, key, default)
+    return value if isinstance(value, str) else default
+
+
+def _entry_optional_str(entry: object, key: str) -> str | None:
+    value = _entry_get(entry, key, None)
+    return value if isinstance(value, str) else None
+
+
+def _entry_guid(entry: object) -> str:
     """GUID identity: entry id/guid, falling back to link. Empty if none."""
     return (
-        _entry_get(entry, "id", "")
-        or _entry_get(entry, "guid", "")
-        or _entry_get(entry, "link", "")
+        _entry_str(entry, "id")
+        or _entry_str(entry, "guid")
+        or _entry_str(entry, "link")
         or ""
     )
 
 
-def _entry_body_html(entry) -> str:
+def _entry_body_html(entry: object) -> str:
     """Full post HTML: ``content:encoded`` first, else ``summary``.
 
     feedparser surfaces ``content:encoded`` as ``entry.content[0].value``.
     We never look beyond the feed for a missing body.
     """
     content = _entry_get(entry, "content", None) or []
-    if content:
+    if isinstance(content, list) and content:
         first = content[0]
         val = (
             first.get("value")
             if hasattr(first, "get")
             else getattr(first, "value", None)
         )
-        if val:
+        if isinstance(val, str) and val:
             return val
-    return _entry_get(entry, "summary", "") or ""
+    return _entry_str(entry, "summary")
 
 
 def _render_body_markdown(
@@ -265,7 +279,7 @@ def fetch_feed(
         def _send() -> httpx.Response:
             return client.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-        r = cast("httpx.Response", govern_if_arxiv(feed_url, _send))
+        r = govern_if_arxiv(feed_url, _send)
     else:
         with httpx.Client(
             follow_redirects=True,
@@ -274,7 +288,7 @@ def fetch_feed(
             def _send() -> httpx.Response:
                 return c.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-            r = cast("httpx.Response", govern_if_arxiv(feed_url, _send))
+            r = govern_if_arxiv(feed_url, _send)
     r.raise_for_status()
     raw = r.content
 
@@ -305,14 +319,14 @@ def fetch_feed(
             # Rigor #3 edge case: no GUID and no link — skip, never mint a
             # random id. (Caller-visible: the post simply does not ingest.)
             continue
-        title = _entry_get(entry, "title", "") or ""
+        title = _entry_str(entry, "title")
         body_html = _entry_body_html(entry)
-        link = _entry_get(entry, "link", None) or None
+        link = _entry_optional_str(entry, "link")
         # Render to chunker-friendly markdown via the SHARED extractor that
         # acquisition/urls uses (wrapped so the readability extractor sees a
         # document, not a bare fragment — see _render_body_markdown).
         body_markdown = _render_body_markdown(body_html, title=title, base_url=link)
-        summary_html = _entry_get(entry, "summary", "") or ""
+        summary_html = _entry_str(entry, "summary")
         truncated, reason = detect_truncation(
             body_markdown=body_markdown, summary_html=summary_html
         )
@@ -324,7 +338,7 @@ def fetch_feed(
                 body_markdown=body_markdown,
                 published_at=_parse_published(entry),
                 post_url=link,
-                author=_entry_get(entry, "author", "") or "",
+                author=_entry_str(entry, "author"),
                 truncated=truncated,
                 truncation_reason=reason,
             )
