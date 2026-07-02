@@ -30,6 +30,27 @@ interface CompositeSnapshot {
   pendingDeletions: number;
   recentPayouts: PayoutTransfer[];
   coordination: CoordinationSummary | null;
+  marketplace: MarketplaceSummary | null;
+}
+
+interface MarketplaceSummary {
+  health: "healthy" | "watch" | "unhealthy";
+  health_signals: string[];
+  creators: {
+    creator_count: number;
+    total_paid_cents: number;
+  };
+  publishers: {
+    claim_rate: number;
+    total_escrow_accrued_cents: number;
+    unclaimed_escrow_cents: number;
+  };
+  advertisers: {
+    advertiser_count_current: number;
+    retention_rate: number;
+    total_spend_current_cents: number;
+    crosses_self_service_threshold: boolean;
+  };
 }
 
 interface CoordinationSummary {
@@ -168,11 +189,56 @@ function safeWarnings(value: unknown): string[] {
     : [];
 }
 
+function safeStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const text = nonEmptyString(item);
+        return text ? [text] : [];
+      })
+    : [];
+}
+
 function safeStatsResponse(value: unknown): StatsResponse {
   const body = record(value);
   return {
     counts: safeCounts(body?.counts),
     warnings: safeWarnings(body?.warnings),
+  };
+}
+
+function safeRate(value: unknown): number {
+  return nonNegativeFiniteNumber(value) ?? 0;
+}
+
+function safeMarketplaceSummary(value: unknown): MarketplaceSummary {
+  const body = record(value);
+  const creators = record(body?.creators);
+  const publishers = record(body?.publishers);
+  const publisherCounts = record(publishers?.status_counts);
+  const advertisers = record(body?.advertisers);
+  const rawHealth = nonEmptyString(body?.health);
+  return {
+    health:
+      rawHealth === "healthy" || rawHealth === "unhealthy" ? rawHealth : "watch",
+    health_signals: safeStringArray(body?.health_signals),
+    creators: {
+      creator_count: safeCount(creators?.creator_count),
+      total_paid_cents: safeCount(creators?.total_paid_cents),
+    },
+    publishers: {
+      claim_rate: safeRate(publisherCounts?.claim_rate),
+      total_escrow_accrued_cents: safeCount(
+        publishers?.total_escrow_accrued_cents,
+      ),
+      unclaimed_escrow_cents: safeCount(publishers?.unclaimed_escrow_cents),
+    },
+    advertisers: {
+      advertiser_count_current: safeCount(advertisers?.advertiser_count_current),
+      retention_rate: safeRate(advertisers?.retention_rate),
+      total_spend_current_cents: safeCount(advertisers?.total_spend_current_cents),
+      crosses_self_service_threshold:
+        advertisers?.crosses_self_service_threshold === true,
+    },
   };
 }
 
@@ -381,6 +447,7 @@ export default function OperatorDashboard() {
     pendingDeletions: 0,
     recentPayouts: [],
     coordination: null,
+    marketplace: null,
   });
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -395,12 +462,14 @@ export default function OperatorDashboard() {
         deletionsResp,
         payoutsResp,
         coordinationResp,
+        marketplaceResp,
       ] = await Promise.all([
         apiFetch("/publishers"),
         apiFetch("/stats").catch(() => null),
         apiFetch("/trust-center/deletion-requests").catch(() => null),
         apiFetch("/payouts/transfers?limit=5").catch(() => null),
         apiFetch("/coordination/roadmap").catch(() => null),
+        apiFetch("/marketplace/snapshot").catch(() => null),
       ]);
 
       if (!publishersResp.ok) {
@@ -426,7 +495,18 @@ export default function OperatorDashboard() {
         coordination = safeCoordinationSummary(await coordinationResp.json());
       }
 
-      setSnapshot({ stats, pendingDeletions, recentPayouts, coordination });
+      let marketplace: MarketplaceSummary | null = null;
+      if (marketplaceResp?.ok) {
+        marketplace = safeMarketplaceSummary(await marketplaceResp.json());
+      }
+
+      setSnapshot({
+        stats,
+        pendingDeletions,
+        recentPayouts,
+        coordination,
+        marketplace,
+      });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -609,7 +689,68 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
         </div>
       </div>
       <CoordinationTile coordination={snapshot.coordination} />
+      <MarketplaceTile marketplace={snapshot.marketplace} />
     </section>
+  );
+}
+
+function MarketplaceTile({
+  marketplace,
+}: {
+  marketplace: MarketplaceSummary | null;
+}) {
+  if (!marketplace) {
+    return (
+      <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className="text-sm font-serif text-ink dark:text-bright">
+            Marketplace health
+          </h3>
+          <Link
+            to="/marketplace"
+            className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+          >
+            open →
+          </Link>
+        </div>
+        <p className="mt-2 text-xs italic text-shadow-1 dark:text-moonlight">
+          Marketplace snapshot unavailable.
+        </p>
+      </div>
+    );
+  }
+  const firstSignal = marketplace.health_signals[0] ?? "no health signals reported";
+  return (
+    <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-3 space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-sm font-serif text-ink dark:text-bright">
+          Marketplace health
+        </h3>
+        <Link
+          to="/marketplace"
+          className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+        >
+          open →
+        </Link>
+      </div>
+      <p className="text-xs font-mono text-ink dark:text-bright">
+        {marketplace.health.toUpperCase()} · {marketplace.creators.creator_count} creators ·{" "}
+        {marketplace.advertisers.advertiser_count_current} advertisers
+      </p>
+      <p className="text-xs text-ink-soft dark:text-starlight">
+        Paid {centsToUsd(marketplace.creators.total_paid_cents)} · escrow{" "}
+        {centsToUsd(marketplace.publishers.total_escrow_accrued_cents)} · ad spend{" "}
+        {centsToUsd(marketplace.advertisers.total_spend_current_cents)}.
+      </p>
+      <p className="text-xs text-ink-soft dark:text-starlight">
+        Publisher claims {(marketplace.publishers.claim_rate * 100).toFixed(1)}% ·
+        advertiser retention {(marketplace.advertisers.retention_rate * 100).toFixed(1)}% ·
+        self-service {marketplace.advertisers.crosses_self_service_threshold ? "crossed" : "not crossed"}.
+      </p>
+      <p className="text-xs text-ink-soft dark:text-starlight">
+        Signal: {firstSignal}.
+      </p>
+    </div>
   );
 }
 
