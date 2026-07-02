@@ -181,6 +181,36 @@ beforeEach(() => {
         ],
       });
     }
+    if (path === "/deliverables") {
+      return okJson({
+        deliverables: [
+          {
+            deliverable_id: " dlv-a ",
+            deliverable_kind: " research_memo ",
+            investigation_root_id: " inv-a ",
+            section_count: "2",
+          },
+          {
+            deliverable_id: "dlv-b",
+            deliverable_kind: "research_memo",
+            investigation_root_id: " ",
+            section_count: Number.NaN,
+          },
+          {
+            deliverable_id: "dlv-c",
+            deliverable_kind: "book_chapter",
+            investigation_root_id: "inv-c",
+            section_count: "3.9",
+          },
+          {
+            deliverable_id: " ",
+            deliverable_kind: "research_memo",
+            investigation_root_id: "leak",
+            section_count: "99",
+          },
+        ],
+      });
+    }
     if (path.startsWith("/payouts/transfers")) {
       return okJson({
         transfers: [
@@ -402,6 +432,11 @@ describe("OperatorDashboard", () => {
     expect(
       screen.getByText("2 linked to research · 2 linked to documents."),
     ).toBeTruthy();
+    expect(screen.getByText("Writing pipeline")).toBeTruthy();
+    expect(
+      screen.getByText("3 pieces · 5 sections · top kind research memo"),
+    ).toBeTruthy();
+    expect(screen.getByText("2/3 pieces linked to research.")).toBeTruthy();
     expect(screen.getByText("Billing usage")).toBeTruthy();
     expect(
       screen.getByText("2026-07 · billable $0.2750 · margin $0.0250"),
@@ -426,6 +461,7 @@ describe("OperatorDashboard", () => {
     expect(openLinks).toContain("/investigations");
     expect(openLinks).toContain("/outcomes");
     expect(openLinks).toContain("/notebooks");
+    expect(openLinks).toContain("/write");
     expect(openLinks).toContain("/billing");
     expect(openLinks).toContain("/privacy");
     expect(openLinks).toContain("/marketplace");
