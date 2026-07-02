@@ -862,7 +862,7 @@ async def invitee_voice(
 
 
 @speak_router.post("/invite/{token}/followups")
-async def invitee_followups(token: str) -> dict:
+async def invitee_followups(token: str) -> dict[str, Any]:
     with _translate(), _write("speak/api:invite_followups_resolve") as con:
         interview_id, _ = _require_token(con, token)
     with _translate():
@@ -875,7 +875,7 @@ async def invitee_followups(token: str) -> dict:
 
 
 @speak_router.post("/invite/{token}/decline", status_code=200)
-async def invitee_decline(token: str) -> dict:
+async def invitee_decline(token: str) -> dict[str, Any]:
     with _translate(), _write("speak/api:invite_decline_resolve") as con:
         interview_id, _ = _require_token(con, token)
     decline(_db(), interview_id)

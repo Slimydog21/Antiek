@@ -118,7 +118,8 @@ def test_self_referential_fk_is_dropped_by_export_import(ddl_form: str, tmp_path
         rows = r.execute("SELECT id, parent FROM t ORDER BY id").fetchall()
         assert (2, 99999) in rows
         # and the emitted schema carries the stray-comma hallmark of the bug
-        schema = open(os.path.join(exp, "schema.sql")).read()
+        with open(os.path.join(exp, "schema.sql")) as _sf:
+            schema = _sf.read()
         assert ", )" in schema or ", ," in schema
     finally:
         r.close()

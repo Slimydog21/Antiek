@@ -28,7 +28,10 @@ are not imported here.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    import duckdb
 
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -119,7 +122,7 @@ class AdFillResponse(BaseModel):
 
 
 def _resolve_asset_gate(
-    con: object, asset_ids: set[str]
+    con: duckdb.DuckDBPyConnection, asset_ids: set[str]
 ) -> dict[str, tuple[str | None, str | None]]:
     """Resolve each asset's AUTHORITATIVE (content_class, ip_holder_id) from the
     documents gate columns — server-side, never from the client hint. An asset
