@@ -104,6 +104,56 @@ REASON_IMPOSSIBLE_GEOMETRY = "givt_impossible_sample_geometry"
 REASON_OVERSIZED_BATCH = "givt_oversized_batch"
 REASON_CONSTANT_ATTENTION = "sivt_constant_attention_signature"
 REASON_FOCUS_MARATHON = "sivt_implausible_focus_marathon"
+REASON_DWELL_CAP_CLAMPED = "cap_daily_asset_dwell_clamped"
+
+# --- M4: per-(user, asset, day) countable-dwell saturation cap. ---
+#
+# HONEST STATUS (rigor #1): this default is an UN-CALIBRATED structural ceiling,
+# NOT a data-derived percentile. The spec's M4 wants the cap fitted to a
+# percentile of the honest-traffic dwell distribution — but frame_attention_
+# accruals is empty (no real ad traffic yet), so there is no distribution to fit.
+# Until there is, the default is a generous "no honest single-document day
+# exceeds this" ceiling; the CALIBRATION step (fit the percentile on real
+# accrual rows, re-mint the constant with a recorded rationale, mirroring
+# benchmarks/rubric_latency --update-baseline) belongs to whoever first has real
+# data and is recorded in the S2 handoff — it is deliberately NOT faked here.
+#
+# Ceiling rationale: countable focused dwell is capped at 1000 ms/second. Even a
+# very heavy reader rarely focus-reads ONE document for more than a few hours in
+# a day; 6 h of COUNTABLE dwell on a SINGLE asset in a SINGLE day is beyond
+# plausible sustained single-document reading — it is where a re-reading bot's
+# otherwise-unbounded accrual is clamped. 6 h = 21_600_000 ms.
+DEFAULT_DAILY_ASSET_DWELL_CAP_MS = 21_600_000
+
+
+def clamp_countable_dwell(
+    prior_counted_ms: int,
+    incremental_ms: int,
+    *,
+    cap_ms: int = DEFAULT_DAILY_ASSET_DWELL_CAP_MS,
+) -> tuple[int, int]:
+    """Clamp one (user, asset, day)'s INCREMENTAL countable dwell to the
+    saturation cap. Bounds any single identity's payout influence: past the cap,
+    extra dwell on the same asset the same day earns nothing, so a sybil's
+    maximum extractable value is bounded and its cost exceeds its return (the
+    uncapped-unit failure mode of the $10M bot-streaming fraud).
+
+    Returns ``(counted_ms, clamped_ms)``: the portion that counts toward the
+    weight, and the excess that is CLAMPED — reported (via
+    ``REASON_DWELL_CAP_CLAMPED``), never silently dropped.
+
+    ``prior_counted_ms`` is the day's already-counted dwell for this
+    (user, asset). Pure arithmetic: the DB read of ``prior_counted_ms`` and the
+    wiring into the accrual weight are M5's job (they need the write connection +
+    the day bucket + the request identity).
+    """
+    if incremental_ms <= 0:
+        return 0, 0
+    if prior_counted_ms >= cap_ms:
+        return 0, incremental_ms  # already saturated: nothing new counts
+    room = cap_ms - prior_counted_ms
+    counted = min(incremental_ms, room)
+    return counted, incremental_ms - counted
 
 
 @dataclass(frozen=True)

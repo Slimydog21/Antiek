@@ -14,6 +14,7 @@ from substrate.ad_inventory.frame_attention import (
     WindowFrameBatch,
 )
 from substrate.anti_gaming.frame_ivt import (
+    DEFAULT_DAILY_ASSET_DWELL_CAP_MS,
     MIN_SIVT_WINDOW_SECONDS,
     REASON_CONSTANT_ATTENTION,
     REASON_DUPLICATE_INDEX,
@@ -21,6 +22,7 @@ from substrate.anti_gaming.frame_ivt import (
     REASON_IMPOSSIBLE_GEOMETRY,
     REASON_NON_MONOTONIC,
     REASON_OVERSIZED_BATCH,
+    clamp_countable_dwell,
     classify_batch,
 )
 from substrate.anti_gaming.verdict import FraudVerdictKind
@@ -283,3 +285,55 @@ def test_max_severity_sivt_review_not_diluted_by_low_givt():
     assert REASON_CONSTANT_ATTENTION in _reasons_window(result)
     assert REASON_IMPOSSIBLE_GEOMETRY in result.counts_by_reason()
     assert result.window_verdict.kind is FraudVerdictKind.REVIEW  # NOT diluted to PASS
+
+
+# ── M4: per-(user, asset, day) saturation cap (pure clamp) ───────────────────
+
+
+def test_dwell_under_cap_is_fully_counted():
+    counted, clamped = clamp_countable_dwell(0, 5000, cap_ms=10_000)
+    assert (counted, clamped) == (5000, 0)
+
+
+def test_dwell_crossing_cap_is_partially_clamped():
+    # 8000 prior + 5000 incremental, cap 10_000 → only 2000 counts, 3000 clamped.
+    counted, clamped = clamp_countable_dwell(8000, 5000, cap_ms=10_000)
+    assert (counted, clamped) == (2000, 3000)
+
+
+def test_dwell_already_at_cap_counts_nothing():
+    counted, clamped = clamp_countable_dwell(10_000, 4000, cap_ms=10_000)
+    assert (counted, clamped) == (0, 4000)
+
+
+def test_dwell_over_cap_counts_nothing():
+    counted, clamped = clamp_countable_dwell(12_000, 4000, cap_ms=10_000)
+    assert (counted, clamped) == (0, 4000)
+
+
+def test_dwell_exactly_reaching_cap_boundary():
+    counted, clamped = clamp_countable_dwell(6000, 4000, cap_ms=10_000)
+    assert (counted, clamped) == (4000, 0)
+
+
+def test_zero_or_negative_incremental_is_noop():
+    assert clamp_countable_dwell(0, 0, cap_ms=10_000) == (0, 0)
+    assert clamp_countable_dwell(5000, -100, cap_ms=10_000) == (0, 0)
+
+
+def test_conservation_counted_plus_clamped_equals_incremental():
+    # The clamp never invents or loses dwell: counted + clamped == incremental
+    # for every prior/incremental combination (the reported-exclusion invariant).
+    for prior in (0, 3000, 9999, 10_000, 20_000):
+        for inc in (0, 1, 4000, 10_000):
+            counted, clamped = clamp_countable_dwell(prior, inc, cap_ms=10_000)
+            assert counted + clamped == max(inc, 0)
+
+
+def test_default_cap_is_a_generous_ceiling():
+    # The un-calibrated default is a "no honest single-document day exceeds this"
+    # ceiling (6h of countable dwell), not a tuned percentile — documented as a
+    # calibration follow-up. A normal window's worth of dwell is far under it.
+    assert DEFAULT_DAILY_ASSET_DWELL_CAP_MS == 21_600_000
+    counted, clamped = clamp_countable_dwell(0, 600_000, )  # 10 min, default cap
+    assert (counted, clamped) == (600_000, 0)
