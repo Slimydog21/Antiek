@@ -60,9 +60,21 @@ type AgreeState =
 
 const POLL_MS = 8000;
 
+function record(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function stringOrNumber(value: unknown): string | number | null {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  return null;
+}
+
 async function readDetail(resp: Response): Promise<string> {
   try {
-    const body = await resp.json();
+    const body = record(await resp.json());
     return typeof body.detail === "string" ? body.detail : `HTTP ${resp.status}`;
   } catch {
     return `HTTP ${resp.status}`;
@@ -198,16 +210,17 @@ export default function Speak() {
           setActionNote(`Not yet — ${detail}`);
           return;
         }
-        const data = await resp.json().catch(() => ({}));
+        const data = record(await resp.json().catch(() => ({})));
         if (label === "Publishing") {
           setActionNote(
-            data.served
+            data.served === true
               ? "Published."
               : "Saved privately — not shared publicly (publishing is still gated).",
           );
         } else {
+          const cost = stringOrNumber(data.cost_usd) ?? "—";
           setActionNote(
-            `Paperback quote: $${data.cost_usd ?? "—"} (not ordered — fulfilment is gated).`,
+            `Paperback quote: $${cost} (not ordered — fulfilment is gated).`,
           );
         }
         await reload();
