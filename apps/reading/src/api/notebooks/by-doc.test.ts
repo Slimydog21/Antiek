@@ -56,6 +56,60 @@ describe("savePerDocNotebook", () => {
     expect(saved.notebook_id).toBe("nb-doc-1");
   });
 
+  it("sanitizes optional save response fields", async () => {
+    const payload = {
+      notebook_id: "nb-doc-1",
+      content_json: { type: "doc", content: [] },
+      blocks: [],
+      save_kind: "explicit" as const,
+    };
+    apiFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          notebook_id: " nb-doc-1 ",
+          document_id: " ",
+          content_json: undefined,
+          blocks: "not-array",
+          updated_at: " 2026-06-30T00:00:00Z ",
+          version: Number.POSITIVE_INFINITY,
+          archive_url: " ",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    const saved = await savePerDocNotebook("doc-1", payload);
+
+    expect(saved).toEqual({
+      notebook_id: "nb-doc-1",
+      document_id: "doc-1",
+      content_json: null,
+      blocks: [],
+      updated_at: "2026-06-30T00:00:00Z",
+      version: undefined,
+      archive_url: undefined,
+    });
+  });
+
+  it("throws ApiError when the save response has no usable notebook id", async () => {
+    apiFetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ notebook_id: " ", blocks: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    const promise = savePerDocNotebook("doc-1", {
+      notebook_id: "nb-doc-1",
+      content_json: { type: "doc", content: [] },
+      blocks: [],
+      save_kind: "autosave",
+    });
+
+    await expect(promise).rejects.toBeInstanceOf(ApiError);
+    await expect(promise).rejects.toMatchObject({ status: 502 });
+  });
+
   it("throws ApiError with response text on backend failure", async () => {
     apiFetchMock.mockResolvedValue(
       new Response("bound elsewhere", { status: 409 }),
