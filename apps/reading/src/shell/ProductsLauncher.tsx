@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { LemonTag } from "../components/lemon/LemonTag";
 import { openWindow, windowKindForRoute } from "../components/windows/openWindow";
+import { listDeliverables, type DeliverableSummary } from "../lib/api";
 import {
   MODE_TAXONOMY,
   WORKFLOWS,
@@ -40,6 +41,47 @@ const RUN_LABELS: Record<string, string> = {
   Coordination: "Coordination",
 };
 
+type LauncherWritePiece = {
+  id: string;
+  title: string;
+  subtitle: string;
+};
+
+type LauncherItem =
+  | { kind: "mode"; key: string; mode: ModeEntry }
+  | { kind: "write-piece"; key: string; piece: LauncherWritePiece };
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function safeWritePiece(value: unknown): LauncherWritePiece | null {
+  const row =
+    typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as Partial<DeliverableSummary>)
+      : null;
+  const id = nonEmptyString(row?.deliverable_id);
+  if (!id) return null;
+  const sectionCount = Math.max(
+    0,
+    Math.floor(
+      typeof row?.section_count === "number"
+        ? row.section_count
+        : Number(row?.section_count),
+    ) || 0,
+  );
+  const linked = nonEmptyString(row?.investigation_root_id)
+    ? " · linked research"
+    : "";
+  return {
+    id,
+    title: nonEmptyString(row?.title) ?? "Untitled piece",
+    subtitle: `${sectionCount} section${sectionCount === 1 ? "" : "s"}${linked}`,
+  };
+}
+
 /**
  * ProductsLauncher (SPR-04 zone-1 grid). The honest full inventory of every
  * mode, presented as two calm top-level groups: workflow deep/power modes
@@ -70,11 +112,13 @@ export function ProductsLauncher({
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const [writePieces, setWritePieces] = useState<LauncherWritePiece[]>([]);
 
   useEffect(() => {
     if (!open) {
       setQuery("");
       setActiveIndex(0);
+      setWritePieces([]);
       return;
     }
     const onKey = (e: KeyboardEvent) => {
@@ -84,17 +128,45 @@ export function ProductsLauncher({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    listDeliverables()
+      .then((body) => {
+        if (cancelled) return;
+        const pieces = Array.isArray(body.deliverables)
+          ? body.deliverables.flatMap((piece) => {
+              const safe = safeWritePiece(piece);
+              return safe ? [safe] : [];
+            })
+          : [];
+        setWritePieces(pieces);
+      })
+      .catch(() => {
+        if (!cancelled) setWritePieces([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   // Two top-level groups only: workflow deep modes (the four workflows'
   // power surfaces, presented under their own human labels) vs the run
   // & settings bucket (every shared/operator entry exactly once, human
   // labeled, never using "shared" or class tokens in the UI).
-  const { wfGroups, runModes, flatItems } = useMemo(() => {
+  const { wfGroups, runModes, filteredWritePieces, flatItems } = useMemo(() => {
     const q = query.trim().toLowerCase();
     const match = (m: ModeEntry) =>
       !q ||
       m.label.toLowerCase().includes(q) ||
       m.blurb.toLowerCase().includes(q) ||
       m.id.toLowerCase().includes(q);
+    const matchPiece = (p: LauncherWritePiece) =>
+      !q ||
+      p.title.toLowerCase().includes(q) ||
+      p.subtitle.toLowerCase().includes(q) ||
+      p.id.toLowerCase().includes(q) ||
+      "write piece deliverable writing".includes(q);
 
     const wfGroups = WORKFLOW_ORDER.map((wf) => ({
       workflow: wf,
@@ -110,9 +182,28 @@ export function ProductsLauncher({
       label: RUN_LABELS[m.id] ?? m.label,
     }));
 
-    const flatItems = [...wfGroups.flatMap((g) => g.modes), ...rawRun];
-    return { wfGroups, runModes, flatItems };
-  }, [query]);
+    const filteredWritePieces = writePieces.filter(matchPiece);
+    const flatItems: LauncherItem[] = [
+      ...filteredWritePieces.map((piece) => ({
+        kind: "write-piece" as const,
+        key: `piece:${piece.id}`,
+        piece,
+      })),
+      ...wfGroups.flatMap((g) =>
+        g.modes.map((mode) => ({
+          kind: "mode" as const,
+          key: `mode:${mode.id}`,
+          mode,
+        })),
+      ),
+      ...rawRun.map((mode) => ({
+        kind: "mode" as const,
+        key: `mode:${mode.id}`,
+        mode,
+      })),
+    ];
+    return { wfGroups, runModes, filteredWritePieces, flatItems };
+  }, [query, writePieces]);
 
   useEffect(() => {
     if (flatItems.length > 0 && activeIndex >= flatItems.length) {
@@ -144,6 +235,20 @@ export function ProductsLauncher({
     }
     navigate(target);
     onClose();
+  };
+
+  const openWritePiece = (piece: LauncherWritePiece) => {
+    navigate(`/write/${encodeURIComponent(piece.id)}`);
+    onClose();
+  };
+
+  const openItem = (item: LauncherItem | undefined) => {
+    if (!item) return;
+    if (item.kind === "write-piece") {
+      openWritePiece(item.piece);
+    } else {
+      openMode(item.mode);
+    }
   };
 
   // SPR-09 M5 — the legacy additive "open in window" spawn, retained for the
@@ -183,15 +288,14 @@ export function ProductsLauncher({
       e.preventDefault();
       setActiveIndex((i) => Math.max(i - 1, 0));
     } else if (e.key === "Enter") {
-      const m = flatItems[activeIndex];
-      if (m) openMode(m);
+      openItem(flatItems[activeIndex]);
     }
   };
 
   // Active visual treatment matches the sibling CommandPalette (activeIdx
   // + highlight, not DOM roving focus). This gives power users the two-action
   // bar (More then arrow+enter, or type filter+enter) without tabbing.
-  const isActive = (id: string) => flatItems[activeIndex]?.id === id;
+  const isActive = (key: string) => flatItems[activeIndex]?.key === key;
 
   return (
     <div
@@ -254,12 +358,45 @@ export function ProductsLauncher({
             </button>
           </div>
 
-          {wfGroups.length === 0 && runModes.length === 0 ? (
+          {wfGroups.length === 0 && runModes.length === 0 && filteredWritePieces.length === 0 ? (
             <p className="text-sm italic text-shadow-1 dark:text-moonlight">
               No surfaces match “{query}”.
             </p>
           ) : (
             <>
+              {filteredWritePieces.length > 0 && (
+                <div>
+                  <div className="font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-2">
+                    Recent writing
+                  </div>
+                  <ul className="space-y-0.5">
+                    {filteredWritePieces.map((piece) => (
+                      <li key={piece.id}>
+                        <button
+                          type="button"
+                          onClick={() => openWritePiece(piece)}
+                          title={`Open ${piece.title} in Write`}
+                          className={
+                            "w-full text-left px-2 py-1.5 rounded flex items-center gap-2 hover:bg-sun/20 dark:hover:bg-sun/10 text-ink dark:text-bright cursor-pointer" +
+                            (isActive(`piece:${piece.id}`) ? " bg-sun/10 dark:bg-sun/5" : "")
+                          }
+                        >
+                          <span aria-hidden="true" className="shrink-0 text-ink-mute dark:text-moonlight">
+                            ✎
+                          </span>
+                          <span className="flex-1 min-w-0 truncate text-[13px]">
+                            {piece.title}
+                          </span>
+                          <span className="shrink-0 text-[11px] text-shadow-1 dark:text-moonlight">
+                            {piece.subtitle}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
               {wfGroups.length > 0 && (
                 <div>
                   <div className="font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight mb-2">
@@ -316,7 +453,7 @@ export function ProductsLauncher({
                                   (m.built
                                     ? "hover:bg-sun/20 dark:hover:bg-sun/10 text-ink dark:text-bright cursor-pointer"
                                     : "text-ink-mute dark:text-moonlight cursor-default opacity-70") +
-                                  (isActive(m.id) ? " bg-sun/10 dark:bg-sun/5" : "")
+                                  (isActive(`mode:${m.id}`) ? " bg-sun/10 dark:bg-sun/5" : "")
                                 }
                               >
                                 <span className="flex-1 min-w-0 truncate text-[13px]">
@@ -368,7 +505,7 @@ export function ProductsLauncher({
                             (m.built
                               ? "hover:bg-sun/20 dark:hover:bg-sun/10 text-ink dark:text-bright cursor-pointer"
                               : "text-ink-mute dark:text-moonlight cursor-default opacity-70") +
-                            (isActive(m.id) ? " bg-sun/10 dark:bg-sun/5" : "")
+                            (isActive(`mode:${m.id}`) ? " bg-sun/10 dark:bg-sun/5" : "")
                           }
                         >
                           <span className="flex-1 min-w-0 truncate text-[13px]">
