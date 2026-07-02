@@ -16,9 +16,10 @@
 #   read-ad-escrow       — Read SPR-09 rights-holder escrow accrual gate
 #   write-outline-block  — Write SPR-01 outline-block model + provenance gate
 #   write-edit-capture   — Write SPR-02 edit trajectory capture + G8 gate
+#   write-block-repository — Write SPR-03 folders/search/drag provenance gate
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
-#   deep-research        — ANT-DRL P-27..P-33 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
-#   html-transport       — ANT-AHT P-34 ResearchArtifact transport gates
+#   deep-research        — ANT-DRL P-28..P-34 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
+#   html-transport       — ANT-AHT P-35 ResearchArtifact transport gates
 #
 # USAGE (from repo root):
 #   ./scripts/canonical_verify.sh cascade
@@ -41,7 +42,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|handoff <md>|agent-gates|deep-research|html-transport}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|handoff <md>|agent-gates|deep-research|html-transport}" >&2
   exit 2
 }
 
@@ -184,6 +185,22 @@ cmd_write_edit_capture() {
   echo "CANONICAL_VERIFY_OK: write-edit-capture"
 }
 
+cmd_write_block_repository() {
+  echo "== write-block-repository: folders/search backend + route surface =="
+  "${PY}" -m pytest \
+    tests/test_block_repository.py \
+    tests/test_write_routes.py \
+    tests/test_contracts_write_lock.py \
+    -q --tb=no
+  echo "== write-block-repository: typed client + repository UI + drag provenance =="
+  (cd apps/reading && npm run test -- \
+    src/modes/Write/writeApi.test.ts \
+    src/modes/Write/Repository/Repository.test.tsx \
+    src/modes/Write/Repository/dragToOutline.test.ts \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: write-block-repository"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -247,7 +264,7 @@ cmd_agent_gates() {
 }
 
 cmd_html_transport() {
-  echo "== html-transport: P-34 ANT-AHT bundle =="
+  echo "== html-transport: P-35 ANT-AHT bundle =="
   "${PY}" -m pytest \
     tests/test_research_artifact_template.py \
     tests/test_research_artifact_export.py \
@@ -264,19 +281,19 @@ cmd_html_transport() {
 }
 
 cmd_deep_research() {
-  echo "== deep-research: P-27 Loop 1 E2E =="
+  echo "== deep-research: P-28 Loop 1 E2E =="
   "${PY}" -m pytest tests/test_loop_one_orchestrator.py::test_loop_one_happy_path_emits_completed -q --tb=no
-  echo "== deep-research: P-28 invariant negative =="
+  echo "== deep-research: P-29 invariant negative =="
   "${PY}" -m pytest tests/test_deep_research_complete.py::test_drw_only_trajectory_fails_without_synthesis -q --tb=no
-  echo "== deep-research: P-29 session reconstruct =="
+  echo "== deep-research: P-30 session reconstruct =="
   "${PY}" -m pytest tests/test_cascade_session.py -q --tb=no
-  echo "== deep-research: P-30 PromotionFunnel serialize =="
+  echo "== deep-research: P-31 PromotionFunnel serialize =="
   "${PY}" -m pytest tests/test_research_runner.py::test_promotion_funnel_serialized_no_lock_timeout -q --tb=no
-  echo "== deep-research: P-31 knowledge.reused (two-run) =="
+  echo "== deep-research: P-32 knowledge.reused (two-run) =="
   "${PY}" -m pytest tests/test_flywheel_reuse.py::test_two_run_contract_gather_emits_knowledge_reused_on_second_start -q --tb=no
-  echo "== deep-research: P-32 Exa gather mock E2E =="
+  echo "== deep-research: P-33 Exa gather mock E2E =="
   "${PY}" -m pytest tests/test_exa_gather_loop.py -q --tb=short
-  echo "== deep-research: P-33 parent-terminal observability =="
+  echo "== deep-research: P-34 parent-terminal observability =="
   "${PY}" -m pytest tests/test_drw_parent_terminal.py -q --tb=short
   echo "CANONICAL_VERIFY_OK: deep-research"
 }
@@ -298,6 +315,7 @@ main() {
     read-ad-escrow) cmd_read_ad_escrow ;;
     write-outline-block) cmd_write_outline_block ;;
     write-edit-capture) cmd_write_edit_capture ;;
+    write-block-repository) cmd_write_block_repository ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     deep-research) cmd_deep_research ;;
