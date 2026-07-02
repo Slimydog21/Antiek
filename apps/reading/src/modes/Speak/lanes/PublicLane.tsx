@@ -136,7 +136,7 @@ export default function PublicLane({ feedLoading, feed }: PublicLaneProps) {
             <li key={f.id} className={PANEL}>
               <div className="flex items-center justify-between gap-3">
                 <Link
-                  to={`/speak/${f.id}`}
+                  to={`/speak/${encodeURIComponent(f.id)}`}
                   className="font-serif text-[16px] text-ink hover:underline dark:text-bright"
                 >
                   {f.name}
@@ -162,7 +162,7 @@ export default function PublicLane({ feedLoading, feed }: PublicLaneProps) {
                   can contribute now (open public contribution is G7-gated,
                   framed below). No /login link, no 403 button, no dead end. */}
               <div className="mt-2">
-                <Link to={`/speak/${f.id}`}>
+                <Link to={`/speak/${encodeURIComponent(f.id)}`}>
                   <LemonButton variant="secondary" size="sm">
                     Add your memory
                   </LemonButton>

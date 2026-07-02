@@ -44,7 +44,7 @@ export default function YoursLane({ loading, people }: YoursLaneProps) {
         {people.map((p) => (
           <li key={p.id}>
             <Link
-              to={`/speak/${p.id}`}
+              to={`/speak/${encodeURIComponent(p.id)}`}
               className="block rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
             >
               <div className="flex items-center justify-between gap-3">
