@@ -265,6 +265,10 @@ function safeStringArray(value: unknown): string[] {
     : [];
 }
 
+function uniqueStringArray(value: unknown): string[] {
+  return Array.from(new Set(safeStringArray(value)));
+}
+
 function safePartnerList(value: unknown): string[] {
   const seen = new Set<string>();
   if (!Array.isArray(value)) return [];
@@ -435,8 +439,8 @@ function safeTrustSummary(value: unknown): TrustSummary {
       body?.differential_privacy_epsilon_budgets,
     ),
     deletion_sla_days: safeCount(body?.deletion_sla_days),
-    substrate_control_count: safeStringArray(body?.substrate_controls).length,
-    compliance_framework_count: safeStringArray(body?.compliance_frameworks).length,
+    substrate_control_count: uniqueStringArray(body?.substrate_controls).length,
+    compliance_framework_count: uniqueStringArray(body?.compliance_frameworks).length,
     loop_3_checked_count: evidenceValues.filter((value) => value === true).length,
     loop_3_total_count: evidenceValues.length,
     loop_3_all_evidence_passed: body?.loop_3_all_evidence_passed === true,
@@ -457,7 +461,7 @@ function safeMarketplaceSummary(value: unknown): MarketplaceSummary {
   return {
     health:
       rawHealth === "healthy" || rawHealth === "unhealthy" ? rawHealth : "watch",
-    health_signals: safeStringArray(body?.health_signals),
+    health_signals: uniqueStringArray(body?.health_signals),
     creators: {
       creator_count: safeCount(creators?.creator_count),
       total_paid_cents: safeCount(creators?.total_paid_cents),

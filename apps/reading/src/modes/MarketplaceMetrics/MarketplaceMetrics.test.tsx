@@ -90,7 +90,7 @@ describe("MarketplaceMetrics", () => {
       ok: true,
       json: async () => ({
         health: "unknown",
-        health_signals: [" creator retention thin ", "", 42],
+        health_signals: [" creator retention thin ", "", 42, "creator retention thin"],
         creators: {
           creator_count: "2.9",
           total_paid_cents: "2500.9",
