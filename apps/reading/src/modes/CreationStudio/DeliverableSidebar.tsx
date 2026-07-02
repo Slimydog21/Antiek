@@ -59,7 +59,7 @@ export default function DeliverableSidebar() {
       });
       setNewTitle("");
       await refresh();
-      navigate(`/create/${d.deliverable_id}`);
+      navigate(`/create/${encodeURIComponent(d.deliverable_id)}`);
     } finally {
       setCreating(false);
     }
@@ -105,7 +105,9 @@ export default function DeliverableSidebar() {
         {deliverables.map((d) => (
           <li key={d.deliverable_id}>
             <button
-              onClick={() => navigate(`/create/${d.deliverable_id}`)}
+              onClick={() =>
+                navigate(`/create/${encodeURIComponent(d.deliverable_id)}`)
+              }
               className="w-full text-left px-3 py-2 bg-ice-0 dark:bg-charcoal-2 hover:bg-ice-3 dark:bg-charcoal-1 border border-rule dark:border-charcoal-1 rounded text-sm"
             >
               <div className="font-medium truncate">{d.title}</div>
