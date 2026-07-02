@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { track } from "../../lib/analytics";
 import {
@@ -32,21 +32,35 @@ export default function Notebook() {
   const [notebook, setNotebook] = useState<NotebookResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const loadSeq = useRef(0);
+  const activeNotebookId = useRef(notebookId);
+  activeNotebookId.current = notebookId;
 
   const reload = useCallback(async () => {
+    const seq = ++loadSeq.current;
+    const targetId = notebookId;
     if (!notebookId) {
       setNotebook(null);
+      setLoading(false);
+      setError(null);
       return;
     }
     setLoading(true);
     setError(null);
     try {
       const data = (await getNotebook(notebookId)) as NotebookResponse;
-      setNotebook(data);
+      if (loadSeq.current === seq && activeNotebookId.current === targetId) {
+        setNotebook(data);
+      }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (loadSeq.current === seq && activeNotebookId.current === targetId) {
+        setNotebook(null);
+        setError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
-      setLoading(false);
+      if (loadSeq.current === seq && activeNotebookId.current === targetId) {
+        setLoading(false);
+      }
     }
   }, [notebookId]);
 
