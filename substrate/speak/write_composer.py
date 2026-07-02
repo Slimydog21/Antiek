@@ -40,6 +40,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from substrate.event_log import emit_typed
+from substrate.schemas.events import SeamSpeakToWritePayload
+
 from .contracts import OutlineBlock, OutlineComposer
 
 # Speak claims are interview-attested, non-node content; the outline block is
@@ -71,7 +74,7 @@ class WriteOutlineComposer:
                 # Write refuses orphan (contentless) non-node blocks; a claim
                 # with no text is not composable — skip rather than fabricate.
                 continue
-            place_block(
+            outline_block_id = place_block(
                 self.con,
                 section_id=section_id,
                 block_kind=_SPEAK_OUTLINE_BLOCK_KIND,
@@ -88,6 +91,15 @@ class WriteOutlineComposer:
                     "source_tier": b.source_tier,
                 },
                 on_conflict="ignore",
+            )
+            emit_typed(
+                self.investigation_id,
+                SeamSpeakToWritePayload(
+                    entity_id=b.block_id,
+                    provenance_ref=outline_block_id,
+                    contributor_interview_ids=list(b.contributor_interview_ids),
+                ),
+                role="speak_biography_authoring",
             )
             idx += 1
         return section_id
