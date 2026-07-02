@@ -189,6 +189,16 @@ describe("Speak project lists", () => {
     ]);
   });
 
+  it("treats malformed project list wrappers as empty", async () => {
+    apiFetchMock.mockResolvedValueOnce(jsonResponse({ projects: { project_id: "proj-1" } }));
+
+    await expect(listPeople()).resolves.toEqual([]);
+
+    apiFetchMock.mockResolvedValueOnce(jsonResponse(null));
+
+    await expect(listPublicFeed()).resolves.toEqual([]);
+  });
+
   it("drops malformed project rows from the public feed", async () => {
     apiFetchMock.mockResolvedValue(
       jsonResponse({
@@ -331,6 +341,12 @@ describe("Speak invites", () => {
     ]);
   });
 
+  it("treats malformed invite wrappers as empty voice lists", async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse({ invites: { interview_id: "iv-1" } }));
+
+    await expect(listVoices("proj-1")).resolves.toEqual([]);
+  });
+
   it("rejects malformed invite responses for direct email invites", async () => {
     apiFetchMock.mockResolvedValue(
       jsonResponse({
@@ -414,6 +430,12 @@ describe("Speak synthesis and payout boundaries", () => {
         voices: 1,
       },
     ]);
+  });
+
+  it("treats malformed corroboration wrappers as empty agreement lists", async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse({ clusters: { label: "multiply_attested" } }));
+
+    await expect(whatEveryoneAgreesOn("proj-1")).resolves.toEqual([]);
   });
 
   it("sanitizes biography draft text and excluded claim counts", async () => {
