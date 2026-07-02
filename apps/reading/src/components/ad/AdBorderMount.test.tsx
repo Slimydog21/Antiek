@@ -68,6 +68,24 @@ describe("AdBorderMount", () => {
     );
   });
 
+  it("ignores malformed encoded reader document ids instead of crashing the shell", () => {
+    expect(() =>
+      render(
+        <MemoryRouter initialEntries={["/read/doc%ZZ?page=3"]}>
+          <AdBorderMount />
+        </MemoryRouter>,
+      ),
+    ).not.toThrow();
+
+    expect(adBorderMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        lens: "read",
+        documentId: null,
+        pageIndex: null,
+      }),
+    );
+  });
+
   it("tracks the reader's session-stored active page after in-reader navigation", async () => {
     window.sessionStorage.setItem("antiek.read.pos.doc-1", "2");
     render(

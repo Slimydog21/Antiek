@@ -45,16 +45,23 @@ function pageFromRouteOrStorage(documentId: string, search: string): number {
   return Number.isSafeInteger(parsed) ? parsed : readStoredPosition(documentId);
 }
 
+function readerDocumentIdFromPath(pathname: string): string | null {
+  if (pathname === "/read/meta-reading" || pathname.startsWith("/read/meta-reading/")) {
+    return null;
+  }
+  const match = pathname.match(/^\/read\/([^/?#]+)/);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return null;
+  }
+}
+
 export function AdBorderMount() {
   const { pathname, search } = useLocation();
   const lens = lensForPath(pathname);
-  const readerDocumentId = useMemo(() => {
-    if (pathname === "/read/meta-reading" || pathname.startsWith("/read/meta-reading/")) {
-      return null;
-    }
-    const match = pathname.match(/^\/read\/([^/?#]+)/);
-    return match ? decodeURIComponent(match[1]) : null;
-  }, [pathname]);
+  const readerDocumentId = useMemo(() => readerDocumentIdFromPath(pathname), [pathname]);
   const routePageIndex = useMemo(
     () => (readerDocumentId ? pageFromRouteOrStorage(readerDocumentId, search) : null),
     [readerDocumentId, search],
