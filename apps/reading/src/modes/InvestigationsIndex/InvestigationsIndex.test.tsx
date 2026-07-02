@@ -86,7 +86,7 @@ describe("InvestigationsIndex", () => {
       .mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ investigation_id: "inv-created" }),
+        json: async () => ({ investigation_id: " inv-created " }),
       } as Response);
 
     renderIndex();
@@ -105,6 +105,30 @@ describe("InvestigationsIndex", () => {
     expect(JSON.parse(init?.body as string)).toMatchObject({
       max_sub_questions: 1,
     });
+  });
+
+  it("surfaces malformed created investigation ids instead of navigating", async () => {
+    apiFetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ count: 0, investigations: [] }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ investigation_id: " " }),
+      } as Response);
+
+    renderIndex();
+
+    await screen.findByText("No investigations match this filter.");
+    fireEvent.change(screen.getByPlaceholderText("What's the question? (≥ 3 chars)"), {
+      target: { value: "What should we research next?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Start investigation" }));
+
+    expect(await screen.findByText("investigation_id must be a non-empty string")).toBeTruthy();
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 });
 

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
+import { requireInvestigationId } from "../../lib/investigationData";
 
 /**
  * Investigations index — operator-facing list of past + in-flight
@@ -85,14 +86,14 @@ export default function InvestigationsIndex() {
         throw new Error(`POST /investigations: HTTP ${resp.status}`);
       }
       const created = await resp.json();
-      const newId = created.investigation_id as string | undefined;
+      const newId = requireInvestigationId(created.investigation_id);
       // Reset draft, then navigate into the new investigation's
       // workstation. Listing refreshes in the background.
       setDraftQuestion("");
       setDraftContext("");
       setDraftTopic("");
       setDraftMaxSubQs(8);
-      if (newId) navigate(`/inv/${encodeURIComponent(newId)}`);
+      navigate(`/inv/${encodeURIComponent(newId)}`);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
