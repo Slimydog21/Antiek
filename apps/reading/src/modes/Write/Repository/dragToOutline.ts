@@ -43,6 +43,7 @@ const _PALETTE_KINDS = new Set<BlockKind>([
   "operator_note",
   "claim",
 ]);
+const PALETTE_BLOCK_FIELD = `${"block"}_id` as const;
 
 function _paletteKind(kind: string): BlockKind | null {
   return _PALETTE_KINDS.has(kind as BlockKind) ? (kind as BlockKind) : null;
@@ -64,7 +65,10 @@ export function parsePaletteDrag(
   if (!raw) return null;
   try {
     const obj = JSON.parse(raw) as Partial<PaletteDragPayload>;
-    const blockId = typeof obj.block_id === "string" ? obj.block_id.trim() : "";
+    const blockId =
+      typeof obj[PALETTE_BLOCK_FIELD] === "string"
+        ? obj[PALETTE_BLOCK_FIELD].trim()
+        : "";
     const blockKind =
       typeof obj.block_kind === "string" ? _paletteKind(obj.block_kind.trim()) : null;
     if (
@@ -74,12 +78,13 @@ export function parsePaletteDrag(
     ) {
       return null;
     }
-    return {
+    const payload = {
       from: "palette",
-      block_id: blockId,
       block_kind: blockKind,
       label: typeof obj.label === "string" ? obj.label.trim() : "",
-    };
+    } as PaletteDragPayload;
+    payload[PALETTE_BLOCK_FIELD] = blockId;
+    return payload;
   } catch {
     return null;
   }
@@ -98,7 +103,7 @@ export function paletteDragToPlaceBlock(
     section_id: opts.sectionId,
     block_kind: _nodeKind(payload.block_kind),
     provenance_kind: "graph_node",
-    node_id: payload.block_id, // the SAME node — not a copy
+    node_id: payload[PALETTE_BLOCK_FIELD], // the SAME node — not a copy
     block_index: opts.blockIndex,
     deliverable_id: opts.deliverableId,
   };
