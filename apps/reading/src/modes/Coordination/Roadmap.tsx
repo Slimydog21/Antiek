@@ -130,6 +130,23 @@ export interface Phase2AuditView {
   exit_criteria: Phase2ExitCriteriaView | null;
 }
 
+export interface EngineeringDeferralView {
+  deferral_id: string;
+  title: string;
+  status: string;
+  status_raw: string;
+  unlock_criterion: string | null;
+  blocks: string | null;
+}
+
+export interface EngineeringDeferralsSummaryView {
+  source_path: string;
+  total_deferrals: number;
+  open_count: number;
+  status_counts: Record<string, number>;
+  first_open: EngineeringDeferralView | null;
+}
+
 export interface RoadmapView {
   total_sprints: number;
   superseded_count: number;
@@ -145,6 +162,7 @@ export interface RoadmapView {
   read_activation: ReadActivationStatusView | null;
   operator_actions?: OperatorActionsSummaryView | null;
   phase2_audit?: Phase2AuditView | null;
+  engineering_deferrals?: EngineeringDeferralsSummaryView | null;
   substrate_layers: SubstrateLayerView[];
 }
 
@@ -342,6 +360,11 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
           {roadmap.phase2_audit ? (
             <Phase2AuditStatus audit={roadmap.phase2_audit} />
           ) : null}
+          {roadmap.engineering_deferrals ? (
+            <EngineeringDeferralsStatus
+              deferrals={roadmap.engineering_deferrals}
+            />
+          ) : null}
         </div>
       </LemonCard>
 
@@ -412,6 +435,47 @@ function ActivationStatus({
         <p className="text-xs font-mono text-emperor">
           {activation.invalid_session_count} invalid session
           {activation.invalid_session_count === 1 ? "" : "s"} need repair.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function EngineeringDeferralsStatus({
+  deferrals,
+}: {
+  deferrals: EngineeringDeferralsSummaryView;
+}) {
+  const counts = deferrals.status_counts ?? {};
+  const countText = [
+    ["deferred", counts.deferred],
+    ["partial", counts.partial],
+    ["substrate shipped", counts.substrate_shipped],
+    ["closed", counts.closed],
+  ]
+    .filter(([, value]) => Number(value) > 0)
+    .map(([label, value]) => `${value} ${label}`)
+    .join(" · ");
+  const firstOpen = deferrals.first_open;
+  return (
+    <div className="mt-2 rounded border border-rule dark:border-charcoal-1 bg-ice-0/70 dark:bg-charcoal-2/70 px-3 py-2">
+      <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+        Engineering deferrals
+      </p>
+      <p className="text-xs font-mono text-ink dark:text-bright">
+        {deferrals.open_count}/{deferrals.total_deferrals} not closed
+        {countText ? ` · ${countText}` : ""}
+      </p>
+      {firstOpen ? (
+        <p className="text-xs text-ink-soft dark:text-starlight leading-relaxed">
+          Do not pre-build {firstOpen.deferral_id} — {firstOpen.title}. Unlock:{" "}
+          {firstOpen.unlock_criterion || "not specified"}. Source:{" "}
+          {deferrals.source_path || "docs/engineering_deferrals.md"}.
+        </p>
+      ) : (
+        <p className="text-xs text-ink-soft dark:text-starlight leading-relaxed">
+          No open engineering deferrals in{" "}
+          {deferrals.source_path || "docs/engineering_deferrals.md"}.
         </p>
       )}
     </div>

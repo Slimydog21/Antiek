@@ -6,6 +6,8 @@ import type { CoordProduct, GateImpactView, GateView } from "./GateLedger";
 import { Roadmap } from "./Roadmap";
 import type {
   DependencyBlockerView,
+  EngineeringDeferralView,
+  EngineeringDeferralsSummaryView,
   ExecutionFocusView,
   OperatorActionView,
   OperatorActionsSummaryView,
@@ -338,6 +340,34 @@ function safeOperatorActionsSummary(
   };
 }
 
+function safeEngineeringDeferral(value: unknown): EngineeringDeferralView | null {
+  const deferral = record(value);
+  const deferralId = nonEmptyString(deferral?.deferral_id);
+  if (!deferral || !deferralId) return null;
+  return {
+    deferral_id: deferralId,
+    title: nonEmptyString(deferral.title) ?? deferralId,
+    status: nonEmptyString(deferral.status) ?? "unknown",
+    status_raw: nonEmptyString(deferral.status_raw) ?? "",
+    unlock_criterion: nullableString(deferral.unlock_criterion),
+    blocks: nullableString(deferral.blocks),
+  };
+}
+
+function safeEngineeringDeferralsSummary(
+  value: unknown,
+): EngineeringDeferralsSummaryView | null {
+  const summary = record(value);
+  if (!summary) return null;
+  return {
+    source_path: nonEmptyString(summary.source_path) ?? "",
+    total_deferrals: nonNegativeInteger(summary.total_deferrals),
+    open_count: nonNegativeInteger(summary.open_count),
+    status_counts: numberRecord(summary.status_counts),
+    first_open: safeEngineeringDeferral(summary.first_open),
+  };
+}
+
 function safeRoadmapView(value: unknown): RoadmapView {
   const body = record(value);
   const rosters = Array.isArray(body?.rosters)
@@ -366,6 +396,9 @@ function safeRoadmapView(value: unknown): RoadmapView {
     read_activation: safeReadActivationStatus(body?.read_activation),
     operator_actions: safeOperatorActionsSummary(body?.operator_actions),
     phase2_audit: safePhase2Audit(body?.phase2_audit),
+    engineering_deferrals: safeEngineeringDeferralsSummary(
+      body?.engineering_deferrals,
+    ),
     substrate_layers: Array.isArray(body?.substrate_layers)
       ? body.substrate_layers.flatMap((item) => {
           const layer = safeSubstrateLayer(item);

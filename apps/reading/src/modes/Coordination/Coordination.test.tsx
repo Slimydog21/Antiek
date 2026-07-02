@@ -216,6 +216,25 @@ describe("Coordination", () => {
               note: " operator action ",
             },
           },
+          engineering_deferrals: {
+            source_path: " docs/engineering_deferrals.md ",
+            total_deferrals: "19.8",
+            open_count: "16",
+            status_counts: {
+              deferred: "7",
+              partial: "5",
+              substrate_shipped: "4",
+              closed: "3",
+            },
+            first_open: {
+              deferral_id: " D1 ",
+              title: " Multi-user pivot ",
+              status: " partial ",
+              status_raw: " Partial substrate prep ",
+              unlock_criterion: " G7 closes ",
+              blocks: " second-user exit criteria ",
+            },
+          },
           substrate_layers: [
             {
               name: " db lock ",
@@ -270,6 +289,17 @@ describe("Coordination", () => {
     expect(
       screen.getByText(
         "Next audit action: Keep docs/OPERATOR_ACTIONS.md as the authoritative operator gate list.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("Engineering deferrals")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "16/19 not closed · 7 deferred · 5 partial · 4 substrate shipped · 3 closed",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Do not pre-build D1 — Multi-user pivot. Unlock: G7 closes. Source: docs/engineering_deferrals.md.",
       ),
     ).toBeTruthy();
     expect(screen.getByText("waits on drw:10")).toBeTruthy();
