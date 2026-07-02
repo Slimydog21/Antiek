@@ -12,7 +12,7 @@ import SpeakIndex from "./index";
  * tests/test_speak_api.py.
  */
 const meta = {
-  title: "Workstation / Speak / Index",
+  title: "Speak / Index",
   component: SpeakIndex,
   parameters: { layout: "fullscreen" },
   tags: ["autodocs"],

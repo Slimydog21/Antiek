@@ -1,7 +1,11 @@
 import type { Workflow } from "./workflowTaxonomy";
 
 export type OperatorRouteGroup =
-  | "Workstation"
+  | "Home"
+  | "Research"
+  | "Read"
+  | "Write"
+  | "Speak"
   | "Governance"
   | "Audit + analytics"
   | "Pricing + replay";
@@ -17,7 +21,11 @@ export interface OperatorRouteEntry {
 }
 
 export const OPERATOR_ROUTE_GROUP_ORDER: OperatorRouteGroup[] = [
-  "Workstation",
+  "Home",
+  "Research",
+  "Read",
+  "Write",
+  "Speak",
   "Governance",
   "Audit + analytics",
   "Pricing + replay",
@@ -26,7 +34,7 @@ export const OPERATOR_ROUTE_GROUP_ORDER: OperatorRouteGroup[] = [
 export const OPERATOR_ROUTES: OperatorRouteEntry[] = [
   {
     id: "home",
-    group: "Workstation",
+    group: "Home",
     path: "/home",
     title: "Antiek home",
     description: "Front door to the four workflows",
@@ -35,7 +43,7 @@ export const OPERATOR_ROUTES: OperatorRouteEntry[] = [
   },
   {
     id: "research",
-    group: "Workstation",
+    group: "Research",
     path: "/",
     title: "Research workstation",
     description: "Mode A — chat-first investigation surface",
@@ -43,96 +51,96 @@ export const OPERATOR_ROUTES: OperatorRouteEntry[] = [
   },
   {
     id: "deep-research",
-    group: "Workstation",
+    group: "Research",
     path: "/deep-research",
     title: "Deep Research Workspace",
     description: "Cascade monitor and steerable research sessions",
   },
   {
-    id: "wrestle",
-    group: "Workstation",
-    path: "/wrestle",
-    title: "Document wrestler",
-    description: "Mode B — PDF reading + region selection",
-    paletteSubtitle: "Mode B — PDF reading + region selection (/wrestle)",
-  },
-  {
-    id: "write",
-    group: "Workstation",
-    path: "/write",
-    title: "Write home",
-    description: "Blocks → outline → draft → editor loop",
-  },
-  {
-    id: "create",
-    group: "Workstation",
-    path: "/create",
-    title: "Creation studio",
-    description: "Mode C — lego-block writing",
-    paletteSubtitle: "Mode C — Lego-block writing (/create)",
-  },
-  {
     id: "brainstorm",
-    group: "Workstation",
+    group: "Research",
     path: "/brainstorm",
     title: "Brainstorm station",
     description: "Mode E — watch-for-later + thought partner",
     paletteSubtitle: "Mode E — watch-for-later + thought-partner (/brainstorm)",
   },
   {
-    id: "library",
-    group: "Workstation",
-    path: "/library",
-    title: "Library",
-    description: "Read shelf over the servable corpus",
-  },
-  {
-    id: "library-browse",
-    group: "Workstation",
-    path: "/library/browse",
-    title: "Library browse",
-    description: "Paginated catalog over every servable work",
-  },
-  {
-    id: "readings",
-    group: "Workstation",
-    path: "/readings",
-    title: "Your readings",
-    description: "Saved reads and created deliverables",
-  },
-  {
-    id: "meta-readings",
-    group: "Workstation",
-    path: "/meta-readings",
-    title: "All meta-docs",
-    description: "Created deliverables only",
-  },
-  {
-    id: "meta-reading",
-    group: "Workstation",
-    path: "/read/meta-reading",
-    title: "Meta-reading",
-    description: "Proposed — sign-off pending",
-    paletteSubtitle: "Proposed — sign-off pending (/read/meta-reading)",
-  },
-  {
     id: "my-research",
-    group: "Workstation",
+    group: "Research",
     path: "/my-research",
     title: "My research",
     description: "One monitor over running + completed research",
     paletteSubtitle: "One monitor over every running + completed research (/my-research)",
   },
   {
+    id: "wrestle",
+    group: "Read",
+    path: "/wrestle",
+    title: "Document wrestler",
+    description: "Mode B — PDF reading + region selection",
+    paletteSubtitle: "Mode B — PDF reading + region selection (/wrestle)",
+  },
+  {
+    id: "library",
+    group: "Read",
+    path: "/library",
+    title: "Library",
+    description: "Read shelf over the servable corpus",
+  },
+  {
+    id: "library-browse",
+    group: "Read",
+    path: "/library/browse",
+    title: "Library browse",
+    description: "Paginated catalog over every servable work",
+  },
+  {
+    id: "readings",
+    group: "Read",
+    path: "/readings",
+    title: "Your readings",
+    description: "Saved reads and created deliverables",
+  },
+  {
+    id: "meta-readings",
+    group: "Read",
+    path: "/meta-readings",
+    title: "All meta-docs",
+    description: "Created deliverables only",
+  },
+  {
+    id: "meta-reading",
+    group: "Read",
+    path: "/read/meta-reading",
+    title: "Meta-reading",
+    description: "Proposed — sign-off pending",
+    paletteSubtitle: "Proposed — sign-off pending (/read/meta-reading)",
+  },
+  {
     id: "notebooks",
-    group: "Workstation",
+    group: "Read",
     path: "/notebooks",
     title: "Notebooks",
     description: "Wedge 2 literate-analysis surface",
   },
   {
+    id: "write",
+    group: "Write",
+    path: "/write",
+    title: "Write home",
+    description: "Blocks → outline → draft → editor loop",
+  },
+  {
+    id: "create",
+    group: "Write",
+    path: "/create",
+    title: "Creation studio",
+    description: "Mode C — lego-block writing",
+    paletteSubtitle: "Mode C — Lego-block writing (/create)",
+  },
+  {
     id: "speak",
-    group: "Workstation",
+    group: "Speak",
     path: "/speak",
     title: "Speak",
     description: "One door for interview projects + invited voices",
@@ -140,14 +148,14 @@ export const OPERATOR_ROUTES: OperatorRouteEntry[] = [
   },
   {
     id: "biography",
-    group: "Workstation",
+    group: "Speak",
     path: "/biography",
     title: "Biography",
     description: "Template that composes Research, Write, and Speak",
   },
   {
     id: "skill-rules",
-    group: "Workstation",
+    group: "Governance",
     path: "/skill-rules",
     title: "Skill rules",
     description: "Cross-user discovered rules",

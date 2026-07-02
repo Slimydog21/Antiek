@@ -11,7 +11,7 @@ import Biography from "./index";
  * Biography.test.tsx; this story is the browser smoke target for the landing.
  */
 const meta = {
-  title: "Workstation / Biography",
+  title: "Speak / Biography",
   component: Biography,
   parameters: { layout: "fullscreen" },
   tags: ["autodocs"],

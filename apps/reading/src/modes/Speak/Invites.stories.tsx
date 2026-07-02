@@ -8,7 +8,7 @@ import Invites, { type InviteRow } from "./Invites";
  * directly (no backend).
  */
 const meta = {
-  title: "Workstation / Speak / Invites",
+  title: "Speak / Invites",
   component: Invites,
   parameters: { layout: "fullscreen" },
   tags: ["autodocs"],
