@@ -98,6 +98,17 @@ function safeClaim(value: unknown): Claim | null {
   };
 }
 
+function safeClaims(value: unknown): Claim[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.flatMap((item) => {
+    const claim = safeClaim(item);
+    if (!claim || seen.has(claim.claim_id)) return [];
+    seen.add(claim.claim_id);
+    return [claim];
+  });
+}
+
 function isGroundingFailureReason(
   value: unknown,
 ): value is GroundingFailureReason {
@@ -415,12 +426,7 @@ function AssistantClaimsBubble({
   selectedRegionPages: Map<string, number>;
   openDocument: ReturnType<typeof useOpenDocument>;
 }) {
-  const claims = Array.isArray(payload.claims)
-    ? payload.claims.flatMap((claim) => {
-        const safe = safeClaim(claim);
-        return safe ? [safe] : [];
-      })
-    : [];
+  const claims = safeClaims(payload.claims);
   const tokenCount = nonNegativeSafeInteger(payload.token_count);
   const renderedText = nonEmptyString(payload.rendered_text);
 
