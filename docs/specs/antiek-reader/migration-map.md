@@ -60,7 +60,7 @@ through `openDocument`; SPR-09 asserts each.
 | `LibraryView.open` | paginated browse view open | `components/library/LibraryView.tsx:71` (`openDocument(documentId)`) | **`openDocument` → `/read/:id`** | **SPR-05** routes through `openDocument`; **SPR-09** asserts. |
 | `Reading.openDoc` | the current book reader surface (`BookReader`) at `/read/:documentId` | `modes/Reading/index.tsx:41` (`export default function BookReader`), reads `documentId` from params and mounts the one `<Reader>` | this IS the `/read/:id` target today | **SPR-03** mounts the one `<Reader>` here; **SPR-09** asserts. (No literal `openDoc` symbol — the id names this surface.) |
 | `DocumentsIndex.open` | substrate-attached sources index, open row | `modes/DocumentsIndex/index.tsx:164` (`onRowClick` → `openDocument(r.document_id)`) | **`openDocument` → `/read/:id`** | **SPR-05** re-routed from `/wrestle/:id`; **SPR-09** asserts (one of the 3 convergence targets). |
-| `CommandPalette.openDocument` | palette "Documents" result open | `components/CommandPalette.tsx:423` (result `path: /read/${encodeURIComponent(doc.document_id)}`) | **canonical `/read/:id` route** | **SPR-05** converged from `/wrestle/:id`; **SPR-09** asserts (convergence target). |
+| `CommandPalette.openDocument` | palette "Documents" result open | `components/CommandPalette.tsx:629` (`choose` → `openDocument(entry.documentId)`, with the canonical path kept only for ranking/display metadata) | **`openDocument` → `/read/:id`** | **SPR-05** converged from `/wrestle/:id`; **SPR-09** now asserts the resolver directly (convergence target). |
 | `ChunkModal.openInDocument` | research chunk modal "open in document" deep-link | `modes/ResearchWorkstation/ChunkModal.tsx:188` (`openDocument(chunk.document_id, { page, chunkId })`) | **`openDocument` → `/read/:id` with locator opts** | **SPR-05** converged from `/wrestle/:id?page=N`; **SPR-09** asserts (convergence target). |
 | `MasterMdViewer.cmdClick` | ⌘/Ctrl-click a source in the master-md viewer | `modes/ResearchWorkstation/MasterMdViewer.tsx:820` (`openDocument(chunk.document_id, { page, chunkId })`) | **`openDocument` → `/read/:id` with locator opts** | **SPR-05** converged from `openPdfPanel`; **SPR-09** asserts. |
 | `DRW.citeSource` | "cite source" affordance on a canvas BlockCard / its detail | door: `modes/DeepResearchWorkspace/Canvas/BlockCard.tsx:120` (`onCiteSource(node)`); wired from `index.tsx:197`–204; provenance resolved in `BlockDetail.tsx:48` (`documentId: node.source_document_id`, `chunkId: node.chunk_id`) | **`openDocument` → `/read/:id` with optional chunk** | **SPR-07** resolves provenance to a real source open via `openDocument`; **SPR-09** asserts. (`EXPECTED_OPEN_DOORS` attributes it to `index.tsx (BlockCard detail)`; the button lives in `Canvas/BlockCard.tsx`, the host wiring in `index.tsx` — see §4.) |
@@ -74,7 +74,8 @@ door dropped or added.
 The three TODAY-mis-routing-to-`/wrestle` doors (the convergence target named in
 `test_expected_open_door_set_is_pinned_and_nonempty`): `DocumentsIndex.open`,
 `CommandPalette.openDocument`, `ChunkModal.openInDocument`. All three verified
-above pointing at `openDocument` / `/read/:id`.
+above pointing at `openDocument` / `/read/:id`; the palette keeps `/read/:id`
+as metadata only and selects through the shared resolver.
 
 ---
 
@@ -86,7 +87,7 @@ become an open door.
 
 | Artifact | file:line | Role | conforms via |
 |---|---|---|---|
-| `/wrestle` + `/wrestle/:documentId` routes → `WrestleApp` | `App.tsx:113`–114 | the PDF wrestling / region-selection ingest surface | **Survives as INGEST.** SPR-05 must NOT turn it into an open door; the OPEN doors above stop routing here. |
+| `/wrestle` route → `WrestleApp` | `App.tsx:119` | the PDF wrestling / region-selection ingest surface | **Survives as INGEST.** SPR-05 removed `/wrestle/:documentId`; SPR-09 asserts the by-id open route stays gone. |
 | `WrestleApp` mounting `PdfViewer` + region selection | `modes/WrestleApp/index.tsx:33` (export), `:137` (`<PdfViewer>`) | annotate / select regions on a PDF; emits `DocumentRegionSelectedPayload` | INGEST; region selection feeds the document model. |
 | `PdfViewer` region-selected emit | `components/PdfViewer.tsx:197` (`DocumentRegionSelectedPayload`) | produces the region/anchor signal | **SPR-02** maps regions into the document model's `Region`/anchors. |
 
@@ -320,9 +321,10 @@ open-target use; the PdfViewer module itself survives behind the ingest door.
 SPR-07 (`DRW.citeSource`, `Write.traceToSource`, `MetaReading.openCitation`); the
 SPR-05 spec (M2 routes every door, M5 wires Write trace) assigns the
 `openDocument`-routing of all 11 doors to SPR-05, which this execution landed. All
-11 now route through `openDocument` / the canonical `/read/:id` Reader route (the
-`CommandPalette` document result navigates `/read/:id` directly via its generic
-`entry.path` navigator — the same target `openDocument(id)` resolves to). SPR-07's
+11 now route through `openDocument` / the canonical `/read/:id` Reader route.
+`CommandPalette` document results still carry the canonical `/read/:id` path as
+ranking/display metadata, but selection now calls `openDocument(id)` like every
+other open-a-document door. SPR-07's
 remaining job on `DRW.citeSource` / `Write.traceToSource` is the deeper
 provenance/region resolution (the exact-`Region` highlight), not the door routing,
 which is done. The source-level conformance for door (a) + forbidden (b) is filled

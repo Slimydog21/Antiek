@@ -61,8 +61,6 @@ _DOOR_FILE: dict[str, str] = {
     "MetaReading.openCitation": "modes/Reading/MetaReading/index.tsx",
 }
 
-_PALETTE_ROUTE_DOORS = frozenset({"CommandPalette.openDocument"})
-
 # Forbidden open-a-document seams (lockstep with TS + migration-map §5).
 FORBIDDEN_PROD_RENDERERS: frozenset[str] = frozenset(
     {
@@ -141,13 +139,8 @@ def test_every_open_door_routes_to_the_one_reader():
         assert not re.search(r"navigate\([`'\"]/wrestle/\$\{", src), door
         assert not re.search(r"navigate\([`'\"]/wrestle/:", src), door
         assert not re.search(r"path:\s*[`'\"]/wrestle/\$\{", src), door
-        if door in _PALETTE_ROUTE_DOORS:
-            assert re.search(
-                r"/read/\$\{encodeURIComponent\(documentId\)\}", src
-            ), door
-        else:
-            assert "useOpenDocument()" in src, door
-            assert "openDocument(" in src, door
+        assert "useOpenDocument()" in src, door
+        assert "openDocument(" in src, door
 
     app = _read_src("App.tsx")
     assert re.search(
