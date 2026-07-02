@@ -42,6 +42,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from io import BytesIO
 from typing import TYPE_CHECKING, Annotated, Any, Literal
+from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from orchestration.cascade_session import CascadeSession
@@ -64,7 +65,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # Ensure package root on path for direct uvicorn invocation.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -87,6 +88,14 @@ from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
 # ---------------------------------------------------------------------------
 # Request / response models
 # ---------------------------------------------------------------------------
+
+
+def _safe_http_url(value: str) -> str:
+    url = value.strip()
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("url must be an absolute http(s) URL")
+    return url
 
 
 class TypedEventEnvelope(BaseModel):
@@ -429,6 +438,11 @@ class IngestSourceRequest(BaseModel):
     investigation_id: str = Field(default="__operator__", min_length=1)
     source_tier: int | None = Field(default=None, ge=1, le=5)
     max_episodes: int = Field(default=10, ge=1, le=50)  # podcast feeds only
+
+    @field_validator("url")
+    @classmethod
+    def _validate_url(cls, value: str) -> str:
+        return _safe_http_url(value)
 
 
 class IngestSourceResponse(BaseModel):
