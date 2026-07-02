@@ -136,9 +136,12 @@ function safeRepositoryHits(value: unknown): RepositoryHit[] {
   const body = record(value);
   const hits = body?.hits;
   if (!Array.isArray(hits)) return [];
+  const seen = new Set<string>();
   return hits.flatMap((item) => {
     const hit = safeRepositoryHit(item);
-    return hit ? [hit] : [];
+    if (!hit || seen.has(hit.node_id)) return [];
+    seen.add(hit.node_id);
+    return [hit];
   });
 }
 
@@ -159,9 +162,12 @@ function safeFoldersResponse(value: unknown): FolderSummary[] {
   const body = record(value);
   const folders = body?.folders;
   if (!Array.isArray(folders)) return [];
+  const seen = new Set<string>();
   return folders.flatMap((item) => {
     const folder = safeFolder(item);
-    return folder ? [folder] : [];
+    if (!folder || seen.has(folder.folder_id)) return [];
+    seen.add(folder.folder_id);
+    return [folder];
   });
 }
 
@@ -188,9 +194,12 @@ function safeSectionBlocksResponse(value: unknown): OutlineBlockView[] {
   const body = record(value);
   const blocks = body?.blocks;
   if (!Array.isArray(blocks)) return [];
+  const seen = new Set<string>();
   return blocks.flatMap((item) => {
     const block = safeOutlineBlock(item);
-    return block ? [block] : [];
+    if (!block || seen.has(block.outline_block_id)) return [];
+    seen.add(block.outline_block_id);
+    return [block];
   });
 }
 

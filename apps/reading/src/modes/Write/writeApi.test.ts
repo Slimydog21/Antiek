@@ -107,6 +107,12 @@ describe("writeApi client contracts", () => {
             score: "0.7",
           },
           {
+            node_id: "node-1",
+            label: "Duplicate claim",
+            node_type: "claim",
+            score: 0.99,
+          },
+          {
             node_id: "",
             label: "Missing node id",
             node_type: "claim",
@@ -134,6 +140,7 @@ describe("writeApi client contracts", () => {
       jsonResponse({
         folders: [
           { folder_id: " folder-1 ", name: "  Saved  ", member_count: "3" },
+          { folder_id: "folder-1", name: "Duplicate saved", member_count: 99 },
           { folder_id: " ", name: "Skipped", member_count: 1 },
         ],
       }),
@@ -156,6 +163,12 @@ describe("writeApi client contracts", () => {
             node_label: "  Claim label  ",
             block_index: "4",
             is_user_originated: "yes",
+          },
+          {
+            outline_block_id: "oblk-1",
+            section_id: "sec-1",
+            content: "Duplicate block",
+            block_index: 99,
           },
           {
             outline_block_id: "",
