@@ -107,7 +107,7 @@ describe("ProjectTree workflow actions", () => {
           ok: true,
           json: async () => ({
             notebooks: [
-              { notebook_id: " nb-live ", title: "  Live notebook  " },
+              { notebook_id: " nb live/1 ", title: "  Live notebook  " },
               { notebook_id: " ", title: "Skipped notebook" },
             ],
           }),
@@ -124,6 +124,13 @@ describe("ProjectTree workflow actions", () => {
     expect(screen.queryByText("Skipped document")).toBeNull();
     expect(screen.queryByText("Skipped notebook")).toBeNull();
     expect(screen.getByRole("button", { name: /Recent\s*3/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Live notebook"));
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/notebook/nb%20live%2F1",
+      );
+    });
   });
 
   it("keeps Read All links aligned to Library, Meta-docs, Notebooks", async () => {
@@ -196,7 +203,7 @@ describe("ProjectTree workflow actions", () => {
       count: 4,
       investigations: [
         {
-          investigation_id: " inv-live ",
+          investigation_id: " inv live/1 ",
           question: "  Live research  ",
           status: "in_progress",
         },
@@ -230,7 +237,9 @@ describe("ProjectTree workflow actions", () => {
 
     fireEvent.click(screen.getByText("Live research"));
     await waitFor(() => {
-      expect(screen.getByTestId("location").textContent).toBe("/inv/inv-live");
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/inv/inv%20live%2F1",
+      );
     });
   });
 
