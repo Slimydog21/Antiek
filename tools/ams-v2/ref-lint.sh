@@ -17,4 +17,10 @@ if [[ $# -eq 0 ]]; then
   exit 2
 fi
 
-exec npx --yes tsx tools/specs/verify_spec_refs.ts "$@"
+TSX_BIN="$ROOT/apps/reading/node_modules/.bin/tsx"
+if [[ ! -x "$TSX_BIN" ]]; then
+  echo "error: missing local tsx binary at apps/reading/node_modules/.bin/tsx; run pnpm --dir apps/reading install" >&2
+  exit 2
+fi
+
+exec "$TSX_BIN" tools/specs/verify_spec_refs.ts "$@"
