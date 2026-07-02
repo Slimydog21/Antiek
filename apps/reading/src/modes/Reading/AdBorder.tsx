@@ -31,8 +31,40 @@ export interface AdBorderProps {
   onOpenHouse?: (documentId: string) => void;
 }
 
+function nonEmptyString(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function safeHttpUrl(value: string): string | null {
+  const url = nonEmptyString(value);
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+export function normalizeAdFill(fill: AdFillView): AdFillView {
+  if (fill.kind !== "ad" || !fill.ad) return fill;
+  const advertiserName = nonEmptyString(fill.ad.advertiserName);
+  const creativeUrl = safeHttpUrl(fill.ad.creativeUrl);
+  const landingUrl = safeHttpUrl(fill.ad.landingUrl);
+  if (!advertiserName || !creativeUrl || !landingUrl) {
+    return { kind: "house", house: fill.house ?? null };
+  }
+  return {
+    kind: "ad",
+    ad: { advertiserName, creativeUrl, landingUrl },
+    house: fill.house ?? null,
+  };
+}
+
 export default function AdBorder({ slotId, position, fill, onOpenHouse }: AdBorderProps) {
-  const isAd = fill.kind === "ad" && fill.ad;
+  const safeFill = normalizeAdFill(fill);
+  const isAd = safeFill.kind === "ad" && safeFill.ad;
   return (
     <aside
       data-slot-id={slotId}
@@ -51,20 +83,20 @@ export default function AdBorder({ slotId, position, fill, onOpenHouse }: AdBord
     >
       {isAd ? (
         <a
-          href={fill.ad!.landingUrl}
+          href={safeFill.ad!.landingUrl}
           target="_blank"
           rel="noopener noreferrer sponsored"
           className="flex items-center gap-3 w-full min-w-0"
         >
           <img
-            src={fill.ad!.creativeUrl}
+            src={safeFill.ad!.creativeUrl}
             alt=""
             aria-hidden="true"
             className="h-8 w-8 rounded object-cover flex-shrink-0"
           />
           <span className="min-w-0">
             <span className="font-serif text-sm text-ink dark:text-bright truncate block">
-              {fill.ad!.advertiserName}
+              {safeFill.ad!.advertiserName}
             </span>
             <span className="text-[10px] font-mono uppercase tracking-wider text-ink-mute dark:text-moonlight">
               Sponsored
@@ -72,7 +104,7 @@ export default function AdBorder({ slotId, position, fill, onOpenHouse }: AdBord
           </span>
         </a>
       ) : (
-        <HouseSlot promo={fill.house ?? null} onOpen={onOpenHouse} />
+        <HouseSlot promo={safeFill.house ?? null} onOpen={onOpenHouse} />
       )}
     </aside>
   );

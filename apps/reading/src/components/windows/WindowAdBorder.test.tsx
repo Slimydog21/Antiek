@@ -86,6 +86,30 @@ describe("WindowAdBorder", () => {
     expect(onImpression).not.toHaveBeenCalled();
   });
 
+  it("degrades unsafe paid-ad edges before rendering or impression telemetry", () => {
+    const onImpression = vi.fn();
+    const unsafePaid: AdFillView = {
+      kind: "ad",
+      ad: {
+        advertiserName: "Unsafe Advertiser",
+        creativeUrl: "javascript:alert(1)",
+        landingUrl: "https://example.com",
+      },
+    };
+
+    render(
+      <WindowAdBorder
+        windowId="w-unsafe"
+        fills={{ top: unsafePaid }}
+        onImpression={onImpression}
+      />,
+    );
+
+    expect(screen.queryByText("Unsafe Advertiser")).toBeNull();
+    expect(screen.getAllByText("From the library").length).toBeGreaterThanOrEqual(1);
+    expect(onImpression).not.toHaveBeenCalled();
+  });
+
   it("stamps reduced-motion state so the contract is auditable", () => {
     stubMatchMedia(true);
     const { container } = render(<WindowAdBorder windowId="w4" />);
