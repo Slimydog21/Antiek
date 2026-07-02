@@ -713,7 +713,11 @@ export default function UnifiedSearch({
           <button
             type="button"
             className="mt-2 text-xs font-mono underline text-shadow-1 dark:text-moonlight"
-            onClick={() => navigate(`/inv/${start.startedId}`)}
+            onClick={() => {
+              if (start.startedId) {
+                navigate(`/inv/${encodeURIComponent(start.startedId)}`);
+              }
+            }}
           >
             Open full investigation →
           </button>
