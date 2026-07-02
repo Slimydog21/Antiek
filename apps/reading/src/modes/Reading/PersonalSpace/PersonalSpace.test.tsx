@@ -221,12 +221,19 @@ describe("M1 — list + open + empty", () => {
 
 describe("M2 — system categories + honest ordering label", () => {
   it("renders system-named category sections", async () => {
+    categoriesMock.mockResolvedValue(cats({
+      categories: [
+        { category_id: "cat:a1", label: "free · will", asset_ids: ["a1", "a1"], ordering: "theme" },
+        { category_id: "cat:read:doc-2", label: "stoicism", asset_ids: ["read:doc-2"], ordering: "theme" },
+      ],
+    }));
     render(<PersonalSpace />);
     await screen.findByText("How my books treat free will");
     const sections = screen.getAllByTestId("personal-space-category");
     expect(sections.length).toBe(2);
     expect(screen.getByText("free · will")).toBeTruthy();
     expect(screen.getByText("stoicism")).toBeTruthy();
+    expect(screen.getAllByText("How my books treat free will")).toHaveLength(1);
   });
 
   it("renders two categories that share a label (keyed by category_id, not label)", async () => {
