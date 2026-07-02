@@ -8,6 +8,21 @@ afterEach(() => {
   cleanup();
 });
 
+function drwStatus(n: number): string {
+  if (n <= 4) return "live";
+  if (n === 10) return "provisional";
+  return "planned";
+}
+
+function slugForSprint(spec: "drw" | "read", n: number): string {
+  if (spec !== "drw") return `${spec}-sprint-${n}`;
+  if (n === 1) return "insight-question-nodes";
+  if (n === 3) return "async-note-taker";
+  if (n === 5) return "cascade-planner";
+  if (n === 10) return "reading-surface";
+  return `${spec}-sprint-${n}`;
+}
+
 function sprint(
   n: number,
   blockedOn: string[],
@@ -18,9 +33,9 @@ function sprint(
     spec,
     spec_label: spec === "drw" ? "Research (DRW)" : "Read",
     sprint: n,
-    slug: spec === "drw" && n === 5 ? "cascade-planner" : `${spec}-sprint-${n}`,
+    slug: slugForSprint(spec, n),
     node_id: `${spec}:${n}`,
-    status: spec === "drw" ? "planned" : "unknown",
+    status: spec === "drw" ? drwStatus(n) : "unknown",
     on_critical_path: false,
     blocked_on: blockedOn,
     unblocked,
@@ -31,6 +46,7 @@ function roadmap(
   sprints: SprintView[],
   unblockedNow: string[] = [],
   dependencyBlockers: DependencyBlockerView[] = [],
+  criticalPath: string[] = [],
 ): RoadmapView {
   const specs: Array<"drw" | "read"> = ["drw", "read"];
   return {
@@ -38,7 +54,7 @@ function roadmap(
     superseded_count: 0,
     superseded_note: "",
     reconciliation: `Read ${sprints.length} = ${sprints.length}`,
-    critical_path: [],
+    critical_path: criticalPath,
     rosters: specs.flatMap((spec) => {
       const rows = sprints.filter((s) => s.spec === spec);
       if (rows.length === 0) return [];
@@ -85,6 +101,44 @@ describe("Roadmap", () => {
     expect(screen.getByText("Read · SPR-01")).toBeTruthy();
     expect(screen.getByText("blocks 1 sprint")).toBeTruthy();
     expect(screen.getByText("waits on drw:5")).toBeTruthy();
+  });
+
+  it("resolves critical path nodes to sprint labels", () => {
+    render(
+      <Roadmap
+        roadmap={roadmap(
+          [
+            sprint(1, [], true, "drw"),
+            sprint(3, [], true, "drw"),
+            sprint(10, [], true, "drw"),
+          ],
+          ["drw:1", "drw:3", "drw:10"],
+          [],
+          ["drw:1", "drw:3", "drw:10"],
+        )}
+      />,
+    );
+
+    expect(screen.getByText("DRW critical path")).toBeTruthy();
+    expect(
+      screen.getByText("Research (DRW) · SPR-01 · insight question nodes · live"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Research (DRW) · SPR-03 · async note taker · live"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Research (DRW) · SPR-10 · reading surface · provisional",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("surfaces stale critical path ids without inventing sprint labels", () => {
+    render(<Roadmap roadmap={roadmap([], [], [], ["drw:99"])} />);
+
+    expect(screen.getByText("drw:99")).toBeTruthy();
+    expect(screen.getByText("not found in sprint roster")).toBeTruthy();
+    expect(screen.getByText(/this DRW spine/)).toBeTruthy();
   });
 
   it("omits dependency blockers when every sprint is dependency-ready", () => {

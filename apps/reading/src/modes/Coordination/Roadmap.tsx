@@ -192,30 +192,10 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
         </div>
       </LemonCard>
 
-      {/* DRW critical path — the load-bearing spine, explicit. */}
-      <div className="space-y-2">
-        <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
-          DRW critical path
-        </p>
-        <div className="flex items-center gap-2 flex-wrap">
-          {roadmap.critical_path.map((node, i) => (
-            <span key={node} className="flex items-center gap-2">
-              <LemonTag colour="sun" dot>
-                {node}
-              </LemonTag>
-              {i < roadmap.critical_path.length - 1 && (
-                <span aria-hidden="true" className="text-shadow-1 dark:text-moonlight">
-                  →
-                </span>
-              )}
-            </span>
-          ))}
-        </div>
-        <p className="text-xs text-ink-soft dark:text-starlight">
-          Read, Write and Speak all rest on these three DRW primitives. A slip
-          here slips everything downstream.
-        </p>
-      </div>
+      <CriticalPathSection
+        criticalPath={roadmap.critical_path}
+        sprintById={sprintById}
+      />
 
       <ReadyNowSection sprints={dependencyReady} />
       <DependencyBlockersSection blockers={blockers} />
@@ -230,6 +210,59 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
       {/* Substrate-execution layer — the real foundation beneath the products. */}
       <SubstrateLayerSection layers={roadmap.substrate_layers} />
     </section>
+  );
+}
+
+function CriticalPathSection({
+  criticalPath,
+  sprintById,
+}: {
+  criticalPath: string[];
+  sprintById: Map<string, SprintView>;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+        DRW critical path
+      </p>
+      <div className="flex items-start gap-2 flex-wrap">
+        {criticalPath.map((node, i) => {
+          const sprint = sprintById.get(node);
+          return (
+            <span key={node} className="flex items-start gap-2">
+              <span className="flex flex-col gap-1">
+                <LemonTag colour="sun" dot>
+                  {node}
+                </LemonTag>
+                {sprint && (
+                  <span className="text-xs font-mono text-shadow-2 dark:text-moonlight">
+                    {formatSprintLabel(sprint)} · {sprint.slug.replace(/-/g, " ")} ·{" "}
+                    {sprint.status}
+                  </span>
+                )}
+                {!sprint && (
+                  <span className="text-xs font-mono text-shadow-2 dark:text-moonlight">
+                    not found in sprint roster
+                  </span>
+                )}
+              </span>
+              {i < criticalPath.length - 1 && (
+                <span
+                  aria-hidden="true"
+                  className="pt-0.5 text-shadow-1 dark:text-moonlight"
+                >
+                  →
+                </span>
+              )}
+            </span>
+          );
+        })}
+      </div>
+      <p className="text-xs text-ink-soft dark:text-starlight">
+        Read, Write and Speak all rest on this DRW spine. A slip here slips
+        everything downstream.
+      </p>
+    </div>
   );
 }
 
