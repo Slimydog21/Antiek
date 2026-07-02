@@ -80,6 +80,7 @@ function roadmap(
     dependency_blockers: dependencyBlockers,
     execution_focus: executionFocus,
     operator_gate_focus: null,
+    read_activation: null,
     substrate_layers: [],
   };
 }
@@ -424,6 +425,74 @@ describe("Roadmap", () => {
     ).toBeTruthy();
     expect(screen.getByText("Blocks: All Stripe payouts")).toBeTruthy();
     expect(screen.getByText(/docs\/operator_gate_actions\.md/)).toBeTruthy();
+  });
+
+  it("shows Read activation dogfood counters without treating them as closure", () => {
+    render(
+      <Roadmap
+        roadmap={{
+          ...roadmap([]),
+          read_activation: {
+            source_path: "reports/read-dogfood.jsonl",
+            state: "incomplete",
+            total_sessions: 2,
+            valid_sessions: 1,
+            invalid_session_count: 1,
+            live_provider_sessions: 0,
+            citation_trace_sessions: 1,
+            non_library_sessions: 0,
+            final_verdict: null,
+            closure_ready: false,
+            remaining_requirements: {
+              valid_sessions: 9,
+              live_provider_sessions: 5,
+              citation_trace_sessions: 2,
+              non_library_sessions: 1,
+            },
+            failures: ["session-2 malformed"],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Read activation dogfood")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "1/2 valid · 0 live-provider · 1 citation-traced · 0 non-library · verdict=missing",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Remaining: 9 valid, 5 live-provider, 2 citation-traced, 1 non-library. Source: reports/read-dogfood.jsonl."),
+    ).toBeTruthy();
+    expect(screen.getByText("1 invalid session need repair.")).toBeTruthy();
+  });
+
+  it("surfaces malformed dogfood logs as repair work", () => {
+    render(
+      <Roadmap
+        roadmap={{
+          ...roadmap([]),
+          read_activation: {
+            source_path: "reports/read-dogfood.jsonl",
+            state: "invalid_log",
+            total_sessions: 0,
+            valid_sessions: 0,
+            invalid_session_count: 0,
+            live_provider_sessions: 0,
+            citation_trace_sessions: 0,
+            non_library_sessions: 0,
+            final_verdict: null,
+            closure_ready: false,
+            remaining_requirements: {},
+            failures: ["invalid JSON"],
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText(/Dogfood log is malformed; repair the JSONL before counting it/),
+    ).toBeTruthy();
   });
 
   it("keeps dependency focus ahead of operator gate focus", () => {

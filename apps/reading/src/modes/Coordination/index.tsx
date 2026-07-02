@@ -8,6 +8,7 @@ import type {
   DependencyBlockerView,
   ExecutionFocusView,
   OperatorGateFocusView,
+  ReadActivationStatusView,
   RoadmapView,
   RosterView,
   SprintView,
@@ -223,6 +224,33 @@ function safeOperatorGateFocus(value: unknown): OperatorGateFocusView | null {
   };
 }
 
+function numberRecord(value: unknown): Record<string, number> {
+  const body = record(value);
+  if (!body) return {};
+  return Object.fromEntries(
+    Object.entries(body).map(([key, raw]) => [key, nonNegativeInteger(raw)]),
+  );
+}
+
+function safeReadActivationStatus(value: unknown): ReadActivationStatusView | null {
+  const activation = record(value);
+  if (!activation) return null;
+  return {
+    source_path: nonEmptyString(activation.source_path) ?? "",
+    state: nonEmptyString(activation.state) ?? "not_started",
+    total_sessions: nonNegativeInteger(activation.total_sessions),
+    valid_sessions: nonNegativeInteger(activation.valid_sessions),
+    invalid_session_count: nonNegativeInteger(activation.invalid_session_count),
+    live_provider_sessions: nonNegativeInteger(activation.live_provider_sessions),
+    citation_trace_sessions: nonNegativeInteger(activation.citation_trace_sessions),
+    non_library_sessions: nonNegativeInteger(activation.non_library_sessions),
+    final_verdict: nullableString(activation.final_verdict),
+    closure_ready: activation.closure_ready === true,
+    remaining_requirements: numberRecord(activation.remaining_requirements),
+    failures: stringList(activation.failures),
+  };
+}
+
 function safeRoadmapView(value: unknown): RoadmapView {
   const body = record(value);
   const rosters = Array.isArray(body?.rosters)
@@ -248,6 +276,7 @@ function safeRoadmapView(value: unknown): RoadmapView {
       : [],
     execution_focus: safeExecutionFocus(body?.execution_focus),
     operator_gate_focus: safeOperatorGateFocus(body?.operator_gate_focus),
+    read_activation: safeReadActivationStatus(body?.read_activation),
     substrate_layers: Array.isArray(body?.substrate_layers)
       ? body.substrate_layers.flatMap((item) => {
           const layer = safeSubstrateLayer(item);

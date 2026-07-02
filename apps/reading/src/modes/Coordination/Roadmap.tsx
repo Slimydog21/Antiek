@@ -67,6 +67,21 @@ export interface OperatorGateFocusView {
   source_path: string;
 }
 
+export interface ReadActivationStatusView {
+  source_path: string;
+  state: string;
+  total_sessions: number;
+  valid_sessions: number;
+  invalid_session_count: number;
+  live_provider_sessions: number;
+  citation_trace_sessions: number;
+  non_library_sessions: number;
+  final_verdict: string | null;
+  closure_ready: boolean;
+  remaining_requirements: Record<string, number>;
+  failures: string[];
+}
+
 export interface RoadmapView {
   total_sprints: number;
   superseded_count: number;
@@ -79,6 +94,7 @@ export interface RoadmapView {
   dependency_blockers: DependencyBlockerView[];
   execution_focus: ExecutionFocusView | null;
   operator_gate_focus: OperatorGateFocusView | null;
+  read_activation: ReadActivationStatusView | null;
   substrate_layers: SubstrateLayerView[];
 }
 
@@ -267,6 +283,9 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
               {roadmap.activation_note}
             </p>
           ) : null}
+          {roadmap.read_activation ? (
+            <ActivationStatus activation={roadmap.read_activation} />
+          ) : null}
         </div>
       </LemonCard>
 
@@ -293,6 +312,53 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
       {/* Substrate-execution layer — the real foundation beneath the products. */}
       <SubstrateLayerSection layers={roadmap.substrate_layers} />
     </section>
+  );
+}
+
+function ActivationStatus({
+  activation,
+}: {
+  activation: ReadActivationStatusView;
+}) {
+  const remaining = activation.remaining_requirements ?? {};
+  const remainingText = [
+    ["valid", remaining.valid_sessions],
+    ["live-provider", remaining.live_provider_sessions],
+    ["citation-traced", remaining.citation_trace_sessions],
+    ["non-library", remaining.non_library_sessions],
+  ]
+    .filter(([, value]) => Number(value) > 0)
+    .map(([label, value]) => `${value} ${label}`)
+    .join(", ");
+  return (
+    <div className="mt-2 rounded border border-rule dark:border-charcoal-1 bg-ice-0/70 dark:bg-charcoal-2/70 px-3 py-2">
+      <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+        Read activation dogfood
+      </p>
+      <p className="text-xs font-mono text-ink dark:text-bright">
+        {activation.valid_sessions}/{activation.total_sessions} valid ·{" "}
+        {activation.live_provider_sessions} live-provider ·{" "}
+        {activation.citation_trace_sessions} citation-traced ·{" "}
+        {activation.non_library_sessions} non-library · verdict=
+        {activation.final_verdict || "missing"}
+      </p>
+      <p className="text-xs text-ink-soft dark:text-starlight leading-relaxed">
+        {activation.closure_ready
+          ? "Closure evidence is mechanically ready; operator verdict remains the product bar."
+          : remainingText
+            ? `Remaining: ${remainingText}.`
+            : activation.state === "invalid_log"
+              ? "Dogfood log is malformed; repair the JSONL before counting it."
+              : "No dogfood closure evidence is ready yet."}{" "}
+        Source: {activation.source_path || "reports/read-dogfood.jsonl"}.
+      </p>
+      {activation.invalid_session_count > 0 && (
+        <p className="text-xs font-mono text-emperor">
+          {activation.invalid_session_count} invalid session
+          {activation.invalid_session_count === 1 ? "" : "s"} need repair.
+        </p>
+      )}
+    </div>
   );
 }
 

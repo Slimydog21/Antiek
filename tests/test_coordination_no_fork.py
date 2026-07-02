@@ -39,6 +39,7 @@ from substrate.coordination.gate_ledger import (
     parse_gate_ledger,
     parse_quick_status_table,
 )
+from substrate.coordination.activation_view import build_read_activation_view
 from substrate.coordination.roadmap import (
     Roadmap,
     SpecRoster,
@@ -46,6 +47,7 @@ from substrate.coordination.roadmap import (
     SprintStatus,
     build_roadmap,
 )
+from tools.activation.read_dogfood import append_session_template, session_template
 
 # ── 1. The no-fork equality: two independent parses agree ────────────────────
 
@@ -466,6 +468,71 @@ def test_roadmap_response_serializes_operator_gate_focus_from_ledger() -> None:
     assert response.operator_gate_focus.status == first_open.status.value
     assert response.operator_gate_focus.status_raw == first_open.status_raw
     assert response.operator_gate_focus.source_path == ledger.source_path
+
+
+def test_read_activation_view_missing_log_is_not_started(tmp_path: Path) -> None:
+    view = build_read_activation_view(tmp_path / "missing-read-dogfood.jsonl")
+
+    assert view.state == "not_started"
+    assert view.total_sessions == 0
+    assert view.valid_sessions == 0
+    assert view.closure_ready is False
+    assert view.remaining_requirements == {
+        "valid_sessions": 10,
+        "live_provider_sessions": 5,
+        "citation_trace_sessions": 3,
+        "non_library_sessions": 1,
+    }
+
+
+def test_read_activation_view_surfaces_malformed_jsonl(tmp_path: Path) -> None:
+    path = tmp_path / "read-dogfood.jsonl"
+    path.write_text("{bad json\n", encoding="utf-8")
+
+    view = build_read_activation_view(path)
+
+    assert view.state == "invalid_log"
+    assert view.closure_ready is False
+    assert view.total_sessions == 0
+    assert any("invalid JSON" in failure for failure in view.failures)
+
+
+def test_read_activation_view_uses_dogfood_validator(tmp_path: Path) -> None:
+    path = tmp_path / "read-dogfood.jsonl"
+    record = session_template("inert")
+    record["build_sha"] = "0123456789abcdef"
+    append_session_template(path, record)
+
+    view = build_read_activation_view(path)
+
+    assert view.state == "incomplete"
+    assert view.total_sessions == 1
+    assert view.valid_sessions == 1
+    assert view.live_provider_sessions == 0
+    assert view.remaining_requirements["valid_sessions"] == 9
+    assert all(failure.startswith("closure requires ") for failure in view.failures)
+
+
+def test_roadmap_response_serializes_read_activation_status(tmp_path: Path) -> None:
+    from interfaces.research.api.coordination import RoadmapResponse
+
+    path = tmp_path / "read-dogfood.jsonl"
+    record = session_template("inert")
+    record["build_sha"] = "0123456789abcdef"
+    append_session_template(path, record)
+    activation = build_read_activation_view(path)
+
+    response = RoadmapResponse.from_roadmap(
+        build_roadmap(),
+        load_gate_ledger(),
+        activation,
+    )
+
+    assert response.read_activation.source_path == str(path)
+    assert response.read_activation.state == "incomplete"
+    assert response.read_activation.total_sessions == 1
+    assert response.read_activation.valid_sessions == 1
+    assert response.read_activation.closure_ready is False
 
 
 def test_operator_gate_focus_does_not_override_structural_dependency_focus() -> None:
