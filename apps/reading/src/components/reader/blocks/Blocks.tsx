@@ -160,14 +160,28 @@ function MathDisplay({ tex }: { tex: string }) {
   );
 }
 
+function safeImageSrc(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const src = value.trim();
+  if (!src) return null;
+  if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(src)) return src;
+  try {
+    const parsed = new URL(src);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? src : null;
+  } catch {
+    return null;
+  }
+}
+
 // ── figure (img + caption; src/alt optional) ─────────────────────────────────
 function Figure({ block }: { block: FigureBlock }) {
   const caption = block.caption ?? [];
+  const src = safeImageSrc(block.src);
   return (
     <figure data-block-type="figure" className={`reader-figure my-5 ${BREAK_AVOID}`}>
-      {block.src ? (
+      {src ? (
         <img
-          src={block.src}
+          src={src}
           alt={block.alt ?? ""}
           className="reader-figure-img max-w-full h-auto mx-auto block rounded"
         />
