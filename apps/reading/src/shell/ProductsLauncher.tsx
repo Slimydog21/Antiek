@@ -213,26 +213,27 @@ export function ProductsLauncher({
 
   if (!open) return null;
 
-  /** Built modes navigate. A bare route navigates directly. A param route
-   *  resolves to its index (everything before "/:") when that index is a
-   *  real route; for a workflow param route with no real index we fall back
-   *  to the workflow default. A shared param route whose index isn't a real
-   *  route is treated as unbuilt (no navigation) rather than misrouted. */
-  const openMode = (m: ModeEntry) => {
-    if (!m.built || !m.route) return;
-    let target: string;
+  /** Built modes navigate only when the row names a real destination. A bare
+   *  route navigates directly. A param route resolves to its index only when
+   *  that index is itself a real route. Instance-only routes (for example
+   *  /read/:documentId or /replay/:investigationId) remain visible as honest
+   *  inventory, but a generic launcher click is a no-op instead of silently
+   *  falling back to a different workflow page. */
+  const destinationForMode = (m: ModeEntry): string | null => {
+    if (!m.built || !m.route) return null;
     if (m.route.includes(":")) {
       const index = m.route.split("/:")[0];
       if (BARE_ROUTES.has(index)) {
-        target = index;
-      } else if (m.workflow !== "shared") {
-        target = WORKFLOWS[m.workflow].defaultRoute;
-      } else {
-        return;
+        return index;
       }
-    } else {
-      target = m.route;
+      return null;
     }
+    return m.route;
+  };
+
+  const openMode = (m: ModeEntry) => {
+    const target = destinationForMode(m);
+    if (!target) return;
     navigate(target);
     onClose();
   };
@@ -296,6 +297,35 @@ export function ProductsLauncher({
   // + highlight, not DOM roving focus). This gives power users the two-action
   // bar (More then arrow+enter, or type filter+enter) without tabbing.
   const isActive = (key: string) => flatItems[activeIndex]?.key === key;
+  const modeRowButton = (m: ModeEntry) => {
+    const destination = destinationForMode(m);
+    const enabled = destination !== null;
+    return (
+      <button
+        type="button"
+        disabled={!enabled}
+        onClick={() => openMode(m)}
+        title={m.blurb}
+        data-mode-id={m.id}
+        className={
+          "flex-1 text-left px-2 py-1.5 rounded flex items-center gap-2 " +
+          (enabled
+            ? "hover:bg-sun/20 dark:hover:bg-sun/10 text-ink dark:text-bright cursor-pointer"
+            : "text-ink-mute dark:text-moonlight cursor-default opacity-70") +
+          (isActive(`mode:${m.id}`) ? " bg-sun/10 dark:bg-sun/5" : "")
+        }
+      >
+        <span className="flex-1 min-w-0 truncate text-[13px]">
+          {m.label}
+        </span>
+        {!m.built && (
+          <LemonTag colour="muted" className="shrink-0 text-[10px]">
+            not yet
+          </LemonTag>
+        )}
+      </button>
+    );
+  };
 
   return (
     <div
@@ -442,29 +472,7 @@ export function ProductsLauncher({
                         <ul className="space-y-0.5">
                           {g.modes.map((m) => (
                             <li key={m.id} className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                disabled={!m.built}
-                                onClick={() => openMode(m)}
-                                title={m.blurb}
-                                data-mode-id={m.id}
-                                className={
-                                  "flex-1 text-left px-2 py-1.5 rounded flex items-center gap-2 " +
-                                  (m.built
-                                    ? "hover:bg-sun/20 dark:hover:bg-sun/10 text-ink dark:text-bright cursor-pointer"
-                                    : "text-ink-mute dark:text-moonlight cursor-default opacity-70") +
-                                  (isActive(`mode:${m.id}`) ? " bg-sun/10 dark:bg-sun/5" : "")
-                                }
-                              >
-                                <span className="flex-1 min-w-0 truncate text-[13px]">
-                                  {m.label}
-                                </span>
-                                {!m.built && (
-                                  <LemonTag colour="muted" className="shrink-0 text-[10px]">
-                                    not yet
-                                  </LemonTag>
-                                )}
-                              </button>
+                              {modeRowButton(m)}
                               {m.built && windowKindForRoute(m.route) && (
                                 <button
                                   type="button"
@@ -494,29 +502,7 @@ export function ProductsLauncher({
                   <ul className="space-y-0.5 grid grid-cols-1 sm:grid-cols-2 gap-x-8">
                     {runModes.map((m) => (
                       <li key={m.id} className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          disabled={!m.built}
-                          onClick={() => openMode(m)}
-                          title={m.blurb}
-                          data-mode-id={m.id}
-                          className={
-                            "flex-1 text-left px-2 py-1.5 rounded flex items-center gap-2 " +
-                            (m.built
-                              ? "hover:bg-sun/20 dark:hover:bg-sun/10 text-ink dark:text-bright cursor-pointer"
-                              : "text-ink-mute dark:text-moonlight cursor-default opacity-70") +
-                            (isActive(`mode:${m.id}`) ? " bg-sun/10 dark:bg-sun/5" : "")
-                          }
-                        >
-                          <span className="flex-1 min-w-0 truncate text-[13px]">
-                            {m.label}
-                          </span>
-                          {!m.built && (
-                            <LemonTag colour="muted" className="shrink-0 text-[10px]">
-                              not yet
-                            </LemonTag>
-                          )}
-                        </button>
+                        {modeRowButton(m)}
                         {m.built && windowKindForRoute(m.route) && (
                           <button
                             type="button"

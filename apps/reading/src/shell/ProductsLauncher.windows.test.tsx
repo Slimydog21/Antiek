@@ -109,6 +109,26 @@ describe("ProductsLauncher — open in window (M5)", () => {
     expect(screen.queryByLabelText("Open Sources in a window")).toBeNull();
   });
 
+  it("shows instance-only mode rows without falling back to a different page", () => {
+    const onClose = renderLauncher();
+
+    const reader = screen.getByRole("button", { name: "Reader" }) as HTMLButtonElement;
+    expect(reader.disabled).toBe(true);
+    fireEvent.click(reader);
+
+    expect(navigateMock).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("opens a param mode through its real index when that index exists", () => {
+    const onClose = renderLauncher();
+
+    fireEvent.click(screen.getByRole("button", { name: "Outcome" }));
+
+    expect(navigateMock).toHaveBeenCalledWith("/outcomes");
+    expect(onClose).toHaveBeenCalled();
+  });
+
   it("surfaces live Write pieces and opens them in the Write loop", async () => {
     listDeliverablesMock.mockResolvedValue({
       count: 3,
