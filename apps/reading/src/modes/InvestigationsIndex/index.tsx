@@ -84,6 +84,10 @@ function safeInvestigationRows(value: unknown): InvestigationRow[] {
   });
 }
 
+function safeCreatedInvestigationId(value: unknown): string {
+  return requireInvestigationId(record(value)?.investigation_id);
+}
+
 function clampMaxSubQuestions(value: unknown): number {
   return typeof value === "number" && Number.isSafeInteger(value)
     ? Math.max(1, Math.min(20, value))
@@ -128,8 +132,7 @@ export default function InvestigationsIndex() {
       if (!resp.ok) {
         throw new Error(`POST /investigations: HTTP ${resp.status}`);
       }
-      const created = record(await resp.json());
-      const newId = requireInvestigationId(created?.investigation_id);
+      const newId = safeCreatedInvestigationId(await resp.json());
       // Reset draft, then navigate into the new investigation's
       // workstation. Listing refreshes in the background.
       setDraftQuestion("");
