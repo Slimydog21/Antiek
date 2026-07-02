@@ -193,6 +193,55 @@ describe("ThoughtPartnerPanel", () => {
     expect(screen.getByText("Turns the intuition into something falsifiable.")).toBeTruthy();
   });
 
+  it("sanitizes thought-partner replies before rendering structured content", async () => {
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        text: " fallback text ",
+        shape: "challenge",
+        challenges: [
+          {
+            condition: " Valid challenge ",
+            note_ids: [" q-memory ", " ", 42],
+          },
+          {
+            condition: " ",
+            note_ids: ["Skipped note"],
+          },
+        ],
+        synthesis_text: " ",
+        extensions: [
+          {
+            sub_question: " Valid extension ",
+            tag: " next ",
+            rationale: " rationale ",
+          },
+          {
+            sub_question: " ",
+            tag: "Skipped tag",
+          },
+        ],
+        policy_id: " policy dirty ",
+        thread_node_id: " thread dirty ",
+      }),
+    });
+
+    render(<ThoughtPartnerPanel />);
+    selectQuestion();
+    await userEvent.type(
+      await screen.findByPlaceholderText("Challenge, synthesize, or extend this question..."),
+      "Challenge this",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Ask thought partner" }));
+
+    expect(await screen.findByText("Reply · challenge")).toBeTruthy();
+    expect(screen.getByText("Valid challenge")).toBeTruthy();
+    expect(screen.getByText("q-memory")).toBeTruthy();
+    expect(screen.getByText("policy: policy dirty")).toBeTruthy();
+    expect(screen.getByText("anchored thread: thread dirty")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/Skipped| q-memory |policy dirty /);
+  });
+
   it("parks an extension reply back into watch-for-later", async () => {
     const watchlistChanges: Event[] = [];
     const onWatchlistChanged = (event: Event) => {
