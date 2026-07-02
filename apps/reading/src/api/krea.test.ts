@@ -85,6 +85,28 @@ describe("requestScene", () => {
     });
   });
 
+  it.each(["javascript:alert(1)", "data:image/svg+xml,<svg></svg>", "/relative/art.png", " "])(
+    "falls back when 200 art carries an unsafe image URL: %s",
+    async (image_url) => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse(200, {
+          enabled: true,
+          isFallback: false,
+          image_url,
+          scene_key: "calm|day|summer",
+          cached: true,
+        }),
+      );
+
+      await expect(requestScene(SCENE)).resolves.toEqual({
+        enabled: false,
+        isFallback: true,
+        reason: "upstream_bad_response",
+        scene_key: null,
+      });
+    },
+  );
+
   it("disabled: a 503 returns the typed fallback signal (no throw)", async () => {
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
       jsonResponse(503, {
@@ -223,4 +245,25 @@ describe("generateImage / getJob", () => {
       image_url: "https://img/done.png",
     });
   });
+
+  it.each(["javascript:alert(1)", "data:text/html,owned", "/relative/done.png"])(
+    "nulls unsafe optional job image URLs: %s",
+    async (image_url) => {
+      (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+        jsonResponse(200, {
+          enabled: true,
+          job_id: "job_1",
+          status: "completed",
+          image_url,
+        }),
+      );
+
+      await expect(getJob("job_1")).resolves.toEqual({
+        enabled: true,
+        job_id: "job_1",
+        status: "completed",
+        image_url: null,
+      });
+    },
+  );
 });
