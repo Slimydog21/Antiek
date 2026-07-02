@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import type { PaletteDragPayload } from "../CreationStudio/BlockPalette";
 import { DRAG_MIME } from "../CreationStudio/BlockPalette";
-import { safeFolders, safeRepositoryHits } from "./repositoryData";
+import { repositoryBlockKind, safeFolders, safeRepositoryHits } from "./repositoryData";
 import {
   listFolders,
   searchRepository,
@@ -135,7 +135,7 @@ export default function BlockRepository({
                 // Keep drag: the same envelope the shipped outline drop reads.
                 const payload: PaletteDragPayload = {
                   from: "palette",
-                  block_kind: "insight",
+                  block_kind: repositoryBlockKind(hit.node_type),
                   block_id: hit.node_id, // the node — the drop/tap preserves it
                   label: hit.label,
                 };

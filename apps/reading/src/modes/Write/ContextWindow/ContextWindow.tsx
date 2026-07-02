@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { PaletteDragPayload } from "../../CreationStudio/BlockPalette";
 import { safeGenerationResult } from "../outlineData";
 import { parsePaletteDrag } from "../Repository/dragToOutline";
+import { repositoryBlockKind } from "../repositoryData";
 import { generateSection, promoteContext, type GenerationResult } from "../writeApi";
 import {
   contextToPromoteRequest,
@@ -68,7 +69,11 @@ export function ContextWindow({
     if (!payload) return;
     e.preventDefault();
     const nodeId = payload[BLOCK_ID_KEY] as string;
-    addItem({ label: payload.label, block_kind: "insight", node_id: nodeId });
+    addItem({
+      label: payload.label,
+      block_kind: repositoryBlockKind(payload.block_kind),
+      node_id: nodeId,
+    });
   }
 
   async function onGenerate() {
