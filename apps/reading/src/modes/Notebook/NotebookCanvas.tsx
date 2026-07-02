@@ -36,7 +36,11 @@ export default function NotebookCanvas({
   onMoveBlock,
   onEditBlock,
 }: Props) {
-  const blockCount = notebook.blocks.length;
+  const blocks = notebook.blocks.flatMap((block) => {
+    const blockId = safeBlockId(block);
+    return blockId ? [{ block, blockId }] : [];
+  });
+  const blockCount = blocks.length;
   return (
     <article className="max-w-3xl mx-auto px-8 py-10 space-y-6">
       <header className="space-y-1">
@@ -50,12 +54,12 @@ export default function NotebookCanvas({
       </header>
 
       <div className="space-y-4">
-        {notebook.blocks.map((block, idx) => (
-          <div key={internalBlockHandle(block)} className="group relative">
+        {blocks.map(({ block, blockId }, idx) => (
+          <div key={blockId} className="group relative">
             <BlockOrEditor block={block} onEditBlock={onEditBlock} />
             {(onDeleteBlock || onMoveBlock) && (
               <BlockControls
-                blockId={internalBlockHandle(block)}
+                blockId={blockId}
                 position={idx}
                 isFirst={idx === 0}
                 isLast={idx === blockCount - 1}
@@ -140,7 +144,18 @@ function BlockOrEditor({
 }
 
 function internalBlockHandle(block: NotebookBlockResponse): string {
-  return block[("block" + "_id") as keyof NotebookBlockResponse] as string;
+  const blockId = safeBlockId(block);
+  if (!blockId) {
+    throw new TypeError("block_id must be a non-empty string");
+  }
+  return blockId;
+}
+
+function safeBlockId(block: NotebookBlockResponse): string | null {
+  const value = block[("block" + "_id") as keyof NotebookBlockResponse];
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function BlockControls({

@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import NotebookCanvas from "./NotebookCanvas";
@@ -33,6 +33,10 @@ describe("NotebookCanvas question-card handoff", () => {
   beforeEach(() => {
     questionMocks.openNotebookQuestionInBrainstorm.mockReset();
     questionMocks.openNotebookQuestionInChase.mockReset();
+  });
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
   });
 
   it("opens a parked question in Brainstorm from the live routed canvas", async () => {
@@ -83,5 +87,71 @@ describe("NotebookCanvas question-card handoff", () => {
     expect(questionMocks.openNotebookQuestionInChase).toHaveBeenCalledWith(
       "What hidden assumption should I test?",
     );
+  });
+
+  it("drops malformed block ids instead of rendering actionable rows", () => {
+    const data = notebook([
+      {
+        block_id: " block-valid ",
+        block_index: 0,
+        block_type: "prose",
+        ref_id: null,
+        content_json: { text: "Visible prose" },
+        created_at: "2026-07-01T00:00:00Z",
+      },
+      {
+        block_id: " ",
+        block_index: 1,
+        block_type: "prose",
+        ref_id: null,
+        content_json: { text: "Invisible prose" },
+        created_at: "2026-07-01T00:00:00Z",
+      },
+    ]);
+
+    render(<NotebookCanvas notebook={data} onAppendBlock={vi.fn()} />);
+
+    expect(screen.getByText("Visible prose")).toBeTruthy();
+    expect(screen.queryByText("Invisible prose")).toBeNull();
+    expect(document.body.textContent).toContain("1 block");
+  });
+
+  it("trims block ids before move/delete/edit callbacks", async () => {
+    const onMoveBlock = vi.fn();
+    const onDeleteBlock = vi.fn();
+    const onEditBlock = vi.fn();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const data = notebook([
+      {
+        block_id: " block-valid ",
+        block_index: 0,
+        block_type: "prose",
+        ref_id: null,
+        content_json: { text: "Editable prose" },
+        created_at: "2026-07-01T00:00:00Z",
+      },
+    ]);
+
+    render(
+      <NotebookCanvas
+        notebook={data}
+        onAppendBlock={vi.fn()}
+        onMoveBlock={onMoveBlock}
+        onDeleteBlock={onDeleteBlock}
+        onEditBlock={onEditBlock}
+      />,
+    );
+
+    await userEvent.click(screen.getByTitle("Delete block"));
+    expect(onDeleteBlock).toHaveBeenCalledWith("block-valid");
+
+    await userEvent.dblClick(screen.getByText("Editable prose"));
+    const editor = screen.getByRole("textbox");
+    await userEvent.clear(editor);
+    await userEvent.type(editor, "Edited prose");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onEditBlock).toHaveBeenCalledWith("block-valid", { text: "Edited prose" });
+
+    expect(onMoveBlock).not.toHaveBeenCalled();
   });
 });
