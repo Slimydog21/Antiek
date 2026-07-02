@@ -123,6 +123,35 @@ beforeEach(() => {
         ],
       });
     }
+    if (path === "/outcomes?limit=200") {
+      return okJson({
+        outcomes: [
+          {
+            outcome_id: " outcome-a ",
+            synthesis_id: " synthesis-a ",
+            observer: "__operator__",
+            observed_at: " 2026-07-01 ",
+          },
+          {
+            outcome_id: "outcome-b",
+            synthesis_id: "synthesis-b",
+            observer: "agent_beta",
+            observed_at: " ",
+          },
+          {
+            outcome_id: " ",
+            synthesis_id: "synthesis-skipped",
+            observer: "agent_gamma",
+            observed_at: "2026-07-02",
+          },
+          {
+            outcome_id: "outcome-skipped",
+            synthesis_id: null,
+            observer: "__operator__",
+          },
+        ],
+      });
+    }
     if (path.startsWith("/payouts/transfers")) {
       return okJson({
         transfers: [
@@ -336,6 +365,9 @@ describe("OperatorDashboard", () => {
       screen.getByText("3 visible · 1 in progress · 1 completed · 1 failed"),
     ).toBeTruthy();
     expect(screen.getByText("Visible research cost $0.0200.")).toBeTruthy();
+    expect(screen.getByText("Outcome reviews")).toBeTruthy();
+    expect(screen.getByText("2 reviews · 1 operator · 1 collaborator")).toBeTruthy();
+    expect(screen.getByText("1/2 reviews have timestamps.")).toBeTruthy();
     expect(screen.getByText("Billing usage")).toBeTruthy();
     expect(
       screen.getByText("2026-07 · billable $0.2750 · margin $0.0250"),
@@ -358,6 +390,7 @@ describe("OperatorDashboard", () => {
       .map((link) => link.getAttribute("href"));
     expect(openLinks).toContain("/coordination");
     expect(openLinks).toContain("/investigations");
+    expect(openLinks).toContain("/outcomes");
     expect(openLinks).toContain("/billing");
     expect(openLinks).toContain("/privacy");
     expect(openLinks).toContain("/marketplace");

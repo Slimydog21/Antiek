@@ -35,6 +35,14 @@ interface CompositeSnapshot {
   trust: TrustSummary | null;
   billing: BillingSummary | null;
   investigations: InvestigationSummary | null;
+  outcomes: OutcomeSummary | null;
+}
+
+interface OutcomeSummary {
+  total: number;
+  operator_reviews: number;
+  other_reviews: number;
+  dated_reviews: number;
 }
 
 interface InvestigationSummary {
@@ -316,6 +324,33 @@ function safeInvestigationSummary(value: unknown): InvestigationSummary {
   return summary;
 }
 
+function safeOutcomeSummary(value: unknown): OutcomeSummary {
+  const body = record(value);
+  const rows = Array.isArray(body?.outcomes) ? body.outcomes : [];
+  const summary: OutcomeSummary = {
+    total: 0,
+    operator_reviews: 0,
+    other_reviews: 0,
+    dated_reviews: 0,
+  };
+  for (const item of rows) {
+    const row = record(item);
+    if (!nonEmptyString(row?.outcome_id) || !nonEmptyString(row?.synthesis_id)) {
+      continue;
+    }
+    summary.total += 1;
+    if (nonEmptyString(row?.observer) === "__operator__") {
+      summary.operator_reviews += 1;
+    } else {
+      summary.other_reviews += 1;
+    }
+    if (nonEmptyString(row?.observed_at)) {
+      summary.dated_reviews += 1;
+    }
+  }
+  return summary;
+}
+
 function safeNumberMapTotal(value: unknown): number {
   const body = record(value);
   if (!body) return 0;
@@ -589,6 +624,7 @@ export default function OperatorDashboard() {
     trust: null,
     billing: null,
     investigations: null,
+    outcomes: null,
   });
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -608,6 +644,7 @@ export default function OperatorDashboard() {
         trustResp,
         billingResp,
         investigationsResp,
+        outcomesResp,
       ] = await Promise.all([
         apiFetch("/publishers"),
         apiFetch("/stats").catch(() => null),
@@ -619,6 +656,7 @@ export default function OperatorDashboard() {
         apiFetch("/trust-center").catch(() => null),
         apiFetch(`/billing/summary/__operator__/${currentPeriod()}`).catch(() => null),
         apiFetch("/investigations?limit=200").catch(() => null),
+        apiFetch("/outcomes?limit=200").catch(() => null),
       ]);
 
       if (!publishersResp.ok) {
@@ -669,6 +707,11 @@ export default function OperatorDashboard() {
         investigations = safeInvestigationSummary(await investigationsResp.json());
       }
 
+      let outcomes: OutcomeSummary | null = null;
+      if (outcomesResp?.ok) {
+        outcomes = safeOutcomeSummary(await outcomesResp.json());
+      }
+
       setSnapshot({
         stats,
         pendingDeletions,
@@ -679,6 +722,7 @@ export default function OperatorDashboard() {
         trust,
         billing,
         investigations,
+        outcomes,
       });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -863,11 +907,57 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
       </div>
       <CoordinationTile coordination={snapshot.coordination} />
       <InvestigationsTile investigations={snapshot.investigations} />
+      <OutcomesTile outcomes={snapshot.outcomes} />
       <BillingTile billing={snapshot.billing} />
       <TrustTile trust={snapshot.trust} />
       <MarketplaceTile marketplace={snapshot.marketplace} />
       <FederationTile federation={snapshot.federation} />
     </section>
+  );
+}
+
+function OutcomesTile({ outcomes }: { outcomes: OutcomeSummary | null }) {
+  if (!outcomes) {
+    return (
+      <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className="text-sm font-serif text-ink dark:text-bright">
+            Outcome reviews
+          </h3>
+          <Link
+            to="/outcomes"
+            className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+          >
+            open →
+          </Link>
+        </div>
+        <p className="mt-2 text-xs italic text-shadow-1 dark:text-moonlight">
+          Outcome review history unavailable.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-3 space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-sm font-serif text-ink dark:text-bright">
+          Outcome reviews
+        </h3>
+        <Link
+          to="/outcomes"
+          className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+        >
+          open →
+        </Link>
+      </div>
+      <p className="text-xs font-mono text-ink dark:text-bright">
+        {outcomes.total} reviews · {outcomes.operator_reviews} operator ·{" "}
+        {outcomes.other_reviews} collaborator
+      </p>
+      <p className="text-xs text-ink-soft dark:text-starlight">
+        {outcomes.dated_reviews}/{outcomes.total} reviews have timestamps.
+      </p>
+    </div>
   );
 }
 
