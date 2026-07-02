@@ -99,7 +99,7 @@ describe("InterviewVoiceCapture", () => {
     apiFetchMock.mockResolvedValue({
       ok: false,
       status: 503,
-      json: async () => ({ detail: { message: "provider missing" } }),
+      json: async () => ({ detail: { code: "provider_missing" } }),
     } as Response);
 
     render(
@@ -113,6 +113,30 @@ describe("InterviewVoiceCapture", () => {
 
     await waitFor(() => expect(onUploadError).toHaveBeenCalledWith(503, "HTTP 503"));
     expect(await screen.findByText("Upload failed: HTTP 503")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("[object Object]");
+  });
+
+  it("sanitizes nested upload error messages for host callbacks", async () => {
+    const onUploadError = vi.fn();
+    apiFetchMock.mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({ detail: { message: "  provider missing  " } }),
+    } as Response);
+
+    render(
+      <InterviewVoiceCapture
+        sessionId="int-1"
+        onUploadError={onUploadError}
+      />,
+    );
+
+    await recordAndUpload();
+
+    await waitFor(() =>
+      expect(onUploadError).toHaveBeenCalledWith(503, "provider missing"),
+    );
+    expect(await screen.findByText("Upload failed: provider missing")).toBeTruthy();
     expect(document.body.textContent).not.toContain("[object Object]");
   });
 });
