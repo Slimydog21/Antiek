@@ -38,7 +38,7 @@ function SidecarStoryHost() {
       }}
     >
       <h1 style={{ fontSize: 28, marginBottom: 8 }}>
-        Workstation backdrop
+        Workflow backdrop
       </h1>
       <p style={{ color: "#57534e", fontSize: 14, marginBottom: 4 }}>
         The AI sidecar attaches to the right edge. Press ⌘J to toggle.
@@ -88,7 +88,7 @@ export const SidecarCollapsed: Story = {
       }}
     >
       <h1 style={{ fontSize: 28, marginBottom: 8 }}>
-        Workstation backdrop (sidecar collapsed)
+        Workflow backdrop (sidecar collapsed)
       </h1>
       <p style={{ color: "#57534e", fontSize: 14, marginBottom: 4 }}>
         The 32px rail on the right is the collapsed sidecar. Click

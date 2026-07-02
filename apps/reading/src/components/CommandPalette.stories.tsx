@@ -41,7 +41,7 @@ function PaletteStoryHost() {
       }}
     >
       <h1 style={{ fontSize: 28, marginBottom: 8 }}>
-        Demo workstation backdrop
+        Demo workflow backdrop
       </h1>
       <p style={{ color: "#57534e", fontSize: 14, marginBottom: 16 }}>
         Press ⌘K to open the palette. Arrow keys navigate; Enter selects;
