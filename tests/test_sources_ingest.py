@@ -286,6 +286,67 @@ def test_ingest_with_explicit_kind_overrides_detection(monkeypatch, temp_substra
     assert body["document_id"] == "doc-url-forced"
 
 
+def test_ingest_trims_url_before_adapter_dispatch(monkeypatch, temp_substrate):
+    from dataclasses import dataclass
+
+    captured: dict[str, str] = {}
+
+    @dataclass
+    class _R:
+        document_id: str = "doc-url-trimmed"
+        document_loaded_event_id: str = "evt-url-trimmed"
+        chunks_written: int = 1
+        skipped_reason: str | None = None
+        title: str = "Trimmed URL"
+        chunk_ids: list = None
+        node_ids: list = None
+
+    import acquisition.urls as _urls
+
+    def _fake_ingest(url, *a, **kw):
+        captured["url"] = url
+        return _R()
+
+    monkeypatch.setattr(_urls, "ingest_url", _fake_ingest)
+
+    client = _client(temp_substrate)
+    resp = client.post(
+        "/sources/ingest",
+        json={"url": "  https://example.com/post  ", "kind": "url"},
+    )
+    assert resp.status_code == 202
+    assert captured["url"] == "https://example.com/post"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "javascript:alert(1)",
+        "data:text/html,owned",
+        "/relative/path",
+        "example.com/post",
+    ],
+)
+def test_ingest_rejects_non_http_urls_before_adapter_dispatch(
+    monkeypatch, temp_substrate, url
+):
+    import acquisition.urls as _urls
+
+    called = False
+
+    def _fake_ingest(*a, **kw):
+        nonlocal called
+        called = True
+        raise AssertionError("adapter should not be called")
+
+    monkeypatch.setattr(_urls, "ingest_url", _fake_ingest)
+
+    client = _client(temp_substrate)
+    resp = client.post("/sources/ingest", json={"url": url, "kind": "url"})
+    assert resp.status_code == 422
+    assert called is False
+
+
 def test_ingest_short_url_validation_error(temp_substrate):
     """Pydantic min_length should reject obviously bogus URLs."""
     client = _client(temp_substrate)
