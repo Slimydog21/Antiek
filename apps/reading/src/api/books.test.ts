@@ -18,6 +18,7 @@ vi.mock("../lib/api", () => ({
 
 import {
   askBook,
+  curateBooks,
   generateMetaReading,
   getBook,
   getBookFullText,
@@ -416,6 +417,35 @@ describe("books api — voice-note boundary", () => {
     expect(result).toEqual(transcript);
   });
 
+  it("sanitizes transcription responses before showing the draft transcript", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          transcript: "  the author argues X  ",
+          language: "  en  ",
+          duration_seconds: "3",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(transcribeAudio(new Blob(["audio"]))).resolves.toEqual({
+      transcript: "the author argues X",
+      language: "en",
+      duration_seconds: 0,
+    });
+  });
+
+  it("rejects malformed transcription responses", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ transcript: null }), { status: 200 }),
+    );
+
+    await expect(transcribeAudio(new Blob(["audio"]))).rejects.toThrow(
+      "Malformed transcription response.",
+    );
+  });
+
   it("uses audio/webm when the captured audio has no media type", async () => {
     apiFetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ transcript: "", language: null, duration_seconds: 0 }), {
@@ -475,6 +505,53 @@ describe("books api — voice-note boundary", () => {
       confirmed: true,
     });
     expect(result).toEqual(voiceNoteResponse());
+  });
+
+  it("sanitizes saved voice-note responses before adding notes to reader state", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          voice_note_id: "  vnote-1  ",
+          document_id: "  doc-voice  ",
+          page_index: 2,
+          note_count: "2",
+          notes: [" insight a ", "", 9, " question b "],
+          emitted_event_ids: [" ev-1 ", null, "ev-2"],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(
+      saveVoiceNote("doc-voice", {
+        page_index: 2,
+        transcript: "confirmed",
+        investigation_id: "read-doc-voice",
+      }),
+    ).resolves.toEqual({
+      voice_note_id: "vnote-1",
+      document_id: "doc-voice",
+      page_index: 2,
+      note_count: 2,
+      notes: ["insight a", "question b"],
+      emitted_event_ids: ["ev-1", "ev-2"],
+    });
+  });
+
+  it("rejects malformed voice-note save responses", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ voice_note_id: "vnote", document_id: "doc" }), {
+        status: 200,
+      }),
+    );
+
+    await expect(
+      saveVoiceNote("doc-voice", {
+        page_index: 2,
+        transcript: "confirmed",
+        investigation_id: "read-doc-voice",
+      }),
+    ).rejects.toThrow("Malformed voice-note response.");
   });
 
   it("surfaces unconfirmed-transcript and unavailable-distiller save failures", async () => {
@@ -766,6 +843,43 @@ describe("books api — spin-research boundary", () => {
     await expect(spinResearch("doc-1", 0)).resolves.toEqual(futureResponse);
   });
 
+  it("sanitizes spin-research launch responses before navigation", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          investigation_id: "  inv-child  ",
+          document_id: "  doc-spin  ",
+          page_index: 4,
+          gated: "yes",
+          servability: "  future_open  ",
+          seed_preview: "  selected seed  ",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(spinResearch("doc-1", 4)).resolves.toEqual({
+      investigation_id: "inv-child",
+      document_id: "doc-spin",
+      page_index: 4,
+      gated: false,
+      servability: "future_open",
+      seed_preview: "selected seed",
+    });
+  });
+
+  it("rejects malformed spin-research launch responses", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ investigation_id: " ", document_id: "doc" }), {
+        status: 200,
+      }),
+    );
+
+    await expect(spinResearch("doc-1", 0)).rejects.toThrow(
+      "Malformed spin-research response.",
+    );
+  });
+
   it("surfaces an unknown book as the reader's book_not_found branch", async () => {
     apiFetchMock.mockResolvedValueOnce(new Response("missing", { status: 404 }));
 
@@ -785,6 +899,86 @@ describe("books api — spin-research boundary", () => {
 
     await expect(spinResearch("doc-1", 0)).rejects.toThrow(
       "POST /books/{id}/spin-research: HTTP 500",
+    );
+  });
+});
+
+describe("books api — curate boundary", () => {
+  it("requests curation with encoded prompt and limit", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          prompt: "stoicism",
+          books: [
+            { document_id: "doc-1", title: "Meditations", author: "Marcus", score: 0.9 },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const result = await curateBooks("stoicism & fate", 7);
+
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+    expect(apiFetchMock.mock.calls[0][0]).toBe(
+      "/api/books/curate?prompt=stoicism+%26+fate&limit=7",
+    );
+    expect(result).toEqual({
+      prompt: "stoicism",
+      books: [
+        { document_id: "doc-1", title: "Meditations", author: "Marcus", score: 0.9 },
+      ],
+    });
+  });
+
+  it("sanitizes curated books before ranking the shelf", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          prompt: " ",
+          books: [
+            {
+              document_id: "  doc-1  ",
+              title: "  Meditations  ",
+              author: "  Marcus  ",
+              score: "0.9",
+            },
+            {
+              document_id: " ",
+              title: "Missing identity",
+              author: "A",
+              score: 1,
+            },
+            {
+              document_id: "doc-2",
+              title: null,
+              author: "",
+              score: 0.4,
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(curateBooks("stoicism")).resolves.toEqual({
+      prompt: "stoicism",
+      books: [
+        { document_id: "doc-1", title: "Meditations", author: "Marcus", score: 0 },
+        { document_id: "doc-2", title: null, author: null, score: 0.4 },
+      ],
+    });
+  });
+
+  it("surfaces curation unavailability and unexpected failures", async () => {
+    apiFetchMock.mockResolvedValueOnce(new Response("no embedder", { status: 503 }));
+    await expect(curateBooks("stoicism")).rejects.toThrow(
+      "Curation is temporarily unavailable.",
+    );
+
+    apiFetchMock.mockResolvedValueOnce(new Response("boom", { status: 500 }));
+    await expect(curateBooks("stoicism")).rejects.toThrow(
+      "GET /books/curate: HTTP 500",
     );
   });
 });

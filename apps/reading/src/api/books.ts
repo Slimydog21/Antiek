@@ -247,6 +247,18 @@ export interface TranscribeResponse {
   duration_seconds: number;
 }
 
+function safeTranscribeResponse(value: unknown): TranscribeResponse {
+  const body = record(value);
+  if (!body || typeof body.transcript !== "string") {
+    throw new Error("Malformed transcription response.");
+  }
+  return {
+    transcript: body.transcript.trim(),
+    language: nullableString(body.language),
+    duration_seconds: nonNegativeFiniteNumber(body.duration_seconds) ?? 0,
+  };
+}
+
 /** Transcribe a captured audio blob (Read SPR-06). 503 when the Whisper
  * tier isn't available (no operator key). */
 export async function transcribeAudio(audio: Blob): Promise<TranscribeResponse> {
@@ -258,7 +270,7 @@ export async function transcribeAudio(audio: Blob): Promise<TranscribeResponse> 
   if (resp.status === 503) throw new Error("Transcription isn’t available right now.");
   if (resp.status === 400) throw new Error("No audio captured.");
   if (!resp.ok) throw new Error(`POST /voice/transcribe: HTTP ${resp.status}`);
-  return (await resp.json()) as TranscribeResponse;
+  return safeTranscribeResponse(await resp.json());
 }
 
 export interface VoiceNoteResult {
@@ -268,6 +280,25 @@ export interface VoiceNoteResult {
   note_count: number;
   notes: string[];
   emitted_event_ids: string[];
+}
+
+function safeVoiceNoteResult(value: unknown): VoiceNoteResult {
+  const body = record(value);
+  const voiceNoteId = body ? nonEmptyString(body.voice_note_id) : null;
+  const documentId = body ? nonEmptyString(body.document_id) : null;
+  const pageIndex = body ? nonNegativeSafeInteger(body.page_index) : null;
+  if (!body || !voiceNoteId || !documentId || pageIndex === null) {
+    throw new Error("Malformed voice-note response.");
+  }
+  const notes = safeStringArray(body.notes);
+  return {
+    voice_note_id: voiceNoteId,
+    document_id: documentId,
+    page_index: pageIndex,
+    note_count: nonNegativeSafeInteger(body.note_count) ?? notes.length,
+    notes,
+    emitted_event_ids: safeStringArray(body.emitted_event_ids),
+  };
 }
 
 /** Distill a CONFIRMED voice-note transcript into anchored insight/
@@ -292,7 +323,7 @@ export async function saveVoiceNote(
   if (resp.status === 400) throw new Error("Confirm the transcript before saving.");
   if (resp.status === 503) throw new Error("The note distiller isn’t available right now.");
   if (!resp.ok) throw new Error(`POST /books/{id}/voice-note: HTTP ${resp.status}`);
-  return (await resp.json()) as VoiceNoteResult;
+  return safeVoiceNoteResult(await resp.json());
 }
 
 export interface ImpressionItem {
@@ -398,6 +429,24 @@ export interface SpinResearchResponse {
   seed_preview: string;
 }
 
+function safeSpinResearchResponse(value: unknown): SpinResearchResponse {
+  const body = record(value);
+  const investigationId = body ? nonEmptyString(body.investigation_id) : null;
+  const documentId = body ? nonEmptyString(body.document_id) : null;
+  const pageIndex = body ? nonNegativeSafeInteger(body.page_index) : null;
+  if (!body || !investigationId || !documentId || pageIndex === null) {
+    throw new Error("Malformed spin-research response.");
+  }
+  return {
+    investigation_id: investigationId,
+    document_id: documentId,
+    page_index: pageIndex,
+    gated: body.gated === true,
+    servability: nonEmptyString(body.servability) ?? "gated_metadata_only",
+    seed_preview: typeof body.seed_preview === "string" ? body.seed_preview.trim() : "",
+  };
+}
+
 /** Spin a deep research from a book passage (Read SPR-08). The seed is
  * built server-side and is gate-safe — a gated book's full text never
  * crosses into the research, even if `passageText` is sent. Returns the
@@ -417,7 +466,7 @@ export async function spinResearch(
   if (resp.status === 404) throw new Error("book_not_found");
   if (resp.status === 503) throw new Error("Spin research isn’t available right now.");
   if (!resp.ok) throw new Error(`POST /books/{id}/spin-research: HTTP ${resp.status}`);
-  return (await resp.json()) as SpinResearchResponse;
+  return safeSpinResearchResponse(await resp.json());
 }
 
 export interface CuratedBook {
@@ -432,6 +481,33 @@ export interface CurateResponse {
   books: CuratedBook[];
 }
 
+function safeCuratedBook(value: unknown): CuratedBook | null {
+  const book = record(value);
+  if (!book) return null;
+  const documentId = nonEmptyString(book.document_id);
+  if (!documentId) return null;
+  return {
+    document_id: documentId,
+    title: nullableString(book.title),
+    author: nullableString(book.author),
+    score: nonNegativeFiniteNumber(book.score) ?? 0,
+  };
+}
+
+function safeCurateResponse(value: unknown, fallbackPrompt: string): CurateResponse {
+  const body = record(value);
+  const books = Array.isArray(body?.books)
+    ? body.books.flatMap((item) => {
+        const book = safeCuratedBook(item);
+        return book ? [book] : [];
+      })
+    : [];
+  return {
+    prompt: nonEmptyString(body?.prompt) ?? fallbackPrompt,
+    books,
+  };
+}
+
 /** Prompt-to-curate (Read SPR-04). Ranks ONLY servable books by relevance
  * to the prompt — a gated book is never curated into a readable list.
  * Returns 503 if the embedding model isn't available server-side. */
@@ -440,7 +516,7 @@ export async function curateBooks(prompt: string, limit = 20): Promise<CurateRes
   const resp = await apiFetch(`${API_BASE}/books/curate?${params.toString()}`);
   if (resp.status === 503) throw new Error("Curation is temporarily unavailable.");
   if (!resp.ok) throw new Error(`GET /books/curate: HTTP ${resp.status}`);
-  return (await resp.json()) as CurateResponse;
+  return safeCurateResponse(await resp.json(), prompt);
 }
 
 // ── SPR-08 M2: talk-to-book (multi-turn, page-cited) ──────────────────
