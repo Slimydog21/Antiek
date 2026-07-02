@@ -106,6 +106,11 @@ validator does not judge answer quality; it only checks that the operator's
 qualitative verdict is present and belongs to the allowed set. A `"REPAIR"`
 verdict must include non-empty `"blocking_issue_ids"`.
 
+For orchestration, `--json` includes `remaining_requirements` with the four
+closure counters still missing: valid sessions, live-provider sessions,
+citation-traced sessions, and non-Library sessions. These numbers are planning
+guidance only; they do not replace the operator's qualitative verdict.
+
 Minimal record shape:
 
 ```json

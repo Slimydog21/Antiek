@@ -115,6 +115,14 @@ class DogfoodReport:
     closure_ready: bool
     failures: tuple[str, ...]
 
+    def remaining_requirements(self) -> dict[str, int]:
+        return {
+            "valid_sessions": max(0, 10 - self.valid_sessions),
+            "live_provider_sessions": max(0, 5 - self.live_provider_sessions),
+            "citation_trace_sessions": max(0, 3 - self.citation_trace_sessions),
+            "non_library_sessions": max(0, 1 - self.non_library_sessions),
+        }
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "total_sessions": self.total_sessions,
@@ -124,6 +132,7 @@ class DogfoodReport:
             "non_library_sessions": self.non_library_sessions,
             "final_verdict": self.final_verdict,
             "closure_ready": self.closure_ready,
+            "remaining_requirements": self.remaining_requirements(),
             "failures": list(self.failures),
         }
 
@@ -830,6 +839,15 @@ def main(argv: list[str] | None = None) -> int:
             f"{report.non_library_sessions} non-library, "
             f"verdict={report.final_verdict or 'missing'}"
         )
+        remaining = report.remaining_requirements()
+        if any(remaining.values()):
+            print(
+                "  remaining: "
+                f"{remaining['valid_sessions']} valid, "
+                f"{remaining['live_provider_sessions']} live-provider, "
+                f"{remaining['citation_trace_sessions']} citation-traced, "
+                f"{remaining['non_library_sessions']} non-library"
+            )
         for failure in report.failures:
             print(f"  - {failure}")
     return 0 if report.closure_ready else 1
