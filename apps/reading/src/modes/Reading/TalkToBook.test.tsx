@@ -343,7 +343,7 @@ describe("TalkToBook (M2)", () => {
     expect(screen.getByText(/isn’t grounded in the book’s text/)).toBeTruthy();
   });
 
-  it("frames ask failures as retryable engine failures and adds no fake answer", async () => {
+  it("routes provider-unavailable ask failures to activation SPR-03 guidance", async () => {
     askBookMock.mockRejectedValue(new Error("Talk-to-book isn’t available right now."));
     render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
     fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
@@ -353,7 +353,23 @@ describe("TalkToBook (M2)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Ask" }));
 
     expect(await screen.findByText(/Couldn’t ask this book/i)).toBeTruthy();
-    expect(screen.getByText(/Engine: Talk-to-book isn’t available right now/i)).toBeTruthy();
+    expect(screen.getByText(/provider keys for activation SPR-03/i)).toBeTruthy();
+    expect(screen.queryByText(/Engine:/i)).toBeNull();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(screen.queryByText("the book")).toBeNull();
+  });
+
+  it("frames unexpected ask failures as retryable engine failures and adds no fake answer", async () => {
+    askBookMock.mockRejectedValue(new Error("Talk-to-book timed out."));
+    render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
+    fireEvent.change(screen.getByPlaceholderText("Ask about this book…"), {
+      target: { value: "what does this book say?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+
+    expect(await screen.findByText(/Couldn’t ask this book/i)).toBeTruthy();
+    expect(screen.getByText(/Engine: Talk-to-book timed out/i)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
     expect(screen.queryByText("the book")).toBeNull();
   });

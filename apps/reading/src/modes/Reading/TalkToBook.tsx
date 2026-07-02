@@ -8,6 +8,13 @@ import AIActionFailure from "../../shared/AIActionFailure";
 import { useTalkThread } from "./useTalkThread";
 import type { TalkMessage } from "./useTalkThread";
 
+const TALK_TO_BOOK_PROVIDER_UNAVAILABLE = "Talk-to-book isn’t available right now.";
+
+function talkToBookFailureReason(e: unknown): string | null {
+  const reason = e instanceof Error ? e.message : String(e);
+  return reason === TALK_TO_BOOK_PROVIDER_UNAVAILABLE ? null : reason;
+}
+
 /**
  * TalkToBook — the floating bookmark: a book-level MULTI-TURN conversation
  * (Read SPR-08 M2).
@@ -68,7 +75,7 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null | undefined>(undefined);
 
   const turnCount = thread.messages.length;
   const branchCount = thread.state.branches.length;
@@ -76,7 +83,7 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
   const ask = useCallback(async () => {
     const q = draft.trim();
     if (!q || pending) return;
-    setError(null);
+    setError(undefined);
     setDraft("");
     // The recent tail of the active branch is the multi-turn context. Only
     // completed turns are carried (a pending/failed turn has no answer yet).
@@ -90,7 +97,7 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
       thread.completeTurn(messageId, res.answer, res.citations, res.grounded);
     } catch (e: unknown) {
       thread.failTurn(messageId);
-      setError(e instanceof Error ? e.message : String(e));
+      setError(talkToBookFailureReason(e));
     } finally {
       setPending(false);
     }
@@ -189,11 +196,11 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
             Reading the book…
           </p>
         )}
-        {error && (
+        {error !== undefined && (
           <AIActionFailure
             title="Couldn’t ask this book"
             reason={error}
-            onRetry={() => setError(null)}
+            onRetry={() => setError(undefined)}
           />
         )}
       </div>

@@ -96,7 +96,7 @@ describe("ResearchThis", () => {
     expect(trackMock).not.toHaveBeenCalled();
   });
 
-  it("frames spin failures as retryable engine failures, not raw text", async () => {
+  it("routes provider-unavailable spin failures to activation SPR-03 guidance", async () => {
     spinResearchMock.mockRejectedValue(new Error("Spin research isn’t available right now."));
 
     render(<ResearchThis documentId="doc-1" pageIndex={2} passageText="selected passage" />);
@@ -104,7 +104,22 @@ describe("ResearchThis", () => {
     await userEvent.click(screen.getByRole("button", { name: "Research this page" }));
 
     expect(await screen.findByText(/Couldn’t start page research/i)).toBeTruthy();
-    expect(screen.getByText(/Engine: Spin research isn’t available right now/i)).toBeTruthy();
+    expect(screen.getByText(/provider keys for activation SPR-03/i)).toBeTruthy();
+    expect(screen.queryByText(/Engine:/i)).toBeNull();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+    expect(navigateMock).not.toHaveBeenCalled();
+    expect(trackMock).not.toHaveBeenCalled();
+  });
+
+  it("frames unexpected spin failures as retryable engine failures, not raw text", async () => {
+    spinResearchMock.mockRejectedValue(new Error("Spin research timed out."));
+
+    render(<ResearchThis documentId="doc-1" pageIndex={2} passageText="selected passage" />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Research this page" }));
+
+    expect(await screen.findByText(/Couldn’t start page research/i)).toBeTruthy();
+    expect(screen.getByText(/Engine: Spin research timed out/i)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
     expect(navigateMock).not.toHaveBeenCalled();
     expect(trackMock).not.toHaveBeenCalled();
