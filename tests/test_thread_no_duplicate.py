@@ -147,6 +147,25 @@ def test_full_flywheel_thread_single_canonical_node_id() -> None:
     assert_single_canonical_entity(thread)
 
 
+def test_outline_block_reference_hop_is_not_a_canonical_copy() -> None:
+    """Write→Read carries the outline block by reference. That id is allowed to
+    differ from the canonical insight because its entity_kind is outline_block
+    and its provenance_ref chains to the read→write seam."""
+    events = _full_flywheel_events_by_reference()
+    events[-1]["payload"]["entity_id"] = "oblk-thread-1"
+    events[-1]["payload"]["entity_kind"] = "outline_block"
+    events[-1]["payload"]["provenance_ref"] = "evt-read2write"
+    thread = reconstruct_thread(
+        CANONICAL_INSIGHT,
+        seam_events=events,
+        origin_entity_kind="insight_node",
+    )
+    outline_hops = [h for h in thread.hops if h.entity_kind == "outline_block"]
+    assert len(outline_hops) == 1
+    assert outline_hops[0].entity_id == "oblk-thread-1"
+    assert_single_canonical_entity(thread)
+
+
 def test_deliberate_copy_fixture_fails_the_guard() -> None:
     """Rigor #3 — a deliberately COPIED entity FAILS the no-duplicate guard.
 

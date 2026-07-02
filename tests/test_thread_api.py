@@ -23,6 +23,7 @@ def _seam_event(
     action_type: str,
     *,
     entity_id: str = NODE,
+    entity_kind: str = "insight_node",
     provenance_ref: str,
     emitted_at: str,
 ) -> dict[str, Any]:
@@ -32,7 +33,7 @@ def _seam_event(
         "emitted_at": emitted_at,
         "payload": {
             "entity_id": entity_id,
-            "entity_kind": "insight_node",
+            "entity_kind": entity_kind,
             "provenance_ref": provenance_ref,
             "terminates": True,
         },
@@ -101,6 +102,47 @@ def test_thread_route_refuses_copied_entity(monkeypatch) -> None:
 
     assert response.status_code == 409
     assert "copied entity" in response.json()["detail"]
+
+
+def test_thread_route_accepts_outline_block_trace_reference(monkeypatch) -> None:
+    client = _client(
+        monkeypatch,
+        [
+            _seam_event(
+                "evt-1",
+                "seam.research_to_read",
+                provenance_ref="evt-origin",
+                emitted_at="2026-05-25T10:00:00",
+            ),
+            _seam_event(
+                "evt-2",
+                "seam.read_to_write",
+                provenance_ref="evt-1",
+                emitted_at="2026-05-25T10:01:00",
+            ),
+            _seam_event(
+                "evt-3",
+                "seam.write_to_read",
+                entity_id="oblk-api-1",
+                entity_kind="outline_block",
+                provenance_ref="evt-2",
+                emitted_at="2026-05-25T10:02:00",
+            ),
+        ],
+    )
+
+    response = client.get(f"/thread/{NODE}")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert [hop["workflow"] for hop in body["hops"]] == [
+        "research",
+        "read",
+        "write",
+        "read",
+    ]
+    assert body["hops"][-1]["entity_id"] == "oblk-api-1"
+    assert body["hops"][-1]["entity_kind"] == "outline_block"
 
 
 def test_thread_route_returns_degenerate_thread_when_no_seam_exists(monkeypatch) -> None:

@@ -88,6 +88,39 @@ describe("threadModel", () => {
     expect(model.hops[1].seamEventId).toBe("evt-fork");
     expect(findForkedHop(model)).toBe(`${CANONICAL}-COPY`);
   });
+
+  it("does not classify an outline-block trace hop as a canonical fork", () => {
+    const model = threadFromWire({
+      canonical_entity_id: CANONICAL,
+      canonical_entity_kind: "insight_node",
+      is_degenerate: false,
+      hops: [
+        {
+          workflow: "research",
+          entity_id: CANONICAL,
+          entity_kind: "insight_node",
+          seam_event_id: null,
+          seam_action_type: null,
+          provenance_ref: null,
+          built: true,
+          via_provisional_seam: false,
+        },
+        {
+          workflow: "read",
+          entity_id: "oblk-thread-1",
+          entity_kind: "outline_block",
+          seam_event_id: "evt-write2read",
+          seam_action_type: "seam.write_to_read",
+          provenance_ref: "evt-read2write",
+          built: true,
+          via_provisional_seam: false,
+        },
+      ],
+      stubs: [],
+    });
+
+    expect(findForkedHop(model)).toBeNull();
+  });
 });
 
 describe("ThreadBreadcrumb", () => {
