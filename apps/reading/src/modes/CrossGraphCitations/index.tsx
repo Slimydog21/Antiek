@@ -29,6 +29,52 @@ interface RecordedCitation {
   cited_at: string;
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function safeRecordedCitation(value: unknown): RecordedCitation | null {
+  const citation = record(value);
+  const referenceId = nonEmptyString(citation?.reference_id);
+  const referencingUserId = nonEmptyString(citation?.referencing_user_id);
+  const referencingInvestigationId = nonEmptyString(
+    citation?.referencing_investigation_id,
+  );
+  const referencedUserId = nonEmptyString(citation?.referenced_user_id);
+  const referencedNoteId = nonEmptyString(citation?.referenced_note_id);
+  if (
+    !citation ||
+    !referenceId ||
+    !referencingUserId ||
+    !referencingInvestigationId ||
+    !referencedUserId ||
+    !referencedNoteId
+  ) {
+    return null;
+  }
+  return {
+    reference_id: referenceId,
+    referencing_user_id: referencingUserId,
+    referencing_investigation_id: referencingInvestigationId,
+    referenced_user_id: referencedUserId,
+    referenced_note_id: referencedNoteId,
+    federated_substrate_id: nullableString(citation.federated_substrate_id),
+    cited_at: nonEmptyString(citation.cited_at) ?? "just now",
+  };
+}
+
 export default function CrossGraphCitations() {
   const [referencingUserId, setReferencingUserId] = useState<string>("__operator__");
   const [referencingInvId, setReferencingInvId] = useState<string>("");
@@ -72,7 +118,12 @@ export default function CrossGraphCitations() {
           `POST /cross-graph/citations: HTTP ${resp.status} — ${txt}`,
         );
       }
-      const created: RecordedCitation = await resp.json();
+      const created = safeRecordedCitation(await resp.json());
+      if (!created) {
+        throw new Error(
+          "POST /cross-graph/citations returned an invalid citation.",
+        );
+      }
       setRecorded((prev) => [created, ...prev]);
       setReferencedUserId("");
       setReferencedNoteId("");
