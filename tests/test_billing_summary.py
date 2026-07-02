@@ -114,3 +114,34 @@ def test_billing_summary_period_bounds_accept_aware_runtime(client):
     assert response.status_code == 200, response.text
     body = response.json()
     assert Decimal(body["total_raw_usd"]) == Decimal("0.03")
+
+
+def test_billing_summary_excludes_events_outside_the_period(client):
+    """The half-open [month-start, next-month-start) window is a real
+    filter, not a sum-everything: events emitted THIS month must not
+    appear in a different period's summary. (The exact boundary math —
+    last-instant-included / next-month-excluded, incl. Dec→Jan — is
+    unit-proven against _naive_utc_bounds; this pins the endpoint-level
+    exclusion the window exists to enforce.)"""
+    _dispatch(
+        "inv-billing-outside",
+        cost_usd=0.42,
+        input_tokens=5,
+        output_tokens=2,
+        prompt_hash="outside",
+    )
+
+    # A period that cannot contain a just-emitted event.
+    past = client.get("/billing/summary/__operator__/2020-01")
+    assert past.status_code == 200, past.text
+    past_body = past.json()
+    assert past_body["record_count"] == 0
+    assert Decimal(past_body["total_raw_usd"]) == Decimal("0.00")
+    assert Decimal(past_body["total_billable_usd"]) == Decimal("0.00")
+
+    # Same events DO land in the current period — proving the empty past
+    # result is the window filtering, not an empty event log.
+    now_period = datetime.now(UTC).strftime("%Y-%m")
+    current = client.get(f"/billing/summary/__operator__/{now_period}")
+    assert current.status_code == 200, current.text
+    assert current.json()["record_count"] == 1
