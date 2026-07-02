@@ -315,10 +315,21 @@ export async function saveVoiceNote(
   },
 ): Promise<VoiceNoteResult> {
   assertNonNegativeSafeInteger(body.page_index, "page_index");
-  const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/voice-note`, {
+  const resolvedDocumentId = requireNonEmptyRequestString(documentId, "documentId");
+  const transcript = requireNonEmptyRequestString(body.transcript, "transcript");
+  const investigationId = requireNonEmptyRequestString(body.investigation_id, "investigation_id");
+  const requestBody = {
+    page_index: body.page_index,
+    transcript,
+    investigation_id: investigationId,
+    audio_ref: nullableString(body.audio_ref),
+    capture_event_id: nullableString(body.capture_event_id),
+    confirmed: true,
+  };
+  const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(resolvedDocumentId)}/voice-note`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...body, confirmed: true }),
+    body: JSON.stringify(requestBody),
   });
   if (resp.status === 400) throw new Error("Confirm the transcript before saving.");
   if (resp.status === 503) throw new Error("The note distiller isn’t available right now.");
@@ -361,6 +372,14 @@ function nonEmptyString(value: unknown): string | null {
 
 function nullableString(value: unknown): string | null {
   return value == null ? null : nonEmptyString(value);
+}
+
+function requireNonEmptyRequestString(value: unknown, field: string): string {
+  const text = nonEmptyString(value);
+  if (!text) {
+    throw new TypeError(`${field} must be a non-empty string`);
+  }
+  return text;
 }
 
 function safeStringArray(value: unknown): string[] {

@@ -483,12 +483,12 @@ describe("books api — voice-note boundary", () => {
       new Response(JSON.stringify(voiceNoteResponse()), { status: 200 }),
     );
 
-    const result = await saveVoiceNote("doc voice", {
+    const result = await saveVoiceNote(" doc voice ", {
       page_index: 2,
-      transcript: "the author argues X",
-      investigation_id: "read-doc-voice",
-      audio_ref: "blob://clip-1",
-      capture_event_id: "ev-capture",
+      transcript: " the author argues X ",
+      investigation_id: " read-doc-voice ",
+      audio_ref: " blob://clip-1 ",
+      capture_event_id: " ev-capture ",
     });
 
     expect(apiFetchMock).toHaveBeenCalledTimes(1);
@@ -505,6 +505,29 @@ describe("books api — voice-note boundary", () => {
       confirmed: true,
     });
     expect(result).toEqual(voiceNoteResponse());
+  });
+
+  it("nulls blank optional voice-note provenance before saving", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(voiceNoteResponse()), { status: 200 }),
+    );
+
+    await saveVoiceNote("doc-voice", {
+      page_index: 2,
+      transcript: "confirmed transcript",
+      investigation_id: "read-doc-voice",
+      audio_ref: " ",
+      capture_event_id: " ",
+    });
+
+    expect(postedJsonBody()).toEqual({
+      page_index: 2,
+      transcript: "confirmed transcript",
+      investigation_id: "read-doc-voice",
+      audio_ref: null,
+      capture_event_id: null,
+      confirmed: true,
+    });
   });
 
   it("sanitizes saved voice-note responses before adding notes to reader state", async () => {
@@ -587,6 +610,32 @@ describe("books api — voice-note boundary", () => {
       expect(apiFetchMock).not.toHaveBeenCalled();
     },
   );
+
+  it("rejects malformed voice-note request handles before sending", async () => {
+    await expect(
+      saveVoiceNote(" ", {
+        page_index: 0,
+        transcript: "confirmed draft",
+        investigation_id: "read-doc-1",
+      }),
+    ).rejects.toThrow(/documentId/);
+    await expect(
+      saveVoiceNote("doc-1", {
+        page_index: 0,
+        transcript: " ",
+        investigation_id: "read-doc-1",
+      }),
+    ).rejects.toThrow(/transcript/);
+    await expect(
+      saveVoiceNote("doc-1", {
+        page_index: 0,
+        transcript: "confirmed draft",
+        investigation_id: " ",
+      }),
+    ).rejects.toThrow(/investigation_id/);
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
 
   it("keeps unexpected voice-note save failures loud with the endpoint name", async () => {
     apiFetchMock.mockResolvedValueOnce(new Response("boom", { status: 500 }));
