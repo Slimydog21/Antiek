@@ -34,6 +34,14 @@ from substrate.speak.schema import ensure_speak_schema
 from substrate.speak.third_party import record_claim
 
 
+def test_corroboration_doc_names_canonical_gate_and_human_boundary():
+    doc = corroboration.__doc__ or ""
+    assert "./scripts/canonical_verify.sh speak-cross-interviewee-verification" in doc
+    assert "Speak agreement" in doc
+    assert "Human judgment on nuanced contradictions" in doc
+    assert "operator-side\nproof" in doc
+
+
 @pytest.fixture
 def db(monkeypatch):
     tmpdir = tempfile.mkdtemp(prefix="speak-corr-test-")
