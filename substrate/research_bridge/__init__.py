@@ -6,6 +6,12 @@ from .db_path import (
     default_db_path,
     ensure_research_bridge_initialized,
 )
+from .dogfood_report import (
+    DogfoodMetrics,
+    SessionSignalMetrics,
+    build_dogfood_metrics,
+    render_dogfood_report,
+)
 from .extractor import (
     EXTRACTOR_VERSION,
     ExtractedItem,
@@ -63,6 +69,10 @@ __all__ = [
     "ANTIEK_RESEARCH_BRIDGE_SCHEMA_V1_SQL",
     "default_db_path",
     "ensure_research_bridge_initialized",
+    "DogfoodMetrics",
+    "SessionSignalMetrics",
+    "build_dogfood_metrics",
+    "render_dogfood_report",
     "init_research_bridge",
     "init_research_bridge_at_path",
     "KNOWN_SOURCES",
