@@ -146,6 +146,14 @@ def test_canonical_verify_write_structured_editor_hermetic() -> None:
     assert "CANONICAL_VERIFY_OK: write-structured-editor" in proc.stdout
 
 
+def test_canonical_verify_write_brainstorm_interview_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("write-brainstorm-interview")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: write-brainstorm-interview" in proc.stdout
+
+
 def test_canonical_verify_deep_research_hermetic() -> None:
     if not PY.is_file():
         return

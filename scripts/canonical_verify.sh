@@ -18,9 +18,10 @@
 #   write-edit-capture   — Write SPR-02 edit trajectory capture + G8 gate
 #   write-block-repository — Write SPR-03 folders/search/drag provenance gate
 #   write-structured-editor — Write SPR-04 TipTap block editor + locator gate
+#   write-brainstorm-interview — Write SPR-05 brainstorm drivers + section gate
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
-#   deep-research        — ANT-DRL P-29..P-35 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
-#   html-transport       — ANT-AHT P-36 ResearchArtifact transport gates
+#   deep-research        — ANT-DRL P-30..P-36 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
+#   html-transport       — ANT-AHT P-37 ResearchArtifact transport gates
 #
 # USAGE (from repo root):
 #   ./scripts/canonical_verify.sh cascade
@@ -43,7 +44,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|handoff <md>|agent-gates|deep-research|html-transport}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|handoff <md>|agent-gates|deep-research|html-transport}" >&2
   exit 2
 }
 
@@ -215,6 +216,24 @@ cmd_write_structured_editor() {
   echo "CANONICAL_VERIFY_OK: write-structured-editor"
 }
 
+cmd_write_brainstorm_interview() {
+  echo "== write-brainstorm-interview: brainstorm drivers + section-owned blocks =="
+  "${PY}" -m pytest \
+    tests/test_brainstorm_interview.py \
+    tests/test_write_routes.py \
+    tests/test_contracts_write_lock.py \
+    -q --tb=no
+  echo "== write-brainstorm-interview: client, bounded clarify loop, section UI =="
+  (cd apps/reading && npm run test -- \
+    src/modes/Write/writeApi.test.ts \
+    src/modes/Write/Brainstorm/clarifyLoop.test.ts \
+    src/modes/Write/Brainstorm/IdeaDump.test.tsx \
+    src/modes/Write/Outline.test.tsx \
+    src/modes/Write/WriteHome.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: write-brainstorm-interview"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -278,7 +297,7 @@ cmd_agent_gates() {
 }
 
 cmd_html_transport() {
-  echo "== html-transport: P-36 ANT-AHT bundle =="
+  echo "== html-transport: P-37 ANT-AHT bundle =="
   "${PY}" -m pytest \
     tests/test_research_artifact_template.py \
     tests/test_research_artifact_export.py \
@@ -295,19 +314,19 @@ cmd_html_transport() {
 }
 
 cmd_deep_research() {
-  echo "== deep-research: P-29 Loop 1 E2E =="
+  echo "== deep-research: P-30 Loop 1 E2E =="
   "${PY}" -m pytest tests/test_loop_one_orchestrator.py::test_loop_one_happy_path_emits_completed -q --tb=no
-  echo "== deep-research: P-30 invariant negative =="
+  echo "== deep-research: P-31 invariant negative =="
   "${PY}" -m pytest tests/test_deep_research_complete.py::test_drw_only_trajectory_fails_without_synthesis -q --tb=no
-  echo "== deep-research: P-31 session reconstruct =="
+  echo "== deep-research: P-32 session reconstruct =="
   "${PY}" -m pytest tests/test_cascade_session.py -q --tb=no
-  echo "== deep-research: P-32 PromotionFunnel serialize =="
+  echo "== deep-research: P-33 PromotionFunnel serialize =="
   "${PY}" -m pytest tests/test_research_runner.py::test_promotion_funnel_serialized_no_lock_timeout -q --tb=no
-  echo "== deep-research: P-33 knowledge.reused (two-run) =="
+  echo "== deep-research: P-34 knowledge.reused (two-run) =="
   "${PY}" -m pytest tests/test_flywheel_reuse.py::test_two_run_contract_gather_emits_knowledge_reused_on_second_start -q --tb=no
-  echo "== deep-research: P-34 Exa gather mock E2E =="
+  echo "== deep-research: P-35 Exa gather mock E2E =="
   "${PY}" -m pytest tests/test_exa_gather_loop.py -q --tb=short
-  echo "== deep-research: P-35 parent-terminal observability =="
+  echo "== deep-research: P-36 parent-terminal observability =="
   "${PY}" -m pytest tests/test_drw_parent_terminal.py -q --tb=short
   echo "CANONICAL_VERIFY_OK: deep-research"
 }
@@ -331,6 +350,7 @@ main() {
     write-edit-capture) cmd_write_edit_capture ;;
     write-block-repository) cmd_write_block_repository ;;
     write-structured-editor) cmd_write_structured_editor ;;
+    write-brainstorm-interview) cmd_write_brainstorm_interview ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     deep-research) cmd_deep_research ;;

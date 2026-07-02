@@ -40,8 +40,13 @@ def test_write_sprint_4_structured_block_editor_is_live() -> None:
     assert lock.resolve_write_sprint(4).status == "live"
 
 
+def test_write_sprint_5_brainstorm_interview_is_live() -> None:
+    assert lock.resolve_write_sprint(5).slug == "brainstorm-interview"
+    assert lock.resolve_write_sprint(5).status == "live"
+
+
 def test_remaining_write_sprints_stay_planned_until_promoted() -> None:
-    assert {lock.resolve_write_sprint(n).status for n in range(5, 10)} == {"planned"}
+    assert {lock.resolve_write_sprint(n).status for n in range(6, 10)} == {"planned"}
 
 
 def test_roadmap_consumes_write_sprint_status_and_focus_advances() -> None:
@@ -52,10 +57,11 @@ def test_roadmap_consumes_write_sprint_status_and_focus_advances() -> None:
     assert by_id["write:2"].status.value == "live"
     assert by_id["write:3"].status.value == "live"
     assert by_id["write:4"].status.value == "live"
-    assert by_id["write:5"].status.value == "planned"
+    assert by_id["write:5"].status.value == "live"
+    assert by_id["write:6"].status.value == "planned"
     assert roadmap.execution_focus() is not None
-    assert roadmap.execution_focus().node_id == "write:5"
+    assert roadmap.execution_focus().node_id == "write:6"
 
 
 def test_write_lock_version_present() -> None:
-    assert isinstance(lock.WRITE_LOCK_VERSION, int) and lock.WRITE_LOCK_VERSION >= 4
+    assert isinstance(lock.WRITE_LOCK_VERSION, int) and lock.WRITE_LOCK_VERSION >= 5
