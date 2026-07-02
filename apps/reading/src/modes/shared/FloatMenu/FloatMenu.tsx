@@ -177,7 +177,12 @@ export default function FloatMenu({
         maxWidth: MENU_W,
       }}
       // Don't blur the selection when interacting with the menu — the same
-      // guard HighlightToolbar.tsx:82 used so the rect stays valid.
+      // guard HighlightToolbar.tsx:82 used so the rect stays valid. Pointer
+      // events fire before mouse events in real browsers; preserve on both so
+      // action clicks cannot clear the host selection before React handles them.
+      onPointerDown={(e) => {
+        if ((e.target as HTMLElement).tagName !== "TEXTAREA") e.preventDefault();
+      }}
       onMouseDown={(e) => {
         if ((e.target as HTMLElement).tagName !== "TEXTAREA") e.preventDefault();
       }}
