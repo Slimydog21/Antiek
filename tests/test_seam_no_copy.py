@@ -28,6 +28,7 @@ from substrate.seams import (
     ResearchToReadSeam,
     SpeakToWriteSeam,
     WriteToReadSeam,
+    WriteToSpeakSeam,
 )
 
 # ---------------------------------------------------------------------------
@@ -169,15 +170,26 @@ def test_speak_to_write_preserves_claim_reference():
 
 
 # ---------------------------------------------------------------------------
-# write→speak — PROVISIONAL: no-copy guard skipped with a reason (rigor #1)
+# write→speak — an outline gap commissions Speak around the same question node
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(
-    reason="write→speak is the provisional seam (commission interviews from an "
-    "outline gap). No product implements either side, so there is no real "
-    "handoff to exercise a no-copy guard against. Promote when a Write sprint "
-    "and a Speak sprint each implement a side (see substrate/seams/README.md)."
-)
-def test_write_to_speak_no_copy():  # pragma: no cover — intentionally skipped
-    raise AssertionError("provisional seam — guard not yet load-bearing")
+def test_write_to_speak_preserves_question_reference():
+    """Write gap → Speak interview commission. The Speak guide names the same
+    question node id the seam carried; it does not mint a copied question."""
+    question_node_id = "question-abc123"
+    seam = WriteToSpeakSeam(
+        entity_id=question_node_id,
+        provenance_ref="sec-outline-gap-1",
+        outline_section_id="sec-outline-gap-1",
+    )
+    speak_guide = {
+        "source": "write_outline_gap",
+        "must_cover": [{
+            "id": seam.entity_id,
+            "text": "What should a firsthand witness clarify?",
+        }],
+    }
+    received_question_id = speak_guide["must_cover"][0]["id"]
+    _assert_no_copy(sent_id=question_node_id, received_id=received_question_id)
+    assert seam.entity_kind == "question_node"

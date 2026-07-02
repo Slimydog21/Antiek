@@ -55,8 +55,8 @@ UNIFIED_SPRINTS: dict[int, UnifiedDeliverable] = {
         3,
         "seams-and-collisions",
         "Seams + collisions",
-        # Live: six committed typed seams plus one provisional write-to-speak
-        # seam, no-copy handoff guards, no-auto-loop shape, seam event parity,
+        # Live: seven committed typed seams, no-copy handoff guards,
+        # no-auto-loop shape, seam event parity,
         # voice single-owner collision guard, single escrow writer guard,
         # platform_authored/speak_derived publish gate, and flywheel seam
         # composition are covered by unified-seams-and-collisions.

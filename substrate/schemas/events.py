@@ -365,8 +365,8 @@ class ActionType(StrEnum):
     # ── Cross-workflow seams (antiek-unified SPR-03). Each typed seam
     #    handoff (substrate/seams/contracts.py) emits one of these when it
     #    fires. They carry the entity id + kind + provenance ref + the
-    #    terminating-handoff marker — NEVER a copy of the entity. Six
-    #    committed + one provisional (write→speak). These are handoff-audit
+    #    terminating-handoff marker — NEVER a copy of the entity. Seven
+    #    committed seams. These are handoff-audit
     #    events: they record that a workflow handed an entity (by reference)
     #    to another workflow; the underlying graph node / claim / document is
     #    untouched (the seam moves the reference, the products own the
@@ -378,8 +378,7 @@ class ActionType(StrEnum):
     SEAM_WRITE_TO_READ = "seam.write_to_read"
     SEAM_SPEAK_TO_WRITE = "seam.speak_to_write"
     SEAM_SPEAK_TO_READ = "seam.speak_to_read"
-    # Provisional — write→speak. Typed so the trajectory can carry it if the
-    # operator exercises it, but the seam is off the SPR-08 critical path.
+    # write→speak. Commission interviews from an outline gap.
     SEAM_WRITE_TO_SPEAK = "seam.write_to_speak"
 
     # ── Voice infrastructure (Living Roadmap SPR-14). The shared
@@ -577,8 +576,8 @@ class ActionType(StrEnum):
 #     2026-05-25.
 # v16: antiek-unified SPR-03 — cross-workflow seam handoff audit trail.
 #     Seven typed events (seam.research_to_read / read_to_research /
-#     read_to_write / write_to_read / speak_to_write / speak_to_read +
-#     provisional seam.write_to_speak) record one cross-workflow handoff
+#     read_to_write / write_to_read / speak_to_write / speak_to_read /
+#     write_to_speak) record one cross-workflow handoff
 #     each, carrying the entity id + entity_kind + provenance_ref + the
 #     terminating-handoff marker so the flywheel is reconstructable from
 #     the trajectory. Handoff-audit events over existing entities — NOT
@@ -3655,9 +3654,9 @@ class SeamSpeakToReadPayload(_SeamPayloadBase):
 
 
 class SeamWriteToSpeakPayload(_SeamPayloadBase):
-    """write → speak. **PROVISIONAL.** Commission interviews from an outline
-    gap. Typed so the trajectory can carry it, but the seam is the weakest and
-    off the SPR-08 critical path; the receiving Speak side is unspecified."""
+    """write → speak. Commission interviews from an outline gap. Write promotes
+    the gap to a question node; Speak creates a project/guide around that same
+    id."""
 
     action_type: Literal[ActionType.SEAM_WRITE_TO_SPEAK] = ActionType.SEAM_WRITE_TO_SPEAK
     from_workflow: Literal["write"] = "write"

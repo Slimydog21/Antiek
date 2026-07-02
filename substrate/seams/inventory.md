@@ -16,17 +16,16 @@ was cross-checked against the actual product-spec sprint pages
 | `WriteToReadSeam` | write → read | `OutlineBlockContract` ref → resolved source span | **Write SPR-07** (trace-to-source) | shared reading surface (antiek-reader SPR-01 / Read SPR-03 reader; DRW SPR-10 historical citation) | committed |
 | `SpeakToWriteSeam` | speak → write | `speak_claim` ref → `OutlineBlockContract` (`synthesized`) | **Speak SPR-08** (biography authoring) | Write SPR-01 (OutlineComposer) | committed |
 | `SpeakToReadSeam` | speak → read | `ServableEntryContract` ref (`platform_authored` + `speak_derived`) | **Speak SPR-09** (publishing) | Read servable corpus (seam #4 gate) | committed |
-| `WriteToSpeakSeam` | write → speak | `question_node` ref (an outline gap's open question) | Write (unspecified) | Speak (unspecified) | **provisional** |
+| `WriteToSpeakSeam` | write → speak | `question_node` ref (an outline gap's open question) | Write commission endpoint | Speak project + invite | committed |
 
-### `WriteToSpeakSeam` is provisional
+### `WriteToSpeakSeam` commission path
 
-**Reason:** weakest seam — commission interviews from an outline gap. The four
-product specs barely describe it; no real Write sprint or Speak sprint owns a
-side. It is defined so the shape exists, flagged provisional, kept OFF the
-SPR-08 end-to-end critical path, and its no-copy guard is skipped (xfail) with a
-reason. **Promotion criterion:** the operator uses Write and Speak together and
-explicitly wants the commission flow — i.e. a real Write sprint and a real Speak
-sprint each implement a side.
+`WriteToSpeakSeam` is committed through
+`POST /write/sections/{section_id}/commission-speak`: Write promotes the outline
+gap to a shared-graph `question` node, Speak creates a private project whose
+interview guide references that exact id, an invite is created when an informant
+is supplied, and the `seam.write_to_speak` event carries no copied question
+body.
 
 ## Implementing-sprint citation audit (diligence — verified against the real spec pages)
 
