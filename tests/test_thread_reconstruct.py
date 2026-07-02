@@ -92,6 +92,32 @@ def test_write_to_read_outline_block_hop_stays_in_canonical_thread() -> None:
     ]
 
 
+def test_thread_can_start_from_outline_block_reference() -> None:
+    """A caller holding the Write block id should still get the canonical
+    insight thread, because the trace seam links the block back by provenance."""
+    node = "node-flywheel"
+    events = [
+        _ev("e1", "seam.research_to_read", node, "2026-05-25T10:00:00"),
+        _ev("e2", "seam.read_to_write", node, "2026-05-25T10:01:00"),
+        {
+            "event_id": "e3",
+            "action_type": "seam.write_to_read",
+            "emitted_at": "2026-05-25T10:02:00",
+            "payload": {
+                "entity_id": "oblk-1",
+                "entity_kind": "outline_block",
+                "provenance_ref": "e2",
+                "terminates": True,
+            },
+        },
+    ]
+    thread = reconstruct_thread("oblk-1", seam_events=events)
+    assert thread.canonical_entity_id == node
+    assert thread.canonical_entity_kind == "insight_node"
+    assert [h.workflow for h in thread.hops] == ["research", "read", "write", "read"]
+    assert thread.hops[-1].entity_id == "oblk-1"
+
+
 def test_unbuilt_workflow_hop_is_flagged_not_dropped() -> None:
     """Intellectual honesty #1 — a hop into a workflow with no built surface is
     flagged built=False and recorded as an honest stub, never dropped or faked.

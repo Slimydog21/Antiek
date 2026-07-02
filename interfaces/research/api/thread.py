@@ -1,10 +1,12 @@
 """Cross-workflow thread navigation API (antiek-unified SPR-06 M1).
 
 A read-only HTTP surface over :func:`substrate.seams.thread.reconstruct_thread`.
-Given any node id, it reconstructs that entity's cross-workflow *thread* — the
-ordered list of workflow touches the SPR-03 seam events recorded — and returns
-it for the frontend breadcrumb (``apps/reading/src/shell/ThreadBreadcrumb.tsx``)
-and cross-workflow jump (``ThreadJump.tsx``).
+Given any seam entity id (the canonical node id or a typed reference such as a
+Write outline block id), it reconstructs that entity's cross-workflow *thread*
+— the ordered list of workflow touches the SPR-03 seam events recorded — and
+returns it for the frontend breadcrumb
+(``apps/reading/src/shell/ThreadBreadcrumb.tsx``) and cross-workflow jump
+(``ThreadJump.tsx``).
 
 This is **read-only traversal** (the SPR-06 invariant): it opens the substrate
 read-only, reads seam events from the per-investigation event log, and writes
@@ -14,11 +16,12 @@ type; the thread is a view derived on read.
 
 Seam events live per-investigation in the event log (``substrate/event_log`` →
 JSONL/Parquet under ``default_events_dir()``). To reconstruct a thread we scan
-those files for ``seam.*`` events referencing the requested node id. This is a
-linear scan today (single operator, G7); when the operator volume warrants it,
-the right move is a seam-event index, NOT materializing the thread as a stored
-entity (that would be the second-source-of-truth drift the master spec forbids —
-see ``substrate/seams/thread.py`` rigor #2).
+those files for ``seam.*`` events connected to the requested id by entity_id or
+provenance_ref lineage. This is a linear scan today (single operator, G7); when
+the operator volume warrants it, the right move is a seam-event index, NOT
+materializing the thread as a stored entity (that would be the
+second-source-of-truth drift the master spec forbids — see
+``substrate/seams/thread.py`` rigor #2).
 """
 
 from __future__ import annotations
@@ -143,7 +146,7 @@ def build_thread(
     events_dir: str | None = None,
     origin_entity_kind: EntityKind | None = None,
 ) -> Thread:
-    """Reconstruct ``node_id``'s thread from the event log. Read-only.
+    """Reconstruct an id's thread from the event log. Read-only.
 
     Composes the SPR-03 seam events into the cross-workflow view, then runs the
     load-bearing no-duplicate assertion (``assert_single_canonical_entity``)
@@ -165,6 +168,7 @@ def make_router(*, events_dir: str | None = None) -> APIRouter:
     """Build the read-only thread-navigation router.
 
     GET /thread/{node_id} — reconstruct the entity's cross-workflow thread.
+    ``node_id`` is kept for route compatibility; it may be any seam entity id.
     """
     router = APIRouter(tags=["thread"])
 
