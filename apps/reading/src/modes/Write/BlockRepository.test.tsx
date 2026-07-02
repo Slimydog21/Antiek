@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import userEvent from "@testing-library/user-event";
 
 import { DRAG_MIME } from "../CreationStudio/BlockPalette";
+import { repositoryBlockKind } from "./repositoryData";
 import type { RepositoryHit } from "./writeApi";
 
 /**
@@ -46,6 +47,14 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("BlockRepository — tap-to-add, no id", () => {
+  it("maps repository node types to graph-backed write block kinds", () => {
+    expect(repositoryBlockKind("insight")).toBe("insight");
+    expect(repositoryBlockKind("open_question")).toBe("open_question");
+    expect(repositoryBlockKind("claim")).toBe("claim");
+    expect(repositoryBlockKind("operator_note")).toBe("claim");
+    expect(repositoryBlockKind(" future_node ")).toBe("claim");
+  });
+
   it("adds a block by TAP (onAdd fires with the hit), not by pasting an id", async () => {
     const onAdd = vi.fn();
     render(<BlockRepository onAdd={onAdd} />);
@@ -121,7 +130,7 @@ describe("BlockRepository — tap-to-add, no id", () => {
     );
   });
 
-  it("serializes sanitized drag payloads", async () => {
+  it("serializes sanitized drag payloads without flattening claim nodes to insights", async () => {
     searchRepositoryMock.mockResolvedValue([
       {
         node_id: " node-1 ",
@@ -146,7 +155,7 @@ describe("BlockRepository — tap-to-add, no id", () => {
 
     expect(JSON.parse(data.get(DRAG_MIME) ?? "{}")).toEqual({
       from: "palette",
-      block_kind: "insight",
+      block_kind: "claim",
       block_id: "node-1",
       label: "Useful claim",
     });

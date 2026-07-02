@@ -17,7 +17,7 @@ vi.mock("../writeApi", async (orig) => ({
 
 import { ContextWindow } from "./ContextWindow";
 
-function dropBlock(label = "Useful claim") {
+function dropBlock(label = "Useful claim", blockKind = "insight") {
   const dropZone = screen
     .getByText(/Drag lego blocks here from the repository/i)
     .closest("div");
@@ -29,7 +29,7 @@ function dropBlock(label = "Useful claim") {
           ? JSON.stringify({
               from: "palette",
               block_id: "node-1",
-              block_kind: "insight",
+              block_kind: blockKind,
               label,
             })
           : "",
@@ -71,6 +71,26 @@ describe("ContextWindow", () => {
     expect(onPromoted).toHaveBeenCalled();
     expect(await screen.findByText("Draft paragraph.")).toBeTruthy();
     expect(screen.getByText(/1 paragraph\(s\) flagged unsupported/i)).toBeTruthy();
+  });
+
+  it("preserves dropped repository block kinds when promoting context", async () => {
+    render(<ContextWindow deliverableId="dlv-1" />);
+
+    dropBlock("Question to chase", "open_question");
+    await userEvent.click(screen.getByRole("button", { name: /promote to outline/i }));
+
+    await waitFor(() => expect(promoteContextMock).toHaveBeenCalled());
+    expect(promoteContextMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        blocks: [
+          expect.objectContaining({
+            block_kind: "open_question",
+            provenance_kind: "graph_node",
+            node_id: "node-1",
+          }),
+        ],
+      }),
+    );
   });
 
   it("surfaces malformed promoted section ids instead of generating", async () => {

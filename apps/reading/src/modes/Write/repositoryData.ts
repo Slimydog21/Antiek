@@ -1,5 +1,14 @@
 import type { FolderSummary, RepositoryHit } from "./writeApi";
 
+export type RepositoryBlockKind = "insight" | "open_question" | "claim";
+
+const NODE_BLOCK_KINDS = new Set(["insight", "open_question", "claim"]);
+
+export function repositoryBlockKind(nodeType: string): RepositoryBlockKind {
+  const kind = nodeType.trim();
+  return (NODE_BLOCK_KINDS.has(kind) ? kind : "claim") as RepositoryBlockKind;
+}
+
 function nonEmptyString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
