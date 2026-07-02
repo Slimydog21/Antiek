@@ -33,14 +33,7 @@ interface NotesFeedProps {
  * ``curl /trajectory/...``).
  */
 export default function NotesFeed({ events, onCiteJump }: NotesFeedProps) {
-  const notes = useMemo(
-    () =>
-      events.filter(
-        (e): e is Event & { payload: NoteEmergedPayload } =>
-          e.action_type === "note.emerged",
-      ),
-    [events],
-  );
+  const notes = useMemo(() => safeNoteEvents(events), [events]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -98,6 +91,19 @@ function stringList(value: unknown): string[] {
 
 function uniqueStringList(value: unknown): string[] {
   return Array.from(new Set(stringList(value)));
+}
+
+function safeNoteEvents(events: Event[]): Array<Event & { payload: NoteEmergedPayload }> {
+  const seen = new Set<string>();
+  return events.flatMap((event) => {
+    if (event.action_type !== "note.emerged") return [];
+    const eventId = nonEmptyString(event.event_id);
+    if (eventId) {
+      if (seen.has(eventId)) return [];
+      seen.add(eventId);
+    }
+    return [event as Event & { payload: NoteEmergedPayload }];
+  });
 }
 
 function isConfidenceLevel(value: unknown): value is ConfidenceLevel {
