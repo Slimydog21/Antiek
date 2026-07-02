@@ -54,6 +54,12 @@ from .drw_sprint_lock import (
     resolve_drw_sprint,
     verify_citations_resolve,
 )
+from .read_sprint_lock import (
+    READ_LOCK_VERSION,
+    READ_SPRINTS,
+    ReadDeliverable,
+    resolve_read_sprint,
+)
 from .interviewer import (
     ConsentContract,
     EconomicsCellContract,
@@ -112,6 +118,10 @@ __all__ = [
     "ContextPackContract",
     "AssembledLayerContract",
     "ReaderSurfaceContract",
+    "READ_LOCK_VERSION",
+    "READ_SPRINTS",
+    "ReadDeliverable",
+    "resolve_read_sprint",
     "VoicePipelineContract",
     "VOICE_PIPELINE_OWNER",
     "VOICE_NOTE_DOCUMENT_TYPE",

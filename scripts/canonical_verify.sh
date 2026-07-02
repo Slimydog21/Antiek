@@ -5,6 +5,7 @@
 #   profile              — print Env Card fields for handoff paste
 #   cascade              — hermetic cascade contract + adapter + light route
 #   handoff <path.md>    — verify_handoff.ts + audit_agent_session.sh
+#   read-foundation      — Read SPR-01 servable-corpus gate + lock
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -28,7 +29,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -82,6 +83,12 @@ cmd_cascade() {
   echo "CANONICAL_VERIFY_OK: cascade"
 }
 
+cmd_read_foundation() {
+  echo "== read-foundation: servable-corpus legal gate =="
+  "${PY}" -m pytest tests/test_book_corpus_gate.py tests/test_contracts_read_lock.py -q --tb=no
+  echo "CANONICAL_VERIFY_OK: read-foundation"
+}
+
 cmd_handoff() {
   local f="${1:?handoff markdown path required}"
   echo "== handoff: schema linter =="
@@ -105,6 +112,7 @@ main() {
   case "$sub" in
     profile) cmd_profile ;;
     cascade) cmd_cascade ;;
+    read-foundation) cmd_read_foundation ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;
