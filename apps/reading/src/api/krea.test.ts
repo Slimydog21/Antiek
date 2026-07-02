@@ -63,6 +63,28 @@ describe("requestScene", () => {
     }
   });
 
+  it("sanitizes 200 art before it reaches the scene layer", async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse(200, {
+        enabled: "yes",
+        isFallback: true,
+        image_url: "  https://img/x.png  ",
+        scene_key: "  calm|day|summer  ",
+        cached: "true",
+      }),
+    );
+
+    const r = await requestScene(SCENE);
+
+    expect(r).toEqual({
+      enabled: true,
+      isFallback: false,
+      image_url: "https://img/x.png",
+      scene_key: "calm|day|summer",
+      cached: false,
+    });
+  });
+
   it("disabled: a 503 returns the typed fallback signal (no throw)", async () => {
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
       jsonResponse(503, {
@@ -78,6 +100,20 @@ describe("requestScene", () => {
     if (!isSceneArt(r)) {
       expect(r.reason).toBe("no_key");
       expect(r.scene_key).toBe("calm|day|summer");
+    }
+  });
+
+  it("malformed 503 fallback bodies collapse to the bad-response fallback", async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse(503, { enabled: true, isFallback: false, reason: " ", scene_key: 42 }),
+    );
+
+    const r = await requestScene(SCENE);
+
+    expect(isSceneArt(r)).toBe(false);
+    if (!isSceneArt(r)) {
+      expect(r.reason).toBe("upstream_bad_response");
+      expect(r.scene_key).toBeNull();
     }
   });
 
@@ -121,6 +157,31 @@ describe("generateImage / getJob", () => {
     if (r.enabled) expect(r.job_id).toBe("job_1");
   });
 
+  it("generateImage sanitizes successful job payloads", async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse(200, { enabled: false, job_id: "  job_1  ", status: "  queued  " }),
+    );
+
+    await expect(generateImage("a mountain")).resolves.toEqual({
+      enabled: true,
+      job_id: "job_1",
+      status: "queued",
+    });
+  });
+
+  it("generateImage malformed success payloads fall back", async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse(200, { enabled: true, job_id: " ", status: "queued" }),
+    );
+
+    await expect(generateImage("a mountain")).resolves.toEqual({
+      enabled: false,
+      isFallback: true,
+      reason: "upstream_bad_response",
+      scene_key: null,
+    });
+  });
+
   it("generateImage 503 returns the typed fallback signal", async () => {
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
       jsonResponse(503, { enabled: false, isFallback: true, reason: "kill_switch" }),
@@ -143,5 +204,23 @@ describe("generateImage / getJob", () => {
       expect(r.status).toBe("completed");
       expect(r.image_url).toBe("https://img/done.png");
     }
+  });
+
+  it("getJob sanitizes job payloads and optional image URLs", async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse(200, {
+        enabled: false,
+        job_id: "  job_1  ",
+        status: " ",
+        image_url: "  https://img/done.png  ",
+      }),
+    );
+
+    await expect(getJob("job_1")).resolves.toEqual({
+      enabled: true,
+      job_id: "job_1",
+      status: "unknown",
+      image_url: "https://img/done.png",
+    });
   });
 });
