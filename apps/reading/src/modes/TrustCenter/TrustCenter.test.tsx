@@ -136,10 +136,12 @@ describe("TrustCenter", () => {
           " encryption at rest (per-graph keys via KMS) ",
           "",
           42,
+          "encryption at rest (per-graph keys via KMS)",
         ],
         compliance_frameworks: [
           " GDPR Article 13/14 transparency ",
           null,
+          "GDPR Article 13/14 transparency",
         ],
         loop_3_unlock_status: {
           " trajectory_volume ": true,
@@ -158,6 +160,8 @@ describe("TrustCenter", () => {
     expect(screen.getByText(/completed within 12 days/)).toBeTruthy();
     expect(screen.getByText("Encryption at rest with managed keys")).toBeTruthy();
     expect(screen.getByText("GDPR transparency notice")).toBeTruthy();
+    expect(screen.getAllByText("Encryption at rest with managed keys")).toHaveLength(1);
+    expect(screen.getAllByText("GDPR transparency notice")).toHaveLength(1);
     expect(screen.getByText("Enough approved activity")).toBeTruthy();
     expect(screen.getByText("Training data quality review")).toBeTruthy();
     expect(screen.getByText("Met")).toBeTruthy();

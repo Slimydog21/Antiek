@@ -38,6 +38,10 @@ function stringArray(value: unknown): string[] {
     : [];
 }
 
+function uniqueStringArray(value: unknown): string[] {
+  return Array.from(new Set(stringArray(value)));
+}
+
 function nonNegativeInteger(value: unknown): number {
   const parsed =
     typeof value === "number"
@@ -95,8 +99,8 @@ function safeTrustCenterData(value: unknown): TrustCenterData {
       body?.differential_privacy_epsilon_budgets,
     ),
     deletion_sla_days: nonNegativeInteger(body?.deletion_sla_days),
-    substrate_controls: stringArray(body?.substrate_controls),
-    compliance_frameworks: stringArray(body?.compliance_frameworks),
+    substrate_controls: uniqueStringArray(body?.substrate_controls),
+    compliance_frameworks: uniqueStringArray(body?.compliance_frameworks),
     loop_3_unlock_status: safeBooleanMap(body?.loop_3_unlock_status),
   };
 }
