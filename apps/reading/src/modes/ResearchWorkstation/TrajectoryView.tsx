@@ -31,7 +31,17 @@ function safeCostUsd(value: unknown): string {
 }
 
 function safeEvents(value: unknown): Event[] {
-  return Array.isArray(value) ? (value as Event[]) : [];
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.flatMap((item) => {
+    const event = item as Event;
+    const eventId = nonEmptyString(event.event_id);
+    if (eventId) {
+      if (seen.has(eventId)) return [];
+      seen.add(eventId);
+    }
+    return [event];
+  });
 }
 
 function safePhase(value: unknown): number {
