@@ -654,6 +654,7 @@ cmd_agent_gates() {
     tests/test_canonical_verify.py::test_canonical_verify_agent_gates_hermetic \
     tests/test_canonical_verify.py::test_canonical_verify_usage_names_every_dispatch_subcommand \
     tests/test_platform_exec_matrix.py \
+    tests/test_auth_diagnostic_verification.py \
     tests/test_read_decision_docs.py \
     -q --tb=no
   echo "CANONICAL_VERIFY_OK: agent-gates"
