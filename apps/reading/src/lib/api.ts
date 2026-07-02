@@ -1091,6 +1091,30 @@ export type BlockKind =
   | "operator_note"
   | "claim";
 
+const DELIVERABLE_KINDS = new Set<DeliverableKind>([
+  "research_memo",
+  "book_chapter",
+  "biography_section",
+  "investor_brief",
+  "general_essay",
+]);
+
+const BLOCK_KINDS = new Set<BlockKind>([
+  "insight",
+  "open_question",
+  "operator_note",
+  "claim",
+]);
+
+const EXPORT_FORMATS = new Set<ExportFormatName>([
+  "markdown",
+  "html",
+  "json",
+  "pdf",
+  "epub",
+  "substack",
+]);
+
 export interface DeliverableSummary {
   deliverable_id: string;
   title: string;
@@ -1126,13 +1150,43 @@ export interface DeliverableDetailResponse {
 }
 
 function safeDeliverableKind(value: unknown): DeliverableKind {
-  return value === "research_memo" ||
-    value === "book_chapter" ||
-    value === "biography_section" ||
-    value === "investor_brief" ||
-    value === "general_essay"
-    ? value
+  return DELIVERABLE_KINDS.has(value as DeliverableKind)
+    ? (value as DeliverableKind)
     : "general_essay";
+}
+
+function requireDeliverableKind(value: unknown): DeliverableKind {
+  const deliverableKind = requireRequestString(value, "deliverable_kind");
+  if (!DELIVERABLE_KINDS.has(deliverableKind as DeliverableKind)) {
+    throw new TypeError("deliverable_kind must be a supported deliverable kind");
+  }
+  return deliverableKind as DeliverableKind;
+}
+
+function requireBlockKind(value: unknown): BlockKind {
+  const blockKind = requireRequestString(value, "block_kind");
+  if (!BLOCK_KINDS.has(blockKind as BlockKind)) {
+    throw new TypeError("block_kind must be a supported block kind");
+  }
+  return blockKind as BlockKind;
+}
+
+function requireExportFormat(value: unknown): ExportFormatName {
+  const format = requireRequestString(value, "format");
+  if (!EXPORT_FORMATS.has(format as ExportFormatName)) {
+    throw new TypeError("format must be a supported export format");
+  }
+  return format as ExportFormatName;
+}
+
+function sanitizeWriteStringList(value: unknown, field: string): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new TypeError(`${field} must be an array`);
+  const items = value.map((item) => requireRequestString(item, field));
+  if (new Set(items).size !== items.length) {
+    throw new TypeError(`${field} must not contain duplicates`);
+  }
+  return items;
 }
 
 function safeStringList(value: unknown): string[] {
@@ -1240,10 +1294,16 @@ export async function createDeliverable(req: {
   deliverable_kind: DeliverableKind;
   investigation_root_id?: string;
 }): Promise<DeliverableSummary> {
+  const investigationRootId = optionalRequestString(req.investigation_root_id);
+  const body = {
+    title: requireRequestString(req.title, "title"),
+    deliverable_kind: requireDeliverableKind(req.deliverable_kind),
+    ...(investigationRootId ? { investigation_root_id: investigationRootId } : {}),
+  };
   const resp = await apiFetch(`${API_BASE}/deliverables`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
+    body: JSON.stringify(body),
   });
   if (!resp.ok) {
     throw new ApiError(
@@ -1275,8 +1335,9 @@ export async function listDeliverables(): Promise<{
 export async function getDeliverable(
   id: string,
 ): Promise<DeliverableDetailResponse> {
+  const resolvedId = requireRequestString(id, "deliverable_id");
   const resp = await apiFetch(
-    `${API_BASE}/deliverables/${encodeURIComponent(id)}`,
+    `${API_BASE}/deliverables/${encodeURIComponent(resolvedId)}`,
   );
   if (!resp.ok) {
     throw new ApiError(
@@ -1294,10 +1355,19 @@ export async function createSection(req: {
   title?: string;
   parent_section_id?: string;
 }): Promise<SectionResponse> {
+  assertNonNegativeSafeInteger(req.section_index, "section_index");
+  const title = optionalRequestString(req.title);
+  const parentSectionId = optionalRequestString(req.parent_section_id);
+  const body = {
+    deliverable_id: requireRequestString(req.deliverable_id, "deliverable_id"),
+    section_index: req.section_index,
+    ...(title ? { title } : {}),
+    ...(parentSectionId ? { parent_section_id: parentSectionId } : {}),
+  };
   const resp = await apiFetch(`${API_BASE}/sections`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
+    body: JSON.stringify(body),
   });
   if (!resp.ok) {
     throw new ApiError(
@@ -1316,10 +1386,16 @@ export async function attachBlock(req: {
   block_index: number;
 }): Promise<void> {
   assertNonNegativeSafeInteger(req.block_index, "block_index");
+  const body = {
+    section_id: requireRequestString(req.section_id, "section_id"),
+    block_kind: requireBlockKind(req.block_kind),
+    block_id: requireRequestString(req.block_id, "block_id"),
+    block_index: req.block_index,
+  };
   const resp = await apiFetch(`${API_BASE}/sections/attach-block`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
+    body: JSON.stringify(body),
   });
   if (!resp.ok) {
     throw new ApiError(
@@ -1342,12 +1418,7 @@ export interface BlockSearchHit {
 }
 
 function safeBlockKind(value: unknown): BlockKind {
-  return value === "insight" ||
-    value === "open_question" ||
-    value === "operator_note" ||
-    value === "claim"
-    ? value
-    : "claim";
+  return BLOCK_KINDS.has(value as BlockKind) ? (value as BlockKind) : "claim";
 }
 
 function safeBlockSearchHit(value: unknown): BlockSearchHit | null {
@@ -1388,8 +1459,9 @@ export async function searchBlocks(
   limit = 20,
 ): Promise<{ count: number; hits: BlockSearchHit[] }> {
   assertPositiveSafeInteger(limit, "limit");
+  const query = requireRequestString(q, "q");
   const url = new URL(`${API_BASE}/blocks/search`, window.location.origin);
-  url.searchParams.set("q", q);
+  url.searchParams.set("q", query);
   url.searchParams.set("limit", String(limit));
   const resp = await apiFetch(url.toString());
   if (!resp.ok) {
@@ -1410,10 +1482,18 @@ export async function reorderBlock(req: {
   new_block_index: number;
 }): Promise<void> {
   assertNonNegativeSafeInteger(req.new_block_index, "new_block_index");
+  const newSectionId = optionalRequestString(req.new_section_id);
+  const body = {
+    section_id: requireRequestString(req.section_id, "section_id"),
+    block_kind: requireBlockKind(req.block_kind),
+    block_id: requireRequestString(req.block_id, "block_id"),
+    ...(newSectionId ? { new_section_id: newSectionId } : {}),
+    new_block_index: req.new_block_index,
+  };
   const resp = await apiFetch(`${API_BASE}/sections/reorder-block`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
+    body: JSON.stringify(body),
   });
   if (!resp.ok) {
     throw new ApiError(
@@ -1456,12 +1536,23 @@ export async function updateSectionProse(
   sectionId: string,
   req: UpdateSectionProseRequest,
 ): Promise<UpdateSectionProseResponse> {
+  const citedChunkIds = sanitizeWriteStringList(req.cited_chunk_ids, "cited_chunk_ids");
+  const originalText = optionalRequestString(req.original_text);
+  const investigationId = optionalRequestString(req.investigation_id);
+  const body = {
+    prose_text: requireRequestString(req.prose_text, "prose_text"),
+    ...(originalText ? { original_text: originalText } : {}),
+    ...(req.promote_to_graph !== undefined ? { promote_to_graph: req.promote_to_graph } : {}),
+    ...(citedChunkIds ? { cited_chunk_ids: citedChunkIds } : {}),
+    ...(investigationId ? { investigation_id: investigationId } : {}),
+  };
+  const resolvedSectionId = requireRequestString(sectionId, "sectionId");
   const resp = await apiFetch(
-    `${API_BASE}/sections/${encodeURIComponent(sectionId)}/prose`,
+    `${API_BASE}/sections/${encodeURIComponent(resolvedSectionId)}/prose`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(req),
+      body: JSON.stringify(body),
     },
   );
   if (!resp.ok) {
@@ -1524,11 +1615,13 @@ export async function exportDeliverable(
   id: string,
   format: ExportFormatName,
 ): Promise<ExportFormatResponse> {
+  const resolvedId = requireRequestString(id, "deliverable_id");
+  const resolvedFormat = requireExportFormat(format);
   const url = new URL(
-    `${API_BASE}/deliverables/${encodeURIComponent(id)}/export`,
+    `${API_BASE}/deliverables/${encodeURIComponent(resolvedId)}/export`,
     window.location.origin,
   );
-  url.searchParams.set("format", format);
+  url.searchParams.set("format", resolvedFormat);
   const resp = await apiFetch(url.toString());
   if (!resp.ok) {
     throw new ApiError(
@@ -1537,7 +1630,7 @@ export async function exportDeliverable(
       await resp.text(),
     );
   }
-  return safeExportResponse(await resp.json(), format);
+  return safeExportResponse(await resp.json(), resolvedFormat);
 }
 
 // ── Sprint 13: voice notes ─────────────────────────────────────────
