@@ -8,6 +8,7 @@ import {
   listWatchForLater,
   type ParkedQuestionEntry,
 } from "../../lib/api";
+import { requireInvestigationId } from "../../lib/investigationData";
 import ParkedQuestion from "./ParkedQuestion";
 import WatchForLaterFolder from "./WatchForLaterFolder";
 import {
@@ -89,12 +90,13 @@ export default function BrainstormStation() {
       setLaunching(true);
       try {
         const handle = await launchParkedQuestion(q.question_id);
+        const investigationId = requireInvestigationId(handle.investigation_id);
         track("brainstorm_question_launched");
         // The folder reloads to hide this question (now sharpened);
         // operator follows the launched investigation in Mode A.
         await reload();
         dispatchBrainstormWatchlistChanged();
-        navigate(`/inv/${handle.investigation_id}`);
+        navigate(`/inv/${encodeURIComponent(investigationId)}`);
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         setError(`Launch failed: ${msg}`);

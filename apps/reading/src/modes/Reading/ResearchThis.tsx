@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { LemonButton } from "../../components/lemon";
 import { spinResearch } from "../../api/books";
 import { track } from "../../lib/analytics";
+import { requireInvestigationId } from "../../lib/investigationData";
 import AIActionFailure from "../../shared/AIActionFailure";
 
 /**
@@ -40,6 +41,7 @@ export default function ResearchThis({ documentId, pageIndex, passageText }: Res
     setError(null);
     try {
       const res = await spinResearch(documentId, pageIndex, passageText);
+      const investigationId = requireInvestigationId(res.investigation_id);
       track("reading_research_spun", {
         document_id: documentId,
         page_index: pageIndex,
@@ -47,7 +49,7 @@ export default function ResearchThis({ documentId, pageIndex, passageText }: Res
       });
       // Hand off to the Research workflow. Return-to-reading is handled by
       // usePosition persisting this page.
-      navigate(`/inv/${encodeURIComponent(res.investigation_id)}`);
+      navigate(`/inv/${encodeURIComponent(investigationId)}`);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
