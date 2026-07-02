@@ -174,6 +174,30 @@ describe("InvestigationsIndex", () => {
     expect(navigateMock).not.toHaveBeenCalled();
   });
 
+  it("surfaces non-object created investigation responses instead of navigating", async () => {
+    apiFetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ count: 0, investigations: [] }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ["inv-created"],
+      } as Response);
+
+    renderIndex();
+
+    await screen.findByText("No investigations match this filter.");
+    fireEvent.change(screen.getByPlaceholderText("What's the question? (≥ 3 chars)"), {
+      target: { value: "What should we research next?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Start investigation" }));
+
+    expect(await screen.findByText("investigation_id must be a non-empty string")).toBeTruthy();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
   it("sanitizes validation error detail before rendering", async () => {
     apiFetchMock
       .mockResolvedValueOnce({
