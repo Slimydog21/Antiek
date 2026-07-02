@@ -169,6 +169,26 @@ describe("reviewState resolver", () => {
     ]);
   });
 
+  it("orders due claims by positional claim id, not lexicographic string order", () => {
+    const due = resolveDueClaimsFromEvents(
+      ["10", "2", "1"].map((claimId, index) =>
+        ev(
+          {
+            action_type: "claim.reviewed",
+            claim_id: claimId,
+            reviewed_at: "2026-06-30T09:00:00Z",
+            next_due_at: "2026-06-30T09:00:00Z",
+            due_label: `Due ${claimId}`,
+          },
+          `2026-06-30T09:00:0${index}Z`,
+        ),
+      ),
+      { now: new Date("2026-06-30T10:00:00Z") },
+    );
+
+    expect(due.map((d) => d.claimId)).toEqual(["1", "2", "10"]);
+  });
+
   it("identifies the minimal claim.reviewed payload shape", () => {
     expect(
       isClaimReviewedPayload({

@@ -62,6 +62,15 @@ function parseTimeMs(value: string): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
+function compareClaimIds(a: string, b: string): number {
+  const aNumber = Number(a);
+  const bNumber = Number(b);
+  const aIsPositional = Number.isInteger(aNumber) && aNumber > 0 && String(aNumber) === a;
+  const bIsPositional = Number.isInteger(bNumber) && bNumber > 0 && String(bNumber) === b;
+  if (aIsPositional && bIsPositional) return aNumber - bNumber;
+  return a.localeCompare(b);
+}
+
 function eventOrderingTime(event: Pick<Event, "emitted_at">): number {
   return parseTimeMs(event.emitted_at) ?? 0;
 }
@@ -95,7 +104,7 @@ export function resolveDueClaimsFromEvents(
       dueLabel: nonEmptyString(payload.due_label) ?? "Due for review",
     });
   }
-  return due.sort((a, b) => a.claimId.localeCompare(b.claimId));
+  return due.sort((a, b) => compareClaimIds(a.claimId, b.claimId));
 }
 
 function addMilliseconds(date: Date, ms: number): Date {
