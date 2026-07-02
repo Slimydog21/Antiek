@@ -54,6 +54,18 @@ def _matrix_literal_file_refs() -> set[str]:
     }
 
 
+def _matrix_literal_dir_refs() -> set[str]:
+    text = MATRIX.read_text(encoding="utf-8")
+    refs = set(re.findall(r"`([^`]+/)`", text))
+    return {
+        ref
+        for ref in refs
+        if not ref.startswith(("/", "./", "canonical_verify.sh "))
+        and " " not in ref
+        and "<" not in ref
+    }
+
+
 def _script_canonical_commands() -> set[str]:
     text = CANONICAL_VERIFY.read_text(encoding="utf-8")
     return set(re.findall(r"^\s*([a-z0-9-]+)\)\s+cmd_", text, re.MULTILINE))
@@ -77,6 +89,11 @@ def _workflow_event_paths(event_name: str) -> set[str]:
 
 def _path_is_covered(path: str, patterns: set[str]) -> bool:
     return any(fnmatchcase(path, pattern) for pattern in patterns)
+
+
+def _dir_is_covered(path: str, patterns: set[str]) -> bool:
+    probe = f"{path.rstrip('/')}/__matrix_probe__"
+    return _path_is_covered(path, patterns) or _path_is_covered(probe, patterns)
 
 
 def test_platform_matrix_names_every_ci_canonical_command() -> None:
@@ -124,6 +141,17 @@ def test_platform_matrix_literal_file_refs_exist() -> None:
 
     assert not missing, (
         "PLATFORM_EXEC_MATRIX.md names literal file ref(s) that do not exist "
+        f"from repo root: {missing}"
+    )
+
+
+def test_platform_matrix_literal_dir_refs_exist() -> None:
+    missing = sorted(
+        ref for ref in _matrix_literal_dir_refs() if not (ROOT / ref).is_dir()
+    )
+
+    assert not missing, (
+        "PLATFORM_EXEC_MATRIX.md names literal directory ref(s) that do not exist "
         f"from repo root: {missing}"
     )
 
@@ -193,4 +221,20 @@ def test_agent_gates_trigger_on_matrix_entrypoint_files() -> None:
         assert not missing, (
             f"agent_execution_gates.yml {event_name} does not trigger on "
             f"platform matrix entry-point file(s): {missing}"
+        )
+
+
+def test_agent_gates_trigger_on_matrix_entrypoint_dirs() -> None:
+    """A matrix entry-point directory edit must schedule its guarding workflow."""
+    matrix_dirs = {
+        ref for ref in _matrix_literal_dir_refs() if (ROOT / ref).is_dir()
+    }
+    assert matrix_dirs, "PLATFORM_EXEC_MATRIX.md names no literal entry directories"
+
+    for event_name in ("push", "pull_request"):
+        paths = _workflow_event_paths(event_name)
+        missing = sorted(path for path in matrix_dirs if not _dir_is_covered(path, paths))
+        assert not missing, (
+            f"agent_execution_gates.yml {event_name} does not trigger on "
+            f"platform matrix entry-point dir(s): {missing}"
         )
