@@ -239,7 +239,7 @@ function AssetRow({
     : null;
 
   // The doc this asset is about — the first owned doc, the match subject.
-  const subjectDocId = asset.document_ids[0];
+  const subjectDocId = asset.document_ids[0]?.trim() || null;
 
   // Fetch the suggestion lazily once per row (a READ, never a mutation — the
   // backend match selector only ranks). No suggestion fetched ⇒ none shown.
@@ -248,7 +248,9 @@ function AssetRow({
     if (!subjectDocId) return;
     void getFileSuggestion(subjectDocId)
       .then((r) => {
-        if (!cancelled) setMatches(r.matches);
+        if (!cancelled) {
+          setMatches(r.document_id === subjectDocId ? r.matches : []);
+        }
       })
       .catch(() => {
         if (!cancelled) setMatches([]);

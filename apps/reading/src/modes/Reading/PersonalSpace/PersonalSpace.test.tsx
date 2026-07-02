@@ -299,6 +299,25 @@ describe("M3 — suggest-not-autoship filing", () => {
     // Declining files NOTHING.
     expect(acceptFilingMock).not.toHaveBeenCalled();
   });
+
+  it("drops filing suggestions whose response document does not match the asset", async () => {
+    suggestionMock.mockImplementation(async (docId: string) =>
+      docId === "doc-1"
+        ? {
+            document_id: "doc-other",
+            matches: [{ investigation_id: "inv-x", question: "wrong document project", score: 0.95 }],
+          }
+        : { document_id: docId, matches: [] },
+    );
+
+    render(<PersonalSpace />);
+    await screen.findByText("How my books treat free will");
+
+    await waitFor(() => expect(suggestionMock).toHaveBeenCalledWith("doc-1"));
+    expect(screen.queryByTestId("personal-asset-suggestion")).toBeNull();
+    expect(screen.queryByRole("button", { name: /File into/ })).toBeNull();
+    expect(acceptFilingMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("M4 — meta-docs tab", () => {
