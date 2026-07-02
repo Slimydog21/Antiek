@@ -194,6 +194,18 @@ function nonNegativeFiniteNumber(value: unknown): number | null {
     : null;
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 function sanitizeImpression(item: ImpressionItem): ImpressionItem | null {
   const slotId = typeof item.slot_id === "string" ? item.slot_id.trim() : "";
   const pageIndex = nonNegativeSafeInteger(item.page_index);
@@ -334,6 +346,45 @@ export interface AskBookResponse {
   context_chunk_count: number;
 }
 
+function sanitizeBookCitation(value: unknown): BookCitation | null {
+  const citation = record(value);
+  if (!citation) return null;
+  const chunkId = nonEmptyString(citation.chunk_id);
+  const documentId = nonEmptyString(citation.document_id);
+  if (!chunkId || !documentId) return null;
+  const pageIndex = nonNegativeSafeInteger(citation.page_index);
+  const pageResolved = citation.page_resolved === true && pageIndex !== null;
+  return {
+    chunk_id: chunkId,
+    document_id: documentId,
+    page_index: pageResolved ? pageIndex : null,
+    page_resolved: pageResolved,
+    snippet: typeof citation.snippet === "string" ? citation.snippet.trim() : "",
+  };
+}
+
+function sanitizeBookCitations(value: unknown): BookCitation[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const citation = sanitizeBookCitation(item);
+    return citation ? [citation] : [];
+  });
+}
+
+function safeAskBookResponse(value: unknown): AskBookResponse {
+  const body = record(value);
+  const answer = body ? nonEmptyString(body.answer) : null;
+  if (!body || !answer) {
+    throw new Error("Malformed talk-to-book response.");
+  }
+  return {
+    answer,
+    citations: sanitizeBookCitations(body.citations),
+    grounded: body.grounded === true,
+    context_chunk_count: nonNegativeSafeInteger(body.context_chunk_count) ?? 0,
+  };
+}
+
 /** Ask one talk-to-book turn (Read SPR-08 M2). Answers CITE pages; a withheld
  * region can never be cited (backend §9.0 gate). 503 when no model provider is
  * configured (no-key) or the embedding model is unavailable. 404 for an
@@ -355,7 +406,7 @@ export async function askBook(
   if (resp.status === 404) throw new Error("book_not_found");
   if (resp.status === 503) throw new Error("Talk-to-book isn’t available right now.");
   if (!resp.ok) throw new Error(`POST /books/{id}/ask: HTTP ${resp.status}`);
-  return (await resp.json()) as AskBookResponse;
+  return safeAskBookResponse(await resp.json());
 }
 
 // ── SPR-08 M4: meta-reading deliverable (PROPOSED boundary) ───────────

@@ -132,6 +132,76 @@ describe("books api — talk-to-book boundary", () => {
     });
   });
 
+  it("sanitizes talk-to-book citations before they reach bookmark state", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          answer: "  Cited answer.  ",
+          citations: [
+            {
+              chunk_id: " chunk-7 ",
+              document_id: " doc-1 ",
+              page_index: "6",
+              page_resolved: true,
+              snippet: "  page seven passage  ",
+            },
+            {
+              chunk_id: "chunk-unresolved",
+              document_id: "doc-1",
+              page_index: 2,
+              page_resolved: false,
+              snippet: "unresolved passage",
+            },
+            {
+              chunk_id: " ",
+              document_id: "doc-1",
+              page_index: 1,
+              page_resolved: true,
+              snippet: "missing chunk id",
+            },
+          ],
+          grounded: true,
+          context_chunk_count: "not a number",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const result = await askBook("doc-1", "question");
+
+    expect(result).toEqual({
+      answer: "Cited answer.",
+      citations: [
+        {
+          chunk_id: "chunk-7",
+          document_id: "doc-1",
+          page_index: null,
+          page_resolved: false,
+          snippet: "page seven passage",
+        },
+        {
+          chunk_id: "chunk-unresolved",
+          document_id: "doc-1",
+          page_index: null,
+          page_resolved: false,
+          snippet: "unresolved passage",
+        },
+      ],
+      grounded: true,
+      context_chunk_count: 0,
+    });
+  });
+
+  it("rejects malformed talk-to-book answers instead of persisting fake turns", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ answer: " ", citations: [] }), { status: 200 }),
+    );
+
+    await expect(askBook("doc-1", "anything")).rejects.toThrow(
+      "Malformed talk-to-book response.",
+    );
+  });
+
   it("surfaces an unknown book as the reader's book_not_found branch", async () => {
     apiFetchMock.mockResolvedValueOnce(new Response("missing", { status: 404 }));
 
