@@ -60,6 +60,52 @@ describe("Write Repository", () => {
     expect(screen.queryByText("Invisible hit")).toBeNull();
   });
 
+  it("dedupes duplicate folder and hit ids after trimming", async () => {
+    listFoldersMock.mockResolvedValue([
+      { folder_id: " folder-1 ", name: "First folder", member_count: 2 },
+      { folder_id: "folder-1", name: "Duplicate folder", member_count: 9 },
+      { folder_id: "folder-2", name: "Other folder", member_count: 1 },
+    ]);
+    searchRepositoryMock.mockResolvedValue([
+      {
+        node_id: " node-1 ",
+        label: "First claim",
+        node_type: "claim",
+        source_tier: 1,
+        document_id: "doc-1",
+        document_title: "Doc one",
+        score: 1,
+      },
+      {
+        node_id: "node-1",
+        label: "Duplicate claim",
+        node_type: "claim",
+        source_tier: 2,
+        document_id: "doc-2",
+        document_title: "Doc two",
+        score: 1,
+      },
+      {
+        node_id: "node-2",
+        label: "Other claim",
+        node_type: "claim",
+        source_tier: 1,
+        document_id: "doc-3",
+        document_title: "Doc three",
+        score: 1,
+      },
+    ]);
+
+    render(<Repository />);
+
+    expect(await screen.findByText("First folder")).toBeTruthy();
+    expect(screen.queryByText("Duplicate folder")).toBeNull();
+    expect(screen.getByText("Other folder")).toBeTruthy();
+    expect(await screen.findByText("First claim")).toBeTruthy();
+    expect(screen.queryByText("Duplicate claim")).toBeNull();
+    expect(screen.getByText("Other claim")).toBeTruthy();
+  });
+
   it("updates the search folder when the host folder prop changes", async () => {
     const rendered = render(<Repository initialFolderId="folder-a" />);
     await waitFor(() =>

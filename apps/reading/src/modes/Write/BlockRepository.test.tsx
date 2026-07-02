@@ -151,6 +151,47 @@ describe("BlockRepository — tap-to-add, no id", () => {
     );
   });
 
+  it("dedupes duplicate folder and hit ids before tap-to-add", async () => {
+    const onAdd = vi.fn();
+    listFoldersMock.mockResolvedValue([
+      { folder_id: " folder-1 ", name: "First folder", member_count: 2 },
+      { folder_id: "folder-1", name: "Duplicate folder", member_count: 9 },
+    ]);
+    searchRepositoryMock.mockResolvedValue([
+      {
+        node_id: " node-1 ",
+        label: "First claim",
+        node_type: "claim",
+        source_tier: 1,
+        document_id: "doc-1",
+        document_title: "Doc one",
+        score: 1,
+      },
+      {
+        node_id: "node-1",
+        label: "Duplicate claim",
+        node_type: "claim",
+        source_tier: 2,
+        document_id: "doc-2",
+        document_title: "Doc two",
+        score: 1,
+      },
+    ]);
+
+    render(<BlockRepository onAdd={onAdd} />);
+    await userEvent.click(await screen.findByText("First claim"));
+
+    expect(await screen.findByText("First folder · 2")).toBeTruthy();
+    expect(screen.queryByText(/Duplicate folder/)).toBeNull();
+    expect(screen.queryByText("Duplicate claim")).toBeNull();
+    expect(onAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        node_id: "node-1",
+        label: "First claim",
+      }),
+    );
+  });
+
   it("serializes sanitized drag payloads without flattening claim nodes to insights", async () => {
     searchRepositoryMock.mockResolvedValue([
       {
