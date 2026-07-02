@@ -24,12 +24,23 @@ interface InvestigationRow {
   parent_investigation_id: string | null;
 }
 
-interface ListResponse {
-  count: number;
-  investigations: InvestigationRow[];
+const STATUS_FILTERS = ["all", "in_progress", "completed", "failed"] as const;
+
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
-const STATUS_FILTERS = ["all", "in_progress", "completed", "failed"] as const;
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
 
 function finiteNonNegativeNumber(value: unknown): number | null {
   const parsed =
@@ -39,6 +50,30 @@ function finiteNonNegativeNumber(value: unknown): number | null {
         ? Number(value)
         : Number.NaN;
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function safeInvestigationRow(value: unknown): InvestigationRow | null {
+  const row = record(value);
+  const investigationId = nonEmptyString(row?.investigation_id);
+  if (!row || !investigationId) return null;
+  return {
+    investigation_id: investigationId,
+    question: nullableString(row.question),
+    status: nonEmptyString(row.status) ?? "in_progress",
+    started_at: nullableString(row.started_at),
+    completed_at: nullableString(row.completed_at),
+    cost_usd_total: finiteNonNegativeNumber(row.cost_usd_total) ?? 0,
+    parent_investigation_id: nullableString(row.parent_investigation_id),
+  };
+}
+
+function safeInvestigationRows(value: unknown): InvestigationRow[] {
+  const body = record(value);
+  const rows = Array.isArray(body?.investigations) ? body.investigations : [];
+  return rows.flatMap((item) => {
+    const row = safeInvestigationRow(item);
+    return row ? [row] : [];
+  });
 }
 
 function clampMaxSubQuestions(value: unknown): number {
@@ -85,8 +120,8 @@ export default function InvestigationsIndex() {
       if (!resp.ok) {
         throw new Error(`POST /investigations: HTTP ${resp.status}`);
       }
-      const created = await resp.json();
-      const newId = requireInvestigationId(created.investigation_id);
+      const created = record(await resp.json());
+      const newId = requireInvestigationId(created?.investigation_id);
       // Reset draft, then navigate into the new investigation's
       // workstation. Listing refreshes in the background.
       setDraftQuestion("");
@@ -112,8 +147,7 @@ export default function InvestigationsIndex() {
       if (!resp.ok) {
         throw new Error(`GET /investigations: HTTP ${resp.status}`);
       }
-      const data: ListResponse = await resp.json();
-      setRows(data.investigations ?? []);
+      setRows(safeInvestigationRows(await resp.json()));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
