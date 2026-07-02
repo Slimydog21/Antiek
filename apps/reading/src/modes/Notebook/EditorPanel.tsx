@@ -1,4 +1,4 @@
-import { NotebookEditor } from "./Editor";
+import { NotebookEditor, normalizeNotebookId } from "./Editor";
 
 /**
  * EditorPanel — panel-friendly wrapper around the new TipTap-based
@@ -24,7 +24,7 @@ export default function EditorPanel({
   placeholder,
   initialContent,
 }: Props) {
-  const id = notebookId ?? "scratch";
+  const id = normalizeNotebookId(notebookId);
   return (
     <NotebookEditor
       notebookId={id}
