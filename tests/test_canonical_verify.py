@@ -63,6 +63,31 @@ def test_canonical_verify_usage_names_every_dispatch_subcommand() -> None:
     assert usage_commands == dispatch_commands
 
 
+def test_canonical_verify_dispatch_commands_emit_unique_success_markers() -> None:
+    src = SCRIPT.read_text(encoding="utf-8")
+    dispatch_commands = set(
+        re.findall(r"^\s*([a-z0-9-]+)\)\s+cmd_", src, re.MULTILINE)
+    )
+    assert dispatch_commands, "canonical_verify.sh dispatch table not found"
+
+    marker_commands = re.findall(r"CANONICAL_VERIFY_OK: ([a-z0-9-]+)", src)
+    marker_counts = {command: marker_commands.count(command) for command in marker_commands}
+
+    missing = sorted(command for command in dispatch_commands if command not in marker_counts)
+    duplicated = sorted(
+        command for command, count in marker_counts.items() if count != 1 and command != "handoff"
+    )
+    orphaned = sorted(
+        command
+        for command in marker_counts
+        if command not in dispatch_commands and command not in {"handoff"}
+    )
+
+    assert not missing, f"dispatch command(s) without success marker: {missing}"
+    assert not duplicated, f"success marker(s) must be unique per command: {duplicated}"
+    assert not orphaned, f"success marker(s) without dispatch command: {orphaned}"
+
+
 def test_canonical_verify_cascade_hermetic() -> None:
     if not PY.is_file():
         return
