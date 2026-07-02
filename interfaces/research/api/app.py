@@ -636,6 +636,13 @@ class TwitterThreadIngestRequest(BaseModel):
     tweets: list[TwitterTweetPayload] = Field(..., min_length=1)
     investigation_id: str = Field(default="__operator__", min_length=1)
 
+    @field_validator("thread_url")
+    @classmethod
+    def _validate_thread_url(cls, value: str) -> str:
+        from acquisition.twitter import normalize_twitter_thread_url
+
+        return normalize_twitter_thread_url(value)
+
 
 class TwitterThreadIngestResponse(BaseModel):
     status: Literal["ingested", "skipped"]

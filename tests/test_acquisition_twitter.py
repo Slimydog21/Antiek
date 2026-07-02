@@ -18,6 +18,7 @@ from acquisition.twitter import (
     TwitterThread,
     ingest_thread_payload,
     ingest_twitter_thread,
+    normalize_twitter_thread_url,
     twitter_doc_id,
 )
 
@@ -84,6 +85,31 @@ def test_twitter_doc_id_empty_raises():
         twitter_doc_id("")
 
 
+def test_normalize_twitter_thread_url_trims_supported_hosts():
+    assert (
+        normalize_twitter_thread_url("  https://x.com/foo/status/1234  ")
+        == "https://x.com/foo/status/1234"
+    )
+    assert (
+        normalize_twitter_thread_url("https://twitter.com/foo/status/1234")
+        == "https://twitter.com/foo/status/1234"
+    )
+
+
+@pytest.mark.parametrize(
+    "thread_url",
+    [
+        "javascript:alert(1)",
+        "data:text/html,owned",
+        "/relative/thread",
+        "https://example.com/thread",
+    ],
+)
+def test_normalize_twitter_thread_url_rejects_unsafe_or_wrong_hosts(thread_url):
+    with pytest.raises(ValueError, match="X/Twitter"):
+        normalize_twitter_thread_url(thread_url)
+
+
 # ─────────────────────────────────────────────────────────────────────
 # 2. ingest_twitter_thread
 # ─────────────────────────────────────────────────────────────────────
@@ -119,6 +145,39 @@ def test_ingest_writes_one_chunk_per_tweet(temp_substrate):
     assert doc_count == 1
     assert chunk_count == 2
     assert doc_type == "social_thread"
+
+
+def test_ingest_trims_thread_url_before_persistence(temp_substrate):
+    import duckdb
+
+    thread = TwitterThread(
+        thread_url="  https://x.com/foo/status/1234  ",
+        root_tweet_id="1234",
+        author_handle="foo",
+        tweets=[
+            Tweet(
+                tweet_id="1234",
+                text="This is a substantive tweet about URL normalization.",
+                author_handle="foo",
+            )
+        ],
+    )
+    r = ingest_twitter_thread(
+        thread,
+        investigation_id="inv-x-test",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        min_word_count=1,
+    )
+    con = duckdb.connect(temp_substrate["db_path"])
+    try:
+        (source_uri,) = con.execute(
+            "SELECT source_uri FROM documents WHERE document_id = ?",
+            [r.document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert source_uri == "https://x.com/foo/status/1234"
 
 
 def test_ingest_empty_thread_skipped(temp_substrate):

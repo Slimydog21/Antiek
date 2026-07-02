@@ -16,6 +16,7 @@ from .adapter import (
     TwitterThread,
     ingest_thread_payload,
     ingest_twitter_thread,
+    normalize_twitter_thread_url,
     twitter_doc_id,
 )
 
@@ -26,5 +27,6 @@ __all__ = [
     "TwitterThread",
     "ingest_thread_payload",
     "ingest_twitter_thread",
+    "normalize_twitter_thread_url",
     "twitter_doc_id",
 ]

@@ -22,6 +22,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlparse
 
 _PKG_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -57,6 +58,7 @@ from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 DEFAULT_TWITTER_SOURCE_TIER = 4  # social_media tier in the master spec
 _NODE_LABEL_MAX = 160
 MIN_INGEST_WORD_COUNT = 5  # threads can be terse; lower threshold
+_TWITTER_THREAD_HOSTS = {"x.com", "www.x.com", "twitter.com", "www.twitter.com"}
 
 
 @dataclass(frozen=True)
@@ -105,6 +107,19 @@ def twitter_doc_id(root_tweet_id: str) -> str:
         raise ValueError("empty root_tweet_id")
     h = hashlib.sha256(root_tweet_id.encode("utf-8")).hexdigest()[:16]
     return f"doc-x-{h}"
+
+
+def normalize_twitter_thread_url(value: str) -> str:
+    """Trim and validate the captured thread URL."""
+
+    url = value.strip()
+    parsed = urlparse(url)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or parsed.netloc.lower() not in _TWITTER_THREAD_HOSTS
+    ):
+        raise ValueError("thread_url must be an absolute X/Twitter http(s) URL")
+    return url
 
 
 def _format_thread_markdown(thread: TwitterThread) -> str:
@@ -173,6 +188,14 @@ def ingest_twitter_thread(
     bypass-scanner (which AST-scans ``acquisition/twitter/`` for content_class
     string literals) stays green. Both the browser-extension capture path and the
     BYOK API runner reach this one insert site, so both inherit the lane."""
+    thread_url = normalize_twitter_thread_url(thread.thread_url)
+    thread = TwitterThread(
+        thread_url=thread_url,
+        root_tweet_id=thread.root_tweet_id,
+        author_handle=thread.author_handle,
+        tweets=thread.tweets,
+        captured_at=thread.captured_at,
+    )
     document_id = twitter_doc_id(thread.root_tweet_id)
     title = f"Thread by @{thread.author_handle}"
 
@@ -387,7 +410,7 @@ def ingest_thread_payload(
             media_urls=list(raw.get("media_urls", [])),
         ))
     thread = TwitterThread(
-        thread_url=str(payload.get("thread_url", "")),
+        thread_url=normalize_twitter_thread_url(str(payload.get("thread_url", ""))),
         root_tweet_id=str(payload.get("root_tweet_id", "")),
         author_handle=str(payload.get("author_handle", "")).lstrip("@"),
         tweets=tweets,
