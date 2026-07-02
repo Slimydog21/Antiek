@@ -35,6 +35,7 @@ from substrate.research_bridge.gap import (
     find_gaps,
     record_prompt_answer,
     record_prompt_signal,
+    would_run_percentage,
 )
 from substrate.research_bridge.schema import init_research_bridge
 
@@ -400,6 +401,33 @@ def test_research_bridge_prompt_signals_require_existing_prompts(db):
         con.close()
 
     assert row == ("rgpr-1", "would_run")
+
+
+def test_research_bridge_would_run_percentage_uses_latest_signal_tiebreak(db):
+    con = connect_write(db, purpose="seed signal tiebreak")
+    try:
+        init_research_bridge(con)
+        con.execute(
+            "INSERT INTO research_gap_runs "
+            "(run_id, scope_block_ids, scope_question_ids, cluster_model_id) "
+            "VALUES ('rgrun-1', '[]', '[]', 'test')"
+        )
+        con.execute(
+            "INSERT INTO research_gap_prompts "
+            "(prompt_id, run_id, order_index, prompt_text, target_provider) "
+            "VALUES ('rgpr-1', 'rgrun-1', 0, 'Research the source answer.', 'grok')"
+        )
+        con.execute(
+            "INSERT INTO research_gap_prompt_signals "
+            "(signal_id, prompt_id, signal_type, occurred_at) VALUES "
+            "('sig-a', 'rgpr-1', 'would_run', TIMESTAMP '2026-07-01 00:00:00'), "
+            "('sig-b', 'rgpr-1', 'skip', TIMESTAMP '2026-07-01 00:00:00')"
+        )
+        would, total, pct = would_run_percentage(con)
+    finally:
+        con.close()
+
+    assert (would, total, pct) == (0, 1, 0.0)
 
 
 def test_research_bridge_gap_scope_requires_existing_paste_blocks(db):

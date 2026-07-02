@@ -11,7 +11,7 @@ import argparse
 import sys
 from collections.abc import Sequence
 
-from runtime.db_lock import connect_write
+from runtime.db_lock import connect_read, connect_write
 from substrate.research_bridge.db_path import ensure_research_bridge_initialized
 from substrate.research_bridge.dogfood_log import write_dogfood_scaffold
 from substrate.research_bridge.dogfood_report import (
@@ -19,6 +19,7 @@ from substrate.research_bridge.dogfood_report import (
     default_dogfood_metrics_path,
 )
 from substrate.research_bridge.draft_export import record_draft_export
+from substrate.research_bridge.gap import would_run_percentage
 
 
 def _cmd_research_bridge_dogfood_report(args: argparse.Namespace) -> int:
@@ -64,6 +65,19 @@ def _cmd_research_bridge_draft_export_record(args: argparse.Namespace) -> int:
             output_path=args.output_path,
         )
     print(f"recorded {export_id}")
+    return 0
+
+
+def _cmd_research_bridge_signals(args: argparse.Namespace) -> int:
+    db_path = ensure_research_bridge_initialized(args.db)
+    con = connect_read(db_path)
+    try:
+        would, total, pct = would_run_percentage(con, run_id=args.run_id)
+    finally:
+        con.close()
+
+    scope = "all runs" if args.run_id is None else f"run {args.run_id}"
+    print(f"{scope}: {pct * 100:.1f}% would-run ({would}/{total} latest prompt signals)")
     return 0
 
 
@@ -138,6 +152,22 @@ def _build_parser() -> argparse.ArgumentParser:
     draft_export_record.add_argument("--deliverable-id", required=True)
     draft_export_record.add_argument("--output-path", required=True)
     draft_export_record.set_defaults(func=_cmd_research_bridge_draft_export_record)
+
+    signals = bridge_subparsers.add_parser(
+        "signals",
+        help="Print Mode B would-run percentage from prompt signals.",
+    )
+    signals.add_argument(
+        "--db",
+        default=None,
+        help="DuckDB path. Defaults to ANTIEK_DUCKDB_PATH / substrate default.",
+    )
+    signals.add_argument(
+        "--run-id",
+        default=None,
+        help="Optional gap run id. Defaults to all runs.",
+    )
+    signals.set_defaults(func=_cmd_research_bridge_signals)
 
     return parser
 

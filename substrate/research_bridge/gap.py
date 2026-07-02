@@ -13,6 +13,7 @@ from typing import Any
 try:
     from ...runtime.db_lock import LockedConnection
     from ..graph.ops import new_random_id
+    from ..provenance import validate_ref, validate_refs
     from .extractor import (
         EXTRACTOR_VERSION,
         LlmCallable,
@@ -20,7 +21,6 @@ try:
         _extract_json_object,
     )
     from .source_detection import KNOWN_SOURCES
-    from ..provenance import validate_ref, validate_refs
 except ImportError:  # pragma: no cover
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
@@ -728,20 +728,23 @@ def would_run_percentage(con, *, run_id: str | None = None) -> tuple[int, int, f
     base_filter = ""
     params: list[Any] = []
     if run_id is not None:
-        base_filter = "AND p.run_id = ?"
+        base_filter = "AND s.run_id = ?"
         params.append(run_id)
     rows = con.execute(
         f"""
         SELECT s.signal_type, COUNT(*) AS n
-        FROM research_gap_prompt_signals s
-        JOIN research_gap_prompts p ON p.prompt_id = s.prompt_id
-        JOIN (
-            SELECT prompt_id, MAX(occurred_at) AS latest
-            FROM research_gap_prompt_signals
-            GROUP BY prompt_id
-        ) latest ON latest.prompt_id = s.prompt_id
-                AND latest.latest = s.occurred_at
-        WHERE 1=1 {base_filter}
+        FROM (
+            SELECT p.run_id,
+                   s.prompt_id,
+                   s.signal_type,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY s.prompt_id
+                       ORDER BY s.occurred_at DESC, s.signal_id DESC
+                   ) AS rn
+            FROM research_gap_prompt_signals s
+            JOIN research_gap_prompts p ON p.prompt_id = s.prompt_id
+        ) s
+        WHERE rn = 1 {base_filter}
         GROUP BY s.signal_type
         """,
         params,

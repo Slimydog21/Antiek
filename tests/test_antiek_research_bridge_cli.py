@@ -140,3 +140,29 @@ def test_antiek_research_bridge_draft_export_record(db: str, tmp_path: Path) -> 
         str(report),
     ]) == 0
     assert "- Mode A draft exports recorded: 1" in report.read_text(encoding="utf-8")
+
+
+def test_antiek_research_bridge_signals_prints_would_run_percentage(
+    db: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _seed_minimal_report_rows(db)
+
+    rc = main(["research", "bridge", "signals", "--db", db])
+
+    assert rc == 0
+    assert "all runs: 100.0% would-run (1/1 latest prompt signals)" in capsys.readouterr().out
+
+
+def test_antiek_research_bridge_signals_can_scope_to_run(
+    db: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _seed_minimal_report_rows(db)
+
+    rc = main(["research", "bridge", "signals", "--db", db, "--run-id", "run-a"])
+
+    assert rc == 0
+    assert "run run-a: 100.0% would-run (1/1 latest prompt signals)" in (
+        capsys.readouterr().out
+    )
