@@ -137,8 +137,8 @@ const drwSprints = [
   { n: 2, slug: "research-runner", status: "live" },
   { n: 3, slug: "async-note-taker", status: "live" },
   { n: 4, slug: "max-context-pack", status: "live" },
-  { n: 5, slug: "cascade-planner", status: "planned" },
-  { n: 6, slug: "parallel-orchestration", status: "planned" },
+  { n: 5, slug: "cascade-planner", status: "live" },
+  { n: 6, slug: "parallel-orchestration", status: "live" },
   { n: 7, slug: "structural-gap-detection", status: "planned" },
   { n: 8, slug: "universal-ingest", status: "planned" },
   { n: 9, slug: "glassbox-monitor-ui", status: "planned" },
@@ -149,8 +149,8 @@ const CRITICAL = ["drw:1", "drw:3", "drw:10"];
 
 const readyNowIds = [
   ...drwSprints.map((d) => `drw:${d.n}`),
+  ...Array.from({ length: 9 }, (_, i) => `read:${i + 1}`),
   ...Array.from({ length: 9 }, (_, i) => `write:${i + 1}`),
-  ...Array.from({ length: 9 }, (_, i) => `speak:${i + 1}`),
   ...Array.from({ length: 8 }, (_, i) => `unified:${i + 1}`),
 ];
 
@@ -192,8 +192,8 @@ export const CANONICAL_ROADMAP: RoadmapView = {
         node_id: `read:${i + 1}`,
         status: "unknown",
         on_critical_path: false,
-        blocked_on: ["drw:5", "drw:6"],
-        unblocked: false,
+        blocked_on: [],
+        unblocked: true,
       })),
     },
     {
@@ -226,8 +226,8 @@ export const CANONICAL_ROADMAP: RoadmapView = {
         node_id: `speak:${i + 1}`,
         status: "unknown",
         on_critical_path: false,
-        blocked_on: [],
-        unblocked: true,
+        blocked_on: ["drw:7"],
+        unblocked: false,
       })),
     },
     {
@@ -251,18 +251,14 @@ export const CANONICAL_ROADMAP: RoadmapView = {
   unblocked_now: readyNowIds,
   dependency_blockers: [
     {
-      node_id: "drw:5",
-      blocked_sprints: Array.from({ length: 9 }, (_, i) => `read:${i + 1}`),
-    },
-    {
-      node_id: "drw:6",
-      blocked_sprints: Array.from({ length: 9 }, (_, i) => `read:${i + 1}`),
+      node_id: "drw:7",
+      blocked_sprints: Array.from({ length: 9 }, (_, i) => `speak:${i + 1}`),
     },
   ],
   execution_focus: {
     kind: "dependency_blocker",
-    node_id: "drw:5",
-    blocked_sprints: Array.from({ length: 9 }, (_, i) => `read:${i + 1}`),
+    node_id: "drw:7",
+    blocked_sprints: Array.from({ length: 9 }, (_, i) => `speak:${i + 1}`),
   },
   substrate_layers: [
     { name: "Write coordination (db_lock)", owner: "runtime/db_lock.py", status: "Hardened (substrate-execution SPR-01)" },
