@@ -46,4 +46,17 @@ describe("SceneChrome Read tabs", () => {
 
     expect(screen.getByTestId("location").textContent).toBe("/library");
   });
+
+  it("keeps acquisition tools out of Read chrome after the shared/More eviction", () => {
+    renderAt("/library");
+
+    expect(screen.getByRole("button", { name: "Open library" })).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Meta-docs" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: "Notebooks" }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Documents" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Add sources" })).toBeNull();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Meta-docs" })[0]);
+    expect(screen.getByTestId("location").textContent).toBe("/meta-readings");
+  });
 });

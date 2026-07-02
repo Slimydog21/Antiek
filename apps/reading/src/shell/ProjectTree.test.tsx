@@ -126,6 +126,17 @@ describe("ProjectTree workflow actions", () => {
     expect(screen.getByRole("button", { name: /Recent\s*3/ })).toBeTruthy();
   });
 
+  it("keeps Read All links aligned to Library, Meta-docs, Notebooks", async () => {
+    renderTree("read");
+
+    expect(screen.getByText("Library · Meta-docs · Notebooks")).toBeTruthy();
+    expect(await screen.findByRole("button", { name: /Your readings/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /All meta-docs/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /All notebooks/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /All documents/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /All sources/ })).toBeNull();
+  });
+
   it("opens a live document through the one Reader door on normal click", async () => {
     apiFetchMock.mockImplementation(async (path: string) => {
       if (String(path).startsWith("/documents")) {
