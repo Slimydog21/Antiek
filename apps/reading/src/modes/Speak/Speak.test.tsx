@@ -191,4 +191,40 @@ describe("Speak project page", () => {
     fireEvent.click(await screen.findByRole("button", { name: /try to publish/i }));
     expect(await screen.findByText(/legal gate g2 open/i)).toBeTruthy();
   });
+
+  it("requires literal served=true before saying publishing succeeded", async () => {
+    api.getProject.mockResolvedValue({
+      id: "p1", name: "Grandma Rosa", willBePublic: true, subjectStatusWord: null,
+    });
+    api.getEconomics.mockResolvedValue({ splitApplies: true, creatorCarriesCost: false });
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ served: "yes" }),
+    });
+    mount();
+    await screen.findByText("Grandma Rosa");
+    fireEvent.click(screen.getByRole("button", { name: /^settings$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /try to publish/i }));
+    expect(await screen.findByText(/saved privately/i)).toBeTruthy();
+    expect(screen.queryByText(/^Published\.$/)).toBeNull();
+  });
+
+  it("sanitizes paperback quote cost before rendering", async () => {
+    api.getProject.mockResolvedValue({
+      id: "p1", name: "Grandma Rosa", willBePublic: true, subjectStatusWord: null,
+    });
+    api.getEconomics.mockResolvedValue({ splitApplies: true, creatorCarriesCost: false });
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ cost_usd: { amount: "12.00" } }),
+    });
+    mount();
+    await screen.findByText("Grandma Rosa");
+    fireEvent.click(screen.getByRole("button", { name: /^settings$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /paperback quote/i }));
+    expect(await screen.findByText(/Paperback quote: \$—/i)).toBeTruthy();
+    expect(screen.queryByText(/\[object Object\]/)).toBeNull();
+  });
 });
