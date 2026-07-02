@@ -40,6 +40,30 @@ export interface ConnectResearchProps {
   disabled?: boolean;
 }
 
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function displayString(value: unknown, fallback: string): string {
+  return nonEmptyString(value) ?? fallback;
+}
+
+function safeProjects(projects: InvestigationSummary[]): InvestigationSummary[] {
+  return projects.flatMap((project) => {
+    const investigationId = nonEmptyString(project.investigation_id);
+    if (!investigationId) return [];
+    return [
+      {
+        ...project,
+        investigation_id: investigationId,
+        question: displayString(project.question, "(untitled research)"),
+      },
+    ];
+  });
+}
+
 export default function ConnectResearch({
   onConnect,
   pieceTitle,
@@ -54,7 +78,9 @@ export default function ConnectResearch({
     let cancelled = false;
     listInvestigations({ limit: 50 })
       .then((r) => {
-        if (!cancelled) setProjects(r.investigations);
+        if (!cancelled) {
+          setProjects(Array.isArray(r.investigations) ? safeProjects(r.investigations) : []);
+        }
       })
       .catch(() => {
         // A failed list is shown plainly — the writer can still start fresh.
@@ -70,9 +96,11 @@ export default function ConnectResearch({
 
   async function connectExisting(p: InvestigationSummary) {
     if (disabled) return;
+    const investigationId = nonEmptyString(p.investigation_id);
+    if (!investigationId) return;
     onConnect({
-      investigationId: p.investigation_id,
-      label: p.question?.trim() || "a research project",
+      investigationId,
+      label: displayString(p.question, "a research project"),
     });
   }
 
@@ -88,8 +116,12 @@ export default function ConnectResearch({
         question: pieceTitle.trim() || "Untitled piece",
         context: "Auto-spawned research folder backing a Write piece (SPR-09 M1).",
       });
+      const spawnedId = nonEmptyString(spawned.investigation_id);
+      if (!spawnedId) {
+        throw new Error("spawned research folder did not return an id");
+      }
       onConnect({
-        investigationId: spawned.investigation_id,
+        investigationId: spawnedId,
         label: "a new research folder",
       });
     } catch (e) {
@@ -154,7 +186,7 @@ export default function ConnectResearch({
                   {p.question?.trim() || "(untitled research)"}
                 </span>
                 <span className="text-[10px] uppercase tracking-wide text-ink-mute dark:text-moonlight">
-                  {p.status}
+                  {displayString(p.status, "unknown")}
                   {p.spawned_by_daemon ? " · found by the loop" : ""}
                 </span>
               </button>

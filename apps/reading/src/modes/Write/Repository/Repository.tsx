@@ -31,6 +31,55 @@ export interface RepositoryProps {
   className?: string;
 }
 
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function finiteNonNegativeNumber(value: unknown): number | null {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function safeFolders(folders: FolderSummary[]): FolderSummary[] {
+  return folders.flatMap((folder) => {
+    const folderId = nonEmptyString(folder.folder_id);
+    const name = nonEmptyString(folder.name);
+    if (!folderId || !name) return [];
+    return [
+      {
+        ...folder,
+        folder_id: folderId,
+        name,
+        member_count: finiteNonNegativeNumber(folder.member_count) ?? 0,
+      },
+    ];
+  });
+}
+
+function safeHits(hits: RepositoryHit[]): RepositoryHit[] {
+  return hits.flatMap((hit) => {
+    const nodeId = nonEmptyString(hit.node_id);
+    const label = nonEmptyString(hit.label);
+    if (!nodeId || !label) return [];
+    return [
+      {
+        ...hit,
+        node_id: nodeId,
+        label,
+        document_title: nonEmptyString(hit.document_title),
+        source_tier: finiteNonNegativeNumber(hit.source_tier),
+      },
+    ];
+  });
+}
+
 export function Repository({ initialFolderId = null, className }: RepositoryProps) {
   const [query, setQuery] = useState("");
   const [folders, setFolders] = useState<FolderSummary[]>([]);
@@ -40,7 +89,9 @@ export function Repository({ initialFolderId = null, className }: RepositoryProp
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    listFolders().then(setFolders).catch(() => setFolders([]));
+    listFolders()
+      .then((f) => setFolders(Array.isArray(f) ? safeFolders(f) : []))
+      .catch(() => setFolders([]));
   }, []);
 
   useEffect(() => {
@@ -49,7 +100,7 @@ export function Repository({ initialFolderId = null, className }: RepositoryProp
     setError(null);
     searchRepository({ q: query, folderId: activeFolder ?? undefined, limit: 50 })
       .then((h) => {
-        if (!cancelled) setHits(h);
+        if (!cancelled) setHits(Array.isArray(h) ? safeHits(h) : []);
       })
       .catch((e) => {
         if (!cancelled) setError(String(e));

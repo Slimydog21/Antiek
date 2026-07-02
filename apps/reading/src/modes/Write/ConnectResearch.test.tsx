@@ -76,4 +76,57 @@ describe("ConnectResearch — M1 connect or auto-spawn", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
     expect(onConnect).not.toHaveBeenCalled();
   });
+
+  it("drops malformed listed projects and trims valid project ids", async () => {
+    listInvestigationsMock.mockResolvedValue({
+      count: 3,
+      investigations: [
+        {
+          investigation_id: " inv-valid ",
+          question: "  Valid project  ",
+          status: "completed",
+          started_at: null,
+          completed_at: null,
+          cost_usd_total: 0,
+          parent_investigation_id: null,
+        },
+        {
+          investigation_id: " ",
+          question: "Invisible project",
+          status: "completed",
+          started_at: null,
+          completed_at: null,
+          cost_usd_total: 0,
+          parent_investigation_id: null,
+        },
+      ],
+    });
+    const onConnect = vi.fn();
+
+    render(<ConnectResearch pieceTitle="My memo" onConnect={onConnect} />);
+    await userEvent.click(await screen.findByText("Valid project"));
+
+    expect(onConnect).toHaveBeenCalledWith({
+      investigationId: "inv-valid",
+      label: "Valid project",
+    });
+    expect(screen.queryByText("Invisible project")).toBeNull();
+  });
+
+  it("surfaces malformed spawned ids instead of connecting silently", async () => {
+    startInvestigationMock.mockResolvedValue({
+      investigation_id: " ",
+      status: "in_progress",
+      start_event_id: "ev-1",
+    });
+    const onConnect = vi.fn();
+
+    render(<ConnectResearch pieceTitle="My memo" onConnect={onConnect} />);
+    await userEvent.click(await screen.findByText(/start without a project/i));
+
+    await waitFor(() =>
+      expect(screen.getByText(/did not return an id/)).toBeTruthy(),
+    );
+    expect(onConnect).not.toHaveBeenCalled();
+  });
 });
