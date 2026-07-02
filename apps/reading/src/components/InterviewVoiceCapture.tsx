@@ -54,6 +54,18 @@ interface Props {
   onUploadError?: (status: number, detail: string) => void;
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 export default function InterviewVoiceCapture({
   sessionId,
   onUploaded,
@@ -176,22 +188,23 @@ export default function InterviewVoiceCapture({
       if (!resp.ok) {
         let detail = `HTTP ${resp.status}`;
         try {
-          const body = await resp.json();
-          if (typeof body.detail === "string") detail = body.detail;
+          const body = record(await resp.json());
+          detail = nonEmptyString(body?.detail) ?? detail;
         } catch {
           // keep the status-only detail
         }
         if (onUploadError) onUploadError(resp.status, detail);
         throw new Error(`Upload failed: ${detail}`);
       }
-      const data = await resp.json();
+      const data = record(await resp.json());
       setState("uploaded");
-      if (data.audio_url && onUploaded) {
-        onUploaded(data.audio_url);
+      const audioUrl = nonEmptyString(data?.audio_url);
+      if (audioUrl && onUploaded) {
+        onUploaded(audioUrl);
       } else if (onUploaded) {
         // The token-gated route returns the transcript, not an audio_url; still
         // signal completion so the invitee surface can advance.
-        onUploaded(typeof data.transcript === "string" ? data.transcript : "");
+        onUploaded(nonEmptyString(data?.transcript) ?? "");
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
