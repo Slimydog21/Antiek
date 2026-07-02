@@ -15,12 +15,12 @@ import { IdeaDump } from "./IdeaDump";
 
 beforeEach(() => {
   emitBrainstormBlocksMock.mockReset().mockResolvedValue({
-    block_ids: [" oblk-1 ", "", 42],
+    block_ids: [" oblk-1 ", "", 42, "oblk-1"],
     insight_count: "1",
     question_count: -1,
     data_count: Number.NaN,
     skipped_duplicates: "2",
-    flagged_unverified: [" asserted datum ", "", 99],
+    flagged_unverified: [" asserted datum ", "", 99, "asserted datum"],
   });
 });
 

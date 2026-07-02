@@ -369,8 +369,8 @@ describe("writeApi client contracts", () => {
         section_id: " sec-1 ",
         prose_text: "  Draft paragraph.  ",
         unsupported_paragraphs: ["0", 1.5, 2],
-        fabricated_citations: [" c1 ", ""],
-        prose_provenance: { " 0 ": [" oblk-1 ", "", 7] },
+        fabricated_citations: [" c1 ", "", "c1"],
+        prose_provenance: { " 0 ": [" oblk-1 ", "", 7, "oblk-1"] },
       }),
     );
     await expect(generateSection("sec 1")).resolves.toEqual({
@@ -412,7 +412,7 @@ describe("writeApi client contracts", () => {
         full_text_allowed: true,
         document_id: " doc-1 ",
         document_title: "  Source Book  ",
-        chunk_ids: [" c1 ", "", 9],
+        chunk_ids: [" c1 ", "", 9, "c1"],
         primary_chunk_index: "2",
         primary_section_path: "  Page 3  ",
         servability_status: " servable ",
@@ -436,7 +436,7 @@ describe("writeApi client contracts", () => {
       jsonResponse({
         deliverable_id: " dlv-1 ",
         section_id: " sec-1 ",
-        block_ids: [" oblk-1 ", "", 7],
+        block_ids: [" oblk-1 ", "", 7, "oblk-1"],
       }),
     );
 
@@ -488,12 +488,12 @@ describe("writeApi client contracts", () => {
   it("emits brainstorm drivers as user-originated blocks through the write endpoint", async () => {
     apiFetchMock.mockResolvedValueOnce(
       jsonResponse({
-        block_ids: [" b1 ", "", 5],
+        block_ids: [" b1 ", "", 5, "b1"],
         insight_count: "1",
         question_count: 1,
         data_count: 1.5,
         skipped_duplicates: -1,
-        flagged_unverified: [" Revenue doubled ", ""],
+        flagged_unverified: [" Revenue doubled ", "", "Revenue doubled"],
       }),
     );
 

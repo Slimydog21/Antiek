@@ -24,13 +24,17 @@ function stringArray(value: unknown): string[] {
   });
 }
 
+function uniqueStringArray(value: unknown): string[] {
+  return Array.from(new Set(stringArray(value)));
+}
+
 export function safeBrainstormEmitResult(result: BrainstormEmitResult): BrainstormEmitResult {
   return {
-    block_ids: stringArray(result.block_ids),
+    block_ids: uniqueStringArray(result.block_ids),
     insight_count: finiteNonNegativeNumber(result.insight_count),
     question_count: finiteNonNegativeNumber(result.question_count),
     data_count: finiteNonNegativeNumber(result.data_count),
     skipped_duplicates: finiteNonNegativeNumber(result.skipped_duplicates),
-    flagged_unverified: stringArray(result.flagged_unverified),
+    flagged_unverified: uniqueStringArray(result.flagged_unverified),
   };
 }
