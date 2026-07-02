@@ -166,6 +166,58 @@ describe("Xray — paragraph↔blocks over persisted provenance", () => {
     expect(uses.textContent).not.toContain("chunk 9");
   });
 
+  it("sanitizes malformed allowed trace metadata before source labeling", async () => {
+    vi.mocked(getTraceTarget).mockResolvedValueOnce({
+      kind: "",
+      full_text_allowed: true,
+      document_id: " doc-1 ",
+      document_title: "  Source Book  ",
+      chunk_ids: [" c1 ", "", 42 as unknown as string],
+      primary_chunk_index: "2" as unknown as number,
+      primary_section_path: " ",
+      servability_status: "",
+      detail: "",
+    });
+    render(
+      <Xray
+        proseText={`Para one [b: ${NODE}].`}
+        proseProvenance={{ "0": [NODE] }}
+        blocks={[block()]}
+      />,
+    );
+    await userEvent.click(screen.getByTestId("xray-paragraph-0").querySelector("button")!);
+    await userEvent.click(screen.getByTestId("xray-paragraph-blocks-0").querySelector("button")!);
+    const uses = await screen.findByTestId("xray-block-uses");
+    expect(uses.textContent).toContain("Source: Source Book · chunk 3");
+    expect(uses.textContent).not.toContain("  Source Book  ");
+  });
+
+  it("treats allowed traces without a usable document title as unresolved", async () => {
+    vi.mocked(getTraceTarget).mockResolvedValueOnce({
+      kind: "document",
+      full_text_allowed: true,
+      document_id: "doc-1",
+      document_title: " ",
+      chunk_ids: ["c1"],
+      primary_chunk_index: 0,
+      primary_section_path: "Page 1",
+      servability_status: "servable",
+      detail: "",
+    });
+    render(
+      <Xray
+        proseText={`Para one [b: ${NODE}].`}
+        proseProvenance={{ "0": [NODE] }}
+        blocks={[block()]}
+      />,
+    );
+    await userEvent.click(screen.getByTestId("xray-paragraph-0").querySelector("button")!);
+    await userEvent.click(screen.getByTestId("xray-paragraph-blocks-0").querySelector("button")!);
+    const uses = await screen.findByTestId("xray-block-uses");
+    expect(uses.textContent).toContain("Resolving source");
+    expect(uses.textContent).not.toContain("Page 1");
+  });
+
   it("rigor #3a — a paragraph with ZERO blocks is flagged unsupported, not faked", async () => {
     render(
       <Xray
