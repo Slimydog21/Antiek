@@ -29,6 +29,10 @@ import duckdb
 from fastapi import FastAPI
 from pydantic import BaseModel
 
+from substrate.coordination.activation_view import (
+    ReadActivationView,
+    build_read_activation_view,
+)
 from substrate.coordination.consent_view import (
     ConsentView,
     IpHolderConsentRow,
@@ -184,6 +188,38 @@ class OperatorGateFocusResponse(BaseModel):
         )
 
 
+class ReadActivationStatusResponse(BaseModel):
+    source_path: str
+    state: str
+    total_sessions: int
+    valid_sessions: int
+    invalid_session_count: int
+    live_provider_sessions: int
+    citation_trace_sessions: int
+    non_library_sessions: int
+    final_verdict: str | None
+    closure_ready: bool
+    remaining_requirements: dict[str, int]
+    failures: list[str]
+
+    @classmethod
+    def from_view(cls, view: ReadActivationView) -> ReadActivationStatusResponse:
+        return cls(
+            source_path=view.source_path,
+            state=view.state,
+            total_sessions=view.total_sessions,
+            valid_sessions=view.valid_sessions,
+            invalid_session_count=view.invalid_session_count,
+            live_provider_sessions=view.live_provider_sessions,
+            citation_trace_sessions=view.citation_trace_sessions,
+            non_library_sessions=view.non_library_sessions,
+            final_verdict=view.final_verdict,
+            closure_ready=view.closure_ready,
+            remaining_requirements=dict(view.remaining_requirements),
+            failures=list(view.failures),
+        )
+
+
 class RoadmapResponse(BaseModel):
     total_sprints: int
     superseded_count: int
@@ -196,6 +232,7 @@ class RoadmapResponse(BaseModel):
     dependency_blockers: list[DependencyBlockerResponse]
     execution_focus: ExecutionFocusResponse | None
     operator_gate_focus: OperatorGateFocusResponse | None
+    read_activation: ReadActivationStatusResponse
     substrate_layers: list[SubstrateLayerResponse]
 
     @classmethod
@@ -203,6 +240,7 @@ class RoadmapResponse(BaseModel):
         cls,
         rm: Roadmap,
         gate_ledger: GateLedger | None = None,
+        read_activation: ReadActivationView | None = None,
     ) -> RoadmapResponse:
         focus = rm.execution_focus()
         operator_focus = None
@@ -242,6 +280,9 @@ class RoadmapResponse(BaseModel):
                 ExecutionFocusResponse.from_focus(focus) if focus is not None else None
             ),
             operator_gate_focus=operator_focus,
+            read_activation=ReadActivationStatusResponse.from_view(
+                read_activation or build_read_activation_view()
+            ),
             substrate_layers=[
                 SubstrateLayerResponse(
                     name=layer.name,
@@ -450,7 +491,11 @@ def register_coordination_routes(app: FastAPI) -> None:
         """The cross-spec roadmap — 45 sprints reconciled from the real roster
         files + SPR-01's dependency DAG, DRW critical path explicit, dependency
         blockers and execution focus derived from dependency state."""
-        return RoadmapResponse.from_roadmap(build_roadmap(), load_gate_ledger())
+        return RoadmapResponse.from_roadmap(
+            build_roadmap(),
+            load_gate_ledger(),
+            build_read_activation_view(),
+        )
 
     @app.get(
         "/coordination/cost",

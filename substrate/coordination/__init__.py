@@ -24,6 +24,11 @@ read** from canonical sources this package never writes:
   escrow (accruing, gated on G2+G3 read from the gate ledger) / servability
   (the SPR-03 seam) — accrual ≠ disbursement, with NO disbursement path (SPR-07).
 
+* :mod:`substrate.coordination.activation_view` surfaces the Read activation
+  dogfood counters from ``reports/read-dogfood.jsonl`` using the same validator
+  as ``tools.activation.read_dogfood``. It is status only; the CLI + operator
+  verdict remain the closure authority.
+
 The binding rule for the whole package: **integration, not duplication — the
 ledger is a view over the source, never a second gate store.** If the operator
 edits the gate file or a roster changes, the dashboard reflects it on next read.
@@ -31,6 +36,11 @@ edits the gate file or a roster changes, the dashboard reflects it on next read.
 
 from __future__ import annotations
 
+from .activation_view import (
+    ReadActivationView,
+    build_read_activation_view,
+    default_read_dogfood_log_path,
+)
 from .consent_view import (
     ConsentView,
     DisbursementGate,
@@ -64,6 +74,10 @@ from .roadmap import (
 )
 
 __all__ = [
+    # activation view
+    "ReadActivationView",
+    "build_read_activation_view",
+    "default_read_dogfood_log_path",
     # gate ledger
     "Gate",
     "GateImpact",

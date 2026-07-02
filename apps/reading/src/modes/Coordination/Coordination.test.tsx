@@ -130,6 +130,25 @@ describe("Coordination", () => {
             blocks: " payouts ",
             source_path: " docs/operator_gate_actions.md ",
           },
+          read_activation: {
+            source_path: " reports/read-dogfood.jsonl ",
+            state: " incomplete ",
+            total_sessions: "2.9",
+            valid_sessions: "1",
+            invalid_session_count: "1",
+            live_provider_sessions: "0",
+            citation_trace_sessions: "1",
+            non_library_sessions: "0",
+            final_verdict: " ",
+            closure_ready: "yes",
+            remaining_requirements: {
+              valid_sessions: "9",
+              live_provider_sessions: "5",
+              citation_trace_sessions: "2",
+              non_library_sessions: "1",
+            },
+            failures: [" bad row ", " "],
+          },
           substrate_layers: [
             {
               name: " db lock ",
@@ -157,6 +176,13 @@ describe("Coordination", () => {
 
     expect(screen.getByText("library browse")).toBeTruthy();
     expect(screen.getByText("structural status is not activation closure")).toBeTruthy();
+    expect(screen.getByText("Read activation dogfood")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "1/2 valid · 0 live-provider · 1 citation-traced · 0 non-library · verdict=missing",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("1 invalid session need repair.")).toBeTruthy();
     expect(screen.getByText("waits on drw:10")).toBeTruthy();
     expect(screen.getByText("1 dependency-ready · 1 blocked by dependency state")).toBeTruthy();
     expect(screen.getByText("Dependency-ready")).toBeTruthy();
@@ -202,6 +228,25 @@ describe("Coordination", () => {
             owner: " Legal ",
             blocks: " payouts ",
             source_path: " docs/operator_gate_actions.md ",
+          },
+          read_activation: {
+            source_path: " reports/read-dogfood.jsonl ",
+            state: "not_started",
+            total_sessions: 0,
+            valid_sessions: 0,
+            invalid_session_count: 0,
+            live_provider_sessions: 0,
+            citation_trace_sessions: 0,
+            non_library_sessions: 0,
+            final_verdict: null,
+            closure_ready: false,
+            remaining_requirements: {
+              valid_sessions: 10,
+              live_provider_sessions: 5,
+              citation_trace_sessions: 3,
+              non_library_sessions: 1,
+            },
+            failures: [],
           },
           substrate_layers: [],
         }),
