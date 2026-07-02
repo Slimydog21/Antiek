@@ -55,6 +55,16 @@ function uniqueBooks(books: BookSummary[]): BookSummary[] {
   });
 }
 
+function uniqueStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values.flatMap((value) => {
+    const trimmed = nonEmptyString(value);
+    if (!trimmed || seen.has(trimmed)) return [];
+    seen.add(trimmed);
+    return [trimmed];
+  });
+}
+
 export default function Library() {
   const navigate = useNavigate();
   const openDocument = useOpenDocument();
@@ -116,7 +126,7 @@ export default function Library() {
     setError(null);
     try {
       const res = await curateBooks(prompt);
-      setCuratedOrder(res.books.map((b) => b.document_id));
+      setCuratedOrder(uniqueStrings(res.books.map((b) => b.document_id)));
       setCuratePrompt(prompt);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));

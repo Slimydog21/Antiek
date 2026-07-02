@@ -265,4 +265,32 @@ describe("Library", () => {
     const cards = screen.getAllByRole("button", { name: /^Open / });
     expect(cards[0].getAttribute("aria-label")).toMatch(/Second Book/);
   });
+
+  it("renders duplicate curated documents once after API normalization", async () => {
+    const second = { ...servableBook, document_id: "doc-2", title: "Second Book" };
+    listBooksMock.mockResolvedValue({ books: [servableBook, second], count: 2 });
+    curateBooksMock.mockResolvedValue({
+      prompt: "stoicism",
+      books: [
+        { document_id: " doc-2 ", title: "Second Book", author: "A", score: 0.9 },
+        { document_id: "doc-2", title: "Duplicate Second Book", author: "B", score: 0.8 },
+        { document_id: "doc-pd", title: "Meditations", author: "Marcus Aurelius", score: 0.4 },
+      ],
+    });
+    renderLibrary();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Open Meditations/ })).toBeTruthy(),
+    );
+
+    fireEvent.change(screen.getByLabelText("Curate the library by prompt"), {
+      target: { value: "stoicism" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Curate" }));
+
+    await waitFor(() => expect(screen.getByText(/Curated for/)).toBeTruthy());
+    const cards = screen.getAllByRole("button", { name: /^Open / });
+    expect(cards).toHaveLength(2);
+    expect(cards[0].getAttribute("aria-label")).toMatch(/Second Book/);
+    expect(cards[1].getAttribute("aria-label")).toMatch(/Meditations/);
+  });
 });

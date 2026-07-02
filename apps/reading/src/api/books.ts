@@ -540,10 +540,13 @@ function safeCuratedBook(value: unknown): CuratedBook | null {
 
 function safeCurateResponse(value: unknown, fallbackPrompt: string): CurateResponse {
   const body = record(value);
+  const seen = new Set<string>();
   const books = Array.isArray(body?.books)
     ? body.books.flatMap((item) => {
         const book = safeCuratedBook(item);
-        return book ? [book] : [];
+        if (!book || seen.has(book.document_id)) return [];
+        seen.add(book.document_id);
+        return [book];
       })
     : [];
   return {

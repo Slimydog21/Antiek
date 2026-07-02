@@ -1177,6 +1177,45 @@ describe("books api — curate boundary", () => {
     });
   });
 
+  it("dedupes duplicate curated book ids after trimming", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          prompt: "stoicism",
+          books: [
+            {
+              document_id: " doc-dup ",
+              title: "First curated",
+              author: "Ada",
+              score: 0.9,
+            },
+            {
+              document_id: "doc-dup",
+              title: "Duplicate curated",
+              author: "Grace",
+              score: 1,
+            },
+            {
+              document_id: "doc-other",
+              title: "Other curated",
+              author: "Lin",
+              score: 0.5,
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(curateBooks("stoicism")).resolves.toEqual({
+      prompt: "stoicism",
+      books: [
+        { document_id: "doc-dup", title: "First curated", author: "Ada", score: 0.9 },
+        { document_id: "doc-other", title: "Other curated", author: "Lin", score: 0.5 },
+      ],
+    });
+  });
+
   it("rejects malformed curation requests before sending", async () => {
     await expect(curateBooks(" ")).rejects.toThrow(/prompt/);
     await expect(curateBooks("stoicism", 0)).rejects.toThrow(/limit/);
