@@ -67,7 +67,12 @@ class FrameSecondIn(BaseModel):
 class WindowFrameBatchIn(BaseModel):
     window_id: str
     seconds: list[FrameSecondIn] = Field(default_factory=list)
-    ad_value_usd_cents: int
+    # NOTE (AFA-S1, frame-telemetry-v2): ``ad_value_usd_cents`` is intentionally
+    # ABSENT from the inbound shape. The client measures attention; the SERVER
+    # prices the window (``resolve_window_value_cents``). A client that still
+    # sends the field has it SILENTLY DROPPED by pydantic (extra fields ignored)
+    # — it can never influence the accrued value. The red-proof is
+    # ``test_ad_routes.py::test_frame_telemetry_ignores_client_supplied_value``.
     schema_version: str = FRAME_TELEMETRY_SCHEMA_VERSION
 
 
@@ -131,6 +136,28 @@ def _resolve_asset_gate(
         sorted(asset_ids),
     ).fetchall()
     return {r[0]: (r[1], r[2]) for r in rows}
+
+
+def resolve_window_value_cents(window_id: str) -> int:
+    """Mint the window's ad value SERVER-SIDE (AFA-S1, frame-telemetry-v2).
+
+    This is the trust seam that replaces the removed client-supplied
+    ``ad_value_usd_cents``. Today it returns 0: no pricing exists, so every
+    window is ``unpriced`` and accrues zero to escrow (honest — no fabricated
+    value). It NEVER reads anything the client sent.
+
+    SPR-10 (the auction) is this function's future join: it will look up the
+    priced fill decision recorded for ``window_id`` and return that window's
+    total cents. When it does, the value becomes real WITHOUT any client change
+    — the emitter already sends no value, and the server has always been the
+    only authority. Keeping the seam here (module scope, not nested) makes it
+    unit-testable and monkeypatchable: accrual-math tests inject a nonzero
+    value; the production default is 0.
+    """
+    # window_id is accepted now (not yet used) so the SPR-10 join is a
+    # body change here, not a signature change at every call site.
+    _ = window_id
+    return 0
 
 
 def register_ad_routes(app: FastAPI) -> None:
@@ -220,7 +247,11 @@ def register_ad_routes(app: FastAPI) -> None:
             batch = WindowFrameBatch(
                 window_id=batch_in.window_id,
                 seconds=seconds,
-                ad_value_usd_cents=batch_in.ad_value_usd_cents,
+                # SERVER-MINTED (AFA-S1, frame-telemetry-v2): the value is
+                # resolved here, never echoed from the request. The module-level
+                # seam is monkeypatchable so accrual-math tests can inject a
+                # value; production returns 0 until SPR-10 prices the window.
+                ad_value_usd_cents=resolve_window_value_cents(batch_in.window_id),
                 schema_version=batch_in.schema_version,
             )
         except ValueError as exc:

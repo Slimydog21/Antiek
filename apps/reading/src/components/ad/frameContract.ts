@@ -25,7 +25,7 @@
  * If this string and the Python constant drift, frameContract.test.ts fails —
  * that is the whole point of the pin.
  */
-export const FRAME_TELEMETRY_SCHEMA_VERSION = "frame-telemetry-v1";
+export const FRAME_TELEMETRY_SCHEMA_VERSION = "frame-telemetry-v2";
 
 /**
  * The four product workflows a window can belong to. Mirrors
@@ -75,17 +75,19 @@ export interface FrameSecond {
 
 /**
  * The compact per-window batch the emitter flushes — the unit the backend
- * consumes, NOT one request per second. Mirrors
- * ``frame_attention.WindowFrameBatch``.
+ * consumes, NOT one request per second. Mirrors the CLIENT-INBOUND shape of
+ * ``frame_attention.WindowFrameBatch`` (v2).
  *
- * ``ad_value_usd_cents`` is the window's total ad value for the seconds in
- * this batch, an INPUT priced by SPR-10's auction (out of scope here); the
- * emitter sends 0 until that pricing exists, which is honest (no fabricated
- * value). ``schema_version`` defaults to the stamped constant.
+ * ``ad_value_usd_cents`` is NOT here (AFA-S1, frame-telemetry-v2): the window's
+ * ad value is priced by the SERVER, never the client. The emitter measures
+ * attention and sends no value; the server mints it at accrual time
+ * (``ad_routes.resolve_window_value_cents``). The Python server-side dataclass
+ * KEEPS the field — it is what the accrual apportions — but it is populated
+ * server-side, so it is absent from this client mirror. ``schema_version``
+ * defaults to the stamped constant.
  */
 export interface WindowFrameBatch {
   window_id: string;
   seconds: FrameSecond[];
-  ad_value_usd_cents: number;
   schema_version: string;
 }

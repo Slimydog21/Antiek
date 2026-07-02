@@ -114,7 +114,17 @@ from .attribution_explain import _largest_remainder_cents
 # shape (a new visibility feature, a renamed field, a changed unit) so the
 # SPR-07 emitter and the backend cannot silently diverge. Stamped onto every
 # persisted accrual + house-second row so a dispute points at the exact shape.
-FRAME_TELEMETRY_SCHEMA_VERSION = "frame-telemetry-v1"
+#
+# v1 -> v2 (AFA-S1, 2026-07-02): ``ad_value_usd_cents`` was REMOVED from the
+# client-inbound wire shape. The client measures attention; it must never price
+# it. The window's ad value is now MINTED SERVER-SIDE at accrual time (see
+# ``interfaces/research/api/ad_routes.py::resolve_window_value_cents``). The
+# server-side ``WindowFrameBatch`` dataclass below KEEPS the field — it is the
+# value the accrual apportions — but it is now populated by the server, never
+# echoed from the request. A v1 batch (which still carries a client value) is
+# rejected 409 by the route's version gate, so no ordering window exists in
+# which a client-priced batch accrues against v2 semantics.
+FRAME_TELEMETRY_SCHEMA_VERSION = "frame-telemetry-v2"
 
 # The weighting-math version. Bump WHENEVER the math in :func:`weigh_second`
 # changes (a new feature term, a different blend, a different tie-break). Kept
@@ -231,9 +241,12 @@ class WindowFrameBatch:
     backend consumes — NOT one row per second).
 
     ``ad_value_usd_cents`` is the window's TOTAL ad value for the seconds in
-    this batch, supplied as an INPUT (priced by SPR-10's auction — out of scope
-    here). It is apportioned per-second-equally across ``len(seconds)`` seconds
-    before per-asset weighting, so the window reconciles exactly (M6).
+    this batch. As of frame-telemetry-v2 (AFA-S1) it is MINTED SERVER-SIDE
+    (``ad_routes.resolve_window_value_cents``; 0 until SPR-10's auction prices
+    the window) and is NEVER supplied by the client, which measures attention
+    and prices nothing. It is apportioned per-second-equally across
+    ``len(seconds)`` seconds before per-asset weighting, so the window
+    reconciles exactly (M6).
 
     ``schema_version`` is stamped so a batch flushed by an old emitter is
     identifiable. ``window_id`` is the trace anchor for every accrual derived
