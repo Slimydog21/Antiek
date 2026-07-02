@@ -372,6 +372,31 @@ describe("MetaReading (M4)", () => {
     });
   });
 
+  it("saved-asset promotion skips blank-leading corpus document ids", async () => {
+    acceptPromotionMock.mockResolvedValue({ investigation_id: "inv-from-saved" });
+    await reopenSaved({ corpus_document_ids: [" ", " doc-mr "] });
+
+    fireEvent.click(screen.getByRole("button", { name: /Chase it as a research/ }));
+
+    await screen.findByTestId("promote-done");
+    expect(acceptPromotionMock).toHaveBeenCalledWith({
+      assetId: "mr-saved",
+      prompt: "saved free will prompt",
+      documentId: "doc-mr",
+    });
+  });
+
+  it("promotion with no source document fails honestly without calling the mutation", async () => {
+    await reopenSaved({ corpus_document_ids: [" "] });
+
+    fireEvent.click(screen.getByRole("button", { name: /Chase it as a research/ }));
+
+    expect(await screen.findByText(/Couldn’t promote this reading/i)).toBeTruthy();
+    expect(screen.getByText(/Engine: Meta-reading has no source document to promote/i)).toBeTruthy();
+    expect(acceptPromotionMock).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("promote-done")).toBeNull();
+  });
+
   it("clears stale saved-asset report and promotion state while loading a different saved asset", async () => {
     const next = deferred<SavedMetaReading>();
     getSavedMetaReadingMock.mockImplementation((id: string) => {
