@@ -45,12 +45,13 @@
 | P-37 | Unified substrate contract + lock | `substrate/contracts/` + `dependency_map.py` + `unified_sprint_lock.py` | `./scripts/canonical_verify.sh unified-substrate-contract-lock` | — | Live untracked spec-file citation regeneration |
 | P-38 | Unified remote exec fanout | `runtime/remote_exec/` + `runtime/research_runner/` factory seam | `./scripts/canonical_verify.sh unified-remote-exec-fanout` | `infrastructure/runbooks/remote-exec-fanout.md` live smoke | Live Daytona credentials/provider throughput |
 | P-39 | Unified seams + collisions | `substrate/seams/` + seam/collision guards | `./scripts/canonical_verify.sh unified-seams-and-collisions` | — | Live product-side write-to-speak commission implementation |
-| P-40 | Agent handoff schema | `tools/agent/verify_handoff.ts` | `./scripts/canonical_verify.sh handoff <md>` | — | Narrative quality / intent |
-| P-41 | Session theater grep | `scripts/audit_agent_session.sh` | paired with handoff subcommand | — | Claims outside markdown packet |
-| P-42 | AMS spec ref-lint | `scripts/agent_ams_ref_lint.sh` | `bash scripts/agent_ams_ref_lint.sh <sprint.html>` | — | Playwright mountain shell |
-| P-43 | Reading substrate pytest | `.github/workflows/ci.yml` `pytest` job | CI on `main` (full suite) | — | Local hardware parity |
-| P-44 | Werner mascot / hop | `apps/reading` Werner paths per Werner htmlspec | `canonical_verify.sh agent-gates` + case study §5 | Werner operator card (htmlspec) | Measured p95 / fps without artifact |
-| P-45 | Serve / rights / legal | production deploy surfaces | **No** informational CI job alone (F7) | operator deploy checklist | Jurisdiction-specific legal review |
+| P-40 | Unified navigation IA taxonomy | `apps/reading/src/shell/workflowTaxonomy.ts` + `NavRail` | `./scripts/canonical_verify.sh unified-navigation-ia-taxonomy` | — | Browser/device visual QA for final rail polish |
+| P-41 | Agent handoff schema | `tools/agent/verify_handoff.ts` | `./scripts/canonical_verify.sh handoff <md>` | — | Narrative quality / intent |
+| P-42 | Session theater grep | `scripts/audit_agent_session.sh` | paired with handoff subcommand | — | Claims outside markdown packet |
+| P-43 | AMS spec ref-lint | `scripts/agent_ams_ref_lint.sh` | `bash scripts/agent_ams_ref_lint.sh <sprint.html>` | — | Playwright mountain shell |
+| P-44 | Reading substrate pytest | `.github/workflows/ci.yml` `pytest` job | CI on `main` (full suite) | — | Local hardware parity |
+| P-45 | Werner mascot / hop | `apps/reading` Werner paths per Werner htmlspec | `canonical_verify.sh agent-gates` + case study §5 | Werner operator card (htmlspec) | Measured p95 / fps without artifact |
+| P-46 | Serve / rights / legal | production deploy surfaces | **No** informational CI job alone (F7) | operator deploy checklist | Jurisdiction-specific legal review |
 
 ## How to use
 

@@ -30,6 +30,9 @@ on:
       - 'apps/reading/src/modes/SpeakInvite/**'
       - 'apps/reading/src/modes/DeepResearchWorkspace/**'
       - 'apps/reading/src/lib/speakApi*'
+      - 'apps/reading/src/shell/**'
+      - 'apps/reading/src/workspace/**'
+      - 'apps/reading/src/App.tsx'
       - 'interfaces/research/api/cascade_routes.py'
       - 'interfaces/research/api/books.py'
       - 'interfaces/research/api/library.py'
@@ -124,6 +127,9 @@ on:
       - 'apps/reading/src/modes/SpeakInvite/**'
       - 'apps/reading/src/modes/DeepResearchWorkspace/**'
       - 'apps/reading/src/lib/speakApi*'
+      - 'apps/reading/src/shell/**'
+      - 'apps/reading/src/workspace/**'
+      - 'apps/reading/src/App.tsx'
       - 'interfaces/research/api/cascade_routes.py'
       - 'interfaces/research/api/books.py'
       - 'interfaces/research/api/library.py'
@@ -328,6 +334,9 @@ jobs:
 
       - name: Canonical verify — unified seams and collisions
         run: ./scripts/canonical_verify.sh unified-seams-and-collisions
+
+      - name: Canonical verify — unified navigation IA taxonomy
+        run: ./scripts/canonical_verify.sh unified-navigation-ia-taxonomy
 
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md
