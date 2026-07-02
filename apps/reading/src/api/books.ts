@@ -619,6 +619,20 @@ function sanitizeBookCitations(value: unknown): BookCitation[] {
   });
 }
 
+function sanitizeTalkHistory(value: unknown): TalkTurn[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const turn = record(item);
+    const question = nonEmptyString(turn?.question);
+    const answer = nonEmptyString(turn?.answer);
+    return question && answer ? [{ question, answer }] : [];
+  });
+}
+
+function safeResearchTier(value: unknown): "fast" | "deep" {
+  return value === "fast" ? "fast" : "deep";
+}
+
 function safeAskBookResponse(value: unknown): AskBookResponse {
   const body = record(value);
   const answer = body ? nonEmptyString(body.answer) : null;
@@ -644,13 +658,15 @@ export async function askBook(
 ): Promise<AskBookResponse> {
   const resolvedDocumentId = requireNonEmptyRequestString(documentId, "documentId");
   const resolvedQuestion = requireNonEmptyRequestString(question, "question");
+  const history = sanitizeTalkHistory(opts?.history);
+  const researchTier = safeResearchTier(opts?.researchTier);
   const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(resolvedDocumentId)}/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       question: resolvedQuestion,
-      history: opts?.history ?? [],
-      research_tier: opts?.researchTier ?? "deep",
+      history,
+      research_tier: researchTier,
     }),
   });
   if (resp.status === 404) throw new Error("book_not_found");
