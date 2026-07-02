@@ -131,6 +131,14 @@ function formatCostUsd(value: unknown): string {
 // byte-equivalence test).
 const REVIEW_DUE_ENABLED_DEFAULT = false;
 const EMPTY_EVENTS: readonly Event[] = [];
+const FINGERPRINT_COLORS = {
+  reviewDue: "var(--sun-deep)",
+  servable: "var(--aurora)",
+  restricted: "var(--emperor)",
+  method: "var(--aurora)",
+  result: "var(--bar-accent)",
+  default: "var(--text-muted)",
+} as const;
 
 /**
  * Run the decorations facet pass for the review-due augmentation over the
@@ -979,12 +987,12 @@ function CollapseFingerprints({
 }
 
 function fingerprintColor(classNames: readonly string[]): string {
-  if (classNames.includes(REVIEW_DUE_CLASS)) return "#f59e0b";
-  if (classNames.includes(SERVABLE_CLASS)) return "#10b981";
-  if (classNames.includes(RESTRICTED_CLASS)) return "#ef4444";
-  if (classNames.some((name) => name.includes("method"))) return "#3b82f6";
-  if (classNames.some((name) => name.includes("result"))) return "#14b8a6";
-  return "#64748b";
+  if (classNames.includes(REVIEW_DUE_CLASS)) return FINGERPRINT_COLORS.reviewDue;
+  if (classNames.includes(SERVABLE_CLASS)) return FINGERPRINT_COLORS.servable;
+  if (classNames.includes(RESTRICTED_CLASS)) return FINGERPRINT_COLORS.restricted;
+  if (classNames.some((name) => name.includes("method"))) return FINGERPRINT_COLORS.method;
+  if (classNames.some((name) => name.includes("result"))) return FINGERPRINT_COLORS.result;
+  return FINGERPRINT_COLORS.default;
 }
 
 function sourceHistoryTintClass(classNames: readonly string[]): string {
