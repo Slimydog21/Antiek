@@ -138,8 +138,8 @@ class CascadeSession:
         self._db_path = db_path or graph_db_path()
         self._leaves: dict[str, Leaf] = {}
         self._handles: dict[str, Handle] = {}
-        self._out: asyncio.Queue = asyncio.Queue()
-        self._pump_tasks: list[asyncio.Task] = []
+        self._out: asyncio.Queue[StepEvent | object] = asyncio.Queue()
+        self._pump_tasks: list[asyncio.Task[None]] = []
         # Set by background completion (``_run_to_completion``) when the Loop 1
         # synthesis tail raises. A non-None value means the session never
         # reached ``DeepResearchComplete`` because synthesis failed — the
@@ -182,7 +182,7 @@ class CascadeSession:
         """Multiplexed stream of every research's events. Ends when all
         researches have terminated. For durable reconnect, a fresh consumer
         first calls ``reconstruct_session`` then resubscribes here."""
-        async def _closer():
+        async def _closer() -> None:
             await asyncio.gather(*self._pump_tasks, return_exceptions=True)
             await self._out.put(_SESSION_DONE)
         closer = asyncio.create_task(_closer())
@@ -191,6 +191,7 @@ class CascadeSession:
                 item = await self._out.get()
                 if item is _SESSION_DONE:
                     return
+                assert isinstance(item, StepEvent)
                 yield item
         finally:
             closer.cancel()
@@ -205,7 +206,7 @@ class CascadeSession:
 
     # -- M4: aggregate cost --------------------------------------------
 
-    def aggregate_cost(self) -> dict:
+    def aggregate_cost(self) -> dict[str, object]:
         per = {iid: self._runner.cost(h).spent_usd for iid, h in self._handles.items()}
         return {
             "per_research": per,
@@ -216,7 +217,7 @@ class CascadeSession:
 
     # -- M5/M7: join, merge-on-complete, failure isolation -------------
 
-    async def join_and_merge(self) -> dict:
+    async def join_and_merge(self) -> dict[str, object]:
         """Wait for all researches; drain the promotion funnel; link each
         research's promoted insights to its sub-question node. One research
         failing does not abort the merge for its siblings."""
@@ -236,6 +237,7 @@ class CascadeSession:
     def _link_findings(self, leaf: Leaf) -> int:
         """Link insight nodes promoted under this research to its sub-question
         node via question --resolved_by--> insight edges."""
+        assert leaf.question_node_id is not None  # caller guards
         insight_ids = [
             ev.get("payload", {}).get("node_id")
             for ev in trajectory(leaf.investigation_id, events_dir=self._events_dir)
@@ -339,7 +341,7 @@ class CascadeSession:
             stage, self.session_id,
         )
 
-    def terminal_status(self) -> dict:
+    def terminal_status(self) -> dict[str, object]:
         """The session's deep-research terminal contract, for status surfaces.
 
         ``deep_research_complete`` is the authoritative Path-A convergence
@@ -399,6 +401,7 @@ class CascadeSession:
             except asyncio.QueueEmpty:
                 break
             if item is not _SESSION_DONE:
+                assert isinstance(item, StepEvent)
                 out.append(item)
         return out
 

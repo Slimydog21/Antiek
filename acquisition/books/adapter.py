@@ -49,7 +49,7 @@ from substrate.graph.ops import (  # noqa: E402
 )
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 
-from .reader import ReadResult, read_pdf  # noqa: E402
+from .reader import ReadResult, TocEntry, read_pdf  # noqa: E402
 
 DEFAULT_BOOK_SOURCE_TIER = 2
 _NODE_LABEL_MAX = 160
@@ -104,7 +104,7 @@ class IngestBookResult:
     # Flattened bookmark outline from the PDF (Read SPR-01). Carried on
     # the result so the servable-book orchestrator doesn't re-read the PDF
     # just to recover the TOC.
-    toc: list = field(default_factory=list)
+    toc: list[TocEntry] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
