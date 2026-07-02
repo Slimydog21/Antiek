@@ -676,6 +676,37 @@ export function landingModeForWorkflow(workflow: Workflow): ModeEntry | undefine
   );
 }
 
+function routePrefix(route: string): string {
+  return route.replace(/\/:.*/, "");
+}
+
+function routeMatchesPath(route: string, pathname: string): boolean {
+  if (!route.includes("/:")) return route === pathname;
+  const prefix = routePrefix(route);
+  return pathname.startsWith(`${prefix}/`);
+}
+
+/**
+ * Resolve the routed mode for a pathname. Dynamic routes prefer their
+ * parameterized owner (for example `/read/doc-1` → Reader), exact routes win
+ * for bare pages, and longer bare prefixes cover route-owned detail pages such
+ * as `/write/dlv-1` when the taxonomy exposes the workflow door as `/write`.
+ */
+export function modeForPath(pathname: string): ModeEntry | undefined {
+  const routed = MODE_TAXONOMY.filter((m) => m.route);
+  const dynamic = routed
+    .filter((m) => m.route!.includes("/:") && routeMatchesPath(m.route!, pathname))
+    .sort((a, b) => routePrefix(b.route!).length - routePrefix(a.route!).length)[0];
+  if (dynamic) return dynamic;
+
+  const exact = routed.find((m) => m.route === pathname);
+  if (exact) return exact;
+
+  return routed
+    .filter((m) => !m.route!.includes(":") && pathname.startsWith(`${m.route!}/`))
+    .sort((a, b) => b.route!.length - a.route!.length)[0];
+}
+
 /**
  * Single source of truth for the rail boundary. Returns true exactly when
  * the workflow is one of the four members of WORKFLOW_ORDER. The shared
