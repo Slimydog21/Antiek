@@ -67,6 +67,11 @@ function ResearchProbe() {
   return <div>RESEARCH {investigationId}</div>;
 }
 
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname}</div>;
+}
+
 beforeEach(() => {
   listDeliverablesMock.mockReset().mockResolvedValue({ count: 0, deliverables: [] });
   getDeliverableMock.mockReset().mockResolvedValue(null);
@@ -115,6 +120,7 @@ afterEach(cleanup);
 function mountAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
+      <LocationProbe />
       <Routes>
         <Route path="/write" element={<WriteHome />} />
         <Route path="/write/:deliverableId" element={<WriteHome />} />
@@ -206,6 +212,31 @@ describe("WriteHome — the re-homed door", () => {
     await waitFor(() => expect(getDeliverableMock).toHaveBeenCalledWith("dlv-valid"));
   });
 
+  it("encodes listed piece ids before opening them", async () => {
+    listDeliverablesMock.mockResolvedValue({
+      count: 1,
+      deliverables: [
+        {
+          deliverable_id: "dlv dirty/valid",
+          title: "Dirty routed memo",
+          deliverable_kind: "general_essay",
+          investigation_root_id: "inv-root",
+          status: "draft",
+          created_at: null,
+          updated_at: null,
+          section_count: 1,
+        },
+      ],
+    });
+
+    mountAt("/write");
+    await userEvent.click(await screen.findByText("Dirty routed memo"));
+
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/write/dlv%20dirty%2Fvalid",
+    );
+  });
+
   it("sanitizes open-piece detail before rendering sections", async () => {
     getDeliverableMock.mockResolvedValue({
       deliverable_id: " dlv-open ",
@@ -270,6 +301,31 @@ describe("WriteHome — the re-homed door", () => {
         title: "A margins memo",
         investigation_root_id: "inv-spawned",
       }),
+    );
+  });
+
+  it("encodes a newly created piece id before opening it", async () => {
+    createDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv dirty/new",
+      title: "Memo",
+      deliverable_kind: "general_essay",
+      investigation_root_id: "inv-spawned",
+      status: "draft",
+      created_at: null,
+      updated_at: null,
+      section_count: 0,
+    });
+
+    mountAt("/write");
+    await userEvent.type(
+      await screen.findByPlaceholderText(/what are you writing/i),
+      "A margins memo",
+    );
+    await userEvent.click(await screen.findByText(/start without a project/i));
+    await waitFor(() => expect(createDeliverableMock).toHaveBeenCalled());
+
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/write/dlv%20dirty%2Fnew",
     );
   });
 
