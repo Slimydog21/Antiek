@@ -125,8 +125,9 @@ from __future__ import annotations
 import os
 import threading
 import time
+from collections.abc import Callable
 from datetime import date
-from typing import Any, Callable
+from typing import Any
 
 import httpx
 from fastapi import FastAPI, Query
