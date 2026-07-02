@@ -7,9 +7,11 @@ M4 provenance preserved — a folder membership is a node reference; the
    provenance chain (block→node→document) still resolves.
 M5 single-writer — folder writes require a LockedConnection.
 
-(The drag-into-outline UI and Storybook are frontend — out of scope for
-this backend slice; the drag creates an OutlineBlock referencing the same
-node, which is the SPR-01 place_block path, already tested.)
+This backend slice owns folders/search/provenance. The drag-into-outline
+surface is covered in the same canonical sprint gate by
+``src/modes/Write/Repository/dragToOutline.test.ts``: dropping a repository
+block creates an OutlineBlock referencing the same node through the SPR-01
+``place_block`` path, not a copied block.
 """
 
 from __future__ import annotations
@@ -70,6 +72,13 @@ def db(monkeypatch):
 
 def _read(path):
     return duckdb.connect(path, read_only=True)
+
+
+def test_module_scope_note_names_drag_provenance_gate():
+    doc = __doc__ or ""
+    assert "src/modes/Write/Repository/dragToOutline.test.ts" in doc
+    assert "same node" in doc
+    assert "out of scope for\nthis backend slice" not in doc
 
 
 # ── M1 — folders as views over nodes ───────────────────────────────
