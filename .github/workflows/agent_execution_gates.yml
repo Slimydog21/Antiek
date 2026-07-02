@@ -252,5 +252,8 @@ jobs:
       - name: Canonical verify — speak economics matrix
         run: ./scripts/canonical_verify.sh speak-economics-matrix
 
+      - name: Canonical verify — speak biography authoring
+        run: ./scripts/canonical_verify.sh speak-biography-authoring
+
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to SPEAK_SPRINTS. Status changes are deliberate roadmap
 # events, not prose-only handoffs.
-SPEAK_LOCK_VERSION: int = 7
+SPEAK_LOCK_VERSION: int = 8
 
 
 @dataclass(frozen=True)
@@ -102,7 +102,18 @@ SPEAK_SPRINTS: dict[int, SpeakDeliverable] = {
         # surface are covered by speak-economics-matrix.
         status="live",
     ),
-    8: SpeakDeliverable(8, "biography-authoring", "Biography authoring"),
+    8: SpeakDeliverable(
+        8,
+        "biography-authoring",
+        "Biography authoring",
+        # Live: claim-derived outline assembly, Write outline_blocks reuse,
+        # bounded deepening, creative_writer dispatch seam, public exclusion
+        # of unverified third-party claims, private unverified marking, voice
+        # style gate, contributor provenance, draft API route, and Speak
+        # assemble/no-fake-biography surface are covered by
+        # speak-biography-authoring.
+        status="live",
+    ),
     9: SpeakDeliverable(9, "publishing-physical", "Publishing + physical"),
 }
 
