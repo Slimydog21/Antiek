@@ -8,6 +8,7 @@
 #   read-foundation      — Read SPR-01 servable-corpus gate + lock
 #   read-library         — Read SPR-02 library browse + no-body catalog gate
 #   read-reader          — Read SPR-03 reader surface + structured-block gate
+#   read-curate          — Read SPR-04 prompt-to-curate servable-only gate
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #   deep-research        — ANT-DRL P-19..P-25 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
 #   html-transport       — ANT-AHT P-26 ResearchArtifact transport gates
@@ -33,7 +34,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|handoff <md>|agent-gates|deep-research|html-transport}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|handoff <md>|agent-gates|deep-research|html-transport}" >&2
   exit 2
 }
 
@@ -118,6 +119,17 @@ cmd_read_reader() {
   echo "CANONICAL_VERIFY_OK: read-reader"
 }
 
+cmd_read_curate() {
+  echo "== read-curate: servable-only curation backend =="
+  "${PY}" -m pytest tests/test_book_curate.py tests/test_contracts_read_lock.py -q --tb=no
+  echo "== read-curate: curation client + Library re-rank =="
+  (cd apps/reading && npm run test -- \
+    src/api/books.test.ts \
+    src/modes/Library/Library.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: read-curate"
+}
+
 cmd_handoff() {
   local f="${1:?handoff markdown path required}"
   echo "== handoff: schema linter =="
@@ -179,6 +191,7 @@ main() {
     read-foundation) cmd_read_foundation ;;
     read-library) cmd_read_library ;;
     read-reader) cmd_read_reader ;;
+    read-curate) cmd_read_curate ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     deep-research) cmd_deep_research ;;
