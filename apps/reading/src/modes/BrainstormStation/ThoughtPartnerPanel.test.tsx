@@ -202,7 +202,7 @@ describe("ThoughtPartnerPanel", () => {
         challenges: [
           {
             condition: " Valid challenge ",
-            note_ids: [" q-memory ", " ", 42],
+            note_ids: [" q-memory ", " ", 42, "q-memory"],
           },
           {
             condition: " ",
@@ -239,7 +239,7 @@ describe("ThoughtPartnerPanel", () => {
     expect(screen.getByText("q-memory")).toBeTruthy();
     expect(screen.getByText("policy: policy dirty")).toBeTruthy();
     expect(screen.getByText("anchored thread: thread dirty")).toBeTruthy();
-    expect(document.body.textContent).not.toMatch(/Skipped| q-memory |policy dirty /);
+    expect(document.body.textContent).not.toMatch(/Skipped| q-memory |q-memory, q-memory|policy dirty /);
   });
 
   it("parks an extension reply back into watch-for-later", async () => {

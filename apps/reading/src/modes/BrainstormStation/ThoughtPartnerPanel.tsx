@@ -50,6 +50,10 @@ function stringArray(value: unknown): string[] {
     : [];
 }
 
+function uniqueStringArray(value: unknown): string[] {
+  return Array.from(new Set(stringArray(value)));
+}
+
 function safeThoughtPartnerReply(value: unknown): ThoughtPartnerReply {
   const body = record(value);
   const shape =
@@ -63,7 +67,7 @@ function safeThoughtPartnerReply(value: unknown): ThoughtPartnerReply {
         const challenge = record(item);
         const condition = nonEmptyString(challenge?.condition);
         return condition
-          ? [{ condition, note_ids: stringArray(challenge?.note_ids) }]
+          ? [{ condition, note_ids: uniqueStringArray(challenge?.note_ids) }]
           : [];
       })
     : [];
