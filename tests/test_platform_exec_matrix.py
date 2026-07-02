@@ -176,3 +176,21 @@ def test_agent_gates_trigger_on_canonical_verify_test_inputs() -> None:
             f"agent_execution_gates.yml {event_name} does not trigger on "
             f"canonical verifier test input(s): {missing}"
         )
+
+
+def test_agent_gates_trigger_on_matrix_entrypoint_files() -> None:
+    """A matrix entry-point edit must schedule the workflow guarding its row."""
+    matrix_files = {
+        ref for ref in _matrix_literal_file_refs() if (ROOT / ref).is_file()
+    }
+    assert matrix_files, "PLATFORM_EXEC_MATRIX.md names no literal entry files"
+
+    for event_name in ("push", "pull_request"):
+        paths = _workflow_event_paths(event_name)
+        missing = sorted(
+            path for path in matrix_files if not _path_is_covered(path, paths)
+        )
+        assert not missing, (
+            f"agent_execution_gates.yml {event_name} does not trigger on "
+            f"platform matrix entry-point file(s): {missing}"
+        )
