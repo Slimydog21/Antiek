@@ -47,6 +47,52 @@ type Props = {
   onCorrect?: (index: number, correctedText: string) => void | Promise<void>;
 };
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function safeTurn(value: unknown): Turn | null {
+  const turn = record(value);
+  const role = turn?.role === "interviewer" || turn?.role === "informant"
+    ? turn.role
+    : null;
+  const text = nonEmptyString(turn?.text);
+  if (!turn || !role || !text) return null;
+  const questionId = nonEmptyString(turn.question_id);
+  return {
+    role,
+    text,
+    ts: nullableString(turn.ts),
+    pending: role === "informant" && turn.pending === true,
+    ...(questionId ? { question_id: questionId } : {}),
+  };
+}
+
+function safeTranscript(value: unknown): Turn[] {
+  const source =
+    typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>).transcript
+      : value;
+  return Array.isArray(source)
+    ? source.flatMap((item) => {
+        const turn = safeTurn(item);
+        return turn ? [turn] : [];
+      })
+    : [];
+}
+
 export default function InterviewTranscript({
   interviewId,
   seedTurns,
@@ -72,10 +118,8 @@ export default function InterviewTranscript({
         }
         return;
       }
-      const data = await resp.json();
       if (generation !== reloadGenerationRef.current) return;
-      const t: Turn[] = Array.isArray(data.transcript) ? data.transcript : [];
-      setTurns(t);
+      setTurns(safeTranscript(await resp.json()));
       setError(null);
     } catch (e: unknown) {
       if (generation === reloadGenerationRef.current) {

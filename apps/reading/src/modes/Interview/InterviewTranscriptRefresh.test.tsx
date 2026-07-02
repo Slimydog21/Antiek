@@ -110,4 +110,35 @@ describe("Interview transcript refresh bridge", () => {
     expect(screen.queryByText("Stale upload")).toBeNull();
   });
 
+  it("sanitizes fetched transcript panel turns before rendering", async () => {
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        transcript: [
+          {
+            role: "informant",
+            text: " Correct me ",
+            ts: " 2026-06-06 ",
+            pending: "yes",
+            question_id: " q dirty ",
+          },
+          {
+            role: "interviewer",
+            text: " Interviewer question ",
+            ts: null,
+            pending: true,
+          },
+          { role: "operator", text: "Skipped role" },
+          { role: "informant", text: " " },
+        ],
+      }),
+    });
+
+    render(<InterviewTranscript interviewId="int-1" />);
+
+    expect(await screen.findByText("Correct me")).toBeTruthy();
+    expect(screen.getByText("Interviewer question")).toBeTruthy();
+    expect(screen.queryByText(/pending correction/)).toBeNull();
+    expect(document.body.textContent).not.toMatch(/Skipped| q dirty |2026-06-06 /);
+  });
 });
