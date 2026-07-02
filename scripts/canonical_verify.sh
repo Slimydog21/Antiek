@@ -14,6 +14,7 @@
 #   read-rabbit-hole     — Read SPR-07 conversational rabbit-hole + voice replies
 #   read-passage-research — Read SPR-08 research-from-passage gate
 #   read-ad-escrow       — Read SPR-09 rights-holder escrow accrual gate
+#   write-outline-block  — Write SPR-01 outline-block model + provenance gate
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -37,7 +38,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -156,6 +157,17 @@ cmd_read_ad_escrow() {
   echo "CANONICAL_VERIFY_OK: read-ad-escrow"
 }
 
+cmd_write_outline_block() {
+  echo "== write-outline-block: model + invariants + provenance backend =="
+  "${PY}" -m pytest \
+    tests/test_outline_block.py \
+    tests/test_write_routes.py \
+    tests/test_speak_write_composer.py \
+    tests/test_contracts_write_lock.py \
+    -q --tb=no
+  echo "CANONICAL_VERIFY_OK: write-outline-block"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -233,6 +245,7 @@ main() {
     read-rabbit-hole) cmd_read_rabbit_hole ;;
     read-passage-research) cmd_read_passage_research ;;
     read-ad-escrow) cmd_read_ad_escrow ;;
+    write-outline-block) cmd_write_outline_block ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;
