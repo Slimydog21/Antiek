@@ -5776,13 +5776,15 @@ def create_app(
         §11.5 keeps transcripts, not raw audio, behind a Whisper
         transcription tier that lands later. The endpoint records the
         byte count + duration so the UI state machine can advance
-        and the orchestrator can attach a stable identifier."""
+        and the orchestrator can attach a stable identifier. Because this
+        route does not store the blob or expose an audio retrieval route, it
+        must not return a synthetic audio URL."""
         data = await request.body()
         return VoiceSessionUploadResponse(
             session_id=session_id,
             bytes_received=len(data),
             duration_seconds=duration_seconds,
-            audio_url=f"/voice/sessions/{session_id}/audio",
+            audio_url=None,
         )
 
     # ── Sprint 22 multi-user auth-probe endpoint ──

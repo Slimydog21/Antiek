@@ -73,7 +73,7 @@ def test_voice_upload_accepts_raw_body():
     assert body["session_id"] == "session-xyz"
     assert body["bytes_received"] == 1024
     assert body["duration_seconds"] == 12
-    assert body["audio_url"] == "/voice/sessions/session-xyz/audio"
+    assert body["audio_url"] is None
 
 
 def test_voice_upload_defaults_duration_to_zero():
