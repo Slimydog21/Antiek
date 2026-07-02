@@ -138,7 +138,7 @@ describe("CommandPalette", () => {
           ok: true,
           json: async () => ({
             investigations: [
-              { investigation_id: " inv-dirty ", topic: "  Dirty investigation  " },
+              { investigation_id: " inv dirty/1 ", topic: "  Dirty investigation  " },
               { investigation_id: " ", topic: "Skipped investigation" },
             ],
           }),
@@ -228,6 +228,20 @@ describe("CommandPalette", () => {
     expect(await screen.findByText("Dirty parked question")).toBeTruthy();
     expect(screen.queryByText(/Skipped/)).toBeNull();
 
+    await userEvent.click(screen.getByText("Dirty investigation"));
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/inv/inv%20dirty%2F1",
+    );
+
+    window.dispatchEvent(new Event("antiek:palette:toggle"));
+    await userEvent.type(await screen.findByRole("textbox"), "dirty");
+    await userEvent.click(screen.getByText("Replay: Dirty investigation"));
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/replay/inv%20dirty%2F1",
+    );
+
+    window.dispatchEvent(new Event("antiek:palette:toggle"));
+    await userEvent.type(await screen.findByRole("textbox"), "dirty");
     await userEvent.click(screen.getByText("Dirty piece"));
     expect(screen.getByTestId("location").textContent).toBe("/write/dlv%20dirty");
   });
