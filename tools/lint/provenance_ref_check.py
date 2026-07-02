@@ -742,6 +742,35 @@ def _unvalidated_field_sites(
     return sorted(set(unvalidated_sites + output_sites))
 
 
+def _ref_collection_name(node: ast.AST) -> str | None:
+    name = _qualified_name(node)
+    if name is None:
+        return None
+    local = name.rsplit(".", 1)[-1]
+    lower = local.lower()
+    if not lower.startswith(("known_", "canonical_")):
+        return None
+    if lower.endswith(("_id", "_ids")):
+        return local
+    return None
+
+
+def _local_ref_membership_sites(
+    func: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> list[tuple[int, str]]:
+    out: list[tuple[int, str]] = []
+    for node in ast.walk(func):
+        if not isinstance(node, ast.Compare):
+            continue
+        for op, comparator in zip(node.ops, node.comparators):
+            if not isinstance(op, (ast.In, ast.NotIn)):
+                continue
+            ref_collection = _ref_collection_name(comparator)
+            if ref_collection is not None:
+                out.append((node.lineno, ref_collection))
+    return sorted(set(out))
+
+
 def _parser_functions(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
     return [
         node
@@ -778,8 +807,7 @@ def _scan_file(rel: str, path: Path) -> list[str]:
             effective_generated_factories,
             class_fields,
         )
-        if not sites:
-            continue
+        membership_sites = _local_ref_membership_sites(func)
         first_lines_by_field: dict[str, int] = {}
         for line, field in sites:
             first_lines_by_field[field] = min(
@@ -790,6 +818,12 @@ def _scan_file(rel: str, path: Path) -> list[str]:
             violations.append(
                 f"{rel}:{line}: parser function {func.name!r} surfaces "
                 f"{field!r} without substrate.provenance.validate_ref(s)"
+            )
+        for line, collection in membership_sites:
+            violations.append(
+                f"{rel}:{line}: parser function {func.name!r} performs local "
+                f"membership validation against {collection!r}; use "
+                "substrate.provenance.validate_ref(s)"
             )
     return violations
 

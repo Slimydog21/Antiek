@@ -833,5 +833,91 @@ def parse(obj, canonical):
     assert find_violations(tmp_path) == []
 
 
+def test_lint_catches_parser_local_known_id_membership_check(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "local_membership_role" / "parser.py",
+        """
+def parse(obj, known_block_ids):
+    out = []
+    for bid in obj.get("block_ids", []):
+        if bid not in known_block_ids:
+            raise ValueError("unknown block id")
+        out.append(bid)
+    return {"block_ids": out}
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any(
+        "known_block_ids" in violation
+        and "local membership validation" in violation
+        for violation in violations
+    )
+
+
+def test_lint_catches_parser_local_canonical_id_membership_check(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "local_canonical_membership_role" / "parser.py",
+        """
+def parse(obj, canonical_chunk_ids):
+    chunk_id = obj.get("chunk_id")
+    if chunk_id in canonical_chunk_ids:
+        return {"chunk_id": chunk_id}
+    return {"chunk_id": None}
+""",
+    )
+
+    violations = find_violations(tmp_path)
+
+    assert any(
+        "canonical_chunk_ids" in violation
+        and "local membership validation" in violation
+        for violation in violations
+    )
+
+
+def test_lint_allows_validator_with_error_message_that_mentions_known_ids(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "validator_message_role" / "parser.py",
+        """
+from substrate.provenance import validate_ref
+
+def parse(obj, known_block_ids):
+    block_id = validate_ref(obj.get("block_id"), known_block_ids)
+    if block_id is None:
+        raise ValueError("block_id is not in known_block_ids")
+    return {"block_id": block_id}
+""",
+    )
+
+    assert find_violations(tmp_path) == []
+
+
+def test_lint_allows_closed_vocabulary_membership_check(
+    tmp_path: Path,
+) -> None:
+    _write(
+        tmp_path / "roles" / "confidence_role" / "parser.py",
+        """
+CONFIDENCE_LEVELS = {"low", "medium", "high"}
+
+def parse(obj):
+    confidence = obj.get("confidence")
+    if confidence not in CONFIDENCE_LEVELS:
+        raise ValueError("bad confidence")
+    return {"confidence": confidence}
+""",
+    )
+
+    assert find_violations(tmp_path) == []
+
+
 def test_lint_passes_on_current_tree() -> None:
     assert find_violations() == []
