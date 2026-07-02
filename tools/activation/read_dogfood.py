@@ -102,6 +102,9 @@ NON_LIBRARY_ENTRY_DOORS: frozenset[str] = frozenset(
         "unified_search",
     }
 )
+WRITE_TRACE_ENTRY_DOORS: frozenset[str] = frozenset(
+    {"write_trace", "write_trace_to_source"}
+)
 ALLOWED_STEP_STATUSES: frozenset[str] = frozenset({"pass", "fail", "inert"})
 ALLOWED_FINAL_VERDICTS: tuple[str, ...] = (
     "ACTIVATE",
@@ -701,7 +704,11 @@ def _citation_evidence_failures(
                 + "citation step 5 result_url must include the recorded chunk_id or anchor"
             )
         origin_document_id = _required_text(record.get("document_id"))
-        if origin_document_id and not _url_carries_return_origin(result_url, origin_document_id):
+        if (
+            origin_document_id
+            and _entry_door_token(record.get("entry_door")) not in WRITE_TRACE_ENTRY_DOORS
+            and not _url_carries_return_origin(result_url, origin_document_id)
+        ):
             failures.append(
                 prefix
                 + "citation step 5 result_url must include from={document_id} return context"

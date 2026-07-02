@@ -372,6 +372,16 @@ def test_citation_trace_result_url_must_carry_return_origin() -> None:
     )
 
 
+def test_write_trace_citation_does_not_require_reader_return_origin() -> None:
+    record = _session(1, citation=True, entry_door="Write trace-to-source")
+    record["steps"]["5"]["result_url"] = "https://app.example/read/source-doc-1?chunk=chunk-1"
+
+    report = validate_sessions([record])
+
+    assert not any("from={document_id}" in f for f in report.failures)
+    assert report.citation_trace_sessions == 1
+
+
 def test_citation_trace_result_url_accepts_encoded_source_and_highlight_anchor() -> None:
     record = _session(1, citation=True)
     record["steps"]["5"] = {
