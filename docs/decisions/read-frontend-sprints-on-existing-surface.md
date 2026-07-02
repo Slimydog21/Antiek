@@ -3,19 +3,40 @@
 **Date:** 2026-05-25
 **Branch:** `read/wave-1-legal-spine`
 **Source spec:** `specs/read/` (SPR-02/03/04/05-UI/07)
-**Status:** SPR-02/03/04/07 complete; SPR-05's UI (ad-border) landed inside
-the SPR-03 reader. All four were thought DRW-blocked; they weren't.
+**Status:** Historical implementation memo, still directionally correct but
+superseded by the current canonical proof commands below. SPR-02/03/04/07
+remain complete; SPR-05's UI (ad-border) lands inside the reader. Do not use
+the historical per-file test counts below as the closure contract.
+
+## 2026-07 current proof
+
+The active closure evidence is the canonical verifier, not the historical
+counts in this memo:
+
+- `./scripts/canonical_verify.sh read-library`
+- `./scripts/canonical_verify.sh read-reader`
+- `./scripts/canonical_verify.sh read-curate`
+- `./scripts/canonical_verify.sh read-ad-border`
+- `./scripts/canonical_verify.sh read-voice-notes`
+- `./scripts/canonical_verify.sh read-passage-research`
+- `./scripts/canonical_verify.sh read-rabbit-hole`
+
+These commands prove the current Library, one-reader route, curation rerank,
+ad-border/impression loop, voice-note capture, passage-to-research handoff,
+and conversational rabbit-hole surfaces against the live code. The platform
+matrix remains the source of truth for what this does not prove: browser/device
+visual QA, live provider latency/audio QA, web discovery before ingest, and live
+advertiser/provider activation.
 
 ## The blocker that wasn't
 
 The earlier assessment (`read-backend-sprints-and-drw-frontend-blocker.md`)
 held the four React sprints behind "DRW SPR-10 — the shared reading
-surface — is unbuilt." Grounding in `apps/reading/` corrected that: **the
-shared reading surface already exists** as `WrestleApp` + `PanelHost` +
-`PdfViewer` + `NotesPanel`/`NotesFeed` + `AISidecar`/`ChatInput`, on a
-mature Werner/Lemon design system with react-router mode registration.
-DRW SPR-10 would *generalize* that surface; Read can *specialize* it
-today. So these sprints were built against the real surface + the real
+surface — is unbuilt." Grounding in `apps/reading/` corrected that, and the
+current tree has since moved further: **the Read surface is now the canonical
+one-reader route** (`/read/:documentId`, `BookReader`) with Library, curation,
+ad rails, voice notes, passage-to-research, and book conversation mounted on
+that route. These sprints are built against the real surface + the real
 `/books` API (SPR-01), not a stub.
 
 ## What landed
@@ -28,8 +49,9 @@ today. So these sprints were built against the real surface + the real
 | **SPR-04** Prompt-to-curate | `curate_reading_list` (servable-only, embedding-ranked) + `/books/curate` + `CuratePrompt` wired into Library (re-ranks the shelf) | `test_book_curate.py` (3) + `Library.test.tsx` curate case |
 | **SPR-07** Rabbit hole (text/audio) | `OpenAITTSProvider.synthesize` + `/speech/tts` + `useSpeech`/`SpokenReply`/`useReplyMode`, wired into the `AISidecar` reply (text OR auto-spoken per preference) | `test_tts_voice_reply.py` (4) + `SpokenReply.test.tsx` (5) |
 
-138 frontend tests pass; `tsc -b` clean. The new backend tests pass; full
-suite shows no new failures.
+Historical note: the per-file counts in this table were true for the original
+landing branch. The current tree has broader coverage; use the 2026-07
+canonical commands above for closure.
 
 ## The "hard to vary" calls
 
