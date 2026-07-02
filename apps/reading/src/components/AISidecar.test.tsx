@@ -1,6 +1,7 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { Event } from "../generated/types";
 import AISidecar from "./AISidecar";
 
 const apiFetchMock = vi.hoisted(() => vi.fn());
@@ -19,6 +20,25 @@ const okJson = (body: unknown) =>
     json: async () => body,
   }) as Response;
 
+function dispatchEvent(
+  id: string,
+  payload: Record<string, unknown>,
+  over: Partial<Event> = {},
+): Event {
+  return {
+    event_id: id,
+    investigation_id: "inv-1",
+    action_type: "dispatch.call",
+    payload: {
+      action_type: "dispatch.call",
+      ...payload,
+    } as Event["payload"],
+    param_version: "test",
+    emitted_at: "2026-07-01T12:00:00Z",
+    ...over,
+  };
+}
+
 beforeEach(() => {
   apiFetchMock.mockReset();
   apiFetchMock.mockImplementation(async (input: RequestInfo | URL) => {
@@ -33,26 +53,43 @@ beforeEach(() => {
     if (path.includes("/trajectory")) {
       return okJson({
         events: [
+          dispatchEvent("valid-bad-latency", {
+            call_id: "call-bad",
+            tier: "synthesis",
+            provider: "openai",
+            model: "gpt-5.5",
+            latency_ms: Number.POSITIVE_INFINITY,
+          }),
+          dispatchEvent("valid-good", {
+            call_id: "call-good",
+            tier: "verify",
+            provider: "anthropic",
+            model: "claude",
+            latency_ms: 1532,
+          }),
           {
-            action_type: "dispatch.call",
             payload: {
-              call_id: "call-bad",
-              tier: "synthesis",
-              provider: "openai",
-              model: "gpt-5.5",
-              latency_ms: Number.POSITIVE_INFINITY,
+              call_id: "call-fabricated",
+              tier: "fake",
+              provider: "bad",
+              model: "row",
+              latency_ms: 1,
             },
           },
-          {
-            action_type: "dispatch.call",
-            payload: {
-              call_id: "call-good",
-              tier: "verify",
-              provider: "anthropic",
-              model: "claude",
-              latency_ms: 1532,
-            },
-          },
+          dispatchEvent("mismatch", {
+            call_id: "call-mismatch",
+            tier: "fake",
+            provider: "bad",
+            model: "mismatch",
+            latency_ms: 1,
+          }, { payload: { action_type: "phase.enter" } as Event["payload"] }),
+          dispatchEvent("not-dispatch", {
+            call_id: "call-not-dispatch",
+            tier: "fake",
+            provider: "bad",
+            model: "wrong-action",
+            latency_ms: 1,
+          }, { action_type: "phase.enter" }),
         ],
       });
     }
@@ -73,5 +110,6 @@ describe("AISidecar", () => {
     await waitFor(() =>
       expect(document.body.textContent).not.toMatch(/NaN|Infinity/),
     );
+    expect(document.body.textContent).not.toMatch(/fake · bad\/row|bad\/mismatch|bad\/wrong-action/);
   });
 });
