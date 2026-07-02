@@ -33,9 +33,10 @@
 #   speak-biography-authoring — Speak SPR-08 biography outline + draft
 #   speak-publishing-physical — Speak SPR-09 publish + physical quote
 #   unified-substrate-contract-lock — Unified SPR-01 contracts + dependency lock
+#   unified-remote-exec-fanout — Unified SPR-02 remote runner + §16 fanout
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
-#   deep-research        — ANT-DRL P-44..P-50 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
-#   html-transport       — ANT-AHT P-51 ResearchArtifact transport gates
+#   deep-research        — ANT-DRL P-45..P-51 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
+#   html-transport       — ANT-AHT P-52 ResearchArtifact transport gates
 #
 # USAGE (from repo root):
 #   ./scripts/canonical_verify.sh cascade
@@ -58,7 +59,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|speak-economics-matrix|speak-biography-authoring|speak-publishing-physical|unified-substrate-contract-lock|handoff <md>|agent-gates|deep-research|html-transport}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|speak-economics-matrix|speak-biography-authoring|speak-publishing-physical|unified-substrate-contract-lock|unified-remote-exec-fanout|handoff <md>|agent-gates|deep-research|html-transport}" >&2
   exit 2
 }
 
@@ -453,6 +454,19 @@ cmd_unified_substrate_contract_lock() {
   echo "CANONICAL_VERIFY_OK: unified-substrate-contract-lock"
 }
 
+cmd_unified_remote_exec_fanout() {
+  echo "== unified-remote-exec-fanout: remote runner, isolation, budget, fallback =="
+  "${PY}" -m pytest \
+    tests/test_remote_exec_runner.py \
+    tests/test_remote_exec_isolation.py \
+    tests/test_remote_exec_budget.py \
+    tests/test_remote_exec_fallback.py \
+    tests/test_launch_n_spr05.py \
+    tests/test_contracts_unified_lock.py \
+    -q --tb=no
+  echo "CANONICAL_VERIFY_OK: unified-remote-exec-fanout"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -516,7 +530,7 @@ cmd_agent_gates() {
 }
 
 cmd_html_transport() {
-  echo "== html-transport: P-51 ANT-AHT bundle =="
+  echo "== html-transport: P-52 ANT-AHT bundle =="
   "${PY}" -m pytest \
     tests/test_research_artifact_template.py \
     tests/test_research_artifact_export.py \
@@ -533,19 +547,19 @@ cmd_html_transport() {
 }
 
 cmd_deep_research() {
-  echo "== deep-research: P-44 Loop 1 E2E =="
+  echo "== deep-research: P-45 Loop 1 E2E =="
   "${PY}" -m pytest tests/test_loop_one_orchestrator.py::test_loop_one_happy_path_emits_completed -q --tb=no
-  echo "== deep-research: P-45 invariant negative =="
+  echo "== deep-research: P-46 invariant negative =="
   "${PY}" -m pytest tests/test_deep_research_complete.py::test_drw_only_trajectory_fails_without_synthesis -q --tb=no
-  echo "== deep-research: P-46 session reconstruct =="
+  echo "== deep-research: P-47 session reconstruct =="
   "${PY}" -m pytest tests/test_cascade_session.py -q --tb=no
-  echo "== deep-research: P-47 PromotionFunnel serialize =="
+  echo "== deep-research: P-48 PromotionFunnel serialize =="
   "${PY}" -m pytest tests/test_research_runner.py::test_promotion_funnel_serialized_no_lock_timeout -q --tb=no
-  echo "== deep-research: P-48 knowledge.reused (two-run) =="
+  echo "== deep-research: P-49 knowledge.reused (two-run) =="
   "${PY}" -m pytest tests/test_flywheel_reuse.py::test_two_run_contract_gather_emits_knowledge_reused_on_second_start -q --tb=no
-  echo "== deep-research: P-49 Exa gather mock E2E =="
+  echo "== deep-research: P-50 Exa gather mock E2E =="
   "${PY}" -m pytest tests/test_exa_gather_loop.py -q --tb=short
-  echo "== deep-research: P-50 parent-terminal observability =="
+  echo "== deep-research: P-51 parent-terminal observability =="
   "${PY}" -m pytest tests/test_drw_parent_terminal.py -q --tb=short
   echo "CANONICAL_VERIFY_OK: deep-research"
 }
@@ -584,6 +598,7 @@ main() {
     speak-biography-authoring) cmd_speak_biography_authoring ;;
     speak-publishing-physical) cmd_speak_publishing_physical ;;
     unified-substrate-contract-lock) cmd_unified_substrate_contract_lock ;;
+    unified-remote-exec-fanout) cmd_unified_remote_exec_fanout ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     deep-research) cmd_deep_research ;;

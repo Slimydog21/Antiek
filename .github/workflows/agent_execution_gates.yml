@@ -38,6 +38,8 @@ on:
       - 'interfaces/research/api/speak_routes.py'
       - 'interfaces/research/api/speech.py'
       - 'orchestration/cascade_session.py'
+      - 'runtime/remote_exec/**'
+      - 'runtime/research_runner/**'
       - 'substrate/ad_inventory/**'
       - 'substrate/books/**'
       - 'substrate/dispatch/providers/openai_tts.py'
@@ -80,6 +82,9 @@ on:
       - 'tests/test_contracts_drw_lock.py'
       - 'tests/test_contracts_conformance.py'
       - 'tests/test_conformance_gate.py'
+      - 'tests/test_remote_exec_*.py'
+      - 'tests/test_launch_n_spr05.py'
+      - 'tests/remote_exec_fakes.py'
       - 'tests/test_speak_*.py'
       - 'tests/test_seam_platform_authored_gate.py'
       - 'tests/properties/test_speak_properties.py'
@@ -132,6 +137,8 @@ on:
       - 'interfaces/research/api/speak_routes.py'
       - 'interfaces/research/api/speech.py'
       - 'orchestration/cascade_session.py'
+      - 'runtime/remote_exec/**'
+      - 'runtime/research_runner/**'
       - 'substrate/ad_inventory/**'
       - 'substrate/books/**'
       - 'substrate/dispatch/providers/openai_tts.py'
@@ -174,6 +181,9 @@ on:
       - 'tests/test_contracts_drw_lock.py'
       - 'tests/test_contracts_conformance.py'
       - 'tests/test_conformance_gate.py'
+      - 'tests/test_remote_exec_*.py'
+      - 'tests/test_launch_n_spr05.py'
+      - 'tests/remote_exec_fakes.py'
       - 'tests/test_speak_*.py'
       - 'tests/test_seam_platform_authored_gate.py'
       - 'tests/properties/test_speak_properties.py'
@@ -324,8 +334,11 @@ jobs:
       - name: Canonical verify — unified substrate contract lock
         run: ./scripts/canonical_verify.sh unified-substrate-contract-lock
 
+      - name: Canonical verify — unified remote exec fanout
+        run: ./scripts/canonical_verify.sh unified-remote-exec-fanout
+
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md
 
-      - name: Canonical verify — deep-research (P-44..P-50)
+      - name: Canonical verify — deep-research (P-45..P-51)
         run: ./scripts/canonical_verify.sh deep-research
