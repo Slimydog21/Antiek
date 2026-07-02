@@ -205,7 +205,7 @@ class Roadmap:
                 node_id=top.node_id,
                 blocked_sprints=top.blocked_sprints,
             )
-        ready = self.unblocked_now()
+        ready = tuple(s for s in self.unblocked_now() if not _built(s.status))
         if ready:
             return ExecutionFocus(kind="dependency_ready", node_id=ready[0].node_id)
         return None

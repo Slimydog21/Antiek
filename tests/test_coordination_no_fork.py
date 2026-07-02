@@ -320,7 +320,8 @@ def test_roadmap_surfaces_drw_critical_path() -> None:
 def test_unblocked_now_is_derived_from_dependency_state() -> None:
     """Unblocked-now is computed from the DAG + sprint-lock status, not
     hand-maintained. Read sprints depend on DRW SPR-05/06, which are live, so
-    they are dependency-ready. Speak still waits on DRW SPR-07."""
+    they are dependency-ready. Speak depends on DRW SPR-07, which is also live,
+    so it is dependency-ready too."""
     roadmap = build_roadmap()
     by_id = {s.node_id: s for s in roadmap.all_sprints()}
 
@@ -329,9 +330,9 @@ def test_unblocked_now_is_derived_from_dependency_state() -> None:
     # read:* depend on drw:5 + drw:6 (live) → dependency-ready.
     assert by_id["read:1"].unblocked
     assert by_id["read:1"].blocked_on == ()
-    # speak:* depends on drw:7 (still planned) → blocked on it.
-    assert not by_id["speak:1"].unblocked
-    assert by_id["speak:1"].blocked_on == ("drw:7",)
+    # speak:* depends on drw:7 (live) → dependency-ready.
+    assert by_id["speak:1"].unblocked
+    assert by_id["speak:1"].blocked_on == ()
     # The unblocked set and blocked set partition all sprints.
     assert len(roadmap.unblocked_now()) + len(roadmap.blocked()) == roadmap.total_sprints
 
@@ -354,25 +355,8 @@ def test_dependency_blockers_are_derived_and_sorted() -> None:
     sorted by fan-out, so the next dependency to unblock is explicit."""
     roadmap = build_roadmap()
     blockers = roadmap.dependency_blockers()
-    by_id = {b.node_id: b for b in blockers}
 
-    assert blockers, "roadmap should surface dependency blockers"
-    assert blockers == tuple(
-        sorted(blockers, key=lambda b: (-len(b.blocked_sprints), b.node_id))
-    )
-    assert set(by_id) == {"drw:7"}
-    assert {s.node_id for s in by_id["drw:7"].blocked_sprints} == {
-        f"speak:{i}" for i in range(1, 10)
-    }
-    assert "drw:5" not in by_id
-    assert "drw:6" not in by_id
-    for blocker in blockers:
-        seen: set[str] = set()
-        for sprint in blocker.blocked_sprints:
-            assert sprint.node_id not in seen
-            seen.add(sprint.node_id)
-            assert not sprint.unblocked
-            assert blocker.node_id in sprint.blocked_on
+    assert blockers == ()
 
 
 def test_read_sprints_are_unblocked_after_cascade_and_orchestration_live() -> None:
@@ -383,29 +367,24 @@ def test_read_sprints_are_unblocked_after_cascade_and_orchestration_live() -> No
     assert all(by_id[f"read:{i}"].unblocked for i in range(1, 10))
 
 
-def test_speak_sprints_wait_on_structural_gap_detection() -> None:
+def test_speak_sprints_are_unblocked_after_structural_gap_detection_live() -> None:
     roadmap = build_roadmap()
     by_id = {s.node_id: s for s in roadmap.all_sprints()}
 
-    assert {by_id[f"speak:{i}"].blocked_on for i in range(1, 10)} == {("drw:7",)}
-    assert not any(by_id[f"speak:{i}"].unblocked for i in range(1, 10))
-    assert {s.node_id for s in roadmap.dependency_blockers()[0].blocked_sprints} == {
-        f"speak:{i}" for i in range(1, 10)
-    }
+    assert {by_id[f"speak:{i}"].blocked_on for i in range(1, 10)} == {()}
+    assert all(by_id[f"speak:{i}"].unblocked for i in range(1, 10))
 
 
-def test_execution_focus_prefers_top_dependency_blocker() -> None:
-    """The roadmap's canonical next action is the top dependency blocker when
-    blocked rows exist."""
+def test_execution_focus_skips_live_ready_rows() -> None:
+    """When no dependency blockers remain, focus must not point at already-live
+    DRW rows; it should pick the first dependency-ready unbuilt sprint."""
     roadmap = build_roadmap()
     focus = roadmap.execution_focus()
 
     assert focus is not None
-    assert focus.kind == "dependency_blocker"
-    assert focus.node_id == "drw:7"
-    assert [s.node_id for s in focus.blocked_sprints] == [
-        f"speak:{i}" for i in range(1, 10)
-    ]
+    assert focus.kind == "dependency_ready"
+    assert focus.node_id == "drw:8"
+    assert focus.blocked_sprints == ()
 
 
 def test_execution_focus_falls_back_to_first_dependency_ready_row() -> None:
@@ -445,11 +424,8 @@ def test_roadmap_response_serializes_dependency_blockers() -> None:
     from interfaces.research.api.coordination import RoadmapResponse
 
     response = RoadmapResponse.from_roadmap(build_roadmap())
-    by_id = {b.node_id: b for b in response.dependency_blockers}
 
-    assert "drw:7" in by_id
-    assert by_id["drw:7"].blocked_sprints == [f"speak:{i}" for i in range(1, 10)]
-    assert all(isinstance(node_id, str) for node_id in by_id["drw:7"].blocked_sprints)
+    assert response.dependency_blockers == []
 
 
 def test_roadmap_response_serializes_execution_focus() -> None:
@@ -460,11 +436,9 @@ def test_roadmap_response_serializes_execution_focus() -> None:
     response = RoadmapResponse.from_roadmap(build_roadmap())
 
     assert response.execution_focus is not None
-    assert response.execution_focus.kind == "dependency_blocker"
-    assert response.execution_focus.node_id == "drw:7"
-    assert response.execution_focus.blocked_sprints == [
-        f"speak:{i}" for i in range(1, 10)
-    ]
+    assert response.execution_focus.kind == "dependency_ready"
+    assert response.execution_focus.node_id == "drw:8"
+    assert response.execution_focus.blocked_sprints == []
 
 
 def test_roadmap_reads_rosters_from_fixture_via_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

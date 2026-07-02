@@ -68,6 +68,11 @@ cmd_cascade() {
     tests/test_cascade_api.py::test_steer_endpoint_wiring \
     tests/test_cascade_api.py::test_session_reconstructs_after_eviction \
     -q --tb=no
+  echo "== cascade: structural gap detection regression =="
+  "${PY}" -m pytest \
+    tests/test_gap_detection.py \
+    tests/test_speak_drw_gap_source.py \
+    -q --tb=no
   echo "== cascade: light create-plan route =="
   "${PY}" -m pytest tests/test_cascade_create_plan_light.py -q --tb=no
   echo "== cascade: decomposer call-site audit =="
