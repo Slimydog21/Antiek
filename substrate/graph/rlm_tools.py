@@ -334,6 +334,16 @@ def _parse_ddg_html(html: str, *, query: str) -> str:
 _FETCH_URL_MAX_REDIRECTS = 10
 
 
+def _normalize_fetch_url(value: str) -> str:
+    from urllib.parse import urlparse
+
+    url = value.strip()
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("fetch_url only supports absolute http(s) URLs")
+    return url
+
+
 def fetch_url(url: str) -> str:
     """Fetch a URL + extract text. Strips HTML tags, scripts, styles.
     Returns the first ~5000 chars; caller may further truncate.
@@ -365,8 +375,9 @@ def fetch_url(url: str) -> str:
         return f"fetch_url error: arXiv rate governor unavailable — {e!r}"
 
     headers = {"User-Agent": "Mozilla/5.0 (compatible; Antiek/1.0)"}
-    current = url
     try:
+        current = _normalize_fetch_url(url)
+        requested = current
         # Manual redirect loop: each hop is governed on its OWN host so an arXiv
         # redirect TARGET cannot be fetched ungoverned (requests' allow_redirects
         # would follow it without the per-hop host check). ``govern_if_arxiv``
@@ -384,7 +395,7 @@ def fetch_url(url: str) -> str:
                 location = r.headers.get("Location") or r.headers.get("location")
                 if not location:
                     break
-                current = urljoin(current, location)
+                current = _normalize_fetch_url(urljoin(current, location))
                 continue
             r.raise_for_status()
             break
@@ -401,8 +412,8 @@ def fetch_url(url: str) -> str:
     if len(text) > max_chars:
         text = text[:max_chars] + f"\n... [truncated at {max_chars} chars]"
     if not text.strip():
-        return f"(empty content from {url})"
-    return f"Source: {url}\n\n{text.strip()}"
+        return f"(empty content from {requested})"
+    return f"Source: {requested}\n\n{text.strip()}"
 
 
 def _extract_text_from_html(html: str) -> str:
