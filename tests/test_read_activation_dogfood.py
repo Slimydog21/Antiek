@@ -296,6 +296,49 @@ def test_citation_trace_result_url_must_be_http_url() -> None:
     assert any("citation step 5 result_url must be an http(s) URL" in f for f in report.failures)
 
 
+def test_citation_trace_result_url_must_open_recorded_source_in_reader() -> None:
+    record = _session(1, citation=True)
+    record["steps"]["5"]["result_url"] = "https://app.example/read/other-doc?chunk=chunk-1"
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.citation_trace_sessions == 0
+    assert any(
+        "citation step 5 result_url must open /read/{source_document_id}" in f
+        for f in report.failures
+    )
+
+
+def test_citation_trace_result_url_must_carry_recorded_chunk_or_anchor() -> None:
+    record = _session(1, citation=True)
+    record["steps"]["5"]["result_url"] = "https://app.example/read/source-doc-1"
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.citation_trace_sessions == 0
+    assert any(
+        "citation step 5 result_url must include the recorded chunk_id or anchor" in f
+        for f in report.failures
+    )
+
+
+def test_citation_trace_result_url_accepts_encoded_source_and_highlight_anchor() -> None:
+    record = _session(1, citation=True)
+    record["steps"]["5"] = {
+        "status": "pass",
+        "source_document_id": "source/doc 1",
+        "anchor": "block:7",
+        "result_url": "https://app.example/read/source%2Fdoc%201?hl=source%2Fdoc%201%3Ablock%3A7",
+    }
+
+    report = validate_sessions([record])
+
+    assert not any("citation step 5 result_url must open" in f for f in report.failures)
+    assert not any("citation step 5 result_url must include" in f for f in report.failures)
+
+
 def test_non_library_entry_accepts_human_spelled_command_palette() -> None:
     records = [
         _session(i, live=i <= 5, citation=i <= 3, entry_door="library")
