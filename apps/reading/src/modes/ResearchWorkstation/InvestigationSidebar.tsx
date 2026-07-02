@@ -4,6 +4,7 @@ import { NavLink, useParams } from "react-router-dom";
 import { useInvestigationList } from "../../hooks/useInvestigationList";
 import { useInvestigationTree } from "../../hooks/useInvestigationTree";
 import type { TreeNode } from "../../hooks/useInvestigationTree";
+import type { InvestigationSummary } from "../../lib/api";
 
 function finiteNonNegativeNumber(value: unknown): number | null {
   const parsed =
@@ -36,9 +37,32 @@ function displayString(value: unknown, fallback: string): string {
  */
 export default function InvestigationSidebar() {
   const { investigations, loading, error, refetch } = useInvestigationList();
-  const tree = useInvestigationTree(investigations);
   const params = useParams<{ investigationId?: string }>();
-  const activeId = params.investigationId ?? null;
+  return (
+    <InvestigationSidebarTree
+      investigations={investigations}
+      loading={loading}
+      error={error}
+      refetch={refetch}
+      activeId={params.investigationId ?? null}
+    />
+  );
+}
+
+export function InvestigationSidebarTree({
+  investigations,
+  loading,
+  error,
+  refetch,
+  activeId,
+}: {
+  investigations: InvestigationSummary[];
+  loading: boolean;
+  error: string | null;
+  refetch: () => void;
+  activeId: string | null;
+}) {
+  const tree = useInvestigationTree(investigations);
 
   return (
     <div className="p-3 text-xs text-ink dark:text-bright">
