@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to UNIFIED_SPRINTS. Status changes are deliberate roadmap
 # events, not prose-only handoffs.
-UNIFIED_LOCK_VERSION: int = 3
+UNIFIED_LOCK_VERSION: int = 4
 
 
 @dataclass(frozen=True)
@@ -62,7 +62,16 @@ UNIFIED_SPRINTS: dict[int, UnifiedDeliverable] = {
         # composition are covered by unified-seams-and-collisions.
         status="live",
     ),
-    4: UnifiedDeliverable(4, "navigation-ia-taxonomy", "Navigation IA taxonomy"),
+    4: UnifiedDeliverable(
+        4,
+        "navigation-ia-taxonomy",
+        "Navigation IA taxonomy",
+        # Live: the single frontend workflow taxonomy, four-door NavRail
+        # boundary, shared/More bucket, route-to-workflow resolver, honest
+        # workflow stubs, bottom/left nav parity, and click/hotkey activation
+        # parity are covered by unified-navigation-ia-taxonomy.
+        status="live",
+    ),
     5: UnifiedDeliverable(5, "coordination-gate-ledger", "Coordination gate ledger"),
     6: UnifiedDeliverable(6, "thread-navigation", "Thread navigation"),
     7: UnifiedDeliverable(7, "cost-consent-surface", "Cost + consent surface"),

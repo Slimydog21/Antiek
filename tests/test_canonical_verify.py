@@ -282,6 +282,14 @@ def test_canonical_verify_unified_seams_and_collisions_hermetic() -> None:
     assert "CANONICAL_VERIFY_OK: unified-seams-and-collisions" in proc.stdout
 
 
+def test_canonical_verify_unified_navigation_ia_taxonomy_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("unified-navigation-ia-taxonomy")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: unified-navigation-ia-taxonomy" in proc.stdout
+
+
 def test_canonical_verify_deep_research_hermetic() -> None:
     if not PY.is_file():
         return
