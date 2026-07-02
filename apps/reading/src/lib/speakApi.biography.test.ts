@@ -452,6 +452,15 @@ describe("Speak synthesis and payout boundaries", () => {
     });
   });
 
+  it("defaults malformed biography draft wrappers without fabricating prose", async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse(["not", "a", "draft"]));
+
+    await expect(assembleDraft("proj-1", true)).resolves.toEqual({
+      prose: "",
+      excludedCount: 0,
+    });
+  });
+
   it("sanitizes release payout figures without truthy-string budget exhaustion", async () => {
     apiFetchMock.mockResolvedValue(
       jsonResponse({
@@ -474,6 +483,24 @@ describe("Speak synthesis and payout boundaries", () => {
       budgetUsd: "0",
       budgetExhausted: false,
       cappedCount: 2,
+    });
+  });
+
+  it("defaults malformed release payout wrappers to closed zero values", async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse("released"));
+
+    await expect(
+      releasePayout("proj-1", {
+        informationGoal: "capture bakery story",
+        budgetUsd: "5",
+        perInterviewCapUsd: "1",
+        adRevenueUsd: "0",
+      }),
+    ).resolves.toEqual({
+      spentUsd: "0",
+      budgetUsd: "0",
+      budgetExhausted: false,
+      cappedCount: 0,
     });
   });
 });

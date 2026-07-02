@@ -140,6 +140,10 @@ function arrayField(value: unknown, field: string): unknown[] {
   return Array.isArray(items) ? items : [];
 }
 
+async function recordResponse(resp: Response): Promise<Record<string, unknown>> {
+  return record(await resp.json()) ?? {};
+}
+
 export function requireNonEmptyField(value: unknown, field: string): string {
   const trimmed = nonEmptyString(value);
   if (!trimmed) {
@@ -319,8 +323,7 @@ export async function assembleDraft(id: string, isPublic: boolean): Promise<Asse
     body: JSON.stringify({ public: isPublic }),
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const data = await resp.json();
-  const body = record(data);
+  const body = await recordResponse(resp);
   return {
     prose: nonEmptyString(body?.prose_text) ?? "",
     excludedCount: stringArray(body?.excluded_claim_ids).length,
@@ -383,8 +386,7 @@ export async function releasePayout(
     }),
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const data = await resp.json();
-  const body = record(data);
+  const body = await recordResponse(resp);
   return {
     spentUsd: nonEmptyString(body?.spent_usd) ?? "0",
     budgetUsd: nonEmptyString(body?.budget_usd) ?? "0",
