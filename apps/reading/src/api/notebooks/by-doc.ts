@@ -27,6 +27,52 @@ export type PerDocNotebookResponse = {
   archive_url?: string | null;
 };
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function optionalString(value: unknown): string | undefined {
+  return value == null ? undefined : nonEmptyString(value) ?? undefined;
+}
+
+function nullableString(value: unknown): string | null | undefined {
+  return value == null ? null : nonEmptyString(value) ?? undefined;
+}
+
+function optionalSafeInteger(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+export function safePerDocNotebookResponse(
+  value: unknown,
+  fallbackDocumentId: string,
+): PerDocNotebookResponse {
+  const body = record(value);
+  const notebookId = nonEmptyString(body?.notebook_id);
+  if (!body || !notebookId) {
+    throw new ApiError("Malformed per-document notebook save response", 502, "");
+  }
+  return {
+    notebook_id: notebookId,
+    document_id: nullableString(body.document_id) ?? fallbackDocumentId,
+    content_json: body.content_json ?? null,
+    blocks: Array.isArray(body.blocks) ? body.blocks : [],
+    updated_at: optionalString(body.updated_at),
+    version: optionalSafeInteger(body.version),
+    archive_url: nullableString(body.archive_url),
+  };
+}
+
 export async function savePerDocNotebook(
   documentId: string,
   payload: PerDocNotebookSavePayload,
@@ -46,5 +92,5 @@ export async function savePerDocNotebook(
       await resp.text(),
     );
   }
-  return resp.json();
+  return safePerDocNotebookResponse(await resp.json(), documentId);
 }
