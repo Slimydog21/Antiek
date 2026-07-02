@@ -349,10 +349,13 @@ function safeSuggestion(value: unknown): Suggestion | null {
 
 function safeSuggestionsResponse(value: unknown): SuggestionsResponse {
   const body = record(value);
+  const seen = new Set<string>();
   const suggestions = Array.isArray(body?.suggestions)
     ? body.suggestions.flatMap((item) => {
         const suggestion = safeSuggestion(item);
-        return suggestion ? [suggestion] : [];
+        if (!suggestion || seen.has(suggestion.key)) return [];
+        seen.add(suggestion.key);
+        return [suggestion];
       })
     : [];
   return {
@@ -405,10 +408,13 @@ function safeSessionCost(value: unknown): SessionCost {
 function safeSessionStatus(value: unknown): SessionStatus {
   const body = record(value);
   if (!body) throw new Error("Malformed research response: body.");
+  const seen = new Set<string>();
   const researches = Array.isArray(body.researches)
     ? body.researches.flatMap((item) => {
         const research = safeResearchStatus(item);
-        return research ? [research] : [];
+        if (!research || seen.has(research.investigation_id)) return [];
+        seen.add(research.investigation_id);
+        return [research];
       })
     : [];
   return {
@@ -424,11 +430,13 @@ function safeSessionStatus(value: unknown): SessionStatus {
 function safeLaunchResponse(value: unknown): LaunchResponse {
   const body = record(value);
   if (!body) throw new Error("Malformed research response: body.");
+  const seen = new Set<string>();
   const researches = Array.isArray(body.researches)
     ? body.researches.flatMap((item) => {
         const research = record(item);
         const investigationId = nonEmptyString(research?.investigation_id);
-        if (!investigationId) return [];
+        if (!investigationId || seen.has(investigationId)) return [];
+        seen.add(investigationId);
         return [{
           investigation_id: investigationId,
           sub_question: nonEmptyString(research?.sub_question) ?? "Untitled research",

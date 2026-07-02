@@ -202,6 +202,11 @@ describe("research api - cascade plan boundary", () => {
               sub_question: "  First question  ",
               question_node_id: " q-1 ",
             },
+            {
+              investigation_id: "inv-1",
+              sub_question: "Duplicate question",
+              question_node_id: "q-duplicate",
+            },
             { investigation_id: "", sub_question: "missing id" },
           ],
           aggregate_cap_usd: "12.5",
@@ -233,6 +238,11 @@ describe("research api - cascade plan boundary", () => {
               sub_question: "",
               state: "mystery",
               question_node_id: " ",
+            },
+            {
+              investigation_id: "inv-1",
+              sub_question: "Duplicate status",
+              state: "running",
             },
           ],
           cost: {
@@ -464,6 +474,11 @@ describe("research api - cascade plan boundary", () => {
               suggested_retrieval: "  papers  ",
               seen_in_research_count: "2",
               source_investigation_id: " inv-source ",
+            },
+            {
+              key: "key-1",
+              question: "Duplicate chase",
+              seen_in_research_count: 99,
             },
             { key: " ", question: "missing key" },
           ],
