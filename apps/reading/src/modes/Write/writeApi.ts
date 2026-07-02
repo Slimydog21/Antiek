@@ -434,7 +434,8 @@ export interface TraceTarget {
 
 /** Resolve a placed block's trace target (the source the citation chip
  * opens). Honest about gating: `full_text_allowed=false` for a gated source
- * (§9.0 no-leak). The shared reader that opens it is DRW SPR-10. */
+ * (§9.0 no-leak). Servable sources open in the live `/read/:documentId`
+ * BookReader route; gated sources surface metadata/snippet only. */
 export async function getTraceTarget(outlineBlockId: string): Promise<TraceTarget> {
   return safeTraceTarget(await _json(
     await apiFetch(`${API_BASE}/write/blocks/${encodeURIComponent(outlineBlockId)}/trace`),
