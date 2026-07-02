@@ -51,13 +51,20 @@ jobs:
         run: npm run build-storybook
 
       - name: Run Lost-Pixel against committed baselines (informational)
-        # INFORMATIONAL (does not block the merge): visual-regression baselines
-        # have not been established/approved for the new four-workflow shell —
-        # that is an operator action in the Lost Pixel dashboard, not a code
-        # fix. We still run it and upload diffs so visual changes are visible;
-        # we do not block the product on missing baselines. Re-enable blocking
-        # once baselines are committed under apps/reading/.lostpixel/baseline/.
-        run: npx lost-pixel || echo "::warning title=Lost-Pixel informational::visual baselines not yet established for the new shell; approve them in the Lost Pixel dashboard to make this gate blocking."
+        # BLOCKING (AGH SPR-04 G2): the reconsider-if that made this
+        # informational — "baselines committed under
+        # apps/reading/.lostpixel/baseline/" (ci-informational-gates.md §3) —
+        # is now MET: 381 baseline PNGs are committed there and
+        # lostpixel.config.ts sets imagePathBaseline + generateOnly:false, so
+        # the gate compares current renders against a real committed baseline.
+        # Un-swallowed: the step's exit code is now lost-pixel's own, so a real
+        # visual regression reds the PR (which is the point). A legitimate
+        # visual change lands its own updated baseline PNGs (npm run
+        # visualtest:update) in the same PR — the same discipline as the token
+        # baselines. If this PR's own run reds, the committed baselines are
+        # stale and need an operator re-approval (an honest signal, not a
+        # reason to re-swallow).
+        run: npx lost-pixel
 
       - name: Upload diff artifacts on failure
         if: failure()
