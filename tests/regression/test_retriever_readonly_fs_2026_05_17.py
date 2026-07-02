@@ -56,9 +56,8 @@ def test_readonly_fs_at_retriever_copy_surfaces_typed_not_silent(tmp_path, monke
     # typed RetrieverInfraError — not be silently masked as "vss unavailable,
     # using brute-force". Expected degradations (the vss EXTENSION being
     # unavailable) keep their benign brute-force fallback; an OSError does not.
-    with readonly_fs(copy_target):
-        with pytest.raises(RetrieverInfraError) as ei:
-            rs.DuckDbVssSubstrate.open(str(db), model=_StubModel())
+    with readonly_fs(copy_target), pytest.raises(RetrieverInfraError) as ei:
+        rs.DuckDbVssSubstrate.open(str(db), model=_StubModel())
 
     import errno
 
