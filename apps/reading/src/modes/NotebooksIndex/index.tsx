@@ -87,9 +87,12 @@ function safeNotebookSummary(value: unknown): NotebookSummary | null {
 function safeNotebookList(value: unknown): NotebookSummary[] {
   const body = record(value);
   const rows = Array.isArray(body?.notebooks) ? body.notebooks : [];
+  const seen = new Set<string>();
   return rows.flatMap((item) => {
     const row = safeNotebookSummary(item);
-    return row ? [row] : [];
+    if (!row || seen.has(row.notebook_id)) return [];
+    seen.add(row.notebook_id);
+    return [row];
   });
 }
 
