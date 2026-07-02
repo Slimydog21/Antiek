@@ -15,9 +15,11 @@ acquires its OWN write lock — async_interview takes short-lived,
 *sequential* locks and interleaves them, never nesting (the single-
 writer invariant: one flock holder at a time).
 
-Explicitly out of scope: live spoken turn-taking. TTS still raises
-``NotImplementedError`` (``acquisition/voice/openai_tts.py``); this is
-async voice NOTES, not a live conversation. The live path stays a
+Covered by ``./scripts/canonical_verify.sh speak-async-voice-interview``:
+backend async voice-note lifecycle, the single voice-substrate owner, and the
+invitee ``SpeakInvite`` UI. Explicitly out of scope: live spoken turn-taking.
+TTS still raises ``NotImplementedError`` (``acquisition/voice/openai_tts.py``);
+this is async voice NOTES, not a live conversation. The live path stays a
 deferred option.
 
 The transcript-correction discipline (rigor #1: don't distill a
