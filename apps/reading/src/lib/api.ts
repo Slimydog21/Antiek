@@ -1432,10 +1432,13 @@ function safeBlockSearchResponse(value: unknown): {
   hits: BlockSearchHit[];
 } {
   const body = record(value);
+  const seen = new Set<string>();
   const hits = Array.isArray(body?.hits)
     ? body.hits.flatMap((item) => {
         const hit = safeBlockSearchHit(item);
-        return hit ? [hit] : [];
+        if (!hit || seen.has(hit.block_id)) return [];
+        seen.add(hit.block_id);
+        return [hit];
       })
     : [];
   return {
