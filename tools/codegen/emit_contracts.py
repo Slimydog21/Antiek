@@ -105,9 +105,7 @@ TELEMETRY_MODELS: tuple[type, ...] = (
 
 # Contracts whose owning sprint has not pinned the shape — emitted with a
 # provisional marker comment so a TS consumer knows the shape may move.
-_PROVISIONAL: frozenset[str] = frozenset(
-    {"InterviewerResultContract"}
-)
+_PROVISIONAL: frozenset[str] = frozenset()
 
 
 def _emit_frame_telemetry_constants(lines: list[str]) -> None:
