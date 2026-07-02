@@ -449,8 +449,12 @@ class HostLocalRunner:
 
 
 # ---------------------------------------------------------------------------
-# Demo browse loop — placeholder until SPR-06 wires the real Exa→Browserbase
-# loop. Used by tests and as the reference shape a real loop must satisfy.
+# Deterministic demo/test browse loop.
+#
+# Production browse execution is ``runtime.research_runner.real_loop`` and is
+# selected by ``interfaces.research.api.cascade_routes._research_loop_factory``.
+# This helper remains as an explicit offline fixture/benchmark loop and as the
+# shape contract a loop must satisfy; it is not the production default.
 # ---------------------------------------------------------------------------
 
 
@@ -462,8 +466,12 @@ def make_demo_loop(
     emit_note: bool = True,
     fail_on_step: int | None = None,
 ):
-    """Build a deterministic browse loop for tests. A real loop calls Exa /
-    Browserbase between checkpoints; this one just sleeps + charges."""
+    """Build a deterministic browse loop for tests and benchmarks.
+
+    It emits the same ``StepEvent`` shape as the real loop but deliberately
+    performs no retrieval, web fan-out, synthesis, or graph writes. Production
+    code must opt into it explicitly via the cascade route's demo-loop flag.
+    """
 
     async def _loop(ctx: LoopContext) -> AsyncIterator[StepEvent]:
         yield ctx.plan_event(f"plan for: {ctx.sub_question}")
