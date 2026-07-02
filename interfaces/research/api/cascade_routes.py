@@ -59,7 +59,7 @@ from roles.cascade_planner import (
     persist_tree,
 )
 from roles.cascade_planner.planner import DispatchDecomposer
-from roles.cascade_planner.tree_contract import PlanTree
+from roles.cascade_planner.tree_contract import MAX_NODE_DEPTH, PlanTree
 from runtime.db_lock import connect_write
 from runtime.research_runner import (
     BudgetCap,
@@ -133,7 +133,7 @@ def _translate() -> Iterator[None]:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
 
-def _reuse_substrate() -> object | None:
+def _reuse_substrate(db_path: str | None = None) -> object | None:
     """SPR-02 flywheel nerve: the read-only §9.0-gated substrate the runner's
     reuse hook (``HostLocalRunner._maybe_reuse_prior_knowledge``) queries for
     prior knowledge, so a launched research emits ``knowledge.reused`` and the
@@ -168,7 +168,7 @@ def _reuse_substrate() -> object | None:
     try:
         from substrate.graph.retrieval_substrate import make_substrate
 
-        return make_substrate("brute_force", _db(), model=_embedding_provider())
+        return make_substrate("brute_force", db_path or _db(), model=_embedding_provider())
     except Exception:  # pragma: no cover — reuse is best-effort, never fatal
         return None
 
@@ -222,15 +222,15 @@ class CreatePlanRequest(BaseModel):
     # focused sub-questions directly (no model call). When omitted, the
     # decomposer role runs.
     sub_questions: list[str] | None = None
-    max_depth: int = Field(default=3, ge=1, le=6)
+    max_depth: int = Field(default=3, ge=1, le=MAX_NODE_DEPTH)
 
 
 class TreeEditRequest(BaseModel):
     op: str  # add_child | remove | reword | set_budget | split
     target_local_id: str
     question: str | None = None
-    budget_usd: float | None = None
-    max_depth: int | None = None
+    budget_usd: float | None = Field(default=None, ge=0)
+    max_depth: int | None = Field(default=None, ge=1, le=MAX_NODE_DEPTH)
     into: list[str] | None = None
 
 
@@ -388,7 +388,10 @@ async def edit_plan(root_id: str, req: TreeEditRequest) -> dict[str, Any]:
             raise HTTPException(status_code=404, detail=f"no plan {root_id!r}")
         ok = _apply_edit(tree, req)
         if not ok:
-            raise HTTPException(status_code=400, detail=f"edit {req.op!r} failed (bad target?)")
+            raise HTTPException(
+                status_code=400,
+                detail=f"edit {req.op!r} failed (bad target or invalid payload)",
+            )
         with _write("edit_plan") as con:
             persist_tree(tree, investigation_id="__operator__",
                          embedding_provider=_embedding_provider(), con=con)
@@ -398,7 +401,7 @@ async def edit_plan(root_id: str, req: TreeEditRequest) -> dict[str, Any]:
 
 def _apply_edit(tree: PlanTree, req: TreeEditRequest) -> bool:
     if req.op == "add_child":
-        return tree.add_child(req.target_local_id, req.question or "New sub-question") is not None
+        return tree.add_child(req.target_local_id, req.question or "") is not None
     if req.op == "remove":
         return tree.remove(req.target_local_id)
     if req.op == "reword":
@@ -447,12 +450,13 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
              budget=BudgetCap(cost_usd=req.per_research_budget_usd))
         for i, leaf in enumerate(tree.leaves)
     ]
+    db_path = _db()
     budget = BudgetManager(aggregate_cap_usd=req.aggregate_budget_usd)
-    funnel = PromotionFunnel(db_path=_db(), embedding_provider=_embedding_provider())
+    funnel = PromotionFunnel(db_path=db_path, embedding_provider=_embedding_provider())
     runner = HostLocalRunner(_research_loop_factory(), budget=budget,
                              on_emit=funnel.submit, seal_on_complete=False,
-                             retrieval_substrate=_reuse_substrate())
-    session = CascadeSession(session_id, runner=runner, funnel=funnel, db_path=_db())
+                             retrieval_substrate=_reuse_substrate(db_path))
+    session = CascadeSession(session_id, runner=runner, funnel=funnel, db_path=db_path)
     await session.launch(root_id, leaves)
     _SESSIONS[session_id] = session
     # Drive the fan-out to completion (join + funnel drain + merge) in the

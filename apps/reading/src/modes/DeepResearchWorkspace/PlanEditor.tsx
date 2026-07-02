@@ -12,7 +12,7 @@
 import { useState } from "react";
 
 import LemonButton from "../../components/lemon/LemonButton";
-import type { PlanNode, PlanTree } from "../../api/research";
+import { PLAN_MAX_NODE_DEPTH, type PlanNode, type PlanTree } from "../../api/research";
 
 export type PlanEdit =
   | { op: "add_child" | "remove" | "reword"; target_local_id: string; question?: string }
@@ -249,7 +249,9 @@ function parseOptionalInteger(value: string): number | undefined {
   if (!trimmed) return undefined;
   if (!/^[1-9]\d*$/.test(trimmed)) return undefined;
   const parsed = Number(trimmed);
-  return Number.isSafeInteger(parsed) ? parsed : undefined;
+  return Number.isSafeInteger(parsed) && parsed <= PLAN_MAX_NODE_DEPTH
+    ? parsed
+    : undefined;
 }
 
 function splitQuestions(value: string): string[] {

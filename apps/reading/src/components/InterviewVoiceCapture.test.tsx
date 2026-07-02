@@ -126,7 +126,7 @@ describe("InterviewVoiceCapture", () => {
 
     render(
       <InterviewVoiceCapture
-        sessionId="int-1"
+        buildUploadUrl={buildUploadUrl}
         onUploadError={onUploadError}
       />,
     );

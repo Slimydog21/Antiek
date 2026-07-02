@@ -169,6 +169,56 @@ def test_tree_edit_ops_round_trip_and_reopen_approval():
     assert all(c.question != "new branch" for c in tree.root.children)
 
 
+def test_invalid_edits_do_not_mutate_or_reopen_gate():
+    dec = FakeDecomposer({"problem": ["sub one"]})
+    tree = build_plan("problem", decomposer=dec).tree
+    tree.approval.state = "approved"
+    tree.approval.approved_at = "2026-07-02T00:00:00Z"
+    tree.approval.approved_by = "operator"
+    version = tree.approval.plan_version
+    child = tree.root.children[0]
+
+    assert tree.reword(child.local_id, "   ") is False
+    assert tree.add_child(tree.root.local_id, " ") is None
+    assert tree.split(child.local_id, ["narrow one", " "]) is False
+    assert tree.set_budget(child.local_id, budget_usd=-0.01) is False
+    assert tree.set_budget(child.local_id, max_depth=0) is False
+    assert tree.set_budget(child.local_id, max_depth=7) is False
+
+    assert child.question == "sub one"
+    assert child.children == []
+    assert tree.root.children == [child]
+    assert child.budget_usd is None
+    assert child.max_depth is None
+    assert tree.approval.state == "approved"
+    assert tree.approval.approved_at == "2026-07-02T00:00:00Z"
+    assert tree.approval.approved_by == "operator"
+    assert tree.approval.plan_version == version
+
+
+def test_from_dict_clamps_out_of_contract_max_depth():
+    restored = PlanTree.from_dict(
+        {
+            "root": {
+                "local_id": "root",
+                "question": "problem",
+                "max_depth": 99,
+                "children": [
+                    {
+                        "local_id": "child",
+                        "question": "sub",
+                        "max_depth": 6,
+                        "children": [],
+                    },
+                ],
+            },
+        },
+    )
+
+    assert restored.root.max_depth is None
+    assert restored.root.children[0].max_depth == 6
+
+
 # --------------------------------------------------------------------------
 # M4 — gap- and note-seeded planning
 # --------------------------------------------------------------------------

@@ -104,7 +104,7 @@ describe("research api - cascade plan boundary", () => {
                   rationale: "  supply-chain bottleneck  ",
                   focus_boundary: null,
                   budget_usd: -1,
-                  max_depth: 1.5,
+                  max_depth: "9",
                   graph_node_id: "",
                   children: [],
                 },
