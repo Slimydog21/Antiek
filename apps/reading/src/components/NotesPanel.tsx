@@ -39,6 +39,12 @@ function nonNegativeSafeInteger(value: unknown): number | null {
   return parsed !== null && Number.isSafeInteger(parsed) ? parsed : null;
 }
 
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
 /**
  * Right-column chat feed. Shows the live wrestling trajectory:
  *
@@ -515,19 +521,19 @@ function findGroundingByClaim(events: Event[]): Map<string, GroundingStatus> {
 }
 
 function summarizeContextPack(payload: TypedPayload): string {
-  // Avoid pulling in the full ContextPackAssembledPayload type for one
-  // formatting line; cast through unknown.
-  const p = payload as unknown as {
-    target_role: string;
-    actual_tokens: number;
-    target_tokens: number;
-    layers: { kind: string; tokens: number }[];
-    budget_overrun: boolean;
-  };
+  const p =
+    payload !== null && typeof payload === "object"
+      ? (payload as unknown as Record<string, unknown>)
+      : {};
+  const targetRole = nonEmptyString(p.target_role) ?? "context";
+  const actualTokens = nonNegativeSafeInteger(p.actual_tokens) ?? 0;
+  const targetTokens = nonNegativeSafeInteger(p.target_tokens) ?? 0;
+  const layerCount = Array.isArray(p.layers) ? p.layers.length : 0;
+
   return (
-    `pack[${p.target_role}] ${p.actual_tokens}/${p.target_tokens}tok ` +
-    `· ${p.layers.length} layer${p.layers.length === 1 ? "" : "s"}` +
-    (p.budget_overrun ? " · overflow" : "")
+    `pack[${targetRole}] ${actualTokens}/${targetTokens}tok ` +
+    `· ${layerCount} layer${layerCount === 1 ? "" : "s"}` +
+    (p.budget_overrun === true ? " · overflow" : "")
   );
 }
 
