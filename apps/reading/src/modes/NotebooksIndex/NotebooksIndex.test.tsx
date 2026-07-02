@@ -158,6 +158,13 @@ describe("NotebooksIndex", () => {
             updated_at: " 2026-07-01T03:00:00Z ",
           },
           {
+            notebook_id: "nb dirty",
+            title: "Duplicate notebook",
+            investigation_id: "inv-duplicate",
+            content_class: "user_public_contribution",
+            updated_at: "2026-07-02T03:00:00Z",
+          },
+          {
             notebook_id: " ",
             title: "Skipped notebook",
             content_class: "user_public_contribution",
@@ -169,8 +176,10 @@ describe("NotebooksIndex", () => {
     renderIndex();
 
     expect(await screen.findByText("Untitled notebook")).toBeTruthy();
+    expect(screen.queryByText("Duplicate notebook")).toBeNull();
     expect(screen.queryByText("Skipped notebook")).toBeNull();
     expect(screen.getByText("linked research")).toBeTruthy();
+    expect(screen.getByText("1 of 1")).toBeTruthy();
     expect(screen.getByText("2026-07-01T03:00:00Z")).toBeTruthy();
     expect(
       screen.getByRole("row", {
