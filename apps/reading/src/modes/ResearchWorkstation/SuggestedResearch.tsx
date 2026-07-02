@@ -147,7 +147,9 @@ export default function SuggestedResearch({
     );
   }
 
-  const offered = state.suggestions.filter((s) => !chasedKeys.has(s.key));
+  const offered = uniqueOfferableSuggestions(state.suggestions).filter(
+    (s) => !chasedKeys.has(s.key),
+  );
 
   if (offered.length === 0) {
     // Honest no-daemon / no-key state: the daemon produced no gaps (no keys,
@@ -213,6 +215,18 @@ function Frame({
       {children}
     </section>
   );
+}
+
+function uniqueOfferableSuggestions(suggestions: Suggestion[]): Suggestion[] {
+  const seen = new Set<string>();
+  const out: Suggestion[] = [];
+  for (const suggestion of suggestions) {
+    const key = suggestion.key.trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ ...suggestion, key });
+  }
+  return out;
 }
 
 function SuggestionCard({

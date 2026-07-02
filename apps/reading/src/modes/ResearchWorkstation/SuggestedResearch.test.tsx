@@ -211,6 +211,23 @@ describe("SuggestedResearch — surfacing adds no spend / explicit click (M3)", 
 });
 
 describe("SuggestedResearch — dedupe (M2)", () => {
+  it("collapses duplicate and blank suggestion keys before rendering offers", async () => {
+    suggestState.current.suggestions = [
+      sug({ key: " dup-key ", question: "First ranked copy" }),
+      sug({ key: "dup-key", question: "Duplicate copy" }),
+      sug({ key: " ", question: "Blank key copy" }),
+      sug({ key: "k2", question: "Second thread" }),
+    ];
+
+    renderLane();
+
+    expect(await screen.findByText("First ranked copy")).toBeTruthy();
+    expect(screen.getByText("Second thread")).toBeTruthy();
+    expect(screen.queryByText("Duplicate copy")).toBeNull();
+    expect(screen.queryByText("Blank key copy")).toBeNull();
+    expect(screen.getAllByTestId("suggestion-card")).toHaveLength(2);
+  });
+
   it("drops a suggestion from the offered list once it is chased", async () => {
     suggestState.current.suggestions = [
       sug({ key: "k1", question: "First thread" }),
