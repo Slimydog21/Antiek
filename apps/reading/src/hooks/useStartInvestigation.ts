@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import { startInvestigation } from "../lib/api";
 import type { ResearchTier } from "../lib/api";
+import { requireInvestigationId } from "../lib/investigationData";
 import type { Event } from "../generated/types";
 import { useEventStream } from "./useEventStream";
 
@@ -174,8 +175,9 @@ export function useStartInvestigation(): StartInvestigationState {
           // Omitted when undefined → server defaults to "deep".
           research_tier: input.researchTier,
         });
-        setStartedId(resp.investigation_id);
-        return resp.investigation_id;
+        const investigationId = requireInvestigationId(resp.investigation_id);
+        setStartedId(investigationId);
+        return investigationId;
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         setError(`Submit failed: ${msg}`);

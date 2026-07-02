@@ -6,6 +6,7 @@ import LemonTextarea from "../../components/lemon/LemonTextarea";
 import { useInvestigation } from "../../hooks/useInvestigation";
 import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
 import { startInvestigation, ApiError } from "../../lib/api";
+import { requireInvestigationId } from "../../lib/investigationData";
 import AIActionFailure from "../../shared/AIActionFailure";
 import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
@@ -102,13 +103,15 @@ export default function ChaseThread({
         // the no-orphan / one-research-per-question seam.
         ...(reservedChildId ? { investigation_id: reservedChildId } : {}),
       });
-      setLaunchedId(resp.investigation_id);
-      recordSpawnRelationship(resp.investigation_id, parentInvestigationId);
+      const childId = requireInvestigationId(resp.investigation_id);
+      setLaunchedId(childId);
+      recordSpawnRelationship(childId, parentInvestigationId);
       // The payoff is already in hand (the id is back); the beat just
       // decorates it — non-blocking, fires once.
       celebrate();
     } catch (e) {
-      const reason = e instanceof ApiError ? e.body || null : null;
+      const reason =
+        e instanceof ApiError ? e.body || null : e instanceof Error ? e.message : String(e);
       setError({ reason });
     } finally {
       setBusy(false);

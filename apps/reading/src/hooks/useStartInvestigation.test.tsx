@@ -1,9 +1,16 @@
-import { renderHook } from "@testing-library/react";
+import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Event } from "../generated/types";
 import { useEventStream } from "./useEventStream";
 import { useStartInvestigation } from "./useStartInvestigation";
+
+const startInvestigationMock = vi.hoisted(() => vi.fn());
+
+vi.mock("../lib/api", async (orig) => ({
+  ...(await orig<typeof import("../lib/api")>()),
+  startInvestigation: startInvestigationMock,
+}));
 
 vi.mock("./useEventStream", () => ({
   useEventStream: vi.fn(),
@@ -30,6 +37,14 @@ const event = (
   }) as unknown as Event;
 
 describe("useStartInvestigation", () => {
+  function closedStream() {
+    useEventStreamMock.mockReturnValue({
+      events: [],
+      status: "closed",
+      reconnects: 0,
+    });
+  }
+
   it("ignores non-finite and negative live dispatch costs", () => {
     useEventStreamMock.mockReturnValue({
       events: [
@@ -91,5 +106,43 @@ describe("useStartInvestigation", () => {
 
     expect(result.current.failed).toBe(true);
     expect(result.current.failureReason).toBe("no provider");
+  });
+
+  it("trims returned investigation ids before exposing started state", async () => {
+    closedStream();
+    startInvestigationMock.mockResolvedValue({
+      investigation_id: " inv-started ",
+      status: "in_progress",
+      start_event_id: "e1",
+    });
+    const { result } = renderHook(() => useStartInvestigation());
+
+    let started: string | null = null;
+    await act(async () => {
+      started = await result.current.submit({ question: "What changed?" });
+    });
+
+    expect(started).toBe("inv-started");
+    expect(result.current.startedId).toBe("inv-started");
+    expect(result.current.error).toBeNull();
+  });
+
+  it("surfaces malformed returned investigation ids as submit errors", async () => {
+    closedStream();
+    startInvestigationMock.mockResolvedValue({
+      investigation_id: " ",
+      status: "in_progress",
+      start_event_id: "e1",
+    });
+    const { result } = renderHook(() => useStartInvestigation());
+
+    let started: string | null = "not-null";
+    await act(async () => {
+      started = await result.current.submit({ question: "What changed?" });
+    });
+
+    expect(started).toBeNull();
+    expect(result.current.startedId).toBeNull();
+    expect(result.current.error).toMatch(/investigation_id must be a non-empty string/i);
   });
 });

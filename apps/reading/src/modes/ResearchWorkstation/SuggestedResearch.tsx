@@ -3,11 +3,11 @@ import { useNavigate } from "react-router-dom";
 
 import { getSuggestions, type Suggestion } from "../../api/research";
 import { startInvestigation, ApiError } from "../../lib/api";
+import { requireInvestigationId } from "../../lib/investigationData";
 import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
 import AIActionFailure from "../../shared/AIActionFailure";
 import LemonButton from "../../components/lemon/LemonButton";
 import { LemonTag } from "../../components/lemon/LemonTag";
-import { requireInvestigationId } from "./investigationData";
 
 /**
  * SuggestedResearch — the §7 compounding flywheel, surfaced (SPR-09).
