@@ -8,6 +8,7 @@ import {
   createPerson,
   listPeople,
   listPublicFeed,
+  requireNonEmptyField,
   type FeedItem,
   type RememberedPerson,
 } from "../../lib/speakApi";
@@ -102,9 +103,9 @@ export default function SpeakIndex() {
     setError(null);
     setCreateFailed(false);
     try {
-      const id = await createPerson(name);
+      const id = requireNonEmptyField(await createPerson(name), "project_id");
       track("speak_project_created");
-      navigate(`/speak/${id}`);
+      navigate(`/speak/${encodeURIComponent(id)}`);
     } catch {
       setCreateFailed(true);
     } finally {
