@@ -35,7 +35,7 @@
 Follow **`walk-evidence.md`** step-by-step on the deployed build:
 
 1. Open a real corpus paper → confirm rich Reader typography.
-2. Select text → FloatMenu appears with four actions.
+2. Select text → FloatMenu appears with `Note`, `Dialogue`, `Search`, and `Deep-research`.
 3. Dialogue → **requires SPR-03 keys**; score against activation SPR-01 rubric.
 4. Research spin-out → **requires SPR-03 keys**.
 5. Click a citation → same Reader opens the ingested source at the cited chunk.
@@ -47,6 +47,12 @@ proxies steps 1-6 through `/read/:documentId`. Closure authority:
 `tools/activation/read_dogfood.py` requires steps 1-7, 10 valid operator
 sessions, live-provider/citation/non-Library coverage, and a final operator
 verdict.
+
+For Write trace-to-source dogfood, seed the row with
+`python tools/activation/read_dogfood.py --template write-trace-citation`.
+That path opens the traced source directly from Write, so its citation URL
+must carry chunk/anchor evidence but does not need Reader-origin `from=`
+return context.
 
 ---
 
