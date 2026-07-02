@@ -71,6 +71,8 @@ cmd_cascade() {
     tests/test_gap_detection.py \
     tests/test_speak_drw_gap_source.py \
     -q --tb=no
+  echo "== cascade: universal ingest regression =="
+  "${PY}" -m pytest tests/test_universal_ingest.py -q --tb=no
   echo "== cascade: light create-plan route =="
   "${PY}" -m pytest tests/test_cascade_create_plan_light.py -q --tb=no
   echo "== cascade: decomposer call-site audit =="
