@@ -200,6 +200,10 @@ function safeStringArray(value: unknown): string[] {
   });
 }
 
+function uniqueStringArray(value: unknown): string[] {
+  return Array.from(new Set(safeStringArray(value)));
+}
+
 function requireString(value: unknown, field: string): string {
   const text = nonEmptyString(value);
   if (!text) throw new Error(`Malformed research response: ${field}.`);
@@ -294,8 +298,8 @@ function safeCreatePlanResponse(value: unknown): CreatePlanResponse {
   return {
     root_node_id: requireString(body.root_node_id, "root_node_id"),
     tree: safePlanTree(body.tree),
-    capped_nodes: safeStringArray(body.capped_nodes),
-    over_broad_leaves: safeStringArray(body.over_broad_leaves),
+    capped_nodes: uniqueStringArray(body.capped_nodes),
+    over_broad_leaves: uniqueStringArray(body.over_broad_leaves),
   };
 }
 
