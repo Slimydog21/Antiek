@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   attachBlock,
   appendNotebookBlock,
+  getHealth,
   getNotebook,
   getTrajectory,
   launchParkedQuestion,
@@ -128,6 +129,31 @@ describe("api client emitted-event response boundary", () => {
         },
       }),
     ).rejects.toMatchObject({ status: 502 });
+  });
+});
+
+describe("api client health response boundary", () => {
+  it("sanitizes provider activation health before feature gates read it", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          status: " ",
+          param_version: " v1 ",
+          schema_version: -1,
+          subscriber_count: "not-a-number",
+          registered_providers: [" openai ", "", 7, "anthropic"],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(getHealth()).resolves.toEqual({
+      status: "unknown",
+      param_version: "v1",
+      schema_version: 0,
+      subscriber_count: 0,
+      registered_providers: ["openai", "anthropic"],
+    });
   });
 });
 
