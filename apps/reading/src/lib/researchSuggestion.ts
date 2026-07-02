@@ -15,6 +15,7 @@
  */
 
 import { postTypedEvent, startInvestigation } from "./api";
+import { requireInvestigationId } from "./investigationData";
 
 export interface PromotionSuggestion {
   /** The investigation question the promotion would seed (the asset's prompt). */
@@ -66,13 +67,14 @@ export async function acceptPromotion(args: {
     context: "Promoted from a meta-reading asset (Read → Research).",
     spawn_context: `read-meta-asset:${args.assetId}`,
   });
+  const investigationId = requireInvestigationId(started.investigation_id);
 
   // Record the read → research seam (reuses the EXISTING typed event — no new
   // silo). entity_kind document_region; provenance_ref the asset; the launched
   // investigation named so the asset can link back.
   try {
     await postTypedEvent({
-      investigation_id: started.investigation_id,
+      investigation_id: investigationId,
       document_id: args.documentId,
       payload: {
         action_type: "seam.read_to_research",
@@ -83,7 +85,7 @@ export async function acceptPromotion(args: {
         from_workflow: "read",
         to_workflow: "research",
         document_id: args.documentId,
-        launched_investigation_id: started.investigation_id,
+        launched_investigation_id: investigationId,
       },
       role: "read/meta_reading",
       policy_id: "read/meta_reading/promote",
@@ -92,7 +94,7 @@ export async function acceptPromotion(args: {
     /* the seam is an audit link; the research already launched */
   }
 
-  return { investigation_id: started.investigation_id };
+  return { investigation_id: investigationId };
 }
 
 // ════════════════════════════════════════════════════════════════════════
