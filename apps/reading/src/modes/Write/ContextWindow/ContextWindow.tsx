@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import type { PaletteDragPayload } from "../../CreationStudio/BlockPalette";
+import { safeGenerationResult } from "../outlineData";
 import { parsePaletteDrag } from "../Repository/dragToOutline";
 import { generateSection, promoteContext, type GenerationResult } from "../writeApi";
 import {
@@ -11,6 +12,12 @@ import {
 } from "./contextWindowState";
 
 const BLOCK_ID_KEY = ("block" + "_id") as keyof PaletteDragPayload;
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
 
 /**
  * Pre-outline context window (specs/write/ SPR-08).
@@ -72,9 +79,13 @@ export function ContextWindow({
       const promoted = await promoteContext(
         contextToPromoteRequest(state, "general_essay", { deliverableId, sectionId }),
       );
+      const promotedSectionId = nonEmptyString(promoted.section_id);
+      if (!promotedSectionId) {
+        throw new Error("promoted context did not return a section id");
+      }
       await onPromoted?.();
-      const gen = await generateSection(promoted.section_id);
-      setResult(gen);
+      const gen = await generateSection(promotedSectionId);
+      setResult(safeGenerationResult(gen, promotedSectionId));
     } catch (e) {
       setError(String(e));
     } finally {
@@ -86,9 +97,12 @@ export function ContextWindow({
     setBusy(true);
     setError(null);
     try {
-      await promoteContext(
+      const promoted = await promoteContext(
         contextToPromoteRequest(state, "general_essay", { deliverableId, sectionId }),
       );
+      if (!nonEmptyString(promoted.section_id)) {
+        throw new Error("promoted context did not return a section id");
+      }
       await onPromoted?.();
     } catch (e) {
       setError(String(e));
