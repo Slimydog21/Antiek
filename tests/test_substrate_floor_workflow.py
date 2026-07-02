@@ -17,9 +17,20 @@ def _step_block(text: str, step_name: str) -> str:
     return text[start:] if end == -1 else text[start:end]
 
 
+def _scope_files(text: str) -> str:
+    marker = "      SCOPE_FILES: "
+    for line in text.splitlines():
+        if line.startswith(marker):
+            return line.removeprefix(marker)
+    raise AssertionError("substrate-floor SCOPE_FILES env not found")
+
+
 def test_substrate_floor_mypy_covers_cli_and_perf_harness() -> None:
     text = _workflow_text()
-    block = _step_block(text, "mypy --strict (Wave 1 substrate + lints + cli + perf harness)")
+    block = _step_block(
+        text,
+        "mypy --strict (substrate quality + lints + cli + perf harness)",
+    )
     assert (
         "mypy --strict --explicit-package-bases --namespace-packages" in block
     ), "substrate-floor must run strict mypy, not only ruff/tests"
@@ -31,9 +42,48 @@ def test_substrate_floor_mypy_covers_cli_and_perf_harness() -> None:
     )
 
 
+def test_substrate_floor_covers_paved_road_modules() -> None:
+    text = _workflow_text()
+    scope_files = _scope_files(text)
+    mypy_block = _step_block(
+        text,
+        "mypy --strict (substrate quality + lints + cli + perf harness)",
+    )
+    unit_block = _step_block(text, "Unit tests — substrate quality waves")
+    doctest_block = _step_block(text, "Doctests on substrate quality modules")
+
+    for path in (
+        "substrate/result_helpers.py",
+        "substrate/ownership.py",
+        "substrate/exhaustive.py",
+        "docs/decisions/are-wave-5-paved-roads.md",
+        "docs/substrate_quality_toolkit.md",
+        "tests/test_result_helpers.py",
+        "tests/test_ownership.py",
+        "tests/test_exhaustive.py",
+    ):
+        assert f"- '{path}'" in text, f"{path} must trigger substrate-floor"
+
+    for module in (
+        "substrate/result_helpers.py",
+        "substrate/ownership.py",
+        "substrate/exhaustive.py",
+    ):
+        assert module in scope_files, f"{module} must be in substrate-floor SCOPE_FILES"
+        assert "$SCOPE_FILES" in mypy_block, "strict mypy must consume SCOPE_FILES"
+        assert "$SCOPE_FILES" in doctest_block, "doctests must consume SCOPE_FILES"
+
+    for test_path in (
+        "tests/test_result_helpers.py",
+        "tests/test_ownership.py",
+        "tests/test_exhaustive.py",
+    ):
+        assert test_path in unit_block, f"{test_path} must run in substrate-floor"
+
+
 def test_substrate_floor_runs_perf_cli_tests() -> None:
     text = _workflow_text()
-    block = _step_block(text, "Unit tests — Wave 1 + Wave 2 + Wave 3 + Wave 4")
+    block = _step_block(text, "Unit tests — substrate quality waves")
     assert "- 'tests/test_antiek_cli_perf.py'" in text, (
         "perf CLI test changes must trigger substrate-floor"
     )

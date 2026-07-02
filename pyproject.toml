@@ -205,6 +205,11 @@ ignore = ["E501"]  # line length handled by formatter
 # BEFORE importing substrate modules — those imports MUST follow the path fix, so
 # module-level-import-not-at-top-of-file (E402) is the correct pattern, not a bug.
 "tools/verify_ad_economics.py" = ["E402"]
+# The substrate quality floor still runs on Python 3.11. Keep these generic
+# helpers on TypeVar/Generic syntax until that workflow moves to 3.12+.
+"substrate/results.py" = ["UP046", "UP047"]
+"substrate/result_helpers.py" = ["UP047"]
+"substrate/ownership.py" = ["UP046"]
 
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI dependency-injection markers are idiomatic call-in-default usage,

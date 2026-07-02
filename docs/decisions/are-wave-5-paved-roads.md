@@ -19,7 +19,9 @@ Instead of leaving ARE-02/03/04 as "TODO, blocked," each now has a reference imp
 | ARE-04 (ownership reference) | `substrate/ownership.py` — `OwnershipHandle[T]` + `DispatchBudgetReference` | `586dbc2` | 13 |
 | ARE-03 (exhaustive-match) | `substrate/exhaustive.py` — `assert_exhaustive` + canonical pattern | `9010de5` | 8 |
 
-40 tests total; all mypy --strict clean, ruff clean, with doctests where illustrative.
+40 focused paved-road tests at landing time; the current local proof is 51
+tests including paved-road properties. All strict-mypy clean, ruff clean, with
+doctests where illustrative.
 
 ## Why these compose (the genius-hard-to-vary part)
 
@@ -74,24 +76,23 @@ Each migration is written to be a small, reviewable diff: import the helper, app
 ## Verification
 
 ```bash
-cd ~/Desktop/Antiek
-git checkout are/wave-1-substrate-additive && git pull
-./.venv/bin/pip install -e ".[dev]" hypothesis
+cd /Users/slimydog/Antiek/platform
+./.venv/bin/pip install -e ".[dev]"
 
 ./.venv/bin/python -m pytest \
-    tests/test_results.py tests/test_errors.py tests/test_escape_hatch.py \
-    tests/test_result_helpers.py tests/test_ownership.py tests/test_exhaustive.py \
-    tests/test_lints_no_raise.py tests/test_lints_unannotated_bypass.py \
-    tests/test_lints_baseline.py tests/test_lints_cli_with_baseline.py \
-    tests/test_lints_mypy_strict_baseline.py \
-    tests/test_antiek_cli.py tests/test_antiek_cli_perf.py \
-    tests/test_benchmark_harness.py tests/properties/ -q
+    tests/test_result_helpers.py tests/test_ownership.py \
+    tests/test_exhaustive.py tests/properties/test_paved_road_properties.py \
+    -q --tb=no
+# Expected on 2026-07-02: 51 passed
 
 ./.venv/bin/mypy --strict \
-    substrate/results.py substrate/errors.py substrate/escape_hatch.py \
     substrate/result_helpers.py substrate/ownership.py substrate/exhaustive.py
-# Expected: Success: no issues found in 6 source files
+# Expected: Success: no issues found in 3 source files
 ```
+
+The substrate floor also now includes the paved-road modules and tests in
+`.github/workflows/substrate_floor.yml`, so edits to these references or their
+toolkit docs run the same CI floor instead of relying on this ADR by memory.
 
 ## Self-ratification
 

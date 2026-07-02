@@ -3,9 +3,11 @@
 # PR touching substrate/ must pass. Each step is independent so the
 # operator sees which gate failed.
 #
-# Scope: today's gate runs ONLY against the Wave-1 substrate modules
-# I authored (substrate/results.py, substrate/errors.py,
-# substrate/escape_hatch.py). The baselines under
+# Scope: today's gate runs against the Wave-1 substrate modules plus the
+# ARE-02/03/04 paved-road modules (substrate/results.py,
+# substrate/errors.py, substrate/escape_hatch.py,
+# substrate/result_helpers.py, substrate/ownership.py,
+# substrate/exhaustive.py). The baselines under
 # tools/lints/baselines/ grandfather their current violation set;
 # new PRs to these files must not introduce NEW lint violations.
 #
@@ -25,11 +27,19 @@ on:
       - 'substrate/results.py'
       - 'substrate/errors.py'
       - 'substrate/escape_hatch.py'
+      - 'substrate/result_helpers.py'
+      - 'substrate/ownership.py'
+      - 'substrate/exhaustive.py'
+      - 'docs/decisions/are-wave-5-paved-roads.md'
+      - 'docs/substrate_quality_toolkit.md'
       - 'tools/lints/**'
       - 'tools/antiek_cli/**'
       - 'tests/test_results.py'
       - 'tests/test_errors.py'
       - 'tests/test_escape_hatch.py'
+      - 'tests/test_result_helpers.py'
+      - 'tests/test_ownership.py'
+      - 'tests/test_exhaustive.py'
       - 'tests/test_lints_*.py'
       - 'tests/test_antiek_cli.py'
       - 'tests/test_antiek_cli_perf.py'
@@ -44,12 +54,17 @@ on:
       - 'substrate/results.py'
       - 'substrate/errors.py'
       - 'substrate/escape_hatch.py'
+      - 'substrate/result_helpers.py'
+      - 'substrate/ownership.py'
+      - 'substrate/exhaustive.py'
+      - 'docs/decisions/are-wave-5-paved-roads.md'
+      - 'docs/substrate_quality_toolkit.md'
 
 jobs:
   substrate-quality-gate:
     runs-on: ubuntu-latest
     env:
-      SCOPE_FILES: substrate/results.py substrate/errors.py substrate/escape_hatch.py
+      SCOPE_FILES: substrate/results.py substrate/errors.py substrate/escape_hatch.py substrate/result_helpers.py substrate/ownership.py substrate/exhaustive.py
     steps:
       - uses: actions/checkout@v7
 
@@ -70,7 +85,7 @@ jobs:
         run: |
           ruff check $SCOPE_FILES tools/lints/ tools/antiek_cli/ tools/benchmarks/
 
-      - name: mypy --strict (Wave 1 substrate + lints + cli + perf harness)
+      - name: mypy --strict (substrate quality + lints + cli + perf harness)
         run: |
           # --explicit-package-bases --namespace-packages: tools/* packages
           # have __init__.py files but tools/ itself does not, so mypy otherwise
@@ -97,12 +112,15 @@ jobs:
             --baseline-file tools/lints/baselines/bypass.json \
             --check-stale
 
-      - name: Unit tests — Wave 1 + Wave 2 + Wave 3 + Wave 4
+      - name: Unit tests — substrate quality waves
         run: |
           pytest \
             tests/test_results.py \
             tests/test_errors.py \
             tests/test_escape_hatch.py \
+            tests/test_result_helpers.py \
+            tests/test_ownership.py \
+            tests/test_exhaustive.py \
             tests/test_lints_no_raise.py \
             tests/test_lints_unannotated_bypass.py \
             tests/test_lints_baseline.py \
@@ -117,7 +135,7 @@ jobs:
         run: |
           pytest tests/properties/ -v
 
-      - name: Doctests on Wave 1 substrate modules
+      - name: Doctests on substrate quality modules
         run: |
           pytest --doctest-modules $SCOPE_FILES -v
 
