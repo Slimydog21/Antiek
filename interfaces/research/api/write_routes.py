@@ -46,7 +46,9 @@ from pydantic import BaseModel, Field
 
 from roles.interviewer.drivers import DriverSet
 from runtime.db_lock import connect_write
+from substrate.event_log import emit_typed, trajectory
 from substrate.graph import default_db_path, ensure_initialized
+from substrate.schemas.events import SeamWriteToReadPayload
 from substrate.write import block_search
 from substrate.write import folders as folders_mod
 from substrate.write.brainstorm_blocks import drivers_to_blocks
@@ -160,6 +162,58 @@ def _outline_block_owner(con: Any, outline_block_id: str) -> tuple[str, str, str
     if row is None:
         return None
     return row[0], row[1], row[2]
+
+
+def _payload(event: dict[str, Any]) -> dict[str, Any]:
+    payload = event.get("payload")
+    return payload if isinstance(payload, dict) else {}
+
+
+def _write_trace_provenance_ref(
+    *,
+    investigation_id: str,
+    outline_block_id: str,
+) -> str:
+    """Find the read→write seam this trace follows, if the event log has it.
+
+    `place_block` emits `outline_block.placed`, then `seam.read_to_write`
+    parented to that placement event. The write→read trace should chain to
+    that seam event so thread reconstruction can follow the actual handoff
+    lineage. Older events may lack the seam, so fall back to the placement
+    event, then the block id.
+    """
+    placed_event_id: str | None = None
+    for event in trajectory(investigation_id):
+        if (
+            event.get("action_type") == "outline_block.placed"
+            and _payload(event).get("outline_block_id") == outline_block_id
+        ):
+            event_id = event.get("event_id")
+            placed_event_id = str(event_id) if event_id is not None else None
+        if (
+            event.get("action_type") == "seam.read_to_write"
+            and placed_event_id is not None
+            and event.get("parent_event_id") == placed_event_id
+        ):
+            return str(event.get("event_id"))
+    return placed_event_id or outline_block_id
+
+
+def _write_to_read_seam_exists(
+    *,
+    investigation_id: str,
+    outline_block_id: str,
+    provenance_ref: str,
+) -> bool:
+    for event in trajectory(investigation_id):
+        payload = _payload(event)
+        if (
+            event.get("action_type") == "seam.write_to_read"
+            and payload.get("entity_id") == outline_block_id
+            and payload.get("provenance_ref") == provenance_ref
+        ):
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -344,7 +398,31 @@ def get_trace_target(outline_block_id: str) -> dict:
     with _read() as con:
         if get_block(con, outline_block_id) is None:
             raise HTTPException(status_code=404, detail="outline block not found")
+        owner = _outline_block_owner(con, outline_block_id)
         target = resolve_trace_target(con, outline_block_id)
+    investigation_id = (
+        owner[2] if owner is not None and owner[2] else "__operator__"
+    )
+    provenance_ref = _write_trace_provenance_ref(
+        investigation_id=investigation_id,
+        outline_block_id=outline_block_id,
+    )
+    if not _write_to_read_seam_exists(
+        investigation_id=investigation_id,
+        outline_block_id=outline_block_id,
+        provenance_ref=provenance_ref,
+    ):
+        emit_typed(
+            investigation_id,
+            SeamWriteToReadPayload(
+                entity_id=outline_block_id,
+                provenance_ref=provenance_ref,
+                source_document_id=target.document_id,
+                source_region_id=target.chunk_ids[0] if target.chunk_ids else None,
+            ),
+            parent_event_id=provenance_ref if provenance_ref != outline_block_id else None,
+            role="write_composition",
+        )
     return {
         "kind": target.kind,
         "full_text_allowed": target.full_text_allowed,  # the no-leak bit
