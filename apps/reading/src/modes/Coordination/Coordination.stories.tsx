@@ -252,7 +252,7 @@ export const CANONICAL_ROADMAP: RoadmapView = {
         sprint: i + 1,
         slug: `sprint-${i + 1}`,
         node_id: `unified:${i + 1}`,
-        status: i === 0 ? "live" : "planned",
+        status: i < 2 ? "live" : "planned",
         on_critical_path: false,
         blocked_on: [],
         unblocked: true,
@@ -263,7 +263,7 @@ export const CANONICAL_ROADMAP: RoadmapView = {
   dependency_blockers: [],
   execution_focus: {
     kind: "dependency_ready",
-    node_id: "unified:2",
+    node_id: "unified:3",
     blocked_sprints: [],
   },
   substrate_layers: [
