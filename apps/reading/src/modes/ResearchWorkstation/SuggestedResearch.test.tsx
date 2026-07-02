@@ -27,7 +27,7 @@ import { MemoryRouter } from "react-router-dom";
 
 import type { Suggestion } from "../../api/research";
 
-const { suggestState, startMock, navigateMock, ApiErrorShim } = vi.hoisted(() => {
+const { suggestState, startMock, navigateMock, recordSpawnMock, ApiErrorShim } = vi.hoisted(() => {
   // A tiny ApiError-shaped error so the catch branch's `instanceof ApiError`
   // path is exercised. Its prototype is re-pointed at the real ApiError inside
   // the lib/api mock factory below, so `instanceof ApiError` holds.
@@ -46,6 +46,7 @@ const { suggestState, startMock, navigateMock, ApiErrorShim } = vi.hoisted(() =>
     },
     startMock: vi.fn(),
     navigateMock: vi.fn(),
+    recordSpawnMock: vi.fn(),
     ApiErrorShim,
   };
 });
@@ -75,7 +76,7 @@ vi.mock("../../lib/api", async (orig) => {
 });
 
 vi.mock("../../hooks/useInvestigationTree", () => ({
-  recordSpawnRelationship: vi.fn(),
+  recordSpawnRelationship: recordSpawnMock,
 }));
 
 vi.mock("react-router-dom", async (orig) => {
@@ -106,8 +107,9 @@ beforeEach(() => {
   suggestState.current = { suggestions: [] };
   suggestState.error = null;
   startMock.mockReset();
-  startMock.mockResolvedValue({ investigation_id: "inv-new99", status: "started", start_event_id: "e1" });
+  startMock.mockResolvedValue({ investigation_id: " inv-new99 ", status: "started", start_event_id: "e1" });
   navigateMock.mockReset();
+  recordSpawnMock.mockReset();
 });
 afterEach(() => cleanup());
 
@@ -166,8 +168,25 @@ describe("SuggestedResearch — surfacing adds no spend / explicit click (M3)", 
       question: "Chase me",
       parent_investigation_id: "inv-src1",
     });
+    expect(recordSpawnMock).toHaveBeenCalledWith("inv-new99", "inv-src1");
     // The launched research opens.
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith("/inv/inv-new99"));
+  });
+
+  it("surfaces malformed launched ids instead of navigating or recording a spawn", async () => {
+    startMock.mockResolvedValue({ investigation_id: " ", status: "started", start_event_id: "e1" });
+    suggestState.current.suggestions = [
+      sug({ key: "k1", question: "Bad child", source_investigation_id: "inv-src1" }),
+    ];
+    const user = userEvent.setup();
+    renderLane();
+    await screen.findByText("Bad child");
+
+    await user.click(screen.getByRole("button", { name: "Chase this" }));
+
+    expect(await screen.findByText(/investigation_id must be a non-empty string/i)).toBeTruthy();
+    expect(recordSpawnMock).not.toHaveBeenCalled();
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 
   it("hands off to the chase gesture (no direct launch) when a parent is in context", async () => {
