@@ -67,6 +67,18 @@ def test_platform_matrix_names_every_ci_canonical_command() -> None:
     )
 
 
+def test_agent_workflow_runs_every_matrix_canonical_command() -> None:
+    missing = sorted(
+        (_matrix_canonical_commands() - _META_COMMANDS)
+        - _workflow_canonical_commands()
+    )
+
+    assert not missing, (
+        "PLATFORM_EXEC_MATRIX.md names canonical verifier(s) not run by "
+        f"agent_execution_gates.yml: {missing}"
+    )
+
+
 def test_platform_matrix_canonical_commands_exist_in_script() -> None:
     missing = sorted(_matrix_canonical_commands() - _script_canonical_commands())
 
