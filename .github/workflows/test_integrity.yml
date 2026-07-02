@@ -65,7 +65,8 @@ jobs:
       - name: Install (core + dev extras the detector selectors need)
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,arxiv,pdf,urls,embedding,youtube,rss]"
+          # AGH SPR-04 (G4): pin under the declared-bar lock — see ci.yml.
+          pip install -c tools/lints/constraints.txt -e ".[dev,arxiv,pdf,urls,embedding,youtube,rss]"
 
       - name: Fake-gate detector (informational)
         # SPR-02: bounded mutation-lite. --enforce prints the full survivor

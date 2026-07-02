@@ -57,7 +57,8 @@ jobs:
       - name: Install (core + dev)
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          # AGH SPR-04 (G4): pin under the declared-bar lock — see ci.yml.
+          pip install -c tools/lints/constraints.txt -e ".[dev]"
 
       - name: SPR-01 — fault-injection harness self-tests
         run: pytest tools/faultinject/tests/ -q
