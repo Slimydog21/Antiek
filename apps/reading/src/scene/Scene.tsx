@@ -84,14 +84,15 @@ export function Scene({ mood: moodProp, fetchScene, reducedMotion }: SceneProps)
       className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
       data-testid="scene-root"
       data-scene-mood={mood.dayPart}
+      data-scene-clock={clock.t}
       data-scene-frozen={frozen ? "true" : "false"}
       data-scene-fallback={art.isFallback ? "true" : "false"}
       aria-hidden="true"
     >
       {/* z-0 sky + peaks (with bounded parallax) */}
-      <Peaks mood={mood} frozen={frozen} />
+      <Peaks mood={mood} frozen={frozen} clockMs={clock.t} />
       {/* z-1 periodic Krea art, crossfaded on mood change (nothing in fallback) */}
-      <KreaArtLayer art={art} frozen={frozen} />
+      <KreaArtLayer art={art} frozen={frozen} clockMs={clock.t} />
       {/* z-2 clouds (canvas) */}
       <Clouds mood={mood} reducedMotion={frozen} />
       {/* z-3 snow (canvas) */}

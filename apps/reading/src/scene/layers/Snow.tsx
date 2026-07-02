@@ -9,6 +9,7 @@ import {
 } from "../field";
 import { moodAlpha, resolveToken } from "../palette";
 import { moodKey, type SceneMood } from "../mood";
+import { sceneLayerTransform } from "../../design/motion/sceneMotion";
 
 /**
  * Snow (SPR-04, milestone 2 — wind-driven snow particles).
@@ -69,6 +70,7 @@ export function Snow({ mood, reducedMotion }: SnowProps) {
     const draw = (t: number) => {
       const W = canvas.width;
       const H = canvas.height;
+      const drift = sceneLayerTransform("snow", t, { reducedMotion });
       ctx.clearRect(0, 0, W, H);
       ctx.fillStyle = flakeColor;
       ctx.globalAlpha = snowAlpha;
@@ -76,7 +78,7 @@ export function Snow({ mood, reducedMotion }: SnowProps) {
         const { x, y } = snowAt(f, t, W, H, WIND);
         const r = f.r * dpr;
         ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.arc(x + drift.x * dpr, y + drift.y * dpr, r, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.globalAlpha = 1;
