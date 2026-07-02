@@ -372,6 +372,20 @@ describe("UnifiedSearch — M2 Enter escalates (cassette)", () => {
     expect(navigateMock).not.toHaveBeenCalled();
   });
 
+  it("encodes the live research id before opening the full investigation", () => {
+    resetInvestigationState({
+      startedId: "inv dirty/live",
+      phase: "streaming",
+      events: [{ action_type: "dispatch.call", payload: { cost_usd: 0.01 } } as Event],
+      liveCost: 0.01,
+    });
+
+    renderSearch();
+    fireEvent.click(screen.getByRole("button", { name: /open full investigation/i }));
+
+    expect(navigateMock).toHaveBeenCalledWith("/inv/inv%20dirty%2Flive");
+  });
+
   it("does not render malformed inline live cost as NaN or Infinity", () => {
     resetInvestigationState({
       startedId: "inv-live",
