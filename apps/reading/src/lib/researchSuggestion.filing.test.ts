@@ -62,10 +62,10 @@ describe("acceptFiling (explicit-accept-only mutator)", () => {
   it("emits exactly one filing event into the chosen project, through the funnel", async () => {
     postTypedEventMock.mockResolvedValue({ event_id: "ev-1", action_type: "document.filed_into_investigation" });
     const res = await acceptFiling({
-      documentId: "doc-9",
-      investigationId: "inv-target",
+      documentId: " doc-9 ",
+      investigationId: " inv-target ",
       matchScore: 0.66,
-      question: "the chosen question",
+      question: " the chosen question ",
     });
     expect(res.investigation_id).toBe("inv-target");
     expect(postTypedEventMock).toHaveBeenCalledTimes(1);
@@ -76,6 +76,7 @@ describe("acceptFiling (explicit-accept-only mutator)", () => {
     expect(envelope.payload.filed_document_id).toBe("doc-9");
     expect(envelope.payload.target_investigation_id).toBe("inv-target");
     expect(envelope.payload.match_score).toBe(0.66);
+    expect(envelope.payload.target_question).toBe("the chosen question");
   });
 
   it("files into ONE project even when several matched (no double-file)", async () => {
@@ -90,5 +91,42 @@ describe("acceptFiling (explicit-accept-only mutator)", () => {
     });
     expect(postTypedEventMock).toHaveBeenCalledTimes(1);
     expect(postTypedEventMock.mock.calls[0][0].payload.target_investigation_id).toBe("inv-b");
+  });
+
+  it("rejects malformed filing inputs before emitting an event", async () => {
+    await expect(
+      acceptFiling({
+        documentId: " ",
+        investigationId: "inv-target",
+        matchScore: 0.7,
+        question: "q",
+      }),
+    ).rejects.toThrow(/documentId/);
+    await expect(
+      acceptFiling({
+        documentId: "doc-1",
+        investigationId: " ",
+        matchScore: 0.7,
+        question: "q",
+      }),
+    ).rejects.toThrow(/investigationId/);
+    await expect(
+      acceptFiling({
+        documentId: "doc-1",
+        investigationId: "inv-target",
+        matchScore: Number.NaN,
+        question: "q",
+      }),
+    ).rejects.toThrow(/matchScore/);
+    await expect(
+      acceptFiling({
+        documentId: "doc-1",
+        investigationId: "inv-target",
+        matchScore: 0.7,
+        question: " ",
+      }),
+    ).rejects.toThrow(/question/);
+
+    expect(postTypedEventMock).not.toHaveBeenCalled();
   });
 });
