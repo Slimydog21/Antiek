@@ -7,7 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import type { ReactNode } from "react";
 
 import type { Event } from "../../generated/types";
@@ -26,6 +26,14 @@ vi.mock("../../workspace/PanelHost", () => ({
 }));
 
 import Replay from ".";
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
 
 class MockWebSocket {
   static instances: MockWebSocket[] = [];
@@ -127,6 +135,26 @@ const REALISTIC_MULTI_STEP_TRAJECTORY: Event[] = [
 function mountReplay() {
   return render(
     <MemoryRouter initialEntries={["/replay/inv-real-multi-step"]}>
+      <Routes>
+        <Route path="/replay/:investigationId" element={<Replay />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+function RouteSwitchProbe() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate("/replay/inv-fresh")}>
+      open fresh replay
+    </button>
+  );
+}
+
+function mountReplayWithSwitch() {
+  return render(
+    <MemoryRouter initialEntries={["/replay/inv-stale"]}>
+      <RouteSwitchProbe />
       <Routes>
         <Route path="/replay/:investigationId" element={<Replay />} />
       </Routes>
@@ -249,5 +277,63 @@ describe("Replay route with a realistic multi-step trajectory", () => {
     });
     expect(screen.getByText(/event_id: evt-006-complete/)).toBeTruthy();
     expect(screen.queryByText(/evt-live-poisoned/)).toBeNull();
+  });
+
+  it("keeps stale trajectory fetches from overwriting the active routed replay", async () => {
+    vi.stubGlobal("WebSocket", MockWebSocket);
+    const stale = deferred<{
+      ok: true;
+      json: () => Promise<{ events: Event[] }>;
+    }>();
+    const fresh = deferred<{
+      ok: true;
+      json: () => Promise<{ events: Event[] }>;
+    }>();
+    apiFetchMock.mockReturnValueOnce(stale.promise).mockReturnValueOnce(fresh.promise);
+
+    mountReplayWithSwitch();
+    fireEvent.click(screen.getByRole("button", { name: /open fresh replay/i }));
+
+    await act(async () => {
+      fresh.resolve({
+        ok: true,
+        json: async () => ({
+          events: [
+            event(
+              "evt-fresh-start",
+              "2026-07-01T12:00:10Z",
+              "investigation.start_requested",
+              "operator",
+              { question: "Fresh replay should stay visible." },
+              1,
+            ),
+          ],
+        }),
+      });
+    });
+
+    expect(await screen.findByText("· 1 events")).toBeTruthy();
+    expect(screen.getByText(/Fresh replay should stay visible/)).toBeTruthy();
+
+    await act(async () => {
+      stale.resolve({
+        ok: true,
+        json: async () => ({
+          events: [
+            event(
+              "evt-stale-start",
+              "2026-07-01T12:00:00Z",
+              "investigation.start_requested",
+              "operator",
+              { question: "Stale replay must not appear." },
+              1,
+            ),
+          ],
+        }),
+      });
+    });
+
+    expect(screen.getByText(/Fresh replay should stay visible/)).toBeTruthy();
+    expect(screen.queryByText(/Stale replay must not appear/)).toBeNull();
   });
 });
