@@ -113,7 +113,7 @@ footer.spec-footer { margin-top: var(--space-8); padding-top: var(--space-4); bo
 <span class="tag tag--blue"><span class="dot"></span>4 sprints</span>
 <span class="tag tag--green"><span class="dot"></span>No substrate impact</span>
 <span class="tag tag--yellow"><span class="dot"></span>MCP-first developer surface</span>
-<span class="tag tag--green"><span class="dot"></span>Closed with hermetic tests</span>
+<span class="tag tag--green"><span class="dot"></span>closed with hermetic tests</span>
 </div>
 </header>
 
@@ -123,6 +123,14 @@ footer.spec-footer { margin-top: var(--space-8); padding-top: var(--space-4); bo
 <div class="callout callout--info">
 <strong>Position:</strong> Sprint 19 engineering per master spec §13.8. NOT gated on legal (G2/G3). The personal-notes API is free for the user's own account.
 </div>
+</section>
+
+<section class="block">
+<h2>Programme exit</h2>
+<pre><code>.venv/bin/python -m pytest tests/test_mcp_server.py tests/test_mcp_tools.py tests/test_mcp_resources.py tests/test_mcp_defenses.py tests/test_mcp_e2e.py -v
+.venv/bin/python -m mypy services/mcp_server/ --strict
+.venv/bin/python -m ruff check services/mcp_server/</code></pre>
+<p class="scope"><strong>Scope boundary:</strong> OAuth token validation, rate limiting, and multi-user isolation remain Sprint 22 work. This programme proves the single-operator MCP memory surface.</p>
 </section>
 
 <section class="block">
