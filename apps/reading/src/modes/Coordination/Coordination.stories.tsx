@@ -253,7 +253,7 @@ export const CANONICAL_ROADMAP: RoadmapView = {
   dependency_blockers: [],
   execution_focus: {
     kind: "dependency_ready",
-    node_id: "read:2",
+    node_id: "read:3",
     blocked_sprints: [],
   },
   substrate_layers: [

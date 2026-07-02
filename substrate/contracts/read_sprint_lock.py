@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to READ_SPRINTS. Status changes are deliberate roadmap
 # events, not comments buried in a handoff.
-READ_LOCK_VERSION: int = 1
+READ_LOCK_VERSION: int = 2
 
 
 @dataclass(frozen=True)
@@ -36,7 +36,15 @@ READ_SPRINTS: dict[int, ReadDeliverable] = {
         # rights-holder link, and /books API are covered by test_book_corpus_gate.
         status="live",
     ),
-    2: ReadDeliverable(2, "library-browse", "Library/browse mode"),
+    2: ReadDeliverable(
+        2,
+        "library-browse",
+        "Library/browse mode",
+        # Live: /library paginated/filterable/searchable catalog, typed TS
+        # client, Library mode/card UI, servability-flagged gated affordances,
+        # and gated-body-never-served drift guard are covered by read-library.
+        status="live",
+    ),
     3: ReadDeliverable(3, "book-reader", "Book reader"),
     4: ReadDeliverable(4, "prompt-to-curate", "Prompt-to-curate browsing"),
     5: ReadDeliverable(5, "ad-border-inventory", "Ad-border inventory"),
