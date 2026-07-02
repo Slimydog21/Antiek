@@ -265,4 +265,44 @@ describe("Speak project page", () => {
     expect(await screen.findByText(/Paperback quote: \$—/i)).toBeTruthy();
     expect(screen.queryByText(/\[object Object\]/)).toBeNull();
   });
+
+  it.each(["not-a-number", "Infinity", -12])(
+    "omits malformed paperback quote cost %s",
+    async (costUsd) => {
+      api.getProject.mockResolvedValue({
+        id: "p1", name: "Grandma Rosa", willBePublic: true, subjectStatusWord: null,
+      });
+      api.getEconomics.mockResolvedValue({ splitApplies: true, creatorCarriesCost: false });
+      apiFetchMock.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ cost_usd: costUsd }),
+      });
+      mount();
+      await screen.findByText("Grandma Rosa");
+      fireEvent.click(screen.getByRole("button", { name: /^settings$/i }));
+      fireEvent.click(await screen.findByRole("button", { name: /paperback quote/i }));
+
+      expect(await screen.findByText(/Paperback quote: \$—/i)).toBeTruthy();
+      expect(document.body.textContent).not.toMatch(/not-a-number|Infinity|\$-/);
+    },
+  );
+
+  it("formats valid numeric-string paperback quote costs", async () => {
+    api.getProject.mockResolvedValue({
+      id: "p1", name: "Grandma Rosa", willBePublic: true, subjectStatusWord: null,
+    });
+    api.getEconomics.mockResolvedValue({ splitApplies: true, creatorCarriesCost: false });
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ cost_usd: "12" }),
+    });
+    mount();
+    await screen.findByText("Grandma Rosa");
+    fireEvent.click(screen.getByRole("button", { name: /^settings$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /paperback quote/i }));
+
+    expect(await screen.findByText(/Paperback quote: \$12\.00/i)).toBeTruthy();
+  });
 });

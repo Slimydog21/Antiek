@@ -72,10 +72,16 @@ function nonEmptyString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function stringOrNumber(value: unknown): string | number | null {
-  if (typeof value === "string") return value;
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  return null;
+function quoteCost(value: unknown): string | null {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim()
+        ? Number(value.trim())
+        : null;
+  return typeof parsed === "number" && Number.isFinite(parsed) && parsed >= 0
+    ? parsed.toFixed(2)
+    : null;
 }
 
 async function readDetail(resp: Response): Promise<string> {
@@ -227,7 +233,7 @@ export default function Speak() {
               : "Saved privately — not shared publicly (publishing is still gated).",
           );
         } else {
-          const cost = stringOrNumber(data.cost_usd) ?? "—";
+          const cost = quoteCost(data.cost_usd) ?? "—";
           setActionNote(
             `Paperback quote: $${cost} (not ordered — fulfilment is gated).`,
           );
