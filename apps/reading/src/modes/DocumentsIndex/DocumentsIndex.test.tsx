@@ -151,6 +151,12 @@ describe("DocumentsIndex", () => {
             ip_holder_id: 17,
           },
           {
+            document_id: "doc dirty",
+            title: "Duplicate source",
+            source_tier: 1,
+            investigation_id: "inv-duplicate",
+          },
+          {
             document_id: " ",
             title: "Skipped source",
             source_tier: 1,
@@ -162,6 +168,7 @@ describe("DocumentsIndex", () => {
     renderIndex();
 
     expect(await screen.findByText("Dirty source")).toBeTruthy();
+    expect(screen.queryByText("Duplicate source")).toBeNull();
     expect(screen.queryByText("Skipped source")).toBeNull();
     expect(screen.getByText("Unrated source")).toBeTruthy();
     expect(screen.getByText("Web Page")).toBeTruthy();
