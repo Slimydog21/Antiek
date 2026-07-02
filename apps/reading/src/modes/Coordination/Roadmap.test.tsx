@@ -94,6 +94,13 @@ describe("Roadmap", () => {
       ),
     ).toBeTruthy();
     expect(screen.getByText("Dependency blockers")).toBeTruthy();
+    expect(screen.getByText("Execution focus")).toBeTruthy();
+    expect(
+      screen.getByText("Unblock drw:5 — Research (DRW) · SPR-05"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Clears dependency pressure for 1 sprint."),
+    ).toBeTruthy();
     expect(screen.getByText("drw:5")).toBeTruthy();
     expect(
       screen.getByText("Research (DRW) · SPR-05 · cascade planner · planned"),
@@ -147,6 +154,10 @@ describe("Roadmap", () => {
     expect(
       screen.getByText("1 dependency-ready · 0 blocked by dependency state"),
     ).toBeTruthy();
+    expect(
+      screen.getByText("Next dependency-ready sprint: Read · SPR-01"),
+    ).toBeTruthy();
+    expect(screen.getByText("read sprint 1 · read:1")).toBeTruthy();
     expect(screen.queryByText("Dependency blockers")).toBeNull();
   });
 
@@ -187,6 +198,12 @@ describe("Roadmap", () => {
     expect(screen.getByText("blocks 4 sprints")).toBeTruthy();
     expect(screen.getByText("blocks 1 sprint")).toBeTruthy();
     expect(
+      screen.getByText("Unblock drw:5 — Research (DRW) · SPR-05"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Clears dependency pressure for 4 sprints."),
+    ).toBeTruthy();
+    expect(
       screen.getByText("Research (DRW) · SPR-05 · cascade planner · planned"),
     ).toBeTruthy();
     expect(
@@ -216,5 +233,31 @@ describe("Roadmap", () => {
     expect(screen.getByText("blocks 1 sprint")).toBeTruthy();
     expect(screen.getByText("Read · SPR-01, Read · SPR-02")).toBeTruthy();
     expect(screen.getByText("Read · SPR-03")).toBeTruthy();
+  });
+
+  it("prefers blocker focus over dependency-ready rows", () => {
+    render(
+      <Roadmap
+        roadmap={roadmap(
+          [
+            sprint(5, [], true, "drw"),
+            sprint(1, [], true),
+            sprint(2, ["drw:5"]),
+          ],
+          ["read:1"],
+        )}
+      />,
+    );
+
+    expect(
+      screen.getByText("Unblock drw:5 — Research (DRW) · SPR-05"),
+    ).toBeTruthy();
+    expect(screen.queryByText("Next dependency-ready sprint: Read · SPR-01")).toBeNull();
+  });
+
+  it("hides execution focus when there is no blocker and no dependency-ready row", () => {
+    render(<Roadmap roadmap={roadmap([])} />);
+
+    expect(screen.queryByText("Execution focus")).toBeNull();
   });
 });
