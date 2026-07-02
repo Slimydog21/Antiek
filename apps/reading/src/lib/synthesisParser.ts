@@ -196,13 +196,18 @@ function uniqueStringList(value: unknown): string[] {
     ? Array.from(
         new Set(
           value.flatMap((item) => {
-            if (typeof item !== "string") return [];
-            const trimmed = item.trim();
+            const trimmed = nonEmptyString(item);
             return trimmed ? [trimmed] : [];
           }),
         ),
       )
     : [];
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
 }
 
 interface SynthesizeDeliveredPayload {
@@ -299,6 +304,7 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
   // SPR-10 M2: the reused prior insights, READ from every knowledge.reused event
   // (an investigation may emit more than one — union them in encounter order).
   const reuseProvenance: ReusedInsight[] = [];
+  const seenReuseUnitIds = new Set<string>();
   // SPR-10 M4: the per-run compounding measurement, READ from a persisted
   // per-run measurement event. None exists on the substrate today (see
   // CompoundingMeasuredPayloadShape); seen only when a synthetic/future event
@@ -342,11 +348,13 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
       const unitIds = kr?.reused_unit_ids ?? [];
       const scores = kr?.scores ?? [];
       const sources = kr?.source_investigation_ids ?? [];
-      unitIds.forEach((unitId, i) => {
+      unitIds.forEach((rawUnitId, i) => {
+        const unitId = nonEmptyString(rawUnitId);
+        if (!unitId || seenReuseUnitIds.has(unitId)) return;
+        seenReuseUnitIds.add(unitId);
         reuseProvenance.push({
           unitId,
-          sourceInvestigationId:
-            typeof sources[i] === "string" ? sources[i] : null,
+          sourceInvestigationId: nonEmptyString(sources[i]),
           score: finiteNumberOrNull(scores[i]),
         });
       });

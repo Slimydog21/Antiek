@@ -158,12 +158,12 @@ describe("parseSynthesis — reuse provenance (SPR-10 M2)", () => {
     const synth = withReuse([
       ev("knowledge.reused", {
         action_type: "knowledge.reused",
-        reused_unit_ids: ["unit-aaa", "unit-bbb"],
-        scores: [0.91, 0.83],
+        reused_unit_ids: [" unit-aaa ", "unit-bbb", "", 7, "unit-aaa"],
+        scores: [0.91, 0.83, 0.72, 0.61, 0.5],
         // decisions describes EVERY retrieved unit (injected + dropped); the
         // parser reads only the injected set via reused_unit_ids/scores/sources.
         decisions: ["injected", "injected", "dropped-low-relevance"],
-        source_investigation_ids: ["inv-src-1", "inv-src-2"],
+        source_investigation_ids: [" inv-src-1 ", "inv-src-2", "inv-skipped", "inv-bad", "inv-dupe"],
         context_pack_event_id: "evt-pack-1",
       }),
     ]);
@@ -222,6 +222,21 @@ describe("parseSynthesis — reuse provenance (SPR-10 M2)", () => {
       sourceInvestigationId: null,
       score: null,
     });
+  });
+
+  it("treats blank source investigation ids as unknown origins", () => {
+    const synth = withReuse([
+      ev("knowledge.reused", {
+        reused_unit_ids: ["unit-blank-source"],
+        scores: [0.5],
+        source_investigation_ids: [" "],
+        context_pack_event_id: "evt-1",
+      }),
+    ]);
+
+    expect(synth!.reuseProvenance).toEqual([
+      { unitId: "unit-blank-source", sourceInvestigationId: null, score: 0.5 },
+    ]);
   });
 
   it("treats non-finite reuse scores as missing", () => {
