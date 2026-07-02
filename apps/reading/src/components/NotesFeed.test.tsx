@@ -51,13 +51,14 @@ describe("NotesFeed", () => {
       <NotesFeed
         events={[
           noteEvent({
-            source_event_ids: [" event-source-1 ", "", 42],
+            source_event_ids: [" event-source-1 ", "", 42, "event-source-1"],
           }),
         ]}
         onCiteJump={onCiteJump}
       />,
     );
 
+    expect(screen.getAllByTitle("jump to event-source-1")).toHaveLength(1);
     fireEvent.click(screen.getByTitle("jump to event-source-1"));
 
     expect(screen.getByText("A useful note.")).toBeTruthy();

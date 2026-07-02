@@ -96,6 +96,10 @@ function stringList(value: unknown): string[] {
     : [];
 }
 
+function uniqueStringList(value: unknown): string[] {
+  return Array.from(new Set(stringList(value)));
+}
+
 function isConfidenceLevel(value: unknown): value is ConfidenceLevel {
   return (
     value === "high" ||
@@ -115,7 +119,7 @@ function NoteCard({
   const p = event.payload;
   const noteText = nonEmptyString(p.note_text) ?? "note unavailable";
   const confidence = isConfidenceLevel(p.confidence) ? p.confidence : "unknown";
-  const sourceEventIds = stringList(p.source_event_ids);
+  const sourceEventIds = uniqueStringList(p.source_event_ids);
   const documentId = nonEmptyString(event.document_id);
 
   return (
