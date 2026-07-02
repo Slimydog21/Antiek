@@ -114,6 +114,35 @@ describe("AISidecar", () => {
     expect(document.body.textContent).not.toMatch(/fake · bad\/row|bad\/mismatch|bad\/wrong-action/);
   });
 
+  it("keeps dispatch context visible when usage JSON is not an object", async () => {
+    apiFetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes("/billing/summary/")) {
+        return okJson(null);
+      }
+      if (path.includes("/trajectory")) {
+        return okJson({
+          events: [
+            dispatchEvent("valid-after-bad-usage", {
+              call_id: "call-visible",
+              tier: "route",
+              provider: "openai",
+              model: "gpt-5.5",
+              latency_ms: 44,
+            }),
+          ],
+        });
+      }
+      return okJson({});
+    });
+
+    render(<AISidecar />);
+
+    expect(await screen.findByText("route · openai/gpt-5.5")).toBeTruthy();
+    expect(screen.getByText("0 / 5,000,000 tokens")).toBeTruthy();
+    expect(screen.getByText("44ms")).toBeTruthy();
+  });
+
   it("sanitizes malformed thought-partner replies before parsing actions", async () => {
     apiFetchMock.mockImplementation(async (input: RequestInfo | URL) => {
       const path = String(input);
