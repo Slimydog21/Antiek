@@ -29,6 +29,7 @@ describe("parseSynthesis — claim provenance for named-source render", () => {
             claim: "Y holds.",
             confidence: "high",
             supporting_chunk_ids: ["chunk-a", "chunk-b", "chunk-a", " ", 7],
+            supporting_path_indices: [2, 2, -1, 3.5, Number.NaN, 5],
           },
         ],
         falsification_conditions: [],
@@ -41,6 +42,7 @@ describe("parseSynthesis — claim provenance for named-source render", () => {
     // The viewer needs the raw chunk ids to resolve named sources; the
     // parser does not invent "[2 chunks]".
     expect(claim.chunkIds).toEqual(["chunk-a", "chunk-b"]);
+    expect(claim.supportingPathIndices).toEqual([2, 5]);
     expect(claim.claim).toBe("Y holds.");
     // chunkCitations maps chunk → citing component indices for the modal.
     expect(synth!.chunkCitations["chunk-a"]).toEqual([1]);

@@ -210,6 +210,22 @@ function nonEmptyString(value: unknown): string | null {
   return trimmed ? trimmed : null;
 }
 
+function uniqueNonNegativeIntegerList(value: unknown): number[] {
+  return Array.isArray(value)
+    ? Array.from(
+        new Set(
+          value.flatMap((item) =>
+            typeof item === "number" &&
+            Number.isSafeInteger(item) &&
+            item >= 0
+              ? [item]
+              : [],
+          ),
+        ),
+      )
+    : [];
+}
+
 interface SynthesizeDeliveredPayload {
   thesis_summary?: string;
   thesis_components?: Array<{
@@ -397,7 +413,7 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
       effectiveSourceTier: c.effective_source_tier ?? null,
       hedgingRequired: c.hedging_required ?? false,
       chunkIds: uniqueStringList(c.supporting_chunk_ids),
-      supportingPathIndices: c.supporting_path_indices ?? [],
+      supportingPathIndices: uniqueNonNegativeIntegerList(c.supporting_path_indices),
     }));
     for (const c of result.components) {
       for (const cid of c.chunkIds) {
