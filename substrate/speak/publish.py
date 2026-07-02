@@ -27,6 +27,8 @@ from decimal import Decimal
 from typing import Any
 
 from substrate.books.servability import is_servable_full_text, servability_of
+from substrate.event_log import emit_typed
+from substrate.schemas.events import SeamSpeakToReadPayload
 
 from . import contributor as contributor_mod
 from . import economics_mode, publish_gate
@@ -113,13 +115,24 @@ def publish(
         )
         accrual = []
 
-    record_speak_event(
+    publish_event_id = record_speak_event(
         SPEAK_PUBLISHED,
         {"publication_id": publication_id, "visibility": policy.publishing,
          "served": served, "servability": status.value,
          "ad_revenue_usd": str(ad_revenue)},
         project_id=project_id,
     )
+    if policy.publishing == "public" and served:
+        emit_typed(
+            project_id,
+            SeamSpeakToReadPayload(
+                entity_id=publication_id,
+                provenance_ref=publish_event_id or publication_id,
+                publish_gate_passed=True,
+            ),
+            parent_event_id=publish_event_id,
+            role="speak_publishing",
+        )
     return PublishResult(
         publication_id=publication_id,
         visibility="public" if policy.publishing == "public" else "private",

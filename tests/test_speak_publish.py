@@ -8,6 +8,7 @@ a physical order is QUOTED, never fulfilled (no live POD vendor).
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from decimal import Decimal
@@ -16,6 +17,7 @@ import pytest
 
 from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database
+from substrate.seams.thread import reconstruct_thread
 from substrate.speak import (
     contributor,
     physical_book,
@@ -83,6 +85,49 @@ def test_public_publish_lands_in_servable_corpus(db, monkeypatch):
         assert result.visibility == "public"
         assert result.served is True
         assert result.servability == "platform_authored"  # Read's servable corpus
+
+
+def test_public_publish_emits_speak_to_read_seam(db, monkeypatch):
+    monkeypatch.setenv("ANTIEK_SPEAK_PUBLIC_PUBLISHING", "1")
+    with _con(db) as con:
+        project_id = _public_ready_project(con)
+        result = publish.publish(con, project_id=project_id)
+
+    jsonl = os.path.join(os.environ["ANTIEK_RESEARCH_EVENTS_DIR"], f"{project_id}.jsonl")
+    assert os.path.exists(jsonl)
+    events = [json.loads(line) for line in open(jsonl, encoding="utf-8")]
+    published = next(e for e in events if e["action_type"] == "speak.published")
+    seams = [e for e in events if e["action_type"] == "seam.speak_to_read"]
+    assert len(seams) == 1
+
+    payload = seams[0]["payload"]
+    assert seams[0]["parent_event_id"] == published["event_id"]
+    assert payload == {
+        "action_type": "seam.speak_to_read",
+        "entity_id": result.publication_id,
+        "entity_kind": "servable_entry",
+        "provenance_ref": published["event_id"],
+        "terminates": True,
+        "from_workflow": "speak",
+        "to_workflow": "read",
+        "publish_gate_passed": True,
+    }
+    assert "content" not in payload
+    assert "text" not in payload
+
+    thread = reconstruct_thread(result.publication_id, seam_events=seams)
+    assert thread.canonical_entity_kind == "servable_entry"
+    assert thread.workflows == ("speak", "read")
+
+
+def test_private_publish_does_not_emit_speak_to_read_seam(db):
+    with _con(db) as con:
+        p = project.create_project(con, title="Private bio", publish_intent="private_never_published")
+        publish.publish(con, project_id=p.project_id)
+
+    jsonl = os.path.join(os.environ["ANTIEK_RESEARCH_EVENTS_DIR"], f"{p.project_id}.jsonl")
+    events = [json.loads(line) for line in open(jsonl, encoding="utf-8")]
+    assert "seam.speak_to_read" not in {e["action_type"] for e in events}
 
 
 # ── M2 route the split on public publish ────────────────────────────────
