@@ -60,6 +60,23 @@ describe("Write Repository", () => {
     expect(screen.queryByText("Invisible hit")).toBeNull();
   });
 
+  it("updates the search folder when the host folder prop changes", async () => {
+    const rendered = render(<Repository initialFolderId="folder-a" />);
+    await waitFor(() =>
+      expect(searchRepositoryMock).toHaveBeenCalledWith(
+        expect.objectContaining({ folderId: "folder-a" }),
+      ),
+    );
+
+    rendered.rerender(<Repository initialFolderId="folder-b" />);
+
+    await waitFor(() =>
+      expect(searchRepositoryMock).toHaveBeenCalledWith(
+        expect.objectContaining({ folderId: "folder-b" }),
+      ),
+    );
+  });
+
   it("serializes sanitized drag payloads without flattening claim nodes to insights", async () => {
     render(<Repository />);
     const row = await screen.findByTitle("Drag into the outline");
