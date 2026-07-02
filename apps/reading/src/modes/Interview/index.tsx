@@ -39,6 +39,76 @@ interface InterviewDetail {
   transcript: InterviewTurn[];
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const text = nonEmptyString(item);
+        return text ? [text] : [];
+      })
+    : [];
+}
+
+function safeTurn(value: unknown): InterviewTurn | null {
+  const turn = record(value);
+  const role = turn?.role === "interviewer" || turn?.role === "informant"
+    ? turn.role
+    : null;
+  const text = nonEmptyString(turn?.text);
+  if (!turn || !role || !text) return null;
+  return {
+    role,
+    text,
+    ts: nullableString(turn.ts),
+  };
+}
+
+function safeTranscript(value: unknown): InterviewTurn[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const turn = safeTurn(item);
+        return turn ? [turn] : [];
+      })
+    : [];
+}
+
+function safeInterviewDetail(
+  value: unknown,
+  fallbackInterviewId: string,
+): InterviewDetail | null {
+  const detail = record(value);
+  const interviewId = nonEmptyString(detail?.interview_id) ?? fallbackInterviewId;
+  const projectId = nonEmptyString(detail?.project_id);
+  const projectTitle = nonEmptyString(detail?.project_title);
+  if (!detail || !interviewId || !projectId || !projectTitle) return null;
+  return {
+    interview_id: interviewId,
+    project_id: projectId,
+    project_title: projectTitle,
+    topic_description: nullableString(detail.topic_description),
+    framing: nullableString(detail.framing),
+    must_cover: stringArray(detail.must_cover),
+    status: nonEmptyString(detail.status) ?? "active",
+    consent_recorded: detail.consent_recorded === true,
+    transcript: safeTranscript(detail.transcript),
+  };
+}
+
 export default function InterviewMode() {
   const { interviewId } = useParams<{ interviewId: string }>();
   const [detail, setDetail] = useState<InterviewDetail | null>(null);
@@ -62,7 +132,7 @@ export default function InterviewMode() {
       if (!resp.ok) {
         throw new Error(`GET /interviews failed: HTTP ${resp.status}`);
       }
-      const nextDetail = await resp.json();
+      const nextDetail = safeInterviewDetail(await resp.json(), interviewId);
       if (generation === reloadGenerationRef.current) {
         setDetail(nextDetail);
       }

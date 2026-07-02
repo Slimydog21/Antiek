@@ -41,7 +41,12 @@ export default function InterviewRecording({
         if (!resp.ok) return;
         const data = await resp.json();
         if (!cancelled) {
-          setConsentRecorded(Boolean(data.consent_recorded));
+          setConsentRecorded(
+            typeof data === "object" &&
+              data !== null &&
+              !Array.isArray(data) &&
+              (data as Record<string, unknown>).consent_recorded === true,
+          );
         }
       } catch {
         // best-effort; the substrate is still the gatekeeper

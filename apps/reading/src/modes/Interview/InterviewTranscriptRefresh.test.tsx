@@ -231,4 +231,83 @@ describe("Interview transcript refresh bridge", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.queryByText("Stale main")).toBeNull();
   });
+
+  it("sanitizes main interview detail before rendering transcript and consent state", async () => {
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        interview_id: " int dirty ",
+        project_id: " project dirty ",
+        project_title: " Oral history ",
+        topic_description: " Topic dirty ",
+        framing: " Framing dirty ",
+        must_cover: [" Question one ", " ", 42],
+        status: " active ",
+        consent_recorded: "yes",
+        transcript: [
+          { role: " informant ", text: "Skipped bad role", ts: null },
+          { role: "informant", text: " Informant answer ", ts: " now " },
+          { role: "interviewer", text: " ", ts: "Skipped empty" },
+        ],
+      }),
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/interview/int-1"]}>
+        <Routes>
+          <Route path="/interview/:interviewId" element={<InterviewMode />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Oral history")).toBeTruthy();
+    expect(screen.getByText("Informant answer")).toBeTruthy();
+    expect(screen.getByText(/consent_recorded = false/)).toBeTruthy();
+    expect(screen.getByText(/must_cover = 1/)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/Skipped| int dirty | now /);
+  });
+
+  it("sanitizes fetched transcript panel turns before rendering", async () => {
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        transcript: [
+          {
+            role: "informant",
+            text: " Correct me ",
+            ts: " 2026-06-06 ",
+            pending: "yes",
+            question_id: " q dirty ",
+          },
+          {
+            role: "interviewer",
+            text: " Interviewer question ",
+            ts: null,
+            pending: true,
+          },
+          { role: "operator", text: "Skipped role" },
+          { role: "informant", text: " " },
+        ],
+      }),
+    });
+
+    render(<InterviewTranscript interviewId="int-1" />);
+
+    expect(await screen.findByText("Correct me")).toBeTruthy();
+    expect(screen.getByText("Interviewer question")).toBeTruthy();
+    expect(screen.queryByText(/pending correction/)).toBeNull();
+    expect(document.body.textContent).not.toMatch(/Skipped| q dirty |2026-06-06 /);
+  });
+
+  it("requires literal true consent before enabling the recording panel", async () => {
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ consent_recorded: "yes" }),
+    });
+
+    render(<InterviewRecording interviewId="int-1" consentRecorded />);
+
+    expect(await screen.findByText(/Consent not yet recorded/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "finish upload" })).toBeNull();
+  });
 });
