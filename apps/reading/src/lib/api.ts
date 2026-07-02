@@ -178,8 +178,9 @@ export async function getTrajectory(
   investigationId: string,
   limit?: number,
 ): Promise<{ investigation_id: string; count: number; events: Event[] }> {
+  const resolvedInvestigationId = requireRequestString(investigationId, "investigationId");
   const url = new URL(
-    `${API_BASE}/trajectory/${encodeURIComponent(investigationId)}`,
+    `${API_BASE}/trajectory/${encodeURIComponent(resolvedInvestigationId)}`,
     window.location.origin,
   );
   if (limit !== undefined) {
@@ -194,7 +195,7 @@ export async function getTrajectory(
       await resp.text(),
     );
   }
-  return safeTrajectoryResponse(await resp.json(), investigationId);
+  return safeTrajectoryResponse(await resp.json(), resolvedInvestigationId);
 }
 
 function safeTrajectoryResponse(
@@ -860,8 +861,9 @@ function safeInvestigationStatusResponse(
 export async function getInvestigationStatus(
   investigationId: string,
 ): Promise<InvestigationStatus> {
+  const resolvedInvestigationId = requireRequestString(investigationId, "investigationId");
   const resp = await apiFetch(
-    `${API_BASE}/investigations/${encodeURIComponent(investigationId)}`,
+    `${API_BASE}/investigations/${encodeURIComponent(resolvedInvestigationId)}`,
   );
   if (!resp.ok) {
     throw new ApiError(
@@ -870,7 +872,7 @@ export async function getInvestigationStatus(
       await resp.text(),
     );
   }
-  return safeInvestigationStatusResponse(await resp.json(), investigationId);
+  return safeInvestigationStatusResponse(await resp.json(), resolvedInvestigationId);
 }
 
 export interface ChunkResponse {
@@ -1608,8 +1610,9 @@ function safeDistillationResponse(
 export async function getDistillation(
   investigationId: string,
 ): Promise<DistillationResponse> {
+  const resolvedInvestigationId = requireRequestString(investigationId, "investigationId");
   const resp = await apiFetch(
-    `${API_BASE}/research/${encodeURIComponent(investigationId)}/distill`,
+    `${API_BASE}/research/${encodeURIComponent(resolvedInvestigationId)}/distill`,
   );
   if (!resp.ok) {
     throw new ApiError(
@@ -1618,7 +1621,7 @@ export async function getDistillation(
       await resp.text(),
     );
   }
-  return safeDistillationResponse(await resp.json(), investigationId);
+  return safeDistillationResponse(await resp.json(), resolvedInvestigationId);
 }
 
 export interface ChallengeNoteResponse {
@@ -1655,12 +1658,18 @@ export async function challengeNote(
   nodeId: string,
   req: { investigation_id: string; challenge_text?: string },
 ): Promise<ChallengeNoteResponse> {
+  const resolvedNodeId = requireRequestString(nodeId, "nodeId");
+  const resolvedInvestigationId = requireRequestString(req.investigation_id, "investigation_id");
+  const challengeText = optionalRequestString(req.challenge_text) ?? "";
   const resp = await apiFetch(
-    `${API_BASE}/research/notes/${encodeURIComponent(nodeId)}/challenge`,
+    `${API_BASE}/research/notes/${encodeURIComponent(resolvedNodeId)}/challenge`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ challenge_text: "", ...req }),
+      body: JSON.stringify({
+        investigation_id: resolvedInvestigationId,
+        challenge_text: challengeText,
+      }),
     },
   );
   if (!resp.ok) {
