@@ -3,10 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   attachBlock,
   appendNotebookBlock,
+  createDeliverable,
+  createSection,
   getHealth,
+  getDeliverable,
   getNotebook,
   getTrajectory,
   launchParkedQuestion,
+  listDeliverables,
   listInvestigations,
   listWatchForLater,
   postTypedEvent,
@@ -339,6 +343,157 @@ describe("api client investigation and watch-list response boundaries", () => {
 
     await expect(launchParkedQuestion("q-2")).rejects.toMatchObject({
       status: 502,
+    });
+  });
+});
+
+describe("api client write deliverable response boundaries", () => {
+  it("sanitizes deliverable lists before Write renders project state", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          count: "bad",
+          deliverables: [
+            {
+              deliverable_id: " dlv-1 ",
+              title: "  Essay draft  ",
+              deliverable_kind: "not-a-kind",
+              investigation_root_id: " inv-root ",
+              status: " generated ",
+              created_at: " 2026-07-01T00:00:00Z ",
+              updated_at: " ",
+              section_count: "2",
+            },
+            {
+              deliverable_id: " ",
+              title: "Invisible",
+              deliverable_kind: "research_memo",
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(listDeliverables()).resolves.toEqual({
+      count: 1,
+      deliverables: [
+        {
+          deliverable_id: "dlv-1",
+          title: "Essay draft",
+          deliverable_kind: "general_essay",
+          investigation_root_id: "inv-root",
+          status: "generated",
+          created_at: "2026-07-01T00:00:00Z",
+          updated_at: null,
+          section_count: 0,
+        },
+      ],
+    });
+  });
+
+  it("sanitizes deliverable details and section provenance for the outline", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          deliverable_id: " dlv-1 ",
+          title: "  Essay draft  ",
+          deliverable_kind: "book_chapter",
+          investigation_root_id: " ",
+          status: " active ",
+          sections: [
+            {
+              section_id: " sec-1 ",
+              deliverable_id: " dlv-1 ",
+              parent_section_id: " parent-1 ",
+              section_index: "1",
+              title: "  Opening  ",
+              prose_text: "  Draft prose  ",
+              prose_provenance: {
+                " 0 ": [" block-1 ", "", 7],
+                "1": "block-2",
+                " ": ["block-hidden"],
+              },
+              block_count: "3",
+            },
+            {
+              section_id: "",
+              deliverable_id: "dlv-1",
+              title: "Invisible",
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(getDeliverable("dlv-1")).resolves.toEqual({
+      deliverable_id: "dlv-1",
+      title: "Essay draft",
+      deliverable_kind: "book_chapter",
+      status: "active",
+      investigation_root_id: null,
+      sections: [
+        {
+          section_id: "sec-1",
+          deliverable_id: "dlv-1",
+          parent_section_id: "parent-1",
+          section_index: 0,
+          title: "Opening",
+          prose_text: "Draft prose",
+          prose_provenance: { "0": ["block-1"] },
+          block_count: 0,
+        },
+      ],
+    });
+  });
+
+  it("rejects malformed created deliverables instead of navigating to dead routes", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ deliverable_id: " ", title: "Bad" }), {
+        status: 200,
+      }),
+    );
+
+    await expect(
+      createDeliverable({
+        title: "Bad",
+        deliverable_kind: "general_essay",
+      }),
+    ).rejects.toMatchObject({ status: 502 });
+  });
+
+  it("sanitizes created sections before outline state receives them", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          section_id: " sec-2 ",
+          deliverable_id: " dlv-1 ",
+          section_index: 2,
+          title: "  Second  ",
+          prose_text: null,
+          prose_provenance: [],
+          block_count: 1,
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(
+      createSection({
+        deliverable_id: "dlv-1",
+        section_index: 2,
+        title: "Second",
+      }),
+    ).resolves.toEqual({
+      section_id: "sec-2",
+      deliverable_id: "dlv-1",
+      parent_section_id: null,
+      section_index: 2,
+      title: "Second",
+      prose_text: null,
+      prose_provenance: null,
+      block_count: 1,
     });
   });
 });

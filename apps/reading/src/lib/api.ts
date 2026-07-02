@@ -984,6 +984,116 @@ export interface DeliverableDetailResponse {
   sections: SectionResponse[];
 }
 
+function safeDeliverableKind(value: unknown): DeliverableKind {
+  return value === "research_memo" ||
+    value === "book_chapter" ||
+    value === "biography_section" ||
+    value === "investor_brief" ||
+    value === "general_essay"
+    ? value
+    : "general_essay";
+}
+
+function safeStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const text = nonEmptyString(item);
+    return text ? [text] : [];
+  });
+}
+
+function safeProseProvenance(value: unknown): Record<string, string[]> | null {
+  const provenance = record(value);
+  if (!provenance) return null;
+  return Object.fromEntries(
+    Object.entries(provenance).flatMap(([key, raw]) => {
+      const safeKey = nonEmptyString(key);
+      const ids = safeStringList(raw);
+      return safeKey && ids.length > 0 ? [[safeKey, ids]] : [];
+    }),
+  );
+}
+
+function safeDeliverableSummary(value: unknown): DeliverableSummary | null {
+  const deliverable = record(value);
+  if (!deliverable) return null;
+  const deliverableId = nonEmptyString(deliverable.deliverable_id);
+  if (!deliverableId) return null;
+  return {
+    deliverable_id: deliverableId,
+    title: nonEmptyString(deliverable.title) ?? deliverableId,
+    deliverable_kind: safeDeliverableKind(deliverable.deliverable_kind),
+    investigation_root_id: nullableString(deliverable.investigation_root_id),
+    status: nonEmptyString(deliverable.status) ?? "draft",
+    created_at: nullableString(deliverable.created_at),
+    updated_at: nullableString(deliverable.updated_at),
+    section_count: nonNegativeInteger(deliverable.section_count) ?? 0,
+  };
+}
+
+function safeDeliverableList(value: unknown): {
+  count: number;
+  deliverables: DeliverableSummary[];
+} {
+  const body = record(value);
+  const deliverables = Array.isArray(body?.deliverables)
+    ? body.deliverables.flatMap((item) => {
+        const deliverable = safeDeliverableSummary(item);
+        return deliverable ? [deliverable] : [];
+      })
+    : [];
+  return {
+    count: nonNegativeInteger(body?.count) ?? deliverables.length,
+    deliverables,
+  };
+}
+
+function safeSectionResponse(value: unknown): SectionResponse | null {
+  const section = record(value);
+  if (!section) return null;
+  const sectionId = nonEmptyString(section.section_id);
+  const deliverableId = nonEmptyString(section.deliverable_id);
+  if (!sectionId || !deliverableId) return null;
+  return {
+    section_id: sectionId,
+    deliverable_id: deliverableId,
+    parent_section_id: nullableString(section.parent_section_id),
+    section_index: nonNegativeInteger(section.section_index) ?? 0,
+    title: nullableString(section.title),
+    prose_text: nullableString(section.prose_text),
+    prose_provenance: safeProseProvenance(section.prose_provenance),
+    block_count: nonNegativeInteger(section.block_count) ?? 0,
+  };
+}
+
+function requireSectionResponse(value: unknown): SectionResponse {
+  const section = safeSectionResponse(value);
+  if (!section) throw malformedApiResponse("Malformed API response: section");
+  return section;
+}
+
+function safeDeliverableDetail(value: unknown): DeliverableDetailResponse {
+  const summary = safeDeliverableSummary(value);
+  const body = record(value);
+  if (!summary || !body) {
+    throw malformedApiResponse("Malformed API response: deliverable");
+  }
+  const sections = Array.isArray(body.sections)
+    ? body.sections.flatMap((item) => {
+        const section = safeSectionResponse(item);
+        return section ? [section] : [];
+      })
+    : [];
+  return {
+    deliverable_id: summary.deliverable_id,
+    title: summary.title,
+    deliverable_kind: summary.deliverable_kind,
+    status: summary.status,
+    investigation_root_id: summary.investigation_root_id,
+    sections,
+  };
+}
+
 export async function createDeliverable(req: {
   title: string;
   deliverable_kind: DeliverableKind;
@@ -1001,7 +1111,9 @@ export async function createDeliverable(req: {
       await resp.text(),
     );
   }
-  return resp.json();
+  const deliverable = safeDeliverableSummary(await resp.json());
+  if (!deliverable) throw malformedApiResponse("Malformed API response: deliverable");
+  return deliverable;
 }
 
 export async function listDeliverables(): Promise<{
@@ -1016,7 +1128,7 @@ export async function listDeliverables(): Promise<{
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeDeliverableList(await resp.json());
 }
 
 export async function getDeliverable(
@@ -1032,7 +1144,7 @@ export async function getDeliverable(
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeDeliverableDetail(await resp.json());
 }
 
 export async function createSection(req: {
@@ -1053,7 +1165,7 @@ export async function createSection(req: {
       await resp.text(),
     );
   }
-  return resp.json();
+  return requireSectionResponse(await resp.json());
 }
 
 export async function attachBlock(req: {
