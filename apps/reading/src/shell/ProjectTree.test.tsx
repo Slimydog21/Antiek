@@ -7,14 +7,16 @@ import type { Workflow } from "./workflowTaxonomy";
 import { usePinned } from "../components/navigation/pinnedStore";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 
-const { listDeliverablesMock, openDocumentMock } = vi.hoisted(() => ({
+const { listDeliverablesMock, listInvestigationsMock, openDocumentMock } = vi.hoisted(() => ({
   listDeliverablesMock: vi.fn(),
+  listInvestigationsMock: vi.fn(),
   openDocumentMock: vi.fn(),
 }));
 
 vi.mock("../lib/api", async (orig) => ({
   ...(await orig<typeof import("../lib/api")>()),
   listDeliverables: listDeliverablesMock,
+  listInvestigations: listInvestigationsMock,
 }));
 
 vi.mock("../lib/openDocument", async (orig) => ({
@@ -47,6 +49,7 @@ function renderTree(workflow: Exclude<Workflow, "shared"> = "read") {
 
 beforeEach(() => {
   listDeliverablesMock.mockReset().mockResolvedValue({ count: 0, deliverables: [] });
+  listInvestigationsMock.mockReset().mockResolvedValue({ count: 0, investigations: [] });
   openDocumentMock.mockReset();
   usePinned.getState().clear();
   useWorkspace.getState().reset();
@@ -79,23 +82,72 @@ describe("ProjectTree workflow actions", () => {
     expect(useWorkspace.getState().floatingIds).toEqual([]);
   });
 
-  it("floats investigations on Cmd/Ctrl-click and keeps normal click as route navigation", () => {
+  it("loads live Research investigations and opens the research workstation", async () => {
+    listInvestigationsMock.mockResolvedValue({
+      count: 4,
+      investigations: [
+        {
+          investigation_id: " inv-live ",
+          question: "  Live research  ",
+          status: "in_progress",
+        },
+        {
+          investigation_id: "inv-done",
+          question: "Done research",
+          status: "completed",
+        },
+        {
+          investigation_id: "inv-untitled",
+          question: " ",
+          status: "stopped",
+        },
+        {
+          investigation_id: " ",
+          question: "Skipped research",
+          status: "completed",
+        },
+      ],
+    });
+
     renderTree("research");
 
-    fireEvent.click(screen.getByText("NVDA Q4 risk model"), { ctrlKey: true });
+    expect(await screen.findByText("Live research")).toBeTruthy();
+    expect(await screen.findByText("Done research")).toBeTruthy();
+    expect(await screen.findByText("Untitled research")).toBeTruthy();
+    expect(screen.queryByText("Skipped research")).toBeNull();
+    expect(screen.getByText("running")).toBeTruthy();
+    expect(screen.getByText("done")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Recent\s*3/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Live research"));
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe("/inv/inv-live");
+    });
+  });
+
+  it("floats live investigations on Cmd/Ctrl-click", async () => {
+    listInvestigationsMock.mockResolvedValue({
+      count: 1,
+      investigations: [
+        {
+          investigation_id: "inv-float",
+          question: "Floating research",
+          status: "completed",
+        },
+      ],
+    });
+
+    renderTree("research");
+
+    fireEvent.click(await screen.findByText("Floating research"), { ctrlKey: true });
     const floatingId = useWorkspace.getState().floatingIds[0];
     expect(useWorkspace.getState().panels[floatingId]).toMatchObject({
       kind: "Trajectory",
-      props: { id: "nvda-q4" },
+      props: { id: "inv-float" },
       mode: "floating",
-      title: "NVDA Q4 risk model",
+      title: "Floating research",
     });
     expect(screen.getByTestId("location").textContent).toBe("/library");
-
-    fireEvent.click(screen.getByText("Web gaming 2026"));
-    expect(screen.getByTestId("location").textContent).toBe(
-      "/inv/web-gaming-2026",
-    );
   });
 
   it("pins item-specific rows with accessible labels and moves them above Recent", () => {

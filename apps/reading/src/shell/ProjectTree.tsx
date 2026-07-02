@@ -4,7 +4,11 @@ import { useEffect, useState } from "react";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import { usePinned } from "../components/navigation/pinnedStore";
 import { useOpenDocument } from "../lib/openDocument";
-import { listDeliverables } from "../lib/api";
+import {
+  listDeliverables,
+  listInvestigations,
+  type InvestigationSummary,
+} from "../lib/api";
 import { LemonTag } from "../components/lemon/LemonTag";
 import {
   WORKFLOWS,
@@ -24,9 +28,10 @@ import {
  *
  * The sections are driven by WORKFLOWS[wf].nouns from the taxonomy, so the
  * tree re-scopes automatically when the rail switches workflows. Within a
- * section, Write already reads live deliverables; the remaining workflows use
- * mock fixtures until their live hooks land. The architecture — workflow-scoped
- * nouns + click-to-open / Cmd-click-to-float — is what's load-bearing here.
+ * section, Research reads live investigations and Write reads live deliverables;
+ * the remaining workflows use mock fixtures until their live hooks land. The
+ * architecture — workflow-scoped nouns + click-to-open / Cmd-click-to-float —
+ * is what's load-bearing here.
  *
  * This SUPERSEDES the flat Pinned/Recent/All tree at
  * components/navigation/ProjectTree.tsx; PanelRegistry now points here.
@@ -43,11 +48,7 @@ type TreeNode = {
 // Mock recent items, tagged with the workflow noun-section they belong to.
 // Replaced by live hooks per-workflow as each data layer lands.
 const MOCK_RECENT: Record<Exclude<Workflow, "shared">, TreeNode[]> = {
-  research: [
-    { kind: "investigation", id: "nvda-q4", title: "NVDA Q4 risk model", status: "running" },
-    { kind: "investigation", id: "web-gaming-2026", title: "Web gaming 2026", status: "done" },
-    { kind: "investigation", id: "kalshi-liquidity", title: "Kalshi liquidity gate", status: "done" },
-  ],
+  research: [],
   read: [
     { kind: "document", id: "kalshi-paper", title: "Kalshi liquidity preprint.pdf" },
     { kind: "notebook", id: "synth-nvda", title: "NVDA synthesis · draft 2" },
@@ -135,6 +136,38 @@ function safeDeliverableNodes(value: unknown): TreeNode[] {
   });
 }
 
+function researchStatus(status: InvestigationSummary["status"]): TreeNode["status"] {
+  switch (status) {
+    case "in_progress":
+      return "running";
+    case "completed":
+      return "done";
+    case "failed":
+      return "failed";
+    case "stopped":
+    case "not_found":
+      return undefined;
+  }
+}
+
+function safeInvestigationNodes(value: unknown): TreeNode[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const row =
+      typeof item === "object" && item !== null && !Array.isArray(item)
+        ? (item as Partial<InvestigationSummary>)
+        : null;
+    const id = nonEmptyString(row?.investigation_id);
+    if (!id) return [];
+    return [{
+      kind: "investigation" as const,
+      id,
+      title: nonEmptyString(row?.question) ?? "Untitled research",
+      status: researchStatus(row?.status ?? "not_found"),
+    }];
+  });
+}
+
 export function ProjectTree({
   /** Override the active workflow (Storybook); defaults to the route. */
   workflow: forced,
@@ -152,9 +185,25 @@ export function ProjectTree({
   const togglePin = usePinned((s) => s.toggle);
   const openPanel = useWorkspace((s) => s.open);
   const openDocument = useOpenDocument();
+  const [researchRecent, setResearchRecent] = useState<TreeNode[]>([]);
   const [writeRecent, setWriteRecent] = useState<TreeNode[]>([]);
 
   const pinnedKey = (n: TreeNode) => `${n.kind}:${n.id}`;
+
+  useEffect(() => {
+    if (workflow !== "research") return;
+    let cancelled = false;
+    listInvestigations({ limit: 50 })
+      .then((body) => {
+        if (!cancelled) setResearchRecent(safeInvestigationNodes(body.investigations));
+      })
+      .catch(() => {
+        if (!cancelled) setResearchRecent([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workflow]);
 
   useEffect(() => {
     if (workflow !== "write") return;
@@ -171,7 +220,12 @@ export function ProjectTree({
     };
   }, [workflow]);
 
-  const recent = workflow === "write" ? writeRecent : MOCK_RECENT[workflow];
+  const recent =
+    workflow === "research"
+      ? researchRecent
+      : workflow === "write"
+        ? writeRecent
+        : MOCK_RECENT[workflow];
   const pinnedNodes = recent.filter((n) => pinned.has(pinnedKey(n)));
   const recentNodes = recent.filter((n) => !pinned.has(pinnedKey(n)));
 
