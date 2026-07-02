@@ -186,6 +186,20 @@ const EMPTY_SYNTHESIS: ParsedSynthesis = {
   compoundingStat: null,
 };
 
+function uniqueStringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? Array.from(
+        new Set(
+          value.flatMap((item) => {
+            if (typeof item !== "string") return [];
+            const trimmed = item.trim();
+            return trimmed ? [trimmed] : [];
+          }),
+        ),
+      )
+    : [];
+}
+
 interface SynthesizeDeliveredPayload {
   thesis_summary?: string;
   thesis_components?: Array<{
@@ -361,7 +375,7 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
       confidence: c.confidence ?? "unknown",
       effectiveSourceTier: c.effective_source_tier ?? null,
       hedgingRequired: c.hedging_required ?? false,
-      chunkIds: c.supporting_chunk_ids ?? [],
+      chunkIds: uniqueStringList(c.supporting_chunk_ids),
       supportingPathIndices: c.supporting_path_indices ?? [],
     }));
     for (const c of result.components) {
