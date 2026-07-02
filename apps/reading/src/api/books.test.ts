@@ -1131,6 +1131,20 @@ describe("books api — meta-reading boundary", () => {
     ).rejects.toThrow("Invalid length.");
   });
 
+  it("falls back when a length-bound error body is not an object", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response("null", { status: 422 }),
+    );
+
+    await expect(
+      generateMetaReading({
+        prompt: "too long",
+        length_unit: "pages",
+        length_amount: 999,
+      }),
+    ).rejects.toThrow("Invalid length.");
+  });
+
   it("surfaces provider unavailability as the reader-facing meta-reading message", async () => {
     apiFetchMock.mockResolvedValueOnce(new Response("no model", { status: 503 }));
 
