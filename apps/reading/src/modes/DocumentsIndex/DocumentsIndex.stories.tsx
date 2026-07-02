@@ -12,7 +12,7 @@ import DocumentsIndex from "./index";
  * scope. Useful as a visual regression target for the page chrome.
  */
 const meta = {
-  title: "Workstation / DocumentsIndex",
+  title: "Governance / DocumentsIndex",
   component: DocumentsIndex,
   parameters: {
     layout: "fullscreen",

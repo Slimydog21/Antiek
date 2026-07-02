@@ -5,12 +5,11 @@ import Map from "./index";
 /**
  * Application map page — operator's tour of every surface.
  *
- * Renders the canonical route index with keyboard hints for the
- * palette and sidecar. All 21 routes link out to their respective
- * pages.
+ * Renders the canonical operator route index with keyboard hints for
+ * the palette and sidecar. Routes link out to their respective pages.
  */
 const meta = {
-  title: "Workstation / Map",
+  title: "Governance / Map",
   component: Map,
   parameters: {
     layout: "fullscreen",

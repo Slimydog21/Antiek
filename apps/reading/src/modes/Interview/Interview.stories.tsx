@@ -14,7 +14,7 @@ import InterviewMode from "./index";
  * endpoint tests.
  */
 const meta = {
-  title: "Workstation / Interview",
+  title: "Speak / Interview",
   component: InterviewMode,
   parameters: {
     layout: "fullscreen",

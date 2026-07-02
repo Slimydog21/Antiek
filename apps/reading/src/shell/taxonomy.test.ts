@@ -38,8 +38,10 @@ import {
 import { OPERATOR_ROUTES } from "./operatorRoutes";
 
 const _here = dirname(fileURLToPath(import.meta.url));
+const readRawSrc = (rel: string): string =>
+  readFileSync(resolve(_here, "..", rel), "utf-8");
 const readSrc = (rel: string): string =>
-  readFileSync(resolve(_here, "..", rel), "utf-8")
+  readRawSrc(rel)
     .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
@@ -396,6 +398,38 @@ describe("Read door re-home + operator-surface eviction (Read SPR-06)", () => {
     expect(workflowForPath("/sources")).toBe("shared");
     // And the Read door itself resolves to read.
     expect(workflowForPath("/library")).toBe("read");
+  });
+
+  it("keeps Storybook discovery labels aligned with the re-homed routes", () => {
+    const documentsStory = readSrc("modes/DocumentsIndex/DocumentsIndex.stories.tsx");
+    const mapStory = readSrc("modes/Map/Map.stories.tsx");
+    const interviewStory = readSrc("modes/Interview/Interview.stories.tsx");
+    const interviewTranscriptStory = readSrc(
+      "modes/Interview/InterviewTranscript.stories.tsx",
+    );
+    const interviewIndexStory = readSrc(
+      "modes/InterviewIndex/InterviewIndex.stories.tsx",
+    );
+    const paletteStory = readRawSrc("components/CommandPalette.stories.tsx");
+
+    expect(documentsStory).toContain('title: "Governance / DocumentsIndex"');
+    expect(mapStory).toContain('title: "Governance / Map"');
+    expect(interviewStory).toContain('title: "Speak / Interview"');
+    expect(interviewTranscriptStory).toContain(
+      'title: "Speak / Interview / Transcript"',
+    );
+    expect(interviewIndexStory).toContain('title: "Speak / InterviewIndex"');
+    expect(documentsStory).not.toContain('title: "Workstation / DocumentsIndex"');
+    expect(mapStory).not.toContain('title: "Workstation / Map"');
+    expect(interviewStory).not.toContain('title: "Workstation / Interview"');
+    expect(interviewTranscriptStory).not.toContain(
+      'title: "Workstation / Interview / Transcript"',
+    );
+    expect(interviewIndexStory).not.toContain(
+      'title: "Workstation / InterviewIndex"',
+    );
+    expect(paletteStory).not.toContain("ROUTE_INDEX");
+    expect(paletteStory).not.toContain("Interviews");
   });
 });
 

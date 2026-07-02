@@ -11,7 +11,7 @@ import InterviewTranscript from "./InterviewTranscript";
  * never the raw one. These stories seed turns directly (no backend).
  */
 const meta = {
-  title: "Workstation / Interview / Transcript",
+  title: "Speak / Interview / Transcript",
   component: InterviewTranscript,
   parameters: { layout: "centered" },
   tags: ["autodocs"],
