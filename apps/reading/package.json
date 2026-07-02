@@ -38,7 +38,7 @@
     "@tiptap/extension-placeholder": "^3.23.6",
     "@tiptap/react": "^3.23.6",
     "@tiptap/starter-kit": "^3.23.6",
-    "framer-motion": "^12.40.0",
+    "framer-motion": "^12.42.2",
     "pdfjs-dist": "^4.7.76",
     "posthog-js": "^1.379.1",
     "react": "^18.3.1",
