@@ -124,26 +124,11 @@ export const OPERATOR_ROUTES: OperatorRouteEntry[] = [
     paletteSubtitle: "One monitor over every running + completed research (/my-research)",
   },
   {
-    id: "documents",
-    group: "Workstation",
-    path: "/documents",
-    title: "Documents",
-    description: "Saved sources by quality tier",
-    paletteSubtitle: "Substrate-attached sources by tier (/documents)",
-  },
-  {
     id: "notebooks",
     group: "Workstation",
     path: "/notebooks",
     title: "Notebooks",
     description: "Wedge 2 literate-analysis surface",
-  },
-  {
-    id: "sources",
-    group: "Workstation",
-    path: "/sources",
-    title: "Sources",
-    description: "Acquisition adapters",
   },
   {
     id: "speak",
@@ -195,6 +180,21 @@ export const OPERATOR_ROUTES: OperatorRouteEntry[] = [
     path: "/coordination",
     title: "Coordination",
     description: "Gate ledger, roadmap, unified cost, escrow, and consent",
+  },
+  {
+    id: "documents",
+    group: "Governance",
+    path: "/documents",
+    title: "Documents",
+    description: "Substrate-attached sources by tier (acquisition/governance)",
+    paletteSubtitle: "Substrate-attached sources by tier (/documents)",
+  },
+  {
+    id: "sources",
+    group: "Governance",
+    path: "/sources",
+    title: "Sources",
+    description: "Bulk source-ingestion adapters (acquisition/governance)",
   },
   {
     id: "cost-consent",

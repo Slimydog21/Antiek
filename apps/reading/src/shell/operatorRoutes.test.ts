@@ -24,4 +24,12 @@ describe("operator route registry", () => {
       OPERATOR_ROUTES.map((route) => route.id),
     );
   });
+
+  it("keeps shared acquisition routes out of the Workstation discovery group", () => {
+    const byId = new Map(OPERATOR_ROUTES.map((route) => [route.id, route]));
+
+    expect(byId.get("documents")?.group).toBe("Governance");
+    expect(byId.get("sources")?.group).toBe("Governance");
+    expect(byId.get("notebooks")?.group).toBe("Workstation");
+  });
 });
