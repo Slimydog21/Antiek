@@ -45,6 +45,10 @@ function nonEmptyString(value: unknown): string | null {
   return trimmed === "" ? null : trimmed;
 }
 
+function displayString(value: unknown, fallback: string): string {
+  return nonEmptyString(value) ?? fallback;
+}
+
 /**
  * Right-column chat feed. Shows the live wrestling trajectory:
  *
@@ -154,7 +158,10 @@ function FeedRow({
       return (
         <UserBubble
           kind="ask"
-          text={(event.payload as DistillationRequestedPayload).user_prompt}
+          text={displayString(
+            (event.payload as DistillationRequestedPayload).user_prompt,
+            "request unavailable",
+          )}
           isPending={isPending}
           eventId={event.event_id}
           emittedAt={event.emitted_at}
@@ -179,10 +186,19 @@ function FeedRow({
       return (
         <UserBubble
           kind="challenge"
-          text={(event.payload as ClaimChallengeRaisedPayload).user_question}
+          text={displayString(
+            (event.payload as ClaimChallengeRaisedPayload).user_question,
+            "challenge unavailable",
+          )}
           subline={
             "↳ challenging: " +
-            truncate((event.payload as ClaimChallengeRaisedPayload).claim_text, 80)
+            truncate(
+              displayString(
+                (event.payload as ClaimChallengeRaisedPayload).claim_text,
+                "claim unavailable",
+              ),
+              80,
+            )
           }
           eventId={event.event_id}
           emittedAt={event.emitted_at}
@@ -191,24 +207,31 @@ function FeedRow({
 
     case "document.region_selected": {
       const p = event.payload as DocumentRegionSelectedPayload;
+      const page = nonNegativeSafeInteger(p.page) ?? "?";
+      const excerpt = displayString(p.text_excerpt, "");
       return (
         <SystemRow
           eventId={event.event_id}
           emittedAt={event.emitted_at}
           icon="◇"
-          text={`selected p${p.page ?? "?"}: "${truncate(p.text_excerpt, 100)}"`}
+          text={`selected p${page}: "${truncate(excerpt, 100)}"`}
         />
       );
     }
 
     case "document.loaded": {
       const p = event.payload as DocumentLoadedPayload;
+      const mediaType = displayString(p.media_type, "document");
+      const sizeBytes = finiteNonNegativeNumber(p.size_bytes);
+      const sizeText =
+        sizeBytes === null ? "? KB" : `${Math.round(sizeBytes / 1024)} KB`;
+      const title = nonEmptyString(p.title);
       return (
         <SystemRow
           eventId={event.event_id}
           emittedAt={event.emitted_at}
           icon="◆"
-          text={`loaded ${p.media_type} (${Math.round(p.size_bytes / 1024)} KB${p.title ? ` · ${p.title}` : ""})`}
+          text={`loaded ${mediaType} (${sizeText}${title ? ` · ${title}` : ""})`}
         />
       );
     }
@@ -442,10 +465,12 @@ function findLastSelectedRegion(
       e.document_id === documentId
     ) {
       const p = e.payload as DocumentRegionSelectedPayload;
+      const regionId = nonEmptyString(p.region_id);
+      if (!regionId) continue;
       return {
-        region_id: p.region_id,
-        page: p.page ?? null,
-        text_excerpt: p.text_excerpt,
+        region_id: regionId,
+        page: nonNegativeSafeInteger(p.page),
+        text_excerpt: displayString(p.text_excerpt, ""),
       };
     }
   }
