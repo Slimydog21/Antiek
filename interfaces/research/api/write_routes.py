@@ -527,6 +527,7 @@ class FromInvestigationResponse(BaseModel):
     source_node_count: int
     insufficient_evidence: bool
     synthesis_id: str | None = None
+    synthesis_status: str | None = None
     synthesis_recommendation: str | None = None
 
 
@@ -566,7 +567,7 @@ def promote_investigation(req: FromInvestigationRequest) -> FromInvestigationRes
                 "error": "no_synthesis",
                 "reason": (
                     f"investigation {req.investigation_id!r} has no depositable "
-                    "synthesis to promote"
+                    "(completed, non-draft) synthesis to promote"
                 ),
                 "investigation_id": req.investigation_id,
             },
@@ -579,5 +580,6 @@ def promote_investigation(req: FromInvestigationRequest) -> FromInvestigationRes
         source_node_count=result.source_node_count,
         insufficient_evidence=result.insufficient_evidence,
         synthesis_id=result.synthesis_id,
+        synthesis_status=result.synthesis_status,
         synthesis_recommendation=result.synthesis_recommendation,
     )

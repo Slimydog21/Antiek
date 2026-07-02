@@ -84,6 +84,7 @@ class InvestigationPromoteResult:
     source_node_count: int = 0
     insufficient_evidence: bool = False
     synthesis_id: str | None = None
+    synthesis_status: str | None = None
     synthesis_recommendation: str | None = None
 
 
@@ -174,18 +175,31 @@ def promote_investigation_to_deliverable(
     and writes (deliverable/section/blocks) share one lock so the promotion
     is atomic.
     """
-    # 1. Find the investigation's most-recent synthesis. syntheses.investigation_id
-    #    is a free TEXT (no FK), so an arbitrary id is a legitimate "no synthesis"
-    #    → the caller (route) returns 404.
+    # 1. Find the investigation's most-recent DEPOSITABLE synthesis.
+    #    - DEPOSITABLE = the research run finished: status != 'draft'. A draft
+    #      is in-flight / unevaluated, not a completed conclusion, so it is not
+    #      promoted as a deliverable (→ 404 if a draft is all that exists).
+    #      The terminal outcomes (passed / regressed / max_iterations_reached /
+    #      escalated) all represent a completed run and ARE promoted — the
+    #      insufficient_evidence dogfood case is a terminal non-passed synthesis,
+    #      which must still reach the arm. status is surfaced in the result so
+    #      the operator sees exactly what was promoted.
+    #    - MOST RECENT = by synthesis_timestamp (when it was made), NOT
+    #      archived_at: a late backfill/retry archives an OLD synthesis LATE, so
+    #      archived_at would wrongly win. synthesis_timestamp is NOT NULL.
+    #    syntheses.investigation_id is a free TEXT (no FK), so an arbitrary id
+    #    is a legitimate "no synthesis" → the caller (route) returns 404.
     syn = con.execute(
-        "SELECT synthesis_id, target_question, implicit_recommendation "
-        "FROM syntheses WHERE investigation_id = ? "
-        "ORDER BY archived_at DESC, synthesis_id DESC LIMIT 1",
+        "SELECT synthesis_id, target_question, implicit_recommendation, status "
+        "FROM syntheses WHERE investigation_id = ? AND status != 'draft' "
+        "ORDER BY synthesis_timestamp DESC, synthesis_id DESC LIMIT 1",
         [investigation_id],
     ).fetchone()
     if syn is None:
         return None
-    synthesis_id, target_question, recommendation = syn[0], syn[1], syn[2]
+    synthesis_id, target_question, recommendation, synthesis_status = (
+        syn[0], syn[1], syn[2], syn[3]
+    )
 
     # 2. The synthesis's pinned source NODES — the distilled-truth units the
     #    writing outline is built from (manifest entity_kind='node').
@@ -258,5 +272,6 @@ def promote_investigation_to_deliverable(
         source_node_count=len(source_node_ids),
         insufficient_evidence=(len(block_ids) == 0),
         synthesis_id=synthesis_id,
+        synthesis_status=synthesis_status,
         synthesis_recommendation=recommendation,
     )
