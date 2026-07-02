@@ -16,6 +16,13 @@ AGENT_GATES = ROOT / ".github" / "workflows" / "agent_execution_gates.yml"
 CANONICAL_VERIFY = ROOT / "scripts" / "canonical_verify.sh"
 
 _META_COMMANDS = {"agent-gates", "handoff"}
+_PROVENANCE_INVARIANT_TRIGGER_PATHS = {
+    "roles/*/parser.py",
+    "substrate/provenance/**",
+    "tools/lint/provenance_ref_check.py",
+    "tests/test_invariant_registry_meta.py",
+    "tests/test_provenance_ref_lint.py",
+}
 
 
 def _workflow_canonical_commands() -> set[str]:
@@ -32,6 +39,17 @@ def _matrix_canonical_commands() -> set[str]:
 def _script_canonical_commands() -> set[str]:
     text = CANONICAL_VERIFY.read_text(encoding="utf-8")
     return set(re.findall(r"^\s*([a-z0-9-]+)\)\s+cmd_", text, re.MULTILINE))
+
+
+def _workflow_event_paths(event_name: str) -> set[str]:
+    text = AGENT_GATES.read_text(encoding="utf-8")
+    match = re.search(
+        rf"^  {event_name}:\n    branches: \[main\]\n    paths:\n(?P<body>(?:      - .*\n)+)",
+        text,
+        re.MULTILINE,
+    )
+    assert match is not None, f"{event_name} paths block not found"
+    return set(re.findall(r"      - '([^']+)'", match.group("body")))
 
 
 def test_platform_matrix_names_every_ci_canonical_command() -> None:
@@ -70,3 +88,14 @@ def test_unified_substrate_lock_row_names_invariant_registry_when_verified() -> 
     row = re.search(r"^\| P-38 \|(?P<body>.*)\|$", matrix, re.MULTILINE)
     assert row is not None
     assert "substrate/invariants/" in row.group("body")
+
+
+def test_agent_gates_trigger_on_provenance_invariant_inputs() -> None:
+    """P-38 now runs the invariant registry, including parser provenance checks."""
+    for event_name in ("push", "pull_request"):
+        paths = _workflow_event_paths(event_name)
+        missing = sorted(_PROVENANCE_INVARIANT_TRIGGER_PATHS - paths)
+        assert not missing, (
+            f"agent_execution_gates.yml {event_name} does not trigger on "
+            f"provenance invariant input(s): {missing}"
+        )

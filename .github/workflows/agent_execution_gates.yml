@@ -49,6 +49,7 @@ on:
       - 'orchestration/cascade_session.py'
       - 'runtime/remote_exec/**'
       - 'runtime/research_runner/**'
+      - 'roles/*/parser.py'
       - 'substrate/ad_inventory/**'
       - 'substrate/books/**'
       - 'substrate/dispatch/providers/openai_tts.py'
@@ -67,7 +68,9 @@ on:
       - 'substrate/contracts/conformance.py'
       - 'substrate/contracts/inventory.md'
       - 'substrate/coordination/**'
+      - 'substrate/provenance/**'
       - 'tools/codegen/check_conformance.py'
+      - 'tools/lint/provenance_ref_check.py'
       - 'substrate/seams/**'
       - 'substrate/invariants/**'
       - 'substrate/schemas/events.py'
@@ -121,6 +124,8 @@ on:
       - 'tests/test_flywheel_reuse.py'
       - 'tests/test_session_evidence_pack.py'
       - 'tests/test_cascade_convergence.py'
+      - 'tests/test_invariant_registry_meta.py'
+      - 'tests/test_provenance_ref_lint.py'
       - '.github/workflows/agent_execution_gates.yml'
   pull_request:
     branches: [main]
@@ -167,6 +172,7 @@ on:
       - 'orchestration/cascade_session.py'
       - 'runtime/remote_exec/**'
       - 'runtime/research_runner/**'
+      - 'roles/*/parser.py'
       - 'substrate/ad_inventory/**'
       - 'substrate/books/**'
       - 'substrate/dispatch/providers/openai_tts.py'
@@ -185,7 +191,9 @@ on:
       - 'substrate/contracts/conformance.py'
       - 'substrate/contracts/inventory.md'
       - 'substrate/coordination/**'
+      - 'substrate/provenance/**'
       - 'tools/codegen/check_conformance.py'
+      - 'tools/lint/provenance_ref_check.py'
       - 'substrate/seams/**'
       - 'substrate/invariants/**'
       - 'substrate/schemas/events.py'
@@ -239,6 +247,8 @@ on:
       - 'tests/test_flywheel_reuse.py'
       - 'tests/test_session_evidence_pack.py'
       - 'tests/test_cascade_convergence.py'
+      - 'tests/test_invariant_registry_meta.py'
+      - 'tests/test_provenance_ref_lint.py'
       - '.github/workflows/agent_execution_gates.yml'
   workflow_dispatch:
 
