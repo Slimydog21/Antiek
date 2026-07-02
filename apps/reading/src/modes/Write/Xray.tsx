@@ -68,7 +68,14 @@ function blockIdsFor(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value.filter((id): id is string => typeof id === "string" && id.trim().length > 0);
+  const seen = new Set<string>();
+  return value.flatMap((id) => {
+    if (typeof id !== "string") return [];
+    const trimmed = id.trim();
+    if (!trimmed || seen.has(trimmed)) return [];
+    seen.add(trimmed);
+    return [trimmed];
+  });
 }
 
 /** A block reference may be a node reference (graph-node block) or an outline

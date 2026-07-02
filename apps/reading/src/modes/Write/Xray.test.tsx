@@ -139,6 +139,29 @@ describe("Xray — paragraph↔blocks over persisted provenance", () => {
     expect(uses.textContent).not.toContain("42");
   });
 
+  it("trims and dedupes persisted provenance block ids before resolving labels", async () => {
+    render(
+      <Xray
+        proseText={`Para one [b: ${NODE}].`}
+        proseProvenance={{ "0": [` ${NODE} `, NODE, " "] }}
+        blocks={[block()]}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId("xray-paragraph-0").querySelector("button")!);
+    const blockButtons = screen
+      .getByTestId("xray-paragraph-blocks-0")
+      .querySelectorAll("button[title='Click to trace to source · drag to re-draft this section']");
+
+    expect(blockButtons).toHaveLength(1);
+    expect(blockButtons[0].textContent).toBe("Capital intensity rises with scale");
+
+    await userEvent.click(blockButtons[0]);
+    const uses = await screen.findByTestId("xray-block-uses");
+    expect(uses.textContent).toMatch(/Used in paragraph\(s\): 1/);
+    expect(uses.textContent).not.toContain("source no longer attached");
+  });
+
   it("does not render gated trace locator metadata even if the API sends it", async () => {
     vi.mocked(getTraceTarget).mockResolvedValueOnce({
       kind: "servable_snippet",
