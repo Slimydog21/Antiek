@@ -117,6 +117,14 @@ ALLOWED_FINAL_VERDICTS: tuple[str, ...] = (
     "REPAIR",
     "ROLL BACK CLAIM",
 )
+TEMPLATE_LIVE_FIRST_ANSWER = "First useful provider-backed answer."
+TEMPLATE_LIVE_RESEARCH_ID = "child-investigation-id"
+TEMPLATE_CITATION_RESULT_URLS: frozenset[str] = frozenset(
+    {
+        "https://antiek.ai/read/source-doc-1?chunk=chunk-1&from=doc-1&fromPage=0",
+        "https://antiek.ai/read/source-doc-1?chunk=chunk-1",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -674,8 +682,14 @@ def _live_provider_evidence_failures(
         )
     if not first_answer:
         failures.append(prefix + "live provider step 3 requires first_answer")
+    elif first_answer == TEMPLATE_LIVE_FIRST_ANSWER:
+        failures.append(prefix + "live provider step 3 still has template first_answer")
     if not research_id:
         failures.append(prefix + "live provider step 4 requires investigation_id or session_id")
+    elif research_id == TEMPLATE_LIVE_RESEARCH_ID:
+        failures.append(
+            prefix + "live provider step 4 still has template investigation_id"
+        )
     return failures
 
 
@@ -709,6 +723,8 @@ def _citation_evidence_failures(
         failures.append(prefix + "citation step 5 requires chunk_id or anchor")
     if not result_url:
         failures.append(prefix + "citation step 5 requires result_url")
+    elif result_url in TEMPLATE_CITATION_RESULT_URLS:
+        failures.append(prefix + "citation step 5 still has template result_url")
     elif not _is_http_url(result_url):
         failures.append(prefix + "citation step 5 result_url must be an http(s) URL")
     else:
