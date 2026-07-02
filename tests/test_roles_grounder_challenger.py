@@ -18,6 +18,7 @@ end paths through the role modules.
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import sys
 
@@ -105,6 +106,16 @@ def test_parse_grounder_response_passed():
     assert v.reason is None
 
 
+def test_parse_grounder_response_rejects_fabricated_chunk_id():
+    v = parse_grounder_response(
+        '{"grounded": true, "located_chunk_id": "chunk-fake", "confidence": 0.8}',
+        canonical_chunk_ids={"chunk-real"},
+    )
+    assert v.grounded is True
+    assert v.located_chunk_id is None
+    assert v.confidence == pytest.approx(0.8)
+
+
 def test_parse_grounder_response_failed_with_each_reason():
     for reason in GROUNDING_FAILURE_REASONS:
         v = parse_grounder_response(
@@ -190,7 +201,7 @@ def test_compose_challenge_rejects_empty_claim():
 
 def test_challenge_dataclass_is_frozen():
     ch = compose_challenge(claim_text="x")
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         ch.claim_text = "mutated"  # type: ignore[misc]
 
 

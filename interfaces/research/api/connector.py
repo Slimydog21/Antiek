@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
@@ -75,7 +76,7 @@ from substrate.schemas import (  # noqa: E402
     SeedPair,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402 — after the sys.path bootstrap above
 
 # ---------------------------------------------------------------------------
 # Traversal dispatch
@@ -88,7 +89,7 @@ def _run_traversal(
     algorithm: str,
     seed: SeedPair,
     max_paths_per_pair: int,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Run the requested algorithm against one seed pair. Returns
     the list of raw path dicts (the ``substrate.graph.traverse``
     output shape)."""
@@ -98,8 +99,9 @@ def _run_traversal(
             n=max_paths_per_pair,
         )
     if algorithm == "shortest_simple_path":
-        path = shortest_path(con, seed.source_node_id, seed.target_node_id)
-        return [path] if path else []
+        # shortest_path already returns [path_dict] (or [] when no path) —
+        # wrapping it again produced list[list[dict]] and crashed _paths_to_typed.
+        return shortest_path(con, seed.source_node_id, seed.target_node_id)
     if algorithm == "depth_first_limited":
         return dfs_with_depth(
             con, seed.source_node_id, seed.target_node_id,
@@ -116,7 +118,7 @@ def _run_traversal(
     return []
 
 
-def _paths_to_typed(raw_paths: list[dict]) -> list[GraphPath]:
+def _paths_to_typed(raw_paths: list[dict[str, Any]]) -> list[GraphPath]:
     out: list[GraphPath] = []
     for p in raw_paths:
         out.append(GraphPath(
@@ -128,6 +130,36 @@ def _paths_to_typed(raw_paths: list[dict]) -> list[GraphPath]:
             edge_ids=list(p.get("edge_ids", [])),
         ))
     return out
+
+
+def _canonical_refs_for_connector(
+    req: ConnectorRequestedPayload,
+    paths: list[GraphPath],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    node_ids: list[str] = []
+    edge_ids: list[str] = []
+    seen_nodes: set[str] = set()
+    seen_edges: set[str] = set()
+
+    def add_node(value: str | None) -> None:
+        if isinstance(value, str) and value.strip() and value not in seen_nodes:
+            node_ids.append(value)
+            seen_nodes.add(value)
+
+    def add_edge(value: str | None) -> None:
+        if isinstance(value, str) and value.strip() and value not in seen_edges:
+            edge_ids.append(value)
+            seen_edges.add(value)
+
+    for mapping in req.keyword_mappings:
+        add_node(mapping.matched_node_id)
+    for path in paths:
+        for node_id in path.path_nodes:
+            add_node(node_id)
+        for edge_id in path.edge_ids:
+            add_edge(edge_id)
+
+    return tuple(node_ids), tuple(edge_ids)
 
 
 def _traversal_for_request(
@@ -156,7 +188,7 @@ def _traversal_for_request(
             flush=True,
         )
         return []
-    raw_paths: list[dict] = []
+    raw_paths: list[dict[str, Any]] = []
     try:
         for seed in req.seed_pairs:
             try:
@@ -184,6 +216,9 @@ def _traversal_for_request(
 def _dispatch_and_parse(
     prompt: str,
     event: Event,
+    *,
+    canonical_node_ids: tuple[str, ...] = (),
+    canonical_edge_ids: tuple[str, ...] = (),
 ) -> tuple[ConnectorResult | None, str]:
     try:
         result = dispatch(
@@ -203,7 +238,11 @@ def _dispatch_and_parse(
         return None, "connector-fallback/no-provider"
 
     try:
-        parsed = parse_connector_response(response_text)
+        parsed = parse_connector_response(
+            response_text,
+            canonical_node_ids=canonical_node_ids,
+            canonical_edge_ids=canonical_edge_ids,
+        )
         return parsed, policy_id
     except ConnectorValidationError as exc:
         print(
@@ -260,7 +299,7 @@ def make_connector_handler(
     broadcaster: EventBroadcaster,
     *,
     db_path: str | None = None,
-):
+) -> Callable[[Event], Awaitable[None]]:
     """Build the connector handler. Closed over a broadcaster + db
     path. Registered against ``ActionType.CONNECTOR_REQUESTED``."""
     resolved_db = db_path or default_db_path()
@@ -272,6 +311,10 @@ def make_connector_handler(
 
         # ── 1. Run traversal against the seed pairs ──
         traversed_paths = _traversal_for_request(resolved_db, req)
+        canonical_node_ids, canonical_edge_ids = _canonical_refs_for_connector(
+            req,
+            traversed_paths,
+        )
 
         # ── 2. Render prompt blocks ──
         mappings_block = render_mappings_block(list(req.keyword_mappings))
@@ -282,7 +325,12 @@ def make_connector_handler(
         )
 
         # ── 3. Dispatch + parse ──
-        result, policy_id = _dispatch_and_parse(prompt, event)
+        result, policy_id = _dispatch_and_parse(
+            prompt,
+            event,
+            canonical_node_ids=canonical_node_ids,
+            canonical_edge_ids=canonical_edge_ids,
+        )
 
         if result is None:
             # Fallback: surface the traversed paths even though the

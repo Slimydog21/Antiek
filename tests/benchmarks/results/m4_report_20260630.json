@@ -1,0 +1,82 @@
+{
+  "generated_at": "deterministic-from-input",
+  "git_sha": "013311a",
+  "os": "Darwin",
+  "paths": [
+    {
+      "bottleneck_map": {
+        "function": "substrate/event_log/events.py::trajectory",
+        "line_range": "535-574"
+      },
+      "mean": 0.035208,
+      "p50": 0.0365,
+      "p95": 0.037958,
+      "path": "event_log_parquet_read",
+      "samples": 3,
+      "stddev": 0.003575
+    },
+    {
+      "bottleneck_map": {
+        "function": "substrate/loop_3/verifiers_env.py::build_env_from_trajectory",
+        "line_range": "101-116"
+      },
+      "mean": 0.006514,
+      "p50": 0.005084,
+      "p95": 0.010125,
+      "path": "loop_3_rl_prep",
+      "samples": 3,
+      "stddev": 0.00315
+    },
+    {
+      "bottleneck_map": {
+        "function": "substrate/dispatch/json_repair.py::repair_json_string",
+        "line_range": "13-26"
+      },
+      "mean": 0.005986,
+      "p50": 0.006209,
+      "p95": 0.007166,
+      "path": "json_repair_error_path",
+      "samples": 3,
+      "stddev": 0.001306
+    },
+    {
+      "bottleneck_map": {
+        "function": "tests/benchmarks/test_hot_paths.py::verify_pair",
+        "line_range": "66-69"
+      },
+      "mean": 0.002028,
+      "p50": 0.000708,
+      "p95": 0.004792,
+      "path": "verifier_throughput",
+      "samples": 3,
+      "stddev": 0.002395
+    },
+    {
+      "bottleneck_map": {
+        "function": "substrate/dispatch/router.py::_compute_cost_usd",
+        "line_range": "226-246"
+      },
+      "mean": 0.002569,
+      "p50": 0.002708,
+      "p95": 0.003041,
+      "path": "dispatch_fanout",
+      "samples": 3,
+      "stddev": 0.000554
+    }
+  ],
+  "python_version": "3.12.13",
+  "top_bottlenecks": [
+    {
+      "function": "substrate/event_log/events.py::trajectory",
+      "line_range": "535-574",
+      "p95": 0.037958,
+      "path": "event_log_parquet_read"
+    },
+    {
+      "function": "substrate/loop_3/verifiers_env.py::build_env_from_trajectory",
+      "line_range": "101-116",
+      "p95": 0.010125,
+      "path": "loop_3_rl_prep"
+    }
+  ]
+}

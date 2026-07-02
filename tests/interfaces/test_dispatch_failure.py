@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 
 from interfaces.research.api.dispatch_failure import classify_dispatch_failure
@@ -60,7 +58,7 @@ from substrate.dispatch.base import ProviderError
             503,
             False,
         ),
-        (asyncio.TimeoutError(), "timeout", 504, True),
+        (TimeoutError(), "timeout", 504, True),
         (TimeoutError(), "timeout", 504, True),
         (ValueError("build_plan blew up"), "unknown", 500, True),
         (RuntimeError("db locked"), "unknown", 500, True),

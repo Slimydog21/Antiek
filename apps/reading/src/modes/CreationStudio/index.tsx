@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
+import { ArtifactExport } from "../../components/ArtifactExport";
 import { PanelHost } from "../../workspace/PanelHost";
 import {
   attachBlock,
@@ -150,7 +151,17 @@ function DeliverableDetail() {
             {detail.title}
           </h1>
         </div>
-        <ExportButton deliverableId={detail.deliverable_id} />
+        <div className="flex flex-col items-end gap-2">
+          <ExportButton deliverableId={detail.deliverable_id} />
+          {/* The portable SIGNED artifact (projection / .antiek container /
+              single-file) — distinct from ExportButton's markdown/html/json
+              content export. */}
+          <ArtifactExport
+            basePath={`/api/deliverables/${detail.deliverable_id}`}
+            filenamePrefix={`deliverable-${detail.deliverable_id}`}
+            label="Artifact:"
+          />
+        </div>
       </header>
 
       <ul className="space-y-4">

@@ -36,7 +36,7 @@
 | Elevation tests | `NEW: apps/reading/src/design/elevation.test.ts` | FEEL-S1 |
 | Feel contract doc | `NEW: docs/htmlspec/posthog-feel/FEEL_CONTRACT.md` | FEEL-S1 |
 | Panel cascade e2e | `NEW: apps/reading/e2e/feel-panels-cascade.spec.ts` | FEEL-S2 |
-| Windows cascade e2e | `NEW: apps/reading/e2e/feel-windows-cascade.spec.ts` | FEEL-S3 |
+| Windows cascade e2e | `apps/reading/e2e/windows-default.spec.ts` + `NEW: apps/reading/e2e/feel-experience-matrix.spec.ts` | FEEL-S3/FEEL-S6 |
 | RW exempt e2e | `NEW: apps/reading/e2e/feel-rw-ide-exempt.spec.ts` | FEEL-S4 |
 | Focus ring e2e | `NEW: apps/reading/e2e/feel-focus-ring.spec.ts` | FEEL-S4 |
 | Feel matrix e2e | `NEW: apps/reading/e2e/feel-experience-matrix.spec.ts` | FEEL-S6 |

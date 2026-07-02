@@ -77,3 +77,12 @@ node_modules/
 # catch interfaces/research/ (the substrate API package).
 /research/
 docs/htmlspec/werner-ice-fishing-cursor/.caffenagent/
+
+# /caffenagent + /conclave orchestration run-state (worktrees, ledgers,
+# evidence). Pure scratch — regenerated per run, never source. Anchored
+# loosely so it catches the dirs at any depth.
+.caffenagent/
+.conclave/
+
+# hardenx scratch output (triage layer; never source)
+.harden/

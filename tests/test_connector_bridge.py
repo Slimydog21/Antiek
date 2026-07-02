@@ -172,14 +172,20 @@ async def _post_request(ac, *, investigation_id, seed_pairs, keyword_mappings=No
     return r.json()
 
 
-def _good_response(*, with_paths: bool = True) -> dict:
+def _good_response(
+    *,
+    with_paths: bool = True,
+    source_node_id: str = "n-tsmc",
+    target_node_id: str = "n-asml",
+    edge_id: str = "e-1",
+) -> dict:
     paths_list = [{
-        "path_nodes": ["n-tsmc", "n-asml"],
+        "path_nodes": [source_node_id, target_node_id],
         "node_labels": ["TSMC", "ASML"],
         "path_relations": ["sources_from"],
         "depth": 1,
         "avg_confidence": 0.95,
-        "edge_ids": ["e-1"],
+        "edge_ids": [edge_id],
     }] if with_paths else []
     nl_list = [{
         "text": "TSMC sources EUV lithography systems from ASML.",
@@ -187,7 +193,7 @@ def _good_response(*, with_paths: bool = True) -> dict:
     }] if with_paths else []
     return {
         "keyword_mappings": [{
-            "keyword": "TSMC", "matched_node_id": "n-tsmc",
+            "keyword": "TSMC", "matched_node_id": source_node_id,
             "matched_node_label": "TSMC", "matched_node_type": "entity",
             "similarity": 0.95, "low_confidence": False,
         }],
@@ -208,9 +214,13 @@ async def test_connector_happy_path(monkeypatch, app_and_bus, async_client, db_p
     _, bus = app_and_bus
     inv = "inv-conn-happy"
 
-    src, tgt, _ = _seed_two_node_path(db_path)
+    src, tgt, eid = _seed_two_node_path(db_path)
 
-    register_provider(_StubConnector(json.dumps(_good_response())))
+    register_provider(_StubConnector(json.dumps(_good_response(
+        source_node_id=src,
+        target_node_id=tgt,
+        edge_id=eid,
+    ))))
     _patch_dispatch_config(monkeypatch, _connector_config("stub-connector"))
 
     await _post_request(

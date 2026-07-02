@@ -143,6 +143,25 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
         # publicly servable/attributable, so a regression that widened this path
         # would be caught there too.
         "orchestration/monitoring/monitor.py",
+        # SPR-01/02 (.antiek sidecar): _gather_anchors_and_audio reads raw_text in
+        # `SELECT raw_text, metadata FROM documents WHERE document_id = ?` where the
+        # document_id is a VOICE-NOTE id (an anchor's voice_note_id) — the OWNER's
+        # own voice-note transcript, bundled into the owner's own signed .antiek
+        # sidecar. This is owner-authored annotation content, not a third-party
+        # servable body: it neither passes through nor needs the content_class /
+        # license-tier / link-back serve gate, which governs licensed third-party
+        # document bodies (books / arXiv), never the owner's own voice memos. Same
+        # internal / owner-path category as monitor.py above; the sidecar carries
+        # SIDECAR_CONTENT_CLASS and the .antiek _FORBIDDEN_SUBSTRATE_FIELDS gate
+        # independently forbids chunks/embeddings/edges in the emitted container.
+        "services/antiek_format/sidecar_writer.py",
+        # Corpus source-census (operator CLI): one read-only
+        # `SELECT ... raw_text ... FROM documents` used to compute corpus
+        # statistics (metadata / linkback / rights-tier / servable percentages).
+        # Its docstring is explicit — "does not create the DB, call the network, or
+        # write files"; it never returns a body to a caller. Same internal-auditor
+        # category as substrate/corpus_audit.py above.
+        "tools/source_census.py",
     }
 )
 
@@ -158,9 +177,7 @@ def _is_body_read_sql(value: str) -> bool:
         and _DOCUMENTS_RE.search(value)
     ):
         return True
-    if _STAR_FROM_DOCUMENTS_RE.search(value):
-        return True
-    return False
+    return bool(_STAR_FROM_DOCUMENTS_RE.search(value))
 
 
 def _concat_constant_str(node: ast.AST) -> str | None:
