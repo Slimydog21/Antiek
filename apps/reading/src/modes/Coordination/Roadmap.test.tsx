@@ -59,6 +59,8 @@ function roadmap(
     total_sprints: sprints.length,
     superseded_count: 0,
     superseded_note: "",
+    activation_note:
+      "Structural sprint status is not activation closure. Read activation still requires the live dogfood evidence in specs/activation/golden-path.md; CI is the floor, use is the gate.",
     reconciliation: `Read ${sprints.length} = ${sprints.length}`,
     critical_path: criticalPath,
     rosters: specs.flatMap((spec) => {
@@ -94,6 +96,12 @@ describe("Roadmap", () => {
 
     expect(
       screen.getByText("0 dependency-ready · 1 blocked by dependency state"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Structural sprint status is not activation closure/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/specs\/activation\/golden-path\.md/),
     ).toBeTruthy();
     expect(
       screen.getByText(

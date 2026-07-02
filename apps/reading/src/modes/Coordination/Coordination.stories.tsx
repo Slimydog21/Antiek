@@ -159,6 +159,8 @@ export const CANONICAL_ROADMAP: RoadmapView = {
   total_sprints: 45,
   superseded_count: 6,
   superseded_note: "five-surface portfolio-shell prototype, superseded by unified's 8",
+  activation_note:
+    "Structural sprint status is not activation closure. Read activation still requires the live dogfood evidence in specs/activation/golden-path.md; CI is the floor, use is the gate.",
   reconciliation:
     "Research 10 + Read 9 + Write 9 + Speak 9 + Antiek-Unified 8 = 45; shell's 6 superseded (five-surface portfolio-shell prototype, superseded by unified's 8)",
   critical_path: CRITICAL,

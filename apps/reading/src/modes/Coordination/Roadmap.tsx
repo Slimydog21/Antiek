@@ -61,6 +61,7 @@ export interface RoadmapView {
   total_sprints: number;
   superseded_count: number;
   superseded_note: string;
+  activation_note: string;
   reconciliation: string;
   critical_path: string[];
   rosters: RosterView[];
@@ -250,6 +251,11 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
           <p className="text-xs font-mono text-shadow-2 dark:text-moonlight">
             {dependencyReady.length} dependency-ready · {blockedCount} blocked by dependency state
           </p>
+          {roadmap.activation_note ? (
+            <p className="text-xs text-ink-soft dark:text-starlight leading-relaxed">
+              {roadmap.activation_note}
+            </p>
+          ) : null}
         </div>
       </LemonCard>
 

@@ -57,6 +57,11 @@ _SPEC_DIRS: tuple[tuple[str, str, str], ...] = (
 
 # The superseded prototype — counted as superseded, never added to the 45.
 _SUPERSEDED_DIR = "shell"
+_ACTIVATION_NOTE = (
+    "Structural sprint status is not activation closure. Read activation still "
+    "requires the live dogfood evidence in specs/activation/golden-path.md; "
+    "CI is the floor, use is the gate."
+)
 
 
 def _specs_root() -> Path:
@@ -153,6 +158,7 @@ class Roadmap:
     critical_path: tuple[str, ...]
     superseded_count: int
     superseded_note: str
+    activation_note: str = _ACTIVATION_NOTE
     substrate_layers: tuple[SubstrateLayer, ...] = ()
 
     @property

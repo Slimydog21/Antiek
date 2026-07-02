@@ -58,6 +58,7 @@ describe("Coordination", () => {
           total_sprints: "45.9",
           superseded_count: "6",
           superseded_note: " shell superseded ",
+          activation_note: " structural status is not activation closure ",
           reconciliation: " reconciled count ",
           critical_path: [" drw:1 ", " "],
           rosters: [
@@ -146,6 +147,7 @@ describe("Coordination", () => {
     expect(screen.queryByText("Skipped impact")).toBeNull();
 
     expect(screen.getByText("library browse")).toBeTruthy();
+    expect(screen.getByText("structural status is not activation closure")).toBeTruthy();
     expect(screen.getByText("waits on drw:10")).toBeTruthy();
     expect(screen.getByText("1 dependency-ready · 1 blocked by dependency state")).toBeTruthy();
     expect(screen.getByText("Dependency-ready")).toBeTruthy();

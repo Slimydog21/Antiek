@@ -218,6 +218,7 @@ function safeRoadmapView(value: unknown): RoadmapView {
     total_sprints: nonNegativeInteger(body?.total_sprints),
     superseded_count: nonNegativeInteger(body?.superseded_count),
     superseded_note: nonEmptyString(body?.superseded_note) ?? "",
+    activation_note: nonEmptyString(body?.activation_note) ?? "",
     reconciliation: nonEmptyString(body?.reconciliation) ?? "",
     critical_path: stringList(body?.critical_path),
     rosters,

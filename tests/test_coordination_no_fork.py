@@ -449,6 +449,18 @@ def test_roadmap_response_serializes_execution_focus() -> None:
     assert response.execution_focus is None
 
 
+def test_roadmap_response_names_activation_boundary() -> None:
+    """Structural sprint state must not be mistaken for live-use activation."""
+    from interfaces.research.api.coordination import RoadmapResponse
+
+    response = RoadmapResponse.from_roadmap(build_roadmap())
+
+    assert response.activation_note == build_roadmap().activation_note
+    assert "Structural sprint status is not activation closure" in response.activation_note
+    assert "specs/activation/golden-path.md" in response.activation_note
+    assert "CI is the floor, use is the gate" in response.activation_note
+
+
 def test_roadmap_reads_rosters_from_fixture_via_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The roadmap reads roster filenames from disk (it authors nothing). Point
     it at a fixture and it reflects the fixture's files."""
