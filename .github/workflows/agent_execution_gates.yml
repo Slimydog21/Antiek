@@ -25,8 +25,10 @@ on:
       - 'interfaces/research/api/books.py'
       - 'interfaces/research/api/library.py'
       - 'orchestration/cascade_session.py'
+      - 'substrate/ad_inventory/**'
       - 'substrate/books/**'
       - 'substrate/gap_detection/**'
+      - 'substrate/marketplace_metrics/book_escrow.py'
       - 'substrate/contracts/read_sprint_lock.py'
       - 'substrate/research_bridge/detect_external.py'
       - 'substrate/research_bridge/extractors.py'
@@ -45,6 +47,8 @@ on:
       - 'tests/test_book_curate.py'
       - 'tests/test_contracts_read_lock.py'
       - 'tests/test_library_api.py'
+      - 'tests/test_read_ad_escrow.py'
+      - 'tests/test_reader_ad_slots.py'
       - 'tests/test_serve_structured_blocks.py'
       - 'tests/test_servability_drift_guard.py'
       - 'tests/test_gap_detection.py'
@@ -81,8 +85,10 @@ on:
       - 'interfaces/research/api/books.py'
       - 'interfaces/research/api/library.py'
       - 'orchestration/cascade_session.py'
+      - 'substrate/ad_inventory/**'
       - 'substrate/books/**'
       - 'substrate/gap_detection/**'
+      - 'substrate/marketplace_metrics/book_escrow.py'
       - 'substrate/contracts/read_sprint_lock.py'
       - 'substrate/research_bridge/detect_external.py'
       - 'substrate/research_bridge/extractors.py'
@@ -101,6 +107,8 @@ on:
       - 'tests/test_book_curate.py'
       - 'tests/test_contracts_read_lock.py'
       - 'tests/test_library_api.py'
+      - 'tests/test_read_ad_escrow.py'
+      - 'tests/test_reader_ad_slots.py'
       - 'tests/test_serve_structured_blocks.py'
       - 'tests/test_servability_drift_guard.py'
       - 'tests/test_gap_detection.py'
@@ -176,8 +184,11 @@ jobs:
       - name: Canonical verify — read curate
         run: ./scripts/canonical_verify.sh read-curate
 
+      - name: Canonical verify — read ad border
+        run: ./scripts/canonical_verify.sh read-ad-border
+
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md
 
-      - name: Canonical verify — deep-research (P-20..P-26)
+      - name: Canonical verify — deep-research (P-21..P-27)
         run: ./scripts/canonical_verify.sh deep-research

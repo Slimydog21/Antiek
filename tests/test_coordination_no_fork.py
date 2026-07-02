@@ -383,7 +383,7 @@ def test_execution_focus_skips_live_ready_rows() -> None:
 
     assert focus is not None
     assert focus.kind == "dependency_ready"
-    assert focus.node_id == "read:5"
+    assert focus.node_id == "read:6"
     assert focus.blocked_sprints == ()
 
 
@@ -437,7 +437,7 @@ def test_roadmap_response_serializes_execution_focus() -> None:
 
     assert response.execution_focus is not None
     assert response.execution_focus.kind == "dependency_ready"
-    assert response.execution_focus.node_id == "read:5"
+    assert response.execution_focus.node_id == "read:6"
     assert response.execution_focus.blocked_sprints == []
 
 

@@ -9,9 +9,10 @@
 #   read-library         — Read SPR-02 library browse + no-body catalog gate
 #   read-reader          — Read SPR-03 reader surface + structured-block gate
 #   read-curate          — Read SPR-04 prompt-to-curate servable-only gate
+#   read-ad-border       — Read SPR-05 ad-border slots + impression/accrual gate
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
-#   deep-research        — ANT-DRL P-19..P-25 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
-#   html-transport       — ANT-AHT P-26 ResearchArtifact transport gates
+#   deep-research        — ANT-DRL P-21..P-27 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
+#   html-transport       — ANT-AHT P-28 ResearchArtifact transport gates
 #
 # USAGE (from repo root):
 #   ./scripts/canonical_verify.sh cascade
@@ -34,7 +35,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|handoff <md>|agent-gates|deep-research|html-transport}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|handoff <md>|agent-gates|deep-research|html-transport}" >&2
   exit 2
 }
 
@@ -130,6 +131,18 @@ cmd_read_curate() {
   echo "CANONICAL_VERIFY_OK: read-curate"
 }
 
+cmd_read_ad_border() {
+  echo "== read-ad-border: slot model + targeting + impression/accrual backend =="
+  "${PY}" -m pytest tests/test_reader_ad_slots.py tests/test_read_ad_escrow.py tests/test_contracts_read_lock.py -q --tb=no
+  echo "== read-ad-border: reader rails + impression client =="
+  (cd apps/reading && npm run test -- \
+    src/api/books.test.ts \
+    src/modes/Reading/Reading.test.tsx \
+    src/modes/Reading/HouseSlot.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: read-ad-border"
+}
+
 cmd_handoff() {
   local f="${1:?handoff markdown path required}"
   echo "== handoff: schema linter =="
@@ -148,7 +161,7 @@ cmd_agent_gates() {
 }
 
 cmd_html_transport() {
-  echo "== html-transport: P-26 ANT-AHT bundle =="
+  echo "== html-transport: P-28 ANT-AHT bundle =="
   "${PY}" -m pytest \
     tests/test_research_artifact_template.py \
     tests/test_research_artifact_export.py \
@@ -165,19 +178,19 @@ cmd_html_transport() {
 }
 
 cmd_deep_research() {
-  echo "== deep-research: P-19 Loop 1 E2E =="
+  echo "== deep-research: P-21 Loop 1 E2E =="
   "${PY}" -m pytest tests/test_loop_one_orchestrator.py::test_loop_one_happy_path_emits_completed -q --tb=no
-  echo "== deep-research: P-20 invariant negative =="
+  echo "== deep-research: P-22 invariant negative =="
   "${PY}" -m pytest tests/test_deep_research_complete.py::test_drw_only_trajectory_fails_without_synthesis -q --tb=no
-  echo "== deep-research: P-21 session reconstruct =="
+  echo "== deep-research: P-23 session reconstruct =="
   "${PY}" -m pytest tests/test_cascade_session.py -q --tb=no
-  echo "== deep-research: P-22 PromotionFunnel serialize =="
+  echo "== deep-research: P-24 PromotionFunnel serialize =="
   "${PY}" -m pytest tests/test_research_runner.py::test_promotion_funnel_serialized_no_lock_timeout -q --tb=no
-  echo "== deep-research: P-23 knowledge.reused (two-run) =="
+  echo "== deep-research: P-25 knowledge.reused (two-run) =="
   "${PY}" -m pytest tests/test_flywheel_reuse.py::test_two_run_contract_gather_emits_knowledge_reused_on_second_start -q --tb=no
-  echo "== deep-research: P-24 Exa gather mock E2E =="
+  echo "== deep-research: P-26 Exa gather mock E2E =="
   "${PY}" -m pytest tests/test_exa_gather_loop.py -q --tb=short
-  echo "== deep-research: P-25 parent-terminal observability =="
+  echo "== deep-research: P-27 parent-terminal observability =="
   "${PY}" -m pytest tests/test_drw_parent_terminal.py -q --tb=short
   echo "CANONICAL_VERIFY_OK: deep-research"
 }
@@ -192,6 +205,7 @@ main() {
     read-library) cmd_read_library ;;
     read-reader) cmd_read_reader ;;
     read-curate) cmd_read_curate ;;
+    read-ad-border) cmd_read_ad_border ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     deep-research) cmd_deep_research ;;
