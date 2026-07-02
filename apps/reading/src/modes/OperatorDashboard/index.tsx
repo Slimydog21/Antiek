@@ -37,6 +37,14 @@ interface CompositeSnapshot {
   investigations: InvestigationSummary | null;
   outcomes: OutcomeSummary | null;
   notebooks: NotebookSummary | null;
+  deliverables: DeliverableSummary | null;
+}
+
+interface DeliverableSummary {
+  total: number;
+  linked_research_count: number;
+  section_count: number;
+  kind_counts: Record<string, number>;
 }
 
 interface NotebookSummary {
@@ -385,6 +393,29 @@ function safeNotebookSummary(value: unknown): NotebookSummary {
   return summary;
 }
 
+function safeDeliverableSummary(value: unknown): DeliverableSummary {
+  const body = record(value);
+  const rows = Array.isArray(body?.deliverables) ? body.deliverables : [];
+  const summary: DeliverableSummary = {
+    total: 0,
+    linked_research_count: 0,
+    section_count: 0,
+    kind_counts: {},
+  };
+  for (const item of rows) {
+    const row = record(item);
+    if (!nonEmptyString(row?.deliverable_id)) continue;
+    summary.total += 1;
+    if (nonEmptyString(row?.investigation_root_id)) {
+      summary.linked_research_count += 1;
+    }
+    summary.section_count += safeCount(row?.section_count);
+    const kind = nonEmptyString(row?.deliverable_kind) ?? "general_essay";
+    summary.kind_counts[kind] = (summary.kind_counts[kind] ?? 0) + 1;
+  }
+  return summary;
+}
+
 function safeNumberMapTotal(value: unknown): number {
   const body = record(value);
   if (!body) return 0;
@@ -660,6 +691,7 @@ export default function OperatorDashboard() {
     investigations: null,
     outcomes: null,
     notebooks: null,
+    deliverables: null,
   });
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -681,6 +713,7 @@ export default function OperatorDashboard() {
         investigationsResp,
         outcomesResp,
         notebooksResp,
+        deliverablesResp,
       ] = await Promise.all([
         apiFetch("/publishers"),
         apiFetch("/stats").catch(() => null),
@@ -694,6 +727,7 @@ export default function OperatorDashboard() {
         apiFetch("/investigations?limit=200").catch(() => null),
         apiFetch("/outcomes?limit=200").catch(() => null),
         apiFetch("/notebooks").catch(() => null),
+        apiFetch("/deliverables").catch(() => null),
       ]);
 
       if (!publishersResp.ok) {
@@ -754,6 +788,11 @@ export default function OperatorDashboard() {
         notebooks = safeNotebookSummary(await notebooksResp.json());
       }
 
+      let deliverables: DeliverableSummary | null = null;
+      if (deliverablesResp?.ok) {
+        deliverables = safeDeliverableSummary(await deliverablesResp.json());
+      }
+
       setSnapshot({
         stats,
         pendingDeletions,
@@ -766,6 +805,7 @@ export default function OperatorDashboard() {
         investigations,
         outcomes,
         notebooks,
+        deliverables,
       });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -952,11 +992,64 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
       <InvestigationsTile investigations={snapshot.investigations} />
       <OutcomesTile outcomes={snapshot.outcomes} />
       <NotebooksTile notebooks={snapshot.notebooks} />
+      <DeliverablesTile deliverables={snapshot.deliverables} />
       <BillingTile billing={snapshot.billing} />
       <TrustTile trust={snapshot.trust} />
       <MarketplaceTile marketplace={snapshot.marketplace} />
       <FederationTile federation={snapshot.federation} />
     </section>
+  );
+}
+
+function DeliverablesTile({
+  deliverables,
+}: {
+  deliverables: DeliverableSummary | null;
+}) {
+  if (!deliverables) {
+    return (
+      <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className="text-sm font-serif text-ink dark:text-bright">
+            Writing pipeline
+          </h3>
+          <Link
+            to="/write"
+            className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+          >
+            open →
+          </Link>
+        </div>
+        <p className="mt-2 text-xs italic text-shadow-1 dark:text-moonlight">
+          Deliverable summary unavailable.
+        </p>
+      </div>
+    );
+  }
+  const topKind =
+    Object.entries(deliverables.kind_counts).sort(
+      ([kindA, countA], [kindB, countB]) => countB - countA || kindA.localeCompare(kindB),
+    )[0]?.[0] ?? "none";
+  return (
+    <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-3 space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-sm font-serif text-ink dark:text-bright">
+          Writing pipeline
+        </h3>
+        <Link
+          to="/write"
+          className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+        >
+          open →
+        </Link>
+      </div>
+      <p className="text-xs font-mono text-ink dark:text-bright">
+        {deliverables.total} pieces · {deliverables.section_count} sections · top kind {topKind.replace(/_/g, " ")}
+      </p>
+      <p className="text-xs text-ink-soft dark:text-starlight">
+        {deliverables.linked_research_count}/{deliverables.total} pieces linked to research.
+      </p>
+    </div>
   );
 }
 
