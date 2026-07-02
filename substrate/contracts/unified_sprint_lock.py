@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to UNIFIED_SPRINTS. Status changes are deliberate roadmap
 # events, not prose-only handoffs.
-UNIFIED_LOCK_VERSION: int = 7
+UNIFIED_LOCK_VERSION: int = 8
 
 
 @dataclass(frozen=True)
@@ -109,7 +109,19 @@ UNIFIED_SPRINTS: dict[int, UnifiedDeliverable] = {
         # renders the money and consent state via unified-cost-consent-surface.
         status="live",
     ),
-    8: UnifiedDeliverable(8, "flywheel-conformance", "Flywheel conformance"),
+    8: UnifiedDeliverable(
+        8,
+        "flywheel-conformance",
+        "Flywheel conformance",
+        # Live: the end-to-end flywheel drives one entity through the committed
+        # Research/Read/Write/Speak seams with same-id provenance and negative
+        # copy controls; the eight-invariant integration manifest composes the
+        # prior sprint guards; the conformance gate verifies real/stub contract
+        # rows, DRW sprint-lock citations, and chunk provenance policy with
+        # injected fork/renumber/provenance failures; all are covered by
+        # unified-flywheel-conformance.
+        status="live",
+    ),
 }
 
 

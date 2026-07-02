@@ -365,5 +365,8 @@ jobs:
       - name: Canonical verify — unified cost consent surface
         run: ./scripts/canonical_verify.sh unified-cost-consent-surface
 
+      - name: Canonical verify — unified flywheel conformance
+        run: ./scripts/canonical_verify.sh unified-flywheel-conformance
+
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md

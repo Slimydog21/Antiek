@@ -49,12 +49,13 @@
 | P-41 | Unified coordination gate ledger | `substrate/coordination/gate_ledger.py` + Coordination mode | `./scripts/canonical_verify.sh unified-coordination-gate-ledger` | — | Browser/device visual QA for final Coordination polish |
 | P-42 | Unified thread navigation | `substrate/seams/thread.py` + `ThreadBreadcrumb` | `./scripts/canonical_verify.sh unified-thread-navigation` | — | Browser/device visual QA for breadcrumb placement |
 | P-43 | Unified cost + consent surface | `substrate/coordination/cost_view.py` + `consent_view.py` + Coordination cost UI | `./scripts/canonical_verify.sh unified-cost-consent-surface` | — | Live provider billing and payout activation |
-| P-44 | Agent handoff schema | `tools/agent/verify_handoff.ts` | `./scripts/canonical_verify.sh handoff <md>` | — | Narrative quality / intent |
-| P-45 | Session theater grep | `scripts/audit_agent_session.sh` | paired with handoff subcommand | — | Claims outside markdown packet |
-| P-46 | AMS spec ref-lint | `scripts/agent_ams_ref_lint.sh` | `bash scripts/agent_ams_ref_lint.sh <sprint.html>` | — | Playwright mountain shell |
-| P-47 | Reading substrate pytest | `.github/workflows/ci.yml` `pytest` job | CI on `main` (full suite) | — | Local hardware parity |
-| P-48 | Werner mascot / hop | `apps/reading` Werner paths per Werner htmlspec | `canonical_verify.sh agent-gates` + case study §5 | Werner operator card (htmlspec) | Measured p95 / fps without artifact |
-| P-49 | Serve / rights / legal | production deploy surfaces | **No** informational CI job alone (F7) | operator deploy checklist | Jurisdiction-specific legal review |
+| P-44 | Unified flywheel conformance | `tests/e2e/test_flywheel.py` + `tests/test_integration_invariants.py` + `tools/codegen/check_conformance.py` | `./scripts/canonical_verify.sh unified-flywheel-conformance` | — | Live product-module replacement of documented stubs |
+| P-45 | Agent handoff schema | `tools/agent/verify_handoff.ts` | `./scripts/canonical_verify.sh handoff <md>` | — | Narrative quality / intent |
+| P-46 | Session theater grep | `scripts/audit_agent_session.sh` | paired with handoff subcommand | — | Claims outside markdown packet |
+| P-47 | AMS spec ref-lint | `scripts/agent_ams_ref_lint.sh` | `bash scripts/agent_ams_ref_lint.sh <sprint.html>` | — | Playwright mountain shell |
+| P-48 | Reading substrate pytest | `.github/workflows/ci.yml` `pytest` job | CI on `main` (full suite) | — | Local hardware parity |
+| P-49 | Werner mascot / hop | `apps/reading` Werner paths per Werner htmlspec | `canonical_verify.sh agent-gates` + case study §5 | Werner operator card (htmlspec) | Measured p95 / fps without artifact |
+| P-50 | Serve / rights / legal | production deploy surfaces | **No** informational CI job alone (F7) | operator deploy checklist | Jurisdiction-specific legal review |
 
 ## How to use
 

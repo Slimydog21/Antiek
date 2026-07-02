@@ -252,7 +252,7 @@ export const CANONICAL_ROADMAP: RoadmapView = {
         sprint: i + 1,
         slug: `sprint-${i + 1}`,
         node_id: `unified:${i + 1}`,
-        status: i < 7 ? "live" : "planned",
+        status: "live",
         on_critical_path: false,
         blocked_on: [],
         unblocked: true,
@@ -261,11 +261,7 @@ export const CANONICAL_ROADMAP: RoadmapView = {
   ],
   unblocked_now: readyNowIds,
   dependency_blockers: [],
-  execution_focus: {
-    kind: "dependency_ready",
-    node_id: "unified:8",
-    blocked_sprints: [],
-  },
+  execution_focus: null,
   substrate_layers: [
     { name: "Write coordination (db_lock)", owner: "runtime/db_lock.py", status: "Hardened (substrate-execution SPR-01)" },
     { name: "Dispatch router + idempotency", owner: "substrate/dispatch/", status: "Hardened (substrate-execution SPR-02/03)" },
