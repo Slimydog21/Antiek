@@ -1,11 +1,12 @@
 """IP attribution telemetry (Sprint 16 phase 1 — master spec §9.8).
 
 Three attribution algorithms (A: equal-split, B: confidence×tier,
-C: load-bearing weighted — Option C requires an LLM pass and is
-stubbed at uniform weight today). Phase 1 is telemetry-only: no
-payouts, no UI changes. The event log records ``PAGE_ATTRIBUTION_COMPUTED``
-per synthesis so the operator can compare the three options on real
-syntheses and decide which becomes the default for Phase 2.
+C: load-bearing weighted). Option C consumes explicit thesis-component
+load-bearing weights when present and falls back to uniform weighting
+otherwise. Phase 1 is telemetry-only: no payouts, no UI changes. The event
+log records ``PAGE_ATTRIBUTION_COMPUTED`` per synthesis so the operator can
+compare the three options on real syntheses and decide which becomes the
+default for Phase 2.
 """
 
 from .algorithms import (
