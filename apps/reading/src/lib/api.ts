@@ -580,9 +580,12 @@ function safeWatchForLaterList(value: unknown): {
     : Array.isArray(body?.parked)
       ? body.parked
       : [];
+  const seen = new Set<string>();
   const questions = rawQuestions.flatMap((item) => {
     const question = safeParkedQuestion(item);
-    return question ? [question] : [];
+    if (!question || seen.has(question.question_id)) return [];
+    seen.add(question.question_id);
+    return [question];
   });
   return {
     count: nonNegativeInteger(body?.count) ?? questions.length,
