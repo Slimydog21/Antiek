@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to WRITE_SPRINTS. Status changes are deliberate roadmap
 # events, not prose-only handoffs.
-WRITE_LOCK_VERSION: int = 2
+WRITE_LOCK_VERSION: int = 3
 
 
 @dataclass(frozen=True)
@@ -46,7 +46,17 @@ WRITE_SPRINTS: dict[int, WriteDeliverable] = {
         # diff/payload mapping are covered by write-edit-capture.
         status="live",
     ),
-    3: WriteDeliverable(3, "block-repository-folders", "Block repository folders"),
+    3: WriteDeliverable(
+        3,
+        "block-repository-folders",
+        "Block repository folders",
+        # Live: cross-investigation folders are membership edges over graph
+        # nodes, multi-folder membership does not copy content, deterministic
+        # repository search filters by folder/source, provenance survives the
+        # folder→node→document chain, and drag-to-outline places the same node.
+        # Covered by write-block-repository.
+        status="live",
+    ),
     4: WriteDeliverable(4, "structured-block-editor", "Structured block editor"),
     5: WriteDeliverable(5, "brainstorm-interview", "Brainstorm interview"),
     6: WriteDeliverable(6, "draft-generation-style", "Draft generation style"),

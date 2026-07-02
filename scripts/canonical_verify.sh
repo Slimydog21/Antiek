@@ -16,6 +16,7 @@
 #   read-ad-escrow       — Read SPR-09 rights-holder escrow accrual gate
 #   write-outline-block  — Write SPR-01 outline-block model + provenance gate
 #   write-edit-capture   — Write SPR-02 edit trajectory capture + G8 gate
+#   write-block-repository — Write SPR-03 folders/search/drag provenance gate
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -39,7 +40,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -182,6 +183,22 @@ cmd_write_edit_capture() {
   echo "CANONICAL_VERIFY_OK: write-edit-capture"
 }
 
+cmd_write_block_repository() {
+  echo "== write-block-repository: folders/search backend + route surface =="
+  "${PY}" -m pytest \
+    tests/test_block_repository.py \
+    tests/test_write_routes.py \
+    tests/test_contracts_write_lock.py \
+    -q --tb=no
+  echo "== write-block-repository: typed client + repository UI + drag provenance =="
+  (cd apps/reading && npm run test -- \
+    src/modes/Write/writeApi.test.ts \
+    src/modes/Write/Repository/Repository.test.tsx \
+    src/modes/Write/Repository/dragToOutline.test.ts \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: write-block-repository"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -261,6 +278,7 @@ main() {
     read-ad-escrow) cmd_read_ad_escrow ;;
     write-outline-block) cmd_write_outline_block ;;
     write-edit-capture) cmd_write_edit_capture ;;
+    write-block-repository) cmd_write_block_repository ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;
