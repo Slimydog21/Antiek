@@ -71,10 +71,9 @@ type Story = StoryObj<typeof meta>;
 
 /**
  * Default story — palette opens immediately on mount. The palette
- * fetches its substrate index from the API; in Storybook (no
- * backend) it gracefully degrades to showing the static ROUTE_INDEX
- * (Research, Wrestle, Sources, Create, Brainstorm, Privacy, Pricing,
- * Operator, Trust, Loop 3, Skill rules, Interviews).
+ * fetches its substrate index from the API; in Storybook (no backend)
+ * it gracefully degrades to the operator route registry: the four
+ * workflow doors, their built surfaces, and the governance routes.
  */
 export const PaletteOpen: Story = {};
 

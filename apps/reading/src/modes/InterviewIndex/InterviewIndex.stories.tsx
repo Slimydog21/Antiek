@@ -12,7 +12,7 @@ import InterviewIndex from "./index";
  * exist for the Speak console flow.
  */
 const meta = {
-  title: "Workstation / InterviewIndex",
+  title: "Speak / InterviewIndex",
   component: InterviewIndex,
   parameters: {
     layout: "fullscreen",
