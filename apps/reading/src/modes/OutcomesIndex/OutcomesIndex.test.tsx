@@ -266,6 +266,12 @@ describe("OutcomesIndex — cross-investigation grading history (M3)", () => {
             observed_at: " 2026-05-30 ",
           },
           {
+            outcome_id: "outcome dirty",
+            synthesis_id: "duplicate synthesis",
+            observer: "Duplicate reviewer",
+            observed_at: "2026-05-31",
+          },
+          {
             outcome_id: " ",
             synthesis_id: "Skipped synthesis",
             observer: "Skipped reviewer",
@@ -283,6 +289,7 @@ describe("OutcomesIndex — cross-investigation grading history (M3)", () => {
 
     expect(await screen.findByText("Review 1 from 2026-05-30")).toBeTruthy();
     expect(screen.getByText("agent dirty")).toBeTruthy();
+    expect(screen.queryByText("Duplicate reviewer")).toBeNull();
     expect(document.body.textContent).not.toMatch(
       /Skipped|outcome dirty|synthesis dirty/,
     );

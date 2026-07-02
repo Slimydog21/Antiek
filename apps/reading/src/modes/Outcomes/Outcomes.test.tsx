@@ -61,6 +61,12 @@ beforeEach(() => {
           notes: " row note ",
         },
         {
+          outcome_id: "outcome dirty",
+          observer: "Duplicate reviewer",
+          observed_at: "2026-06-02",
+          thesis_outcomes: [{ kind: "validated", note: "duplicate thesis note" }],
+        },
+        {
           outcome_id: " ",
           observer: "Skipped row",
           observed_at: "Skipped date",
@@ -112,6 +118,8 @@ describe("Outcomes", () => {
     expect(screen.getByText("falsified — falsification note")).toBeTruthy();
     expect(screen.getByText("indeterminate — risk note")).toBeTruthy();
     expect(screen.getByText("Note: row note")).toBeTruthy();
+    expect(screen.queryByText("2026-06-02 · Duplicate reviewer")).toBeNull();
+    expect(screen.queryByText("validated — duplicate thesis note")).toBeNull();
     expect(screen.getAllByText("1")).toHaveLength(3);
     expect(document.body.textContent).not.toMatch(
       /Skipped|outcome dirty|Skipped nested note/,
