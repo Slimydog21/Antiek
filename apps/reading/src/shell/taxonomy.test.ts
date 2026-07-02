@@ -31,6 +31,7 @@ import {
   WORKFLOWS,
   landingModeForWorkflow,
   modeById,
+  modeForPath,
   workflowForPath,
   type ModeId,
 } from "./workflowTaxonomy";
@@ -496,6 +497,22 @@ describe("Research one-monitor consolidation (Research SPR-05)", () => {
     expect(m?.built).toBe(true);
     expect(m?.route).toBe("/my-research");
     expect(m?.route).not.toBe("/investigations");
+  });
+});
+
+describe("modeForPath", () => {
+  it("resolves dynamic detail routes to their owning mode", () => {
+    expect(modeForPath("/read/doc-1")?.id).toBe("Reading");
+    expect(modeForPath("/speak/project-1")?.id).toBe("Speak");
+    expect(modeForPath("/outcomes/syn-1")?.id).toBe("Outcomes");
+  });
+
+  it("uses the workflow door mode for route-owned detail pages", () => {
+    expect(modeForPath("/write/dlv-1")?.id).toBe("Write/Repository");
+  });
+
+  it("keeps bare index routes on their exact mode instead of the param owner", () => {
+    expect(modeForPath("/outcomes")?.id).toBe("OutcomesIndex");
   });
 });
 

@@ -89,4 +89,21 @@ describe("Topbar", () => {
     expect(screen.getByText(expected)).toBeTruthy();
     expect(screen.queryByText(wrongLabel)).toBeNull();
   });
+
+  it.each([
+    ["/read/doc-1", "Reader", /doc-1/],
+    ["/write/dlv-1", "Block repository", /dlv-1/],
+    ["/speak/project-1", "Speak project console", /project-1/],
+    ["/outcomes/syn-1", "Outcome", /syn-1/],
+  ])("uses taxonomy mode labels for dynamic product route %s", (path, expected, rawSegment) => {
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <Topbar />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toBeTruthy();
+    expect(screen.getByText(expected)).toBeTruthy();
+    expect(screen.queryByText(rawSegment)).toBeNull();
+  });
 });

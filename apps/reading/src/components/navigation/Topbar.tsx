@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { LemonDropdown, LemonMenuItem } from "../lemon/LemonDropdown";
 import LemonButton from "../lemon/LemonButton";
 import { operatorRouteForPath } from "../../shell/operatorRoutes";
+import { modeForPath } from "../../shell/workflowTaxonomy";
 
 /**
  * Topbar — slim (44 px) horizontal bar that sits above the dock row.
@@ -31,6 +32,11 @@ function defaultBreadcrumbsFor(pathname: string): Crumb[] {
   const exact = operatorRouteForPath(pathname);
   if (exact) {
     return [{ label: exact.title }];
+  }
+
+  const mode = modeForPath(pathname);
+  if (mode) {
+    return [{ label: mode.label }];
   }
 
   const segments = pathname.split("/").filter(Boolean);
