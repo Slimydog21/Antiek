@@ -10,8 +10,9 @@ Thin adapter over :mod:`substrate.coordination`. Four GET endpoints, no writes:
 
 **Read-only is enforced, not promised (rigor #5).** This module imports only
 read entry points (``load_gate_ledger`` / ``load_operator_actions`` /
-``build_roadmap`` / ``build_cost_view`` / ``build_consent_view``); there is no
-import of any writer (``connect_write``, the escrow writer
+``load_phase2_audit`` / ``build_roadmap`` / ``build_cost_view`` /
+``build_consent_view``); there is no import of any writer (``connect_write``,
+the escrow writer
 ``ip_holders.accrue_escrow``, the gate file's path for writing) and **no import
 of any payout module** (``tools.stripe_connect.payouts``). There is
 no POST/PUT/PATCH/DELETE route. The cost endpoint opens DuckDB ``read_only=True``
@@ -55,6 +56,12 @@ from substrate.coordination.operator_actions import (
     OperatorAction,
     OperatorActionsView,
     load_operator_actions,
+)
+from substrate.coordination.phase2_audit import (
+    Phase2AuditView,
+    Phase2ExitCriteria,
+    Phase2SprintScore,
+    load_phase2_audit,
 )
 from substrate.coordination.roadmap import (
     ExecutionFocus,
@@ -283,6 +290,91 @@ class OperatorActionsSummaryResponse(BaseModel):
         )
 
 
+class Phase2SprintScoreResponse(BaseModel):
+    sprint: str
+    phases: int
+    met: int
+    partial: int
+    unmet: int
+    delta_vs_v3: str
+
+    @classmethod
+    def from_score(cls, score: Phase2SprintScore) -> Phase2SprintScoreResponse:
+        return cls(
+            sprint=score.sprint,
+            phases=score.phases,
+            met=score.met,
+            partial=score.partial,
+            unmet=score.unmet,
+            delta_vs_v3=score.delta_vs_v3,
+        )
+
+
+class Phase2ExitCriteriaResponse(BaseModel):
+    total: int
+    met: int
+    partial: int
+    unmet: int
+    note: str
+
+    @classmethod
+    def from_exit_criteria(
+        cls,
+        exit_criteria: Phase2ExitCriteria,
+    ) -> Phase2ExitCriteriaResponse:
+        return cls(
+            total=exit_criteria.total,
+            met=exit_criteria.met,
+            partial=exit_criteria.partial,
+            unmet=exit_criteria.unmet,
+            note=exit_criteria.note,
+        )
+
+
+class Phase2AuditResponse(BaseModel):
+    """Read-only Phase 2 audit summary.
+
+    Roadmap dependency state is not the same as execution-audit state. This
+    keeps the audit's own scorecard visible without creating another sprint
+    status store.
+    """
+
+    source_path: str
+    scorecard_source_path: str
+    current_commit_evidence: str | None
+    engineering_blocked_count: int | None
+    status_summary: str | None
+    next_action_ordering: list[str]
+    sprint_scorecard: list[Phase2SprintScoreResponse]
+    total_score: Phase2SprintScoreResponse | None
+    exit_criteria: Phase2ExitCriteriaResponse | None
+
+    @classmethod
+    def from_view(cls, view: Phase2AuditView) -> Phase2AuditResponse:
+        return cls(
+            source_path=view.source_path,
+            scorecard_source_path=view.scorecard_source_path,
+            current_commit_evidence=view.current_commit_evidence,
+            engineering_blocked_count=view.engineering_blocked_count,
+            status_summary=view.status_summary,
+            next_action_ordering=list(view.next_action_ordering),
+            sprint_scorecard=[
+                Phase2SprintScoreResponse.from_score(score)
+                for score in view.sprint_scorecard
+            ],
+            total_score=(
+                Phase2SprintScoreResponse.from_score(view.total_score)
+                if view.total_score is not None
+                else None
+            ),
+            exit_criteria=(
+                Phase2ExitCriteriaResponse.from_exit_criteria(view.exit_criteria)
+                if view.exit_criteria is not None
+                else None
+            ),
+        )
+
+
 class RoadmapResponse(BaseModel):
     total_sprints: int
     superseded_count: int
@@ -297,6 +389,7 @@ class RoadmapResponse(BaseModel):
     operator_gate_focus: OperatorGateFocusResponse | None
     read_activation: ReadActivationStatusResponse
     operator_actions: OperatorActionsSummaryResponse
+    phase2_audit: Phase2AuditResponse
     substrate_layers: list[SubstrateLayerResponse]
 
     @classmethod
@@ -306,6 +399,7 @@ class RoadmapResponse(BaseModel):
         gate_ledger: GateLedger | None = None,
         read_activation: ReadActivationView | None = None,
         operator_actions: OperatorActionsView | None = None,
+        phase2_audit: Phase2AuditView | None = None,
     ) -> RoadmapResponse:
         focus = rm.execution_focus()
         operator_focus = None
@@ -350,6 +444,9 @@ class RoadmapResponse(BaseModel):
             ),
             operator_actions=OperatorActionsSummaryResponse.from_view(
                 operator_actions or load_operator_actions()
+            ),
+            phase2_audit=Phase2AuditResponse.from_view(
+                phase2_audit or load_phase2_audit()
             ),
             substrate_layers=[
                 SubstrateLayerResponse(
@@ -564,6 +661,7 @@ def register_coordination_routes(app: FastAPI) -> None:
             load_gate_ledger(),
             build_read_activation_view(),
             load_operator_actions(),
+            load_phase2_audit(),
         )
 
     @app.get(

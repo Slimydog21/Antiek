@@ -149,6 +149,73 @@ describe("Coordination", () => {
             },
             failures: [" bad row ", " "],
           },
+          operator_actions: {
+            source_path: " docs/OPERATOR_ACTIONS.md ",
+            total_actions: "20.8",
+            open_count: "19",
+            closeable_count: "1",
+            status_counts: {
+              open: "17",
+              partially_done: "1",
+              closed: "1",
+            },
+            next_action: {
+              action_id: " OA-001 ",
+              title: " Counsel review ",
+              status: " open ",
+              status_raw: " OPEN ",
+              blocks: " payouts ",
+              owner: " Legal ",
+            },
+            closeable_action: {
+              action_id: " OA-005 ",
+              title: " Wedge ratification ",
+              status: " awaiting_operator_test ",
+              status_raw: " AWAITING OPERATOR TEST ",
+              blocks: " Phase 8 enforcing ",
+              owner: " Operator ",
+            },
+          },
+          phase2_audit: {
+            source_path: " docs/phase2_execution_audit_v5_2026_07_01.md ",
+            scorecard_source_path: " docs/phase2_execution_audit_v4_2026_05_23.md ",
+            current_commit_evidence: " 23048220 feat ",
+            engineering_blocked_count: "0",
+            status_summary: " engineering-side-blocked items known from v4: 0 ",
+            next_action_ordering: [
+              " Keep docs/OPERATOR_ACTIONS.md as the authoritative operator gate list. ",
+              " ",
+            ],
+            sprint_scorecard: [
+              {
+                sprint: " Sprint 22 ",
+                phases: "9",
+                met: "1",
+                partial: "6",
+                unmet: "2",
+                delta_vs_v3: " +1 partial ",
+              },
+              {
+                sprint: " ",
+                phases: "bad",
+              },
+            ],
+            total_score: {
+              sprint: " TOTAL ",
+              phases: "28",
+              met: "6",
+              partial: "17",
+              unmet: "5",
+              delta_vs_v3: " -3 unmet ",
+            },
+            exit_criteria: {
+              total: "23",
+              met: "3",
+              partial: "2",
+              unmet: "18",
+              note: " operator action ",
+            },
+          },
           substrate_layers: [
             {
               name: " db lock ",
@@ -183,6 +250,28 @@ describe("Coordination", () => {
       ),
     ).toBeTruthy();
     expect(screen.getByText("1 invalid session need repair.")).toBeTruthy();
+    expect(screen.getByText("Operator actions")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "19/20 not closed · 1 awaiting operator test · 17 open · 1 partially done · 1 closed",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Closeable now: OA-005 — Wedge ratification. Blocks: Phase 8 enforcing. Source: docs/OPERATOR_ACTIONS.md.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("Phase 2 execution audit")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "engineering-blocked=0 · sprint phases 6/28 met · 17 partial · 5 unmet · exit criteria 3/23 met · 2 partial · 18 unmet",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Next audit action: Keep docs/OPERATOR_ACTIONS.md as the authoritative operator gate list.",
+      ),
+    ).toBeTruthy();
     expect(screen.getByText("waits on drw:10")).toBeTruthy();
     expect(screen.getByText("1 dependency-ready · 1 blocked by dependency state")).toBeTruthy();
     expect(screen.getByText("Dependency-ready")).toBeTruthy();

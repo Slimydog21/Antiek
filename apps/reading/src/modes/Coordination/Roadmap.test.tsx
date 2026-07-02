@@ -546,6 +546,60 @@ describe("Roadmap", () => {
     ).toBeTruthy();
   });
 
+  it("surfaces Phase 2 audit execution status beside roadmap state", () => {
+    render(
+      <Roadmap
+        roadmap={{
+          ...roadmap([]),
+          phase2_audit: {
+            source_path: "docs/phase2_execution_audit_v5_2026_07_01.md",
+            scorecard_source_path: "docs/phase2_execution_audit_v4_2026_05_23.md",
+            current_commit_evidence:
+              "23048220 feat(ducklake): route default graph path through catalog",
+            engineering_blocked_count: 0,
+            status_summary:
+              "net engineering-side-blocked items known from v4: 0.",
+            next_action_ordering: [
+              "Keep docs/OPERATOR_ACTIONS.md as the authoritative operator gate list.",
+            ],
+            sprint_scorecard: [],
+            total_score: {
+              sprint: "TOTAL",
+              phases: 28,
+              met: 6,
+              partial: 17,
+              unmet: 5,
+              delta_vs_v3: "-3 unmet, +3 partial since v3",
+            },
+            exit_criteria: {
+              total: 23,
+              met: 3,
+              partial: 2,
+              unmet: 18,
+              note:
+                "every unmet exit criterion is blocked by operator action or real-data accumulation, not substrate.",
+            },
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Phase 2 execution audit")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "engineering-blocked=0 · sprint phases 6/28 met · 17 partial · 5 unmet · exit criteria 3/23 met · 2 partial · 18 unmet",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/net engineering-side-blocked items known from v4: 0/),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Next audit action: Keep docs/OPERATOR_ACTIONS.md as the authoritative operator gate list.",
+      ),
+    ).toBeTruthy();
+  });
+
   it("keeps dependency focus ahead of operator gate focus", () => {
     render(
       <Roadmap

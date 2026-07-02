@@ -44,6 +44,9 @@ from substrate.coordination.operator_actions import (
     canonical_operator_actions_path,
     load_operator_actions,
 )
+from substrate.coordination.phase2_audit import (
+    load_phase2_audit,
+)
 from substrate.coordination.activation_view import build_read_activation_view
 from substrate.coordination.roadmap import (
     Roadmap,
@@ -144,6 +147,79 @@ def test_operator_actions_fixture_mutation_is_reflected(tmp_path: Path) -> None:
     mutated = load_operator_actions(p)
     assert mutated.open_actions()[0].action_id == "OA-002"
     assert mutated.status_counts()["closed"] == 1
+
+
+def test_phase2_audit_view_surfaces_scorecard_and_v5_reconciliation() -> None:
+    audit = load_phase2_audit()
+
+    assert audit.source_path == "docs/phase2_execution_audit_v5_2026_07_01.md"
+    assert audit.scorecard_source_path == "docs/phase2_execution_audit_v4_2026_05_23.md"
+    assert audit.current_commit_evidence == "23048220 feat(ducklake): route default graph path through catalog"
+    assert audit.engineering_blocked_count == 0
+    assert audit.total_score is not None
+    assert audit.total_score.phases == 28
+    assert audit.total_score.met == 6
+    assert audit.total_score.partial == 17
+    assert audit.total_score.unmet == 5
+    assert audit.exit_criteria is not None
+    assert audit.exit_criteria.total == 23
+    assert audit.exit_criteria.met == 3
+    assert audit.exit_criteria.partial == 2
+    assert audit.exit_criteria.unmet == 18
+    assert audit.sprint_scorecard[0].sprint == "Sprint 22"
+    assert audit.sprint_scorecard[-1].sprint == "Sprint 30+"
+    assert audit.next_action_ordering[0] == (
+        "Keep docs/OPERATOR_ACTIONS.md as the authoritative operator gate list."
+    )
+
+
+def test_phase2_audit_view_tracks_fixture_mutation(tmp_path: Path) -> None:
+    audit_path = tmp_path / "phase2_v5.md"
+    scorecard_path = tmp_path / "phase2_v4.md"
+    audit_path.write_text(
+        """# Phase 2 v5
+
+**Current commit evidence:** `abc123 feat(test): fixture`
+
+**Current reconciled state:** net engineering-side-blocked items known from
+v4: **2**.
+
+## 4. Recommended next action ordering
+
+1. Keep the source document authoritative.
+
+## 5. Honest verdict
+""",
+        encoding="utf-8",
+    )
+    scorecard_path.write_text(
+        """# v4
+
+| Sprint | Phases | Met | Partial | Unmet | Δ vs v3 |
+|---|---|---|---|---|---|
+| Sprint X | 4 | 1 | 2 | 1 | fixture |
+| **TOTAL** | **4** | **1** | **2** | **1** | **fixture** |
+
+Sprint-level exit criteria (5 total): unchanged at 1 met / 1
+partial / 3 unmet, because every unmet exit criterion is blocked
+by operator action or real-data accumulation, not substrate.
+""",
+        encoding="utf-8",
+    )
+
+    audit = load_phase2_audit(audit_path, scorecard_path)
+    assert audit.engineering_blocked_count == 2
+    assert audit.total_score is not None
+    assert audit.total_score.unmet == 1
+    assert audit.exit_criteria is not None
+    assert audit.exit_criteria.unmet == 3
+
+    audit_path.write_text(
+        audit_path.read_text(encoding="utf-8").replace("**2**", "**0**"),
+        encoding="utf-8",
+    )
+    mutated = load_phase2_audit(audit_path, scorecard_path)
+    assert mutated.engineering_blocked_count == 0
 
 
 def test_operator_gate_actions_summary_tracks_appended_follow_ons() -> None:
@@ -605,6 +681,31 @@ def test_roadmap_response_serializes_read_activation_status(tmp_path: Path) -> N
     assert response.read_activation.total_sessions == 1
     assert response.read_activation.valid_sessions == 1
     assert response.read_activation.closure_ready is False
+
+
+def test_roadmap_response_serializes_operator_actions_and_phase2_audit() -> None:
+    from interfaces.research.api.coordination import RoadmapResponse
+
+    operator_actions = load_operator_actions()
+    phase2_audit = load_phase2_audit()
+
+    response = RoadmapResponse.from_roadmap(
+        build_roadmap(),
+        load_gate_ledger(),
+        operator_actions=operator_actions,
+        phase2_audit=phase2_audit,
+    )
+
+    assert response.operator_actions.source_path == "docs/OPERATOR_ACTIONS.md"
+    assert response.operator_actions.open_count == 19
+    assert response.operator_actions.closeable_action is not None
+    assert response.operator_actions.closeable_action.action_id == "OA-005"
+    assert response.phase2_audit.source_path == "docs/phase2_execution_audit_v5_2026_07_01.md"
+    assert response.phase2_audit.engineering_blocked_count == 0
+    assert response.phase2_audit.total_score is not None
+    assert response.phase2_audit.total_score.unmet == 5
+    assert response.phase2_audit.exit_criteria is not None
+    assert response.phase2_audit.exit_criteria.unmet == 18
 
 
 def test_operator_gate_focus_does_not_override_structural_dependency_focus() -> None:

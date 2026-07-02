@@ -292,6 +292,69 @@ export const CANONICAL_ROADMAP: RoadmapView = {
     },
     failures: [],
   },
+  operator_actions: {
+    source_path: "docs/OPERATOR_ACTIONS.md",
+    total_actions: 20,
+    open_count: 19,
+    closeable_count: 1,
+    status_counts: {
+      open: 17,
+      awaiting_operator_test: 1,
+      partially_done: 1,
+      closed: 1,
+    },
+    next_action: {
+      action_id: "OA-001",
+      title: "Lawyer review of Kalshi-pattern notification template",
+      status: "open",
+      status_raw: "OPEN",
+      blocks: "All Stripe payouts; first publisher outreach",
+      owner: "Operator + counsel",
+    },
+    closeable_action: {
+      action_id: "OA-005",
+      title: "Autoresearch Wedge 1 ratification",
+      status: "awaiting_operator_test",
+      status_raw: "AWAITING OPERATOR TEST",
+      blocks: "Phase 8 enforcing + Wedges 2-4",
+      owner: "Operator",
+    },
+  },
+  phase2_audit: {
+    source_path: "docs/phase2_execution_audit_v5_2026_07_01.md",
+    scorecard_source_path: "docs/phase2_execution_audit_v4_2026_05_23.md",
+    current_commit_evidence:
+      "23048220 feat(ducklake): route default graph path through catalog",
+    engineering_blocked_count: 0,
+    status_summary:
+      "net engineering-side-blocked items known from v4: 0.",
+    next_action_ordering: [
+      "Keep docs/OPERATOR_ACTIONS.md as the authoritative operator gate list.",
+      "Do not pre-build anything listed in docs/engineering_deferrals.md.",
+    ],
+    sprint_scorecard: [
+      { sprint: "Sprint 22", phases: 9, met: 1, partial: 6, unmet: 2, delta_vs_v3: "-1 unmet, +1 partial" },
+      { sprint: "Sprint 23-24", phases: 6, met: 0, partial: 5, unmet: 1, delta_vs_v3: "-2 unmet, +2 partial" },
+      { sprint: "Sprint 25+", phases: 7, met: 2, partial: 4, unmet: 1, delta_vs_v3: "unchanged" },
+      { sprint: "Sprint 30+", phases: 6, met: 3, partial: 2, unmet: 1, delta_vs_v3: "unchanged" },
+    ],
+    total_score: {
+      sprint: "TOTAL",
+      phases: 28,
+      met: 6,
+      partial: 17,
+      unmet: 5,
+      delta_vs_v3: "-3 unmet, +3 partial since v3",
+    },
+    exit_criteria: {
+      total: 23,
+      met: 3,
+      partial: 2,
+      unmet: 18,
+      note:
+        "every unmet exit criterion is blocked by operator action or real-data accumulation, not substrate.",
+    },
+  },
   substrate_layers: [
     { name: "Write coordination (db_lock)", owner: "runtime/db_lock.py", status: "Hardened (substrate-execution SPR-01)" },
     { name: "Dispatch router + idempotency", owner: "substrate/dispatch/", status: "Hardened (substrate-execution SPR-02/03)" },

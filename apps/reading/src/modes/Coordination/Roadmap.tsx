@@ -101,6 +101,35 @@ export interface OperatorActionsSummaryView {
   closeable_action: OperatorActionView | null;
 }
 
+export interface Phase2SprintScoreView {
+  sprint: string;
+  phases: number;
+  met: number;
+  partial: number;
+  unmet: number;
+  delta_vs_v3: string;
+}
+
+export interface Phase2ExitCriteriaView {
+  total: number;
+  met: number;
+  partial: number;
+  unmet: number;
+  note: string;
+}
+
+export interface Phase2AuditView {
+  source_path: string;
+  scorecard_source_path: string;
+  current_commit_evidence: string | null;
+  engineering_blocked_count: number | null;
+  status_summary: string | null;
+  next_action_ordering: string[];
+  sprint_scorecard: Phase2SprintScoreView[];
+  total_score: Phase2SprintScoreView | null;
+  exit_criteria: Phase2ExitCriteriaView | null;
+}
+
 export interface RoadmapView {
   total_sprints: number;
   superseded_count: number;
@@ -115,6 +144,7 @@ export interface RoadmapView {
   operator_gate_focus: OperatorGateFocusView | null;
   read_activation: ReadActivationStatusView | null;
   operator_actions?: OperatorActionsSummaryView | null;
+  phase2_audit?: Phase2AuditView | null;
   substrate_layers: SubstrateLayerView[];
 }
 
@@ -309,6 +339,9 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
           {roadmap.operator_actions ? (
             <OperatorActionsStatus operatorActions={roadmap.operator_actions} />
           ) : null}
+          {roadmap.phase2_audit ? (
+            <Phase2AuditStatus audit={roadmap.phase2_audit} />
+          ) : null}
         </div>
       </LemonCard>
 
@@ -381,6 +414,38 @@ function ActivationStatus({
           {activation.invalid_session_count === 1 ? "" : "s"} need repair.
         </p>
       )}
+    </div>
+  );
+}
+
+function Phase2AuditStatus({ audit }: { audit: Phase2AuditView }) {
+  const total = audit.total_score;
+  const exit = audit.exit_criteria;
+  const firstAction = audit.next_action_ordering[0];
+  return (
+    <div className="mt-2 rounded border border-rule dark:border-charcoal-1 bg-ice-0/70 dark:bg-charcoal-2/70 px-3 py-2">
+      <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+        Phase 2 execution audit
+      </p>
+      <p className="text-xs font-mono text-ink dark:text-bright">
+        engineering-blocked={audit.engineering_blocked_count ?? "unknown"}
+        {total
+          ? ` · sprint phases ${total.met}/${total.phases} met · ${total.partial} partial · ${total.unmet} unmet`
+          : ""}
+        {exit
+          ? ` · exit criteria ${exit.met}/${exit.total} met · ${exit.partial} partial · ${exit.unmet} unmet`
+          : ""}
+      </p>
+      <p className="text-xs text-ink-soft dark:text-starlight leading-relaxed">
+        {audit.status_summary ||
+          "No reconciled audit summary was parsed from the current audit."}{" "}
+        Source: {audit.source_path || "docs/phase2_execution_audit_v5_2026_07_01.md"}.
+      </p>
+      {firstAction ? (
+        <p className="text-xs text-ink-soft dark:text-starlight leading-relaxed">
+          Next audit action: {firstAction}
+        </p>
+      ) : null}
     </div>
   );
 }

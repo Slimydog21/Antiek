@@ -7,7 +7,12 @@ import { Roadmap } from "./Roadmap";
 import type {
   DependencyBlockerView,
   ExecutionFocusView,
+  OperatorActionView,
+  OperatorActionsSummaryView,
   OperatorGateFocusView,
+  Phase2AuditView,
+  Phase2ExitCriteriaView,
+  Phase2SprintScoreView,
   ReadActivationStatusView,
   RoadmapView,
   RosterView,
@@ -251,6 +256,88 @@ function safeReadActivationStatus(value: unknown): ReadActivationStatusView | nu
   };
 }
 
+function safePhase2SprintScore(value: unknown): Phase2SprintScoreView | null {
+  const score = record(value);
+  const sprint = nonEmptyString(score?.sprint);
+  if (!score || !sprint) return null;
+  return {
+    sprint,
+    phases: nonNegativeInteger(score.phases),
+    met: nonNegativeInteger(score.met),
+    partial: nonNegativeInteger(score.partial),
+    unmet: nonNegativeInteger(score.unmet),
+    delta_vs_v3: nonEmptyString(score.delta_vs_v3) ?? "",
+  };
+}
+
+function safePhase2ExitCriteria(value: unknown): Phase2ExitCriteriaView | null {
+  const exit = record(value);
+  if (!exit) return null;
+  return {
+    total: nonNegativeInteger(exit.total),
+    met: nonNegativeInteger(exit.met),
+    partial: nonNegativeInteger(exit.partial),
+    unmet: nonNegativeInteger(exit.unmet),
+    note: nonEmptyString(exit.note) ?? "",
+  };
+}
+
+function nullableNumber(value: unknown): number | null {
+  const parsed = nonNegativeInteger(value);
+  return value == null || value === "" ? null : parsed;
+}
+
+function safePhase2Audit(value: unknown): Phase2AuditView | null {
+  const audit = record(value);
+  if (!audit) return null;
+  return {
+    source_path: nonEmptyString(audit.source_path) ?? "",
+    scorecard_source_path: nonEmptyString(audit.scorecard_source_path) ?? "",
+    current_commit_evidence: nullableString(audit.current_commit_evidence),
+    engineering_blocked_count: nullableNumber(audit.engineering_blocked_count),
+    status_summary: nullableString(audit.status_summary),
+    next_action_ordering: stringList(audit.next_action_ordering),
+    sprint_scorecard: Array.isArray(audit.sprint_scorecard)
+      ? audit.sprint_scorecard.flatMap((item) => {
+          const score = safePhase2SprintScore(item);
+          return score ? [score] : [];
+        })
+      : [],
+    total_score: safePhase2SprintScore(audit.total_score),
+    exit_criteria: safePhase2ExitCriteria(audit.exit_criteria),
+  };
+}
+
+function safeOperatorAction(value: unknown): OperatorActionView | null {
+  const action = record(value);
+  const actionId = nonEmptyString(action?.action_id);
+  if (!action || !actionId) return null;
+  return {
+    action_id: actionId,
+    title: nonEmptyString(action.title) ?? actionId,
+    status: nonEmptyString(action.status) ?? "unknown",
+    status_raw: nonEmptyString(action.status_raw) ?? "",
+    blocks: nonEmptyString(action.blocks) ?? "—",
+    owner: nonEmptyString(action.owner) ?? "Operator",
+  };
+}
+
+function safeOperatorActionsSummary(
+  value: unknown,
+): OperatorActionsSummaryView | null {
+  const summary = record(value);
+  if (!summary) return null;
+  return {
+    source_path: nonEmptyString(summary.source_path) ?? "",
+    total_actions: nonNegativeInteger(summary.total_actions),
+    open_count: nonNegativeInteger(summary.open_count),
+    closeable_count: nonNegativeInteger(summary.closeable_count),
+    status_counts: numberRecord(summary.status_counts),
+    next_action: safeOperatorAction(summary.next_action),
+    closeable_action: safeOperatorAction(summary.closeable_action),
+  };
+}
+
 function safeRoadmapView(value: unknown): RoadmapView {
   const body = record(value);
   const rosters = Array.isArray(body?.rosters)
@@ -277,6 +364,8 @@ function safeRoadmapView(value: unknown): RoadmapView {
     execution_focus: safeExecutionFocus(body?.execution_focus),
     operator_gate_focus: safeOperatorGateFocus(body?.operator_gate_focus),
     read_activation: safeReadActivationStatus(body?.read_activation),
+    operator_actions: safeOperatorActionsSummary(body?.operator_actions),
+    phase2_audit: safePhase2Audit(body?.phase2_audit),
     substrate_layers: Array.isArray(body?.substrate_layers)
       ? body.substrate_layers.flatMap((item) => {
           const layer = safeSubstrateLayer(item);
