@@ -42,16 +42,15 @@ const MAX_EXCERPT_CHARS = 1000;
 
 interface PageRenderState {
   pageNum: number;
-  pageText: string;        // flat text used to compute char offsets
+  pageText: string;        // flat text fallback for unexpected DOM selections
 }
 
 /**
  * Render one page of the PDF and capture selection events.
  *
- * Scope note: Sprint 2 day-1 renders one page and uses ``window.getSelection().toString()``
- * as the text. Multi-page render + accurate per-page char_offset
- * mapping via the text-layer DOM lands in Sprint 2 day-3 alongside the
- * chat panel iteration.
+ * Scope note: this viewer renders one page at a time, with selections mapped
+ * through the pdf.js text-layer DOM so repeated phrases report their actual
+ * page-local character offsets.
  */
 export default function PdfViewer({
   pdfBytes,
@@ -182,14 +181,11 @@ export default function PdfViewer({
       selRect.bottom - layerRect.top,
     ];
 
-    // char_start / char_end via indexOf into the flat page text. This
-    // is approximate when the selection text appears multiple times on
-    // the page (we pick the first match). Sprint 3 will replace this
-    // with a proper text-layer DOM walk that yields the exact node-
-    // sequence offset.
-    let charStart = renderState.pageText.indexOf(text);
-    if (charStart < 0) charStart = 0;
-    const charEnd = charStart + text.length;
+    const charOffsets = charOffsetsForRange(layer, range);
+    const fallbackStart = renderState.pageText.indexOf(text);
+    const charStart =
+      charOffsets?.[0] ?? (fallbackStart >= 0 ? fallbackStart : 0);
+    const charEnd = charOffsets?.[1] ?? charStart + text.length;
 
     const regionId =
       "r-" +
@@ -272,4 +268,29 @@ export default function PdfViewer({
       </div>
     </div>
   );
+}
+
+function charOffsetsForRange(
+  layer: HTMLElement,
+  range: Range,
+): [number, number] | null {
+  let offset = 0;
+  let charStart: number | null = null;
+  let charEnd: number | null = null;
+  const walker = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+  while (node) {
+    const textNode = node as Text;
+    const nextOffset = offset + textNode.data.length;
+    if (textNode === range.startContainer) {
+      charStart = offset + range.startOffset;
+    }
+    if (textNode === range.endContainer) {
+      charEnd = offset + range.endOffset;
+    }
+    offset = nextOffset;
+    node = walker.nextNode();
+  }
+  if (charStart === null || charEnd === null) return null;
+  return charStart <= charEnd ? [charStart, charEnd] : [charEnd, charStart];
 }
