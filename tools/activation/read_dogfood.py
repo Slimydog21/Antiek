@@ -119,6 +119,7 @@ ALLOWED_FINAL_VERDICTS: tuple[str, ...] = (
 )
 TEMPLATE_LIVE_FIRST_ANSWER = "First useful provider-backed answer."
 TEMPLATE_LIVE_RESEARCH_ID = "child-investigation-id"
+TEMPLATE_BUILD_SHA = "abc123"
 TEMPLATE_CITATION_RESULT_URLS: frozenset[str] = frozenset(
     {
         "https://antiek.ai/read/source-doc-1?chunk=chunk-1&from=doc-1&fromPage=0",
@@ -616,8 +617,11 @@ def _field_format_failures(prefix: str, record: dict[str, Any]) -> list[str]:
     failures: list[str] = []
     if _required_text(record.get("date")) and not _is_iso_date(record.get("date")):
         failures.append(prefix + "date must be YYYY-MM-DD")
-    if _required_text(record.get("build_sha")) and not _is_git_sha(record.get("build_sha")):
+    build_sha = _required_text(record.get("build_sha"))
+    if build_sha and not _is_git_sha(build_sha):
         failures.append(prefix + "build_sha must be a 6-40 character git SHA")
+    elif build_sha == TEMPLATE_BUILD_SHA:
+        failures.append(prefix + "build_sha still has template value")
     if _required_text(record.get("url")) and not _is_http_url(record.get("url")):
         failures.append(prefix + "url must be an http(s) URL")
     return failures

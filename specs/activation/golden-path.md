@@ -104,8 +104,8 @@ python tools/activation/read_dogfood.py --template write-trace-citation
 ```
 
 Live and citation templates intentionally do **not** count as valid evidence
-until the placeholder first answer, child research id, and citation URL are
-replaced with real session values. An appended seed may therefore report
+until the placeholder build SHA, first answer, child research id, and citation
+URL are replaced with real session values. An appended seed may therefore report
 `0/1 valid sessions`; that is the guard working, not a validator failure.
 
 Use `write-trace-citation` only for a session that starts from the Write
@@ -146,7 +146,7 @@ Minimal record shape:
 {
   "session_id": "2026-06-30-faisal-001",
   "date": "2026-06-30",
-  "build_sha": "abc123",
+  "build_sha": "0123456789abcdef0123456789abcdef01234567",
   "url": "https://app.example/read/doc-1",
   "operator": "Faisal",
   "document_id": "doc-1",
