@@ -109,6 +109,29 @@ describe("Outline — no id, honest generate, real editor", () => {
     expect((container.textContent ?? "").match(/\b[0-9a-f]{32,40}\b/i)).toBeNull();
   });
 
+  it("drops malformed blocks and trims the valid block before rendering", async () => {
+    getSectionBlocksMock.mockResolvedValue([
+      block({
+        outline_block_id: " oblk-valid ",
+        section_id: " sec-1 ",
+        content: "  Operator note  ",
+        node_label: " ignored label ",
+        block_index: "1" as unknown as number,
+      }),
+      block({
+        outline_block_id: " ",
+        node_label: "Invisible block",
+      }),
+    ]);
+    const { container } = render(
+      <Outline deliverableId="dlv-1" sections={[section({ block_count: 2 })]} onChanged={vi.fn()} />,
+    );
+
+    expect(await screen.findByText("Operator note")).toBeTruthy();
+    expect(screen.queryByText("Invisible block")).toBeNull();
+    expect(container.textContent ?? "").not.toContain(" oblk-valid ");
+  });
+
   it("disables Generate on an empty section with a reason (no hang, no fabrication)", async () => {
     getSectionBlocksMock.mockResolvedValue([]);
     render(<Outline deliverableId="dlv-1" sections={[section()]} onChanged={vi.fn()} />);
@@ -222,6 +245,34 @@ describe("Outline — no id, honest generate, real editor", () => {
     // The first paragraph X-rays back to its driving block (the persisted map).
     await userEvent.click(screen.getByTestId("xray-paragraph-0").querySelector("button")!);
     expect(await screen.findByTestId("xray-paragraph-blocks-0")).toBeTruthy();
+  });
+
+  it("sanitizes generated prose metadata before editor and X-ray state", async () => {
+    getSectionBlocksMock.mockResolvedValue([block()]);
+    generateSectionMock.mockResolvedValue({
+      status: "generated",
+      section_id: " ",
+      prose_text: "  Draft paragraph.\n\nSecond paragraph.  ",
+      unsupported_paragraphs: ["0", -1, Number.NaN],
+      fabricated_citations: [" cite-1 ", ""],
+      prose_provenance: { " 0 ": [" "], "1": [NODE_ID, " "] },
+    });
+    const { container } = render(
+      <Outline
+        deliverableId="dlv-1"
+        sections={[section({ block_count: 1 })]}
+        onChanged={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("Capital intensity rises with scale");
+    await userEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    await waitFor(() => expect(container.querySelector(".ProseMirror")).toBeTruthy());
+    expect(screen.getByText(/1 paragraph\(s\) flagged unsupported/i)).toBeTruthy();
+    await userEvent.click(await screen.findByRole("button", { name: /^X-ray$/i }));
+    expect(await screen.findByTestId("xray")).toBeTruthy();
+    await userEvent.click(screen.getByTestId("xray-paragraph-1").querySelector("button")!);
+    expect(await screen.findByTestId("xray-paragraph-blocks-1")).toBeTruthy();
   });
 
   it("X-ray reads back PERSISTED provenance on a reloaded section (no regenerate needed)", async () => {
