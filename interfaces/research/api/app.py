@@ -33,7 +33,9 @@ import contextlib
 import os
 import sys
 from collections.abc import Awaitable, Callable
-from datetime import UTC
+from dataclasses import replace
+from datetime import UTC, datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 if TYPE_CHECKING:
@@ -41,6 +43,7 @@ if TYPE_CHECKING:
     from orchestration.session_evidence_pack import SessionEvidencePack
     from substrate.attribution.compute import AttributionResult
     from substrate.auth import SessionClaims
+    from substrate.billing.aggregator import BillingAggregate
     from substrate.ip_holders import IpHolder
     from substrate.notebooks import Notebook
 
@@ -73,6 +76,7 @@ from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     EVENT_SCHEMA_VERSION,
     WRESTLING_ACTION_TYPES,
+    DispatchCallPayload,
     Event,
     TypedPayload,
 )
@@ -1804,6 +1808,56 @@ def create_app(
             "count": len(rows),
             "events": rows,
         }
+
+    def _iter_event_log_investigation_ids() -> list[str]:
+        from substrate.event_log import default_events_dir
+
+        events_dir = default_events_dir()
+        if not os.path.isdir(events_dir):
+            return []
+        seen: set[str] = set()
+        ids: list[str] = []
+        for filename in sorted(os.listdir(events_dir)):
+            if filename.endswith(".parquet"):
+                investigation_id = filename[: -len(".parquet")]
+            elif filename.endswith(".jsonl"):
+                investigation_id = filename[: -len(".jsonl")]
+            else:
+                continue
+            if investigation_id in seen:
+                continue
+            seen.add(investigation_id)
+            ids.append(investigation_id)
+        return ids
+
+    def _parse_event_emitted_at(row: dict[str, Any]) -> datetime | None:
+        raw = row.get("emitted_at") or row.get("created_at") or row.get("ts")
+        if not raw:
+            return None
+        try:
+            ts = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except (TypeError, ValueError):
+            return None
+        if ts.tzinfo is None:
+            return ts.replace(tzinfo=UTC)
+        return ts.astimezone(UTC)
+
+    @app.get("/trajectory")
+    async def get_trajectory_collection(
+        limit: Annotated[int, Query(ge=1, le=10_000)] = 50,
+    ) -> dict[str, Any]:
+        rows: list[dict[str, Any]] = []
+        for investigation_id in _iter_event_log_investigation_ids():
+            for row in trajectory(investigation_id):
+                if "investigation_id" not in row:
+                    row = {**row, "investigation_id": investigation_id}
+                rows.append(row)
+        rows.sort(
+            key=lambda row: _parse_event_emitted_at(row) or datetime.min.replace(tzinfo=UTC),
+            reverse=True,
+        )
+        rows = rows[:limit]
+        return {"count": len(rows), "events": rows}
 
     # ── Loop 1 entry point ─────────────────────────────────────
     # POST /investigations kicks off a cold question; GET
@@ -4431,6 +4485,75 @@ def create_app(
         total_billable_usd: str
         record_count: int
 
+    def _billing_period_bounds(period: str) -> tuple[datetime, datetime]:
+        try:
+            year_s, month_s = period.split("-", 1)
+            year = int(year_s)
+            month = int(month_s)
+            start = datetime(year, month, 1, tzinfo=UTC)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="period must be YYYY-MM",
+            ) from exc
+        if month == 12:
+            end = datetime(year + 1, 1, 1, tzinfo=UTC)
+        else:
+            end = datetime(year, month + 1, 1, tzinfo=UTC)
+        # Single source of truth for the aware→naive window normalization —
+        # the seam PR #98 established in weekly_report. Honest lazy import
+        # (matches this file's runtime.db_lock precedent); duplicating the
+        # normalization would invite silent drift between the two
+        # period-window consumers.
+        from runtime.weekly_report import _naive_utc_bounds
+
+        return _naive_utc_bounds(start, end)
+
+    def _billing_aggregate_from_dispatch_calls(
+        *,
+        user_id: str,
+        period: str,
+    ) -> BillingAggregate:
+        from substrate.billing.aggregator import (
+            BillingAggregate,
+            record_dispatch_for_billing,
+        )
+        from tools.stripe_connect.pricing import PricingTier
+
+        agg = BillingAggregate()
+        if user_id != "__operator__":
+            return agg
+
+        start, end = _billing_period_bounds(period)
+        for investigation_id in _iter_event_log_investigation_ids():
+            for row in trajectory(investigation_id):
+                emitted_at = _parse_event_emitted_at(row)
+                if emitted_at is None:
+                    continue
+                emitted_at_naive = emitted_at.astimezone(UTC).replace(tzinfo=None)
+                if not (start <= emitted_at_naive < end):
+                    continue
+                try:
+                    event = Event.model_validate(row)
+                except Exception:
+                    continue
+                payload = event.payload
+                if not isinstance(payload, DispatchCallPayload):
+                    continue
+                record = record_dispatch_for_billing(
+                    agg,
+                    user_id="__operator__",
+                    tier=PricingTier.PAID_PRIVATE,
+                    raw_token_cost_usd=Decimal(str(payload.cost_usd)),
+                    token_count=payload.input_tokens + payload.output_tokens,
+                    investigation_id=event.investigation_id,
+                )
+                agg.records[-1] = replace(
+                    record,
+                    recorded_at=emitted_at_naive.isoformat(),
+                )
+        return agg
+
     @app.get(
         "/billing/summary/{user_id}/{period}",
         response_model=BillingSummaryResponse,
@@ -4445,12 +4568,13 @@ def create_app(
         wires this against a persisted dispatch.call event index.
         For Sprint 19 the substrate computes from event log on
         demand (slow but correct)."""
-        from substrate.billing.aggregator import BillingAggregate, aggregate_period
+        from substrate.billing.aggregator import aggregate_period
         from tools.stripe_connect.pricing import FREE_TIER_MONTHLY_TOKEN_CAP
 
-        # Sprint 19 scaffold: empty aggregate; real wire-up scans
-        # dispatch.call events from the event log + filters by user.
-        agg = BillingAggregate()
+        agg = _billing_aggregate_from_dispatch_calls(
+            user_id=user_id,
+            period=period,
+        )
         summary = aggregate_period(agg, user_id=user_id, period=period)
         free_remaining = max(
             0, FREE_TIER_MONTHLY_TOKEN_CAP - summary.free_tokens_consumed,
@@ -4482,6 +4606,7 @@ def create_app(
         topic_query: str
         candidates: list[ExpertCandidateResponse]
         excluded_opt_out_count: int
+        scaffold: bool = False
 
     @app.post("/cross-graph/ask-experts", response_model=AskExpertsResponse)
     async def cross_graph_ask_experts(
@@ -4490,7 +4615,10 @@ def create_app(
         """Find users opted in to cross-user interview requests whose
         public-graph contributions overlap the topic query. Per
         master-spec §13.9: opt-in required; users with status='not_set'
-        or 'opted_out' are never surfaced."""
+        or 'opted_out' are never surfaced.
+
+        Current scaffold: empty inputs by design until multi-user public
+        graph + opt-in sources are wired."""
         from substrate.cross_graph import AskExpertRequest, find_user_experts
 
         # Sprint 25+ scaffold: empty inputs. Production wires this
@@ -4519,6 +4647,7 @@ def create_app(
                 for c in response.candidates
             ],
             excluded_opt_out_count=response.excluded_opt_out_count,
+            scaffold=True,
         )
 
     # ── Sprint 23-24 ad attribution computation endpoint (§9.3) ──
