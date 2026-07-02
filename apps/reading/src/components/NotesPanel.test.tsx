@@ -312,4 +312,70 @@ describe("NotesPanel", () => {
     expect(screen.queryByText("claim-2")).toBeNull();
     expect(document.body.textContent).not.toMatch(/NaN|Infinity|undefined/);
   });
+
+  it("sanitizes grounding verdicts before claim cards consume them", () => {
+    render(
+      <NotesPanel
+        events={[
+          feedEvent(
+            "distillation.delivered",
+            {
+              request_event_id: "event-request-1",
+              claims: [
+                {
+                  claim_id: "claim-pass",
+                  text: "Passed claim.",
+                  confidence: "high",
+                  attribution_region_ids: [],
+                },
+                {
+                  claim_id: "claim-fail",
+                  text: "Failed claim.",
+                  confidence: "low",
+                  attribution_region_ids: [],
+                },
+              ],
+              rendered_text: "Grounding summary.",
+              token_count: 512,
+            },
+            1,
+          ),
+          feedEvent(
+            "claim.grounding_check_passed",
+            {
+              claim_id: " claim-pass ",
+              located_region_id: " region-pass ",
+              confidence: "2",
+            },
+            2,
+          ),
+          feedEvent(
+            "claim.grounding_check_failed",
+            {
+              claim_id: "claim-fail",
+              reason: "ambiguous",
+              searched_regions: "not-an-array",
+            },
+            3,
+          ),
+        ]}
+        status="open"
+        reconnects={0}
+        investigationId="inv-1"
+        documentId="doc-1"
+      />,
+    );
+
+    expect(
+      screen.getByText((_, element) => element?.textContent === "· 100%"),
+    ).toBeTruthy();
+    expect(screen.getByTitle("open region region-pass in viewer")).toBeTruthy();
+    expect(screen.getByText("ambiguous")).toBeTruthy();
+    expect(
+      screen.getByText(
+        (_, element) => element?.textContent === "· searched 0 regions",
+      ),
+    ).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/NaN|Infinity|undefined/);
+  });
 });

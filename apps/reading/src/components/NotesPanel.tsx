@@ -17,6 +17,10 @@ import ChatInput from "./ChatInput";
 import ClaimCard from "./ClaimCard";
 import type { GroundingStatus } from "./ClaimCard";
 
+type GroundingFailureReason = NonNullable<
+  Extract<GroundingStatus, { result: "failed" }>
+>["reason"];
+
 interface NotesPanelProps {
   events: Event[];
   status: "connecting" | "open" | "closed" | "error";
@@ -87,6 +91,17 @@ function safeClaim(value: unknown): Claim | null {
         ? record.node_id
         : undefined,
   };
+}
+
+function isGroundingFailureReason(
+  value: unknown,
+): value is GroundingFailureReason {
+  return (
+    value === "absent_from_source" ||
+    value === "paraphrased_not_stated" ||
+    value === "out_of_scope" ||
+    value === "ambiguous"
+  );
 }
 
 /**
@@ -560,8 +575,9 @@ function findGroundingByClaim(events: Event[]): Map<string, GroundingStatus> {
   for (const e of events) {
     if (e.action_type === "claim.challenge_raised") {
       const p = e.payload as ClaimChallengeRaisedPayload;
-      if (p.challenged_claim_id) {
-        map.set(p.challenged_claim_id, {
+      const challengedClaimId = nonEmptyString(p.challenged_claim_id);
+      if (challengedClaimId) {
+        map.set(challengedClaimId, {
           result: "pending",
           eventId: e.event_id,
         });
@@ -570,11 +586,14 @@ function findGroundingByClaim(events: Event[]): Map<string, GroundingStatus> {
     }
     if (e.action_type === "claim.grounding_check_passed") {
       const p = e.payload as ClaimGroundingCheckPassedPayload;
-      if (p.claim_id) {
-        map.set(p.claim_id, {
+      const claimId = nonEmptyString(p.claim_id);
+      const locatedRegionId = nonEmptyString(p.located_region_id);
+      const confidence = finiteNonNegativeNumber(p.confidence);
+      if (claimId && locatedRegionId && confidence !== null) {
+        map.set(claimId, {
           result: "passed",
-          located_region_id: p.located_region_id,
-          confidence: p.confidence,
+          located_region_id: locatedRegionId,
+          confidence: Math.min(confidence, 1),
           eventId: e.event_id,
         });
       }
@@ -582,11 +601,12 @@ function findGroundingByClaim(events: Event[]): Map<string, GroundingStatus> {
     }
     if (e.action_type === "claim.grounding_check_failed") {
       const p = e.payload as ClaimGroundingCheckFailedPayload;
-      if (p.claim_id) {
-        map.set(p.claim_id, {
+      const claimId = nonEmptyString(p.claim_id);
+      if (claimId && isGroundingFailureReason(p.reason)) {
+        map.set(claimId, {
           result: "failed",
           reason: p.reason,
-          searched_regions: p.searched_regions,
+          searched_regions: stringList(p.searched_regions),
           eventId: e.event_id,
         });
       }
