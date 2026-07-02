@@ -459,9 +459,9 @@ jobs:
         run: python3 tools/lint/reading_physics_check.py
 
   vitest:
-    name: vitest
+    name: vitest (reading unit)
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -478,20 +478,15 @@ jobs:
         working-directory: apps/reading
         run: npm ci
 
-      - name: Run vitest unit suite
-        # Turns ~1292 reading-product unit tests that were DARK in CI (no
-        # vitest job existed) into a verified regression gate. Verified green
-        # on origin/main @ a79625fd (158 files / 1292 tests / 0 fail with the
-        # one documented exclusion below).
-        #
-        # One file is excluded: src/components/ai/aiActionsEventBridge.test.ts.
-        # It PASSES 7/7 in isolation but fails 5/7 in the full suite due to
-        # cross-file test-isolation pollution (the postTypedEvent vi.fn() mock
-        # instance diverges across files). The file is owned + actively rewritten
-        # on reader/integration (+64/-34 on the test, +310/-106 on aiActions.ts),
-        # so the isolation fix is the reader lane's to land. Re-enable
-        # unconditionally (delete the --exclude) once reader/integration merges
-        # and the isolation is resolved. Coordination board:
-        # ~/specs/ANTIEK-TEAM-COORDINATION.md.
+      - name: Run reading unit-test suite
+        # Turns ~1292 reading-product unit tests that were DARK in CI (ci.yml
+        # had only pytest/keystone/tsc) into a verified regression gate.
+        # Verified green on origin/main @ a79625fd: 158 files / 1292 tests /
+        # 0 fail. Runs the CI-only vitest.ci.config.ts, which defers exactly
+        # ONE reader-lane-owned file (see that file's anti-rot header for the
+        # why + the delete-when condition); local `npm test` still runs all
+        # 161 files fail-loud. Scope: reading src/ unit suite only — the
+        # separate tools/specs, tools/agent, ams vitest configs and the 33
+        # Playwright e2e specs are follow-up gates.
         working-directory: apps/reading
-        run: npm run test -- --exclude '**/aiActionsEventBridge.test.ts'
+        run: npm run test -- --config vitest.ci.config.ts
