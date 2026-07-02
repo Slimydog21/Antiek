@@ -66,7 +66,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python 3.14
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           # Pinned to 3.14 to match the operator's local development
           # environment AND the Python version that produces the
@@ -336,7 +336,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Set up Python 3.14
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.14'
           cache: 'pip'
