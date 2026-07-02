@@ -134,4 +134,45 @@ describe("DocumentsIndex", () => {
     expect(screen.queryByPlaceholderText(/investigation_id/i)).toBeNull();
     expect(screen.getByPlaceholderText("Paste research handle to filter")).toBeTruthy();
   });
+
+  it("sanitizes document rows before rendering and opening them", async () => {
+    apiFetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        documents: [
+          {
+            document_id: " doc dirty ",
+            title: "  Dirty source  ",
+            source_uri: "  https://example.test/dirty  ",
+            document_type: "  web_page  ",
+            source_tier: 99,
+            investigation_id: " inv-dirty ",
+            content_class: " ",
+            ip_holder_id: 17,
+          },
+          {
+            document_id: " ",
+            title: "Skipped source",
+            source_tier: 1,
+          },
+        ],
+      }),
+    });
+
+    renderIndex();
+
+    expect(await screen.findByText("Dirty source")).toBeTruthy();
+    expect(screen.queryByText("Skipped source")).toBeNull();
+    expect(screen.getByText("Unrated source")).toBeTruthy();
+    expect(screen.getByText("Web Page")).toBeTruthy();
+    expect(screen.getByText("https://example.test/dirty")).toBeTruthy();
+    expect(
+      screen.getByRole("row", {
+        name: /Dirty source.*Web Page.*Research handle dirty.*Unrated source/i,
+      }),
+    ).toBeTruthy();
+
+    await userEvent.click(screen.getByText("Dirty source"));
+    expect(openDocumentMock).toHaveBeenCalledWith("doc dirty");
+  });
 });
