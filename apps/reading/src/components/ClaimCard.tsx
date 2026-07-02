@@ -61,6 +61,7 @@ export default function ClaimCard({
   const [busy, setBusy] = useState(false);
   const [challenged, setChallenged] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const attributionRegionIds = uniqueRegionIds(claim.attribution_region_ids);
 
   async function onChallenge() {
     setBusy(true);
@@ -69,7 +70,7 @@ export default function ClaimCard({
       action_type: "claim.challenge_raised",
       challenged_claim_id: claim.claim_id,
       claim_text: claim.text,
-      anchor_region_id: claim.attribution_region_ids[0] ?? null,
+      anchor_region_id: attributionRegionIds[0] ?? null,
       user_question: DEFAULT_CHALLENGE_PROMPT,
     };
     try {
@@ -95,9 +96,9 @@ export default function ClaimCard({
         </p>
         <ConfidenceBadge level={claim.confidence} />
       </div>
-      {claim.attribution_region_ids.length > 0 && (
+      {attributionRegionIds.length > 0 && (
         <div className="flex flex-wrap gap-1">
-          {claim.attribution_region_ids.map((rid) => (
+          {attributionRegionIds.map((rid) => (
             onLocateRegion ? (
               <button
                 key={rid}
@@ -268,4 +269,16 @@ function ConfidenceBadge({ level }: { level: ConfidenceLevel }) {
 function shortenRegionId(rid: string): string {
   // region_id format: r-<12hex>-<base36 timestamp>
   return rid.length > 14 ? rid.slice(0, 14) : rid;
+}
+
+function uniqueRegionIds(regionIds: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const regionId of regionIds) {
+    const trimmed = regionId.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    out.push(trimmed);
+  }
+  return out;
 }
