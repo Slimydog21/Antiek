@@ -32,6 +32,7 @@
 #   speak-economics-matrix — Speak SPR-07 publishing-mode economics matrix
 #   speak-biography-authoring — Speak SPR-08 biography outline + draft
 #   speak-publishing-physical — Speak SPR-09 publish + physical quote
+#   unified-substrate-contract-lock — Unified SPR-01 contracts + dependency lock
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -55,7 +56,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|speak-economics-matrix|speak-biography-authoring|speak-publishing-physical|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|speak-economics-matrix|speak-biography-authoring|speak-publishing-physical|unified-substrate-contract-lock|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -436,6 +437,20 @@ cmd_speak_publishing_physical() {
   echo "CANONICAL_VERIFY_OK: speak-publishing-physical"
 }
 
+cmd_unified_substrate_contract_lock() {
+  echo "== unified-substrate-contract-lock: contracts, DAG, locks, conformance =="
+  "${PY}" -m pytest \
+    tests/test_contracts_unified_lock.py \
+    tests/test_contracts_dependency_map.py \
+    tests/test_contracts_drw_lock.py \
+    tests/test_contracts_conformance.py \
+    tests/test_conformance_gate.py \
+    -q --tb=no
+  echo "== unified-substrate-contract-lock: standalone conformance gate =="
+  "${PY}" tools/codegen/check_conformance.py
+  echo "CANONICAL_VERIFY_OK: unified-substrate-contract-lock"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -531,6 +546,7 @@ main() {
     speak-economics-matrix) cmd_speak_economics_matrix ;;
     speak-biography-authoring) cmd_speak_biography_authoring ;;
     speak-publishing-physical) cmd_speak_publishing_physical ;;
+    unified-substrate-contract-lock) cmd_unified_substrate_contract_lock ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;

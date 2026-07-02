@@ -37,6 +37,7 @@ from substrate.contracts import (
     drw_sprint_lock,
     read_sprint_lock,
     speak_sprint_lock,
+    unified_sprint_lock,
     write_sprint_lock,
 )
 
@@ -318,6 +319,19 @@ def _speak_status(sprint: int) -> SprintStatus:
     }.get(d.status, SprintStatus.UNKNOWN)
 
 
+def _unified_status(sprint: int) -> SprintStatus:
+    """Unified sprint status from the frozen Unified sprint-lock."""
+    try:
+        d = unified_sprint_lock.resolve_unified_sprint(sprint)
+    except KeyError:
+        return SprintStatus.UNKNOWN
+    return {
+        "live": SprintStatus.LIVE,
+        "provisional": SprintStatus.PROVISIONAL,
+        "planned": SprintStatus.PLANNED,
+    }.get(d.status, SprintStatus.UNKNOWN)
+
+
 def _built(status: SprintStatus) -> bool:
     """A node counts as 'built' (can unblock consumers) when its owning sprint is
     live or provisional. Planned/unknown does not unblock."""
@@ -348,6 +362,11 @@ def _node_status(node_id: str) -> SprintStatus:
     if node_id.startswith("speak:"):
         try:
             return _speak_status(int(node_id.split(":")[1]))
+        except (ValueError, IndexError):
+            return SprintStatus.UNKNOWN
+    if node_id.startswith("unified:"):
+        try:
+            return _unified_status(int(node_id.split(":")[1]))
         except (ValueError, IndexError):
             return SprintStatus.UNKNOWN
     return SprintStatus.UNKNOWN
@@ -400,6 +419,8 @@ def build_roadmap(specs_root: Path | None = None) -> Roadmap:
                 status = _write_status(sprint)
             elif spec == "speak":
                 status = _speak_status(sprint)
+            elif spec == "unified":
+                status = _unified_status(sprint)
             else:
                 status = SprintStatus.UNKNOWN
             deps = _dependencies_for(node_id)
