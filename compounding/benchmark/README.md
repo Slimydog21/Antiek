@@ -21,6 +21,14 @@ merged:
   get cheaper*? Does cost-to-resolve fall as the graph accumulates RELEVANT
   reuse? Size-vs-quality (verification) vs **cost-got-cheaper** (this).
 
+## Loop kinds (do not conflate)
+
+| Loop | Where | Purpose |
+|------|-------|---------|
+| `make_demo_loop` | `compounding/benchmark/` mock arm, unit tests | Reuse-blind MOCK — fixed cost per step, no dispatch |
+| `make_contract_gather_stub` | `cascade_routes._research_loop_factory` (prod) | Honest gather placeholder until Exa; promotes notes, no synthesis |
+| Exa adapter (future) | Same factory seam | Real retrieval; still not synthesis until SPR-DRL-06 |
+
 ## The keystone finding (read this before trusting any number)
 
 The reuse path IS wired into the host-local runner: `HostLocalRunner.start`
@@ -30,6 +38,9 @@ deterministic demo loop (`make_demo_loop`) does NOT consume that pack** — it
 charges a fixed cost per step regardless of reuse, and makes no provider
 `dispatch.call`. **Consequence: the mock run honestly reports a token-cost delta
 of 0 — there is no dispatch cost to differ between arms.**
+
+The production factory uses `make_contract_gather_stub` (ANT-DRL-04), not
+`make_demo_loop` — prod no longer runs the benchmark MOCK loop.
 
 This is the result to hand the operator, not a defect to re-roll: **the
 instrument can measure compounding, but compounding is UNPROVEN on the current

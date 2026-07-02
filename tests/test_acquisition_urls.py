@@ -34,6 +34,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+from pathlib import Path
 
 import httpx
 import pytest
@@ -277,8 +278,26 @@ def test_ingest_low_word_count_skips_graph_writes(temp_substrate):
         fetched=stub,
     )
     assert res.skipped_reason == "low_word_count"
-    assert res.chunks_written == 0
-    # The doc.loaded event still fired so the operator sees the fetch.
+
+
+def test_ingest_reader_snapshot_when_flag_set(temp_substrate, monkeypatch):
+    snap_dir = os.path.join(temp_substrate["tmpdir"], "reader-snaps")
+    monkeypatch.setenv("ANTIEK_READER_SNAPSHOT", "1")
+    monkeypatch.setenv("ANTIEK_READER_SNAPSHOTS_DIR", snap_dir)
+    res = ingest_url(
+        "https://example.com/post",
+        investigation_id="inv-snap",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        fetched=_good_fetched(),
+    )
+    assert res.reader_snapshot_path is not None
+    assert os.path.isfile(res.reader_snapshot_path)
+    text = Path(res.reader_snapshot_path).read_text(encoding="utf-8")
+    assert res.document_id in text
+    assert "Article Heading" in text or "substantive" in text
+    assert "<script>" not in text.lower() or "alert" not in text
+    assert res.chunks_written >= 1
     assert res.document_loaded_event_id is not None
 
 

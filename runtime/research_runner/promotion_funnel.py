@@ -49,6 +49,29 @@ except ImportError:  # pragma: no cover — direct-script fallback
 _FUNNEL_DONE = object()
 
 
+def _promotion_metadata(ev: StepEvent) -> dict:
+    """Map a StepEvent's ``data`` to the node metadata the graph stores.
+
+    The single load-bearing transform: when a gather loop's note carries a
+    real ``document_id`` (a ``doc-url-*`` id from ``promote_discovery`` →
+    ``ingest_url``), surface it under the key the substrate + the evidence
+    pack read for grounding — ``source_document_id``. Without this map the
+    id would land under ``document_id`` in metadata, which
+    ``session_evidence_pack`` does not consult, so the pack would fall back
+    to the ``doc-gather-*`` placeholder and the chunk→document→ip_holder
+    attribution chain would be broken for Exa-sourced evidence.
+
+    Everything else in ``ev.data`` (e.g. ``gather_mode``) is preserved.
+    The base ``source`` tag matches the funnel's prior behavior so
+    ``content_hash`` for already-doc-url paths is unchanged.
+    """
+    meta: dict = {"source": "research_runner", **ev.data}
+    doc_id = meta.get("document_id")
+    if doc_id:
+        meta["source_document_id"] = doc_id
+    return meta
+
+
 class PromotionFunnel:
     """Serialized drain of research notes/questions into graph nodes."""
 
@@ -97,6 +120,13 @@ class PromotionFunnel:
         the single worker guarantees only one is ever in flight."""
         if not ev.text.strip():
             return
+        meta = _promotion_metadata(ev)
+        # Thread the real grounding document onto the node so the evidence
+        # pack emits a doc-url-* chunk. ``promote_insight``/``promote_question``
+        # stamp ``source_document_id`` into node metadata via setdefault — and
+        # the key is already present in ``meta`` from the map above, so the two
+        # paths agree (no double-write, content_hash stable).
+        source_document_id = meta.get("source_document_id")
         con = connect_write(self._db_path, purpose="promotion_funnel")
         try:
             con.execute("BEGIN")
@@ -104,7 +134,8 @@ class PromotionFunnel:
                 if ev.kind == "note":
                     nid = promote_insight(
                         text=ev.text, investigation_id=ev.investigation_id,
-                        metadata={"source": "research_runner", **ev.data},
+                        source_document_id=source_document_id,
+                        metadata=meta,
                         embedding_provider=self._embedding_provider, con=con,
                     )
                     self.promoted_insights += 1
@@ -112,7 +143,8 @@ class PromotionFunnel:
                 elif ev.kind == "question":
                     nid = promote_question(
                         text=ev.text, investigation_id=ev.investigation_id,
-                        metadata={"source": "research_runner", **ev.data},
+                        source_document_id=source_document_id,
+                        metadata=meta,
                         embedding_provider=self._embedding_provider, con=con,
                     )
                     self.promoted_questions += 1

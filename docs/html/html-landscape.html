@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Antiek HTML landscape — Thariq thesis catalog</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+.landscape-hero { margin-bottom: 2rem; }
+.tabs { display: flex; flex-wrap: wrap; gap: 8px; margin: 1.5rem 0; }
+.tab {
+  font-family: var(--font-sans); font-size: 13px; padding: 6px 12px;
+  border: 1px solid var(--stone-300); background: var(--stone-100);
+  border-radius: 4px; cursor: pointer;
+}
+.tab.active { background: var(--stone-900); color: var(--stone-50); border-color: var(--stone-900); }
+.asset-table { width: 100%; border-collapse: collapse; font-size: 14px; font-family: var(--font-mono); }
+.asset-table th, .asset-table td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--stone-200); }
+.asset-table th { font-family: var(--font-sans); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--stone-600); }
+.pill { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--stone-200); }
+.svg-wrap { max-width: 100%; overflow-x: auto; margin: 1.5rem 0; }
+#search { width: 100%; max-width: 480px; padding: 8px 12px; font-size: 15px; border: 1px solid var(--stone-300); border-radius: 4px; }
+.hidden { display: none; }
+</style>
+</head>
+<body>
+<nav class="topnav">
+  <div class="topnav-inner">
+    <span class="topnav-title">Antiek docs</span>
+    <a href="index.html">Index</a>
+    <a href="html-landscape.html" class="active">HTML landscape</a>
+    <a href="thariq-antiek-index.html">Thariq × Antiek</a>
+    <a href="ant-aht-vision-map.html">Vision map</a>
+    <a href="ant-aht-operator-guide.html">ANT-AHT guide</a>
+    <a href="ant-aht-cycle-complete.html">Ledger complete</a>
+    <a href="../htmlspec/antiek-html-transport/index.html">ANT-AHT spec</a>
+  </div>
+</nav>
+<main class="wide">
+<article>
+<p class="kicker">2026-06-23 · ANT-AHT exec-3 · 79 first-party HTML files</p>
+<h1>HTML landscape in Antiek</h1>
+<p class="landscape-hero">Inspired by
+<a href="https://claude.com/blog/using-claude-code-the-unreasonable-effectiveness-of-html">Thariq / Claude Code — unreasonable effectiveness of HTML</a>:
+rich, scannable artifacts for specs, research, and <strong>agent transport</strong> across context windows.
+Canonical truth stays DuckDB + events; HTML is the lens operators and agents actually read.</p>
+
+<h2>Three profiles</h2>
+<ul>
+<li><strong>Profile A</strong> — execution htmlspecs (rigor cards, harness hints, Lemon UI).</li>
+<li><strong>Profile B</strong> — <code>ResearchArtifact</code> per investigation + compose index (<code>substrate/research_artifact/</code>).</li>
+<li><strong>Profile C</strong> — stone §5.5 operator pages under <code>docs/html/</code>.</li>
+</ul>
+
+<h2>Thariq use-case map (Antiek)</h2>
+<div class="card-grid wide">
+<div class="card"><h3>Specs &amp; planning</h3><p>Profile A htmlspecs under <code>docs/htmlspec/</code> — tabs, rigor, sprint grids.</p></div>
+<div class="card"><h3>Research reports</h3><p>Profile B <code>ResearchArtifact</code> — export per investigation, compose merge index.</p></div>
+<div class="card"><h3>Ingest reader view</h3><p>URL + PDF book reader snapshots (<code>ANTIEK_READER_SNAPSHOT</code>) beside substrate chunks — SPR-AHT-04/07.</p></div>
+<div class="card"><h3>Agent handoff</h3><p>Copy-as-prompt + <code>agent_notes[]</code> import → audited <code>artifact.generated</code> events.</p></div>
+<div class="card"><h3>Write Lego outline</h3><p><code>GET /research/{id}/artifact/blocks</code> + DistillView shelf — full Write canvas deferred.</p></div>
+<div class="card"><h3>On-policy RL audit</h3><p>What lands in HTML + events is the training trace (human research workflow).</p></div>
+</div>
+
+<div class="svg-wrap">
+<svg viewBox="0 0 720 200" width="720" height="200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Data flow">
+  <rect x="10" y="70" width="140" height="60" fill="#f5f5f4" stroke="#44403c" stroke-width="2" rx="4"/>
+  <text x="80" y="105" text-anchor="middle" font-size="13" font-family="system-ui">DuckDB graph</text>
+  <rect x="200" y="70" width="140" height="60" fill="#eff6ff" stroke="#1d4ed8" stroke-width="2" rx="4"/>
+  <text x="270" y="95" text-anchor="middle" font-size="12" font-family="system-ui">Event log</text>
+  <text x="270" y="115" text-anchor="middle" font-size="11" font-family="system-ui">artifact.generated</text>
+  <rect x="390" y="40" width="150" height="50" fill="#fdf1cf" stroke="#44403c" stroke-width="2" rx="4"/>
+  <text x="465" y="70" text-anchor="middle" font-size="12" font-family="system-ui">Profile B HTML</text>
+  <rect x="390" y="110" width="150" height="50" fill="#d9efe2" stroke="#44403c" stroke-width="2" rx="4"/>
+  <text x="465" y="140" text-anchor="middle" font-size="12" font-family="system-ui">Reader snapshot</text>
+  <rect x="580" y="70" width="130" height="60" fill="#f5f5f4" stroke="#44403c" stroke-width="2" rx="4"/>
+  <text x="645" y="105" text-anchor="middle" font-size="12" font-family="system-ui">Write outline</text>
+  <path d="M150 100 H200" stroke="#44403c" stroke-width="2" marker-end="url(#arr)"/>
+  <path d="M340 100 H390" stroke="#44403c" stroke-width="2"/>
+  <path d="M540 65 H580" stroke="#44403c" stroke-width="2"/>
+  <path d="M540 135 H580" stroke="#44403c" stroke-width="2"/>
+  <defs><marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#44403c"/></marker></defs>
+</svg>
+</div>
+
+<h2>Inventory</h2>
+<p>Filter by profile or search path. Excludes <code>node_modules</code> and caffenagent worktrees.</p>
+<input type="search" id="search" placeholder="Filter paths…" autocomplete="off">
+<div class="tabs" id="tabs"><button type="button" class="tab" data-cat="all">All first-party HTML</button><button type="button" class="tab" data-cat="profile-a">Profile A — htmlspec (Lemon UI)</button><button type="button" class="tab" data-cat="profile-b">Profile B — ResearchArtifact transport</button><button type="button" class="tab" data-cat="profile-c">Profile C — operator docs/html</button><button type="button" class="tab" data-cat="profile-d">UI redesign (PostHog feel)</button><button type="button" class="tab" data-cat="profile-e">Specs & roadmaps</button><button type="button" class="tab" data-cat="profile-f">Apps & test fixtures</button></div>
+<table class="asset-table" id="table">
+<thead><tr><th>Path</th><th>Profile</th><th>File</th></tr></thead>
+<tbody><tr data-cat="profile-f"><td><code>apps/reading/public/redesign.html</code></td><td><span class="pill pill--profile-f">profile-f</span></td><td>redesign.html</td></tr>
+<tr data-cat="profile-f"><td><code>apps/x-extension/popup.html</code></td><td><span class="pill pill--profile-f">profile-f</span></td><td>popup.html</td></tr>
+<tr data-cat="profile-c"><td><code>docs/html/ant-aht-cycle-complete.html</code></td><td><span class="pill pill--profile-c">profile-c</span></td><td>ant-aht-cycle-complete.html</td></tr>
+<tr data-cat="profile-c"><td><code>docs/html/ant-aht-operator-guide.html</code></td><td><span class="pill pill--profile-c">profile-c</span></td><td>ant-aht-operator-guide.html</td></tr>
+<tr data-cat="profile-c"><td><code>docs/html/ant-aht-vision-map.html</code></td><td><span class="pill pill--profile-c">profile-c</span></td><td>ant-aht-vision-map.html</td></tr>
+<tr data-cat="profile-c"><td><code>docs/html/html-landscape.html</code></td><td><span class="pill pill--profile-c">profile-c</span></td><td>html-landscape.html</td></tr>
+<tr data-cat="profile-c"><td><code>docs/html/index.html</code></td><td><span class="pill pill--profile-c">profile-c</span></td><td>index.html</td></tr>
+<tr data-cat="profile-c"><td><code>docs/html/spec-exa-browserbase.html</code></td><td><span class="pill pill--profile-c">profile-c</span></td><td>spec-exa-browserbase.html</td></tr>
+<tr data-cat="profile-c"><td><code>docs/html/sprints/sprint-17.html</code></td><td><span class="pill pill--profile-c">profile-c</span></td><td>sprint-17.html</td></tr>
+<tr data-cat="profile-c"><td><code>docs/html/sprints/sprint-18.html</code></td><td><span class="pill pill--profile-c">profile-c</span></td><td>sprint-18.html</td></tr>
+<tr data-cat="profile-c"><td><code>docs/html/sprints/sprint-19.html</code></td><td><span class="pill pill--profile-c">profile-c</span></td><td>sprint-19.html</td></tr>
+<tr data-cat="profile-c"><td><code>docs/html/thariq-antiek-index.html</code></td><td><span class="pill pill--profile-c">profile-c</span></td><td>thariq-antiek-index.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/antiek-hard-to-vary-execution/index.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>index.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/antiek-hard-to-vary-execution/sprint-05-ams-bridge.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-05-ams-bridge.html</td></tr>
+<tr data-cat="profile-b"><td><code>docs/htmlspec/antiek-html-transport/index.html</code></td><td><span class="pill pill--profile-b">profile-b</span></td><td>index.html</td></tr>
+<tr data-cat="profile-b"><td><code>docs/htmlspec/antiek-html-transport/sprint-01-research-artifact-contract.html</code></td><td><span class="pill pill--profile-b">profile-b</span></td><td>sprint-01-research-artifact-contract.html</td></tr>
+<tr data-cat="profile-b"><td><code>docs/htmlspec/antiek-html-transport/sprint-02-export-pipeline.html</code></td><td><span class="pill pill--profile-b">profile-b</span></td><td>sprint-02-export-pipeline.html</td></tr>
+<tr data-cat="profile-b"><td><code>docs/htmlspec/antiek-html-transport/sprint-03-agent-transport-protocol.html</code></td><td><span class="pill pill--profile-b">profile-b</span></td><td>sprint-03-agent-transport-protocol.html</td></tr>
+<tr data-cat="profile-b"><td><code>docs/htmlspec/antiek-html-transport/sprint-04-ingest-reader-snapshot.html</code></td><td><span class="pill pill--profile-b">profile-b</span></td><td>sprint-04-ingest-reader-snapshot.html</td></tr>
+<tr data-cat="profile-b"><td><code>docs/htmlspec/antiek-html-transport/sprint-05-compose-merge.html</code></td><td><span class="pill pill--profile-b">profile-b</span></td><td>sprint-05-compose-merge.html</td></tr>
+<tr data-cat="profile-b"><td><code>docs/htmlspec/antiek-html-transport/sprint-06-write-bridge-api.html</code></td><td><span class="pill pill--profile-b">profile-b</span></td><td>sprint-06-write-bridge-api.html</td></tr>
+<tr data-cat="profile-b"><td><code>docs/htmlspec/antiek-html-transport/sprint-07-book-reader-snapshot.html</code></td><td><span class="pill pill--profile-b">profile-b</span></td><td>sprint-07-book-reader-snapshot.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/auth-diagnostic-precision/index.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>index.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/auth-diagnostic-precision/sprint-01-failure-mode-matrix.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-01-failure-mode-matrix.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/auth-diagnostic-precision/sprint-02-login-error-taxonomy.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-02-login-error-taxonomy.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/auth-diagnostic-precision/sprint-03-callback-error-surface.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-03-callback-error-surface.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/auth-diagnostic-precision/sprint-04-auth-probe.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-04-auth-probe.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/auth-diagnostic-precision/sprint-05-playwright-login-e2e.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-05-playwright-login-e2e.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/auth-diagnostic-precision/sprint-06-multi-email-allowlist.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-06-multi-email-allowlist.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/deep-research-loop/index.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>index.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/deep-research-loop/sprint-01-terminal-contract.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-01-terminal-contract.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/deep-research-loop/sprint-02-harness-p11-p15.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-02-harness-p11-p15.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/deep-research-loop/sprint-03-loop-one-engine.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-03-loop-one-engine.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/deep-research-loop/sprint-04-evict-demo-loop.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-04-evict-demo-loop.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/deep-research-loop/sprint-05-evidence-pack.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-05-evidence-pack.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/deep-research-loop/sprint-06-convergence.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-06-convergence.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/deep-research-loop/sprint-07-flywheel-e2e.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-07-flywheel-e2e.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/deep-research-loop/sprint-08-exa-gather.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-08-exa-gather.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/deep-research-loop/sprint-08-parallel-gather.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-08-parallel-gather.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/deep-research-loop/sprint-09-dogfood-readiness.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-09-dogfood-readiness.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/posthog-feel/index.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>index.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/posthog-feel/sprint-feel-s1.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-feel-s1.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/posthog-feel/sprint-feel-s2.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-feel-s2.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/posthog-feel/sprint-feel-s3.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-feel-s3.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/posthog-feel/sprint-feel-s4.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-feel-s4.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/posthog-feel/sprint-feel-s5.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-feel-s5.html</td></tr>
+<tr data-cat="profile-a"><td><code>docs/htmlspec/posthog-feel/sprint-feel-s6.html</code></td><td><span class="pill pill--profile-a">profile-a</span></td><td>sprint-feel-s6.html</td></tr>
+<tr data-cat="profile-e"><td><code>docs/roadmap/ROADMAP.html</code></td><td><span class="pill pill--profile-e">profile-e</span></td><td>ROADMAP.html</td></tr>
+<tr data-cat="profile-e"><td><code>docs/specs/ant-h2v/index.html</code></td><td><span class="pill pill--profile-e">profile-e</span></td><td>index.html</td></tr>
+<tr data-cat="profile-e"><td><code>docs/specs/ant-h2v/sprint-01-agent-protocol.html</code></td><td><span class="pill pill--profile-e">profile-e</span></td><td>sprint-01-agent-protocol.html</td></tr>
+<tr data-cat="profile-e"><td><code>docs/specs/ant-h2v/sprint-02-contract-repro.html</code></td><td><span class="pill pill--profile-e">profile-e</span></td><td>sprint-02-contract-repro.html</td></tr>
+<tr data-cat="profile-e"><td><code>docs/specs/ant-h2v/sprint-03-dispatch-decomposer-test.html</code></td><td><span class="pill pill--profile-e">profile-e</span></td><td>sprint-03-dispatch-decomposer-test.html</td></tr>
+<tr data-cat="profile-e"><td><code>docs/specs/ant-h2v/sprint-04-http-auto-decompose.html</code></td><td><span class="pill pill--profile-e">profile-e</span></td><td>sprint-04-http-auto-decompose.html</td></tr>
+<tr data-cat="profile-e"><td><code>docs/specs/ant-h2v/sprint-05-api-error-boundary.html</code></td><td><span class="pill pill--profile-e">profile-e</span></td><td>sprint-05-api-error-boundary.html</td></tr>
+<tr data-cat="profile-e"><td><code>docs/specs/ant-h2v/sprint-06-audit-gate.html</code></td><td><span class="pill pill--profile-e">profile-e</span></td><td>sprint-06-audit-gate.html</td></tr>
+<tr data-cat="profile-e"><td><code>docs/specs/ant-h2v/sprint-07-operator-verify.html</code></td><td><span class="pill pill--profile-e">profile-e</span></td><td>sprint-07-operator-verify.html</td></tr>
+<tr data-cat="profile-e"><td><code>docs/specs/ant-h2v/sprint-08-platform-matrix.html</code></td><td><span class="pill pill--profile-e">profile-e</span></td><td>sprint-08-platform-matrix.html</td></tr>
+<tr data-cat="profile-e"><td><code>docs/sprint-breakdown.html</code></td><td><span class="pill pill--profile-e">profile-e</span></td><td>sprint-breakdown.html</td></tr>
+<tr data-cat="profile-d"><td><code>docs/ui_redesign_posthog/brand_werner.html</code></td><td><span class="pill pill--profile-d">profile-d</span></td><td>brand_werner.html</td></tr>
+<tr data-cat="profile-d"><td><code>docs/ui_redesign_posthog/index.html</code></td><td><span class="pill pill--profile-d">profile-d</span></td><td>index.html</td></tr>
+<tr data-cat="profile-d"><td><code>docs/ui_redesign_posthog/sprint_00_foundations.html</code></td><td><span class="pill pill--profile-d">profile-d</span></td><td>sprint_00_foundations.html</td></tr>
+<tr data-cat="profile-d"><td><code>docs/ui_redesign_posthog/sprint_01_design_system.html</code></td><td><span class="pill pill--profile-d">profile-d</span></td><td>sprint_01_design_system.html</td></tr>
+<tr data-cat="profile-d"><td><code>docs/ui_redesign_posthog/sprint_02_storybook.html</code></td><td><span class="pill pill--profile-d">profile-d</span></td><td>sprint_02_storybook.html</td></tr>
+<tr data-cat="profile-d"><td><code>docs/ui_redesign_posthog/sprint_03_panel_layout.html</code></td><td><span class="pill pill--profile-d">profile-d</span></td><td>sprint_03_panel_layout.html</td></tr>
+<tr data-cat="profile-d"><td><code>docs/ui_redesign_posthog/sprint_04_navigation.html</code></td><td><span class="pill pill--profile-d">profile-d</span></td><td>sprint_04_navigation.html</td></tr>
+<tr data-cat="profile-d"><td><code>docs/ui_redesign_posthog/sprint_05_research_workstation.html</code></td><td><span class="pill pill--profile-d">profile-d</span></td><td>sprint_05_research_workstation.html</td></tr>
+<tr data-cat="profile-d"><td><code>docs/ui_redesign_posthog/sprint_06_wrestle.html</code></td><td><span class="pill pill--profile-d">profile-d</span></td><td>sprint_06_wrestle.html</td></tr>
+<tr data-cat="profile-d"><td><code>docs/ui_redesign_posthog/sprint_07_notebook.html</code></td><td><span class="pill pill--profile-d">profile-d</span></td><td>sprint_07_notebook.html</td></tr>
+<tr data-cat="profile-d"><td><code>docs/ui_redesign_posthog/sprint_08_command_palette_ai.html</code></td><td><span class="pill pill--profile-d">profile-d</span></td><td>sprint_08_command_palette_ai.html</td></tr>
+<tr data-cat="profile-d"><td><code>docs/ui_redesign_posthog/sprint_09_window_state.html</code></td><td><span class="pill pill--profile-d">profile-d</span></td><td>sprint_09_window_state.html</td></tr>
+<tr data-cat="profile-d"><td><code>docs/ui_redesign_posthog/sprint_10_migration.html</code></td><td><span class="pill pill--profile-d">profile-d</span></td><td>sprint_10_migration.html</td></tr>
+<tr data-cat="profile-d"><td><code>docs/ui_redesign_posthog/sprint_11_a11y_responsive.html</code></td><td><span class="pill pill--profile-d">profile-d</span></td><td>sprint_11_a11y_responsive.html</td></tr>
+<tr data-cat="profile-d"><td><code>docs/ui_redesign_posthog/sprint_12_visual_regression_release.html</code></td><td><span class="pill pill--profile-d">profile-d</span></td><td>sprint_12_visual_regression_release.html</td></tr>
+<tr data-cat="profile-e"><td><code>specs/karpathy-deep-lens-engineering/index.html</code></td><td><span class="pill pill--profile-e">profile-e</span></td><td>index.html</td></tr>
+<tr data-cat="profile-f"><td><code>tests/fixtures/agent_execution/sprint_fiction_chip.html</code></td><td><span class="pill pill--profile-f">profile-f</span></td><td>sprint_fiction_chip.html</td></tr>
+<tr data-cat="profile-f"><td><code>tests/fixtures/paulgraham/articles.html</code></td><td><span class="pill pill--profile-f">profile-f</span></td><td>articles.html</td></tr>
+<tr data-cat="profile-f"><td><code>tests/fixtures/paulgraham/degraded_essay.html</code></td><td><span class="pill pill--profile-f">profile-f</span></td><td>degraded_essay.html</td></tr>
+<tr data-cat="profile-f"><td><code>tests/fixtures/paulgraham/greatwork.html</code></td><td><span class="pill pill--profile-f">profile-f</span></td><td>greatwork.html</td></tr>
+<tr data-cat="profile-b"><td><code>tests/fixtures/research_artifact/minimal.html</code></td><td><span class="pill pill--profile-b">profile-b</span></td><td>minimal.html</td></tr></tbody>
+</table>
+
+<h2>Operator env flags</h2>
+<table class="asset-table">
+<tr><td><code>ANTIEK_RESEARCH_ARTIFACTS_DIR</code></td><td>Profile B export directory</td></tr>
+<tr><td><code>ANTIEK_EXPORT_RESEARCH_ARTIFACT</code></td><td>Post <code>investigation.completed</code> auto-export</td></tr>
+<tr><td><code>ANTIEK_READER_SNAPSHOT</code></td><td>Reader HTML on <code>ingest_url</code> and <code>ingest_pdf</code></td></tr>
+<tr><td><code>ANTIEK_READER_SNAPSHOTS_DIR</code></td><td>Reader snapshot store (default <code>~/.antiek/reader-snapshots</code>)</td></tr>
+</table>
+</article>
+</main>
+<script>
+const DATA = [{"path": "apps/reading/public/redesign.html", "cat": "profile-f", "name": "redesign.html"}, {"path": "apps/x-extension/popup.html", "cat": "profile-f", "name": "popup.html"}, {"path": "docs/html/ant-aht-cycle-complete.html", "cat": "profile-c", "name": "ant-aht-cycle-complete.html"}, {"path": "docs/html/ant-aht-operator-guide.html", "cat": "profile-c", "name": "ant-aht-operator-guide.html"}, {"path": "docs/html/ant-aht-vision-map.html", "cat": "profile-c", "name": "ant-aht-vision-map.html"}, {"path": "docs/html/html-landscape.html", "cat": "profile-c", "name": "html-landscape.html"}, {"path": "docs/html/index.html", "cat": "profile-c", "name": "index.html"}, {"path": "docs/html/spec-exa-browserbase.html", "cat": "profile-c", "name": "spec-exa-browserbase.html"}, {"path": "docs/html/sprints/sprint-17.html", "cat": "profile-c", "name": "sprint-17.html"}, {"path": "docs/html/sprints/sprint-18.html", "cat": "profile-c", "name": "sprint-18.html"}, {"path": "docs/html/sprints/sprint-19.html", "cat": "profile-c", "name": "sprint-19.html"}, {"path": "docs/html/thariq-antiek-index.html", "cat": "profile-c", "name": "thariq-antiek-index.html"}, {"path": "docs/htmlspec/antiek-hard-to-vary-execution/index.html", "cat": "profile-a", "name": "index.html"}, {"path": "docs/htmlspec/antiek-hard-to-vary-execution/sprint-05-ams-bridge.html", "cat": "profile-a", "name": "sprint-05-ams-bridge.html"}, {"path": "docs/htmlspec/antiek-html-transport/index.html", "cat": "profile-b", "name": "index.html"}, {"path": "docs/htmlspec/antiek-html-transport/sprint-01-research-artifact-contract.html", "cat": "profile-b", "name": "sprint-01-research-artifact-contract.html"}, {"path": "docs/htmlspec/antiek-html-transport/sprint-02-export-pipeline.html", "cat": "profile-b", "name": "sprint-02-export-pipeline.html"}, {"path": "docs/htmlspec/antiek-html-transport/sprint-03-agent-transport-protocol.html", "cat": "profile-b", "name": "sprint-03-agent-transport-protocol.html"}, {"path": "docs/htmlspec/antiek-html-transport/sprint-04-ingest-reader-snapshot.html", "cat": "profile-b", "name": "sprint-04-ingest-reader-snapshot.html"}, {"path": "docs/htmlspec/antiek-html-transport/sprint-05-compose-merge.html", "cat": "profile-b", "name": "sprint-05-compose-merge.html"}, {"path": "docs/htmlspec/antiek-html-transport/sprint-06-write-bridge-api.html", "cat": "profile-b", "name": "sprint-06-write-bridge-api.html"}, {"path": "docs/htmlspec/antiek-html-transport/sprint-07-book-reader-snapshot.html", "cat": "profile-b", "name": "sprint-07-book-reader-snapshot.html"}, {"path": "docs/htmlspec/auth-diagnostic-precision/index.html", "cat": "profile-a", "name": "index.html"}, {"path": "docs/htmlspec/auth-diagnostic-precision/sprint-01-failure-mode-matrix.html", "cat": "profile-a", "name": "sprint-01-failure-mode-matrix.html"}, {"path": "docs/htmlspec/auth-diagnostic-precision/sprint-02-login-error-taxonomy.html", "cat": "profile-a", "name": "sprint-02-login-error-taxonomy.html"}, {"path": "docs/htmlspec/auth-diagnostic-precision/sprint-03-callback-error-surface.html", "cat": "profile-a", "name": "sprint-03-callback-error-surface.html"}, {"path": "docs/htmlspec/auth-diagnostic-precision/sprint-04-auth-probe.html", "cat": "profile-a", "name": "sprint-04-auth-probe.html"}, {"path": "docs/htmlspec/auth-diagnostic-precision/sprint-05-playwright-login-e2e.html", "cat": "profile-a", "name": "sprint-05-playwright-login-e2e.html"}, {"path": "docs/htmlspec/auth-diagnostic-precision/sprint-06-multi-email-allowlist.html", "cat": "profile-a", "name": "sprint-06-multi-email-allowlist.html"}, {"path": "docs/htmlspec/deep-research-loop/index.html", "cat": "profile-a", "name": "index.html"}, {"path": "docs/htmlspec/deep-research-loop/sprint-01-terminal-contract.html", "cat": "profile-a", "name": "sprint-01-terminal-contract.html"}, {"path": "docs/htmlspec/deep-research-loop/sprint-02-harness-p11-p15.html", "cat": "profile-a", "name": "sprint-02-harness-p11-p15.html"}, {"path": "docs/htmlspec/deep-research-loop/sprint-03-loop-one-engine.html", "cat": "profile-a", "name": "sprint-03-loop-one-engine.html"}, {"path": "docs/htmlspec/deep-research-loop/sprint-04-evict-demo-loop.html", "cat": "profile-a", "name": "sprint-04-evict-demo-loop.html"}, {"path": "docs/htmlspec/deep-research-loop/sprint-05-evidence-pack.html", "cat": "profile-a", "name": "sprint-05-evidence-pack.html"}, {"path": "docs/htmlspec/deep-research-loop/sprint-06-convergence.html", "cat": "profile-a", "name": "sprint-06-convergence.html"}, {"path": "docs/htmlspec/deep-research-loop/sprint-07-flywheel-e2e.html", "cat": "profile-a", "name": "sprint-07-flywheel-e2e.html"}, {"path": "docs/htmlspec/deep-research-loop/sprint-08-exa-gather.html", "cat": "profile-a", "name": "sprint-08-exa-gather.html"}, {"path": "docs/htmlspec/deep-research-loop/sprint-08-parallel-gather.html", "cat": "profile-a", "name": "sprint-08-parallel-gather.html"}, {"path": "docs/htmlspec/deep-research-loop/sprint-09-dogfood-readiness.html", "cat": "profile-a", "name": "sprint-09-dogfood-readiness.html"}, {"path": "docs/htmlspec/posthog-feel/index.html", "cat": "profile-a", "name": "index.html"}, {"path": "docs/htmlspec/posthog-feel/sprint-feel-s1.html", "cat": "profile-a", "name": "sprint-feel-s1.html"}, {"path": "docs/htmlspec/posthog-feel/sprint-feel-s2.html", "cat": "profile-a", "name": "sprint-feel-s2.html"}, {"path": "docs/htmlspec/posthog-feel/sprint-feel-s3.html", "cat": "profile-a", "name": "sprint-feel-s3.html"}, {"path": "docs/htmlspec/posthog-feel/sprint-feel-s4.html", "cat": "profile-a", "name": "sprint-feel-s4.html"}, {"path": "docs/htmlspec/posthog-feel/sprint-feel-s5.html", "cat": "profile-a", "name": "sprint-feel-s5.html"}, {"path": "docs/htmlspec/posthog-feel/sprint-feel-s6.html", "cat": "profile-a", "name": "sprint-feel-s6.html"}, {"path": "docs/roadmap/ROADMAP.html", "cat": "profile-e", "name": "ROADMAP.html"}, {"path": "docs/specs/ant-h2v/index.html", "cat": "profile-e", "name": "index.html"}, {"path": "docs/specs/ant-h2v/sprint-01-agent-protocol.html", "cat": "profile-e", "name": "sprint-01-agent-protocol.html"}, {"path": "docs/specs/ant-h2v/sprint-02-contract-repro.html", "cat": "profile-e", "name": "sprint-02-contract-repro.html"}, {"path": "docs/specs/ant-h2v/sprint-03-dispatch-decomposer-test.html", "cat": "profile-e", "name": "sprint-03-dispatch-decomposer-test.html"}, {"path": "docs/specs/ant-h2v/sprint-04-http-auto-decompose.html", "cat": "profile-e", "name": "sprint-04-http-auto-decompose.html"}, {"path": "docs/specs/ant-h2v/sprint-05-api-error-boundary.html", "cat": "profile-e", "name": "sprint-05-api-error-boundary.html"}, {"path": "docs/specs/ant-h2v/sprint-06-audit-gate.html", "cat": "profile-e", "name": "sprint-06-audit-gate.html"}, {"path": "docs/specs/ant-h2v/sprint-07-operator-verify.html", "cat": "profile-e", "name": "sprint-07-operator-verify.html"}, {"path": "docs/specs/ant-h2v/sprint-08-platform-matrix.html", "cat": "profile-e", "name": "sprint-08-platform-matrix.html"}, {"path": "docs/sprint-breakdown.html", "cat": "profile-e", "name": "sprint-breakdown.html"}, {"path": "docs/ui_redesign_posthog/brand_werner.html", "cat": "profile-d", "name": "brand_werner.html"}, {"path": "docs/ui_redesign_posthog/index.html", "cat": "profile-d", "name": "index.html"}, {"path": "docs/ui_redesign_posthog/sprint_00_foundations.html", "cat": "profile-d", "name": "sprint_00_foundations.html"}, {"path": "docs/ui_redesign_posthog/sprint_01_design_system.html", "cat": "profile-d", "name": "sprint_01_design_system.html"}, {"path": "docs/ui_redesign_posthog/sprint_02_storybook.html", "cat": "profile-d", "name": "sprint_02_storybook.html"}, {"path": "docs/ui_redesign_posthog/sprint_03_panel_layout.html", "cat": "profile-d", "name": "sprint_03_panel_layout.html"}, {"path": "docs/ui_redesign_posthog/sprint_04_navigation.html", "cat": "profile-d", "name": "sprint_04_navigation.html"}, {"path": "docs/ui_redesign_posthog/sprint_05_research_workstation.html", "cat": "profile-d", "name": "sprint_05_research_workstation.html"}, {"path": "docs/ui_redesign_posthog/sprint_06_wrestle.html", "cat": "profile-d", "name": "sprint_06_wrestle.html"}, {"path": "docs/ui_redesign_posthog/sprint_07_notebook.html", "cat": "profile-d", "name": "sprint_07_notebook.html"}, {"path": "docs/ui_redesign_posthog/sprint_08_command_palette_ai.html", "cat": "profile-d", "name": "sprint_08_command_palette_ai.html"}, {"path": "docs/ui_redesign_posthog/sprint_09_window_state.html", "cat": "profile-d", "name": "sprint_09_window_state.html"}, {"path": "docs/ui_redesign_posthog/sprint_10_migration.html", "cat": "profile-d", "name": "sprint_10_migration.html"}, {"path": "docs/ui_redesign_posthog/sprint_11_a11y_responsive.html", "cat": "profile-d", "name": "sprint_11_a11y_responsive.html"}, {"path": "docs/ui_redesign_posthog/sprint_12_visual_regression_release.html", "cat": "profile-d", "name": "sprint_12_visual_regression_release.html"}, {"path": "specs/karpathy-deep-lens-engineering/index.html", "cat": "profile-e", "name": "index.html"}, {"path": "tests/fixtures/agent_execution/sprint_fiction_chip.html", "cat": "profile-f", "name": "sprint_fiction_chip.html"}, {"path": "tests/fixtures/paulgraham/articles.html", "cat": "profile-f", "name": "articles.html"}, {"path": "tests/fixtures/paulgraham/degraded_essay.html", "cat": "profile-f", "name": "degraded_essay.html"}, {"path": "tests/fixtures/paulgraham/greatwork.html", "cat": "profile-f", "name": "greatwork.html"}, {"path": "tests/fixtures/research_artifact/minimal.html", "cat": "profile-b", "name": "minimal.html"}];
+let activeCat = 'all';
+const tbody = document.querySelector('#table tbody');
+const search = document.getElementById('search');
+function applyFilter() {
+  const q = (search.value || '').toLowerCase();
+  for (const tr of tbody.querySelectorAll('tr')) {
+    const path = tr.querySelector('code').textContent.toLowerCase();
+    const cat = tr.dataset.cat;
+    const catOk = activeCat === 'all' || cat === activeCat;
+    const qOk = !q || path.includes(q);
+    tr.classList.toggle('hidden', !(catOk && qOk));
+  }
+}
+document.getElementById('tabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('.tab');
+  if (!btn) return;
+  activeCat = btn.dataset.cat;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === btn));
+  applyFilter();
+});
+search.addEventListener('input', applyFilter);
+document.querySelector('.tab[data-cat="all"]').classList.add('active');
+</script>
+</body>
+</html>

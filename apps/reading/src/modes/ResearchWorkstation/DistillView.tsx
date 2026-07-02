@@ -8,6 +8,7 @@ import {
 import type { DistilledNode } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import Thinking from "../../shared/Thinking";
+import ArtifactOutlineShelf from "./ArtifactOutlineShelf";
 
 /**
  * DistillView — insights & open questions as first-class objects (SPR-03 M2),
@@ -137,6 +138,8 @@ export default function DistillView({ investigationId, running, onChase }: Disti
           </ul>
         </Section>
       )}
+
+      <ArtifactOutlineShelf investigationId={investigationId} />
     </div>
   );
 }

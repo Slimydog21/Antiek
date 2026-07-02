@@ -150,6 +150,32 @@
   --radius-lg: 10px;
   --edge:      2.5px;
 
+  /* spacing density (CFEEL-S2 M1) — PostHog/Quill density-token pattern. Every
+     Tailwind spacing utility (p-*, m-*, gap-*, space-*, w/h numeric, inset-*)
+     is redefined in tailwind.config.js as `calc(var(--spacing) * <key>)`, so a
+     subtree can scale ALL its spacing by overriding ONE var. The DEFAULT here
+     is 0.25rem (== 4px == Tailwind's base spacing unit), which makes every
+     resolved utility byte-identical to Tailwind's default scale: e.g. p-4 =
+     calc(0.25rem * 4) = 1rem (Tailwind default 1rem); gap-2 = calc(0.25rem * 2)
+     = 0.5rem; m-1 = calc(0.25rem * 1) = 0.25rem. This is why default ==
+     Tailwind default: Tailwind's own scale IS key/4 rem, and 0.25rem * key ==
+     (key/4) rem for every key. So the mechanism is provably non-regressive on
+     the default surface — no component is wired to a denser density here;
+     wiring `[data-density]` onto a production subtree is a deliberate operator
+     opt-in (CFEEL-S2 leaves it un-wired). --density is the human-readable
+     companion scalar (1 = default); it documents intent and is reserved for a
+     future computed override — the resolved value is driven by --spacing. */
+  --spacing: 0.25rem;
+  --density: 1;
+
+  /* opacity tokens (CFEEL-S2 M3) — PostHog's two disabled/icon dimming
+     constants, surfaced as Tailwind utilities (opacity-disabled / opacity-icon)
+     so a dimmed control reads from ONE token, not a magic 0.65/0.8 scattered
+     across components. Theme-invariant (same dim ratio day + night); mirrored
+     in the night block for parity with the rest of this file's structure. */
+  --opacity-disabled: 0.65;
+  --opacity-icon:     0.8;
+
   /* motion (U-05) — durations + easings as tokens, never magic numbers.
      fast = press, base = hover/colour, slow = signature-beat ceiling
      (== Werner's 800 ms celebrate). See src/design/motion.ts +
@@ -177,6 +203,21 @@
   --akb-border-inset-right:  0px;
   --akb-border-inset-bottom: 0px;
   --akb-border-inset-left:   0px;
+}
+
+/* Per-subtree density override (CFEEL-S2 M1) — Antiek's high-information lever.
+   Setting `data-density="compact"` on any element scales --spacing for that
+   subtree only, so every spacing utility under it tightens ~12.5% (0.21875rem
+   ≈ 3.5px vs the 0.25rem ≈ 4px default) WITHOUT touching the global default.
+   This is the OPT-IN mechanism only — no production component is wired to it in
+   CFEEL-S2 (that's a deliberate operator follow-up; wiring a dense subtree must
+   be paired with a lostpixel review since it intentionally moves pixels there).
+   The default surface — anything NOT under [data-density="compact"] — stays
+   pixel-identical to today. Matches PostHog/Quill's density-overridable
+   spacing-token discipline. */
+[data-density="compact"] {
+  --spacing: 0.21875rem; /* ≈3.5px; ~12.5% denser than the 0.25rem default */
+  --density: 0.875;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -272,5 +313,12 @@
     --shadow-z2:   5px 5px 0 0 var(--sun-deep);
     --shadow-z3:   8px 8px 0 0 var(--sun-deep);
     --shadow-lift: 12px 12px 0 0 var(--sun-deep);
+
+    /* opacity tokens, night (CFEEL-S2 M3) — theme-invariant; the dim ratio is
+       the same day + night. Mirrored here only so the night block stays a
+       complete structural sibling of :root (every token in this file appears in
+       both); the values are deliberately identical to the day block. */
+    --opacity-disabled: 0.65;
+    --opacity-icon:     0.8;
   }
 }

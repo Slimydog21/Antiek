@@ -60,7 +60,7 @@ def test_create_plan_auto_decompose_without_sub_questions(cascade_client, monkey
     assert len(r.json()["tree"]["root"]["children"]) == 2
 
 
-def test_create_plan_decompose_failed_returns_502(cascade_client, monkeypatch):
+def test_create_plan_decompose_failed_returns_structured_unknown(cascade_client, monkeypatch):
     def _boom(problem: str, max_depth: int):
         raise TypeError(
             "render_full_prompt() takes 0 positional arguments but 1 was given",
@@ -68,6 +68,7 @@ def test_create_plan_decompose_failed_returns_502(cascade_client, monkeypatch):
 
     monkeypatch.setattr(cr, "_decompose", _boom)
     r = cascade_client.post("/research/plans", json={"problem": "P"})
-    assert r.status_code == 502, r.text
-    assert "decompose_failed" in r.json()["detail"]
-    assert "TypeError" in r.json()["detail"]
+    assert r.status_code == 500, r.text
+    detail = r.json()["detail"]
+    assert detail["code"] == "unknown"
+    assert "TypeError" not in r.text

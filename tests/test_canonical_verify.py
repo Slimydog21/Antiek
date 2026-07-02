@@ -40,3 +40,19 @@ def test_canonical_verify_cascade_hermetic() -> None:
     proc = _run("cascade")
     assert proc.returncode == 0, proc.stderr or proc.stdout
     assert "CANONICAL_VERIFY_OK: cascade" in proc.stdout
+
+
+def test_canonical_verify_deep_research_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("deep-research")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: deep-research" in proc.stdout
+
+
+def test_canonical_verify_html_transport_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("html-transport")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: html-transport" in proc.stdout

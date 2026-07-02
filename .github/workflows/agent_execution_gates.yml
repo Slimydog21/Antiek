@@ -12,10 +12,19 @@ on:
       - 'scripts/canonical_verify.sh'
       - 'scripts/audit_agent_session.sh'
       - 'scripts/agent_ams_ref_lint.sh'
+      - 'orchestration/**'
       - 'tests/fixtures/agent_execution/**'
       - 'tests/test_audit_agent_session.py'
       - 'tests/test_canonical_verify.py'
       - 'tests/test_agent_ams_ref_lint.py'
+      - 'tests/test_deep_research_complete.py'
+      - 'tests/test_cascade_session.py'
+      - 'tests/test_loop_one_orchestrator.py'
+      - 'tests/test_research_runner.py'
+      - 'tests/test_knowledge_reuse_spr06.py'
+      - 'tests/test_flywheel_reuse.py'
+      - 'tests/test_session_evidence_pack.py'
+      - 'tests/test_cascade_convergence.py'
       - '.github/workflows/agent_execution_gates.yml'
   pull_request:
     branches: [main]
@@ -25,10 +34,19 @@ on:
       - 'scripts/canonical_verify.sh'
       - 'scripts/audit_agent_session.sh'
       - 'scripts/agent_ams_ref_lint.sh'
+      - 'orchestration/**'
       - 'tests/fixtures/agent_execution/**'
       - 'tests/test_audit_agent_session.py'
       - 'tests/test_canonical_verify.py'
       - 'tests/test_agent_ams_ref_lint.py'
+      - 'tests/test_deep_research_complete.py'
+      - 'tests/test_cascade_session.py'
+      - 'tests/test_loop_one_orchestrator.py'
+      - 'tests/test_research_runner.py'
+      - 'tests/test_knowledge_reuse_spr06.py'
+      - 'tests/test_flywheel_reuse.py'
+      - 'tests/test_session_evidence_pack.py'
+      - 'tests/test_cascade_convergence.py'
       - '.github/workflows/agent_execution_gates.yml'
   workflow_dispatch:
 
@@ -79,3 +97,6 @@ jobs:
 
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md
+
+      - name: Canonical verify — deep-research (P-11..P-15)
+        run: ./scripts/canonical_verify.sh deep-research

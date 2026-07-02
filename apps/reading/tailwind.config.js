@@ -15,8 +15,22 @@ export default {
       colors: {
         // THE brand — invariant across modes
         sun: "#F5DF24",
-        "sun-deep": "#B89A00",
-        "sun-glow": "#FCE85E",
+        // Re-toned sun family (AMS-SPR-09 / CFEEL-FIX-1). These were the OLD
+        // loud hexes (sun-deep #B89A00, sun-glow #FCE85E) AFTER tokens.css /
+        // tokens.ts had already been re-toned to the weathered values — a
+        // HIGH-severity token drift ("lived feel ≠ designed feel"): the ~45
+        // utility consumers rendered the old loud values on screen. FIX: point
+        // these keys at the CSS vars so they resolve through tokens.css and
+        // cascade per theme automatically — day --sun-deep #9C8636 / night
+        // #84722F, day --sun-glow #F1E08F / night #F2DE9A. This is strictly
+        // MORE correct than a static day hex: several consumers (text-sun-deep
+        // in VoiceToDraft / FloatMenu / ResearchPanel) carry NO dark: override,
+        // so a static day hex would render the day ochre even at night; the
+        // var resolves to the night token there. And the drift can never recur
+        // — there is now ONE value, in tokens.css, the parity guard asserts.
+        // Mirror: tokens.ts `sun.deep`/`sun.glow`, tokens.css --sun-deep/--sun-glow.
+        "sun-deep": "var(--sun-deep)",
+        "sun-glow": "var(--sun-glow)",
 
         // Neutral "light" chrome border (AMS-SPR-01). Was the default border
         // = sun #F5DF24; the operator asked to "replace that yellowness with
@@ -85,11 +99,19 @@ export default {
         z2: "5px 5px 0 0 #0F1419",
         z3: "8px 8px 0 0 #0F1419",
         lift: "12px 12px 0 0 #0F1419",
-        // Night: sun-deep-cast glow
-        "z1-night": "3px 3px 0 0 #8A7300",
-        "z2-night": "5px 5px 0 0 #8A7300",
-        "z3-night": "8px 8px 0 0 #8A7300",
-        "lift-night": "12px 12px 0 0 #8A7300",
+        // Night: sun-deep-cast glow. Every consumer applies these only behind a
+        // `dark:` variant (dark:shadow-z1-night …), so they fire ONLY in the
+        // night subtree where --sun-deep cascades to the night value #84722F.
+        // The cast colour was the OLD loud #8A7300 here AFTER tokens.css /
+        // tokens.ts had re-toned the night cast to the weathered #84722F
+        // (AMS-SPR-09) — the same drift as the sun-deep/glow keys. FIX: read
+        // var(--sun-deep), byte-identical to how tokens.css --shadow-z* read it
+        // (tokens.css:251-254), so these never drift from the night shadow
+        // again. Mirror: tokens.ts `shadow.night` (#84722F).
+        "z1-night": "3px 3px 0 0 var(--sun-deep)",
+        "z2-night": "5px 5px 0 0 var(--sun-deep)",
+        "z3-night": "8px 8px 0 0 var(--sun-deep)",
+        "lift-night": "12px 12px 0 0 var(--sun-deep)",
       },
       borderColor: {
         // Default border = neutral "light" rule (AMS-SPR-01). Was the brand
@@ -132,6 +154,81 @@ export default {
         // Tighter monospace for trajectory data; reading text stays default sans.
         mono: ['"JetBrains Mono"', "ui-monospace", "SFMono-Regular", "monospace"],
         serif: ["Charter", '"Iowan Old Style"', "Georgia", "serif"],
+      },
+
+      // Density-overridable spacing scale (CFEEL-S2 M1) — PostHog/Quill pattern.
+      // Every value is `calc(var(--spacing) * <key>)`, so the WHOLE scale scales
+      // with the single --spacing var (default 0.25rem in tokens.css). This
+      // REPLACES Tailwind's default spacing scale, so it MUST enumerate every
+      // default key or that utility silently disappears (a regression). It is
+      // provably non-regressive on the default surface: Tailwind's default for
+      // key N is (N/4)rem, and calc(0.25rem * N) == (N/4)rem for every N, so
+      // p-4/gap-2/m-1/… resolve byte-identically to today. The literal `0px` /
+      // `1px` for the `0` / `px` keys match Tailwind (a 0-multiplier calc would
+      // also be 0, but the literals keep those two pixel-exact + readable). A
+      // subtree can tighten ALL of this by setting [data-density] (tokens.css).
+      // Source of the multiplier rule: spacing[N] === (N/4)rem in Tailwind's
+      // defaultTheme; verified against tailwindcss/defaultTheme.
+      spacing: {
+        0: "0px",
+        px: "1px",
+        0.5: "calc(var(--spacing) * 0.5)", // 0.125rem
+        1: "calc(var(--spacing) * 1)", // 0.25rem
+        1.5: "calc(var(--spacing) * 1.5)", // 0.375rem
+        2: "calc(var(--spacing) * 2)", // 0.5rem
+        2.5: "calc(var(--spacing) * 2.5)", // 0.625rem
+        3: "calc(var(--spacing) * 3)", // 0.75rem
+        3.5: "calc(var(--spacing) * 3.5)", // 0.875rem
+        4: "calc(var(--spacing) * 4)", // 1rem
+        5: "calc(var(--spacing) * 5)", // 1.25rem
+        6: "calc(var(--spacing) * 6)", // 1.5rem
+        7: "calc(var(--spacing) * 7)", // 1.75rem
+        8: "calc(var(--spacing) * 8)", // 2rem
+        9: "calc(var(--spacing) * 9)", // 2.25rem
+        10: "calc(var(--spacing) * 10)", // 2.5rem
+        11: "calc(var(--spacing) * 11)", // 2.75rem
+        12: "calc(var(--spacing) * 12)", // 3rem
+        14: "calc(var(--spacing) * 14)", // 3.5rem
+        16: "calc(var(--spacing) * 16)", // 4rem
+        20: "calc(var(--spacing) * 20)", // 5rem
+        24: "calc(var(--spacing) * 24)", // 6rem
+        28: "calc(var(--spacing) * 28)", // 7rem
+        32: "calc(var(--spacing) * 32)", // 8rem
+        36: "calc(var(--spacing) * 36)", // 9rem
+        40: "calc(var(--spacing) * 40)", // 10rem
+        44: "calc(var(--spacing) * 44)", // 11rem
+        48: "calc(var(--spacing) * 48)", // 12rem
+        52: "calc(var(--spacing) * 52)", // 13rem
+        56: "calc(var(--spacing) * 56)", // 14rem
+        60: "calc(var(--spacing) * 60)", // 15rem
+        64: "calc(var(--spacing) * 64)", // 16rem
+        72: "calc(var(--spacing) * 72)", // 18rem
+        80: "calc(var(--spacing) * 80)", // 20rem
+        96: "calc(var(--spacing) * 96)", // 24rem
+      },
+
+      // App type-scale tokens + 24px chrome ceiling (CFEEL-S2 M2) — PostHog's
+      // named app type scale. ADDS named keys (does not remove Tailwind's
+      // defaults, which some components still use); each is [font-size,
+      // line-height]. The 2xl == 24px is the CHROME CEILING: no in-app chrome
+      // text should exceed it (reading-body/content is exempt — that's content,
+      // not chrome). lint_type_scale.ts enforces the ceiling on chrome.
+      fontSize: {
+        xxs: ["10px", "12px"],
+        xs: ["12px", "16px"],
+        sm: ["14px", "20px"],
+        base: ["16px", "24px"],
+        lg: ["18px", "28px"],
+        xl: ["20px", "28px"],
+        "2xl": ["24px", "32px"], // chrome ceiling — the largest chrome size
+      },
+
+      // Opacity tokens (CFEEL-S2 M3) — PostHog's disabled/icon dim constants as
+      // utilities (opacity-disabled / opacity-icon), each reading the CSS var so
+      // a dimmed control is one token, not a scattered magic 0.65/0.8.
+      opacity: {
+        disabled: "var(--opacity-disabled)",
+        icon: "var(--opacity-icon)",
       },
     },
   },

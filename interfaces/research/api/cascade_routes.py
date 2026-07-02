@@ -13,7 +13,8 @@ Lifecycle model (honest, the make-or-break part):
   the project's ``--workers 1`` single-writer invariant there is exactly one
   process + one event loop, so an in-memory registry is correct, not a
   shortcut. Launch starts the fan-out and schedules its completion
-  (join + funnel-drain + merge) as a background task on that loop.
+  (join + funnel-drain + merge + Loop 1 synthesis tail on the session
+  parent) as a background task on that loop when a synthesis runner is wired.
 * Recovery is from the **event log**, not the registry: ``GET`` status of a
   session not in memory (after eviction or restart) calls
   ``reconstruct_session`` — membership via ``investigation.spawned_from``,
@@ -25,51 +26,47 @@ Lifecycle model (honest, the make-or-break part):
   NOT claim exactly-once.
 
 The browse loop is injected (``_research_loop_factory``) — it defaults to the
-SPR-02 demo loop; the real Exa→Browserbase loop drops into the same seam with
-zero route changes (mirrors the contract-first design that let DRW's gap
-detector drop into Speak). §16 honored: no Daytona; the host-local cap is what
-bounds "launch 20 at once", surfaced via the aggregate budget.
+contract gather stub (``make_contract_gather_stub``); the real Exa→Browserbase
+loop drops into the same seam with zero route changes. §16 honored: no Daytona;
+the host-local cap is what bounds "launch 20 at once", surfaced via the
+aggregate budget.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator, Callable, Iterator
-from contextlib import contextmanager, suppress
-from typing import Any
+import logging
+import os
+import sys
+from contextlib import contextmanager
+from typing import Any, Dict, Iterator, List, Optional
 
 from fastapi import APIRouter, HTTPException
+
+from interfaces.research.api.dispatch_failure import classify_dispatch_failure
+
+logger = logging.getLogger(__name__)
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from runtime.db_lock import connect_write
+from substrate.graph import default_db_path, ensure_initialized
+from runtime.research_runner import (
+    BudgetCap, BudgetManager, Command, CommandKind, HostLocalRunner,
+    PromotionFunnel, RunState, make_contract_gather_stub,
+    make_exa_gather_loop,
+)
 from orchestration.cascade_session import CascadeSession, Leaf, reconstruct_session
-from processing.embedding import EmbeddingProvider
 from roles.cascade_planner import (
-    PlanNotApproved,
-    PlanReport,
-    SubQuestion,
-    approve_plan,
-    build_plan,
-    is_plan_launchable,
-    load_tree,
-    persist_tree,
+    PlanNotApproved, SubQuestion, approve_plan, build_plan, is_plan_launchable,
+    load_tree, persist_tree,
 )
 from roles.cascade_planner.planner import DispatchDecomposer
 from roles.cascade_planner.tree_contract import PlanTree
-from runtime.db_lock import LockedConnection, connect_write
-from runtime.research_runner import (
-    BudgetCap,
-    BudgetManager,
-    Command,
-    CommandKind,
-    HostLocalRunner,
-    LoopContext,
-    PromotionFunnel,
-    StepEvent,
-)
+# ACV SPR-06 — the reuse-CONSUMING browse loop (the flywheel's consuming leg),
+# re-seated on main's env-switched gather seam in _research_loop_factory below.
 from runtime.research_runner.browse_loop import make_reuse_consuming_loop
-from substrate.graph import default_db_path, ensure_initialized
 
 cascade_router = APIRouter(prefix="/research", tags=["deep-research"])
 
@@ -78,8 +75,18 @@ cascade_router = APIRouter(prefix="/research", tags=["deep-research"])
 # Process-local live-session registry (single-writer / one event loop).
 # ---------------------------------------------------------------------------
 
-_SESSIONS: dict[str, CascadeSession] = {}
-_SESSION_TASKS: dict[str, asyncio.Task[None]] = {}
+_SESSIONS: Dict[str, "CascadeSession"] = {}
+_SESSION_TASKS: Dict[str, "asyncio.Task"] = {}
+
+# Optional hook set by ``create_app`` after Loop 1 handlers register.
+# Runs Path A synthesis tail (phases 6–9) once gather + merge finish.
+_SYNTHESIS_TAIL_RUNNER: Optional[Any] = None
+
+
+def set_synthesis_tail_runner(runner: Any) -> None:
+    """Wire the Loop 1 synthesis tail into cascade background completion."""
+    global _SYNTHESIS_TAIL_RUNNER
+    _SYNTHESIS_TAIL_RUNNER = runner
 
 
 # ---------------------------------------------------------------------------
@@ -94,9 +101,12 @@ def _db() -> str:
 
 
 @contextmanager
-def _write(purpose: str) -> Iterator[LockedConnection]:
-    with connect_write(_db(), purpose=purpose) as con:
+def _write(purpose: str) -> Iterator[Any]:
+    con = connect_write(_db(), purpose=purpose)
+    try:
         yield con
+    finally:
+        con.close()
 
 
 @contextmanager
@@ -105,12 +115,12 @@ def _translate() -> Iterator[None]:
     try:
         yield
     except PlanNotApproved as e:
-        raise HTTPException(status_code=409, detail=str(e)) from e
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e)) from e
+        raise HTTPException(status_code=404, detail=str(e))
 
 
-def _embedding_provider() -> EmbeddingProvider:
+def _embedding_provider():
     from processing.embedding import default_embedding_provider
     return default_embedding_provider()
 
@@ -345,41 +355,57 @@ def _session_substrate(session: CascadeSession) -> object | None:
     return getattr(runner, "_retrieval_substrate", None)
 
 
-def _decompose(problem: str, max_depth: int) -> PlanReport:
+def _decompose(problem: str, max_depth: int):
     """The decomposer the plan endpoint uses when the caller does not supply
     sub-questions. A module attribute so tests can monkeypatch it to a
     deterministic fake without a live model."""
     return build_plan(problem, decomposer=DispatchDecomposer(), max_depth=max_depth)
 
 
-def _research_loop_factory() -> Callable[[LoopContext], AsyncIterator[StepEvent]]:
-    """The browse loop each investigation runs.
+def _research_loop_factory():
+    """The browse loop each investigation runs — env-switched gather seam.
 
-    ACV SPR-06: the prod loop is now the reuse-CONSUMING loop
-    (``make_reuse_consuming_loop``). It reads ``ctx.pack`` — the prior knowledge
-    units the runner's ``start`` injected (wired by SPR-02's
-    ``build_prod_retrieval_substrate``) — and SHORT-CIRCUITS any planned
-    sub-question a reused unit already covers, emitting a real ``dispatch.call``
-    cost ONLY for the UNCOVERED ones. So a warm research (one whose question the
-    graph already has knowledge for) does LESS work — and costs less — than a
-    cold one, which is the compounding the reachability ``compounding`` probe
-    asserts end-to-end. With an EMPTY/cold pack it does full work (n
-    dispatch.calls × cost_per_step), so a cold cascade launch's per-research cost
-    is unchanged from the demo loop's (n=3 × 0.01 = 0.03). ``events_dir=None``
-    lets it fall back to the SAME process-default event log the runner writes to,
-    so its dispatch.call lands where the measurement reads. The real
-    Exa→Browserbase loop drops in here later with no route change; the demo loop
-    stays the deterministic loop for unit CI (``make_demo_loop``)."""
+    Three modes, all preserved (merge of main's env-switched seam with ACV
+    SPR-06's reuse-consuming default; no code path removed):
+
+    * ``ANTIEK_DRW_GATHER=exa`` — the real Exa Wedge-1 discovery layer
+      (``make_exa_gather_loop``), which promotes documents into the evidence
+      pack as ``doc-url-*`` chunks through the single ``ingest_url`` write
+      seam + the legal gate. Unchanged from main.
+    * ``ANTIEK_DRW_GATHER=stub`` — the contract gather stub
+      (``make_contract_gather_stub``), main's former reuse-BLIND default,
+      kept explicitly selectable.
+    * default (env unset) — ACV SPR-06: the reuse-CONSUMING loop
+      (``make_reuse_consuming_loop``). It reads ``ctx.pack`` — the prior
+      knowledge units the runner's ``start`` injected (wired by SPR-02's
+      ``build_prod_retrieval_substrate``) — and SHORT-CIRCUITS any planned
+      sub-question a reused unit already covers, emitting a real
+      ``dispatch.call`` cost ONLY for the UNCOVERED ones. So a warm research
+      (one whose question the graph already has knowledge for) does LESS
+      work — and costs less — than a cold one, which is the compounding the
+      reachability ``compounding`` probe asserts end-to-end. With an
+      EMPTY/cold pack it does full work (n dispatch.calls × cost_per_step).
+      ``events_dir=None`` lets it fall back to the SAME process-default
+      event log the runner writes to, so its dispatch.call lands where the
+      measurement reads. ANT-DRL-04 still holds: the demo loop stays a
+      unit-CI-only mock and is never returned here.
+
+    Reading the env here (not at import) keeps the exa branch — and any
+    ``ExaClient`` it would build — out of the default path entirely.
+    """
+    mode = os.environ.get("ANTIEK_DRW_GATHER", "reuse").strip().lower()
+    if mode == "exa":
+        return make_exa_gather_loop(top_k=3)
+    if mode == "stub":
+        return make_contract_gather_stub(steps=2, cost_per_step=0.01)
     return make_reuse_consuming_loop(steps=3, cost_per_step=0.01, emit_note=True)
 
 
-def _command(kind: str, payload: dict[str, Any] | None) -> Command:
+def _command(kind: str, payload: Optional[dict]) -> Command:
     try:
         return Command(kind=CommandKind(kind), payload=payload or {})
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400, detail=f"unknown steer command {kind!r}",
-        ) from exc
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"unknown steer command {kind!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -392,17 +418,17 @@ class CreatePlanRequest(BaseModel):
     # Optional manual decomposition — when given, the tree is built from these
     # focused sub-questions directly (no model call). When omitted, the
     # decomposer role runs.
-    sub_questions: list[str] | None = None
+    sub_questions: Optional[List[str]] = None
     max_depth: int = Field(default=3, ge=1, le=6)
 
 
 class TreeEditRequest(BaseModel):
     op: str  # add_child | remove | reword | set_budget | split
     target_local_id: str
-    question: str | None = None
-    budget_usd: float | None = None
-    max_depth: int | None = None
-    into: list[str] | None = None
+    question: Optional[str] = None
+    budget_usd: Optional[float] = None
+    max_depth: Optional[int] = None
+    into: Optional[List[str]] = None
 
 
 class ApproveRequest(BaseModel):
@@ -411,12 +437,12 @@ class ApproveRequest(BaseModel):
 
 class LaunchRequest(BaseModel):
     per_research_budget_usd: float = Field(default=0.50, gt=0)
-    aggregate_budget_usd: float | None = None
+    aggregate_budget_usd: Optional[float] = None
 
 
 class SteerRequest(BaseModel):
     kind: str  # pause | resume | stop | redirect | deepen
-    payload: dict[str, Any] | None = None
+    payload: Optional[dict] = None
 
 
 class SuggestionOut(BaseModel):
@@ -430,9 +456,9 @@ class SuggestionOut(BaseModel):
 
     key: str
     question: str
-    suggested_retrieval: str | None = None
+    suggested_retrieval: Optional[str] = None
     seen_in_research_count: int = 1
-    source_investigation_id: str | None = None
+    source_investigation_id: Optional[str] = None
 
 
 class SuggestionsResponse(BaseModel):
@@ -446,7 +472,7 @@ class SuggestionsResponse(BaseModel):
 
 
 @cascade_router.get("/budget-defaults")
-async def budget_defaults() -> dict[str, Any]:
+async def budget_defaults() -> dict:
     """The per-research spend ceiling the runner uses when the launch request
     omits one, plus the host-local concurrency cap. Both read straight off the
     contracts (``BudgetCap`` + ``host_local.DEFAULT_MAX_CONCURRENCY``) so the
@@ -502,24 +528,32 @@ async def suggestions(limit: int = 8) -> SuggestionsResponse:
 
 
 @cascade_router.post("/plans")
-async def create_plan(req: CreatePlanRequest) -> dict[str, Any]:
+async def create_plan(req: CreatePlanRequest) -> dict:
     """Decompose a problem into an editable, focus-checked sub-question tree
     and persist it. Returns the root node id + the editable tree."""
     if req.sub_questions:
-        manual = req.sub_questions
-
         class _Fixed:
-            def decompose(self, q: str, *, context: str = "") -> list[SubQuestion]:
-                return [SubQuestion(question=s) for s in manual]
-
+            def decompose(self, q, *, context=""):
+                return [SubQuestion(question=s) for s in req.sub_questions]
         report = build_plan(req.problem, decomposer=_Fixed(), max_depth=req.max_depth)
     else:
         try:
             report = _decompose(req.problem, req.max_depth)
         except Exception as exc:
+            c = classify_dispatch_failure(exc)
+            logger.warning(
+                "create_plan decompose failed: %s: %s",
+                type(exc).__name__,
+                exc,
+            )
+            # Status per docs/decisions/drw-plan-failure-contract.md §3.
             raise HTTPException(
-                status_code=502,
-                detail=f"decompose_failed: {type(exc).__name__}: {exc}",
+                status_code=c.status,
+                detail={
+                    "code": c.code,
+                    "message": c.message,
+                    "retryable": c.retryable,
+                },
             ) from exc
     tree = report.tree
     with _write("create_plan") as con:
@@ -531,7 +565,7 @@ async def create_plan(req: CreatePlanRequest) -> dict[str, Any]:
 
 
 @cascade_router.get("/plans/{root_id}")
-async def get_plan(root_id: str) -> dict[str, Any]:
+async def get_plan(root_id: str) -> dict:
     tree = load_tree(root_id, db_path=_db())
     if tree is None:
         raise HTTPException(status_code=404, detail=f"no plan {root_id!r}")
@@ -540,7 +574,7 @@ async def get_plan(root_id: str) -> dict[str, Any]:
 
 
 @cascade_router.post("/plans/{root_id}/edit")
-async def edit_plan(root_id: str, req: TreeEditRequest) -> dict[str, Any]:
+async def edit_plan(root_id: str, req: TreeEditRequest) -> dict:
     """Apply one edit to the tree and re-persist. Any edit re-opens the
     approval gate (SPR-05 contract)."""
     with _translate():
@@ -572,7 +606,7 @@ def _apply_edit(tree: PlanTree, req: TreeEditRequest) -> bool:
 
 
 @cascade_router.post("/plans/{root_id}/approve")
-async def approve(root_id: str, req: ApproveRequest) -> dict[str, Any]:
+async def approve(root_id: str, req: ApproveRequest) -> dict:
     with _write("approve_plan") as con:
         approval = approve_plan(root_id, approver=req.approver,
                                 investigation_id="__operator__", con=con)
@@ -586,9 +620,13 @@ async def approve(root_id: str, req: ApproveRequest) -> dict[str, Any]:
 
 
 @cascade_router.post("/plans/{root_id}/launch")
-async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
+async def launch(root_id: str, req: LaunchRequest) -> dict:
     """Launch an approved plan as N parallel researches. Refuses an
-    unapproved plan (SPR-05 gate). Returns the session id + the researches."""
+    unapproved plan (SPR-05 gate). Returns the session id + the researches.
+
+    Background completion runs gather (per leaf) then the Loop 1 synthesis
+    tail (phases 6–9 on ``session_id``) when a synthesis runner is wired —
+    see ``set_synthesis_tail_runner``."""
     with _translate():
         if not is_plan_launchable(root_id, db_path=_db()):
             raise PlanNotApproved(
@@ -636,9 +674,27 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
 
 
 async def _run_to_completion(session: CascadeSession) -> None:
+    """Drive a launched session to completion on the event loop.
+
+    Background completion is best-effort in the sense that it must NEVER crash
+    the loop — but a *silent* swallow of a synthesis-tail failure is exactly the
+    split-brain / silent-synthesis hazard the ANT-DRL programme guards against
+    (a session that failed to reach ``DeepResearchComplete`` would look fine and
+    the operator would never know). So we capture the failure, record it as the
+    session's ``synthesis_tail_error`` and emit a durable audit trail (a typed
+    event on the session trajectory + a structured log), then return — the task
+    stays non-fatal, the failure stays visible in trajectory/status."""
+    stage = "join_and_merge"
     try:
-        with suppress(Exception):  # best-effort: a merge failure is non-fatal
-            await session.join_and_merge()
+        await session.join_and_merge()
+        if _SYNTHESIS_TAIL_RUNNER is not None:
+            stage = "synthesis_tail"
+            pack = session.build_evidence_pack()
+            await _SYNTHESIS_TAIL_RUNNER(session, pack)
+    except Exception as exc:
+        # Capture, do not swallow: record WITH the failing stage (so a join/merge
+        # failure isn't mislabeled as a synthesis-tail one) + audit, stay non-fatal.
+        session.record_synthesis_tail_error(exc, stage=stage)
     finally:
         # ACV SPR-02 round-2 — on completion, CLOSE the retrieval substrate. This
         # is the disk-reclamation half of the leak fix: closing the substrate's
@@ -661,10 +717,11 @@ async def _run_to_completion(session: CascadeSession) -> None:
 
 
 @cascade_router.get("/sessions/{session_id}")
-async def session_status(session_id: str) -> dict[str, Any]:
+async def session_status(session_id: str) -> dict:
     live = _SESSIONS.get(session_id)
     if live is not None:
         cost = live.aggregate_cost()
+        terminal = live.terminal_status()
         return {
             "session_id": session_id, "live": True,
             "researches": [
@@ -673,6 +730,11 @@ async def session_status(session_id: str) -> dict[str, Any]:
                 for s in live.status()
             ],
             "cost": cost,
+            # DRW parent-terminal observability (SPR-DRL-09 M3): surface whether
+            # the session reached DeepResearchComplete and any captured
+            # synthesis-tail failure, so a silent terminal failure cannot hide.
+            "deep_research_complete": terminal["deep_research_complete"],
+            "synthesis_tail_error": terminal["synthesis_tail_error"],
         }
     # Recovery from the event log (durability — session evicted / restart).
     rec = reconstruct_session(session_id)
@@ -686,11 +748,17 @@ async def session_status(session_id: str) -> dict[str, Any]:
             for r in rec.researches
         ],
         "all_terminal": rec.all_terminal,
+        # Recovered path: surface only what the event log honestly proves. We do
+        # not recompute DeepResearchComplete here (its phase postconditions read
+        # research artifacts the recovered view does not load) — null means
+        # "not reconstructable from membership alone", not "false".
+        "deep_research_complete": None,
+        "synthesis_tail_error": rec.synthesis_tail_error,
     }
 
 
 @cascade_router.get("/sessions/{session_id}/cost")
-async def session_cost(session_id: str) -> dict[str, Any]:
+async def session_cost(session_id: str) -> dict:
     live = _SESSIONS.get(session_id)
     if live is None:
         raise HTTPException(status_code=404, detail=f"session {session_id!r} not live")
@@ -698,7 +766,7 @@ async def session_cost(session_id: str) -> dict[str, Any]:
 
 
 @cascade_router.post("/sessions/{session_id}/researches/{investigation_id}/steer")
-async def steer(session_id: str, investigation_id: str, req: SteerRequest) -> dict[str, Any]:
+async def steer(session_id: str, investigation_id: str, req: SteerRequest) -> dict:
     live = _SESSIONS.get(session_id)
     if live is None:
         raise HTTPException(status_code=404, detail=f"session {session_id!r} not live")
@@ -716,7 +784,7 @@ async def session_stream(session_id: str) -> StreamingResponse:
     clients dedup on (investigation_id, seq)."""
     live = _SESSIONS.get(session_id)
 
-    async def _live(sess: CascadeSession) -> AsyncIterator[str]:
+    async def _live() -> Any:
         # Poll-drain rather than consume ``session.stream()`` directly: the
         # drain + ``asyncio.sleep`` give the in-process research tasks loop
         # time (so the fan-out progresses while the client watches) and the
@@ -724,19 +792,19 @@ async def session_stream(session_id: str) -> StreamingResponse:
         # hangs waiting on a queue sentinel.
         idle_after_complete = 0
         while True:
-            for ev in sess.drain_nowait():
+            for ev in live.drain_nowait():
                 yield _sse({
                     "investigation_id": ev.investigation_id, "seq": ev.seq, "kind": ev.kind,
                     "text": ev.text, "cost_usd": ev.cost_usd, "tokens": ev.tokens,
                     "state": ev.state.value if ev.state else None, "data": ev.data,
                 })
-            if sess.is_complete():
+            if live.is_complete():
                 # Drain one more cycle to flush any final events, then close.
                 idle_after_complete += 1
                 if idle_after_complete >= 2:
                     break
             await asyncio.sleep(0.02)
-        for ev in sess.drain_nowait():
+        for ev in live.drain_nowait():
             yield _sse({
                 "investigation_id": ev.investigation_id, "seq": ev.seq, "kind": ev.kind,
                 "text": ev.text, "cost_usd": ev.cost_usd, "tokens": ev.tokens,
@@ -744,16 +812,16 @@ async def session_stream(session_id: str) -> StreamingResponse:
             })
         yield _sse({"kind": "session_done"})
 
-    async def _recovered() -> AsyncIterator[str]:
+    async def _recovered() -> Any:
         rec = reconstruct_session(session_id)
         for r in rec.researches:
             yield _sse({"investigation_id": r.investigation_id, "kind": "status",
                         "text": r.sub_question, "state": r.state})
         yield _sse({"kind": "session_done", "recovered": True})
 
-    gen = _live(live) if live is not None else _recovered()
+    gen = _live() if live is not None else _recovered()
     return StreamingResponse(gen, media_type="text/event-stream")
 
 
-def _sse(obj: dict[str, Any]) -> str:
+def _sse(obj: dict) -> str:
     return f"data: {json.dumps(obj, default=str)}\n\n"

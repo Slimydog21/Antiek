@@ -43,6 +43,7 @@ from .orchestrator import (
     InvestigationContext,
     make_loop_one_handler,
     register_handlers,
+    run_synthesis_tail_from_pack,
 )
 
 __all__ = [
@@ -57,4 +58,5 @@ __all__ = [
     "InvestigationContext",
     "make_loop_one_handler",
     "register_handlers",
+    "run_synthesis_tail_from_pack",
 ]

@@ -1,0 +1,45 @@
+id: drw_plan_masked_failure
+observed_at: 2026-06-17
+source: specs/drw-honest-failure/sprint-01-failure-contract.html
+agent: operator-manual
+phase: cascade_decompose
+failure_type: masked_failure_surface
+
+context_summary: |
+  DRW "break into sub-questions" failed but the UI always showed the same
+  no-provider guess. CascadeProposal discarded the backend error body and
+  called setFailed(""), forcing AIActionFailure's empty-reason branch for
+  every failure mode (backend down, unconfigured provider, upstream error,
+  timeout).
+
+input:
+  prompt: |
+    POST /research/plans with problem text and no sub_questions — auto-decompose
+    via DispatchDecomposer when provider registry is empty or dispatch fails.
+  env:
+    ANTIEK_DUCKDB_PATH: /tmp/antiek-test.duckdb
+
+expected_behavior: |
+  A failed POST /research/plans returns detail.code from the closed set
+  (provider_unconfigured, provider_upstream_error, timeout, unknown) with
+  a human-safe message and retryable flag. The DRW proposal UI parses the
+  envelope and renders the matching true sentence. No user-facing string
+  contains an internal exception type name.
+
+actual_failure: |
+  create_plan raised HTTP 502 with detail decompose_failed: TypeError: ...
+  CascadeProposal.tsx catch at lines 117-125 called setFailed("") and never
+  read response.json().detail. AIActionFailure showed "model provider isn't
+  configured" for all failures.
+
+harness_check_that_now_catches: |
+  tests/integration/test_decompose_failure_e2e.py drives the live
+  create_plan → dispatch path and asserts detail.code per failure mode;
+  tests/interfaces/test_cascade_plan_failure.py covers route wiring.
+
+fix_commit: 3b166798
+
+notes: |
+  Mitigation: docs/decisions/drw-plan-failure-contract.md,
+  classify_dispatch_failure + classifyClientError + CascadeProposal catch.
+  State D upstream smoke may be integration-only when not cheaply reproducible.

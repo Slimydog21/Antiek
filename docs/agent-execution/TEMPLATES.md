@@ -234,3 +234,16 @@ For a short chat close, paste in order: **Env Card → Failure Dossier (if debug
 | 8 | `### Open questions` | E |
 
 Failure Dossier and Scope Map add additional `###` blocks for investigations; the handoff packet alone satisfies the sprint minimum.
+
+---
+
+## Research artifact handoff (ANT-AHT)
+
+After DRW or long agent session, attach exported HTML path:
+
+```markdown
+### Research artifact
+- Export: `python -m substrate.research_artifact <investigation_id>`
+- Path: `~/.antiek/research-artifacts/<investigation_id>.html`
+- Transport doc: `docs/agent-execution/RESEARCH_ARTIFACT_TRANSPORT.md`
+```

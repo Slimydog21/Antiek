@@ -16,6 +16,18 @@
 | P-08 | Reading substrate pytest | `.github/workflows/ci.yml` `pytest` job | CI on `main` (full suite) | — | Local hardware parity |
 | P-09 | Werner mascot / hop | `apps/reading` Werner paths per Werner htmlspec | `canonical_verify.sh agent-gates` + case study §5 | Werner operator card (htmlspec) | Measured p95 / fps without artifact |
 | P-10 | Serve / rights / legal | production deploy surfaces | **No** informational CI job alone (F7) | operator deploy checklist | Jurisdiction-specific legal review |
+| P-11 | Loop 1 E2E (DeepResearchComplete) | `orchestration/loop_one/orchestrator.py` | `pytest tests/test_loop_one_orchestrator.py::test_loop_one_happy_path_emits_completed -q` | — | Live LLM on all 5 roles |
+| P-12 | DeepResearchComplete negative | `orchestration/invariants/deep_research_complete.py` | `pytest tests/test_deep_research_complete.py::test_drw_only_trajectory_fails_without_synthesis -q` | — | Production DRW with Exa adapter |
+| P-13 | Cascade session reconstruct | `orchestration/cascade_session.py` | `pytest tests/test_cascade_session.py -q` | — | SSE transport reconnect E2E |
+| P-14 | PromotionFunnel serialize | `runtime/research_runner/promotion_funnel.py` | `pytest tests/test_research_runner.py::test_promotion_funnel_serialized_no_lock_timeout -q` | — | Remote-exec fan-out under load |
+| P-15 | knowledge.reused flywheel | `runtime/research_runner/host_local.py` start path | `pytest tests/test_flywheel_reuse.py::test_two_run_contract_gather_emits_knowledge_reused_on_second_start -q` | — | Live dispatch cost delta > 0 on reuse-consuming loop |
+| P-16 | Exa gather mock E2E | `runtime/research_runner/host_local.py make_exa_gather_loop` | `pytest tests/test_exa_gather_loop.py -q` | — | Live EXA_API_KEY discover→ingest cost |
+| P-17 | Parent-terminal observability | `interfaces/research/api/cascade_routes.py _run_to_completion + session_status` | `pytest tests/test_drw_parent_terminal.py -q` | `docs/decisions/deep-research-smoke-checklist.md` | Real session-parent DeepResearchComplete on smoke DRW #1 |
+| P-18 | ResearchArtifact HTML transport | `substrate/research_artifact/` + `ArtifactOutlineShelf` (DistillView) | `./scripts/canonical_verify.sh html-transport` | — | Full Write canvas tab-complete; book/EPUB reader HTML ingest |
+
+**Profile:** `./scripts/canonical_verify.sh deep-research` runs P-11..P-17 hermetic gates (ANT-DRL SPR-DRL-02, SPR-DRL-08, SPR-DRL-09).
+
+**Profile:** `./scripts/canonical_verify.sh html-transport` runs P-18 (ANT-AHT SPR-AHT-01..06).
 
 ## How to use
 

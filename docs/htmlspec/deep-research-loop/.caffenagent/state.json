@@ -1,0 +1,135 @@
+{
+  "spec_dir": "/Users/slimydog/Desktop/Antiek/docs/htmlspec/deep-research-loop",
+  "index_path": "/Users/slimydog/Desktop/Antiek/docs/htmlspec/deep-research-loop/index.html",
+  "target_branch": "main",
+  "run_mode": {
+    "autonomy": "full",
+    "wave_parallel": false,
+    "single_sprint": null,
+    "operator_deferrals": ["SPR-DRL-08: Exa/parallel web APIs out of scope per operator 2026-06-12"]
+  },
+  "capability_mapping": {
+    "builders": "orchestrator-inline",
+    "critic": "orchestrator-audit",
+    "gates": "Shell"
+  },
+  "sprints": {
+    "SPR-DRL-01": {
+      "status": "done",
+      "round": 1,
+      "worktree_path": null,
+      "branch": null,
+      "file_split": ["inline — pre-shipped"],
+      "gate_results": [
+        {"round": 1, "name": "Invariant tests", "cmd": "./.venv/bin/python -m pytest tests/test_deep_research_complete.py -q", "exitCode": 0, "tail": "all passed"}
+      ],
+      "critic_rung": 1,
+      "merge_sha": null,
+      "deferred_nits": [],
+      "honesty_events": ["Pre-existing implementation verified on resume; no worktree round"]
+    },
+    "SPR-DRL-02": {
+      "status": "done",
+      "round": 1,
+      "worktree_path": null,
+      "branch": null,
+      "file_split": ["inline — pre-shipped"],
+      "gate_results": [
+        {"round": 1, "name": "deep-research profile", "cmd": "./scripts/canonical_verify.sh deep-research", "exitCode": 0, "tail": "CANONICAL_VERIFY_OK: deep-research"}
+      ],
+      "critic_rung": 1,
+      "merge_sha": null,
+      "deferred_nits": [],
+      "honesty_events": ["Pre-existing implementation verified on resume"]
+    },
+    "SPR-DRL-03": {
+      "status": "done",
+      "round": 1,
+      "worktree_path": null,
+      "branch": null,
+      "file_split": ["inline — pre-shipped"],
+      "gate_results": [
+        {"round": 1, "name": "Phase 2 parallel", "cmd": "./.venv/bin/python -m pytest tests/test_loop_one_phase2_parallel.py -q", "exitCode": 0, "tail": "passed"}
+      ],
+      "critic_rung": 1,
+      "merge_sha": null,
+      "deferred_nits": [],
+      "honesty_events": ["Pre-existing implementation verified on resume"]
+    },
+    "SPR-DRL-04": {
+      "status": "done",
+      "round": 2,
+      "worktree_path": null,
+      "branch": null,
+      "file_split": ["inline — pre-shipped + sharpen"],
+      "gate_results": [
+        {"round": 2, "name": "cascade profile", "cmd": "./scripts/canonical_verify.sh cascade", "exitCode": 0, "tail": "CANONICAL_VERIFY_OK: cascade"},
+        {"round": 2, "name": "cost test fix", "cmd": "./.venv/bin/python -m pytest tests/test_cascade_api.py::test_launch_watch_and_cost -q", "exitCode": 0, "tail": "passed"}
+      ],
+      "critic_rung": 1,
+      "merge_sha": null,
+      "deferred_nits": [],
+      "honesty_events": ["Sharpen: test_launch_watch_and_cost updated for stub steps=2"]
+    },
+    "SPR-DRL-05": {
+      "status": "done",
+      "round": 1,
+      "worktree_path": null,
+      "branch": null,
+      "file_split": ["inline — pre-shipped"],
+      "gate_results": [
+        {"round": 1, "name": "Pack tests", "cmd": "./.venv/bin/python -m pytest tests/test_session_evidence_pack.py -q", "exitCode": 0, "tail": "passed"}
+      ],
+      "critic_rung": 1,
+      "merge_sha": null,
+      "deferred_nits": [],
+      "honesty_events": ["Pre-existing implementation verified on resume"]
+    },
+    "SPR-DRL-06": {
+      "status": "done",
+      "round": 1,
+      "worktree_path": null,
+      "branch": null,
+      "file_split": ["inline — pre-shipped"],
+      "gate_results": [
+        {"round": 1, "name": "Convergence E2E", "cmd": "./.venv/bin/python -m pytest tests/test_cascade_convergence.py -q", "exitCode": 0, "tail": "passed"}
+      ],
+      "critic_rung": 1,
+      "merge_sha": null,
+      "deferred_nits": [],
+      "honesty_events": ["Pre-existing implementation verified on resume"]
+    },
+    "SPR-DRL-07": {
+      "status": "done",
+      "round": 1,
+      "worktree_path": null,
+      "branch": null,
+      "file_split": ["inline — pre-shipped"],
+      "gate_results": [
+        {"round": 1, "name": "Flywheel reuse", "cmd": "./.venv/bin/python -m pytest tests/test_flywheel_reuse.py -q", "exitCode": 0, "tail": "passed"},
+        {"round": 1, "name": "deep-research profile", "cmd": "./scripts/canonical_verify.sh deep-research", "exitCode": 0, "tail": "CANONICAL_VERIFY_OK: deep-research"}
+      ],
+      "critic_rung": 1,
+      "merge_sha": null,
+      "deferred_nits": [],
+      "honesty_events": ["Pre-existing implementation verified on resume"]
+    },
+    "SPR-DRL-08": {
+      "status": "BLOCKED",
+      "round": 0,
+      "worktree_path": null,
+      "branch": null,
+      "file_split": [],
+      "gate_results": [],
+      "critic_rung": 0,
+      "merge_sha": null,
+      "deferred_nits": [],
+      "honesty_events": ["Operator scope: Exa/parallel web APIs explicitly deferred — substrate/engine/harness wave complete without gather adapter"]
+    }
+  },
+  "global_honesty_events": [
+    "2026-06-12: Operator instructed ignore Exa/parallel web API set; SPR-DRL-08 BLOCKED not skipped",
+    "2026-06-12: Waves 1-5 verified on working tree (uncommitted); sharpen fixed cascade cost assertion"
+  ],
+  "last_updated": "2026-06-12T00:00:00Z"
+}
