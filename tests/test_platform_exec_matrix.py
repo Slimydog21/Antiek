@@ -58,3 +58,15 @@ def test_platform_matrix_row_ids_are_contiguous() -> None:
     row_numbers = [int(n) for n in re.findall(r"^\| P-(\d{2}) \|", text, re.MULTILINE)]
 
     assert row_numbers == list(range(1, len(row_numbers) + 1))
+
+
+def test_unified_substrate_lock_row_names_invariant_registry_when_verified() -> None:
+    script = CANONICAL_VERIFY.read_text(encoding="utf-8")
+    matrix = MATRIX.read_text(encoding="utf-8")
+
+    if "tests/test_invariant_registry_meta.py" not in script:
+        return
+
+    row = re.search(r"^\| P-38 \|(?P<body>.*)\|$", matrix, re.MULTILINE)
+    assert row is not None
+    assert "substrate/invariants/" in row.group("body")
