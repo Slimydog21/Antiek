@@ -151,6 +151,8 @@ cmd_read_library() {
 cmd_read_reader() {
   echo "== read-reader: structured-block serve gate =="
   "${PY}" -m pytest tests/test_serve_structured_blocks.py tests/test_contracts_read_lock.py -q --tb=no
+  echo "== read-reader: activation dogfood closure guard =="
+  "${PY}" -m pytest tests/test_read_activation_dogfood.py -q --tb=no
   echo "== read-reader: book reader surface =="
   (cd apps/reading && npm run test -- \
     src/modes/Reading/Reading.test.tsx \
