@@ -30,8 +30,13 @@ def test_read_sprint_2_library_browse_is_live() -> None:
     assert lock.resolve_read_sprint(2).status == "live"
 
 
+def test_read_sprint_3_book_reader_is_live() -> None:
+    assert lock.resolve_read_sprint(3).slug == "book-reader"
+    assert lock.resolve_read_sprint(3).status == "live"
+
+
 def test_remaining_read_sprints_stay_planned_until_promoted() -> None:
-    assert {lock.resolve_read_sprint(n).status for n in range(3, 10)} == {"planned"}
+    assert {lock.resolve_read_sprint(n).status for n in range(4, 10)} == {"planned"}
 
 
 def test_roadmap_consumes_read_sprint_status_and_focus_advances() -> None:
@@ -40,10 +45,11 @@ def test_roadmap_consumes_read_sprint_status_and_focus_advances() -> None:
 
     assert by_id["read:1"].status.value == "live"
     assert by_id["read:2"].status.value == "live"
-    assert by_id["read:3"].status.value == "planned"
+    assert by_id["read:3"].status.value == "live"
+    assert by_id["read:4"].status.value == "planned"
     assert roadmap.execution_focus() is not None
-    assert roadmap.execution_focus().node_id == "read:3"
+    assert roadmap.execution_focus().node_id == "read:4"
 
 
 def test_read_lock_version_present() -> None:
-    assert isinstance(lock.READ_LOCK_VERSION, int) and lock.READ_LOCK_VERSION >= 2
+    assert isinstance(lock.READ_LOCK_VERSION, int) and lock.READ_LOCK_VERSION >= 3
