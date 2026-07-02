@@ -336,7 +336,7 @@ describe("books api — talk-to-book boundary", () => {
     );
 
     await askBook("doc-1", "what about that?", {
-      history: [{ question: "first question", answer: "first answer" }],
+      history: [{ question: " first question ", answer: " first answer " }],
       researchTier: "fast",
     });
 
@@ -344,6 +344,27 @@ describe("books api — talk-to-book boundary", () => {
       question: "what about that?",
       history: [{ question: "first question", answer: "first answer" }],
       research_tier: "fast",
+    });
+  });
+
+  it("drops malformed talk-to-book history and defaults unknown tiers to deep", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(askBookResponse()), { status: 200 }),
+    );
+
+    await askBook("doc-1", "what about that?", {
+      history: [
+        { question: " ", answer: "missing question" },
+        { question: "missing answer", answer: " " },
+        { question: "usable question", answer: "usable answer" },
+      ],
+      researchTier: "medium" as never,
+    });
+
+    expect(postedJsonBody()).toEqual({
+      question: "what about that?",
+      history: [{ question: "usable question", answer: "usable answer" }],
+      research_tier: "deep",
     });
   });
 
