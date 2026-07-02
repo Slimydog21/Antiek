@@ -173,9 +173,10 @@ export class FrameTelemetryEmitter {
     const batch: WindowFrameBatch = {
       window_id: this.windowId,
       seconds,
-      // SPR-10 prices the second; until then the emitter sends 0 (honest — no
-      // fabricated value). The backend treats 0 as "unpriced this window".
-      ad_value_usd_cents: 0,
+      // AFA-S1 (frame-telemetry-v2): the emitter sends NO value. The client
+      // measures attention; the SERVER prices the window at accrual time. A
+      // value the client can set is a value the client can forge — so the
+      // field is gone from the wire shape, not merely set to 0.
       schema_version: FRAME_TELEMETRY_SCHEMA_VERSION,
     };
     const body = JSON.stringify(batch);
