@@ -735,17 +735,51 @@ function safePersonalAsset(value: unknown): PersonalAsset | null {
   if (!asset) return null;
   const assetId = nonEmptyString(asset.asset_id);
   const title = nonEmptyString(asset.title);
-  const openRoute = nonEmptyString(asset.open_route);
+  const kind = asset.kind === "saved_read" ? "saved_read" : "meta_reading";
+  const documentIds = safeStringArray(asset.document_ids);
+  const openRoute = canonicalPersonalOpenRoute(
+    kind,
+    nonEmptyString(asset.open_route),
+    documentIds,
+  );
   if (!assetId || !title || !openRoute) return null;
   return {
     asset_id: assetId,
-    kind: asset.kind === "saved_read" ? "saved_read" : "meta_reading",
+    kind,
     title,
     prompt: nullableString(asset.prompt),
-    document_ids: safeStringArray(asset.document_ids),
+    document_ids: documentIds,
     emitted_at: nullableString(asset.emitted_at),
     open_route: openRoute,
   };
+}
+
+function canonicalPersonalOpenRoute(
+  kind: PersonalAsset["kind"],
+  openRoute: string | null,
+  documentIds: string[],
+): string | null {
+  if (kind === "saved_read") {
+    const documentId = documentIds[0];
+    if (documentId) return `/read/${encodeURIComponent(documentId)}`;
+    const match = openRoute?.match(/^\/read\/([^/?#]+)(?:[?#].*)?$/);
+    if (!match || match[1] === "meta-reading" || match[1] === "meta") return null;
+    try {
+      return `/read/${encodeURIComponent(decodeURIComponent(match[1]))}`;
+    } catch {
+      return null;
+    }
+  }
+
+  if (!openRoute) return null;
+  if (openRoute === "/read/meta-reading" || openRoute.startsWith("/read/meta-reading/")) {
+    return openRoute;
+  }
+  if (openRoute === "/read/meta" || openRoute.startsWith("/read/meta/")) {
+    return openRoute.replace(/^\/read\/meta/, "/read/meta-reading");
+  }
+  if (openRoute.startsWith("/write/")) return openRoute;
+  return null;
 }
 
 function safePersonalSpaceResponse(value: unknown): PersonalSpaceResponse {
