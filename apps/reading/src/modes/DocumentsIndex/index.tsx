@@ -127,9 +127,12 @@ function safeDocumentRow(value: unknown): DocumentRow | null {
 function safeDocumentRows(value: unknown): DocumentRow[] {
   const body = record(value);
   const rows = Array.isArray(body?.documents) ? body.documents : [];
+  const seen = new Set<string>();
   return rows.flatMap((item) => {
     const row = safeDocumentRow(item);
-    return row ? [row] : [];
+    if (!row || seen.has(row.document_id)) return [];
+    seen.add(row.document_id);
+    return [row];
   });
 }
 
