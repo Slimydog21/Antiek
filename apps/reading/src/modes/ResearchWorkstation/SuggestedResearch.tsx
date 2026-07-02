@@ -7,6 +7,7 @@ import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
 import AIActionFailure from "../../shared/AIActionFailure";
 import LemonButton from "../../components/lemon/LemonButton";
 import { LemonTag } from "../../components/lemon/LemonTag";
+import { requireInvestigationId } from "./investigationData";
 
 /**
  * SuggestedResearch — the §7 compounding flywheel, surfaced (SPR-09).
@@ -250,12 +251,14 @@ function SuggestionCard({
           ? { parent_investigation_id: suggestion.source_investigation_id }
           : {}),
       });
+      const childId = requireInvestigationId(resp.investigation_id);
       if (suggestion.source_investigation_id) {
-        recordSpawnRelationship(resp.investigation_id, suggestion.source_investigation_id);
+        recordSpawnRelationship(childId, suggestion.source_investigation_id);
       }
-      onLaunched(resp.investigation_id);
+      onLaunched(childId);
     } catch (e) {
-      const reason = e instanceof ApiError ? e.body || null : null;
+      const reason =
+        e instanceof ApiError ? e.body || null : e instanceof Error ? e.message : String(e);
       setError({ reason });
     } finally {
       setBusy(false);

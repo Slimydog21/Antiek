@@ -7,6 +7,7 @@ import { useInvestigation } from "../../hooks/useInvestigation";
 import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
 import { startInvestigation } from "../../lib/api";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { requireInvestigationId } from "./investigationData";
 import ThinkingStream from "./ThinkingStream";
 
 /**
@@ -60,8 +61,9 @@ export default function ChaseSlideOver({ spawnContext, parentInvestigationId }: 
         parent_investigation_id: parentInvestigationId,
         spawn_context: spawnContext,
       });
-      setSpawnedId(resp.investigation_id);
-      recordSpawnRelationship(resp.investigation_id, parentInvestigationId);
+      const childId = requireInvestigationId(resp.investigation_id);
+      setSpawnedId(childId);
+      recordSpawnRelationship(childId, parentInvestigationId);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

@@ -73,7 +73,7 @@ function renderPanel(props: {
 describe("ChaseSlideOver — floating chase panel contract", () => {
   it("does not launch on mount, then spawns a child with the refined question and original passage context", async () => {
     startInvestigationMock.mockResolvedValue({
-      investigation_id: "inv-child",
+      investigation_id: " inv-child ",
       status: "in_progress",
       start_event_id: "e1",
     });
@@ -101,5 +101,24 @@ describe("ChaseSlideOver — floating chase panel contract", () => {
     });
     expect(recordSpawnMock).toHaveBeenCalledWith("inv-child", "inv-parent");
     expect(await screen.findByText("inv-child")).toBeTruthy();
+  });
+
+  it("surfaces malformed child investigation ids instead of recording a spawn", async () => {
+    startInvestigationMock.mockResolvedValue({
+      investigation_id: " ",
+      status: "in_progress",
+      start_event_id: "e1",
+    });
+
+    renderPanel({
+      spawnContext: "the original highlighted passage",
+      parentInvestigationId: "inv-parent",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Spawn investigation/i }));
+
+    expect(await screen.findByText(/investigation_id must be a non-empty string/i)).toBeTruthy();
+    expect(recordSpawnMock).not.toHaveBeenCalled();
+    expect(screen.queryByText("open in main view →")).toBeNull();
   });
 });
