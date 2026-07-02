@@ -39,9 +39,7 @@ interface ClaimCardProps {
   /** Optional derived grounding result for this claim. Renders below
    *  the claim text when set. */
   grounding?: GroundingStatus;
-  /** Called when the operator clicks the "↪ region" affordance on a
-   *  passed status. Future hookup: scroll the PdfViewer to the
-   *  located region. */
+  /** Called when the operator clicks a source-region affordance. */
   onLocateRegion?: (regionId: string) => void;
 }
 
@@ -100,13 +98,25 @@ export default function ClaimCard({
       {claim.attribution_region_ids.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {claim.attribution_region_ids.map((rid) => (
-            <span
-              key={rid}
-              className="text-[10px] font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded"
-              title={rid}
-            >
-              ↳ {shortenRegionId(rid)}
-            </span>
+            onLocateRegion ? (
+              <button
+                key={rid}
+                type="button"
+                onClick={() => onLocateRegion(rid)}
+                className="text-[10px] font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 hover:bg-sun/15 dark:hover:bg-sun/10 px-1.5 py-0.5 rounded transition-colors"
+                title={`open attribution region ${rid} in viewer`}
+              >
+                ↳ {shortenRegionId(rid)}
+              </button>
+            ) : (
+              <span
+                key={rid}
+                className="text-[10px] font-mono text-shadow-1 dark:text-moonlight bg-ice-3 dark:bg-charcoal-1 px-1.5 py-0.5 rounded"
+                title={rid}
+              >
+                ↳ {shortenRegionId(rid)}
+              </span>
+            )
           ))}
         </div>
       )}
@@ -173,7 +183,7 @@ export default function ClaimCard({
  * Renders the grounder's verdict inline on the claim card.
  *
  * - Passed → green ✓ with the located region as a clickable chip
- *   that calls ``onLocateRegion`` (future: PdfViewer scroll-to).
+ *   that calls ``onLocateRegion``.
  * - Failed → amber/red ⚠ with the failure reason + searched-region
  *   count for transparency.
  * - Pending → neutral spinner until the verdict event arrives.
