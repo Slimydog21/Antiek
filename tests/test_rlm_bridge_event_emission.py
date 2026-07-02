@@ -155,3 +155,30 @@ def test_above_threshold_escalation_when_ratified(isolated_db, monkeypatch):
     assert p.escalated is True
     assert p.session_id is not None
     assert p.session_id.startswith("rlm-")
+
+
+# ---------------------------------------------------------------------------
+# to_typed_payload annotation introspection — regression for the noqa-F821
+# defect class (same mechanics as the corpus_audit fix in PR #97): the
+# ``RLMBridgeDecidedPayload`` return annotation referenced a name that was
+# imported only inside the method body, so the annotation was an
+# unresolvable string under ``typing.get_type_hints`` (NameError), and the
+# ``# noqa: F821`` hid the class ruff exists to catch. The import is now
+# module-level (no cycle: substrate.schemas imports nothing from
+# orchestration — verified 2026-07-02). Remove the module-level import and
+# this test fails with the exact original NameError.
+# ---------------------------------------------------------------------------
+
+
+def test_to_typed_payload_annotation_is_resolvable():
+    """``get_type_hints`` must resolve the return annotation to
+    ``RLMBridgeDecidedPayload`` — introspection tooling (docs generation,
+    serializer wiring, FastAPI-style hint evaluation) would otherwise
+    crash on this method despite it being call-safe."""
+    import typing
+
+    from orchestration.rlm import bridge
+    from substrate.schemas.events import RLMBridgeDecidedPayload
+
+    hints = typing.get_type_hints(bridge.RLMBridgeDecision.to_typed_payload)
+    assert hints.get("return") is RLMBridgeDecidedPayload

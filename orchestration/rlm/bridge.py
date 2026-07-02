@@ -35,6 +35,7 @@ from orchestration.rlm.session import (
     RLMRatificationRequired,
     create_session,
 )
+from substrate.schemas.events import RLMBridgeDecidedPayload
 
 RLM_BYTES_PER_TOKEN_ESTIMATE: int = 4
 """Rough char-to-token ratio used at document-load time when we have
@@ -58,7 +59,7 @@ class RLMBridgeDecision:
     session_id: str | None
     reason: str
 
-    def to_typed_payload(self) -> RLMBridgeDecidedPayload:  # noqa: F821
+    def to_typed_payload(self) -> RLMBridgeDecidedPayload:
         """Materialize this decision as the canonical typed event
         payload for the trajectory. Callers wired into the event
         broadcaster use this to land an ``rlm.bridge.decided`` row.
@@ -68,8 +69,6 @@ class RLMBridgeDecision:
         reason (which currently includes the cost cap suffix) is
         normalized to the literal here.
         """
-        from substrate.schemas.events import RLMBridgeDecidedPayload
-
         if self.reason.startswith("escalated_to_rlm"):
             reason: str = "escalated_to_rlm"
         else:
