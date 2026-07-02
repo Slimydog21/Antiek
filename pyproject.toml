@@ -101,7 +101,7 @@ remote_exec = [
 # install hint rather than crashing on import. xhtml2pdf is pure-Python
 # (pulls reportlab); ebooklib is small.
 export = [
-  "xhtml2pdf>=0.2.13",
+  "xhtml2pdf>=0.2.17",  # CVE-2024-25885 DoS: 0.2.17 first clean release (<=0.2.16 affected)
   "ebooklib>=0.18",
 ]
 
