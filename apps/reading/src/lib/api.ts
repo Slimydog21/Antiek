@@ -1180,6 +1180,10 @@ function safeStringList(value: unknown): string[] {
   });
 }
 
+function uniqueStringList(value: unknown): string[] {
+  return Array.from(new Set(safeStringList(value)));
+}
+
 function safeProseProvenance(value: unknown): Record<string, string[]> | null {
   const provenance = record(value);
   if (!provenance) return null;
@@ -2136,7 +2140,7 @@ function safeDisbursementGate(value: unknown): DisbursementGate {
   const gate = record(value);
   return {
     disbursable: gate?.disbursable === true,
-    open_gate_ids: safeStringList(gate?.open_gate_ids),
+    open_gate_ids: uniqueStringList(gate?.open_gate_ids),
     holder_claimed: gate?.holder_claimed === true,
     fully_unlocked: gate?.fully_unlocked === true,
     label: nonEmptyString(gate?.label) ?? "gated",
@@ -2188,7 +2192,7 @@ function safeConsentViewResponse(value: unknown): ConsentViewResponse {
   return {
     holders,
     escrow_report: safeEscrowReport(body?.escrow_report),
-    disbursement_gates_open: safeStringList(body?.disbursement_gates_open),
+    disbursement_gates_open: uniqueStringList(body?.disbursement_gates_open),
     total_escrow_accruing_usd: nonEmptyString(body?.total_escrow_accruing_usd) ?? "0",
     any_disbursable: body?.any_disbursable === true,
     gate_source_path: nonEmptyString(body?.gate_source_path) ?? "",
