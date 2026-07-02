@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import LemonTable from "../../components/lemon/LemonTable";
@@ -79,8 +79,10 @@ export default function OutcomesIndex() {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [observerFilter, setObserverFilter] = useState<string>("");
+  const loadSeq = useRef(0);
 
   const reload = useCallback(async () => {
+    const seq = ++loadSeq.current;
     setLoading(true);
     setError(null);
     try {
@@ -93,11 +95,18 @@ export default function OutcomesIndex() {
       if (!resp.ok) {
         throw new Error(`Could not load review history (HTTP ${resp.status}).`);
       }
-      setRows(safeOutcomeRows(await resp.json()));
+      const nextRows = safeOutcomeRows(await resp.json());
+      if (loadSeq.current === seq) {
+        setRows(nextRows);
+      }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (loadSeq.current === seq) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
-      setLoading(false);
+      if (loadSeq.current === seq) {
+        setLoading(false);
+      }
     }
   }, [observerFilter]);
 
