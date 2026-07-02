@@ -20,7 +20,8 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
-    sessionId: "interview-storybook-demo",
+    buildUploadUrl: (duration) =>
+      `/speak/invite/storybook-token/voice?question_id=storybook-question&duration_seconds=${duration}`,
     onUploaded: (clipId) => alert(`uploaded: ${clipId}`),
   },
 };

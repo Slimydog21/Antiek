@@ -425,7 +425,6 @@ function PhoneVoiceCapture({
         Tap to talk — say it however it comes out.
       </p>
       <InterviewVoiceCapture
-        sessionId={questionId}
         buildUploadUrl={(duration) =>
           `/speak/invite/${encodeURIComponent(token)}/voice` +
           `?question_id=${encodeURIComponent(questionId)}&duration_seconds=${duration}`

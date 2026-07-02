@@ -5058,43 +5058,6 @@ def create_app(
             text=result.text,
         )
 
-    # ── Sprint 17 voice upload endpoint (§11.5) ──
-    class VoiceSessionUploadResponse(BaseModel):
-        session_id: str
-        bytes_received: int
-        duration_seconds: int
-        audio_url: str | None
-
-    @app.post(
-        "/voice/sessions/{session_id}/upload",
-        response_model=VoiceSessionUploadResponse,
-    )
-    async def post_voice_session_upload(
-        session_id: str,
-        request: Request,
-        duration_seconds: int = Query(default=0, ge=0),
-    ) -> VoiceSessionUploadResponse:
-        """Accept a WebRTC-captured audio blob as the raw request body.
-
-        Browser-side ``InterviewVoiceCapture`` POSTs the recorded Blob
-        with ``Content-Type: audio/webm`` (or similar) directly — no
-        multipart. The duration rides on the ``?duration_seconds=``
-        query param. This deliberately avoids the python-multipart
-        dependency for a single-field upload.
-
-        Sprint 17 scaffold: bytes are NOT persisted yet — master-spec
-        §11.5 keeps transcripts, not raw audio, behind a Whisper
-        transcription tier that lands later. The endpoint records the
-        byte count + duration so the UI state machine can advance
-        and the orchestrator can attach a stable identifier."""
-        data = await request.body()
-        return VoiceSessionUploadResponse(
-            session_id=session_id,
-            bytes_received=len(data),
-            duration_seconds=duration_seconds,
-            audio_url=f"/voice/sessions/{session_id}/audio",
-        )
-
     # ── Sprint 22 multi-user auth-probe endpoint ──
     class AuthProbeResponse(BaseModel):
         user_id: str

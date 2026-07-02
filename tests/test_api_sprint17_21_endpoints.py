@@ -2,8 +2,6 @@
 
 Covers:
   - POST /thought-partner — AISidecar one-shot reply surface
-  - POST /voice/sessions/{id}/upload — InterviewVoiceCapture raw-body
-    upload contract
   - POST /cross-graph/citations — typed event emission verification
   - POST /quality-gate/evaluate — conditional typed event emission
 """
@@ -85,38 +83,6 @@ def test_thought_partner_rejects_empty_prompt():
     client = _client()
     resp = client.post("/thought-partner", json={"prompt": "   "})
     assert resp.status_code == 400
-
-
-# ── Voice upload ────────────────────────────────────────────────────
-
-
-def test_voice_upload_accepts_raw_body():
-    client = _client()
-    audio_bytes = b"\x00" * 1024  # 1 KiB of silence — content doesn't matter
-    resp = client.post(
-        "/voice/sessions/session-xyz/upload?duration_seconds=12",
-        content=audio_bytes,
-        headers={"Content-Type": "audio/webm"},
-    )
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["session_id"] == "session-xyz"
-    assert body["bytes_received"] == 1024
-    assert body["duration_seconds"] == 12
-    assert body["audio_url"] == "/voice/sessions/session-xyz/audio"
-
-
-def test_voice_upload_defaults_duration_to_zero():
-    client = _client()
-    resp = client.post(
-        "/voice/sessions/s1/upload",
-        content=b"abc",
-        headers={"Content-Type": "audio/webm"},
-    )
-    assert resp.status_code == 200
-    body = resp.json()
-    assert body["duration_seconds"] == 0
-    assert body["bytes_received"] == 3
 
 
 # ── Typed event emission verification ──────────────────────────────
