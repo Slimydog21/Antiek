@@ -5,6 +5,7 @@ import {
   appendNotebookBlock,
   getNotebook,
   getTrajectory,
+  launchParkedQuestion,
   listInvestigations,
   listWatchForLater,
   reorderBlock,
@@ -48,6 +49,143 @@ describe("api client numeric request bounds", () => {
     ).rejects.toThrow(/new_block_index/);
 
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("api client investigation and watch-list response boundaries", () => {
+  it("sanitizes investigation list rows before sidebar consumers render them", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          count: "not-a-number",
+          investigations: [
+            {
+              investigation_id: " inv-1 ",
+              question: "  What happened?  ",
+              status: "completed",
+              started_at: " 2026-07-01T00:00:00Z ",
+              completed_at: " ",
+              cost_usd_total: "1.25",
+              parent_investigation_id: " parent-1 ",
+              spawned_by_daemon: true,
+            },
+            {
+              investigation_id: "inv-2",
+              question: " ",
+              status: "mystery",
+              cost_usd_total: -1,
+            },
+            {
+              investigation_id: " ",
+              question: "skip me",
+              status: "completed",
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(listInvestigations()).resolves.toEqual({
+      count: 2,
+      investigations: [
+        {
+          investigation_id: "inv-1",
+          question: "What happened?",
+          status: "completed",
+          started_at: "2026-07-01T00:00:00Z",
+          completed_at: null,
+          cost_usd_total: 1.25,
+          parent_investigation_id: "parent-1",
+          spawned_by_daemon: true,
+        },
+        {
+          investigation_id: "inv-2",
+          question: null,
+          status: "failed",
+          started_at: null,
+          completed_at: null,
+          cost_usd_total: 0,
+          parent_investigation_id: null,
+        },
+      ],
+    });
+  });
+
+  it("sanitizes watch-for-later rows and supports the legacy parked key", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          parked: [
+            {
+              question_id: " q-1 ",
+              question_text: "  Chase this  ",
+              source_investigation_id: " inv-1 ",
+              source_document_id: " ",
+              anchor_region_id: " region-1 ",
+              parked_at: " 2026-07-01T00:00:00Z ",
+              parent_event_id: null,
+            },
+            {
+              question_id: "q-bad",
+              question_text: " ",
+              source_investigation_id: "inv-1",
+              parked_at: "2026-07-01T00:00:00Z",
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(listWatchForLater()).resolves.toEqual({
+      count: 1,
+      questions: [
+        {
+          question_id: "q-1",
+          question_text: "Chase this",
+          source_investigation_id: "inv-1",
+          source_document_id: null,
+          anchor_region_id: "region-1",
+          parked_at: "2026-07-01T00:00:00Z",
+          parent_event_id: null,
+        },
+      ],
+    });
+  });
+
+  it("rejects parked-question launch responses without usable handles", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          investigation_id: " inv-new ",
+          status: " ",
+          start_event_id: " evt-start ",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(launchParkedQuestion("q-1")).resolves.toEqual({
+      investigation_id: "inv-new",
+      status: "in_progress",
+      start_event_id: "evt-start",
+    });
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          investigation_id: " ",
+          status: "in_progress",
+          start_event_id: "evt-start",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(launchParkedQuestion("q-2")).rejects.toMatchObject({
+      status: 502,
+    });
   });
 });
 

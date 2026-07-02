@@ -211,6 +211,16 @@ export interface StartInvestigationResponse {
   start_event_id: string;
 }
 
+function malformedApiResponse(message: string): ApiError {
+  return new ApiError(message, 502, "");
+}
+
+function requireApiString(value: unknown, field: string): string {
+  const text = nonEmptyString(value);
+  if (!text) throw malformedApiResponse(`Malformed API response: ${field}`);
+  return text;
+}
+
 /** POST /investigations — kick off a cold research investigation. */
 export async function startInvestigation(
   req: StartInvestigationRequest,
@@ -227,7 +237,7 @@ export async function startInvestigation(
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeStartInvestigationResponse(await resp.json());
 }
 
 export interface InvestigationSummary {
@@ -243,6 +253,63 @@ export interface InvestigationSummary {
    * server-side). The surface badges it "found by the loop"; the raw
    * policy_id is never sent. Optional for back-compat with older responses. */
   spawned_by_daemon?: boolean;
+}
+
+function safeInvestigationStatus(
+  value: unknown,
+): InvestigationSummary["status"] {
+  return value === "in_progress" ||
+    value === "completed" ||
+    value === "failed" ||
+    value === "stopped" ||
+    value === "not_found"
+    ? value
+    : "failed";
+}
+
+function finiteNonNegativeNumber(value: unknown): number | null {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function safeInvestigationSummary(value: unknown): InvestigationSummary | null {
+  const row = record(value);
+  const investigationId = nonEmptyString(row?.investigation_id);
+  if (!row || !investigationId) return null;
+  return {
+    investigation_id: investigationId,
+    question: nullableString(row.question),
+    status: safeInvestigationStatus(row.status),
+    started_at: nullableString(row.started_at),
+    completed_at: nullableString(row.completed_at),
+    cost_usd_total: finiteNonNegativeNumber(row.cost_usd_total) ?? 0,
+    parent_investigation_id: nullableString(row.parent_investigation_id),
+    ...(typeof row.spawned_by_daemon === "boolean"
+      ? { spawned_by_daemon: row.spawned_by_daemon }
+      : {}),
+  };
+}
+
+function safeInvestigationList(value: unknown): {
+  count: number;
+  investigations: InvestigationSummary[];
+} {
+  const body = record(value);
+  const investigations = Array.isArray(body?.investigations)
+    ? body.investigations.flatMap((item) => {
+        const investigation = safeInvestigationSummary(item);
+        return investigation ? [investigation] : [];
+      })
+    : [];
+  return {
+    count: nonNegativeInteger(body?.count) ?? investigations.length,
+    investigations,
+  };
 }
 
 /** GET /investigations — list past investigations for the sidebar. */
@@ -264,7 +331,7 @@ export async function listInvestigations(opts?: {
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeInvestigationList(await resp.json());
 }
 
 // ── Brainstorming Workstation — watch-for-later folder ──
@@ -284,6 +351,57 @@ export interface ParkedQuestionEntry {
   parent_event_id: string | null;
 }
 
+function safeParkedQuestion(value: unknown): ParkedQuestionEntry | null {
+  const row = record(value);
+  if (!row) return null;
+  const questionId = nonEmptyString(row.question_id);
+  const questionText = nonEmptyString(row.question_text);
+  const sourceInvestigationId = nonEmptyString(row.source_investigation_id);
+  const parkedAt = nonEmptyString(row.parked_at);
+  if (!questionId || !questionText || !sourceInvestigationId || !parkedAt) {
+    return null;
+  }
+  return {
+    question_id: questionId,
+    question_text: questionText,
+    source_investigation_id: sourceInvestigationId,
+    source_document_id: nullableString(row.source_document_id),
+    anchor_region_id: nullableString(row.anchor_region_id),
+    parked_at: parkedAt,
+    parent_event_id: nullableString(row.parent_event_id),
+  };
+}
+
+function safeWatchForLaterList(value: unknown): {
+  count: number;
+  questions: ParkedQuestionEntry[];
+} {
+  const body = record(value);
+  const rawQuestions = Array.isArray(body?.questions)
+    ? body.questions
+    : Array.isArray(body?.parked)
+      ? body.parked
+      : [];
+  const questions = rawQuestions.flatMap((item) => {
+    const question = safeParkedQuestion(item);
+    return question ? [question] : [];
+  });
+  return {
+    count: nonNegativeInteger(body?.count) ?? questions.length,
+    questions,
+  };
+}
+
+function safeStartInvestigationResponse(value: unknown): StartInvestigationResponse {
+  const body = record(value);
+  if (!body) throw malformedApiResponse("Malformed API response: body");
+  return {
+    investigation_id: requireApiString(body.investigation_id, "investigation_id"),
+    status: nonEmptyString(body.status) ?? "in_progress",
+    start_event_id: requireApiString(body.start_event_id, "start_event_id"),
+  };
+}
+
 /** GET /watch-for-later — list unsharpened parked questions. */
 export async function listWatchForLater(
   opts?: { limit?: number },
@@ -301,7 +419,7 @@ export async function listWatchForLater(
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeWatchForLaterList(await resp.json());
 }
 
 /** POST /watch-for-later/{question_id}/launch — spawn investigation
@@ -323,7 +441,7 @@ export async function launchParkedQuestion(
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeStartInvestigationResponse(await resp.json());
 }
 
 export interface ParkQuestionRequest {
