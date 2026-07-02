@@ -1,4 +1,4 @@
-"""1099 reporting stub tests (Sprint 23-24 phase 4 — §9.5)."""
+"""1099 reporting export tests (Sprint 23-24 phase 4 — §9.5)."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Annual 1099 reporting stub (master-spec §9.5).
+"""Annual 1099 reporting export contract (master-spec §9.5).
 
 Per the Sprint 23-24 phase 4 deliverable list: *"KYC + 1099 reporting
 + ToS for any creator above threshold."* This module is the substrate
