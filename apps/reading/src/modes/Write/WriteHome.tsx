@@ -63,6 +63,7 @@ export default function WriteHome() {
   const [pieceView, setPieceView] = useState<"outline" | "canvas">("outline");
   const detailLoadSeq = useRef(0);
   const activeDeliverableId = useRef(deliverableId);
+  const traceIntentSeq = useRef(0);
   activeDeliverableId.current = deliverableId;
 
   // The active tap-to-add handler, registered by the Outline (binds the tap to
@@ -136,9 +137,11 @@ export default function WriteHome() {
         window.alert("This is your own note — it traces to your session, not an external source.");
         return;
       }
+      const seq = ++traceIntentSeq.current;
       void (async () => {
         try {
           const target = safeTraceTarget(await getTraceTarget(intent.outlineBlockId!));
+          if (traceIntentSeq.current !== seq) return;
           if (target.full_text_allowed && target.document_id) {
             openDocument(target.document_id, {
               // The trace's first chunk locates the cited region; the Reader
@@ -155,6 +158,7 @@ export default function WriteHome() {
             );
           }
         } catch {
+          if (traceIntentSeq.current !== seq) return;
           window.alert("Couldn't reach that source right now. Try again.");
         }
       })();

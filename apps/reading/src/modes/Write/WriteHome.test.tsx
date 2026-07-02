@@ -513,6 +513,60 @@ describe("WriteHome — the re-homed door", () => {
     await waitFor(() => expect(screen.getByText("READER doc-1 ?page=0&chunk=c1")).toBeTruthy());
   });
 
+  it("keeps stale trace-to-source resolutions from overriding the latest citation click", async () => {
+    const stale = deferred<TraceTarget>();
+    const fresh = deferred<TraceTarget>();
+    getTraceTargetMock.mockReturnValueOnce(stale.promise).mockReturnValueOnce(fresh.promise);
+    mountAt("/write");
+    await screen.findByPlaceholderText(/what are you writing/i);
+
+    emitTraceIntent({
+      sectionId: "sec-1",
+      outlineBlockId: "oblk-stale",
+      nodeId: "node-stale",
+      provenanceKind: "graph_node",
+    });
+    emitTraceIntent({
+      sectionId: "sec-1",
+      outlineBlockId: "oblk-fresh",
+      nodeId: "node-fresh",
+      provenanceKind: "graph_node",
+    });
+
+    await act(async () => {
+      fresh.resolve({
+        kind: "document",
+        full_text_allowed: true,
+        document_id: "doc-fresh",
+        document_title: "Fresh source",
+        chunk_ids: ["fresh-c1"],
+        primary_chunk_index: 0,
+        primary_section_path: "Page 2",
+        servability_status: "servable",
+        detail: null,
+      });
+    });
+
+    await waitFor(() => expect(screen.getByText("READER doc-fresh ?page=1&chunk=fresh-c1")).toBeTruthy());
+
+    await act(async () => {
+      stale.resolve({
+        kind: "document",
+        full_text_allowed: true,
+        document_id: "doc-stale",
+        document_title: "Stale source",
+        chunk_ids: ["stale-c1"],
+        primary_chunk_index: 0,
+        primary_section_path: "Page 1",
+        servability_status: "servable",
+        detail: null,
+      });
+    });
+
+    expect(screen.getByText("READER doc-fresh ?page=1&chunk=fresh-c1")).toBeTruthy();
+    expect(screen.queryByText(/READER doc-stale/)).toBeNull();
+  });
+
   it("does not navigate when an allowed trace lacks a usable document id", async () => {
     const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
     getTraceTargetMock.mockResolvedValue({
