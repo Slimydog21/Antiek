@@ -234,4 +234,82 @@ describe("NotesPanel", () => {
     expect(screen.getByText("loaded document (? KB)")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/NaN|Infinity|undefined/);
   });
+
+  it("sanitizes malformed delivered payloads before rendering claim rows", () => {
+    render(
+      <NotesPanel
+        events={[
+          feedEvent(
+            "distillation.delivered",
+            {
+              request_event_id: 17,
+              claims: "not-an-array",
+              rendered_text: ["not text"],
+              token_count: Number.NaN,
+            },
+            1,
+          ),
+        ]}
+        status="open"
+        reconnects={0}
+        investigationId="inv-1"
+        documentId="doc-1"
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.textContent === "synthesizer · 0 claims · ? tok",
+      ),
+    ).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/NaN|Infinity|undefined/);
+  });
+
+  it("keeps valid delivered claims while dropping malformed claim entries", () => {
+    render(
+      <NotesPanel
+        events={[
+          feedEvent(
+            "distillation.delivered",
+            {
+              request_event_id: "event-request-1",
+              claims: [
+                {
+                  claim_id: " claim-1 ",
+                  text: "  Valid claim text. ",
+                  confidence: "not-a-confidence",
+                  attribution_region_ids: [" region-1 ", "", 9],
+                },
+                {
+                  claim_id: "claim-2",
+                  text: "",
+                  confidence: "high",
+                  attribution_region_ids: [],
+                },
+              ],
+              rendered_text: "  Summary text. ",
+              token_count: "2048",
+            },
+            1,
+          ),
+        ]}
+        status="open"
+        reconnects={0}
+        investigationId="inv-1"
+        documentId="doc-1"
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.textContent === "synthesizer · 1 claim · 2048 tok",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("Summary text.")).toBeTruthy();
+    expect(screen.getByText("Valid claim text.")).toBeTruthy();
+    expect(screen.queryByText("claim-2")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/NaN|Infinity|undefined/);
+  });
 });
