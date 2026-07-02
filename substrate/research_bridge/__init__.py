@@ -13,6 +13,7 @@ from .dogfood_log import (
 )
 from .dogfood_report import (
     DogfoodMetrics,
+    SessionBlockMetrics,
     SessionSignalMetrics,
     build_dogfood_metrics,
     default_dogfood_metrics_path,
@@ -76,6 +77,7 @@ __all__ = [
     "default_db_path",
     "ensure_research_bridge_initialized",
     "DogfoodMetrics",
+    "SessionBlockMetrics",
     "SessionSignalMetrics",
     "build_dogfood_metrics",
     "DogfoodScaffoldResult",

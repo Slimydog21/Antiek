@@ -31,6 +31,14 @@ class SessionSignalMetrics:
 
 
 @dataclass(frozen=True)
+class SessionBlockMetrics:
+    session_id: str
+    blocks_pasted: int
+    first_block_at: str
+    latest_block_at: str
+
+
+@dataclass(frozen=True)
 class DogfoodMetrics:
     total_blocks_pasted: int
     total_extractions: int
@@ -43,6 +51,7 @@ class DogfoodMetrics:
     sessions_with_blocks: int
     sessions_with_gap_runs: int
     sessions_with_blocks_no_gap_runs: tuple[str, ...]
+    block_sessions: tuple[SessionBlockMetrics, ...]
     by_session: tuple[SessionSignalMetrics, ...]
 
     @property
@@ -96,7 +105,7 @@ def build_dogfood_metrics(con: Any) -> DogfoodMetrics:
 
     session_rows = con.execute(
         """
-        SELECT session_id, COUNT(*) AS n
+        SELECT session_id, COUNT(*) AS n, MIN(pasted_at), MAX(pasted_at)
         FROM research_pastes
         WHERE session_id IS NOT NULL AND TRIM(session_id) != ''
         GROUP BY session_id
@@ -108,6 +117,15 @@ def build_dogfood_metrics(con: Any) -> DogfoodMetrics:
         sum(int(r[1]) for r in session_rows) / sessions_with_blocks
         if sessions_with_blocks
         else 0.0
+    )
+    block_session_metrics = tuple(
+        SessionBlockMetrics(
+            session_id=str(r[0]),
+            blocks_pasted=int(r[1]),
+            first_block_at=str(r[2]),
+            latest_block_at=str(r[3]),
+        )
+        for r in session_rows
     )
 
     gap_session_rows = con.execute(
@@ -161,6 +179,7 @@ def build_dogfood_metrics(con: Any) -> DogfoodMetrics:
         sessions_with_blocks=sessions_with_blocks,
         sessions_with_gap_runs=len(gap_sessions),
         sessions_with_blocks_no_gap_runs=sessions_with_blocks_no_gap_runs,
+        block_sessions=block_session_metrics,
         by_session=tuple(by_session),
     )
 
@@ -197,9 +216,22 @@ def render_dogfood_report(metrics: DogfoodMetrics) -> str:
             else "none"
         ),
         "",
-        "## Would-Run Breakdown",
+        "## Block Timing By Session",
         "",
     ]
+    if not metrics.block_sessions:
+        lines.append("- No sessions with pasted blocks recorded yet.")
+    else:
+        for row in metrics.block_sessions:
+            lines.append(
+                f"- {row.session_id}: {row.blocks_pasted} block(s), "
+                f"first block at {row.first_block_at}, latest block at {row.latest_block_at}"
+            )
+    lines.extend([
+        "",
+        "## Would-Run Breakdown",
+        "",
+    ])
     if not metrics.by_session:
         lines.append("- No prompt signals recorded yet.")
     else:
