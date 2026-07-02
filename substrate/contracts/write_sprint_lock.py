@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to WRITE_SPRINTS. Status changes are deliberate roadmap
 # events, not prose-only handoffs.
-WRITE_LOCK_VERSION: int = 8
+WRITE_LOCK_VERSION: int = 9
 
 
 @dataclass(frozen=True)
@@ -109,7 +109,16 @@ WRITE_SPRINTS: dict[int, WriteDeliverable] = {
         # write-pre-outline-freeform.
         status="live",
     ),
-    9: WriteDeliverable(9, "style-conditioning", "Style conditioning"),
+    9: WriteDeliverable(
+        9,
+        "style-conditioning",
+        "Style conditioning",
+        # Live: retrieved exemplar profiles from accepted edits, weak-signal
+        # honesty, prompt-level creative_writer conditioning, heuristic
+        # similarity scoring, voice_style gate supremacy, and the no-training
+        # import guard are covered by write-style-conditioning.
+        status="live",
+    ),
 }
 
 

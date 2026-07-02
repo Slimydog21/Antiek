@@ -247,8 +247,11 @@ jobs:
       - name: Canonical verify — write pre-outline freeform
         run: ./scripts/canonical_verify.sh write-pre-outline-freeform
 
+      - name: Canonical verify — write style conditioning
+        run: ./scripts/canonical_verify.sh write-style-conditioning
+
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md
 
-      - name: Canonical verify — deep-research (P-33..P-39)
+      - name: Canonical verify — deep-research (P-34..P-40)
         run: ./scripts/canonical_verify.sh deep-research
