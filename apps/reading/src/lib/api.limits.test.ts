@@ -598,6 +598,12 @@ describe("api client write deliverable response boundaries", () => {
               section_count: "2",
             },
             {
+              deliverable_id: "dlv-1",
+              title: "Duplicate draft",
+              deliverable_kind: "research_memo",
+              section_count: 9,
+            },
+            {
               deliverable_id: " ",
               title: "Invisible",
               deliverable_kind: "research_memo",

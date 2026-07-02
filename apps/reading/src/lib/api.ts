@@ -1224,10 +1224,13 @@ function safeDeliverableList(value: unknown): {
   deliverables: DeliverableSummary[];
 } {
   const body = record(value);
+  const seen = new Set<string>();
   const deliverables = Array.isArray(body?.deliverables)
     ? body.deliverables.flatMap((item) => {
         const deliverable = safeDeliverableSummary(item);
-        return deliverable ? [deliverable] : [];
+        if (!deliverable || seen.has(deliverable.deliverable_id)) return [];
+        seen.add(deliverable.deliverable_id);
+        return [deliverable];
       })
     : [];
   return {
