@@ -43,6 +43,7 @@ class DogfoodMetrics:
     total_blocks_pasted: int
     total_extractions: int
     total_gap_runs: int
+    total_mode_a_draft_exports: int
     total_llm_cost_usd: float
     would_run: int
     total_signaled_prompts: int
@@ -94,6 +95,9 @@ def build_dogfood_metrics(con: Any) -> DogfoodMetrics:
         _scalar(con, "SELECT COUNT(*) FROM research_paste_extractions") or 0
     )
     total_gap_runs = int(_scalar(con, "SELECT COUNT(*) FROM research_gap_runs") or 0)
+    total_mode_a_draft_exports = int(
+        _scalar(con, "SELECT COUNT(*) FROM research_draft_exports") or 0
+    )
     extraction_cost = float(
         _scalar(con, "SELECT COALESCE(SUM(cost_usd), 0) FROM research_paste_extractions")
         or 0.0
@@ -171,6 +175,7 @@ def build_dogfood_metrics(con: Any) -> DogfoodMetrics:
         total_blocks_pasted=total_blocks,
         total_extractions=total_extractions,
         total_gap_runs=total_gap_runs,
+        total_mode_a_draft_exports=total_mode_a_draft_exports,
         total_llm_cost_usd=extraction_cost + gap_cost,
         would_run=would,
         total_signaled_prompts=total_signaled,
@@ -202,6 +207,7 @@ def render_dogfood_report(metrics: DogfoodMetrics) -> str:
         f"- Blocks pasted: {metrics.total_blocks_pasted}",
         f"- Extractions recorded: {metrics.total_extractions}",
         f"- Gap runs recorded: {metrics.total_gap_runs}",
+        f"- Mode A draft exports recorded: {metrics.total_mode_a_draft_exports}",
         f"- Total recorded LLM cost: ${metrics.total_llm_cost_usd:.4f}",
         "",
         "## Session Coverage",
@@ -246,7 +252,7 @@ def render_dogfood_report(metrics: DogfoodMetrics) -> str:
         "",
         "- Operator qualitative verdicts; read `operator-log.md` for those.",
         "- Sessions the operator opened without creating any substrate row.",
-        "- Mode A draft-export counts unless a separate outline export table is wired.",
+        "- Whether exported Mode A drafts were sent or published downstream.",
     ])
     return "\n".join(lines) + "\n"
 
