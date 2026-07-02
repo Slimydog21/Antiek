@@ -1,6 +1,10 @@
 """SPR-02 M3 — the remote ResearchRunner, against a FAKE provider only.
 
-No live Daytona, no SDK, no credentials, no network. Gates:
+Canonical gate: ``./scripts/canonical_verify.sh unified-remote-exec-fanout``.
+No live Daytona, no SDK, no credentials, no network. The canonical gate proves
+the remote runner, isolation, budget, and fallback slices together; the
+external live Daytona/provider-throughput smoke remains an operator runbook
+boundary, not a unit-test claim. Gates:
 
   * ``RemoteResearchRunner`` structurally satisfies the ``ResearchRunner``
     protocol (the SPR-01 contract surface).
@@ -67,6 +71,20 @@ def test_package_loads_without_daytona_sdk():
     os.environ.pop("DAYTONA_API_KEY", None)
     with pytest.raises(RemoteExecUnavailable):
         prov.probe()
+
+
+def test_remote_exec_docs_name_canonical_gate_and_operator_boundary():
+    """The remote-exec proof text names the gate and the live-smoke boundary."""
+    package_doc = __doc__ or ""
+    runner_doc = RemoteResearchRunner.__module__
+    import importlib
+
+    runner_module = importlib.import_module(runner_doc)
+    combined = " ".join(f"{runner_module.__doc__ or ''} {package_doc}".split())
+
+    assert "./scripts/canonical_verify.sh unified-remote-exec-fanout" in combined
+    assert "remote runner, isolation, budget, and fallback" in combined
+    assert "live Daytona/provider-throughput smoke remains an operator runbook boundary" in combined
 
 
 def test_remote_runner_satisfies_protocol():

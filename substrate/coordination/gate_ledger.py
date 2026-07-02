@@ -1,5 +1,10 @@
 """Gate ledger — a typed VIEW over ``docs/operator_gate_actions.md`` (SPR-05 M1).
 
+Canonical gate: ``./scripts/canonical_verify.sh unified-coordination-gate-ledger``
+proves the backend no-fork ledger/roadmap contract plus the Coordination UI
+rendering tests. Browser/device visual polish for the final Coordination mode
+remains operator QA, not a backend parser claim.
+
 The original activation gates (G1-G8) are canonical in one human-edited markdown
 file that now also records appended operator/legal follow-on gate-actions
 (G9-G12). Four product specs each re-describe the original activation gates from

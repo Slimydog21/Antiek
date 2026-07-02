@@ -1,5 +1,10 @@
 """SPR-05 M4 — the no-fork invariant test (load-bearing).
 
+Canonical gate: ``./scripts/canonical_verify.sh unified-coordination-gate-ledger``.
+It runs this backend no-fork ledger/roadmap contract plus the Coordination UI
+rendering tests. Browser/device visual polish for the final Coordination mode
+remains operator QA, not a parser or API-contract claim.
+
 This is the mandatory gate that proves the coordination dashboard is a VIEW over
 ``docs/operator_gate_actions.md``, never a fork. The strategy (rigor #3): never
 compare the ledger against its own parser's output — that is a tautology that
@@ -129,6 +134,17 @@ def test_operator_gate_actions_summary_tracks_appended_follow_ons() -> None:
     assert "Appended G9-G12 follow-ons remain" in coordination_compact
     assert "The eight binding gates" not in ledger_compact
     assert "The eight binding gates" not in coordination_compact
+
+
+def test_coordination_docs_name_canonical_gate_and_ui_boundary() -> None:
+    """The proof prose names the canonical gate, UI companion, and visual-QA boundary."""
+    import substrate.coordination.gate_ledger as gate_ledger
+
+    combined = " ".join(((gate_ledger.__doc__ or "") + " " + (__doc__ or "")).split())
+
+    assert "./scripts/canonical_verify.sh unified-coordination-gate-ledger" in combined
+    assert "backend no-fork ledger/roadmap contract plus the Coordination UI" in combined
+    assert "Browser/device visual polish for the final Coordination mode remains operator QA" in combined
 
 
 # ── 2. Mutation of a fixture copy is reflected (no stale second copy) ─────────

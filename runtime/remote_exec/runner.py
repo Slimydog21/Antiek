@@ -1,5 +1,10 @@
 """``RemoteResearchRunner`` — the remote sibling of ``HostLocalRunner``.
 
+Canonical gate: ``./scripts/canonical_verify.sh unified-remote-exec-fanout``
+proves this runner together with isolation, cost/budget accounting, and factory
+fallback via fake providers. Live Daytona credentials/provider throughput are
+operator-runbook proof, not something this module's unit tests claim.
+
 Satisfies the **same** ``ResearchRunner`` protocol (start / stream / steer /
 status / cost / cancel) that the host-local runner satisfies, by delegating
 each leaf's browse loop to a ``RemoteExecProvider`` sandbox instead of an
