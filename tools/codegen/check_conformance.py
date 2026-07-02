@@ -125,6 +125,13 @@ def _live_consent_gate_state() -> type:
     return ConsentGateState
 
 
+def _live_interviewer_result_state() -> type:
+    """The live Speak interview→claim boundary consumed by Write."""
+    from substrate.speak.interviewer_result import InterviewerResultState
+
+    return InterviewerResultState
+
+
 # Stub builder: a field-complete object for an unbuilt product, so the gate
 # covers the contract and the real module drops in by setting ``conformer``.
 def _stub_for(contract: type[BaseModel]) -> dict[str, Any]:
@@ -179,8 +186,7 @@ _CONFORMANCE_REGISTRY: tuple[ConformanceRow, ...] = (
     ),
     ConformanceRow(
         InterviewerResultContract,
-        stub_status="Speak interviewer shape PROVISIONAL (not yet pinned); "
-        "contract conformed as the agreed interface.",
+        conformer=_live_interviewer_result_state,  # substrate/speak/interviewer_result.py
     ),
     ConformanceRow(
         ConsentContract,

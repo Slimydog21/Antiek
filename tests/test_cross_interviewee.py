@@ -19,9 +19,16 @@ import tempfile
 import pytest
 
 from runtime.db_lock import connect_write
+from substrate.contracts import verify_conformance
+from substrate.contracts.interviewer import InterviewerResultContract
+from substrate.graph.ops import insert_interview
 from substrate.graph.schema import init_database
-from substrate.speak import corroboration, project, publish_gate
+from substrate.speak import contributor, corroboration, project, publish_gate
 from substrate.speak.corroboration import confidence_for, corroborate_project
+from substrate.speak.interviewer_result import (
+    InterviewerResultState,
+    interviewer_result_for_interview,
+)
 from substrate.speak.publish_gate import PublishBlocked
 from substrate.speak.schema import ensure_speak_schema
 from substrate.speak.third_party import record_claim
@@ -108,6 +115,61 @@ def test_two_independent_attesters_marks_multiply_attested(db):
         # Member claims now carry the verification the publish gate reads.
         from substrate.speak.third_party import get_claim
         assert get_claim(con, c1.claim_id).verification == "multiply_attested"
+
+
+def test_interviewer_result_state_conforms_to_shared_contract(db):
+    assert verify_conformance(InterviewerResultState, InterviewerResultContract).ok
+
+
+def test_interviewer_result_reads_claims_corroboration_and_payee(db):
+    with _con(db) as con:
+        p = project.create_project(con, title="Dad's biography")
+        insert_interview(con, project_id=p.project_id, interview_id="iv-a")
+        insert_interview(con, project_id=p.project_id, interview_id="iv-b")
+        c1 = _third_party_claim(
+            con,
+            p.project_id,
+            "He saved a stranger from drowning.",
+            "iv-a",
+        )
+        _third_party_claim(
+            con,
+            p.project_id,
+            "He saved a stranger from drowning.",
+            "iv-b",
+        )
+        contributor.map_contributor(
+            con,
+            interview_id="iv-a",
+            project_id=p.project_id,
+            display_name="Aunt A",
+        )
+
+        corroborate_project(con, p.project_id)
+        result = interviewer_result_for_interview(con, "iv-a")
+
+        assert result.project_id == p.project_id
+        assert result.extracted_claim_ids == (c1.claim_id,)
+        assert result.corroboration == "multiply_attested"
+        assert result.contributor_ip_holder_id is not None
+
+
+def test_interviewer_result_does_not_treat_operator_attestation_as_corroboration(db):
+    with _con(db) as con:
+        p = project.create_project(con, title="Dad's biography")
+        insert_interview(con, project_id=p.project_id, interview_id="iv-a")
+        c1 = _third_party_claim(
+            con,
+            p.project_id,
+            "He emigrated in 1971.",
+            "iv-a",
+        )
+
+        publish_gate.operator_attest_claim(con, c1.claim_id, project_id=p.project_id)
+        result = interviewer_result_for_interview(con, "iv-a")
+
+        assert result.extracted_claim_ids == (c1.claim_id,)
+        assert result.corroboration == "uncorroborated"
 
 
 # ── M3 contradiction (preserve the minority) ────────────────────────────

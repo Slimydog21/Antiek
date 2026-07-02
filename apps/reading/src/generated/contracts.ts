@@ -137,8 +137,6 @@ export interface AccrualContract {
   disbursable?: false;
 }
 
-// PROVISIONAL — InterviewerResultContract's owning sprint has not pinned this shape; it may change.
-
 /**
  * The output of one interview turn in the compounding interviewer.
  * ``corroboration`` tops out at ``multiply_attested`` — the contract has no

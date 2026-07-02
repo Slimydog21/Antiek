@@ -19,9 +19,8 @@ carry:
   always algorithmic for public content, even private invites — the operator's
   own self-correction).
 
-These are PROVISIONAL where Speak has not pinned the field shape (the
-interviewer result), COMMITTED where the product boundary is conformance-gated
-or the constant exists (the 70% split is ``CREATOR_REV_SHARE``).
+These are COMMITTED where the product boundary is conformance-gated or the
+constant exists (the 70% split is ``CREATOR_REV_SHARE``).
 """
 
 from __future__ import annotations
