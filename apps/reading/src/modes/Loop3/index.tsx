@@ -34,6 +34,94 @@ interface Loop3Evidence {
   open_weight_policy_file: string;
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function safeBooleanMap(value: unknown): Record<string, boolean> {
+  const source = record(value);
+  if (!source) return {};
+  return Object.fromEntries(
+    Object.entries(source).flatMap(([key, rawValue]) => {
+      const safeKey = nonEmptyString(key);
+      return safeKey ? [[safeKey, rawValue === true]] : [];
+    }),
+  );
+}
+
+function safeStringMap(value: unknown): Record<string, string> {
+  const source = record(value);
+  if (!source) return {};
+  return Object.fromEntries(
+    Object.entries(source).flatMap(([key, rawValue]) => {
+      const safeKey = nonEmptyString(key);
+      const safeValue = nonEmptyString(rawValue);
+      return safeKey && safeValue ? [[safeKey, safeValue]] : [];
+    }),
+  );
+}
+
+function safeEvidenceStatus(
+  value: unknown,
+): Loop3Evidence["statuses"][string] | null {
+  const status = record(value);
+  const criterion = nonEmptyString(status?.criterion);
+  if (!status || !criterion) return null;
+  return {
+    criterion,
+    status: nonEmptyString(status.status) ?? "unknown",
+    passed: status.passed === true,
+    summary: nonEmptyString(status.summary) ?? "not checked",
+  };
+}
+
+function safeEvidenceStatuses(
+  value: unknown,
+): Loop3Evidence["statuses"] {
+  const source = record(value);
+  if (!source) return {};
+  return Object.fromEntries(
+    Object.entries(source).flatMap(([key, rawValue]) => {
+      const safeKey = nonEmptyString(key);
+      const status = safeEvidenceStatus(rawValue);
+      return safeKey && status ? [[safeKey, status]] : [];
+    }),
+  );
+}
+
+function safeLoop3Evidence(value: unknown): Loop3Evidence | undefined {
+  const evidence = record(value);
+  if (!evidence) return undefined;
+  return {
+    criteria: safeBooleanMap(evidence.criteria),
+    statuses: safeEvidenceStatuses(evidence.statuses),
+    all_evidence_passed: evidence.all_evidence_passed === true,
+    events_dir: nonEmptyString(evidence.events_dir) ?? "",
+    open_weight_policy_file:
+      nonEmptyString(evidence.open_weight_policy_file) ?? "",
+  };
+}
+
+function safeLoop3Status(value: unknown): Loop3Status {
+  const body = record(value);
+  return {
+    criteria: safeBooleanMap(body?.criteria),
+    notes: safeStringMap(body?.notes),
+    all_criteria_met: body?.all_criteria_met === true,
+    env_unlocked: body?.env_unlocked === true,
+    fully_unlocked: body?.fully_unlocked === true,
+    evidence: safeLoop3Evidence(body?.evidence),
+  };
+}
+
 const CRITERIA_ORDER = [
   "trajectory_volume",
   "sft_readiness",
@@ -75,7 +163,7 @@ export default function Loop3() {
       if (!resp.ok) {
         throw new Error(`GET /loop-3/status failed: HTTP ${resp.status}`);
       }
-      setStatus(await resp.json());
+      setStatus(safeLoop3Status(await resp.json()));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
