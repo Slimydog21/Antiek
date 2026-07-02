@@ -139,6 +139,7 @@ describe("CommandPalette", () => {
           json: async () => ({
             investigations: [
               { investigation_id: " inv dirty/1 ", topic: "  Dirty investigation  " },
+              { investigation_id: "inv dirty/1", topic: "Duplicate investigation" },
               { investigation_id: " ", topic: "Skipped investigation" },
             ],
           }),
@@ -150,6 +151,7 @@ describe("CommandPalette", () => {
           json: async () => ({
             documents: [
               { document_id: " doc dirty ", title: "  Dirty document  " },
+              { document_id: "doc dirty", title: "Duplicate document" },
               { document_id: "", title: "Skipped document" },
             ],
           }),
@@ -161,6 +163,7 @@ describe("CommandPalette", () => {
           json: async () => ({
             notebooks: [
               { notebook_id: " nb-dirty ", title: "  Dirty notebook  " },
+              { notebook_id: "nb-dirty", title: "Duplicate notebook" },
               { notebook_id: " ", title: "Skipped notebook" },
             ],
           }),
@@ -176,6 +179,12 @@ describe("CommandPalette", () => {
                 title: "  Dirty piece  ",
                 investigation_root_id: " inv-dirty ",
                 section_count: "3.9",
+              },
+              {
+                deliverable_id: "dlv dirty",
+                title: "Duplicate piece",
+                investigation_root_id: "inv-duplicate",
+                section_count: 1,
               },
               {
                 deliverable_id: " ",
@@ -202,6 +211,12 @@ describe("CommandPalette", () => {
                 parent_event_id: null,
               },
               {
+                question_id: "q-dirty",
+                question_text: "Duplicate parked question",
+                source_investigation_id: "inv-duplicate",
+                parked_at: "2026-07-02T00:00:00Z",
+              },
+              {
                 question_id: "q-bad",
                 question_text: " ",
                 source_investigation_id: "inv",
@@ -226,6 +241,7 @@ describe("CommandPalette", () => {
     expect(await screen.findByText("Dirty piece")).toBeTruthy();
     expect(screen.getByText("Piece · 3 sections · linked research")).toBeTruthy();
     expect(await screen.findByText("Dirty parked question")).toBeTruthy();
+    expect(screen.queryByText(/Duplicate/)).toBeNull();
     expect(screen.queryByText(/Skipped/)).toBeNull();
 
     await userEvent.click(screen.getByText("Dirty investigation"));
