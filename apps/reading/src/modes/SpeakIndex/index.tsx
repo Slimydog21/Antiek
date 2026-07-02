@@ -43,6 +43,15 @@ import AIActionFailure from "../../shared/AIActionFailure";
  */
 type Tab = "yours" | "public";
 
+function uniqueById<T extends { id: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  return items.flatMap((item) => {
+    if (seen.has(item.id)) return [];
+    seen.add(item.id);
+    return [item];
+  });
+}
+
 export default function SpeakIndex() {
   const navigate = useNavigate();
   const [people, setPeople] = useState<RememberedPerson[]>([]);
@@ -69,7 +78,7 @@ export default function SpeakIndex() {
     setLoading(true);
     setError(null);
     try {
-      setPeople(await listPeople());
+      setPeople(uniqueById(await listPeople()));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -83,7 +92,7 @@ export default function SpeakIndex() {
     try {
       const nextFeed = await listPublicFeed();
       if (feedLoadSeq.current === seq && activeTab.current === "public") {
-        setFeed(nextFeed);
+        setFeed(uniqueById(nextFeed));
       }
     } catch (e: unknown) {
       if (feedLoadSeq.current === seq && activeTab.current === "public") {
