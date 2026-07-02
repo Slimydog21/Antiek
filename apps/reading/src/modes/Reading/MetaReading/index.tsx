@@ -175,10 +175,12 @@ export default function MetaReading() {
     setError(null);
     setErrorSource(null);
     try {
+      const documentId = firstCorpusDocumentId(deliverable.corpus_document_ids);
+      if (!documentId) throw new Error("Meta-reading has no source document to promote.");
       const res = await acceptPromotion({
         assetId: deliverable.asset_id,
         prompt: prompt.trim(),
-        documentId: deliverable.corpus_document_ids[0],
+        documentId,
       });
       setPromoted(requireInvestigationId(res.investigation_id));
     } catch (e: unknown) {
@@ -377,6 +379,10 @@ export default function MetaReading() {
       </main>
     </div>
   );
+}
+
+function firstCorpusDocumentId(documentIds: string[]): string | null {
+  return documentIds.find((id) => id.trim().length > 0)?.trim() ?? null;
 }
 
 /** The "proposed (sign-off pending)" banner — reuses the SPR-06 idiom
