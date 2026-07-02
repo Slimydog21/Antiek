@@ -363,7 +363,7 @@ class IngestSourceRequest(BaseModel):
     when adding evidence to a specific run."""
 
     url: str = Field(..., min_length=8)
-    kind: Literal["arxiv", "youtube", "podcast", "twitter", "url"] | None = None
+    kind: Literal["arxiv", "youtube", "podcast", "twitter", "url", "inbox"] | None = None
     investigation_id: str = Field(default="__operator__", min_length=1)
     source_tier: int | None = Field(default=None, ge=1, le=5)
     max_episodes: int = Field(default=10, ge=1, le=50)  # podcast feeds only
@@ -2461,6 +2461,33 @@ def create_app(
                         "apps/x-extension/ which POSTs to "
                         "/sources/twitter with the captured thread."
                     ),
+                )
+            if detected == "inbox":
+                # Local-file reading inbox (DOGFOOD SPR-01). ``req.url`` is a
+                # server-side absolute path to a *.txt article dump (the
+                # operator's ~/research/inbox/<date>/ stream). The operator
+                # declares ``kind=inbox`` explicitly -- there is no URL
+                # auto-detection for a local path (a heuristic would be fragile).
+                path = os.path.expanduser(req.url)
+                if not os.path.isfile(path):
+                    raise ValueError(
+                        f"inbox path is not a readable file: {req.url!r}"
+                    )
+                from acquisition.inbox.ingest import ingest_inbox_file
+                inbox_kwargs: dict[str, Any] = {
+                    "investigation_id": req.investigation_id,
+                }
+                if req.source_tier is not None:
+                    inbox_kwargs["source_tier"] = req.source_tier
+                inbox_r = ingest_inbox_file(path, **inbox_kwargs)
+                return IngestSourceResponse(
+                    # inbox_r.status is `str`; narrow to the response Literal so
+                    # the type stays exact (mirrors the arxiv/youtube branches).
+                    status=("ingested" if inbox_r.status == "ingested" else "skipped"),
+                    detected_kind="inbox",
+                    document_id=inbox_r.document_id,
+                    chunks_written=inbox_r.chunks_written,
+                    title=os.path.splitext(os.path.basename(path))[0],
                 )
             if detected == "url":
                 from acquisition.urls import ingest_url
