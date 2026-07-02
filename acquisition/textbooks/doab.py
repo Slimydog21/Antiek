@@ -140,7 +140,7 @@ def discover(
     license. Returns up to ``limit`` candidates; a record with no title or no
     full-text URL is logged and skipped. Network failures raise ``SourceError``
     for the caller."""
-    params: dict = {"expand": "metadata,bitstreams"}
+    params: dict[str, str] = {"expand": "metadata,bitstreams"}
     if query:
         params["query"] = query
     page = client.get_json(DOAB_SEARCH_URL, params=params)
