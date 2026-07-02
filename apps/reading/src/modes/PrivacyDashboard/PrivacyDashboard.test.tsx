@@ -452,10 +452,12 @@ describe("PrivacyDashboard", () => {
               " encryption at rest (per-graph keys via KMS) ",
               "",
               42,
+              "encryption at rest (per-graph keys via KMS)",
             ],
             compliance_frameworks: [
               " GDPR Article 13/14 transparency ",
               null,
+              "GDPR Article 13/14 transparency",
             ],
             loop_3_unlock_status: {
               " trajectory_volume ": true,
