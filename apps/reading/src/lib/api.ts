@@ -495,10 +495,13 @@ function safeInvestigationList(value: unknown): {
   investigations: InvestigationSummary[];
 } {
   const body = record(value);
+  const seen = new Set<string>();
   const investigations = Array.isArray(body?.investigations)
     ? body.investigations.flatMap((item) => {
         const investigation = safeInvestigationSummary(item);
-        return investigation ? [investigation] : [];
+        if (!investigation || seen.has(investigation.investigation_id)) return [];
+        seen.add(investigation.investigation_id);
+        return [investigation];
       })
     : [];
   return {
