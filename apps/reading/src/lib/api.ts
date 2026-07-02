@@ -1927,8 +1927,9 @@ function safeChunkResponse(value: unknown, fallbackChunkId: string): ChunkRespon
 
 /** GET /chunks/{id} — used by Mode A's claim hover modal. */
 export async function getChunk(chunkId: string): Promise<ChunkResponse> {
+  const resolvedChunkId = requireRequestString(chunkId, "chunkId");
   const resp = await apiFetch(
-    `${API_BASE}/chunks/${encodeURIComponent(chunkId)}`,
+    `${API_BASE}/chunks/${encodeURIComponent(resolvedChunkId)}`,
   );
   if (!resp.ok) {
     throw new ApiError(
@@ -1937,7 +1938,7 @@ export async function getChunk(chunkId: string): Promise<ChunkResponse> {
       await resp.text(),
     );
   }
-  return safeChunkResponse(await resp.json(), chunkId);
+  return safeChunkResponse(await resp.json(), resolvedChunkId);
 }
 
 // ── SPR-10: §9 provenance + economics, surfaced (accrual, NOT disbursement) ──
@@ -2049,8 +2050,9 @@ function safeAttributionReport(
 export async function getAttributionReport(
   synthesisId: string,
 ): Promise<AttributionReportResponse> {
+  const resolvedSynthesisId = requireRequestString(synthesisId, "synthesisId");
   const resp = await apiFetch(
-    `${API_BASE}/attribution/synthesis/${encodeURIComponent(synthesisId)}`,
+    `${API_BASE}/attribution/synthesis/${encodeURIComponent(resolvedSynthesisId)}`,
   );
   if (!resp.ok) {
     throw new ApiError(
@@ -2059,7 +2061,7 @@ export async function getAttributionReport(
       await resp.text(),
     );
   }
-  return safeAttributionReport(await resp.json(), synthesisId);
+  return safeAttributionReport(await resp.json(), resolvedSynthesisId);
 }
 
 /** Why an accrued balance is NOT disbursable. ``disbursable`` is always false
