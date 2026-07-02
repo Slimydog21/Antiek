@@ -137,7 +137,10 @@ function EvidenceRow({ event }: { event: Event }) {
   const p = payloadRecord(event);
   const claims = recordList(p.supporting_claims).flatMap((item) => {
     const claim = nonEmptyString(item.claim);
-    return claim ? [{ claim, chunk_ids: stringList(item.chunk_ids) }] : [];
+    const sourceIds = stringList(item.chunk_ids);
+    if (!claim) return [];
+    const entry = { text: claim, sourceIds };
+    return [entry];
   });
   const gaps = recordList(p.evidentiary_gaps).map(
     (item) =>
@@ -172,10 +175,10 @@ function EvidenceRow({ event }: { event: Event }) {
             )}
             {claims.map((c, i) => (
               <li key={i}>
-                <span className="text-ink dark:text-bright">{c.claim}</span>
-                {c.chunk_ids.length > 0 && (
+                <span className="text-ink dark:text-bright">{c.text}</span>
+                {c.sourceIds.length > 0 && (
                   <span className="text-[10px] font-mono text-ink-mute dark:text-moonlight ml-1.5">
-                    [{c.chunk_ids.length} chunk{c.chunk_ids.length === 1 ? "" : "s"}]
+                    [{c.sourceIds.length} source{c.sourceIds.length === 1 ? "" : "s"}]
                   </span>
                 )}
               </li>

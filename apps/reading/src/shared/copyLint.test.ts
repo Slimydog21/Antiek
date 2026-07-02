@@ -35,7 +35,49 @@ const BASELINE = join(__dirname, "copy_lint_baseline.json");
 /** User-facing surface roots — where rendered copy lives. */
 const SCAN_DIRS = ["modes", "shell", "components"].map((d) => join(ROOT, d));
 
-/** A leak is `relpath:lineno\t<rule>\t<matched>`. Sortable, stable, diffable. */
+interface Leak {
+  /** Stable across line shifts: file + rule + matched text + occurrence ordinal. */
+  key: string;
+  /** Current location, used only for diagnostics. */
+  loc: string;
+  ruleId: string;
+  match: string;
+}
+
+/**
+ * A baseline entry used to be `relpath:lineno\t<rule>\t<matched>`, which made
+ * the guard false-red whenever nearby comments shifted line numbers. The
+ * canonical key is now `relpath\t<rule>\t<matched>\t<ordinal>`: still
+ * count-sensitive, but stable under line movement.
+ */
+function canonicalLeakKey(rel: string, ruleId: string, match: string, ordinal: number): string {
+  return `${rel}\t${ruleId}\t${match}\t${ordinal}`;
+}
+
+function parseLegacyBaselineEntry(entry: string): { rel: string; ruleId: string; match: string } | null {
+  const [loc, ruleId, match] = entry.split("\t");
+  if (!loc || !ruleId || match === undefined || !/:\d+$/.test(loc)) return null;
+  const rel = loc.replace(/:\d+$/, "");
+  return { rel, ruleId, match };
+}
+
+function normalizeBaseline(entries: string[]): string[] {
+  const counts = new Map<string, number>();
+  const out: string[] = [];
+  for (const entry of entries) {
+    const legacy = parseLegacyBaselineEntry(entry);
+    if (legacy === null) {
+      out.push(entry);
+      continue;
+    }
+    const base = `${legacy.rel}\t${legacy.ruleId}\t${legacy.match}`;
+    const ordinal = (counts.get(base) ?? 0) + 1;
+    counts.set(base, ordinal);
+    out.push(canonicalLeakKey(legacy.rel, legacy.ruleId, legacy.match, ordinal));
+  }
+  return out.sort();
+}
+
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     if (name === "node_modules" || name === "generated") continue;
@@ -54,8 +96,9 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 /** Every banned-pattern hit across the user-facing surface, as baseline keys. */
-function collect(): string[] {
-  const found: string[] = [];
+function collect(): Leak[] {
+  const found: Leak[] = [];
+  const counts = new Map<string, number>();
   for (const dir of SCAN_DIRS) {
     if (!existsSync(dir)) continue;
     for (const file of walk(dir)) {
@@ -67,14 +110,23 @@ function collect(): string[] {
           rule.pattern.lastIndex = 0;
           let m: RegExpExecArray | null;
           while ((m = rule.pattern.exec(line)) !== null) {
-            found.push(`${rel}:${i + 1}\t${rule.id}\t${m[0].toLowerCase()}`);
+            const match = m[0].toLowerCase();
+            const base = `${rel}\t${rule.id}\t${match}`;
+            const ordinal = (counts.get(base) ?? 0) + 1;
+            counts.set(base, ordinal);
+            found.push({
+              key: canonicalLeakKey(rel, rule.id, match, ordinal),
+              loc: `${rel}:${i + 1}`,
+              ruleId: rule.id,
+              match,
+            });
             if (m.index === rule.pattern.lastIndex) rule.pattern.lastIndex++;
           }
         }
       });
     }
   }
-  return found.sort();
+  return found.sort((a, b) => a.key.localeCompare(b.key));
 }
 
 describe("copy-lint — no NEW substrate jargon in user-facing copy (U-04 M4)", () => {
@@ -82,7 +134,7 @@ describe("copy-lint — no NEW substrate jargon in user-facing copy (U-04 M4)", 
     const current = collect();
 
     if (process.env.COPY_LINT_UPDATE) {
-      writeFileSync(BASELINE, JSON.stringify(current, null, 2) + "\n");
+      writeFileSync(BASELINE, JSON.stringify(current.map((e) => e.key), null, 2) + "\n");
       // eslint-disable-next-line no-console
       console.log(`copy-lint: baseline re-minted — ${current.length} grandfathered leaks.`);
       return;
@@ -91,18 +143,17 @@ describe("copy-lint — no NEW substrate jargon in user-facing copy (U-04 M4)", 
     const baseline: string[] = existsSync(BASELINE)
       ? (JSON.parse(readFileSync(BASELINE, "utf8")) as string[])
       : [];
-    const baseSet = new Set(baseline);
-    const fresh = current.filter((e) => !baseSet.has(e));
+    const baseSet = new Set(normalizeBaseline(baseline));
+    const fresh = current.filter((e) => !baseSet.has(e.key));
 
     if (fresh.length) {
       const byRule = new Map(BANNED_PATTERNS.map((r) => [r.id, r]));
       const detail = fresh
         .map((e) => {
-          const [loc, ruleId, match] = e.split("\t");
-          const rule = byRule.get(ruleId);
+          const rule = byRule.get(e.ruleId);
           return (
-            `  ${loc}\n` +
-            `    found:   ${match}  (${rule?.description ?? ruleId})\n` +
+            `  ${e.loc}\n` +
+            `    found:   ${e.match}  (${rule?.description ?? e.ruleId})\n` +
             `    use:     ${rule?.replacement ?? "see src/shared/language.ts GLOSSARY"}`
           );
         })
@@ -121,6 +172,6 @@ describe("copy-lint — no NEW substrate jargon in user-facing copy (U-04 M4)", 
     console.log(
       `copy-lint OK — no new substrate jargon (${current.length} grandfathered; baseline has ${baseline.length}).`,
     );
-    expect(fresh).toEqual([]);
+    expect(fresh.map((e) => e.key)).toEqual([]);
   });
 });

@@ -142,7 +142,7 @@ describe("PhaseRow", () => {
 
     expect(screen.getByText("1 claim · 2 gaps")).toBeTruthy();
     expect(screen.getByText("Supported claim.")).toBeTruthy();
-    expect(screen.getByText("[1 chunk]")).toBeTruthy();
+    expect(screen.getByText("[1 source]")).toBeTruthy();
     expect(screen.getByText("Missing primary source.")).toBeTruthy();
     expect(screen.getByText("(empty)")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/undefined|NaN|Infinity/);
