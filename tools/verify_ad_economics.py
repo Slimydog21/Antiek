@@ -48,7 +48,6 @@ from substrate import ip_holders
 from substrate.ad_inventory.ad_bidding import AdInventoryItem
 from substrate.ad_inventory.attribution import (
     AttributionAlgorithm,
-    eligibility_decision,
     monetization_eligible,
 )
 from substrate.ad_inventory.attribution_audit import (
@@ -715,7 +714,6 @@ def render_report(report: VerificationReport) -> str:
             if a.asset_id in seen:
                 continue
             seen.add(a.asset_id)
-            dec = eligibility_decision(a.content_class)
             verdict = "EARNS" if monetization_eligible(a.content_class) else "EARNS $0"
             lines.append(f"  {a.asset_id:22} content_class={a.content_class!r:30} "
                          f"-> {verdict}")
