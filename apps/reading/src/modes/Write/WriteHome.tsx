@@ -18,6 +18,7 @@ import { IdeaDump } from "./Brainstorm/IdeaDump";
 import Outline from "./Outline";
 import { ProjectTypeField } from "./ProjectType";
 import { onTraceIntent } from "./Editor/traceIntent";
+import { safeDeliverableDetail, safeDeliverableSummaries } from "./deliverableData";
 import { getTraceTarget, type RepositoryHit } from "./writeApi";
 import { useOpenDocument } from "../../lib/openDocument";
 import {
@@ -74,7 +75,7 @@ export default function WriteHome() {
     }
     setLoading(true);
     try {
-      setDetail(await getDeliverable(deliverableId));
+      setDetail(safeDeliverableDetail(await getDeliverable(deliverableId)));
     } catch {
       setDetail(null);
     } finally {
@@ -89,7 +90,9 @@ export default function WriteHome() {
   useEffect(() => {
     if (deliverableId) return; // only list pieces on the home (no piece) view
     listDeliverables()
-      .then((r) => setPieces(r.deliverables))
+      .then((r) =>
+        setPieces(Array.isArray(r.deliverables) ? safeDeliverableSummaries(r.deliverables) : []),
+      )
       .catch(() => setPieces([]));
   }, [deliverableId]);
 
