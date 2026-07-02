@@ -37,6 +37,92 @@ interface InterviewSummaryRow {
   turn_count: number;
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const text = nonEmptyString(item);
+        return text ? [text] : [];
+      })
+    : [];
+}
+
+function nonNegativeInteger(value: unknown): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
+}
+
+function safeProject(value: unknown): InterviewProject | null {
+  const project = record(value);
+  const projectId = nonEmptyString(project?.project_id);
+  const title = nonEmptyString(project?.title);
+  if (!project || !projectId || !title) return null;
+  return {
+    project_id: projectId,
+    title,
+    topic_description: nullableString(project.topic_description),
+    deliverable_id: nullableString(project.deliverable_id),
+    must_cover: stringArray(project.must_cover),
+    framing: nullableString(project.framing),
+    interview_count: nonNegativeInteger(project.interview_count),
+    completed_count: nonNegativeInteger(project.completed_count),
+    created_at: nullableString(project.created_at),
+  };
+}
+
+function safeProjects(value: unknown): InterviewProject[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const project = safeProject(item);
+        return project ? [project] : [];
+      })
+    : [];
+}
+
+function safeInterview(value: unknown): InterviewSummaryRow | null {
+  const interview = record(value);
+  const interviewId = nonEmptyString(interview?.interview_id);
+  const projectId = nonEmptyString(interview?.project_id);
+  if (!interview || !interviewId || !projectId) return null;
+  return {
+    interview_id: interviewId,
+    project_id: projectId,
+    informant_handle: nullableString(interview.informant_handle),
+    informant_email: nullableString(interview.informant_email),
+    status: nonEmptyString(interview.status) ?? "invited",
+    turn_count: nonNegativeInteger(interview.turn_count),
+  };
+}
+
+function safeInterviews(value: unknown): InterviewSummaryRow[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const interview = safeInterview(item);
+        return interview ? [interview] : [];
+      })
+    : [];
+}
+
 export default function InterviewIndex() {
   const [projects, setProjects] = useState<InterviewProject[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -59,8 +145,7 @@ export default function InterviewIndex() {
           `GET /interview-projects failed: HTTP ${resp.status}`,
         );
       }
-      const data = await resp.json();
-      setProjects(Array.isArray(data) ? data : []);
+      setProjects(safeProjects(await resp.json()));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -220,8 +305,7 @@ function ProjectRow({
         `/interview-projects/${encodeURIComponent(project.project_id)}/interviews`,
       );
       if (!resp.ok) return;
-      const data = await resp.json();
-      setInterviews(Array.isArray(data) ? data : []);
+      setInterviews(safeInterviews(await resp.json()));
     } catch {
       // Best-effort; the project row still renders without interviews.
     }
@@ -311,7 +395,7 @@ function ProjectRow({
                     className="py-1 flex items-center justify-between gap-2"
                   >
                     <Link
-                      to={`/interview/${i.interview_id}`}
+                      to={`/interview/${encodeURIComponent(i.interview_id)}`}
                       className="text-xs font-mono text-ink dark:text-bright hover:underline truncate"
                     >
                       {i.informant_handle ||
