@@ -41,12 +41,12 @@ def main(argv: list[str] | None = None) -> int:
     if not args.investigation_ids:
         p.error("investigation_ids required unless --import-notes is set")
     if len(args.investigation_ids) > 1 and args.compose:
-        res = compose_artifacts(args.investigation_ids)
-        print(res.path)
+        composed = compose_artifacts(args.investigation_ids)
+        print(composed.path)
         return 0
     for iid in args.investigation_ids:
-        res = export_research_artifact(iid, emit_event=not args.no_event)
-        print(res.path)
+        exported = export_research_artifact(iid, emit_event=not args.no_event)
+        print(exported.path)
     return 0
 
 

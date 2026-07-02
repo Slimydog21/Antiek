@@ -576,18 +576,18 @@ hr.divider {
 <body><main class="page"><header class="hero"><p class="eyebrow"><a href="index.html">← ANT-AUTH-DIAG</a> · SPR-05</p>
 <h1>Playwright login e2e (tier B)</h1><p class="tagline">Hermetic: MockEmailProvider captures link → callback → cookie → /auth/me.</p>
 <div class="meta-row"><span class="tag tag--blue"><span class="dot"></span>Wave per index</span>
-<span class="tag tag--yellow"><span class="dot"></span>Ready</span></div></header><section class="block"><h2>Parent context</h2><p class="lede">Standalone briefing — do not require master spec open.</p><p>New spec <code>apps/reading/e2e/login-magic-link.spec.ts</code>, project <code>login-real</code>: vite preview + subprocess uvicorn OR test client injection documented in spec.</p>
+<span class="tag tag--green"><span class="dot"></span>Done</span></div></header><section class="block"><h2>Parent context</h2><p class="lede">Standalone briefing — do not require master spec open.</p><p>New spec <code>apps/reading/e2e/login-magic-link.spec.ts</code>, project <code>login-real</code>: vite preview + subprocess uvicorn OR test client injection documented in spec.</p>
 <p>Env: <code>ANTIEK_COOKIE_INSECURE=1</code>, <code>ANTIEK_OPERATOR_EMAIL=test@antiek.test</code>, mock provider.</p>
 <div class="callout callout--info"><strong>Position:</strong> SPR-05 of ANT-AUTH-DIAG — login diagnostic precision program.</div></section><section class="block"><h2>Goal</h2><p><strong>CI-hermetic proof that happy path and expired token path work end-to-end.</strong></p></section><section class="block"><h2>Technical milestones</h2><p class="lede">Mechanically verified before complete.</p><div class="milestone"><div class="num">1</div><div>
 <div class="title">Harness bootstrap</div><p class="desc">Document subprocess start in spec comment + playwright config project.</p>
 <div class="criteria"><strong>Acceptance criteria</strong><ul><li>login-real project in playwright.config.ts</li><li>Does not break ams-real</li></ul></div>
-<div class="files"><span class="file">apps/reading/playwright.config.ts</span><span class="file">e2e/login-magic-link.spec.ts</span></div></div></div><div class="milestone"><div class="num">2</div><div>
+<div class="files"><span class="file">apps/reading/playwright.config.ts</span><span class="file">apps/reading/e2e/login-magic-link.spec.ts</span></div></div></div><div class="milestone"><div class="num">2</div><div>
 <div class="title">Happy path spec</div><p class="desc">Fill Login → extract link from mock stdout/log → visit → lands authenticated.</p>
 <div class="criteria"><strong>Acceptance criteria</strong><ul><li>test passes locally</li><li>Uses data-testid on Login if needed</li></ul></div>
-<div class="files"><span class="file">e2e/login-magic-link.spec.ts</span></div></div></div><div class="milestone"><div class="num">3</div><div>
+<div class="files"><span class="file">apps/reading/e2e/login-magic-link.spec.ts</span></div></div></div><div class="milestone"><div class="num">3</div><div>
 <div class="title">Expired token spec</div><p class="desc">Visit callback with expired token → expect login?error= per SPR-03.</p>
 <div class="criteria"><strong>Acceptance criteria</strong><ul><li>assert URL and copy</li><li>depends SPR-03 merged</li></ul></div>
-<div class="files"><span class="file">e2e/login-magic-link.spec.ts</span></div></div></div></section><section class="block"><h2>Rigor</h2><div class="rigor">
+<div class="files"><span class="file">apps/reading/e2e/login-magic-link.spec.ts</span></div></div></div></section><section class="block"><h2>Rigor</h2><div class="rigor">
 <div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Evidence-calibrated</h4><p>If subprocess flake &gt;1/5, handoff says blocked — do not claim green.</p></div>
 <div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman rejected</h4><p>Steelman: keep AMS mock only — reject; doesn't test Login component.</p></div>
 <div class="rigor-card"><span class="label">3 · Rigor</span><h4>Mechanical gates</h4><p>Artifacts: trace.zip on failure uploaded path in handoff.</p></div>
