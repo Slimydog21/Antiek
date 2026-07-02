@@ -53,6 +53,14 @@ cmd_cascade() {
   "${PY}" scripts/repro_cascade_decompose_contract.py
   echo "== cascade: DispatchDecomposer regression =="
   "${PY}" -m pytest tests/test_cascade_planner.py::test_dispatch_decomposer_maps_stub_response -q --tb=no
+  echo "== cascade: edit contract regression =="
+  "${PY}" -m pytest \
+    tests/test_cascade_planner.py::test_invalid_edits_do_not_mutate_or_reopen_gate \
+    tests/test_cascade_planner.py::test_from_dict_clamps_out_of_contract_max_depth \
+    tests/test_cascade_api.py::test_invalid_question_edits_are_refused_without_mutating_plan \
+    tests/test_cascade_api.py::test_invalid_budget_edits_are_rejected_before_persistence \
+    tests/test_cascade_api.py::test_max_depth_cap_value_persists \
+    -q --tb=no
   echo "== cascade: light create-plan route =="
   "${PY}" -m pytest tests/test_cascade_create_plan_light.py -q --tb=no
   echo "== cascade: decomposer call-site audit =="
