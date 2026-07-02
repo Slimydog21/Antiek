@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to UNIFIED_SPRINTS. Status changes are deliberate roadmap
 # events, not prose-only handoffs.
-UNIFIED_LOCK_VERSION: int = 2
+UNIFIED_LOCK_VERSION: int = 3
 
 
 @dataclass(frozen=True)
@@ -51,7 +51,17 @@ UNIFIED_SPRINTS: dict[int, UnifiedDeliverable] = {
         # protocol-only launch call sites are covered by unified-remote-exec-fanout.
         status="live",
     ),
-    3: UnifiedDeliverable(3, "seams-and-collisions", "Seams + collisions"),
+    3: UnifiedDeliverable(
+        3,
+        "seams-and-collisions",
+        "Seams + collisions",
+        # Live: six committed typed seams plus one provisional write-to-speak
+        # seam, no-copy handoff guards, no-auto-loop shape, seam event parity,
+        # voice single-owner collision guard, single escrow writer guard,
+        # platform_authored/speak_derived publish gate, and flywheel seam
+        # composition are covered by unified-seams-and-collisions.
+        status="live",
+    ),
     4: UnifiedDeliverable(4, "navigation-ia-taxonomy", "Navigation IA taxonomy"),
     5: UnifiedDeliverable(5, "coordination-gate-ledger", "Coordination gate ledger"),
     6: UnifiedDeliverable(6, "thread-navigation", "Thread navigation"),
