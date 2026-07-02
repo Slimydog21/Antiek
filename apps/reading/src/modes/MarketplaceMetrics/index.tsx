@@ -70,12 +70,40 @@ interface MarketplaceSnapshot {
   health_signals: string[];
 }
 
-const nonNegativeFiniteNumber = (value: unknown): number | null =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
     : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const text = nonEmptyString(item);
+        return text ? [text] : [];
+      })
+    : [];
+}
+
+function nonNegativeFiniteNumber(value: unknown): number | null {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
 
 const safeNumber = (value: unknown): number => nonNegativeFiniteNumber(value) ?? 0;
+
+const safeInteger = (value: unknown): number => Math.floor(safeNumber(value));
 
 const USD = (cents: unknown) =>
   `$${(safeNumber(cents) / 100).toLocaleString(undefined, {
@@ -94,6 +122,91 @@ function bucketLabel(b: EarningsBucket): string {
   return `${USD(lo)} – ${USD(hi - 1)}`;
 }
 
+function safeBucket(value: unknown): EarningsBucket | null {
+  const bucket = record(value);
+  if (!bucket) return null;
+  return {
+    lower_cents: safeInteger(bucket.lower_cents),
+    upper_cents: bucket.upper_cents === -1 ? -1 : safeInteger(bucket.upper_cents),
+    creator_count: safeInteger(bucket.creator_count),
+  };
+}
+
+function safeCreators(value: unknown): CreatorDistribution {
+  const creators = record(value);
+  return {
+    creator_count: safeInteger(creators?.creator_count),
+    total_paid_cents: safeInteger(creators?.total_paid_cents),
+    median_cents: safeInteger(creators?.median_cents),
+    p90_cents: safeInteger(creators?.p90_cents),
+    p99_cents: safeInteger(creators?.p99_cents),
+    long_tail_mass: safeNumber(creators?.long_tail_mass),
+    buckets: Array.isArray(creators?.buckets)
+      ? creators.buckets.flatMap((item) => {
+          const bucket = safeBucket(item);
+          return bucket ? [bucket] : [];
+        })
+      : [],
+  };
+}
+
+function safePublisherStatusCounts(value: unknown): PublisherStatusCounts {
+  const counts = record(value);
+  return {
+    pre_onboarded: safeInteger(counts?.pre_onboarded),
+    invited: safeInteger(counts?.invited),
+    claimed: safeInteger(counts?.claimed),
+    opted_out: safeInteger(counts?.opted_out),
+    total: safeInteger(counts?.total),
+    claim_rate: safeNumber(counts?.claim_rate),
+    opt_out_rate: safeNumber(counts?.opt_out_rate),
+  };
+}
+
+function safePublishers(value: unknown): PublisherEscrow {
+  const publishers = record(value);
+  return {
+    status_counts: safePublisherStatusCounts(publishers?.status_counts),
+    total_escrow_accrued_cents: safeInteger(publishers?.total_escrow_accrued_cents),
+    total_escrow_paid_cents: safeInteger(publishers?.total_escrow_paid_cents),
+    unclaimed_escrow_cents: safeInteger(publishers?.unclaimed_escrow_cents),
+    publishers_with_nontrivial_accrual: safeInteger(
+      publishers?.publishers_with_nontrivial_accrual,
+    ),
+  };
+}
+
+function safeAdvertisers(value: unknown): AdvertiserRetention {
+  const advertisers = record(value);
+  return {
+    advertiser_count_current: safeInteger(advertisers?.advertiser_count_current),
+    advertiser_count_prior: safeInteger(advertisers?.advertiser_count_prior),
+    retained_advertiser_count: safeInteger(advertisers?.retained_advertiser_count),
+    new_advertiser_count: safeInteger(advertisers?.new_advertiser_count),
+    churned_advertiser_count: safeInteger(advertisers?.churned_advertiser_count),
+    total_spend_current_cents: safeInteger(advertisers?.total_spend_current_cents),
+    total_spend_prior_cents: safeInteger(advertisers?.total_spend_prior_cents),
+    retention_rate: safeNumber(advertisers?.retention_rate),
+    crosses_self_service_threshold:
+      advertisers?.crosses_self_service_threshold === true,
+  };
+}
+
+function safeHealth(value: unknown): MarketplaceSnapshot["health"] {
+  return value === "healthy" || value === "unhealthy" ? value : "watch";
+}
+
+function safeMarketplaceSnapshot(value: unknown): MarketplaceSnapshot {
+  const body = record(value);
+  return {
+    creators: safeCreators(body?.creators),
+    publishers: safePublishers(body?.publishers),
+    advertisers: safeAdvertisers(body?.advertisers),
+    health: safeHealth(body?.health),
+    health_signals: stringArray(body?.health_signals),
+  };
+}
+
 export default function MarketplaceMetrics() {
   const [data, setData] = useState<MarketplaceSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +217,7 @@ export default function MarketplaceMetrics() {
       if (!resp.ok) {
         throw new Error(`GET /marketplace/snapshot failed: HTTP ${resp.status}`);
       }
-      setData(await resp.json());
+      setData(safeMarketplaceSnapshot(await resp.json()));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
