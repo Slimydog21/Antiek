@@ -317,6 +317,16 @@ describe("WriteHome — the re-homed door", () => {
           block_count: "2",
         },
         {
+          section_id: "sec-1",
+          deliverable_id: "dlv-open",
+          parent_section_id: null,
+          section_index: 99,
+          title: "Duplicate section",
+          prose_text: null,
+          prose_provenance: null,
+          block_count: 0,
+        },
+        {
           section_id: "",
           deliverable_id: "dlv-open",
           parent_section_id: null,
@@ -333,6 +343,7 @@ describe("WriteHome — the re-homed door", () => {
 
     expect(await screen.findByText("Untitled piece")).toBeTruthy();
     expect(await screen.findByText("(untitled section)")).toBeTruthy();
+    expect(screen.queryByText("Duplicate section")).toBeNull();
     expect(screen.queryByText("Invisible section")).toBeNull();
     expect(getSectionBlocksMock).toHaveBeenCalledWith("sec-1");
   });
