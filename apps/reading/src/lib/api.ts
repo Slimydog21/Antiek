@@ -392,6 +392,92 @@ export interface NotebookShape {
   blocks: NotebookBlockShape[];
 }
 
+const NOTEBOOK_BLOCK_TYPES = new Set<NotebookBlockShape["block_type"]>([
+  "prose",
+  "region_embed",
+  "claim_card",
+  "note",
+  "question_card",
+  "cross_doc_link",
+  "chat_exchange",
+  "master_md_section",
+  "image",
+  "latex",
+]);
+
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function nonNegativeInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
+function safeNotebookBlock(value: unknown): NotebookBlockShape | null {
+  const block = record(value);
+  if (!block) return null;
+  const blockId = nonEmptyString(block?.block_id);
+  const blockType = nonEmptyString(block?.block_type);
+  const blockIndex = nonNegativeInteger(block?.block_index);
+  if (
+    !blockId ||
+    !blockType ||
+    !NOTEBOOK_BLOCK_TYPES.has(blockType as NotebookBlockShape["block_type"]) ||
+    blockIndex === null
+  ) {
+    return null;
+  }
+  return {
+    block_id: blockId,
+    block_index: blockIndex,
+    block_type: blockType as NotebookBlockShape["block_type"],
+    ref_id: nullableString(block.ref_id),
+    content_json: record(block.content_json) ?? {},
+    created_at: nonEmptyString(block.created_at) ?? "",
+  };
+}
+
+function safeNotebookShape(value: unknown): NotebookShape {
+  const notebook = record(value);
+  const notebookId = nonEmptyString(notebook?.notebook_id);
+  if (!notebook || !notebookId) {
+    throw new ApiError("Malformed notebook response", 502, "");
+  }
+  const blocks = Array.isArray(notebook.blocks)
+    ? notebook.blocks.flatMap((item) => {
+        const block = safeNotebookBlock(item);
+        return block ? [block] : [];
+      })
+    : [];
+  return {
+    notebook_id: notebookId,
+    title: nonEmptyString(notebook.title) ?? notebookId,
+    investigation_id: nullableString(notebook.investigation_id),
+    document_id: nullableString(notebook.document_id),
+    content_class:
+      notebook.content_class === "user_public_contribution"
+        ? "user_public_contribution"
+        : "user_owned",
+    created_at: nonEmptyString(notebook.created_at) ?? "",
+    updated_at: nonEmptyString(notebook.updated_at) ?? "",
+    blocks,
+  };
+}
+
 /** GET /notebooks/{id} — fetch a notebook + ordered blocks. */
 export async function getNotebook(notebookId: string): Promise<NotebookShape> {
   const resp = await apiFetch(
@@ -404,7 +490,7 @@ export async function getNotebook(notebookId: string): Promise<NotebookShape> {
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeNotebookShape(await resp.json());
 }
 
 /** POST /notebooks/{id}/blocks — append a block. */
@@ -427,7 +513,7 @@ export async function appendNotebookBlock(
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeNotebookShape(await resp.json());
 }
 
 /** PATCH /notebooks/{id}/blocks/{block_id} — edit one block in place. */
@@ -455,7 +541,7 @@ export async function patchNotebookBlock(
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeNotebookShape(await resp.json());
 }
 
 /** DELETE /notebooks/{id}/blocks/{block_id} — remove one block. */
@@ -474,7 +560,7 @@ export async function deleteNotebookBlock(
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeNotebookShape(await resp.json());
 }
 
 /** POST /notebooks/{id}/blocks/reorder — move blocks. */
@@ -497,7 +583,7 @@ export async function reorderNotebookBlocks(
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeNotebookShape(await resp.json());
 }
 
 /** SPR-11 M3 — the §14.4 inline-rubric verdict for a completed research's
