@@ -92,6 +92,82 @@ function sceneQuery(scene: SceneState): string {
   return p.toString();
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function fallbackSignal(
+  reason = "upstream_bad_response",
+  sceneKey: string | null = null,
+): SceneDisabled {
+  return {
+    enabled: false,
+    isFallback: true,
+    reason,
+    scene_key: sceneKey,
+  };
+}
+
+function safeSceneDisabled(value: unknown): SceneDisabled {
+  const body = record(value);
+  return fallbackSignal(
+    nonEmptyString(body?.reason) ?? "upstream_bad_response",
+    nullableString(body?.scene_key),
+  );
+}
+
+function safeSceneArt(value: unknown): SceneArt | null {
+  const body = record(value);
+  if (!body) return null;
+  const imageUrl = nonEmptyString(body.image_url);
+  const sceneKey = nonEmptyString(body.scene_key);
+  if (!imageUrl || !sceneKey) return null;
+  return {
+    enabled: true,
+    isFallback: false,
+    image_url: imageUrl,
+    scene_key: sceneKey,
+    cached: body.cached === true,
+  };
+}
+
+function safeGenerateResult(value: unknown): GenerateResult | null {
+  const body = record(value);
+  if (!body) return null;
+  const jobId = nonEmptyString(body.job_id);
+  if (!jobId) return null;
+  return {
+    enabled: true,
+    job_id: jobId,
+    status: nonEmptyString(body.status) ?? "unknown",
+  };
+}
+
+function safeJobResult(value: unknown): JobResult | null {
+  const body = record(value);
+  if (!body) return null;
+  const jobId = nonEmptyString(body.job_id);
+  if (!jobId) return null;
+  return {
+    enabled: true,
+    job_id: jobId,
+    status: nonEmptyString(body.status) ?? "unknown",
+    image_url: nullableString(body.image_url),
+  };
+}
+
 /**
  * Request scene art for a scene-state. Resolves to EITHER `SceneArt`
  * (200) OR the typed `SceneDisabled` fallback signal (503). It does NOT
@@ -115,25 +191,13 @@ export async function requestScene(scene: SceneState): Promise<SceneResult> {
   }
   if (resp.status === 503) {
     // The typed disabled/fallback body.
-    return (await safeJson<SceneDisabled>(resp)) ?? {
-      enabled: false,
-      isFallback: true,
-      reason: "upstream_bad_response",
-      scene_key: null,
-    };
+    return safeSceneDisabled(await safeJson(resp));
   }
   if (resp.ok) {
-    const art = await safeJson<SceneArt>(resp);
-    if (art && typeof art.image_url === "string" && art.image_url) {
-      return { ...art, enabled: true, isFallback: false } as SceneArt;
-    }
+    const art = safeSceneArt(await safeJson(resp));
+    if (art) return art;
     // 200 but unparseable / missing image — treat as fallback, not a crash.
-    return {
-      enabled: false,
-      isFallback: true,
-      reason: "upstream_bad_response",
-      scene_key: null,
-    };
+    return fallbackSignal();
   }
   // Any other status is genuinely unexpected — surface it.
   throw new Error(`GET /krea/scene failed: HTTP ${resp.status}`);
@@ -156,20 +220,10 @@ export async function generateImage(
     return { enabled: false, isFallback: true, reason: "offline", scene_key: null };
   }
   if (resp.status === 503) {
-    return (await safeJson<SceneDisabled>(resp)) ?? {
-      enabled: false, isFallback: true, reason: "upstream_bad_response",
-      scene_key: null,
-    };
+    return safeSceneDisabled(await safeJson(resp));
   }
   if (resp.ok) {
-    const body = await safeJson<GenerateResult>(resp);
-    if (body && typeof body.job_id === "string") {
-      return { ...body, enabled: true };
-    }
-    return {
-      enabled: false, isFallback: true, reason: "upstream_bad_response",
-      scene_key: null,
-    };
+    return safeGenerateResult(await safeJson(resp)) ?? fallbackSignal();
   }
   throw new Error(`POST /krea/generate failed: HTTP ${resp.status}`);
 }
@@ -183,29 +237,19 @@ export async function getJob(jobId: string): Promise<JobResponse> {
     return { enabled: false, isFallback: true, reason: "offline", scene_key: null };
   }
   if (resp.status === 503) {
-    return (await safeJson<SceneDisabled>(resp)) ?? {
-      enabled: false, isFallback: true, reason: "upstream_bad_response",
-      scene_key: null,
-    };
+    return safeSceneDisabled(await safeJson(resp));
   }
   if (resp.ok) {
-    const body = await safeJson<JobResult>(resp);
-    if (body && typeof body.job_id === "string") {
-      return { ...body, enabled: true };
-    }
-    return {
-      enabled: false, isFallback: true, reason: "upstream_bad_response",
-      scene_key: null,
-    };
+    return safeJobResult(await safeJson(resp)) ?? fallbackSignal();
   }
   throw new Error(`GET /krea/jobs/{id} failed: HTTP ${resp.status}`);
 }
 
 /** Parse JSON tolerantly — a partial/garbage body becomes null (the caller
  *  then synthesizes the fallback signal), never a throw. */
-async function safeJson<T>(resp: Response): Promise<T | null> {
+async function safeJson(resp: Response): Promise<unknown | null> {
   try {
-    return (await resp.json()) as T;
+    return await resp.json();
   } catch {
     return null;
   }
