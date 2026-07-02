@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import type { Event } from "../generated/types";
 import { apiFetch } from "../lib/api";
+import { isEventFrame } from "../lib/eventFrame";
 import { WernerThinking } from "../brand/werner/animated";
 import { useReplyMode } from "../hooks/useReplyMode";
 import SpokenReply from "./SpokenReply";
@@ -111,28 +113,28 @@ export default function AISidecar() {
       }
       if (t?.ok) {
         const data = await t.json();
-        type RawDispatchEvent = {
-          payload?: Record<string, unknown> & {
-            call_id?: string;
-            tier?: string;
-            provider?: string;
-            model?: string;
-            latency_ms?: number;
-            fallback_reason?: string | null;
-          };
-        };
-        const events = (data.events ?? [])
-          .filter((e: RawDispatchEvent) => e.payload?.call_id)
+        const events: Event[] = Array.isArray(data.events)
+          ? data.events.filter(isEventFrame)
+          : [];
+        const calls = events
+          .filter((e) => e.action_type === "dispatch.call")
+          .filter((e) => {
+            const p = e.payload as unknown as Record<string, unknown>;
+            return typeof p.call_id === "string" && p.call_id.length > 0;
+          })
           .slice(-8)
-          .map((e: RawDispatchEvent) => ({
-            call_id: e.payload?.call_id ?? "",
-            tier: e.payload?.tier ?? "?",
-            provider: e.payload?.provider ?? "?",
-            model: e.payload?.model ?? "?",
-            latency_ms: finiteNonNegativeNumber(e.payload?.latency_ms) ?? 0,
-            fallback_reason: e.payload?.fallback_reason ?? null,
-          }));
-        setRecentCalls(events);
+          .map((e) => {
+            const p = e.payload as unknown as Record<string, unknown>;
+            return {
+              call_id: String(p.call_id),
+              tier: typeof p.tier === "string" ? p.tier : "?",
+              provider: typeof p.provider === "string" ? p.provider : "?",
+              model: typeof p.model === "string" ? p.model : "?",
+              latency_ms: finiteNonNegativeNumber(p.latency_ms) ?? 0,
+              fallback_reason: typeof p.fallback_reason === "string" ? p.fallback_reason : null,
+            };
+          });
+        setRecentCalls(calls);
       }
     } catch {
       // Sidecar is non-blocking; offline state shows last-loaded values.
