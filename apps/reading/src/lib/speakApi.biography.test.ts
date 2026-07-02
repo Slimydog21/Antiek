@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { apiFetch } from "./api";
-import { createBiography, createPerson } from "./speakApi";
+import {
+  createBiography,
+  createPerson,
+  getProject,
+  listPeople,
+  listPublicFeed,
+} from "./speakApi";
 
 vi.mock("./api", () => ({
   apiFetch: vi.fn(),
@@ -109,6 +115,79 @@ describe("createPerson", () => {
     apiFetchMock.mockResolvedValue(jsonResponse({ project_id: " " }));
 
     await expect(createPerson("Maria")).rejects.toThrow(
+      "project_id must be a non-empty string",
+    );
+  });
+});
+
+describe("Speak project lists", () => {
+  it("drops malformed project rows from the private dashboard list", async () => {
+    apiFetchMock.mockResolvedValue(
+      jsonResponse({
+        projects: [
+          {
+            project_id: " proj-private ",
+            subject_ref: "Maria",
+            publish_intent: "private_never_published",
+            interview_count: 2,
+          },
+          {
+            project_id: " ",
+            subject_ref: "Invisible",
+            publish_intent: "will_be_public",
+            interview_count: 5,
+          },
+        ],
+      }),
+    );
+
+    await expect(listPeople()).resolves.toEqual([
+      {
+        id: "proj-private",
+        name: "Maria",
+        willBePublic: false,
+        voiceCount: 2,
+      },
+    ]);
+  });
+
+  it("drops malformed project rows from the public feed", async () => {
+    apiFetchMock.mockResolvedValue(
+      jsonResponse({
+        projects: [
+          {
+            project_id: " proj-public ",
+            subject_ref: "Rosa",
+            interview_count: 3,
+          },
+          {
+            project_id: "",
+            subject_ref: "Invisible",
+            interview_count: 4,
+          },
+        ],
+      }),
+    );
+
+    await expect(listPublicFeed()).resolves.toEqual([
+      {
+        id: "proj-public",
+        name: "Rosa",
+        voiceCount: 3,
+      },
+    ]);
+  });
+
+  it("rejects malformed project detail ids", async () => {
+    apiFetchMock.mockResolvedValue(
+      jsonResponse({
+        project_id: " ",
+        subject_ref: "Rosa",
+        publish_intent: "private_never_published",
+      }),
+    );
+
+    await expect(getProject("proj-bad")).rejects.toThrow(
       "project_id must be a non-empty string",
     );
   });

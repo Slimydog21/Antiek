@@ -117,7 +117,7 @@ export function toPerson(raw: Record<string, unknown>): RememberedPerson {
   const publish = typeof raw.publish_intent === "string" ? raw.publish_intent : "";
   const count = typeof raw.interview_count === "number" ? raw.interview_count : 0;
   return {
-    id: String(raw.project_id ?? ""),
+    id: requireNonEmptyField(raw.project_id, "project_id"),
     name: subject ?? title,
     willBePublic: publish === "will_be_public",
     voiceCount: count,
@@ -130,7 +130,7 @@ export function toProjectDetail(raw: Record<string, unknown>): ProjectDetail {
   const publish = typeof raw.publish_intent === "string" ? raw.publish_intent : "";
   const status = typeof raw.subject_status === "string" ? raw.subject_status : "";
   return {
-    id: String(raw.project_id ?? ""),
+    id: requireNonEmptyField(raw.project_id, "project_id"),
     name: subject ?? title,
     willBePublic: publish === "will_be_public",
     subjectStatusWord:
@@ -179,7 +179,13 @@ export async function listPeople(): Promise<RememberedPerson[]> {
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const data = await resp.json();
   const rows: Record<string, unknown>[] = Array.isArray(data.projects) ? data.projects : [];
-  return rows.map(toPerson);
+  return rows.flatMap((row) => {
+    try {
+      return [toPerson(row)];
+    } catch {
+      return [];
+    }
+  });
 }
 
 export async function getProject(id: string): Promise<ProjectDetail> {
@@ -280,16 +286,24 @@ export async function listPublicFeed(): Promise<FeedItem[]> {
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const data = await resp.json();
   const rows: Record<string, unknown>[] = Array.isArray(data.projects) ? data.projects : [];
-  return rows.map((r) => ({
-    id: String(r.project_id ?? ""),
-    name:
-      typeof r.subject_ref === "string" && r.subject_ref
-        ? r.subject_ref
-        : typeof r.title === "string"
-        ? r.title
-        : "",
-    voiceCount: typeof r.interview_count === "number" ? r.interview_count : 0,
-  }));
+  return rows.flatMap((r) => {
+    try {
+      return [
+        {
+          id: requireNonEmptyField(r.project_id, "project_id"),
+          name:
+            typeof r.subject_ref === "string" && r.subject_ref
+              ? r.subject_ref
+              : typeof r.title === "string"
+                ? r.title
+                : "",
+          voiceCount: typeof r.interview_count === "number" ? r.interview_count : 0,
+        },
+      ];
+    } catch {
+      return [];
+    }
+  });
 }
 
 export interface PayoutReleaseView {
