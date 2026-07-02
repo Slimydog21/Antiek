@@ -67,6 +67,7 @@ from substrate.schemas.events import (
     OutlineBlockMovedPayload,
     OutlineBlockPlacedPayload,
     OutlineBlockRemovedPayload,
+    SeamReadToWritePayload,
 )
 
 # ---------------------------------------------------------------------------
@@ -299,7 +300,7 @@ def place_block(
             cluster_id, _maybe_json(metadata),
         ],
     )
-    emit_typed(
+    placed_event_id = emit_typed(
         investigation_id,
         OutlineBlockPlacedPayload(
             outline_block_id=obid,
@@ -313,6 +314,17 @@ def place_block(
         parent_event_id=parent_event_id,
         role="write_composition",
     )
+    if provenance_kind == "graph_node" and block_kind == "insight" and node_id:
+        emit_typed(
+            investigation_id,
+            SeamReadToWritePayload(
+                entity_id=node_id,
+                provenance_ref=placed_event_id or obid,
+                target_section_id=section_id,
+            ),
+            parent_event_id=placed_event_id,
+            role="write_composition",
+        )
     return obid
 
 
