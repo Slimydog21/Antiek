@@ -158,7 +158,7 @@ export function toVoice(raw: Record<string, unknown>): ArrivingVoice {
   const handle = typeof raw.informant_handle === "string" ? raw.informant_handle : null;
   const status = typeof raw.status === "string" ? raw.status : "invited";
   return {
-    interviewId: String(raw.interview_id ?? ""),
+    interviewId: requireNonEmptyField(raw.interview_id, "interview_id"),
     who: email ?? handle ?? "Someone you invited",
     state: VOICE_STATE[status] ?? "invited",
     link: typeof raw.link === "string" ? raw.link : "",
@@ -205,7 +205,13 @@ export async function listVoices(id: string): Promise<ArrivingVoice[]> {
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const data = await resp.json();
   const rows: Record<string, unknown>[] = Array.isArray(data.invites) ? data.invites : [];
-  return rows.map(toVoice);
+  return rows.flatMap((row) => {
+    try {
+      return [toVoice(row)];
+    } catch {
+      return [];
+    }
+  });
 }
 
 export async function inviteByEmail(id: string, email: string): Promise<ArrivingVoice> {
@@ -227,7 +233,7 @@ export async function makeShareLink(id: string): Promise<string> {
     body: JSON.stringify({ informant_handle: "a friend or family member" }),
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  return toVoice(await resp.json()).link;
+  return requireNonEmptyField(toVoice(await resp.json()).link, "link");
 }
 
 /**
