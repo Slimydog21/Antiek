@@ -393,7 +393,7 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
     question,
     totalCostUsd: totalCost,
     masterMdPath: completed?.master_md_path ?? null,
-    domainsPatched: completed?.domains_patched ?? [],
+    domainsPatched: uniqueStringList(completed?.domains_patched),
     recommendation:
       synthDelivered?.implicit_recommendation ??
       completed?.implicit_recommendation ??
