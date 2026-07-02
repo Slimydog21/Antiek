@@ -14,8 +14,8 @@ import { apiFetch } from "../../lib/api";
  */
 
 interface StatsResponse {
-  counts?: Record<string, unknown> | null;
-  warnings?: unknown[] | null;
+  counts: Record<string, number>;
+  warnings: string[];
 }
 
 const TABLE_GROUPS: { title: string; tables: string[] }[] = [
@@ -46,24 +46,61 @@ const TABLE_GROUPS: { title: string; tables: string[] }[] = [
 ];
 
 function tableCountLabel(counts: StatsResponse["counts"], table: string): string {
-  const value = counts?.[table];
-  const count =
-    typeof value === "number"
-      ? value
-      : typeof value === "string"
-        ? Number(value)
-        : 0;
+  const count = counts[table] ?? 0;
   if (!Number.isFinite(count) || count < 0) {
     return "0";
   }
   return Math.floor(count).toLocaleString();
 }
 
-function warningMessages(data: StatsResponse): string[] {
-  if (!Array.isArray(data.warnings)) {
-    return [];
-  }
-  return data.warnings.map((warning) => String(warning));
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function safeCount(value: unknown): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
+}
+
+function safeCounts(value: unknown): Record<string, number> {
+  const counts = record(value);
+  if (!counts) return {};
+  return Object.fromEntries(
+    Object.entries(counts).flatMap(([key, value]) => {
+      const safeKey = nonEmptyString(key);
+      return safeKey ? [[safeKey, safeCount(value)]] : [];
+    }),
+  );
+}
+
+function safeWarnings(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.flatMap((warning) => {
+        const message = nonEmptyString(warning);
+        return message ? [message] : [];
+      })
+    : [];
+}
+
+function safeStatsResponse(value: unknown): StatsResponse {
+  const body = record(value);
+  return {
+    counts: safeCounts(body?.counts),
+    warnings: safeWarnings(body?.warnings),
+  };
 }
 
 export default function Stats() {
@@ -84,7 +121,7 @@ export default function Stats() {
       if (!resp.ok) {
         throw new Error(`GET /stats: HTTP ${resp.status}`);
       }
-      setData(await resp.json());
+      setData(safeStatsResponse(await resp.json()));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -96,7 +133,7 @@ export default function Stats() {
     void reload();
   }, [reload]);
 
-  const warnings = data ? warningMessages(data) : [];
+  const warnings = data?.warnings ?? [];
 
   return (
     <div className={`flex flex-col ${inWindow ? "h-full" : "h-screen"}`}>
