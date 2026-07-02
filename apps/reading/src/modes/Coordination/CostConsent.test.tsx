@@ -191,7 +191,7 @@ describe("CostConsent", () => {
               escrow_balance_usd: "Infinity",
               gate: {
                 disbursable: true,
-                open_gate_ids: [" G2 ", " "],
+                open_gate_ids: [" G2 ", " ", "G2"],
                 holder_claimed: true,
                 fully_unlocked: false,
                 label: " ",
@@ -208,7 +208,7 @@ describe("CostConsent", () => {
             claim_rate: "Infinity",
             total_escrow_paid_cents: "Infinity",
           },
-          disbursement_gates_open: [" G2 ", " "],
+          disbursement_gates_open: [" G2 ", " ", "G2"],
           total_escrow_accruing_usd: "NaN",
           any_disbursable: "yes",
           gate_source_path: " /tmp/gates.md ",
@@ -222,6 +222,7 @@ describe("CostConsent", () => {
     expect(screen.getByText("holder dirty")).toBeTruthy();
     expect(screen.queryByText("Skipped holder")).toBeNull();
     expect(screen.getByText("disbursement gated on G2")).toBeTruthy();
+    expect(screen.queryByText("disbursement gated on G2+G2")).toBeNull();
     expect(screen.getAllByText("not disbursable").length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByText("disbursable")).toBeNull();
     expect(screen.getByText("not surfaced here")).toBeTruthy();
