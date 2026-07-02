@@ -22,7 +22,7 @@ import { MemoryRouter } from "react-router-dom";
 
 import type { InvestigationSummary } from "../../lib/api";
 
-const { listState, budgetState, authState, navigateMock } = vi.hoisted(() => ({
+const { listState, budgetState, authState, listDeliverablesMock, navigateMock } = vi.hoisted(() => ({
   listState: {
     current: {
       investigations: [] as InvestigationSummary[],
@@ -39,6 +39,7 @@ const { listState, budgetState, authState, navigateMock } = vi.hoisted(() => ({
     } as Record<string, number> | null,
   },
   authState: { current: { status: "authenticated" as "authenticated" | "unauthenticated" | "loading" } },
+  listDeliverablesMock: vi.fn(),
   navigateMock: vi.fn(),
 }));
 
@@ -65,6 +66,11 @@ vi.mock("../../lib/auth", async (orig) => {
   const actual = await orig<typeof import("../../lib/auth")>();
   return { ...actual, useAuth: () => ({ state: authState.current }) };
 });
+
+vi.mock("../../lib/api", async (orig) => ({
+  ...(await orig<typeof import("../../lib/api")>()),
+  listDeliverables: listDeliverablesMock,
+}));
 
 vi.mock("react-router-dom", async (orig) => {
   const actual = await orig<typeof import("react-router-dom")>();
@@ -106,6 +112,7 @@ beforeEach(() => {
     host_local_max_concurrency: 20,
   };
   authState.current = { status: "authenticated" };
+  listDeliverablesMock.mockReset().mockResolvedValue({ count: 0, deliverables: [] });
   navigateMock.mockReset();
 });
 afterEach(() => cleanup());
@@ -183,6 +190,64 @@ describe("MyResearch — one monitor, plain language (M1)", () => {
     expect(screen.getByText("unavailable")).toBeTruthy();
     expect(screen.queryByText("unexpected")).toBeNull();
     expect(screen.queryByText("Invisible broken row")).toBeNull();
+  });
+
+  it("surfaces linked Write pieces on their backing research rows", async () => {
+    listState.current.investigations = [
+      inv({
+        investigation_id: " inv-root ",
+        question: "Research with a piece",
+        status: "completed",
+      }),
+      inv({
+        investigation_id: "inv-other",
+        question: "Research without a piece",
+        status: "completed",
+      }),
+    ];
+    listDeliverablesMock.mockResolvedValue({
+      count: 3,
+      deliverables: [
+        {
+          deliverable_id: " dlv-linked ",
+          title: "  Linked memo  ",
+          deliverable_kind: "research_memo",
+          investigation_root_id: " inv-root ",
+          status: "draft",
+          created_at: null,
+          updated_at: null,
+          section_count: "2",
+        },
+        {
+          deliverable_id: "dlv-unlinked",
+          title: "Unlinked memo",
+          deliverable_kind: "general_essay",
+          investigation_root_id: " ",
+          status: "draft",
+          created_at: null,
+          updated_at: null,
+          section_count: 1,
+        },
+        {
+          deliverable_id: " ",
+          title: "Invisible memo",
+          deliverable_kind: "general_essay",
+          investigation_root_id: "inv-root",
+          status: "draft",
+          created_at: null,
+          updated_at: null,
+          section_count: 1,
+        },
+      ],
+    });
+
+    renderMonitor();
+
+    const linked = await screen.findByRole("link", { name: "Linked memo" });
+    expect(linked.getAttribute("href")).toBe("/write/dlv-linked");
+    expect(linked.getAttribute("title")).toBe("2 sections");
+    expect(screen.queryByText("Unlinked memo")).toBeNull();
+    expect(screen.queryByText("Invisible memo")).toBeNull();
   });
 });
 
