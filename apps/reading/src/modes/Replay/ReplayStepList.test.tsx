@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 
 import type { Event } from "../../generated/types";
 
@@ -14,6 +14,14 @@ vi.mock("../../lib/api", async (orig) => {
 });
 
 import ReplayStepList from "./ReplayStepList";
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
 
 function event(
   id: string,
@@ -98,5 +106,55 @@ describe("ReplayStepList", () => {
     await waitFor(() => expect(screen.getByText("Steps · 1")).toBeTruthy());
     expect(screen.getByText("investigation · completed")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/bad-array/);
+  });
+
+  it("keeps stale polled steps from overwriting the active investigation", async () => {
+    const stale = deferred<{
+      ok: true;
+      json: () => Promise<{ events: Event[] }>;
+    }>();
+    const fresh = deferred<{
+      ok: true;
+      json: () => Promise<{ events: Event[] }>;
+    }>();
+    apiFetchMock.mockReturnValueOnce(stale.promise).mockReturnValueOnce(fresh.promise);
+
+    const rendered = render(<ReplayStepList investigationId="inv-stale" />);
+    rendered.rerender(<ReplayStepList investigationId="inv-fresh" />);
+
+    await act(async () => {
+      fresh.resolve({
+        ok: true,
+        json: async () => ({
+          events: [
+            event("fresh-step", "synthesize.delivered", {
+              investigation_id: "inv-fresh",
+              emitted_at: "2026-07-01T12:00:10Z",
+            }),
+          ],
+        }),
+      });
+    });
+
+    expect(await screen.findByText("synthesize ✓")).toBeTruthy();
+    expect(screen.getByText("2026-07-01T12:00:10Z")).toBeTruthy();
+
+    await act(async () => {
+      stale.resolve({
+        ok: true,
+        json: async () => ({
+          events: [
+            event("stale-step", "evidence.retrieve.delivered", {
+              investigation_id: "inv-stale",
+              emitted_at: "2026-07-01T12:00:00Z",
+            }),
+          ],
+        }),
+      });
+    });
+
+    expect(screen.getByText("synthesize ✓")).toBeTruthy();
+    expect(screen.queryByText("evidence · retrieve ✓")).toBeNull();
+    expect(screen.queryByText("2026-07-01T12:00:00Z")).toBeNull();
   });
 });
