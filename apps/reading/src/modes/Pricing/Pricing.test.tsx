@@ -6,6 +6,15 @@ import PricingPage from "./index";
 afterEach(() => cleanup());
 
 describe("PricingPage", () => {
+  it("uses the current Brainstorm station label for private usage", () => {
+    render(<PricingPage />);
+
+    expect(
+      screen.getByText("Brainstorm station, private documents, private graph."),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Brainstorming Workstation/)).toBeNull();
+  });
+
   it("ignores malformed calculator inputs instead of rendering invalid money", () => {
     render(<PricingPage />);
 
