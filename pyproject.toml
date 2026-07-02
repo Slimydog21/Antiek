@@ -182,6 +182,13 @@ target-version = "py314"
 select = ["E", "F", "I", "B", "UP", "SIM", "RET"]
 ignore = ["E501"]  # line length handled by formatter
 
+[tool.ruff.lint.per-file-ignores]
+# The substrate quality floor still runs on Python 3.11. Keep these generic
+# helpers on TypeVar/Generic syntax until that workflow moves to 3.12+.
+"substrate/results.py" = ["UP046", "UP047"]
+"substrate/result_helpers.py" = ["UP047"]
+"substrate/ownership.py" = ["UP046"]
+
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI dependency-injection markers are idiomatic call-in-default usage,
 # not the mutable-default bug B008 targets. Treat them as immutable calls.

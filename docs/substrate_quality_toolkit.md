@@ -174,7 +174,13 @@ python -m tools.antiek_cli check all --scope substrate/   # everything, one repo
 
 ## Enforcement — the substrate floor
 
-`.github/workflows/substrate_floor.yml` runs the floor on every PR touching substrate-quality paths: ruff, `mypy --strict`, the baseline-enforced lints, the unit + property + doctest suites, and the invariants check.
+`.github/workflows/substrate_floor.yml` runs the floor on every PR touching
+substrate-quality paths: ruff, `mypy --strict`, the baseline-enforced lints, the
+unit + property + doctest suites, and the invariants check. The floor covers both
+the Wave 1 modules and the ARE-02/03/04 paved roads:
+`substrate/results.py`, `substrate/errors.py`, `substrate/escape_hatch.py`,
+`substrate/result_helpers.py`, `substrate/ownership.py`, and
+`substrate/exhaustive.py`.
 
 The lints use **baseline grandfathering** — `tools/lints/baselines/*.json` capture today's tolerated violations; CI fails only on *new* ones. To extend a lint to a new path:
 
