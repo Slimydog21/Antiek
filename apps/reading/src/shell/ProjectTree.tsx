@@ -74,9 +74,9 @@ const ALL_LINKS: Record<Exclude<Workflow, "shared">, Array<{ to: string; label: 
 const routeForNode = (n: TreeNode): string => {
   switch (n.kind) {
     case "investigation":
-      return `/inv/${n.id}`;
+      return `/inv/${encodeURIComponent(n.id)}`;
     case "notebook":
-      return `/notebook/${n.id}`;
+      return `/notebook/${encodeURIComponent(n.id)}`;
     case "deliverable":
       return `/write/${encodeURIComponent(n.id)}`;
     case "person":

@@ -196,7 +196,7 @@ describe("ProjectTree", () => {
   it("loads live Research investigations and opens Research home", async () => {
     const secondInvestigation: InvestigationSummary = {
       ...liveInvestigation,
-      investigation_id: "inv-live-secondary",
+      investigation_id: "inv-live/secondary",
       question: "Second live investigation",
     };
     listInvestigationsMock.mockResolvedValue({
@@ -220,7 +220,7 @@ describe("ProjectTree", () => {
 
     fireEvent.click(screen.getByText("Second live investigation"));
     expect(screen.getByTestId("location").textContent).toBe(
-      "/inv/inv-live-secondary",
+      "/inv/inv-live%2Fsecondary",
     );
   });
 
@@ -264,7 +264,7 @@ describe("ProjectTree", () => {
     listDeliverablesMock.mockResolvedValue({
       count: 3,
       deliverables: [
-        { deliverable_id: " dlv-live ", title: "  Live memo  " },
+        { deliverable_id: " dlv-live/1 ", title: "  Live memo  " },
         { deliverable_id: " ", title: "Skipped memo" },
         { deliverable_id: "dlv-untitled", title: " " },
       ],
@@ -278,7 +278,7 @@ describe("ProjectTree", () => {
 
     fireEvent.click(screen.getByText("Live memo"));
     await waitFor(() => {
-      expect(screen.getByTestId("location").textContent).toBe("/write/dlv-live");
+      expect(screen.getByTestId("location").textContent).toBe("/write/dlv-live%2F1");
     });
   });
 
@@ -303,7 +303,7 @@ describe("ProjectTree", () => {
 
   it("loads live Speak people and opens the Speak project", async () => {
     listPeopleMock.mockResolvedValue([
-      { id: " person-live ", name: "  Ada Lovelace  ", willBePublic: false, voiceCount: 2 },
+      { id: " person-live/1 ", name: "  Ada Lovelace  ", willBePublic: false, voiceCount: 2 },
       { id: "person-zero", name: "Grace Hopper", willBePublic: true, voiceCount: 0 },
       { id: " ", name: "Skipped person", willBePublic: false, voiceCount: 1 },
       { id: "person-untitled", name: " ", willBePublic: false, voiceCount: -1 },
@@ -319,7 +319,7 @@ describe("ProjectTree", () => {
 
     fireEvent.click(screen.getByText("Ada Lovelace · 2 voices"));
     await waitFor(() => {
-      expect(screen.getByTestId("location").textContent).toBe("/speak/person-live");
+      expect(screen.getByTestId("location").textContent).toBe("/speak/person-live%2F1");
     });
   });
 
