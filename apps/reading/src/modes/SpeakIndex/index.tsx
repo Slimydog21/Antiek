@@ -203,7 +203,7 @@ export default function SpeakIndex() {
                 {people.map((p) => (
                   <li key={p.id}>
                     <Link
-                      to={`/speak/${p.id}`}
+                      to={`/speak/${encodeURIComponent(p.id)}`}
                       className="block rounded-md border-2 border-ink bg-ice-0 p-3 shadow-z1 transition-transform hover:-translate-x-0.5 hover:-translate-y-0.5 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night"
                     >
                       <div className="flex items-center justify-between gap-3">
@@ -248,7 +248,7 @@ export default function SpeakIndex() {
                   >
                     <div className="flex items-center justify-between gap-3">
                       <Link
-                        to={`/speak/${f.id}`}
+                        to={`/speak/${encodeURIComponent(f.id)}`}
                         className="font-serif text-[16px] text-ink hover:underline dark:text-bright"
                       >
                         {f.name}
@@ -260,7 +260,7 @@ export default function SpeakIndex() {
                       </span>
                     </div>
                     <div className="mt-2">
-                      <Link to={`/speak/${f.id}`}>
+                      <Link to={`/speak/${encodeURIComponent(f.id)}`}>
                         <LemonButton variant="secondary" size="sm">
                           Add your memory
                         </LemonButton>

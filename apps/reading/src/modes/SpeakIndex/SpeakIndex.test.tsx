@@ -84,6 +84,16 @@ describe("SpeakIndex — the warm door", () => {
     expect(screen.queryByText("PROJECT PAGE")).toBeNull();
   });
 
+  it("encodes existing private project ids before linking to their Speak page", async () => {
+    listPeopleMock.mockResolvedValue([
+      { id: "person with/slash", name: "Grandma", voiceCount: 0, willBePublic: false },
+    ]);
+    mount();
+
+    const link = await screen.findByRole("link", { name: /Grandma/ });
+    expect(link.getAttribute("href")).toBe("/speak/person%20with%2Fslash");
+  });
+
   // ── M1 — the public/private split ──
   it("has a public-feed tab with an honest empty state and an 'add your memory' entry", async () => {
     mount();
@@ -98,5 +108,23 @@ describe("SpeakIndex — the warm door", () => {
     fireEvent.click(screen.getByRole("tab", { name: /public remembrances/i }));
     expect(await screen.findByText("Grandma")).toBeTruthy();
     expect(screen.getByRole("button", { name: /add your memory/i })).toBeTruthy();
+  });
+
+  it("encodes public-feed project ids before linking to project and chime-in entry", async () => {
+    listPublicFeedMock.mockResolvedValue([
+      { id: "public with/slash", name: "Public Grandma", voiceCount: 3 },
+    ]);
+    mount();
+
+    fireEvent.click(await screen.findByRole("tab", { name: /public remembrances/i }));
+
+    const links = await screen.findAllByRole("link");
+    const speakLinks = links
+      .map((link) => link.getAttribute("href"))
+      .filter((href) => href?.startsWith("/speak/"));
+    expect(speakLinks).toEqual([
+      "/speak/public%20with%2Fslash",
+      "/speak/public%20with%2Fslash",
+    ]);
   });
 });
