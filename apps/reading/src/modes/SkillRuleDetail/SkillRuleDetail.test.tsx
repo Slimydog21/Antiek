@@ -20,14 +20,14 @@ beforeEach(() => {
     ok: true,
     status: 200,
     json: async () => ({
-      rule_id: "rule-bad",
-      rule_text: "Malformed detail rule",
-      rule_kind: "routing",
-      domain: "research",
+      rule_id: " rule-bad ",
+      rule_text: " Malformed detail rule ",
+      rule_kind: " routing ",
+      domain: " research ",
       epsilon_budget_consumed: Number.POSITIVE_INFINITY,
       source_user_count: Number.NaN,
-      confidence: "high",
-      extracted_at: null,
+      confidence: "unexpected",
+      extracted_at: " 2026-06-01 ",
     }),
   });
 });
@@ -48,5 +48,9 @@ describe("SkillRuleDetail", () => {
     expect(document.body.textContent).not.toMatch(/NaN|Infinity/);
     expect(screen.getByText("0")).toBeTruthy();
     expect(screen.getByText("0.0000")).toBeTruthy();
+    expect(screen.getByText("research")).toBeTruthy();
+    expect(screen.getByText("routing")).toBeTruthy();
+    expect(screen.getByText("low")).toBeTruthy();
+    expect(screen.getByText("2026-06-01")).toBeTruthy();
   });
 });

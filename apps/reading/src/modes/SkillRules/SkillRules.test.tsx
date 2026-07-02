@@ -21,14 +21,14 @@ beforeEach(() => {
     json: async () => ({
       rules: [
         {
-          rule_id: "rule-bad",
-          rule_text: "Malformed budget rule",
-          rule_kind: "routing",
-          domain: "research",
+          rule_id: " rule-bad ",
+          rule_text: " Malformed budget rule ",
+          rule_kind: " routing ",
+          domain: " research ",
           epsilon_budget_consumed: Number.POSITIVE_INFINITY,
           source_user_count: Number.NaN,
-          confidence: "high",
-          extracted_at: null,
+          confidence: "unexpected",
+          extracted_at: " 2026-06-01 ",
         },
         {
           rule_id: "rule-good",
@@ -39,6 +39,11 @@ beforeEach(() => {
           source_user_count: "4.7",
           confidence: "moderate",
           extracted_at: null,
+        },
+        {
+          rule_id: " ",
+          rule_text: "Skipped rule",
+          confidence: "high",
         },
       ],
     }),
@@ -57,8 +62,10 @@ describe("SkillRules", () => {
 
     expect(await screen.findByText("Malformed budget rule")).toBeTruthy();
     expect(screen.getByText("Measured budget rule")).toBeTruthy();
-    expect(document.body.textContent).not.toMatch(/NaN|Infinity/);
-    expect(screen.getByText(/users=0 · ε=0\.0000/)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/NaN|Infinity|Skipped rule/);
+    expect(screen.getByText(/research · routing · users=0 · ε=0\.0000/)).toBeTruthy();
     expect(screen.getByText(/users=4 · ε=1\.2346/)).toBeTruthy();
+    expect(screen.getByText(/ε=0\.0000 · 2026-06-01/)).toBeTruthy();
+    expect(screen.getAllByText("low").length).toBeGreaterThan(0);
   });
 });

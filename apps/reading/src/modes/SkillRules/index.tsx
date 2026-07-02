@@ -22,8 +22,8 @@ interface SkillRule {
   rule_text: string;
   rule_kind: string;
   domain: string;
-  epsilon_budget_consumed: unknown;
-  source_user_count: unknown;
+  epsilon_budget_consumed: number;
+  source_user_count: number;
   confidence: string;
   extracted_at: string | null;
 }
@@ -38,6 +38,56 @@ function finiteNonNegativeNumber(value: unknown): number | null {
         ? Number(value)
         : Number.NaN;
   return Number.isFinite(number) && number >= 0 ? number : null;
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function safeConfidence(value: unknown): string {
+  const confidence = nonEmptyString(value);
+  return confidence === "high" || confidence === "moderate" || confidence === "low"
+    ? confidence
+    : "low";
+}
+
+function safeSkillRule(value: unknown): SkillRule | null {
+  const rule = record(value);
+  const ruleId = nonEmptyString(rule?.rule_id);
+  const ruleText = nonEmptyString(rule?.rule_text);
+  if (!rule || !ruleId || !ruleText) return null;
+  return {
+    rule_id: ruleId,
+    rule_text: ruleText,
+    rule_kind: nonEmptyString(rule.rule_kind) ?? "rule",
+    domain: nonEmptyString(rule.domain) ?? "general",
+    epsilon_budget_consumed:
+      finiteNonNegativeNumber(rule.epsilon_budget_consumed) ?? 0,
+    source_user_count: finiteNonNegativeNumber(rule.source_user_count) ?? 0,
+    confidence: safeConfidence(rule.confidence),
+    extracted_at: nullableString(rule.extracted_at),
+  };
+}
+
+function safeSkillRules(value: unknown): SkillRule[] {
+  const body = record(value);
+  const rules = Array.isArray(body?.rules) ? body.rules : [];
+  return rules.flatMap((item) => {
+    const rule = safeSkillRule(item);
+    return rule ? [rule] : [];
+  });
 }
 
 function formatEpsilon(value: unknown): string {
@@ -69,8 +119,7 @@ export default function SkillRules() {
       if (!resp.ok) {
         throw new Error(`GET /skill-rules failed: HTTP ${resp.status}`);
       }
-      const data = await resp.json();
-      setRules(Array.isArray(data.rules) ? data.rules : []);
+      setRules(safeSkillRules(await resp.json()));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
