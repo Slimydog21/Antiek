@@ -300,7 +300,7 @@ export const BUILTIN_BINDINGS: readonly BindingRow[] = [
  * allows it; honesty note where the obvious mnemonic was reserved:
  *
  *   - ⌘E → Read   ("rEad"; ⌘R is the browser reload — reserved).
- *   - ⌘J → Research (the research workstation / "/"; ⌘R reserved, so a free
+ *   - ⌘J → Research (Research home / "/"; ⌘R reserved, so a free
  *           safe letter. J is the home destination too — Research IS the
  *           default landing surface at "/", so ⌘J doubles as "go home".)
  *   - ⌘Y → Write  ("⌘W closes the tab — reserved"; Y is a free safe letter).

@@ -424,6 +424,8 @@ describe("Read door re-home + operator-surface eviction (Read SPR-06)", () => {
     const investigationsStory = readSrc(
       "modes/InvestigationsIndex/InvestigationsIndex.stories.tsx",
     );
+    const commandPaletteStory = readSrc("components/CommandPalette.stories.tsx");
+    const aiSidecarStory = readSrc("components/AISidecar.stories.tsx");
     const paletteStory = readRawSrc("components/CommandPalette.stories.tsx");
 
     expect(documentsStory).toContain('title: "Governance / DocumentsIndex"');
@@ -436,6 +438,8 @@ describe("Read door re-home + operator-surface eviction (Read SPR-06)", () => {
     expect(speakInvitesStory).toContain('title: "Speak / Invites"');
     expect(speakInviteStory).toContain('title: "Speak / Invitee Landing"');
     expect(biographyStory).toContain('title: "Speak / Biography"');
+    expect(commandPaletteStory).toContain("Demo workflow backdrop");
+    expect(aiSidecarStory).toContain("Workflow backdrop");
     expect(interviewTranscriptStory).toContain(
       'title: "Speak / Interview / Transcript"',
     );
@@ -456,6 +460,8 @@ describe("Read door re-home + operator-surface eviction (Read SPR-06)", () => {
       'title: "Workstation / Speak / Invitee Landing"',
     );
     expect(biographyStory).not.toContain('title: "Workstation / Biography"');
+    expect(commandPaletteStory).not.toContain("Demo workstation backdrop");
+    expect(aiSidecarStory).not.toContain("Workstation backdrop");
     expect(interviewTranscriptStory).not.toContain(
       'title: "Workstation / Interview / Transcript"',
     );
