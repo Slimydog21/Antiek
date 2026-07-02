@@ -105,6 +105,10 @@ function failureReason(error: unknown): string | null {
   return body.length <= 240 ? body : `${body.slice(0, 237)}...`;
 }
 
+function safePerResearchCost(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
 export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }: Props) {
   const [plan, setPlan] = useState<PlanState | null>(null);
   // Phase gates the human-in-the-loop: a plan block is editable ONLY once
@@ -147,7 +151,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
     // BudgetCap default, never hardcoded. A failure here is non-fatal: we
     // just don't show the dollar estimate.
     void getBudgetDefaults()
-      .then((b) => setPerResearchCost(b.per_research_cost_usd))
+      .then((b) => setPerResearchCost(safePerResearchCost(b.per_research_cost_usd)))
       .catch(() => setPerResearchCost(null));
   }, [propose]);
 
