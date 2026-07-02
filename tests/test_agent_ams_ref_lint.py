@@ -12,6 +12,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 WRAPPER = REPO_ROOT / "scripts" / "agent_ams_ref_lint.sh"
+AMS_ENTRY = REPO_ROOT / "tools" / "ams-v2" / "ref-lint.sh"
 SPRINT_PAGE = (
     REPO_ROOT
     / "docs/htmlspec/antiek-hard-to-vary-execution/sprint-05-ams-bridge.html"
@@ -40,3 +41,9 @@ def test_agent_ams_ref_lint_fails_on_fiction_chip_fixture() -> None:
     assert proc.returncode != 0
     combined = proc.stdout + proc.stderr
     assert "FloatingSurface" in combined or "FICTION" in combined
+
+
+def test_ams_ref_lint_uses_repo_local_tsx_not_npx() -> None:
+    src = AMS_ENTRY.read_text(encoding="utf-8")
+    assert "apps/reading/node_modules/.bin/tsx" in src
+    assert "npx" not in src
