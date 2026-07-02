@@ -144,7 +144,7 @@ export default function AISidecar() {
         apiFetch("/trajectory?limit=8"),
       ]);
       if (u?.ok) {
-        const data = await u.json();
+        const data = record(await u.json()) ?? {};
         setUsage({
           free_tokens_consumed: finiteNonNegativeNumber(data.free_tokens_consumed) ?? 0,
           free_tokens_remaining: finiteNonNegativeNumber(data.free_tokens_remaining) ?? 0,
@@ -154,7 +154,7 @@ export default function AISidecar() {
         setContextError(`Failed to load usage (HTTP ${u.status}).`);
       }
       if (t?.ok) {
-        const data = await t.json();
+        const data = record(await t.json()) ?? {};
         const events: Event[] = Array.isArray(data.events)
           ? data.events.filter(isEventFrame)
           : [];
