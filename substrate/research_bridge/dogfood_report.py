@@ -17,6 +17,7 @@ from typing import Any
 from runtime.db_lock import connect_read
 
 from .db_path import ensure_research_bridge_initialized
+from .dogfood_log import default_dogfood_dir
 
 S3_WOULD_RUN_THRESHOLD = 0.60
 
@@ -226,6 +227,12 @@ def build_report_from_db_path(db_path: str) -> str:
         con.close()
 
 
+def default_dogfood_metrics_path(path: str | Path | None = None) -> Path:
+    if path is not None:
+        return Path(path).expanduser()
+    return default_dogfood_dir() / "dogfood_metrics.md"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Render Antiek Deep Research Bridge dogfood metrics.",
@@ -243,7 +250,7 @@ def main(argv: list[str] | None = None) -> int:
     db_path = ensure_research_bridge_initialized(args.db)
     report = build_report_from_db_path(db_path)
     if args.output:
-        path = Path(args.output).expanduser()
+        path = default_dogfood_metrics_path(args.output)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(report, encoding="utf-8")
     else:
