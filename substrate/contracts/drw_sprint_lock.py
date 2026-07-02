@@ -26,7 +26,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to DRW_SPRINTS. The SPR-08 conformance gate records the
 # version a downstream citation was validated against.
-LOCK_VERSION: int = 5
+LOCK_VERSION: int = 6
 
 
 @dataclass(frozen=True)
@@ -39,7 +39,7 @@ class Deliverable:
     slug: str
     deliverable: str
     owns_contracts: tuple[str, ...] = ()
-    status: str = "planned"  # planned | live | provisional
+    status: str = "planned"  # planned | live | provisional | transferred
 
 
 # The frozen map. Slugs match the DRW spec filenames exactly
@@ -116,15 +116,14 @@ DRW_SPRINTS: dict[int, Deliverable] = {
         10, "reading-surface",
         "Shared reading surface (the canonical reader)",
         ("ReaderSurfaceContract",),
-        # The DRW reading-surface deliverable was NEVER built (still provisional
-        # as a DRW sprint — the status the lock defines). Ownership of
-        # ReaderSurfaceContract has MOVED to antiek-reader SPR-01, which pins it
-        # (concrete Region/RenderedRegion/AnchoredNote over document_model) — see
-        # reading_surface.py "OWNERSHIP TRANSFER" + inventory.md (owner now
-        # "antiek-reader SPR-01", status committed). owns_contracts is retained
-        # to keep dependency_map's drw:10 → ReaderSurfaceContract edge resolvable;
-        # the authoritative owner is the contract module + inventory.md.
-        status="provisional",
+        # The DRW reading-surface deliverable was NEVER built as a DRW sprint;
+        # ownership of ReaderSurfaceContract MOVED to antiek-reader SPR-01,
+        # which pins it (Region/RenderedRegion/AnchoredNote over
+        # document_model). This is not "live DRW work"; it is a transferred
+        # historical dependency. owns_contracts is retained so dependency_map's
+        # drw:10 → ReaderSurfaceContract edge remains resolvable; the
+        # authoritative owner is reading_surface.py + inventory.md.
+        status="transferred",
     ),
 }
 

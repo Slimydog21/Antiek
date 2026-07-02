@@ -20,10 +20,9 @@ sprint was **never built** — verified on 2026-06-04 against the tree at
 origin/main@80cc3a4:
 
 * ``substrate/contracts/drw_sprint_lock.py`` carries DRW sprint 10
-  (``reading-surface``) with ``status="provisional"`` — the DRW deliverable was
-  never built, so it stays provisional as a DRW sprint; the lock's inline
-  comment now records that ownership of ``ReaderSurfaceContract`` moved here
-  (the lock never moved it to a "live"/"implemented" DRW status).
+  (``reading-surface``) with ``status="transferred"`` — the DRW deliverable was
+  never built, and the lock now records the ownership transfer explicitly
+  rather than presenting the row as unexecuted work or live DRW work.
 * No ``reader_surface`` / ``ReaderSurface`` *implementation* module exists under
   ``substrate/`` or ``runtime/`` — only this contract file. (A tree search for
   ``*reader*surface*`` / ``*reading*surface*`` returns this file alone.)

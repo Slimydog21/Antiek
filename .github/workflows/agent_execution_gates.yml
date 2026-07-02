@@ -61,6 +61,8 @@ on:
       - 'substrate/research_bridge/versioning.py'
       - 'substrate/contracts/speak_sprint_lock.py'
       - 'substrate/contracts/unified_sprint_lock.py'
+      - 'substrate/contracts/reading_surface.py'
+      - 'substrate/contracts/__tests__/test_reading_surface.py'
       - 'substrate/contracts/dependency_map.py'
       - 'substrate/contracts/conformance.py'
       - 'substrate/contracts/inventory.md'
@@ -176,6 +178,8 @@ on:
       - 'substrate/research_bridge/versioning.py'
       - 'substrate/contracts/speak_sprint_lock.py'
       - 'substrate/contracts/unified_sprint_lock.py'
+      - 'substrate/contracts/reading_surface.py'
+      - 'substrate/contracts/__tests__/test_reading_surface.py'
       - 'substrate/contracts/dependency_map.py'
       - 'substrate/contracts/conformance.py'
       - 'substrate/contracts/inventory.md'
@@ -362,6 +366,9 @@ jobs:
 
       - name: Canonical verify — speak publishing physical
         run: ./scripts/canonical_verify.sh speak-publishing-physical
+
+      - name: Canonical verify — DRW reading surface transfer
+        run: ./scripts/canonical_verify.sh drw-reading-surface-transfer
 
       - name: Canonical verify — unified substrate contract lock
         run: ./scripts/canonical_verify.sh unified-substrate-contract-lock

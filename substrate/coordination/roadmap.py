@@ -82,6 +82,7 @@ class SprintStatus(StrEnum):
 
     LIVE = "live"
     PROVISIONAL = "provisional"
+    TRANSFERRED = "transferred"
     PLANNED = "planned"
     UNKNOWN = "unknown"
 
@@ -276,6 +277,7 @@ def _drw_status(sprint: int) -> SprintStatus:
     return {
         "live": SprintStatus.LIVE,
         "provisional": SprintStatus.PROVISIONAL,
+        "transferred": SprintStatus.TRANSFERRED,
         "planned": SprintStatus.PLANNED,
     }.get(d.status, SprintStatus.UNKNOWN)
 
@@ -289,6 +291,7 @@ def _read_status(sprint: int) -> SprintStatus:
     return {
         "live": SprintStatus.LIVE,
         "provisional": SprintStatus.PROVISIONAL,
+        "transferred": SprintStatus.TRANSFERRED,
         "planned": SprintStatus.PLANNED,
     }.get(d.status, SprintStatus.UNKNOWN)
 
@@ -302,6 +305,7 @@ def _write_status(sprint: int) -> SprintStatus:
     return {
         "live": SprintStatus.LIVE,
         "provisional": SprintStatus.PROVISIONAL,
+        "transferred": SprintStatus.TRANSFERRED,
         "planned": SprintStatus.PLANNED,
     }.get(d.status, SprintStatus.UNKNOWN)
 
@@ -315,6 +319,7 @@ def _speak_status(sprint: int) -> SprintStatus:
     return {
         "live": SprintStatus.LIVE,
         "provisional": SprintStatus.PROVISIONAL,
+        "transferred": SprintStatus.TRANSFERRED,
         "planned": SprintStatus.PLANNED,
     }.get(d.status, SprintStatus.UNKNOWN)
 
@@ -328,14 +333,19 @@ def _unified_status(sprint: int) -> SprintStatus:
     return {
         "live": SprintStatus.LIVE,
         "provisional": SprintStatus.PROVISIONAL,
+        "transferred": SprintStatus.TRANSFERRED,
         "planned": SprintStatus.PLANNED,
     }.get(d.status, SprintStatus.UNKNOWN)
 
 
 def _built(status: SprintStatus) -> bool:
     """A node counts as 'built' (can unblock consumers) when its owning sprint is
-    live or provisional. Planned/unknown does not unblock."""
-    return status in (SprintStatus.LIVE, SprintStatus.PROVISIONAL)
+    live, provisional, or transferred. Planned/unknown does not unblock."""
+    return status in (
+        SprintStatus.LIVE,
+        SprintStatus.PROVISIONAL,
+        SprintStatus.TRANSFERRED,
+    )
 
 
 def _node_status(node_id: str) -> SprintStatus:
