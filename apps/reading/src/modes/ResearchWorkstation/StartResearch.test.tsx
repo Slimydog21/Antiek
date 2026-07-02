@@ -128,6 +128,8 @@ describe("StartResearch — deprecated UnifiedSearch compatibility", () => {
     expect(screen.getByRole("heading", { name: "Search & research" })).toBeTruthy();
     expect(screen.getByLabelText("Unified search")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Research this" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Say it instead/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Plan sub-questions" })).toBeTruthy();
     expect(container.querySelector("[data-glass-surface]")).toBeTruthy();
 
     expect(screen.queryByLabelText("Research question")).toBeNull();

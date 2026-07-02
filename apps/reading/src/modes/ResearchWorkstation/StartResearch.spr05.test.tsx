@@ -3,8 +3,8 @@
  *
  * The old voice/link composer was deliberately retired. This file keeps the
  * SPR-05 consolidation executable by proving the compatibility export renders
- * the re-homed UnifiedSearch surface and embedded research log, with no stale
- * duplicate launch affordances.
+ * the re-homed UnifiedSearch surface, its contextual voice/cascade affordances,
+ * and the embedded research log, with no stale duplicate launch bar.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
@@ -119,12 +119,14 @@ describe("StartResearch — SPR-05 log-as-home consolidation", () => {
 
     expect(screen.getByLabelText("Unified search")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Research this" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Say it instead/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Plan sub-questions" })).toBeTruthy();
     expect(screen.getByTestId("embedded-research-log").textContent).toContain(
       "Your research",
     );
   });
 
-  it("embedded home has no retired voice/link composer or duplicate launch bar", () => {
+  it("embedded home has no retired link composer or duplicate launch bar", () => {
     renderHome(true);
 
     expect(screen.queryByLabelText("Research question")).toBeNull();

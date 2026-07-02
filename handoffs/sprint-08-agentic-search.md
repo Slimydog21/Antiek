@@ -67,9 +67,24 @@ cd apps/reading && npx tsc -b
 | hits both local+web | local hits + streamed research sources together |
 | denied document | openDocument gate deferred to route (M3 uses `openDocument`; gate at BookReader) |
 
+### Follow-up closed on `reader/integration`
+- **StartResearch voice/cascade re-home** — voice and cascade now live under the
+  research variant of `UnifiedSearch`, not as a second composer. Voice fills the
+  same `Unified search` query via `VoiceChaseButton`; `Plan sub-questions`
+  mounts `CascadeProposal` for the same query and lands launched sessions on
+  `/deep-research/:sessionId`. The one-shot `Research this` path remains the
+  primary Enter/escalate door. File/drop support was already part of
+  `UnifiedSearch`; active-investigation `PasteIngest` remains behind
+  investigation context.
+- **Deprecated StartResearch/CorpusSearch tests** — `CorpusSearch.test.tsx`
+  remains removed (coverage in `UnifiedSearch.test.tsx`). The legacy
+  `StartResearch*.test.tsx` compatibility suites now assert the re-homed
+  UnifiedSearch surface and no stale duplicate launch bar.
+
 ### Open questions discovered
-- **StartResearch voice/attach/cascade** — folded entry is UnifiedSearch; SPR-05 affordances (VoiceChaseButton, PasteIngest, CascadeProposal) are no longer on `/` idle home. Operator/product call whether to re-home them below UnifiedSearch or behind investigation context.
-- **Deprecated StartResearch/CorpusSearch tests** — `CorpusSearch.test.tsx` removed (coverage in `UnifiedSearch.test.tsx`); legacy `StartResearch*.test.tsx` still import deprecated stubs and will fail if run wholesale — gate is UnifiedSearch-only this sprint.
+- None for SPR-08 scope after the re-home above. Live voice transcription,
+  cascade planning, and Enter-escalate remain honest SPR-03/provider-key paths;
+  local vector search and file/drop matching remain no-key usable.
 
 ### Next sprints can start when
 This branch merges to `reader/integration`: SPR-09 can assert every search route flows through UnifiedSearch → `openDocument`.
