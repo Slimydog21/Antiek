@@ -28,7 +28,7 @@ describe("parseSynthesis — claim provenance for named-source render", () => {
           {
             claim: "Y holds.",
             confidence: "high",
-            supporting_chunk_ids: ["chunk-a", "chunk-b"],
+            supporting_chunk_ids: ["chunk-a", "chunk-b", "chunk-a", " ", 7],
           },
         ],
         falsification_conditions: [],
@@ -44,6 +44,7 @@ describe("parseSynthesis — claim provenance for named-source render", () => {
     expect(claim.claim).toBe("Y holds.");
     // chunkCitations maps chunk → citing component indices for the modal.
     expect(synth!.chunkCitations["chunk-a"]).toEqual([1]);
+    expect(synth!.chunkCitations[" "]).toBeUndefined();
   });
 
   it("ignores non-finite and negative dispatch costs when summing total cost", () => {
