@@ -219,10 +219,12 @@ function AssetRow({
   asset: PersonalAsset;
   onOpen: (a: PersonalAsset) => void;
 }) {
+  const navigate = useNavigate();
   const [matches, setMatches] = useState<ProjectMatch[] | null>(null);
   const [filing, setFiling] = useState(false);
   const [filedInto, setFiledInto] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
+  const writeRoute = asset.open_route.startsWith("/write/") ? asset.open_route : null;
 
   // The doc this asset is about — the first owned doc, the match subject.
   const subjectDocId = asset.document_ids[0];
@@ -283,6 +285,17 @@ function AssetRow({
           </LemonTag>
         </div>
       </button>
+
+      {writeRoute && (
+        <button
+          type="button"
+          onClick={() => navigate(writeRoute)}
+          className="text-[11px] font-mono text-ink-soft underline hover:text-ink dark:text-starlight"
+          data-testid="personal-asset-continue-writing"
+        >
+          continue writing
+        </button>
+      )}
 
       {/* M3 — the continuous suggestion: appears, never auto-fires; accept files
           into the ONE chosen project, decline (dismiss) leaves it. */}

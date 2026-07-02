@@ -116,6 +116,54 @@ describe("M1 — list + open + empty", () => {
     expect(navigateMock).toHaveBeenCalledWith("/read/meta-reading/a1");
   });
 
+  it("surfaces a continue-writing action only for Write-backed created assets", async () => {
+    listMock.mockResolvedValue(
+      space({
+        assets: [
+          {
+            asset_id: "dlv-1",
+            kind: "meta_reading",
+            title: "Draftable created reading",
+            prompt: "turn the corpus into an essay",
+            document_ids: ["doc-1"],
+            emitted_at: "2026-05-06T00:00:00Z",
+            open_route: "/write/dlv-1",
+          },
+          {
+            asset_id: "read:doc-2",
+            kind: "saved_read",
+            title: "Meditations",
+            prompt: null,
+            document_ids: ["doc-2"],
+            emitted_at: "2026-05-04T00:00:00Z",
+            open_route: "/read/doc-2",
+          },
+        ],
+        count: 2,
+      }),
+    );
+    categoriesMock.mockResolvedValue({
+      categories: [
+        {
+          category_id: "recency",
+          label: "Recently read & created",
+          asset_ids: ["dlv-1", "read:doc-2"],
+          ordering: "recency",
+        },
+      ],
+      ordering: "recency",
+      stability_bound: 4,
+    });
+
+    render(<PersonalSpace />);
+    expect(await screen.findByText("Draftable created reading")).toBeTruthy();
+
+    const continueButtons = screen.getAllByTestId("personal-asset-continue-writing");
+    expect(continueButtons).toHaveLength(1);
+    fireEvent.click(continueButtons[0]);
+    expect(navigateMock).toHaveBeenCalledWith("/write/dlv-1");
+  });
+
   it("shows a guiding empty state with zero assets (no crash, no phantom)", async () => {
     listMock.mockResolvedValue({ assets: [], count: 0 });
     categoriesMock.mockResolvedValue({ categories: [], ordering: "recency", stability_bound: 4 });
