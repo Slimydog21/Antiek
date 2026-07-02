@@ -220,8 +220,11 @@ jobs:
       - name: Canonical verify — read passage research
         run: ./scripts/canonical_verify.sh read-passage-research
 
+      - name: Canonical verify — read ad escrow
+        run: ./scripts/canonical_verify.sh read-ad-escrow
+
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md
 
-      - name: Canonical verify — deep-research (P-24..P-30)
+      - name: Canonical verify — deep-research (P-25..P-31)
         run: ./scripts/canonical_verify.sh deep-research

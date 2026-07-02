@@ -13,9 +13,10 @@
 #   read-voice-notes     — Read SPR-06 voice-note capture + distillation gate
 #   read-rabbit-hole     — Read SPR-07 conversational rabbit-hole + voice replies
 #   read-passage-research — Read SPR-08 research-from-passage gate
+#   read-ad-escrow       — Read SPR-09 rights-holder escrow accrual gate
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
-#   deep-research        — ANT-DRL P-24..P-30 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
-#   html-transport       — ANT-AHT P-31 ResearchArtifact transport gates
+#   deep-research        — ANT-DRL P-25..P-31 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
+#   html-transport       — ANT-AHT P-32 ResearchArtifact transport gates
 #
 # USAGE (from repo root):
 #   ./scripts/canonical_verify.sh cascade
@@ -38,7 +39,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|handoff <md>|agent-gates|deep-research|html-transport}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|handoff <md>|agent-gates|deep-research|html-transport}" >&2
   exit 2
 }
 
@@ -135,8 +136,8 @@ cmd_read_curate() {
 }
 
 cmd_read_ad_border() {
-  echo "== read-ad-border: slot model + targeting + impression/accrual backend =="
-  "${PY}" -m pytest tests/test_reader_ad_slots.py tests/test_read_ad_escrow.py tests/test_contracts_read_lock.py -q --tb=no
+  echo "== read-ad-border: slot model + targeting backend =="
+  "${PY}" -m pytest tests/test_reader_ad_slots.py tests/test_contracts_read_lock.py -q --tb=no
   echo "== read-ad-border: reader rails + impression client =="
   (cd apps/reading && npm run test -- \
     src/api/books.test.ts \
@@ -144,6 +145,17 @@ cmd_read_ad_border() {
     src/modes/Reading/HouseSlot.test.tsx \
     --reporter=dot)
   echo "CANONICAL_VERIFY_OK: read-ad-border"
+}
+
+cmd_read_ad_escrow() {
+  echo "== read-ad-escrow: rights-holder accrual + payout gate backend =="
+  "${PY}" -m pytest tests/test_read_ad_escrow.py tests/test_contracts_read_lock.py -q --tb=no
+  echo "== read-ad-escrow: impression client + reader flush =="
+  (cd apps/reading && npm run test -- \
+    src/api/books.test.ts \
+    src/modes/Reading/Reading.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: read-ad-escrow"
 }
 
 cmd_read_voice_notes() {
@@ -209,7 +221,7 @@ cmd_agent_gates() {
 }
 
 cmd_html_transport() {
-  echo "== html-transport: P-31 ANT-AHT bundle =="
+  echo "== html-transport: P-32 ANT-AHT bundle =="
   "${PY}" -m pytest \
     tests/test_research_artifact_template.py \
     tests/test_research_artifact_export.py \
@@ -226,19 +238,19 @@ cmd_html_transport() {
 }
 
 cmd_deep_research() {
-  echo "== deep-research: P-24 Loop 1 E2E =="
+  echo "== deep-research: P-25 Loop 1 E2E =="
   "${PY}" -m pytest tests/test_loop_one_orchestrator.py::test_loop_one_happy_path_emits_completed -q --tb=no
-  echo "== deep-research: P-25 invariant negative =="
+  echo "== deep-research: P-26 invariant negative =="
   "${PY}" -m pytest tests/test_deep_research_complete.py::test_drw_only_trajectory_fails_without_synthesis -q --tb=no
-  echo "== deep-research: P-26 session reconstruct =="
+  echo "== deep-research: P-27 session reconstruct =="
   "${PY}" -m pytest tests/test_cascade_session.py -q --tb=no
-  echo "== deep-research: P-27 PromotionFunnel serialize =="
+  echo "== deep-research: P-28 PromotionFunnel serialize =="
   "${PY}" -m pytest tests/test_research_runner.py::test_promotion_funnel_serialized_no_lock_timeout -q --tb=no
-  echo "== deep-research: P-28 knowledge.reused (two-run) =="
+  echo "== deep-research: P-29 knowledge.reused (two-run) =="
   "${PY}" -m pytest tests/test_flywheel_reuse.py::test_two_run_contract_gather_emits_knowledge_reused_on_second_start -q --tb=no
-  echo "== deep-research: P-29 Exa gather mock E2E =="
+  echo "== deep-research: P-30 Exa gather mock E2E =="
   "${PY}" -m pytest tests/test_exa_gather_loop.py -q --tb=short
-  echo "== deep-research: P-30 parent-terminal observability =="
+  echo "== deep-research: P-31 parent-terminal observability =="
   "${PY}" -m pytest tests/test_drw_parent_terminal.py -q --tb=short
   echo "CANONICAL_VERIFY_OK: deep-research"
 }
@@ -257,6 +269,7 @@ main() {
     read-voice-notes) cmd_read_voice_notes ;;
     read-rabbit-hole) cmd_read_rabbit_hole ;;
     read-passage-research) cmd_read_passage_research ;;
+    read-ad-escrow) cmd_read_ad_escrow ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     deep-research) cmd_deep_research ;;

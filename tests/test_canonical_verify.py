@@ -106,6 +106,14 @@ def test_canonical_verify_read_passage_research_hermetic() -> None:
     assert "CANONICAL_VERIFY_OK: read-passage-research" in proc.stdout
 
 
+def test_canonical_verify_read_ad_escrow_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("read-ad-escrow")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: read-ad-escrow" in proc.stdout
+
+
 def test_canonical_verify_deep_research_hermetic() -> None:
     if not PY.is_file():
         return

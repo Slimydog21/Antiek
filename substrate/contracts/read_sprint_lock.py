@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to READ_SPRINTS. Status changes are deliberate roadmap
 # events, not comments buried in a handoff.
-READ_LOCK_VERSION: int = 8
+READ_LOCK_VERSION: int = 9
 
 
 @dataclass(frozen=True)
@@ -103,7 +103,17 @@ READ_SPRINTS: dict[int, ReadDeliverable] = {
         # read-passage-research.
         status="live",
     ),
-    9: ReadDeliverable(9, "ad-revenue-escrow", "Ad-revenue escrow"),
+    9: ReadDeliverable(
+        9,
+        "ad-revenue-escrow",
+        "Ad-revenue escrow",
+        # Live: reading-session revenue accrues to the rights-holder escrow
+        # sink, zero-buyer sessions accrue $0 honestly, unattributed rights
+        # stay in a flagged non-disbursable bucket, disbursement remains
+        # claim-gated, and impression replay does not double-count. Covered by
+        # read-ad-escrow.
+        status="live",
+    ),
 }
 
 
