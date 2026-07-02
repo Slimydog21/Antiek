@@ -8,6 +8,7 @@ from tools.activation.read_dogfood import (
     append_session_template,
     load_jsonl,
     main,
+    REQUIRED_FLOAT_MENU_LABELS,
     session_template,
     validate_sessions,
 )
@@ -28,7 +29,7 @@ def _session(
         "2": {
             "status": "pass",
             "selected_text": f"Selected passage text for session {idx}.",
-            "menu_labels": ["Ask", "Investigate", "Trace source"],
+            "menu_labels": list(REQUIRED_FLOAT_MENU_LABELS),
         },
         "3": {"status": "pass" if live else "inert"},
         "4": {"status": "pass" if live else "inert"},
@@ -569,23 +570,38 @@ def test_selection_step_accepts_action_menu_labels_alias() -> None:
     record["steps"]["2"] = {
         "status": "pass",
         "selected_text": "A passage selected from the reader.",
-        "action_menu_labels": ["Ask", "Investigate"],
+        "action_menu_labels": list(REQUIRED_FLOAT_MENU_LABELS),
     }
 
     report = validate_sessions([record])
 
     assert not any("step 2 requires menu_labels" in f for f in report.failures)
+    assert not any("step 2 menu_labels must include" in f for f in report.failures)
 
 
 def test_selection_menu_labels_must_be_non_empty_strings() -> None:
     record = _session(1, live=True, citation=True, entry_door="search")
-    record["steps"]["2"]["menu_labels"] = ["Ask", "   "]
+    record["steps"]["2"]["menu_labels"] = ["Note", "   "]
 
     report = validate_sessions([record])
 
     assert report.closure_ready is False
     assert report.valid_sessions == 0
     assert any("step 2 requires menu_labels" in f for f in report.failures)
+
+
+def test_selection_menu_labels_must_include_the_real_floatmenu_actions() -> None:
+    record = _session(1, live=True, citation=True, entry_door="search")
+    record["steps"]["2"]["menu_labels"] = ["Ask", "Investigate", "Trace source"]
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.valid_sessions == 0
+    assert any(
+        "step 2 menu_labels must include: Note, Dialogue, Search, Deep-research" in f
+        for f in report.failures
+    )
 
 
 def test_reading_work_step_requires_operator_note() -> None:
