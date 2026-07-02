@@ -27,11 +27,7 @@ vi.mock("../werner/iceFishingFlags", () => ({
 
 import { wernerIceFishingCursor } from "../werner/iceFishingFlags";
 import { wernerIceFishingCursor as iceFromBarrel } from "../werner";
-import {
-  __setRoamRandom,
-  PenguinMascot,
-  PROJECT_TREE_PANEL_ID,
-} from "./PenguinMascot";
+import { PenguinMascot, PROJECT_TREE_PANEL_ID } from "./PenguinMascot";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 
 const s = () => useWorkspace.getState();
@@ -235,77 +231,68 @@ describe("PenguinMascot (SPR-12 M3)", () => {
 });
 
 /**
- * SPR-06 M5 — the AUTONOMOUS waddler. The mascot walks itself around the
- * viewport on a chained timeout (not a rAF loop). Each claim asserted:
- *  - by default a roam leg fires after the settle delay, MOVES the mascot,
- *    and stays clamped on-screen (bounded);
- *  - mid-stroll the foot-bob `werner-waddle` rides the bob span, then clears
- *    when the leg ends (he walks, then rests);
- *  - under prefers-reduced-motion he NEVER roams (position is the initial
- *    seed even after a long elapse) — static, still clickable;
- *  - the roam never fights a drag (a drag in flight pauses it).
+ * THE FIXED STATION (2026-07-02) — Werner does NOT chase the cursor and does
+ * NOT wander off. He stands at his station; the cursor is the bait on his line.
+ * This SUPERSEDES the SPR-06 autonomous roam and the SPR-15 reel. Each claim
+ * asserted (rigor #3):
+ *  - he never walks himself to a new spot on his own (no ambient roam);
+ *  - with the WERNER-ICE flag OFF there is no ambient fishing gag at all;
+ *  - under prefers-reduced-motion he is fully still + clickable;
+ *  - a drag RE-STATIONS him (moves + clamps) and never leaves a stroll
+ *    transition fighting the pointer.
+ * (The "he doesn't follow the cursor on pointermove" + "the gag plays when the
+ *  pointer goes idle, hides when it moves" behaviours need the flag ON and a
+ *  mounted rAF, so they live in PenguinMascot.station.test.tsx.)
  */
-describe("PenguinMascot SPR-06 — autonomous roam", () => {
-  it("ice-fishing flag is off for legacy roam timing", () => {
+describe("PenguinMascot — the fixed station", () => {
+  it("mounts with the ice-fishing flag mocked off for this suite", () => {
     expect(wernerIceFishingCursor).toBe(false);
     expect(iceFromBarrel).toBe(false);
   });
 
-  it("strolls to a new on-screen spot by itself, bounded to the viewport", () => {
-    // DETERMINISTIC HOP (SPR-05): the bounded wander hops by (random()*2 - 1) *
-    // reach per axis. Under Math.random a draw of ≈0.5 on BOTH axes lands a
-    // ~0px hop that clamps back to the start — which made this test flaky
-    // (~1/4 failures). Seed the roam RNG with 0.95 → a strong +0.9*reach hop on
-    // each axis: a guaranteed, deterministic move to a NEW spot. This does NOT
-    // weaken the assertion (it still proves Werner walks somewhere new + stays
-    // bounded); it removes the unlucky-draw nondeterminism. Restored after.
-    const restoreRandom = __setRoamRandom(() => 0.95);
-    try {
-      const { container } = mount();
-      const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
-      const startLeft = parseFloat(el.style.left);
-      const startTop = parseFloat(el.style.top);
-      // Settle (1800ms) → first leg begins: position is retargeted + the foot
-      // bob is on while walking.
-      act(() => {
-        vi.advanceTimersByTime(1900);
-      });
-      const movedLeft = parseFloat(el.style.left);
-      const movedTop = parseFloat(el.style.top);
-      expect(
-        movedLeft !== startLeft || movedTop !== startTop,
-        "the mascot should have walked to a new spot on its own",
-      ).toBe(true);
-      expect(el.style.transition).toContain("left");
-      expect(container.querySelector(".werner-waddle")).toBeTruthy();
-      // Bounded: clamp keeps >= 80px reachable on every side (viewport 1200x800).
-      expect(movedLeft).toBeGreaterThanOrEqual(80 - 64);
-      expect(movedLeft).toBeLessThanOrEqual(1200 - 80);
-      expect(movedTop).toBeGreaterThanOrEqual(0);
-      expect(movedTop).toBeLessThanOrEqual(800 - 80);
-      // End of this stroll leg only (800ms stroll + slack) — not a multi-leg
-      // elapse that would land mid-walk on a later hop.
-      act(() => {
-        vi.advanceTimersByTime(900);
-      });
-      expect(container.querySelector(".werner-waddle")).toBeNull();
-      expect(el.style.transition).toBe("");
-    } finally {
-      restoreRandom();
-    }
-  });
-
-  it("does NOT roam under prefers-reduced-motion (stays at the seed, still clickable)", () => {
-    mountReduced(true);
+  it("does NOT walk off to a new spot on its own (fixed — no autonomous roam)", () => {
+    mount();
     const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
     const startLeft = parseFloat(el.style.left);
     const startTop = parseFloat(el.style.top);
-    // Elapse well past several roam cycles — nothing should move.
+    // Elapse well past what several old roam cycles would have been — the
+    // station never moves Werner by itself.
     act(() => {
       vi.advanceTimersByTime(30000);
     });
     expect(parseFloat(el.style.left)).toBe(startLeft);
     expect(parseFloat(el.style.top)).toBe(startTop);
+    // And he never spontaneously starts a stroll transition.
+    expect(el.style.transition).toBe("");
+  });
+
+  it("flag OFF → no ambient fishing gag ever runs (no werner-fishing class)", () => {
+    // This suite mocks wernerIceFishingCursor=false, so the whole ice-fishing
+    // experience (bait, line, gag) is off — Werner just stands at his station.
+    const { container } = mount();
+    act(() => {
+      vi.advanceTimersByTime(30000);
+    });
+    expect(container.querySelector(".werner-fishing")).toBeNull();
+  });
+
+  it("is fully still under prefers-reduced-motion and stays clickable", () => {
+    const { container } = mountReduced(true);
+    const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
+    const startLeft = parseFloat(el.style.left);
+    const startTop = parseFloat(el.style.top);
+    act(() => {
+      vi.advanceTimersByTime(30000);
+    });
+    expect(parseFloat(el.style.left)).toBe(startLeft);
+    expect(parseFloat(el.style.top)).toBe(startTop);
+    // The still floor is not just "position unchanged" — there must be NO
+    // involuntary motion machinery either: no left/top transition (a glide) and
+    // no walk gait class. This reddens if the stage's freeze() → setRoamPaused
+    // path ever starts a return-home stroll under reduced motion.
+    expect(el.style.transition === "" || el.style.transition === "none").toBe(true);
+    expect(container.querySelector(".werner-waddle")).toBeNull();
+    expect(container.querySelector(".werner-step")).toBeNull();
     // Still a clickable control (the float still fires on a lone click).
     fireEvent.click(el);
     act(() => {
@@ -314,53 +301,27 @@ describe("PenguinMascot SPR-06 — autonomous roam", () => {
     expect(s().panels[PROJECT_TREE_PANEL_ID]).toBeDefined();
   });
 
-  it("a drag pauses the roam (no stroll transition fights the pointer)", () => {
+  it("a drag re-stations him and never leaves a stroll transition fighting the pointer", () => {
     mount();
     const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
+    const startLeft = parseFloat(el.style.left);
     fireEvent.pointerDown(el, { pointerId: 1, clientX: 88, clientY: 700 });
-    // pointerDown must have cleared any scheduled/active stroll transition.
+    // pointerDown clears any transition so the drag tracks 1:1.
     expect(el.style.transition).toBe("");
-    fireEvent.pointerMove(el, { pointerId: 1, clientX: 300, clientY: 400 });
+    fireEvent.pointerMove(el, { pointerId: 1, clientX: 500, clientY: 400 });
     // Mid-drag the transition stays empty (the drag owns the position 1:1).
     expect(el.style.transition).toBe("");
     fireEvent.pointerUp(el, { pointerId: 1 });
-  });
-
-  // Round-3 hardening (audit MINOR/correctness): the walk bob `werner-waddle`
-  // and the at-rest `penguin-mascot-wander` both set `animation` on the SAME
-  // bob span. Stacked, the later rule wins and the walk is silently
-  // suppressed. They must be mutually exclusive; this reddens if the override
-  // regression returns.
-  it("walk bob and idle wander are mutually exclusive (the walk animation isn't suppressed by the always-on wander)", () => {
-    const { container } = mount();
-    // REST_MIN (300) → first leg; +400ms → mid-stroll (800ms leg).
+    // He actually moved to the new station spot (re-stationed).
+    expect(parseFloat(el.style.left)).not.toBe(startLeft);
+    // And after the drop nothing drifts him back — the drop IS the new station.
+    const droppedLeft = parseFloat(el.style.left);
+    const droppedTop = parseFloat(el.style.top);
     act(() => {
-      vi.advanceTimersByTime(350);
+      vi.advanceTimersByTime(5000);
     });
-    expect(container.querySelector(".werner-waddle")).toBeTruthy();
-    expect(container.querySelector(".penguin-mascot-wander")).toBeNull();
-    act(() => {
-      vi.advanceTimersByTime(850);
-    });
-    expect(container.querySelector(".werner-waddle")).toBeNull();
-    expect(container.querySelector(".penguin-mascot-wander")).toBeTruthy();
-  });
-
-  // Grabbing him mid-stroll must end the walk AND restore the idle wander —
-  // not leave him with no animation class (a dead frame) until the next leg.
-  it("a drag mid-stroll restores the idle wander (the walk/wander invariant holds across a drag)", () => {
-    const { container } = mount();
-    act(() => {
-      vi.advanceTimersByTime(650);
-    });
-    // Mid-stroll: walking.
-    expect(container.querySelector(".werner-waddle")).toBeTruthy();
-    const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
-    fireEvent.pointerDown(el, { pointerId: 1, clientX: 88, clientY: 700 });
-    // Drag took over → walk cleared, idle wander restored (no dead frame).
-    expect(container.querySelector(".werner-waddle")).toBeNull();
-    expect(container.querySelector(".penguin-mascot-wander")).toBeTruthy();
-    fireEvent.pointerUp(el, { pointerId: 1 });
+    expect(parseFloat(el.style.left)).toBe(droppedLeft);
+    expect(parseFloat(el.style.top)).toBe(droppedTop);
   });
 
   // Round-3 hardening (audit MAJOR/acceptance): SPR-06 M5 claims the waddler

@@ -13,25 +13,26 @@
  *
  * WHAT THE UNIT SUITE ALREADY PROVES (necessary, not sufficient):
  *   src/werner/wernerState.test.ts proves the GATING logic (shouldFish: idle +
- *   pointer-idle → loop; pointer move / following / frozen → no loop — the loop
- *   XOR the reel) AND the CYCLE STRUCTURE (FISHING_BEATS order, that it loops,
- *   the never-caught invariant). THIS gate is the pixel-level confirmation in
- *   real Chromium that the wired CSS cartoon (waddle.css on the SPR-04 rod <g> +
- *   the fish + the idle line, toggled by the `werner-fishing` class in
- *   PenguinMascot's reel rAF) actually *reads*: distinct animated phases, a
- *   never-static (never "caught") loop, and a CLEAN hand-off back to reel-follow
- *   the instant the pointer moves.
+ *   pointer-idle → loop; pointer move / frozen → no loop) AND the CYCLE
+ *   STRUCTURE (FISHING_BEATS order, that it loops, the never-caught invariant).
+ *   THIS gate is the pixel-level confirmation in real Chromium that the wired
+ *   CSS cartoon (waddle.css on the SPR-04 rod <g> + the fish + the idle line,
+ *   toggled by the `werner-fishing` class in PenguinMascot's station gag rAF)
+ *   actually *reads*: distinct animated phases, a never-static (never "caught")
+ *   loop, and — the FIXED-STATION guarantee — that a pointer move drops the gag
+ *   WITHOUT Werner chasing the cursor (he stays put; the cursor is his bait).
  *
  * HOW THE LOOP ENGAGES (so the operator knows what this exercises): on the
- * Roaming story, with the WERNER-ICE flag on (default; VITE_WERNER_ICE_FISHING
- * !== "0") and motion allowed, PenguinMascot's reel rAF runs every frame. While
- * the pointer is IDLE (no move for POINTER_IDLE_MS = 2000ms) `reelActive` is
- * false, so the rAF adds `werner-fishing` to the bob span and the CSS keyframe
- * cartoon (period 6400ms) plays — rod swings, fish drifts in + escapes, line
- * extends + snaps up empty, forever. The moment the pointer MOVES (and stays
- * non-idle), `reelActive` flips true, the class is removed, and the reel spring
- * tracks the lagged cursor. So LEAVING THE POINTER STILL is what we sample, then
- * MOVING IT is the hand-off we assert.
+ * station story, with the WERNER-ICE flag on (default; VITE_WERNER_ICE_FISHING
+ * !== "0") and motion allowed, PenguinMascot's station gag rAF runs every frame.
+ * While the pointer is IDLE (no move for POINTER_IDLE_MS = 2000ms) it adds
+ * `werner-fishing` to the bob span and the CSS keyframe cartoon (period 6400ms)
+ * plays — rod swings, his own fish drifts in + escapes, his own line extends +
+ * snaps up empty, forever. The moment the pointer MOVES (and stays non-idle) the
+ * class is removed and the fishing line to the cursor-bait takes over — but
+ * Werner does NOT move: he is fixed at his station. So LEAVING THE POINTER STILL
+ * is what we sample; MOVING IT is the hand-off, and the assertion is that the
+ * gag drops AND Werner stays put (the reel that used to chase is gone).
  *
  * Mirrors the harness of reel-weighty.spec.ts / _ams/penguin.spec.ts exactly:
  * Storybook iframe URL, [data-testid="penguin-mascot"], boundingBox sampling,
@@ -110,14 +111,14 @@ test.describe("SPR-05 — the endless never-catch loop (real Chromium pixels)", 
   // Motion must be allowed for the loop to run (reduced motion freezes it).
   test.use({ contextOptions: { reducedMotion: "no-preference" } });
 
-  test("idle → the loop animates through DISTINCT phases, never a static 'caught' frame, then a pointer move hands back to reel-follow", async ({
+  test("idle → the loop animates through DISTINCT phases, never a static 'caught' frame, then a pointer move drops the gag while Werner stays put", async ({
     page,
   }) => {
     await loadMascot(page, ROAMING);
 
     // ── Leave the pointer IDLE so the loop engages. ──
     // Park it once, far from the mascot, then DO NOT move it. After
-    // POINTER_IDLE_MS the reel stands down and the loop class goes on.
+    // POINTER_IDLE_MS the own-hole gag class goes on.
     await page.mouse.move(40, 40);
     await page.waitForTimeout(POINTER_IDLE_MS + 400);
     expect(
@@ -191,17 +192,20 @@ test.describe("SPR-05 — the endless never-catch loop (real Chromium pixels)", 
     ).toBeGreaterThan(0.5);
     expect(mean(early), "the loop never started animating").toBeGreaterThan(0.5);
 
-    // ── CLEAN HAND-OFF: a pointer move stops the loop + resumes reel-follow. ──
+    // ── FIXED-STATION HAND-OFF: a pointer move drops the gag, and Werner STAYS
+    //    PUT (the reel that used to chase the cursor is gone). ──
     // Move the pointer to a far in-viewport point and keep NUDGING it so it stays
-    // non-idle (< POINTER_IDLE_MS), exactly as reel-weighty.spec.ts engages the
-    // reel. The loop class must drop within one rAF leg, and the mascot must
-    // start tracking the cursor (its center moves toward the pointer).
+    // non-idle (< POINTER_IDLE_MS). The gag class must drop within one rAF leg,
+    // and — the whole point of the 2026-07-02 rework — the mascot's position must
+    // NOT move toward the cursor: the cursor is the bait, not a lure Werner
+    // chases. Un-pin first so that IF a stray reel regression returned, it could
+    // move him (making this a real, non-vacuous guard).
     const startCenter = {
       cx: box.x + box.width / 2,
       cy: box.y + box.height / 2,
     };
     const target = { x: startCenter.cx + 300, y: startCenter.cy + 180 };
-    // Un-pin so the reel can actually move him again.
+    const home = await mascotBox(page);
     await page.evaluate(() => {
       const el = document.querySelector(
         '[data-testid="penguin-mascot"]',
@@ -210,26 +214,19 @@ test.describe("SPR-05 — the endless never-catch loop (real Chromium pixels)", 
     });
     await page.mouse.move(target.x, target.y, { steps: 4 });
 
-    // The loop must stop essentially immediately (the reel rAF removes the class
-    // the same frame it sees a non-idle target).
+    // The gag must stop essentially immediately (the station rAF removes the
+    // class the same frame it sees a non-idle pointer).
     await expect
-      .poll(
-        async () => fishingClassOn(page),
-        {
-          message:
-            "the loop did not hand off: werner-fishing class is still on after the pointer moved",
-          timeout: 1000,
-        },
-      )
+      .poll(async () => fishingClassOn(page), {
+        message:
+          "the gag did not hand off: werner-fishing class is still on after the pointer moved",
+        timeout: 1000,
+      })
       .toBe(false);
 
-    // Reel-follow resumed: keep the pointer non-idle and confirm the mascot
-    // closes toward the cursor (the reel engaged — clean hand-off, not a stall).
-    const before = await mascotBox(page);
-    const beforeDist = Math.hypot(
-      before.x + before.width / 2 - target.x,
-      before.y + before.height / 2 - target.y,
-    );
+    // FIXED STATION: keep the pointer non-idle and confirm the mascot does NOT
+    // drift toward the cursor. A tolerance a few px wide absorbs sub-pixel layout
+    // noise; a returned reel would close ~300px, so this is a genuine guard.
     const t0 = Date.now();
     while (Date.now() - t0 < 900) {
       const jitter = (Date.now() - t0) % 2 === 0 ? 0.5 : -0.5;
@@ -237,15 +234,15 @@ test.describe("SPR-05 — the endless never-catch loop (real Chromium pixels)", 
       await page.waitForTimeout(50);
     }
     const after = await mascotBox(page);
-    const afterDist = Math.hypot(
-      after.x + after.width / 2 - target.x,
-      after.y + after.height / 2 - target.y,
+    const drift = Math.hypot(
+      after.x + after.width / 2 - (home.x + home.width / 2),
+      after.y + after.height / 2 - (home.y + home.height / 2),
     );
     expect(
-      afterDist,
-      `reel-follow did not resume after the loop handed off: the mascot stayed ` +
-        `${beforeDist.toFixed(0)}px → ${afterDist.toFixed(0)}px from the cursor (it should close the gap)`,
-    ).toBeLessThan(beforeDist - 20);
+      drift,
+      `Werner CHASED the cursor after the gag handed off (moved ${drift.toFixed(0)}px ` +
+        `from his station) — the fixed-station rework requires he stay put; the reel is gone`,
+    ).toBeLessThan(8);
   });
 });
 
