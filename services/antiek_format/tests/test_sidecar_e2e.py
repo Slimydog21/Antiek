@@ -42,7 +42,8 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 
-from services.antiek_format import (
+# Genuine late imports — need the sys.path bootstrap above.
+from services.antiek_format import (  # noqa: E402
     HASH_MISMATCH_WARNING,
     AnchorRow,
     HighlightRow,
@@ -52,11 +53,11 @@ from services.antiek_format import (
     read_sidecar,
     write_sidecar,
 )
-from services.antiek_format.sidecar_reader import (
+from services.antiek_format.sidecar_reader import (  # noqa: E402
     MissingSidecarFields,
     SidecarHashMismatch,
 )
-from services.antiek_format.sidecar_writer import (
+from services.antiek_format.sidecar_writer import (  # noqa: E402
     ENTRY_ANCHORS,
     ENTRY_HIGHLIGHTS,
 )

@@ -96,7 +96,7 @@ def test_every_non_prose_block_type_has_a_partial():
 
     import services.html_projection.partials as partials_pkg
 
-    partials_dir = partials_pkg.__path__[0]
+    assert partials_pkg.__path__, "partials package did not resolve to a directory"
     for contract in CONTRACT_TABLE:
         if contract.partial is None:
             continue

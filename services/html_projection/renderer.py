@@ -247,7 +247,7 @@ def render(doc_model: dict[str, Any], ctx: RenderContext) -> str:
     # ── Document shell ──
     # Inlined CSS, no external assets, no script. lang="en" is fixed
     # (deterministic; a per-doc lang would be a ctx field if needed).
-    html = (
+    return (
         "<!DOCTYPE html>\n"
         '<html lang="en">\n'
         "<head>\n"
@@ -263,7 +263,6 @@ def render(doc_model: dict[str, Any], ctx: RenderContext) -> str:
         "</body>\n"
         "</html>\n"
     )
-    return html
 
 
 __all__ = ["render"]

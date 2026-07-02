@@ -445,7 +445,7 @@ async def test_three_concurrent_investigations_complete_independently(
     assert all(r is not None for r in results), (
         f"Some investigations didn't terminate: {results}"
     )
-    for (inv_id, _, _), body in zip(inv_specs, results):
+    for (inv_id, _, _), body in zip(inv_specs, results, strict=True):
         assert body["status"] == "completed", (
             f"{inv_id}: {body['status']} — {body.get('terminal_payload')}"
         )
@@ -453,7 +453,7 @@ async def test_three_concurrent_investigations_complete_independently(
     # Cross-contamination check — each investigation's thesis MUST
     # mention its own ID. The PerInvestigationStub's synthesizer
     # response embeds the inv_id in the thesis_summary.
-    for (inv_id, _, _), body in zip(inv_specs, results):
+    for (inv_id, _, _), body in zip(inv_specs, results, strict=True):
         tp = body["terminal_payload"]
         assert inv_id in tp["thesis_summary"], (
             f"{inv_id}: thesis_summary doesn't reference its own id "
@@ -463,7 +463,7 @@ async def test_three_concurrent_investigations_complete_independently(
     # Per-investigation MASTER.md isolation — each is at a distinct
     # topic-slug path.
     paths = {inv_id: body["terminal_payload"]["master_md_path"]
-             for (inv_id, _, _), body in zip(inv_specs, results)}
+             for (inv_id, _, _), body in zip(inv_specs, results, strict=True)}
     assert len(set(paths.values())) == 3, (
         f"MASTER.md paths collided: {paths}"
     )

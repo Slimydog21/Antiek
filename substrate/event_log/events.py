@@ -74,6 +74,7 @@ ANTIEK_HOME                   override base dir (defaults to ~/.antiek)
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
@@ -96,7 +97,6 @@ try:
         EVENT_SCHEMA_VERSION,
         ActionType,
         Event,
-        TypedPayload,
     )
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
@@ -568,10 +568,8 @@ def trajectory(
 
     for r in rows:
         if isinstance(r.get("payload"), str):
-            try:
+            with contextlib.suppress(TypeError, ValueError):
                 r["payload"] = json.loads(r["payload"])
-            except (TypeError, ValueError):
-                pass
 
     rows.sort(key=lambda r: (r.get("emitted_at") or "", r.get("event_id") or ""))
     return rows

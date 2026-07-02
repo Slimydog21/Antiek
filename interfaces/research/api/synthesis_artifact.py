@@ -157,7 +157,7 @@ def register_synthesis_artifact_routes(app: FastAPI) -> None:
         # refused, never served.
         try:
             assert_script_free(html)
-        except ScriptViolation:
+        except ScriptViolation as err:
             _log.error(
                 "synthesis artifact %s failed the zero-script gate; refusing",
                 synthesis_id,
@@ -165,7 +165,7 @@ def register_synthesis_artifact_routes(app: FastAPI) -> None:
             raise HTTPException(
                 status_code=500,
                 detail="artifact failed the zero-script gate; refused",
-            )
+            ) from err
         return HTMLResponse(
             content=html,
             headers={
@@ -218,11 +218,11 @@ def register_synthesis_artifact_routes(app: FastAPI) -> None:
             html = render(doc_model, ctx)
             try:
                 assert_script_free(html)
-            except ScriptViolation:
+            except ScriptViolation as err:
                 raise HTTPException(
                     status_code=500,
                     detail="artifact failed the zero-script gate; refused",
-                )
+                ) from err
             return HTMLResponse(
                 content=html,
                 headers={

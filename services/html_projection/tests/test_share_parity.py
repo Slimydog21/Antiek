@@ -19,20 +19,21 @@ import os
 import sys
 import zipfile
 
+import pytest
+
 _REPO_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-import pytest
-
-from services.antiek_format.native_reader import read_antiek
-from services.antiek_format.native_writer import ENTRY_PROJECTION
-from services.antiek_format.signature import ensure_keypair
-from services.antiek_format.single_file import verify_single_file_html
-from services.html_projection.gate import assert_script_free
-from services.html_projection.routing_map import (
+# Genuine late imports — need the sys.path bootstrap above.
+from services.antiek_format.native_reader import read_antiek  # noqa: E402
+from services.antiek_format.native_writer import ENTRY_PROJECTION  # noqa: E402
+from services.antiek_format.signature import ensure_keypair  # noqa: E402
+from services.antiek_format.single_file import verify_single_file_html  # noqa: E402
+from services.html_projection.gate import assert_script_free  # noqa: E402
+from services.html_projection.routing_map import (  # noqa: E402
     EXPORT_FORMATS,
     SURFACE_FORMATS,
     ExportItem,

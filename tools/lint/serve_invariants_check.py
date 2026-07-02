@@ -177,9 +177,7 @@ def _is_body_read_sql(value: str) -> bool:
         and _DOCUMENTS_RE.search(value)
     ):
         return True
-    if _STAR_FROM_DOCUMENTS_RE.search(value):
-        return True
-    return False
+    return bool(_STAR_FROM_DOCUMENTS_RE.search(value))
 
 
 def _concat_constant_str(node: ast.AST) -> str | None:

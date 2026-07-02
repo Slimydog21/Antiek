@@ -16,7 +16,8 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 
-from services.antiek_format import WriterInput, ensure_keypair
+# Genuine late import — needs the sys.path bootstrap above.
+from services.antiek_format import WriterInput, ensure_keypair  # noqa: E402
 
 
 @pytest.fixture

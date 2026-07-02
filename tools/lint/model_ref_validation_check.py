@@ -61,9 +61,12 @@ def _has_provenance_validator_import(tree: ast.AST) -> bool:
 def _model_id_fields(tree: ast.AST) -> list[tuple[int, str]]:
     fields: list[tuple[int, str]] = []
     for node in ast.walk(tree):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            if _ID_FIELD.match(node.value):
-                fields.append((node.lineno, node.value))
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and _ID_FIELD.match(node.value)
+        ):
+            fields.append((node.lineno, node.value))
     return fields
 
 

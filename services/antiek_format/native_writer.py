@@ -426,7 +426,7 @@ def _assert_no_forbidden_fields(obj: Any, *, where: str) -> None:
     is the backstop.
     """
     if isinstance(obj, dict):
-        for key in obj.keys():
+        for key in obj:
             if key in _FORBIDDEN_SUBSTRATE_FIELDS:
                 raise ValueError(
                     f"write_antiek: forbidden substrate-derived field "

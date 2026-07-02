@@ -18,6 +18,7 @@ end paths through the role modules.
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import sys
 
@@ -200,7 +201,7 @@ def test_compose_challenge_rejects_empty_claim():
 
 def test_challenge_dataclass_is_frozen():
     ch = compose_challenge(claim_text="x")
-    with pytest.raises(Exception):
+    with pytest.raises(dataclasses.FrozenInstanceError):
         ch.claim_text = "mutated"  # type: ignore[misc]
 
 

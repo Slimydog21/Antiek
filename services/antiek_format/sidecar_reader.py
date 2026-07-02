@@ -57,8 +57,6 @@ try:
     from .native_reader import (
         AntiekFormatError,
         MalformedAntiek,
-        ManifestValidationError,
-        UnsupportedVersion,
         _check_version_policy,
         _validate_manifest,
     )
@@ -463,7 +461,6 @@ def apply_sidecar(
     # read-side hot path. Tests can read sidecars without a substrate
     # DB; apply requires one.
     try:
-        from substrate.behavior.taxonomy import BehaviorEventType
         from substrate.voice import CHUNKER_VERSION
         from substrate.voice.anchor_api import BBox, resolve_chunk_for_bbox
 

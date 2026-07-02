@@ -5,15 +5,16 @@ from __future__ import annotations
 import os
 import sys
 
+import pytest
+
 _REPO_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-import pytest
-
-from services.html_projection import Provenance, RenderContext
+# Genuine late import — needs the sys.path bootstrap above.
+from services.html_projection import Provenance, RenderContext  # noqa: E402
 
 
 @pytest.fixture

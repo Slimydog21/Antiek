@@ -219,8 +219,7 @@ def _decode_for_scheme_check(s: str) -> str:
     s = re.sub(r"[\x00-\x1f\x7f\s]+", "", s)
     # Decode numeric char refs for the letters in "javascript"/"vbscript".
     s = re.sub(r"&#(\d{1,3});", lambda m: chr(int(m.group(1))), s)
-    s = re.sub(r"&#x([0-9a-f]{1,2});", lambda m: chr(int(m.group(1), 16)), s)
-    return s
+    return re.sub(r"&#x([0-9a-f]{1,2});", lambda m: chr(int(m.group(1), 16)), s)
 
 
 def _tag_interiors(html: str) -> list[str]:

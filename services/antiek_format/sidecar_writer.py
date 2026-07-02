@@ -120,7 +120,7 @@ def _assert_no_forbidden_sidecar_fields(obj: Any, *, where: str) -> None:
     forbidden — the master-spec invariant carries through.
     """
     if isinstance(obj, dict):
-        for key in obj.keys():
+        for key in obj:
             if key in _FORBIDDEN_SIDECAR_FIELDS:
                 raise ValueError(
                     f"write_sidecar: forbidden substrate-derived field "

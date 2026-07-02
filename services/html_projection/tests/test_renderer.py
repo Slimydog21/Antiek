@@ -183,9 +183,12 @@ def _ast_calls_to_wall_clock(mod) -> list[str]:
                             "time.monotonic", "time.perf_counter", "time.time_ns"}:
                     hits.append(qual)
         # now() / time() called as a bare name imported via `from datetime import now`
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-            if node.func.id in {"now", "monotonic", "perf_counter"}:
-                hits.append(node.func.id)
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in {"now", "monotonic", "perf_counter"}
+        ):
+            hits.append(node.func.id)
     return hits
 
 

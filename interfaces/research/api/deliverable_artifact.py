@@ -148,11 +148,11 @@ def register_deliverable_artifact_routes(app: FastAPI) -> None:
             html = render(doc_model, RenderContext())
             try:
                 assert_script_free(html)
-            except ScriptViolation:
+            except ScriptViolation as err:
                 raise HTTPException(
                     status_code=500,
                     detail="artifact failed the zero-script gate; refused",
-                )
+                ) from err
             return HTMLResponse(
                 content=html,
                 headers={

@@ -59,7 +59,7 @@ from substrate.schemas import (  # noqa: E402
     ParameterExtractRequestedPayload,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402 — after the sys.path bootstrap above
 
 # ---------------------------------------------------------------------------
 # Helpers
