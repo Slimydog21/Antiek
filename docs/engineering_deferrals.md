@@ -27,7 +27,7 @@ Each entry below carries:
 - **Action when unlocked** — what an agent should do the day the criterion
   fires
 
-The thirteen deferrals, by unlock criterion category:
+The deferrals below, by unlock criterion category (count-free on purpose — this line once said "thirteen" while the doc held twenty):
 
 ---
 
@@ -438,7 +438,7 @@ changes only CI strictness (advisory→blocking), not behavior.
 need **+** the committed cost report (~$830 egress).
 **Spec reference:** `~/specs/antiek-arxiv-ingest/sprint-10-deferred-s3-mirror-search-index.html`.
 **Blocks-what:** nothing on the arXiv mainline — tiered serving, accrual, and
-compliance all shipped without it (arXiv SPR-01..09 on `caffen/arxiv-ingest`).
+compliance all shipped without it (arXiv SPR-01..09, merged to main — `8c0132f`, `7ae2318`).
 **Action when unlocked:** the mirror is a read-optimized search index *only* over
 substrate-owned data; DuckDB stays the primary store.
 
@@ -470,7 +470,12 @@ fully-global alternative) move enforcement to a global httpx transport on every
 external Client — the latter risks false-positives on the many legitimate
 non-arXiv fetchers, so it is deferred unless egress genuinely spreads.
 
-## D17 — Mountain Shell v2 yellow re-tone is var-deep only (Tailwind mirror lags)
+## D20 — Mountain Shell v2 yellow re-tone is var-deep only (Tailwind mirror lags)
+
+> ID renumbered from a duplicate "D17" on 2026-07-02: two deferrals carried
+> D17; every live cross-reference ("D17 ingest" in the traceability matrix,
+> gate doc, and retrieval-gate-closure) means the Personal-Reading live-ingest
+> cluster, which therefore KEEPS D17. This entry had zero inbound references.
 
 **Status:** ⚠️ Partial. The design *tokens* are re-toned + AA-proven (SPR-09
 `af21f19`: `apps/reading/src/design/tokens.css` + `tokens.ts` softened the
@@ -603,7 +608,7 @@ Realistic-earliest unlock dates assuming everything else moves on schedule:
   resolution, marginalia audio-blob storage, the review-state resolver) have no
   calendar binding; the canon ratification is an independent operator-discretion
   action that only flips CI strictness.
-- **D17 (Mountain Shell v2 Tailwind yellow-mirror re-tone)** — operator-discretion
+- **D20 (Mountain Shell v2 Tailwind yellow-mirror re-tone)** — operator-discretion
   / anytime cheap tidy; no calendar binding. Shipped baseline (var-deep re-tone)
   is AA-passing; this is chrome-consistency polish only.
 

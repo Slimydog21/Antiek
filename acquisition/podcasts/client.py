@@ -224,7 +224,10 @@ def fetch_feed(
 
         r = govern_if_arxiv(feed_url, _send, throttle=canonical_arxiv_throttle())
     else:
-        with httpx.Client(follow_redirects=True) as c:
+        with httpx.Client(
+            follow_redirects=True,
+            timeout=DEFAULT_TIMEOUT_S,  # module default; same pattern as acquisition/papers/core.py DEFAULT_TIMEOUT_S
+        ) as c:
             def _send() -> httpx.Response:
                 return c.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
@@ -315,7 +318,10 @@ def fetch_episode_transcript(
 
             r = govern_if_arxiv(transcript_url, _send, throttle=canonical_arxiv_throttle())
         else:
-            with httpx.Client(follow_redirects=True) as c:
+            with httpx.Client(
+                follow_redirects=True,
+                timeout=DEFAULT_TIMEOUT_S,  # module default; same pattern as acquisition/papers/core.py DEFAULT_TIMEOUT_S
+            ) as c:
                 def _send() -> httpx.Response:
                     return c.get(transcript_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 

@@ -10,19 +10,77 @@ Covers:
 
 from __future__ import annotations
 
+from typing import Any
+
+import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
+from substrate.dispatch import (
+    NormalizedUsage,
+    RawProviderResponse,
+    register_provider,
+    reset_provider_registry,
+)
+
+
+class _MockHermesProvider:
+    name = "hermes"
+
+    def __init__(self, reply_text: str):
+        self.reply_text = reply_text
+
+    def call(self, *, model, prompt, max_tokens, temperature) -> RawProviderResponse:
+        return RawProviderResponse(
+            text=self.reply_text,
+            raw_usage={"input_tokens": 12, "output_tokens": 8},
+            finish_reason="stop",
+            latency_ms=7,
+        )
+
+    def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:
+        return NormalizedUsage(
+            input_tokens=int(raw_usage.get("input_tokens", 0)),
+            output_tokens=int(raw_usage.get("output_tokens", 0)),
+        )
+
+
+@pytest.fixture(autouse=True)
+def _isolated_substrate_env(monkeypatch, tmp_path):
+    """Per-test env + provider-registry isolation (mirrors
+    tests/test_thought_partner.py): the thought-partner endpoint now
+    dispatches for real and emits events, so point the stores at
+    pytest-owned tmp dirs via monkeypatch — never module-level
+    os.environ mutation, which leaks into every other module in the
+    same pytest process — and reset the provider registry on teardown
+    even when a test fails mid-way."""
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(tmp_path / "t.duckdb"))
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    # PIN unkeyed-ness (see tests/test_thought_partner.py): real provider
+    # keys in the runner's env must never reach the dispatch path — the
+    # mock provider registered per-test is the only allowed provider.
+    for key_env in (
+        "ANTHROPIC_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "HERMES_API_KEY",
+        "OPENROUTER_API_KEY",
+        "XIAOMI_API_KEY",
+    ):
+        monkeypatch.delenv(key_env, raising=False)
+    reset_provider_registry()
+    yield
+    reset_provider_registry()
 
 
 def _client():
-    return TestClient(create_app(register_wrestling=False))
+    return TestClient(create_app(register_wrestling=False, register_providers=False))
 
 
 # ── Thought partner ─────────────────────────────────────────────────
 
 
 def test_thought_partner_returns_shape_and_text():
+    register_provider(_MockHermesProvider('{"shape":"synthesis","synthesis_text":"ok"}'))
     client = _client()
     resp = client.post(
         "/thought-partner",

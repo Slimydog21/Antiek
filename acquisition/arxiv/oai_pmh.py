@@ -239,7 +239,9 @@ class OaiPmhHarvester:
                 return self._client.get(
                     url, headers=headers, timeout=self._timeout_s
                 )
-            with httpx.Client() as c:
+            with httpx.Client(
+                timeout=self._timeout_s,  # instance default; same pattern as acquisition/papers/core.py DEFAULT_TIMEOUT_S
+            ) as c:
                 return c.get(url, headers=headers, timeout=self._timeout_s)
 
         resp = governed_request(send, throttle=self._throttle)

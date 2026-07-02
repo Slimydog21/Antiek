@@ -306,6 +306,13 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   // these rows up to a narration — an additive, visible edit the gate enforces.
   [ActionType.GROUNDEDNESS_SCORED]: null,
   [ActionType.GROUNDEDNESS_FAILED]: null,
+  // yegge SPR-01 — worker registration by the future worker registry (SPR-04).
+  // Substrate-infrastructure telemetry, not a reader-facing research beat; a
+  // worker spawn is engine plumbing the reader never needs narrated. Suppressed
+  // here (still in the log behind the raw-activity toggle); if a later sprint
+  // surfaces worker activity in the stream it moves up to a narration — an
+  // additive, visible edit the coverage gate enforces.
+  [ActionType.WORKER_IDENTITY]: null,
 };
 
 /** The safe generic line for an action_type with no row — only reachable if

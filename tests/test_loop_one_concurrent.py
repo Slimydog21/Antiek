@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -49,6 +50,28 @@ from substrate.schemas import ActionType, Event  # noqa: E402
 # ---------------------------------------------------------------------------
 # Per-investigation tag-based stub provider
 # ---------------------------------------------------------------------------
+
+
+def _prompt_excerpt(prompt: str, *, limit: int = 240) -> str:
+    excerpt = " ".join(prompt.split())
+    if len(excerpt) > limit:
+        return f"{excerpt[:limit]}..."
+    return excerpt
+
+
+def _inv_id_from_prompt(prompt: str) -> str:
+    match = re.search(r"Investigation ID:\s*`([^`]+)`", prompt)
+    if match:
+        return match.group(1)
+
+    match = re.search(r"Sub-question [A-D] for (\S+)", prompt)
+    if match:
+        return match.group(1).rstrip('",').rstrip()
+
+    raise AssertionError(
+        "Could not extract investigation id from prompt excerpt: "
+        f"{_prompt_excerpt(prompt)!r}"
+    )
 
 
 def _decomposer_response_for(inv_id: str) -> str:
@@ -214,18 +237,7 @@ class _PerInvestigationStub:
         """Find the investigation_id by looking for the decomposer
         prompt's ``Investigation ID: \\`<id>\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\``` marker OR a per-inv
         sub-question token."""
-        import re as _re
-        m = _re.search(r"Investigation ID:\s*`([^`]+)`", prompt)
-        if m:
-            return m.group(1)
-        # Fall back: look for "Sub-question A for inv-<id>" pattern
-        # (injected by _decomposer_response_for via the stub
-        # substitution; the synthesizer's user prompt includes the
-        # decomposition_block which has it).
-        m = _re.search(r"Sub-question [A-D] for (\S+)", prompt)
-        if m:
-            return m.group(1).rstrip('",').rstrip()
-        return "(unknown-inv)"
+        return _inv_id_from_prompt(prompt)
 
     def call(self, *, model, prompt, max_tokens, temperature) -> RawProviderResponse:
         # Identify role.
@@ -245,7 +257,11 @@ class _PerInvestigationStub:
             tag = "unknown"
 
         self.call_count[tag] = self.call_count.get(tag, 0) + 1
-        inv_id = self._extract_inv_id(prompt)
+        inv_id = (
+            self._extract_inv_id(prompt)
+            if tag in {"decomposer", "synthesizer", "evidence_retriever"}
+            else None
+        )
 
         if tag == "decomposer":
             text = _decomposer_response_for(inv_id)
@@ -264,9 +280,9 @@ class _PerInvestigationStub:
 
         # Substitute investigation_id placeholder + sub-question
         # placeholder (the evidence_retriever parser cross-checks).
-        import re as _re
-        text = text.replace("INV_PLACEHOLDER", inv_id)
-        sq_match = _re.search(r"Sub-question:\s*\n\s*>\s*(.+)", prompt)
+        if inv_id is not None:
+            text = text.replace("INV_PLACEHOLDER", inv_id)
+        sq_match = re.search(r"Sub-question:\s*\n\s*>\s*(.+)", prompt)
         if sq_match:
             text = text.replace("(any sub-question)", sq_match.group(1).strip())
 
@@ -311,14 +327,17 @@ def _patch_dispatch(monkeypatch, config: DispatchConfig) -> None:
     )
 
 
-def _chunks_block_for_sub_question(sub_question: str, top_k: int = 5) -> str:
-    import re as _re
+def _chunks_block_for_sub_question(
+    sub_question: str, top_k: int = 5, policy_tag: str = "attribution_eligible",
+) -> str:
+    if "Sub-question" not in sub_question:
+        return (
+            "[chunk-1] Source tier: 1 | Document: Shared quantum fixture "
+            "| Section: Evidence | Similarity: 1.000\n\n"
+            "Quantum X holds at threshold under tier-1 primary evidence.\n"
+        )
 
-    match = _re.search(r"Sub-question [A-D] for (\S+)", sub_question)
-    inv_id = (
-        match.group(1).rstrip('",').rstrip()
-        if match else "(unknown-inv)"
-    )
+    inv_id = _inv_id_from_prompt(sub_question)
     return (
         "[chunk-1] Source tier: 1 | Document: Shared quantum fixture "
         "| Section: Evidence | Similarity: 1.000\n\n"
@@ -327,6 +346,14 @@ def _chunks_block_for_sub_question(sub_question: str, top_k: int = 5) -> str:
         f"[chunk-{inv_id}-1] Source tier: 1 | Document: {inv_id} quantum "
         "fixture | Section: Synthesis | Similarity: 1.000\n\n"
         f"Quantum substrate evidence supports {inv_id} per primary sources.\n"
+    )
+
+
+@pytest.fixture(autouse=True)
+def _pin_canonical_chunks(monkeypatch):
+    monkeypatch.setattr(
+        "orchestration.loop_one.orchestrator._render_chunks_block_for_sub_question",
+        _chunks_block_for_sub_question,
     )
 
 
@@ -415,10 +442,6 @@ async def test_three_concurrent_investigations_complete_independently(
     _, bus = app_and_bus
     register_provider(_PerInvestigationStub())
     _patch_dispatch(monkeypatch, _all_role_config())
-    monkeypatch.setattr(
-        "orchestration.loop_one.orchestrator._render_chunks_block_for_sub_question",
-        _chunks_block_for_sub_question,
-    )
 
     inv_specs = [
         ("inv-conc-alpha", "Question A about quantum?", "topic-alpha"),

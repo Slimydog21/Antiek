@@ -12,8 +12,9 @@ mechanism (§9) is the strategically consequential layer.
 
 ## Read these in order
 
-1. **`docs/operator_gate_actions.md`** — current status of the 8 binding
-   gates blocking activation. Updated 2026-05-23. The "Operator Activities"
+1. **`docs/operator_gate_actions.md`** — current status of the binding
+   gates blocking activation (its quick-status table is the live
+   register; counts in prose rot). The "Operator Activities"
    section at the bottom is the cross-session breadcrumb.
 2. **`docs/agent-execution/HARD_TO_VARY.md`** + **`docs/agent-execution/TEMPLATES.md`**
    — mandatory for all agent sessions before diagnosing Research/cascade bugs or
@@ -30,8 +31,10 @@ mechanism (§9) is the strategically consequential layer.
 ## Don't propose engineering until you read this
 
 As of 2026-05-23 session-end, the **engineering scope of the spec is
-essentially complete**. 2,703 tests passing. The bottleneck is operator
-action on the 5 remaining gates. Before you suggest new engineering work:
+essentially complete** (run `./.venv/bin/python -m pytest tests/ -q` for
+the live test count — this file's own history proves literal counts rot).
+The bottleneck is operator action on the open gates (quick-status table
+in `docs/operator_gate_actions.md`). Before you suggest new engineering work:
 
 - Check `docs/operator_gate_actions.md` "Operator Activities" section.
 - Verify the bottleneck isn't already a known operator-bound item.
@@ -111,10 +114,10 @@ Auth: magic-link via AgentMail. Per
   mitigation ships. See `tests/regression/agent_failures/README.md`
   for the onboarding flow. Programmatic failure logging via
   `orchestration.agent_failure_log.record()` (JSONL append-only at
-  `~/.antiek/agent_failures.jsonl`, daily rotation). Five fixtures
-  currently in the library — all GAP-marked, documenting the Phase A
-  loky-semaphore failure + four arxiv-ingestion failures + the
-  Phase 8 SkillPatchGate's standing shadow-mode condition.
+  `~/.antiek/agent_failures.jsonl`, daily rotation). The library's
+  current set: `ls tests/regression/agent_failures/` (a prose count here
+  went stale within weeks — fixtures get added and marked mitigated on
+  main faster than this file is edited).
 <!-- END: agent-failure-regression -->
 
 <!-- BEGIN: craft-signature (managed by SPR-E7 of antiek-hashimoto-engineering) -->
@@ -127,6 +130,32 @@ Auth: magic-link via AgentMail. Per
   deliberate perf change: `python -m benchmarks.rubric_latency --update-baseline`
   (operator-only; do not run in CI).
 <!-- END: craft-signature -->
+
+<!-- BEGIN: test-integrity-floor (managed by SPR-06 of antiek-beck-test-integrity) -->
+- **Test-integrity floor (Beck desiderata).** Five read-only tools under
+  `tools/` measure whether Antiek's suite is behavior-sensitive, isolated,
+  deterministic, and not mock-ratio-regressing. They do NOT rewrite product
+  tests.
+  - Census (shared input): `tools/test_census.py` + `tools/test_census_baseline.json`
+  - Fake-gate detector: `tools/fake_gate_detector.py` + `mutants/` +
+    `mutants/survivors_baseline.json`
+  - Desiderata lint: `tools/lint/test_desiderata_check.py`
+  - Flaky quarantine (opt-in, not per-PR CI): `tools/flaky_quarantine.py` +
+    `tests/quarantine.toml`
+  - Mock-budget gate: `tools/lint/mock_budget_check.py` +
+    `tools/lints/baselines/mock_budget.json`
+  - CI workflow: `.github/workflows/test_integrity.yml` (additive — `ci.yml`
+    untouched). The three wired gates (detector, lint, budget) are
+    **informational-first**: they run on every relevant PR, print full
+    `path:line` findings to the log, surface `::warning::` on nonzero tool
+    exit, and do NOT red the build until baselines settle.
+  - Reconciliation doc: `docs/decisions/test-integrity-ci-floor.md` — each
+    gate's flip-to-blocking condition (reconsider-if). **Do NOT** flip one to
+    blocking without that written condition. **Do NOT** silently bump the
+    mock-budget baseline or the survivor baseline — re-mint is operator-only
+    via `capture` with a documented reason.
+  - Last test-integrity update: 2026-06-04 (ABT/SPR-06)
+<!-- END: test-integrity-floor -->
 
 ## What changed in the 2026-05-23 session
 

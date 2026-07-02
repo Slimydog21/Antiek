@@ -6,6 +6,7 @@ self-contained; jump straight to the one matching your task.
 | If you're trying to… | Read this |
 |---|---|
 | Go from zero to a working `api.antiek.ai` for the first time | `first-deploy.md` |
+| Run the 5–10 real investigations that feed G5/G7/§14.4 (operator action #2) | `run-investigations.md` |
 | Ship a code change after a `git push` | `code-update.md` |
 | Rotate the OpenRouter (or any other) API key | `secret-rotation.md` |
 | Rebuild after the VM is gone or DuckDB is corrupted | `disaster-recovery.md` |

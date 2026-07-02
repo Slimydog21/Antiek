@@ -109,7 +109,6 @@ def _to_work(record: dict) -> TextbookWork | None:
         logger.info("doab record %r skipped: no full-text URL", title)
         return None
     handle = str(record.get("handle") or record.get("id") or title)
-    doi = _field(meta, "dc.identifier.doi") or record.get("doi")
     isbn = _field(meta, "dc.identifier.isbn") or record.get("isbn")
     publisher = _field(meta, "publisher.name") or _field(meta, "dc.publisher")
     return TextbookWork(
