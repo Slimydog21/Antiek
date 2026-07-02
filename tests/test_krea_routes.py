@@ -340,6 +340,75 @@ def test_key_present_scene_happy_path_caches(monkeypatch):
         client.close()
 
 
+def test_scene_trims_safe_upstream_image_url_before_cache(monkeypatch):
+    monkeypatch.setenv("KREA_API_TOKEN", "test-token")
+    app = _app()
+    calls = {"submit": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == _SUBMIT_PATH:
+            calls["submit"] += 1
+            return httpx.Response(200, json={"job_id": "j-trim", "status": "queued"})
+        return httpx.Response(200, json={
+            "job_id": "j-trim", "status": "completed",
+            "result": {"urls": ["  https://img/trimmed.png  "]},
+        })
+
+    client = _client_with_transport(app, handler)
+    try:
+        tc = TestClient(app)
+        params = {"mood": "calm", "day_night": "day", "season": "summer"}
+        r1 = tc.get("/krea/scene", params=params)
+        assert r1.status_code == 200
+        assert r1.json()["image_url"] == "https://img/trimmed.png"
+
+        r2 = tc.get("/krea/scene", params=params)
+        assert r2.status_code == 200
+        assert r2.json()["cached"] is True
+        assert r2.json()["image_url"] == "https://img/trimmed.png"
+        assert calls["submit"] == 1
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize(
+    "image_url",
+    ["javascript:alert(1)", "data:text/html,owned", "/relative/image.png", " "],
+)
+def test_scene_rejects_unsafe_upstream_image_urls_without_caching(
+    monkeypatch,
+    image_url,
+):
+    monkeypatch.setenv("KREA_API_TOKEN", "test-token")
+    app = _app()
+    calls = {"submit": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == _SUBMIT_PATH:
+            calls["submit"] += 1
+            return httpx.Response(200, json={"job_id": f"j-{calls['submit']}", "status": "queued"})
+        return httpx.Response(200, json={
+            "job_id": "j",
+            "status": "completed",
+            "result": {"urls": [image_url]},
+        })
+
+    client = _client_with_transport(app, handler)
+    try:
+        tc = TestClient(app)
+        params = {"mood": "calm", "day_night": "day", "season": "summer"}
+        r1 = tc.get("/krea/scene", params=params)
+        r2 = tc.get("/krea/scene", params=params)
+
+        assert r1.status_code == 503
+        assert r1.json()["reason"] == "upstream_bad_response"
+        assert r2.status_code == 503
+        assert r2.json()["reason"] == "upstream_bad_response"
+        assert calls["submit"] == 2  # no unsafe URL was cached
+    finally:
+        client.close()
+
+
 # ── Milestone 2: kill-switch + budget cap ────────────────────────────────
 
 
@@ -792,8 +861,6 @@ def test_job_poll_endpoint_happy_path(monkeypatch):
         assert body["image_url"] == "https://img/done.png"
     finally:
         client.close()
-
-
 # ── Milestone 2 (SPR-01): completed-but-malformed + bounds ──────────────
 
 
@@ -837,6 +904,32 @@ def test_completed_job_missing_urls_is_bad_response_never_none_200(
         rj = tc.get("/krea/jobs/job_abc")
         assert rj.status_code == 503
         assert rj.json()["reason"] == "upstream_bad_response"
+    finally:
+        client.close()
+
+
+@pytest.mark.parametrize(
+    "image_url",
+    ["javascript:alert(1)", "data:text/html,owned", "/relative/image.png", " "],
+)
+def test_job_poll_endpoint_rejects_unsafe_result_urls(monkeypatch, image_url):
+    monkeypatch.setenv("KREA_API_TOKEN", "test-token")
+    app = _app()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/jobs/job_unsafe"
+        return httpx.Response(200, json={
+            "job_id": "job_unsafe",
+            "status": "completed",
+            "result": {"urls": [image_url]},
+        })
+
+    client = _client_with_transport(app, handler)
+    try:
+        tc = TestClient(app)
+        r = tc.get("/krea/jobs/job_unsafe")
+        assert r.status_code == 503
+        assert r.json()["reason"] == "upstream_bad_response"
     finally:
         client.close()
 

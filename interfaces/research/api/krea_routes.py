@@ -130,6 +130,7 @@ from collections import deque
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI, Query
@@ -623,6 +624,14 @@ def _api_token() -> str | None:
     return tok or None
 
 
+def _safe_image_url(value: str) -> str | None:
+    url = value.strip()
+    if not url:
+        return None
+    parsed = urlparse(url)
+    return url if parsed.scheme in {"http", "https"} and parsed.netloc else None
+
+
 def _kill_switch_on() -> bool:
     """``KREA_KILL_SWITCH`` is the operator panic lever. Any of the truthy
     strings flips it; default off. When on, EVERY generation falls back
@@ -872,7 +881,13 @@ def _poll_job(
             urls = result.get("urls")
             if (isinstance(urls, list) and urls
                     and isinstance(urls[0], str) and urls[0]):
-                image_url = urls[0]
+                image_url = _safe_image_url(urls[0])
+                if image_url is None:
+                    raise _UpstreamError(
+                        _REASON_UPSTREAM_BAD_RESPONSE,
+                        "unsafe result.urls[0] in upstream response",
+                        upstream_status=resp.status_code,
+                    )
         if status == "completed" and image_url is None:
             # A completed job MUST carry result.urls per the docs. Missing
             # → bad-response fallback, never a None-URL 200 (and never an
