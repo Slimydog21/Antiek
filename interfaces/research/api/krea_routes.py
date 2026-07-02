@@ -103,6 +103,7 @@ import threading
 import time
 from datetime import date
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import FastAPI, Query
@@ -408,6 +409,14 @@ def _api_token() -> str | None:
     return tok or None
 
 
+def _safe_image_url(value: str) -> str | None:
+    url = value.strip()
+    if not url:
+        return None
+    parsed = urlparse(url)
+    return url if parsed.scheme in {"http", "https"} and parsed.netloc else None
+
+
 def _kill_switch_on() -> bool:
     """``KREA_KILL_SWITCH`` is the operator panic lever. Any of the truthy
     strings flips it; default off. When on, EVERY generation falls back
@@ -567,6 +576,14 @@ def _poll_job(
             image_url = data.get("image_url")
         if image_url is not None and not isinstance(image_url, str):
             image_url = None
+        if isinstance(image_url, str):
+            safe_image_url = _safe_image_url(image_url)
+            if safe_image_url is None:
+                raise _UpstreamError(
+                    _REASON_UPSTREAM_BAD_RESPONSE,
+                    "unsafe image_url in upstream response",
+                )
+            image_url = safe_image_url
         return JobResponse(
             job_id=job_id, status=status or "unknown", image_url=image_url,
         )
