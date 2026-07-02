@@ -66,6 +66,14 @@ function nonEmptyString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function uploadErrorDetail(value: unknown, status: number): string {
+  const body = record(value);
+  const detail = nonEmptyString(body?.detail);
+  if (detail) return detail;
+  const nested = record(body?.detail);
+  return nonEmptyString(nested?.message) ?? `HTTP ${status}`;
+}
+
 export default function InterviewVoiceCapture({
   sessionId,
   onUploaded,
@@ -188,8 +196,7 @@ export default function InterviewVoiceCapture({
       if (!resp.ok) {
         let detail = `HTTP ${resp.status}`;
         try {
-          const body = record(await resp.json());
-          detail = nonEmptyString(body?.detail) ?? detail;
+          detail = uploadErrorDetail(await resp.json(), resp.status);
         } catch {
           // keep the status-only detail
         }
