@@ -51,11 +51,39 @@ export interface RoadmapView {
   substrate_layers: SubstrateLayerView[];
 }
 
+interface DependencyBlockerView {
+  node_id: string;
+  blocked_sprints: SprintView[];
+}
+
 const sprintStatusColour = (s: string): "muted" | "sun" | "default" => {
   if (s === "live") return "muted";
   if (s === "provisional") return "sun";
   return "default";
 };
+
+const formatSprintLabel = (s: SprintView): string =>
+  `${s.spec_label || s.spec} · SPR-${String(s.sprint).padStart(2, "0")}`;
+
+function dependencyBlockers(sprints: SprintView[]): DependencyBlockerView[] {
+  const byBlocker = new Map<string, SprintView[]>();
+  for (const sprint of sprints) {
+    if (sprint.unblocked) continue;
+    for (const blocker of new Set(sprint.blocked_on)) {
+      const blocked = byBlocker.get(blocker) ?? [];
+      blocked.push(sprint);
+      byBlocker.set(blocker, blocked);
+    }
+  }
+  return Array.from(byBlocker, ([node_id, blocked_sprints]) => ({
+    node_id,
+    blocked_sprints,
+  })).sort(
+    (a, b) =>
+      b.blocked_sprints.length - a.blocked_sprints.length ||
+      a.node_id.localeCompare(b.node_id),
+  );
+}
 
 export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
   const allSprints = roadmap.rosters.flatMap((r) => r.sprints);
@@ -63,13 +91,14 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
     allSprints.map((s) => [s.node_id, s] as const),
   );
   const seenReadyIds = new Set<string>();
-  const readyNow = roadmap.unblocked_now.flatMap((nodeId) => {
+  const dependencyReady = roadmap.unblocked_now.flatMap((nodeId) => {
     if (seenReadyIds.has(nodeId)) return [];
     seenReadyIds.add(nodeId);
     const sprint = sprintById.get(nodeId);
     return sprint?.unblocked ? [sprint] : [];
   });
   const blockedCount = allSprints.filter((s) => !s.unblocked).length;
+  const blockers = dependencyBlockers(allSprints);
 
   return (
     <section className="space-y-5">
@@ -94,7 +123,7 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
             {roadmap.reconciliation}
           </p>
           <p className="text-xs font-mono text-shadow-2 dark:text-moonlight">
-            {readyNow.length} dependency-ready · {blockedCount} blocked by dependency state
+            {dependencyReady.length} dependency-ready · {blockedCount} blocked by dependency state
           </p>
         </div>
       </LemonCard>
@@ -124,7 +153,8 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
         </p>
       </div>
 
-      <ReadyNowSection sprints={readyNow} />
+      <ReadyNowSection sprints={dependencyReady} />
+      <DependencyBlockersSection blockers={blockers} />
 
       {/* Per-spec rosters. */}
       <div className="space-y-4">
@@ -136,6 +166,49 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
       {/* Substrate-execution layer — the real foundation beneath the products. */}
       <SubstrateLayerSection layers={roadmap.substrate_layers} />
     </section>
+  );
+}
+
+function DependencyBlockersSection({
+  blockers,
+}: {
+  blockers: DependencyBlockerView[];
+}) {
+  if (blockers.length === 0) return null;
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+        Dependency blockers
+      </p>
+      <LemonCard elevation="z1">
+        <ul className="divide-y divide-rule dark:divide-charcoal-1">
+          {blockers.map((blocker) => {
+            const sample = blocker.blocked_sprints.slice(0, 3);
+            const hidden = blocker.blocked_sprints.length - sample.length;
+            return (
+              <li
+                key={blocker.node_id}
+                className="flex flex-col gap-1 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <p className="text-sm font-serif text-ink dark:text-bright">
+                    {blocker.node_id}
+                  </p>
+                  <p className="text-xs font-mono text-shadow-2 dark:text-moonlight">
+                    {sample.map(formatSprintLabel).join(", ")}
+                    {hidden > 0 ? ` +${hidden} more` : ""}
+                  </p>
+                </div>
+                <LemonTag colour="default" dot>
+                  blocks {blocker.blocked_sprints.length}{" "}
+                  {blocker.blocked_sprints.length === 1 ? "sprint" : "sprints"}
+                </LemonTag>
+              </li>
+            );
+          })}
+        </ul>
+      </LemonCard>
+    </div>
   );
 }
 
@@ -155,7 +228,7 @@ function ReadyNowSection({ sprints }: { sprints: SprintView[] }) {
               >
                 <div>
                   <p className="text-sm font-serif text-ink dark:text-bright">
-                    {s.spec_label || s.spec} · SPR-{String(s.sprint).padStart(2, "0")}
+                    {formatSprintLabel(s)}
                   </p>
                   <p className="text-xs font-mono text-shadow-2 dark:text-moonlight">
                     {s.slug.replace(/-/g, " ")}
