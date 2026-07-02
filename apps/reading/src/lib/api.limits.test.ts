@@ -507,6 +507,12 @@ describe("api client investigation and watch-list response boundaries", () => {
               parent_event_id: null,
             },
             {
+              question_id: "q-1",
+              question_text: "Duplicate chase",
+              source_investigation_id: "inv-duplicate",
+              parked_at: "2026-07-02T00:00:00Z",
+            },
+            {
               question_id: "q-bad",
               question_text: " ",
               source_investigation_id: "inv-1",
