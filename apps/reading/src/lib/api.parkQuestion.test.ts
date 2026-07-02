@@ -27,11 +27,11 @@ afterEach(() => {
 describe("parkQuestionForLater", () => {
   it("emits a question.identified typed event that watch-for-later can read", async () => {
     const result = await parkQuestionForLater({
-      investigation_id: "inv-source",
-      question_text: "What evidence would show retrieval feels like memory?",
-      source_document_id: "doc-source",
-      anchor_region_id: "region-1",
-      parent_event_id: "event-parent",
+      investigation_id: " inv-source ",
+      question_text: " What evidence would show retrieval feels like memory? ",
+      source_document_id: " doc-source ",
+      anchor_region_id: " region-1 ",
+      parent_event_id: " event-parent ",
     });
 
     expect(result.question_id).toBe("q-extension-uuid");
@@ -51,5 +51,42 @@ describe("parkQuestionForLater", () => {
         anchor_region_id: "region-1",
       },
     });
+  });
+
+  it("drops blank optional handles from the emitted envelope", async () => {
+    await parkQuestionForLater({
+      investigation_id: "inv-source",
+      question_text: "What evidence would sharpen this?",
+      source_document_id: " ",
+      anchor_region_id: " ",
+      parent_event_id: " ",
+    });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      investigation_id: "inv-source",
+      role: "operator",
+      policy_id: "operator/brainstorm",
+      payload: {
+        action_type: "question.identified",
+        question_id: "q-extension-uuid",
+        question_text: "What evidence would sharpen this?",
+        anchor_region_id: null,
+      },
+    });
+  });
+
+  it("rejects blank required handles before emitting a typed event", async () => {
+    await expect(parkQuestionForLater({
+      investigation_id: " ",
+      question_text: "What evidence would sharpen this?",
+    })).rejects.toThrow("investigation_id must be a non-empty string");
+
+    await expect(parkQuestionForLater({
+      investigation_id: "inv-source",
+      question_text: " ",
+    })).rejects.toThrow("question_text must be a non-empty string");
+
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
