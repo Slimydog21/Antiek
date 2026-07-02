@@ -152,8 +152,6 @@ export interface InterviewerResultContract {
   corroboration?: "uncorroborated" | "multiply_attested";
 }
 
-// PROVISIONAL — ConsentContract's owning sprint has not pinned this shape; it may change.
-
 /**
  * The consent + rights state a speak-derived document carries. Read's
  * servability check (seam #4) serves full text only when ``publish`` is in

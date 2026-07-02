@@ -118,6 +118,13 @@ def _live_outline_block() -> type:
     return OutlineBlockContract
 
 
+def _live_consent_gate_state() -> type:
+    """The live Speak consent boundary consumed by the speak→read gate."""
+    from substrate.speak.consent import ConsentGateState
+
+    return ConsentGateState
+
+
 # Stub builder: a field-complete object for an unbuilt product, so the gate
 # covers the contract and the real module drops in by setting ``conformer``.
 def _stub_for(contract: type[BaseModel]) -> dict[str, Any]:
@@ -177,8 +184,7 @@ _CONFORMANCE_REGISTRY: tuple[ConformanceRow, ...] = (
     ),
     ConformanceRow(
         ConsentContract,
-        stub_status="Speak SPR-01 consent gate PROVISIONAL; contract conformed "
-        "(servability_gate consumes it via .publishable, which IS exercised).",
+        conformer=_live_consent_gate_state,  # substrate/speak/consent.py
     ),
     ConformanceRow(
         EconomicsCellContract,

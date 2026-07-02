@@ -35,6 +35,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
+from substrate.contracts.interviewer import ConsentContract
+
 from .events import (
     SPEAK_CONSENT_RECORDED,
     SPEAK_CONSENT_REVOKED,
@@ -76,6 +78,38 @@ class ConsentState:
 
     def has(self, scope: ConsentScope) -> bool:
         return scope in self.granted
+
+
+@dataclass(frozen=True)
+class ConsentGateState:
+    """The live Speak-side state that rides the speak→read publish gate.
+
+    This is deliberately shaped like ``ConsentContract`` so the unified
+    conformance gate checks the product boundary, not a hand-written stub.
+    ``verified_before_publish`` / ``right_of_publicity_cleared`` are caller-
+    supplied because they come from the publish review, not the scope table.
+    """
+
+    interview_id: str
+    ip_holder_id: str | None
+    scopes: tuple[ConsentScope, ...]
+    verified_before_publish: bool
+    right_of_publicity_cleared: bool
+    taken_down: bool
+
+    def to_contract(self) -> ConsentContract:
+        return ConsentContract(
+            interview_id=self.interview_id,
+            ip_holder_id=self.ip_holder_id,
+            scopes=tuple(scope.value for scope in self.scopes),
+            verified_before_publish=self.verified_before_publish,
+            right_of_publicity_cleared=self.right_of_publicity_cleared,
+            taken_down=self.taken_down,
+        )
+
+    @property
+    def publishable(self) -> bool:
+        return self.to_contract().publishable
 
 
 def record_consent(
@@ -173,6 +207,37 @@ def consent_state(con: Any, interview_id: str) -> ConsentState:
 def has_consent(con: Any, interview_id: str, scope: ConsentScope) -> bool:
     """Whether ``interview_id`` currently grants ``scope``."""
     return consent_state(con, interview_id).has(ConsentScope(scope))
+
+
+def consent_gate_state(
+    con: Any,
+    interview_id: str,
+    *,
+    ip_holder_id: str | None = None,
+    verified_before_publish: bool = False,
+    right_of_publicity_cleared: bool = False,
+    taken_down: bool = False,
+) -> ConsentGateState:
+    """Project the scoped consent table into the contract-shaped publish gate.
+
+    The scope ordering is stable so snapshots and generated cross-workflow
+    fixtures do not churn when DuckDB returns rows in insertion order.
+    """
+    state = consent_state(con, interview_id)
+    order = {
+        ConsentScope.RECORD: 0,
+        ConsentScope.ATTRIBUTE: 1,
+        ConsentScope.PUBLISH: 2,
+    }
+    scopes = tuple(sorted(state.granted, key=order.__getitem__))
+    return ConsentGateState(
+        interview_id=interview_id,
+        ip_holder_id=ip_holder_id,
+        scopes=scopes,
+        verified_before_publish=verified_before_publish,
+        right_of_publicity_cleared=right_of_publicity_cleared,
+        taken_down=taken_down,
+    )
 
 
 def require_consent(

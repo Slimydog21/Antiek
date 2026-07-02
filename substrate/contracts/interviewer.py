@@ -7,11 +7,11 @@ carry:
   compounding interview: the claims it produced and its corroboration status.
   Corroboration is **never "proven"**: a claim is at most *multiply attested*
   (corroboration ≠ truth — an honesty call from the Speak spec).
-* **ConsentContract** (Speak SPR-01) — the scoped consent + rights gate that
-  ``speak_derived`` content must clear before Read serves it (the other half
-  of seam #4; see ``servable.py``). Scoped consent ∈ {record, attribute,
-  publish}, verification-before-publish, defamation / right-of-publicity, and
-  takedown.
+* **ConsentContract** (Speak SPR-01) — the committed scoped consent + rights
+  gate that ``speak_derived`` content must clear before Read serves it (the
+  other half of seam #4; see ``servable.py``). Scoped consent ∈ {record,
+  attribute, publish}, verification-before-publish, defamation /
+  right-of-publicity, and takedown.
 * **EconomicsCellContract** (Speak SPR-07) — one cell of the Speak economics
   matrix: per visibility, the contributor split and the platform margin.
   ``public`` ⇒ algorithmic 70% contributor split + 10% margin; private-
@@ -20,8 +20,8 @@ carry:
   own self-correction).
 
 These are PROVISIONAL where Speak has not pinned the field shape (the
-interviewer result), COMMITTED where the constant exists (the 70% split is
-``CREATOR_REV_SHARE``).
+interviewer result), COMMITTED where the product boundary is conformance-gated
+or the constant exists (the 70% split is ``CREATOR_REV_SHARE``).
 """
 
 from __future__ import annotations
