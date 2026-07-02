@@ -102,6 +102,31 @@ describe("TrajectoryView", () => {
     expect(document.body.textContent).not.toMatch(/NaN|Infinity|undefined/);
   });
 
+  it("dedupes replayed event ids before counting or rendering the raw trajectory", () => {
+    render(
+      <TrajectoryView
+        investigation={state({
+          events: [
+            ev(
+              "decompose.delivered",
+              { decomposition: [{ sub_question: "First delivered angle" }] },
+              { event_id: "evt-replay", phase: 1 },
+            ),
+            ev(
+              "decompose.delivered",
+              { decomposition: [{ sub_question: "Duplicate replay angle" }] },
+              { event_id: "evt-replay", phase: 1 },
+            ),
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("1 events")).toBeTruthy();
+    expect(screen.getByText("First delivered angle")).toBeTruthy();
+    expect(screen.queryByText("Duplicate replay angle")).toBeNull();
+  });
+
   it("uses deterministic keys for events without usable ids", () => {
     const randomSpy = vi.spyOn(Math, "random");
 
