@@ -14,7 +14,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { sanitizeOutgoingEvent } from "./posthogClient";
+import { posthogEnabled, sanitizeOutgoingEvent } from "./posthogClient";
 
 // Minimal CaptureResult factory — only the fields the firewall touches.
 function event(properties: Record<string, unknown>, extra = {}) {
@@ -27,6 +27,11 @@ function event(properties: Record<string, unknown>, extra = {}) {
 }
 
 describe("sanitizeOutgoingEvent — content firewall", () => {
+  it("does not initialize analytics while running under Vitest", () => {
+    expect(import.meta.env.MODE).toBe("test");
+    expect(posthogEnabled).toBe(false);
+  });
+
   it("passes a null event through untouched", () => {
     expect(sanitizeOutgoingEvent(null)).toBeNull();
   });
