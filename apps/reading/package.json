@@ -53,7 +53,7 @@
     "@playwright/test": "^1.60.0",
     "@storybook/addon-a11y": "^8.6.18",
     "@storybook/addon-essentials": "^8.4.7",
-    "@storybook/addon-links": "^8.4.7",
+    "@storybook/addon-links": "^10.4.6",
     "@storybook/blocks": "^8.4.7",
     "@storybook/react": "^8.4.7",
     "@storybook/react-vite": "^8.4.7",
