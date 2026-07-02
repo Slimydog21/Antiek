@@ -133,6 +133,123 @@ const ROUTE_INDEX_WITH_FACET: PaletteRoute[] = ROUTE_INDEX.map((r) => ({
   workflow: r.workflow ?? workflowForPath(r.path),
 }));
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function safeInvestigations(value: unknown): PaletteInvestigation[] {
+  const body = record(value);
+  const investigations = Array.isArray(body?.investigations) ? body.investigations : [];
+  return investigations.flatMap((item) => {
+    const inv = record(item);
+    const investigationId = nonEmptyString(inv?.investigation_id);
+    if (!investigationId) return [];
+    const topic = nonEmptyString(inv?.topic) ?? investigationId;
+    return [
+      {
+        kind: "investigation" as const,
+        id: `inv:${investigationId}`,
+        title: topic,
+        subtitle: `Investigation · ${investigationId.slice(0, 8)}`,
+        path: `/inv/${investigationId}`,
+      },
+      {
+        kind: "investigation" as const,
+        id: `replay:${investigationId}`,
+        title: `Replay: ${topic}`,
+        subtitle: `Trajectory · ${investigationId.slice(0, 8)}`,
+        path: `/replay/${investigationId}`,
+      },
+    ];
+  });
+}
+
+function safeDocuments(value: unknown): PaletteDocument[] {
+  const body = record(value);
+  const documents = Array.isArray(body?.documents) ? body.documents : [];
+  return documents.flatMap((item) => {
+    const doc = record(item);
+    const documentId = nonEmptyString(doc?.document_id);
+    if (!documentId) return [];
+    return [{
+      kind: "document" as const,
+      id: `doc:${documentId}`,
+      title: nullableString(doc?.title) ?? documentId,
+      subtitle: `Document · ${documentId.slice(0, 8)}`,
+      path: `/read/${encodeURIComponent(documentId)}`,
+    }];
+  });
+}
+
+function safeNotebooks(value: unknown): PaletteNotebook[] {
+  const body = record(value);
+  const notebooks = Array.isArray(body?.notebooks) ? body.notebooks : [];
+  return notebooks.flatMap((item) => {
+    const nb = record(item);
+    const notebookId = nonEmptyString(nb?.notebook_id);
+    if (!notebookId) return [];
+    return [{
+      kind: "notebook" as const,
+      id: `nb:${notebookId}`,
+      title: nonEmptyString(nb?.title) ?? notebookId,
+      subtitle: `Notebook · ${notebookId.slice(0, 8)}`,
+      path: `/notebook/${encodeURIComponent(notebookId)}`,
+    }];
+  });
+}
+
+function safeParkedQuestion(value: unknown): ParkedQuestionEntry | null {
+  const q = record(value);
+  if (!q) return null;
+  const questionId = nonEmptyString(q.question_id);
+  const questionText = nonEmptyString(q.question_text);
+  const sourceInvestigationId = nonEmptyString(q.source_investigation_id);
+  const parkedAt = nonEmptyString(q.parked_at);
+  if (!questionId || !questionText || !sourceInvestigationId || !parkedAt) return null;
+  return {
+    question_id: questionId,
+    question_text: questionText,
+    source_investigation_id: sourceInvestigationId,
+    source_document_id: nullableString(q.source_document_id),
+    anchor_region_id: nullableString(q.anchor_region_id),
+    parked_at: parkedAt,
+    parent_event_id: nullableString(q.parent_event_id),
+  };
+}
+
+function safeParkedQuestions(value: unknown): PaletteParkedQuestion[] {
+  const body = record(value);
+  const rawQuestions = Array.isArray(body?.questions)
+    ? body.questions
+    : Array.isArray(body?.parked)
+      ? body.parked
+      : [];
+  return rawQuestions.flatMap((item) => {
+    const question = safeParkedQuestion(item);
+    if (!question) return [];
+    return [{
+      kind: "parked_question" as const,
+      id: `pq:${question.question_id}`,
+      title: question.question_text,
+      subtitle: `Parked question · ${question.question_id.slice(0, 8)}`,
+      path: "/brainstorm",
+      question,
+    }];
+  });
+}
+
 /**
  * SPR-04 — workflow-jump commands. Typing "research", "read", "write",
  * or "speak" surfaces a "Go to <Workflow>" command at the top. These are
@@ -194,81 +311,28 @@ export default function CommandPalette() {
       ]);
 
       if (iResp?.ok) {
-        const data = await iResp.json();
         // Each investigation gets two palette rows: the workstation
         // surface (/inv/:id) and the trajectory replay (/replay/:id).
         // The replay route is canonical for operator-graded outcomes
         // per master-spec §14.1.
-        const items: PaletteInvestigation[] = (
-          data.investigations ?? []
-        ).flatMap(
-          (inv: { investigation_id: string; topic?: string }) => [
-            {
-              kind: "investigation" as const,
-              id: `inv:${inv.investigation_id}`,
-              title: inv.topic ?? inv.investigation_id,
-              subtitle: `Investigation · ${inv.investigation_id.slice(0, 8)}`,
-              path: `/inv/${inv.investigation_id}`,
-            },
-            {
-              kind: "investigation" as const,
-              id: `replay:${inv.investigation_id}`,
-              title: `Replay: ${inv.topic ?? inv.investigation_id}`,
-              subtitle: `Trajectory · ${inv.investigation_id.slice(0, 8)}`,
-              path: `/replay/${inv.investigation_id}`,
-            },
-          ],
-        );
-        setInvestigations(items);
+        setInvestigations(safeInvestigations(await iResp.json()));
       }
 
       if (dResp?.ok) {
-        const data = await dResp.json();
-        const items: PaletteDocument[] = (data.documents ?? []).map(
-          (doc: { document_id: string; title?: string | null }) => ({
-            kind: "document" as const,
-            id: `doc:${doc.document_id}`,
-            title: doc.title ?? doc.document_id,
-            subtitle: `Document · ${doc.document_id.slice(0, 8)}`,
-            // SPR-05 one door: open in the ONE Reader (the gated /read/:id route
-            // openDocument navigates to) — was a /wrestle/:id mis-route (the
-            // pdf.js page-1 surface that can't fetch by id). The palette
-            // navigates entry.path generically, so this IS openDocument(id) with
-            // no opts: the same route the door resolves to.
-            path: `/read/${encodeURIComponent(doc.document_id)}`,
-          }),
-        );
-        setDocuments(items);
+        // SPR-05 one door: open in the ONE Reader (the gated /read/:id route
+        // openDocument navigates to) — was a /wrestle/:id mis-route (the
+        // pdf.js page-1 surface that can't fetch by id). The palette
+        // navigates entry.path generically, so this IS openDocument(id) with
+        // no opts: the same route the door resolves to.
+        setDocuments(safeDocuments(await dResp.json()));
       }
 
       if (nResp?.ok) {
-        const data = await nResp.json();
-        const items: PaletteNotebook[] = (data.notebooks ?? []).map(
-          (nb: { notebook_id: string; title: string }) => ({
-            kind: "notebook" as const,
-            id: `nb:${nb.notebook_id}`,
-            title: nb.title,
-            subtitle: `Notebook · ${nb.notebook_id.slice(0, 8)}`,
-            path: `/notebook/${nb.notebook_id}`,
-          }),
-        );
-        setNotebooks(items);
+        setNotebooks(safeNotebooks(await nResp.json()));
       }
 
       if (pResp?.ok) {
-        const data = await pResp.json();
-        const questions: ParkedQuestionEntry[] = data.questions ?? data.parked ?? [];
-        const items: PaletteParkedQuestion[] = questions.map(
-          (q) => ({
-            kind: "parked_question" as const,
-            id: `pq:${q.question_id}`,
-            title: q.question_text,
-            subtitle: `Parked question · ${q.question_id.slice(0, 8)}`,
-            path: `/brainstorm`,
-            question: q,
-          }),
-        );
-        setParked(items);
+        setParked(safeParkedQuestions(await pResp.json()));
       }
     } catch {
       // Palette is best-effort; offline state still shows ROUTE_INDEX.
