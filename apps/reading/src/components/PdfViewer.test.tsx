@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 const { getPageMock, postTypedEventMock, openNotebookMock, toastOkMock } = vi.hoisted(() => ({
   getPageMock: vi.fn(),
@@ -14,8 +14,19 @@ vi.mock("pdfjs-dist/build/pdf.worker.mjs?url", () => ({
 
 vi.mock("pdfjs-dist", () => {
   class TextLayer {
-    constructor(_args: unknown) {}
-    async render() {}
+    private readonly args: { textContentSource: { items: { str: string }[] }; container: HTMLElement };
+
+    constructor(args: { textContentSource: { items: { str: string }[] }; container: HTMLElement }) {
+      this.args = args;
+    }
+
+    async render() {
+      for (const item of this.args.textContentSource.items) {
+        const span = document.createElement("span");
+        span.textContent = item.str;
+        this.args.container.appendChild(span);
+      }
+    }
   }
 
   return {
@@ -45,13 +56,18 @@ vi.mock("./lemon/LemonToast", () => ({
 
 import PdfViewer from "./PdfViewer";
 
+const defaultTextItems = [{ str: "Page " }, { str: "1" }, { str: " text" }];
+let textItems = defaultTextItems;
+
 function makePage(pageNumber: number) {
   return {
     getViewport: vi.fn(() => ({ width: 600, height: 800 })),
     render: vi.fn(() => ({ promise: Promise.resolve() })),
     getTextContent: vi.fn(() =>
       Promise.resolve({
-        items: [{ str: `Page ${pageNumber} text` }],
+        items: textItems.map((item) => ({
+          str: item.str.replace("{page}", String(pageNumber)),
+        })),
       }),
     ),
   };
@@ -72,9 +88,12 @@ describe("PdfViewer initialPage", () => {
   beforeEach(() => {
     getPageMock.mockReset();
     getPageMock.mockImplementation((pageNumber: number) => Promise.resolve(makePage(pageNumber)));
+    textItems = defaultTextItems;
     postTypedEventMock.mockReset();
+    postTypedEventMock.mockResolvedValue({ event_id: "evt-1", action_type: "document.region_selected" });
     openNotebookMock.mockReset();
     toastOkMock.mockReset();
+    vi.stubGlobal("crypto", { randomUUID: () => "12345678-90ab-cdef-1234-567890abcdef" });
     vi.stubGlobal(
       "ResizeObserver",
       class {
@@ -136,5 +155,64 @@ describe("PdfViewer initialPage", () => {
 
     await waitFor(() => expect(getPageMock).toHaveBeenCalledWith(4));
     expect(await screen.findByText("page: 4")).toBeTruthy();
+  });
+
+  it("maps a selection to the exact text-layer offset when the phrase repeats", async () => {
+    textItems = [
+      { str: "alpha repeated " },
+      { str: "middle " },
+      { str: "alpha repeated" },
+    ];
+    const { container } = renderViewer(1);
+    await waitFor(() => expect(getPageMock).toHaveBeenCalledWith(1));
+
+    const spans = Array.from(container.querySelectorAll(".pdf-text-layer span"));
+    const repeatedTextNode = spans[2]?.firstChild;
+    expect(repeatedTextNode).toBeTruthy();
+
+    const range = document.createRange();
+    range.setStart(repeatedTextNode!, 0);
+    range.setEnd(repeatedTextNode!, "alpha repeated".length);
+    Object.defineProperty(range, "getBoundingClientRect", {
+      value: () => ({
+        left: 20,
+        top: 30,
+        right: 120,
+        bottom: 48,
+        width: 100,
+        height: 18,
+        x: 20,
+        y: 30,
+        toJSON: () => ({}),
+      }),
+    });
+    vi.stubGlobal("getSelection", () => ({
+      isCollapsed: false,
+      anchorNode: repeatedTextNode,
+      toString: () => "alpha repeated",
+      getRangeAt: () => range,
+    }));
+
+    const layer = container.querySelector(".pdf-text-layer") as HTMLElement;
+    vi.spyOn(layer, "getBoundingClientRect").mockReturnValue({
+      left: 10,
+      top: 20,
+      right: 610,
+      bottom: 820,
+      width: 600,
+      height: 800,
+      x: 10,
+      y: 20,
+      toJSON: () => ({}),
+    });
+
+    fireEvent.mouseUp(layer.parentElement!.parentElement!);
+
+    await waitFor(() => expect(postTypedEventMock).toHaveBeenCalledTimes(1));
+    const payload = postTypedEventMock.mock.calls[0][0].payload;
+    expect(payload.char_start).toBe("alpha repeated middle ".length);
+    expect(payload.char_end).toBe("alpha repeated middle alpha repeated".length);
+    expect(payload.text_excerpt).toBe("alpha repeated");
+    expect(payload.bbox).toEqual([10, 10, 110, 28]);
   });
 });
