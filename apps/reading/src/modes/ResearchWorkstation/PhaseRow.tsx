@@ -32,6 +32,10 @@ function stringList(value: unknown): string[] {
     : [];
 }
 
+function uniqueStringList(value: unknown): string[] {
+  return Array.from(new Set(stringList(value)));
+}
+
 function recordList(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value)
     ? value.flatMap((item) =>
@@ -137,7 +141,7 @@ function EvidenceRow({ event }: { event: Event }) {
   const p = payloadRecord(event);
   const claims = recordList(p.supporting_claims).flatMap((item) => {
     const claim = nonEmptyString(item.claim);
-    const sourceIds = stringList(item.chunk_ids);
+    const sourceIds = uniqueStringList(item.chunk_ids);
     if (!claim) return [];
     const entry = { text: claim, sourceIds };
     return [entry];
