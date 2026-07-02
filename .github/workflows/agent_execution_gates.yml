@@ -59,6 +59,7 @@ on:
       - 'tests/test_reader_ad_slots.py'
       - 'tests/test_serve_structured_blocks.py'
       - 'tests/test_servability_drift_guard.py'
+      - 'tests/test_passage_research.py'
       - 'tests/test_tts_voice_reply.py'
       - 'tests/test_voice_notes.py'
       - 'tests/test_gap_detection.py'
@@ -121,6 +122,7 @@ on:
       - 'tests/test_reader_ad_slots.py'
       - 'tests/test_serve_structured_blocks.py'
       - 'tests/test_servability_drift_guard.py'
+      - 'tests/test_passage_research.py'
       - 'tests/test_tts_voice_reply.py'
       - 'tests/test_voice_notes.py'
       - 'tests/test_gap_detection.py'
@@ -195,6 +197,9 @@ jobs:
 
       - name: Canonical verify — read rabbit hole
         run: ./scripts/canonical_verify.sh read-rabbit-hole
+
+      - name: Canonical verify — read passage research
+        run: ./scripts/canonical_verify.sh read-passage-research
 
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md

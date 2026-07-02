@@ -12,6 +12,7 @@
 #   read-ad-border       — Read SPR-05 ad-border slots + impression/accrual gate
 #   read-voice-notes     — Read SPR-06 voice-note capture + distillation gate
 #   read-rabbit-hole     — Read SPR-07 conversational rabbit-hole + voice replies
+#   read-passage-research — Read SPR-08 research-from-passage gate
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -35,7 +36,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -176,6 +177,18 @@ cmd_read_rabbit_hole() {
   echo "CANONICAL_VERIFY_OK: read-rabbit-hole"
 }
 
+cmd_read_passage_research() {
+  echo "== read-passage-research: gated seed + provenance backend =="
+  "${PY}" -m pytest tests/test_passage_research.py tests/test_contracts_read_lock.py -q --tb=no
+  echo "== read-passage-research: typed client + reader handoff =="
+  (cd apps/reading && npm run test -- \
+    src/api/books.test.ts \
+    src/modes/Reading/ResearchThis.test.tsx \
+    src/modes/Reading/Reading.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: read-passage-research"
+}
+
 cmd_handoff() {
   local f="${1:?handoff markdown path required}"
   echo "== handoff: schema linter =="
@@ -206,6 +219,7 @@ main() {
     read-ad-border) cmd_read_ad_border ;;
     read-voice-notes) cmd_read_voice_notes ;;
     read-rabbit-hole) cmd_read_rabbit_hole ;;
+    read-passage-research) cmd_read_passage_research ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;

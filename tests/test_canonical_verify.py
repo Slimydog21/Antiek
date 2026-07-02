@@ -96,3 +96,11 @@ def test_canonical_verify_read_rabbit_hole_hermetic() -> None:
     proc = _run("read-rabbit-hole")
     assert proc.returncode == 0, proc.stderr or proc.stdout
     assert "CANONICAL_VERIFY_OK: read-rabbit-hole" in proc.stdout
+
+
+def test_canonical_verify_read_passage_research_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("read-passage-research")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: read-passage-research" in proc.stdout
