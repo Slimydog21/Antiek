@@ -36,6 +36,14 @@ def test_agent_ams_ref_lint_passes_sprint_page() -> None:
     assert "verify_spec_refs" in proc.stdout or "PASS" in proc.stdout
 
 
+def test_agent_ams_ref_lint_docs_name_matrix_gate_and_live_ui_boundary() -> None:
+    src = WRAPPER.read_text(encoding="utf-8")
+
+    assert "bash scripts/agent_ams_ref_lint.sh <sprint.html>" in src
+    assert "Playwright Mountain Shell" in src
+    assert "live UI behavior remain operator proof" in src
+
+
 def test_agent_ams_ref_lint_fails_on_fiction_chip_fixture() -> None:
     proc = _run_wrapper(FICTION_FIXTURE)
     assert proc.returncode != 0

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # ANT-EXEC-H2V SPR-04 — grep gate for forbidden handoff patterns (F1, F3).
 #
+# Canonical gate: ./scripts/canonical_verify.sh handoff <md> pairs this grep
+# with tools/agent/verify_handoff.ts. It catches grep-detectable claims inside
+# the markdown packet; claims outside the packet remain outside this proof.
+#
 # Audits agent session handoff markdown (see docs/agent-execution/HARD_TO_VARY.md).
 # Complements tools/agent/verify_handoff.ts (schema); this script catches theater
 # strings grep can falsify without a full parser.

@@ -4,6 +4,11 @@ import { fileURLToPath } from "node:url";
 /**
  * verify_handoff — ANT-EXEC-H2V SPR-03 handoff schema linter.
  *
+ * Canonical gate: `./scripts/canonical_verify.sh handoff <md>` runs this
+ * schema linter together with `scripts/audit_agent_session.sh`. This proves
+ * packet structure and grep-detectable theater; narrative quality / intent
+ * remains an operator/adversarial-read boundary.
+ *
  * Parses a markdown Handoff Packet (see docs/agent-execution/TEMPLATES.md) and
  * fails closed on briefing theater the adversarial rubric names:
  *   R-01  Env Card present
@@ -13,8 +18,9 @@ import { fileURLToPath } from "node:url";
  *   R-20  Required template headings present (or N/A — reason)
  *
  * USAGE
- *   npx tsx tools/agent/verify_handoff.ts <handoff.md>
- *   echo "$HANDOFF" | npx tsx tools/agent/verify_handoff.ts -
+ *   ./scripts/canonical_verify.sh handoff <handoff.md>
+ *   apps/reading/node_modules/.bin/tsx tools/agent/verify_handoff.ts <handoff.md>
+ *   echo "$HANDOFF" | apps/reading/node_modules/.bin/tsx tools/agent/verify_handoff.ts -
  */
 
 export type VerifyIssueCode =

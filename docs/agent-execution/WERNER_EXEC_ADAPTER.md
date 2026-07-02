@@ -2,6 +2,11 @@
 
 **Status:** Active — binds the **Werner** product htmlspec to ANT-H2V gates without re-running AMS-v2.
 
+**Canonical platform gate:** `./scripts/canonical_verify.sh agent-gates` covers
+the hermetic handoff/audit/ref-lint adapter tests for P-50. Live Werner mascot
+p95/fps claims still require the Werner operator card or equivalent measured
+artifact; they are not proved by agent-gates.
+
 ## Scope
 
 | In scope (SPR-07) | Out of scope (Werner htmlspec SPR-13→16) |

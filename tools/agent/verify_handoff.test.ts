@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -79,6 +81,16 @@ N/A — test fixture
 `;
 
 describe("REQUIRED_HEADINGS", () => {
+  it("documents the canonical handoff gate and narrative-quality boundary", () => {
+    const source = readFileSync(new URL("./verify_handoff.ts", import.meta.url), "utf-8");
+
+    expect(source).toContain("./scripts/canonical_verify.sh handoff <md>");
+    expect(source).toContain("scripts/audit_agent_session.sh");
+    expect(source).toContain("narrative quality / intent");
+    expect(source).toContain("operator/adversarial-read boundary");
+    expect(source).not.toContain("npx tsx tools/agent/verify_handoff.ts <handoff.md>");
+  });
+
   it("lists the eight TEMPLATES.md handoff headings", () => {
     expect(REQUIRED_HEADINGS).toHaveLength(8);
     expect(REQUIRED_HEADINGS[0]).toBe("### Env Card");
