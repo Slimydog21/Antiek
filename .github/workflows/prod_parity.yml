@@ -51,7 +51,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # Need history so `git rev-parse origin/main` resolves the real
           # remote tip (the default-branch SHA we expect prod to be on).

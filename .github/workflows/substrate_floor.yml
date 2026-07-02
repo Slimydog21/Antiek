@@ -49,7 +49,7 @@ jobs:
     env:
       SCOPE_FILES: substrate/results.py substrate/errors.py substrate/escape_hatch.py
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v6
