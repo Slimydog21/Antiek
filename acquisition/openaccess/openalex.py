@@ -21,7 +21,7 @@ from __future__ import annotations
 import os
 import urllib.parse
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -51,7 +51,7 @@ class OpenAlexWork:
     best_oa_pdf_url: str | None
     best_oa_landing_url: str | None
     license_uri: str | None
-    metadata: dict = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
     # Ordered, de-duped PDF-URL candidates (best/primary/locations[].pdf_url,
     # then open_access.oa_url as a last-resort landing fallback). The OA ingest
     # thunk tries these in order so a leading HTML landing page no longer
@@ -142,7 +142,7 @@ def _build_url(
     return f"{base}?{qs}"
 
 
-def _http_get(url: str, *, client: httpx.Client | None) -> dict:
+def _http_get(url: str, *, client: httpx.Client | None) -> dict[str, Any]:
     # ``url`` is built from an env/param-overridable base, so route through the
     # host-based gate: the default api.openalex.org host is fetched directly;
     # were the base ever an arXiv host it would be governed by the shared gate.
@@ -156,7 +156,10 @@ def _http_get(url: str, *, client: httpx.Client | None) -> dict:
         def _send() -> httpx.Response:
             return client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-        r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
+        r = cast(
+            "httpx.Response",
+            govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle()),
+        )
     else:
         with httpx.Client(
             follow_redirects=True,
@@ -165,12 +168,15 @@ def _http_get(url: str, *, client: httpx.Client | None) -> dict:
             def _send() -> httpx.Response:
                 return c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-            r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
+            r = cast(
+                "httpx.Response",
+                govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle()),
+            )
     r.raise_for_status()
-    return r.json()
+    return cast("dict[str, Any]", r.json())
 
 
-def parse_works_response(payload: dict) -> list[OpenAlexWork]:
+def parse_works_response(payload: dict[str, Any]) -> list[OpenAlexWork]:
     """OpenAlex ``/works`` JSON -> list of works. Pure; the recorded-response
     tests target this directly."""
     return [_parse_work(w) for w in payload.get("results", [])]
@@ -209,7 +215,7 @@ def fetch_work_record(
     throttle: OAThrottle | None = None,
     base_url: str | None = None,
     mailto: str = POLITE_POOL_MAILTO,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Fetch ONE raw OpenAlex work record, joined by arXiv id (primary) or DOI.
 
     Returns the FIRST raw result dict (the full OpenAlex JSON object, carrying
@@ -253,12 +259,15 @@ def fetch_work_record(
             base_url=base_url,
         )
         if throttle is not None:
-            payload = throttle.run_with_retry(lambda url=url: _http_get(url, client=client))
+            def _fetch_candidate(url: str = url) -> dict[str, Any]:
+                return _http_get(url, client=client)
+
+            payload = throttle.run_with_retry(_fetch_candidate)
         else:
             payload = _http_get(url, client=client)
         results = payload.get("results") or []
         if results:
-            return results[0]
+            return cast("dict[str, Any]", results[0])
     return None
 
 

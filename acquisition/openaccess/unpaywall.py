@@ -21,13 +21,18 @@ from __future__ import annotations
 import os
 import urllib.parse
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 
-from .licenses import LicenseResolution, resolve_oa_license
+from acquisition.licenses_core import LicenseResolution
+
+from .licenses import resolve_oa_license
 from .pdf_detect import NotAPdf, assert_pdf, is_pdf
 from .throttle import POLITE_POOL_MAILTO, OAThrottle
+
+if TYPE_CHECKING:
+    from acquisition.arxiv.throttle import ArxivThrottle
 
 DEFAULT_BASE_URL = "https://api.unpaywall.org/v2"
 DEFAULT_USER_AGENT = "Antiek/0.1 (acquisition.openaccess)"
@@ -112,7 +117,7 @@ def resolve_doi(
     permanent, so the batch records a per-item miss without retrying."""
     url = _build_url(doi, email=email, base_url=base_url)
 
-    def _get() -> dict:
+    def _get() -> dict[str, Any]:
         # ``base_url`` is env/param-overridable, so route through the host-based
         # gate: a non-arXiv API host (the default api.unpaywall.org) is fetched
         # directly; were the base ever an arXiv host it would be governed.
@@ -126,7 +131,10 @@ def resolve_doi(
             def _send() -> httpx.Response:
                 return client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-            r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
+            r = cast(
+                "httpx.Response",
+                govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle()),
+            )
         else:
             with httpx.Client(
                 follow_redirects=True,
@@ -135,9 +143,12 @@ def resolve_doi(
                 def _send() -> httpx.Response:
                     return c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-                r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
+                r = cast(
+                    "httpx.Response",
+                    govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle()),
+                )
         r.raise_for_status()
-        return r.json()
+        return cast("dict[str, Any]", r.json())
 
     payload = throttle.run_with_retry(_get) if throttle is not None else _get()
     return parse_response(payload, doi)
@@ -148,7 +159,7 @@ def download_pdf(
     *,
     client: httpx.Client | None = None,
     throttle: OAThrottle | None = None,
-    _arxiv_throttle: object | None = None,
+    _arxiv_throttle: ArxivThrottle | None = None,
 ) -> bytes:
     """Download PDF bytes from a resolved OA URL. Transient errors retry via
     the (non-arXiv) ``OAThrottle``. The bytes are verified through the shared
@@ -198,7 +209,10 @@ def download_pdf(
             def _send() -> httpx.Response:
                 return client.get(pdf_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-            r = govern_if_arxiv(pdf_url, _send, throttle=arxiv_throttle)
+            r = cast(
+                "httpx.Response",
+                govern_if_arxiv(pdf_url, _send, throttle=arxiv_throttle),
+            )
             content_type = r.headers.get("content-type")
             r.raise_for_status()
             content = r.content
@@ -209,7 +223,10 @@ def download_pdf(
                 def _send() -> httpx.Response:
                     return c.get(pdf_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-                r = govern_if_arxiv(pdf_url, _send, throttle=arxiv_throttle)
+                r = cast(
+                    "httpx.Response",
+                    govern_if_arxiv(pdf_url, _send, throttle=arxiv_throttle),
+                )
                 content_type = r.headers.get("content-type")
                 r.raise_for_status()
                 content = r.content
