@@ -129,27 +129,48 @@ happens at unlock time, not before — that comparison itself is deferred.
 
 ## D4 — RLM-1 through RLM-5 implementations
 
-**Status:** ❌ Deferred. RLM-1 has a stub at `orchestration/rlm/`; RLM-2
-through RLM-5 not started.
+**Status:** ✅ Engineering substrate shipped; activation deferred. RLM-1 through
+RLM-4 now have ratification-gated implementation and tests; the RLM-5-adjacent
+trajectory harvest CLI exists as `tools/training/harvest.py`, but Loop 3/G8
+remains required for any training-time harvest or hosted RL.
 **Unlock criterion:** ratification of the **six design decisions** in
 `rlm_integration_spec.md` §6.
 **Spec reference:** `docs/rlm_integration_spec.md` §6 (six decisions) +
 master-spec §14.2 (RLM parallel track) + §15.7 (ratification gate).
-**Blocks-what:** nothing on the mainline; RLM is a parallel track per
-§14.2.
+**Blocks-what:** live RLM activation and training-time use; nothing on the
+mainline because RLM is a parallel track per §14.2.
 
 The six decisions per §6 of the RLM integration spec must be ratified by
-the operator before RLM-1 implementation proceeds. RLM-1's stub at
-`orchestration/rlm/` ships with the `ANTIEK_RLM_RATIFIED=1` env gate — it
-refuses to operate unratified.
+the operator before live RLM activation. The substrate refuses to run live RLM
+sessions without the `ANTIEK_RLM_RATIFIED=1` env gate, so operator ratification
+remains required before live activation.
 
-**Action when unlocked:** sequence is documented in
-`rlm_integration_spec.md` — RLM-1 long-doc wrestling bridge (~600 LOC),
-then RLM-2 long-corpus synthesizer mode (~250 LOC), then RLM-3
-`investigation_kind="rlm"` orchestrator (~500 LOC, net-new), then RLM-4
-verifiers envs (~2000 LOC), then RLM-5 trajectory harvest CLI for
-`prime-rl`. Tool-isolation invariant (tools NEVER attach to root REPL)
-must be enforced throughout.
+Current implemented evidence:
+
+- RLM-1 long-doc wrestling decision bridge:
+  `orchestration/rlm/bridge.py`, `interfaces/research/api/rlm_wrestling.py`.
+- RLM-2 long-corpus synthesizer mode: `orchestration/rlm/long_corpus.py`.
+- RLM-3 open-ended RLM investigation lane:
+  `orchestration/rlm/rlm_investigation.py` and
+  `orchestration/loop_one/rlm_orchestrator.py`.
+- RLM-4 verifier-shaped full-loop environment:
+  `interfaces/research/environments/rlm_env.py`.
+- RLM-5-adjacent harvest surface: `tools/training/harvest.py`; actual
+  training-time export remains Loop 3/G8 gated.
+
+2026-07-02 verification:
+
+```bash
+./.venv/bin/python -m pytest tests/test_rlm_bridge.py tests/test_rlm_bridge_event_emission.py tests/test_rlm_events.py tests/test_rlm_long_corpus_and_investigation.py tests/test_rlm_repl.py tests/test_rlm_runner.py tests/test_rlm_session.py tests/test_rlm_tools.py tests/test_rlm_wrestling.py tests/test_rlm_env.py tests/test_rlm_dag.py -q --tb=no
+```
+
+Result: `146 passed`.
+
+**Action when unlocked:** ratify the six decisions in
+`rlm_integration_spec.md` §6, set `ANTIEK_RLM_RATIFIED=1` in the target
+environment, then run the RLM bridge/orchestrator smoke path against operator
+data. Tool-isolation invariant (tools NEVER attach to root REPL) must remain
+enforced throughout.
 
 ---
 
@@ -599,7 +620,7 @@ A/B in `docs/decisions/retrieval-gate-closure.md`). What RG-06 adds for D19 is a
 | G7 (six-month compounding window, master-spec §13.4) | D1 (Sprint 22 cluster) + transitively D7, D8 |
 | ≥500 graded outcomes in cohort | D2 (Autoresearch Wedge 3) |
 | G8 (Loop 3 unlock — `loop_3_unlock_criteria.md` 5 sub-gates) | D3 (Wedge 4), D5 (Prime A+B), D6 (Prime E) |
-| RLM 6 design-decisions ratified (`rlm_integration_spec.md` §6) | D4 (RLM-1..5) |
+| RLM 6 design-decisions ratified (`rlm_integration_spec.md` §6) | D4 live activation |
 | D1 (multi-user) + creator cohort live | D7 (Sprint 25+ ads at scale) |
 | D1 (multi-user) | D21 (Multi-operator owner-read user_id scoping) |
 | D1 (multi-user) + ≥1 publisher opted in | D8 (Sprint 30+ federation activation) |
@@ -620,8 +641,9 @@ Realistic-earliest unlock dates assuming everything else moves on schedule:
 - **D5/D6 (Prime A/B/E)** — D5/D6 close with G8; Q1 2027 at the earliest
   per `operator_gate_actions.md` G8 calendar
 - **D3 (Wedge 4)** — same as G8; Q1 2027 earliest
-- **D4 (RLM-1..5)** — depends on operator ratification cadence on the 6
-  design decisions; could close earlier than G8 if ratified
+- **D4 live activation** — engineering substrate is shipped; depends on
+  operator ratification cadence on the 6 design decisions and can activate
+  earlier than G8, while training-time harvest/hosted RL still waits for G8
 - **D1 (Sprint 22 cluster)** — ~Nov 2026 earliest (G7 calendar)
 - **D7 (Sprint 25+ ads at scale)** — D1 + first creator cohort accruing;
   earliest 2027 H1
