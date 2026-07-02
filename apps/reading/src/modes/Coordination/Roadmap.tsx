@@ -58,8 +58,9 @@ const sprintStatusColour = (s: string): "muted" | "sun" | "default" => {
 };
 
 export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
+  const allSprints = roadmap.rosters.flatMap((r) => r.sprints);
   const sprintById = new Map(
-    roadmap.rosters.flatMap((r) => r.sprints.map((s) => [s.node_id, s] as const)),
+    allSprints.map((s) => [s.node_id, s] as const),
   );
   const seenReadyIds = new Set<string>();
   const readyNow = roadmap.unblocked_now.flatMap((nodeId) => {
@@ -68,6 +69,7 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
     const sprint = sprintById.get(nodeId);
     return sprint?.unblocked ? [sprint] : [];
   });
+  const blockedCount = allSprints.filter((s) => !s.unblocked).length;
 
   return (
     <section className="space-y-5">
@@ -90,6 +92,9 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
           </p>
           <p className="text-sm font-mono text-ink dark:text-bright">
             {roadmap.reconciliation}
+          </p>
+          <p className="text-xs font-mono text-shadow-2 dark:text-moonlight">
+            {readyNow.length} ready now · {blockedCount} blocked by dependency state
           </p>
         </div>
       </LemonCard>

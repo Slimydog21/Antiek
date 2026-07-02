@@ -128,6 +128,7 @@ describe("Coordination", () => {
 
     expect(screen.getByText("library browse")).toBeTruthy();
     expect(screen.getByText("waits on drw:10")).toBeTruthy();
+    expect(screen.getByText("1 ready now · 1 blocked by dependency state")).toBeTruthy();
     expect(screen.getByText("Ready now")).toBeTruthy();
     expect(screen.getAllByText("lock the spine").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("drw:1")).toHaveLength(2);

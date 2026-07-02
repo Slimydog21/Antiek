@@ -147,6 +147,13 @@ const drwSprints = [
 
 const CRITICAL = ["drw:1", "drw:3", "drw:10"];
 
+const readyNowIds = [
+  ...drwSprints.map((d) => `drw:${d.n}`),
+  ...Array.from({ length: 9 }, (_, i) => `write:${i + 1}`),
+  ...Array.from({ length: 9 }, (_, i) => `speak:${i + 1}`),
+  ...Array.from({ length: 8 }, (_, i) => `unified:${i + 1}`),
+];
+
 export const CANONICAL_ROADMAP: RoadmapView = {
   total_sprints: 45,
   superseded_count: 6,
@@ -241,7 +248,7 @@ export const CANONICAL_ROADMAP: RoadmapView = {
       })),
     },
   ],
-  unblocked_now: [],
+  unblocked_now: readyNowIds,
   substrate_layers: [
     { name: "Write coordination (db_lock)", owner: "runtime/db_lock.py", status: "Hardened (substrate-execution SPR-01)" },
     { name: "Dispatch router + idempotency", owner: "substrate/dispatch/", status: "Hardened (substrate-execution SPR-02/03)" },
