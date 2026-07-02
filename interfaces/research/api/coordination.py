@@ -159,6 +159,7 @@ class RoadmapResponse(BaseModel):
     total_sprints: int
     superseded_count: int
     superseded_note: str
+    activation_note: str
     reconciliation: str
     critical_path: list[str]
     rosters: list[RosterResponse]
@@ -174,6 +175,7 @@ class RoadmapResponse(BaseModel):
             total_sprints=rm.total_sprints,
             superseded_count=rm.superseded_count,
             superseded_note=rm.superseded_note,
+            activation_note=rm.activation_note,
             reconciliation=rm.count_reconciliation(),
             critical_path=list(rm.critical_path),
             rosters=[
@@ -198,8 +200,12 @@ class RoadmapResponse(BaseModel):
                 ExecutionFocusResponse.from_focus(focus) if focus is not None else None
             ),
             substrate_layers=[
-                SubstrateLayerResponse(name=l.name, owner=l.owner, status=l.status)
-                for l in rm.substrate_layers
+                SubstrateLayerResponse(
+                    name=layer.name,
+                    owner=layer.owner,
+                    status=layer.status,
+                )
+                for layer in rm.substrate_layers
             ],
         )
 
