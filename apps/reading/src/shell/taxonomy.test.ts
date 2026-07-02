@@ -514,6 +514,19 @@ describe("modeForPath", () => {
   it("keeps bare index routes on their exact mode instead of the param owner", () => {
     expect(modeForPath("/outcomes")?.id).toBe("OutcomesIndex");
   });
+
+  it("keeps workflowForPath aligned with the resolved mode owner", () => {
+    for (const path of ["/read/doc-1", "/write/dlv-1", "/speak/project-1", "/outcomes/syn-1"]) {
+      expect(workflowForPath(path)).toBe(modeForPath(path)?.workflow);
+    }
+  });
+
+  it("keeps Read-only subsurfaces as explicit overlays without taxonomy entries", () => {
+    expect(modeForPath("/readings")).toBeUndefined();
+    expect(modeForPath("/meta-readings")).toBeUndefined();
+    expect(workflowForPath("/readings")).toBe("read");
+    expect(workflowForPath("/meta-readings")).toBe("read");
+  });
 });
 
 /**
