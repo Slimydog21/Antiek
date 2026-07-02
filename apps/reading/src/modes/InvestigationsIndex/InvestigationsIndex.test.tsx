@@ -77,6 +77,49 @@ describe("InvestigationsIndex", () => {
     expect(screen.getByText("$0.0077")).toBeTruthy();
   });
 
+  it("sanitizes investigation list rows before rendering links", async () => {
+    apiFetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        count: 2,
+        investigations: [
+          {
+            investigation_id: " inv dirty ",
+            question: " ",
+            status: " completed ",
+            started_at: " 2026-07-01T04:00:00Z ",
+            completed_at: " ",
+            cost_usd_total: "0.5",
+            parent_investigation_id: " parent dirty ",
+          },
+          {
+            investigation_id: " ",
+            question: "Skipped investigation",
+            status: "completed",
+          },
+        ],
+      }),
+    } as Response);
+
+    renderIndex();
+
+    expect(await screen.findByText("inv dirty")).toBeTruthy();
+    expect(screen.queryByText("Skipped investigation")).toBeNull();
+    expect(screen.getByText("1 shown · $0.50 total cost")).toBeTruthy();
+    expect(screen.getAllByText("completed").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("$0.5000")).toBeTruthy();
+    expect(screen.getByText("started 2026-07-01T04:00:00Z")).toBeTruthy();
+
+    expect(
+      screen
+        .getByRole("link", { name: /inv dirty.*parent: parent dirty/i })
+        .getAttribute("href"),
+    ).toBe("/inv/inv%20dirty");
+    expect(screen.getByRole("link", { name: /replay/i }).getAttribute("href")).toBe(
+      "/replay/inv%20dirty",
+    );
+  });
+
   it("clamps malformed max sub-question input before submitting", async () => {
     apiFetchMock
       .mockResolvedValueOnce({
