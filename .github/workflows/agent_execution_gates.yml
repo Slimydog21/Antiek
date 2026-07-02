@@ -9,8 +9,10 @@ on:
     paths:
       - 'docs/agent-execution/**'
       - 'docs/operator_gate_actions.md'
+      - 'docs/OPERATOR_ACTIONS.md'
       - 'docs/master-product-spec.md'
       - 'docs/engineering_deferrals.md'
+      - 'infrastructure/runbooks/first-deploy.md'
       - 'specs/activation/**'
       - 'tools/agent/**'
       - 'tools/activation/read_dogfood.py'
@@ -134,8 +136,10 @@ on:
     paths:
       - 'docs/agent-execution/**'
       - 'docs/operator_gate_actions.md'
+      - 'docs/OPERATOR_ACTIONS.md'
       - 'docs/master-product-spec.md'
       - 'docs/engineering_deferrals.md'
+      - 'infrastructure/runbooks/first-deploy.md'
       - 'specs/activation/**'
       - 'tools/agent/**'
       - 'tools/activation/read_dogfood.py'
