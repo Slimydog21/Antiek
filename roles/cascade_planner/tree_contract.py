@@ -29,12 +29,34 @@ from datetime import UTC, datetime
 from typing import Any
 
 
+MAX_NODE_DEPTH = 6
+
+
 def _new_local_id() -> str:
     return "pn-" + uuid.uuid4().hex[:12]
 
 
 def _now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def _clean_question(question: str | None) -> str | None:
+    if not isinstance(question, str):
+        return None
+    stripped = question.strip()
+    return stripped or None
+
+
+def _clean_max_depth(max_depth: Any) -> int | None:
+    if max_depth is None or isinstance(max_depth, bool):
+        return None
+    try:
+        parsed = int(max_depth)
+    except (TypeError, ValueError):
+        return None
+    if parsed != max_depth and str(parsed) != str(max_depth):
+        return None
+    return parsed if 1 <= parsed <= MAX_NODE_DEPTH else None
 
 
 @dataclass
@@ -89,7 +111,7 @@ class PlanNode:
         return PlanNode(
             question=d["question"], rationale=d.get("rationale", ""),
             focus_boundary=d.get("focus_boundary", ""),
-            budget_usd=d.get("budget_usd"), max_depth=d.get("max_depth"),
+            budget_usd=d.get("budget_usd"), max_depth=_clean_max_depth(d.get("max_depth")),
             local_id=d.get("local_id") or _new_local_id(),
             graph_node_id=d.get("graph_node_id"),
             children=[PlanNode.from_dict(c) for c in d.get("children", [])],
@@ -142,10 +164,13 @@ class PlanTree:
             self.approval.approved_by = None
 
     def add_child(self, parent_local_id: str, question: str, **kw) -> PlanNode | None:
+        cleaned = _clean_question(question)
+        if cleaned is None:
+            return None
         parent = self.root.find(parent_local_id)
         if parent is None:
             return None
-        node = PlanNode(question=question, **kw)
+        node = PlanNode(question=cleaned, **kw)
         parent.children.append(node)
         self._touch()
         return node
@@ -162,10 +187,13 @@ class PlanTree:
         return False
 
     def reword(self, local_id: str, question: str) -> bool:
+        cleaned = _clean_question(question)
+        if cleaned is None:
+            return False
         n = self.root.find(local_id)
         if n is None:
             return False
-        n.question = question
+        n.question = cleaned
         self._touch()
         return True
 
@@ -173,6 +201,10 @@ class PlanTree:
                    max_depth: int | None = None) -> bool:
         n = self.root.find(local_id)
         if n is None:
+            return False
+        if budget_usd is not None and budget_usd < 0:
+            return False
+        if max_depth is not None and _clean_max_depth(max_depth) is None:
             return False
         if budget_usd is not None:
             n.budget_usd = budget_usd
@@ -183,10 +215,14 @@ class PlanTree:
 
     def split(self, local_id: str, into: list[str]) -> bool:
         """Replace one over-broad node with N focused children under it."""
-        n = self.root.find(local_id)
-        if n is None or not into:
+        cleaned = [_clean_question(q) for q in into]
+        questions = [q for q in cleaned if q is not None]
+        if len(questions) != len(into) or not questions:
             return False
-        n.children.extend(PlanNode(question=q) for q in into)
+        n = self.root.find(local_id)
+        if n is None:
+            return False
+        n.children.extend(PlanNode(question=q) for q in questions)
         self._touch()
         return True
 

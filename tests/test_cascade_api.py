@@ -170,6 +170,70 @@ def test_split_edit_adds_focused_children_and_reopens_gate(client):
     assert [c["question"] for c in split_node["children"]] == ["narrow one", "narrow two"]
 
 
+def test_invalid_question_edits_are_refused_without_mutating_plan(client):
+    root = client.post("/research/plans", json={"problem": "P", "sub_questions": ["a"]}).json()["root_node_id"]
+    assert client.post(f"/research/plans/{root}/approve", json={}).json()["launchable"] is True
+    tree = client.get(f"/research/plans/{root}").json()["tree"]
+    child_local = tree["root"]["children"][0]["local_id"]
+
+    for payload in (
+        {"op": "add_child", "target_local_id": tree["root"]["local_id"], "question": "   "},
+        {"op": "add_child", "target_local_id": tree["root"]["local_id"]},
+        {"op": "add_child", "target_local_id": tree["root"]["local_id"], "question": None},
+        {"op": "reword", "target_local_id": child_local, "question": ""},
+        {"op": "split", "target_local_id": child_local, "into": ["narrow one", " "]},
+    ):
+        r = client.post(f"/research/plans/{root}/edit", json=payload)
+        assert r.status_code == 400, r.text
+
+    after = client.get(f"/research/plans/{root}").json()
+    assert after["launchable"] is True
+    assert after["tree"]["approval"]["state"] == "approved"
+    assert after["tree"]["approval"]["plan_version"] == tree["approval"]["plan_version"]
+    assert [c["question"] for c in after["tree"]["root"]["children"]] == ["a"]
+
+
+def test_invalid_budget_edits_are_rejected_before_persistence(client):
+    root = client.post("/research/plans", json={"problem": "P", "sub_questions": ["a"]}).json()["root_node_id"]
+    tree = client.get(f"/research/plans/{root}").json()["tree"]
+    child_local = tree["root"]["children"][0]["local_id"]
+
+    negative = client.post(
+        f"/research/plans/{root}/edit",
+        json={"op": "set_budget", "target_local_id": child_local, "budget_usd": -0.01},
+    )
+    zero_depth = client.post(
+        f"/research/plans/{root}/edit",
+        json={"op": "set_budget", "target_local_id": child_local, "max_depth": 0},
+    )
+    too_deep = client.post(
+        f"/research/plans/{root}/edit",
+        json={"op": "set_budget", "target_local_id": child_local, "max_depth": 7},
+    )
+
+    assert negative.status_code == 422, negative.text
+    assert zero_depth.status_code == 422, zero_depth.text
+    assert too_deep.status_code == 422, too_deep.text
+    after = client.get(f"/research/plans/{root}").json()["tree"]["root"]["children"][0]
+    assert after["budget_usd"] is None
+    assert after["max_depth"] is None
+
+
+def test_max_depth_cap_value_persists(client):
+    root = client.post("/research/plans", json={"problem": "P", "sub_questions": ["a"]}).json()["root_node_id"]
+    tree = client.get(f"/research/plans/{root}").json()["tree"]
+    child_local = tree["root"]["children"][0]["local_id"]
+
+    r = client.post(
+        f"/research/plans/{root}/edit",
+        json={"op": "set_budget", "target_local_id": child_local, "max_depth": 6},
+    )
+
+    assert r.status_code == 200, r.text
+    child = r.json()["tree"]["root"]["children"][0]
+    assert child["max_depth"] == 6
+
+
 # --------------------------------------------------------------------------
 # Launch gate
 # --------------------------------------------------------------------------

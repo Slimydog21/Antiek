@@ -9,6 +9,8 @@
 
 import { API_BASE, ApiError, apiFetch } from "../lib/api";
 
+export const PLAN_MAX_NODE_DEPTH = 6;
+
 // ── Plan tree (mirrors roles/cascade_planner PlanTree.to_dict) ──────────
 
 export interface PlanNode {
@@ -226,13 +228,16 @@ function safePlanNode(value: unknown, fallbackLocalId: string): PlanNode | null 
         return safe ? [safe] : [];
       })
     : [];
+  const maxDepth = nonNegativeSafeInteger(node.max_depth);
   return {
     local_id: localId,
     question,
     rationale: nonEmptyString(node.rationale) ?? "",
     focus_boundary: nonEmptyString(node.focus_boundary) ?? "",
     budget_usd: finiteNonNegativeNumber(node.budget_usd),
-    max_depth: nonNegativeSafeInteger(node.max_depth),
+    max_depth: maxDepth !== null && maxDepth >= 1 && maxDepth <= PLAN_MAX_NODE_DEPTH
+      ? maxDepth
+      : null,
     graph_node_id: nullableString(node.graph_node_id),
     children,
   };

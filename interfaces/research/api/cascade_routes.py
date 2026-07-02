@@ -65,7 +65,7 @@ from roles.cascade_planner import (
     persist_tree,
 )
 from roles.cascade_planner.planner import DispatchDecomposer
-from roles.cascade_planner.tree_contract import PlanTree
+from roles.cascade_planner.tree_contract import MAX_NODE_DEPTH, PlanTree
 from runtime.db_lock import LockedConnection, connect_write
 from runtime.research_runner import (
     BudgetCap,
@@ -194,15 +194,15 @@ class CreatePlanRequest(BaseModel):
     # focused sub-questions directly (no model call). When omitted, the
     # decomposer role runs.
     sub_questions: list[str] | None = None
-    max_depth: int = Field(default=3, ge=1, le=6)
+    max_depth: int = Field(default=3, ge=1, le=MAX_NODE_DEPTH)
 
 
 class TreeEditRequest(BaseModel):
     op: str  # add_child | remove | reword | set_budget | split
     target_local_id: str
     question: str | None = None
-    budget_usd: float | None = None
-    max_depth: int | None = None
+    budget_usd: float | None = Field(default=None, ge=0)
+    max_depth: int | None = Field(default=None, ge=1, le=MAX_NODE_DEPTH)
     into: list[str] | None = None
 
 
@@ -350,7 +350,10 @@ async def edit_plan(root_id: str, req: TreeEditRequest) -> dict[str, Any]:
             raise HTTPException(status_code=404, detail=f"no plan {root_id!r}")
         ok = _apply_edit(tree, req)
         if not ok:
-            raise HTTPException(status_code=400, detail=f"edit {req.op!r} failed (bad target?)")
+            raise HTTPException(
+                status_code=400,
+                detail=f"edit {req.op!r} failed (bad target or invalid payload)",
+            )
         with _write("edit_plan") as con:
             persist_tree(tree, investigation_id="__operator__",
                          embedding_provider=_embedding_provider(), con=con)
@@ -360,7 +363,7 @@ async def edit_plan(root_id: str, req: TreeEditRequest) -> dict[str, Any]:
 
 def _apply_edit(tree: PlanTree, req: TreeEditRequest) -> bool:
     if req.op == "add_child":
-        return tree.add_child(req.target_local_id, req.question or "New sub-question") is not None
+        return tree.add_child(req.target_local_id, req.question or "") is not None
     if req.op == "remove":
         return tree.remove(req.target_local_id)
     if req.op == "reword":
