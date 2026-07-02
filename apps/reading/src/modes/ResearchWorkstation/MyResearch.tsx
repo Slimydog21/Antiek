@@ -41,7 +41,11 @@ import { Link, useNavigate } from "react-router-dom";
 import { getBudgetDefaults, type BudgetDefaults } from "../../api/research";
 import { useAuth } from "../../lib/auth";
 import { useInvestigationList } from "../../hooks/useInvestigationList";
-import type { InvestigationSummary } from "../../lib/api";
+import {
+  listDeliverables,
+  type DeliverableSummary,
+  type InvestigationSummary,
+} from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import LemonButton from "../../components/lemon/LemonButton";
 import { LemonTag } from "../../components/lemon/LemonTag";
@@ -108,6 +112,30 @@ function normalizeSummaries(items: InvestigationSummary[]): InvestigationSummary
       },
     ];
   });
+}
+
+interface LinkedWritePiece {
+  deliverableId: string;
+  title: string;
+  sectionCount: number;
+}
+
+function normalizeLinkedWritePieces(
+  deliverables: DeliverableSummary[],
+): Map<string, LinkedWritePiece[]> {
+  const byResearch = new Map<string, LinkedWritePiece[]>();
+  for (const deliverable of deliverables) {
+    const deliverableId = nonEmptyString(deliverable.deliverable_id);
+    const researchId = nonEmptyString(deliverable.investigation_root_id);
+    if (!deliverableId || !researchId) continue;
+    const piece: LinkedWritePiece = {
+      deliverableId,
+      title: displayString(deliverable.title, "Untitled piece"),
+      sectionCount: Math.floor(finiteNonNegativeNumber(deliverable.section_count) ?? 0),
+    };
+    byResearch.set(researchId, [...(byResearch.get(researchId) ?? []), piece]);
+  }
+  return byResearch;
 }
 
 // ── Grouping: a "session" is a parent research + the researches spawned from
@@ -237,6 +265,28 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
 
   const agg = useMemo(() => aggregate(visibleInvestigations), [visibleInvestigations]);
   const groups = useMemo(() => groupByParent(visibleInvestigations), [visibleInvestigations]);
+  const [writePiecesByResearch, setWritePiecesByResearch] = useState<
+    Map<string, LinkedWritePiece[]>
+  >(() => new Map());
+
+  useEffect(() => {
+    let cancelled = false;
+    listDeliverables()
+      .then((body) => {
+        if (cancelled) return;
+        setWritePiecesByResearch(
+          normalizeLinkedWritePieces(
+            Array.isArray(body.deliverables) ? body.deliverables : [],
+          ),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setWritePiecesByResearch(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Honest "N running, M queued": the host-local runner multiplexes browse
   // loops under a bounded semaphore (the contract's max_concurrency). More
@@ -345,7 +395,11 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
         {groups.length > 0 && (
           <div className="space-y-4">
             {groups.map((g) => (
-              <GroupCard key={g.rootId} group={g} />
+              <GroupCard
+                key={g.rootId}
+                group={g}
+                writePiecesByResearch={writePiecesByResearch}
+              />
             ))}
           </div>
         )}
@@ -430,7 +484,13 @@ function LaunchBar({
   );
 }
 
-function GroupCard({ group }: { group: Group }) {
+function GroupCard({
+  group,
+  writePiecesByResearch,
+}: {
+  group: Group;
+  writePiecesByResearch: Map<string, LinkedWritePiece[]>;
+}) {
   // A group with one member is a standalone research; >1 is a cascade/chase
   // family. The header names the family by its parent question when present.
   const isFamily = group.members.length > 1;
@@ -453,7 +513,12 @@ function GroupCard({ group }: { group: Group }) {
       )}
       <div className="divide-y divide-rule dark:divide-charcoal-1">
         {group.members.map((s) => (
-          <ResearchRow key={s.investigation_id} summary={s} indented={isFamily} />
+          <ResearchRow
+            key={s.investigation_id}
+            summary={s}
+            indented={isFamily}
+            writePieces={writePiecesByResearch.get(s.investigation_id) ?? []}
+          />
         ))}
       </div>
     </section>
@@ -463,9 +528,11 @@ function GroupCard({ group }: { group: Group }) {
 function ResearchRow({
   summary,
   indented,
+  writePieces,
 }: {
   summary: InvestigationSummary;
   indented: boolean;
+  writePieces: LinkedWritePiece[];
 }) {
   const ps = plainStatus(summary.status);
   const costUsd = finiteNonNegativeNumber(summary.cost_usd_total) ?? 0;
@@ -508,6 +575,21 @@ function ResearchRow({
         </Link>
         {summary.started_at && <span>started {relative(summary.started_at)}</span>}
       </div>
+      {writePieces.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-shadow-1 dark:text-moonlight">
+          <span className="font-mono uppercase tracking-wide">Writing</span>
+          {writePieces.map((piece) => (
+            <Link
+              key={piece.deliverableId}
+              to={`/write/${encodeURIComponent(piece.deliverableId)}`}
+              className="rounded border border-rule px-2 py-1 font-serif text-[12px] text-ink hover:border-ocean hover:underline dark:border-charcoal-1 dark:text-bright"
+              title={`${piece.sectionCount} section${piece.sectionCount === 1 ? "" : "s"}`}
+            >
+              {piece.title}
+            </Link>
+          ))}
+        </div>
+      )}
     </article>
   );
 }
