@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, cast
 
 import httpx
 
@@ -93,7 +93,7 @@ class WhisperTranscriber:
                     timeout=DEFAULT_TIMEOUT_S,
                 )
 
-            r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
+            r = cast("httpx.Response", govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle()))
         else:
             with httpx.Client(timeout=DEFAULT_TIMEOUT_S) as c:
                 def _send() -> httpx.Response:
@@ -102,7 +102,7 @@ class WhisperTranscriber:
                         timeout=DEFAULT_TIMEOUT_S,  # module default; same pattern as acquisition/papers/core.py DEFAULT_TIMEOUT_S
                     )
 
-                r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
+                r = cast("httpx.Response", govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle()))
         r.raise_for_status()
         body = r.json()
         return Transcript(

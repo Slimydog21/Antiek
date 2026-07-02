@@ -25,6 +25,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import cast
 
 import httpx
 
@@ -222,7 +223,7 @@ def fetch_feed(
         def _send() -> httpx.Response:
             return client.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-        r = govern_if_arxiv(feed_url, _send, throttle=canonical_arxiv_throttle())
+        r = cast("httpx.Response", govern_if_arxiv(feed_url, _send, throttle=canonical_arxiv_throttle()))
     else:
         with httpx.Client(
             follow_redirects=True,
@@ -231,7 +232,7 @@ def fetch_feed(
             def _send() -> httpx.Response:
                 return c.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-            r = govern_if_arxiv(feed_url, _send, throttle=canonical_arxiv_throttle())
+            r = cast("httpx.Response", govern_if_arxiv(feed_url, _send, throttle=canonical_arxiv_throttle()))
     r.raise_for_status()
 
     parsed = feedparser.parse(r.content)
@@ -242,33 +243,33 @@ def fetch_feed(
         entries = entries[:max_episodes]
 
     episodes: list[Episode] = []
-    for e in entries:
+    for entry in entries:
         eid = (
-            (e.get("id") if isinstance(e, dict) else getattr(e, "id", None))
-            or (e.get("guid") if isinstance(e, dict) else getattr(e, "guid", None))
-            or _detect_audio_url(e)
-            or (e.get("link") if isinstance(e, dict) else getattr(e, "link", None))
+            (entry.get("id") if isinstance(entry, dict) else getattr(entry, "id", None))
+            or (entry.get("guid") if isinstance(entry, dict) else getattr(entry, "guid", None))
+            or _detect_audio_url(entry)
+            or (entry.get("link") if isinstance(entry, dict) else getattr(entry, "link", None))
         )
         if not eid:
             continue
         episodes.append(Episode(
             episode_id=str(eid),
-            title=(e.get("title") if isinstance(e, dict) else getattr(e, "title", "")) or "",
+            title=(entry.get("title") if isinstance(entry, dict) else getattr(entry, "title", "")) or "",
             description=(
-                e.get("summary") if isinstance(e, dict) else getattr(e, "summary", "")
+                entry.get("summary") if isinstance(entry, dict) else getattr(entry, "summary", "")
             ) or "",
-            published_at=_parse_published(e),
-            duration_seconds=_parse_duration(e),
-            audio_url=_detect_audio_url(e),
-            transcript_url=_detect_transcript_url(e),
+            published_at=_parse_published(entry),
+            duration_seconds=_parse_duration(entry),
+            audio_url=_detect_audio_url(entry),
+            transcript_url=_detect_transcript_url(entry),
             episode_url=(
-                e.get("link") if isinstance(e, dict) else getattr(e, "link", None)
+                entry.get("link") if isinstance(entry, dict) else getattr(entry, "link", None)
             ),
         ))
 
     return Podcast(
         feed_url=feed_url,
-        title=channel.get("title") if isinstance(channel, dict) else getattr(channel, "title", "") or "",
+        title=(channel.get("title") if isinstance(channel, dict) else getattr(channel, "title", "")) or "",
         author=(channel.get("author") if isinstance(channel, dict) else getattr(channel, "author", "")) or "",
         description=(channel.get("subtitle") if isinstance(channel, dict) else getattr(channel, "subtitle", "")) or "",
         language=(channel.get("language") if isinstance(channel, dict) else getattr(channel, "language", "")) or "",
@@ -316,7 +317,7 @@ def fetch_episode_transcript(
             def _send() -> httpx.Response:
                 return client.get(transcript_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-            r = govern_if_arxiv(transcript_url, _send, throttle=canonical_arxiv_throttle())
+            r = cast("httpx.Response", govern_if_arxiv(transcript_url, _send, throttle=canonical_arxiv_throttle()))
         else:
             with httpx.Client(
                 follow_redirects=True,
@@ -325,7 +326,7 @@ def fetch_episode_transcript(
                 def _send() -> httpx.Response:
                     return c.get(transcript_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-                r = govern_if_arxiv(transcript_url, _send, throttle=canonical_arxiv_throttle())
+                r = cast("httpx.Response", govern_if_arxiv(transcript_url, _send, throttle=canonical_arxiv_throttle()))
         r.raise_for_status()
     except (httpx.HTTPError, httpx.TimeoutException):
         return ""

@@ -22,6 +22,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import cast
 
 import httpx
 
@@ -264,7 +265,7 @@ def fetch_feed(
         def _send() -> httpx.Response:
             return client.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-        r = govern_if_arxiv(feed_url, _send)
+        r = cast("httpx.Response", govern_if_arxiv(feed_url, _send))
     else:
         with httpx.Client(
             follow_redirects=True,
@@ -273,7 +274,7 @@ def fetch_feed(
             def _send() -> httpx.Response:
                 return c.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-            r = govern_if_arxiv(feed_url, _send)
+            r = cast("httpx.Response", govern_if_arxiv(feed_url, _send))
     r.raise_for_status()
     raw = r.content
 
