@@ -84,6 +84,7 @@ function roadmap(
     operator_actions: null,
     phase2_audit: null,
     engineering_deferrals: null,
+    loop3: null,
     substrate_layers: [],
   };
 }
@@ -639,6 +640,45 @@ describe("Roadmap", () => {
     expect(
       screen.getByText(
         "Do not pre-build D1 — Sprint 22 multi-user pivot cluster. Unlock: G7 closes — earliest ~Nov 2026. Source: docs/engineering_deferrals.md.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("surfaces Loop 3 manual and verifier evidence state", () => {
+    render(
+      <Roadmap
+        roadmap={{
+          ...roadmap([]),
+          loop3: {
+            criteria: [],
+            manual_met_count: 1,
+            evidence_passed_count: 0,
+            total_criteria: 5,
+            all_criteria_met: false,
+            all_evidence_passed: false,
+            env_unlocked: false,
+            fully_unlocked: false,
+            first_failing_evidence: {
+              criterion: "trajectory_volume",
+              manual_met: true,
+              evidence_passed: false,
+              evidence_status: "FAIL",
+              evidence_summary: "events_dir_exists: /tmp/events",
+            },
+            events_dir: "/tmp/events",
+            open_weight_policy_file: "reports/loop3/open-weight-policy-ids.json",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Loop 3 / G8")).toBeTruthy();
+    expect(
+      screen.getByText("manual 1/5 · evidence 0/5 · env=locked · fully=no"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "First failing evidence: trajectory_volume — events_dir_exists: /tmp/events.",
       ),
     ).toBeTruthy();
   });

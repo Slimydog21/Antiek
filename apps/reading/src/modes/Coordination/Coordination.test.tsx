@@ -235,6 +235,37 @@ describe("Coordination", () => {
               blocks: " second-user exit criteria ",
             },
           },
+          loop3: {
+            criteria: [
+              {
+                criterion: " trajectory_volume ",
+                manual_met: "yes",
+                evidence_passed: false,
+                evidence_status: " FAIL ",
+                evidence_summary: " events dir missing ",
+              },
+              {
+                criterion: " ",
+                evidence_summary: "Skipped criterion",
+              },
+            ],
+            manual_met_count: "1",
+            evidence_passed_count: "0",
+            total_criteria: "5",
+            all_criteria_met: "yes",
+            all_evidence_passed: "yes",
+            env_unlocked: "yes",
+            fully_unlocked: "yes",
+            first_failing_evidence: {
+              criterion: " trajectory_volume ",
+              manual_met: true,
+              evidence_passed: false,
+              evidence_status: " FAIL ",
+              evidence_summary: " events dir missing ",
+            },
+            events_dir: " /tmp/events ",
+            open_weight_policy_file: " reports/loop3/open-weight-policy-ids.json ",
+          },
           substrate_layers: [
             {
               name: " db lock ",
@@ -301,6 +332,13 @@ describe("Coordination", () => {
       screen.getByText(
         "Do not pre-build D1 — Multi-user pivot. Unlock: G7 closes. Source: docs/engineering_deferrals.md.",
       ),
+    ).toBeTruthy();
+    expect(screen.getByText("Loop 3 / G8")).toBeTruthy();
+    expect(
+      screen.getByText("manual 1/5 · evidence 0/5 · env=locked · fully=no"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("First failing evidence: trajectory_volume — events dir missing."),
     ).toBeTruthy();
     expect(screen.getByText("waits on drw:10")).toBeTruthy();
     expect(screen.getByText("1 dependency-ready · 1 blocked by dependency state")).toBeTruthy();

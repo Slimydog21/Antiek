@@ -11,8 +11,9 @@ Thin adapter over :mod:`substrate.coordination`. Four GET endpoints, no writes:
 **Read-only is enforced, not promised (rigor #5).** This module imports only
 read entry points (``load_gate_ledger`` / ``load_operator_actions`` /
 ``load_phase2_audit`` / ``load_engineering_deferrals`` / ``build_roadmap`` /
-``build_cost_view`` / ``build_consent_view``); there is no import of any writer
-(``connect_write``, the escrow writer
+``build_loop3_coordination_view`` / ``build_cost_view`` /
+``build_consent_view``); there is no import of any writer (``connect_write``,
+the escrow writer
 ``ip_holders.accrue_escrow``, the gate file's path for writing) and **no import
 of any payout module** (``tools.stripe_connect.payouts``). There is
 no POST/PUT/PATCH/DELETE route. The cost endpoint opens DuckDB ``read_only=True``
@@ -56,6 +57,11 @@ from substrate.coordination.gate_ledger import (
     Gate,
     GateLedger,
     load_gate_ledger,
+)
+from substrate.coordination.loop3_status import (
+    Loop3CoordinationView,
+    Loop3CriterionStatus,
+    build_loop3_coordination_view,
 )
 from substrate.coordination.operator_actions import (
     OperatorAction,
@@ -436,6 +442,64 @@ class EngineeringDeferralsSummaryResponse(BaseModel):
         )
 
 
+class Loop3CriterionStatusResponse(BaseModel):
+    criterion: str
+    manual_met: bool
+    evidence_passed: bool
+    evidence_status: str
+    evidence_summary: str
+
+    @classmethod
+    def from_status(
+        cls,
+        status: Loop3CriterionStatus,
+    ) -> Loop3CriterionStatusResponse:
+        return cls(
+            criterion=status.criterion,
+            manual_met=status.manual_met,
+            evidence_passed=status.evidence_passed,
+            evidence_status=status.evidence_status,
+            evidence_summary=status.evidence_summary,
+        )
+
+
+class Loop3CoordinationResponse(BaseModel):
+    criteria: list[Loop3CriterionStatusResponse]
+    manual_met_count: int
+    evidence_passed_count: int
+    total_criteria: int
+    all_criteria_met: bool
+    all_evidence_passed: bool
+    env_unlocked: bool
+    fully_unlocked: bool
+    first_failing_evidence: Loop3CriterionStatusResponse | None
+    events_dir: str
+    open_weight_policy_file: str
+
+    @classmethod
+    def from_view(cls, view: Loop3CoordinationView) -> Loop3CoordinationResponse:
+        return cls(
+            criteria=[
+                Loop3CriterionStatusResponse.from_status(status)
+                for status in view.criteria
+            ],
+            manual_met_count=view.manual_met_count,
+            evidence_passed_count=view.evidence_passed_count,
+            total_criteria=view.total_criteria,
+            all_criteria_met=view.all_criteria_met,
+            all_evidence_passed=view.all_evidence_passed,
+            env_unlocked=view.env_unlocked,
+            fully_unlocked=view.fully_unlocked,
+            first_failing_evidence=(
+                Loop3CriterionStatusResponse.from_status(view.first_failing_evidence)
+                if view.first_failing_evidence is not None
+                else None
+            ),
+            events_dir=view.events_dir,
+            open_weight_policy_file=view.open_weight_policy_file,
+        )
+
+
 class RoadmapResponse(BaseModel):
     total_sprints: int
     superseded_count: int
@@ -452,6 +516,7 @@ class RoadmapResponse(BaseModel):
     operator_actions: OperatorActionsSummaryResponse
     phase2_audit: Phase2AuditResponse
     engineering_deferrals: EngineeringDeferralsSummaryResponse
+    loop3: Loop3CoordinationResponse | None
     substrate_layers: list[SubstrateLayerResponse]
 
     @classmethod
@@ -463,6 +528,7 @@ class RoadmapResponse(BaseModel):
         operator_actions: OperatorActionsView | None = None,
         phase2_audit: Phase2AuditView | None = None,
         engineering_deferrals: EngineeringDeferralsView | None = None,
+        loop3: Loop3CoordinationView | None = None,
     ) -> RoadmapResponse:
         focus = rm.execution_focus()
         operator_focus = None
@@ -514,6 +580,7 @@ class RoadmapResponse(BaseModel):
             engineering_deferrals=EngineeringDeferralsSummaryResponse.from_view(
                 engineering_deferrals or load_engineering_deferrals()
             ),
+            loop3=Loop3CoordinationResponse.from_view(loop3) if loop3 is not None else None,
             substrate_layers=[
                 SubstrateLayerResponse(
                     name=layer.name,
@@ -722,6 +789,12 @@ def register_coordination_routes(app: FastAPI) -> None:
         """The cross-spec roadmap — 45 sprints reconciled from the real roster
         files + SPR-01's dependency DAG, DRW critical path explicit, dependency
         blockers and execution focus derived from dependency state."""
+        db = _resolve_db_path()
+        con = duckdb.connect(db, read_only=True)
+        try:
+            loop3 = build_loop3_coordination_view(con)
+        finally:
+            con.close()
         return RoadmapResponse.from_roadmap(
             build_roadmap(),
             load_gate_ledger(),
@@ -729,6 +802,7 @@ def register_coordination_routes(app: FastAPI) -> None:
             load_operator_actions(),
             load_phase2_audit(),
             load_engineering_deferrals(),
+            loop3,
         )
 
     @app.get(

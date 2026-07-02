@@ -40,6 +40,9 @@ read** from canonical sources this package never writes:
 * :mod:`substrate.coordination.engineering_deferrals` surfaces the explicit
   "do not pre-build" deferral ledger from ``docs/engineering_deferrals.md``.
 
+* :mod:`substrate.coordination.loop3_status` summarizes the G8/Loop-3 manual
+  checklist plus verifier evidence without mutating or authorizing training.
+
 The binding rule for the whole package: **integration, not duplication — the
 ledger is a view over the source, never a second gate store.** If the operator
 edits the gate file or a roster changes, the dashboard reflects it on next read.
@@ -82,6 +85,11 @@ from .gate_ledger import (
     load_gate_ledger,
     parse_gate_ledger,
 )
+from .loop3_status import (
+    Loop3CoordinationView,
+    Loop3CriterionStatus,
+    build_loop3_coordination_view,
+)
 from .operator_actions import (
     OperatorAction,
     OperatorActionsView,
@@ -119,6 +127,10 @@ __all__ = [
     "Product",
     "load_gate_ledger",
     "parse_gate_ledger",
+    # loop 3 status
+    "Loop3CoordinationView",
+    "Loop3CriterionStatus",
+    "build_loop3_coordination_view",
     # operator actions
     "OperatorAction",
     "OperatorActionStatus",

@@ -147,6 +147,28 @@ export interface EngineeringDeferralsSummaryView {
   first_open: EngineeringDeferralView | null;
 }
 
+export interface Loop3CriterionStatusView {
+  criterion: string;
+  manual_met: boolean;
+  evidence_passed: boolean;
+  evidence_status: string;
+  evidence_summary: string;
+}
+
+export interface Loop3CoordinationView {
+  criteria: Loop3CriterionStatusView[];
+  manual_met_count: number;
+  evidence_passed_count: number;
+  total_criteria: number;
+  all_criteria_met: boolean;
+  all_evidence_passed: boolean;
+  env_unlocked: boolean;
+  fully_unlocked: boolean;
+  first_failing_evidence: Loop3CriterionStatusView | null;
+  events_dir: string;
+  open_weight_policy_file: string;
+}
+
 export interface RoadmapView {
   total_sprints: number;
   superseded_count: number;
@@ -163,6 +185,7 @@ export interface RoadmapView {
   operator_actions?: OperatorActionsSummaryView | null;
   phase2_audit?: Phase2AuditView | null;
   engineering_deferrals?: EngineeringDeferralsSummaryView | null;
+  loop3?: Loop3CoordinationView | null;
   substrate_layers: SubstrateLayerView[];
 }
 
@@ -365,6 +388,7 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
               deferrals={roadmap.engineering_deferrals}
             />
           ) : null}
+          {roadmap.loop3 ? <Loop3Status loop3={roadmap.loop3} /> : null}
         </div>
       </LemonCard>
 
@@ -435,6 +459,32 @@ function ActivationStatus({
         <p className="text-xs font-mono text-emperor">
           {activation.invalid_session_count} invalid session
           {activation.invalid_session_count === 1 ? "" : "s"} need repair.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function Loop3Status({ loop3 }: { loop3: Loop3CoordinationView }) {
+  const failing = loop3.first_failing_evidence;
+  return (
+    <div className="mt-2 rounded border border-rule dark:border-charcoal-1 bg-ice-0/70 dark:bg-charcoal-2/70 px-3 py-2">
+      <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+        Loop 3 / G8
+      </p>
+      <p className="text-xs font-mono text-ink dark:text-bright">
+        manual {loop3.manual_met_count}/{loop3.total_criteria} · evidence{" "}
+        {loop3.evidence_passed_count}/{loop3.total_criteria} · env=
+        {loop3.env_unlocked ? "unlocked" : "locked"} · fully=
+        {loop3.fully_unlocked ? "yes" : "no"}
+      </p>
+      {failing ? (
+        <p className="text-xs text-ink-soft dark:text-starlight leading-relaxed">
+          First failing evidence: {failing.criterion} — {failing.evidence_summary}.
+        </p>
+      ) : (
+        <p className="text-xs text-ink-soft dark:text-starlight leading-relaxed">
+          Verifier evidence passes; operator env authorization remains separate.
         </p>
       )}
     </div>

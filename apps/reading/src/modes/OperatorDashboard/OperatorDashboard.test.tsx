@@ -138,6 +138,17 @@ beforeEach(() => {
             unlock_criterion: " G7 closes ",
           },
         },
+        loop3: {
+          manual_met_count: "1",
+          evidence_passed_count: "0",
+          total_criteria: "5",
+          env_unlocked: "yes",
+          fully_unlocked: "yes",
+          first_failing_evidence: {
+            criterion: " trajectory_volume ",
+            evidence_summary: " events dir missing ",
+          },
+        },
       });
     }
     return okJson({});
@@ -185,6 +196,12 @@ describe("OperatorDashboard", () => {
     expect(screen.getByText("Deferrals 16/19 not closed")).toBeTruthy();
     expect(
       screen.getByText("Do not pre-build D1 · Multi-user pivot. Unlock: G7 closes."),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Loop 3 manual 1/5 · evidence 0/5 · env=locked"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("First failing evidence: trajectory_volume · events dir missing."),
     ).toBeTruthy();
     expect(screen.getByRole("link", { name: "open →" }).getAttribute("href")).toBe(
       "/coordination",
