@@ -40,6 +40,20 @@ function renderDoc(doc: Document, opts?: { openDocument?: (id: string, o?: unkno
   );
 }
 
+function minimalDoc(blocks: Document["blocks"]): Document {
+  return {
+    id: "fixture-url-safety",
+    title: "URL safety fixture",
+    attribution: {
+      ip_holder_id: "antiek",
+      source_url: null,
+      content_class: "platform_authored",
+    },
+    schema_version: 1,
+    blocks,
+  };
+}
+
 describe("Reader — every block type renders (M2, rigor #3)", () => {
   it("heading levels 1–6 render as h1..h6 (not all collapsed to h2)", () => {
     const { container } = renderDoc(allBlocksDocument);
@@ -65,6 +79,52 @@ describe("Reader — every block type renders (M2, rigor #3)", () => {
     const { container } = renderDoc(allBlocksDocument);
     const a = container.querySelector('a[href="https://arxiv.org/abs/1706.03762"]');
     expect(a?.textContent).toBe("link");
+  });
+
+  it.each(["javascript:alert(1)", "data:text/html,owned", "/relative/path"])(
+    "renders unsafe link hrefs as inert anchors: %s",
+    (href) => {
+      renderDoc(
+        minimalDoc([
+          {
+            type: "paragraph",
+            spans: [
+              {
+                type: "link",
+                href,
+                children: [{ type: "text", text: "unsafe link" }],
+              },
+            ],
+          },
+        ]),
+      );
+
+      const link = screen.getByRole("link", { name: "unsafe link" });
+      expect(link.getAttribute("href")).toBe("#");
+      expect(link.getAttribute("data-unsafe-url")).toBe("true");
+      expect(link.getAttribute("aria-disabled")).toBe("true");
+    },
+  );
+
+  it("preserves same-document anchor links", () => {
+    renderDoc(
+      minimalDoc([
+        {
+          type: "paragraph",
+          spans: [
+            {
+              type: "link",
+              href: " #footnote-1 ",
+              children: [{ type: "text", text: "jump to footnote" }],
+            },
+          ],
+        },
+      ]),
+    );
+
+    expect(screen.getByRole("link", { name: "jump to footnote" }).getAttribute("href")).toBe(
+      "#footnote-1",
+    );
   });
 
   it("inline code renders as a contained <code> (verbatim, not re-parsed)", () => {
@@ -131,6 +191,45 @@ describe("Reader — every block type renders (M2, rigor #3)", () => {
     const noSrc = figs[1];
     expect(noSrc.querySelector("img")).toBeNull();
     expect(noSrc.querySelector(".reader-figure-noimg")).toBeTruthy();
+  });
+
+  it.each(["javascript:alert(1)", "data:text/html,owned", "/relative/image.png"])(
+    "renders unsafe figure sources as the honest no-image placeholder: %s",
+    (src) => {
+      const { container } = renderDoc(
+        minimalDoc([
+          {
+            type: "figure",
+            src,
+            alt: "Unsafe figure source",
+            caption: [],
+          },
+        ]),
+      );
+
+      const fig = container.querySelector('figure[data-block-type="figure"]');
+      expect(fig?.querySelector("img")).toBeNull();
+      expect(fig?.querySelector(".reader-figure-noimg")?.textContent).toContain(
+        "Unsafe figure source",
+      );
+    },
+  );
+
+  it("preserves strict base64 image data URLs for extracted figures", () => {
+    const { container } = renderDoc(
+      minimalDoc([
+        {
+          type: "figure",
+          src: " data:image/png;base64,AAAA ",
+          alt: "Inline extracted figure",
+          caption: [],
+        },
+      ]),
+    );
+
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(
+      "data:image/png;base64,AAAA",
+    );
   });
 
   it("a blockquote renders as a real <blockquote>", () => {

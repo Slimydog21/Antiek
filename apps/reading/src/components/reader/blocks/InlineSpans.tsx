@@ -28,6 +28,18 @@ function assertNever(x: never): never {
   throw new Error(`Unhandled inline span: ${JSON.stringify(x)}`);
 }
 
+function safeLinkHref(value: string): string | null {
+  const href = value.trim();
+  if (!href) return null;
+  if (href.startsWith("#")) return href;
+  try {
+    const parsed = new URL(href);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? href : null;
+  } catch {
+    return null;
+  }
+}
+
 function InlineSpanOne({ span }: { span: InlineSpan }) {
   switch (span.type) {
     case "text":
@@ -45,9 +57,12 @@ function InlineSpanOne({ span }: { span: InlineSpan }) {
         </em>
       );
     case "link":
+      const href = safeLinkHref(span.href);
       return (
         <a
-          href={span.href}
+          href={href ?? "#"}
+          aria-disabled={href ? undefined : true}
+          data-unsafe-url={href ? undefined : "true"}
           // External links open in a new tab; an internal_document_id is a hint
           // SPR-05 can resolve to an in-app open. We keep it as a data attribute
           // so that wiring is additive, not a rewrite.
