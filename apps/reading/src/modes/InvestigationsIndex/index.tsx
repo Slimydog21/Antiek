@@ -9,7 +9,7 @@ import { requireInvestigationId } from "../../lib/investigationData";
  * investigations (master-spec §4.1).
  *
  * Reads ``GET /investigations`` and renders each row with status,
- * cost, and quick-links to the workstation and the trajectory
+ * cost, and quick-links to Research home and the trajectory
  * replay surface. Filterable by status. Operators arrive here from
  * the command palette or by clicking 'Investigations' in the header.
  */
@@ -134,7 +134,7 @@ export default function InvestigationsIndex() {
       }
       const newId = safeCreatedInvestigationId(await resp.json());
       // Reset draft, then navigate into the new investigation's
-      // workstation. Listing refreshes in the background.
+      // Research home. Listing refreshes in the background.
       setDraftQuestion("");
       setDraftContext("");
       setDraftTopic("");
@@ -185,7 +185,7 @@ export default function InvestigationsIndex() {
             </h1>
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               All investigations the substrate has seen, newest first.
-              Click an investigation to open it in the workstation;
+              Click an investigation to open it in Research home;
               click 'replay' to open its trajectory.
             </p>
           </header>

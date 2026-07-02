@@ -34,6 +34,21 @@ function renderIndex() {
 }
 
 describe("InvestigationsIndex", () => {
+  it("describes investigation links as opening Research home", async () => {
+    apiFetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        count: 0,
+        investigations: [],
+      }),
+    } as Response);
+
+    renderIndex();
+
+    expect(await screen.findByText(/open it in Research home/i)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/open it in the workstation/i);
+  });
+
   it("sanitizes malformed investigation costs", async () => {
     apiFetchMock.mockResolvedValueOnce({
       ok: true,

@@ -191,7 +191,7 @@ describe("ProjectTree workflow actions", () => {
     expect(useWorkspace.getState().floatingIds).toEqual([]);
   });
 
-  it("loads live Research investigations and opens the research workstation", async () => {
+  it("loads live Research investigations and opens Research home", async () => {
     listInvestigationsMock.mockResolvedValue({
       count: 4,
       investigations: [
