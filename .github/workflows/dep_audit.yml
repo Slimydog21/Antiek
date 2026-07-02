@@ -43,6 +43,10 @@ jobs:
         # tools/lints/constraints.txt is the repo's full pinned resolution
         # (the same lock enforce_declared_bar installs under) — auditing it
         # audits what CI actually runs.
+        # NOTE: no --disable-pip — that flag requires hashed requirements,
+        # and constraints.txt is pinned-but-unhashed (caught by adversarial
+        # review before this ever ran: the job would have false-redded with
+        # a tooling error on day one).
         run: |
           pip install pip-audit
-          pip-audit -r tools/lints/constraints.txt --disable-pip
+          pip-audit -r tools/lints/constraints.txt
