@@ -27,7 +27,7 @@ beforeEach(() => {
             title: " Project Dirty ",
             topic_description: " Topic Dirty ",
             deliverable_id: null,
-            must_cover: [" Question one ", " ", 42],
+            must_cover: [" Question one ", " ", 42, "Question one"],
             framing: " Framing dirty ",
             interview_count: "3.8",
             completed_count: -1,

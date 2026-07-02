@@ -241,7 +241,7 @@ describe("Interview transcript refresh bridge", () => {
         project_title: " Oral history ",
         topic_description: " Topic dirty ",
         framing: " Framing dirty ",
-        must_cover: [" Question one ", " ", 42],
+        must_cover: [" Question one ", " ", 42, "Question one"],
         status: " active ",
         consent_recorded: "yes",
         transcript: [

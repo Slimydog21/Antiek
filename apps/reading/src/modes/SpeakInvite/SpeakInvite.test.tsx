@@ -89,8 +89,8 @@ describe("SpeakInvite — phone-first, voice-first", () => {
         project_id: " p dirty ",
         project_title: " Grandma Rosa's story ",
         subject_ref: " Grandma Rosa ",
-        required_consent_scopes: [" record ", " publish ", " "],
-        granted_consent_scopes: [" record ", null],
+        required_consent_scopes: [" record ", " publish ", " ", "record", " publish "],
+        granted_consent_scopes: [" record ", null, "record"],
         status: " invited ",
         pending_questions: [
           { id: " q dirty ", text: " What's your earliest memory? " },

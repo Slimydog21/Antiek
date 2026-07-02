@@ -64,6 +64,10 @@ function stringArray(value: unknown): string[] {
     : [];
 }
 
+function uniqueStringArray(value: unknown): string[] {
+  return Array.from(new Set(stringArray(value)));
+}
+
 function safeTurn(value: unknown): InterviewTurn | null {
   const turn = record(value);
   const role = turn?.role === "interviewer" || turn?.role === "informant"
@@ -102,7 +106,7 @@ function safeInterviewDetail(
     project_title: projectTitle,
     topic_description: nullableString(detail.topic_description),
     framing: nullableString(detail.framing),
-    must_cover: stringArray(detail.must_cover),
+    must_cover: uniqueStringArray(detail.must_cover),
     status: nonEmptyString(detail.status) ?? "active",
     consent_recorded: detail.consent_recorded === true,
     transcript: safeTranscript(detail.transcript),
