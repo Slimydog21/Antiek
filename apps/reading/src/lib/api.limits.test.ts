@@ -1068,7 +1068,13 @@ describe("api client research graph response boundaries", () => {
     );
 
     await expect(
-      ingestVoiceNote({ transcript: "captured idea" }),
+      ingestVoiceNote({
+        transcript: " captured idea ",
+        investigation_id: " inv-1 ",
+        title: " Memo ",
+        duration_seconds: 12.5,
+        language: " en ",
+      }),
     ).resolves.toEqual({
       status: "ingested",
       document_id: "doc-voice",
@@ -1076,6 +1082,15 @@ describe("api client research graph response boundaries", () => {
       chunks_written: 0,
       skipped_reason: null,
       title: "Voice memo",
+    });
+    const voiceCall = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    expect(voiceCall[0]).toBe("/voice-notes/ingest");
+    expect(JSON.parse(voiceCall[1].body as string)).toEqual({
+      transcript: "captured idea",
+      investigation_id: "inv-1",
+      title: "Memo",
+      duration_seconds: 12.5,
+      language: "en",
     });
 
     vi.mocked(fetch).mockResolvedValueOnce(
@@ -1089,10 +1104,14 @@ describe("api client research graph response boundaries", () => {
       ),
     );
 
-    await expect(transcribeAudio(new Blob(["audio"]))).resolves.toEqual({
+    await expect(transcribeAudio(new Blob(["audio"], { type: "audio/webm" }))).resolves.toEqual({
       transcript: "captured idea",
       language: "en",
       duration_seconds: 12,
+    });
+    expect(vi.mocked(fetch).mock.calls[1][0]).toBe("/voice/transcribe");
+    expect(vi.mocked(fetch).mock.calls[1][1]).toMatchObject({
+      headers: { "Content-Type": "audio/webm" },
     });
 
     vi.mocked(fetch).mockResolvedValueOnce(
@@ -1113,7 +1132,13 @@ describe("api client research graph response boundaries", () => {
       ),
     );
 
-    await expect(ingestSource({ url: "https://example.test" })).resolves.toEqual({
+    await expect(ingestSource({
+      url: " https://example.test ",
+      kind: " url " as never,
+      investigation_id: " inv-1 ",
+      source_tier: 2,
+      max_episodes: 5,
+    })).resolves.toEqual({
       status: "error",
       detected_kind: "url",
       document_id: "doc-source",
@@ -1124,6 +1149,15 @@ describe("api client research graph response boundaries", () => {
       title: "Source title",
       episodes_processed: 0,
       episodes_ingested: 1,
+    });
+    const sourceCall = vi.mocked(fetch).mock.calls[2] as [string, RequestInit];
+    expect(sourceCall[0]).toBe("/sources/ingest");
+    expect(JSON.parse(sourceCall[1].body as string)).toEqual({
+      url: "https://example.test",
+      kind: "url",
+      investigation_id: "inv-1",
+      source_tier: 2,
+      max_episodes: 5,
     });
   });
 
@@ -1145,6 +1179,36 @@ describe("api client research graph response boundaries", () => {
     await expect(transcribeAudio(new Blob(["audio"]))).rejects.toMatchObject({
       status: 502,
     });
+  });
+
+  it("rejects malformed ingest requests before network", async () => {
+    await expect(ingestVoiceNote({ transcript: " " })).rejects.toThrow(
+      "transcript must be a non-empty string",
+    );
+    await expect(ingestVoiceNote({
+      transcript: "memo",
+      duration_seconds: -1,
+    })).rejects.toThrow(/duration_seconds/);
+    await expect(transcribeAudio(new Blob([]))).rejects.toThrow(
+      "audio must be a non-empty Blob",
+    );
+    await expect(ingestSource({ url: " " })).rejects.toThrow(
+      "url must be a non-empty string",
+    );
+    await expect(ingestSource({
+      url: "https://example.test",
+      kind: "pdf" as never,
+    })).rejects.toThrow("kind must be a supported source kind");
+    await expect(ingestSource({
+      url: "https://example.test",
+      source_tier: 1.5,
+    })).rejects.toThrow(/source_tier/);
+    await expect(ingestSource({
+      url: "https://example.test",
+      max_episodes: 0,
+    })).rejects.toThrow(/max_episodes/);
+
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("sanitizes distillation and challenge-note responses before graph state receives them", async () => {
