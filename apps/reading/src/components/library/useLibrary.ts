@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { API_BASE, apiFetch } from "../../lib/api";
-import type { BookSummary } from "../../api/books";
+import type { BookSummary, Servability } from "../../api/books";
 
 /**
  * useLibrary — the data hook for the M2 Library browse view (Read SPR-09).
@@ -55,6 +55,81 @@ export interface UseLibraryResult {
   reload: () => void;
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function nonNegativeSafeInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
+function safeServability(value: unknown): Servability {
+  switch (value) {
+    case "public_domain":
+    case "platform_authored":
+    case "publisher_opted_in":
+    case "source_declared_open":
+    case "gated_metadata_only":
+    case "taken_down":
+      return value;
+    default:
+      return "gated_metadata_only";
+  }
+}
+
+function safeLibraryWork(value: unknown): BookSummary | null {
+  const work = record(value);
+  if (!work) return null;
+  const documentId = nonEmptyString(work.document_id);
+  if (!documentId) return null;
+  const servability = safeServability(work.servability);
+  const takenDown = work.taken_down === true || servability === "taken_down";
+  return {
+    document_id: documentId,
+    title: nullableString(work.title),
+    author: nullableString(work.author),
+    servability,
+    servable_full_text:
+      work.servable_full_text === true &&
+      !takenDown &&
+      servability !== "gated_metadata_only",
+    page_count: nonNegativeSafeInteger(work.page_count) ?? 0,
+    cover_uri: nullableString(work.cover_uri),
+    ip_holder_id: nullableString(work.ip_holder_id),
+    taken_down: takenDown,
+  };
+}
+
+function safeLibraryPage(value: unknown, args: UseLibraryArgs): LibraryPage {
+  const body = record(value);
+  const works = Array.isArray(body?.works)
+    ? body.works.flatMap((item) => {
+        const work = safeLibraryWork(item);
+        return work ? [work] : [];
+      })
+    : [];
+  return {
+    works,
+    total: nonNegativeSafeInteger(body?.total) ?? works.length,
+    page: nonNegativeSafeInteger(body?.page) ?? args.page,
+    page_size: nonNegativeSafeInteger(body?.page_size) ?? args.pageSize ?? 20,
+  };
+}
+
 /** Fetch one library page. Throws `library_route_absent` on a 404 so the hook
  *  can distinguish an absent catalog route from an empty corpus and from a real
  *  error. */
@@ -68,7 +143,7 @@ export async function fetchLibraryPage(args: UseLibraryArgs): Promise<LibraryPag
   const resp = await apiFetch(`${API_BASE}/library?${params.toString()}`);
   if (resp.status === 404) throw new Error("library_route_absent");
   if (!resp.ok) throw new Error(`GET /library: HTTP ${resp.status}`);
-  return (await resp.json()) as LibraryPage;
+  return safeLibraryPage(await resp.json(), args);
 }
 
 export function useLibrary(args: UseLibraryArgs): UseLibraryResult {

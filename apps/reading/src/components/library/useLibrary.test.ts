@@ -65,6 +65,59 @@ describe("fetchLibraryPage", () => {
     );
   });
 
+  it("sanitizes catalog works and pagination before rendering the shelf", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          works: [
+            {
+              document_id: "  doc-1  ",
+              title: "  Readable Work  ",
+              author: "  Ada  ",
+              servability: "future_open",
+              servable_full_text: true,
+              page_count: "12",
+              cover_uri: "  https://example.test/cover.png  ",
+              ip_holder_id: 42,
+              taken_down: false,
+            },
+            {
+              document_id: " ",
+              title: "Missing identity",
+              servability: "public_domain",
+              servable_full_text: true,
+            },
+          ],
+          total: "2",
+          page: "2",
+          page_size: "12",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(
+      fetchLibraryPage({ filter: "all", search: "", page: 2, pageSize: 12 }),
+    ).resolves.toEqual({
+      works: [
+        {
+          document_id: "doc-1",
+          title: "Readable Work",
+          author: "Ada",
+          servability: "gated_metadata_only",
+          servable_full_text: false,
+          page_count: 0,
+          cover_uri: "https://example.test/cover.png",
+          ip_holder_id: null,
+          taken_down: false,
+        },
+      ],
+      total: 1,
+      page: 2,
+      page_size: 12,
+    });
+  });
+
   it("turns a 404 into the route-absent sentinel, not an empty page", async () => {
     apiFetchMock.mockResolvedValueOnce(new Response("not found", { status: 404 }));
 
