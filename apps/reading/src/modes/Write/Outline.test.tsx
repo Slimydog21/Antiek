@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import { DRAG_MIME } from "../CreationStudio/BlockPalette";
 import { ApiError, type SectionResponse } from "../../lib/api";
-import type { GenerationResult, OutlineBlockView } from "./writeApi";
+import type { GenerationResult, OutlineBlockView, RepositoryHit } from "./writeApi";
 
 /**
  * Outline.test — the outline + generate + real-editor surface (SPR-07
@@ -163,6 +164,79 @@ describe("Outline — no id, honest generate, real editor", () => {
     );
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
     expect(screen.getByText(/Placed 1 block/)).toBeTruthy();
+  });
+
+  it("places tapped repository claims as claims, not flattened insights", async () => {
+    const addHandlerRef: { current: ((hit: RepositoryHit) => void) | null } = { current: null };
+    const onChanged = vi.fn();
+    render(
+      <Outline
+        deliverableId="dlv-1"
+        sections={[section({ block_count: 3 })]}
+        onChanged={onChanged}
+        registerAddHandler={(handler) => {
+          addHandlerRef.current = handler;
+        }}
+      />,
+    );
+
+    expect(addHandlerRef.current).toBeTruthy();
+    addHandlerRef.current?.({
+      node_id: "node-claim",
+      label: "A sourced claim",
+      node_type: "claim",
+      source_tier: 1,
+      document_id: "doc-1",
+      document_title: "Source",
+      score: 0.8,
+    });
+
+    await waitFor(() => expect(placeBlockMock).toHaveBeenCalled());
+    expect(placeBlockMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        section_id: "sec-1",
+        block_kind: "claim",
+        provenance_kind: "graph_node",
+        node_id: "node-claim",
+        block_index: 3,
+        deliverable_id: "dlv-1",
+      }),
+    );
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+  });
+
+  it("places dropped open questions as open questions, not flattened insights", async () => {
+    render(
+      <Outline deliverableId="dlv-1" sections={[section()]} onChanged={vi.fn()} />,
+    );
+    const card = (await screen.findByText("Thesis")).closest("section");
+    expect(card).toBeTruthy();
+
+    fireEvent.drop(card!, {
+      dataTransfer: {
+        getData: (type: string) =>
+          type === DRAG_MIME
+            ? JSON.stringify({
+                from: "palette",
+                block_id: "node-question",
+                block_kind: "open_question",
+                label: "Question to answer",
+              })
+            : "",
+      },
+    });
+
+    await waitFor(() => expect(placeBlockMock).toHaveBeenCalled());
+    expect(placeBlockMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        section_id: "sec-1",
+        block_kind: "open_question",
+        provenance_kind: "graph_node",
+        node_id: "node-question",
+        block_index: 0,
+        deliverable_id: "dlv-1",
+      }),
+    );
   });
 
   it("surfaces AIActionFailure (no fake draft) when generation 503s without keys", async () => {

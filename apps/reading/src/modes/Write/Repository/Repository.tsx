@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import type { PaletteDragPayload } from "../../CreationStudio/BlockPalette";
 import { DRAG_MIME } from "../../CreationStudio/BlockPalette";
-import { safeFolders, safeRepositoryHits } from "../repositoryData";
+import { repositoryBlockKind, safeFolders, safeRepositoryHits } from "../repositoryData";
 import {
   listFolders,
   searchRepository,
@@ -114,7 +114,7 @@ export function Repository({ initialFolderId = null, className }: RepositoryProp
               onDragStart={(e) => {
                 const payload: PaletteDragPayload = {
                   from: "palette",
-                  block_kind: "insight",
+                  block_kind: repositoryBlockKind(hit.node_type),
                   block_id: hit.node_id, // the node — drop preserves it
                   label: hit.label,
                 };
