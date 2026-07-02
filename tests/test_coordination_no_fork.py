@@ -52,6 +52,7 @@ from substrate.coordination.engineering_deferrals import (
     DeferralStatus,
     load_engineering_deferrals,
 )
+from substrate.coordination.loop3_status import build_loop3_coordination_view
 from substrate.coordination.roadmap import (
     Roadmap,
     SpecRoster,
@@ -59,6 +60,9 @@ from substrate.coordination.roadmap import (
     SprintStatus,
     build_roadmap,
 )
+from substrate.loop_3.evidence_status import CriterionEvidenceStatus, Loop3EvidenceSnapshot
+from substrate.loop_3.checklist_store import set_criterion
+from substrate.loop_3.unlock_gate import Loop3UnlockCriterion
 from tools.activation.read_dogfood import append_session_template, session_template
 
 # ── 1. The no-fork equality: two independent parses agree ────────────────────
@@ -278,6 +282,61 @@ def test_engineering_deferrals_fixture_mutation_is_reflected(tmp_path: Path) -> 
     mutated = load_engineering_deferrals(path)
     assert mutated.first_open() is None
     assert mutated.status_counts() == {"closed": 2}
+
+
+def _loop3_evidence_fixture(*, passing: tuple[str, ...] = ()) -> Loop3EvidenceSnapshot:
+    statuses = {}
+    for criterion in Loop3UnlockCriterion:
+        passed = criterion.value in passing
+        statuses[criterion.value] = CriterionEvidenceStatus(
+            criterion=criterion.value,
+            status="PASS" if passed else "FAIL",
+            passed=passed,
+            summary="all checks passed" if passed else f"{criterion.value} missing",
+            result={"status": "PASS" if passed else "FAIL"},
+        )
+    return Loop3EvidenceSnapshot(
+        criteria={key: value.passed for key, value in statuses.items()},
+        statuses=statuses,
+        all_evidence_passed=all(value.passed for value in statuses.values()),
+        events_dir="/tmp/loop3-events",
+        open_weight_policy_file="reports/loop3/open-weight-policy-ids.json",
+    )
+
+
+def test_loop3_coordination_view_compares_manual_and_evidence(tmp_path: Path, monkeypatch) -> None:
+    from runtime.db_lock import connect_read, connect_write
+    from substrate.graph import ensure_initialized
+
+    db_path = str(tmp_path / "antiek.duckdb")
+    ensure_initialized(db_path)
+    monkeypatch.delenv("ANTIEK_LOOP3_UNLOCKED", raising=False)
+    with connect_write(db_path, purpose="test:loop3") as con:
+        set_criterion(
+            con,
+            criterion=Loop3UnlockCriterion.TRAJECTORY_VOLUME,
+            met=True,
+            note="manual note",
+        )
+
+    with connect_read(db_path) as con:
+        view = build_loop3_coordination_view(
+            con,
+            evidence=_loop3_evidence_fixture(
+                passing=(Loop3UnlockCriterion.SFT_READINESS.value,),
+            ),
+        )
+
+    assert view.total_criteria == 5
+    assert view.manual_met_count == 1
+    assert view.evidence_passed_count == 1
+    assert view.all_criteria_met is False
+    assert view.all_evidence_passed is False
+    assert view.env_unlocked is False
+    assert view.fully_unlocked is False
+    assert view.first_failing_evidence is not None
+    assert view.first_failing_evidence.criterion == "trajectory_volume"
+    assert view.first_failing_evidence.evidence_summary == "trajectory_volume missing"
 
 
 def test_operator_gate_actions_summary_tracks_appended_follow_ons() -> None:
@@ -745,6 +804,18 @@ def test_roadmap_response_serializes_operator_actions_and_phase2_audit() -> None
     operator_actions = load_operator_actions()
     phase2_audit = load_phase2_audit()
     deferrals = load_engineering_deferrals()
+    class DummyLoop3:
+        criteria = ()
+        manual_met_count = 0
+        evidence_passed_count = 0
+        total_criteria = 5
+        all_criteria_met = False
+        all_evidence_passed = False
+        env_unlocked = False
+        fully_unlocked = False
+        first_failing_evidence = None
+        events_dir = "/tmp/events"
+        open_weight_policy_file = "reports/loop3/open-weight-policy-ids.json"
 
     response = RoadmapResponse.from_roadmap(
         build_roadmap(),
@@ -752,6 +823,7 @@ def test_roadmap_response_serializes_operator_actions_and_phase2_audit() -> None
         operator_actions=operator_actions,
         phase2_audit=phase2_audit,
         engineering_deferrals=deferrals,
+        loop3=DummyLoop3(),
     )
 
     assert response.operator_actions.source_path == "docs/OPERATOR_ACTIONS.md"
@@ -769,6 +841,9 @@ def test_roadmap_response_serializes_operator_actions_and_phase2_audit() -> None
     assert response.engineering_deferrals.open_count == 16
     assert response.engineering_deferrals.first_open is not None
     assert response.engineering_deferrals.first_open.deferral_id == "D1"
+    assert response.loop3 is not None
+    assert response.loop3.total_criteria == 5
+    assert response.loop3.fully_unlocked is False
 
 
 def test_operator_gate_focus_does_not_override_structural_dependency_focus() -> None:

@@ -69,6 +69,17 @@ interface CoordinationSummary {
       unlock_criterion: string | null;
     } | null;
   } | null;
+  loop3: {
+    manual_met_count: number;
+    evidence_passed_count: number;
+    total_criteria: number;
+    env_unlocked: boolean;
+    fully_unlocked: boolean;
+    first_failing_evidence: {
+      criterion: string;
+      evidence_summary: string;
+    } | null;
+  } | null;
   readActivation: {
     valid_sessions: number;
     total_sessions: number;
@@ -221,6 +232,7 @@ function safeCoordinationSummary(value: unknown): CoordinationSummary {
   const operatorGate = record(body?.operator_gate_focus);
   const operatorActions = record(body?.operator_actions);
   const engineeringDeferrals = record(body?.engineering_deferrals);
+  const loop3 = record(body?.loop3);
   const readActivation = record(body?.read_activation);
   const gateId = nonEmptyString(operatorGate?.gate_id);
   const safeAction = (value: unknown) => {
@@ -269,6 +281,26 @@ function safeCoordinationSummary(value: unknown): CoordinationSummary {
                   deferral_id: deferralId,
                   title: nonEmptyString(firstOpen.title) ?? deferralId,
                   unlock_criterion: nullableString(firstOpen.unlock_criterion),
+                }
+              : null;
+          })(),
+        }
+      : null,
+    loop3: loop3
+      ? {
+          manual_met_count: safeCount(loop3.manual_met_count),
+          evidence_passed_count: safeCount(loop3.evidence_passed_count),
+          total_criteria: safeCount(loop3.total_criteria),
+          env_unlocked: loop3.env_unlocked === true,
+          fully_unlocked: loop3.fully_unlocked === true,
+          first_failing_evidence: (() => {
+            const failing = record(loop3.first_failing_evidence);
+            const criterion = nonEmptyString(failing?.criterion);
+            return failing && criterion
+              ? {
+                  criterion,
+                  evidence_summary:
+                    nonEmptyString(failing.evidence_summary) ?? "not checked",
                 }
               : null;
           })(),
@@ -549,6 +581,7 @@ function CoordinationTile({
   const activation = coordination?.readActivation ?? null;
   const operatorActions = coordination?.operatorActions ?? null;
   const engineeringDeferrals = coordination?.engineeringDeferrals ?? null;
+  const loop3 = coordination?.loop3 ?? null;
   const actionFocus =
     operatorActions?.closeable_action ?? operatorActions?.next_action ?? null;
   const remaining = activation?.remaining_requirements ?? {};
@@ -668,6 +701,29 @@ function CoordinationTile({
       ) : (
         <p className="text-xs italic text-shadow-1 dark:text-moonlight">
           Deferral status unavailable.
+        </p>
+      )}
+      {loop3 ? (
+        <div className="space-y-0.5 border-t border-rule dark:border-charcoal-1 pt-2">
+          <p className="text-xs font-mono text-ink dark:text-bright">
+            Loop 3 manual {loop3.manual_met_count}/{loop3.total_criteria} · evidence{" "}
+            {loop3.evidence_passed_count}/{loop3.total_criteria} · env=
+            {loop3.env_unlocked ? "unlocked" : "locked"}
+          </p>
+          {loop3.first_failing_evidence ? (
+            <p className="text-xs text-ink-soft dark:text-starlight">
+              First failing evidence: {loop3.first_failing_evidence.criterion} ·{" "}
+              {loop3.first_failing_evidence.evidence_summary}.
+            </p>
+          ) : (
+            <p className="text-xs text-ink-soft dark:text-starlight">
+              Fully unlocked: {loop3.fully_unlocked ? "yes" : "no"}.
+            </p>
+          )}
+        </div>
+      ) : (
+        <p className="text-xs italic text-shadow-1 dark:text-moonlight">
+          Loop 3 status unavailable.
         </p>
       )}
     </div>

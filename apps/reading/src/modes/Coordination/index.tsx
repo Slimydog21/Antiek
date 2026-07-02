@@ -9,6 +9,8 @@ import type {
   EngineeringDeferralView,
   EngineeringDeferralsSummaryView,
   ExecutionFocusView,
+  Loop3CoordinationView,
+  Loop3CriterionStatusView,
   OperatorActionView,
   OperatorActionsSummaryView,
   OperatorGateFocusView,
@@ -368,6 +370,44 @@ function safeEngineeringDeferralsSummary(
   };
 }
 
+function safeLoop3Criterion(
+  value: unknown,
+): Loop3CriterionStatusView | null {
+  const item = record(value);
+  const criterion = nonEmptyString(item?.criterion);
+  if (!item || !criterion) return null;
+  return {
+    criterion,
+    manual_met: item.manual_met === true,
+    evidence_passed: item.evidence_passed === true,
+    evidence_status: nonEmptyString(item.evidence_status) ?? "unknown",
+    evidence_summary: nonEmptyString(item.evidence_summary) ?? "not checked",
+  };
+}
+
+function safeLoop3Coordination(value: unknown): Loop3CoordinationView | null {
+  const loop3 = record(value);
+  if (!loop3) return null;
+  return {
+    criteria: Array.isArray(loop3.criteria)
+      ? loop3.criteria.flatMap((item) => {
+          const criterion = safeLoop3Criterion(item);
+          return criterion ? [criterion] : [];
+        })
+      : [],
+    manual_met_count: nonNegativeInteger(loop3.manual_met_count),
+    evidence_passed_count: nonNegativeInteger(loop3.evidence_passed_count),
+    total_criteria: nonNegativeInteger(loop3.total_criteria),
+    all_criteria_met: loop3.all_criteria_met === true,
+    all_evidence_passed: loop3.all_evidence_passed === true,
+    env_unlocked: loop3.env_unlocked === true,
+    fully_unlocked: loop3.fully_unlocked === true,
+    first_failing_evidence: safeLoop3Criterion(loop3.first_failing_evidence),
+    events_dir: nonEmptyString(loop3.events_dir) ?? "",
+    open_weight_policy_file: nonEmptyString(loop3.open_weight_policy_file) ?? "",
+  };
+}
+
 function safeRoadmapView(value: unknown): RoadmapView {
   const body = record(value);
   const rosters = Array.isArray(body?.rosters)
@@ -399,6 +439,7 @@ function safeRoadmapView(value: unknown): RoadmapView {
     engineering_deferrals: safeEngineeringDeferralsSummary(
       body?.engineering_deferrals,
     ),
+    loop3: safeLoop3Coordination(body?.loop3),
     substrate_layers: Array.isArray(body?.substrate_layers)
       ? body.substrate_layers.flatMap((item) => {
           const layer = safeSubstrateLayer(item);
