@@ -10,6 +10,7 @@ preserved.
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 
@@ -17,6 +18,7 @@ import pytest
 
 from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database
+from substrate.seams.thread import reconstruct_thread
 from substrate.speak import biography, invitations, project
 from substrate.speak.consent import ConsentScope, record_consent
 from substrate.speak.contracts import OutlineComposer
@@ -97,6 +99,39 @@ def test_contributor_provenance_preserved_in_canonical_layer(db):
         meta = b.metadata or {}
         assert iv in (meta.get("contributor_interview_ids") or [])
         assert meta.get("speak_block_kind") == "claim"
+
+
+def test_assemble_outline_emits_speak_to_write_seams(db):
+    with _con(db) as con:
+        pid, iv = _project_with_claims(con, n=2)
+        biography.assemble_outline(con, project_id=pid)
+
+    jsonl = os.path.join(
+        os.environ["ANTIEK_RESEARCH_EVENTS_DIR"],
+        f"speak-biography-{pid}.jsonl",
+    )
+    assert os.path.exists(jsonl)
+    events = [json.loads(line) for line in open(jsonl)]
+    placed = [e for e in events if e["action_type"] == "outline_block.placed"]
+    seams = [e for e in events if e["action_type"] == "seam.speak_to_write"]
+    assert len(placed) == 2
+    assert len(seams) == 2
+
+    placed_ids = {e["payload"]["outline_block_id"] for e in placed}
+    for seam in seams:
+        payload = seam["payload"]
+        assert payload["entity_kind"] == "speak_claim"
+        assert payload["from_workflow"] == "speak"
+        assert payload["to_workflow"] == "write"
+        assert payload["terminates"] is True
+        assert payload["provenance_ref"] in placed_ids
+        assert payload["contributor_interview_ids"] == [iv]
+        assert "content" not in payload
+        assert "text" not in payload
+
+    thread = reconstruct_thread(next(iter(placed_ids)), seam_events=seams)
+    assert thread.canonical_entity_kind == "speak_claim"
+    assert thread.workflows == ("speak", "write")
 
 
 # --------------------------------------------------------------------------
