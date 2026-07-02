@@ -12,10 +12,11 @@ read entry points (``load_gate_ledger`` / ``build_roadmap`` / ``build_cost_view`
 ``build_consent_view``); there is no import of any writer (``connect_write``, the
 escrow writer ``ip_holders.accrue_escrow``, the gate file's path for writing) and
 **no import of any payout module** (``tools.stripe_connect.payouts``). There is
-no POST/PUT/PATCH/DELETE route. The consent endpoint opens its DuckDB connection
-``read_only=True``. A future maintainer (or auditor) confirms "the coordination
-surface cannot change a gate, move escrow, or disburse a payout" by the absence
-of any such path here — greppable, and asserted in
+no POST/PUT/PATCH/DELETE route. The cost endpoint opens DuckDB ``read_only=True``
+only to resolve Speak project economics context; the consent endpoint does the
+same for escrow/servability state. A future maintainer (or auditor) confirms
+"the coordination surface cannot change a gate, move escrow, or disburse a
+payout" by the absence of any such path here — greppable, and asserted in
 ``tests/test_coordination_no_fork.py`` (gates/roadmap) and
 ``tests/test_cost_consent_no_disbursement.py`` (cost/consent, SPR-07).
 """
@@ -37,6 +38,7 @@ from substrate.coordination.cost_view import (
     CostView,
     WorkflowCost,
     build_cost_view,
+    speak_policy_by_investigation_from_db,
 )
 from substrate.coordination.gate_ledger import (
     Gate,
@@ -409,10 +411,18 @@ def register_coordination_routes(app: FastAPI) -> None:
     async def get_cost() -> CostViewResponse:
         """Per-workflow + aggregate realized inference cost — summed from the
         canonical ``DispatchCall`` event log (incl. SPR-02 remote-exec). Margins
-        applied only where the economics matrix is built; honestly stubbed
-        otherwise. Idle ⇒ every figure ``"0"``. Read-only — no cost is written
-        and no money moves."""
-        return CostViewResponse.from_cost_view(build_cost_view())
+        applied only where the economics matrix is built and contextualized;
+        honestly stubbed otherwise. Idle ⇒ every figure ``"0"``. Read-only — no
+        cost is written and no money moves."""
+        db = _resolve_db_path()
+        con = duckdb.connect(db, read_only=True)
+        try:
+            speak_context = speak_policy_by_investigation_from_db(con)
+        finally:
+            con.close()
+        return CostViewResponse.from_cost_view(
+            build_cost_view(speak_policy_by_investigation=speak_context)
+        )
 
     @app.get(
         "/coordination/consent",
