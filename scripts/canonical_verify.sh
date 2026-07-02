@@ -657,6 +657,8 @@ cmd_agent_gates() {
     tests/test_rlm_deferral_docs.py \
     tests/test_autoresearch_prime_deferral_docs.py \
     tests/test_loop3_unlock_docs.py \
+    tests/test_phase2_audit_v5.py \
+    tests/test_privacy_control_plane_docs.py \
     tests/test_read_decision_docs.py \
     -q --tb=no
   echo "CANONICAL_VERIFY_OK: agent-gates"
