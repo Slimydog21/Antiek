@@ -231,6 +231,46 @@ describe("Reader — citation as a first-class clickable marker (M3)", () => {
     });
   });
 
+  it("normalizes citation source ids before stamping attributes and routing", () => {
+    const openDocument = vi.fn();
+    const doc = {
+      ...allBlocksDocument,
+      blocks: [
+        {
+          type: "paragraph" as const,
+          block_id: "p-trimmed-citation",
+          spans: [
+            {
+              type: "citation" as const,
+              source_document_id: " doc-source-trimmed ",
+              chunk_id: " chunk-trimmed ",
+              marker: "[trim]",
+              char_start: 5,
+              char_end: 12,
+            },
+          ],
+        },
+      ],
+    };
+    const { container } = renderDoc(doc, { openDocument });
+    const cite = container.querySelector("button[data-citation-marker]")!;
+
+    expect(cite.getAttribute("data-source-document-id")).toBe("doc-source-trimmed");
+    expect(cite.getAttribute("data-chunk-id")).toBe("chunk-trimmed");
+    expect(cite.getAttribute(PASSAGE_CHUNK_ID_ATTR)).toBe("chunk-trimmed");
+
+    fireEvent.click(cite);
+    expect(openDocument).toHaveBeenCalledWith("doc-source-trimmed", {
+      chunkId: "chunk-trimmed",
+      highlight: {
+        document_id: "doc-source-trimmed",
+        block_id: "chunk-trimmed",
+        char_start: 5,
+        char_end: 12,
+      },
+    });
+  });
+
   it("a citation without source offsets stays chunk-only", () => {
     const openDocument = vi.fn();
     const { container } = renderDoc(allBlocksDocument, { openDocument });

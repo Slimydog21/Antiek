@@ -33,6 +33,8 @@ import { useReaderContext } from "../ReaderContext";
 export default function Citation({ span }: { span: CitationSpan }) {
   const { openDocument, resolveSourceTitle } = useReaderContext();
   const regionBlockKey = ["block", "id"].join("_") as keyof Region;
+  const sourceDocumentId = span.source_document_id?.trim() ?? "";
+  const chunkId = span.chunk_id?.trim() ?? "";
   const passageStart = span.char_start;
   const passageEnd = span.char_end;
   const hasPassageOffsets =
@@ -43,10 +45,10 @@ export default function Citation({ span }: { span: CitationSpan }) {
     passageStart >= 0 &&
     passageEnd >= passageStart;
   const chunkAttrs = {
-    [CHUNK_ID_ATTR]: span.chunk_id || "",
+    [CHUNK_ID_ATTR]: chunkId,
     ...(hasPassageOffsets
       ? {
-          [PASSAGE_CHUNK_ID_ATTR]: span.chunk_id,
+          [PASSAGE_CHUNK_ID_ATTR]: chunkId,
           [PASSAGE_START_ATTR]: String(passageStart),
           [PASSAGE_END_ATTR]: String(passageEnd),
         }
@@ -55,21 +57,20 @@ export default function Citation({ span }: { span: CitationSpan }) {
 
   // A citation whose source failed to persist (SPR-07 partial-failure path)
   // degrades to a non-clickable marker — honest, not a dead navigation.
-  const unresolved =
-    !span.source_document_id?.trim() || !span.chunk_id?.trim();
+  const unresolved = !sourceDocumentId || !chunkId;
 
   // Hover affordance (M3): the source title when a resolver is wired, else the
   // marker itself — never an empty/fabricated title.
   const title = unresolved
     ? `Source unavailable (${span.marker})`
-    : (resolveSourceTitle?.(span.source_document_id) ?? span.marker);
+    : (resolveSourceTitle?.(sourceDocumentId) ?? span.marker);
 
   if (unresolved) {
     return (
       <span
         data-citation-marker
         data-citation-unresolved
-        data-source-document-id={span.source_document_id || ""}
+        data-source-document-id={sourceDocumentId}
         {...chunkAttrs}
         title={title}
         aria-label={title}
@@ -87,18 +88,18 @@ export default function Citation({ span }: { span: CitationSpan }) {
       // test can locate the marker and read its target without reaching into
       // React internals (mirrors the data-akb-* marker discipline elsewhere).
       data-citation-marker
-      data-source-document-id={span.source_document_id}
+      data-source-document-id={sourceDocumentId}
       {...chunkAttrs}
       onClick={() =>
-        openDocument(span.source_document_id, {
-          chunkId: span.chunk_id,
+        openDocument(sourceDocumentId, {
+          chunkId,
           ...(hasPassageOffsets
             ? {
                 highlight: Object.assign({
-                  document_id: span.source_document_id,
+                  document_id: sourceDocumentId,
                   char_start: passageStart,
                   char_end: passageEnd,
-                } as Region, { [regionBlockKey]: span.chunk_id }),
+                } as Region, { [regionBlockKey]: chunkId }),
               }
             : {}),
         })
