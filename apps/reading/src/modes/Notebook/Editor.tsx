@@ -99,6 +99,10 @@ function writeStored(
   }
 }
 
+export function notebookContentEndpoint(notebookId: string): string {
+  return `${API_BASE}/notebooks/${encodeURIComponent(notebookId)}/content`;
+}
+
 export function NotebookEditor({
   notebookId,
   initialContent,
@@ -168,7 +172,7 @@ export function NotebookEditor({
       saveTimer.current = setTimeout(async () => {
         const doc = e.getJSON();
         try {
-          const r = await apiFetch(`${API_BASE}/notebooks/${notebookId}/content`, {
+          const r = await apiFetch(notebookContentEndpoint(notebookId), {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ doc }),
