@@ -1,19 +1,52 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { MemoryRouter } from "react-router-dom";
 
-import InvestigationSidebar from "./InvestigationSidebar";
+import InvestigationSidebar, { InvestigationSidebarTree } from "./InvestigationSidebar";
+import type { InvestigationSummary } from "../../lib/api";
 
 /**
  * InvestigationSidebar — left dock content in ResearchWorkstation.
- *
- * This component takes NO props; it consumes `useInvestigationList` +
- * `useInvestigationTree`, which both fetch from the live API. Without
- * an MSW (mock-service-worker) layer in Storybook, this story will
- * render an empty state when there is no backend running, or the live
- * data when there is. That is the expected behaviour for now.
- *
- * Tracked in STORYBOOK.md as a hook-coupled known gap; an MSW pass is
- * a S11 (a11y + responsive + reduced-motion) follow-up.
  */
+export const investigationSidebarStoryInvestigations: InvestigationSummary[] = [
+  {
+    investigation_id: "inv-memory-architecture",
+    question: "How should Antiek reconcile book memory with live research trails?",
+    status: "completed",
+    started_at: "2026-06-28T15:20:00.000Z",
+    completed_at: "2026-06-28T15:45:00.000Z",
+    cost_usd_total: 0.0478,
+    parent_investigation_id: null,
+  },
+  {
+    investigation_id: "inv-quote-grounding",
+    question: "Which retrieved quotes actually support the synthesis claims?",
+    status: "in_progress",
+    started_at: "2026-06-29T09:12:00.000Z",
+    completed_at: null,
+    cost_usd_total: 0.0094,
+    parent_investigation_id: "inv-memory-architecture",
+  },
+  {
+    investigation_id: "inv-counterargument-map",
+    question: "What is the strongest counterargument before drafting?",
+    status: "failed",
+    started_at: "2026-06-29T10:04:00.000Z",
+    completed_at: null,
+    cost_usd_total: 0,
+    parent_investigation_id: "inv-memory-architecture",
+  },
+  {
+    investigation_id: "inv-reading-routine",
+    question: "What should the daily reading workstation surface first?",
+    status: "in_progress",
+    started_at: "2026-07-01T18:30:00.000Z",
+    completed_at: null,
+    cost_usd_total: 0.0141,
+    parent_investigation_id: null,
+    spawned_by_daemon: true,
+  },
+];
+
 const meta = {
   title: "Loop 1 / InvestigationSidebar",
   component: InvestigationSidebar,
@@ -25,14 +58,21 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /**
- * Default render — will show the empty state when no backend is reachable.
- * That's the right thing to see in Storybook isolation. Wiring MSW for
- * full fixture-driven rendering is tracked separately.
+ * Default render uses deterministic fixture data while preserving the
+ * production component's tree-building and row-rendering paths.
  */
 export const Default: Story = {
   render: () => (
-    <div className="w-[320px] h-screen bg-ice-2 dark:bg-space-2 border-r-edge border-sun">
-      <InvestigationSidebar />
-    </div>
+    <MemoryRouter initialEntries={["/inv/inv-quote-grounding"]}>
+      <div className="w-[320px] h-screen bg-ice-2 dark:bg-space-2 border-r-edge border-sun">
+        <InvestigationSidebarTree
+          investigations={investigationSidebarStoryInvestigations}
+          loading={false}
+          error={null}
+          refetch={() => undefined}
+          activeId="inv-quote-grounding"
+        />
+      </div>
+    </MemoryRouter>
   ),
 };

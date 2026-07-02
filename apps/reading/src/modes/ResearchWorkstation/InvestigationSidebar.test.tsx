@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
 import type { InvestigationSummary } from "../../lib/api";
-import InvestigationSidebar from "./InvestigationSidebar";
+import InvestigationSidebar, { InvestigationSidebarTree } from "./InvestigationSidebar";
+import { investigationSidebarStoryInvestigations } from "./InvestigationSidebar.stories";
 
 const { listState } = vi.hoisted(() => ({
   listState: {
@@ -123,5 +124,29 @@ describe("InvestigationSidebar", () => {
 
     expect(screen.getByText(/No investigations yet/)).toBeTruthy();
     expect(screen.queryByText("Invisible broken row")).toBeNull();
+  });
+});
+
+describe("InvestigationSidebar Storybook fixture", () => {
+  it("renders deterministic nested investigations without the live list hook", () => {
+    render(
+      <MemoryRouter initialEntries={["/inv/inv-quote-grounding"]}>
+        <InvestigationSidebarTree
+          investigations={investigationSidebarStoryInvestigations}
+          loading={false}
+          error={null}
+          refetch={vi.fn()}
+          activeId="inv-quote-grounding"
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText(/book memory with live research/)).toBeTruthy();
+    expect(screen.getByText(/retrieved quotes actually support/)).toBeTruthy();
+    expect(screen.getByText(/strongest counterargument/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /retrieved quotes actually support/ }).getAttribute("href")).toBe(
+      "/inv/inv-quote-grounding",
+    );
+    expect(screen.queryByText(/No investigations yet/)).toBeNull();
   });
 });
