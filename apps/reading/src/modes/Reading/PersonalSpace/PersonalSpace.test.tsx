@@ -25,12 +25,14 @@ const {
   suggestionMock,
   navigateMock,
   acceptFilingMock,
+  openDocumentMock,
 } = vi.hoisted(() => ({
   listMock: vi.fn(),
   categoriesMock: vi.fn(),
   suggestionMock: vi.fn(),
   navigateMock: vi.fn(),
   acceptFilingMock: vi.fn(),
+  openDocumentMock: vi.fn(),
 }));
 
 vi.mock("../../../api/books", async (orig) => {
@@ -49,6 +51,11 @@ vi.mock("../../../lib/researchSuggestion", async (orig) => {
   // mutator) so the test proves it is NEVER called without a click.
   return { ...actual, acceptFiling: acceptFilingMock };
 });
+
+vi.mock("../../../lib/openDocument", async (orig) => ({
+  ...(await orig<typeof import("../../../lib/openDocument")>()),
+  useOpenDocument: () => openDocumentMock,
+}));
 
 vi.mock("react-router-dom", async (orig) => {
   const actual = await orig<typeof import("react-router-dom")>();
@@ -114,6 +121,43 @@ describe("M1 — list + open + empty", () => {
     const opener = (await screen.findAllByTestId("personal-asset-open"))[0];
     fireEvent.click(opener);
     expect(navigateMock).toHaveBeenCalledWith("/read/meta-reading/a1");
+  });
+
+  it("opens saved reads through openDocument, even if the backend sends a stale route", async () => {
+    listMock.mockResolvedValue(
+      space({
+        assets: [
+          {
+            asset_id: "read:doc-stale",
+            kind: "saved_read",
+            title: "Stale route book",
+            prompt: null,
+            document_ids: ["doc-stale"],
+            emitted_at: "2026-05-04T00:00:00Z",
+            open_route: "/wrestle/doc-stale",
+          },
+        ],
+        count: 1,
+      }),
+    );
+    categoriesMock.mockResolvedValue({
+      categories: [
+        {
+          category_id: "recency",
+          label: "Recently read & created",
+          asset_ids: ["read:doc-stale"],
+          ordering: "recency",
+        },
+      ],
+      ordering: "recency",
+      stability_bound: 4,
+    });
+
+    render(<PersonalSpace />);
+    fireEvent.click(await screen.findByTestId("personal-asset-open"));
+
+    expect(openDocumentMock).toHaveBeenCalledWith("doc-stale");
+    expect(navigateMock).not.toHaveBeenCalledWith("/wrestle/doc-stale");
   });
 
   it("surfaces a continue-writing action only for Write-backed created assets", async () => {
