@@ -79,9 +79,15 @@ export default function Biography() {
       <BiographyOnboarding
         subjectName={name.trim()}
         composition={composed}
-        onOpenResearch={() => navigate(`/inv/${composed.investigationId}`)}
-        onOpenWrite={() => navigate(`/write/${composed.deliverableId}`)}
-        onOpenSpeak={() => navigate(`/speak/${composed.projectId}`)}
+        onOpenResearch={() =>
+          navigate(`/inv/${encodeURIComponent(composed.investigationId)}`)
+        }
+        onOpenWrite={() =>
+          navigate(`/write/${encodeURIComponent(composed.deliverableId)}`)
+        }
+        onOpenSpeak={() =>
+          navigate(`/speak/${encodeURIComponent(composed.projectId)}`)
+        }
       />
     );
   }
@@ -304,7 +310,11 @@ function BiographyOnboarding({
                 <code className="min-w-0 flex-1 truncate rounded border border-rule bg-ice-0 px-2 py-1 text-[12px] text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright">
                   {inviteLink}
                 </code>
-                <LemonButton variant="secondary" size="sm" onClick={() => void copyLink()}>
+                <LemonButton
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void copyLink()}
+                >
                   {copied ? "Copied" : "Copy link"}
                 </LemonButton>
               </div>
