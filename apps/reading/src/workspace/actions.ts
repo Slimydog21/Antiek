@@ -19,6 +19,12 @@ import type { PanelMode } from "./panel.types";
  * useWorkspace().open(...) is fine there.
  */
 
+function safeNotebookId(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 /** Open the notebook at `notebookId` (or create a new untitled
  *  notebook if absent). Default mode is "floating" so the operator can
  *  drag it aside while continuing to read. S5+ consumers wire this
@@ -38,16 +44,17 @@ export function openNotebook(opts: {
   const mode = opts.mode ?? "floating";
   const kind = opts.kind ?? "NotebookEditor";
   const prefix = kind === "NotebookEditor" ? "notebookeditor" : "notebook";
-  const id = opts.notebookId
-    ? `${prefix}:${opts.notebookId}`
+  const notebookId = safeNotebookId(opts.notebookId);
+  const id = notebookId
+    ? `${prefix}:${notebookId}`
     : `${prefix}:new`;
   return useWorkspace.getState().open(
     kind,
-    { notebookId: opts.notebookId ?? null },
+    { notebookId },
     {
       mode,
       title:
-        opts.title ?? (opts.notebookId ? "Notebook" : "Untitled notebook"),
+        opts.title ?? (notebookId ? "Notebook" : "Untitled notebook"),
       id,
     },
   );
