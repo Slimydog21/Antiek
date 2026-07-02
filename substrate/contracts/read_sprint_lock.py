@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to READ_SPRINTS. Status changes are deliberate roadmap
 # events, not comments buried in a handoff.
-READ_LOCK_VERSION: int = 5
+READ_LOCK_VERSION: int = 6
 
 
 @dataclass(frozen=True)
@@ -73,7 +73,16 @@ READ_SPRINTS: dict[int, ReadDeliverable] = {
         # no-double-count accrual are covered by read-ad-border.
         status="live",
     ),
-    6: ReadDeliverable(6, "voice-notes", "Voice notes"),
+    6: ReadDeliverable(
+        6,
+        "voice-notes",
+        "Voice notes",
+        # Live: reader voice capture, transcription failure/no-key behavior,
+        # corrected-transcript confirmation, anchored note distillation,
+        # voice provenance, active-page mounting, and companion-thread display
+        # are covered by read-voice-notes.
+        status="live",
+    ),
     7: ReadDeliverable(7, "conversational-rabbit-hole", "Conversational rabbit hole"),
     8: ReadDeliverable(8, "research-from-passage", "Research from passage"),
     9: ReadDeliverable(9, "ad-revenue-escrow", "Ad-revenue escrow"),

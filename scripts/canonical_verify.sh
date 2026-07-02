@@ -10,6 +10,7 @@
 #   read-reader          — Read SPR-03 reader surface + structured-block gate
 #   read-curate          — Read SPR-04 prompt-to-curate servable-only gate
 #   read-ad-border       — Read SPR-05 ad-border slots + impression/accrual gate
+#   read-voice-notes     — Read SPR-06 voice-note capture + distillation gate
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -33,7 +34,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -141,6 +142,19 @@ cmd_read_ad_border() {
   echo "CANONICAL_VERIFY_OK: read-ad-border"
 }
 
+cmd_read_voice_notes() {
+  echo "== read-voice-notes: transcription + confirmed-note backend =="
+  "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
+  echo "== read-voice-notes: reader capture + companion thread =="
+  (cd apps/reading && npm run test -- \
+    src/api/books.test.ts \
+    src/modes/Reading/VoiceNote.test.tsx \
+    src/modes/Reading/ReadingCompanion.test.tsx \
+    src/modes/Reading/Reading.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: read-voice-notes"
+}
+
 cmd_handoff() {
   local f="${1:?handoff markdown path required}"
   echo "== handoff: schema linter =="
@@ -169,6 +183,7 @@ main() {
     read-reader) cmd_read_reader ;;
     read-curate) cmd_read_curate ;;
     read-ad-border) cmd_read_ad_border ;;
+    read-voice-notes) cmd_read_voice_notes ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;
