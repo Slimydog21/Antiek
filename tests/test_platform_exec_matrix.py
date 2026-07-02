@@ -248,3 +248,16 @@ def test_werner_adapter_names_agent_gate_and_measured_live_boundary() -> None:
     assert "./scripts/canonical_verify.sh agent-gates" in text
     assert "p95/fps" in text
     assert "not proved by agent-gates" in text
+
+
+def test_serve_rights_legal_row_names_operator_proof_artifacts() -> None:
+    """P-51 must stay operator-proof-bound, not a fake informational CI closure."""
+    matrix = MATRIX.read_text(encoding="utf-8")
+    row = re.search(r"^\| P-51 \|(?P<body>.*)\|$", matrix, re.MULTILINE)
+    assert row is not None
+    body = row.group("body")
+
+    assert "`docs/OPERATOR_ACTIONS.md`" in body
+    assert "`infrastructure/runbooks/first-deploy.md`" in body
+    assert "**No** informational CI job alone (F7)" in body
+    assert "Jurisdiction-specific legal review" in body

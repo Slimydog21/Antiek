@@ -9,8 +9,11 @@ on:
     paths:
       - 'docs/agent-execution/**'
       - 'docs/operator_gate_actions.md'
+      - 'docs/OPERATOR_ACTIONS.md'
       - 'docs/master-product-spec.md'
       - 'docs/engineering_deferrals.md'
+      - 'docs/decisions/deep-research-smoke-checklist.md'
+      - 'infrastructure/runbooks/first-deploy.md'
       - 'specs/activation/**'
       - 'tools/agent/**'
       - 'tools/activation/read_dogfood.py'
@@ -77,6 +80,7 @@ on:
       - 'substrate/contracts/inventory.md'
       - 'substrate/coordination/**'
       - 'substrate/provenance/**'
+      - 'substrate/research_artifact/**'
       - 'tools/codegen/check_conformance.py'
       - 'tools/lint/provenance_ref_check.py'
       - 'substrate/seams/**'
@@ -143,8 +147,11 @@ on:
     paths:
       - 'docs/agent-execution/**'
       - 'docs/operator_gate_actions.md'
+      - 'docs/OPERATOR_ACTIONS.md'
       - 'docs/master-product-spec.md'
       - 'docs/engineering_deferrals.md'
+      - 'docs/decisions/deep-research-smoke-checklist.md'
+      - 'infrastructure/runbooks/first-deploy.md'
       - 'specs/activation/**'
       - 'tools/agent/**'
       - 'tools/activation/read_dogfood.py'
@@ -211,6 +218,7 @@ on:
       - 'substrate/contracts/inventory.md'
       - 'substrate/coordination/**'
       - 'substrate/provenance/**'
+      - 'substrate/research_artifact/**'
       - 'tools/codegen/check_conformance.py'
       - 'tools/lint/provenance_ref_check.py'
       - 'substrate/seams/**'
@@ -433,3 +441,6 @@ jobs:
 
       - name: Canonical verify — deep-research (P-52..P-58)
         run: ./scripts/canonical_verify.sh deep-research
+
+      - name: Canonical verify — html-transport (P-59)
+        run: ./scripts/canonical_verify.sh html-transport
