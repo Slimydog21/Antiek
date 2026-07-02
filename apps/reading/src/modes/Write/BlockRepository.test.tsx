@@ -85,6 +85,27 @@ describe("BlockRepository — tap-to-add, no id", () => {
     );
   });
 
+  it("updates the search folder when the host folder prop changes", async () => {
+    const rendered = render(
+      <BlockRepository onAdd={vi.fn()} initialFolderId="folder-a" />,
+    );
+    await waitFor(() =>
+      expect(searchRepositoryMock).toHaveBeenCalledWith(
+        expect.objectContaining({ folderId: "folder-a" }),
+      ),
+    );
+
+    rendered.rerender(
+      <BlockRepository onAdd={vi.fn()} initialFolderId="folder-b" />,
+    );
+
+    await waitFor(() =>
+      expect(searchRepositoryMock).toHaveBeenCalledWith(
+        expect.objectContaining({ folderId: "folder-b" }),
+      ),
+    );
+  });
+
   it("drops malformed folders and hits before rendering or selecting", async () => {
     const onAdd = vi.fn();
     listFoldersMock.mockResolvedValue([

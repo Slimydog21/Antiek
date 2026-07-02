@@ -41,6 +41,10 @@ export function Repository({ initialFolderId = null, className }: RepositoryProp
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setActiveFolder(initialFolderId);
+  }, [initialFolderId]);
+
+  useEffect(() => {
     listFolders()
       .then((f) => setFolders(Array.isArray(f) ? safeFolders(f) : []))
       .catch(() => setFolders([]));
