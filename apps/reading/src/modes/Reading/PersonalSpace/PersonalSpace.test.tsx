@@ -132,7 +132,7 @@ describe("M1 — list + open + empty", () => {
             kind: "saved_read",
             title: "Stale route book",
             prompt: null,
-            document_ids: ["doc-stale"],
+            document_ids: [" ", "doc-stale"],
             emitted_at: "2026-05-04T00:00:00Z",
             open_route: "/wrestle/doc-stale",
           },
@@ -269,6 +269,25 @@ describe("M2 — system categories + honest ordering label", () => {
 
 describe("M3 — suggest-not-autoship filing", () => {
   it("surfaces a suggestion naming the matched project; accept files it once", async () => {
+    listMock.mockResolvedValue(space({
+      assets: [
+        {
+          asset_id: "a1",
+          kind: "meta_reading",
+          title: "How my books treat free will",
+          prompt: "free will across my reading",
+          document_ids: [" ", "doc-1"],
+          emitted_at: "2026-05-05T00:00:00Z",
+          open_route: "/read/meta-reading/a1",
+        },
+      ],
+      count: 1,
+    }));
+    categoriesMock.mockResolvedValue(cats({
+      categories: [
+        { category_id: "cat:a1", label: "free · will", asset_ids: ["a1"], ordering: "theme" },
+      ],
+    }));
     suggestionMock.mockImplementation(async (docId: string) =>
       docId === "doc-1"
         ? { document_id: docId, matches: [{ investigation_id: "inv-x", question: "free will and determinism", score: 0.7 }] }
