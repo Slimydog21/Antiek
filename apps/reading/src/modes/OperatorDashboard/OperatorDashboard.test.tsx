@@ -165,6 +165,29 @@ beforeEach(() => {
         },
       });
     }
+    if (path === "/marketplace/snapshot") {
+      return okJson({
+        health: "unknown",
+        health_signals: [" publisher claims need work ", "", 42],
+        creators: {
+          creator_count: "2.9",
+          total_paid_cents: "2500",
+        },
+        publishers: {
+          status_counts: {
+            claim_rate: "0.125",
+          },
+          total_escrow_accrued_cents: Number.POSITIVE_INFINITY,
+          unclaimed_escrow_cents: Number.NaN,
+        },
+        advertisers: {
+          advertiser_count_current: "4",
+          retention_rate: Number.NaN,
+          total_spend_current_cents: "9876",
+          crosses_self_service_threshold: "yes",
+        },
+      });
+    }
     return okJson({});
   });
 });
@@ -221,9 +244,22 @@ describe("OperatorDashboard", () => {
     expect(
       screen.getByText("web: metadata_complete_pct=94.0 < 95.0"),
     ).toBeTruthy();
-    expect(screen.getByRole("link", { name: "open →" }).getAttribute("href")).toBe(
-      "/coordination",
-    );
+    expect(screen.getByText("Marketplace health")).toBeTruthy();
+    expect(screen.getByText("WATCH · 2 creators · 4 advertisers")).toBeTruthy();
+    expect(
+      screen.getByText("Paid $25.00 · escrow $0.00 · ad spend $98.76."),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Publisher claims 12.5% · advertiser retention 0.0% · self-service not crossed.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("Signal: publisher claims need work.")).toBeTruthy();
+    const openLinks = screen
+      .getAllByRole("link", { name: "open →" })
+      .map((link) => link.getAttribute("href"));
+    expect(openLinks).toContain("/coordination");
+    expect(openLinks).toContain("/marketplace");
     expect(
       screen.getByRole("link", { name: "cost + consent →" }).getAttribute("href"),
     ).toBe("/coordination/cost-consent");
