@@ -31,6 +31,10 @@ export function readerPageFromTraceSectionPath(sectionPath: string | null): numb
   return zeroBasedReaderPageFromSourcePage(sourcePageNumberFromSectionPath(sectionPath)) ?? undefined;
 }
 
+function firstTraceChunkId(chunkIds: string[]): string | undefined {
+  return chunkIds.find((id) => id.trim().length > 0)?.trim();
+}
+
 /**
  * Write Home — the Write door (Product Depth SPR-07 M1).
  *
@@ -147,7 +151,7 @@ export default function WriteHome() {
               // The trace's first chunk locates the cited region; the Reader
               // resolves chunkId → region. No fabricated block-level Region.
               page: readerPageFromTraceSectionPath(target.primary_section_path),
-              chunkId: target.chunk_ids?.[0],
+              chunkId: firstTraceChunkId(target.chunk_ids),
             });
           } else {
             // Honest fallback (§9.0): gated/unreachable source — say so, don't
