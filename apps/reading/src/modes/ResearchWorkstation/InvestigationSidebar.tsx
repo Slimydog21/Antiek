@@ -4,7 +4,6 @@ import { NavLink, useParams } from "react-router-dom";
 import { useInvestigationList } from "../../hooks/useInvestigationList";
 import { useInvestigationTree } from "../../hooks/useInvestigationTree";
 import type { TreeNode } from "../../hooks/useInvestigationTree";
-import type { InvestigationSummary } from "../../lib/api";
 
 function finiteNonNegativeNumber(value: unknown): number | null {
   const parsed =
@@ -14,6 +13,16 @@ function finiteNonNegativeNumber(value: unknown): number | null {
         ? Number(value)
         : Number.NaN;
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function displayString(value: unknown, fallback: string): string {
+  return nonEmptyString(value) ?? fallback;
 }
 
 /**
@@ -45,13 +54,13 @@ export default function InvestigationSidebar() {
           ⟳
         </button>
       </div>
-      {loading && investigations.length === 0 && (
+      {loading && tree.length === 0 && (
         <div className="text-ink-mute dark:text-moonlight italic font-mono">Loading…</div>
       )}
       {error && (
         <div className="text-emperor font-mono text-[10px]">{error}</div>
       )}
-      {!loading && investigations.length === 0 && !error && (
+      {!loading && tree.length === 0 && !error && (
         <div className="text-ink-mute dark:text-moonlight italic font-serif">
           No investigations yet. Ask a question to start.
         </div>
@@ -78,6 +87,7 @@ function TreeRow({
   const summary = node.summary;
   const isActive = activeId === node.investigationId;
   const costUsd = finiteNonNegativeNumber(summary?.cost_usd_total) ?? 0;
+  const title = displayString(summary?.question, node.investigationId);
   return (
     <li>
       <div className="flex items-start gap-1.5">
@@ -93,7 +103,7 @@ function TreeRow({
           <span className="w-3 shrink-0" />
         )}
         <NavLink
-          to={`/inv/${node.investigationId}`}
+          to={`/inv/${encodeURIComponent(node.investigationId)}`}
           className={`flex-1 min-w-0 py-1 px-1.5 rounded transition-colors relative ${
             isActive
               ? "bg-sun text-ink"
@@ -108,7 +118,7 @@ function TreeRow({
             <StatusDot status={summary?.status ?? "in_progress"} />
             <div className="flex-1 min-w-0">
               <div className="font-serif leading-snug truncate">
-                {truncate(summary?.question ?? node.investigationId, 60)}
+                {truncate(title, 60)}
               </div>
               <div className="font-mono text-[9px] text-ink-mute dark:text-moonlight mt-0.5">
                 {costUsd > 0 ? `$${costUsd.toFixed(4)}` : "$0"}
@@ -134,19 +144,28 @@ function TreeRow({
   );
 }
 
-function StatusDot({ status }: { status: InvestigationSummary["status"] }) {
+function StatusDot({ status }: { status: unknown }) {
+  const safeStatus =
+    status === "in_progress" ||
+    status === "completed" ||
+    status === "failed" ||
+    status === "stopped" ||
+    status === "not_found"
+      ? status
+      : "not_found";
   const color =
-    status === "in_progress"
+    safeStatus === "in_progress"
       ? "bg-sun animate-pulse"
-      : status === "completed"
+      : safeStatus === "completed"
         ? "bg-aurora"
-        : status === "failed"
+        : safeStatus === "failed"
           ? "bg-emperor"
           : "bg-ink-mute dark:bg-moonlight";
+  const label = safeStatus === "not_found" ? "unavailable" : safeStatus;
   return (
     <span
       className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${color}`}
-      aria-label={status}
+      aria-label={label}
     />
   );
 }

@@ -84,4 +84,44 @@ describe("InvestigationSidebar", () => {
     expect(screen.getByText("String cost")).toBeTruthy();
     expect(screen.getByText("$0.0123")).toBeTruthy();
   });
+
+  it("normalizes malformed row titles, statuses, and ids", () => {
+    listState.current.investigations = [
+      inv({
+        investigation_id: " inv valid ",
+        question: ["not text"] as unknown as string,
+        status: "unexpected" as InvestigationSummary["status"],
+      }),
+      inv({
+        investigation_id: " ",
+        question: "Invisible broken row",
+        status: "completed",
+      }),
+    ];
+
+    renderSidebar();
+
+    expect(screen.getByText("inv valid")).toBeTruthy();
+    expect(screen.getByLabelText("unavailable")).toBeTruthy();
+    expect(screen.queryByText("unexpected")).toBeNull();
+    expect(screen.queryByText("Invisible broken row")).toBeNull();
+    expect(screen.getByRole("link", { name: /inv valid/ }).getAttribute("href")).toBe(
+      "/inv/inv%20valid",
+    );
+  });
+
+  it("shows empty state when every summary id is invalid", () => {
+    listState.current.investigations = [
+      inv({
+        investigation_id: " ",
+        question: "Invisible broken row",
+        status: "completed",
+      }),
+    ];
+
+    renderSidebar();
+
+    expect(screen.getByText(/No investigations yet/)).toBeTruthy();
+    expect(screen.queryByText("Invisible broken row")).toBeNull();
+  });
 });
