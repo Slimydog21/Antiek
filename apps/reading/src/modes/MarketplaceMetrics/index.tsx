@@ -91,6 +91,10 @@ function stringArray(value: unknown): string[] {
     : [];
 }
 
+function uniqueStringArray(value: unknown): string[] {
+  return Array.from(new Set(stringArray(value)));
+}
+
 function nonNegativeFiniteNumber(value: unknown): number | null {
   const parsed =
     typeof value === "number"
@@ -203,7 +207,7 @@ function safeMarketplaceSnapshot(value: unknown): MarketplaceSnapshot {
     publishers: safePublishers(body?.publishers),
     advertisers: safeAdvertisers(body?.advertisers),
     health: safeHealth(body?.health),
-    health_signals: stringArray(body?.health_signals),
+    health_signals: uniqueStringArray(body?.health_signals),
   };
 }
 

@@ -77,8 +77,8 @@ beforeEach(() => {
           " ": 9,
         },
         deletion_sla_days: "30.9",
-        substrate_controls: [" encryption at rest ", "", 42, " policy gating "],
-        compliance_frameworks: [" GDPR ", null],
+        substrate_controls: [" encryption at rest ", "", 42, " policy gating ", "encryption at rest"],
+        compliance_frameworks: [" GDPR ", null, "GDPR"],
         loop_3_evidence_status: {
           trajectory_volume: true,
           sft_readiness: "yes",
@@ -311,7 +311,7 @@ beforeEach(() => {
     if (path === "/marketplace/snapshot") {
       return okJson({
         health: "unknown",
-        health_signals: [" publisher claims need work ", "", 42],
+        health_signals: [" publisher claims need work ", "", 42, "publisher claims need work"],
         creators: {
           creator_count: "2.9",
           total_paid_cents: "2500",
