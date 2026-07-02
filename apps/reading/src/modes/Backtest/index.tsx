@@ -30,6 +30,82 @@ interface BacktestReport {
   outcomes: Record<string, unknown>[];
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function nonNegativeInteger(value: unknown): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
+}
+
+function safeNumberMap(value: unknown): Record<string, number> {
+  const source = record(value);
+  if (!source) return {};
+  return Object.fromEntries(
+    Object.entries(source).flatMap(([key, rawValue]) => {
+      const safeKey = nonEmptyString(key);
+      return safeKey ? [[safeKey, nonNegativeInteger(rawValue)]] : [];
+    }),
+  );
+}
+
+function safeObjectRows(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const row = record(item);
+        return row ? [row] : [];
+      })
+    : [];
+}
+
+function safeBacktestReport(
+  value: unknown,
+  fallbackSynthesisId: string,
+): BacktestReport {
+  const body = record(value);
+  return {
+    synthesis_id: nonEmptyString(body?.synthesis_id) ?? fallbackSynthesisId,
+    synthesis_timestamp:
+      nonEmptyString(body?.synthesis_timestamp) ?? "Unknown time",
+    target_question: nonEmptyString(body?.target_question) ?? "Untitled synthesis",
+    status: nonEmptyString(body?.status) ?? "unknown",
+    implicit_recommendation: nullableString(body?.implicit_recommendation),
+    substrate_manifest_counts: safeNumberMap(body?.substrate_manifest_counts),
+    added_edges_since: nonNegativeInteger(body?.added_edges_since),
+    superseded_edges_since: nonNegativeInteger(body?.superseded_edges_since),
+    cited_edges_now_superseded_count: nonNegativeInteger(
+      body?.cited_edges_now_superseded_count,
+    ),
+    chunks_retired_downward_count: nonNegativeInteger(
+      body?.chunks_retired_downward_count,
+    ),
+    outcomes_recorded: nonNegativeInteger(body?.outcomes_recorded),
+    cited_edges_now_superseded: safeObjectRows(
+      body?.cited_edges_now_superseded,
+    ),
+    chunks_retired_downward: safeObjectRows(body?.chunks_retired_downward),
+    outcomes: safeObjectRows(body?.outcomes),
+  };
+}
+
 export default function Backtest() {
   const { synthesisId } = useParams<{ synthesisId: string }>();
   const [report, setReport] = useState<BacktestReport | null>(null);
@@ -52,7 +128,7 @@ export default function Backtest() {
       if (!resp.ok) {
         throw new Error(`GET /backtest: HTTP ${resp.status}`);
       }
-      setReport(await resp.json());
+      setReport(safeBacktestReport(await resp.json(), synthesisId));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
