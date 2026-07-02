@@ -169,6 +169,22 @@ export interface Loop3CoordinationView {
   open_weight_policy_file: string;
 }
 
+export interface SourceGateRowView {
+  source: string;
+  blocked: boolean;
+  failures: string[];
+}
+
+export interface SourceGateView {
+  source_path: string;
+  state: string;
+  reference_source: string;
+  source_count: number;
+  blocked_count: number;
+  rows: SourceGateRowView[];
+  error: string | null;
+}
+
 export interface RoadmapView {
   total_sprints: number;
   superseded_count: number;
@@ -186,6 +202,7 @@ export interface RoadmapView {
   phase2_audit?: Phase2AuditView | null;
   engineering_deferrals?: EngineeringDeferralsSummaryView | null;
   loop3?: Loop3CoordinationView | null;
+  source_gate?: SourceGateView | null;
   substrate_layers: SubstrateLayerView[];
 }
 
@@ -389,6 +406,9 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
             />
           ) : null}
           {roadmap.loop3 ? <Loop3Status loop3={roadmap.loop3} /> : null}
+          {roadmap.source_gate ? (
+            <SourceGateStatus sourceGate={roadmap.source_gate} />
+          ) : null}
         </div>
       </LemonCard>
 
@@ -461,6 +481,28 @@ function ActivationStatus({
           {activation.invalid_session_count === 1 ? "" : "s"} need repair.
         </p>
       )}
+    </div>
+  );
+}
+
+function SourceGateStatus({ sourceGate }: { sourceGate: SourceGateView }) {
+  const firstBlocked = sourceGate.rows.find((row) => row.blocked);
+  const detail =
+    firstBlocked?.failures[0] ??
+    sourceGate.error ??
+    "No blocked source rows in the current census.";
+  return (
+    <div className="mt-2 rounded border border-rule dark:border-charcoal-1 bg-ice-0/70 dark:bg-charcoal-2/70 px-3 py-2">
+      <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+        Source onboarding gate
+      </p>
+      <p className="text-xs font-mono text-ink dark:text-bright">
+        state={sourceGate.state} · sources={sourceGate.source_count} · blocked=
+        {sourceGate.blocked_count} · reference={sourceGate.reference_source}
+      </p>
+      <p className="text-xs text-ink-soft dark:text-starlight leading-relaxed">
+        {detail} Source: {sourceGate.source_path || "reports/source_census.json"}.
+      </p>
     </div>
   );
 }

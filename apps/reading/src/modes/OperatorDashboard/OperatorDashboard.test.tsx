@@ -149,6 +149,20 @@ beforeEach(() => {
             evidence_summary: " events dir missing ",
           },
         },
+        source_gate: {
+          state: " blocked ",
+          source_count: "1",
+          blocked_count: "1",
+          reference_source: " arxiv ",
+          rows: [
+            {
+              source: " web ",
+              blocked: true,
+              failures: [" metadata_complete_pct=94.0 < 95.0 "],
+            },
+          ],
+          error: " ",
+        },
       });
     }
     return okJson({});
@@ -202,6 +216,10 @@ describe("OperatorDashboard", () => {
     ).toBeTruthy();
     expect(
       screen.getByText("First failing evidence: trajectory_volume · events dir missing."),
+    ).toBeTruthy();
+    expect(screen.getByText("Source gate blocked · 1/1 blocked")).toBeTruthy();
+    expect(
+      screen.getByText("web: metadata_complete_pct=94.0 < 95.0"),
     ).toBeTruthy();
     expect(screen.getByRole("link", { name: "open →" }).getAttribute("href")).toBe(
       "/coordination",

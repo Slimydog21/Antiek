@@ -80,6 +80,17 @@ interface CoordinationSummary {
       evidence_summary: string;
     } | null;
   } | null;
+  sourceGate: {
+    state: string;
+    source_count: number;
+    blocked_count: number;
+    reference_source: string;
+    error: string | null;
+    first_blocked: {
+      source: string;
+      failures: string[];
+    } | null;
+  } | null;
   readActivation: {
     valid_sessions: number;
     total_sessions: number;
@@ -233,6 +244,7 @@ function safeCoordinationSummary(value: unknown): CoordinationSummary {
   const operatorActions = record(body?.operator_actions);
   const engineeringDeferrals = record(body?.engineering_deferrals);
   const loop3 = record(body?.loop3);
+  const sourceGate = record(body?.source_gate);
   const readActivation = record(body?.read_activation);
   const gateId = nonEmptyString(operatorGate?.gate_id);
   const safeAction = (value: unknown) => {
@@ -303,6 +315,34 @@ function safeCoordinationSummary(value: unknown): CoordinationSummary {
                     nonEmptyString(failing.evidence_summary) ?? "not checked",
                 }
               : null;
+          })(),
+        }
+      : null,
+    sourceGate: sourceGate
+      ? {
+          state: nonEmptyString(sourceGate.state) ?? "missing",
+          source_count: safeCount(sourceGate.source_count),
+          blocked_count: safeCount(sourceGate.blocked_count),
+          reference_source: nonEmptyString(sourceGate.reference_source) ?? "arxiv",
+          error: nullableString(sourceGate.error),
+          first_blocked: (() => {
+            const rows = Array.isArray(sourceGate.rows) ? sourceGate.rows : [];
+            for (const item of rows) {
+              const row = record(item);
+              const source = nonEmptyString(row?.source);
+              if (row?.blocked === true && source) {
+                return {
+                  source,
+                  failures: Array.isArray(row.failures)
+                    ? row.failures.flatMap((failure) => {
+                        const message = nonEmptyString(failure);
+                        return message ? [message] : [];
+                      })
+                    : [],
+                };
+              }
+            }
+            return null;
           })(),
         }
       : null,
@@ -582,6 +622,7 @@ function CoordinationTile({
   const operatorActions = coordination?.operatorActions ?? null;
   const engineeringDeferrals = coordination?.engineeringDeferrals ?? null;
   const loop3 = coordination?.loop3 ?? null;
+  const sourceGate = coordination?.sourceGate ?? null;
   const actionFocus =
     operatorActions?.closeable_action ?? operatorActions?.next_action ?? null;
   const remaining = activation?.remaining_requirements ?? {};
@@ -724,6 +765,22 @@ function CoordinationTile({
       ) : (
         <p className="text-xs italic text-shadow-1 dark:text-moonlight">
           Loop 3 status unavailable.
+        </p>
+      )}
+      {sourceGate ? (
+        <div className="space-y-0.5 border-t border-rule dark:border-charcoal-1 pt-2">
+          <p className="text-xs font-mono text-ink dark:text-bright">
+            Source gate {sourceGate.state} · {sourceGate.blocked_count}/{sourceGate.source_count} blocked
+          </p>
+          <p className="text-xs text-ink-soft dark:text-starlight">
+            {sourceGate.first_blocked
+              ? `${sourceGate.first_blocked.source}: ${sourceGate.first_blocked.failures[0] || "blocked"}`
+              : sourceGate.error || `Reference source: ${sourceGate.reference_source}.`}
+          </p>
+        </div>
+      ) : (
+        <p className="text-xs italic text-shadow-1 dark:text-moonlight">
+          Source gate status unavailable.
         </p>
       )}
     </div>

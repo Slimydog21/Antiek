@@ -395,6 +395,16 @@ export const CANONICAL_ROADMAP: RoadmapView = {
     events_dir: "~/.antiek/research_events",
     open_weight_policy_file: "reports/loop3/open-weight-policy-ids.json",
   },
+  source_gate: {
+    source_path: "reports/source_census.json",
+    state: "missing",
+    reference_source: "arxiv",
+    source_count: 0,
+    blocked_count: 0,
+    rows: [],
+    error:
+      "no source census yet; source_gate is a no-op until the operator produces reports/source_census.json from the real corpus",
+  },
   substrate_layers: [
     { name: "Write coordination (db_lock)", owner: "runtime/db_lock.py", status: "Hardened (substrate-execution SPR-01)" },
     { name: "Dispatch router + idempotency", owner: "substrate/dispatch/", status: "Hardened (substrate-execution SPR-02/03)" },

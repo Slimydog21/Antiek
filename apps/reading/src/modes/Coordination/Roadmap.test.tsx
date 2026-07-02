@@ -85,6 +85,7 @@ function roadmap(
     phase2_audit: null,
     engineering_deferrals: null,
     loop3: null,
+    source_gate: null,
     substrate_layers: [],
   };
 }
@@ -679,6 +680,41 @@ describe("Roadmap", () => {
     expect(
       screen.getByText(
         "First failing evidence: trajectory_volume — events_dir_exists: /tmp/events.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("surfaces source onboarding gate state", () => {
+    render(
+      <Roadmap
+        roadmap={{
+          ...roadmap([]),
+          source_gate: {
+            source_path: "reports/source_census.json",
+            state: "blocked",
+            reference_source: "arxiv",
+            source_count: 1,
+            blocked_count: 1,
+            rows: [
+              {
+                source: "web",
+                blocked: true,
+                failures: ["metadata_complete_pct=94.0 < 95.0"],
+              },
+            ],
+            error: null,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Source onboarding gate")).toBeTruthy();
+    expect(
+      screen.getByText("state=blocked · sources=1 · blocked=1 · reference=arxiv"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "metadata_complete_pct=94.0 < 95.0 Source: reports/source_census.json.",
       ),
     ).toBeTruthy();
   });
