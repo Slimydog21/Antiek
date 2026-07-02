@@ -167,6 +167,41 @@ describe("OutcomesIndex — cross-investigation grading history (M3)", () => {
     expect(screen.queryByText("outcome-1")).toBeNull();
   });
 
+  it("sanitizes outcomes index rows before rendering", async () => {
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        outcomes: [
+          {
+            outcome_id: " outcome dirty ",
+            synthesis_id: " synthesis dirty ",
+            observer: " agent dirty ",
+            observed_at: " 2026-05-30 ",
+          },
+          {
+            outcome_id: " ",
+            synthesis_id: "Skipped synthesis",
+            observer: "Skipped reviewer",
+            observed_at: "Skipped date",
+          },
+          {
+            outcome_id: "missing-synthesis",
+            synthesis_id: null,
+            observer: "Skipped missing synthesis",
+          },
+        ],
+      }),
+    });
+    renderIndex();
+
+    expect(await screen.findByText("Review 1 from 2026-05-30")).toBeTruthy();
+    expect(screen.getByText("agent dirty")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(
+      /Skipped|outcome dirty|synthesis dirty/,
+    );
+  });
+
   it("opens a review row on the canonical detail route", async () => {
     apiFetchMock.mockResolvedValue({
       ok: true,
