@@ -168,7 +168,7 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
   {
     id: "ResearchWorkstation",
     workflow: "research",
-    label: "Research workstation",
+    label: "Research home",
     blurb: "Chat-first investigation surface — the Research home (Mode A).",
     built: true,
     route: "/",

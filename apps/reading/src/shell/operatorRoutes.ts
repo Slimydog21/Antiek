@@ -45,7 +45,7 @@ export const OPERATOR_ROUTES: OperatorRouteEntry[] = [
     id: "research",
     group: "Research",
     path: "/",
-    title: "Research workstation",
+    title: "Research home",
     description: "Mode A — chat-first investigation surface",
     paletteSubtitle: "Mode A — chat-first investigation surface (/)",
   },

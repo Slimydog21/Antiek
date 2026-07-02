@@ -542,6 +542,11 @@ describe("Write door re-home (Write SPR-07)", () => {
  * second discovery door.
  */
 describe("Research one-monitor consolidation (Research SPR-05)", () => {
+  it("labels the root Research door as Research home", () => {
+    expect(modeById("ResearchWorkstation")?.label).toBe("Research home");
+    expect(workflowForPath("/")).toBe("research");
+  });
+
   it("the retired /investigations door is not advertised from Map", () => {
     const routes = operatorRoutePaths();
     expect(routes).not.toContain("/investigations");

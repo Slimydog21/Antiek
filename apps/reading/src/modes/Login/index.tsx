@@ -110,7 +110,7 @@ export default function Login() {
             Antiek
           </div>
           <div className="mt-2 text-[11px] tracking-[0.18em] uppercase text-shadow-1 dark:text-moonlight">
-            Research workstation
+            Research home
           </div>
         </div>
 
