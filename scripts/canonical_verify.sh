@@ -20,9 +20,10 @@
 #   write-structured-editor — Write SPR-04 TipTap block editor + locator gate
 #   write-brainstorm-interview — Write SPR-05 brainstorm drivers + section gate
 #   write-draft-generation-style — Write SPR-06 creative_writer + style gate
+#   write-trace-to-source — Write SPR-07 provenance trace + gated no-leak
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
-#   deep-research        — ANT-DRL P-31..P-37 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
-#   html-transport       — ANT-AHT P-38 ResearchArtifact transport gates
+#   deep-research        — ANT-DRL P-32..P-38 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
+#   html-transport       — ANT-AHT P-39 ResearchArtifact transport gates
 #
 # USAGE (from repo root):
 #   ./scripts/canonical_verify.sh cascade
@@ -45,7 +46,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|handoff <md>|agent-gates|deep-research|html-transport}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|handoff <md>|agent-gates|deep-research|html-transport}" >&2
   exit 2
 }
 
@@ -252,6 +253,22 @@ cmd_write_draft_generation_style() {
   echo "CANONICAL_VERIFY_OK: write-draft-generation-style"
 }
 
+cmd_write_trace_to_source() {
+  echo "== write-trace-to-source: backend provenance + gated no-leak =="
+  "${PY}" -m pytest \
+    tests/test_trace_to_source.py \
+    tests/test_write_routes.py \
+    tests/test_contracts_write_lock.py \
+    -q --tb=no
+  echo "== write-trace-to-source: client masking + X-ray + one-reader route =="
+  (cd apps/reading && npm run test -- \
+    src/modes/Write/writeApi.test.ts \
+    src/modes/Write/Xray.test.tsx \
+    src/modes/Write/WriteHome.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: write-trace-to-source"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -315,7 +332,7 @@ cmd_agent_gates() {
 }
 
 cmd_html_transport() {
-  echo "== html-transport: P-38 ANT-AHT bundle =="
+  echo "== html-transport: P-39 ANT-AHT bundle =="
   "${PY}" -m pytest \
     tests/test_research_artifact_template.py \
     tests/test_research_artifact_export.py \
@@ -332,19 +349,19 @@ cmd_html_transport() {
 }
 
 cmd_deep_research() {
-  echo "== deep-research: P-31 Loop 1 E2E =="
+  echo "== deep-research: P-32 Loop 1 E2E =="
   "${PY}" -m pytest tests/test_loop_one_orchestrator.py::test_loop_one_happy_path_emits_completed -q --tb=no
-  echo "== deep-research: P-32 invariant negative =="
+  echo "== deep-research: P-33 invariant negative =="
   "${PY}" -m pytest tests/test_deep_research_complete.py::test_drw_only_trajectory_fails_without_synthesis -q --tb=no
-  echo "== deep-research: P-33 session reconstruct =="
+  echo "== deep-research: P-34 session reconstruct =="
   "${PY}" -m pytest tests/test_cascade_session.py -q --tb=no
-  echo "== deep-research: P-34 PromotionFunnel serialize =="
+  echo "== deep-research: P-35 PromotionFunnel serialize =="
   "${PY}" -m pytest tests/test_research_runner.py::test_promotion_funnel_serialized_no_lock_timeout -q --tb=no
-  echo "== deep-research: P-35 knowledge.reused (two-run) =="
+  echo "== deep-research: P-36 knowledge.reused (two-run) =="
   "${PY}" -m pytest tests/test_flywheel_reuse.py::test_two_run_contract_gather_emits_knowledge_reused_on_second_start -q --tb=no
-  echo "== deep-research: P-36 Exa gather mock E2E =="
+  echo "== deep-research: P-37 Exa gather mock E2E =="
   "${PY}" -m pytest tests/test_exa_gather_loop.py -q --tb=short
-  echo "== deep-research: P-37 parent-terminal observability =="
+  echo "== deep-research: P-38 parent-terminal observability =="
   "${PY}" -m pytest tests/test_drw_parent_terminal.py -q --tb=short
   echo "CANONICAL_VERIFY_OK: deep-research"
 }
@@ -370,6 +387,7 @@ main() {
     write-structured-editor) cmd_write_structured_editor ;;
     write-brainstorm-interview) cmd_write_brainstorm_interview ;;
     write-draft-generation-style) cmd_write_draft_generation_style ;;
+    write-trace-to-source) cmd_write_trace_to_source ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     deep-research) cmd_deep_research ;;
