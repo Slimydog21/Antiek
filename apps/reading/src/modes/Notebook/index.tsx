@@ -8,6 +8,7 @@ import {
   patchNotebookBlock,
   reorderNotebookBlocks,
 } from "../../lib/api";
+import { ArtifactExport } from "../../components/ArtifactExport";
 import NotebookCanvas from "./NotebookCanvas";
 import type {
   NotebookBlockResponse,
@@ -135,13 +136,21 @@ export default function Notebook() {
           <div className="px-8 py-6 text-sm text-emperor">{error}</div>
         )}
         {notebook && (
-          <NotebookCanvas
-            notebook={notebook}
-            onAppendBlock={appendBlock}
-            onDeleteBlock={deleteBlock}
-            onMoveBlock={moveBlock}
-            onEditBlock={editBlock}
-          />
+          <>
+            <div className="px-8 pt-6 flex justify-end">
+              <ArtifactExport
+                basePath={`/api/notebooks/${notebookId}`}
+                filenamePrefix={`notebook-${notebookId}`}
+              />
+            </div>
+            <NotebookCanvas
+              notebook={notebook}
+              onAppendBlock={appendBlock}
+              onDeleteBlock={deleteBlock}
+              onMoveBlock={moveBlock}
+              onEditBlock={editBlock}
+            />
+          </>
         )}
       </main>
     </div>

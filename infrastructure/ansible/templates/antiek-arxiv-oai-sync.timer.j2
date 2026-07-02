@@ -1,0 +1,16 @@
+# {{ ansible_managed }}
+#
+# Daily trigger for antiek-arxiv-oai-sync.service. Persistent=true ensures a
+# missed run fires after boot rather than silently skipping a corpus window.
+
+[Unit]
+Description=Antiek arXiv OAI-PMH incremental sync timer
+Documentation=https://github.com/Slimydog21/Antiek/blob/main/tools/arxiv_oai_sync.py
+
+[Timer]
+OnCalendar=*-*-* 04:20:00 UTC
+Persistent=true
+Unit=antiek-arxiv-oai-sync.service
+
+[Install]
+WantedBy=timers.target

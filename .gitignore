@@ -87,3 +87,12 @@ docs/htmlspec/werner-ice-fishing-cursor/.caffenagent/
 # deliberately with `git add -f compounding/benchmark/results/spr09_run.json`.
 compounding/benchmark/results/*.json
 !compounding/benchmark/results/spr09_run.json
+
+# /caffenagent + /conclave orchestration run-state (worktrees, ledgers,
+# evidence). Pure scratch — regenerated per run, never source. Anchored
+# loosely so it catches the dirs at any depth.
+.caffenagent/
+.conclave/
+
+# hardenx scratch output (triage layer; never source)
+.harden/

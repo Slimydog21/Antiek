@@ -19,8 +19,8 @@ from orchestration.loop_one.orchestrator import (  # noqa: E402
 )
 from substrate.schemas import (  # noqa: E402
     ActionType,
-    EvidenceRetrieveDeliveredPayload,
     Event,
+    EvidenceRetrieveDeliveredPayload,
 )
 
 
@@ -96,6 +96,18 @@ def test_prior_graph_section_cites_chunk_ids(monkeypatch):
     section = _prior_graph_knowledge_section("any question")
     assert "chunk_abc123" in section
     assert "chunk_def456" in section
+
+
+def test_prior_graph_section_cites_hyphenated_chunk_ids(monkeypatch):
+    monkeypatch.setattr(
+        "orchestration.loop_one.orchestrator._render_chunks_block_for_sub_question",
+        lambda _q, top_k=3: (
+            "[chunk-1] Source tier: 1\n\n"
+            "PsiQuantum evidence text\n"
+        ),
+    )
+    section = _prior_graph_knowledge_section("any question")
+    assert "chunk-1" in section
 
 
 def test_prior_graph_section_fallback_markers(monkeypatch):

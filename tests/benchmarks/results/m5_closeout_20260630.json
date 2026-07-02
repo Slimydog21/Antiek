@@ -1,0 +1,83 @@
+{
+  "baseline": "tests/benchmarks/results/m4_report_20260630.json",
+  "improvements": [
+    {
+      "after_p95_ms": 0.002375,
+      "before_p95_ms": 0.010125,
+      "change_pct": 76.54,
+      "path": "loop_3_rl_prep",
+      "targeted": true
+    },
+    {
+      "after_p95_ms": 0.002875,
+      "before_p95_ms": 0.007166,
+      "change_pct": 59.88,
+      "path": "json_repair_error_path",
+      "targeted": false
+    },
+    {
+      "after_p95_ms": 0.000292,
+      "before_p95_ms": 0.004792,
+      "change_pct": 93.91,
+      "path": "verifier_throughput",
+      "targeted": false
+    },
+    {
+      "after_p95_ms": 0.00054,
+      "before_p95_ms": 0.003041,
+      "change_pct": 82.24,
+      "path": "dispatch_fanout",
+      "targeted": false
+    }
+  ],
+  "optimized": "tests/benchmarks/results/m5_strong_analysis_20260630.json",
+  "regressions": [],
+  "requirements": {
+    "at_least_one_path_meets_improvement": true,
+    "max_regression_pct": 5.0,
+    "min_improvement_pct": 25.0,
+    "no_path_exceeds_regression_limit": true
+  },
+  "rows": [
+    {
+      "after_p95_ms": 0.032187,
+      "before_p95_ms": 0.037958,
+      "change_pct": 15.2,
+      "path": "event_log_parquet_read",
+      "targeted": true
+    },
+    {
+      "after_p95_ms": 0.002375,
+      "before_p95_ms": 0.010125,
+      "change_pct": 76.54,
+      "path": "loop_3_rl_prep",
+      "targeted": true
+    },
+    {
+      "after_p95_ms": 0.002875,
+      "before_p95_ms": 0.007166,
+      "change_pct": 59.88,
+      "path": "json_repair_error_path",
+      "targeted": false
+    },
+    {
+      "after_p95_ms": 0.000292,
+      "before_p95_ms": 0.004792,
+      "change_pct": 93.91,
+      "path": "verifier_throughput",
+      "targeted": false
+    },
+    {
+      "after_p95_ms": 0.00054,
+      "before_p95_ms": 0.003041,
+      "change_pct": 82.24,
+      "path": "dispatch_fanout",
+      "targeted": false
+    }
+  ],
+  "status": "pass",
+  "targets": [
+    "event_log_parquet_read",
+    "loop_3_rl_prep"
+  ]
+}

@@ -108,10 +108,30 @@
       register: antiek_continuous_unit
       tags: [systemd, continuous]
 
-    - name: systemd daemon-reload if either unit changed
+    - name: re-render antiek-arxiv-oai-sync.service
+      ansible.builtin.template:
+        src: ../templates/antiek-arxiv-oai-sync.service.j2
+        dest: /etc/systemd/system/antiek-arxiv-oai-sync.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_arxiv_oai_sync_unit
+      tags: [systemd, arxiv_oai]
+
+    - name: re-render antiek-arxiv-oai-sync.timer
+      ansible.builtin.template:
+        src: ../templates/antiek-arxiv-oai-sync.timer.j2
+        dest: /etc/systemd/system/antiek-arxiv-oai-sync.timer
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_arxiv_oai_sync_timer
+      tags: [systemd, arxiv_oai]
+
+    - name: systemd daemon-reload if any unit changed
       ansible.builtin.systemd:
         daemon_reload: true
-      when: antiek_unit.changed or antiek_continuous_unit.changed
+      when: antiek_unit.changed or antiek_continuous_unit.changed or antiek_arxiv_oai_sync_unit.changed or antiek_arxiv_oai_sync_timer.changed
       tags: [systemd]
 
     - name: enable antiek-continuous-research.service
@@ -126,6 +146,13 @@
         state: restarted
       when: antiek_continuous_unit.changed
       tags: [systemd, continuous]
+
+    - name: enable and start antiek-arxiv-oai-sync.timer
+      ansible.builtin.systemd:
+        name: antiek-arxiv-oai-sync.timer
+        enabled: true
+        state: started
+      tags: [systemd, arxiv_oai]
 
     # ── Frontend rsync ───────────────────────────────────────────────────
     # The Phase A play built `apps/reading/dist/` locally. Push it to

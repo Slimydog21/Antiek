@@ -15,10 +15,11 @@ import tempfile
 import time
 
 import pytest
-
 from fastapi.testclient import TestClient
 
 import interfaces.research.api.cascade_routes as cr
+
+
 class _StubEmbedding:
     dimension = 8
 

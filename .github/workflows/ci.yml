@@ -126,6 +126,21 @@ jobs:
         run: |
           python -m pytest tests/ -q -m "not integration"
 
+      - name: HTML-projection layer gates (HPRJ SPR-07 M4)
+        # The projection / .antiek-format / ingestion layer's gates live under
+        # services/, which the tests/ run above does NOT cover: zero-script gate
+        # + palette purity + determinism (html_projection), signature coverage +
+        # forbidden-fields + shell integrity (antiek_format), and island-only
+        # ingest + foreign-HTML sanitizer quarantine (ingestion). Blocking.
+        env:
+          DEEPSEEK_API_KEY: ""
+          OPENROUTER_API_KEY: ""
+          ANTHROPIC_API_KEY: ""
+          OPENAI_API_KEY: ""
+        run: |
+          python -m pytest services/html_projection/ services/antiek_format/ services/ingestion/ \
+            -q -p no:cacheprovider
+
       - name: Substrate/dispatch boundary check
         # SPR-03 (DDIA-execution): forbid direct vendor-SDK imports
         # outside substrate/dispatch/providers/ and the explicit

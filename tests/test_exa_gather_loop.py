@@ -16,9 +16,9 @@ from __future__ import annotations
 
 import hashlib
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from types import ModuleType
-from typing import Callable, List, Optional
 
 import httpx
 import pytest
@@ -42,7 +42,6 @@ from runtime.research_runner.protocol import StepEvent
 from substrate.graph.schema import init_database_at_path
 from substrate.legal_gate import LegalGate, PermissiveLegalGate
 
-
 # ── shared helpers ─────────────────────────────────────────────────
 
 
@@ -62,7 +61,7 @@ class _Dec:
         return [SubQuestion(question=s) for s in self._subs]
 
 
-def _mock_exa_client(responses: List[dict], *, status: int = 200) -> ExaClient:
+def _mock_exa_client(responses: list[dict], *, status: int = 200) -> ExaClient:
     """An ExaClient whose transport replays canned /search responses.
 
     The handler asserts the request shape (so a regression in the client's
@@ -90,7 +89,7 @@ def _mock_exa_client(responses: List[dict], *, status: int = 200) -> ExaClient:
     )
 
 
-def _exa_result(url: str, *, title: Optional[str] = None, text: Optional[str] = None) -> dict:
+def _exa_result(url: str, *, title: str | None = None, text: str | None = None) -> dict:
     return {
         "url": url,
         "title": title,
@@ -111,11 +110,11 @@ class FakeIngestResult:
     final_url: str = ""
     chunk_ids: tuple = ()
     node_ids: tuple = ()
-    document_loaded_event_id: Optional[str] = None
+    document_loaded_event_id: str | None = None
     chunks_written: int = 1
-    skipped_reason: Optional[str] = None
-    title: Optional[str] = None
-    author: Optional[str] = None
+    skipped_reason: str | None = None
+    title: str | None = None
+    author: str | None = None
 
 
 def _bypass_gate() -> LegalGate:
