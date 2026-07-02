@@ -122,6 +122,169 @@ const workflowLabel: Record<string, string> = {
   unmapped: "Unclassified",
 };
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function finiteNonNegativeNumber(value: unknown): number | null {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function nonNegativeInteger(value: unknown): number {
+  const parsed = finiteNonNegativeNumber(value);
+  return parsed === null ? 0 : Math.floor(parsed);
+}
+
+function moneyString(value: unknown): string {
+  const parsed = finiteNonNegativeNumber(value);
+  return parsed === null ? "0" : String(parsed);
+}
+
+function booleanValue(value: unknown): boolean {
+  return value === true;
+}
+
+function safeWorkflowCost(value: unknown): WorkflowCostView | null {
+  const row = record(value);
+  const workflow = nonEmptyString(row?.workflow);
+  if (!row || !workflow) return null;
+  const marginStatus = row.margin_status === "applied" ? "applied" : "stubbed";
+  return {
+    workflow,
+    raw_cost_usd: moneyString(row.raw_cost_usd),
+    call_count: nonNegativeInteger(row.call_count),
+    remote_exec_cost_usd: moneyString(row.remote_exec_cost_usd),
+    margin_status: marginStatus,
+    margin_rate:
+      marginStatus === "applied" ? nullableString(row.margin_rate) : null,
+    margined_cost_usd:
+      marginStatus === "applied" ? moneyString(row.margined_cost_usd) : null,
+    margin_note: nonEmptyString(row.margin_note) ?? "raw cost only",
+  };
+}
+
+function safeCostView(value: unknown): CostView {
+  const body = record(value);
+  const perWorkflow = Array.isArray(body?.per_workflow)
+    ? body.per_workflow.flatMap((item) => {
+        const row = safeWorkflowCost(item);
+        return row ? [row] : [];
+      })
+    : [];
+  return {
+    per_workflow: perWorkflow,
+    aggregate_raw_cost_usd: moneyString(body?.aggregate_raw_cost_usd),
+    aggregate_call_count: nonNegativeInteger(body?.aggregate_call_count),
+    aggregate_remote_exec_cost_usd: moneyString(
+      body?.aggregate_remote_exec_cost_usd,
+    ),
+    has_unmapped_spend: booleanValue(body?.has_unmapped_spend),
+    events_dir: nonEmptyString(body?.events_dir) ?? "",
+  };
+}
+
+function safeGate(value: unknown): DisbursementGateView {
+  const gate = record(value);
+  const openGateIds = Array.isArray(gate?.open_gate_ids)
+    ? gate.open_gate_ids.flatMap((item) => {
+        const gateId = nonEmptyString(item);
+        return gateId ? [gateId] : [];
+      })
+    : [];
+  const holderClaimed = booleanValue(gate?.holder_claimed);
+  const fullyUnlocked = booleanValue(gate?.fully_unlocked);
+  return {
+    disbursable:
+      booleanValue(gate?.disbursable) &&
+      holderClaimed &&
+      fullyUnlocked &&
+      openGateIds.length === 0,
+    open_gate_ids: openGateIds,
+    holder_claimed: holderClaimed,
+    fully_unlocked: fullyUnlocked,
+    label: nonEmptyString(gate?.label) ?? "not disbursable",
+  };
+}
+
+function safeEscrowReport(value: unknown): EscrowReportView {
+  const report = record(value);
+  return {
+    pre_onboarded: nonNegativeInteger(report?.pre_onboarded),
+    invited: nonNegativeInteger(report?.invited),
+    claimed: nonNegativeInteger(report?.claimed),
+    opted_out: nonNegativeInteger(report?.opted_out),
+    claim_rate: finiteNonNegativeNumber(report?.claim_rate) ?? 0,
+    total_escrow_accrued_cents: nonNegativeInteger(
+      report?.total_escrow_accrued_cents,
+    ),
+    total_escrow_paid_cents: nonNegativeInteger(
+      report?.total_escrow_paid_cents,
+    ),
+    unclaimed_escrow_cents: nonNegativeInteger(report?.unclaimed_escrow_cents),
+    publishers_with_nontrivial_accrual: nonNegativeInteger(
+      report?.publishers_with_nontrivial_accrual,
+    ),
+  };
+}
+
+function safeHolder(value: unknown): IpHolderConsentView | null {
+  const holder = record(value);
+  const holderId = nonEmptyString(holder?.ip_holder_id);
+  if (!holder || !holderId) return null;
+  const servesFullText =
+    typeof holder.serves_full_text === "boolean" ? holder.serves_full_text : null;
+  return {
+    ip_holder_id: holderId,
+    display_name: nonEmptyString(holder.display_name) ?? holderId,
+    status: nonEmptyString(holder.status) ?? "pre_onboarded",
+    escrow_balance_usd: moneyString(holder.escrow_balance_usd),
+    gate: safeGate(holder.gate),
+    serves_full_text: servesFullText,
+    servability_note: nullableString(holder.servability_note),
+  };
+}
+
+function safeConsentView(value: unknown): ConsentView {
+  const body = record(value);
+  const holders = Array.isArray(body?.holders)
+    ? body.holders.flatMap((item) => {
+        const holder = safeHolder(item);
+        return holder ? [holder] : [];
+      })
+    : [];
+  return {
+    holders,
+    escrow_report: safeEscrowReport(body?.escrow_report),
+    disbursement_gates_open: Array.isArray(body?.disbursement_gates_open)
+      ? body.disbursement_gates_open.flatMap((item) => {
+          const gateId = nonEmptyString(item);
+          return gateId ? [gateId] : [];
+        })
+      : [],
+    total_escrow_accruing_usd: moneyString(body?.total_escrow_accruing_usd),
+    any_disbursable: holders.some((holder) => holder.gate.disbursable),
+    gate_source_path: nonEmptyString(body?.gate_source_path) ?? "",
+  };
+}
+
 // ── Cost view (presentational) ───────────────────────────────────────────────
 
 export function CostSection({ cost }: { cost: CostView }) {
@@ -439,8 +602,8 @@ export default function CostConsent() {
           `GET /coordination/consent failed: HTTP ${consentResp.status}`,
         );
       }
-      setCost((await costResp.json()) as CostView);
-      setConsent((await consentResp.json()) as ConsentView);
+      setCost(safeCostView(await costResp.json()));
+      setConsent(safeConsentView(await consentResp.json()));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
