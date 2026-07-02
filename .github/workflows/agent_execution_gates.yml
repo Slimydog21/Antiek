@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - 'docs/agent-execution/**'
+      - 'docs/htmlspec/antiek-memory-mcp/**'
       - 'docs/operator_gate_actions.md'
       - 'docs/OPERATOR_ACTIONS.md'
       - 'docs/master-product-spec.md'
@@ -135,6 +136,7 @@ on:
     branches: [main]
     paths:
       - 'docs/agent-execution/**'
+      - 'docs/htmlspec/antiek-memory-mcp/**'
       - 'docs/operator_gate_actions.md'
       - 'docs/OPERATOR_ACTIONS.md'
       - 'docs/master-product-spec.md'

@@ -40,6 +40,19 @@ future runs do not rediscover the programme as unexecuted solely because no
 
 Result: `127 passed`; strict mypy clean; ruff clean.
 
+### 2026-07-02 Reverification
+
+Re-run from repo root `/Users/slimydog/Antiek/platform` after the auth
+verification hardening pass:
+
+```bash
+./.venv/bin/python -m pytest tests/test_mcp_server.py tests/test_mcp_tools.py tests/test_mcp_resources.py tests/test_mcp_defenses.py tests/test_mcp_e2e.py -q --tb=no
+./.venv/bin/python -m mypy services/mcp_server/ --strict
+./.venv/bin/python -m ruff check services/mcp_server/
+```
+
+Result: `127 passed`; strict mypy clean; ruff clean.
+
 ## Notes
 
 - Conclave and the requested worker CLIs are installed on this machine
