@@ -1,8 +1,9 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
 import { startInvestigation, type DistilledNode } from "../../lib/api";
+import { requireInvestigationId } from "../../lib/investigationData";
 import FloatMenu from "../shared/FloatMenu/FloatMenu";
 import {
   useFloatMenuSelection,
@@ -38,6 +39,7 @@ export default function BlockDetail({
   onClose?: () => void;
 }) {
   const scopeRef = useRef<HTMLDivElement>(null);
+  const [deepResearchError, setDeepResearchError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   // The host resolves provenance: this node's source document/chunk grounds any
@@ -54,16 +56,23 @@ export default function BlockDetail({
   async function deepResearch(safeSpawnText: string | null) {
     // §9.0: refuse to spawn on a withheld body.
     if (safeSpawnText === null) return;
+    setDeepResearchError(null);
     // REUSED chase path — child investigation linked to the parent + the
     // selection (ChaseSlideOver.tsx:57,64).
-    const resp = await startInvestigation({
-      question: safeSpawnText,
-      context: safeSpawnText,
-      parent_investigation_id: investigationId,
-      spawn_context: safeSpawnText,
-    });
-    recordSpawnRelationship(resp.investigation_id, investigationId);
-    navigate(`/inv/${resp.investigation_id}`);
+    try {
+      const resp = await startInvestigation({
+        question: safeSpawnText,
+        context: safeSpawnText,
+        parent_investigation_id: investigationId,
+        spawn_context: safeSpawnText,
+      });
+      const childInvestigationId = requireInvestigationId(resp.investigation_id);
+      recordSpawnRelationship(childInvestigationId, investigationId);
+      navigate(`/inv/${encodeURIComponent(childInvestigationId)}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setDeepResearchError(`Couldn't start deep research: ${msg}`);
+    }
   }
 
   return (
@@ -87,6 +96,11 @@ export default function BlockDetail({
       <div ref={scopeRef} className="font-serif text-base leading-relaxed">
         {node.text || <span className="italic text-ink-mute dark:text-moonlight">(empty)</span>}
       </div>
+      {deepResearchError && (
+        <p className="mt-2 text-xs text-emperor" role="alert">
+          {deepResearchError}
+        </p>
+      )}
       <FloatMenu
         selection={selection}
         investigationId={investigationId}

@@ -16,13 +16,19 @@
  * getSelection, fired via `selectionchange`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import type { DistilledNode } from "../../lib/api";
 
 // Mock the api boundary — capture the NOTE write (postTypedEvent). Same shape
 // FloatMenu.test.tsx uses, mocked at the api boundary only.
+const { navigateMock, recordSpawnMock, startInvestigationMock } = vi.hoisted(() => ({
+  navigateMock: vi.fn(),
+  recordSpawnMock: vi.fn(),
+  startInvestigationMock: vi.fn(),
+}));
+
 const postTypedEventMock = vi.fn((_envelope: unknown) =>
   Promise.resolve({ event_id: "ev-note-1", action_type: "marginalia.noted" }),
 );
@@ -32,7 +38,17 @@ vi.mock("../../lib/api", async (importOriginal) => {
   return {
     ...actual,
     postTypedEvent: (envelope: unknown) => postTypedEventMock(envelope),
+    startInvestigation: startInvestigationMock,
   };
+});
+
+vi.mock("../../hooks/useInvestigationTree", () => ({
+  recordSpawnRelationship: recordSpawnMock,
+}));
+
+vi.mock("react-router-dom", async (orig) => {
+  const actual = await orig<typeof import("react-router-dom")>();
+  return { ...actual, useNavigate: () => navigateMock };
 });
 
 import BlockDetail from "./BlockDetail";
@@ -98,6 +114,9 @@ function renderDetail(node: DistilledNode) {
 
 beforeEach(() => {
   postTypedEventMock.mockClear();
+  navigateMock.mockReset();
+  recordSpawnMock.mockReset();
+  startInvestigationMock.mockReset();
 });
 afterEach(() => {
   cleanup();
@@ -169,5 +188,45 @@ describe("BlockDetail — the SECOND live FloatMenu host (M1)", () => {
     };
     expect(env.document_id).toBe("doc-block-9");
     expect(env.payload.chunk_id).toBeNull();
+  });
+
+  it("trims child investigation ids before recording a deep-research spawn", async () => {
+    startInvestigationMock.mockResolvedValue({
+      investigation_id: " inv-child ",
+      status: "in_progress",
+      start_event_id: "e1",
+    });
+    renderDetail(insightNode());
+    const scope = screen.getByText(
+      "a grounded insight worth selecting and noting",
+    );
+    selectTextIn(scope, "a grounded insight");
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Deep-research" }));
+
+    await waitFor(() => expect(startInvestigationMock).toHaveBeenCalledTimes(1));
+    expect(recordSpawnMock).toHaveBeenCalledWith("inv-child", "inv-block");
+    expect(navigateMock).toHaveBeenCalledWith("/inv/inv-child");
+  });
+
+  it("surfaces malformed deep-research child ids instead of linking or navigating", async () => {
+    startInvestigationMock.mockResolvedValue({
+      investigation_id: " ",
+      status: "in_progress",
+      start_event_id: "e1",
+    });
+    renderDetail(insightNode());
+    const scope = screen.getByText(
+      "a grounded insight worth selecting and noting",
+    );
+    selectTextIn(scope, "a grounded insight");
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Deep-research" }));
+
+    expect((await screen.findByRole("alert")).textContent).toMatch(
+      /investigation_id must be a non-empty string/i,
+    );
+    expect(recordSpawnMock).not.toHaveBeenCalled();
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 });
