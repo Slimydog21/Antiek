@@ -486,9 +486,11 @@ def persist_section_draft(
 def default_dispatch_fn(*, investigation_id: str = "__operator__") -> DispatchFn:
     """The production dispatch adapter: routes the creative_writer prompt
     through ``substrate/dispatch``. Requires ``creative_writer`` in the
-    dispatch config's ``role_tiers`` and provider credentials — hence the
-    live generation path is not unit-tested here. The prompt combines the
-    system + user (the router takes a single prompt string)."""
+    dispatch config's ``role_tiers`` and provider credentials. Hermetic tests
+    inject a dispatch function and route tests monkeypatch this adapter; only
+    live provider credentials/output quality remain outside local unit proof.
+    The prompt combines the system + user because the router takes a single
+    prompt string."""
     def _fn(system: str, user: str) -> str:
         from substrate.dispatch.router import dispatch
         result = dispatch(
