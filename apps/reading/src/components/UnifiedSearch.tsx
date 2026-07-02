@@ -100,6 +100,18 @@ function finiteNonNegativeNumber(value: unknown): number | null {
     : null;
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
 export default function UnifiedSearch({
   variant = "library",
   themeContext,
@@ -266,32 +278,24 @@ export default function UnifiedSearch({
     const sources: ResearchSourceHit[] = [];
     const seen = new Set<string>();
     for (const e of start.events) {
-      const p = e.payload as unknown as Record<string, unknown> | undefined;
+      const p = record(e.payload);
       const docId =
-        typeof p?.document_id === "string"
-          ? p.document_id
-          : typeof p?.source_document_id === "string"
-            ? p.source_document_id
-            : null;
+        nonEmptyString(p?.document_id) ??
+        nonEmptyString(p?.source_document_id);
       if (!docId || seen.has(docId)) continue;
       seen.add(docId);
       sources.push({
         kind: "research",
         document_id: docId,
         document_title:
-          typeof p?.document_title === "string"
-            ? p.document_title
-            : typeof p?.title === "string"
-              ? p.title
-              : null,
-        chunk_id: typeof p?.chunk_id === "string" ? p.chunk_id : null,
+          nonEmptyString(p?.document_title) ??
+          nonEmptyString(p?.title),
+        chunk_id: nonEmptyString(p?.chunk_id),
         snippet:
-          typeof p?.snippet === "string"
-            ? p.snippet
-            : "Research source",
+          nonEmptyString(p?.snippet) ?? "Research source",
       });
     }
-    if (sources.length > 0) setResearchHits(sources);
+    setResearchHits(sources);
   }, [start.events]);
 
   const startedAndLive = Boolean(start.startedId) && !start.failed;

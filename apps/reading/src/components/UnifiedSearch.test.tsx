@@ -365,6 +365,90 @@ describe("UnifiedSearch — M3 every result opens via openDocument", () => {
     fireEvent.click(screen.getByText("A Web Source").closest("button")!);
     expect(openDocumentMock).toHaveBeenCalledWith("doc-web-1", { chunkId: "chunk-9" });
   });
+
+  it("drops malformed research source payloads instead of minting Reader links", async () => {
+    resetInvestigationState({
+      startedId: "inv-src",
+      phase: "streaming",
+      events: [
+        {
+          action_type: "dispatch.call",
+          event_id: "bad-empty-doc",
+          investigation_id: "inv-src",
+          param_version: "1",
+          emitted_at: "2026-01-01T00:00:00Z",
+          payload: {
+            document_id: "   ",
+            document_title: "Should not render",
+            chunk_id: "bad-chunk",
+            snippet: "bad source",
+          },
+        } as unknown as Event,
+        {
+          action_type: "dispatch.call",
+          event_id: "bad-array-payload",
+          investigation_id: "inv-src",
+          param_version: "1",
+          emitted_at: "2026-01-01T00:00:01Z",
+          payload: [] as unknown as Event["payload"],
+        } as unknown as Event,
+        {
+          action_type: "dispatch.call",
+          event_id: "valid-source",
+          investigation_id: "inv-src",
+          param_version: "1",
+          emitted_at: "2026-01-01T00:00:02Z",
+          payload: {
+            source_document_id: " doc-web-valid ",
+            title: "  Valid Web Source  ",
+            chunk_id: "  ",
+            snippet: 42,
+          },
+        } as unknown as Event,
+      ],
+    });
+    renderSearch();
+
+    await screen.findByText("Valid Web Source");
+    expect(screen.queryByText("Should not render")).toBeNull();
+    fireEvent.click(screen.getByText("Valid Web Source").closest("button")!);
+    expect(openDocumentMock).toHaveBeenCalledWith("doc-web-valid", undefined);
+  });
+
+  it("clears stale research source hits when the live stream no longer contains sources", async () => {
+    resetInvestigationState({
+      startedId: "inv-src",
+      phase: "streaming",
+      events: [
+        {
+          action_type: "dispatch.call",
+          event_id: "source",
+          investigation_id: "inv-src",
+          param_version: "1",
+          emitted_at: "2026-01-01T00:00:00Z",
+          payload: {
+            document_id: "doc-web-stale",
+            document_title: "Stale Web Source",
+          },
+        } as unknown as Event,
+      ],
+    });
+    const { rerender } = renderSearch();
+    await screen.findByText("Stale Web Source");
+
+    resetInvestigationState({
+      startedId: "inv-src",
+      phase: "streaming",
+      events: [],
+    });
+    rerender(
+      <MemoryRouter>
+        <UnifiedSearch variant="library" themeContext={[]} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => expect(screen.queryByText("Stale Web Source")).toBeNull());
+  });
 });
 
 describe("UnifiedSearch — M5 honest no-key escalate", () => {
