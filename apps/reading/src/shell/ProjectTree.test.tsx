@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 
 import ProjectTree from "./ProjectTree";
@@ -7,8 +7,14 @@ import type { Workflow } from "./workflowTaxonomy";
 import { usePinned } from "../components/navigation/pinnedStore";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 
-const { openDocumentMock } = vi.hoisted(() => ({
+const { listDeliverablesMock, openDocumentMock } = vi.hoisted(() => ({
+  listDeliverablesMock: vi.fn(),
   openDocumentMock: vi.fn(),
+}));
+
+vi.mock("../lib/api", async (orig) => ({
+  ...(await orig<typeof import("../lib/api")>()),
+  listDeliverables: listDeliverablesMock,
 }));
 
 vi.mock("../lib/openDocument", async (orig) => ({
@@ -40,6 +46,7 @@ function renderTree(workflow: Exclude<Workflow, "shared"> = "read") {
 }
 
 beforeEach(() => {
+  listDeliverablesMock.mockReset().mockResolvedValue({ count: 0, deliverables: [] });
   openDocumentMock.mockReset();
   usePinned.getState().clear();
   useWorkspace.getState().reset();
@@ -102,5 +109,46 @@ describe("ProjectTree workflow actions", () => {
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: /Pinned\s*1/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /Recent\s*1/ })).toBeTruthy();
+  });
+
+  it("loads live Write pieces into the workflow tree and opens the Write loop", async () => {
+    listDeliverablesMock.mockResolvedValue({
+      count: 3,
+      deliverables: [
+        { deliverable_id: " dlv-live ", title: "  Live memo  " },
+        { deliverable_id: " ", title: "Skipped memo" },
+        { deliverable_id: "dlv-untitled", title: " " },
+      ],
+    });
+    renderTree("write");
+
+    expect(await screen.findByText("Live memo")).toBeTruthy();
+    expect(await screen.findByText("Untitled piece")).toBeTruthy();
+    expect(screen.queryByText("Skipped memo")).toBeNull();
+    expect(screen.getByRole("button", { name: /Recent\s*2/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Live memo"));
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe("/write/dlv-live");
+    });
+  });
+
+  it("opens Write pieces as floating previews on Cmd/Ctrl-click", async () => {
+    listDeliverablesMock.mockResolvedValue({
+      count: 1,
+      deliverables: [{ deliverable_id: "dlv-preview", title: "Preview memo" }],
+    });
+    renderTree("write");
+
+    fireEvent.click(await screen.findByText("Preview memo"), { metaKey: true });
+
+    const floatingId = useWorkspace.getState().floatingIds[0];
+    expect(useWorkspace.getState().panels[floatingId]).toMatchObject({
+      kind: "DeliverablePreview",
+      props: { deliverableId: "dlv-preview" },
+      mode: "floating",
+      title: "Preview memo",
+    });
+    expect(screen.getByTestId("location").textContent).toBe("/library");
   });
 });
