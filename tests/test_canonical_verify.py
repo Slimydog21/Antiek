@@ -136,3 +136,11 @@ def test_canonical_verify_write_block_repository_hermetic() -> None:
     proc = _run("write-block-repository")
     assert proc.returncode == 0, proc.stderr or proc.stdout
     assert "CANONICAL_VERIFY_OK: write-block-repository" in proc.stdout
+
+
+def test_canonical_verify_write_structured_editor_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("write-structured-editor")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: write-structured-editor" in proc.stdout

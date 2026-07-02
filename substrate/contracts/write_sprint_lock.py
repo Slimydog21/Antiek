@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to WRITE_SPRINTS. Status changes are deliberate roadmap
 # events, not prose-only handoffs.
-WRITE_LOCK_VERSION: int = 3
+WRITE_LOCK_VERSION: int = 4
 
 
 @dataclass(frozen=True)
@@ -57,7 +57,16 @@ WRITE_SPRINTS: dict[int, WriteDeliverable] = {
         # Covered by write-block-repository.
         status="live",
     ),
-    4: WriteDeliverable(4, "structured-block-editor", "Structured block editor"),
+    4: WriteDeliverable(
+        4,
+        "structured-block-editor",
+        "Structured block editor",
+        # Live: TipTap WriteEditor, custom lego/citation nodes, stable block-id
+        # locator bridge, generated-draft ProseMirror mounting, no textarea
+        # fallback, and granular edit emission are covered by
+        # write-structured-editor.
+        status="live",
+    ),
     5: WriteDeliverable(5, "brainstorm-interview", "Brainstorm interview"),
     6: WriteDeliverable(6, "draft-generation-style", "Draft generation style"),
     7: WriteDeliverable(7, "trace-to-source", "Trace to source"),

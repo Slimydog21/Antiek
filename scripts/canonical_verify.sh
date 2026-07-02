@@ -17,6 +17,7 @@
 #   write-outline-block  — Write SPR-01 outline-block model + provenance gate
 #   write-edit-capture   — Write SPR-02 edit trajectory capture + G8 gate
 #   write-block-repository — Write SPR-03 folders/search/drag provenance gate
+#   write-structured-editor — Write SPR-04 TipTap block editor + locator gate
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -40,7 +41,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -199,6 +200,19 @@ cmd_write_block_repository() {
   echo "CANONICAL_VERIFY_OK: write-block-repository"
 }
 
+cmd_write_structured_editor() {
+  echo "== write-structured-editor: structured editor lock =="
+  "${PY}" -m pytest tests/test_contracts_write_lock.py -q --tb=no
+  echo "== write-structured-editor: TipTap adapter, locators, edit stream, draft mount =="
+  (cd apps/reading && npm run test -- \
+    src/modes/Write/Editor/tiptapAdapter.test.ts \
+    src/modes/Write/Editor/locator.test.ts \
+    src/modes/Write/Editor/editCapture.test.ts \
+    src/modes/Write/Outline.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: write-structured-editor"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -279,6 +293,7 @@ main() {
     write-outline-block) cmd_write_outline_block ;;
     write-edit-capture) cmd_write_edit_capture ;;
     write-block-repository) cmd_write_block_repository ;;
+    write-structured-editor) cmd_write_structured_editor ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;

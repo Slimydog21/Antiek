@@ -213,5 +213,8 @@ jobs:
       - name: Canonical verify — write block repository
         run: ./scripts/canonical_verify.sh write-block-repository
 
+      - name: Canonical verify — write structured editor
+        run: ./scripts/canonical_verify.sh write-structured-editor
+
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md
