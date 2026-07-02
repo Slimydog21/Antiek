@@ -33,6 +33,10 @@ read** from canonical sources this package never writes:
   operator-only living index from ``docs/OPERATOR_ACTIONS.md`` as read-only
   status, so counsel/publisher/deploy tasks do not live only in prose.
 
+* :mod:`substrate.coordination.phase2_audit` surfaces the Phase 2 audit
+  scorecard + v5 reconciliation as read-only status, so sprint-level execution
+  truth is visible beside roadmap dependency state.
+
 The binding rule for the whole package: **integration, not duplication — the
 ledger is a view over the source, never a second gate store.** If the operator
 edits the gate file or a roster changes, the dashboard reflects it on next read.
@@ -75,6 +79,14 @@ from .operator_actions import (
     load_operator_actions,
     parse_operator_actions,
 )
+from .phase2_audit import (
+    Phase2AuditView,
+    Phase2ExitCriteria,
+    Phase2SprintScore,
+    load_phase2_audit,
+    parse_phase2_audit,
+    parse_phase2_scorecard,
+)
 from .roadmap import (
     DependencyBlocker,
     Roadmap,
@@ -103,6 +115,13 @@ __all__ = [
     "OperatorActionsView",
     "load_operator_actions",
     "parse_operator_actions",
+    # phase 2 audit
+    "Phase2AuditView",
+    "Phase2ExitCriteria",
+    "Phase2SprintScore",
+    "load_phase2_audit",
+    "parse_phase2_audit",
+    "parse_phase2_scorecard",
     # roadmap
     "DependencyBlocker",
     "Roadmap",
