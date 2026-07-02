@@ -300,7 +300,30 @@ export async function getHealth(): Promise<{
   if (!resp.ok) {
     throw new ApiError("GET /health failed", resp.status, await resp.text());
   }
-  return resp.json();
+  return safeHealthResponse(await resp.json());
+}
+
+function safeHealthResponse(value: unknown): {
+  status: string;
+  param_version: string;
+  schema_version: number;
+  subscriber_count: number;
+  registered_providers?: string[];
+} {
+  const body = record(value);
+  const providers = Array.isArray(body?.registered_providers)
+    ? body.registered_providers.flatMap((item) => {
+        const provider = nonEmptyString(item);
+        return provider ? [provider] : [];
+      })
+    : undefined;
+  return {
+    status: nonEmptyString(body?.status) ?? "unknown",
+    param_version: nonEmptyString(body?.param_version) ?? "",
+    schema_version: nonNegativeInteger(body?.schema_version) ?? 0,
+    subscriber_count: nonNegativeInteger(body?.subscriber_count) ?? 0,
+    ...(providers ? { registered_providers: providers } : {}),
+  };
 }
 
 // ── Sprint 11: investigations + chunks ─────────────────────────────
