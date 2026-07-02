@@ -484,6 +484,8 @@ cmd_unified_substrate_contract_lock() {
     -q --tb=no
   echo "== unified-substrate-contract-lock: standalone conformance gate =="
   "${PY}" tools/codegen/check_conformance.py
+  echo "== unified-substrate-contract-lock: invariant registry meta-check =="
+  "${PY}" -m pytest tests/test_invariant_registry_meta.py -q -p no:cacheprovider -p no:xdist --tb=no
   echo "CANONICAL_VERIFY_OK: unified-substrate-contract-lock"
 }
 

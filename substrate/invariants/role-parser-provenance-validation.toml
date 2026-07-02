@@ -1,0 +1,20 @@
+[invariant]
+id = "role-parser-provenance-validation"
+status = "guarded"
+statement = """
+Role-parser provenance validation. Any parser that surfaces a model-emitted
+reference id must route it through the shared deterministic provenance validator
+instead of trusting the model or hand-rolling local membership checks. COST IF
+VIOLATED: a hallucinated id becomes a fake graph edge, so claims, notes, outline
+blocks, and cross-workflow seams can point at evidence the substrate never
+supplied. The knowledge graph stops being a source-of-truth moat and becomes a
+model-authored fiction layer.
+"""
+guard = "tests/test_provenance_ref_lint.py::test_lint_passes_on_current_tree"
+guard_kind = "pytest"
+assertion = "The provenance-ref lint scans the current parser surfaces and fails if any model-emitted *_id/*_ids field is emitted without substrate.provenance.validate_ref(s), or if parser-local known_/canonical_ id membership checks reappear."
+sunset = ""
+
+[non_vacuity]
+method = "negative_control"
+detail = "tests/test_provenance_ref_lint.py injects parsers that surface source_chunk_ids, question_id/question_ids, constructor refs, raw aliases, mixed trusted/raw refs, and local known_/canonical_ membership checks; each planted bypass must be flagged. The same suite proves validator-routed refs and closed-vocabulary membership checks remain green, so the lint has teeth without banning unrelated parser validation."
