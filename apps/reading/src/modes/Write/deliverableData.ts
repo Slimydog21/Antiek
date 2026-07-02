@@ -46,9 +46,12 @@ function safeStatus(value: unknown): string {
 export function safeDeliverableSummaries(
   deliverables: DeliverableSummary[],
 ): DeliverableSummary[] {
+  const seen = new Set<string>();
   return deliverables.flatMap((deliverable) => {
     const deliverableId = nonEmptyString(deliverable.deliverable_id);
     if (!deliverableId) return [];
+    if (seen.has(deliverableId)) return [];
+    seen.add(deliverableId);
     return [
       {
         ...deliverable,
