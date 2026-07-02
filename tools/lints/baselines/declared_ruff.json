@@ -718,12 +718,6 @@
       "path": "orchestration/audit/phase_audit.py"
     },
     {
-      "col": 13,
-      "kind": "ruff:B007",
-      "line": 200,
-      "path": "orchestration/cascade_session.py"
-    },
-    {
       "col": 1,
       "kind": "ruff:I001",
       "line": 22,
@@ -940,57 +934,21 @@
       "path": "orchestration/continuous/scoring.py"
     },
     {
-      "col": 1,
-      "kind": "ruff:E402",
-      "line": 71,
-      "path": "orchestration/loop_one/orchestrator.py"
-    },
-    {
-      "col": 1,
-      "kind": "ruff:E402",
-      "line": 104,
-      "path": "orchestration/loop_one/orchestrator.py"
-    },
-    {
-      "col": 18,
-      "kind": "ruff:B905",
-      "line": 178,
-      "path": "orchestration/loop_one/orchestrator.py"
-    },
-    {
-      "col": 9,
-      "kind": "ruff:SIM105",
-      "line": 883,
-      "path": "orchestration/loop_one/orchestrator.py"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:SIM105",
-      "line": 944,
-      "path": "orchestration/loop_one/orchestrator.py"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:SIM105",
-      "line": 1089,
-      "path": "orchestration/loop_one/orchestrator.py"
-    },
-    {
       "col": 16,
       "kind": "ruff:SIM115",
-      "line": 163,
+      "line": 171,
       "path": "orchestration/phase_runner/postconditions.py"
     },
     {
       "col": 16,
       "kind": "ruff:SIM115",
-      "line": 238,
+      "line": 246,
       "path": "orchestration/phase_runner/postconditions.py"
     },
     {
       "col": 9,
       "kind": "ruff:SIM102",
-      "line": 506,
+      "line": 514,
       "path": "orchestration/phase_runner/postconditions.py"
     },
     {
@@ -1120,27 +1078,15 @@
       "path": "runtime/remote_exec/provider.py"
     },
     {
-      "col": 13,
-      "kind": "ruff:SIM105",
-      "line": 268,
-      "path": "runtime/remote_exec/runner.py"
-    },
-    {
-      "col": 9,
-      "kind": "ruff:SIM105",
-      "line": 282,
-      "path": "runtime/remote_exec/runner.py"
-    },
-    {
       "col": 17,
       "kind": "ruff:SIM105",
-      "line": 325,
+      "line": 329,
       "path": "runtime/remote_exec/runner.py"
     },
     {
       "col": 13,
       "kind": "ruff:SIM105",
-      "line": 367,
+      "line": 371,
       "path": "runtime/remote_exec/runner.py"
     },
     {
@@ -1148,12 +1094,6 @@
       "kind": "ruff:F841",
       "line": 129,
       "path": "runtime/research_runner/budget.py"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:SIM105",
-      "line": 358,
-      "path": "runtime/research_runner/host_local.py"
     },
     {
       "col": 7,

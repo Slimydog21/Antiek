@@ -40,6 +40,7 @@ isolation) and yields ``StepEvent``s. Graph promotion is the
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -79,6 +80,10 @@ except ImportError:  # pragma: no cover — direct-script fallback
     from substrate.event_log import log_event, seal_investigation  # type: ignore[no-redef]
     from substrate.schemas.events import ActionType  # type: ignore[no-redef]
 
+
+# Stdlib logging (not log_event) for seal failures: a seal failure may mean the
+# events_dir write path itself is broken, so the event log is not a safe channel.
+logger = logging.getLogger("antiek.research_runner")
 
 # Policy cap, not a runtime limit — see module docstring. The product
 # target is "launch 20 at once"; this is that target.
@@ -357,8 +362,9 @@ class HostLocalRunner:
         if self._seal_on_complete:
             try:
                 seal_investigation(iid, events_dir=self._events_dir)
-            except Exception:  # pragma: no cover — seal is best-effort
-                pass
+            except Exception as e:  # seal is best-effort
+                logger.warning("investigation seal failed (best-effort): iid=%s events_dir=%s: %r",
+                               iid, self._events_dir, e)
         await st.queue.put(StepEvent(iid, 0, "done", state=st.state))
         await st.queue.put(_STREAM_DONE)
 

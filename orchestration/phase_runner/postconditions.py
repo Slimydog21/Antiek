@@ -137,7 +137,15 @@ def _events_of_type(investigation_id: str, action_type: ActionType) -> list[Even
             continue
         try:
             out.append(Event.model_validate(row))
-        except Exception:  # pragma: no cover — malformed row; skip
+        except Exception as e:  # malformed row; skip but do not hide
+            # Postconditions are judged on the rows that validate; a skipped
+            # row is evidence dropped, so leave a trace (matching the
+            # `phase_runner:`-prefixed stderr idiom in runner.py).
+            print(
+                f"phase_runner: malformed event row skipped for "
+                f"{investigation_id} (action_type={action_type.value}): {e!r}",
+                file=sys.stderr,
+            )
             continue
     return out
 

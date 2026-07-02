@@ -267,8 +267,9 @@ class RemoteResearchRunner:
         if self._seal_on_complete:
             try:
                 seal_investigation(iid, events_dir=self._events_dir)
-            except Exception:  # pragma: no cover — seal is best-effort
-                pass
+            except Exception as e:  # seal is best-effort
+                logger.warning("investigation seal failed (best-effort): iid=%s events_dir=%s: %r",
+                               iid, self._events_dir, e)
         await st.queue.put(StepEvent(iid, 0, "done", state=st.state))
         await st.queue.put(_STREAM_DONE)
 
@@ -281,8 +282,11 @@ class RemoteResearchRunner:
         st.torn_down = True
         try:
             await self._provider.teardown(st.sandbox)
-        except Exception:  # pragma: no cover — teardown is best-effort
-            pass
+        except Exception as e:  # teardown is best-effort
+            logger.warning(
+                "sandbox teardown failed (best-effort, NOT retried — st.torn_down already set): "
+                "sandbox_id=%s investigation_id=%s: %r",
+                st.sandbox.sandbox_id, st.plan.investigation_id, e)
 
     # -- protocol: stream ----------------------------------------------
 
