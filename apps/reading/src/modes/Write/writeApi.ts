@@ -103,6 +103,10 @@ function safeStringArray(value: unknown): string[] {
   });
 }
 
+function uniqueStringArray(value: unknown): string[] {
+  return Array.from(new Set(safeStringArray(value)));
+}
+
 function safeNumberArray(value: unknown): number[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
@@ -198,7 +202,7 @@ function safeTraceTarget(value: unknown): TraceTarget {
     full_text_allowed: fullTextAllowed,
     document_id: fullTextAllowed ? nullableString(target.document_id) : null,
     document_title: fullTextAllowed ? nullableString(target.document_title) : null,
-    chunk_ids: fullTextAllowed ? safeStringArray(target.chunk_ids) : [],
+    chunk_ids: fullTextAllowed ? uniqueStringArray(target.chunk_ids) : [],
     primary_chunk_index: fullTextAllowed
       ? nonNegativeSafeInteger(target.primary_chunk_index)
       : null,
@@ -218,7 +222,7 @@ function safePromoteResult(value: unknown): PromoteResult {
   return {
     deliverable_id: deliverableId,
     section_id: sectionId,
-    block_ids: safeStringArray(body?.block_ids),
+    block_ids: uniqueStringArray(body?.block_ids),
   };
 }
 
@@ -235,7 +239,7 @@ function safeProseProvenance(value: unknown): Record<string, string[]> {
   return Object.fromEntries(
     Object.entries(source).flatMap(([key, rawIds]) => {
       const paragraph = nonEmptyString(key);
-      const ids = safeStringArray(rawIds);
+      const ids = uniqueStringArray(rawIds);
       return paragraph && ids.length ? [[paragraph, ids]] : [];
     }),
   );
@@ -257,7 +261,7 @@ function safeGenerationResult(value: unknown, sectionId: string): GenerationResu
     all_claims_cited:
       typeof body?.all_claims_cited === "boolean" ? body.all_claims_cited : null,
     unsupported_paragraphs: safeNumberArray(body?.unsupported_paragraphs),
-    fabricated_citations: safeStringArray(body?.fabricated_citations),
+    fabricated_citations: uniqueStringArray(body?.fabricated_citations),
     prose_provenance: safeProseProvenance(body?.prose_provenance),
   };
 }
@@ -265,12 +269,12 @@ function safeGenerationResult(value: unknown, sectionId: string): GenerationResu
 function safeBrainstormEmitResult(value: unknown): BrainstormEmitResult {
   const body = record(value);
   return {
-    block_ids: safeStringArray(body?.block_ids),
+    block_ids: uniqueStringArray(body?.block_ids),
     insight_count: nonNegativeSafeInteger(body?.insight_count) ?? 0,
     question_count: nonNegativeSafeInteger(body?.question_count) ?? 0,
     data_count: nonNegativeSafeInteger(body?.data_count) ?? 0,
     skipped_duplicates: nonNegativeSafeInteger(body?.skipped_duplicates) ?? 0,
-    flagged_unverified: safeStringArray(body?.flagged_unverified),
+    flagged_unverified: uniqueStringArray(body?.flagged_unverified),
   };
 }
 
