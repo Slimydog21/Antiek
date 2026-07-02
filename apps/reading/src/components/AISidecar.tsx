@@ -44,7 +44,11 @@ interface DispatchEvent {
   provider: string;
   model: string;
   latency_ms: number;
-  fallback_reason: string | null;
+  // The real DispatchCallPayload has no fallback_reason string — it carries
+  // fallback_chain_index (0 = primary provider, >0 = a fallback rung was
+  // used). Derive the warning marker from that so it actually fires on a
+  // real fallback instead of being permanently dead.
+  fell_back: boolean;
 }
 
 interface ThoughtPartnerReply {
@@ -110,7 +114,7 @@ export default function AISidecar() {
             provider?: string;
             model?: string;
             latency_ms?: number;
-            fallback_reason?: string | null;
+            fallback_chain_index?: number;
           };
         };
         const events = (data.events ?? [])
@@ -122,7 +126,7 @@ export default function AISidecar() {
             provider: e.payload?.provider ?? "?",
             model: e.payload?.model ?? "?",
             latency_ms: e.payload?.latency_ms ?? 0,
-            fallback_reason: e.payload?.fallback_reason ?? null,
+            fell_back: (e.payload?.fallback_chain_index ?? 0) > 0,
           }));
         setRecentCalls(events);
       } else {
@@ -399,7 +403,7 @@ export default function AISidecar() {
                     </span>
                     <span className="text-shadow-1 dark:text-moonlight shrink-0">
                       {c.latency_ms}ms
-                      {c.fallback_reason ? " ⚠" : ""}
+                      {c.fell_back ? " ⚠" : ""}
                     </span>
                   </li>
                 ))}
