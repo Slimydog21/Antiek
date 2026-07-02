@@ -23,8 +23,7 @@ its own side of a seam against the contract here.
                                                        ▼                    │
                                                      speak ─────────────────┘
 
-         write→speak  (PROVISIONAL — commission interviews from an outline gap;
-                       off the SPR-08 critical path)
+         write→speak  (commission interviews from an outline gap)
 ```
 
 The flywheel is a **cycle of handoffs, not an auto-loop.** Each seam is an
@@ -44,7 +43,7 @@ successor automatically would be a runaway-cost bug. The invariant lives in the
 | `WriteToReadSeam` | write → read | `outline_block` ref → source span | Write SPR-07 / shared reader (antiek-reader SPR-01; DRW SPR-10 historical citation) | committed |
 | `SpeakToWriteSeam` | speak → write | `speak_claim` id → synthesized block | Speak SPR-08 / Write SPR-01 | committed |
 | `SpeakToReadSeam` | speak → read | `servable_entry` ref | Speak SPR-09 / Read corpus (seam #4 gate) | committed |
-| `WriteToSpeakSeam` | write → speak | `question_node` id | unspecified / unspecified | **provisional** |
+| `WriteToSpeakSeam` | write → speak | `question_node` id | Write commission endpoint / Speak project + invite | committed |
 
 Each seam contract (`contracts.py`) carries four load-bearing fields:
 **direction** (pinned, one-way), an **entity reference** (`entity_id` +
@@ -127,20 +126,22 @@ Read SPR-01 owns serve.py and will call it.*
 **Guard:** `tests/test_seam_platform_authored_gate.py` — "speak_derived docs hit
 the publish gate" (a non-gate-passing speak_derived doc is NOT served).
 
-## The provisional seam — `write→speak`
+## `write→speak` commission flow
 
-`WriteToSpeakSeam` (commission interviews from an outline gap) is the **weakest**
-seam — the four product specs barely describe it; no real Write sprint or Speak
-sprint owns a side. It is defined so the shape exists, but:
+`WriteToSpeakSeam` (commission interviews from an outline gap) is now committed.
+The product path is `POST /write/sections/{section_id}/commission-speak`:
 
-- it is flagged **provisional** (`seam_status(WriteToSpeakSeam) == "provisional"`);
-- it is kept **off the SPR-08 end-to-end critical path**;
-- its no-copy guard is **skipped (xfail)** with a stated reason
-  (`tests/test_seam_no_copy.py::test_write_to_speak_no_copy`).
+- Write promotes the gap to a stable shared-graph `question` node.
+- Speak creates a private project whose interview guide references that exact
+  question id.
+- If an informant is supplied, Speak creates the invite link.
+- The typed `seam.write_to_speak` event carries only the `question_node` id and
+  section provenance; it never carries the question body.
 
-**Promotion criterion:** promote to committed when the operator uses Write and
-Speak together and explicitly wants the commission flow — i.e. a real Write
-sprint and a real Speak sprint each implement a side.
+**Guard:** `tests/test_write_routes.py::test_commission_speak_from_write_gap_emits_seam_and_invite`
+exercises the real route/database/event path, and
+`tests/test_seam_no_copy.py::test_write_to_speak_preserves_question_reference`
+pins the no-copy reference invariant.
 
 ## Rejected alternative (fairness) — "each workflow owns its own seams"
 

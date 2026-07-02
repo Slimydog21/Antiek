@@ -27,7 +27,7 @@ export interface ThreadHop {
   /** Whether the workflow this hop lands in has a built surface. An unbuilt hop
    *  renders as the SPR-04 honest stub, never a fake (intellectual honesty). */
   built: boolean;
-  /** True only for the provisional write→speak seam. */
+  /** True for historical/provisional seam hops that should be labeled. */
   viaProvisionalSeam: boolean;
 }
 

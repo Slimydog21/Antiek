@@ -2485,9 +2485,9 @@ export interface SeamSpeakToReadPayload {
 }
 
 /**
- * write → speak. **PROVISIONAL.** Commission interviews from an outline
- * gap. Typed so the trajectory can carry it, but the seam is the weakest and
- * off the SPR-08 critical path; the receiving Speak side is unspecified.
+ * write → speak. Commission interviews from an outline gap. Write promotes
+ * the gap to a question node; Speak creates a project/guide around that same
+ * id.
  */
 export interface SeamWriteToSpeakPayload {
   entity_id: string;

@@ -106,6 +106,84 @@ def test_create_deliverable_persists_investigation_root_link(client):
     assert detail["investigation_root_id"] == "inv-root-xyz"
 
 
+def test_commission_speak_from_write_gap_emits_seam_and_invite(client, seed):
+    r = client.post(
+        f"/write/sections/{seed['section_id']}/commission-speak",
+        json={
+            "question_text": "What should we ask a firsthand witness about the missing years?",
+            "informant_email": "witness@example.com",
+        },
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["question_node_id"].startswith("question-")
+    assert body["speak_project_id"]
+    assert body["invite_id"]
+    assert body["interview_id"]
+    assert body["invite_link"].startswith("https://interview.antiek.ai/")
+    assert body["seam_event_id"]
+
+    with connect_write(default_db_path(), purpose="test/read_commission") as con:
+        node = con.execute(
+            "SELECT node_type, canonical_label, metadata FROM nodes WHERE node_id = ?",
+            [body["question_node_id"]],
+        ).fetchone()
+        assert node is not None
+        assert node[0] == "question"
+        assert "firsthand witness" in node[1]
+        metadata = json.loads(node[2])
+        assert metadata["source_workflow"] == "write"
+        assert metadata["source_kind"] == "outline_gap"
+        assert metadata["section_id"] == seed["section_id"]
+
+        guide_row = con.execute(
+            "SELECT interview_guide FROM interview_projects WHERE project_id = ?",
+            [body["speak_project_id"]],
+        ).fetchone()
+        guide = json.loads(guide_row[0])
+        assert guide["source"] == "write_outline_gap"
+        assert guide["section_id"] == seed["section_id"]
+        assert guide["must_cover"] == [{
+            "id": body["question_node_id"],
+            "text": "What should we ask a firsthand witness about the missing years?",
+        }]
+
+        invite_row = con.execute(
+            "SELECT project_id FROM speak_invites WHERE invite_id = ?",
+            [body["invite_id"]],
+        ).fetchone()
+        assert invite_row == (body["speak_project_id"],)
+
+    jsonl = os.path.join(
+        os.environ["ANTIEK_RESEARCH_EVENTS_DIR"],
+        f"{seed['deliverable_id']}.jsonl",
+    )
+    events = [json.loads(line) for line in open(jsonl, encoding="utf-8")]
+    seams = [e for e in events if e["action_type"] == "seam.write_to_speak"]
+    assert len(seams) == 1
+    payload = seams[0]["payload"]
+    assert payload == {
+        "action_type": "seam.write_to_speak",
+        "entity_id": body["question_node_id"],
+        "entity_kind": "question_node",
+        "provenance_ref": seed["section_id"],
+        "terminates": True,
+        "from_workflow": "write",
+        "to_workflow": "speak",
+        "outline_section_id": seed["section_id"],
+    }
+    assert "content" not in payload
+    assert "text" not in payload
+
+
+def test_commission_speak_rejects_missing_section(client):
+    r = client.post(
+        "/write/sections/not-a-section/commission-speak",
+        json={"question_text": "Who should we interview?"},
+    )
+    assert r.status_code == 404
+
+
 # ── SPR-01 — outline composition ───────────────────────────────────
 
 

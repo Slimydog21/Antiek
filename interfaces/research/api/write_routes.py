@@ -69,6 +69,7 @@ from substrate.write.outline_block import (
 )
 from substrate.write.promote_context import ContextBlockSpec, promote_to_outline
 from substrate.write.provenance import resolve_provenance
+from substrate.write.speak_commission import commission_interview_from_outline_gap
 from substrate.write.trace import resolve_trace_target
 
 write_router = APIRouter(prefix="/write", tags=["write"])
@@ -271,6 +272,13 @@ class GenerateSectionRequest(BaseModel):
     # Optional X-ray gesture contract: regenerate only this paragraph in the
     # persisted draft, while still using the single creative_writer section path.
     paragraph_index: int | None = Field(default=None, ge=0)
+
+
+class CommissionSpeakRequest(BaseModel):
+    question_text: str = Field(..., min_length=1)
+    informant_email: str | None = None
+    informant_handle: str | None = None
+    project_title: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -690,8 +698,6 @@ def generate_section_draft(
             if result.status == "generated" else {}
         ),
     }
-
-
 # ---------------------------------------------------------------------------
 # Investigation → deliverable (WV-SPR-01) — the writing flywheel arm
 # ---------------------------------------------------------------------------
@@ -777,3 +783,41 @@ def promote_investigation(req: FromInvestigationRequest) -> FromInvestigationRes
         synthesis_id=result.synthesis_id,
         synthesis_recommendation=result.synthesis_recommendation,
     )
+
+
+@write_router.post("/sections/{section_id}/commission-speak", status_code=201)
+def commission_speak_from_section_gap(
+    section_id: str,
+    req: CommissionSpeakRequest,
+) -> dict:
+    """Turn a Write section gap into a Speak interview commission."""
+    with _translate(), _write("write/commission_speak") as con:
+        row = con.execute(
+            "SELECT d.deliverable_id, d.title, d.investigation_root_id, s.title "
+            "FROM deliverable_sections s JOIN deliverables d "
+            "ON s.deliverable_id = d.deliverable_id WHERE s.section_id = ?",
+            [section_id],
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="section not found")
+        deliverable_id, deliverable_title, investigation_root_id, section_title = row
+        result = commission_interview_from_outline_gap(
+            con,
+            section_id=section_id,
+            question_text=req.question_text,
+            deliverable_id=deliverable_id,
+            deliverable_title=deliverable_title,
+            section_title=section_title,
+            investigation_id=investigation_root_id or deliverable_id,
+            informant_email=req.informant_email,
+            informant_handle=req.informant_handle,
+            project_title=req.project_title,
+        )
+    return {
+        "question_node_id": result.question_node_id,
+        "speak_project_id": result.speak_project_id,
+        "invite_id": result.invite_id,
+        "interview_id": result.interview_id,
+        "invite_link": result.invite_link,
+        "seam_event_id": result.seam_event_id,
+    }
