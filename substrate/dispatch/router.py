@@ -43,14 +43,14 @@ except ImportError:  # pragma: no cover
     import sys
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(_here))  # substrate/
-    from dispatch.base import (  # type: ignore[no-redef]
+    from dispatch.base import (  # type: ignore[import-not-found, no-redef]
         NormalizedUsage,
         Provider,
         ProviderError,
     )
-    from dispatch.breaker import default_breaker  # type: ignore[no-redef]
-    from event_log import emit_typed  # type: ignore[no-redef]
-    from schemas import DispatchCallPayload  # type: ignore[no-redef]
+    from dispatch.breaker import default_breaker  # type: ignore[import-not-found, no-redef]
+    from event_log import emit_typed  # type: ignore[import-not-found, no-redef]
+    from schemas import DispatchCallPayload  # type: ignore[import-not-found, no-redef]
 
 
 # ---------------------------------------------------------------------------
@@ -432,6 +432,12 @@ def dispatch(
             current = current.fallback
             chain_index += 1
             continue
+        # mypy --strict: bind the guard-narrowed fields once. TierConfig's
+        # provider/model are Optional by design (placeholder tiers), and
+        # attribute narrowing does not survive the calls below.
+        provider_name: str = current.provider
+        model_name: str = current.model
+
 
         # An unregistered provider (e.g. a route-override pointing at a
         # provider whose API key isn't set, so bootstrap never registered
@@ -441,12 +447,12 @@ def dispatch(
         # handles it. This is what keeps the SPR-01 M3 route-override a
         # preference, not a single point of failure.
         try:
-            provider = get_provider(current.provider)
+            provider = get_provider(provider_name)
         except KeyError as e:
             last_error = ProviderError(
-                f"provider {current.provider!r} is not registered "
+                f"provider {provider_name!r} is not registered "
                 f"(no API key / not bootstrapped); falling back. {e}",
-                provider=current.provider, model=current.model or "<none>",
+                provider=provider_name, model=model_name or "<none>",
                 latency_ms=0, retryable=True,
             )
             _emit_dispatch_call(
@@ -454,8 +460,8 @@ def dispatch(
                 parent_event_id=parent_event_id,
                 role=role,
                 tier=tier_name,
-                provider=current.provider,
-                model=current.model,
+                provider=provider_name,
+                model=model_name,
                 usage=NormalizedUsage(input_tokens=0, output_tokens=0),
                 cost_usd=0.0,
                 latency_ms=0,
@@ -472,11 +478,11 @@ def dispatch(
         # fast and the tier-fallback chain carries the call — the same
         # "skip + fall through" mechanism the unregistered/no-key path uses
         # above. No retry (I-NORETRY); the breaker only decides whether to call.
-        if default_breaker.is_open(current.provider):
+        if default_breaker.is_open(provider_name):
             last_error = ProviderError(
-                f"provider {current.provider!r} circuit breaker is OPEN "
+                f"provider {provider_name!r} circuit breaker is OPEN "
                 "(recent infra failures); skipping and falling back.",
-                provider=current.provider, model=current.model or "<none>",
+                provider=provider_name, model=model_name or "<none>",
                 latency_ms=0, retryable=True,
             )
             _emit_dispatch_call(
@@ -484,8 +490,8 @@ def dispatch(
                 parent_event_id=parent_event_id,
                 role=role,
                 tier=tier_name,
-                provider=current.provider,
-                model=current.model,
+                provider=provider_name,
+                model=model_name,
                 usage=NormalizedUsage(input_tokens=0, output_tokens=0),
                 cost_usd=0.0,
                 latency_ms=0,
@@ -504,7 +510,7 @@ def dispatch(
         t_start = time.monotonic()
         try:
             raw = provider.call(
-                model=current.model,
+                model=model_name,
                 prompt=prompt,
                 max_tokens=effective_max_tokens,
                 temperature=current.temperature,
@@ -518,8 +524,8 @@ def dispatch(
                 parent_event_id=parent_event_id,
                 role=role,
                 tier=tier_name,
-                provider=current.provider,
-                model=current.model,
+                provider=provider_name,
+                model=model_name,
                 usage=NormalizedUsage(input_tokens=0, output_tokens=0),
                 cost_usd=0.0,
                 latency_ms=latency_ms,
@@ -532,14 +538,14 @@ def dispatch(
             # Count this genuine provider-call failure toward the breaker. Config
             # conditions (unregistered/no-key) never reach here — they fall
             # through at get_provider above — so every failure counted is real.
-            default_breaker.record_failure(current.provider)
+            default_breaker.record_failure(provider_name)
             last_error = e
             current = current.fallback
             chain_index += 1
             continue
 
         # Success: normalize, cost, emit, return.
-        default_breaker.record_success(current.provider)
+        default_breaker.record_success(provider_name)
         usage = provider.normalize_usage(raw.raw_usage)
         finish = normalize_finish_reason(raw.finish_reason)
         cost = _compute_cost_usd(usage, current.pricing)
@@ -548,8 +554,8 @@ def dispatch(
             parent_event_id=parent_event_id,
             role=role,
             tier=tier_name,
-            provider=current.provider,
-            model=current.model,
+            provider=provider_name,
+            model=model_name,
             usage=usage,
             cost_usd=cost,
             latency_ms=raw.latency_ms,
@@ -564,8 +570,8 @@ def dispatch(
             usage=usage,
             cost_usd=cost,
             latency_ms=raw.latency_ms,
-            provider=current.provider,
-            model=current.model,
+            provider=provider_name,
+            model=model_name,
             tier=tier_name,
             finish_reason=finish,
             fallback_chain_index=chain_index,

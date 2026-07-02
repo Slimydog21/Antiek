@@ -728,7 +728,15 @@ class ActionType(str, Enum):
 #     identical; SPR-05 dashboards query the enriched DISPATCH_CALL rather than
 #     a forked second per-call event. Operator decision 2026-07-02 (extend,
 #     don't fork). specs/antiek-yegge-execute/ SPR-01. 2026-07-02.
-EVENT_SCHEMA_VERSION: int = 28
+# v29: DiscoveryProvider gains "parallel". The DRL parallel-gather adapter
+#     (acquisition/search/parallel/, merged via the Exa+Parallel seam) already
+#     constructs DiscoveryProposedPayload(provider="parallel") at runtime;
+#     pydantic validates Literals, so the old two-member Literal made every
+#     parallel-discovery emit a guaranteed ValidationError (latent — the lane
+#     is inert until a Parallel key is configured). Widening is backward-
+#     compatible: all stored events remain valid. Caught by mypy --strict
+#     (declared-bar) during the 2026-07-02 restore merge. 2026-07-02.
+EVENT_SCHEMA_VERSION: int = 29
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -2938,7 +2946,7 @@ class PreferenceObservationRecordedPayload(_PayloadBase):
 # is still emitted exclusively by acquisition/urls/adapter.ingest_url.
 
 
-DiscoveryProvider = Literal["exa", "operator"]
+DiscoveryProvider = Literal["exa", "parallel", "operator"]
 # Future providers (serpapi, tavily, perplexity, brave) extend the
 # union here, not in payload fields. Keeping the discriminator narrow
 # means a new provider is a one-line schema change rather than a
@@ -3135,8 +3143,8 @@ class AIActionAppliedPayload(_PayloadBase):
     ]
     target_id: str
     operator_prompt: str = Field(min_length=1, max_length=2000)
-    prev_state: dict = Field(default_factory=dict)
-    next_state: dict = Field(default_factory=dict)
+    prev_state: dict[str, Any] = Field(default_factory=dict)
+    next_state: dict[str, Any] = Field(default_factory=dict)
     # SHA-256 of (target_kind + target_id + prev_state JSON) — gives
     # the undo handler a cheap optimistic-concurrency check so two
     # rapid AI actions on the same target can't accidentally overwrite

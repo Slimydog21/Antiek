@@ -1279,20 +1279,20 @@ def summarize_corpus(
     result = audit or run_audit(db_path, governor=governor)
     con = connect_read(db_path)
     try:
-        (total_docs,) = con.execute("SELECT COUNT(*) FROM documents").fetchone()
-        (total_chunks,) = con.execute("SELECT COUNT(*) FROM chunks").fetchone()
+        (total_docs,) = con.execute("SELECT COUNT(*) FROM documents").fetchone() or (0,)
+        (total_chunks,) = con.execute("SELECT COUNT(*) FROM chunks").fetchone() or (0,)
         placeholders = ", ".join("?" for _ in SERVABLE_CONTENT_CLASSES)
         (servable_docs,) = con.execute(
             f"SELECT COUNT(*) FROM documents WHERE content_class IN ({placeholders})",
             list(SERVABLE_CONTENT_CLASSES),
-        ).fetchone()
+        ).fetchone() or (0,)
         # Gated = everything not in the servable allowlist (NULL / restricted /
         # unrecognised) — the deny-by-default complement.
         (gated_docs,) = con.execute(
             f"SELECT COUNT(*) FROM documents WHERE content_class IS NULL "
             f"OR content_class NOT IN ({placeholders})",
             list(SERVABLE_CONTENT_CLASSES),
-        ).fetchone()
+        ).fetchone() or (0,)
         by_source_rows = con.execute(
             """
             SELECT COALESCE(source_uri, '(unknown)') AS src, COUNT(*) AS n

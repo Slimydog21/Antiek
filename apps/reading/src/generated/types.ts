@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 28;
+export const EVENT_SCHEMA_VERSION = 29;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -187,7 +187,7 @@ export type SynthesisRecommendation = "proceed" | "pass" | "conditional" | "unde
 
 export type AuditSeverity = "info" | "warning" | "critical";
 
-export type DiscoveryProvider = "exa" | "operator";
+export type DiscoveryProvider = "exa" | "parallel" | "operator";
 
 export type DiscoveryDecision = "ingested" | "rejected_by_legal_gate" | "rejected_by_operator" | "fetch_failed";
 
@@ -1785,7 +1785,7 @@ export interface SkillRulePromotedPayload {
 export interface DiscoveryProposedPayload {
   action_type: "discovery.proposed";
   discovery_id: string;
-  provider: "exa" | "operator";
+  provider: "exa" | "parallel" | "operator";
   query: string;
   url: string;
   title?: string | null;
