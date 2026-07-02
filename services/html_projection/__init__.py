@@ -20,6 +20,7 @@ determinism, self-contained, provenance footer in every render.
 
 from __future__ import annotations
 
+from . import gate, tokens
 from .context import (
     DictRefResolver,
     Provenance,
@@ -45,7 +46,6 @@ from .island import (
     extract_island,
 )
 from .renderer import render
-from . import gate, tokens
 
 __all__ = [
     "CONTRACT_TABLE",

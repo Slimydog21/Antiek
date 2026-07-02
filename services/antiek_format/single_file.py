@@ -120,7 +120,7 @@ def verify_single_file(path: str) -> bool:
     """Verify a single-file ``.antiek.html`` on disk. Returns False on any
     failure (including a missing/unreadable file)."""
     try:
-        with open(path, "r", encoding="utf-8") as fh:
+        with open(path, encoding="utf-8") as fh:
             html = fh.read()
     except OSError:
         return False

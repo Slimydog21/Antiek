@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, Response
@@ -46,8 +45,8 @@ def _resolve_db_path() -> str:
 
 
 def resolve_deliverable_export(
-    deliverable_id: str, *, db_path: Optional[str] = None
-) -> Optional[DeliverableExportSource]:
+    deliverable_id: str, *, db_path: str | None = None
+) -> DeliverableExportSource | None:
     """Read a deliverable into a DeliverableExportSource, or None if absent.
 
     The operator-authored section prose (``deliverable_sections.prose_text``,

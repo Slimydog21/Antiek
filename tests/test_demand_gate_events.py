@@ -11,7 +11,6 @@ import pytest
 
 from services.demand_gate.events import (
     DEMAND_GATE_EVENT_TYPES,
-    EXPORT_OFFERED,
     EXPORT_TAKEN,
     RE_IMPORT_DETECTED,
     SHARE_LINK_TAKEN,

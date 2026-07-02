@@ -34,7 +34,6 @@ import json
 import os
 import sys
 from dataclasses import dataclass
-from typing import Optional
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
@@ -96,7 +95,7 @@ def build_signing_input(
     manifest_bytes: bytes,
     content_bytes: bytes,
     edges_bytes: bytes,
-    extra_sections: Optional[list[bytes]] = None,
+    extra_sections: list[bytes] | None = None,
 ) -> bytes:
     """Concatenate canonical sections with 0x1F separators.
 
@@ -262,7 +261,7 @@ def ensure_keypair(user_id: str, *, db_path: str) -> Keypair:
     return kp
 
 
-def _load_keypair(user_id: str, *, db_path: str) -> Optional[Keypair]:
+def _load_keypair(user_id: str, *, db_path: str) -> Keypair | None:
     con = _connect_for_read(db_path)
     try:
         # If the table doesn't exist yet, treat as "no keypair yet".

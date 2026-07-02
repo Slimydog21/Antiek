@@ -11,7 +11,7 @@ from __future__ import annotations
 import io
 import json
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -50,7 +50,7 @@ def _container(keypair, text: str) -> bytes:
                 {"type": "paragraph", "content": [{"type": "text", "text": text}]}
             ],
         },
-        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
     return write_antiek(inp, keypair=keypair)
 

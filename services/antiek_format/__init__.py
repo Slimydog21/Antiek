@@ -44,9 +44,9 @@ from .sidecar_reader import (
     read_sidecar,
 )
 from .sidecar_writer import (
+    SIDECAR_CONTENT_CLASS,
     AnchorRow,
     HighlightRow,
-    SIDECAR_CONTENT_CLASS,
     SidecarInput,
     build_sidecar_input_for_document,
     write_sidecar,

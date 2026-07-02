@@ -28,7 +28,7 @@ from __future__ import annotations
 import io
 import json
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime
 
 import pytest
 
@@ -40,12 +40,11 @@ from services.antiek_format import (
     write_antiek,
 )
 from services.antiek_format.native_writer import (
+    _FORBIDDEN_SUBSTRATE_FIELDS,
     ENTRY_CONTENT,
     ENTRY_MANIFEST,
     _build_deterministic_zip,
-    _FORBIDDEN_SUBSTRATE_FIELDS,
 )
-
 
 # ── Five fixtures of varying complexity ──
 

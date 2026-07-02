@@ -58,8 +58,8 @@ import re
 import sys
 import zipfile
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 try:
     from .signature import (
@@ -165,9 +165,9 @@ class WriterInput:
     notebook_id: str
     user_id: str
     document_id: str
-    parent_document_id: Optional[str]
+    parent_document_id: str | None
     content_class: str  # "notebook" | "theme_notebook" | "deliverable"
-    title: Optional[str]
+    title: str | None
 
     # The canonical TipTap document. This IS the source of truth.
     content_tiptap: dict
@@ -190,10 +190,10 @@ class WriterInput:
 
     # Optional first-save timestamp. When None, the writer uses now().
     # Pinning enables deterministic byte-output for tests.
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
 
     # Optional notebook-id stamp (carried back to substrate on read).
-    format_version: Optional[int] = None
+    format_version: int | None = None
 
 
 # ── Public API ──
@@ -277,8 +277,8 @@ def write_antiek(
 
     # ── Build manifest ──
 
-    created_at_iso = (inp.created_at or datetime.now(timezone.utc)).astimezone(
-        timezone.utc
+    created_at_iso = (inp.created_at or datetime.now(UTC)).astimezone(
+        UTC
     ).isoformat()
 
     # Canonicalise the TipTap body ONCE — it is both the signed content
@@ -446,7 +446,7 @@ def _render_shell(
     *,
     canonical_tiptap: Any,
     edges: list[dict],
-    title: Optional[str],
+    title: str | None,
     document_id: str,
     notebook_id: str,
     content_class: str,

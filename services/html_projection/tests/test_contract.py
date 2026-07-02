@@ -9,7 +9,6 @@ from services.html_projection.contract import (
     known_tiptap_types,
 )
 
-
 # ── The contract table covers every block type found in code ──
 
 
@@ -94,6 +93,7 @@ def test_every_non_prose_block_type_has_a_partial():
     """Every non-prose contract row names a partial module that exists
     under services/html_projection/partials/."""
     import importlib
+
     import services.html_projection.partials as partials_pkg
 
     partials_dir = partials_pkg.__path__[0]

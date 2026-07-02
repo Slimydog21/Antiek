@@ -20,10 +20,7 @@ If there is no ref_id, both are None/"" (caller renders inline).
 
 from __future__ import annotations
 
-from typing import Any, Optional
-
 from ..context import RenderContext, ResolvedRef, Tombstone
-from ..escape import escape_text
 from . import tombstone as tombstone_partial
 
 
@@ -46,7 +43,7 @@ def resolve_or_tombstone(
     ref_id: str,
     block_type: str,
     ctx: RenderContext,
-) -> tuple[Optional[ResolvedRef], str]:
+) -> tuple[ResolvedRef | None, str]:
     """Resolve a ref or render its tombstone.
 
     Returns ``(resolved, tombstone_html)``. Exactly one of the two is

@@ -48,13 +48,12 @@ import importlib
 from typing import Any
 
 from . import tokens
-from .contract import contract_for_tiptap_type
 from .context import RenderContext
+from .contract import contract_for_tiptap_type
 from .escape import escape_attr, escape_text
 from .graph_projection import graph_widget_node
 from .island import embed_island
 from .partials import unsupported as unsupported_partial
-from .partials._common import inline_text
 from .partials.prose import render as render_prose
 
 # ── Partial dispatch table ──

@@ -14,8 +14,6 @@ from __future__ import annotations
 import os
 import tempfile
 
-import pytest
-
 from services.antiek_format import (
     HEADER_COMMENT,
     project_to_markdown,

@@ -11,14 +11,12 @@ rights-safe by construction.
 
 from __future__ import annotations
 
-from typing import Optional
-
 _SELF = "__self__"
 
 
 def graph_widget_node(
     edges: list[dict], *, self_label: str = "This document"
-) -> Optional[dict]:
+) -> dict | None:
     """Build an ``antiek_widget`` (kind=dep_graph) node visualizing the outbound
     edges (this document -> each referenced document), or ``None`` when there are
     no edges to show (so the caller renders no empty graph). The current document

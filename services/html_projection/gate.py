@@ -37,7 +37,7 @@ clock, no I/O. The same HTML always yields the same verdict.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 class ScriptViolation(Exception):
@@ -45,7 +45,7 @@ class ScriptViolation(Exception):
     executable script. The offending class + a sample match is on the
     instance for diagnostics."""
 
-    def __init__(self, violations: list["Violation"]) -> None:
+    def __init__(self, violations: list[Violation]) -> None:
         self.violations = violations
         summary = "; ".join(
             f"{v.kind}: {v.match!r}" for v in violations

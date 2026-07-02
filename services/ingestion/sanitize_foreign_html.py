@@ -39,7 +39,7 @@ _SRCDOC_RE = re.compile(r"\bsrcdoc\s*=", re.IGNORECASE)
 _ANTIEK_MARKER_RE = re.compile(r"data-antiek\s*=", re.IGNORECASE)
 
 # (kind, regex) — the foreign-only buckets, in deterministic order.
-_FOREIGN_EXTRA: tuple[tuple[str, "re.Pattern[str]"], ...] = (
+_FOREIGN_EXTRA: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("data_uri_payload", _DATA_PAYLOAD_RE),
     ("svg_foreign_object", _FOREIGN_OBJECT_RE),
     ("iframe_srcdoc", _SRCDOC_RE),

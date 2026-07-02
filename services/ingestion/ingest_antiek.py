@@ -16,7 +16,6 @@ model-generated text re-entering packs) is out of scope and stays open.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
 
 from services.antiek_format import read_antiek
 from services.antiek_format.single_file import verify_single_file_html
@@ -34,18 +33,18 @@ class IngestResult:
     that it enters any LLM context as quoted data, not instructions."""
 
     ok: bool
-    doc_model: Optional[dict]
+    doc_model: dict | None
     quarantined: bool
-    reason: Optional[str]
+    reason: str | None
     framing: str = "quoted_payload"
     # SPR-08 M2: round-trip classification when an ExportRegistry is supplied —
     # "returned_unmodified" | "traveled_and_changed", else None (not a tracked
     # round-trip, or no registry passed).
-    roundtrip: Optional[str] = None
+    roundtrip: str | None = None
 
 
 def ingest_antiek(
-    data: bytes, *, export_registry: Optional[ExportRegistry] = None
+    data: bytes, *, export_registry: ExportRegistry | None = None
 ) -> IngestResult:
     """Ingest a returning born-Antiek artifact, island-only.
 

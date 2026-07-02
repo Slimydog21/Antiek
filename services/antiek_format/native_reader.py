@@ -32,7 +32,6 @@ import sys
 import zipfile
 from dataclasses import dataclass, field
 from io import BytesIO
-from typing import Any, Optional
 
 try:
     from .native_writer import (
@@ -116,12 +115,12 @@ class ReadResult:
     schema_version: str
     content_class: str
     document_id: str
-    parent_document_id: Optional[str]
-    notebook_id: Optional[str]
+    parent_document_id: str | None
+    notebook_id: str | None
     user_id: str
     creator_pubkey: str
-    title: Optional[str]
-    format_version: Optional[int]
+    title: str | None
+    format_version: int | None
     created_at: str  # ISO-8601 string as written
     content_tiptap: dict
     blocks_index: list[dict]
@@ -134,7 +133,7 @@ class ReadResult:
     # SPR-04: the raw projection.html shell bytes, or None for a pre-1.1.0
     # container that carries no shell. A DERIVED projection — never parse it
     # back as canonical; content_tiptap stays the source of truth.
-    projection_html: Optional[bytes] = None
+    projection_html: bytes | None = None
 
 
 # ── Public API ──
@@ -398,7 +397,7 @@ def canonical_tiptap_bytes(doc: dict) -> bytes:
 # ── Internals ──
 
 
-def _block_id_from_audio_path(path: str) -> Optional[str]:
+def _block_id_from_audio_path(path: str) -> str | None:
     if not path.startswith(BLOCKS_PREFIX):
         return None
     tail = path[len(BLOCKS_PREFIX):]

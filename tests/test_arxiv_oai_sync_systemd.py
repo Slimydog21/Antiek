@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 _REPO = Path(__file__).resolve().parent.parent
 _TEMPLATES = _REPO / "infrastructure" / "ansible" / "templates"
 _DEPLOY = _REPO / "infrastructure" / "ansible" / "playbooks" / "deploy.yml"

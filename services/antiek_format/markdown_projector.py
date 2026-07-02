@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import os
 import sys
-from typing import Any, Optional
+from typing import Any
 
 try:
     from .native_reader import ReadResult, read_antiek
@@ -68,7 +68,7 @@ def project_to_markdown_with_blocks(
     """
     result = read_antiek(data)
     output_dir = os.path.dirname(os.path.abspath(output_md_path)) or "."
-    blocks_dir: Optional[str] = None
+    blocks_dir: str | None = None
     if result.audio_blobs:
         blocks_dir = os.path.join(output_dir, "blocks")
         os.makedirs(blocks_dir, exist_ok=True)
@@ -78,7 +78,7 @@ def project_to_markdown_with_blocks(
     return _render_markdown(result, audio_dir="blocks" if blocks_dir else None)
 
 
-def _render_markdown(result: ReadResult, *, audio_dir: Optional[str]) -> str:
+def _render_markdown(result: ReadResult, *, audio_dir: str | None) -> str:
     """Internal renderer. ``audio_dir`` is the relative path (from the
     .md location) where audio blobs live, or None to inline the
     block_id without a working link."""
@@ -142,7 +142,7 @@ def _render_markdown(result: ReadResult, *, audio_dir: Optional[str]) -> str:
 
 
 def _render_block(
-    node: Any, by_id: dict[str, dict], *, audio_dir: Optional[str]
+    node: Any, by_id: dict[str, dict], *, audio_dir: str | None
 ) -> str:
     """Render one TipTap block as markdown.
 

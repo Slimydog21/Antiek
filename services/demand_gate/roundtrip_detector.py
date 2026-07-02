@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import Optional
 
 from services.antiek_format.native_writer import _canonical_tiptap_node
 from services.antiek_format.signature import canonical_json_bytes
@@ -46,7 +45,7 @@ class RoundTripResult:
     document_id: str
     is_roundtrip: bool
     content_hash: str
-    event: Optional[dict]  # the typed detection event, or None when novel
+    event: dict | None  # the typed detection event, or None when novel
 
 
 class ExportRegistry:
@@ -84,7 +83,7 @@ def classify_roundtrip(
         classification = "novel"
 
     is_roundtrip = classification != "novel"
-    event: Optional[dict] = None
+    event: dict | None = None
     if is_roundtrip:
         event = {
             "action_type": ROUNDTRIP_EVENT_TYPE,

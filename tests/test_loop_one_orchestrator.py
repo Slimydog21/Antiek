@@ -79,8 +79,9 @@ def _isolate_state(tmp_path, monkeypatch):
         "## Open Questions\n\n(Findings will be added.)\n\n"
         "## Monitoring Checklist\n\n(Findings will be added.)\n"
     )
-    from substrate.graph.schema import init_database_at_path
     import duckdb
+
+    from substrate.graph.schema import init_database_at_path
 
     init_database_at_path(str(db_path))
     con = duckdb.connect(str(db_path))

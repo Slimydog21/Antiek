@@ -30,7 +30,7 @@ without a DuckDB connection). Tests inject a dict-backed resolver.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional, Protocol
+from typing import Any, Protocol
 
 
 @dataclass(frozen=True)
@@ -61,8 +61,8 @@ class Tombstone:
     """
 
     kind: str
-    deleted_at: Optional[str]
-    prior_text: Optional[str]
+    deleted_at: str | None
+    prior_text: str | None
     ref_id: str
 
 
@@ -128,8 +128,8 @@ class RenderContext:
         doc-model. Defaults to ``"1"`` (the version this sprint ships).
     """
 
-    resolver: Optional[RefResolver] = None
-    provenance: "Provenance" = field(default_factory=lambda: Provenance())
+    resolver: RefResolver | None = None
+    provenance: Provenance = field(default_factory=lambda: Provenance())
     schema_version: str = "1"
 
 
@@ -143,14 +143,14 @@ class Provenance:
     field set is closed so the footer is byte-stable for a given ctx.
     """
 
-    document_id: Optional[str] = None
-    notebook_id: Optional[str] = None
-    title: Optional[str] = None
-    content_class: Optional[str] = None
-    schema_version: Optional[str] = None
-    creator_user_id: Optional[str] = None
-    rendered_at: Optional[str] = None
-    signature_valid: Optional[bool] = None
+    document_id: str | None = None
+    notebook_id: str | None = None
+    title: str | None = None
+    content_class: str | None = None
+    schema_version: str | None = None
+    creator_user_id: str | None = None
+    rendered_at: str | None = None
+    signature_valid: bool | None = None
 
 
 # ── Convenience resolver implementations for tests ──

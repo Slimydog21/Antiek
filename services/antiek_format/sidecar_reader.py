@@ -42,7 +42,6 @@ themselves are preserved with an audit trail.
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import json
 import logging
@@ -51,9 +50,8 @@ import sys
 import uuid
 import zipfile
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from io import BytesIO
-from typing import Any, Optional
+from typing import Any
 
 try:
     from .native_reader import (
@@ -89,8 +87,6 @@ except ImportError:  # pragma: no cover — direct-script fallback
     from services.antiek_format.native_reader import (  # type: ignore[no-redef]
         AntiekFormatError,
         MalformedAntiek,
-        ManifestValidationError,
-        UnsupportedVersion,
         _check_version_policy,
         _validate_manifest,
     )
@@ -157,12 +153,12 @@ class RestoredSidecar:
     document_id: str
     parent_pdf_sha256: str
     parent_pdf_size_bytes: int
-    parent_pdf_filename_hint: Optional[str]
+    parent_pdf_filename_hint: str | None
     creator_user_id: str
     creator_pubkey: str
-    title: Optional[str]
+    title: str | None
     created_at: str
-    chunker_version_at_write: Optional[str]
+    chunker_version_at_write: str | None
 
     highlights: list[dict] = field(default_factory=list)
     anchors: list[dict] = field(default_factory=list)
@@ -173,7 +169,7 @@ class RestoredSidecar:
     signature_valid: bool = False
     hash_mismatch: bool = False
     # Raw values used by the apply step + the UX warning.
-    imported_pdf_sha256: Optional[str] = None
+    imported_pdf_sha256: str | None = None
     manifest_unknown_keys: dict = field(default_factory=dict)
 
 
@@ -199,7 +195,7 @@ class ApplyReport:
 def read_sidecar(
     data: bytes,
     *,
-    imported_pdf_sha256: Optional[str] = None,
+    imported_pdf_sha256: str | None = None,
     strict: bool = False,
 ) -> RestoredSidecar:
     """Parse + validate + verify a sidecar's bytes.
@@ -439,7 +435,7 @@ def apply_sidecar(
     *,
     db_path: str,
     user_id: str,
-    audio_storage_root: Optional[str] = None,
+    audio_storage_root: str | None = None,
     investigation_id: str = "__operator__",
 ) -> ApplyReport:
     """Write restored rows into the substrate. Idempotent.
@@ -467,18 +463,19 @@ def apply_sidecar(
     # read-side hot path. Tests can read sidecars without a substrate
     # DB; apply requires one.
     try:
-        from runtime.db_lock import connect_write
         from substrate.behavior.taxonomy import BehaviorEventType
         from substrate.voice import CHUNKER_VERSION
         from substrate.voice.anchor_api import BBox, resolve_chunk_for_bbox
+
+        from runtime.db_lock import connect_write
     except ImportError:  # pragma: no cover
         _repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         if _repo not in sys.path:
             sys.path.insert(0, _repo)
-        from runtime.db_lock import connect_write  # type: ignore
-        from substrate.behavior.taxonomy import BehaviorEventType  # type: ignore
         from substrate.voice import CHUNKER_VERSION  # type: ignore
         from substrate.voice.anchor_api import BBox, resolve_chunk_for_bbox  # type: ignore
+
+        from runtime.db_lock import connect_write  # type: ignore
 
     report = ApplyReport()
     unsigned = not restored.signature_valid

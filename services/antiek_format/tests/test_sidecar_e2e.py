@@ -29,8 +29,8 @@ import json
 import os
 import sys
 import zipfile
-from datetime import datetime, timezone
-from typing import Iterator
+from collections.abc import Iterator
+from datetime import UTC, datetime
 
 import duckdb
 import pytest
@@ -43,8 +43,8 @@ if _REPO_ROOT not in sys.path:
 
 
 from services.antiek_format import (
-    AnchorRow,
     HASH_MISMATCH_WARNING,
+    AnchorRow,
     HighlightRow,
     SidecarInput,
     apply_sidecar,
@@ -52,17 +52,15 @@ from services.antiek_format import (
     read_sidecar,
     write_sidecar,
 )
-from services.antiek_format.native_writer import _FORBIDDEN_SUBSTRATE_FIELDS
 from services.antiek_format.sidecar_reader import (
     MissingSidecarFields,
-    NotASidecar,
     SidecarHashMismatch,
 )
 from services.antiek_format.sidecar_writer import (
     ENTRY_ANCHORS,
     ENTRY_HIGHLIGHTS,
-    SIDECAR_CONTENT_CLASS,
 )
+
 # The ingestion-boundary glue (``services/ingestion/sidecar_detector``) is
 # SPR-03 / SPR-10 work and is NOT part of the self-contained ``.antiek``
 # container format landed in SPR-01 — it lives on the diverged branch and
@@ -114,6 +112,7 @@ def _substrate_apply_available() -> bool:
     try:
         import substrate.behavior.taxonomy  # noqa: F401
         import substrate.voice  # noqa: F401
+
         import runtime.db_lock  # noqa: F401
     except ModuleNotFoundError:
         return False
@@ -237,7 +236,7 @@ def keypair_b(antiek_db: str):
 
 @pytest.fixture
 def fixed_created_at() -> datetime:
-    return datetime(2026, 5, 22, 12, 0, 0, tzinfo=timezone.utc)
+    return datetime(2026, 5, 22, 12, 0, 0, tzinfo=UTC)
 
 
 @pytest.fixture

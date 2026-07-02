@@ -12,7 +12,6 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, Response
@@ -30,7 +29,7 @@ _log = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class NotebookExportSource:
     content_tiptap: dict
-    title: Optional[str]
+    title: str | None
     document_id: str
     owner_user_id: str
     content_class: str = "notebook"
@@ -46,8 +45,8 @@ def _resolve_db_path() -> str:
 
 
 def resolve_notebook_export(
-    notebook_id: str, *, db_path: Optional[str] = None
-) -> Optional[NotebookExportSource]:
+    notebook_id: str, *, db_path: str | None = None
+) -> NotebookExportSource | None:
     """Read a notebook into a NotebookExportSource, or None if it does not exist.
 
     The notebook's ref-bearing nodes (claim/insight/question) are resolved

@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import io
 import zipfile
+from datetime import UTC
 
 import pytest
 
-from services.antiek_format import WriterInput, write_antiek
+from services.antiek_format import write_antiek
 from services.antiek_format.native_writer import (
     BLOCKS_PREFIX,
     ENTRY_CONTENT,
@@ -87,11 +88,11 @@ def test_writer_determinism_requires_pinned_created_at(
     would fail ``test_writer_is_deterministic`` above.
     """
     import dataclasses
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     import services.antiek_format.native_writer as nw
 
-    base = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    base = datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
 
     # The writer does `from datetime import datetime` then calls
     # `datetime.now(timezone.utc)`. Patch the module's `datetime` binding
@@ -110,7 +111,7 @@ def test_writer_determinism_requires_pinned_created_at(
 
     # (1) PINNED created_at: the wall-clock poison MUST NOT leak. Two
     # writes are byte-identical even though now() advances a day between.
-    pinned = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+    pinned = datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
     pinned_inp = dataclasses.replace(complex_notebook_input, created_at=pinned)
     a = write_antiek(pinned_inp, keypair=keypair)
     b = write_antiek(pinned_inp, keypair=keypair)

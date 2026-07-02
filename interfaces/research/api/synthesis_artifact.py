@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -52,8 +51,8 @@ def _loadjson(value) -> dict:
 
 
 def resolve_synthesis_export(
-    synthesis_id: str, *, db_path: Optional[str] = None
-) -> Optional[SynthesisExport]:
+    synthesis_id: str, *, db_path: str | None = None
+) -> SynthesisExport | None:
     """Build a ``SynthesisExport`` from the graph, or None if it does not exist.
 
     Reads the synthesis metadata + the substrate-manifest documents as

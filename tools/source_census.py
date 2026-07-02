@@ -33,20 +33,20 @@ import math
 import sys
 from collections import Counter
 from dataclasses import asdict, dataclass
-from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 _REPO = Path(__file__).resolve().parent.parent
 if str(_REPO) not in sys.path:
     sys.path.insert(0, str(_REPO))
 
 from substrate.constants import SERVABLE_CONTENT_CLASSES  # noqa: E402
-from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.dedup import (  # noqa: E402
     IdentityRecord,
     identity_key,
 )
+from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Thresholds — PROVISIONAL until calibrated against the first REAL arXiv census

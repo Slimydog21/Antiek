@@ -11,7 +11,6 @@ at least three samples for every path.
 from __future__ import annotations
 
 import json
-import os
 from datetime import UTC, datetime
 from pathlib import Path
 

@@ -37,7 +37,7 @@ manifest carries only ip_holder identity (never chunk text or embeddings).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from substrate.constants import SERVABLE_CONTENT_CLASSES
 
@@ -56,12 +56,12 @@ class SourceRef:
     """One resolved claim→chunk→document link. ``chunk_text`` is the quoted
     passage; it is embedded ONLY when the document is servable."""
 
-    document_id: Optional[str]
-    document_title: Optional[str]
-    content_class: Optional[str]
-    ip_holder_id: Optional[str]
-    locator: Optional[str] = None
-    chunk_text: Optional[str] = None
+    document_id: str | None
+    document_title: str | None
+    content_class: str | None
+    ip_holder_id: str | None
+    locator: str | None = None
+    chunk_text: str | None = None
 
     @property
     def servable(self) -> bool:
@@ -92,10 +92,10 @@ class SynthesisExport:
 
     synthesis_id: str
     target_question: str
-    thesis_text: Optional[str] = None
-    recommendation: Optional[str] = None
+    thesis_text: str | None = None
+    recommendation: str | None = None
     restricted: bool = False
-    restriction_reason: Optional[str] = None
+    restriction_reason: str | None = None
     model_versions: dict = field(default_factory=dict)
     parameters: dict = field(default_factory=dict)
     attribution_manifest: dict = field(default_factory=dict)
@@ -113,7 +113,7 @@ def _claim_card(statement: str) -> dict:
     return {"type": "antiek_claim_card", "attrs": {"statement": statement}}
 
 
-def _cite_link(label: str, target: Optional[str]) -> dict:
+def _cite_link(label: str, target: str | None) -> dict:
     attrs: dict[str, Any] = {"label": label}
     if target:
         attrs["target_url"] = target

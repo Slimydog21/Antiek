@@ -14,8 +14,6 @@ from services.html_projection import (
     ISLAND_SCHEMA_VERSION,
     IslandNotFound,
     MalformedIsland,
-    Provenance,
-    RenderContext,
     UnknownIslandSchemaVersion,
     embed_island,
     extract_island,
@@ -25,7 +23,6 @@ from services.html_projection.tests.fixtures.golden import (
     ADVERSARIAL_STRINGS,
     golden_corpus,
 )
-
 
 # ── Round-trip over golden corpus ──
 

@@ -12,9 +12,8 @@ import re
 
 import pytest
 
-from services.html_projection import Provenance, RenderContext, render
+from services.html_projection import render
 from services.html_projection.tests.fixtures.golden import golden_corpus
-
 
 # ── Golden corpus renders without error ──
 
@@ -194,12 +193,12 @@ def test_no_wall_clock_in_renderer_module():
     """The pure modules contain no wall-clock CALLS (determinism
     invariant). AST-based so docstrings mentioning 'datetime.now' in
     prose do not false-fire."""
-    import services.html_projection.renderer as renderer_mod
-    import services.html_projection.island as island_mod
-    import services.html_projection.gate as gate_mod
     import services.html_projection.context as context_mod
-    import services.html_projection.tokens as tokens_mod
     import services.html_projection.escape as escape_mod
+    import services.html_projection.gate as gate_mod
+    import services.html_projection.island as island_mod
+    import services.html_projection.renderer as renderer_mod
+    import services.html_projection.tokens as tokens_mod
 
     for mod in [renderer_mod, island_mod, gate_mod, context_mod, tokens_mod, escape_mod]:
         hits = _ast_calls_to_wall_clock(mod)

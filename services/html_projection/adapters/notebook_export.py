@@ -21,8 +21,6 @@ on the serialized doc-model AND the rendered HTML.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from substrate.constants import SERVABLE_CONTENT_CLASSES
 
 from ..context import Tombstone
@@ -92,7 +90,7 @@ def collect_ref_ids(content_tiptap: dict) -> list[str]:
 def adapt_notebook_for_export(
     content_tiptap: dict,
     *,
-    title: Optional[str],
+    title: str | None,
     resolved_refs: dict[str, ResolvedRefData],
 ) -> dict:
     """Pre-resolve a notebook into a self-contained, rights-filtered doc-model

@@ -44,7 +44,6 @@ from __future__ import annotations
 
 from typing import Final, Protocol
 
-
 # ── Inlined stylesheet ──
 #
 # Every rule is plain CSS — no ``@import`` (would be an external asset),

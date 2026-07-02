@@ -6,8 +6,8 @@ seam but unreachable from the renderer (no block type used `contract.widget`).
 
 from __future__ import annotations
 
-from services.html_projection.contract import contract_for_tiptap_type
 from services.html_projection.context import RenderContext
+from services.html_projection.contract import contract_for_tiptap_type
 from services.html_projection.gate import assert_script_free
 from services.html_projection.island import extract_island
 from services.html_projection.renderer import render

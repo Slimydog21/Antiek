@@ -60,7 +60,6 @@ round-trips correctly — see the adversarial test).
 
 from __future__ import annotations
 
-
 # ── Visible-surface escaping ──
 
 

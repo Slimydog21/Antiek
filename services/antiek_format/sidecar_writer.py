@@ -42,24 +42,23 @@ into ``build_signing_input``.
 
 from __future__ import annotations
 
-import dataclasses
 import hashlib
 import json
 import os
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 try:
     from .native_writer import (
+        _FORBIDDEN_SUBSTRATE_FIELDS,
         BLOCKS_PREFIX,
         ENTRY_CONTENT,
         ENTRY_EDGES,
         ENTRY_MANIFEST,
         ENTRY_SIGNATURE,
         SCHEMA_VERSION,
-        _FORBIDDEN_SUBSTRATE_FIELDS,
         _build_deterministic_zip,
         _canonical_tiptap_node,
     )
@@ -74,13 +73,13 @@ except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from services.antiek_format.native_writer import (  # type: ignore[no-redef]
+        _FORBIDDEN_SUBSTRATE_FIELDS,
         BLOCKS_PREFIX,
         ENTRY_CONTENT,
         ENTRY_EDGES,
         ENTRY_MANIFEST,
         ENTRY_SIGNATURE,
         SCHEMA_VERSION,
-        _FORBIDDEN_SUBSTRATE_FIELDS,
         _build_deterministic_zip,
         _canonical_tiptap_node,
     )
@@ -169,11 +168,11 @@ class HighlightRow:
     bbox_y0: float
     bbox_x1: float
     bbox_y1: float
-    passage_text: Optional[str] = None
-    color: Optional[str] = None
-    tag: Optional[str] = None
-    created_at: Optional[str] = None  # ISO 8601 UTC; reader will default if absent
-    operator_note: Optional[str] = None
+    passage_text: str | None = None
+    color: str | None = None
+    tag: str | None = None
+    created_at: str | None = None  # ISO 8601 UTC; reader will default if absent
+    operator_note: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -222,10 +221,10 @@ class AnchorRow:
     bbox_x1: float
     bbox_y1: float
     chunker_version: str         # informational; reader does not trust
-    chunk_id: Optional[str] = None  # informational; reader re-resolves
-    transcript: Optional[str] = None
-    created_at: Optional[str] = None
-    duration_seconds: Optional[float] = None
+    chunk_id: str | None = None  # informational; reader re-resolves
+    transcript: str | None = None
+    created_at: str | None = None
+    duration_seconds: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -268,9 +267,9 @@ class SidecarInput:
     parent_pdf_size_bytes: int
 
     # Optional identifying / display fields ---------------------------
-    parent_pdf_filename_hint: Optional[str] = None
-    title: Optional[str] = None
-    created_at: Optional[datetime] = None
+    parent_pdf_filename_hint: str | None = None
+    title: str | None = None
+    created_at: datetime | None = None
 
     # User-derived sections -------------------------------------------
     highlights: list[HighlightRow] = field(default_factory=list)
@@ -279,7 +278,7 @@ class SidecarInput:
     audio_blobs: dict[str, bytes] = field(default_factory=dict)  # keyed on voice_note_id
 
     # Informational provenance ----------------------------------------
-    chunker_version_at_write: Optional[str] = None
+    chunker_version_at_write: str | None = None
 
     def __post_init__(self) -> None:
         # parent_pdf_sha256 is the durable handshake key with the
@@ -364,8 +363,8 @@ def write_sidecar(inp: SidecarInput, *, keypair: Keypair) -> bytes:
     # ── Build manifest ──
 
     created_at_iso = (
-        inp.created_at or datetime.now(timezone.utc)
-    ).astimezone(timezone.utc).isoformat()
+        inp.created_at or datetime.now(UTC)
+    ).astimezone(UTC).isoformat()
 
     manifest: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
@@ -440,9 +439,9 @@ def build_sidecar_input_for_document(
     document_id: str,
     user_id: str,
     parent_pdf_bytes: bytes,
-    parent_pdf_filename_hint: Optional[str] = None,
-    title: Optional[str] = None,
-    db_path: Optional[str] = None,
+    parent_pdf_filename_hint: str | None = None,
+    title: str | None = None,
+    db_path: str | None = None,
 ) -> SidecarInput:
     """Compose a ``SidecarInput`` by reading user-derived rows from the
     substrate for ``(user_id, document_id)``.
@@ -513,7 +512,7 @@ def build_sidecar_input_for_document(
 
 
 def _gather_highlights(
-    *, document_id: str, db_path: Optional[str],
+    *, document_id: str, db_path: str | None,
 ) -> list[HighlightRow]:
     """Pull highlight rows from ``behavior_events`` for one document.
 
@@ -598,7 +597,7 @@ def _gather_highlights(
 
 
 def _gather_anchors_and_audio(
-    *, document_id: str, db_path: Optional[str],
+    *, document_id: str, db_path: str | None,
 ) -> tuple[list[AnchorRow], dict[str, bytes]]:
     """Pull voice_note_anchor rows + any reachable audio.
 
@@ -615,6 +614,7 @@ def _gather_anchors_and_audio(
         return [], {}
 
     import base64
+
     import duckdb
     try:
         con = duckdb.connect(db_path)
@@ -642,9 +642,9 @@ def _gather_anchors_and_audio(
                 bbox = json.loads(bbox_json) if isinstance(bbox_json, str) else (bbox_json or {})
             except json.JSONDecodeError:
                 continue
-            transcript: Optional[str] = None
-            audio_bytes: Optional[bytes] = None
-            duration: Optional[float] = None
+            transcript: str | None = None
+            audio_bytes: bytes | None = None
+            duration: float | None = None
             # Look up the voice-note row for transcript + audio hints.
             try:
                 vn_row = con.execute(
@@ -725,14 +725,14 @@ def _canonical_jsonl_bytes(rows: list[dict[str, Any]], *, key: str) -> bytes:
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
-def _iso(ts: Any) -> Optional[str]:
+def _iso(ts: Any) -> str | None:
     """Render a datetime (or anything stringifiable) as ISO 8601 UTC."""
     if ts is None:
         return None
     if isinstance(ts, datetime):
         if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=timezone.utc)
-        return ts.astimezone(timezone.utc).isoformat()
+            ts = ts.replace(tzinfo=UTC)
+        return ts.astimezone(UTC).isoformat()
     return str(ts)
 
 

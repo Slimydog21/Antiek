@@ -47,8 +47,7 @@ timestamp through it; the constant is the parity-preserving choice.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Optional, Union
+from datetime import UTC, datetime
 
 from services.antiek_format.native_writer import WriterInput, write_antiek
 from services.antiek_format.signature import Keypair
@@ -77,7 +76,7 @@ unsigned projection — so an unrecognized surface never silently earns a signed
 artifact (container or single-file). A new surface gets a real row in
 ``SURFACE_FORMATS``; this closed default keeps unknown surfaces honest."""
 
-_FIXED_CREATED_AT: datetime = datetime(2026, 1, 1, tzinfo=timezone.utc)
+_FIXED_CREATED_AT: datetime = datetime(2026, 1, 1, tzinfo=UTC)
 """The first-save timestamp stamped into every emitted container's manifest. It
 is part of the signed bytes, so it MUST be a constant (not wall-clock) for
 ``emit`` to be byte-identical across calls — see the module docstring's parity
@@ -99,11 +98,11 @@ class ExportItem:
     """
 
     content_tiptap: dict
-    title: Optional[str]
+    title: str | None
     document_id: str
     user_id: str
     notebook_id: str
-    parent_document_id: Optional[str] = None
+    parent_document_id: str | None = None
     content_class: str = "notebook"
 
 
@@ -118,8 +117,8 @@ def formats_for(surface: str) -> tuple[str, ...]:
 
 
 def emit(
-    item: ExportItem, fmt: str, *, keypair: Optional[Keypair] = None
-) -> Union[bytes, str]:
+    item: ExportItem, fmt: str, *, keypair: Keypair | None = None
+) -> bytes | str:
     """Emit one artifact from ``item`` in the requested format.
 
     Pure mechanical dispatch on ``fmt`` — it does NOT consult

@@ -23,7 +23,6 @@ render a notebook with unfiltered third-party text by building its own context.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from substrate.constants import SERVABLE_CONTENT_CLASSES
 
@@ -51,14 +50,14 @@ class ResolvedRefData:
     from the graph; the adapter applies rights."""
 
     kind: str
-    content_class: Optional[str]
-    ip_holder_id: Optional[str]
-    title: Optional[str]
+    content_class: str | None
+    ip_holder_id: str | None
+    title: str | None
     payload: dict = field(default_factory=dict)
-    deleted_at: Optional[str] = None  # set => deleted (renders a tombstone)
+    deleted_at: str | None = None  # set => deleted (renders a tombstone)
     # The source document's id (when resolved) — a stable node identity for the
     # knowledge-graph projection (title alone collides across same-named docs).
-    source_document_id: Optional[str] = None
+    source_document_id: str | None = None
 
     @property
     def servable(self) -> bool:
@@ -117,7 +116,7 @@ class RightsAwareResolver:
 def adapt_notebook(
     content_tiptap: dict,
     *,
-    title: Optional[str],
+    title: str | None,
     resolved_refs: dict[str, ResolvedRefData],
 ) -> tuple[dict, RenderContext]:
     """Adapt a notebook to `(doc_model, ctx)`. The notebook's TipTap is already

@@ -208,7 +208,6 @@ def test_pin_import_order_does_not_matter():
     pre-imported vs not-pre-imported partial set; the dispatch table is
     built deterministically from the contract table (not from
     sys.modules order)."""
-    import services.html_projection.renderer as r1
 
     # Force a re-import in a subprocess that imports partials in a
     # different order first. Uses the SAME provenance as _ctx() so the

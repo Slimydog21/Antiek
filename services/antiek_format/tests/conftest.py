@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import os
 import sys
-from datetime import datetime, timezone
-from typing import Iterator
+from collections.abc import Iterator
+from datetime import UTC, datetime
 
 import pytest
-
 
 _REPO_ROOT = os.path.dirname(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -36,7 +35,7 @@ def keypair(antiek_db: str):
 
 @pytest.fixture
 def fixed_created_at() -> datetime:
-    return datetime(2026, 5, 21, 12, 0, 0, tzinfo=timezone.utc)
+    return datetime(2026, 5, 21, 12, 0, 0, tzinfo=UTC)
 
 
 @pytest.fixture

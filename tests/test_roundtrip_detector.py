@@ -7,7 +7,7 @@ classes are proven here on a synthetic round-trip through REAL .antiek bytes.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -67,7 +67,7 @@ def _export_bytes(keypair, text: str) -> bytes:
         content_class="notebook",
         title="t",
         content_tiptap=_content(text),
-        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
     return write_antiek(inp, keypair=keypair)
 

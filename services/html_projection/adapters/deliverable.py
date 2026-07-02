@@ -19,7 +19,6 @@ JSON the SPR-02 renderer accepts (mirroring the SPR-05 synthesis adapter):
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from substrate.constants import SERVABLE_CONTENT_CLASSES
 
@@ -37,12 +36,12 @@ class DeliverableBlock:
     # If the block quotes an external source, its rights; None => the block is
     # the user's / graph's own content (operator-authored), not a third-party
     # quote, and is not rights-filtered.
-    content_class: Optional[str] = None
-    ip_holder_id: Optional[str] = None
-    source_title: Optional[str] = None
+    content_class: str | None = None
+    ip_holder_id: str | None = None
+    source_title: str | None = None
     # The source document id (when known) — a stable knowledge-graph node
     # identity; the title alone collides across same-named documents.
-    source_document_id: Optional[str] = None
+    source_document_id: str | None = None
 
     @property
     def servable(self) -> bool:

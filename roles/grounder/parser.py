@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import os
 import sys
-from dataclasses import dataclass
 from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Literal
 
 # Shared JSON-tolerant decoder lives at roles/_json_decode.py — moved

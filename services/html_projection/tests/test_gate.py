@@ -9,11 +9,10 @@ class. It is stdlib-only.
 from __future__ import annotations
 
 import inspect
-import sys
 
 import pytest
 
-from services.html_projection import render, RenderContext
+from services.html_projection import render
 from services.html_projection.gate import (
     ScriptViolation,
     assert_script_free,
@@ -21,7 +20,6 @@ from services.html_projection.gate import (
     is_script_free,
 )
 from services.html_projection.tests.fixtures.golden import golden_corpus
-
 
 # ── GREEN on golden corpus ──
 

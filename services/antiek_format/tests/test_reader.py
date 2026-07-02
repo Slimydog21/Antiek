@@ -29,7 +29,6 @@ from services.antiek_format import (
 from services.antiek_format.native_writer import (
     ENTRY_CONTENT,
     ENTRY_MANIFEST,
-    ENTRY_SIGNATURE,
     _build_deterministic_zip,
 )
 

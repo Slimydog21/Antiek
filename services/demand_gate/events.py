@@ -17,8 +17,6 @@ events through the builders here so the gate is unbypassable.
 
 from __future__ import annotations
 
-from typing import Optional
-
 # The four measurement events + the round-trip detector's event + the two
 # admissible third-party/agent signals the analysis counts.
 EXPORT_OFFERED = "demand_gate.export_offered"
@@ -110,7 +108,7 @@ def build_share_link_taken(user_id: str, surface: str) -> dict:
 
 
 def build_re_import_detected(
-    document_id: str, classification: str, content_hash: str, user_id: Optional[str] = None
+    document_id: str, classification: str, content_hash: str, user_id: str | None = None
 ) -> dict:
     e = {
         "action_type": RE_IMPORT_DETECTED,
