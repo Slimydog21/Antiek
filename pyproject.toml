@@ -163,15 +163,15 @@ dev = [
 # the matching system libs. Substack export works without the extra.
 
 [project.scripts]
-# Entry point lives at `antiek.cli:main` once we wire it. For now this is
-# a placeholder so `pip install -e .` doesn't fail; the real launcher
-# fires up Hermes with the right profile (see spec, "Compute and runtime").
+# Product-facing CLI entrypoint. Legacy verification subcommands remain
+# delegated to tools.antiek_cli so existing check workflows keep working.
 antiek = "antiek.cli:main"
 
 [tool.hatch.build.targets.wheel]
 # Each top-level directory in the spec is a separate Python package. We
 # tell hatchling about each one explicitly so it doesn't try to guess.
 packages = [
+  "antiek",
   "substrate",
   "skills",
   "acquisition",

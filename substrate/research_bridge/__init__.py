@@ -15,6 +15,7 @@ from .dogfood_report import (
     DogfoodMetrics,
     SessionSignalMetrics,
     build_dogfood_metrics,
+    default_dogfood_metrics_path,
     render_dogfood_report,
 )
 from .extractor import (
@@ -79,6 +80,7 @@ __all__ = [
     "build_dogfood_metrics",
     "DogfoodScaffoldResult",
     "default_dogfood_dir",
+    "default_dogfood_metrics_path",
     "render_dogfood_report",
     "write_dogfood_scaffold",
     "init_research_bridge",
