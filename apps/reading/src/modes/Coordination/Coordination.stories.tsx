@@ -223,9 +223,9 @@ export const CANONICAL_ROADMAP: RoadmapView = {
         spec: "speak",
         spec_label: "Speak",
         sprint: i + 1,
-        slug: `sprint-${i + 1}`,
+        slug: i === 0 ? "consent-rights-gate" : `sprint-${i + 1}`,
         node_id: `speak:${i + 1}`,
-        status: "unknown",
+        status: i === 0 ? "live" : "planned",
         on_critical_path: false,
         blocked_on: [],
         unblocked: true,
@@ -253,7 +253,7 @@ export const CANONICAL_ROADMAP: RoadmapView = {
   dependency_blockers: [],
   execution_focus: {
     kind: "dependency_ready",
-    node_id: "speak:1",
+    node_id: "speak:2",
     blocked_sprints: [],
   },
   substrate_layers: [
