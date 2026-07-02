@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { SceneMood } from "../mood";
 import { MAX_PARALLAX_PX, PEAK_BANDS } from "../peaks";
 import { ProceduralSky } from "./ProceduralSky";
+import { sceneLayerTransform } from "../../design/motion/sceneMotion";
 
 /**
  * Peaks (SPR-04, milestone 2 — subtle peak parallax).
@@ -23,6 +24,8 @@ export interface PeaksProps {
   mood: SceneMood;
   /** When frozen (reduced-motion), parallax is disabled → static frame. */
   frozen?: boolean;
+  /** Scene-clock timestamp for ambient drift. */
+  clockMs?: number;
 }
 
 /** Bounded pointer parallax: returns a normalized pointer offset in [-1,1] on
@@ -74,12 +77,20 @@ function usePointerParallax(frozen: boolean): { nx: number; ny: number } {
   return p;
 }
 
-export function Peaks({ mood, frozen = false }: PeaksProps) {
+export function Peaks({ mood, frozen = false, clockMs = 0 }: PeaksProps) {
   const { ny } = usePointerParallax(frozen);
+  const drift = sceneLayerTransform("peaks", clockMs, { reducedMotion: frozen });
   // Per-band vertical shift: depth × cap × pointer-y. Bounded by construction.
-  const shifts = PEAK_BANDS.map((b) => b.depth * MAX_PARALLAX_PX * ny);
+  const shifts = PEAK_BANDS.map((b) => b.depth * (MAX_PARALLAX_PX * ny + drift.y));
   return (
-    <div className="absolute inset-0" data-testid="peaks-layer" aria-hidden="true">
+    <div
+      className="absolute inset-0"
+      data-testid="peaks-layer"
+      data-drift-x={drift.x}
+      data-drift-y={drift.y}
+      style={{ transform: `translate3d(${drift.x}px, 0, 0)` }}
+      aria-hidden="true"
+    >
       <ProceduralSky mood={mood} shifts={shifts} />
     </div>
   );

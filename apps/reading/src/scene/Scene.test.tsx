@@ -8,11 +8,31 @@
  *   - the offline/fallback path renders procedural-only (no live Krea art),
  *     which is the path CI takes (the default Krea mock returns fallback).
  */
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 
 import { Scene } from "./Scene";
 import type { SceneResult, SceneState } from "../api/krea";
+
+vi.mock("../krea/useKreaStatus", () => ({
+  useKreaStatus: () => ({
+    status: "ready",
+    data: {
+      enabled: false,
+      key_present: false,
+      kill_switch: false,
+      gate_verdict: "no_key",
+      reasons: ["no_key"],
+      budget: { spent_today: 0, cap: 50, remaining: 50 },
+      rate_window: { occupancy: 0, max: 6, window_s: 60 },
+      cache: { entries: 0, max_entries: 256 },
+      last_success_at: null,
+      failure_counts: {},
+      failures: [],
+    },
+    error: null,
+  }),
+}));
 
 beforeAll(() => {
   if (!window.matchMedia) {
@@ -97,5 +117,12 @@ describe("Scene — compositor", () => {
     expect(root.getAttribute("data-scene-fallback")).toBe("true");
     const krea = container.querySelector('[data-testid="krea-art-layer"]') as HTMLElement;
     expect(krea.getAttribute("data-krea")).toBe("fallback");
+  });
+
+  it("preserves the #144 Krea status badge mount and status wiring", () => {
+    const { getByTestId } = render(<Scene fetchScene={fallbackFetch} reducedMotion />);
+    const badge = getByTestId("scene-status-badge");
+    expect(badge.getAttribute("data-reason")).toBe("no_key");
+    expect(badge.textContent).toContain("scene: procedural / no key");
   });
 });
