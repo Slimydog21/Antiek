@@ -17,6 +17,7 @@ import UnifiedSearch, { INSTANT_RESULTS_LATENCY_BUDGET_MS } from "./UnifiedSearc
 
 const {
   corpusSearchMock,
+  listDeliverablesMock,
   openDocumentMock,
   navigateMock,
   submitMock,
@@ -24,6 +25,7 @@ const {
   providerKeysRef,
 } = vi.hoisted(() => ({
   corpusSearchMock: vi.fn(),
+  listDeliverablesMock: vi.fn(),
   openDocumentMock: vi.fn(),
   navigateMock: vi.fn(),
   submitMock: vi.fn(),
@@ -53,6 +55,11 @@ const {
 vi.mock("../api/corpusSearch", async (orig) => {
   const actual = await orig<typeof import("../api/corpusSearch")>();
   return { ...actual, corpusSearch: corpusSearchMock };
+});
+
+vi.mock("../lib/api", async (orig) => {
+  const actual = await orig<typeof import("../lib/api")>();
+  return { ...actual, listDeliverables: listDeliverablesMock };
 });
 
 vi.mock("../hooks/useProviderKeys", () => ({
@@ -169,6 +176,7 @@ beforeEach(() => {
   installMatchMedia(false);
   vi.useFakeTimers({ shouldAdvanceTime: true });
   corpusSearchMock.mockReset();
+  listDeliverablesMock.mockReset().mockResolvedValue({ count: 0, deliverables: [] });
   openDocumentMock.mockReset();
   navigateMock.mockReset();
   submitMock.mockReset();
@@ -222,6 +230,48 @@ describe("UnifiedSearch — M1 instant local hits (no key)", () => {
     fireEvent.change(screen.getByLabelText("Unified search"), { target: { value: "xyz" } });
     await vi.advanceTimersByTimeAsync(200);
     await screen.findByText(/Nothing in your corpus matched/i);
+  });
+
+  it("surfaces matching Write pieces in the same search and opens the Write workspace", async () => {
+    corpusSearchMock.mockResolvedValue({ query: "memo", hits: [], count: 0 });
+    listDeliverablesMock.mockResolvedValue({
+      count: 2,
+      deliverables: [
+        {
+          deliverable_id: "dlv-memo",
+          title: "  Strategy memo  ",
+          deliverable_kind: "research_memo",
+          investigation_root_id: "inv-root",
+          status: "draft",
+          created_at: null,
+          updated_at: null,
+          section_count: 3,
+        },
+        {
+          deliverable_id: "dlv-other",
+          title: "Book chapter",
+          deliverable_kind: "book_chapter",
+          investigation_root_id: null,
+          status: "draft",
+          created_at: null,
+          updated_at: null,
+          section_count: 1,
+        },
+      ],
+    });
+    renderSearch();
+
+    fireEvent.change(screen.getByLabelText("Unified search"), {
+      target: { value: "memo" },
+    });
+    await vi.advanceTimersByTimeAsync(200);
+    await screen.findByText("Strategy memo");
+
+    expect(screen.getByText(/Connected to research/i)).toBeTruthy();
+    expect(screen.queryByText("Book chapter")).toBeNull();
+    fireEvent.click(screen.getByText("Strategy memo").closest("button")!);
+    expect(navigateMock).toHaveBeenCalledWith("/write/dlv-memo");
+    expect(openDocumentMock).not.toHaveBeenCalled();
   });
 
   it("selected file text searches locally and renders hits even with the input left empty", async () => {

@@ -6,7 +6,7 @@ import type { CorpusSearchHit } from "../api/corpusSearch";
 import { useStartInvestigation } from "../hooks/useStartInvestigation";
 import { useProviderKeys } from "../hooks/useProviderKeys";
 import { useOpenDocument } from "../lib/openDocument";
-import type { ResearchTier } from "../lib/api";
+import { listDeliverables, type ResearchTier } from "../lib/api";
 import LemonButton from "./lemon/LemonButton";
 import Thinking from "../shared/Thinking";
 import AIActionFailure from "../shared/AIActionFailure";
@@ -69,7 +69,15 @@ export interface ResearchSourceHit {
   snippet: string;
 }
 
-export type UnifiedSearchResult = CorpusSearchHit | ResearchSourceHit;
+export interface WritePieceHit {
+  kind: "deliverable";
+  deliverable_id: string;
+  title: string;
+  section_count: number;
+  investigation_root_id: string | null;
+}
+
+export type UnifiedSearchResult = CorpusSearchHit | ResearchSourceHit | WritePieceHit;
 
 export interface UnifiedSearchProps {
   /** ``library`` — Read door shelf search. ``research`` — Research home entry. */
@@ -82,6 +90,10 @@ export interface UnifiedSearchProps {
 
 function isResearchHit(r: UnifiedSearchResult): r is ResearchSourceHit {
   return "kind" in r && r.kind === "research";
+}
+
+function isWritePieceHit(r: UnifiedSearchResult): r is WritePieceHit {
+  return "kind" in r && r.kind === "deliverable";
 }
 
 function resolvedReaderPageIndex(hit: CorpusSearchHit): number | null {
@@ -114,6 +126,26 @@ function nonEmptyString(value: unknown): string | null {
     : null;
 }
 
+function writePieceHitsForQuery(
+  deliverables: Awaited<ReturnType<typeof listDeliverables>>["deliverables"],
+  rawQuery: string,
+): WritePieceHit[] {
+  const q = rawQuery.trim().toLowerCase();
+  if (!q) return [];
+  return deliverables.flatMap((d) => {
+    const title = nonEmptyString(d.title) ?? "Untitled piece";
+    const hay = `${title} ${d.deliverable_id}`.toLowerCase();
+    if (!hay.includes(q)) return [];
+    return [{
+      kind: "deliverable" as const,
+      deliverable_id: d.deliverable_id,
+      title,
+      section_count: d.section_count,
+      investigation_root_id: d.investigation_root_id,
+    }];
+  });
+}
+
 export default function UnifiedSearch({
   variant = "library",
   themeContext,
@@ -127,6 +159,7 @@ export default function UnifiedSearch({
 
   const [query, setQuery] = useState("");
   const [localHits, setLocalHits] = useState<CorpusSearchHit[] | null>(null);
+  const [writeHits, setWriteHits] = useState<WritePieceHit[] | null>(null);
   const [researchHits, setResearchHits] = useState<ResearchSourceHit[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -161,6 +194,7 @@ export default function UnifiedSearch({
       const q = rawQuery.trim();
       if (!q) {
         setLocalHits(null);
+        setWriteHits(null);
         setSignal(null);
         setSearchError(null);
         setLastSearchLatencyMs(null);
@@ -177,10 +211,20 @@ export default function UnifiedSearch({
         setSignal(signalLabel);
         const elapsed = performance.now() - (searchStartedAtRef.current ?? 0);
         setLastSearchLatencyMs(Math.round(elapsed));
+        void listDeliverables()
+          .then((body) => {
+            if (gen === searchGenRef.current) {
+              setWriteHits(writePieceHitsForQuery(body.deliverables, q));
+            }
+          })
+          .catch(() => {
+            if (gen === searchGenRef.current) setWriteHits([]);
+          });
       } catch (e: unknown) {
         if (gen !== searchGenRef.current) return;
         setSearchError(e instanceof Error ? e.message : String(e));
         setLocalHits(null);
+        setWriteHits(null);
         setLastSearchLatencyMs(null);
       } finally {
         if (gen === searchGenRef.current) setSearchBusy(false);
@@ -194,6 +238,7 @@ export default function UnifiedSearch({
     const q = query.trim();
     if (!q) {
       setLocalHits(null);
+      setWriteHits(null);
       setSignal(null);
       setSearchError(null);
       setLastSearchLatencyMs(null);
@@ -258,6 +303,10 @@ export default function UnifiedSearch({
 
   const openResult = useCallback(
     (hit: UnifiedSearchResult) => {
+      if (isWritePieceHit(hit)) {
+        navigate(`/write/${encodeURIComponent(hit.deliverable_id)}`);
+        return;
+      }
       if (isResearchHit(hit)) {
         openDocument(
           hit.document_id,
@@ -273,7 +322,7 @@ export default function UnifiedSearch({
           : { chunkId: hit.chunk_id },
       );
     },
-    [openDocument],
+    [navigate, openDocument],
   );
 
   // Parse research sources from the live stream (SPR-04 loop output).
@@ -524,12 +573,36 @@ export default function UnifiedSearch({
 
       {localHits !== null && hasVisibleLocalSearch && !searchBusy && (
         <div data-testid="unified-search-local-results">
-          {localHits.length === 0 ? (
+          {localHits.length === 0 && writeHits !== null && writeHits.length === 0 ? (
             <p className="text-[13px] text-shadow-1 dark:text-moonlight italic">
               Nothing in your corpus matched. Press Enter to research the web.
             </p>
           ) : (
             <ul className="flex flex-col gap-1.5" aria-label="Local search results">
+              {(writeHits ?? []).map((h) => (
+                <li key={`write:${h.deliverable_id}`}>
+                  <button
+                    type="button"
+                    onClick={() => openResult(h)}
+                    className="w-full text-left rounded px-2 py-1.5 hover:bg-ice-3 dark:hover:bg-charcoal-1"
+                  >
+                    <span className="block text-[13px] font-serif text-ink dark:text-bright truncate">
+                      <span className="text-[10px] font-mono uppercase text-sun-deep dark:text-sun mr-1">
+                        write
+                      </span>
+                      {h.title}
+                      <span className="ml-2 text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                        {h.section_count} section{h.section_count === 1 ? "" : "s"}
+                      </span>
+                    </span>
+                    <span className="block text-[12px] text-shadow-1 dark:text-moonlight line-clamp-2">
+                      {h.investigation_root_id
+                        ? "Connected to research — open the writing workspace."
+                        : "Writing piece — open the writing workspace."}
+                    </span>
+                  </button>
+                </li>
+              ))}
               {localHits.map((h) => {
                 const page = resolvedReaderPageIndex(h);
                 return (
