@@ -84,6 +84,12 @@ function renderBlocks(text: string) {
   });
 }
 
+function nonEmptyString(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 /**
  * The tagged reading body. A forwardRef so the reader can keep using it as the
  * float-menu selection SCOPE (the same `<article>` the shared
@@ -92,6 +98,8 @@ function renderBlocks(text: string) {
  */
 export const ReadingColumn = forwardRef<HTMLElement, ReadingColumnProps>(
   function ReadingColumn({ assetId, text, chunkId }, ref) {
+    const resolvedAssetId = nonEmptyString(assetId);
+    const resolvedChunkId = nonEmptyString(chunkId);
     return (
       <article
         ref={ref}
@@ -102,8 +110,8 @@ export const ReadingColumn = forwardRef<HTMLElement, ReadingColumnProps>(
         // (a gated preview) leaves the column untagged, so the sampler never
         // attributes a preview snippet as a monetized asset (§9.0). An unresolved
         // chunk stays asset-level (the contract's cover/title-card case).
-        {...(assetId ? { "data-akb-asset-id": assetId } : {})}
-        {...(assetId && chunkId ? { "data-akb-chunk-id": chunkId } : {})}
+        {...(resolvedAssetId ? { "data-akb-asset-id": resolvedAssetId } : {})}
+        {...(resolvedAssetId && resolvedChunkId ? { "data-akb-chunk-id": resolvedChunkId } : {})}
         className="flex-1 font-serif text-[15px] leading-[1.7] text-ink dark:text-bright"
       >
         {text.trim() ? (

@@ -61,6 +61,12 @@ function isChrome(el: Element): boolean {
   );
 }
 
+function nonEmptyString(value: string | null): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 /**
  * Geometry → the three per-asset features, for one element this second.
  *
@@ -157,14 +163,14 @@ export function useFrameAttention(opts: UseFrameAttentionOptions): void {
       const candidates = root.querySelectorAll<HTMLElement>(`[${ASSET_ATTR}]`);
       candidates.forEach((el) => {
         if (isChrome(el)) return;
-        const assetId = el.getAttribute(ASSET_ATTR);
+        const assetId = nonEmptyString(el.getAttribute(ASSET_ATTR));
         if (!assetId) {
           unresolved += 1;
           return;
         }
         const m = measure(el);
         if (!m) return; // not visible this second
-        const chunkId = el.getAttribute(CHUNK_ATTR);
+        const chunkId = nonEmptyString(el.getAttribute(CHUNK_ATTR));
         const prev = byAsset.get(assetId);
         // Per-asset, keep the most-visible chunk this second (max area) so an
         // asset shown across several chunks earns off its largest footprint.

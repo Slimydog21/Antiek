@@ -67,6 +67,22 @@ describe("ReadingColumn — SPR-07 attribution markers (§9.0)", () => {
     expect(article.getAttribute("data-akb-asset-id")).toBe("doc-42");
   });
 
+  it("trims servable attribution ids and omits blank asset handles", () => {
+    const { container } = render(
+      <ReadingColumn assetId=" doc-42 " chunkId=" chunk-7 " text="Body." />,
+    );
+    const article = container.querySelector("article")!;
+    expect(article.getAttribute("data-akb-asset-id")).toBe("doc-42");
+    expect(article.getAttribute("data-akb-chunk-id")).toBe("chunk-7");
+
+    cleanup();
+    const { container: blank } = render(
+      <ReadingColumn assetId=" " chunkId=" chunk-7 " text="Snippet." />,
+    );
+    expect(blank.querySelector("article")!.hasAttribute("data-akb-asset-id")).toBe(false);
+    expect(blank.querySelector("article")!.hasAttribute("data-akb-chunk-id")).toBe(false);
+  });
+
   it("does NOT tag a gated column (assetId null) — no preview attribution", () => {
     const { container } = render(<ReadingColumn assetId={null} text="Snippet." />);
     const article = container.querySelector("article")!;
