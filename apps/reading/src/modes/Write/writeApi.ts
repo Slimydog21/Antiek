@@ -297,6 +297,10 @@ function requireNonEmptyString(value: unknown, field: string): string {
   return trimmed;
 }
 
+function optionalRequestString(value: unknown): string | undefined {
+  return nonEmptyString(value) ?? undefined;
+}
+
 export async function searchRepository(opts: {
   q?: string;
   folderId?: string;
@@ -327,11 +331,12 @@ export async function listFolders(): Promise<FolderSummary[]> {
 }
 
 export async function createFolder(name: string): Promise<string> {
+  const folderName = requireNonEmptyString(name, "name");
   const body = record(await _json(
     await apiFetch(`${API_BASE}/write/folders`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name: folderName }),
     }),
     "POST /write/folders",
   ));
@@ -339,25 +344,50 @@ export async function createFolder(name: string): Promise<string> {
 }
 
 export async function addFolderBlock(folderId: string, nodeId: string): Promise<void> {
+  const resolvedFolderId = requireNonEmptyString(folderId, "folderId");
+  const resolvedNodeId = requireNonEmptyString(nodeId, "nodeId");
   await _json(
-    await apiFetch(`${API_BASE}/write/folders/${encodeURIComponent(folderId)}/blocks`, {
+    await apiFetch(`${API_BASE}/write/folders/${encodeURIComponent(resolvedFolderId)}/blocks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ node_id: nodeId }),
+      body: JSON.stringify({ node_id: resolvedNodeId }),
     }),
     "POST /write/folders/{id}/blocks",
   );
+}
+
+function sanitizedPlaceBlockBody(body: PlaceBlockBody): PlaceBlockBody {
+  const base = {
+    section_id: requireNonEmptyString(body.section_id, "section_id"),
+    block_index: body.block_index,
+    deliverable_id: optionalRequestString(body.deliverable_id),
+  };
+  if (body.provenance_kind === "graph_node") {
+    return {
+      ...base,
+      block_kind: body.block_kind,
+      provenance_kind: "graph_node",
+      node_id: requireNonEmptyString(body.node_id, "node_id"),
+    };
+  }
+  return {
+    ...base,
+    block_kind: body.block_kind,
+    provenance_kind: "user_authored",
+    content: requireNonEmptyString(body.content, "content"),
+  };
 }
 
 /** Place a block in the outline (the drop target's commit). Returns the
  * new outline_block_id. */
 export async function placeBlock(body: PlaceBlockBody): Promise<string> {
   assertNonNegativeSafeInteger(body.block_index, "block_index");
+  const requestBody = sanitizedPlaceBlockBody(body);
   const r = record(await _json(
     await apiFetch(`${API_BASE}/write/blocks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(requestBody),
     }),
     "POST /write/blocks",
   ));
@@ -394,8 +424,9 @@ export function blockDisplayText(b: OutlineBlockView): string {
 export async function getSectionBlocks(
   sectionId: string,
 ): Promise<OutlineBlockView[]> {
+  const resolvedSectionId = requireNonEmptyString(sectionId, "sectionId");
   const body = await _json(
-    await apiFetch(`${API_BASE}/write/sections/${encodeURIComponent(sectionId)}/blocks`),
+    await apiFetch(`${API_BASE}/write/sections/${encodeURIComponent(resolvedSectionId)}/blocks`),
     "GET /write/sections/{id}/blocks",
   );
   return safeSectionBlocksResponse(body);
@@ -407,12 +438,14 @@ export async function moveBlock(
   toSectionId: string,
   toIndex: number,
 ): Promise<void> {
+  const resolvedOutlineBlockId = requireNonEmptyString(outlineBlockId, "outlineBlockId");
+  const resolvedToSectionId = requireNonEmptyString(toSectionId, "toSectionId");
   assertNonNegativeSafeInteger(toIndex, "to_index");
   await _json(
-    await apiFetch(`${API_BASE}/write/blocks/${encodeURIComponent(outlineBlockId)}/move`, {
+    await apiFetch(`${API_BASE}/write/blocks/${encodeURIComponent(resolvedOutlineBlockId)}/move`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to_section_id: toSectionId, to_index: toIndex }),
+      body: JSON.stringify({ to_section_id: resolvedToSectionId, to_index: toIndex }),
     }),
     "POST /write/blocks/{id}/move",
   );
@@ -437,8 +470,9 @@ export interface TraceTarget {
  * (§9.0 no-leak). Servable sources open in the live `/read/:documentId`
  * BookReader route; gated sources surface metadata/snippet only. */
 export async function getTraceTarget(outlineBlockId: string): Promise<TraceTarget> {
+  const resolvedOutlineBlockId = requireNonEmptyString(outlineBlockId, "outlineBlockId");
   return safeTraceTarget(await _json(
-    await apiFetch(`${API_BASE}/write/blocks/${encodeURIComponent(outlineBlockId)}/trace`),
+    await apiFetch(`${API_BASE}/write/blocks/${encodeURIComponent(resolvedOutlineBlockId)}/trace`),
     "GET /write/blocks/{id}/trace",
   ));
 }
@@ -484,6 +518,7 @@ export async function generateSection(
   sectionId: string,
   opts: { paragraphIndex?: number } = {},
 ): Promise<GenerationResult> {
+  const resolvedSectionId = requireNonEmptyString(sectionId, "sectionId");
   if (opts.paragraphIndex !== undefined) {
     assertNonNegativeSafeInteger(opts.paragraphIndex, "paragraph_index");
   }
@@ -492,7 +527,7 @@ export async function generateSection(
       ? undefined
       : JSON.stringify({ paragraph_index: opts.paragraphIndex });
   return safeGenerationResult(await _json(
-    await apiFetch(`${API_BASE}/write/sections/${encodeURIComponent(sectionId)}/generate`, {
+    await apiFetch(`${API_BASE}/write/sections/${encodeURIComponent(resolvedSectionId)}/generate`, {
       method: "POST",
       ...(body
         ? {
@@ -502,7 +537,7 @@ export async function generateSection(
         : {}),
     }),
     "POST /write/sections/{id}/generate",
-  ), sectionId);
+  ), resolvedSectionId);
 }
 
 export interface BrainstormEmitBody {
