@@ -81,7 +81,7 @@ def seed():
                             graph_scope="cross_domain", investigation_id="__operator__",
                             metadata={"chunk_id": gch})
     return {"deliverable_id": did, "section_id": sec, "node": node,
-            "document": doc, "gated_node": gnode}
+            "document": doc, "chunk": ch, "gated_node": gnode}
 
 
 # ── SPR-09 M1 — the piece↔research link, verified by reading it back ──
@@ -276,6 +276,58 @@ def test_trace_public_domain_opens_at_span(client, seed):
     assert trace["full_text_allowed"] is True
     assert trace["primary_chunk_index"] == 3
     assert trace["primary_section_path"] == "Chapter 2"
+
+
+def test_trace_public_domain_emits_write_to_read_seam(client, seed):
+    with connect_write(default_db_path(), purpose="test/connected_trace") as con:
+        did = insert_deliverable(
+            con,
+            title="Connected trace",
+            deliverable_kind="research_memo",
+            investigation_root_id="inv-write-trace",
+        )
+        sec = insert_section(con, deliverable_id=did, section_index=0, title="S1")
+
+    obid = client.post("/write/blocks", json={
+        "section_id": sec,
+        "deliverable_id": did,
+        "block_kind": "insight",
+        "provenance_kind": "graph_node",
+        "node_id": seed["node"],
+        "block_index": 0,
+    }).json()["outline_block_id"]
+
+    first = client.get(f"/write/blocks/{obid}/trace")
+    second = client.get(f"/write/blocks/{obid}/trace")
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+
+    jsonl = os.path.join(
+        os.environ["ANTIEK_RESEARCH_EVENTS_DIR"],
+        "inv-write-trace.jsonl",
+    )
+    events = [json.loads(line) for line in open(jsonl)]
+    placed = next(e for e in events if e["action_type"] == "outline_block.placed")
+    read_to_write = next(e for e in events if e["action_type"] == "seam.read_to_write")
+    write_to_read = [e for e in events if e["action_type"] == "seam.write_to_read"]
+
+    assert read_to_write["parent_event_id"] == placed["event_id"]
+    assert len(write_to_read) == 1
+    seam = write_to_read[0]
+    assert seam["parent_event_id"] == read_to_write["event_id"]
+    assert seam["payload"] == {
+        "action_type": "seam.write_to_read",
+        "entity_id": obid,
+        "entity_kind": "outline_block",
+        "provenance_ref": read_to_write["event_id"],
+        "terminates": True,
+        "from_workflow": "write",
+        "to_workflow": "read",
+        "source_document_id": seed["document"],
+        "source_region_id": seed["chunk"],
+    }
+    assert "content" not in seam["payload"]
+    assert "text" not in seam["payload"]
 
 
 def test_trace_gated_book_no_leak(client, seed):
