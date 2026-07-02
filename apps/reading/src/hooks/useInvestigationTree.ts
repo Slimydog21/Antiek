@@ -14,6 +14,12 @@ interface TreeMap {
   [childId: string]: string; // childId → parentId
 }
 
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 /**
  * Build a parent-child tree of investigations.
  *
@@ -34,20 +40,29 @@ export function useInvestigationTree(
   const [localTree] = useState<TreeMap>(() => readLocalTree());
 
   const tree = useMemo<TreeNode[]>(() => {
+    const validInvestigations = investigations.flatMap((summary) => {
+      const investigationId = nonEmptyString(summary.investigation_id);
+      return investigationId
+        ? [{ ...summary, investigation_id: investigationId }]
+        : [];
+    });
     const byId = new Map<string, InvestigationSummary>();
-    for (const s of investigations) byId.set(s.investigation_id, s);
+    for (const s of validInvestigations) byId.set(s.investigation_id, s);
 
     // Determine each investigation's parent: prefer substrate, fall
     // back to localStorage.
     const parentOf = new Map<string, string | null>();
-    for (const s of investigations) {
-      const p = s.parent_investigation_id ?? localTree[s.investigation_id] ?? null;
+    for (const s of validInvestigations) {
+      const p =
+        nonEmptyString(s.parent_investigation_id) ??
+        nonEmptyString(localTree[s.investigation_id]) ??
+        null;
       parentOf.set(s.investigation_id, p);
     }
 
     // Build nodes.
     const nodes = new Map<string, TreeNode>();
-    for (const s of investigations) {
+    for (const s of validInvestigations) {
       nodes.set(s.investigation_id, {
         investigationId: s.investigation_id,
         summary: s,
@@ -114,8 +129,11 @@ export function recordSpawnRelationship(
   childId: string,
   parentId: string,
 ): void {
+  const child = nonEmptyString(childId);
+  const parent = nonEmptyString(parentId);
+  if (!child || !parent) return;
   const current = readLocalTree();
-  current[childId] = parentId;
+  current[child] = parent;
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(current));
   } catch {
@@ -132,13 +150,10 @@ function readLocalTree(): TreeMap {
     if (typeof parsed !== "object" || parsed === null) return {};
     const out: TreeMap = {};
     for (const [childId, parentId] of Object.entries(parsed)) {
-      if (
-        typeof childId === "string" &&
-        childId.trim().length > 0 &&
-        typeof parentId === "string" &&
-        parentId.trim().length > 0
-      ) {
-        out[childId] = parentId;
+      const child = nonEmptyString(childId);
+      const parent = nonEmptyString(parentId);
+      if (child && parent) {
+        out[child] = parent;
       }
     }
     return out;

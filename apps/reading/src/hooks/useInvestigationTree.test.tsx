@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { InvestigationSummary } from "../lib/api";
 import {
   INVESTIGATION_TREE_STORAGE_KEY,
+  recordSpawnRelationship,
   useInvestigationTree,
 } from "./useInvestigationTree";
 
@@ -88,5 +89,41 @@ describe("useInvestigationTree", () => {
       "inv-valid-child",
     ]);
     expect(result.current.some((node) => node.investigationId === "inv-child")).toBe(true);
+  });
+
+  it("trims local parent links and summary ids before building the tree", () => {
+    window.localStorage.setItem(
+      INVESTIGATION_TREE_STORAGE_KEY,
+      JSON.stringify({
+        " inv-child ": " inv-parent ",
+      }),
+    );
+
+    const { result } = renderHook(() =>
+      useInvestigationTree([
+        inv(" inv-parent "),
+        inv(" inv-child "),
+        inv(" "),
+      ]),
+    );
+
+    expect(result.current.map((node) => node.investigationId)).toEqual([
+      "inv-parent",
+    ]);
+    expect(result.current[0].children.map((node) => node.investigationId)).toEqual([
+      "inv-child",
+    ]);
+  });
+
+  it("records only valid trimmed spawn relationships", () => {
+    recordSpawnRelationship(" child-id ", " parent-id ");
+    recordSpawnRelationship(" ", "ignored-parent");
+    recordSpawnRelationship("ignored-child", " ");
+
+    expect(
+      JSON.parse(window.localStorage.getItem(INVESTIGATION_TREE_STORAGE_KEY) ?? "{}"),
+    ).toEqual({
+      "child-id": "parent-id",
+    });
   });
 });
