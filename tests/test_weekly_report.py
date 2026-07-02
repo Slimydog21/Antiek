@@ -479,3 +479,69 @@ def test_cli_emits_json_to_file(events_dir, log_dir, tmp_path):
     body = json.loads(output.read_text())
     assert "phase_telemetry" in body
     assert "window" in body
+
+
+# ---------------------------------------------------------------------------
+# 11. Aware-bounds tolerance — every public window function is
+# caller-tz-agnostic. Regression for the half-hardened seam: the sidecar
+# `day` path in collect_acquisition_cost tolerated aware bounds, but
+# iter_window_events / collect_phase_telemetry / build_report compared raw
+# caller bounds against naive-UTC data timestamps, so a programmatic caller
+# passing `datetime.now(UTC)`-style bounds hit "TypeError: can't compare
+# offset-naive and offset-aware datetimes" as soon as one event or phase
+# log existed. Bounds are now normalized once at each public seam.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def aware_window(window: tuple[datetime, datetime]) -> tuple[datetime, datetime]:
+    """The same instants as `window`, expressed tz-aware (UTC)."""
+    start, end = window
+    return start.replace(tzinfo=UTC), end.replace(tzinfo=UTC)
+
+
+def test_iter_window_events_tolerates_aware_bounds(events_dir, window, aware_window):
+    emit_typed(
+        "inv-tz-1",
+        InvestigationStartRequestedPayload(
+            question="tz?", context="", topic_slug="tz", max_sub_questions=4,
+        ),
+        role="operator",
+    )
+    naive = list(iter_window_events(*window))
+    aware = list(iter_window_events(*aware_window))
+    assert len(naive) == 1
+    assert [e.event_id for e in aware] == [e.event_id for e in naive]
+
+
+def test_collect_phase_telemetry_tolerates_aware_bounds(log_dir, now, window, aware_window):
+    _write_phase_log(log_dir, "inv-tz-pt", created_at=now - timedelta(hours=1),
+                     phases={
+                         1: {"entered_at": "ts", "exited_at": "ts", "verified": True},
+                     })
+    naive = collect_phase_telemetry(*window)
+    aware = collect_phase_telemetry(*aware_window)
+    assert naive["investigations_in_window"] == 1
+    assert aware == naive
+
+
+def test_build_report_tolerates_aware_bounds(events_dir, log_dir, now, window, aware_window):
+    emit_typed(
+        "inv-tz-2",
+        InvestigationStartRequestedPayload(
+            question="tz?", context="", topic_slug="tz", max_sub_questions=4,
+        ),
+        role="operator",
+    )
+    _write_phase_log(log_dir, "inv-tz-2", created_at=now - timedelta(hours=1),
+                     phases={
+                         1: {"entered_at": "ts", "exited_at": "ts", "verified": True},
+                     })
+    r_naive = build_report(*window)
+    r_aware = build_report(*aware_window)
+    assert r_aware.lifecycle["started"] == 1
+    assert r_aware.lifecycle == r_naive.lifecycle
+    assert r_aware.phase_telemetry == r_naive.phase_telemetry
+    # The rendered window reflects the normalized bounds actually used for
+    # filtering — identical whichever tz representation the caller passed.
+    assert r_aware.window == r_naive.window
