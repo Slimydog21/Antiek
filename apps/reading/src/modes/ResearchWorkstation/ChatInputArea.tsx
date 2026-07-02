@@ -5,6 +5,7 @@ import LemonButton from "../../components/lemon/LemonButton";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
 import { track, trackException } from "../../lib/analytics";
 import { startInvestigation } from "../../lib/api";
+import { requireInvestigationId } from "../../lib/investigationData";
 
 /**
  * Bottom-of-center chat input. Submit on Cmd/Ctrl+Enter; click "Ask"
@@ -54,6 +55,7 @@ export default function ChatInputArea({
         parent_investigation_id: parentInvestigationId,
         spawn_context: spawnContext,
       });
+      const investigationId = requireInvestigationId(resp.investigation_id);
       track("investigation_started", {
         question_length: q.length,
         has_parent: Boolean(parentInvestigationId),
@@ -61,9 +63,9 @@ export default function ChatInputArea({
       });
       setQuestion("");
       if (onSubmitted) {
-        onSubmitted(resp.investigation_id);
+        onSubmitted(investigationId);
       } else {
-        navigate(`/inv/${resp.investigation_id}`);
+        navigate(`/inv/${encodeURIComponent(investigationId)}`);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
