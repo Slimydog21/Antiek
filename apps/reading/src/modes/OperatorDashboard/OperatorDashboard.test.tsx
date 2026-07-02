@@ -188,6 +188,19 @@ beforeEach(() => {
         },
       });
     }
+    if (path === "/federation/config") {
+      return okJson({
+        allowed_partner_substrates: [
+          " partner-a ",
+          "partner-a",
+          "",
+          42,
+          "partner-b",
+        ],
+        require_opt_in_for_outbound_citations: "false",
+        require_attribution_for_outbound_citations: false,
+      });
+    }
     return okJson({});
   });
 });
@@ -255,11 +268,21 @@ describe("OperatorDashboard", () => {
       ),
     ).toBeTruthy();
     expect(screen.getByText("Signal: publisher claims need work.")).toBeTruthy();
+    expect(screen.getByText("Federation status")).toBeTruthy();
+    expect(screen.getByText("CONFIGURED · 2 partners")).toBeTruthy();
+    expect(
+      screen.getByText("Outbound citations require opt-in: yes · attribution: no."),
+    ).toBeTruthy();
+    expect(screen.getByText("Partners: partner-a, partner-b.")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(
+      /partner-a\s+partner-a|42/,
+    );
     const openLinks = screen
       .getAllByRole("link", { name: "open →" })
       .map((link) => link.getAttribute("href"));
     expect(openLinks).toContain("/coordination");
     expect(openLinks).toContain("/marketplace");
+    expect(openLinks).toContain("/federation");
     expect(
       screen.getByRole("link", { name: "cost + consent →" }).getAttribute("href"),
     ).toBe("/coordination/cost-consent");
