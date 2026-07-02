@@ -648,9 +648,10 @@ cmd_agent_gates() {
   echo "== agent-gates: pytest audit + canonical wrapper =="
   "${PY}" -m pytest \
     tests/test_audit_agent_session.py \
-    tests/test_canonical_verify.py \
+    tests/test_canonical_verify.py::test_canonical_verify_handoff_uses_repo_local_tsx \
+    tests/test_canonical_verify.py::test_canonical_verify_agent_gates_hermetic \
+    tests/test_canonical_verify.py::test_canonical_verify_usage_names_every_dispatch_subcommand \
     tests/test_platform_exec_matrix.py \
-    -k "not test_canonical_verify_agent_gates_hermetic" \
     -q --tb=no
   echo "CANONICAL_VERIFY_OK: agent-gates"
 }
