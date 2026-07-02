@@ -207,5 +207,8 @@ jobs:
       - name: Canonical verify — write outline block
         run: ./scripts/canonical_verify.sh write-outline-block
 
+      - name: Canonical verify — write edit capture
+        run: ./scripts/canonical_verify.sh write-edit-capture
+
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md
