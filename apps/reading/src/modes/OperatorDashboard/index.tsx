@@ -31,6 +31,13 @@ interface CompositeSnapshot {
   recentPayouts: PayoutTransfer[];
   coordination: CoordinationSummary | null;
   marketplace: MarketplaceSummary | null;
+  federation: FederationSummary | null;
+}
+
+interface FederationSummary {
+  allowed_partner_substrates: string[];
+  require_opt_in_for_outbound_citations: boolean;
+  require_attribution_for_outbound_citations: boolean;
 }
 
 interface MarketplaceSummary {
@@ -198,11 +205,35 @@ function safeStringArray(value: unknown): string[] {
     : [];
 }
 
+function safePartnerList(value: unknown): string[] {
+  const seen = new Set<string>();
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const partner = nonEmptyString(item);
+    if (!partner || seen.has(partner)) return [];
+    seen.add(partner);
+    return [partner];
+  });
+}
+
 function safeStatsResponse(value: unknown): StatsResponse {
   const body = record(value);
   return {
     counts: safeCounts(body?.counts),
     warnings: safeWarnings(body?.warnings),
+  };
+}
+
+function safeFederationSummary(value: unknown): FederationSummary {
+  const body = record(value);
+  return {
+    allowed_partner_substrates: safePartnerList(
+      body?.allowed_partner_substrates,
+    ),
+    require_opt_in_for_outbound_citations:
+      body?.require_opt_in_for_outbound_citations === false ? false : true,
+    require_attribution_for_outbound_citations:
+      body?.require_attribution_for_outbound_citations === false ? false : true,
   };
 }
 
@@ -448,6 +479,7 @@ export default function OperatorDashboard() {
     recentPayouts: [],
     coordination: null,
     marketplace: null,
+    federation: null,
   });
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -463,6 +495,7 @@ export default function OperatorDashboard() {
         payoutsResp,
         coordinationResp,
         marketplaceResp,
+        federationResp,
       ] = await Promise.all([
         apiFetch("/publishers"),
         apiFetch("/stats").catch(() => null),
@@ -470,6 +503,7 @@ export default function OperatorDashboard() {
         apiFetch("/payouts/transfers?limit=5").catch(() => null),
         apiFetch("/coordination/roadmap").catch(() => null),
         apiFetch("/marketplace/snapshot").catch(() => null),
+        apiFetch("/federation/config").catch(() => null),
       ]);
 
       if (!publishersResp.ok) {
@@ -500,12 +534,18 @@ export default function OperatorDashboard() {
         marketplace = safeMarketplaceSummary(await marketplaceResp.json());
       }
 
+      let federation: FederationSummary | null = null;
+      if (federationResp?.ok) {
+        federation = safeFederationSummary(await federationResp.json());
+      }
+
       setSnapshot({
         stats,
         pendingDeletions,
         recentPayouts,
         coordination,
         marketplace,
+        federation,
       });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -690,7 +730,69 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
       </div>
       <CoordinationTile coordination={snapshot.coordination} />
       <MarketplaceTile marketplace={snapshot.marketplace} />
+      <FederationTile federation={snapshot.federation} />
     </section>
+  );
+}
+
+function FederationTile({
+  federation,
+}: {
+  federation: FederationSummary | null;
+}) {
+  const openLink = (
+    <Link
+      to="/federation"
+      className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+    >
+      open →
+    </Link>
+  );
+  if (!federation) {
+    return (
+      <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className="text-sm font-serif text-ink dark:text-bright">
+            Federation status
+          </h3>
+          {openLink}
+        </div>
+        <p className="mt-2 text-xs italic text-shadow-1 dark:text-moonlight">
+          Federation config unavailable.
+        </p>
+      </div>
+    );
+  }
+  const partnerCount = federation.allowed_partner_substrates.length;
+  const strictDefault =
+    partnerCount === 0 &&
+    federation.require_opt_in_for_outbound_citations &&
+    federation.require_attribution_for_outbound_citations;
+  const firstPartners = federation.allowed_partner_substrates.slice(0, 3).join(", ");
+  return (
+    <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-3 space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-sm font-serif text-ink dark:text-bright">
+          Federation status
+        </h3>
+        {openLink}
+      </div>
+      <p className="text-xs font-mono text-ink dark:text-bright">
+        {strictDefault ? "STRICT DEFAULT" : "CONFIGURED"} · {partnerCount} partner
+        {partnerCount === 1 ? "" : "s"}
+      </p>
+      <p className="text-xs text-ink-soft dark:text-starlight">
+        Outbound citations require opt-in:{" "}
+        {federation.require_opt_in_for_outbound_citations ? "yes" : "no"} ·
+        attribution:{" "}
+        {federation.require_attribution_for_outbound_citations ? "yes" : "no"}.
+      </p>
+      <p className="text-xs text-ink-soft dark:text-starlight">
+        {partnerCount > 0
+          ? `Partners: ${firstPartners}${partnerCount > 3 ? "…" : ""}.`
+          : "No partner substrates are currently allowed."}
+      </p>
+    </div>
   );
 }
 
