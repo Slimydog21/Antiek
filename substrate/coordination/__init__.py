@@ -12,8 +12,8 @@ read** from canonical sources this package never writes:
 * :mod:`substrate.coordination.roadmap` ingests the five live specs' sprint
   rosters (DRW 10 + Read 9 + Write 9 + Speak 9 + unified 8 = 45; the shell's 6
   are superseded, not counted) plus SPR-01's ``dependency_map`` DAG, and computes
-  what's unblocked-now from the dependency state — with the DRW critical path
-  (``drw:1 → drw:3 → drw:10``) surfaced explicitly.
+  the dependency-ready set (serialized as ``unblocked_now`` for the existing API)
+  — with the DRW critical path (``drw:1 → drw:3 → drw:10``) surfaced explicitly.
 
 * :mod:`substrate.coordination.cost_view` aggregates realized ``DispatchCall``
   inference cost per workflow + in aggregate (incl. SPR-02 remote-exec), reading
