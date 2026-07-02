@@ -19,6 +19,7 @@
 #   write-block-repository — Write SPR-03 folders/search/drag provenance gate
 #   write-structured-editor — Write SPR-04 TipTap block editor + locator gate
 #   write-brainstorm-interview — Write SPR-05 brainstorm drivers + section gate
+#   write-draft-generation-style — Write SPR-06 creative_writer + style gate
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -42,7 +43,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -232,6 +233,23 @@ cmd_write_brainstorm_interview() {
   echo "CANONICAL_VERIFY_OK: write-brainstorm-interview"
 }
 
+cmd_write_draft_generation_style() {
+  echo "== write-draft-generation-style: generation, citations, voice/style gate =="
+  "${PY}" -m pytest \
+    tests/test_draft_generation.py \
+    tests/test_write_routes.py \
+    tests/test_role_creative_writer.py \
+    tests/test_contracts_write_lock.py \
+    -q --tb=no
+  echo "== write-draft-generation-style: client + outline/xray generation UI =="
+  (cd apps/reading && npm run test -- \
+    src/modes/Write/writeApi.test.ts \
+    src/modes/Write/Outline.test.tsx \
+    src/modes/Write/Xray.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: write-draft-generation-style"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -314,6 +332,7 @@ main() {
     write-block-repository) cmd_write_block_repository ;;
     write-structured-editor) cmd_write_structured_editor ;;
     write-brainstorm-interview) cmd_write_brainstorm_interview ;;
+    write-draft-generation-style) cmd_write_draft_generation_style ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to WRITE_SPRINTS. Status changes are deliberate roadmap
 # events, not prose-only handoffs.
-WRITE_LOCK_VERSION: int = 5
+WRITE_LOCK_VERSION: int = 6
 
 
 @dataclass(frozen=True)
@@ -77,7 +77,17 @@ WRITE_SPRINTS: dict[int, WriteDeliverable] = {
         # no-piece sentinel blocking are covered by write-brainstorm-interview.
         status="live",
     ),
-    6: WriteDeliverable(6, "draft-generation-style", "Draft generation style"),
+    6: WriteDeliverable(
+        6,
+        "draft-generation-style",
+        "Draft generation style",
+        # Live: creative_writer context assembly, no-block gap behavior,
+        # inline citation validation, fabricated/unsupported claim reporting,
+        # voice_style gate enforcement, persisted prose provenance, paragraph
+        # regenerate, and honest no-provider UI handling are covered by
+        # write-draft-generation-style.
+        status="live",
+    ),
     7: WriteDeliverable(7, "trace-to-source", "Trace to source"),
     8: WriteDeliverable(8, "pre-outline-freeform", "Pre-outline freeform"),
     9: WriteDeliverable(9, "style-conditioning", "Style conditioning"),

@@ -152,3 +152,11 @@ def test_canonical_verify_write_brainstorm_interview_hermetic() -> None:
     proc = _run("write-brainstorm-interview")
     assert proc.returncode == 0, proc.stderr or proc.stdout
     assert "CANONICAL_VERIFY_OK: write-brainstorm-interview" in proc.stdout
+
+
+def test_canonical_verify_write_draft_generation_style_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("write-draft-generation-style")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: write-draft-generation-style" in proc.stdout
