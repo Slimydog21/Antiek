@@ -83,6 +83,36 @@ describe("api client numeric request bounds", () => {
 
     expect(fetch).not.toHaveBeenCalled();
   });
+
+  it("rejects malformed write editor request handles before sending requests", async () => {
+    await expect(createDeliverable({
+      title: " ",
+      deliverable_kind: "general_essay",
+    })).rejects.toThrow(/title/);
+    await expect(createSection({
+      deliverable_id: "dlv-1",
+      section_index: -1,
+    })).rejects.toThrow(/section_index/);
+    await expect(attachBlock({
+      section_id: " ",
+      block_kind: "claim",
+      block_id: "blk-1",
+      block_index: 0,
+    })).rejects.toThrow(/section_id/);
+    await expect(searchBlocks(" ")).rejects.toThrow(/q/);
+    await expect(reorderBlock({
+      section_id: "sec-1",
+      block_kind: "claim",
+      block_id: " ",
+      new_block_index: 0,
+    })).rejects.toThrow(/block_id/);
+    await expect(updateSectionProse("sec-1", {
+      prose_text: " ",
+    })).rejects.toThrow(/prose_text/);
+    await expect(exportDeliverable(" ", "markdown")).rejects.toThrow(/deliverable_id/);
+
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });
 
 describe("api client emitted-event response boundary", () => {
@@ -645,7 +675,7 @@ describe("api client write editor response boundaries", () => {
       ),
     );
 
-    await expect(searchBlocks("claim")).resolves.toEqual({
+    await expect(searchBlocks(" claim ", 5)).resolves.toEqual({
       count: 1,
       hits: [
         {
@@ -657,6 +687,95 @@ describe("api client write editor response boundaries", () => {
           document_title: "Source doc",
         },
       ],
+    });
+    const url = new URL(vi.mocked(fetch).mock.calls[0][0] as string);
+    expect(url.pathname).toBe("/blocks/search");
+    expect(url.searchParams.get("q")).toBe("claim");
+    expect(url.searchParams.get("limit")).toBe("5");
+  });
+
+  it("sanitizes deliverable and section request bodies before write assembly", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            deliverable_id: " dlv-1 ",
+            title: "Draft",
+            deliverable_kind: "research_memo",
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            section_id: " sec-1 ",
+            deliverable_id: " dlv-1 ",
+            section_index: 0,
+          }),
+          { status: 200 },
+        ),
+      );
+
+    await expect(createDeliverable({
+      title: " Draft ",
+      deliverable_kind: " research_memo " as never,
+      investigation_root_id: " inv-root ",
+    })).resolves.toMatchObject({ deliverable_id: "dlv-1" });
+    await expect(createSection({
+      deliverable_id: " dlv-1 ",
+      section_index: 0,
+      title: " Intro ",
+      parent_section_id: " ",
+    })).resolves.toMatchObject({ section_id: "sec-1" });
+
+    const createDeliverableCall = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(createDeliverableCall[1].body as string)).toEqual({
+      title: "Draft",
+      deliverable_kind: "research_memo",
+      investigation_root_id: "inv-root",
+    });
+    const createSectionCall = vi.mocked(fetch).mock.calls[1] as [string, RequestInit];
+    expect(JSON.parse(createSectionCall[1].body as string)).toEqual({
+      deliverable_id: "dlv-1",
+      section_index: 0,
+      title: "Intro",
+    });
+  });
+
+  it("sanitizes section block attach and reorder request bodies", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    await expect(attachBlock({
+      section_id: " sec-1 ",
+      block_kind: " claim " as never,
+      block_id: " block-1 ",
+      block_index: 0,
+    })).resolves.toBeUndefined();
+    await expect(reorderBlock({
+      section_id: " sec-1 ",
+      block_kind: " claim " as never,
+      block_id: " block-1 ",
+      new_section_id: " sec-2 ",
+      new_block_index: 1,
+    })).resolves.toBeUndefined();
+
+    const attachCall = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(attachCall[1].body as string)).toEqual({
+      section_id: "sec-1",
+      block_kind: "claim",
+      block_id: "block-1",
+      block_index: 0,
+    });
+    const reorderCall = vi.mocked(fetch).mock.calls[1] as [string, RequestInit];
+    expect(JSON.parse(reorderCall[1].body as string)).toEqual({
+      section_id: "sec-1",
+      block_kind: "claim",
+      block_id: "block-1",
+      new_section_id: "sec-2",
+      new_block_index: 1,
     });
   });
 
@@ -674,14 +793,27 @@ describe("api client write editor response boundaries", () => {
     );
 
     await expect(
-      updateSectionProse("sec-1", {
-        prose_text: "Draft",
+      updateSectionProse(" sec dirty/1 ", {
+        prose_text: " Draft ",
+        original_text: " Original ",
+        promote_to_graph: true,
+        cited_chunk_ids: [" chunk-1 "],
+        investigation_id: " inv-1 ",
       }),
     ).resolves.toEqual({
       status: "saved",
       section_id: "sec-1",
       claim_node_id: null,
       claim_event_id: "evt-1",
+    });
+    const call = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    expect(call[0]).toBe("/sections/sec%20dirty%2F1/prose");
+    expect(JSON.parse(call[1].body as string)).toEqual({
+      prose_text: "Draft",
+      original_text: "Original",
+      promote_to_graph: true,
+      cited_chunk_ids: ["chunk-1"],
+      investigation_id: "inv-1",
     });
   });
 
@@ -712,12 +844,15 @@ describe("api client write editor response boundaries", () => {
       ),
     );
 
-    await expect(exportDeliverable("dlv-1", "markdown")).resolves.toEqual({
+    await expect(exportDeliverable(" dlv dirty/1 ", " markdown " as never)).resolves.toEqual({
       format: "markdown",
       content: "# Draft",
       filename: "deliverable.markdown",
       content_encoding: "text",
     });
+    const url = new URL(vi.mocked(fetch).mock.calls[0][0] as string);
+    expect(url.pathname).toBe("/deliverables/dlv%20dirty%2F1/export");
+    expect(url.searchParams.get("format")).toBe("markdown");
   });
 
   it("rejects malformed export content", async () => {
