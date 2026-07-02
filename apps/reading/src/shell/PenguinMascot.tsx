@@ -151,9 +151,15 @@ export function PenguinMascot() {
   reduceMotionRef.current = reduceMotion;
   // The active emote mark, rendered over the Werner mark.
   const [emote, setEmote] = useState<EmoteKind | null>(null);
-  // Directed-walk flag: while the stage is walking Werner to a button (and back),
-  // the ambient gag stands down so it doesn't fight the excursion.
+  // Directed-walk flag: TRUE while the stage is walking Werner OUT to a button.
+  // The stage clears it (setRoamPaused(false)) the instant the button is reached
+  // — the return-home leg runs with this already false, so it is NOT enough on
+  // its own to keep the gag off during the walk home (see returningHome).
   const roamPaused = useRef(false);
+  // TRUE during the return-home leg (after a directed excursion, before Werner is
+  // back on station). The gag stands down for this window too, so an idle pointer
+  // can't stack the own-hole fishing cartoon onto the walk-home gait.
+  const returningHome = useRef(false);
   // The imperative controller (the SPR-10 seam). Created once; its StageHost
   // reuses THIS component's position + stroll rather than forking a second one.
   const stageRef = useRef<WernerStageController | null>(null);
@@ -293,6 +299,7 @@ export function PenguinMascot() {
       setFishingLoop(
         !dragStart.current &&
           !roamPaused.current &&
+          !returningHome.current &&
           reading.pointerIdle &&
           !reading.tabHidden,
       );
@@ -356,6 +363,7 @@ export function PenguinMascot() {
           // frozen, so Werner is already home or a stale excursion is being
           // cancelled. Snap to the station instantly — no transition, no walk
           // gait, no involuntary motion — and rest.
+          returningHome.current = false;
           pos.current = { ...stationPos.current };
           if (buttonRef.current) buttonRef.current.style.transition = "";
           applyPos();
@@ -363,11 +371,15 @@ export function PenguinMascot() {
           return;
         }
         // Motion allowed: walk him HOME to his station, then rest — the station
-        // is home; excursions come home.
+        // is home; excursions come home. The gag stands down for this leg too
+        // (returningHome) so an idle pointer can't stack the own-hole cartoon
+        // onto the walk-home gait.
+        returningHome.current = true;
         const home = stationPos.current;
         strollRef.current?.(home.x, home.y, STATION_RETURN_MS);
         returnTimer.current = window.setTimeout(() => {
           returnTimer.current = null;
+          returningHome.current = false;
           if (!dragStart.current && !roamPaused.current) {
             restGaitRef.current?.();
           }
@@ -447,6 +459,7 @@ export function PenguinMascot() {
       window.clearTimeout(returnTimer.current);
       returnTimer.current = null;
     }
+    returningHome.current = false;
   }, [reduceMotion]);
 
   const onPointerMove = useCallback(
