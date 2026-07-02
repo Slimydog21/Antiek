@@ -60,8 +60,13 @@ def test_speak_sprint_8_biography_authoring_is_live() -> None:
     assert lock.resolve_speak_sprint(8).status == "live"
 
 
-def test_remaining_speak_sprints_stay_planned_until_promoted() -> None:
-    assert {lock.resolve_speak_sprint(n).status for n in range(9, 10)} == {"planned"}
+def test_speak_sprint_9_publishing_physical_is_live() -> None:
+    assert lock.resolve_speak_sprint(9).slug == "publishing-physical"
+    assert lock.resolve_speak_sprint(9).status == "live"
+
+
+def test_all_speak_sprints_are_live() -> None:
+    assert {lock.resolve_speak_sprint(n).status for n in range(1, 10)} == {"live"}
 
 
 def test_roadmap_consumes_speak_sprint_status_and_focus_advances() -> None:
@@ -76,11 +81,8 @@ def test_roadmap_consumes_speak_sprint_status_and_focus_advances() -> None:
     assert by_id["speak:6"].status.value == "live"
     assert by_id["speak:7"].status.value == "live"
     assert by_id["speak:8"].status.value == "live"
-    for n in range(9, 10):
-        assert by_id[f"speak:{n}"].status.value == "planned"
-    assert roadmap.execution_focus() is not None
-    assert roadmap.execution_focus().node_id == "speak:9"
+    assert by_id["speak:9"].status.value == "live"
 
 
 def test_speak_lock_version_present() -> None:
-    assert isinstance(lock.SPEAK_LOCK_VERSION, int) and lock.SPEAK_LOCK_VERSION >= 8
+    assert isinstance(lock.SPEAK_LOCK_VERSION, int) and lock.SPEAK_LOCK_VERSION >= 9

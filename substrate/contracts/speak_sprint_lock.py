@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to SPEAK_SPRINTS. Status changes are deliberate roadmap
 # events, not prose-only handoffs.
-SPEAK_LOCK_VERSION: int = 8
+SPEAK_LOCK_VERSION: int = 9
 
 
 @dataclass(frozen=True)
@@ -114,7 +114,18 @@ SPEAK_SPRINTS: dict[int, SpeakDeliverable] = {
         # speak-biography-authoring.
         status="live",
     ),
-    9: SpeakDeliverable(9, "publishing-physical", "Publishing + physical"),
+    9: SpeakDeliverable(
+        9,
+        "publishing-physical",
+        "Publishing + physical",
+        # Live: private/public publishing routes, SPR-01 public-publish
+        # refusal, Read servability reuse for public biographies,
+        # contributor split accrual on public publish, takedown-aware
+        # speak-derived serving, quote-only physical-book provider seam,
+        # split-vs-creator payer allocation, and Speak publish/quote UI
+        # handling are covered by speak-publishing-physical.
+        status="live",
+    ),
 }
 
 
