@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import Werner from "../../brand/Werner";
@@ -57,6 +57,9 @@ export default function SpeakIndex() {
   const [tab, setTab] = useState<Tab>("yours");
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [feedLoading, setFeedLoading] = useState(false);
+  const feedLoadSeq = useRef(0);
+  const activeTab = useRef<Tab>(tab);
+  activeTab.current = tab;
 
   const [name, setName] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -75,13 +78,21 @@ export default function SpeakIndex() {
   }, []);
 
   const reloadFeed = useCallback(async () => {
+    const seq = ++feedLoadSeq.current;
     setFeedLoading(true);
     try {
-      setFeed(await listPublicFeed());
+      const nextFeed = await listPublicFeed();
+      if (feedLoadSeq.current === seq && activeTab.current === "public") {
+        setFeed(nextFeed);
+      }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (feedLoadSeq.current === seq && activeTab.current === "public") {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
-      setFeedLoading(false);
+      if (feedLoadSeq.current === seq && activeTab.current === "public") {
+        setFeedLoading(false);
+      }
     }
   }, []);
 

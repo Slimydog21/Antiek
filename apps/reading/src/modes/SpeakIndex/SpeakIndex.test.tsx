@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 /**
@@ -26,6 +26,14 @@ vi.mock("../../lib/speakApi", async (orig) => ({
 }));
 
 import SpeakIndex from "./index";
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
 
 beforeEach(() => {
   listPeopleMock.mockReset().mockResolvedValue([]);
@@ -183,5 +191,29 @@ describe("SpeakIndex — the warm door", () => {
       "/speak/public%20with%2Fslash",
       "/speak/public%20with%2Fslash",
     ]);
+  });
+
+  it("keeps stale public-feed reloads from overwriting the active tab feed", async () => {
+    const stale = deferred<[{ id: string; name: string; voiceCount: number }]>();
+    const fresh = deferred<[{ id: string; name: string; voiceCount: number }]>();
+    listPublicFeedMock.mockReturnValueOnce(stale.promise).mockReturnValueOnce(fresh.promise);
+
+    mount();
+    fireEvent.click(await screen.findByRole("tab", { name: /public remembrances/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /people you're remembering/i }));
+    fireEvent.click(screen.getByRole("tab", { name: /public remembrances/i }));
+
+    await act(async () => {
+      fresh.resolve([{ id: "fresh", name: "Fresh remembrance", voiceCount: 2 }]);
+    });
+
+    expect(await screen.findByText("Fresh remembrance")).toBeTruthy();
+
+    await act(async () => {
+      stale.resolve([{ id: "stale", name: "Stale remembrance", voiceCount: 1 }]);
+    });
+
+    expect(screen.getByText("Fresh remembrance")).toBeTruthy();
+    expect(screen.queryByText("Stale remembrance")).toBeNull();
   });
 });
