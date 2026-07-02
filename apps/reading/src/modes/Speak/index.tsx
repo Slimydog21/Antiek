@@ -109,6 +109,9 @@ export default function Speak() {
   const [showSettings, setShowSettings] = useState(false);
   const [draft, setDraft] = useState<DraftState>({ phase: "idle" });
   const [agree, setAgree] = useState<AgreeState>({ phase: "idle" });
+  const loadSeq = useRef(0);
+  const activeProjectId = useRef(projectId);
+  activeProjectId.current = projectId;
 
   // Gated-action note (publish / book quote) — shown verbatim, never faked.
   const [actionNote, setActionNote] = useState<string | null>(null);
@@ -116,6 +119,8 @@ export default function Speak() {
 
   const reload = useCallback(async () => {
     if (!projectId) return;
+    const seq = ++loadSeq.current;
+    const targetId = projectId;
     setError(null);
     try {
       const [p, ec, vs] = await Promise.all([
@@ -123,13 +128,17 @@ export default function Speak() {
         getEconomics(projectId).catch(() => null),
         listVoices(projectId).catch(() => [] as ArrivingVoice[]),
       ]);
-      setProject(p);
-      setEconomics(ec);
-      setVoices(vs);
-      // Seed the shareable link from the first existing invite, if any.
-      setShareLink((cur) => cur || vs.find((v) => v.link)?.link || "");
+      if (loadSeq.current === seq && activeProjectId.current === targetId) {
+        setProject(p);
+        setEconomics(ec);
+        setVoices(vs);
+        // Seed the shareable link from the first existing invite, if any.
+        setShareLink((cur) => cur || vs.find((v) => v.link)?.link || "");
+      }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (loadSeq.current === seq && activeProjectId.current === targetId) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     }
   }, [projectId]);
 
@@ -144,7 +153,9 @@ export default function Speak() {
     if (!projectId) return;
     const t = window.setInterval(() => {
       void listVoices(projectId)
-        .then(setVoices)
+        .then((next) => {
+          if (activeProjectId.current === projectId) setVoices(next);
+        })
         .catch(() => {/* keep the last good list; polling is best-effort */});
     }, POLL_MS);
     return () => window.clearInterval(t);
