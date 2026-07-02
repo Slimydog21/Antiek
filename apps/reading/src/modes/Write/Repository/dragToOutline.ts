@@ -19,6 +19,7 @@
 
 import type { PaletteDragPayload } from "../../CreationStudio/BlockPalette";
 import { DRAG_MIME } from "../../CreationStudio/BlockPalette";
+import type { BlockKind } from "../../../lib/api";
 
 /** The /write/blocks request body (SPR-01 place_block over REST). */
 export interface PlaceBlockBody {
@@ -36,6 +37,16 @@ export interface PlaceBlockBody {
 // regardless, so it lands as a "claim" (a node-backed kind) rather than
 // losing its provenance.
 const _NODE_KINDS = new Set(["insight", "open_question", "claim"]);
+const _PALETTE_KINDS = new Set<BlockKind>([
+  "insight",
+  "open_question",
+  "operator_note",
+  "claim",
+]);
+
+function _paletteKind(kind: string): BlockKind | null {
+  return _PALETTE_KINDS.has(kind as BlockKind) ? (kind as BlockKind) : null;
+}
 
 function _nodeKind(kind: string): "insight" | "open_question" | "claim" {
   return (_NODE_KINDS.has(kind) ? kind : "claim") as
@@ -53,16 +64,22 @@ export function parsePaletteDrag(
   if (!raw) return null;
   try {
     const obj = JSON.parse(raw) as Partial<PaletteDragPayload>;
+    const blockId = typeof obj.block_id === "string" ? obj.block_id.trim() : "";
+    const blockKind =
+      typeof obj.block_kind === "string" ? _paletteKind(obj.block_kind.trim()) : null;
     if (
       obj.from !== "palette" ||
-      typeof obj.block_id !== "string" ||
-      obj.block_id.trim() === "" ||
-      typeof obj.block_kind !== "string" ||
-      obj.block_kind.trim() === ""
+      blockId === "" ||
+      blockKind === null
     ) {
       return null;
     }
-    return obj as PaletteDragPayload;
+    return {
+      from: "palette",
+      block_id: blockId,
+      block_kind: blockKind,
+      label: typeof obj.label === "string" ? obj.label.trim() : "",
+    };
   } catch {
     return null;
   }
