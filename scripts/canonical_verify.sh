@@ -7,6 +7,7 @@
 #   handoff <path.md>    — verify_handoff.ts + audit_agent_session.sh
 #   read-foundation      — Read SPR-01 servable-corpus gate + lock
 #   read-library         — Read SPR-02 library browse + no-body catalog gate
+#   read-reader          — Read SPR-03 reader surface + structured-block gate
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -30,7 +31,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -103,6 +104,18 @@ cmd_read_library() {
   echo "CANONICAL_VERIFY_OK: read-library"
 }
 
+cmd_read_reader() {
+  echo "== read-reader: structured-block serve gate =="
+  "${PY}" -m pytest tests/test_serve_structured_blocks.py tests/test_contracts_read_lock.py -q --tb=no
+  echo "== read-reader: book reader surface =="
+  (cd apps/reading && npm run test -- \
+    src/modes/Reading/Reading.test.tsx \
+    src/modes/Reading/paginateBlocks.test.ts \
+    src/modes/Reading/TocPanel.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: read-reader"
+}
+
 cmd_handoff() {
   local f="${1:?handoff markdown path required}"
   echo "== handoff: schema linter =="
@@ -128,6 +141,7 @@ main() {
     cascade) cmd_cascade ;;
     read-foundation) cmd_read_foundation ;;
     read-library) cmd_read_library ;;
+    read-reader) cmd_read_reader ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;

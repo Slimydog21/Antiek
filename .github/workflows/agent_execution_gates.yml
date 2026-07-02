@@ -18,6 +18,7 @@ on:
       - 'apps/reading/src/api/books.ts'
       - 'apps/reading/src/components/library/**'
       - 'apps/reading/src/modes/Library/**'
+      - 'apps/reading/src/modes/Reading/**'
       - 'apps/reading/src/modes/DeepResearchWorkspace/**'
       - 'interfaces/research/api/cascade_routes.py'
       - 'interfaces/research/api/books.py'
@@ -42,6 +43,7 @@ on:
       - 'tests/test_book_corpus_gate.py'
       - 'tests/test_contracts_read_lock.py'
       - 'tests/test_library_api.py'
+      - 'tests/test_serve_structured_blocks.py'
       - 'tests/test_servability_drift_guard.py'
       - 'tests/test_gap_detection.py'
       - 'tests/test_speak_drw_gap_source.py'
@@ -62,6 +64,7 @@ on:
       - 'apps/reading/src/api/books.ts'
       - 'apps/reading/src/components/library/**'
       - 'apps/reading/src/modes/Library/**'
+      - 'apps/reading/src/modes/Reading/**'
       - 'apps/reading/src/modes/DeepResearchWorkspace/**'
       - 'interfaces/research/api/cascade_routes.py'
       - 'interfaces/research/api/books.py'
@@ -86,6 +89,7 @@ on:
       - 'tests/test_book_corpus_gate.py'
       - 'tests/test_contracts_read_lock.py'
       - 'tests/test_library_api.py'
+      - 'tests/test_serve_structured_blocks.py'
       - 'tests/test_servability_drift_guard.py'
       - 'tests/test_gap_detection.py'
       - 'tests/test_speak_drw_gap_source.py'
@@ -144,6 +148,9 @@ jobs:
 
       - name: Canonical verify — read library
         run: ./scripts/canonical_verify.sh read-library
+
+      - name: Canonical verify — read reader
+        run: ./scripts/canonical_verify.sh read-reader
 
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md
