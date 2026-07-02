@@ -19,7 +19,7 @@
 
 - `wc -l docs/diagnostics/auth-failure-mode-matrix.md` — 143 lines.
 - `npm test -- auth.test --run` — 11 tests passed.
-- `uv run --extra dev pytest tests/test_magic_link_auth.py tests/test_api_auth_state.py tests/test_auth_probe.py tests/test_prod_parity.py -q` — 74 passed, 1 warning.
+- `./.venv/bin/python -m pytest tests/test_magic_link_auth.py tests/test_api_auth_state.py tests/test_auth_probe.py tests/test_prod_parity.py -q` — 74 passed, 1 warning.
 - `LOGIN_E2E=1 npx playwright test --project=login-real` — 2 passed.
 - Auth diagnostic local HTML link audit — passed.
 
