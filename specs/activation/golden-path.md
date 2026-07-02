@@ -42,7 +42,7 @@ id, and the result of each step.
 | Step | Operator action | Pass condition | Evidence to record |
 |------|-----------------|----------------|--------------------|
 | 1 | Open a real corpus paper through any normal door | The one Reader opens at `/read/:documentId` and renders rich structured blocks, not a flat fallback unless the source genuinely lacks `structured_blocks` | URL, document id, screenshot or note of visible heading/table/math/figure where present |
-| 2 | Select a passage | Selection is stable and the shared FloatMenu appears without layout jump | selected text, action menu labels visible |
+| 2 | Select a passage | Selection is stable and the shared FloatMenu appears without layout jump | selected text, visible action labels: `Note`, `Dialogue`, `Search`, `Deep-research` |
 | 3 | Start Dialogue from the passage | With provider keys, a passage-anchored multi-turn thread returns a useful first answer; without keys, the UI states the activation boundary honestly | provider status, first answer or exact no-key copy |
 | 4 | Spin out research from the passage | With provider keys, research starts with the selected passage as seed and shows a recoverable running state; without keys, the UI states the activation boundary honestly | investigation/session id or exact no-key copy |
 | 5 | Click a citation/source marker | The cited real source opens in the same Reader at the cited chunk or nearest available anchor, with return-origin context in the URL | source document id, chunk id/anchor, resulting URL containing `from=<original document id>` |
@@ -57,7 +57,9 @@ operator notes can be normalized without losing the literal copy.
 For step 1, record either a screenshot reference (`screenshot`,
 `screenshot_url`, or `screenshot_path`) or a visible-reader note
 (`visible_content_note`, `structured_content_note`, or `render_note`). For step
-5, `result_url` must be an HTTP(S) `/read/{source_document_id}` URL carrying the
+2, `menu_labels` must include the four shared FloatMenu actions: `Note`,
+`Dialogue`, `Search`, and `Deep-research`. For step 5, `result_url` must be an
+HTTP(S) `/read/{source_document_id}` URL carrying the
 recorded `chunk_id` or `anchor` and `from=<document_id>` return context. For
 step 6, record `return_context_note`; `context_note` and
 `scroll_context_note` are accepted aliases.
@@ -145,7 +147,7 @@ Minimal record shape:
     "2": {
       "status": "pass",
       "selected_text": "highlighted passage text",
-      "menu_labels": ["Ask", "Investigate", "Trace source"]
+      "menu_labels": ["Note", "Dialogue", "Search", "Deep-research"]
     },
     "3": {
       "status": "pass",

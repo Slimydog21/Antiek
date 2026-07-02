@@ -37,7 +37,7 @@ JSONL record shape (one object per session)::
         "2": {
           "status": "pass",
           "selected_text": "highlighted passage text",
-          "menu_labels": ["Ask", "Investigate", "Trace source"]
+          "menu_labels": ["Note", "Dialogue", "Search", "Deep-research"]
         },
         "3": {
           "status": "pass",
@@ -84,6 +84,12 @@ REQUIRED_SESSION_FIELDS: tuple[str, ...] = (
 )
 REQUIRED_BOOLEAN_FIELDS: tuple[str, ...] = ("live_provider_ai", "citation_traced")
 REQUIRED_STEPS: tuple[str, ...] = tuple(str(i) for i in range(1, 8))
+REQUIRED_FLOAT_MENU_LABELS: tuple[str, ...] = (
+    "Note",
+    "Dialogue",
+    "Search",
+    "Deep-research",
+)
 NON_LIBRARY_ENTRY_DOORS: frozenset[str] = frozenset(
     {
         "search",
@@ -308,7 +314,7 @@ def session_template(kind: str) -> dict[str, Any]:
         "2": {
             "status": "pass",
             "selected_text": "Exact selected passage text.",
-            "menu_labels": ["Ask", "Investigate", "Trace source"],
+            "menu_labels": list(REQUIRED_FLOAT_MENU_LABELS),
         },
         "3": {"status": "pass" if live else "inert"},
         "4": {"status": "pass" if live else "inert"},
@@ -437,7 +443,30 @@ def _selection_evidence_failures(prefix: str, steps: dict[Any, Any]) -> list[str
         failures.append(prefix + "step 2 requires selected_text")
     if not _has_non_empty_string_list(menu_labels):
         failures.append(prefix + "step 2 requires menu_labels")
+    else:
+        missing_labels = _missing_float_menu_labels(menu_labels)
+        if missing_labels:
+            failures.append(
+                prefix
+                + "step 2 menu_labels must include: "
+                + ", ".join(missing_labels)
+            )
     return failures
+
+
+def _missing_float_menu_labels(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return list(REQUIRED_FLOAT_MENU_LABELS)
+    observed = {
+        item.strip().casefold()
+        for item in value
+        if isinstance(item, str) and item.strip()
+    }
+    return [
+        label
+        for label in REQUIRED_FLOAT_MENU_LABELS
+        if label.casefold() not in observed
+    ]
 
 
 def _return_context_evidence_failures(prefix: str, steps: dict[Any, Any]) -> list[str]:
