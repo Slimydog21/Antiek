@@ -19,7 +19,7 @@ import type { RoadmapView, RosterView, SprintView, SubstrateLayerView } from "./
  *    in the source doc; no per-product gate duplication.
  *  - Roadmap: the five specs' rosters + SPR-01's dependency DAG (GET
  *    /coordination/roadmap). 45 sprints reconciled, DRW critical path explicit,
- *    unblocked-now derived from dependency state.
+ *    dependency-ready sprint state derived from the DAG.
  *
  * Slots into the SPR-04 shared/operator bucket. Read-only — there is no control
  * here that mutates a gate or a sprint; gate state changes only in the

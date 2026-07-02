@@ -13,10 +13,10 @@ them.
 
 It then consumes SPR-01's :mod:`substrate.contracts.dependency_map` DAG for the
 dependency edges, surfaces the DRW critical path (``drw:1 → drw:3 → drw:10``)
-explicitly, and computes **what's unblocked now** from the dependency state —
-derived, not hand-maintained: a sprint is unblocked when every cross-spec
-dependency edge it has points at a node whose owning sprint is already ``live``/
-``provisional`` (built), per the frozen DRW sprint-lock's status column.
+explicitly, and computes the **dependency-ready** set from dependency state —
+derived, not hand-maintained. The existing API serializes this set as
+``unblocked_now``; that means every known cross-spec dependency is built, not that
+the sprint is complete, approved, or already executed.
 
 The substrate-execution layer (db_lock hardening, dispatch idempotency, CRDT
 scaffold, multi-cloud, vector reconstruction, structural-integrity lints) is
@@ -83,7 +83,7 @@ class SprintStatus(StrEnum):
 class SprintRow:
     """One sprint in the roadmap. ``node_id`` is the DAG node id
     (``"<spec>:<n>"``); ``on_critical_path`` flags the DRW spine
-    (drw:1/3/10); ``unblocked`` is derived from dependency state."""
+    (drw:1/3/10); ``unblocked`` is the API field for dependency readiness."""
 
     spec: str            # "drw" | "read" | "write" | "speak" | "unified"
     spec_label: str
@@ -93,7 +93,7 @@ class SprintRow:
     status: SprintStatus
     on_critical_path: bool
     blocked_on: tuple[str, ...]   # node ids this sprint waits on (not yet built)
-    unblocked: bool               # derived: all cross-spec deps built
+    unblocked: bool               # API field: dependency-ready, not complete
 
 
 @dataclass(frozen=True)
@@ -141,6 +141,11 @@ class Roadmap:
         return tuple(out)
 
     def unblocked_now(self) -> tuple[SprintRow, ...]:
+        """Rows whose known cross-spec dependency blockers are clear.
+
+        Kept as ``unblocked_now`` for the API contract; operator-facing UI should
+        describe the same state as dependency-ready, not complete/executed.
+        """
         return tuple(s for s in self.all_sprints() if s.unblocked)
 
     def blocked(self) -> tuple[SprintRow, ...]:
@@ -242,7 +247,7 @@ def _dependencies_for(node_id: str) -> tuple[str, ...]:
 
 def build_roadmap(specs_root: Path | None = None) -> Roadmap:
     """Ingest the five rosters + SPR-01's DAG; reconcile the count; compute the
-    unblocked set from dependency state. Reads only — authors nothing."""
+    dependency-ready set from dependency state. Reads only — authors nothing."""
     explicit_root = specs_root is not None
     root = specs_root or _specs_root()
     crit = set(dependency_map.critical_path())
