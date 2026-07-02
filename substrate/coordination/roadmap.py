@@ -32,7 +32,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from substrate.contracts import dependency_map, drw_sprint_lock
+from substrate.contracts import dependency_map, drw_sprint_lock, read_sprint_lock
 
 # ── Where the rosters live ───────────────────────────────────────────────────
 #
@@ -70,9 +70,8 @@ _SPRINT_FILE_RE = re.compile(r"^sprint-(\d{2})-(.+)\.html$")
 
 
 class SprintStatus(StrEnum):
-    """Coarse build state of a sprint, derived from the DRW sprint-lock where
-    the sprint is a DRW sprint, else ``UNKNOWN`` (the products own their own
-    internal status; this roadmap does not invent one)."""
+    """Coarse build state of a sprint, derived from product sprint-locks where
+    a lock exists. The roadmap does not invent status for unlocked products."""
 
     LIVE = "live"
     PROVISIONAL = "provisional"
@@ -274,6 +273,19 @@ def _drw_status(sprint: int) -> SprintStatus:
     }.get(d.status, SprintStatus.UNKNOWN)
 
 
+def _read_status(sprint: int) -> SprintStatus:
+    """Read sprint status from the frozen Read sprint-lock."""
+    try:
+        d = read_sprint_lock.resolve_read_sprint(sprint)
+    except KeyError:
+        return SprintStatus.UNKNOWN
+    return {
+        "live": SprintStatus.LIVE,
+        "provisional": SprintStatus.PROVISIONAL,
+        "planned": SprintStatus.PLANNED,
+    }.get(d.status, SprintStatus.UNKNOWN)
+
+
 def _built(status: SprintStatus) -> bool:
     """A node counts as 'built' (can unblock consumers) when its owning sprint is
     live or provisional. Planned/unknown does not unblock."""
@@ -281,12 +293,19 @@ def _built(status: SprintStatus) -> bool:
 
 
 def _node_status(node_id: str) -> SprintStatus:
-    """Status of an arbitrary DAG node. DRW nodes resolve via the sprint-lock;
-    whole-spec nodes (no ':') and non-DRW sprint nodes are UNKNOWN (the products
-    own their internal status — we do not fabricate one)."""
+    """Status of an arbitrary DAG node.
+
+    DRW and Read sprint nodes resolve via their sprint-locks; whole-spec nodes
+    (no ':') and unlocked product sprint nodes are UNKNOWN.
+    """
     if node_id.startswith("drw:"):
         try:
             return _drw_status(int(node_id.split(":")[1]))
+        except (ValueError, IndexError):
+            return SprintStatus.UNKNOWN
+    if node_id.startswith("read:"):
+        try:
+            return _read_status(int(node_id.split(":")[1]))
         except (ValueError, IndexError):
             return SprintStatus.UNKNOWN
     return SprintStatus.UNKNOWN
@@ -331,7 +350,12 @@ def build_roadmap(specs_root: Path | None = None) -> Roadmap:
         rows: list[SprintRow] = []
         for sprint, slug in files:
             node_id = f"{spec}:{sprint}"
-            status = _drw_status(sprint) if spec == "drw" else SprintStatus.UNKNOWN
+            if spec == "drw":
+                status = _drw_status(sprint)
+            elif spec == "read":
+                status = _read_status(sprint)
+            else:
+                status = SprintStatus.UNKNOWN
             deps = _dependencies_for(node_id)
             # Cross-spec deps not yet built block this sprint. Self-spec /
             # unknown-status providers are ignored for the unblocked calc — we

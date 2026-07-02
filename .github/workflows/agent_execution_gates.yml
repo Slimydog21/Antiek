@@ -18,8 +18,11 @@ on:
       - 'apps/reading/src/api/research.ts'
       - 'apps/reading/src/modes/DeepResearchWorkspace/**'
       - 'interfaces/research/api/cascade_routes.py'
+      - 'interfaces/research/api/books.py'
       - 'orchestration/cascade_session.py'
+      - 'substrate/books/**'
       - 'substrate/gap_detection/**'
+      - 'substrate/contracts/read_sprint_lock.py'
       - 'substrate/research_bridge/detect_external.py'
       - 'substrate/research_bridge/extractors.py'
       - 'substrate/research_bridge/ingest_file.py'
@@ -33,6 +36,8 @@ on:
       - 'tests/test_cascade_api.py'
       - 'tests/test_cascade_create_plan_light.py'
       - 'tests/test_parallel_orchestration.py'
+      - 'tests/test_book_corpus_gate.py'
+      - 'tests/test_contracts_read_lock.py'
       - 'tests/test_gap_detection.py'
       - 'tests/test_speak_drw_gap_source.py'
       - 'tests/test_universal_ingest.py'
@@ -60,8 +65,11 @@ on:
       - 'apps/reading/src/api/research.ts'
       - 'apps/reading/src/modes/DeepResearchWorkspace/**'
       - 'interfaces/research/api/cascade_routes.py'
+      - 'interfaces/research/api/books.py'
       - 'orchestration/cascade_session.py'
+      - 'substrate/books/**'
       - 'substrate/gap_detection/**'
+      - 'substrate/contracts/read_sprint_lock.py'
       - 'substrate/research_bridge/detect_external.py'
       - 'substrate/research_bridge/extractors.py'
       - 'substrate/research_bridge/ingest_file.py'
@@ -75,6 +83,8 @@ on:
       - 'tests/test_cascade_api.py'
       - 'tests/test_cascade_create_plan_light.py'
       - 'tests/test_parallel_orchestration.py'
+      - 'tests/test_book_corpus_gate.py'
+      - 'tests/test_contracts_read_lock.py'
       - 'tests/test_gap_detection.py'
       - 'tests/test_speak_drw_gap_source.py'
       - 'tests/test_universal_ingest.py'
@@ -135,6 +145,9 @@ jobs:
 
       - name: Canonical verify — cascade (hermetic)
         run: ./scripts/canonical_verify.sh cascade
+
+      - name: Canonical verify — read foundation
+        run: ./scripts/canonical_verify.sh read-foundation
 
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md

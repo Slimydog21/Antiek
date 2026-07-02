@@ -5,9 +5,10 @@
 #   profile              — print Env Card fields for handoff paste
 #   cascade              — hermetic cascade contract + adapter + light route
 #   handoff <path.md>    — verify_handoff.ts + audit_agent_session.sh
+#   read-foundation      — Read SPR-01 servable-corpus gate + lock
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
-#   deep-research        — ANT-DRL P-11..P-17 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
-#   html-transport       — ANT-AHT P-18 ResearchArtifact transport gates
+#   deep-research        — ANT-DRL P-17..P-23 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
+#   html-transport       — ANT-AHT P-24 ResearchArtifact transport gates
 #
 # USAGE (from repo root):
 #   ./scripts/canonical_verify.sh cascade
@@ -30,7 +31,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|handoff <md>|agent-gates|deep-research|html-transport}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|handoff <md>|agent-gates|deep-research|html-transport}" >&2
   exit 2
 }
 
@@ -84,6 +85,12 @@ cmd_cascade() {
   echo "CANONICAL_VERIFY_OK: cascade"
 }
 
+cmd_read_foundation() {
+  echo "== read-foundation: servable-corpus legal gate =="
+  "${PY}" -m pytest tests/test_book_corpus_gate.py tests/test_contracts_read_lock.py -q --tb=no
+  echo "CANONICAL_VERIFY_OK: read-foundation"
+}
+
 cmd_handoff() {
   local f="${1:?handoff markdown path required}"
   echo "== handoff: schema linter =="
@@ -102,7 +109,7 @@ cmd_agent_gates() {
 }
 
 cmd_html_transport() {
-  echo "== html-transport: P-18 ANT-AHT bundle =="
+  echo "== html-transport: P-24 ANT-AHT bundle =="
   "${PY}" -m pytest \
     tests/test_research_artifact_template.py \
     tests/test_research_artifact_export.py \
@@ -119,19 +126,19 @@ cmd_html_transport() {
 }
 
 cmd_deep_research() {
-  echo "== deep-research: P-11 Loop 1 E2E =="
+  echo "== deep-research: P-17 Loop 1 E2E =="
   "${PY}" -m pytest tests/test_loop_one_orchestrator.py::test_loop_one_happy_path_emits_completed -q --tb=no
-  echo "== deep-research: P-12 invariant negative =="
+  echo "== deep-research: P-18 invariant negative =="
   "${PY}" -m pytest tests/test_deep_research_complete.py::test_drw_only_trajectory_fails_without_synthesis -q --tb=no
-  echo "== deep-research: P-13 session reconstruct =="
+  echo "== deep-research: P-19 session reconstruct =="
   "${PY}" -m pytest tests/test_cascade_session.py -q --tb=no
-  echo "== deep-research: P-14 PromotionFunnel serialize =="
+  echo "== deep-research: P-20 PromotionFunnel serialize =="
   "${PY}" -m pytest tests/test_research_runner.py::test_promotion_funnel_serialized_no_lock_timeout -q --tb=no
-  echo "== deep-research: P-15 knowledge.reused (two-run) =="
+  echo "== deep-research: P-21 knowledge.reused (two-run) =="
   "${PY}" -m pytest tests/test_flywheel_reuse.py::test_two_run_contract_gather_emits_knowledge_reused_on_second_start -q --tb=no
-  echo "== deep-research: P-16 Exa gather mock E2E =="
+  echo "== deep-research: P-22 Exa gather mock E2E =="
   "${PY}" -m pytest tests/test_exa_gather_loop.py -q --tb=short
-  echo "== deep-research: P-17 parent-terminal observability =="
+  echo "== deep-research: P-23 parent-terminal observability =="
   "${PY}" -m pytest tests/test_drw_parent_terminal.py -q --tb=short
   echo "CANONICAL_VERIFY_OK: deep-research"
 }
@@ -142,6 +149,7 @@ main() {
   case "$sub" in
     profile) cmd_profile ;;
     cascade) cmd_cascade ;;
+    read-foundation) cmd_read_foundation ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     deep-research) cmd_deep_research ;;
