@@ -563,6 +563,12 @@ async def steer(session_id: str, investigation_id: str, req: SteerRequest) -> di
     live = _SESSIONS.get(session_id)
     if live is None:
         raise HTTPException(status_code=404, detail=f"session {session_id!r} not live")
+    status = {s.investigation_id: s.state for s in live.status()}
+    if investigation_id not in status:
+        raise HTTPException(
+            status_code=404,
+            detail=f"research {investigation_id!r} not in session {session_id!r}",
+        )
     await live.steer(investigation_id, _command(req.kind, req.payload))
     status = {s.investigation_id: s.state for s in live.status()}
     return {"session_id": session_id, "investigation_id": investigation_id,

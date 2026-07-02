@@ -399,6 +399,12 @@ def test_steer_endpoint_wiring(client):
     # Unknown command → 400.
     r = client.post(f"/research/sessions/{sid}/researches/{iid}/steer", json={"kind": "explode"})
     assert r.status_code == 400
+    # Unknown research in a live session is a real operator routing miss.
+    r = client.post(
+        f"/research/sessions/{sid}/researches/not-in-session/steer",
+        json={"kind": "stop"},
+    )
+    assert r.status_code == 404
     # Dead session → 404.
     r = client.post("/research/sessions/no-such-session/researches/x/steer", json={"kind": "stop"})
     assert r.status_code == 404

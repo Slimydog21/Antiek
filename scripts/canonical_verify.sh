@@ -61,6 +61,13 @@ cmd_cascade() {
     tests/test_cascade_api.py::test_invalid_budget_edits_are_rejected_before_persistence \
     tests/test_cascade_api.py::test_max_depth_cap_value_persists \
     -q --tb=no
+  echo "== cascade: parallel orchestration regression =="
+  "${PY}" -m pytest \
+    tests/test_parallel_orchestration.py::test_steer_routes_to_one_research \
+    tests/test_parallel_orchestration.py::test_session_reconstructs_from_event_log \
+    tests/test_cascade_api.py::test_steer_endpoint_wiring \
+    tests/test_cascade_api.py::test_session_reconstructs_after_eviction \
+    -q --tb=no
   echo "== cascade: light create-plan route =="
   "${PY}" -m pytest tests/test_cascade_create_plan_light.py -q --tb=no
   echo "== cascade: decomposer call-site audit =="
