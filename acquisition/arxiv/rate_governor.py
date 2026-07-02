@@ -53,8 +53,10 @@ import fcntl
 import os
 import threading
 import time
-from collections.abc import Callable
-from typing import TYPE_CHECKING
+from collections.abc import Callable, Mapping
+from ssl import SSLContext
+from types import TracebackType
+from typing import TYPE_CHECKING, Literal, TypedDict, TypeVar, Unpack, cast
 from urllib.parse import urlsplit
 
 from acquisition.arxiv.throttle import (
@@ -66,6 +68,37 @@ from acquisition.arxiv.throttle import (
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     import httpx
+    from httpx._types import (
+        AuthTypes,
+        CertTypes,
+        CookieTypes,
+        HeaderTypes,
+        ProxyTypes,
+        QueryParamTypes,
+        TimeoutTypes,
+    )
+
+_ResponseT = TypeVar("_ResponseT", bound=_ResponseLike)
+
+
+class _HttpxClientKwargs(TypedDict, total=False):
+    auth: AuthTypes | None
+    params: QueryParamTypes | None
+    headers: HeaderTypes | None
+    cookies: CookieTypes | None
+    verify: SSLContext | str | bool
+    cert: CertTypes | None
+    trust_env: bool
+    http1: bool
+    http2: bool
+    proxy: ProxyTypes | None
+    mounts: Mapping[str, httpx.BaseTransport | None] | None
+    limits: httpx.Limits
+    max_redirects: int
+    event_hooks: Mapping[str, list[Callable[..., object]]] | None
+    base_url: httpx.URL | str
+    transport: httpx.BaseTransport | None
+    default_encoding: str | Callable[[bytes], str]
 
 # The arXiv hosts the IP ban applies to. The ban is HOST-scoped (every endpoint
 # under arxiv.org / export.arxiv.org shares the one IP-rate budget), so the
@@ -295,7 +328,12 @@ class _GovernorLock:
         held[self._lock_path] = (fd, 1)
         return self
 
-    def __exit__(self, exc_type, exc, tb) -> bool:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> Literal[False]:
         held = getattr(_REENTRANT, "held", None) or {}
         entry = held.get(self._lock_path)
         if entry is not None:
@@ -357,8 +395,8 @@ class ArxivRateGovernor:
         return self._lock_path
 
     def governed_request(
-        self, send: Callable[[], _ResponseLike]
-    ) -> _ResponseLike:
+        self, send: Callable[[], _ResponseT]
+    ) -> _ResponseT:
         """Issue ONE arXiv request with the host-global rate gate held.
 
         Equivalent to ``ArxivThrottle.request`` but with the ENTIRE
@@ -399,17 +437,17 @@ class ArxivRateGovernor:
             # deadlock. For a non-hook client this marker is simply never read.
             token = _claim_initial_hop(self._throttle)
             try:
-                return self._throttle.request(send)
+                return cast(_ResponseT, self._throttle.request(send))
             finally:
                 _release_initial_hop(token)
 
 
-def governed_request(
-    send: Callable[[], _ResponseLike],
+def governed_request[ResponseT: _ResponseLike](
+    send: Callable[[], ResponseT],
     *,
     governor: ArxivRateGovernor | None = None,
     throttle: ArxivThrottle | None = None,
-) -> _ResponseLike:
+) -> ResponseT:
     """Convenience seam: route one arXiv send through a host-global governor.
 
     Pass an existing ``governor`` to reuse its throttle + lock, or pass a
@@ -421,13 +459,13 @@ def governed_request(
     return gov.governed_request(send)
 
 
-def govern_if_arxiv(
+def govern_if_arxiv[ResponseT: _ResponseLike](
     url: str,
-    send: Callable[[], _ResponseLike],
+    send: Callable[[], ResponseT],
     *,
     throttle: ArxivThrottle | None = None,
     governor: ArxivRateGovernor | None = None,
-) -> _ResponseLike:
+) -> ResponseT:
     """THE ROOT host-based runtime gate (SPR-09 round-4).
 
     The FETCH-boundary helper every external-PDF/HTTP fetcher that can resolve
@@ -555,7 +593,7 @@ def _note_response_hop(
     throttle: ArxivThrottle,
     lock_path: str,
     status_code: int,
-    headers,
+    headers: Mapping[str, str],
     *,
     lock_timeout_s: float,
     lock_poll_interval_s: float,
@@ -652,7 +690,8 @@ def arxiv_governed_client(
     lock_timeout_s: float = DEFAULT_LOCK_TIMEOUT_S,
     lock_poll_interval_s: float = DEFAULT_LOCK_POLL_INTERVAL_S,
     lock_sleep: Callable[[float], None] = time.sleep,
-    **client_kwargs,
+    timeout: TimeoutTypes = DEFAULT_HTTP_TIMEOUT_S,
+    **client_kwargs: Unpack[_HttpxClientKwargs],
 ) -> httpx.Client:
     """Build an ``httpx.Client`` whose every request hop is governed by the
     redirect-safe per-hop arXiv gate (see :func:`install_arxiv_request_hook`).
@@ -666,7 +705,6 @@ def arxiv_governed_client(
     headers) pass through to ``httpx.Client``."""
     import httpx as _httpx
 
-    timeout = client_kwargs.pop("timeout", DEFAULT_HTTP_TIMEOUT_S)
     client = _httpx.Client(
         follow_redirects=follow_redirects,
         timeout=timeout,  # default matches acquisition/papers/core.py DEFAULT_TIMEOUT_S (20s)
