@@ -206,6 +206,18 @@ function nonEmptyString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function safeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const text = nonEmptyString(item);
+    return text ? [text] : [];
+  });
+}
+
 function sanitizeImpression(item: ImpressionItem): ImpressionItem | null {
   const slotId = typeof item.slot_id === "string" ? item.slot_id.trim() : "";
   const pageIndex = nonNegativeSafeInteger(item.page_index);
@@ -446,6 +458,36 @@ export interface MetaReadingResponse {
   context_chunk_count: number;
 }
 
+function safeLengthUnit(value: unknown): "pages" | "minutes" {
+  return value === "minutes" ? "minutes" : "pages";
+}
+
+function safeCorpusScope(value: unknown): "hard" | "soft" {
+  return value === "soft" ? "soft" : "hard";
+}
+
+function safeMetaReadingResponse(value: unknown): MetaReadingResponse {
+  const body = record(value);
+  const assetId = body ? nonEmptyString(body.asset_id) : null;
+  const report = body ? nonEmptyString(body.report) : null;
+  if (!body || !assetId || !report) {
+    throw new Error("Malformed meta-reading response.");
+  }
+  return {
+    asset_id: assetId,
+    report,
+    citations: sanitizeBookCitations(body.citations),
+    length_unit: safeLengthUnit(body.length_unit),
+    length_amount: nonNegativeSafeInteger(body.length_amount) ?? 0,
+    word_budget: nonNegativeSafeInteger(body.word_budget) ?? 0,
+    truncated: body.truncated === true,
+    corpus_scope: safeCorpusScope(body.corpus_scope),
+    corpus_document_ids: safeStringArray(body.corpus_document_ids),
+    empty: body.empty === true,
+    context_chunk_count: nonNegativeSafeInteger(body.context_chunk_count) ?? 0,
+  };
+}
+
 /** Generate + save a meta-reading deliverable over the owned corpus (Read
  * SPR-08 M4). 422 when the length is degenerate (stated bound). 503 when the
  * model / embedding is unavailable. */
@@ -463,7 +505,7 @@ export async function generateMetaReading(
   }
   if (resp.status === 503) throw new Error("Meta-reading isn’t available right now.");
   if (!resp.ok) throw new Error(`POST /corpus/meta-reading: HTTP ${resp.status}`);
-  return (await resp.json()) as MetaReadingResponse;
+  return safeMetaReadingResponse(await resp.json());
 }
 
 // ── SPR-13 — personal document space (collect / categorize / file) ────
@@ -490,12 +532,44 @@ export interface PersonalSpaceResponse {
   count: number;
 }
 
+function safePersonalAsset(value: unknown): PersonalAsset | null {
+  const asset = record(value);
+  if (!asset) return null;
+  const assetId = nonEmptyString(asset.asset_id);
+  const title = nonEmptyString(asset.title);
+  const openRoute = nonEmptyString(asset.open_route);
+  if (!assetId || !title || !openRoute) return null;
+  return {
+    asset_id: assetId,
+    kind: asset.kind === "saved_read" ? "saved_read" : "meta_reading",
+    title,
+    prompt: nullableString(asset.prompt),
+    document_ids: safeStringArray(asset.document_ids),
+    emitted_at: nullableString(asset.emitted_at),
+    open_route: openRoute,
+  };
+}
+
+function safePersonalSpaceResponse(value: unknown): PersonalSpaceResponse {
+  const body = record(value);
+  const assets = Array.isArray(body?.assets)
+    ? body.assets.flatMap((item) => {
+        const asset = safePersonalAsset(item);
+        return asset ? [asset] : [];
+      })
+    : [];
+  return {
+    assets,
+    count: nonNegativeSafeInteger(body?.count) ?? assets.length,
+  };
+}
+
 /** List the personal-space assets (Read SPR-13 M1), newest first. Substrate-
  * backed (event-log scan), not a new store. */
 export async function listPersonalSpace(): Promise<PersonalSpaceResponse> {
   const resp = await apiFetch(`${API_BASE}/meta-readings`);
   if (!resp.ok) throw new Error(`GET /meta-readings: HTTP ${resp.status}`);
-  return (await resp.json()) as PersonalSpaceResponse;
+  return safePersonalSpaceResponse(await resp.json());
 }
 
 export interface AssetCategory {
@@ -516,13 +590,42 @@ export interface CategorizedSpaceResponse {
   stability_bound: number;
 }
 
+function safeAssetCategory(value: unknown): AssetCategory | null {
+  const category = record(value);
+  if (!category) return null;
+  const categoryId = nonEmptyString(category.category_id);
+  const label = nonEmptyString(category.label);
+  if (!categoryId || !label) return null;
+  return {
+    category_id: categoryId,
+    label,
+    asset_ids: safeStringArray(category.asset_ids),
+    ordering: category.ordering === "theme" ? "theme" : "recency",
+  };
+}
+
+function safeCategorizedSpaceResponse(value: unknown): CategorizedSpaceResponse {
+  const body = record(value);
+  const categories = Array.isArray(body?.categories)
+    ? body.categories.flatMap((item) => {
+        const category = safeAssetCategory(item);
+        return category ? [category] : [];
+      })
+    : [];
+  return {
+    categories,
+    ordering: body?.ordering === "theme" ? "theme" : "recency",
+    stability_bound: nonNegativeSafeInteger(body?.stability_bound) ?? 0,
+  };
+}
+
 /** Cluster the personal-space assets into SYSTEM-named categories (Read SPR-13
  * M2). The system names the categories; the user never hand-organizes folders.
  * Honest recency fallback below the stability bound. */
 export async function listPersonalSpaceCategories(): Promise<CategorizedSpaceResponse> {
   const resp = await apiFetch(`${API_BASE}/meta-readings/categories`);
   if (!resp.ok) throw new Error(`GET /meta-readings/categories: HTTP ${resp.status}`);
-  return (await resp.json()) as CategorizedSpaceResponse;
+  return safeCategorizedSpaceResponse(await resp.json());
 }
 
 export interface ProjectMatch {
@@ -534,6 +637,36 @@ export interface ProjectMatch {
 export interface FileSuggestionResponse {
   document_id: string;
   matches: ProjectMatch[];
+}
+
+function safeProjectMatch(value: unknown): ProjectMatch | null {
+  const match = record(value);
+  if (!match) return null;
+  const investigationId = nonEmptyString(match.investigation_id);
+  const question = nonEmptyString(match.question);
+  if (!investigationId || !question) return null;
+  return {
+    investigation_id: investigationId,
+    question,
+    score: nonNegativeFiniteNumber(match.score) ?? 0,
+  };
+}
+
+function safeFileSuggestionResponse(
+  value: unknown,
+  fallbackDocumentId: string,
+): FileSuggestionResponse {
+  const body = record(value);
+  const matches = Array.isArray(body?.matches)
+    ? body.matches.flatMap((item) => {
+        const match = safeProjectMatch(item);
+        return match ? [match] : [];
+      })
+    : [];
+  return {
+    document_id: nonEmptyString(body?.document_id) ?? fallbackDocumentId,
+    matches,
+  };
 }
 
 /** Ask which research projects a doc could be filed into (Read SPR-13 M3).
@@ -549,7 +682,7 @@ export async function getFileSuggestion(
     return { document_id: documentId, matches: [] };
   }
   if (!resp.ok) throw new Error(`GET /meta-readings/file-suggestion: HTTP ${resp.status}`);
-  return (await resp.json()) as FileSuggestionResponse;
+  return safeFileSuggestionResponse(await resp.json(), documentId);
 }
 
 export interface SavedMetaReading {
@@ -564,13 +697,34 @@ export interface SavedMetaReading {
   corpus_document_ids: string[];
 }
 
+function safeSavedMetaReading(value: unknown): SavedMetaReading {
+  const body = record(value);
+  const assetId = body ? nonEmptyString(body.asset_id) : null;
+  const prompt = body ? nonEmptyString(body.prompt) : null;
+  const report = body ? nonEmptyString(body.report) : null;
+  if (!body || !assetId || !prompt || !report) {
+    throw new Error("Malformed saved meta-reading response.");
+  }
+  return {
+    asset_id: assetId,
+    prompt,
+    report,
+    citations: sanitizeBookCitations(body.citations),
+    length_unit: safeLengthUnit(body.length_unit),
+    length_amount: nonNegativeSafeInteger(body.length_amount) ?? 0,
+    truncated: body.truncated === true,
+    corpus_scope: safeCorpusScope(body.corpus_scope),
+    corpus_document_ids: safeStringArray(body.corpus_document_ids),
+  };
+}
+
 /** Re-open a saved meta-reading asset by id (Read SPR-13 M1 — opens back into
  * the meta-doc view). Reads the saved event off the log. */
 export async function getSavedMetaReading(assetId: string): Promise<SavedMetaReading> {
   const resp = await apiFetch(`${API_BASE}/meta-readings/${encodeURIComponent(assetId)}`);
   if (resp.status === 404) throw new Error(`Saved reading ${assetId} not found.`);
   if (!resp.ok) throw new Error(`GET /meta-readings/{id}: HTTP ${resp.status}`);
-  return (await resp.json()) as SavedMetaReading;
+  return safeSavedMetaReading(await resp.json());
 }
 
 /** Human-readable label + Lemon tag colour for a servability status. One
