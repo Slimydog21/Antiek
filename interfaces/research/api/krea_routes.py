@@ -122,17 +122,21 @@ NO streaming route was added.
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
+from collections import deque
 from collections.abc import Callable
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 
 import httpx
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger("antiek.interfaces.krea")
 
 # ── Constants: defaults are DOC-DERIVED and CONSERVATIVE ────────────────
 
@@ -254,6 +258,20 @@ _REASON_JOB_TIMEOUT = "job_timeout"
 #                    local over_daily_budget guard.
 _REASON_JOB_CANCELLED = "job_cancelled"
 _REASON_NO_API_BALANCE = "no_api_balance"
+_ALL_DISABLED_REASONS = (
+    _REASON_NO_KEY,
+    _REASON_KILL_SWITCH,
+    _REASON_OVER_BUDGET,
+    _REASON_RATE_LIMITED,
+    _REASON_UPSTREAM_ERROR,
+    _REASON_UPSTREAM_TIMEOUT,
+    _REASON_UPSTREAM_BAD_RESPONSE,
+    _REASON_JOB_FAILED,
+    _REASON_JOB_TIMEOUT,
+    _REASON_JOB_CANCELLED,
+    _REASON_NO_API_BALANCE,
+)
+_FAILURE_RING_MAXLEN = 50
 
 # ── Request bounds. Transcribed from the flux-1-dev model reference ─────
 # (docs.krea.ai, 2026-06-12). Enforced at the proxy BEFORE any billable
@@ -429,6 +447,31 @@ class _BudgetState:
             self._roll_day_locked()
             return self._units_today
 
+    def status_snapshot(self) -> dict[str, Any]:
+        """Read-only budget/rate snapshot for GET /krea/status.
+
+        This intentionally avoids _roll_day_locked() and rate_limited(), both
+        of which mutate state. It reports the counters as the gates would see
+        them now without pruning or resetting during observation.
+        """
+        now = time.monotonic()
+        window = _DEFAULT_RATE_LIMIT_WINDOW_S
+        with self._lock:
+            in_window = sum(1 for t in self._recent_submits if now - t < window)
+            cap = self.daily_cap()
+            return {
+                "budget": {
+                    "spent_today": self._units_today,
+                    "cap": cap,
+                    "remaining": max(cap - self._units_today, 0),
+                },
+                "rate_window": {
+                    "occupancy": in_window,
+                    "max": self._rate_max(),
+                    "window_s": window,
+                },
+            }
+
     def reset(self) -> None:
         """Test hook — clear all counters."""
         with self._lock:
@@ -486,6 +529,55 @@ class _SceneCache:
     def clear(self) -> None:
         with self._lock:
             self._store.clear()
+
+    def stats(self) -> dict[str, int]:
+        """Read-only cache snapshot for GET /krea/status."""
+        with self._lock:
+            return {"entries": len(self._store), "max_entries": self._max_entries}
+
+
+class _FailureRing:
+    """Thread-safe bounded ring of fallback reasons.
+
+    Entries store reason classes and upstream status codes only. Raw upstream
+    response bodies are deliberately excluded because vendors can echo bearer
+    credentials in error text.
+    """
+
+    def __init__(self, maxlen: int = _FAILURE_RING_MAXLEN) -> None:
+        self._lock = threading.Lock()
+        self._entries: deque[dict[str, str | int | None]] = deque(maxlen=maxlen)
+        self._counts: dict[str, int] = {}
+        self._last_success_at: str | None = None
+
+    def record(
+        self,
+        reason: str,
+        *,
+        scene_key: str | None = None,
+        upstream_status: int | None = None,
+    ) -> None:
+        entry: dict[str, str | int | None] = {
+            "timestamp": datetime.now(UTC).isoformat(),
+            "reason": reason,
+            "scene_key": scene_key,
+            "upstream_status": upstream_status,
+        }
+        with self._lock:
+            self._entries.append(entry)
+            self._counts[reason] = self._counts.get(reason, 0) + 1
+
+    def mark_success(self) -> None:
+        with self._lock:
+            self._last_success_at = datetime.now(UTC).isoformat()
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._lock:
+            return {
+                "entries": [dict(entry) for entry in self._entries],
+                "failure_counts": dict(self._counts),
+                "last_success_at": self._last_success_at,
+            }
 
 
 # ── Pure helpers ────────────────────────────────────────────────────────
@@ -592,10 +684,17 @@ class _UpstreamError(Exception):
     becomes the DisabledResponse.reason. Never escapes as a 500 — the
     handlers map it to the typed 503 fallback."""
 
-    def __init__(self, reason: str, detail: str = "") -> None:
+    def __init__(
+        self,
+        reason: str,
+        detail: str = "",
+        *,
+        upstream_status: int | None = None,
+    ) -> None:
         super().__init__(detail or reason)
         self.reason = reason
         self.detail = detail
+        self.upstream_status = upstream_status
 
 
 def _submit_generation(
@@ -650,6 +749,7 @@ def _submit_generation(
             raise _UpstreamError(
                 _REASON_NO_API_BALANCE,
                 f"HTTP 402 — {(resp.text or '')[:300]}",
+                upstream_status=resp.status_code,
             )
         # 401 (invalid key), 429 (rate-limited upstream / queue), 5xx —
         # ALL collapse to the fallback signal. We do not retry here; the
@@ -660,6 +760,7 @@ def _submit_generation(
             raise _UpstreamError(
                 _REASON_UPSTREAM_ERROR,
                 f"HTTP {resp.status_code} — {preview}",
+                upstream_status=resp.status_code,
             )
         # ANY 2xx: Krea accepted the submit. Record the budget unit NOW,
         # before parsing (M6) — see the divergence comment at the
@@ -669,16 +770,24 @@ def _submit_generation(
         try:
             data: Any = resp.json()
         except ValueError as e:  # partial / garbage JSON failure mode
-            raise _UpstreamError(_REASON_UPSTREAM_BAD_RESPONSE, str(e)) from e
+            raise _UpstreamError(
+                _REASON_UPSTREAM_BAD_RESPONSE,
+                str(e),
+                upstream_status=resp.status_code,
+            ) from e
         if not isinstance(data, dict):
             raise _UpstreamError(
-                _REASON_UPSTREAM_BAD_RESPONSE, f"non-object body: {type(data)}",
+                _REASON_UPSTREAM_BAD_RESPONSE,
+                f"non-object body: {type(data)}",
+                upstream_status=resp.status_code,
             )
         job_id = data.get("job_id")
         status = data.get("status") or "queued"
         if not isinstance(job_id, str) or not job_id:
             raise _UpstreamError(
-                _REASON_UPSTREAM_BAD_RESPONSE, f"missing job_id: {str(data)[:200]}",
+                _REASON_UPSTREAM_BAD_RESPONSE,
+                f"missing job_id: {str(data)[:200]}",
+                upstream_status=resp.status_code,
             )
         return job_id, str(status)
     finally:
@@ -716,20 +825,28 @@ def _poll_job(
             raise _UpstreamError(
                 _REASON_NO_API_BALANCE,
                 f"HTTP 402 — {(resp.text or '')[:300]}",
+                upstream_status=resp.status_code,
             )
         if not (200 <= resp.status_code < 300):
             preview = (resp.text or "")[:300]
             raise _UpstreamError(
                 _REASON_UPSTREAM_ERROR,
                 f"HTTP {resp.status_code} — {preview}",
+                upstream_status=resp.status_code,
             )
         try:
             data: Any = resp.json()
         except ValueError as e:
-            raise _UpstreamError(_REASON_UPSTREAM_BAD_RESPONSE, str(e)) from e
+            raise _UpstreamError(
+                _REASON_UPSTREAM_BAD_RESPONSE,
+                str(e),
+                upstream_status=resp.status_code,
+            ) from e
         if not isinstance(data, dict):
             raise _UpstreamError(
-                _REASON_UPSTREAM_BAD_RESPONSE, f"non-object body: {type(data)}",
+                _REASON_UPSTREAM_BAD_RESPONSE,
+                f"non-object body: {type(data)}",
+                upstream_status=resp.status_code,
             )
         status = str(data.get("status") or "")
         # Failure detail (docs.krea.ai jobs reference, 2026-06-12): failed
@@ -763,6 +880,7 @@ def _poll_job(
             raise _UpstreamError(
                 _REASON_UPSTREAM_BAD_RESPONSE,
                 f"completed job missing result.urls: {str(data)[:200]}",
+                upstream_status=resp.status_code,
             )
         return JobResponse(
             job_id=job_id, status=status or "unknown", image_url=image_url,
@@ -788,8 +906,10 @@ def register_krea_routes(app: FastAPI) -> None:
 
     budget = _BudgetState()
     cache = _SceneCache()
+    failures = _FailureRing()
     app.state.krea_budget = budget
     app.state.krea_cache = cache
+    app.state.krea_failures = failures
     # Optional injected httpx client for tests (MockTransport). Production
     # leaves this None → each call builds + closes its own short-timeout
     # client. Set via app.state.krea_http_client in a test.
@@ -798,10 +918,67 @@ def register_krea_routes(app: FastAPI) -> None:
     def _http() -> httpx.Client | None:
         return getattr(app.state, "krea_http_client", None)
 
-    def _disabled(reason: str, scene: str | None = None) -> JSONResponse:
+    state_lock = threading.Lock()
+    last_enabled = True
+
+    def _observe_enabled(enabled: bool, reason: str | None = None) -> None:
+        """Log once for each enabled->disabled transition, never per request."""
+        nonlocal last_enabled
+        should_log = False
+        with state_lock:
+            if enabled:
+                last_enabled = True
+                return
+            if last_enabled:
+                should_log = True
+            last_enabled = False
+        if should_log:
+            logger.warning("krea disabled: reason=%s", reason)
+
+    def _disabled(
+        reason: str,
+        scene: str | None = None,
+        upstream_status: int | None = None,
+    ) -> JSONResponse:
         """Build the typed 503 fallback body. ALWAYS 503, NEVER 500."""
+        failures.record(reason, scene_key=scene, upstream_status=upstream_status)
+        _observe_enabled(False, reason)
         payload = DisabledResponse(reason=reason, scene_key=scene)
         return JSONResponse(status_code=503, content=payload.model_dump())
+
+    def _status_payload() -> dict[str, Any]:
+        budget_snap = budget.status_snapshot()
+        key_present = _api_token() is not None
+        kill_switch = _kill_switch_on()
+        spent = budget_snap["budget"]["spent_today"]
+        cap = budget_snap["budget"]["cap"]
+        occupancy = budget_snap["rate_window"]["occupancy"]
+        rate_max = budget_snap["rate_window"]["max"]
+        if kill_switch:
+            verdict = _REASON_KILL_SWITCH
+        elif not key_present:
+            verdict = _REASON_NO_KEY
+        elif spent >= cap:
+            verdict = _REASON_OVER_BUDGET
+        elif occupancy >= rate_max:
+            verdict = _REASON_RATE_LIMITED
+        else:
+            verdict = None
+        enabled = verdict is None
+        failure_snap = failures.snapshot()
+        return {
+            "enabled": enabled,
+            "key_present": key_present,
+            "kill_switch": kill_switch,
+            "gate_verdict": verdict,
+            "reasons": list(_ALL_DISABLED_REASONS),
+            "budget": budget_snap["budget"],
+            "rate_window": budget_snap["rate_window"],
+            "cache": cache.stats(),
+            "last_success_at": failure_snap["last_success_at"],
+            "failure_counts": failure_snap["failure_counts"],
+            "failures": failure_snap["entries"],
+        }
 
     def _gate() -> str | None:
         """Return a fallback reason if generation is NOT permitted right
@@ -862,7 +1039,8 @@ def register_krea_routes(app: FastAPI) -> None:
             # 429 / 5xx / bad-json) ends here → typed fallback, never a
             # 500. (A 2xx-then-bad-body path has ALREADY recorded its unit
             # via on_2xx by the time the parse error lands here.)
-            return _disabled(e.reason)
+            return _disabled(e.reason, upstream_status=e.upstream_status)
+        _observe_enabled(True)
         return JSONResponse(
             status_code=200,
             content=GenerateResponse(job_id=job_id, status=status).model_dump(),
@@ -886,7 +1064,8 @@ def register_krea_routes(app: FastAPI) -> None:
         try:
             job = _poll_job(token, job_id, client=_http())
         except _UpstreamError as e:
-            return _disabled(e.reason)
+            return _disabled(e.reason, upstream_status=e.upstream_status)
+        _observe_enabled(True)
         return JSONResponse(status_code=200, content=job.model_dump())
 
     @app.get("/krea/scene", tags=["krea"])
@@ -925,6 +1104,7 @@ def register_krea_routes(app: FastAPI) -> None:
         # 2. Cache hit — never re-bill an identical scene-state.
         cached_url = cache.get(key)
         if cached_url is not None:
+            _observe_enabled(True)
             return JSONResponse(
                 status_code=200,
                 content=SceneArt(
@@ -953,7 +1133,7 @@ def register_krea_routes(app: FastAPI) -> None:
                 on_2xx=lambda: budget.record_submit(units=1),
             )
         except _UpstreamError as e:
-            return _disabled(e.reason, scene=key)
+            return _disabled(e.reason, scene=key, upstream_status=e.upstream_status)
 
         # 4. Poll to completion within the poll budget (KREA_POLL_BUDGET_S,
         #    default 30s — derivation at _POLL_BUDGET_S) at the documented
@@ -965,7 +1145,7 @@ def register_krea_routes(app: FastAPI) -> None:
             try:
                 job = _poll_job(token, job_id, client=_http())
             except _UpstreamError as e:
-                return _disabled(e.reason, scene=key)
+                return _disabled(e.reason, scene=key, upstream_status=e.upstream_status)
             # Terminal states per the docs.krea.ai 9-state job lifecycle
             # (2026-06-12): completed / failed / cancelled. Every other
             # state (backlogged / queued / scheduled / processing /
@@ -973,6 +1153,8 @@ def register_krea_routes(app: FastAPI) -> None:
             # docs revision adds) keeps polling until the budget expires.
             if job.status == "completed" and job.image_url:
                 cache.put(key, job.image_url)
+                failures.mark_success()
+                _observe_enabled(True)
                 return JSONResponse(
                     status_code=200,
                     content=SceneArt(
@@ -992,3 +1174,20 @@ def register_krea_routes(app: FastAPI) -> None:
                 # the cache. We do NOT hang the request.
                 return _disabled(_REASON_JOB_TIMEOUT, scene=key)
             _sleep(_POLL_INTERVAL_S)
+
+    @app.get("/krea/status", tags=["krea"])
+    def krea_status() -> JSONResponse:
+        """Return the Krea fallback-observability contract, always HTTP 200.
+
+        Stable fields: enabled (bool), key_present (bool only, never token
+        bytes), kill_switch (bool), gate_verdict (first active local gate or
+        null), reasons (additive reason vocabulary), budget {spent_today, cap,
+        remaining}, rate_window {occupancy, max, window_s}, cache {entries,
+        max_entries}, last_success_at (ISO timestamp or null), failure_counts
+        (reason -> count), failures (bounded newest ring of timestamp, reason,
+        scene_key, upstream_status). The route never returns raw upstream
+        response bodies and responds 200 in disabled/no-key states.
+        """
+        payload = _status_payload()
+        _observe_enabled(bool(payload["enabled"]), payload["gate_verdict"])
+        return JSONResponse(status_code=200, content=payload)
