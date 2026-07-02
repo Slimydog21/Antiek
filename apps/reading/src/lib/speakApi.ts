@@ -258,10 +258,15 @@ export async function getEconomics(id: string): Promise<EconomicsView> {
 export async function listVoices(id: string): Promise<ArrivingVoice[]> {
   const resp = await apiFetch(`/speak/projects/${encodeURIComponent(id)}/invites`);
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const seen = new Set<string>();
   return arrayField(await resp.json(), "invites").flatMap((row) => {
     try {
       const item = record(row);
-      return item ? [toVoice(item)] : [];
+      if (!item) return [];
+      const voice = toVoice(item);
+      if (seen.has(voice.interviewId)) return [];
+      seen.add(voice.interviewId);
+      return [voice];
     } catch {
       return [];
     }

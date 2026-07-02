@@ -73,6 +73,16 @@ function nonEmptyString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function uniqueVoices(voices: ArrivingVoice[]): ArrivingVoice[] {
+  const seen = new Set<string>();
+  return voices.flatMap((voice) => {
+    const interviewId = nonEmptyString(voice.interviewId);
+    if (!interviewId || seen.has(interviewId)) return [];
+    seen.add(interviewId);
+    return [{ ...voice, interviewId }];
+  });
+}
+
 function quoteCost(value: unknown): string | null {
   const parsed =
     typeof value === "number"
@@ -129,11 +139,12 @@ export default function Speak() {
         listVoices(projectId).catch(() => [] as ArrivingVoice[]),
       ]);
       if (loadSeq.current === seq && activeProjectId.current === targetId) {
+        const nextVoices = uniqueVoices(vs);
         setProject(p);
         setEconomics(ec);
-        setVoices(vs);
+        setVoices(nextVoices);
         // Seed the shareable link from the first existing invite, if any.
-        setShareLink((cur) => cur || vs.find((v) => v.link)?.link || "");
+        setShareLink((cur) => cur || nextVoices.find((v) => v.link)?.link || "");
       }
     } catch (e: unknown) {
       if (loadSeq.current === seq && activeProjectId.current === targetId) {
@@ -154,7 +165,7 @@ export default function Speak() {
     const t = window.setInterval(() => {
       void listVoices(projectId)
         .then((next) => {
-          if (activeProjectId.current === projectId) setVoices(next);
+          if (activeProjectId.current === projectId) setVoices(uniqueVoices(next));
         })
         .catch(() => {/* keep the last good list; polling is best-effort */});
     }, POLL_MS);
