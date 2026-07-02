@@ -38,32 +38,41 @@ import asyncio
 import json
 import logging
 import os
-import sys
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Dict, Iterator, List, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
-
-from interfaces.research.api.dispatch_failure import classify_dispatch_failure
-
-logger = logging.getLogger(__name__)
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from runtime.db_lock import connect_write
-from substrate.graph import default_db_path, ensure_initialized
-from runtime.research_runner import (
-    BudgetCap, BudgetManager, Command, CommandKind, HostLocalRunner,
-    PromotionFunnel, RunState, make_contract_gather_stub,
-    make_exa_gather_loop,
-)
+from interfaces.research.api.dispatch_failure import classify_dispatch_failure
 from orchestration.cascade_session import CascadeSession, Leaf, reconstruct_session
 from roles.cascade_planner import (
-    PlanNotApproved, SubQuestion, approve_plan, build_plan, is_plan_launchable,
-    load_tree, persist_tree,
+    PlanNotApproved,
+    SubQuestion,
+    approve_plan,
+    build_plan,
+    is_plan_launchable,
+    load_tree,
+    persist_tree,
 )
 from roles.cascade_planner.planner import DispatchDecomposer
 from roles.cascade_planner.tree_contract import PlanTree
+from runtime.db_lock import connect_write
+from runtime.research_runner import (
+    BudgetCap,
+    BudgetManager,
+    Command,
+    CommandKind,
+    HostLocalRunner,
+    PromotionFunnel,
+    make_contract_gather_stub,
+    make_exa_gather_loop,
+)
+from substrate.graph import default_db_path, ensure_initialized
+
+logger = logging.getLogger(__name__)
 
 cascade_router = APIRouter(prefix="/research", tags=["deep-research"])
 
@@ -72,12 +81,12 @@ cascade_router = APIRouter(prefix="/research", tags=["deep-research"])
 # Process-local live-session registry (single-writer / one event loop).
 # ---------------------------------------------------------------------------
 
-_SESSIONS: Dict[str, "CascadeSession"] = {}
-_SESSION_TASKS: Dict[str, "asyncio.Task"] = {}
+_SESSIONS: dict[str, CascadeSession] = {}
+_SESSION_TASKS: dict[str, asyncio.Task] = {}
 
 # Optional hook set by ``create_app`` after Loop 1 handlers register.
 # Runs Path A synthesis tail (phases 6–9) once gather + merge finish.
-_SYNTHESIS_TAIL_RUNNER: Optional[Any] = None
+_SYNTHESIS_TAIL_RUNNER: Any | None = None
 
 
 def set_synthesis_tail_runner(runner: Any) -> None:
@@ -112,9 +121,9 @@ def _translate() -> Iterator[None]:
     try:
         yield
     except PlanNotApproved as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 def _embedding_provider():
@@ -148,11 +157,11 @@ def _research_loop_factory():
     return make_contract_gather_stub(steps=2, cost_per_step=0.01)
 
 
-def _command(kind: str, payload: Optional[dict]) -> Command:
+def _command(kind: str, payload: dict | None) -> Command:
     try:
         return Command(kind=CommandKind(kind), payload=payload or {})
-    except ValueError:
-        raise HTTPException(status_code=400, detail=f"unknown steer command {kind!r}")
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"unknown steer command {kind!r}") from e
 
 
 # ---------------------------------------------------------------------------
@@ -165,17 +174,17 @@ class CreatePlanRequest(BaseModel):
     # Optional manual decomposition — when given, the tree is built from these
     # focused sub-questions directly (no model call). When omitted, the
     # decomposer role runs.
-    sub_questions: Optional[List[str]] = None
+    sub_questions: list[str] | None = None
     max_depth: int = Field(default=3, ge=1, le=6)
 
 
 class TreeEditRequest(BaseModel):
     op: str  # add_child | remove | reword | set_budget | split
     target_local_id: str
-    question: Optional[str] = None
-    budget_usd: Optional[float] = None
-    max_depth: Optional[int] = None
-    into: Optional[List[str]] = None
+    question: str | None = None
+    budget_usd: float | None = None
+    max_depth: int | None = None
+    into: list[str] | None = None
 
 
 class ApproveRequest(BaseModel):
@@ -184,12 +193,12 @@ class ApproveRequest(BaseModel):
 
 class LaunchRequest(BaseModel):
     per_research_budget_usd: float = Field(default=0.50, gt=0)
-    aggregate_budget_usd: Optional[float] = None
+    aggregate_budget_usd: float | None = None
 
 
 class SteerRequest(BaseModel):
     kind: str  # pause | resume | stop | redirect | deepen
-    payload: Optional[dict] = None
+    payload: dict | None = None
 
 
 class SuggestionOut(BaseModel):
@@ -203,9 +212,9 @@ class SuggestionOut(BaseModel):
 
     key: str
     question: str
-    suggested_retrieval: Optional[str] = None
+    suggested_retrieval: str | None = None
     seen_in_research_count: int = 1
-    source_investigation_id: Optional[str] = None
+    source_investigation_id: str | None = None
 
 
 class SuggestionsResponse(BaseModel):

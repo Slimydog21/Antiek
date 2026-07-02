@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import os
 import tempfile
@@ -19,11 +18,11 @@ from orchestration.session_evidence_pack import (
     compute_content_hash,
     parse_session_evidence_pack,
 )
-from runtime.research_runner import HostLocalRunner, PromotionFunnel, make_contract_gather_stub
-from roles.cascade_planner import approve_plan, build_plan, persist_tree, SubQuestion
+from processing.embedding import _reset_default_provider, set_default_embedding_provider
+from roles.cascade_planner import SubQuestion, approve_plan, build_plan, persist_tree
 from roles.cascade_planner.persist import load_tree
+from runtime.research_runner import HostLocalRunner, PromotionFunnel, make_contract_gather_stub
 from substrate.graph.schema import init_database_at_path
-from processing.embedding import set_default_embedding_provider, _reset_default_provider
 
 
 class _FakeEmbedding:

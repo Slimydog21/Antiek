@@ -18,9 +18,8 @@ from __future__ import annotations
 import hashlib
 import os
 import sys
-from datetime import UTC, datetime
 from dataclasses import dataclass, field
-from typing import Union
+from datetime import UTC, datetime
 
 # Repo root on path for direct invocation.
 _PKG_ROOT = os.path.dirname(
@@ -50,13 +49,13 @@ from substrate.graph.ops import (  # noqa: E402
 )
 from substrate.schemas import DocumentLoadedPayload  # noqa: E402
 
-from .reader import ReadResult, read_pdf
+from .reader import ReadResult, read_pdf  # noqa: E402
 
 DEFAULT_BOOK_SOURCE_TIER = 2
 _NODE_LABEL_MAX = 160
 MIN_INGEST_WORD_COUNT = 100  # books that extract to fewer words are usually scans
 
-PdfSource = Union[bytes, str]
+PdfSource = bytes | str
 
 
 # ---------------------------------------------------------------------------

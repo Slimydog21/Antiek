@@ -31,7 +31,6 @@ from substrate.graph.ops import insert_node
 from substrate.graph.retrieval_substrate import make_substrate
 from substrate.graph.schema import init_database_at_path
 
-
 _TOPIC = "neutral atom qubit error rate suppression scaling milestone"
 
 

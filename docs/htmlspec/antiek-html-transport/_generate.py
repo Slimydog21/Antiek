@@ -336,7 +336,7 @@ def main() -> None:
         "06-write-bridge-api",
         "07-book-reader-snapshot",
     ]
-    for slug, html in zip(slugs, pages):
+    for slug, html in zip(slugs, pages, strict=True):
         path = ROOT / f"sprint-{slug}.html"
         path.write_text(html)
         print(f"Wrote {path}")
