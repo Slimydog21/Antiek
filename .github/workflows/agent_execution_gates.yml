@@ -256,8 +256,11 @@ jobs:
       - name: Canonical verify — speak async voice interview
         run: ./scripts/canonical_verify.sh speak-async-voice-interview
 
+      - name: Canonical verify — speak project invitations
+        run: ./scripts/canonical_verify.sh speak-project-invitations
+
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md
 
-      - name: Canonical verify — deep-research (P-36..P-42)
+      - name: Canonical verify — deep-research (P-37..P-43)
         run: ./scripts/canonical_verify.sh deep-research
