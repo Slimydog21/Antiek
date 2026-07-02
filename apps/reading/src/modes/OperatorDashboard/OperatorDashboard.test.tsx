@@ -152,6 +152,35 @@ beforeEach(() => {
         ],
       });
     }
+    if (path === "/notebooks") {
+      return okJson({
+        notebooks: [
+          {
+            notebook_id: " nb-private ",
+            content_class: "user_owned",
+            investigation_id: " inv-a ",
+            document_id: " ",
+          },
+          {
+            notebook_id: "nb-public",
+            content_class: "user_public_contribution",
+            investigation_id: null,
+            document_id: "doc-a",
+          },
+          {
+            notebook_id: "nb-unknown",
+            content_class: "unexpected",
+            investigation_id: "inv-b",
+            document_id: "doc-b",
+          },
+          {
+            notebook_id: " ",
+            content_class: "user_public_contribution",
+            investigation_id: "leak",
+          },
+        ],
+      });
+    }
     if (path.startsWith("/payouts/transfers")) {
       return okJson({
         transfers: [
@@ -368,6 +397,11 @@ describe("OperatorDashboard", () => {
     expect(screen.getByText("Outcome reviews")).toBeTruthy();
     expect(screen.getByText("2 reviews · 1 operator · 1 collaborator")).toBeTruthy();
     expect(screen.getByText("1/2 reviews have timestamps.")).toBeTruthy();
+    expect(screen.getByText("Notebook adoption")).toBeTruthy();
+    expect(screen.getByText("3 notebooks · 2 private · 1 public")).toBeTruthy();
+    expect(
+      screen.getByText("2 linked to research · 2 linked to documents."),
+    ).toBeTruthy();
     expect(screen.getByText("Billing usage")).toBeTruthy();
     expect(
       screen.getByText("2026-07 · billable $0.2750 · margin $0.0250"),
@@ -391,6 +425,7 @@ describe("OperatorDashboard", () => {
     expect(openLinks).toContain("/coordination");
     expect(openLinks).toContain("/investigations");
     expect(openLinks).toContain("/outcomes");
+    expect(openLinks).toContain("/notebooks");
     expect(openLinks).toContain("/billing");
     expect(openLinks).toContain("/privacy");
     expect(openLinks).toContain("/marketplace");

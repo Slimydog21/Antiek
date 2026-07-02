@@ -36,6 +36,15 @@ interface CompositeSnapshot {
   billing: BillingSummary | null;
   investigations: InvestigationSummary | null;
   outcomes: OutcomeSummary | null;
+  notebooks: NotebookSummary | null;
+}
+
+interface NotebookSummary {
+  total: number;
+  private_count: number;
+  public_contribution_count: number;
+  linked_research_count: number;
+  linked_document_count: number;
 }
 
 interface OutcomeSummary {
@@ -351,6 +360,31 @@ function safeOutcomeSummary(value: unknown): OutcomeSummary {
   return summary;
 }
 
+function safeNotebookSummary(value: unknown): NotebookSummary {
+  const body = record(value);
+  const rows = Array.isArray(body?.notebooks) ? body.notebooks : [];
+  const summary: NotebookSummary = {
+    total: 0,
+    private_count: 0,
+    public_contribution_count: 0,
+    linked_research_count: 0,
+    linked_document_count: 0,
+  };
+  for (const item of rows) {
+    const row = record(item);
+    if (!nonEmptyString(row?.notebook_id)) continue;
+    summary.total += 1;
+    if (row?.content_class === "user_public_contribution") {
+      summary.public_contribution_count += 1;
+    } else {
+      summary.private_count += 1;
+    }
+    if (nonEmptyString(row?.investigation_id)) summary.linked_research_count += 1;
+    if (nonEmptyString(row?.document_id)) summary.linked_document_count += 1;
+  }
+  return summary;
+}
+
 function safeNumberMapTotal(value: unknown): number {
   const body = record(value);
   if (!body) return 0;
@@ -625,6 +659,7 @@ export default function OperatorDashboard() {
     billing: null,
     investigations: null,
     outcomes: null,
+    notebooks: null,
   });
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -645,6 +680,7 @@ export default function OperatorDashboard() {
         billingResp,
         investigationsResp,
         outcomesResp,
+        notebooksResp,
       ] = await Promise.all([
         apiFetch("/publishers"),
         apiFetch("/stats").catch(() => null),
@@ -657,6 +693,7 @@ export default function OperatorDashboard() {
         apiFetch(`/billing/summary/__operator__/${currentPeriod()}`).catch(() => null),
         apiFetch("/investigations?limit=200").catch(() => null),
         apiFetch("/outcomes?limit=200").catch(() => null),
+        apiFetch("/notebooks").catch(() => null),
       ]);
 
       if (!publishersResp.ok) {
@@ -712,6 +749,11 @@ export default function OperatorDashboard() {
         outcomes = safeOutcomeSummary(await outcomesResp.json());
       }
 
+      let notebooks: NotebookSummary | null = null;
+      if (notebooksResp?.ok) {
+        notebooks = safeNotebookSummary(await notebooksResp.json());
+      }
+
       setSnapshot({
         stats,
         pendingDeletions,
@@ -723,6 +765,7 @@ export default function OperatorDashboard() {
         billing,
         investigations,
         outcomes,
+        notebooks,
       });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -908,11 +951,58 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
       <CoordinationTile coordination={snapshot.coordination} />
       <InvestigationsTile investigations={snapshot.investigations} />
       <OutcomesTile outcomes={snapshot.outcomes} />
+      <NotebooksTile notebooks={snapshot.notebooks} />
       <BillingTile billing={snapshot.billing} />
       <TrustTile trust={snapshot.trust} />
       <MarketplaceTile marketplace={snapshot.marketplace} />
       <FederationTile federation={snapshot.federation} />
     </section>
+  );
+}
+
+function NotebooksTile({ notebooks }: { notebooks: NotebookSummary | null }) {
+  if (!notebooks) {
+    return (
+      <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className="text-sm font-serif text-ink dark:text-bright">
+            Notebook adoption
+          </h3>
+          <Link
+            to="/notebooks"
+            className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+          >
+            open →
+          </Link>
+        </div>
+        <p className="mt-2 text-xs italic text-shadow-1 dark:text-moonlight">
+          Notebook summary unavailable.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-3 space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-sm font-serif text-ink dark:text-bright">
+          Notebook adoption
+        </h3>
+        <Link
+          to="/notebooks"
+          className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+        >
+          open →
+        </Link>
+      </div>
+      <p className="text-xs font-mono text-ink dark:text-bright">
+        {notebooks.total} notebooks · {notebooks.private_count} private ·{" "}
+        {notebooks.public_contribution_count} public
+      </p>
+      <p className="text-xs text-ink-soft dark:text-starlight">
+        {notebooks.linked_research_count} linked to research ·{" "}
+        {notebooks.linked_document_count} linked to documents.
+      </p>
+    </div>
   );
 }
 
