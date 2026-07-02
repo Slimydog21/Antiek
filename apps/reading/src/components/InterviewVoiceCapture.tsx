@@ -66,6 +66,17 @@ function nonEmptyString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function safeHttpUrl(value: unknown): string | null {
+  const url = nonEmptyString(value);
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 function uploadErrorDetail(value: unknown, status: number): string {
   const body = record(value);
   const detail = nonEmptyString(body?.detail);
@@ -205,7 +216,7 @@ export default function InterviewVoiceCapture({
       }
       const data = record(await resp.json());
       setState("uploaded");
-      const audioUrl = nonEmptyString(data?.audio_url);
+      const audioUrl = safeHttpUrl(data?.audio_url);
       if (audioUrl && onUploaded) {
         onUploaded(audioUrl);
       } else if (onUploaded) {
