@@ -17,6 +17,8 @@ import pytest
 
 from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database
+from substrate.books.serve import serve_full_text
+from substrate.graph.ops import insert_deliverable, insert_document, insert_section
 from substrate.seams.thread import reconstruct_thread
 from substrate.speak import (
     contributor,
@@ -118,6 +120,82 @@ def test_public_publish_emits_speak_to_read_seam(db, monkeypatch):
     thread = reconstruct_thread(result.publication_id, seam_events=seams)
     assert thread.canonical_entity_kind == "servable_entry"
     assert thread.workflows == ("speak", "read")
+
+
+def test_public_publish_registers_deliverable_as_read_servable_document(db, monkeypatch):
+    monkeypatch.setenv("ANTIEK_SPEAK_PUBLIC_PUBLISHING", "1")
+    with _con(db) as con:
+        project_id = _public_ready_project(con)
+        deliverable_id = insert_deliverable(
+            con,
+            title="Dad's biography",
+            deliverable_kind="biography_section",
+            investigation_root_id=project_id,
+        )
+        insert_section(
+            con,
+            deliverable_id=deliverable_id,
+            section_index=0,
+            title="The bakery years",
+            prose_text="He ran the village bakery for thirty years.",
+        )
+
+        result = publish.publish(con, project_id=project_id, deliverable_id=deliverable_id)
+
+        row = con.execute(
+            "SELECT document_type, title, content_class, raw_text, metadata "
+            "FROM documents WHERE document_id = ?",
+            [result.publication_id],
+        ).fetchone()
+        assert row is not None
+        assert row[0] == "book"
+        assert row[1] == "Dad's biography"
+        assert row[2] == "user_public_contribution"
+        assert "The bakery years" in row[3]
+        metadata = json.loads(row[4])
+        assert metadata["provenance_class"] == "speak_derived"
+        assert metadata["speak_publish_gate_passed"] is True
+        assert metadata["speak_project_id"] == project_id
+
+        asset = con.execute(
+            "SELECT document_id, provenance, license_basis FROM book_assets "
+            "WHERE document_id = ?",
+            [result.publication_id],
+        ).fetchone()
+        assert asset == (
+            result.publication_id,
+            "Speak public biography publish",
+            "Speak SPR-01 public publish gate passed",
+        )
+
+        served = serve_full_text(con, result.publication_id)
+        assert served.servable is True
+        assert served.reason == "servable"
+        assert served.full_text and "village bakery" in served.full_text
+        assert served.structured_blocks is None
+
+
+def test_speak_derived_document_without_publish_gate_fails_closed(db):
+    with _con(db) as con:
+        insert_document(
+            con,
+            document_id="doc-speak-ungated",
+            source_tier=1,
+            document_type="book",
+            title="Ungated biography",
+            raw_text="This body must not serve without the Speak gate.",
+            content_class="user_public_contribution",
+            metadata={
+                "provenance_class": "speak_derived",
+                "speak_publish_gate_passed": False,
+            },
+        )
+
+        served = serve_full_text(con, "doc-speak-ungated")
+        assert served.servable is False
+        assert served.full_text is None
+        assert served.snippet == "This body must not serve without the Speak gate."
+        assert served.reason == "speak_publish_gate_required"
 
 
 def test_private_publish_does_not_emit_speak_to_read_seam(db):

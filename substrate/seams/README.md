@@ -121,8 +121,10 @@ stays auto-servable (no Write-output regression). The seam-level adapter
 `substrate/seams/servability_gate.py` translates Speak's publish outcome into
 the single boolean Read consults — so Read stays uncoupled from Speak's models
 (it calls a boolean / a `ConsentContract`, not `substrate/speak/` internals).
-*Read's `serve.py` is unbuilt (Read SPR-01); this sprint owns the seam adapter,
-Read SPR-01 owns serve.py and will call it.*
+The Read serving path is live in `substrate/books/serve.py`; Speak public
+publishing registers a Read document with `provenance_class='speak_derived'`
+and `speak_publish_gate_passed=True`, and the serve gate fails closed when that
+metadata marks a Speak-derived document without gate proof.
 **Guard:** `tests/test_seam_platform_authored_gate.py` — "speak_derived docs hit
 the publish gate" (a non-gate-passing speak_derived doc is NOT served).
 

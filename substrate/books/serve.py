@@ -27,6 +27,7 @@ no second gating mechanism to drift out of sync.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -124,7 +125,7 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
     """
     row = con.execute(
         """
-        SELECT d.title, d.author, d.content_class, d.raw_text,
+        SELECT d.title, d.author, d.content_class, d.raw_text, d.metadata,
                d.structured_blocks,
                COALESCE(b.taken_down, FALSE) AS taken_down
         FROM documents d
@@ -141,7 +142,7 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
             title=None, author=None, reason="document_not_found",
         )
 
-    title, author, content_class, raw_text, structured_blocks, taken_down = row
+    title, author, content_class, raw_text, metadata_raw, structured_blocks, taken_down = row
     taken_down = bool(taken_down)
     status = servability_of(content_class, taken_down=taken_down)
 
@@ -171,6 +172,13 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
             servable=False, full_text=raw_text, snippet=None,
             structured_blocks=structured_blocks,
             title=title, author=author, reason="owner_personal_reading",
+        )
+
+    if _speak_derived_publish_gate_failed(content_class, metadata_raw):
+        return ServeResult(
+            document_id=document_id, found=True, servability=status,
+            servable=False, full_text=None, snippet=_snippet(raw_text),
+            title=title, author=author, reason="speak_publish_gate_required",
         )
 
     if is_servable_full_text(status):
@@ -205,3 +213,31 @@ def _snippet(raw_text: str | None) -> str | None:
     if len(raw_text) <= SERVE_SNIPPET_MAX_CHARS:
         return raw_text
     return raw_text[:SERVE_SNIPPET_MAX_CHARS].rstrip() + "…"
+
+
+def _speak_derived_publish_gate_failed(content_class: str | None, metadata_raw: Any) -> bool:
+    """Fail closed for Speak-derived public contributions without gate proof.
+
+    ``user_public_contribution`` is the documents-table content class that maps
+    to Read's ``platform_authored`` servability. When metadata marks the entry
+    as ``speak_derived``, the Speak side must have persisted
+    ``speak_publish_gate_passed=True`` before Read serves full text.
+    Operator-authored/platform-authored entries without that provenance marker
+    keep the existing behavior.
+    """
+    if content_class != "user_public_contribution":
+        return False
+    metadata: dict[str, Any]
+    if isinstance(metadata_raw, dict):
+        metadata = metadata_raw
+    elif isinstance(metadata_raw, str) and metadata_raw.strip():
+        try:
+            loaded = json.loads(metadata_raw)
+        except json.JSONDecodeError:
+            return False
+        metadata = loaded if isinstance(loaded, dict) else {}
+    else:
+        return False
+    if metadata.get("provenance_class") != "speak_derived":
+        return False
+    return metadata.get("speak_publish_gate_passed") is not True
