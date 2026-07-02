@@ -39,8 +39,14 @@ Follow **`walk-evidence.md`** step-by-step on the deployed build:
 3. Dialogue → **requires SPR-03 keys**; score against activation SPR-01 rubric.
 4. Research spin-out → **requires SPR-03 keys**.
 5. Click a citation → same Reader opens the ingested source at the cited chunk.
+6. Return to the original paper/page with enough context to keep reading.
+7. Read for 20+ minutes and record the operator note, failures, and irritations.
 
-Golden-path script authority: activation SPR-01 (`specs/activation/golden-path.md` when frozen).
+Real-route automation authority: `apps/reading/e2e/read-golden-path.spec.ts`
+proxies steps 1-6 through `/read/:documentId`. Closure authority:
+`tools/activation/read_dogfood.py` requires steps 1-7, 10 valid operator
+sessions, live-provider/citation/non-Library coverage, and a final operator
+verdict.
 
 ---
 

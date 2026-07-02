@@ -9,11 +9,12 @@
  *   1. rich typed blocks render at /read/doc-1;
  *   2. selecting text opens the shared FloatMenu;
  *   3. Dialogue surfaces the honest activation SPR-03 provider boundary;
+ *   4. Deep-research surfaces the honest activation SPR-03 provider boundary;
  *   5. clicking a citation opens the source through the canonical Reader URL;
  *   6. the source page can return to the original document/page.
  *
- * Step 4 remains provider-key activation work. Step 7 remains operator dogfood,
- * enforced by tools/activation/read_dogfood.py.
+ * Step 7 remains operator dogfood, enforced by
+ * tools/activation/read_dogfood.py.
  */
 import { expect, test, type Page, type Route } from "@playwright/test";
 
@@ -158,6 +159,17 @@ async function installReaderStubs(page: Page): Promise<void> {
       body: "no model provider configured",
     }),
   );
+  await page.route(/\/investigations$/, (route) => {
+    if (route.request().method() !== "POST") {
+      return route.fallback();
+    }
+    return route.fulfill({
+      status: 503,
+      contentType: "text/plain",
+      headers: { "access-control-allow-origin": "*" },
+      body: "",
+    });
+  });
 }
 
 async function selectReaderParagraphText(page: Page): Promise<void> {
@@ -198,6 +210,19 @@ test.describe("Read activation golden path on the real app route", () => {
     await expect(dialogueBoundary).toContainText("model provider");
     await expect(dialogueBoundary).toContainText("activation SPR-03");
     await page.keyboard.press("Escape");
+
+    await selectReaderParagraphText(page);
+    const researchAction = page.getByRole("menuitem", { name: "Deep-research" });
+    await expect(researchAction).toBeVisible();
+    await researchAction.focus();
+    await researchAction.evaluate((el) => (el as HTMLElement).click());
+    const chasePanel = page.getByRole("complementary", { name: "Following this passage" });
+    await expect(chasePanel).toBeVisible();
+    await chasePanel.getByRole("button", { name: "Follow this" }).click();
+    const researchBoundary = chasePanel.getByRole("alert");
+    await expect(researchBoundary).toContainText("model provider");
+    await expect(researchBoundary).toContainText("activation SPR-03");
+    await chasePanel.getByRole("button", { name: /back to the book/i }).click();
 
     await page.getByRole("button", { name: "Open the cited source [1]" }).click();
     await expect(page).toHaveURL(
