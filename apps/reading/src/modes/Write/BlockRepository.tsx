@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import type { PaletteDragPayload } from "../CreationStudio/BlockPalette";
 import { DRAG_MIME } from "../CreationStudio/BlockPalette";
+import { safeFolders, safeRepositoryHits } from "./repositoryData";
 import {
   listFolders,
   searchRepository,
@@ -51,7 +52,9 @@ export default function BlockRepository({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    listFolders().then(setFolders).catch(() => setFolders([]));
+    listFolders()
+      .then((f) => setFolders(Array.isArray(f) ? safeFolders(f) : []))
+      .catch(() => setFolders([]));
   }, []);
 
   useEffect(() => {
@@ -61,7 +64,7 @@ export default function BlockRepository({
       setError(null);
       searchRepository({ q: query, folderId: activeFolder ?? undefined, limit: 50 })
         .then((h) => {
-          if (!cancelled) setHits(h);
+          if (!cancelled) setHits(Array.isArray(h) ? safeRepositoryHits(h) : []);
         })
         .catch(() => {
           if (!cancelled) {
