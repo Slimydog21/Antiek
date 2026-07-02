@@ -10,9 +10,9 @@ Three options from the master spec §9.3:
   is ``claim_confidence_weight * (6 - source_tier)``. Higher-confidence
   claims grounded in higher-tier sources contribute more.
 
-- **C — load-bearing weighted (deferred)**. Requires an LLM pass
-  per claim ("if this claim were removed, would the thesis change?").
-  Phase 2 work. Stubbed here so the API surface is stable.
+- **C — load-bearing weighted**. Multiplies Option B's weight by an
+  upstream thesis-component score. Without explicit scores, it falls
+  back to uniform weighting and matches Option B.
 
 All three return ``Mapping[document_id, float]`` with shares summing
 to 1.0 (subject to floating-point rounding). Documents with zero
@@ -110,9 +110,8 @@ def attribution_option_c(
 
     Each chunk citation contributes ``confidence_weight * (6 -
     source_tier) * load_bearing_weight``. The load_bearing_weight is
-    set externally by an LLM pass (Phase 2 work). When all claims
-    have ``load_bearing_weight=1.0`` (the default), this reduces to
-    Option B."""
+    set externally by the archived thesis component. When all claims have
+    ``load_bearing_weight=1.0`` (the default), this reduces to Option B."""
     raw: dict[str, float] = defaultdict(float)
     for claim in claims:
         cw = CONFIDENCE_WEIGHTS.get(claim.confidence, 0.4)

@@ -12,6 +12,7 @@ This module is the public entry point used by the API and by Phase
 from __future__ import annotations
 
 import json
+import math
 from dataclasses import dataclass, field
 from typing import Mapping, Optional
 
@@ -87,8 +88,42 @@ def _build_claims(
             confidence=comp.get("confidence", "low"),
             chunk_to_document=chunk_to_doc,
             document_to_tier=doc_to_tier,
+            load_bearing_weight=_component_load_bearing_weight(comp),
         ))
     return claims
+
+
+def _nonnegative_finite_float(value: object) -> Optional[float]:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        parsed = float(value)
+    elif isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return None
+        try:
+            parsed = float(raw)
+        except ValueError:
+            return None
+    else:
+        return None
+    if not math.isfinite(parsed) or parsed < 0:
+        return None
+    return parsed
+
+
+def _component_load_bearing_weight(comp: Mapping[str, object]) -> float:
+    """Return Option C's explicit thesis-component weight.
+
+    Missing values preserve the historical uniform fallback. Malformed explicit
+    scores contribute zero rather than silently earning money as if trusted.
+    """
+    for key in ("load_bearing_weight", "load_bearing_score"):
+        if key in comp:
+            parsed = _nonnegative_finite_float(comp.get(key))
+            return parsed if parsed is not None else 0.0
+    return 1.0
 
 
 def compute_attribution_for_synthesis(

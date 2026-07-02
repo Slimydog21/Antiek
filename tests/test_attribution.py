@@ -198,8 +198,13 @@ def seeded_substrate(monkeypatch):
             ["syn-test-1", "inv-1", "Why does X compound?",
              "passed", "proceed", json.dumps(thesis)],
         )
-    yield {"db_path": db_path, "events_dir": events_dir,
-           "synthesis_id": "syn-test-1"}
+    yield {
+        "db_path": db_path,
+        "events_dir": events_dir,
+        "synthesis_id": "syn-test-1",
+        "chunk_a_id": chunk_a_id,
+        "chunk_b_id": chunk_b_id,
+    }
 
 
 def test_compute_attribution_reads_synthesis_and_resolves_chunks(seeded_substrate):
@@ -215,6 +220,83 @@ def test_compute_attribution_reads_synthesis_and_resolves_chunks(seeded_substrat
     # Option B: tier-weighted; doc-A is tier 1, doc-B is tier 4
     assert r.option_b.shares["doc-A"] > r.option_a.shares["doc-A"]
     assert r.option_b.shares["doc-B"] < r.option_a.shares["doc-B"]
+
+
+def test_compute_attribution_option_c_uses_thesis_load_bearing_weight(
+    seeded_substrate,
+):
+    from runtime.db_lock import connect_write
+
+    thesis = {
+        "thesis_components": [
+            {
+                "claim": "C1",
+                "confidence": "very_high",
+                "supporting_chunk_ids": [seeded_substrate["chunk_a_id"]],
+                "load_bearing_weight": 1.0,
+            },
+            {
+                "claim": "C2",
+                "confidence": "very_high",
+                "supporting_chunk_ids": [seeded_substrate["chunk_b_id"]],
+                "load_bearing_weight": 10.0,
+            },
+        ],
+    }
+    with connect_write(seeded_substrate["db_path"], purpose="weight-option-c") as con:
+        con.execute(
+            "UPDATE syntheses SET thesis = ? WHERE synthesis_id = ?",
+            [json.dumps(thesis), seeded_substrate["synthesis_id"]],
+        )
+
+    r = compute_attribution_for_synthesis(
+        seeded_substrate["synthesis_id"],
+        db_path=seeded_substrate["db_path"],
+    )
+
+    assert r.option_b.shares["doc-A"] == pytest.approx(5 / 7)
+    assert r.option_b.shares["doc-B"] == pytest.approx(2 / 7)
+    assert r.option_c.shares["doc-A"] == pytest.approx(5 / 25)
+    assert r.option_c.shares["doc-B"] == pytest.approx(20 / 25)
+    assert r.option_c.shares["doc-B"] > r.option_b.shares["doc-B"]
+
+
+def test_compute_attribution_option_c_malformed_explicit_weight_earns_zero(
+    seeded_substrate,
+):
+    from runtime.db_lock import connect_write
+
+    thesis = {
+        "thesis_components": [
+            {
+                "claim": "C1",
+                "confidence": "very_high",
+                "supporting_chunk_ids": [seeded_substrate["chunk_a_id"]],
+                "load_bearing_weight": "not-a-number",
+            },
+            {
+                "claim": "C2",
+                "confidence": "very_high",
+                "supporting_chunk_ids": [seeded_substrate["chunk_b_id"]],
+                "load_bearing_weight": 1.0,
+            },
+        ],
+    }
+    with connect_write(seeded_substrate["db_path"], purpose="bad-option-c") as con:
+        con.execute(
+            "UPDATE syntheses SET thesis = ? WHERE synthesis_id = ?",
+            [json.dumps(thesis), seeded_substrate["synthesis_id"]],
+        )
+
+    r = compute_attribution_for_synthesis(
+        seeded_substrate["synthesis_id"],
+        db_path=seeded_substrate["db_path"],
+    )
+
+    assert r.option_b.shares["doc-A"] == pytest.approx(5 / 7)
+    assert r.option_b.shares["doc-B"] == pytest.approx(2 / 7)
+    assert r.option_c.shares["doc-A"] == pytest.approx(0.0)
+    assert r.option_c.shares["doc-B"] == pytest.approx(1.0)
 
 
 def test_compute_attribution_unknown_synthesis_raises(seeded_substrate):
