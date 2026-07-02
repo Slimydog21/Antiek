@@ -32,6 +32,15 @@ function makeChannel(): BroadcastChannel | null {
   return new BroadcastChannel(CHANNEL_NAME);
 }
 
+export function popoutWindowName(panelId: string): string {
+  const safeId = panelId
+    .replace(/[^a-zA-Z0-9_-]+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 80);
+  return `antiek_popout_${safeId || "panel"}`;
+}
+
 /** Open a panel in its own OS window. Removes it from the main-window
  *  in-tab arrays + records its descriptor for handoff to the popout. */
 export function openPopoutFor(panelId: string): void {
@@ -51,7 +60,7 @@ export function openPopoutFor(panelId: string): void {
   const height = Math.max(280, panel.rect.height + 80);
   const win = window.open(
     `/_panel/${encodeURIComponent(panelId)}`,
-    `antiek_popout_${panelId}`,
+    popoutWindowName(panelId),
     `popup,width=${width},height=${height},left=120,top=120`,
   );
   if (!win) {
