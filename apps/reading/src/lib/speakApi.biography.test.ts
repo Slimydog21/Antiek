@@ -5,8 +5,11 @@ import {
   createBiography,
   createPerson,
   getProject,
+  inviteByEmail,
   listPeople,
   listPublicFeed,
+  listVoices,
+  makeShareLink,
 } from "./speakApi";
 
 vi.mock("./api", () => ({
@@ -189,6 +192,68 @@ describe("Speak project lists", () => {
 
     await expect(getProject("proj-bad")).rejects.toThrow(
       "project_id must be a non-empty string",
+    );
+  });
+});
+
+describe("Speak invites", () => {
+  it("drops malformed invite rows from the voice list", async () => {
+    apiFetchMock.mockResolvedValue(
+      jsonResponse({
+        invites: [
+          {
+            interview_id: " iv-valid ",
+            informant_email: "aunt@example.com",
+            status: "completed",
+            link: "https://antiek.ai/speak/invite/ok",
+          },
+          {
+            interview_id: " ",
+            informant_email: "invisible@example.com",
+            status: "completed",
+            link: "https://antiek.ai/speak/invite/bad",
+          },
+        ],
+      }),
+    );
+
+    await expect(listVoices("proj-1")).resolves.toEqual([
+      {
+        interviewId: "iv-valid",
+        who: "aunt@example.com",
+        state: "shared",
+        link: "https://antiek.ai/speak/invite/ok",
+      },
+    ]);
+  });
+
+  it("rejects malformed invite responses for direct email invites", async () => {
+    apiFetchMock.mockResolvedValue(
+      jsonResponse({
+        interview_id: " ",
+        informant_email: "aunt@example.com",
+        status: "invited",
+        link: "https://antiek.ai/speak/invite/bad",
+      }),
+    );
+
+    await expect(inviteByEmail("proj-1", "aunt@example.com")).rejects.toThrow(
+      "interview_id must be a non-empty string",
+    );
+  });
+
+  it("rejects malformed share-link responses", async () => {
+    apiFetchMock.mockResolvedValue(
+      jsonResponse({
+        interview_id: "iv-1",
+        informant_handle: "a friend or family member",
+        status: "invited",
+        link: " ",
+      }),
+    );
+
+    await expect(makeShareLink("proj-1")).rejects.toThrow(
+      "link must be a non-empty string",
     );
   });
 });
