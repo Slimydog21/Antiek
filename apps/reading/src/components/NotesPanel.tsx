@@ -64,6 +64,10 @@ function stringList(value: unknown): string[] {
     : [];
 }
 
+function uniqueStringList(value: unknown): string[] {
+  return Array.from(new Set(stringList(value)));
+}
+
 function isClaimConfidence(value: unknown): value is Claim["confidence"] {
   return (
     value === "high" ||
@@ -86,7 +90,7 @@ function safeClaim(value: unknown): Claim | null {
     confidence: isClaimConfidence(record.confidence)
       ? record.confidence
       : "unknown",
-    attribution_region_ids: stringList(record.attribution_region_ids),
+    attribution_region_ids: uniqueStringList(record.attribution_region_ids),
     node_id:
       typeof record.node_id === "string" || record.node_id === null
         ? record.node_id
