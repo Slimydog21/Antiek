@@ -7,12 +7,13 @@
 // doors. SPR-01 pinned the signature so downstream call sites can type-import
 // the seam without re-litigating its shape.
 //
-// The diagnosis this closes (master spec): four-plus renderers exist by
+// The diagnosis this closed (master spec): four-plus renderers existed by
 // accident and several doors (ChunkModal, DocumentsIndex, the CommandPalette
-// document action) currently navigate to `/wrestle/{id}` (the pdf.js page-1
-// surface) instead of the real Reader. `openDocument` is the single resolver
-// every tab calls; there is exactly ONE Reader behind it (the
-// `reading_surface.py` invariant, now enforced by SPR-09's conformance test).
+// document action) once navigated to `/wrestle/{id}` (the pdf.js page-1
+// surface) instead of the real Reader. Those doors now route through
+// `openDocument` as the single resolver; there is exactly ONE Reader behind it
+// (the `reading_surface.py` invariant, now enforced by SPR-09's conformance
+// test).
 // ─────────────────────────────────────────────────────────────────────────
 
 import type { Region } from "../types/document_model.gen";
