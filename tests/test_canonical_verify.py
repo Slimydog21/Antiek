@@ -64,3 +64,11 @@ def test_canonical_verify_read_reader_hermetic() -> None:
     proc = _run("read-reader")
     assert proc.returncode == 0, proc.stderr or proc.stdout
     assert "CANONICAL_VERIFY_OK: read-reader" in proc.stdout
+
+
+def test_canonical_verify_read_curate_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("read-curate")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: read-curate" in proc.stdout

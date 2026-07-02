@@ -41,6 +41,7 @@ on:
       - 'tests/test_cascade_create_plan_light.py'
       - 'tests/test_parallel_orchestration.py'
       - 'tests/test_book_corpus_gate.py'
+      - 'tests/test_book_curate.py'
       - 'tests/test_contracts_read_lock.py'
       - 'tests/test_library_api.py'
       - 'tests/test_serve_structured_blocks.py'
@@ -87,6 +88,7 @@ on:
       - 'tests/test_cascade_create_plan_light.py'
       - 'tests/test_parallel_orchestration.py'
       - 'tests/test_book_corpus_gate.py'
+      - 'tests/test_book_curate.py'
       - 'tests/test_contracts_read_lock.py'
       - 'tests/test_library_api.py'
       - 'tests/test_serve_structured_blocks.py'
@@ -151,6 +153,9 @@ jobs:
 
       - name: Canonical verify — read reader
         run: ./scripts/canonical_verify.sh read-reader
+
+      - name: Canonical verify — read curate
+        run: ./scripts/canonical_verify.sh read-curate
 
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md
