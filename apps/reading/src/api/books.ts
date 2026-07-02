@@ -404,6 +404,10 @@ function safeStringArray(value: unknown): string[] {
   });
 }
 
+function uniqueStringArray(value: unknown): string[] {
+  return Array.from(new Set(safeStringArray(value)));
+}
+
 function sanitizeImpression(item: ImpressionItem): ImpressionItem | null {
   const slotId = typeof item.slot_id === "string" ? item.slot_id.trim() : "";
   const pageIndex = nonNegativeSafeInteger(item.page_index);
@@ -737,7 +741,7 @@ function safeMetaReadingResponse(value: unknown): MetaReadingResponse {
     word_budget: nonNegativeSafeInteger(body.word_budget) ?? 0,
     truncated: body.truncated === true,
     corpus_scope: safeCorpusScope(body.corpus_scope),
-    corpus_document_ids: safeStringArray(body.corpus_document_ids),
+    corpus_document_ids: uniqueStringArray(body.corpus_document_ids),
     empty: body.empty === true,
     context_chunk_count: nonNegativeSafeInteger(body.context_chunk_count) ?? 0,
   };
@@ -803,7 +807,7 @@ function safePersonalAsset(value: unknown): PersonalAsset | null {
   const assetId = nonEmptyString(asset.asset_id);
   const title = nonEmptyString(asset.title);
   const kind = asset.kind === "saved_read" ? "saved_read" : "meta_reading";
-  const documentIds = safeStringArray(asset.document_ids);
+  const documentIds = uniqueStringArray(asset.document_ids);
   const openRoute = canonicalPersonalOpenRoute(
     kind,
     nonEmptyString(asset.open_route),
@@ -898,7 +902,7 @@ function safeAssetCategory(value: unknown): AssetCategory | null {
   return {
     category_id: categoryId,
     label,
-    asset_ids: safeStringArray(category.asset_ids),
+    asset_ids: uniqueStringArray(category.asset_ids),
     ordering: category.ordering === "theme" ? "theme" : "recency",
   };
 }
@@ -1018,7 +1022,7 @@ function safeSavedMetaReading(value: unknown): SavedMetaReading {
     length_amount: nonNegativeSafeInteger(body.length_amount) ?? 0,
     truncated: body.truncated === true,
     corpus_scope: safeCorpusScope(body.corpus_scope),
-    corpus_document_ids: safeStringArray(body.corpus_document_ids),
+    corpus_document_ids: uniqueStringArray(body.corpus_document_ids),
   };
 }
 
