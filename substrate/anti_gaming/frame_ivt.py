@@ -7,13 +7,18 @@ from BOTH the numerator and the denominator of the per-window split, and reports
 the exclusion counts — never silently drops a second.
 
 SCOPE OF THIS MODULE, HONESTLY (rigor #1):
-  * M2 (here now): GIVT — General Invalid Traffic. Mechanically-impossible or
+  * M2 (built): GIVT — General Invalid Traffic. Mechanically-impossible or
     self-contradictory batches: duplicated/non-monotonic second indices, sample
     geometry that cannot co-occur, an implausibly large batch. These are
-    deterministic facts about the batch, not judgements — high confidence.
-  * M3 (next): SIVT — Sophisticated Invalid Traffic. Behavioural implausibility
-    (constant-attention signatures, marathon perfect dwell, parallel-window
-    counts). Heuristic, honestly labelled — real false-positive/negative rates.
+    deterministic FACTS about the batch, not judgements — high confidence; they
+    mark individual seconds NON-BILLABLE.
+  * M3 (built): SIVT — Sophisticated Invalid Traffic. Behavioural implausibility
+    over a long-enough window (constant-attention signature, implausible focus
+    marathon). HEURISTIC, honestly labelled — real false-positive/negative
+    rates, so a SIVT hit is a REVIEW-tier WINDOW signal (operator queue), never
+    a silent per-second drop. The parallel-window-count signal needs cross-window
+    session state and lands in M5's integration (where request identity is
+    available), NOT in this single-batch pure function.
   * M4 (next): per-identity saturation caps (a clamp, not a classifier).
 
 A GIVT rule is a FACT ("index 3 appears twice"); it does not need calibration.
@@ -38,9 +43,11 @@ from substrate.ad_inventory.frame_attention import (
     WindowFrameBatch,
 )
 from substrate.anti_gaming.verdict import (
+    BLOCK_THRESHOLD,
+    REVIEW_THRESHOLD,
     FraudSignal,
     FraudVerdict,
-    verdict_from_signals,
+    FraudVerdictKind,
 )
 
 # ---------------------------------------------------------------------------
@@ -55,12 +62,48 @@ from substrate.anti_gaming.verdict import (
 # long" ceiling — beyond it the batch is fabricated, not measured.
 MAX_WINDOW_SECONDS = 86_400
 
+# --- SIVT (M3) tunables. These are HEURISTIC thresholds, not facts — set to
+# minimise false positives on real reading, and their hits produce REVIEW-tier
+# signals (operator queue), never a silent per-second drop. ---
+
+# SIVT signatures are only meaningful over a long-enough window: a 3-second
+# window can legitimately show identical vectors. 30s is the emitter's flush
+# ceiling — a natural "enough signal to judge a pattern" floor. Below it, SIVT
+# is not evaluated (too little data → presumed innocent).
+MIN_SIVT_WINDOW_SECONDS = 30
+
+# Constant-attention: real reading JITTERS — scrolling and pausing change the
+# in-frame geometry second to second, so the exact (asset, area, prominence,
+# dwell) tuple rarely repeats. A window where >90% of valid seconds share ONE
+# modal tuple is a replayed/synthetic sample. 0.9 (not 1.0) tolerates a genuinely
+# static layout briefly; the residual false-positive risk is why it is
+# REVIEW-tier, not BLOCK.
+CONSTANT_VECTOR_FRACTION = 0.9
+
+# Focus-marathon: you can read for a long time, but sustained PERFECT
+# uninterrupted focus with frozen geometry is bot-like — real long reads include
+# glancing/scrolling seconds (the sampler's 250ms dwell) and area variation.
+# Trip only when mean dwell is essentially pinned at the 1000ms max AND the
+# viewport area barely varies AND there are NO scrolled-past seconds.
+MARATHON_DWELL_MEAN_MS = 995.0
+MARATHON_AREA_VARIANCE_MAX = 1e-4
+
+# SIVT signal weight — deliberately in the REVIEW band ([0.45, 0.75)): a single
+# heuristic hit warrants REVIEW (operator queue + escrow), not an automatic
+# BLOCK. The window verdict aggregates signals by MAX severity (see
+# ``_compose_max_severity``), so a SIVT hit lands at REVIEW while a stronger GIVT
+# fact in the same window still drives BLOCK — the strongest evidence wins, and
+# a heuristic never downgrades a fact.
+SIVT_SIGNAL_SCORE = 0.6
+
 # Reason codes (stable strings — they are persisted counts in M5 and read by the
 # S6 statement's disclosed denominators; renaming one is a contract change).
 REASON_DUPLICATE_INDEX = "givt_duplicate_second_index"
 REASON_NON_MONOTONIC = "givt_non_monotonic_second_index"
 REASON_IMPOSSIBLE_GEOMETRY = "givt_impossible_sample_geometry"
 REASON_OVERSIZED_BATCH = "givt_oversized_batch"
+REASON_CONSTANT_ATTENTION = "sivt_constant_attention_signature"
+REASON_FOCUS_MARATHON = "sivt_implausible_focus_marathon"
 
 
 @dataclass(frozen=True)
@@ -79,11 +122,12 @@ class SecondClassification:
 class BatchClassification:
     """The classifier's full output for one window batch.
 
-    ``window_verdict`` is the composite ``FraudVerdict`` (PASS/REVIEW/BLOCK) via
-    the shared ``verdict_from_signals`` — the SAME vocabulary every detector
-    emits, so the accrual/payout mediation treats a frame batch exactly like an
-    impression: PASS accrues, BLOCK zeroes the window, REVIEW accrues-to-escrow
-    for the operator queue (M5 wires the routing; this module only classifies).
+    ``window_verdict`` is the composite ``FraudVerdict`` (PASS/REVIEW/BLOCK) —
+    the SAME ``FraudVerdictKind`` vocabulary + REVIEW/BLOCK thresholds every
+    detector uses (aggregated by max severity, see ``_compose_max_severity``), so
+    the accrual/payout mediation treats a frame batch exactly like an impression:
+    PASS accrues, BLOCK zeroes the window, REVIEW accrues-to-escrow for the
+    operator queue (M5 wires the routing; this module only classifies).
     """
 
     window_id: str
@@ -135,6 +179,7 @@ def classify_batch(
     batch: WindowFrameBatch,
     *,
     max_window_seconds: int = MAX_WINDOW_SECONDS,
+    min_sivt_window_seconds: int = MIN_SIVT_WINDOW_SECONDS,
 ) -> BatchClassification:
     """Classify each second of a window batch as billable or GIVT-invalid, and
     compose the window-level fraud verdict.
@@ -191,7 +236,13 @@ def classify_batch(
             )
         )
 
-    verdict = _window_verdict(batch.window_id, classifications, oversized=oversized)
+    signals = _givt_signals(classifications, oversized=oversized)
+    if not oversized:
+        # SIVT judges the residual behavioural pattern of the seconds that
+        # survived GIVT; an oversized batch is already wholesale-fabricated, so
+        # SIVT adds nothing.
+        signals += _sivt_signals(batch, classifications, min_sivt_window_seconds)
+    verdict = _compose_max_severity(batch.window_id, signals)
     return BatchClassification(
         window_id=batch.window_id,
         seconds=tuple(classifications),
@@ -199,50 +250,155 @@ def classify_batch(
     )
 
 
-def _window_verdict(
-    window_id: str,
+def _compose_max_severity(
+    window_id: str, signals: tuple[FraudSignal, ...]
+) -> FraudVerdict:
+    """Window verdict by MAX severity, not mean.
+
+    We reuse ``FraudVerdictKind`` and the shared ``REVIEW_THRESHOLD`` /
+    ``BLOCK_THRESHOLD``, but aggregate the signal scores by MAX rather than the
+    mean that ``verdict_from_signals`` uses — deliberately, and here is why: our
+    signals mix HIGH-CONFIDENCE GIVT facts (scores up to 1.0) with LOWER SIVT
+    heuristics (0.6). Averaging would let a weak SIVT signal DOWNGRADE a strong
+    GIVT block (0.9 fact + 0.6 heuristic → mean 0.75-ish → REVIEW), i.e. more
+    evidence reducing suspicion — wrong for a fraud verdict. Max makes the
+    strongest evidence drive the kind; a heuristic can only ADD a REVIEW, never
+    subtract from a fact. (For a single signal, max == mean, so every GIVT-only
+    batch keeps its M2 verdict.)
+    """
+    if not signals:
+        return FraudVerdict(subject_ref=window_id)
+    top = max(s.score for s in signals)
+    if top >= BLOCK_THRESHOLD:
+        kind = FraudVerdictKind.BLOCK
+    elif top >= REVIEW_THRESHOLD:
+        kind = FraudVerdictKind.REVIEW
+    else:
+        kind = FraudVerdictKind.PASS
+    return FraudVerdict(kind=kind, signals=signals, subject_ref=window_id)
+
+
+def _givt_signals(
     classifications: list[SecondClassification],
     *,
     oversized: bool,
-) -> FraudVerdict:
-    """Compose the window FraudVerdict from GIVT hits.
+) -> tuple[FraudSignal, ...]:
+    """GIVT window signals — monotone in the invalid fraction (GIVT is a fact,
+    so the score is evidence weight, not a learned probability).
 
-    Scoring is deliberately simple and monotone in the invalid fraction (GIVT is
-    a fact, so the score is the evidence weight, not a learned probability):
-
-      * an oversized batch is a hard BLOCK (score 1.0) — fabricated wholesale.
-      * otherwise the signal score is the invalid-second FRACTION, so a batch
-        that is majority-invalid crosses BLOCK (0.75) and a small minority
-        crosses only REVIEW (0.45); a clean batch PASSes with no signals.
-
-    Using the shared ``verdict_from_signals`` keeps a frame batch on the exact
-    PASS/REVIEW/BLOCK ladder as every impression detector.
+      * oversized → a hard BLOCK signal (score 1.0), fabricated wholesale.
+      * otherwise the score is the invalid-second FRACTION: a majority-invalid
+        batch crosses BLOCK (0.75), a small minority crosses only REVIEW (0.45),
+        a clean batch yields no signal (PASS).
     """
     total = len(classifications)
     invalid = sum(1 for c in classifications if not c.valid)
     if total == 0 or invalid == 0:
-        return verdict_from_signals((), subject_ref=window_id)
-
+        return ()
     if oversized:
-        signals = (
+        return (
             FraudSignal(
                 name=REASON_OVERSIZED_BATCH,
                 score=1.0,
                 detail=f"{total} seconds exceeds the honest-window ceiling",
             ),
         )
-        return verdict_from_signals(signals, subject_ref=window_id)
-
     fraction = invalid / total
     reasons = sorted({c.reason for c in classifications if c.reason is not None})
-    signals = (
+    return (
         FraudSignal(
             name="givt_invalid_fraction",
             score=fraction,
-            detail=(
-                f"{invalid}/{total} seconds GIVT-invalid "
-                f"({', '.join(reasons)})"
-            ),
+            detail=f"{invalid}/{total} seconds GIVT-invalid ({', '.join(reasons)})",
         ),
     )
-    return verdict_from_signals(signals, subject_ref=window_id)
+
+
+def _sivt_signals(
+    batch: WindowFrameBatch,
+    classifications: list[SecondClassification],
+    min_sivt_window_seconds: int,
+) -> tuple[FraudSignal, ...]:
+    """SIVT window signals (M3) — HEURISTIC behavioural implausibility over the
+    GIVT-valid seconds of a long-enough window.
+
+    Honesty (rigor #1): these are heuristics with real false-positive/negative
+    rates, so each emits a REVIEW-tier score (``SIVT_SIGNAL_SCORE`` < BLOCK on
+    its own). Only evaluated when the window has >= ``min_sivt_window_seconds``
+    VALID seconds — a short window has too little signal to judge a pattern, and
+    a window dominated by GIVT-invalid seconds is already being handled.
+    """
+    valid_positions = {c.position for c in classifications if c.valid}
+    valid_seconds = [
+        sec for pos, sec in enumerate(batch.seconds) if pos in valid_positions
+    ]
+    if len(valid_seconds) < min_sivt_window_seconds:
+        return ()
+
+    signals: list[FraudSignal] = []
+
+    # SIVT-1 constant-attention: fraction of seconds sharing the modal
+    # per-second signature (the sorted tuple of each sample's rounded features).
+    # Real reading jitters; a near-constant signature is replayed/synthetic.
+    sig_counts: dict[tuple, int] = {}
+    for sec in valid_seconds:
+        key = tuple(
+            sorted(
+                (
+                    s.asset_id,
+                    round(s.viewport_area_fraction, 4),
+                    round(s.prominence, 4),
+                    s.focused_dwell_ms,
+                )
+                for s in sec.samples
+            )
+        )
+        sig_counts[key] = sig_counts.get(key, 0) + 1
+    modal = max(sig_counts.values())
+    constant_fraction = modal / len(valid_seconds)
+    if constant_fraction >= CONSTANT_VECTOR_FRACTION:
+        signals.append(
+            FraudSignal(
+                name=REASON_CONSTANT_ATTENTION,
+                score=SIVT_SIGNAL_SCORE,
+                detail=(
+                    f"{modal}/{len(valid_seconds)} seconds share one signature "
+                    f"({constant_fraction:.2f} >= {CONSTANT_VECTOR_FRACTION})"
+                ),
+            )
+        )
+
+    # SIVT-2 focus-marathon: mean dwell pinned at the max, near-zero viewport-
+    # area variance, and NO scrolled-past (250ms) seconds — sustained perfect
+    # frozen focus over a long window, which real reading does not sustain.
+    dwells = [s.focused_dwell_ms for sec in valid_seconds for s in sec.samples]
+    areas = [s.viewport_area_fraction for sec in valid_seconds for s in sec.samples]
+    if dwells:
+        mean_dwell = sum(dwells) / len(dwells)
+        area_var = _variance(areas)
+        has_glance = any(d < 1000 for d in dwells)
+        if (
+            mean_dwell >= MARATHON_DWELL_MEAN_MS
+            and area_var <= MARATHON_AREA_VARIANCE_MAX
+            and not has_glance
+        ):
+            signals.append(
+                FraudSignal(
+                    name=REASON_FOCUS_MARATHON,
+                    score=SIVT_SIGNAL_SCORE,
+                    detail=(
+                        f"mean dwell {mean_dwell:.0f}ms, area variance "
+                        f"{area_var:.2e}, no glancing over "
+                        f"{len(valid_seconds)} seconds"
+                    ),
+                )
+            )
+
+    return tuple(signals)
+
+
+def _variance(xs: list[float]) -> float:
+    if len(xs) < 2:
+        return 0.0
+    mean = sum(xs) / len(xs)
+    return sum((x - mean) ** 2 for x in xs) / len(xs)

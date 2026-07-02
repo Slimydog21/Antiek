@@ -14,7 +14,10 @@ from substrate.ad_inventory.frame_attention import (
     WindowFrameBatch,
 )
 from substrate.anti_gaming.frame_ivt import (
+    MIN_SIVT_WINDOW_SECONDS,
+    REASON_CONSTANT_ATTENTION,
     REASON_DUPLICATE_INDEX,
+    REASON_FOCUS_MARATHON,
     REASON_IMPOSSIBLE_GEOMETRY,
     REASON_NON_MONOTONIC,
     REASON_OVERSIZED_BATCH,
@@ -185,3 +188,98 @@ def test_classification_is_deterministic():
     assert [(c.position, c.valid, c.reason) for c in r1.seconds] == [
         (c.position, c.valid, c.reason) for c in r2.seconds
     ]
+
+
+# ── SIVT (M3): behavioural implausibility over a long-enough window ───────────
+
+_N = MIN_SIVT_WINDOW_SECONDS + 4  # comfortably over the SIVT evaluation floor
+
+
+def _window_signatures(fn):
+    """Build a long window; ``fn(i)`` returns the samples for second i."""
+    return _batch([_second(i, fn(i)) for i in range(_N)])
+
+
+def test_sivt_not_evaluated_below_window_floor():
+    # A SHORT constant window (identical vectors) is NOT judged by SIVT — too
+    # little signal to call a pattern. Presumed innocent.
+    short = _batch([_second(i, [_sample()]) for i in range(MIN_SIVT_WINDOW_SECONDS - 5)])
+    result = classify_batch(short)
+    assert result.window_verdict.kind is FraudVerdictKind.PASS
+    assert REASON_CONSTANT_ATTENTION not in _reasons_window(result)
+
+
+def _reasons_window(result):
+    return {s.name for s in result.window_verdict.signals}
+
+
+def test_constant_attention_signature_is_caught():
+    # Every second an IDENTICAL sample vector over a long window — replayed /
+    # synthetic; real reading jitters. dwell=800 so the marathon rule stays out.
+    result = classify_batch(
+        _window_signatures(lambda i: [_sample(area=0.6, prominence=0.7, dwell=800)])
+    )
+    assert REASON_CONSTANT_ATTENTION in _reasons_window(result)
+    assert result.window_verdict.kind is FraudVerdictKind.REVIEW  # heuristic → REVIEW
+
+
+def test_jittering_long_read_passes_constant_attention():
+    # A real long read: geometry jitters second to second (scroll/pause), so the
+    # modal signature never dominates.
+    def samples(i):
+        return [
+            _sample(
+                area=0.4 + (i % 7) * 0.05,
+                prominence=0.3 + (i % 5) * 0.1,
+                dwell=1000 if i % 4 else 250,
+            )
+        ]
+
+    result = classify_batch(_window_signatures(samples))
+    assert REASON_CONSTANT_ATTENTION not in _reasons_window(result)
+    assert result.window_verdict.kind is FraudVerdictKind.PASS
+
+
+def test_focus_marathon_is_caught():
+    # Perfect pinned dwell + frozen area + no glancing over a long window. Vary
+    # prominence slightly so the CONSTANT-attention rule stays out and this
+    # isolates the marathon signal.
+    def samples(i):
+        return [_sample(area=0.6, prominence=0.70 + (i % 2) * 0.03, dwell=1000)]
+
+    result = classify_batch(_window_signatures(samples))
+    assert REASON_FOCUS_MARATHON in _reasons_window(result)
+    assert REASON_CONSTANT_ATTENTION not in _reasons_window(result)
+    assert result.window_verdict.kind is FraudVerdictKind.REVIEW
+
+
+def test_long_read_with_glances_passes_marathon():
+    # A real long read holds focus but glances/scrolls (250ms seconds) and its
+    # area varies — the marathon rule must not fire.
+    def samples(i):
+        return [
+            _sample(
+                area=0.5 + (i % 6) * 0.04,
+                prominence=0.6,
+                dwell=250 if i % 5 == 0 else 1000,
+            )
+        ]
+
+    result = classify_batch(_window_signatures(samples))
+    assert REASON_FOCUS_MARATHON not in _reasons_window(result)
+    assert result.window_verdict.kind is FraudVerdictKind.PASS
+
+
+def test_max_severity_sivt_review_not_diluted_by_low_givt():
+    # A long constant window (SIVT REVIEW, 0.6) with ONE extra impossible-geometry
+    # second (GIVT, fraction ~1/31 ≈ 0.03). Mean would be (0.6+0.03)/2 ≈ 0.31 →
+    # PASS (WRONG — dilutes the heuristic). Max-severity keeps it at REVIEW: a
+    # weak GIVT fact must not downgrade the SIVT concern, and vice versa.
+    good = [_second(i, [_sample(area=0.6, prominence=0.7, dwell=800)]) for i in range(_N)]
+    bad = _second(_N, [_sample(area=0.0, prominence=0.0, dwell=900)])  # impossible
+    result = classify_batch(_batch(good + [bad]))
+    # window signal set carries the SIVT reason + the GIVT fraction signal;
+    # the per-second GIVT reason lives in the reported counts.
+    assert REASON_CONSTANT_ATTENTION in _reasons_window(result)
+    assert REASON_IMPOSSIBLE_GEOMETRY in result.counts_by_reason()
+    assert result.window_verdict.kind is FraudVerdictKind.REVIEW  # NOT diluted to PASS
