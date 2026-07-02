@@ -134,6 +134,12 @@ function stringArray(value: unknown): string[] {
   });
 }
 
+function arrayField(value: unknown, field: string): unknown[] {
+  const body = record(value);
+  const items = body?.[field];
+  return Array.isArray(items) ? items : [];
+}
+
 export function requireNonEmptyField(value: unknown, field: string): string {
   const trimmed = nonEmptyString(value);
   if (!trimmed) {
@@ -218,10 +224,7 @@ function toAgreementPoint(raw: Record<string, unknown>): AgreementPoint | null {
 export async function listPeople(): Promise<RememberedPerson[]> {
   const resp = await apiFetch("/speak/projects");
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const data = await resp.json();
-  const body = record(data);
-  const rows = Array.isArray(body?.projects) ? body.projects : [];
-  return rows.flatMap((row) => {
+  return arrayField(await resp.json(), "projects").flatMap((row) => {
     try {
       const item = record(row);
       return item ? [toPerson(item)] : [];
@@ -246,10 +249,7 @@ export async function getEconomics(id: string): Promise<EconomicsView> {
 export async function listVoices(id: string): Promise<ArrivingVoice[]> {
   const resp = await apiFetch(`/speak/projects/${encodeURIComponent(id)}/invites`);
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const data = await resp.json();
-  const body = record(data);
-  const rows = Array.isArray(body?.invites) ? body.invites : [];
-  return rows.flatMap((row) => {
+  return arrayField(await resp.json(), "invites").flatMap((row) => {
     try {
       const item = record(row);
       return item ? [toVoice(item)] : [];
@@ -294,10 +294,7 @@ export async function whatEveryoneAgreesOn(id: string): Promise<AgreementPoint[]
     body: "{}",
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const data = await resp.json();
-  const body = record(data);
-  const clusters = Array.isArray(body?.clusters) ? body.clusters : [];
-  return clusters.flatMap((cluster) => {
+  return arrayField(await resp.json(), "clusters").flatMap((cluster) => {
     const item = record(cluster);
     const point = item ? toAgreementPoint(item) : null;
     return point ? [point] : [];
@@ -338,10 +335,7 @@ export async function assembleDraft(id: string, isPublic: boolean): Promise<Asse
 export async function listPublicFeed(): Promise<FeedItem[]> {
   const resp = await apiFetch("/speak/feed");
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const data = await resp.json();
-  const body = record(data);
-  const rows = Array.isArray(body?.projects) ? body.projects : [];
-  return rows.flatMap((r) => {
+  return arrayField(await resp.json(), "projects").flatMap((r) => {
     try {
       const row = record(r);
       if (!row) return [];
