@@ -39,6 +39,14 @@ def _con(db):
     return connect_write(db, purpose="matrix_test")
 
 
+def test_economics_doc_names_canonical_gate_and_operator_boundary():
+    doc = em.__doc__ or ""
+    assert "./scripts/canonical_verify.sh speak-economics-matrix" in doc
+    assert "Speak settings matrix surface" in doc
+    assert "Live pricing/legal/payout activation" in doc
+    assert "operator-side proof" in doc
+
+
 # ── M1 mode model — all four cells resolve ──────────────────────────────
 
 

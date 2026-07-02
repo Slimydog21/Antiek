@@ -13,6 +13,11 @@ Cost allocation per the matrix (M5):
                          covers/credits the physical work) → payer 'split';
   • private-never-published → the creator carries the physical cost
                          → payer 'creator'.
+
+Covered by ``./scripts/canonical_verify.sh speak-publishing-physical``:
+quote shaping, quote-only persistence, and Speak publish/quote UI. Live POD
+vendor, shipping, payment, and fulfillment remain operator-side proof in the
+platform matrix.
 """
 
 from __future__ import annotations

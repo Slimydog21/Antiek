@@ -18,6 +18,11 @@ serving pipeline.
 Public publishing must pass EVERY gate, not just the mode check — the
 gate is the SPR-01 ``check_public_publish`` (the legal spine), and we
 refuse with its specific reason.
+
+Covered by ``./scripts/canonical_verify.sh speak-publishing-physical``:
+publish gate enforcement, Speak→Read servability, contributor split routing,
+and the Speak publish/quote UI. Live POD vendor, shipping, payment, and
+fulfillment remain operator-side proof in the platform matrix.
 """
 
 from __future__ import annotations

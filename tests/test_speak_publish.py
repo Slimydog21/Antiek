@@ -67,6 +67,18 @@ def _public_ready_project(con):
     return p.project_id
 
 
+def test_publish_docs_name_canonical_gate_and_live_fulfillment_boundary():
+    publish_doc = publish.__doc__ or ""
+    physical_doc = physical_book.__doc__ or ""
+    assert "./scripts/canonical_verify.sh speak-publishing-physical" in publish_doc
+    assert "Speak→Read servability" in publish_doc
+    assert "Speak publish/quote UI" in publish_doc
+    assert "Live POD vendor, shipping, payment, and\nfulfillment" in publish_doc
+    assert "./scripts/canonical_verify.sh speak-publishing-physical" in physical_doc
+    assert "quote-only persistence" in physical_doc
+    assert "Live POD\nvendor, shipping, payment, and fulfillment" in physical_doc
+
+
 # ── M1 publish per mode ─────────────────────────────────────────────────
 
 

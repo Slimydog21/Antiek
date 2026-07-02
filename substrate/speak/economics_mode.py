@@ -22,6 +22,11 @@ economics on a public, ad-monetised work. There is deliberately NO
 creator-override knob; ``resolve_policy`` cannot be told "public but no
 split". The margin numbers are POLICY (the matrix), documented here,
 not derived.
+
+Covered by ``./scripts/canonical_verify.sh speak-economics-matrix``:
+the four-cell policy, binding split, and Speak settings matrix surface.
+Live pricing/legal/payout activation remains operator-side proof in the
+platform matrix.
 """
 
 from __future__ import annotations
