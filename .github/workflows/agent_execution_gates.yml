@@ -8,6 +8,9 @@ on:
     branches: [main]
     paths:
       - 'docs/agent-execution/**'
+      - 'docs/operator_gate_actions.md'
+      - 'docs/master-product-spec.md'
+      - 'docs/engineering_deferrals.md'
       - 'tools/agent/**'
       - 'scripts/canonical_verify.sh'
       - 'scripts/repro_cascade_decompose_contract.py'
@@ -30,11 +33,13 @@ on:
       - 'apps/reading/src/modes/SpeakIndex/**'
       - 'apps/reading/src/modes/SpeakInvite/**'
       - 'apps/reading/src/modes/DeepResearchWorkspace/**'
+      - 'apps/reading/src/modes/Coordination/**'
       - 'apps/reading/src/lib/speakApi*'
       - 'apps/reading/src/shell/**'
       - 'apps/reading/src/workspace/**'
       - 'apps/reading/src/App.tsx'
       - 'interfaces/research/api/cascade_routes.py'
+      - 'interfaces/research/api/coordination.py'
       - 'interfaces/research/api/books.py'
       - 'interfaces/research/api/library.py'
       - 'interfaces/research/api/read_voice.py'
@@ -58,6 +63,7 @@ on:
       - 'substrate/contracts/dependency_map.py'
       - 'substrate/contracts/conformance.py'
       - 'substrate/contracts/inventory.md'
+      - 'substrate/coordination/**'
       - 'tools/codegen/check_conformance.py'
       - 'substrate/seams/**'
       - 'substrate/invariants/**'
@@ -114,6 +120,9 @@ on:
     branches: [main]
     paths:
       - 'docs/agent-execution/**'
+      - 'docs/operator_gate_actions.md'
+      - 'docs/master-product-spec.md'
+      - 'docs/engineering_deferrals.md'
       - 'tools/agent/**'
       - 'scripts/canonical_verify.sh'
       - 'scripts/repro_cascade_decompose_contract.py'
@@ -136,11 +145,13 @@ on:
       - 'apps/reading/src/modes/SpeakIndex/**'
       - 'apps/reading/src/modes/SpeakInvite/**'
       - 'apps/reading/src/modes/DeepResearchWorkspace/**'
+      - 'apps/reading/src/modes/Coordination/**'
       - 'apps/reading/src/lib/speakApi*'
       - 'apps/reading/src/shell/**'
       - 'apps/reading/src/workspace/**'
       - 'apps/reading/src/App.tsx'
       - 'interfaces/research/api/cascade_routes.py'
+      - 'interfaces/research/api/coordination.py'
       - 'interfaces/research/api/books.py'
       - 'interfaces/research/api/library.py'
       - 'interfaces/research/api/read_voice.py'
@@ -164,6 +175,7 @@ on:
       - 'substrate/contracts/dependency_map.py'
       - 'substrate/contracts/conformance.py'
       - 'substrate/contracts/inventory.md'
+      - 'substrate/coordination/**'
       - 'tools/codegen/check_conformance.py'
       - 'substrate/seams/**'
       - 'substrate/invariants/**'
@@ -357,8 +369,11 @@ jobs:
       - name: Canonical verify — unified navigation IA taxonomy
         run: ./scripts/canonical_verify.sh unified-navigation-ia-taxonomy
 
+      - name: Canonical verify — unified coordination gate ledger
+        run: ./scripts/canonical_verify.sh unified-coordination-gate-ledger
+
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md
 
-      - name: Canonical verify — deep-research (P-47..P-53)
+      - name: Canonical verify — deep-research (P-48..P-54)
         run: ./scripts/canonical_verify.sh deep-research
