@@ -25,6 +25,74 @@ type ThoughtPartnerReply = {
   threadNodeId: string | null;
 };
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const text = nonEmptyString(item);
+        return text ? [text] : [];
+      })
+    : [];
+}
+
+function safeThoughtPartnerReply(value: unknown): ThoughtPartnerReply {
+  const body = record(value);
+  const shape =
+    body?.shape === "challenge" ||
+    body?.shape === "synthesis" ||
+    body?.shape === "extension"
+      ? body.shape
+      : "unknown";
+  const challenges = Array.isArray(body?.challenges)
+    ? body.challenges.flatMap((item) => {
+        const challenge = record(item);
+        const condition = nonEmptyString(challenge?.condition);
+        return condition
+          ? [{ condition, note_ids: stringArray(challenge?.note_ids) }]
+          : [];
+      })
+    : [];
+  const extensions = Array.isArray(body?.extensions)
+    ? body.extensions.flatMap((item) => {
+        const extension = record(item);
+        const subQuestion = nonEmptyString(extension?.sub_question);
+        return subQuestion
+          ? [
+              {
+                sub_question: subQuestion,
+                tag: nullableString(extension?.tag),
+                rationale: nullableString(extension?.rationale),
+              },
+            ]
+          : [];
+      })
+    : [];
+  return {
+    text: nonEmptyString(body?.text) ?? "",
+    shape,
+    challenges,
+    synthesisText: nullableString(body?.synthesis_text),
+    extensions,
+    policyId: nullableString(body?.policy_id),
+    threadNodeId: nullableString(body?.thread_node_id),
+  };
+}
+
 /**
  * BrainstormStation's active thought-partner panel.
  *
@@ -121,46 +189,8 @@ export default function ThoughtPartnerPanel() {
         setError(detail);
         return;
       }
-      const data = (await response.json()) as {
-        text?: string;
-        shape?: string;
-        challenges?: Array<{ condition?: string; note_ids?: string[] }>;
-        synthesis_text?: string | null;
-        extensions?: Array<{
-          sub_question?: string;
-          tag?: string | null;
-          rationale?: string | null;
-        }>;
-        policy_id?: string | null;
-        thread_node_id?: string | null;
-      };
       if (generation !== requestGenerationRef.current) return;
-      const shape =
-        data.shape === "challenge" ||
-        data.shape === "synthesis" ||
-        data.shape === "extension"
-          ? data.shape
-          : "unknown";
-      setReply({
-        text: data.text ?? "",
-        shape,
-        challenges: (data.challenges ?? [])
-          .map((challenge) => ({
-            condition: challenge.condition?.trim() ?? "",
-            note_ids: challenge.note_ids ?? [],
-          }))
-          .filter((challenge) => challenge.condition),
-        synthesisText: data.synthesis_text?.trim() || null,
-        extensions: (data.extensions ?? [])
-          .map((extension) => ({
-            sub_question: extension.sub_question?.trim() ?? "",
-            tag: extension.tag?.trim() || null,
-            rationale: extension.rationale?.trim() || null,
-          }))
-          .filter((extension) => extension.sub_question),
-        policyId: data.policy_id ?? null,
-        threadNodeId: data.thread_node_id ?? null,
-      });
+      setReply(safeThoughtPartnerReply(await response.json()));
     } catch (e: unknown) {
       if (generation !== requestGenerationRef.current) return;
       setError(e instanceof Error ? e.message : String(e));
