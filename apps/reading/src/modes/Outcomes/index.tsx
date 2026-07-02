@@ -37,6 +37,56 @@ interface OutcomeRow {
 
 type OutcomeKind = "validated" | "falsified" | "indeterminate";
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function safeOutcomeItems(value: unknown): { kind: string; note: string }[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const outcome = record(item);
+    const kind = nonEmptyString(outcome?.kind);
+    const note = nonEmptyString(outcome?.note);
+    return outcome && kind && note ? [{ kind, note }] : [];
+  });
+}
+
+function safeOutcomeRow(value: unknown): OutcomeRow | null {
+  const row = record(value);
+  const outcomeId = nonEmptyString(row?.outcome_id);
+  if (!row || !outcomeId) return null;
+  return {
+    outcome_id: outcomeId,
+    observer: nonEmptyString(row.observer) ?? "Reviewer",
+    observed_at: nonEmptyString(row.observed_at) ?? "Earlier session",
+    thesis_outcomes: safeOutcomeItems(row.thesis_outcomes),
+    falsification_outcomes: safeOutcomeItems(row.falsification_outcomes),
+    execution_risk_outcomes: safeOutcomeItems(row.execution_risk_outcomes),
+    notes: nullableString(row.notes),
+  };
+}
+
+function safeOutcomeRows(value: unknown): OutcomeRow[] {
+  const body = record(value);
+  const outcomes = Array.isArray(body?.outcomes) ? body.outcomes : [];
+  return outcomes.flatMap((item) => {
+    const row = safeOutcomeRow(item);
+    return row ? [row] : [];
+  });
+}
+
 export default function Outcomes() {
   const { synthesisId } = useParams<{ synthesisId: string }>();
   const [outcomes, setOutcomes] = useState<OutcomeRow[]>([]);
@@ -54,8 +104,7 @@ export default function Outcomes() {
       if (!resp.ok) {
         throw new Error(`GET /outcomes failed: HTTP ${resp.status}`);
       }
-      const data = await resp.json();
-      setOutcomes(data.outcomes ?? []);
+      setOutcomes(safeOutcomeRows(await resp.json()));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
