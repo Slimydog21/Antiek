@@ -45,7 +45,7 @@ id, and the result of each step.
 | 2 | Select a passage | Selection is stable and the shared FloatMenu appears without layout jump | selected text, action menu labels visible |
 | 3 | Start Dialogue from the passage | With provider keys, a passage-anchored multi-turn thread returns a useful first answer; without keys, the UI states the activation boundary honestly | provider status, first answer or exact no-key copy |
 | 4 | Spin out research from the passage | With provider keys, research starts with the selected passage as seed and shows a recoverable running state; without keys, the UI states the activation boundary honestly | investigation/session id or exact no-key copy |
-| 5 | Click a citation/source marker | The cited real source opens in the same Reader at the cited chunk or nearest available anchor | source document id, chunk id/anchor, resulting URL |
+| 5 | Click a citation/source marker | The cited real source opens in the same Reader at the cited chunk or nearest available anchor, with return-origin context in the URL | source document id, chunk id/anchor, resulting URL containing `from=<original document id>` |
 | 6 | Return to the original paper | Back/return flow preserves reading context closely enough for continued work | note whether scroll/selection/context survived |
 | 7 | Use the surface for actual reading work for at least 20 minutes | No dead end blocks the operator from reading, asking, tracing, or returning | free-form operator note with any friction |
 
@@ -57,8 +57,10 @@ operator notes can be normalized without losing the literal copy.
 For step 1, record either a screenshot reference (`screenshot`,
 `screenshot_url`, or `screenshot_path`) or a visible-reader note
 (`visible_content_note`, `structured_content_note`, or `render_note`). For step
-6, record `return_context_note`; `context_note` and `scroll_context_note` are
-accepted aliases.
+5, `result_url` must be an HTTP(S) `/read/{source_document_id}` URL carrying the
+recorded `chunk_id` or `anchor` and `from=<document_id>` return context. For
+step 6, record `return_context_note`; `context_note` and
+`scroll_context_note` are accepted aliases.
 
 ## Dogfood closure rule
 
@@ -149,7 +151,7 @@ Minimal record shape:
       "status": "pass",
       "source_document_id": "source-doc-1",
       "chunk_id": "chunk-1",
-      "result_url": "https://app.example/read/source-doc-1?chunk=chunk-1"
+      "result_url": "https://app.example/read/source-doc-1?chunk=chunk-1&from=doc-1&fromPage=0"
     },
     "6": {
       "status": "pass",

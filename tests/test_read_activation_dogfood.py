@@ -42,7 +42,10 @@ def _session(
         steps["5"].update({
             "source_document_id": f"source-doc-{idx}",
             "chunk_id": f"chunk-{idx}",
-            "result_url": f"https://app.example/read/source-doc-{idx}?chunk=chunk-{idx}",
+            "result_url": (
+                f"https://app.example/read/source-doc-{idx}"
+                f"?chunk=chunk-{idx}&from=doc-{idx}&fromPage=0"
+            ),
         })
     if live:
         steps["3"]["first_answer"] = f"First useful answer for passage {idx}."
@@ -341,7 +344,7 @@ def test_citation_trace_result_url_must_open_recorded_source_in_reader() -> None
 
 def test_citation_trace_result_url_must_carry_recorded_chunk_or_anchor() -> None:
     record = _session(1, citation=True)
-    record["steps"]["5"]["result_url"] = "https://app.example/read/source-doc-1"
+    record["steps"]["5"]["result_url"] = "https://app.example/read/source-doc-1?from=doc-1"
 
     report = validate_sessions([record])
 
@@ -353,19 +356,48 @@ def test_citation_trace_result_url_must_carry_recorded_chunk_or_anchor() -> None
     )
 
 
+def test_citation_trace_result_url_must_carry_return_origin() -> None:
+    record = _session(1, citation=True)
+    record["steps"]["5"]["result_url"] = "https://app.example/read/source-doc-1?chunk=chunk-1"
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.citation_trace_sessions == 0
+    assert any(
+        "citation step 5 result_url must include from={document_id} return context" in f
+        for f in report.failures
+    )
+
+
 def test_citation_trace_result_url_accepts_encoded_source_and_highlight_anchor() -> None:
     record = _session(1, citation=True)
     record["steps"]["5"] = {
         "status": "pass",
         "source_document_id": "source/doc 1",
         "anchor": "block:7",
-        "result_url": "https://app.example/read/source%2Fdoc%201?hl=source%2Fdoc%201%3Ablock%3A7",
+        "result_url": (
+            "https://app.example/read/source%2Fdoc%201"
+            "?hl=source%2Fdoc%201%3Ablock%3A7&from=doc-1"
+        ),
     }
 
     report = validate_sessions([record])
 
     assert not any("citation step 5 result_url must open" in f for f in report.failures)
     assert not any("citation step 5 result_url must include" in f for f in report.failures)
+
+
+def test_citation_trace_return_origin_accepts_encoded_document_id() -> None:
+    record = _session(1, citation=True)
+    record["document_id"] = "doc/original 1"
+    record["steps"]["5"]["result_url"] = (
+        "https://app.example/read/source-doc-1?chunk=chunk-1&from=doc%2Foriginal%201"
+    )
+
+    report = validate_sessions([record])
+
+    assert not any("from={document_id}" in f for f in report.failures)
 
 
 def test_non_library_entry_accepts_human_spelled_command_palette() -> None:
