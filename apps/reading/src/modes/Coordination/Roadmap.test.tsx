@@ -79,6 +79,7 @@ function roadmap(
     unblocked_now: unblockedNow,
     dependency_blockers: dependencyBlockers,
     execution_focus: executionFocus,
+    operator_gate_focus: null,
     substrate_layers: [],
   };
 }
@@ -396,5 +397,56 @@ describe("Roadmap", () => {
     render(<Roadmap roadmap={roadmap([])} />);
 
     expect(screen.queryByText("Execution focus")).toBeNull();
+  });
+
+  it("falls through to the first open operator gate when structural focus is clear", () => {
+    render(
+      <Roadmap
+        roadmap={{
+          ...roadmap([]),
+          operator_gate_focus: {
+            gate_id: "G2",
+            title: "Lawyer review",
+            status: "open",
+            status_raw: "OPEN — counsel review pending",
+            owner: "Operator + counsel",
+            blocks: "All Stripe payouts",
+            source_path: "docs/operator_gate_actions.md",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Execution focus")).toBeTruthy();
+    expect(screen.getByText("Close G2 — Lawyer review")).toBeTruthy();
+    expect(
+      screen.getByText("OPEN — counsel review pending · Operator + counsel"),
+    ).toBeTruthy();
+    expect(screen.getByText("Blocks: All Stripe payouts")).toBeTruthy();
+    expect(screen.getByText(/docs\/operator_gate_actions\.md/)).toBeTruthy();
+  });
+
+  it("keeps dependency focus ahead of operator gate focus", () => {
+    render(
+      <Roadmap
+        roadmap={{
+          ...roadmap([sprint(5, [], true, "drw"), sprint(1, ["drw:5"])]),
+          operator_gate_focus: {
+            gate_id: "G2",
+            title: "Lawyer review",
+            status: "open",
+            status_raw: "OPEN",
+            owner: "Operator + counsel",
+            blocks: "All Stripe payouts",
+            source_path: "docs/operator_gate_actions.md",
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText("Unblock drw:5 — Research (DRW) · SPR-05"),
+    ).toBeTruthy();
+    expect(screen.queryByText("Close G2 — Lawyer review")).toBeNull();
   });
 });

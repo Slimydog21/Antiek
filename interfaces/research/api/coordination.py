@@ -155,6 +155,35 @@ class ExecutionFocusResponse(BaseModel):
         )
 
 
+class OperatorGateFocusResponse(BaseModel):
+    """First still-open operator gate, derived from the canonical gate ledger.
+
+    This is a small reference, not a forked gate row. It lets the roadmap say
+    "structural dependencies are clear; this operator gate is now the next
+    blocker" while gate state stays owned by ``docs/operator_gate_actions.md``.
+    """
+
+    gate_id: str
+    title: str
+    status: str
+    status_raw: str
+    owner: str | None
+    blocks: str | None
+    source_path: str
+
+    @classmethod
+    def from_gate(cls, gate: Gate, source_path: str) -> OperatorGateFocusResponse:
+        return cls(
+            gate_id=gate.gate_id,
+            title=gate.title,
+            status=gate.status.value,
+            status_raw=gate.status_raw,
+            owner=gate.owner,
+            blocks=gate.blocks,
+            source_path=source_path,
+        )
+
+
 class RoadmapResponse(BaseModel):
     total_sprints: int
     superseded_count: int
@@ -166,11 +195,24 @@ class RoadmapResponse(BaseModel):
     unblocked_now: list[str]      # node ids
     dependency_blockers: list[DependencyBlockerResponse]
     execution_focus: ExecutionFocusResponse | None
+    operator_gate_focus: OperatorGateFocusResponse | None
     substrate_layers: list[SubstrateLayerResponse]
 
     @classmethod
-    def from_roadmap(cls, rm: Roadmap) -> RoadmapResponse:
+    def from_roadmap(
+        cls,
+        rm: Roadmap,
+        gate_ledger: GateLedger | None = None,
+    ) -> RoadmapResponse:
         focus = rm.execution_focus()
+        operator_focus = None
+        if focus is None and gate_ledger is not None:
+            open_gates = gate_ledger.open_gates()
+            if open_gates:
+                operator_focus = OperatorGateFocusResponse.from_gate(
+                    open_gates[0],
+                    gate_ledger.source_path,
+                )
         return cls(
             total_sprints=rm.total_sprints,
             superseded_count=rm.superseded_count,
@@ -199,6 +241,7 @@ class RoadmapResponse(BaseModel):
             execution_focus=(
                 ExecutionFocusResponse.from_focus(focus) if focus is not None else None
             ),
+            operator_gate_focus=operator_focus,
             substrate_layers=[
                 SubstrateLayerResponse(
                     name=layer.name,
@@ -407,7 +450,7 @@ def register_coordination_routes(app: FastAPI) -> None:
         """The cross-spec roadmap — 45 sprints reconciled from the real roster
         files + SPR-01's dependency DAG, DRW critical path explicit, dependency
         blockers and execution focus derived from dependency state."""
-        return RoadmapResponse.from_roadmap(build_roadmap())
+        return RoadmapResponse.from_roadmap(build_roadmap(), load_gate_ledger())
 
     @app.get(
         "/coordination/cost",

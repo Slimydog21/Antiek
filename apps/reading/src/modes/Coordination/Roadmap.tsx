@@ -57,6 +57,16 @@ export type ExecutionFocusView =
       blocked_sprints?: string[];
     };
 
+export interface OperatorGateFocusView {
+  gate_id: string;
+  title: string;
+  status: string;
+  status_raw: string;
+  owner: string | null;
+  blocks: string | null;
+  source_path: string;
+}
+
 export interface RoadmapView {
   total_sprints: number;
   superseded_count: number;
@@ -68,6 +78,7 @@ export interface RoadmapView {
   unblocked_now: string[];
   dependency_blockers: DependencyBlockerView[];
   execution_focus: ExecutionFocusView | null;
+  operator_gate_focus: OperatorGateFocusView | null;
   substrate_layers: SubstrateLayerView[];
 }
 
@@ -266,6 +277,7 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
 
       <ExecutionFocusSection
         focus={executionFocus}
+        operatorGateFocus={roadmap.operator_gate_focus}
       />
 
       <ReadyNowSection sprints={dependencyReady} />
@@ -286,10 +298,12 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
 
 function ExecutionFocusSection({
   focus,
+  operatorGateFocus,
 }: {
   focus: ResolvedExecutionFocus | null;
+  operatorGateFocus: OperatorGateFocusView | null;
 }) {
-  if (!focus) return null;
+  if (!focus && !operatorGateFocus) return null;
 
   return (
     <LemonCard colour="glacial" elevation="z1">
@@ -297,7 +311,7 @@ function ExecutionFocusSection({
         <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
           Execution focus
         </p>
-        {focus.kind === "dependency_blocker" ? (
+        {focus?.kind === "dependency_blocker" ? (
           <div className="space-y-1">
             <p className="text-sm font-serif text-ink dark:text-bright">
               Unblock {focus.blocker.node_id}
@@ -310,7 +324,7 @@ function ExecutionFocusSection({
               {focus.blocker.blocked_sprints.length === 1 ? "sprint" : "sprints"}.
             </p>
           </div>
-        ) : (
+        ) : focus?.kind === "dependency_ready" ? (
           <div className="space-y-1">
             <p className="text-sm font-serif text-ink dark:text-bright">
               Next dependency-ready sprint: {formatSprintLabel(focus.sprint)}
@@ -319,7 +333,26 @@ function ExecutionFocusSection({
               {focus.sprint.slug.replace(/-/g, " ")} · {focus.sprint.node_id}
             </p>
           </div>
-        )}
+        ) : operatorGateFocus ? (
+          <div className="space-y-1">
+            <p className="text-sm font-serif text-ink dark:text-bright">
+              Close {operatorGateFocus.gate_id} — {operatorGateFocus.title}
+            </p>
+            <p className="text-xs font-mono text-shadow-2 dark:text-moonlight">
+              {operatorGateFocus.status_raw || operatorGateFocus.status}
+              {operatorGateFocus.owner ? ` · ${operatorGateFocus.owner}` : ""}
+            </p>
+            {operatorGateFocus.blocks && (
+              <p className="text-xs text-ink-soft dark:text-starlight leading-relaxed">
+                Blocks: {operatorGateFocus.blocks}
+              </p>
+            )}
+            <p className="text-xs text-ink-soft dark:text-starlight leading-relaxed">
+              Structural dependencies are clear; this focus is read from{" "}
+              {operatorGateFocus.source_path || "docs/operator_gate_actions.md"}.
+            </p>
+          </div>
+        ) : null}
       </div>
     </LemonCard>
   );

@@ -121,6 +121,15 @@ describe("Coordination", () => {
             node_id: " missing:9 ",
             blocked_sprints: [" read:2 "],
           },
+          operator_gate_focus: {
+            gate_id: " G2 ",
+            title: " Counsel review ",
+            status: "calendar",
+            status_raw: " open until counsel review ",
+            owner: " Legal ",
+            blocks: " payouts ",
+            source_path: " docs/operator_gate_actions.md ",
+          },
           substrate_layers: [
             {
               name: " db lock ",
@@ -156,6 +165,7 @@ describe("Coordination", () => {
     expect(screen.getByText("Dependency blockers")).toBeTruthy();
     expect(screen.getByText("drw:10")).toBeTruthy();
     expect(screen.getByText("Unblock drw:10")).toBeTruthy();
+    expect(screen.queryByText("Close G2 — Counsel review")).toBeNull();
     expect(screen.getByText("blocks 1 sprint")).toBeTruthy();
     expect(screen.queryByText("missing:9")).toBeNull();
     expect(screen.getAllByText("lock the spine").length).toBeGreaterThanOrEqual(1);
@@ -164,5 +174,47 @@ describe("Coordination", () => {
     expect(document.body.textContent).not.toMatch(
       /Skipped sprint|Skipped roster|Skipped layer/,
     );
+  });
+
+  it("renders sanitized operator gate focus when structural roadmap focus is clear", async () => {
+    apiFetchMock.mockImplementation(async (input) => {
+      const path = String(input);
+      if (path === "/coordination/gates") {
+        return {
+          ok: true,
+          json: async () => ({ source_path: "docs/operator_gate_actions.md", gates: [] }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          total_sprints: 45,
+          reconciliation: "Read 9 = 9",
+          rosters: [],
+          unblocked_now: [],
+          dependency_blockers: [],
+          execution_focus: null,
+          operator_gate_focus: {
+            gate_id: " G2 ",
+            title: " Counsel review ",
+            status: "unexpected",
+            status_raw: " open until counsel review ",
+            owner: " Legal ",
+            blocks: " payouts ",
+            source_path: " docs/operator_gate_actions.md ",
+          },
+          substrate_layers: [],
+        }),
+      } as Response;
+    });
+
+    render(<Coordination />);
+
+    await screen.findByText("Close G2 — Counsel review");
+    expect(screen.getByText("open until counsel review · Legal")).toBeTruthy();
+    expect(screen.getByText("Blocks: payouts")).toBeTruthy();
+    expect(
+      screen.getByText(/Structural dependencies are clear; this focus is read from/),
+    ).toBeTruthy();
   });
 });
