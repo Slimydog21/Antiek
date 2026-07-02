@@ -16,6 +16,11 @@ function finiteNonNegativeNumber(value: unknown): number | null {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
+function nonNegativeSafeInteger(value: unknown): number | null {
+  const parsed = finiteNonNegativeNumber(value);
+  return parsed !== null && Number.isSafeInteger(parsed) ? parsed : null;
+}
+
 function stringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
@@ -33,7 +38,7 @@ export function safeTraceTarget(target: TraceTarget): TraceTarget {
     document_title: fullTextAllowed ? nonEmptyString(target.document_title) : null,
     chunk_ids: fullTextAllowed ? stringArray(target.chunk_ids) : [],
     primary_chunk_index: fullTextAllowed
-      ? finiteNonNegativeNumber(target.primary_chunk_index)
+      ? nonNegativeSafeInteger(target.primary_chunk_index)
       : null,
     primary_section_path: fullTextAllowed ? nonEmptyString(target.primary_section_path) : null,
     servability_status: nonEmptyString(target.servability_status),
