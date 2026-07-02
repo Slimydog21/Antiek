@@ -61,17 +61,17 @@ from tools.lints.no_raise_in_substrate_writers import (
 from tools.lints.no_raise_in_substrate_writers import (
     scan_paths as scan_no_raise,
 )
-from tools.lints.no_unbounded_external_call import (
-    Violation as UnboundedExternalCallViolation,
-)
-from tools.lints.no_unbounded_external_call import (
-    scan_paths as scan_unbounded_external_call,
-)
 from tools.lints.no_seam_call_under_write_lock import (
     Violation as SeamUnderLockViolation,
 )
 from tools.lints.no_seam_call_under_write_lock import (
     scan_paths as scan_seam_under_lock,
+)
+from tools.lints.no_unbounded_external_call import (
+    Violation as UnboundedExternalCallViolation,
+)
+from tools.lints.no_unbounded_external_call import (
+    scan_paths as scan_unbounded_external_call,
 )
 from tools.lints.unannotated_bypass import (
     BypassViolation,

@@ -150,11 +150,12 @@ class _Walker(ast.NodeVisitor):
 
     def _remember_with_clients(self, items: list[ast.withitem]) -> None:
         for item in items:
-            if isinstance(item.context_expr, ast.Call) and self._is_httpx_client_ctor(
-                item.context_expr
+            if (
+                isinstance(item.context_expr, ast.Call)
+                and self._is_httpx_client_ctor(item.context_expr)
+                and item.optional_vars is not None
             ):
-                if item.optional_vars is not None:
-                    self._remember_client_target(item.optional_vars)
+                self._remember_client_target(item.optional_vars)
 
     def _is_httpx_client_ctor(self, node: ast.Call) -> bool:
         chain = _attr_chain(node.func)
@@ -162,9 +163,7 @@ class _Walker(ast.NodeVisitor):
             return False
         if len(chain) == 2 and chain[0] in self._httpx_aliases:
             return chain[1] in {"Client", "AsyncClient"}
-        if len(chain) == 1 and chain[0] in self._httpx_client_ctor_aliases:
-            return True
-        return False
+        return len(chain) == 1 and chain[0] in self._httpx_client_ctor_aliases
 
     def _timeoutless_external_call(self, node: ast.Call) -> str | None:
         chain = _attr_chain(node.func)
@@ -193,9 +192,7 @@ class _Walker(ast.NodeVisitor):
     def _is_requests_call(self, chain: tuple[str, ...]) -> bool:
         if len(chain) == 2 and chain[0] in self._requests_aliases:
             return chain[1] in REQUESTS_METHODS
-        if len(chain) == 1 and chain[0] in self._requests_method_aliases:
-            return True
-        return False
+        return len(chain) == 1 and chain[0] in self._requests_method_aliases
 
     def _is_socket_create_connection(self, chain: tuple[str, ...]) -> bool:
         if len(chain) == 2 and chain[0] in self._socket_aliases:
