@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to SPEAK_SPRINTS. Status changes are deliberate roadmap
 # events, not prose-only handoffs.
-SPEAK_LOCK_VERSION: int = 2
+SPEAK_LOCK_VERSION: int = 3
 
 
 @dataclass(frozen=True)
@@ -47,7 +47,17 @@ SPEAK_SPRINTS: dict[int, SpeakDeliverable] = {
         # are covered by speak-async-voice-interview.
         status="live",
     ),
-    3: SpeakDeliverable(3, "project-invitations", "Project invitations"),
+    3: SpeakDeliverable(
+        3,
+        "project-invitations",
+        "Project invitations",
+        # Live: project sidecar, project-scoped claim aggregation/isolation,
+        # unique invite tokens, same-email dedupe, invite lifecycle tracking,
+        # public ecosystem G7 gate, publish-intent consent scopes, operator
+        # REST routes, token landing, and the warm Speak index are covered by
+        # speak-project-invitations.
+        status="live",
+    ),
     4: SpeakDeliverable(4, "compounding-interviewer", "Compounding interviewer"),
     5: SpeakDeliverable(
         5,

@@ -83,7 +83,7 @@ def test_roadmap_consumes_write_sprint_status_and_focus_advances() -> None:
     assert by_id["write:8"].status.value == "live"
     assert by_id["write:9"].status.value == "live"
     assert roadmap.execution_focus() is not None
-    assert roadmap.execution_focus().node_id == "speak:3"
+    assert roadmap.execution_focus().node_id == "speak:4"
 
 
 def test_write_lock_version_present() -> None:
