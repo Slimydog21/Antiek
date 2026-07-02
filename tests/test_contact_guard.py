@@ -17,17 +17,23 @@ Two halves, mirroring the serve-guard rigor pattern:
 from __future__ import annotations
 
 import logging
+import os
 import tempfile
 import textwrap
 from pathlib import Path
 
 import pytest
 
+from runtime.db_lock import connect_write
+from substrate.graph.schema import init_database
 from substrate.auth.email_provider import MockEmailProvider, OutboundEmail
 from substrate.payouts.contact_guard import (
     ContactBlocked,
+    get_author_contact_claim,
     guarded_send_to_author,
     is_author_claimed,
+    record_author_contact_claim,
+    revoke_author_contact_claim,
 )
 from tools.lint import contact_guard_check
 
@@ -43,11 +49,48 @@ def _outbound(to: str = "author@example.org") -> OutboundEmail:
 
 
 def test_no_author_is_claimed_today():
-    """The SPR-07 plug point is hardwired deny-all: no claim flow exists, so no
-    author is ever claimed. If this ever returns True without a real claim table
-    behind it, M3's deny-by-default guarantee is silently broken."""
+    """The SPR-07 plug point is deny-by-default without a claim store."""
     assert is_author_claimed("orcid:0000-0002-1825-0097") is False
     assert is_author_claimed("(2401.00001, 0)") is False
+
+
+@pytest.fixture
+def claim_db():
+    with tempfile.TemporaryDirectory(prefix="antiek-author-claims-") as tmp:
+        db_path = os.path.join(tmp, "claims.duckdb")
+        con = connect_write(db_path, purpose="test_author_contact_claims")
+        init_database(con)
+        try:
+            yield con
+        finally:
+            con.close()
+
+
+def test_author_contact_claims_table_starts_denied(claim_db):
+    """An initialized real table is still denied until a row explicitly opts in."""
+    assert is_author_claimed("orcid:0000-0002-1825-0097", con=claim_db) is False
+
+    claim = record_author_contact_claim(
+        claim_db,
+        author_ref="orcid:0000-0002-1825-0097",
+        evidence={"method": "orcid-oauth"},
+    )
+
+    assert claim.contact_opt_in is False
+    assert claim.claimed_at is not None
+    assert claim.evidence == {"method": "orcid-oauth"}
+    assert is_author_claimed("orcid:0000-0002-1825-0097", con=claim_db) is False
+
+
+def test_author_claim_read_denies_when_table_is_absent():
+    """A read predicate must not create tables; missing claim state is deny."""
+    with tempfile.TemporaryDirectory(prefix="antiek-author-claims-empty-") as tmp:
+        db_path = os.path.join(tmp, "claims.duckdb")
+        con = connect_write(db_path, purpose="test_author_contact_claims_absent")
+        try:
+            assert is_author_claimed("orcid:absent", con=con) is False
+        finally:
+            con.close()
 
 
 def test_guarded_send_to_unclaimed_author_is_blocked_and_does_not_call_provider(caplog):
@@ -75,23 +118,52 @@ def test_guarded_send_to_unclaimed_author_is_blocked_and_does_not_call_provider(
     ), "the block must be logged"
 
 
-def test_guard_would_send_only_if_a_claim_existed(monkeypatch):
-    """The guard's allow-path is reachable ONLY when ``is_author_claimed`` returns
-    True. We monkeypatch the predicate (simulating a future SPR-07 claim) to
-    prove the seam works: a claimed author's send goes through and is recorded.
-    This documents that the deny is in the PREDICATE, not a hard wall — SPR-07
-    flips exactly one function."""
-    monkeypatch.setattr(
-        "substrate.payouts.contact_guard.is_author_claimed", lambda _ref: True
+def test_guard_sends_only_for_claimed_and_contact_opted_in_author(claim_db):
+    """A real claim row admits contact only when contact_opt_in is true."""
+    record_author_contact_claim(
+        claim_db,
+        author_ref="orcid:claimed",
+        contact_opt_in=True,
+        evidence={"method": "signed-magic-link", "version": 1},
     )
     provider = MockEmailProvider(log_to_stdout=False)
     result = guarded_send_to_author(
-        provider, _outbound(), author_ref="orcid:claimed"
+        provider, _outbound(), author_ref="orcid:claimed", claims_con=claim_db
     )
+
+    persisted = get_author_contact_claim(claim_db, "orcid:claimed")
+    assert persisted is not None
+    assert persisted.contact_opt_in is True
+    assert persisted.contact_opted_in_at is not None
+    assert persisted.revoked_at is None
     assert result.blocked is False
     assert result.reason == "author_claimed"
     assert len(provider.sent) == 1
     assert provider.sent[0].email.to == "author@example.org"
+
+
+def test_guard_blocks_after_author_contact_claim_is_revoked(claim_db):
+    record_author_contact_claim(
+        claim_db,
+        author_ref="orcid:revoked",
+        contact_opt_in=True,
+    )
+    revoke_author_contact_claim(claim_db, author_ref="orcid:revoked")
+    provider = MockEmailProvider(log_to_stdout=False)
+
+    with pytest.raises(ContactBlocked):
+        guarded_send_to_author(
+            provider,
+            _outbound(),
+            author_ref="orcid:revoked",
+            claims_con=claim_db,
+        )
+
+    persisted = get_author_contact_claim(claim_db, "orcid:revoked")
+    assert persisted is not None
+    assert persisted.contact_opt_in is False
+    assert persisted.revoked_at is not None
+    assert provider.sent == []
 
 
 # ── 2. The contact-guard scanner: clean on the tree + has teeth ─────────────

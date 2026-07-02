@@ -356,7 +356,7 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "outcomes", "chunk_tier_overrides",
     "deliverables", "deliverable_sections", "section_blocks",
     "interview_projects", "interviews",
-    "ip_holders", "notebooks", "notebook_blocks",
+    "ip_holders", "author_contact_claims", "notebooks", "notebook_blocks",
     "discovery_cache",
     "url_alias",
     "discovery_summary",
@@ -399,6 +399,26 @@ CREATE TABLE IF NOT EXISTS ip_holders (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ip_holders_status ON ip_holders(status);
+
+-- ============================================================
+-- author_contact_claims — Explicit author outreach opt-in
+-- ============================================================
+-- arXiv per-author accruals are keyed by ORCID or (arxiv_id, author_position).
+-- That is not enough to contact an author. Outreach is admitted only when this
+-- table has an active row with contact_opt_in=true; substrate.payouts.contact_guard
+-- denies every send without such a row.
+CREATE TABLE IF NOT EXISTS author_contact_claims (
+    author_ref            TEXT PRIMARY KEY,
+    contact_opt_in        BOOLEAN NOT NULL DEFAULT FALSE,
+    claimed_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    contact_opted_in_at   TIMESTAMP,
+    revoked_at            TIMESTAMP,
+    evidence_json         TEXT NOT NULL DEFAULT '{}',
+    updated_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_author_contact_claims_active
+    ON author_contact_claims(author_ref, contact_opt_in, revoked_at);
 
 -- ============================================================
 -- documents — content_class + ip_holder_id retrieval-time gate
