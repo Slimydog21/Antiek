@@ -57,12 +57,19 @@ describe("CrossDocSidebar", () => {
             answer_document_id: " doc-answer ",
             answer_note_id: " note-valid ",
           }),
+          event("valid-link-replay", "cross_doc.question_answered", {
+            question_id: "q1",
+            question_document_id: "doc-question",
+            answer_document_id: "doc-answer",
+            answer_note_id: "note-valid",
+          }),
         ]}
       />,
     );
 
     expect(screen.getByText("1 link")).toBeTruthy();
     expect(screen.getByText("\"How does the second source answer this?\"")).toBeTruthy();
+    expect(screen.getAllByText("cross-document resolution")).toHaveLength(1);
     expect(screen.queryByText(/Should not attach/)).toBeNull();
 
     fireEvent.click(screen.getByTitle("jump to note note-valid"));
