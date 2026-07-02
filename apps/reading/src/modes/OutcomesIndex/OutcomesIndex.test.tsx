@@ -11,7 +11,7 @@
  *     first-time user isn't confused by a blank tab.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router-dom";
 
@@ -22,6 +22,14 @@ vi.mock("../../lib/api", async (orig) => ({
 }));
 
 import OutcomesIndex from "./index";
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
 
 function LocationProbe() {
   const location = useLocation();
@@ -136,6 +144,84 @@ describe("OutcomesIndex — cross-investigation grading history (M3)", () => {
         ),
       ).toBe(true);
     });
+  });
+
+  it("keeps stale filtered reloads from overwriting the active reviewer history", async () => {
+    const initial = {
+      ok: true,
+      status: 200,
+      json: async () => ({ outcomes: [] }),
+    };
+    const stale = deferred<{
+      ok: true;
+      status: 200;
+      json: () => Promise<{ outcomes: unknown[] }>;
+    }>();
+    const fresh = deferred<{
+      ok: true;
+      status: 200;
+      json: () => Promise<{ outcomes: unknown[] }>;
+    }>();
+    apiFetchMock
+      .mockResolvedValueOnce(initial)
+      .mockReturnValueOnce(stale.promise)
+      .mockReturnValueOnce(fresh.promise);
+
+    renderIndex();
+    await screen.findByText(/No reviews yet/i);
+
+    const filter = screen.getByLabelText("Filter by reviewer");
+    fireEvent.change(filter, { target: { value: "You" } });
+    fireEvent.change(filter, { target: { value: "agent_beta" } });
+
+    await waitFor(() =>
+      expect(
+        apiFetchMock.mock.calls.some(([path]) =>
+          String(path).includes("observer=agent_beta"),
+        ),
+      ).toBe(true),
+    );
+
+    await act(async () => {
+      fresh.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          outcomes: [
+            {
+              outcome_id: "fresh-outcome",
+              synthesis_id: "fresh-synthesis",
+              observer: "agent_beta",
+              observed_at: "2026-06-02",
+            },
+          ],
+        }),
+      });
+    });
+
+    expect(await screen.findByText("agent_beta")).toBeTruthy();
+    expect(screen.getByText("Review 1 from 2026-06-02")).toBeTruthy();
+
+    await act(async () => {
+      stale.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          outcomes: [
+            {
+              outcome_id: "stale-outcome",
+              synthesis_id: "stale-synthesis",
+              observer: "__operator__",
+              observed_at: "2026-06-01",
+            },
+          ],
+        }),
+      });
+    });
+
+    expect(screen.getByText("agent_beta")).toBeTruthy();
+    expect(screen.queryByText("Review 1 from 2026-06-01")).toBeNull();
+    expect(screen.queryByText("You")).toBeNull();
   });
 
   it("keeps same-day reviews distinguishable without raw ids", async () => {
