@@ -19,6 +19,11 @@ from .dogfood_report import (
     default_dogfood_metrics_path,
     render_dogfood_report,
 )
+from .draft_export import (
+    DraftExportRecord,
+    list_draft_exports,
+    record_draft_export,
+)
 from .extractor import (
     EXTRACTOR_VERSION,
     ExtractedItem,
@@ -85,6 +90,9 @@ __all__ = [
     "default_dogfood_metrics_path",
     "render_dogfood_report",
     "write_dogfood_scaffold",
+    "DraftExportRecord",
+    "list_draft_exports",
+    "record_draft_export",
     "init_research_bridge",
     "init_research_bridge_at_path",
     "KNOWN_SOURCES",

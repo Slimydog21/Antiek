@@ -11,12 +11,14 @@ import argparse
 import sys
 from collections.abc import Sequence
 
+from runtime.db_lock import connect_write
 from substrate.research_bridge.db_path import ensure_research_bridge_initialized
 from substrate.research_bridge.dogfood_log import write_dogfood_scaffold
 from substrate.research_bridge.dogfood_report import (
     build_report_from_db_path,
     default_dogfood_metrics_path,
 )
+from substrate.research_bridge.draft_export import record_draft_export
 
 
 def _cmd_research_bridge_dogfood_report(args: argparse.Namespace) -> int:
@@ -49,6 +51,19 @@ def _cmd_research_bridge_dogfood_log_init(args: argparse.Namespace) -> int:
         f"{result.operator_log_path} "
         f"({'written' if result.operator_log_written else 'kept'})"
     )
+    return 0
+
+
+def _cmd_research_bridge_draft_export_record(args: argparse.Namespace) -> int:
+    db_path = ensure_research_bridge_initialized(args.db)
+    with connect_write(db_path, purpose="research_bridge_draft_export_cli") as con:
+        export_id = record_draft_export(
+            con,
+            session_id=args.session_id,
+            deliverable_id=args.deliverable_id,
+            output_path=args.output_path,
+        )
+    print(f"recorded {export_id}")
     return 0
 
 
@@ -104,6 +119,25 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Rewrite _template.md. operator-log.md is never overwritten.",
     )
     dogfood_log_init.set_defaults(func=_cmd_research_bridge_dogfood_log_init)
+
+    draft_export = bridge_subparsers.add_parser(
+        "draft-export",
+        help="Record Mode A draft-export evidence.",
+    )
+    draft_export_subparsers = draft_export.add_subparsers(dest="draft_export_command")
+    draft_export_record = draft_export_subparsers.add_parser(
+        "record",
+        help="Record one exported Mode A draft.",
+    )
+    draft_export_record.add_argument(
+        "--db",
+        default=None,
+        help="DuckDB path. Defaults to ANTIEK_DUCKDB_PATH / substrate default.",
+    )
+    draft_export_record.add_argument("--session-id", required=True)
+    draft_export_record.add_argument("--deliverable-id", required=True)
+    draft_export_record.add_argument("--output-path", required=True)
+    draft_export_record.set_defaults(func=_cmd_research_bridge_draft_export_record)
 
     return parser
 

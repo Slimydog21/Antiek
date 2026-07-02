@@ -15,6 +15,7 @@ from substrate.research_bridge.dogfood_report import (
     main,
     render_dogfood_report,
 )
+from substrate.research_bridge.draft_export import record_draft_export
 from substrate.research_bridge.schema import init_research_bridge
 
 
@@ -42,6 +43,11 @@ def _seed_report_rows(db_path: str) -> None:
             "('doc-a', 3, 'external_deep_research'), "
             "('doc-b', 3, 'external_deep_research'), "
             "('doc-c', 3, 'external_deep_research')"
+        )
+        con.execute(
+            "INSERT INTO deliverables "
+            "(deliverable_id, title, deliverable_kind, owner_user_id) VALUES "
+            "('dlv-a', 'Mode A Draft', 'research_memo', '__operator__')"
         )
         con.execute(
             "INSERT INTO research_pastes "
@@ -82,6 +88,12 @@ def _seed_report_rows(db_path: str) -> None:
             "('sig-b', 'prompt-b', 'skip', TIMESTAMP '2026-07-01 00:02:00'), "
             "('sig-c', 'prompt-c', 'would_run', TIMESTAMP '2026-07-01 00:03:00')"
         )
+        record_draft_export(
+            con,
+            session_id="sess-a",
+            deliverable_id="dlv-a",
+            output_path="~/Desktop/Antiek/runs/adrb/drafts/dlv-a.md",
+        )
     finally:
         con.close()
 
@@ -97,6 +109,7 @@ def test_dogfood_metrics_reconcile_with_bridge_substrate(db: str) -> None:
     assert metrics.total_blocks_pasted == 3
     assert metrics.total_extractions == 2
     assert metrics.total_gap_runs == 1
+    assert metrics.total_mode_a_draft_exports == 1
     assert metrics.total_llm_cost_usd == pytest.approx(1.5)
     assert metrics.would_run == 2
     assert metrics.total_signaled_prompts == 3
@@ -154,6 +167,7 @@ def test_dogfood_report_cli_writes_markdown(db: str, tmp_path: Path) -> None:
     text = out.read_text(encoding="utf-8")
     assert "# Antiek Deep Research Bridge Dogfood Metrics" in text
     assert "S3 status: PASS" in text
+    assert "- Mode A draft exports recorded: 1" in text
     assert "- Sessions with blocks but no gap run: sess-b" in text
     assert "## Block Timing By Session" in text
     assert (

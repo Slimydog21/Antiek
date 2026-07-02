@@ -25,6 +25,11 @@ def db(monkeypatch: pytest.MonkeyPatch) -> str:
     con = connect_write(path, purpose="research_bridge_cli_test")
     try:
         init_research_bridge(con)
+        con.execute(
+            "INSERT INTO deliverables "
+            "(deliverable_id, title, deliverable_kind, owner_user_id) VALUES "
+            "('dlv-a', 'Draft A', 'research_memo', '__operator__')"
+        )
     finally:
         con.close()
     return path
@@ -103,3 +108,35 @@ def test_antiek_research_bridge_dogfood_log_init_preserves_operator_log(
     assert main(["research", "bridge", "dogfood-log", "init", "--root", str(root)]) == 0
 
     assert operator_log.read_text(encoding="utf-8") == "operator notes\n"
+
+
+def test_antiek_research_bridge_draft_export_record(db: str, tmp_path: Path) -> None:
+    out = tmp_path / "draft-a.md"
+
+    rc = main([
+        "research",
+        "bridge",
+        "draft-export",
+        "record",
+        "--db",
+        db,
+        "--session-id",
+        "sess-a",
+        "--deliverable-id",
+        "dlv-a",
+        "--output-path",
+        str(out),
+    ])
+
+    assert rc == 0
+    report = tmp_path / "metrics.md"
+    assert main([
+        "research",
+        "bridge",
+        "dogfood-report",
+        "--db",
+        db,
+        "--output",
+        str(report),
+    ]) == 0
+    assert "- Mode A draft exports recorded: 1" in report.read_text(encoding="utf-8")

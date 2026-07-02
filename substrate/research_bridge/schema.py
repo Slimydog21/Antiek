@@ -167,6 +167,20 @@ CREATE TABLE IF NOT EXISTS research_gap_prompt_signals (
 );
 CREATE INDEX IF NOT EXISTS idx_gap_signals_prompt ON research_gap_prompt_signals(prompt_id);
 CREATE INDEX IF NOT EXISTS idx_gap_signals_at ON research_gap_prompt_signals(occurred_at DESC);
+
+CREATE TABLE IF NOT EXISTS research_draft_exports (
+    export_id       TEXT PRIMARY KEY,
+    session_id      TEXT NOT NULL,
+    deliverable_id  TEXT NOT NULL REFERENCES deliverables(deliverable_id),
+    output_path     TEXT NOT NULL,
+    exported_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_research_draft_exports_session
+    ON research_draft_exports(session_id);
+CREATE INDEX IF NOT EXISTS idx_research_draft_exports_deliverable
+    ON research_draft_exports(deliverable_id);
+CREATE INDEX IF NOT EXISTS idx_research_draft_exports_at
+    ON research_draft_exports(exported_at DESC);
 """
 
 
