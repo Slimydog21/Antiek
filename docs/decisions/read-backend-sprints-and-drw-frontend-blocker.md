@@ -30,10 +30,13 @@ surface:
 
 Current proof commands:
 
+- `./scripts/canonical_verify.sh read-library`
 - `./scripts/canonical_verify.sh read-reader`
+- `./scripts/canonical_verify.sh read-curate`
 - `./scripts/canonical_verify.sh read-ad-border`
 - `./scripts/canonical_verify.sh read-voice-notes`
 - `./scripts/canonical_verify.sh read-passage-research`
+- `./scripts/canonical_verify.sh read-rabbit-hole`
 
 The remaining live gaps are the ones named in the active platform matrix's
 `Default ### Not proved` column: browser/device visual QA, live provider
