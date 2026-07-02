@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { apiFetch } from "./api";
-import { createBiography } from "./speakApi";
+import { createBiography, createPerson } from "./speakApi";
 
 vi.mock("./api", () => ({
   apiFetch: vi.fn(),
@@ -85,5 +85,31 @@ describe("createBiography", () => {
         subjectName: "Maria",
       }),
     ).rejects.toThrow("investigation_id must be a non-empty string");
+  });
+});
+
+describe("createPerson", () => {
+  it("trims returned project ids", async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse({ project_id: " proj-created " }));
+
+    await expect(createPerson("  Maria  ")).resolves.toBe("proj-created");
+    expect(apiFetchMock).toHaveBeenCalledWith("/speak/projects", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: "Maria's story",
+        subject_ref: "Maria",
+        subject_status: "unknown",
+        publish_intent: "private_never_published",
+      }),
+    });
+  });
+
+  it("rejects malformed returned project ids", async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse({ project_id: " " }));
+
+    await expect(createPerson("Maria")).rejects.toThrow(
+      "project_id must be a non-empty string",
+    );
   });
 });

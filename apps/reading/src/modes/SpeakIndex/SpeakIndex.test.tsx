@@ -55,13 +55,23 @@ describe("SpeakIndex — the warm door", () => {
   });
 
   it("naming a person creates a project and lands on it", async () => {
-    createPersonMock.mockResolvedValue("proj-abc");
+    createPersonMock.mockResolvedValue(" proj-abc ");
     mount();
     const input = await screen.findByLabelText(/who do you want to remember/i);
     fireEvent.change(input, { target: { value: "my grandmother" } });
     fireEvent.click(screen.getByRole("button", { name: /start their story/i }));
     await waitFor(() => expect(screen.getByText("PROJECT PAGE")).toBeTruthy());
     expect(createPersonMock).toHaveBeenCalledWith("my grandmother");
+  });
+
+  it("shows an honest failure when create returns a malformed project id", async () => {
+    createPersonMock.mockResolvedValue(" ");
+    mount();
+    const input = await screen.findByLabelText(/who do you want to remember/i);
+    fireEvent.change(input, { target: { value: "Dad" } });
+    fireEvent.click(screen.getByRole("button", { name: /start their story/i }));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.queryByText("PROJECT PAGE")).toBeNull();
   });
 
   it("shows an honest failure (no fake landing) when create fails", async () => {

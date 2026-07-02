@@ -100,7 +100,7 @@ const VOICE_STATE: Record<string, VoiceState> = {
   incomplete: "unfinished",
 };
 
-function requireNonEmptyField(value: unknown, field: string): string {
+export function requireNonEmptyField(value: unknown, field: string): string {
   if (typeof value !== "string") {
     throw new TypeError(`${field} must be a non-empty string`);
   }
@@ -389,6 +389,5 @@ export async function createPerson(name: string): Promise<string> {
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const data = await resp.json();
-  if (!data.project_id) throw new Error("no project returned");
-  return String(data.project_id);
+  return requireNonEmptyField(data.project_id, "project_id");
 }
