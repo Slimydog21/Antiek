@@ -302,7 +302,18 @@ export default function WriteHome() {
                 className="mt-0.5 text-[11px] text-ink-mute dark:text-moonlight"
               >
                 {detail.investigation_root_id ? (
-                  <>Connected to research · backing folder linked</>
+                  <>
+                    Connected to research · backing folder linked
+                    <button
+                      type="button"
+                      onClick={() =>
+                        navigate(`/inv/${encodeURIComponent(detail.investigation_root_id!)}`)
+                      }
+                      className="ml-2 text-ink-soft underline hover:text-ink dark:text-starlight"
+                    >
+                      open research
+                    </button>
+                  </>
                 ) : (
                   <span className="text-emperor">No research connected</span>
                 )}

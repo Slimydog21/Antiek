@@ -62,6 +62,11 @@ function ReaderProbe() {
   );
 }
 
+function ResearchProbe() {
+  const { investigationId } = useParams<{ investigationId: string }>();
+  return <div>RESEARCH {investigationId}</div>;
+}
+
 beforeEach(() => {
   listDeliverablesMock.mockReset().mockResolvedValue({ count: 0, deliverables: [] });
   getDeliverableMock.mockReset().mockResolvedValue(null);
@@ -114,6 +119,7 @@ function mountAt(path: string) {
         <Route path="/write" element={<WriteHome />} />
         <Route path="/write/:deliverableId" element={<WriteHome />} />
         <Route path="/read/:documentId" element={<ReaderProbe />} />
+        <Route path="/inv/:investigationId" element={<ResearchProbe />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -320,6 +326,47 @@ describe("WriteHome — the re-homed door", () => {
         ],
       }),
     );
+  });
+
+  it("opens the linked backing research folder from an active Write piece", async () => {
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-open",
+      title: "Open piece",
+      deliverable_kind: "general_essay",
+      investigation_root_id: " inv-root ",
+      status: "draft",
+      created_at: null,
+      updated_at: null,
+      sections: [],
+    });
+
+    mountAt("/write/dlv-open");
+
+    expect(await screen.findByText("Open piece")).toBeTruthy();
+    expect(screen.getByTestId("active-connection").textContent).toContain(
+      "Connected to research",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /open research/i }));
+
+    expect(await screen.findByText("RESEARCH inv-root")).toBeTruthy();
+  });
+
+  it("does not offer a research jump when the open piece is unlinked", async () => {
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-open",
+      title: "Open piece",
+      deliverable_kind: "general_essay",
+      investigation_root_id: " ",
+      status: "draft",
+      created_at: null,
+      updated_at: null,
+      sections: [],
+    });
+
+    mountAt("/write/dlv-open");
+
+    expect(await screen.findByText("No research connected")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /open research/i })).toBeNull();
   });
 
   it("routes a servable trace-to-source to the source reader", async () => {
