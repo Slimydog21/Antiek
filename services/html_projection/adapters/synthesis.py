@@ -96,31 +96,31 @@ class SynthesisExport:
     recommendation: str | None = None
     restricted: bool = False
     restriction_reason: str | None = None
-    model_versions: dict = field(default_factory=dict)
-    parameters: dict = field(default_factory=dict)
-    attribution_manifest: dict = field(default_factory=dict)
+    model_versions: dict[str, Any] = field(default_factory=dict)
+    parameters: dict[str, Any] = field(default_factory=dict)
+    attribution_manifest: dict[str, Any] = field(default_factory=dict)
     claims: list[Claim] = field(default_factory=list)
 
 
 # ── doc-model node builders (existing SPR-02 renderer node types) ──
 
 
-def _prose(text: str) -> dict:
+def _prose(text: str) -> dict[str, Any]:
     return {"type": "paragraph", "content": [{"type": "text", "text": text}]}
 
 
-def _claim_card(statement: str) -> dict:
+def _claim_card(statement: str) -> dict[str, Any]:
     return {"type": "antiek_claim_card", "attrs": {"statement": statement}}
 
 
-def _cite_link(label: str, target: str | None) -> dict:
+def _cite_link(label: str, target: str | None) -> dict[str, Any]:
     attrs: dict[str, Any] = {"label": label}
     if target:
         attrs["target_url"] = target
     return {"type": "antiek_cite_link", "attrs": attrs}
 
 
-def _note(body: str) -> dict:
+def _note(body: str) -> dict[str, Any]:
     return {"type": "antiek_note", "attrs": {"body": body}}
 
 
@@ -133,7 +133,7 @@ _RECOMMENDATION_TONE = {
 }
 
 
-def _stat_chip(label: str, value: str, tone: str) -> dict:
+def _stat_chip(label: str, value: str, tone: str) -> dict[str, Any]:
     # An SPR-03 widget via the wired antiek_widget seam.
     return {
         "type": "antiek_widget",
@@ -159,7 +159,7 @@ def _source_label(src: SourceRef) -> str:
 # ── adapter ──
 
 
-def adapt_synthesis(export: SynthesisExport) -> dict:
+def adapt_synthesis(export: SynthesisExport) -> dict[str, Any]:
     """Adapt a resolved synthesis to the doc-model. Raises ``RightsRefusal``
     on a synthesis-level restriction."""
     if export.restricted:
@@ -171,7 +171,7 @@ def adapt_synthesis(export: SynthesisExport) -> dict:
     fully = sum(1 for c in export.claims if c.fully_sourced)
     complete = total > 0 and fully == total
 
-    content: list[dict] = []
+    content: list[dict[str, Any]] = []
 
     # M4: honest provenance banner at the top when incomplete.
     if not complete and total > 0:

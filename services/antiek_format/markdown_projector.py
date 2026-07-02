@@ -29,7 +29,7 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from services.antiek_format.native_reader import (  # type: ignore[no-redef]
+    from services.antiek_format.native_reader import (
         ReadResult,
         read_antiek,
     )
@@ -105,7 +105,7 @@ def _render_markdown(result: ReadResult, *, audio_dir: str | None) -> str:
 
     # Index blocks_index by block_id so we can resolve audio paths /
     # demoted state without scanning each time.
-    by_id: dict[str, dict] = {}
+    by_id: dict[str, dict[str, Any]] = {}
     for entry in result.blocks_index or []:
         if isinstance(entry, dict) and "block_id" in entry:
             by_id[entry["block_id"]] = entry
@@ -142,7 +142,7 @@ def _render_markdown(result: ReadResult, *, audio_dir: str | None) -> str:
 
 
 def _render_block(
-    node: Any, by_id: dict[str, dict], *, audio_dir: str | None
+    node: Any, by_id: dict[str, dict[str, Any]], *, audio_dir: str | None
 ) -> str:
     """Render one TipTap block as markdown.
 

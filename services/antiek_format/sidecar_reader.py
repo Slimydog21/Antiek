@@ -82,13 +82,13 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from services.antiek_format.native_reader import (  # type: ignore[no-redef]
+    from services.antiek_format.native_reader import (
         AntiekFormatError,
         MalformedAntiek,
         _check_version_policy,
         _validate_manifest,
     )
-    from services.antiek_format.native_writer import (  # type: ignore[no-redef]
+    from services.antiek_format.native_writer import (
         BLOCKS_PREFIX,
         ENTRY_CONTENT,
         ENTRY_EDGES,
@@ -96,12 +96,12 @@ except ImportError:  # pragma: no cover — direct-script fallback
         ENTRY_SIGNATURE,
         _canonical_tiptap_node,
     )
-    from services.antiek_format.sidecar_writer import (  # type: ignore[no-redef]
+    from services.antiek_format.sidecar_writer import (
         ENTRY_ANCHORS,
         ENTRY_HIGHLIGHTS,
         SIDECAR_CONTENT_CLASS,
     )
-    from services.antiek_format.signature import (  # type: ignore[no-redef]
+    from services.antiek_format.signature import (
         build_signing_input,
         canonical_edges_bytes,
         canonical_json_bytes,
@@ -158,9 +158,9 @@ class RestoredSidecar:
     created_at: str
     chunker_version_at_write: str | None
 
-    highlights: list[dict] = field(default_factory=list)
-    anchors: list[dict] = field(default_factory=list)
-    edges: list[dict] = field(default_factory=list)
+    highlights: list[dict[str, Any]] = field(default_factory=list)
+    anchors: list[dict[str, Any]] = field(default_factory=list)
+    edges: list[dict[str, Any]] = field(default_factory=list)
     # voice_note_id → audio bytes (extracted, integrity-checked)
     audio_blobs: dict[str, bytes] = field(default_factory=dict)
 
@@ -168,7 +168,7 @@ class RestoredSidecar:
     hash_mismatch: bool = False
     # Raw values used by the apply step + the UX warning.
     imported_pdf_sha256: str | None = None
-    manifest_unknown_keys: dict = field(default_factory=dict)
+    manifest_unknown_keys: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -286,7 +286,7 @@ def read_sidecar(
 
     highlights = _parse_jsonl(highlights_bytes, where="highlights.jsonl")
     anchors = _parse_jsonl(anchors_bytes, where="anchors.jsonl")
-    edges: list[dict] = []
+    edges: list[dict[str, Any]] = []
     if edges_bytes:
         for i, line in enumerate(edges_bytes.decode("utf-8").splitlines()):
             line = line.strip()
@@ -340,16 +340,16 @@ def read_sidecar(
             if not isinstance(entry, dict):
                 continue
             expected = entry.get("audio_sha256")
-            voice_note_id = entry.get("voice_note_id")
-            if not (expected and voice_note_id):
+            vn_id = entry.get("voice_note_id")
+            if not (expected and vn_id):
                 continue
-            blob = audio_blobs.get(voice_note_id)
+            blob = audio_blobs.get(vn_id)
             if blob is None:
                 signature_valid = False
                 _log.warning(
                     "read_sidecar: manifest references audio for voice "
                     "note %r but no blob in archive; treating as tampered.",
-                    voice_note_id,
+                    vn_id,
                 )
                 continue
             actual = hashlib.sha256(blob).hexdigest()
@@ -358,7 +358,7 @@ def read_sidecar(
                 _log.warning(
                     "read_sidecar: audio for voice note %r SHA-256 "
                     "mismatch (expected %s, got %s).",
-                    voice_note_id, expected, actual,
+                    vn_id, expected, actual,
                 )
 
     # ── Hash gate against imported PDF ──
@@ -472,7 +472,7 @@ def apply_sidecar(
         from substrate.voice import CHUNKER_VERSION  # type: ignore
         from substrate.voice.anchor_api import BBox, resolve_chunk_for_bbox  # type: ignore
 
-        from runtime.db_lock import connect_write  # type: ignore
+        from runtime.db_lock import connect_write
 
     report = ApplyReport()
     unsigned = not restored.signature_valid
@@ -558,7 +558,7 @@ def apply_sidecar(
 def _apply_one_highlight(
     *,
     con: Any,
-    hl: dict,
+    hl: dict[str, Any],
     user_id: str,
     investigation_id: str,
     document_id: str,
@@ -644,7 +644,7 @@ def _apply_one_highlight(
 def _apply_one_anchor(
     *,
     con: Any,
-    an: dict,
+    an: dict[str, Any],
     user_id: str,
     document_id: str,
     unsigned: bool,
@@ -776,7 +776,7 @@ def _apply_one_anchor(
 def _apply_one_edge(
     *,
     con: Any,
-    edge: dict,
+    edge: dict[str, Any],
     user_id: str,
     unsigned: bool,
 ) -> bool:
@@ -869,10 +869,10 @@ def _default_audio_storage_root() -> str:
 # ── Helpers ──
 
 
-def _parse_jsonl(data: bytes, *, where: str) -> list[dict]:
+def _parse_jsonl(data: bytes, *, where: str) -> list[dict[str, Any]]:
     if not data:
         return []
-    out: list[dict] = []
+    out: list[dict[str, Any]] = []
     for i, line in enumerate(data.decode("utf-8").splitlines()):
         line = line.strip()
         if not line:
@@ -892,7 +892,7 @@ def _parse_jsonl(data: bytes, *, where: str) -> list[dict]:
 
 
 def _canonical_jsonl_bytes_from_parsed(
-    rows: list[dict], *, key: str,
+    rows: list[dict[str, Any]], *, key: str,
 ) -> bytes:
     """Re-serialise parsed jsonl rows in canonical form. Used by the
     verifier so a tampered file that survives JSON parsing fails the

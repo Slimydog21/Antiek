@@ -72,7 +72,7 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from services.antiek_format.signature import (  # type: ignore[no-redef]
+    from services.antiek_format.signature import (
         Keypair,
         build_signing_input,
         canonical_edges_bytes,
@@ -170,7 +170,7 @@ class WriterInput:
     title: str | None
 
     # The canonical TipTap document. This IS the source of truth.
-    content_tiptap: dict
+    content_tiptap: dict[str, Any]
 
     # Block index — denormalised for reader convenience. Each entry:
     #   {block_id, block_type, position, source_event_ids,
@@ -178,10 +178,10 @@ class WriterInput:
     # Populated from notebook.blocks at the call site (persistence
     # layer). The audio_sha256 + audio_path entries are added by the
     # writer when it embeds binaries; callers should NOT pre-fill them.
-    blocks_index: list[dict] = dataclasses.field(default_factory=list)
+    blocks_index: list[dict[str, Any]] = dataclasses.field(default_factory=list)
 
     # User-asserted edges. Empty list = no edges.jsonl entry written.
-    edges: list[dict] = dataclasses.field(default_factory=list)
+    edges: list[dict[str, Any]] = dataclasses.field(default_factory=list)
 
     # Optional voice-block audio bytes, keyed on block_id. The writer
     # embeds these as blocks/<block_id>.audio. Callers fetch from
@@ -249,7 +249,7 @@ def write_antiek(
 
     # Sort blocks_index by position then by block_id so two writers
     # with the same blocks-in-different-order produce identical bytes.
-    sorted_blocks: list[dict] = sorted(
+    sorted_blocks: list[dict[str, Any]] = sorted(
         (dict(b) for b in inp.blocks_index),
         key=lambda b: (float(b.get("position", 0.0)), b["block_id"]),
     )
@@ -445,7 +445,7 @@ def _assert_no_forbidden_fields(obj: Any, *, where: str) -> None:
 def _render_shell(
     *,
     canonical_tiptap: Any,
-    edges: list[dict],
+    edges: list[dict[str, Any]],
     title: str | None,
     document_id: str,
     notebook_id: str,

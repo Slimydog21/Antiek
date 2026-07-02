@@ -32,6 +32,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
@@ -189,7 +190,9 @@ def _dispatch_and_parse(
 # ---------------------------------------------------------------------------
 
 
-def make_parameter_extractor_handler(broadcaster: EventBroadcaster):
+def make_parameter_extractor_handler(
+    broadcaster: EventBroadcaster,
+) -> Callable[[Event], Awaitable[None]]:
     """Build the handler closed over a broadcaster. Registered against
     ``ActionType.PARAMETER_EXTRACT_REQUESTED``."""
 

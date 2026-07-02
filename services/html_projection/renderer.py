@@ -45,7 +45,7 @@ silent drop, never a crash).
 from __future__ import annotations
 
 import importlib
-from typing import Any
+from typing import Any, cast
 
 from . import tokens
 from .context import RenderContext
@@ -129,7 +129,9 @@ def _render_block(node: Any, ctx: RenderContext) -> str:
     module = _PARTIAL_MODULES.get(contract.partial)
     if module is None:  # pragma: no cover — contract/partial mismatch is a bug
         return unsupported_partial.render(node_type)
-    return module.render(node, ctx)
+    # Partial modules are dynamically imported (ModuleType) — their render()
+    # contract is str; cast keeps behavior identical under --strict.
+    return cast(str, module.render(node, ctx))
 
 
 def _render_edges(edges: list[dict[str, Any]]) -> str:

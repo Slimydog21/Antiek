@@ -32,6 +32,7 @@ import sys
 import zipfile
 from dataclasses import dataclass, field
 from io import BytesIO
+from typing import Any
 
 try:
     from .native_writer import (
@@ -54,7 +55,7 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from services.antiek_format.native_writer import (  # type: ignore[no-redef]
+    from services.antiek_format.native_writer import (
         BLOCKS_PREFIX,
         CONTENT_CLASSES,
         ENTRY_CONTENT,
@@ -65,7 +66,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
         SCHEMA_VERSION,
         _canonical_tiptap_node,
     )
-    from services.antiek_format.signature import (  # type: ignore[no-redef]
+    from services.antiek_format.signature import (
         build_signing_input,
         canonical_edges_bytes,
         canonical_json_bytes,
@@ -122,14 +123,14 @@ class ReadResult:
     title: str | None
     format_version: int | None
     created_at: str  # ISO-8601 string as written
-    content_tiptap: dict
-    blocks_index: list[dict]
-    edges: list[dict]
+    content_tiptap: dict[str, Any]
+    blocks_index: list[dict[str, Any]]
+    edges: list[dict[str, Any]]
     audio_blobs: dict[str, bytes]
     signature_valid: bool
     # Keys the reader didn't recognise. Carried forward on a round-trip
     # save so we don't strip newer-version metadata.
-    manifest_unknown_keys: dict = field(default_factory=dict)
+    manifest_unknown_keys: dict[str, Any] = field(default_factory=dict)
     # SPR-04: the raw projection.html shell bytes, or None for a pre-1.1.0
     # container that carries no shell. A DERIVED projection — never parse it
     # back as canonical; content_tiptap stays the source of truth.
@@ -240,7 +241,7 @@ def read_antiek(data: bytes) -> ReadResult:
 
     # ── Parse edges ──
 
-    edges: list[dict] = []
+    edges: list[dict[str, Any]] = []
     if edges_bytes:
         for i, line in enumerate(edges_bytes.decode("utf-8").splitlines()):
             line = line.strip()
@@ -383,7 +384,7 @@ def read_antiek(data: bytes) -> ReadResult:
 # ── Round-trip identity helper ──
 
 
-def canonical_tiptap_bytes(doc: dict) -> bytes:
+def canonical_tiptap_bytes(doc: dict[str, Any]) -> bytes:
     """Public helper for round-trip identity tests.
 
     Two TipTap docs are considered round-trip-equivalent iff their
@@ -439,7 +440,7 @@ def _check_version_policy(file_version: str) -> None:
         )
 
 
-def _validate_manifest(manifest: dict) -> None:
+def _validate_manifest(manifest: dict[str, Any]) -> None:
     """Validate against the checked-in JSON schema.
 
     Uses ``jsonschema`` if installed, falls back to a hand-rolled
@@ -454,7 +455,9 @@ def _validate_manifest(manifest: dict) -> None:
         raise ManifestValidationError("manifest must be a JSON object")
 
     try:
-        import jsonschema  # type: ignore[import-not-found]
+        # jsonschema is an OPTIONAL tightener (manual fallback below);
+        # installed without stubs in the gate env.
+        import jsonschema  # type: ignore[import-untyped]
     except ImportError:
         _manual_validate_manifest(manifest)
         return
@@ -463,11 +466,11 @@ def _validate_manifest(manifest: dict) -> None:
         schema = json.load(f)
     try:
         jsonschema.validate(manifest, schema)
-    except jsonschema.ValidationError as e:  # type: ignore[attr-defined]
+    except jsonschema.ValidationError as e:
         raise ManifestValidationError(f"manifest schema validation: {e.message}") from e
 
 
-def _manual_validate_manifest(manifest: dict) -> None:
+def _manual_validate_manifest(manifest: dict[str, Any]) -> None:
     """Fallback validation when ``jsonschema`` isn't installed.
 
     Enforces the REQUIRED keys + the closed enum on ``content_class``

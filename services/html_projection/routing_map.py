@@ -48,6 +48,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 from services.antiek_format.native_writer import WriterInput, write_antiek
 from services.antiek_format.signature import Keypair
@@ -97,7 +98,7 @@ class ExportItem:
     ``.antiek`` carries canonical text + user-asserted provenance only.
     """
 
-    content_tiptap: dict
+    content_tiptap: dict[str, Any]
     title: str | None
     document_id: str
     user_id: str
@@ -189,7 +190,7 @@ def emit(
     )
 
 
-def _doc_model(item: ExportItem) -> dict:
+def _doc_model(item: ExportItem) -> dict[str, Any]:
     """The doc-model the renderer + island consume: the TipTap content array,
     the title, and an empty edges appendix. The ``ExportItem`` intentionally
     carries no edges — ``emit`` projects canonical content; an empty edges list

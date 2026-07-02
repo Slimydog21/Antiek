@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
@@ -75,7 +76,7 @@ from substrate.schemas import (  # noqa: E402
     SeedPair,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402 — after the sys.path bootstrap above
 
 # ---------------------------------------------------------------------------
 # Traversal dispatch
@@ -88,7 +89,7 @@ def _run_traversal(
     algorithm: str,
     seed: SeedPair,
     max_paths_per_pair: int,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Run the requested algorithm against one seed pair. Returns
     the list of raw path dicts (the ``substrate.graph.traverse``
     output shape)."""
@@ -98,8 +99,9 @@ def _run_traversal(
             n=max_paths_per_pair,
         )
     if algorithm == "shortest_simple_path":
-        path = shortest_path(con, seed.source_node_id, seed.target_node_id)
-        return [path] if path else []
+        # shortest_path already returns [path_dict] (or [] when no path) —
+        # wrapping it again produced list[list[dict]] and crashed _paths_to_typed.
+        return shortest_path(con, seed.source_node_id, seed.target_node_id)
     if algorithm == "depth_first_limited":
         return dfs_with_depth(
             con, seed.source_node_id, seed.target_node_id,
@@ -116,7 +118,7 @@ def _run_traversal(
     return []
 
 
-def _paths_to_typed(raw_paths: list[dict]) -> list[GraphPath]:
+def _paths_to_typed(raw_paths: list[dict[str, Any]]) -> list[GraphPath]:
     out: list[GraphPath] = []
     for p in raw_paths:
         out.append(GraphPath(
@@ -186,7 +188,7 @@ def _traversal_for_request(
             flush=True,
         )
         return []
-    raw_paths: list[dict] = []
+    raw_paths: list[dict[str, Any]] = []
     try:
         for seed in req.seed_pairs:
             try:
@@ -297,7 +299,7 @@ def make_connector_handler(
     broadcaster: EventBroadcaster,
     *,
     db_path: str | None = None,
-):
+) -> Callable[[Event], Awaitable[None]]:
     """Build the connector handler. Closed over a broadcaster + db
     path. Registered against ``ActionType.CONNECTOR_REQUESTED``."""
     resolved_db = db_path or default_db_path()

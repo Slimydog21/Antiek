@@ -23,6 +23,7 @@ render a notebook with unfiltered third-party text by building its own context.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from substrate.constants import SERVABLE_CONTENT_CLASSES
 
@@ -53,7 +54,7 @@ class ResolvedRefData:
     content_class: str | None
     ip_holder_id: str | None
     title: str | None
-    payload: dict = field(default_factory=dict)
+    payload: dict[str, Any] = field(default_factory=dict)
     deleted_at: str | None = None  # set => deleted (renders a tombstone)
     # The source document's id (when resolved) — a stable node identity for the
     # knowledge-graph projection (title alone collides across same-named docs).
@@ -106,7 +107,7 @@ class RightsAwareResolver:
         # CITE-ONLY: identity-only payload; NEVER pass through data.payload,
         # which may carry the passage in any key.
         notice = _cite_only_notice(data)
-        safe: dict = {key: notice for key in _TEXT_KEYS}
+        safe: dict[str, Any] = {key: notice for key in _TEXT_KEYS}
         safe["title"] = data.title
         safe["ip_holder_id"] = data.ip_holder_id
         safe["cite_only"] = True
@@ -114,11 +115,11 @@ class RightsAwareResolver:
 
 
 def adapt_notebook(
-    content_tiptap: dict,
+    content_tiptap: dict[str, Any],
     *,
     title: str | None,
     resolved_refs: dict[str, ResolvedRefData],
-) -> tuple[dict, RenderContext]:
+) -> tuple[dict[str, Any], RenderContext]:
     """Adapt a notebook to `(doc_model, ctx)`. The notebook's TipTap is already
     a renderer doc-model; the rights filter is the resolver baked into `ctx`, so
     `render(*adapt_notebook(...))` is the only rights-correct path."""

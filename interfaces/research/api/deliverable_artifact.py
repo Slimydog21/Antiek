@@ -131,7 +131,7 @@ def register_deliverable_artifact_routes(app: FastAPI) -> None:
     """Mount ``GET /api/deliverables/{id}/artifact``. One call from create_app."""
 
     @app.get("/api/deliverables/{deliverable_id}/artifact", tags=["deliverables"])
-    async def deliverable_artifact(deliverable_id: str, format: str = "html"):
+    async def deliverable_artifact(deliverable_id: str, format: str = "html") -> Response:
         source = resolve_deliverable_export(deliverable_id)
         if source is None:
             raise HTTPException(

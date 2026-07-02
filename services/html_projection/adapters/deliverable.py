@@ -19,6 +19,7 @@ JSON the SPR-02 renderer accepts (mirroring the SPR-05 synthesis adapter):
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from substrate.constants import SERVABLE_CONTENT_CLASSES
 
@@ -87,7 +88,7 @@ def unsupported_block_kinds(export: DeliverableExport) -> list[str]:
     )
 
 
-def _block_node(b: DeliverableBlock) -> dict:
+def _block_node(b: DeliverableBlock) -> dict[str, Any]:
     if b.block_kind not in _KNOWN_KINDS:
         # Visible unsupported placeholder — the renderer's unsupported partial
         # renders the unknown type; never a silent drop.
@@ -107,10 +108,10 @@ def _block_node(b: DeliverableBlock) -> dict:
     return {"type": "paragraph", "content": [{"type": "text", "text": b.text}]}
 
 
-def adapt_deliverable(export: DeliverableExport) -> dict:
+def adapt_deliverable(export: DeliverableExport) -> dict[str, Any]:
     """Adapt a Write deliverable to the doc-model. Inline nodes only (no
     ref_ids), so the result renders self-contained with the default context."""
-    content: list[dict] = []
+    content: list[dict[str, Any]] = []
     for section in export.sections:
         content.append(
             {"type": "antiek_master_md_section", "attrs": {"heading": section.heading}}

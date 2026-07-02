@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, Response
@@ -28,12 +29,12 @@ _log = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class NotebookExportSource:
-    content_tiptap: dict
+    content_tiptap: dict[str, Any]
     title: str | None
     document_id: str
     owner_user_id: str
     content_class: str = "notebook"
-    resolved_refs: dict = field(default_factory=dict)  # ref_id -> ResolvedRefData
+    resolved_refs: dict[str, Any] = field(default_factory=dict)  # ref_id -> ResolvedRefData
 
 
 def _resolve_db_path() -> str:
@@ -106,7 +107,7 @@ def register_notebook_artifact_routes(app: FastAPI) -> None:
     """Mount ``GET /api/notebooks/{id}/artifact``. One call from create_app."""
 
     @app.get("/api/notebooks/{notebook_id}/artifact", tags=["notebooks"])
-    async def notebook_artifact(notebook_id: str, format: str = "html"):
+    async def notebook_artifact(notebook_id: str, format: str = "html") -> Response:
         source = resolve_notebook_export(notebook_id)
         if source is None:
             raise HTTPException(

@@ -257,9 +257,9 @@ def find_violations(html: str) -> list[Violation]:
     # 2. Event-handler attributes (on*=). SCOPED TO TAG INTERIORS so prose
     # like "online = connected" does not false-fire.
     for tag in tag_interiors:
-        m = _EVENT_HANDLER_RE.search(tag)
-        if m:
-            violations.append(Violation("event_handler", _trunc(m.group(0))))
+        mh = _EVENT_HANDLER_RE.search(tag)
+        if mh:
+            violations.append(Violation("event_handler", _trunc(mh.group(0))))
             break
 
     # 3. javascript:/vbscript: scheme in a URL-bearing attribute.
@@ -293,22 +293,22 @@ def find_violations(html: str) -> list[Violation]:
     ):
         css_contexts.append(sm.group(1))
     for tag in tag_interiors:
-        sm = re.search(r'\bstyle\s*=\s*"([^"]*)"', tag, re.IGNORECASE)
-        if sm:
-            css_contexts.append(sm.group(1))
+        style_m = re.search(r'\bstyle\s*=\s*"([^"]*)"', tag, re.IGNORECASE)
+        if style_m:
+            css_contexts.append(style_m.group(1))
     for ctx_css in css_contexts:
-        m = _CSS_EXPRESSION_RE.search(ctx_css)
-        if m:
-            violations.append(Violation("css_expression", _trunc(m.group(0))))
+        expr_m = _CSS_EXPRESSION_RE.search(ctx_css)
+        if expr_m:
+            violations.append(Violation("css_expression", _trunc(expr_m.group(0))))
             break
     # External CSS fetch (@import/url() to an http(s):// or // endpoint).
     # CSS exfiltrates page data and @import fetches+executes remote CSS —
     # both external-fetch/exfil vectors the self-contained invariant
     # forbids. Scanned on the same css_contexts as expression().
     for ctx_css in css_contexts:
-        m = _EXTERNAL_CSS_URL_RE.search(ctx_css)
-        if m:
-            violations.append(Violation("external_css_src", _trunc(m.group(0))))
+        url_m = _EXTERNAL_CSS_URL_RE.search(ctx_css)
+        if url_m:
+            violations.append(Violation("external_css_src", _trunc(url_m.group(0))))
             break
 
     # 6. External navigation/redirect vectors (meta refresh, base href).

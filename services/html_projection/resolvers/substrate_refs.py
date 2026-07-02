@@ -36,7 +36,9 @@ def _payload_for_kind(node_type: str, canonical_label: str) -> dict[str, str]:
     return {key: canonical_label, "text": canonical_label}
 
 
-def _source_document_id(con, node_id: str, metadata_raw: str | None) -> str | None:
+def _source_document_id(
+    con: Any, node_id: str, metadata_raw: str | None
+) -> str | None:
     meta = _parse_metadata(metadata_raw)
     doc_id = meta.get("source_document_id")
     if doc_id is not None:
@@ -54,7 +56,7 @@ def _source_document_id(con, node_id: str, metadata_raw: str | None) -> str | No
 
 
 def _document_rights(
-    con, document_id: str
+    con: Any, document_id: str
 ) -> tuple[str | None, str | None, str | None]:
     row = con.execute(
         "SELECT title, content_class, ip_holder_id FROM documents WHERE document_id = ?",

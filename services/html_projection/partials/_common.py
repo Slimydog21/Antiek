@@ -68,7 +68,7 @@ def inline_text(content: Any) -> str:
     return "".join(parts)
 
 
-def attr(node: dict, name: str, default: str = "") -> str:
+def attr(node: dict[str, Any], name: str, default: str = "") -> str:
     """Read a string attr from a node's ``attrs`` dict, defaulting to
     ``default``. Coerces to str; never raises."""
     attrs = node.get("attrs") or {}
@@ -78,7 +78,7 @@ def attr(node: dict, name: str, default: str = "") -> str:
     return str(val)
 
 
-def block_id_of(node: dict) -> str:
+def block_id_of(node: dict[str, Any]) -> str:
     """The node's ``attrs.block_id`` (empty string if absent)."""
     return attr(node, "block_id")
 

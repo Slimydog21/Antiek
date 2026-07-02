@@ -42,7 +42,7 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from services.antiek_format.signature import (  # type: ignore[no-redef]
+    from services.antiek_format.signature import (
         Keypair,
         sign_bytes,
         verify_bytes,

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Any, cast
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -43,9 +44,9 @@ def _resolve_db_path() -> str:
     return path
 
 
-def _loadjson(value) -> dict:
+def _loadjson(value: str | None) -> dict[str, Any]:
     try:
-        return json.loads(value) if value else {}
+        return cast(dict[str, Any], json.loads(value)) if value else {}
     except (TypeError, ValueError):
         return {}
 
@@ -127,7 +128,7 @@ def register_synthesis_artifact_routes(app: FastAPI) -> None:
     ``create_app``."""
 
     @app.get("/api/syntheses/{synthesis_id}/artifact.html", tags=["syntheses"])
-    async def synthesis_artifact(synthesis_id: str):
+    async def synthesis_artifact(synthesis_id: str) -> Response:
         export = resolve_synthesis_export(synthesis_id)
         if export is None:
             raise HTTPException(
@@ -176,7 +177,7 @@ def register_synthesis_artifact_routes(app: FastAPI) -> None:
         )
 
     @app.get("/api/syntheses/{synthesis_id}/artifact", tags=["syntheses"])
-    async def synthesis_artifact_format(synthesis_id: str, format: str = "html"):
+    async def synthesis_artifact_format(synthesis_id: str, format: str = "html") -> Response:
         """Export a synthesis as html / antiek / antiek_html through the SPR-06
         M4 routing map. The rights filter is applied in adapt_synthesis (the
         doc-model is already cite-only-filtered before emission); the signed

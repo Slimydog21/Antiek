@@ -42,7 +42,7 @@ insertion order — deterministic.
 
 from __future__ import annotations
 
-from typing import Final, Protocol
+from typing import Any, Final, Protocol
 
 # ── Inlined stylesheet ──
 #
@@ -304,7 +304,7 @@ class WidgetRenderer(Protocol):
     this module.
     """
 
-    def __call__(self, kind: str, attrs: dict) -> str: ...
+    def __call__(self, kind: str, attrs: dict[str, Any]) -> str: ...
 
 
 _widget_registry: list[tuple[str, WidgetRenderer]] = []
@@ -319,7 +319,7 @@ def register_widget(kind: str, renderer: WidgetRenderer) -> None:
     _widget_registry.append((kind, renderer))
 
 
-def render_widget(kind: str, attrs: dict) -> str:
+def render_widget(kind: str, attrs: dict[str, Any]) -> str:
     """Render a widget by kind. SPR-02: always returns the placeholder
     (no widgets registered). SPR-03 will resolve registered renderers.
 

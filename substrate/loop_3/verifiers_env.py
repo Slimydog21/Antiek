@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from typing import Any
 
 TELEMETRY_ACTION_TYPES = frozenset({
     "dispatch.call",
@@ -24,7 +25,7 @@ class VerifierObservation:
     """What the agent sees at one step of an env episode."""
 
     observation: str
-    info: dict
+    info: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -32,7 +33,7 @@ class VerifierReward:
     """Scalar reward returned after the agent's action."""
 
     value: float
-    info: dict = field(default_factory=dict)
+    info: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -48,7 +49,7 @@ class VerifierEnvScaffold:
     Reward is rubric-graded once the unlock criteria pass; until
     then the env is observation-only."""
 
-    trajectory_events: list[dict]
+    trajectory_events: list[dict[str, Any]]
     current_step: int = 0
 
     def reset(self) -> VerifierObservation:
@@ -119,7 +120,7 @@ class VerifierEnvScaffold:
         )
 
 
-def build_env_from_trajectory(trajectory_events: list[dict]) -> VerifierEnvScaffold:
+def build_env_from_trajectory(trajectory_events: list[dict[str, Any]]) -> VerifierEnvScaffold:
     """Build a verifiers env from an Antiek trajectory.
 
     Filters out non-substantive events (dispatch.call telemetry,

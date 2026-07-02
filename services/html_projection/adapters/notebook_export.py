@@ -21,6 +21,8 @@ on the serialized doc-model AND the rendered HTML.
 
 from __future__ import annotations
 
+from typing import Any
+
 from substrate.constants import SERVABLE_CONTENT_CLASSES
 
 from ..context import Tombstone
@@ -42,10 +44,11 @@ def _bare(node_type: str) -> str:
     return node_type[len("antiek_"):] if node_type.startswith("antiek_") else node_type
 
 
-def _inline(node: dict, resolver: RightsAwareResolver) -> dict:
+def _inline(node: dict[str, Any], resolver: RightsAwareResolver) -> dict[str, Any]:
     node_type = str(node.get("type", ""))
     bare = _bare(node_type)
-    attrs = node.get("attrs") if isinstance(node.get("attrs"), dict) else {}
+    raw_attrs = node.get("attrs")
+    attrs = raw_attrs if isinstance(raw_attrs, dict) else {}
     ref_attr = _REF_ATTR.get(bare)
     ref_id = attrs.get(ref_attr) if ref_attr else None
     if not ref_id:
@@ -65,7 +68,7 @@ def _inline(node: dict, resolver: RightsAwareResolver) -> dict:
     return {"type": node_type, "attrs": dict(resolved.payload)}
 
 
-def collect_ref_ids(content_tiptap: dict) -> list[str]:
+def collect_ref_ids(content_tiptap: dict[str, Any]) -> list[str]:
     """Every substrate ref_id a notebook's top-level nodes cite, in document
     order, deduped. This is the INPUT to the substrate ref-resolver: the export
     resolver fetches exactly the refs the notebook references, then hands the
@@ -80,7 +83,8 @@ def collect_ref_ids(content_tiptap: dict) -> list[str]:
         if not isinstance(node, dict):
             continue
         ref_attr = _REF_ATTR.get(_bare(str(node.get("type", ""))))
-        attrs = node.get("attrs") if isinstance(node.get("attrs"), dict) else {}
+        raw_attrs = node.get("attrs")
+        attrs = raw_attrs if isinstance(raw_attrs, dict) else {}
         ref_id = attrs.get(ref_attr) if ref_attr else None
         if ref_id and str(ref_id) not in seen:
             seen.append(str(ref_id))
@@ -88,11 +92,11 @@ def collect_ref_ids(content_tiptap: dict) -> list[str]:
 
 
 def adapt_notebook_for_export(
-    content_tiptap: dict,
+    content_tiptap: dict[str, Any],
     *,
     title: str | None,
     resolved_refs: dict[str, ResolvedRefData],
-) -> dict:
+) -> dict[str, Any]:
     """Pre-resolve a notebook into a self-contained, rights-filtered doc-model
     ready for container emission (no ref_ids; renders identically offline)."""
     resolver = RightsAwareResolver(resolved_refs)

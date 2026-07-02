@@ -11,12 +11,14 @@ rights-safe by construction.
 
 from __future__ import annotations
 
+from typing import Any
+
 _SELF = "__self__"
 
 
 def graph_widget_node(
-    edges: list[dict], *, self_label: str = "This document"
-) -> dict | None:
+    edges: list[dict[str, Any]], *, self_label: str = "This document"
+) -> dict[str, Any] | None:
     """Build an ``antiek_widget`` (kind=dep_graph) node visualizing the outbound
     edges (this document -> each referenced document), or ``None`` when there are
     no edges to show (so the caller renders no empty graph). The current document
@@ -29,15 +31,15 @@ def graph_widget_node(
     ]
     if not refs:
         return None
-    nodes: list[dict] = [{"id": _SELF, "label": self_label, "tone": "accent"}]
+    nodes: list[dict[str, Any]] = [{"id": _SELF, "label": self_label, "tone": "accent"}]
     seen = {_SELF}
-    graph_edges: list[dict] = []
+    graph_edges: list[dict[str, Any]] = []
     for edge in refs:
         target = str(edge.get("to_document_id"))
         # Prefer a human title (a citation label — rights-safe) over the raw id.
         label = str(edge.get("to_title") or target)
         if target not in seen:
-            node: dict = {"id": target, "label": label}
+            node: dict[str, Any] = {"id": target, "label": label}
             # Rights-aware tone (optional): the caller sets "tone" from the
             # source's servability, so the graph visually distinguishes a
             # servable source from a cite-only one. Passed straight to the

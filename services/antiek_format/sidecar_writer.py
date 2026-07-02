@@ -42,6 +42,7 @@ into ``build_signing_input``.
 
 from __future__ import annotations
 
+import binascii
 import hashlib
 import json
 import os
@@ -72,7 +73,7 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from services.antiek_format.native_writer import (  # type: ignore[no-redef]
+    from services.antiek_format.native_writer import (
         _FORBIDDEN_SUBSTRATE_FIELDS,
         BLOCKS_PREFIX,
         ENTRY_CONTENT,
@@ -83,7 +84,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
         _build_deterministic_zip,
         _canonical_tiptap_node,
     )
-    from services.antiek_format.signature import (  # type: ignore[no-redef]
+    from services.antiek_format.signature import (
         Keypair,
         build_signing_input,
         canonical_edges_bytes,
@@ -274,7 +275,7 @@ class SidecarInput:
     # User-derived sections -------------------------------------------
     highlights: list[HighlightRow] = field(default_factory=list)
     anchors: list[AnchorRow] = field(default_factory=list)
-    edges: list[dict] = field(default_factory=list)  # same shape as native_writer
+    edges: list[dict[str, Any]] = field(default_factory=list)  # same shape as native_writer
     audio_blobs: dict[str, bytes] = field(default_factory=dict)  # keyed on voice_note_id
 
     # Informational provenance ----------------------------------------
@@ -479,7 +480,9 @@ def build_sidecar_input_for_document(
         Ready to pass into ``write_sidecar``.
     """
     try:
-        from substrate.voice import CHUNKER_VERSION
+        # substrate.voice resolves from the installed distribution (no
+        # py.typed marker) rather than this tree; runtime falls back below.
+        from substrate.voice import CHUNKER_VERSION  # type: ignore[import-untyped]
     except ImportError:  # pragma: no cover — module always present in tree
         CHUNKER_VERSION = "v1.0.0"
 
@@ -494,7 +497,7 @@ def build_sidecar_input_for_document(
     # empty. The UI surface (Sprint 22+) lands the table; until then
     # any edges in the sidecar come from the caller passing them
     # in directly via ``SidecarInput.edges`` after this gather.
-    edges: list[dict] = []
+    edges: list[dict[str, Any]] = []
 
     return SidecarInput(
         document_id=document_id,
@@ -671,7 +674,7 @@ def _gather_anchors_and_audio(
                     if isinstance(b64, str) and b64:
                         try:
                             audio_bytes = base64.b64decode(b64, validate=True)
-                        except (ValueError, base64.binascii.Error):
+                        except (ValueError, binascii.Error):
                             audio_bytes = None
                     if audio_bytes is None:
                         path = meta.get("audio_blob_path")
@@ -730,9 +733,10 @@ def _iso(ts: Any) -> str | None:
     if ts is None:
         return None
     if isinstance(ts, datetime):
-        if ts.tzinfo is None:
-            ts = ts.replace(tzinfo=UTC)
-        return ts.astimezone(UTC).isoformat()
+        # Bind to a fresh name — reassigning ``ts`` (declared Any) would
+        # discard the isinstance narrowing under --strict.
+        dt = ts if ts.tzinfo is not None else ts.replace(tzinfo=UTC)
+        return dt.astimezone(UTC).isoformat()
     return str(ts)
 
 

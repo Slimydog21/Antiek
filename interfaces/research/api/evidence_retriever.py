@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Awaitable, Callable
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
 _PKG_ROOT = os.path.dirname(
@@ -59,7 +60,7 @@ from substrate.schemas import (  # noqa: E402
     SupportingClaim,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402 — after the sys.path bootstrap above
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -181,7 +182,9 @@ def _dispatch_and_parse(
 # ---------------------------------------------------------------------------
 
 
-def make_evidence_retriever_handler(broadcaster: EventBroadcaster):
+def make_evidence_retriever_handler(
+    broadcaster: EventBroadcaster,
+) -> Callable[[Event], Awaitable[None]]:
     """Build the handler closed over a broadcaster. Registered against
     ``ActionType.EVIDENCE_RETRIEVE_REQUESTED``."""
 
