@@ -52,9 +52,12 @@ function displayString(value: unknown, fallback: string): string {
 }
 
 function safeProjects(projects: InvestigationSummary[]): InvestigationSummary[] {
+  const seen = new Set<string>();
   return projects.flatMap((project) => {
     const investigationId = nonEmptyString(project.investigation_id);
     if (!investigationId) return [];
+    if (seen.has(investigationId)) return [];
+    seen.add(investigationId);
     return [
       {
         ...project,

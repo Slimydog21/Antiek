@@ -113,6 +113,47 @@ describe("ConnectResearch — M1 connect or auto-spawn", () => {
     expect(screen.queryByText("Invisible project")).toBeNull();
   });
 
+  it("dedupes duplicate listed project ids after trimming", async () => {
+    listInvestigationsMock.mockResolvedValue({
+      count: 3,
+      investigations: [
+        {
+          investigation_id: " inv-valid ",
+          question: "First project",
+          status: "completed",
+          started_at: null,
+          completed_at: null,
+          cost_usd_total: 0,
+          parent_investigation_id: null,
+        },
+        {
+          investigation_id: "inv-valid",
+          question: "Duplicate project",
+          status: "completed",
+          started_at: null,
+          completed_at: null,
+          cost_usd_total: 0,
+          parent_investigation_id: null,
+        },
+        {
+          investigation_id: "inv-other",
+          question: "Other project",
+          status: "completed",
+          started_at: null,
+          completed_at: null,
+          cost_usd_total: 0,
+          parent_investigation_id: null,
+        },
+      ],
+    });
+
+    render(<ConnectResearch pieceTitle="My memo" onConnect={vi.fn()} />);
+
+    expect(await screen.findByText("First project")).toBeTruthy();
+    expect(screen.queryByText("Duplicate project")).toBeNull();
+    expect(screen.getByText("Other project")).toBeTruthy();
+  });
+
   it("surfaces malformed spawned ids instead of connecting silently", async () => {
     startInvestigationMock.mockResolvedValue({
       investigation_id: " ",
