@@ -193,7 +193,7 @@ describe("ProjectTree", () => {
     expect(useWorkspace.getState().floatingIds).toEqual([]);
   });
 
-  it("floats investigations on Cmd/Ctrl-click and keeps normal click as route navigation", async () => {
+  it("loads live Research investigations and opens Research home", async () => {
     const secondInvestigation: InvestigationSummary = {
       ...liveInvestigation,
       investigation_id: "inv-live-secondary",

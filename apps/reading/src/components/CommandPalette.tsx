@@ -356,7 +356,7 @@ export default function CommandPalette() {
       ]);
 
       if (iResp?.ok) {
-        // Each investigation gets two palette rows: the workstation
+        // Each investigation gets two palette rows: Research home
         // surface (/inv/:id) and the trajectory replay (/replay/:id).
         // The replay route is canonical for operator-graded outcomes
         // per master-spec §14.1.
