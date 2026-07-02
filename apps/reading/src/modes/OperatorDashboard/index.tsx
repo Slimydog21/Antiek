@@ -32,6 +32,17 @@ interface CompositeSnapshot {
   coordination: CoordinationSummary | null;
   marketplace: MarketplaceSummary | null;
   federation: FederationSummary | null;
+  trust: TrustSummary | null;
+}
+
+interface TrustSummary {
+  privacy_budget_total: number;
+  deletion_sla_days: number;
+  substrate_control_count: number;
+  compliance_framework_count: number;
+  loop_3_checked_count: number;
+  loop_3_total_count: number;
+  loop_3_all_evidence_passed: boolean;
 }
 
 interface FederationSummary {
@@ -234,6 +245,33 @@ function safeFederationSummary(value: unknown): FederationSummary {
       body?.require_opt_in_for_outbound_citations === false ? false : true,
     require_attribution_for_outbound_citations:
       body?.require_attribution_for_outbound_citations === false ? false : true,
+  };
+}
+
+function safeNumberMapTotal(value: unknown): number {
+  const body = record(value);
+  if (!body) return 0;
+  return Object.entries(body).reduce(
+    (sum, [key, raw]) =>
+      nonEmptyString(key) ? sum + (nonNegativeFiniteNumber(raw) ?? 0) : sum,
+    0,
+  );
+}
+
+function safeTrustSummary(value: unknown): TrustSummary {
+  const body = record(value);
+  const evidence = record(body?.loop_3_evidence_status);
+  const evidenceValues = evidence ? Object.values(evidence) : [];
+  return {
+    privacy_budget_total: safeNumberMapTotal(
+      body?.differential_privacy_epsilon_budgets,
+    ),
+    deletion_sla_days: safeCount(body?.deletion_sla_days),
+    substrate_control_count: safeStringArray(body?.substrate_controls).length,
+    compliance_framework_count: safeStringArray(body?.compliance_frameworks).length,
+    loop_3_checked_count: evidenceValues.filter((value) => value === true).length,
+    loop_3_total_count: evidenceValues.length,
+    loop_3_all_evidence_passed: body?.loop_3_all_evidence_passed === true,
   };
 }
 
@@ -480,6 +518,7 @@ export default function OperatorDashboard() {
     coordination: null,
     marketplace: null,
     federation: null,
+    trust: null,
   });
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -496,6 +535,7 @@ export default function OperatorDashboard() {
         coordinationResp,
         marketplaceResp,
         federationResp,
+        trustResp,
       ] = await Promise.all([
         apiFetch("/publishers"),
         apiFetch("/stats").catch(() => null),
@@ -504,6 +544,7 @@ export default function OperatorDashboard() {
         apiFetch("/coordination/roadmap").catch(() => null),
         apiFetch("/marketplace/snapshot").catch(() => null),
         apiFetch("/federation/config").catch(() => null),
+        apiFetch("/trust-center").catch(() => null),
       ]);
 
       if (!publishersResp.ok) {
@@ -539,6 +580,11 @@ export default function OperatorDashboard() {
         federation = safeFederationSummary(await federationResp.json());
       }
 
+      let trust: TrustSummary | null = null;
+      if (trustResp?.ok) {
+        trust = safeTrustSummary(await trustResp.json());
+      }
+
       setSnapshot({
         stats,
         pendingDeletions,
@@ -546,6 +592,7 @@ export default function OperatorDashboard() {
         coordination,
         marketplace,
         federation,
+        trust,
       });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -729,9 +776,59 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
         </div>
       </div>
       <CoordinationTile coordination={snapshot.coordination} />
+      <TrustTile trust={snapshot.trust} />
       <MarketplaceTile marketplace={snapshot.marketplace} />
       <FederationTile federation={snapshot.federation} />
     </section>
+  );
+}
+
+function TrustTile({ trust }: { trust: TrustSummary | null }) {
+  if (!trust) {
+    return (
+      <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className="text-sm font-serif text-ink dark:text-bright">
+            Privacy controls
+          </h3>
+          <Link
+            to="/privacy"
+            className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+          >
+            open →
+          </Link>
+        </div>
+        <p className="mt-2 text-xs italic text-shadow-1 dark:text-moonlight">
+          Trust publication unavailable.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-3 space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-sm font-serif text-ink dark:text-bright">
+          Privacy controls
+        </h3>
+        <Link
+          to="/privacy"
+          className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+        >
+          open →
+        </Link>
+      </div>
+      <p className="text-xs font-mono text-ink dark:text-bright">
+        Privacy budget {trust.privacy_budget_total.toFixed(2)}/10.00 · deletion SLA{" "}
+        {trust.deletion_sla_days} days
+      </p>
+      <p className="text-xs text-ink-soft dark:text-starlight">
+        {trust.substrate_control_count} controls · {trust.compliance_framework_count} frameworks.
+      </p>
+      <p className="text-xs text-ink-soft dark:text-starlight">
+        Training evidence {trust.loop_3_checked_count}/{trust.loop_3_total_count} ·{" "}
+        {trust.loop_3_all_evidence_passed ? "all evidence passed" : "evidence incomplete"}.
+      </p>
+    </div>
   );
 }
 
