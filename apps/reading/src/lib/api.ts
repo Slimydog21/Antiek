@@ -609,6 +609,54 @@ const NOTEBOOK_BLOCK_TYPES = new Set<NotebookBlockShape["block_type"]>([
   "latex",
 ]);
 
+function requireNotebookBlockType(value: unknown): NotebookBlockShape["block_type"] {
+  const blockType = requireRequestString(value, "block_type");
+  if (!NOTEBOOK_BLOCK_TYPES.has(blockType as NotebookBlockShape["block_type"])) {
+    throw new TypeError("block_type must be a supported notebook block type");
+  }
+  return blockType as NotebookBlockShape["block_type"];
+}
+
+function sanitizeAppendNotebookBlockRequest(req: {
+  block_type: string;
+  content: unknown;
+  ref_id?: string | null;
+}): { block_type: NotebookBlockShape["block_type"]; content: unknown; ref_id?: string } {
+  const refId = optionalRequestString(req.ref_id);
+  return {
+    block_type: requireNotebookBlockType(req.block_type),
+    content: req.content,
+    ...(refId ? { ref_id: refId } : {}),
+  };
+}
+
+function sanitizePatchNotebookBlockRequest(body: {
+  content?: Record<string, unknown> | null;
+  ref_id?: string | null;
+  clear_ref_id?: boolean;
+}): {
+  content?: Record<string, unknown> | null;
+  ref_id?: string;
+  clear_ref_id?: boolean;
+} {
+  const refId = optionalRequestString(body.ref_id);
+  return {
+    ...(body.content !== undefined ? { content: body.content } : {}),
+    ...(refId ? { ref_id: refId } : {}),
+    ...(body.clear_ref_id !== undefined ? { clear_ref_id: body.clear_ref_id } : {}),
+  };
+}
+
+function sanitizeOrderedBlockIds(orderedBlockIds: string[]): string[] {
+  const resolvedIds = orderedBlockIds.map((blockId) =>
+    requireRequestString(blockId, "ordered_block_ids"),
+  );
+  if (new Set(resolvedIds).size !== resolvedIds.length) {
+    throw new TypeError("ordered_block_ids must not contain duplicates");
+  }
+  return resolvedIds;
+}
+
 function record(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -684,12 +732,13 @@ function safeNotebookShape(value: unknown): NotebookShape {
 
 /** GET /notebooks/{id} — fetch a notebook + ordered blocks. */
 export async function getNotebook(notebookId: string): Promise<NotebookShape> {
+  const resolvedNotebookId = requireRequestString(notebookId, "notebookId");
   const resp = await apiFetch(
-    `${API_BASE}/notebooks/${encodeURIComponent(notebookId)}`,
+    `${API_BASE}/notebooks/${encodeURIComponent(resolvedNotebookId)}`,
   );
   if (!resp.ok) {
     throw new ApiError(
-      `GET /notebooks/${notebookId} failed: HTTP ${resp.status}`,
+      `GET /notebooks/{id} failed: HTTP ${resp.status}`,
       resp.status,
       await resp.text(),
     );
@@ -702,17 +751,19 @@ export async function appendNotebookBlock(
   notebookId: string,
   req: { block_type: string; content: unknown; ref_id?: string | null },
 ): Promise<NotebookShape> {
+  const resolvedNotebookId = requireRequestString(notebookId, "notebookId");
+  const body = sanitizeAppendNotebookBlockRequest(req);
   const resp = await apiFetch(
-    `${API_BASE}/notebooks/${encodeURIComponent(notebookId)}/blocks`,
+    `${API_BASE}/notebooks/${encodeURIComponent(resolvedNotebookId)}/blocks`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(req),
+      body: JSON.stringify(body),
     },
   );
   if (!resp.ok) {
     throw new ApiError(
-      `POST /notebooks/${notebookId}/blocks failed: HTTP ${resp.status}`,
+      `POST /notebooks/{id}/blocks failed: HTTP ${resp.status}`,
       resp.status,
       await resp.text(),
     );
@@ -730,12 +781,15 @@ export async function patchNotebookBlock(
     clear_ref_id?: boolean;
   },
 ): Promise<NotebookShape> {
+  const resolvedNotebookId = requireRequestString(notebookId, "notebookId");
+  const resolvedBlockId = requireRequestString(blockId, "blockId");
+  const req = sanitizePatchNotebookBlockRequest(body);
   const resp = await apiFetch(
-    `${API_BASE}/notebooks/${encodeURIComponent(notebookId)}/blocks/${encodeURIComponent(blockId)}`,
+    `${API_BASE}/notebooks/${encodeURIComponent(resolvedNotebookId)}/blocks/${encodeURIComponent(resolvedBlockId)}`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify(req),
     },
   );
   if (!resp.ok) {
@@ -753,8 +807,10 @@ export async function deleteNotebookBlock(
   notebookId: string,
   blockId: string,
 ): Promise<NotebookShape> {
+  const resolvedNotebookId = requireRequestString(notebookId, "notebookId");
+  const resolvedBlockId = requireRequestString(blockId, "blockId");
   const resp = await apiFetch(
-    `${API_BASE}/notebooks/${encodeURIComponent(notebookId)}/blocks/${encodeURIComponent(blockId)}`,
+    `${API_BASE}/notebooks/${encodeURIComponent(resolvedNotebookId)}/blocks/${encodeURIComponent(resolvedBlockId)}`,
     { method: "DELETE" },
   );
   if (!resp.ok) {
@@ -772,12 +828,14 @@ export async function reorderNotebookBlocks(
   notebookId: string,
   orderedBlockIds: string[],
 ): Promise<NotebookShape> {
+  const resolvedNotebookId = requireRequestString(notebookId, "notebookId");
+  const ordered_block_ids = sanitizeOrderedBlockIds(orderedBlockIds);
   const resp = await apiFetch(
-    `${API_BASE}/notebooks/${encodeURIComponent(notebookId)}/blocks/reorder`,
+    `${API_BASE}/notebooks/${encodeURIComponent(resolvedNotebookId)}/blocks/reorder`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ordered_block_ids: orderedBlockIds }),
+      body: JSON.stringify({ ordered_block_ids }),
     },
   );
   if (!resp.ok) {

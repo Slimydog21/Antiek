@@ -22,8 +22,11 @@ import {
   listDeliverables,
   listInvestigations,
   listWatchForLater,
+  deleteNotebookBlock,
+  patchNotebookBlock,
   postTypedEvent,
   reorderBlock,
+  reorderNotebookBlocks,
   searchBlocks,
   transcribeAudio,
   undoAiAction,
@@ -769,7 +772,7 @@ describe("api client notebook response boundary", () => {
       ),
     );
 
-    await expect(getNotebook("nb-1")).resolves.toEqual({
+    await expect(getNotebook(" nb dirty/1 ")).resolves.toEqual({
       notebook_id: "nb-1",
       title: "nb-1",
       investigation_id: "inv-1",
@@ -788,6 +791,10 @@ describe("api client notebook response boundary", () => {
         },
       ],
     });
+    expect(fetch).toHaveBeenCalledWith(
+      "/notebooks/nb%20dirty%2F1",
+      expect.objectContaining({ credentials: "include" }),
+    );
   });
 
   it("rejects notebook responses without a usable notebook id", async () => {
@@ -822,9 +829,10 @@ describe("api client notebook response boundary", () => {
       ),
     );
 
-    const result = await appendNotebookBlock("nb-append", {
-      block_type: "note",
+    const result = await appendNotebookBlock(" nb-append ", {
+      block_type: " note ",
       content: { text: "x" },
+      ref_id: " note-ref ",
     });
 
     expect(result.notebook_id).toBe("nb-append");
@@ -839,6 +847,72 @@ describe("api client notebook response boundary", () => {
         created_at: "",
       },
     ]);
+    const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    expect(fetch).toHaveBeenCalledWith(
+      "/notebooks/nb-append/blocks",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(JSON.parse(init.body as string)).toEqual({
+      block_type: "note",
+      content: { text: "x" },
+      ref_id: "note-ref",
+    });
+  });
+
+  it("sanitizes notebook edit, delete, and reorder request handles", async () => {
+    const ok = () =>
+      new Response(JSON.stringify({ notebook_id: " nb-1 ", blocks: [] }), {
+        status: 200,
+      });
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(ok())
+      .mockResolvedValueOnce(ok())
+      .mockResolvedValueOnce(ok());
+
+    await expect(patchNotebookBlock(" nb dirty/1 ", " block dirty/1 ", {
+      content: { text: "edited" },
+      ref_id: " ref-1 ",
+    })).resolves.toMatchObject({ notebook_id: "nb-1" });
+    await expect(deleteNotebookBlock(" nb dirty/1 ", " block dirty/2 ")).resolves.toMatchObject({
+      notebook_id: "nb-1",
+    });
+    await expect(reorderNotebookBlocks(" nb dirty/1 ", [
+      " block-2 ",
+      " block-1 ",
+    ])).resolves.toMatchObject({ notebook_id: "nb-1" });
+
+    const patchCall = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    expect(patchCall[0]).toBe("/notebooks/nb%20dirty%2F1/blocks/block%20dirty%2F1");
+    expect(JSON.parse(patchCall[1].body as string)).toEqual({
+      content: { text: "edited" },
+      ref_id: "ref-1",
+    });
+    expect(vi.mocked(fetch).mock.calls[1][0]).toBe(
+      "/notebooks/nb%20dirty%2F1/blocks/block%20dirty%2F2",
+    );
+    const reorderCall = vi.mocked(fetch).mock.calls[2] as [string, RequestInit];
+    expect(reorderCall[0]).toBe("/notebooks/nb%20dirty%2F1/blocks/reorder");
+    expect(JSON.parse(reorderCall[1].body as string)).toEqual({
+      ordered_block_ids: ["block-2", "block-1"],
+    });
+  });
+
+  it("rejects malformed notebook request handles before network", async () => {
+    await expect(getNotebook(" ")).rejects.toThrow("notebookId must be a non-empty string");
+    await expect(appendNotebookBlock("nb-1", {
+      block_type: "unknown",
+      content: {},
+    })).rejects.toThrow("block_type must be a supported notebook block type");
+    await expect(patchNotebookBlock("nb-1", " ", { content: {} })).rejects.toThrow(
+      "blockId must be a non-empty string",
+    );
+    await expect(deleteNotebookBlock(" ", "block-1")).rejects.toThrow(
+      "notebookId must be a non-empty string",
+    );
+    await expect(reorderNotebookBlocks("nb-1", ["block-1", " block-1 "])).rejects.toThrow(
+      "ordered_block_ids must not contain duplicates",
+    );
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 
