@@ -15,14 +15,8 @@ interface PublisherSummary {
 }
 
 interface StatsResponse {
-  counts?: Record<string, unknown> | null;
-  warnings?: unknown[] | null;
-}
-
-interface DeletionRequest {
-  request_id: string;
-  status: string;
-  requested_at: string;
+  counts: Record<string, number>;
+  warnings: string[];
 }
 
 interface PayoutTransfer {
@@ -47,6 +41,22 @@ function nonNegativeFiniteNumber(value: unknown): number | null {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
 function centsToUsd(value: unknown): string {
   const cents = nonNegativeFiniteNumber(value) ?? 0;
   return `$${(cents / 100).toFixed(2)}`;
@@ -59,6 +69,92 @@ function decimalUsd(value: string): string {
 
 function countLabel(value: unknown): string {
   return Math.floor(nonNegativeFiniteNumber(value) ?? 0).toLocaleString();
+}
+
+function safeCount(value: unknown): number {
+  return Math.floor(nonNegativeFiniteNumber(value) ?? 0);
+}
+
+function safeCounts(value: unknown): Record<string, number> {
+  const counts = record(value);
+  if (!counts) return {};
+  return Object.fromEntries(
+    Object.entries(counts).flatMap(([key, value]) => {
+      const safeKey = nonEmptyString(key);
+      return safeKey ? [[safeKey, safeCount(value)]] : [];
+    }),
+  );
+}
+
+function safeWarnings(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.flatMap((warning) => {
+        const message = nonEmptyString(warning);
+        return message ? [message] : [];
+      })
+    : [];
+}
+
+function safeStatsResponse(value: unknown): StatsResponse {
+  const body = record(value);
+  return {
+    counts: safeCounts(body?.counts),
+    warnings: safeWarnings(body?.warnings),
+  };
+}
+
+function safePublisher(value: unknown): PublisherSummary | null {
+  const publisher = record(value);
+  const ipHolderId = nonEmptyString(publisher?.ip_holder_id);
+  if (!publisher || !ipHolderId) return null;
+  const escrow = nonNegativeFiniteNumber(publisher.escrow_balance_usd) ?? 0;
+  return {
+    ip_holder_id: ipHolderId,
+    display_name: nonEmptyString(publisher.display_name) ?? ipHolderId,
+    legal_contact_email: nullableString(publisher.legal_contact_email),
+    status: nonEmptyString(publisher.status) ?? "pre_onboarded",
+    escrow_balance_usd: escrow.toFixed(2),
+    notification_sent_at: nullableString(publisher.notification_sent_at),
+    claimed_at: nullableString(publisher.claimed_at),
+    opted_out_at: nullableString(publisher.opted_out_at),
+  };
+}
+
+function safePublishers(value: unknown): PublisherSummary[] {
+  const body = record(value);
+  const publishers = Array.isArray(body?.publishers) ? body.publishers : [];
+  return publishers.flatMap((item) => {
+    const publisher = safePublisher(item);
+    return publisher ? [publisher] : [];
+  });
+}
+
+function safePendingDeletionCount(value: unknown): number {
+  const body = record(value);
+  const requests = Array.isArray(body?.requests) ? body.requests : [];
+  return requests.filter((item) => {
+    const request = record(item);
+    return nonEmptyString(request?.status) === "pending";
+  }).length;
+}
+
+function safePayoutTransfer(value: unknown): PayoutTransfer | null {
+  const transfer = record(value);
+  if (!transfer) return null;
+  return {
+    status: nonEmptyString(transfer.status) ?? "unknown",
+    amount_usd_cents: safeCount(transfer.amount_usd_cents),
+    initiated_at: nullableString(transfer.initiated_at),
+  };
+}
+
+function safePayoutTransfers(value: unknown): PayoutTransfer[] {
+  const body = record(value);
+  const transfers = Array.isArray(body?.transfers) ? body.transfers : [];
+  return transfers.flatMap((item) => {
+    const transfer = safePayoutTransfer(item);
+    return transfer ? [transfer] : [];
+  });
 }
 
 /**
@@ -102,24 +198,19 @@ export default function OperatorDashboard() {
       if (!publishersResp.ok) {
         throw new Error(`GET /publishers failed: HTTP ${publishersResp.status}`);
       }
-      const pubData = await publishersResp.json();
-      setPublishers(pubData.publishers ?? []);
+      setPublishers(safePublishers(await publishersResp.json()));
 
       let stats: StatsResponse | null = null;
-      if (statsResp?.ok) stats = await statsResp.json();
+      if (statsResp?.ok) stats = safeStatsResponse(await statsResp.json());
 
       let pendingDeletions = 0;
       if (deletionsResp?.ok) {
-        const drData = await deletionsResp.json();
-        pendingDeletions = (drData.requests ?? []).filter(
-          (r: DeletionRequest) => r.status === "pending",
-        ).length;
+        pendingDeletions = safePendingDeletionCount(await deletionsResp.json());
       }
 
       let recentPayouts: PayoutTransfer[] = [];
       if (payoutsResp?.ok) {
-        const pData = await payoutsResp.json();
-        recentPayouts = pData.transfers ?? [];
+        recentPayouts = safePayoutTransfers(await payoutsResp.json());
       }
 
       setSnapshot({ stats, pendingDeletions, recentPayouts });

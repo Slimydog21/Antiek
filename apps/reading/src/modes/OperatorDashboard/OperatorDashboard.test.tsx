@@ -28,14 +28,19 @@ beforeEach(() => {
       return okJson({
         publishers: [
           {
-            ip_holder_id: "holder-bad",
-            display_name: "Malformed Publisher",
+            ip_holder_id: " holder-bad ",
+            display_name: " Malformed Publisher ",
             legal_contact_email: null,
             status: "pre_onboarded",
             escrow_balance_usd: "NaN",
             notification_sent_at: null,
             claimed_at: null,
             opted_out_at: null,
+          },
+          {
+            ip_holder_id: " ",
+            display_name: "Skipped Publisher",
+            status: "pre_onboarded",
           },
         ],
       });
@@ -49,18 +54,25 @@ beforeEach(() => {
           skill_rules: "1500.8",
           payout_transfers: "bad",
           ip_holders: 1,
+          " ": 99,
         },
-        warnings: [],
+        warnings: [{ message: "leaky stats warning" }],
       });
     }
     if (path === "/trust-center/deletion-requests") {
-      return okJson({ requests: [{ request_id: "dr-1", status: "pending" }] });
+      return okJson({
+        requests: [
+          { request_id: "dr-1", status: " pending " },
+          { request_id: "dr-2", status: "pending" },
+          { request_id: "dr-3", status: "PENDING" },
+        ],
+      });
     }
     if (path.startsWith("/payouts/transfers")) {
       return okJson({
         transfers: [
           {
-            status: "transferred",
+            status: " transferred ",
             amount_usd_cents: Number.POSITIVE_INFINITY,
             initiated_at: null,
           },
@@ -89,7 +101,10 @@ describe("OperatorDashboard", () => {
     expect(await screen.findByText("Malformed Publisher")).toBeTruthy();
     expect(screen.getByText("transferred")).toBeTruthy();
     expect(screen.getByText("failed")).toBeTruthy();
-    expect(document.body.textContent).not.toMatch(/NaN|Infinity|\$-|-4/);
+    expect(screen.getByText("2")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(
+      /NaN|Infinity|\$-|-4|Skipped Publisher|leaky stats warning|object Object/,
+    );
     expect(screen.getAllByText("$0.00").length).toBeGreaterThan(0);
     expect(screen.getByText("$2.50")).toBeTruthy();
     expect(screen.getByText("1,500")).toBeTruthy();
