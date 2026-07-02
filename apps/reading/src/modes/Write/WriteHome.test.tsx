@@ -169,6 +169,16 @@ describe("WriteHome — the re-homed door", () => {
           section_count: "2",
         },
         {
+          deliverable_id: "dlv-unlinked",
+          title: "Unlinked memo",
+          deliverable_kind: "general_essay",
+          investigation_root_id: " ",
+          status: "draft",
+          created_at: null,
+          updated_at: null,
+          section_count: 0,
+        },
+        {
           deliverable_id: " ",
           title: "Invisible memo",
           deliverable_kind: "general_essay",
@@ -183,7 +193,8 @@ describe("WriteHome — the re-homed door", () => {
 
     mountAt("/write");
     const piece = await screen.findByText("Valid memo");
-    expect(screen.getByText("2 sections")).toBeTruthy();
+    expect(screen.getByText("2 sections · connected to research")).toBeTruthy();
+    expect(screen.getByText("0 sections · no research connected")).toBeTruthy();
     expect(screen.queryByText("Invisible memo")).toBeNull();
     await userEvent.click(piece);
     await waitFor(() => expect(getDeliverableMock).toHaveBeenCalledWith("dlv-valid"));
