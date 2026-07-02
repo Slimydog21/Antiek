@@ -19,12 +19,14 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
   render,
   screen,
   waitFor,
 } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 
 import type { Event } from "../../generated/types";
 import type { DistilledNode } from "../../lib/api";
@@ -126,6 +128,23 @@ function renderAt(investigationId: string) {
   );
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+function RouteSwitchProbe() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate("/notebook/auto/inv-fresh")}>
+      open fresh auto-notebook
+    </button>
+  );
+}
+
 describe("AutoNotebook — the proposed banner (M1, rigor #1 honesty)", () => {
   it("renders the 'proposed — sign-off pending' banner on the auto view", async () => {
     getDistillationMock.mockResolvedValue({
@@ -164,6 +183,54 @@ describe("AutoNotebook — renders real graph content (M1)", () => {
 });
 
 describe("AutoNotebook — graph-change re-derive (M1 load-bearing)", () => {
+  it("keeps stale distillation responses from overwriting the active routed research", async () => {
+    const stale = deferred<{
+      investigation_id: string;
+      insights: DistilledNode[];
+      questions: DistilledNode[];
+    }>();
+    const fresh = deferred<{
+      investigation_id: string;
+      insights: DistilledNode[];
+      questions: DistilledNode[];
+    }>();
+    getDistillationMock.mockReturnValueOnce(stale.promise).mockReturnValueOnce(fresh.promise);
+
+    render(
+      <MemoryRouter initialEntries={["/notebook/auto/inv-stale"]}>
+        <RouteSwitchProbe />
+        <Routes>
+          <Route
+            path="/notebook/auto/:investigationId"
+            element={<AutoNotebook />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /open fresh auto-notebook/i }));
+    await act(async () => {
+      fresh.resolve({
+        investigation_id: "inv-fresh",
+        insights: [insight("fresh", "Fresh graph insight.")],
+        questions: [],
+      });
+    });
+
+    expect(await screen.findByText("Fresh graph insight.")).toBeTruthy();
+
+    await act(async () => {
+      stale.resolve({
+        investigation_id: "inv-stale",
+        insights: [insight("stale", "Stale graph insight.")],
+        questions: [],
+      });
+    });
+
+    expect(screen.getByText("Fresh graph insight.")).toBeTruthy();
+    expect(screen.queryByText("Stale graph insight.")).toBeNull();
+  });
+
   it("flips the rendered outline + sections when an insight is added", async () => {
     // BEFORE: distillation = [insight A, question B].
     getDistillationMock.mockResolvedValue({
