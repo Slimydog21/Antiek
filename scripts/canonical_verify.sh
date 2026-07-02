@@ -11,6 +11,7 @@
 #   read-curate          — Read SPR-04 prompt-to-curate servable-only gate
 #   read-ad-border       — Read SPR-05 ad-border slots + impression/accrual gate
 #   read-voice-notes     — Read SPR-06 voice-note capture + distillation gate
+#   read-rabbit-hole     — Read SPR-07 conversational rabbit-hole + voice replies
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -34,7 +35,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -155,6 +156,26 @@ cmd_read_voice_notes() {
   echo "CANONICAL_VERIFY_OK: read-voice-notes"
 }
 
+cmd_read_rabbit_hole() {
+  echo "== read-rabbit-hole: TTS + gated book-QA backend =="
+  "${PY}" -m pytest \
+    tests/test_tts_voice_reply.py \
+    tests/test_book_qa_meta_reading.py::test_talk_to_book_answer_cites_pages \
+    tests/test_book_qa_meta_reading.py::test_talk_to_book_cannot_cite_withheld_region \
+    tests/test_book_qa_meta_reading.py::test_talk_to_book_no_extractable_text_fails_gracefully \
+    tests/test_book_qa_meta_reading.py::test_talk_to_book_approximate_page_is_labelled \
+    tests/test_contracts_read_lock.py \
+    -q --tb=no
+  echo "== read-rabbit-hole: sidecar voice replies + book conversation UI =="
+  (cd apps/reading && npm run test -- \
+    src/components/AISidecar.test.tsx \
+    src/components/SpokenReply.test.tsx \
+    src/modes/Reading/TalkToBook.test.tsx \
+    src/api/books.test.ts \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: read-rabbit-hole"
+}
+
 cmd_handoff() {
   local f="${1:?handoff markdown path required}"
   echo "== handoff: schema linter =="
@@ -184,6 +205,7 @@ main() {
     read-curate) cmd_read_curate ;;
     read-ad-border) cmd_read_ad_border ;;
     read-voice-notes) cmd_read_voice_notes ;;
+    read-rabbit-hole) cmd_read_rabbit_hole ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;

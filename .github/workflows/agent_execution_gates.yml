@@ -16,7 +16,13 @@ on:
       - 'scripts/agent_ams_ref_lint.sh'
       - 'apps/reading/src/api/research.ts'
       - 'apps/reading/src/api/books.ts'
+      - 'apps/reading/src/components/AISidecar.tsx'
+      - 'apps/reading/src/components/AISidecar.test.tsx'
       - 'apps/reading/src/components/library/**'
+      - 'apps/reading/src/components/SpokenReply.tsx'
+      - 'apps/reading/src/components/SpokenReply.test.tsx'
+      - 'apps/reading/src/hooks/useReplyMode.ts'
+      - 'apps/reading/src/hooks/useSpeech.ts'
       - 'apps/reading/src/modes/Library/**'
       - 'apps/reading/src/modes/Reading/**'
       - 'apps/reading/src/modes/DeepResearchWorkspace/**'
@@ -24,9 +30,11 @@ on:
       - 'interfaces/research/api/books.py'
       - 'interfaces/research/api/library.py'
       - 'interfaces/research/api/read_voice.py'
+      - 'interfaces/research/api/speech.py'
       - 'orchestration/cascade_session.py'
       - 'substrate/ad_inventory/**'
       - 'substrate/books/**'
+      - 'substrate/dispatch/providers/openai_tts.py'
       - 'substrate/gap_detection/**'
       - 'substrate/marketplace_metrics/book_escrow.py'
       - 'substrate/contracts/read_sprint_lock.py'
@@ -51,6 +59,7 @@ on:
       - 'tests/test_reader_ad_slots.py'
       - 'tests/test_serve_structured_blocks.py'
       - 'tests/test_servability_drift_guard.py'
+      - 'tests/test_tts_voice_reply.py'
       - 'tests/test_voice_notes.py'
       - 'tests/test_gap_detection.py'
       - 'tests/test_speak_drw_gap_source.py'
@@ -69,7 +78,13 @@ on:
       - 'scripts/agent_ams_ref_lint.sh'
       - 'apps/reading/src/api/research.ts'
       - 'apps/reading/src/api/books.ts'
+      - 'apps/reading/src/components/AISidecar.tsx'
+      - 'apps/reading/src/components/AISidecar.test.tsx'
       - 'apps/reading/src/components/library/**'
+      - 'apps/reading/src/components/SpokenReply.tsx'
+      - 'apps/reading/src/components/SpokenReply.test.tsx'
+      - 'apps/reading/src/hooks/useReplyMode.ts'
+      - 'apps/reading/src/hooks/useSpeech.ts'
       - 'apps/reading/src/modes/Library/**'
       - 'apps/reading/src/modes/Reading/**'
       - 'apps/reading/src/modes/DeepResearchWorkspace/**'
@@ -77,9 +92,11 @@ on:
       - 'interfaces/research/api/books.py'
       - 'interfaces/research/api/library.py'
       - 'interfaces/research/api/read_voice.py'
+      - 'interfaces/research/api/speech.py'
       - 'orchestration/cascade_session.py'
       - 'substrate/ad_inventory/**'
       - 'substrate/books/**'
+      - 'substrate/dispatch/providers/openai_tts.py'
       - 'substrate/gap_detection/**'
       - 'substrate/marketplace_metrics/book_escrow.py'
       - 'substrate/contracts/read_sprint_lock.py'
@@ -104,6 +121,7 @@ on:
       - 'tests/test_reader_ad_slots.py'
       - 'tests/test_serve_structured_blocks.py'
       - 'tests/test_servability_drift_guard.py'
+      - 'tests/test_tts_voice_reply.py'
       - 'tests/test_voice_notes.py'
       - 'tests/test_gap_detection.py'
       - 'tests/test_speak_drw_gap_source.py'
@@ -174,6 +192,9 @@ jobs:
 
       - name: Canonical verify — read voice notes
         run: ./scripts/canonical_verify.sh read-voice-notes
+
+      - name: Canonical verify — read rabbit hole
+        run: ./scripts/canonical_verify.sh read-rabbit-hole
 
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md

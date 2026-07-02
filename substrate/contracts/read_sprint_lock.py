@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to READ_SPRINTS. Status changes are deliberate roadmap
 # events, not comments buried in a handoff.
-READ_LOCK_VERSION: int = 6
+READ_LOCK_VERSION: int = 7
 
 
 @dataclass(frozen=True)
@@ -83,7 +83,16 @@ READ_SPRINTS: dict[int, ReadDeliverable] = {
         # are covered by read-voice-notes.
         status="live",
     ),
-    7: ReadDeliverable(7, "conversational-rabbit-hole", "Conversational rabbit hole"),
+    7: ReadDeliverable(
+        7,
+        "conversational-rabbit-hole",
+        "Conversational rabbit hole",
+        # Live: text-first rabbit-hole replies, opt-in audio playback, key-gated
+        # TTS synthesis, book-level multi-turn Ask-this-book flow, page-cited
+        # answer jumps, branch persistence, and no-leak/no-context handling are
+        # covered by read-rabbit-hole.
+        status="live",
+    ),
     8: ReadDeliverable(8, "research-from-passage", "Research from passage"),
     9: ReadDeliverable(9, "ad-revenue-escrow", "Ad-revenue escrow"),
 }

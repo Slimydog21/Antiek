@@ -5,7 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Event } from "../generated/types";
 import AISidecar from "./AISidecar";
 
-const apiFetchMock = vi.hoisted(() => vi.fn());
+const { apiFetchMock, spokenReplyMock, replyModeState } = vi.hoisted(() => ({
+  apiFetchMock: vi.fn(),
+  spokenReplyMock: vi.fn(),
+  replyModeState: { mode: "text" as "text" | "audio", setMode: vi.fn() },
+}));
 
 vi.mock("../lib/api", async (orig) => {
   const actual = await orig<typeof import("../lib/api")>();
@@ -14,6 +18,24 @@ vi.mock("../lib/api", async (orig) => {
     apiFetch: apiFetchMock,
   };
 });
+
+vi.mock("./SpokenReply", () => ({
+  default: (props: { text: string; autoPlay?: boolean }) => {
+    spokenReplyMock(props);
+    return (
+      <div data-testid="spoken-reply" data-autoplay={String(Boolean(props.autoPlay))}>
+        {props.text}
+      </div>
+    );
+  },
+}));
+
+vi.mock("../hooks/useReplyMode", () => ({
+  useReplyMode: () => ({
+    mode: replyModeState.mode,
+    setMode: replyModeState.setMode,
+  }),
+}));
 
 const okJson = (body: unknown) =>
   ({
@@ -42,6 +64,9 @@ function dispatchEvent(
 
 beforeEach(() => {
   apiFetchMock.mockReset();
+  spokenReplyMock.mockReset();
+  replyModeState.mode = "text";
+  replyModeState.setMode.mockReset();
   apiFetchMock.mockImplementation(async (input: RequestInfo | URL) => {
     const path = String(input);
     if (path.includes("/billing/summary/")) {
@@ -170,8 +195,32 @@ describe("AISidecar", () => {
     await userEvent.type(await screen.findByPlaceholderText("What's the question?"), "challenge this");
     await userEvent.click(screen.getByRole("button", { name: "Send" }));
 
-    expect(await screen.findByText("Reply text")).toBeTruthy();
+    expect(await screen.findAllByText("Reply text")).toHaveLength(2);
     expect(screen.getByText("SYNTHESIS")).toBeTruthy();
     expect(screen.queryByText("UNBOUNDED")).toBeNull();
+  });
+
+  it("keeps rabbit-hole reply text visible and auto-speaks only when audio mode is selected", async () => {
+    replyModeState.mode = "audio";
+    apiFetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes("/billing/summary/")) return okJson({});
+      if (path.includes("/trajectory")) return okJson({ events: [] });
+      if (path === "/thought-partner") {
+        return okJson({ shape: "SYNTHESIS", text: "Audio-mode reply" });
+      }
+      return okJson({});
+    });
+
+    render(<AISidecar />);
+
+    await userEvent.type(await screen.findByPlaceholderText("What's the question?"), "read this back");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(await screen.findAllByText("Audio-mode reply")).toHaveLength(2);
+    expect(screen.getByTestId("spoken-reply").getAttribute("data-autoplay")).toBe("true");
+    expect(spokenReplyMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ text: "Audio-mode reply", autoPlay: true }),
+    );
   });
 });
