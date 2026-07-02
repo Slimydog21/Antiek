@@ -420,6 +420,48 @@ describe("Speak invites", () => {
     ]);
   });
 
+  it("dedupes duplicate invite ids after trimming", async () => {
+    apiFetchMock.mockResolvedValue(
+      jsonResponse({
+        invites: [
+          {
+            interview_id: " iv-dup ",
+            informant_email: "first@example.com",
+            status: "completed",
+            link: "https://antiek.ai/speak/invite/first",
+          },
+          {
+            interview_id: "iv-dup",
+            informant_email: "duplicate@example.com",
+            status: "in_progress",
+            link: "https://antiek.ai/speak/invite/duplicate",
+          },
+          {
+            interview_id: "iv-other",
+            informant_handle: "family friend",
+            status: "invited",
+            link: "https://antiek.ai/speak/invite/other",
+          },
+        ],
+      }),
+    );
+
+    await expect(listVoices("proj-1")).resolves.toEqual([
+      {
+        interviewId: "iv-dup",
+        who: "first@example.com",
+        state: "shared",
+        link: "https://antiek.ai/speak/invite/first",
+      },
+      {
+        interviewId: "iv-other",
+        who: "family friend",
+        state: "invited",
+        link: "https://antiek.ai/speak/invite/other",
+      },
+    ]);
+  });
+
   it("treats malformed invite wrappers as empty voice lists", async () => {
     apiFetchMock.mockResolvedValue(jsonResponse({ invites: { interview_id: "iv-1" } }));
 

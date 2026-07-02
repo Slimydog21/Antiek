@@ -136,6 +136,20 @@ describe("Speak project page", () => {
     expect(screen.getByText("shared")).toBeTruthy();
   });
 
+  it("renders duplicate arriving voices once after API normalization", async () => {
+    api.listVoices.mockResolvedValue([
+      { interviewId: " iv-dup ", who: "first@x.com", state: "shared", link: "first-link" },
+      { interviewId: "iv-dup", who: "duplicate@x.com", state: "recording", link: "duplicate-link" },
+      { interviewId: "iv-other", who: "other@x.com", state: "invited", link: "other-link" },
+    ]);
+    mount();
+
+    expect((await screen.findAllByText("first@x.com")).length).toBeGreaterThan(0);
+    expect(screen.queryByText("duplicate@x.com")).toBeNull();
+    expect(screen.getAllByText("other@x.com").length).toBeGreaterThan(0);
+    expect(screen.getByText("Voices (1)")).toBeTruthy();
+  });
+
   it("keeps stale project reloads from overwriting the active routed story", async () => {
     const stale = deferred<{ id: string; name: string; willBePublic: boolean; subjectStatusWord: null }>();
     const fresh = deferred<{ id: string; name: string; willBePublic: boolean; subjectStatusWord: null }>();
