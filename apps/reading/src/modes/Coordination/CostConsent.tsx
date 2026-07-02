@@ -164,6 +164,19 @@ function booleanValue(value: unknown): boolean {
   return value === true;
 }
 
+function uniqueStringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? Array.from(
+        new Set(
+          value.flatMap((item) => {
+            const trimmed = nonEmptyString(item);
+            return trimmed ? [trimmed] : [];
+          }),
+        ),
+      )
+    : [];
+}
+
 function safeWorkflowCost(value: unknown): WorkflowCostView | null {
   const row = record(value);
   const workflow = nonEmptyString(row?.workflow);
@@ -205,12 +218,7 @@ function safeCostView(value: unknown): CostView {
 
 function safeGate(value: unknown): DisbursementGateView {
   const gate = record(value);
-  const openGateIds = Array.isArray(gate?.open_gate_ids)
-    ? gate.open_gate_ids.flatMap((item) => {
-        const gateId = nonEmptyString(item);
-        return gateId ? [gateId] : [];
-      })
-    : [];
+  const openGateIds = uniqueStringList(gate?.open_gate_ids);
   const holderClaimed = booleanValue(gate?.holder_claimed);
   const fullyUnlocked = booleanValue(gate?.fully_unlocked);
   return {
@@ -275,12 +283,7 @@ function safeConsentView(value: unknown): ConsentView {
   return {
     holders,
     escrow_report: safeEscrowReport(body?.escrow_report),
-    disbursement_gates_open: Array.isArray(body?.disbursement_gates_open)
-      ? body.disbursement_gates_open.flatMap((item) => {
-          const gateId = nonEmptyString(item);
-          return gateId ? [gateId] : [];
-        })
-      : [],
+    disbursement_gates_open: uniqueStringList(body?.disbursement_gates_open),
     total_escrow_accruing_usd: moneyString(body?.total_escrow_accruing_usd),
     any_disbursable: holders.some((holder) => holder.gate.disbursable),
     gate_source_path: nonEmptyString(body?.gate_source_path) ?? "",
