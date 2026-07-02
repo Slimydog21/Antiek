@@ -1296,9 +1296,9 @@ function composedDecorationsByChunk(
   // verdict class, the IP-holder's owner name, and SiteSee's citation-history
   // tint — so they compose without importing each other (PR-3). The render
   // context is minimal: decorations need no layout-map (that resolves widget
-  // pixels, SPR-04), and the
-  // augmentations pull no further substrate data, so `substrate` is a
-  // shape-only stub never called this sprint.
+  // pixels, SPR-04), and these augmentations close over already-resolved source
+  // verdicts, so the substrate read door below is deliberately unused and
+  // fail-closed.
   const servability = makeServabilityAugmentation(
     sources.map((s) => ({
       representativeChunkId: s.representativeChunkId,
@@ -1325,9 +1325,10 @@ function composedDecorationsByChunk(
     layout: { resolve: () => null },
     substrate: {
       getChunk: () =>
-        // Not used by the decorations pass (the surface resolves sources via
-        // the shipped api.getChunk above); present only to satisfy the frozen
-        // ReadingContext shape. SPR-04+ wires this to the real read API.
+        // Not used by this synchronous decorations pass: the surface resolves
+        // source metadata via the shipped api.getChunk path before constructing
+        // the augmentations. If a future augmentation needs chunk text here, it
+        // must intentionally thread the real read API through this context.
         Promise.reject(
           new Error("substrate.getChunk is not wired in the reading-physics slice"),
         ),
@@ -1584,7 +1585,9 @@ function renderHeaderAnchoredWidgets(
   // de-overlap enact resolves a null/real rect, the cue renders its view either
   // way). Threading the live map here proves the surface mounts it everywhere a
   // RenderContext is built; a future geometry-DEPENDENT header widget lights up
-  // for free. Substrate is a shape-only stub never called here.
+  // for free. These header widgets close over their substrate-derived inputs
+  // before declaration, so the substrate read door below remains deliberately
+  // unused and fail-closed.
   const ctx: ReadingContext = {
     synthesis: { question: null, claims: [] },
     layout,
