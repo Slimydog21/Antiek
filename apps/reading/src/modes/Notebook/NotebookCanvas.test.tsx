@@ -116,6 +116,42 @@ describe("NotebookCanvas question-card handoff", () => {
     expect(document.body.textContent).toContain("1 block");
   });
 
+  it("renders duplicate block ids once after API normalization", () => {
+    const data = notebook([
+      {
+        block_id: " block-dup ",
+        block_index: 0,
+        block_type: "prose",
+        ref_id: null,
+        content_json: { text: "First duplicate block" },
+        created_at: "2026-07-01T00:00:00Z",
+      },
+      {
+        block_id: "block-dup",
+        block_index: 1,
+        block_type: "prose",
+        ref_id: null,
+        content_json: { text: "Duplicate block" },
+        created_at: "2026-07-01T00:01:00Z",
+      },
+      {
+        block_id: "block-other",
+        block_index: 2,
+        block_type: "prose",
+        ref_id: null,
+        content_json: { text: "Other block" },
+        created_at: "2026-07-01T00:02:00Z",
+      },
+    ]);
+
+    render(<NotebookCanvas notebook={data} onAppendBlock={vi.fn()} />);
+
+    expect(screen.getByText("First duplicate block")).toBeTruthy();
+    expect(screen.queryByText("Duplicate block")).toBeNull();
+    expect(screen.getByText("Other block")).toBeTruthy();
+    expect(document.body.textContent).toContain("2 blocks");
+  });
+
   it("trims block ids before move/delete/edit callbacks", async () => {
     const onMoveBlock = vi.fn();
     const onDeleteBlock = vi.fn();

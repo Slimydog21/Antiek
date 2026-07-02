@@ -1007,6 +1007,56 @@ describe("api client notebook response boundary", () => {
     );
   });
 
+  it("dedupes duplicate notebook block ids after trimming", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          notebook_id: "nb-1",
+          title: "Notebook",
+          blocks: [
+            {
+              block_id: " block-dup ",
+              block_index: 0,
+              block_type: "prose",
+              content_json: { text: "First block" },
+              created_at: "2026-07-01T00:01:00Z",
+            },
+            {
+              block_id: "block-dup",
+              block_index: 1,
+              block_type: "prose",
+              content_json: { text: "Duplicate block" },
+              created_at: "2026-07-01T00:02:00Z",
+            },
+            {
+              block_id: "block-other",
+              block_index: 2,
+              block_type: "note",
+              content_json: { text: "Other block" },
+              created_at: "2026-07-01T00:03:00Z",
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(getNotebook("nb-1")).resolves.toMatchObject({
+      blocks: [
+        {
+          block_id: "block-dup",
+          block_index: 0,
+          content_json: { text: "First block" },
+        },
+        {
+          block_id: "block-other",
+          block_index: 2,
+          content_json: { text: "Other block" },
+        },
+      ],
+    });
+  });
+
   it("rejects notebook responses without a usable notebook id", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(JSON.stringify({ notebook_id: " ", blocks: [] }), {

@@ -738,10 +738,13 @@ function safeNotebookShape(value: unknown): NotebookShape {
   if (!notebook || !notebookId) {
     throw new ApiError("Malformed notebook response", 502, "");
   }
+  const seen = new Set<string>();
   const blocks = Array.isArray(notebook.blocks)
     ? notebook.blocks.flatMap((item) => {
         const block = safeNotebookBlock(item);
-        return block ? [block] : [];
+        if (!block || seen.has(block.block_id)) return [];
+        seen.add(block.block_id);
+        return [block];
       })
     : [];
   return {
