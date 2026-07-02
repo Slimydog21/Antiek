@@ -1,10 +1,16 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { Event } from "../generated/types";
+import { EMPTY_SNAPSHOT } from "../workspace/panel.types";
+import { useWorkspace } from "../workspace/WorkspaceStore";
 import NotesPanel from "./NotesPanel";
 
 afterEach(() => cleanup());
+
+beforeEach(() => {
+  useWorkspace.setState({ ...EMPTY_SNAPSHOT });
+});
 
 const dispatchEvent = (payload: Record<string, unknown>): Event =>
   ({
@@ -377,5 +383,63 @@ describe("NotesPanel", () => {
       ),
     ).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/NaN|Infinity|undefined/);
+  });
+
+  it("opens the PDF panel at the selected region page from a grounded claim", () => {
+    render(
+      <NotesPanel
+        events={[
+          feedEvent(
+            "document.region_selected",
+            {
+              region_id: "region-pass",
+              page: 7,
+              char_start: 10,
+              char_end: 30,
+              bbox: [0, 0, 10, 10],
+              text_excerpt: "source passage",
+            },
+            1,
+          ),
+          feedEvent(
+            "distillation.delivered",
+            {
+              request_event_id: "event-request-1",
+              claims: [
+                {
+                  claim_id: "claim-pass",
+                  text: "Passed claim.",
+                  confidence: "high",
+                  attribution_region_ids: ["region-pass"],
+                },
+              ],
+              rendered_text: "Grounding summary.",
+              token_count: 512,
+            },
+            2,
+          ),
+          feedEvent(
+            "claim.grounding_check_passed",
+            {
+              claim_id: "claim-pass",
+              located_region_id: "region-pass",
+              confidence: 0.91,
+            },
+            3,
+          ),
+        ]}
+        status="open"
+        reconnects={0}
+        investigationId="inv-1"
+        documentId="doc-1"
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle("open region region-pass in viewer"));
+
+    const panel = useWorkspace.getState().panels["pdf:doc-1:p7"];
+    expect(panel.kind).toBe("PdfViewer");
+    expect(panel.props).toEqual({ documentId: "doc-1", initialPage: 7 });
+    expect(panel.title).toBe("PDF · region-pass");
   });
 });
