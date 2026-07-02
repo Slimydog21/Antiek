@@ -149,6 +149,14 @@ def _pct(num: int, denom: int) -> float | None:
     return round(num / denom, 3)
 
 
+def _naive_utc_bounds(start: datetime, end: datetime) -> tuple[datetime, datetime]:
+    """Coerce bounds to tz-naive UTC. The module uses naive-UTC internally;
+    callers may pass tz-aware datetimes."""
+    s = start.astimezone(UTC).replace(tzinfo=None) if start.tzinfo is not None else start
+    e = end.astimezone(UTC).replace(tzinfo=None) if end.tzinfo is not None else end
+    return s, e
+
+
 def _parse_event_ts(s: Any) -> datetime | None:
     """ISO 8601 with optional ``Z`` suffix. Returns tzinfo-naive UTC."""
     if not s:
@@ -195,6 +203,7 @@ def iter_window_events(
     objects whose ``emitted_at`` lies in ``[start, end]``. Malformed
     rows are skipped silently — the report's job is to surface
     aggregate signal, not relitigate per-row corruption."""
+    start, end = _naive_utc_bounds(start, end)
     for iid in _iter_investigation_ids(events_dir):
         for row in trajectory(iid, events_dir=events_dir):
             ts = _parse_event_ts(row.get("emitted_at"))
@@ -221,6 +230,7 @@ def collect_phase_telemetry(
     """Aggregate per-phase entered / exited / verified counts across
     all investigations whose phase_log ``created_at`` falls in the
     window."""
+    start, end = _naive_utc_bounds(start, end)
     d = log_dir or phase_log_default_dir()
     if not os.path.isdir(d):
         return {
@@ -557,17 +567,10 @@ def collect_acquisition_cost(
             "top_day": None,
         }
 
-    # Normalize the window bounds to naive UTC ONCE. `day` (below) is naive-UTC
-    # (parsed from the YYYY-MM-DD sidecar stem); callers pass EITHER naive bounds
-    # (`_window_default`) OR tz-aware bounds, and comparing mixed tz raises
-    # "can't compare offset-naive and offset-aware datetimes". Coercing both to
-    # naive UTC here makes the comparison caller-tz-agnostic.
-    _start_day = (
-        start.astimezone(UTC).replace(tzinfo=None) if start.tzinfo is not None else start
-    ).replace(hour=0, minute=0, second=0, microsecond=0)
-    _end_naive = (
-        end.astimezone(UTC).replace(tzinfo=None) if end.tzinfo is not None else end
-    )
+    # Normalize the window bounds to naive UTC once via the module helper.
+    start, end = _naive_utc_bounds(start, end)
+    _start_day = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    _end_naive = end
 
     # Walk each provider sidecar in the date window. Format:
     #   exa_<YYYY-MM-DD>.json

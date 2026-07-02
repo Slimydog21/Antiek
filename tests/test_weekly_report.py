@@ -29,7 +29,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
@@ -479,3 +479,46 @@ def test_cli_emits_json_to_file(events_dir, log_dir, tmp_path):
     body = json.loads(output.read_text())
     assert "phase_telemetry" in body
     assert "window" in body
+
+
+# ---------------------------------------------------------------------------
+# 11. Caller-tz-agnostic bounds
+# ---------------------------------------------------------------------------
+
+
+def test_build_report_tz_aware_bounds_match_naive(events_dir, log_dir, window):
+    """Passing tz-AWARE bounds must produce the same report as equivalent
+    naive-UTC bounds (no TypeError, no data difference). The +03:00 case
+    guards against strip-without-convert (.replace(tzinfo=None)), which a
+    UTC-only aware input cannot detect."""
+    _emit_synth("inv-tz-1", status="passed")
+    naive_start, naive_end = window
+    # Boundary sentinel: a phase log 1h after window start. Stripping a
+    # +03:00 wall clock instead of converting shifts the start bound +3h,
+    # excluding this record — which the equality assertion below catches.
+    _write_phase_log(
+        log_dir, "inv-tz-edge",
+        created_at=naive_start + timedelta(hours=1),
+        phases={8: {"entered_at": "ts", "exited_at": "ts", "verified": True}},
+    )
+    report_naive = build_report(naive_start, naive_end).to_dict()
+
+    plus3 = timezone(timedelta(hours=3))
+    aware_variants = (
+        (naive_start.replace(tzinfo=UTC), naive_end.replace(tzinfo=UTC)),
+        (
+            naive_start.replace(tzinfo=UTC).astimezone(plus3),
+            naive_end.replace(tzinfo=UTC).astimezone(plus3),
+        ),
+    )
+    for aware_start, aware_end in aware_variants:
+        d_aware = build_report(aware_start, aware_end).to_dict()
+        # Skip metadata that naturally differs (generated_at microsecond drift,
+        # window ISO formatting with/without tz suffix).
+        for key in (
+            "phase_telemetry", "lifecycle", "constraint_distribution",
+            "phase_8_signal", "dispatch_cost", "cross_doc", "acquisition_cost",
+        ):
+            assert report_naive[key] == d_aware[key], (
+                f"mismatch in {key} for offset {aware_start.tzinfo}"
+            )
