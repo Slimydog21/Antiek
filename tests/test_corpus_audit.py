@@ -1169,3 +1169,43 @@ def test_summary_reports_real_state_and_audit_verdict(db_path):
     rendered = summary.render()
     assert "servable / gated: 1 / 1" in rendered
     assert "PASS" in rendered
+
+
+# ---------------------------------------------------------------------------
+# _pass_public_probe — the attribution-eligibility misconfiguration probe.
+# Regression for the F821 undefined-name defect: ``QualityGateResult`` was used
+# as the return annotation but imported only inside the function body, so the
+# annotation was an unresolvable string (a latent NameError under
+# ``get_type_hints``). The import is now module-level. These tests prove the
+# annotation resolves AND the probe mints a valid PASS_PUBLIC result — remove
+# the module-level import and both fail.
+# ---------------------------------------------------------------------------
+
+
+def test_pass_public_probe_annotation_is_resolvable():
+    """``get_type_hints`` must resolve the return annotation to
+    ``QualityGateResult``. Before the fix the annotation referenced a name that
+    was only imported inside the function body, so introspection raised
+    ``NameError`` — this test fails (errors) without the module-level import."""
+    import typing
+
+    from substrate import corpus_audit
+
+    hints = typing.get_type_hints(corpus_audit._pass_public_probe)
+    resolved = hints.get("return")
+    assert resolved is not None, "return annotation is missing"
+    assert resolved.__name__ == "QualityGateResult"
+
+
+def test_pass_public_probe_mints_pass_public_with_no_checks():
+    """The probe is a fixture for the real attribution-eligibility predicate: a
+    minimal PASS_PUBLIC result with no checks, so ``is_attribution_eligible``
+    reads it as eligible IF (and only if) ``personal_reading`` were wrongly
+    dropped from the non-attributable set."""
+    from substrate.corpus_audit import _pass_public_probe
+    from substrate.quality_gate import QualityGateVerdict
+
+    result = _pass_public_probe()
+    assert result.verdict is QualityGateVerdict.PASS_PUBLIC
+    assert result.checks == ()
+
