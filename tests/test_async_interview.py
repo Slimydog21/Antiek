@@ -53,6 +53,14 @@ GUIDE = {"must_cover": [
 ]}
 
 
+def test_async_interview_doc_names_gate_and_live_turn_boundary():
+    doc = ai.__doc__ or ""
+    assert "./scripts/canonical_verify.sh speak-async-voice-interview" in doc
+    assert "invitee ``SpeakInvite`` UI" in doc
+    assert "live spoken turn-taking" in doc
+    assert "async voice NOTES, not a live conversation" in doc
+
+
 @pytest.fixture
 def speak_env(monkeypatch):
     tmpdir = tempfile.mkdtemp(prefix="speak-async-test-")
