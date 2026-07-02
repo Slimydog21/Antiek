@@ -125,7 +125,7 @@ describe("ConnectResearch — M1 connect or auto-spawn", () => {
     await userEvent.click(await screen.findByText(/start without a project/i));
 
     await waitFor(() =>
-      expect(screen.getByText(/did not return an id/)).toBeTruthy(),
+      expect(screen.getByText(/investigation_id must be a non-empty string/)).toBeTruthy(),
     );
     expect(onConnect).not.toHaveBeenCalled();
   });

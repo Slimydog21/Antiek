@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { startInvestigation } from "../../lib/api";
+import { requireInvestigationId } from "../../lib/investigationData";
 import AIActionFailure from "../../shared/AIActionFailure";
 import Thinking from "../../shared/Thinking";
 import { safeRepositoryHits } from "./repositoryData";
@@ -32,12 +33,6 @@ export interface SubAgentProposalProps {
   parentInvestigationId: string;
   onAccept: (childInvestigationId: string) => void;
   onReject: () => void;
-}
-
-function nonEmptyString(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
 }
 
 export default function SubAgentProposal({
@@ -81,10 +76,7 @@ export default function SubAgentProposal({
         spawn_context: claimText,
         parent_investigation_id: parentInvestigationId,
       });
-      const childInvestigationId = nonEmptyString(child.investigation_id);
-      if (!childInvestigationId) {
-        throw new Error("child investigation did not return an id");
-      }
+      const childInvestigationId = requireInvestigationId(child.investigation_id);
       onAccept(childInvestigationId);
     } catch (e) {
       const status = (e as { status?: number })?.status;
