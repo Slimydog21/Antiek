@@ -373,6 +373,42 @@ def _insert_prompt(
     )
 
 
+def _normalize_scope_block_ids(
+    con: LockedConnection, scope_block_ids: Sequence[str],
+) -> tuple[str, ...]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for raw in scope_block_ids:
+        if not isinstance(raw, str):
+            raise ValueError("scope_block_ids must contain only strings")
+        block_id = raw.strip()
+        if not block_id:
+            raise ValueError("scope_block_ids must not contain blank ids")
+        if block_id not in seen:
+            normalized.append(block_id)
+            seen.add(block_id)
+    if not normalized:
+        raise ValueError("scope_block_ids must be non-empty")
+
+    placeholders = ", ".join("?" for _ in normalized)
+    rows = con.execute(
+        f"""
+        SELECT document_id
+        FROM research_pastes
+        WHERE document_id IN ({placeholders})
+        """,
+        normalized,
+    ).fetchall()
+    existing = {r[0] for r in rows}
+    missing = [block_id for block_id in normalized if block_id not in existing]
+    if missing:
+        raise ValueError(
+            "scope_block_ids include unknown research paste ids: "
+            + ", ".join(missing)
+        )
+    return tuple(normalized)
+
+
 # --- public API ---
 
 
@@ -389,8 +425,7 @@ def find_gaps(
             "find_gaps requires a LockedConnection (got "
             f"{type(con).__name__}). Use runtime.db_lock.connect_write."
         )
-    if not scope_block_ids:
-        raise ValueError("scope_block_ids must be non-empty")
+    scope_block_ids = _normalize_scope_block_ids(con, scope_block_ids)
 
     questions, insights = _collect_scope_questions(con, scope_block_ids)
     if not questions:

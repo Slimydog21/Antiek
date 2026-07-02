@@ -32,6 +32,7 @@ from substrate.research_bridge.gap import (
     GapCluster,
     _parse_cascade_response,
     _parse_cluster_response,
+    find_gaps,
     record_prompt_answer,
     record_prompt_signal,
 )
@@ -399,3 +400,46 @@ def test_research_bridge_prompt_signals_require_existing_prompts(db):
         con.close()
 
     assert row == ("rgpr-1", "would_run")
+
+
+def test_research_bridge_gap_scope_requires_existing_paste_blocks(db):
+    con = connect_write(db, purpose="seed")
+    try:
+        init_research_bridge(con)
+        con.execute(
+            "INSERT INTO documents (document_id, source_tier, document_type) "
+            "VALUES ('doc-paste-1', 3, 'external_deep_research')"
+        )
+        con.execute(
+            "INSERT INTO research_pastes "
+            "(document_id, source, source_confidence, raw_sha256, "
+            " paste_byte_length, parser_version) "
+            "VALUES ('doc-paste-1', 'grok', 1.0, 'abc123', 12, 1)"
+        )
+
+        with pytest.raises(ValueError, match="unknown research paste ids"):
+            find_gaps(
+                con,
+                scope_block_ids=["doc-fabricated"],
+                llm_callable=lambda _prompt: pytest.fail("LLM should not run"),
+            )
+        with pytest.raises(ValueError, match="blank ids"):
+            find_gaps(
+                con,
+                scope_block_ids=["   "],
+                llm_callable=lambda _prompt: pytest.fail("LLM should not run"),
+            )
+
+        result = find_gaps(
+            con,
+            scope_block_ids=[" doc-paste-1 ", "doc-paste-1"],
+            llm_callable=lambda _prompt: pytest.fail("LLM should not run"),
+        )
+        row = con.execute(
+            "SELECT scope_block_ids FROM research_gap_runs WHERE run_id = ?",
+            [result.run_id],
+        ).fetchone()
+    finally:
+        con.close()
+
+    assert row == ('["doc-paste-1"]',)
