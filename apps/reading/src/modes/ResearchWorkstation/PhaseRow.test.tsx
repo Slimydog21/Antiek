@@ -121,7 +121,7 @@ describe("PhaseRow", () => {
           supporting_claims: [
             {
               claim: "  Supported claim. ",
-              chunk_ids: [" chunk-1 ", "", 9],
+              chunk_ids: [" chunk-1 ", "", 9, "chunk-1"],
             },
             {
               claim: "",
