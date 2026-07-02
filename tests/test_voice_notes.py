@@ -13,6 +13,7 @@ import pytest
 
 from acquisition.voice.client import Transcript
 from roles.note_taker.parser import ExtractedNote
+import substrate.books.voice_note as voice_note_module
 from substrate.books.voice_note import (
     UnconfirmedTranscript,
     distill_voice_note,
@@ -59,6 +60,14 @@ def _events_dir(monkeypatch):
 
 
 # ── M2: transcription + ASR failure handling ───────────────────────
+
+
+def test_voice_note_module_names_live_reader_capture_surface():
+    doc = voice_note_module.__doc__ or ""
+
+    assert "apps/reading/src/modes/Reading/VoiceNote.tsx" in doc
+    assert "./scripts/canonical_verify.sh read-voice-notes" in doc
+    assert "which is unbuilt" not in doc
 
 
 def test_transcription_ok():

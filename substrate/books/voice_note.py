@@ -22,9 +22,11 @@ Transcription and distillation are both injected (Protocols), exactly as
 passes ``WhisperTranscriber`` + the note-taker dispatch; tests pass stubs,
 so this module is testable with no live ASR or LLM.
 
-The browser capture control (``VoiceNote.tsx``) and the async job runner
-are out of scope here — they layer on the reader surface (DRW SPR-10),
-which is unbuilt. This module is the substrate the capture UI will call.
+The browser capture control (``apps/reading/src/modes/Reading/VoiceNote.tsx``)
+now layers on this substrate through the Read reader surface and is covered by
+``./scripts/canonical_verify.sh read-voice-notes``. A background async job
+runner remains out of scope here: this module owns the synchronous substrate
+contract the reader calls.
 """
 
 from __future__ import annotations
