@@ -136,6 +136,39 @@ describe("reviewState resolver", () => {
     ).toEqual([]);
   });
 
+  it("sanitizes malformed due labels before exposing review cues", () => {
+    const due = resolveDueClaimsFromEvents(
+      [
+        ev(
+          {
+            action_type: "claim.reviewed",
+            claim_id: "1",
+            reviewed_at: "2026-06-30T09:00:00Z",
+            next_due_at: "2026-06-30T09:00:00Z",
+            due_label: { text: "not renderable" },
+          },
+          "2026-06-30T09:00:01Z",
+        ),
+        ev(
+          {
+            action_type: "claim.reviewed",
+            claim_id: "2",
+            reviewed_at: "2026-06-30T09:30:00Z",
+            next_due_at: "2026-06-30T09:30:00Z",
+            due_label: "  Custom due label  ",
+          },
+          "2026-06-30T09:30:01Z",
+        ),
+      ],
+      { now: new Date("2026-06-30T10:00:00Z") },
+    );
+
+    expect(due).toEqual([
+      { claimId: "1", dueLabel: "Due for review" },
+      { claimId: "2", dueLabel: "Custom due label" },
+    ]);
+  });
+
   it("identifies the minimal claim.reviewed payload shape", () => {
     expect(
       isClaimReviewedPayload({
