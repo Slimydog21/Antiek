@@ -17,6 +17,7 @@ vi.mock("../../lib/api", () => ({
 }));
 
 import {
+  addFolderBlock,
   blockDisplayText,
   createFolder,
   emitBrainstormBlocks,
@@ -228,9 +229,88 @@ describe("writeApi client contracts", () => {
   it("trims folder ids returned from createFolder", async () => {
     apiFetchMock.mockResolvedValueOnce(jsonResponse({ folder_id: " folder-1 " }));
 
-    await expect(createFolder("Saved insights")).resolves.toBe("folder-1");
+    await expect(createFolder(" Saved insights ")).resolves.toBe("folder-1");
     expect(apiFetchMock.mock.calls[0][0]).toBe("/api/write/folders");
     expect(postedJsonBody()).toEqual({ name: "Saved insights" });
+  });
+
+  it("rejects malformed write request handles before sending requests", async () => {
+    await expect(createFolder(" ")).rejects.toThrow(/name/);
+    await expect(addFolderBlock(" ", "node-1")).rejects.toThrow(/folderId/);
+    await expect(addFolderBlock("folder-1", " ")).rejects.toThrow(/nodeId/);
+    await expect(getSectionBlocks(" ")).rejects.toThrow(/sectionId/);
+    await expect(moveBlock(" ", "sec-1", 0)).rejects.toThrow(/outlineBlockId/);
+    await expect(moveBlock("oblk-1", " ", 0)).rejects.toThrow(/toSectionId/);
+    await expect(getTraceTarget(" ")).rejects.toThrow(/outlineBlockId/);
+    await expect(generateSection(" ")).rejects.toThrow(/sectionId/);
+    await expect(
+      placeBlock({
+        section_id: " ",
+        block_kind: "claim",
+        provenance_kind: "graph_node",
+        node_id: "node-claim",
+        block_index: 0,
+      }),
+    ).rejects.toThrow(/section_id/);
+    await expect(
+      placeBlock({
+        section_id: "sec-1",
+        block_kind: "claim",
+        provenance_kind: "graph_node",
+        node_id: " ",
+        block_index: 0,
+      }),
+    ).rejects.toThrow(/node_id/);
+    await expect(
+      placeBlock({
+        section_id: "sec-1",
+        block_kind: "user_authored",
+        provenance_kind: "user_authored",
+        content: " ",
+        block_index: 0,
+      }),
+    ).rejects.toThrow(/content/);
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("trims write request handles before constructing URLs and bodies", async () => {
+    apiFetchMock
+      .mockResolvedValueOnce(jsonResponse({}))
+      .mockResolvedValueOnce(jsonResponse({ outline_block_id: " oblk-1 " }))
+      .mockResolvedValueOnce(jsonResponse({}))
+      .mockResolvedValueOnce(jsonResponse({
+        status: "generated",
+        section_id: " sec-1 ",
+        prose_text: "draft",
+      }));
+
+    await addFolderBlock(" folder/1 ", " node-1 ");
+    await expect(
+      placeBlock({
+        section_id: " sec-1 ",
+        block_kind: "claim",
+        provenance_kind: "graph_node",
+        node_id: " node-claim ",
+        block_index: 0,
+        deliverable_id: " ",
+      }),
+    ).resolves.toBe("oblk-1");
+    await moveBlock(" oblk/1 ", " sec-2 ", 3);
+    await generateSection(" sec-1 ");
+
+    expect(apiFetchMock.mock.calls[0][0]).toBe("/api/write/folders/folder%2F1/blocks");
+    expect(postedJsonBody(0)).toEqual({ node_id: "node-1" });
+    expect(postedJsonBody(1)).toEqual({
+      section_id: "sec-1",
+      block_index: 0,
+      block_kind: "claim",
+      provenance_kind: "graph_node",
+      node_id: "node-claim",
+    });
+    expect(apiFetchMock.mock.calls[2][0]).toBe("/api/write/blocks/oblk%2F1/move");
+    expect(postedJsonBody(2)).toEqual({ to_section_id: "sec-2", to_index: 3 });
+    expect(apiFetchMock.mock.calls[3][0]).toBe("/api/write/sections/sec-1/generate");
   });
 
   it("rejects malformed write indices before sending requests", async () => {
