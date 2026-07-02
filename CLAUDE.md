@@ -12,8 +12,9 @@ mechanism (§9) is the strategically consequential layer.
 
 ## Read these in order
 
-1. **`docs/operator_gate_actions.md`** — current status of the 8 binding
-   gates blocking activation. Updated 2026-05-23. The "Operator Activities"
+1. **`docs/operator_gate_actions.md`** — current status of the binding
+   gates blocking activation (its quick-status table is the live
+   register; counts in prose rot). The "Operator Activities"
    section at the bottom is the cross-session breadcrumb.
 2. **`docs/agent-execution/HARD_TO_VARY.md`** + **`docs/agent-execution/TEMPLATES.md`**
    — mandatory for all agent sessions before diagnosing Research/cascade bugs or
@@ -30,8 +31,10 @@ mechanism (§9) is the strategically consequential layer.
 ## Don't propose engineering until you read this
 
 As of 2026-05-23 session-end, the **engineering scope of the spec is
-essentially complete**. 2,703 tests passing. The bottleneck is operator
-action on the 5 remaining gates. Before you suggest new engineering work:
+essentially complete** (run `./.venv/bin/python -m pytest tests/ -q` for
+the live test count — this file's own history proves literal counts rot).
+The bottleneck is operator action on the open gates (quick-status table
+in `docs/operator_gate_actions.md`). Before you suggest new engineering work:
 
 - Check `docs/operator_gate_actions.md` "Operator Activities" section.
 - Verify the bottleneck isn't already a known operator-bound item.
@@ -111,10 +114,10 @@ Auth: magic-link via AgentMail. Per
   mitigation ships. See `tests/regression/agent_failures/README.md`
   for the onboarding flow. Programmatic failure logging via
   `orchestration.agent_failure_log.record()` (JSONL append-only at
-  `~/.antiek/agent_failures.jsonl`, daily rotation). Five fixtures
-  currently in the library — all GAP-marked, documenting the Phase A
-  loky-semaphore failure + four arxiv-ingestion failures + the
-  Phase 8 SkillPatchGate's standing shadow-mode condition.
+  `~/.antiek/agent_failures.jsonl`, daily rotation). The library's
+  current set: `ls tests/regression/agent_failures/` (a prose count here
+  went stale within weeks — fixtures get added and marked mitigated on
+  main faster than this file is edited).
 <!-- END: agent-failure-regression -->
 
 <!-- BEGIN: craft-signature (managed by SPR-E7 of antiek-hashimoto-engineering) -->
