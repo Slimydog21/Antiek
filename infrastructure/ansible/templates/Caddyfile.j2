@@ -34,7 +34,7 @@
     #   2. Else → serve from /var/www/antiek-app with SPA fallback.
     #
     # The API prefix list comes from every `@app.X("/foo")` decorator
-    # in interfaces/research/api/*.py (50 top-level prefixes). A route
+    # in interfaces/research/api/*.py (52 top-level prefixes). A route
     # missing from this list is served the SPA HTML instead of proxying
     # to uvicorn — which silently breaks that API in prod. This list had
     # DRIFTED (it was missing /books /coordination /corpus /meta-readings

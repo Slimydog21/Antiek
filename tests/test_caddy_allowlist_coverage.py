@@ -33,6 +33,7 @@ _ALLOWLIST_EXCEPTIONS: set[str] = set()
 _DECORATOR = re.compile(
     r"""@app\.(?:get|post|put|delete|patch|websocket)\(\s*["']([^"']+)["']"""
 )
+_PREFIX_COUNT_RE = re.compile(r"\((\d+) top-level prefixes\)")
 
 
 def _top_prefix(path: str) -> str:
@@ -64,6 +65,11 @@ def _allowlist_prefixes() -> set[str]:
     }
 
 
+def _caddy_source() -> str:
+    with open(_CADDY, encoding="utf-8") as fh:
+        return fh.read()
+
+
 def test_caddy_allowlist_covers_every_registered_route() -> None:
     registered = _registered_prefixes()
     allow = _allowlist_prefixes()
@@ -77,6 +83,23 @@ def test_caddy_allowlist_covers_every_registered_route() -> None:
         "Add each to the @api_routes path line (or, if a route is intentionally "
         "SPA-only, to _ALLOWLIST_EXCEPTIONS in this test with a reason)."
     )
+
+
+def test_caddy_comment_count_matches_registered_prefixes() -> None:
+    """The template's operator-facing count must not drift from FastAPI routes."""
+    src = _caddy_source()
+    match = _PREFIX_COUNT_RE.search(src)
+    assert match, "Caddyfile.j2 must document the registered API prefix count"
+
+    assert int(match.group(1)) == len(_registered_prefixes())
+
+
+def test_caddy_allowlist_pins_brainstorm_api_route() -> None:
+    """The Brainstorm API overlaps a React route; non-browser fetches need proxying."""
+    with open(_CADDY, encoding="utf-8") as fh:
+        line = next(row for row in fh if "@api_routes path" in row)
+
+    assert "/brainstorm*" in line
 
 
 def test_caddy_allowlist_pins_economics_dashboard_routes() -> None:
