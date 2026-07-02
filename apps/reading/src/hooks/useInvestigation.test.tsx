@@ -74,6 +74,56 @@ describe("useInvestigation", () => {
     expect(result.current.costTotal).toBe(0.375);
   });
 
+  it("accepts numeric-string dispatch costs", async () => {
+    getTrajectoryMock.mockResolvedValue({
+      investigation_id: "inv-1",
+      count: 2,
+      events: [
+        event("e1", "investigation.start_requested", { question: "What changed?" }),
+        event("e2", "dispatch.call", { cost_usd: "0.25" }),
+      ],
+    });
+    getInvestigationStatusMock.mockResolvedValue(status());
+    useEventStreamMock.mockReturnValue({
+      events: [event("e3", "dispatch.call", { cost_usd: "0.125" })],
+      status: "open",
+      reconnects: 0,
+    });
+
+    const { result } = renderHook(() => useInvestigation("inv-1"));
+
+    await waitFor(() => expect(result.current.status).toBe("in_progress"));
+    expect(result.current.costTotal).toBe(0.375);
+  });
+
+  it("sanitizes malformed start questions while preserving valid terminal payloads", async () => {
+    getTrajectoryMock.mockResolvedValue({
+      investigation_id: "inv-1",
+      count: 2,
+      events: [
+        event("e1", "investigation.start_requested", { question: ["not text"] }),
+        event("e2", "investigation.failed", { reason: "engine stopped" }),
+      ],
+    });
+    getInvestigationStatusMock.mockResolvedValue(
+      status({ terminal_payload: { reason: "from status" } }),
+    );
+    useEventStreamMock.mockReturnValue({
+      events: [],
+      status: "open",
+      reconnects: 0,
+    });
+
+    const { result } = renderHook(() => useInvestigation("inv-1"));
+
+    await waitFor(() => expect(result.current.status).toBe("failed"));
+    expect(result.current.question).toBeNull();
+    expect(result.current.terminalPayload).toMatchObject({
+      action_type: "investigation.failed",
+      reason: "engine stopped",
+    });
+  });
+
   it("drops malformed seed trajectory rows before deriving investigation state", async () => {
     getTrajectoryMock.mockResolvedValue({
       investigation_id: "inv-1",

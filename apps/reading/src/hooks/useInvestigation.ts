@@ -7,8 +7,24 @@ import type { InvestigationStatus } from "../lib/api";
 import { useEventStream } from "./useEventStream";
 
 function finiteNonNegativeNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object"
+    ? (value as Record<string, unknown>)
     : null;
 }
 
@@ -136,15 +152,15 @@ export function useInvestigation(
     for (const e of events) {
       const at = e.action_type;
       if (at === "investigation.start_requested" && question === null) {
-        const p = e.payload as { question?: string } | undefined;
-        if (p?.question) question = p.question;
+        const p = record(e.payload);
+        question = nonEmptyString(p?.question);
       } else if (
         at === "investigation.completed" ||
         at === "investigation.failed"
       ) {
         terminal = { type: at, row: e };
       } else if (at === "dispatch.call") {
-        const p = e.payload as { cost_usd?: number } | undefined;
+        const p = record(e.payload);
         cost += finiteNonNegativeNumber(p?.cost_usd) ?? 0;
       }
     }
@@ -157,7 +173,7 @@ export function useInvestigation(
             : "failed",
       question,
       terminalPayload:
-        (terminal?.row.payload as Record<string, unknown> | undefined) ??
+        record(terminal?.row.payload) ??
         (status?.terminal_payload ?? null),
       costTotal: cost,
       completedAt: terminal?.row.emitted_at ?? null,
