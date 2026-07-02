@@ -255,9 +255,12 @@ export default function WriteHome() {
                     onClick={() => navigate(`/write/${p.deliverable_id}`)}
                     className="w-full rounded border border-rule bg-ice-0 px-3 py-2 text-left hover:border-ocean dark:border-charcoal-1 dark:bg-charcoal-2"
                   >
-                    <span className="font-serif text-ink dark:text-bright">{p.title}</span>
-                    <span className="ml-2 text-xs text-ink-mute dark:text-moonlight">
-                      {p.section_count} section{p.section_count === 1 ? "" : "s"}
+                    <span className="block font-serif text-ink dark:text-bright">{p.title}</span>
+                    <span className="mt-0.5 block text-xs text-ink-mute dark:text-moonlight">
+                      {p.section_count} section{p.section_count === 1 ? "" : "s"} ·{" "}
+                      {p.investigation_root_id
+                        ? "connected to research"
+                        : "no research connected"}
                     </span>
                   </button>
                 </li>
