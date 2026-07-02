@@ -150,10 +150,7 @@ def _search(
             def _send() -> httpx.Response:
                 return client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-            r = cast(
-                "httpx.Response",
-                govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle()),
-            )
+            r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
         else:
             with httpx.Client(
                 follow_redirects=True,
@@ -162,10 +159,7 @@ def _search(
                 def _send() -> httpx.Response:
                     return c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-                r = cast(
-                    "httpx.Response",
-                    govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle()),
-                )
+                r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
         r.raise_for_status()
         return cast("dict[str, Any]", r.json())
 
@@ -212,10 +206,7 @@ def download_pdf(
             def _send() -> httpx.Response:
                 return client.get(pdf_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-            r = cast(
-                "httpx.Response",
-                govern_if_arxiv(pdf_url, _send, throttle=canonical_arxiv_throttle()),
-            )
+            r = govern_if_arxiv(pdf_url, _send, throttle=canonical_arxiv_throttle())
             content_type = r.headers.get("content-type")
             r.raise_for_status()
             content = r.content
@@ -224,10 +215,7 @@ def download_pdf(
                 def _send() -> httpx.Response:
                     return c.get(pdf_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-                r = cast(
-                    "httpx.Response",
-                    govern_if_arxiv(pdf_url, _send, throttle=canonical_arxiv_throttle()),
-                )
+                r = govern_if_arxiv(pdf_url, _send, throttle=canonical_arxiv_throttle())
                 content_type = r.headers.get("content-type")
                 r.raise_for_status()
                 content = r.content

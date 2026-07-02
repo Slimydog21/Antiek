@@ -162,10 +162,7 @@ def _get_json(
             def _send() -> httpx.Response:
                 return client.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-            r = cast(
-                "httpx.Response",
-                govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle()),
-            )
+            r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
         else:
             with httpx.Client(
                 follow_redirects=True,
@@ -174,10 +171,7 @@ def _get_json(
                 def _send() -> httpx.Response:
                     return c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
-                r = cast(
-                    "httpx.Response",
-                    govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle()),
-                )
+                r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
         r.raise_for_status()
         return cast("dict[str, Any]", r.json())
 
