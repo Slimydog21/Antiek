@@ -248,9 +248,12 @@ def test_golden_weights_pin_the_blend_math():
     assert weights["b"] > weights["a"] > weights["c"]
     # Still conserved (the golden literals were minted by the conserving path).
     assert sum(weights.values()) == Decimal(1)
-    # The version stamp travels with the weighting so a dispute can isolate
-    # "the math changed" — bump it in lockstep with any change here.
-    assert w.weighting_version == "frame-weight-v1"
+    # The version stamp travels with the weighting so a dispute can isolate a
+    # changed split. It is frame-weight-v2 as of AFA-S2 M5: the blend math here
+    # is UNCHANGED (the golden literals above are identical), but the bump marks
+    # the era in which aggregate_window runs the anti-gaming filter before
+    # apportioning — a payout-affecting change to WHICH seconds contribute.
+    assert w.weighting_version == "frame-weight-v2"
 
 
 def test_ties_resolve_deterministically():

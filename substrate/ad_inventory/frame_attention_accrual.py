@@ -45,6 +45,8 @@ from decimal import Decimal
 from typing import Any
 
 from substrate import ip_holders
+from substrate.anti_gaming.frame_ivt import classify_batch
+from substrate.anti_gaming.verdict import FraudVerdictKind
 
 from .frame_attention import (
     FRAME_WEIGHTING_VERSION,
@@ -175,6 +177,16 @@ class WindowAccrual:
     house: HouseLine
     telemetry_version: str
     weighting_version: str
+    # AFA-S2 M5: the anti-gaming filter's REPORTED exclusions for this window —
+    # (reason, count) pairs (GIVT/SIVT/oversized). Every second the filter
+    # removed is counted here, never silently dropped (honesty over coverage).
+    # Empty when nothing was filtered. Defaulted so pre-M5 callers/rows are
+    # unaffected; M5b persists these alongside the accrual rows.
+    excluded_second_counts: tuple[tuple[str, int], ...] = ()
+    # The window's composite fraud verdict kind ("pass"/"review"/"block"). A
+    # "review" window still accrues (to escrow, operator queue); a "block" window
+    # routes its whole value to house.
+    fraud_verdict: str = FraudVerdictKind.PASS.value
 
     def reconciles(self) -> bool:
         """Σ asset cents + house cents == total ad value cents (the invariant)."""
@@ -229,11 +241,38 @@ def aggregate_window(
             weighting_version=FRAME_WEIGHTING_VERSION,
         )
 
-    # Split the window's total ad value equally across its seconds, conserved
-    # to the cent (largest-remainder over equal weights — second 0..n-1).
-    per_second_cents = apportion_cents(
-        {str(i): 1.0 for i in range(n_seconds)}, total
-    )
+    # AFA-S2 M5 — filter-before-allocate. Classify the batch; invalid seconds are
+    # excluded from BOTH the numerator and the denominator of the split (they do
+    # not earn AND do not dilute the per-second value). A BLOCK verdict or a
+    # fully-filtered window routes the whole value to house — never invented
+    # attribution. Every excluded second is counted and reported, never dropped.
+    classification = classify_batch(batch)
+    excluded = tuple(sorted(classification.counts_by_reason().items()))
+    verdict_kind = classification.window_verdict.kind
+
+    if verdict_kind is FraudVerdictKind.BLOCK:
+        return _house_only_window(
+            batch, total, reason="antigaming_block",
+            excluded=excluded, verdict_kind=verdict_kind,
+        )
+
+    # Valid seconds keyed by POSITION (not second_index): position is unique and
+    # contiguous, so the split is robust to gaps/duplicates and invalid positions
+    # are simply absent from the denominator.
+    valid = [
+        (pos, sec)
+        for pos, sec in enumerate(batch.seconds)
+        if pos in classification.valid_positions
+    ]
+    if not valid:
+        return _house_only_window(
+            batch, total, reason="antigaming_all_seconds_filtered",
+            excluded=excluded, verdict_kind=verdict_kind,
+        )
+
+    # Split the window's total ad value equally across its VALID seconds,
+    # conserved to the cent (largest-remainder over equal weights).
+    per_second_cents = apportion_cents({str(pos): 1.0 for pos, _ in valid}, total)
 
     asset_cents: dict[str, int] = {}
     asset_weight: dict[str, float] = {}
@@ -243,8 +282,8 @@ def aggregate_window(
     house_nsec = 0
     house_reasons: set[str] = set()
 
-    for sec in batch.seconds:
-        sec_cents = per_second_cents[str(sec.second_index)]
+    for pos, sec in valid:
+        sec_cents = per_second_cents[str(pos)]
         w = weigh_second(sec)
         if w.is_house_second:
             house_cents += sec_cents
@@ -293,6 +332,39 @@ def aggregate_window(
         house=house,
         telemetry_version=batch.schema_version,
         weighting_version=FRAME_WEIGHTING_VERSION,
+        excluded_second_counts=excluded,
+        fraud_verdict=verdict_kind.value,
+    )
+
+
+def _house_only_window(
+    batch: WindowFrameBatch,
+    total: int,
+    *,
+    reason: str,
+    excluded: tuple[tuple[str, int], ...],
+    verdict_kind: FraudVerdictKind,
+) -> WindowAccrual:
+    """A window whose ENTIRE value routes to house — a BLOCK verdict or a
+    fully-filtered window. No contributor accrues (never invented attribution);
+    the whole ad value is the house tally, and the exclusion counts + verdict are
+    carried for the audit trail. Conservation is trivially exact (house == total,
+    no asset lines)."""
+    return WindowAccrual(
+        batch_ref="",
+        window_id=batch.window_id,
+        total_ad_value_cents=total,
+        asset_lines=(),
+        house=HouseLine(
+            window_id=batch.window_id,
+            n_seconds=len(batch.seconds),
+            amount_cents=total,
+            reason=reason,
+        ),
+        telemetry_version=batch.schema_version,
+        weighting_version=FRAME_WEIGHTING_VERSION,
+        excluded_second_counts=excluded,
+        fraud_verdict=verdict_kind.value,
     )
 
 
