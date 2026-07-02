@@ -20,12 +20,12 @@ beforeEach(() => {
     json: async () => ({
       campaigns: [
         {
-          campaign_id: "camp-bad",
-          advertiser_name: "Malformed SaaS",
-          sector: "saas",
-          intent: "buying",
-          creative_headline: "Bad stats",
-          creative_url: "https://example.com",
+          campaign_id: " camp-bad ",
+          advertiser_name: " Malformed SaaS ",
+          sector: " saas ",
+          intent: " buying ",
+          creative_headline: " Bad stats ",
+          creative_url: "javascript:alert(1)",
           daily_budget_cents: Number.NaN,
           status: "active",
           impressions: Number.POSITIVE_INFINITY,
@@ -38,12 +38,17 @@ beforeEach(() => {
           sector: "saas",
           intent: "research",
           creative_headline: "Good stats",
-          creative_url: "https://example.org",
-          daily_budget_cents: 5000,
+          creative_url: " https://example.org/path ",
+          daily_budget_cents: "5000.9",
           status: "paused",
-          impressions: 1000,
-          clicks: 25,
-          spend_cents: 1234,
+          impressions: "1000.9",
+          clicks: "25.9",
+          spend_cents: "1234.9",
+        },
+        {
+          campaign_id: " ",
+          advertiser_name: "Skipped advertiser",
+          creative_headline: "Skipped creative",
         },
       ],
     }),
@@ -58,8 +63,14 @@ describe("AdvertiserConsole", () => {
 
     expect(await screen.findByText("Malformed SaaS")).toBeTruthy();
     expect(screen.getByText("Measured SaaS")).toBeTruthy();
-    expect(document.body.textContent).not.toMatch(/NaN|Infinity|\$-/);
+    expect(document.body.textContent).not.toMatch(
+      /NaN|Infinity|\$-|Skipped advertiser|javascript/,
+    );
     expect(screen.getAllByText("$12.34")).toHaveLength(2);
     expect(screen.getByText("2.50%")).toBeTruthy();
+    expect(screen.getByText("(#)").getAttribute("href")).toBe("#");
+    expect(screen.getByText("(https://example.org/path)").getAttribute("href")).toBe(
+      "https://example.org/path",
+    );
   });
 });

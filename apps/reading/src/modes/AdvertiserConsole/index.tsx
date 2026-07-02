@@ -41,9 +41,74 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 const nonNegativeFiniteNumber = (value: unknown): number | null =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
+  typeof value === "number"
+    ? Number.isFinite(value) && value >= 0
+      ? value
+      : null
+    : typeof value === "string" && value.trim() !== ""
+      ? Number.isFinite(Number(value)) && Number(value) >= 0
+        ? Number(value)
+        : null
+      : null;
+
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
     : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function safeUrl(value: unknown): string {
+  const text = nonEmptyString(value);
+  if (!text) return "#";
+  try {
+    const parsed = new URL(text);
+    return parsed.protocol === "http:" || parsed.protocol === "https:"
+      ? parsed.toString()
+      : "#";
+  } catch {
+    return "#";
+  }
+}
+
+function safeCampaign(value: unknown): AdvertiserCampaign | null {
+  const campaign = record(value);
+  const campaignId = nonEmptyString(campaign?.campaign_id);
+  const advertiserName = nonEmptyString(campaign?.advertiser_name);
+  if (!campaign || !campaignId || !advertiserName) return null;
+  return {
+    campaign_id: campaignId,
+    advertiser_name: advertiserName,
+    sector: nonEmptyString(campaign.sector) ?? "unknown",
+    intent: nonEmptyString(campaign.intent) ?? "unknown",
+    creative_headline:
+      nonEmptyString(campaign.creative_headline) ?? "Untitled campaign",
+    creative_url: safeUrl(campaign.creative_url),
+    daily_budget_cents: Math.floor(
+      nonNegativeFiniteNumber(campaign.daily_budget_cents) ?? 0,
+    ),
+    status: nonEmptyString(campaign.status) ?? "draft",
+    impressions: Math.floor(nonNegativeFiniteNumber(campaign.impressions) ?? 0),
+    clicks: Math.floor(nonNegativeFiniteNumber(campaign.clicks) ?? 0),
+    spend_cents: Math.floor(nonNegativeFiniteNumber(campaign.spend_cents) ?? 0),
+  };
+}
+
+function safeAdvertiserListResponse(value: unknown): AdvertiserListResponse {
+  const body = record(value);
+  const campaigns = Array.isArray(body?.campaigns) ? body.campaigns : [];
+  return {
+    campaigns: campaigns.flatMap((item) => {
+      const campaign = safeCampaign(item);
+      return campaign ? [campaign] : [];
+    }),
+  };
+}
 
 const USD = (cents: unknown) =>
   `$${((nonNegativeFiniteNumber(cents) ?? 0) / 100).toLocaleString(undefined, {
@@ -83,7 +148,7 @@ export default function AdvertiserConsole() {
         }
         throw new Error(`HTTP ${resp.status}`);
       }
-      const data: AdvertiserListResponse = await resp.json();
+      const data = safeAdvertiserListResponse(await resp.json());
       setCampaigns(data.campaigns);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
