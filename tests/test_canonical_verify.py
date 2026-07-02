@@ -242,6 +242,14 @@ def test_canonical_verify_speak_economics_matrix_hermetic() -> None:
     assert "CANONICAL_VERIFY_OK: speak-economics-matrix" in proc.stdout
 
 
+def test_canonical_verify_speak_biography_authoring_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("speak-biography-authoring")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: speak-biography-authoring" in proc.stdout
+
+
 def test_canonical_verify_deep_research_hermetic() -> None:
     if not PY.is_file():
         return
