@@ -33,6 +33,7 @@ from substrate.research_bridge.gap import (
     _parse_cascade_response,
     _parse_cluster_response,
     record_prompt_answer,
+    record_prompt_signal,
 )
 from substrate.research_bridge.schema import init_research_bridge
 
@@ -354,3 +355,47 @@ def test_research_bridge_prompt_answers_require_existing_documents(db):
         con.close()
 
     assert row == ("doc-answer-1",)
+
+
+def test_research_bridge_prompt_signals_require_existing_prompts(db):
+    con = connect_write(db, purpose="seed")
+    try:
+        init_research_bridge(con)
+        con.execute(
+            "INSERT INTO research_gap_runs "
+            "(run_id, scope_block_ids, scope_question_ids, cluster_model_id) "
+            "VALUES ('rgrun-1', '[]', '[]', 'test')"
+        )
+        con.execute(
+            "INSERT INTO research_gap_prompts "
+            "(prompt_id, run_id, order_index, prompt_text, target_provider) "
+            "VALUES ('rgpr-1', 'rgrun-1', 0, 'Research the source answer.', 'grok')"
+        )
+
+        with pytest.raises(ValueError, match="does not exist"):
+            record_prompt_signal(
+                con,
+                prompt_id="rgpr-fabricated",
+                signal_type="would_run",
+            )
+        with pytest.raises(ValueError, match="non-empty"):
+            record_prompt_signal(
+                con,
+                prompt_id="   ",
+                signal_type="would_run",
+            )
+
+        signal_id = record_prompt_signal(
+            con,
+            prompt_id=" rgpr-1 ",
+            signal_type="would_run",
+        )
+        row = con.execute(
+            "SELECT prompt_id, signal_type FROM research_gap_prompt_signals "
+            "WHERE signal_id = ?",
+            [signal_id],
+        ).fetchone()
+    finally:
+        con.close()
+
+    assert row == ("rgpr-1", "would_run")

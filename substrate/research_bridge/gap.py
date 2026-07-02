@@ -497,11 +497,25 @@ def find_gaps(
 # --- signals + answers ---
 
 
+def _require_existing_prompt_id(con: LockedConnection, prompt_id: str) -> str:
+    prompt_id = prompt_id.strip()
+    if not prompt_id:
+        raise ValueError("prompt_id must be non-empty")
+    exists = con.execute(
+        "SELECT 1 FROM research_gap_prompts WHERE prompt_id = ?",
+        [prompt_id],
+    ).fetchone()
+    if exists is None:
+        raise ValueError(f"prompt_id {prompt_id!r} does not exist")
+    return prompt_id
+
+
 def record_prompt_signal(
     con: LockedConnection, *, prompt_id: str, signal_type: str,
 ) -> str:
     if not isinstance(con, LockedConnection):
         raise TypeError("record_prompt_signal requires a LockedConnection")
+    prompt_id = _require_existing_prompt_id(con, prompt_id)
     if signal_type not in ("would_run", "skip"):
         raise ValueError(
             f"signal_type must be 'would_run' or 'skip', got {signal_type!r}"
@@ -520,6 +534,7 @@ def record_prompt_answer(
 ) -> str:
     if not isinstance(con, LockedConnection):
         raise TypeError("record_prompt_answer requires a LockedConnection")
+    prompt_id = _require_existing_prompt_id(con, prompt_id)
     answer_document_id = answer_document_id.strip()
     if not answer_document_id:
         raise ValueError("answer_document_id must be non-empty")
