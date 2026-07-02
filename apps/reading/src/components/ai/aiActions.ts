@@ -673,69 +673,140 @@ export function dispatchAiAction(
 function aiBlockToHtml(block: NotebookActionBlock): string {
   // Map the action's compact block schema to the custom-element tags
   // that the TipTap parseHTML extensions recognise.
-  const escape = (s: string) =>
-    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   const attrs = block.attrs ?? {};
   switch (block.kind) {
     case "note":
-      return `<antiek-note text="${escape(
-        block.text ?? (attrs.text as string) ?? "",
-      )}"></antiek-note>`;
-    case "claim_card":
-      return `<antiek-claim-card claim_id="${escape(
-        (attrs.claim_id as string) ?? "",
-      )}" investigation_id="${escape(
-        (attrs.investigation_id as string) ?? "",
-      )}"></antiek-claim-card>`;
-    case "region_embed":
-      return `<antiek-region-embed document_id="${escape(
-        (attrs.document_id as string) ?? "",
-      )}" page="${
-        (attrs.page as number) ?? ""
-      }" caption="${escape(
-        (attrs.caption as string) ?? block.text ?? "",
-      )}"></antiek-region-embed>`;
-    case "cross_doc_link":
-      return `<antiek-cross-doc-link from_doc="${escape(
-        (attrs.from_doc as string) ?? "",
-      )}" to_doc="${escape(
-        (attrs.to_doc as string) ?? "",
-      )}" bridge="${escape(
-        (attrs.bridge as string) ?? block.text ?? "",
-      )}"></antiek-cross-doc-link>`;
-    case "master_section":
-      return `<antiek-master-section synthesis_id="${escape(
-        (attrs.synthesis_id as string) ?? "",
-      )}" section="${escape(
-        (attrs.section as string) ?? block.text ?? "",
-      )}"></antiek-master-section>`;
-    case "question_card":
-      return `<antiek-question-card parked_question_id="${escape(
-        (attrs.parked_question_id as string) ?? "",
-      )}" text="${escape(
-        block.text ?? (attrs.text as string) ?? "",
-      )}"></antiek-question-card>`;
-    case "chat_exchange":
-      return `<antiek-chat-exchange exchange_id="${escape(
-        (attrs.exchange_id as string) ?? "",
-      )}" user_text="${escape(
-        (attrs.user_text as string) ?? "",
-      )}" assistant_text="${escape(
-        (attrs.assistant_text as string) ?? block.text ?? "",
-      )}"></antiek-chat-exchange>`;
-    case "image":
-      return `<antiek-image src="${escape(
-        (attrs.src as string) ?? "",
-      )}" alt="${escape(
-        (attrs.alt as string) ?? "",
-      )}" caption="${escape(
-        (attrs.caption as string) ?? block.text ?? "",
-      )}"></antiek-image>`;
-    case "latex":
-      return `<antiek-latex source="${escape(
-        (attrs.source as string) ?? block.text ?? "",
-      )}"></antiek-latex>`;
+      return noteBlockHtml(textValue(block.text) ?? textValue(attrs.text) ?? "");
+    case "claim_card": {
+      const claimId = nonEmptyString(attrs.claim_id);
+      if (!claimId) return fallbackNoteBlockHtml(block, "Missing claim id");
+      return customElementHtml("antiek-claim-card", {
+        claim_id: claimId,
+        investigation_id: nonEmptyString(attrs.investigation_id),
+      });
+    }
+    case "region_embed": {
+      const documentId = nonEmptyString(attrs.document_id);
+      if (!documentId) return fallbackNoteBlockHtml(block, "Missing document id");
+      return customElementHtml("antiek-region-embed", {
+        document_id: documentId,
+        page: positiveIntegerString(attrs.page),
+        caption: textValue(attrs.caption) ?? textValue(block.text),
+      });
+    }
+    case "cross_doc_link": {
+      const fromDoc = nonEmptyString(attrs.from_doc);
+      const toDoc = nonEmptyString(attrs.to_doc);
+      if (!fromDoc || !toDoc) {
+        return fallbackNoteBlockHtml(block, "Missing cross-document ids");
+      }
+      return customElementHtml("antiek-cross-doc-link", {
+        from_doc: fromDoc,
+        to_doc: toDoc,
+        bridge: textValue(attrs.bridge) ?? textValue(block.text),
+      });
+    }
+    case "master_section": {
+      const synthesisId = nonEmptyString(attrs.synthesis_id);
+      if (!synthesisId) return fallbackNoteBlockHtml(block, "Missing synthesis id");
+      return customElementHtml("antiek-master-section", {
+        synthesis_id: synthesisId,
+        section: textValue(attrs.section) ?? textValue(block.text),
+      });
+    }
+    case "question_card": {
+      const text = textValue(block.text) ?? textValue(attrs.text);
+      if (!text) return fallbackNoteBlockHtml(block, "Missing question text");
+      return customElementHtml("antiek-question-card", {
+        parked_question_id: nonEmptyString(attrs.parked_question_id),
+        text,
+      });
+    }
+    case "chat_exchange": {
+      const userText = textValue(attrs.user_text);
+      const assistantText = textValue(attrs.assistant_text) ?? textValue(block.text);
+      if (!userText && !assistantText) {
+        return fallbackNoteBlockHtml(block, "Missing chat exchange text");
+      }
+      return customElementHtml("antiek-chat-exchange", {
+        exchange_id: nonEmptyString(attrs.exchange_id),
+        user_text: userText,
+        assistant_text: assistantText,
+      });
+    }
+    case "image": {
+      const src = nonEmptyString(attrs.src);
+      if (!src) return fallbackNoteBlockHtml(block, "Missing image source");
+      return customElementHtml("antiek-image", {
+        src,
+        alt: textValue(attrs.alt),
+        caption: textValue(attrs.caption) ?? textValue(block.text),
+      });
+    }
+    case "latex": {
+      const source = textValue(attrs.source) ?? textValue(block.text);
+      if (!source) return fallbackNoteBlockHtml(block, "Missing LaTeX source");
+      return customElementHtml("antiek-latex", { source });
+    }
   }
+}
+
+function fallbackNoteBlockHtml(
+  block: NotebookActionBlock,
+  fallbackText: string,
+): string {
+  const attrs = block.attrs ?? {};
+  return noteBlockHtml(
+    nonEmptyString(block.text) ??
+      nonEmptyString(attrs.text) ??
+      nonEmptyString(attrs.caption) ??
+      nonEmptyString(attrs.bridge) ??
+      nonEmptyString(attrs.assistant_text) ??
+      fallbackText,
+  );
+}
+
+function noteBlockHtml(text: string): string {
+  return customElementHtml("antiek-note", { text });
+}
+
+function customElementHtml(
+  tag: string,
+  attrs: Record<string, string | null | undefined>,
+): string {
+  const renderedAttrs = Object.entries(attrs)
+    .filter((entry): entry is [string, string] => entry[1] != null)
+    .map(([name, value]) => `${name}="${escapeAttr(value)}"`)
+    .join(" ");
+  return renderedAttrs ? `<${tag} ${renderedAttrs}></${tag}>` : `<${tag}></${tag}>`;
+}
+
+function escapeAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function textValue(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function positiveIntegerString(value: unknown): string | null {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value > 0 ? String(value) : null;
+  }
+  const text = nonEmptyString(value);
+  if (!text || !/^\d+$/.test(text)) return null;
+  const n = Number(text);
+  return Number.isSafeInteger(n) && n > 0 ? String(n) : null;
 }
 
 // ─── Workspace context serialisation (sent TO the assistant) ─────────
