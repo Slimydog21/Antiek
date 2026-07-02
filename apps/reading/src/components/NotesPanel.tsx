@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 
 import type {
+  Claim,
   ClaimChallengeRaisedPayload,
   ClaimGroundingCheckFailedPayload,
   ClaimGroundingCheckPassedPayload,
@@ -47,6 +48,45 @@ function nonEmptyString(value: unknown): string | null {
 
 function displayString(value: unknown, fallback: string): string {
   return nonEmptyString(value) ?? fallback;
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const trimmed = nonEmptyString(item);
+        return trimmed ? [trimmed] : [];
+      })
+    : [];
+}
+
+function isClaimConfidence(value: unknown): value is Claim["confidence"] {
+  return (
+    value === "high" ||
+    value === "moderate" ||
+    value === "low" ||
+    value === "unknown"
+  );
+}
+
+function safeClaim(value: unknown): Claim | null {
+  if (value === null || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const claimId = nonEmptyString(record.claim_id);
+  const text = nonEmptyString(record.text);
+  if (!claimId || !text) return null;
+
+  return {
+    claim_id: claimId,
+    text,
+    confidence: isClaimConfidence(record.confidence)
+      ? record.confidence
+      : "unknown",
+    attribution_region_ids: stringList(record.attribution_region_ids),
+    node_id:
+      typeof record.node_id === "string" || record.node_id === null
+        ? record.node_id
+        : undefined,
+  };
 }
 
 /**
@@ -337,22 +377,31 @@ function AssistantClaimsBubble({
   documentId: string | null;
   groundingByClaim: Map<string, GroundingStatus>;
 }) {
+  const claims = Array.isArray(payload.claims)
+    ? payload.claims.flatMap((claim) => {
+        const safe = safeClaim(claim);
+        return safe ? [safe] : [];
+      })
+    : [];
+  const tokenCount = nonNegativeSafeInteger(payload.token_count);
+  const renderedText = nonEmptyString(payload.rendered_text);
+
   return (
     <li
       id={`event-row-${eventId}`}
       className="flex flex-col items-start gap-1 scroll-mt-4 transition-shadow rounded-md"
     >
       <div className="text-[10px] font-mono text-shadow-1 dark:text-moonlight">
-        synthesizer · {payload.claims.length} claim
-        {payload.claims.length === 1 ? "" : "s"} · {payload.token_count} tok
+        synthesizer · {claims.length} claim{claims.length === 1 ? "" : "s"} ·{" "}
+        {tokenCount ?? "?"} tok
       </div>
-      {payload.rendered_text && (
+      {renderedText && (
         <div className="max-w-[90%] text-sm text-ink dark:text-bright italic bg-ice-1 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded-md px-3 py-2">
-          {payload.rendered_text}
+          {renderedText}
         </div>
       )}
       {documentId &&
-        payload.claims.map((c) => (
+        claims.map((c) => (
           <div key={c.claim_id} className="w-[90%]">
             <ClaimCard
               claim={c}
@@ -485,7 +534,8 @@ function findPendingRequestIds(events: Event[]): Set<string> {
       requested.add(e.event_id);
     } else if (e.action_type === "distillation.delivered") {
       const p = e.payload as DistillationDeliveredPayload;
-      fulfilled.add(p.request_event_id);
+      const requestEventId = nonEmptyString(p.request_event_id);
+      if (requestEventId) fulfilled.add(requestEventId);
     }
   }
   for (const fid of fulfilled) requested.delete(fid);
