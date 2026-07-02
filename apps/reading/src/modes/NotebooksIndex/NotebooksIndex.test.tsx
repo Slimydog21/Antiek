@@ -142,4 +142,74 @@ describe("NotebooksIndex", () => {
       }),
     );
   });
+
+  it("sanitizes notebook list rows before rendering and navigation", async () => {
+    apiFetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        notebooks: [
+          {
+            notebook_id: " nb dirty ",
+            title: " ",
+            investigation_id: " inv-dirty ",
+            document_id: " ",
+            content_class: "unexpected",
+            created_at: null,
+            updated_at: " 2026-07-01T03:00:00Z ",
+          },
+          {
+            notebook_id: " ",
+            title: "Skipped notebook",
+            content_class: "user_public_contribution",
+          },
+        ],
+      }),
+    });
+
+    renderIndex();
+
+    expect(await screen.findByText("Untitled notebook")).toBeTruthy();
+    expect(screen.queryByText("Skipped notebook")).toBeNull();
+    expect(screen.getByText("linked research")).toBeTruthy();
+    expect(screen.getByText("2026-07-01T03:00:00Z")).toBeTruthy();
+    expect(
+      screen.getByRole("row", {
+        name: /Untitled notebook.*linked research.*2026-07-01T03:00:00Z.*Private/i,
+      }),
+    ).toBeTruthy();
+
+    await userEvent.click(screen.getByText("Untitled notebook"));
+    expect(screen.getByTestId("location").textContent).toBe("/notebook/nb%20dirty");
+  });
+
+  it("sanitizes create responses before navigating", async () => {
+    apiFetchMock.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === "/notebooks" && init?.method === "POST") {
+        return {
+          ok: true,
+          json: async () => ({
+            notebook_id: " nb created dirty ",
+            title: "  New synthesis  ",
+            content_class: "unexpected",
+          }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({ notebooks: [] }),
+      };
+    });
+
+    renderIndex();
+    await screen.findByText("No notebooks match this filter.");
+
+    await userEvent.type(screen.getByPlaceholderText("Title"), "New synthesis");
+    await userEvent.click(screen.getByRole("button", { name: "Create notebook" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/notebook/nb%20created%20dirty",
+      );
+    });
+  });
 });

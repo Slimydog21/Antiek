@@ -24,11 +24,6 @@ interface NotebookSummary {
   updated_at: string;
 }
 
-interface ListResponse {
-  count: number;
-  notebooks: NotebookSummary[];
-}
-
 const FILTERS = ["all", "user_owned", "user_public_contribution"] as const;
 type NotebookFilter = (typeof FILTERS)[number];
 
@@ -52,6 +47,52 @@ function notebookLinkSummary(row: NotebookSummary): string {
   return links.length > 0 ? links.join(" · ") : "No linked source";
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function notebookContentClass(value: unknown): NotebookSummary["content_class"] {
+  return value === "user_public_contribution"
+    ? "user_public_contribution"
+    : "user_owned";
+}
+
+function safeNotebookSummary(value: unknown): NotebookSummary | null {
+  const row = record(value);
+  const notebookId = nonEmptyString(row?.notebook_id);
+  if (!row || !notebookId) return null;
+  return {
+    notebook_id: notebookId,
+    title: nonEmptyString(row.title) ?? "Untitled notebook",
+    investigation_id: nullableString(row.investigation_id),
+    document_id: nullableString(row.document_id),
+    content_class: notebookContentClass(row.content_class),
+    created_at: nonEmptyString(row.created_at) ?? "",
+    updated_at: nonEmptyString(row.updated_at) ?? "",
+  };
+}
+
+function safeNotebookList(value: unknown): NotebookSummary[] {
+  const body = record(value);
+  const rows = Array.isArray(body?.notebooks) ? body.notebooks : [];
+  return rows.flatMap((item) => {
+    const row = safeNotebookSummary(item);
+    return row ? [row] : [];
+  });
+}
+
 export default function NotebooksIndex() {
   const navigate = useNavigate();
   const [rows, setRows] = useState<NotebookSummary[]>([]);
@@ -72,8 +113,7 @@ export default function NotebooksIndex() {
       if (!resp.ok) {
         throw new Error(`Couldn’t load notebooks (HTTP ${resp.status}).`);
       }
-      const data: ListResponse = await resp.json();
-      setRows(data.notebooks ?? []);
+      setRows(safeNotebookList(await resp.json()));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -109,10 +149,10 @@ export default function NotebooksIndex() {
       if (!resp.ok) {
         throw new Error(`Couldn’t create the notebook (HTTP ${resp.status}).`);
       }
-      const created: NotebookSummary = await resp.json();
+      const created = safeNotebookSummary(await resp.json());
       setDraftTitle("");
       setDraftInvId("");
-      if (created.notebook_id) {
+      if (created?.notebook_id) {
         navigate(`/notebook/${encodeURIComponent(created.notebook_id)}`);
       }
     } catch (e: unknown) {
