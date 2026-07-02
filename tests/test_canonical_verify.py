@@ -34,6 +34,12 @@ def test_canonical_verify_handoff_pass_fixture() -> None:
     assert "AUDIT_OK" in proc.stdout
 
 
+def test_canonical_verify_handoff_uses_repo_local_tsx() -> None:
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert "apps/reading/node_modules/.bin/tsx" in src
+    assert "npx --yes tsx" not in src
+
+
 def test_canonical_verify_cascade_hermetic() -> None:
     if not PY.is_file():
         return

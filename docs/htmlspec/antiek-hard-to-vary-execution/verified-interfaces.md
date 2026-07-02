@@ -96,10 +96,9 @@ These are recorded so sprint HTML and handoffs fail ref-lint if reintroduced (AM
 Before `### Status: done` on a spec-touching sprint:
 
 1. `bash scripts/agent_ams_ref_lint.sh <sprint.html>` → exit **0**
-2. `npx tsx tools/agent/verify_handoff.ts <handoff.md>` → `HANDOFF_OK`
-3. `bash scripts/audit_agent_session.sh <handoff.md>` → `AUDIT_OK`
-4. `### Not proved` lists what ref-lint + pytest did **not** cover
-5. `./scripts/canonical_verify.sh agent-gates` → `CANONICAL_VERIFY_OK: agent-gates` (SPR-08/09)
+2. `./scripts/canonical_verify.sh handoff <handoff.md>` → `HANDOFF_OK` + `AUDIT_OK`
+3. `### Not proved` lists what ref-lint + pytest did **not** cover
+4. `./scripts/canonical_verify.sh agent-gates` → `CANONICAL_VERIFY_OK: agent-gates` (SPR-08/09)
 
 ---
 

@@ -70,7 +70,7 @@ Exit **0** = no chip-level fiction. Exit **1** = at least one `FAIL`. Exit **2**
 
 | Gate | Script | Phase | Complements ref-lint by… |
 |------|--------|-------|---------------------------|
-| Handoff schema | `npx tsx tools/agent/verify_handoff.ts` | D/E | Headings, Not proved order, pytest\|tail theater (F1) |
+| Handoff schema | `./scripts/canonical_verify.sh handoff <handoff.md>` | D/E | Headings, Not proved order, pytest\|tail theater (F1) |
 | Session theater | `bash scripts/audit_agent_session.sh` | D/E | F3 platform OK without Scope Map |
 | AMS ref-lint | `bash scripts/agent_ams_ref_lint.sh` | **E** | F3/F5 path fiction in spec HTML |
 
