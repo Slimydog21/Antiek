@@ -27,6 +27,11 @@ function finiteNonNegativeNumber(value: unknown): number | null {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
+function nonNegativeSafeInteger(value: unknown): number | null {
+  const parsed = finiteNonNegativeNumber(value);
+  return parsed !== null && Number.isSafeInteger(parsed) ? parsed : null;
+}
+
 function safeStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
@@ -38,7 +43,7 @@ function safeStringArray(value: unknown): string[] {
 function safeNumberArray(value: unknown): number[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
-    const number = finiteNonNegativeNumber(item);
+    const number = nonNegativeSafeInteger(item);
     return number === null ? [] : [number];
   });
 }
