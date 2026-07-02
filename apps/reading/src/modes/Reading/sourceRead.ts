@@ -49,10 +49,25 @@ export const READ_DWELL_MS_THRESHOLD = 30_000;
  * "read" verdict trips — a single-page glance is not a read. */
 export const READ_MIN_PAGES = 2;
 
+function nonEmptyTrimmedString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function nonNegativeFiniteInteger(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.round(value) : 0;
+}
+
 /** Has the reader dwelled enough on this source to count as "read"? Pure — the
  * caller supplies the measured evidence from the focused-dwell clock. */
 export function isRead(dwellMs: number, pagesSeen: number): boolean {
-  return dwellMs >= READ_DWELL_MS_THRESHOLD && pagesSeen >= READ_MIN_PAGES;
+  return (
+    Number.isFinite(dwellMs) &&
+    Number.isFinite(pagesSeen) &&
+    dwellMs >= READ_DWELL_MS_THRESHOLD &&
+    pagesSeen >= READ_MIN_PAGES
+  );
 }
 
 /**
@@ -72,17 +87,21 @@ export async function emitSourceRead(args: {
   dwellMs: number;
   pageCount: number;
 }): Promise<void> {
+  const documentId = nonEmptyTrimmedString(args.documentId);
+  const readingThreadId = nonEmptyTrimmedString(args.readingThreadId);
+  if (!documentId || !readingThreadId) return;
+  const chunkId = args.chunkId == null ? null : nonEmptyTrimmedString(args.chunkId);
   const payload: SourceReadPayload = {
     action_type: "source.read",
-    chunk_id: args.chunkId ?? null,
+    chunk_id: chunkId,
     // Integer ms — the schema pins ge=0; round the float dwell clock.
-    dwell_ms: Math.max(0, Math.round(args.dwellMs)),
-    page_count: Math.max(0, args.pageCount),
+    dwell_ms: nonNegativeFiniteInteger(args.dwellMs),
+    page_count: nonNegativeFiniteInteger(args.pageCount),
   };
   try {
     await postTypedEvent({
-      investigation_id: args.readingThreadId,
-      document_id: args.documentId,
+      investigation_id: readingThreadId,
+      document_id: documentId,
       payload,
     });
   } catch {
