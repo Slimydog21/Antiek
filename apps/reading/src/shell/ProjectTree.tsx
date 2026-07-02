@@ -5,6 +5,7 @@ import { useWorkspace } from "../workspace/WorkspaceStore";
 import { usePinned } from "../components/navigation/pinnedStore";
 import { useOpenDocument } from "../lib/openDocument";
 import {
+  apiFetch,
   listDeliverables,
   listInvestigations,
   type InvestigationSummary,
@@ -28,10 +29,10 @@ import {
  *
  * The sections are driven by WORKFLOWS[wf].nouns from the taxonomy, so the
  * tree re-scopes automatically when the rail switches workflows. Within a
- * section, Research reads live investigations and Write reads live deliverables;
- * the remaining workflows use mock fixtures until their live hooks land. The
- * architecture — workflow-scoped nouns + click-to-open / Cmd-click-to-float —
- * is what's load-bearing here.
+ * section, Research reads live investigations, Read reads live documents and
+ * notebooks, and Write reads live deliverables; Speak still uses mock fixtures
+ * until its live hooks land. The architecture — workflow-scoped nouns +
+ * click-to-open / Cmd-click-to-float — is what's load-bearing here.
  *
  * This SUPERSEDES the flat Pinned/Recent/All tree at
  * components/navigation/ProjectTree.tsx; PanelRegistry now points here.
@@ -49,10 +50,7 @@ type TreeNode = {
 // Replaced by live hooks per-workflow as each data layer lands.
 const MOCK_RECENT: Record<Exclude<Workflow, "shared">, TreeNode[]> = {
   research: [],
-  read: [
-    { kind: "document", id: "kalshi-paper", title: "Kalshi liquidity preprint.pdf" },
-    { kind: "notebook", id: "synth-nvda", title: "NVDA synthesis · draft 2" },
-  ],
+  read: [],
   write: [],
   speak: [],
 };
@@ -168,6 +166,40 @@ function safeInvestigationNodes(value: unknown): TreeNode[] {
   });
 }
 
+function safeDocumentNodes(value: unknown): TreeNode[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const row =
+      typeof item === "object" && item !== null && !Array.isArray(item)
+        ? (item as Record<string, unknown>)
+        : null;
+    const id = nonEmptyString(row?.document_id);
+    if (!id) return [];
+    return [{
+      kind: "document" as const,
+      id,
+      title: nonEmptyString(row?.title) ?? "Untitled source",
+    }];
+  });
+}
+
+function safeNotebookNodes(value: unknown): TreeNode[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const row =
+      typeof item === "object" && item !== null && !Array.isArray(item)
+        ? (item as Record<string, unknown>)
+        : null;
+    const id = nonEmptyString(row?.notebook_id);
+    if (!id) return [];
+    return [{
+      kind: "notebook" as const,
+      id,
+      title: nonEmptyString(row?.title) ?? "Untitled notebook",
+    }];
+  });
+}
+
 export function ProjectTree({
   /** Override the active workflow (Storybook); defaults to the route. */
   workflow: forced,
@@ -186,6 +218,7 @@ export function ProjectTree({
   const openPanel = useWorkspace((s) => s.open);
   const openDocument = useOpenDocument();
   const [researchRecent, setResearchRecent] = useState<TreeNode[]>([]);
+  const [readRecent, setReadRecent] = useState<TreeNode[]>([]);
   const [writeRecent, setWriteRecent] = useState<TreeNode[]>([]);
 
   const pinnedKey = (n: TreeNode) => `${n.kind}:${n.id}`;
@@ -199,6 +232,36 @@ export function ProjectTree({
       })
       .catch(() => {
         if (!cancelled) setResearchRecent([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workflow]);
+
+  useEffect(() => {
+    if (workflow !== "read") return;
+    let cancelled = false;
+    Promise.all([
+      apiFetch("/documents?limit=50").catch(() => null),
+      apiFetch("/notebooks").catch(() => null),
+    ])
+      .then(async ([documentsResp, notebooksResp]) => {
+        if (cancelled) return;
+        const [documentsBody, notebooksBody] = await Promise.all([
+          documentsResp?.ok ? documentsResp.json().catch(() => null) : null,
+          notebooksResp?.ok ? notebooksResp.json().catch(() => null) : null,
+        ]);
+        if (cancelled) return;
+        const documents = safeDocumentNodes(
+          Array.isArray(documentsBody?.documents) ? documentsBody.documents : [],
+        );
+        const notebooks = safeNotebookNodes(
+          Array.isArray(notebooksBody?.notebooks) ? notebooksBody.notebooks : [],
+        );
+        setReadRecent([...documents, ...notebooks]);
+      })
+      .catch(() => {
+        if (!cancelled) setReadRecent([]);
       });
     return () => {
       cancelled = true;
@@ -223,6 +286,8 @@ export function ProjectTree({
   const recent =
     workflow === "research"
       ? researchRecent
+      : workflow === "read"
+        ? readRecent
       : workflow === "write"
         ? writeRecent
         : MOCK_RECENT[workflow];

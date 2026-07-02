@@ -7,7 +7,13 @@ import type { Workflow } from "./workflowTaxonomy";
 import { usePinned } from "../components/navigation/pinnedStore";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 
-const { listDeliverablesMock, listInvestigationsMock, openDocumentMock } = vi.hoisted(() => ({
+const {
+  apiFetchMock,
+  listDeliverablesMock,
+  listInvestigationsMock,
+  openDocumentMock,
+} = vi.hoisted(() => ({
+  apiFetchMock: vi.fn(),
   listDeliverablesMock: vi.fn(),
   listInvestigationsMock: vi.fn(),
   openDocumentMock: vi.fn(),
@@ -15,6 +21,7 @@ const { listDeliverablesMock, listInvestigationsMock, openDocumentMock } = vi.ho
 
 vi.mock("../lib/api", async (orig) => ({
   ...(await orig<typeof import("../lib/api")>()),
+  apiFetch: apiFetchMock,
   listDeliverables: listDeliverablesMock,
   listInvestigations: listInvestigationsMock,
 }));
@@ -48,6 +55,21 @@ function renderTree(workflow: Exclude<Workflow, "shared"> = "read") {
 }
 
 beforeEach(() => {
+  apiFetchMock.mockReset().mockImplementation(async (path: string) => {
+    if (String(path).startsWith("/documents")) {
+      return {
+        ok: true,
+        json: async () => ({ documents: [] }),
+      };
+    }
+    if (String(path) === "/notebooks") {
+      return {
+        ok: true,
+        json: async () => ({ notebooks: [] }),
+      };
+    }
+    return { ok: false, json: async () => ({}) };
+  });
   listDeliverablesMock.mockReset().mockResolvedValue({ count: 0, deliverables: [] });
   listInvestigationsMock.mockReset().mockResolvedValue({ count: 0, investigations: [] });
   openDocumentMock.mockReset();
@@ -58,25 +80,93 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("ProjectTree workflow actions", () => {
-  it("opens a document through the one Reader door on normal click", () => {
+  it("loads live Read documents and notebooks", async () => {
+    apiFetchMock.mockImplementation(async (path: string) => {
+      if (String(path).startsWith("/documents")) {
+        return {
+          ok: true,
+          json: async () => ({
+            documents: [
+              { document_id: " doc-live ", title: "  Live document  " },
+              { document_id: "doc-untitled", title: " " },
+              { document_id: " ", title: "Skipped document" },
+            ],
+          }),
+        };
+      }
+      if (String(path) === "/notebooks") {
+        return {
+          ok: true,
+          json: async () => ({
+            notebooks: [
+              { notebook_id: " nb-live ", title: "  Live notebook  " },
+              { notebook_id: " ", title: "Skipped notebook" },
+            ],
+          }),
+        };
+      }
+      return { ok: false, json: async () => ({}) };
+    });
+
     renderTree("read");
 
-    fireEvent.click(screen.getByText("Kalshi liquidity preprint.pdf"));
+    expect(await screen.findByText("Live document")).toBeTruthy();
+    expect(screen.getByText("Untitled source")).toBeTruthy();
+    expect(screen.getByText("Live notebook")).toBeTruthy();
+    expect(screen.queryByText("Skipped document")).toBeNull();
+    expect(screen.queryByText("Skipped notebook")).toBeNull();
+    expect(screen.getByRole("button", { name: /Recent\s*3/ })).toBeTruthy();
+  });
+
+  it("opens a live document through the one Reader door on normal click", async () => {
+    apiFetchMock.mockImplementation(async (path: string) => {
+      if (String(path).startsWith("/documents")) {
+        return {
+          ok: true,
+          json: async () => ({
+            documents: [{ document_id: " doc-live ", title: "  Live document  " }],
+          }),
+        };
+      }
+      if (String(path) === "/notebooks") {
+        return { ok: true, json: async () => ({ notebooks: [] }) };
+      }
+      return { ok: false, json: async () => ({}) };
+    });
+
+    renderTree("read");
+
+    fireEvent.click(await screen.findByText("Live document"));
 
     expect(openDocumentMock).toHaveBeenCalledTimes(1);
-    expect(openDocumentMock).toHaveBeenCalledWith("kalshi-paper");
+    expect(openDocumentMock).toHaveBeenCalledWith("doc-live");
     expect(useWorkspace.getState().floatingIds).toEqual([]);
   });
 
-  it("opens a document in inspect mode on Cmd/Ctrl-click instead of a PDF panel", () => {
+  it("opens a live document in inspect mode on Cmd/Ctrl-click instead of a PDF panel", async () => {
+    apiFetchMock.mockImplementation(async (path: string) => {
+      if (String(path).startsWith("/documents")) {
+        return {
+          ok: true,
+          json: async () => ({
+            documents: [{ document_id: "doc-inspect", title: "Inspect document" }],
+          }),
+        };
+      }
+      if (String(path) === "/notebooks") {
+        return { ok: true, json: async () => ({ notebooks: [] }) };
+      }
+      return { ok: false, json: async () => ({}) };
+    });
+
     renderTree("read");
 
-    fireEvent.click(screen.getByText("Kalshi liquidity preprint.pdf"), {
+    fireEvent.click(await screen.findByText("Inspect document"), {
       metaKey: true,
     });
 
     expect(openDocumentMock).toHaveBeenCalledTimes(1);
-    expect(openDocumentMock).toHaveBeenCalledWith("kalshi-paper", {
+    expect(openDocumentMock).toHaveBeenCalledWith("doc-inspect", {
       mode: "inspect",
     });
     expect(useWorkspace.getState().floatingIds).toEqual([]);
@@ -150,17 +240,30 @@ describe("ProjectTree workflow actions", () => {
     expect(screen.getByTestId("location").textContent).toBe("/library");
   });
 
-  it("pins item-specific rows with accessible labels and moves them above Recent", () => {
+  it("pins item-specific rows with accessible labels and moves them above Recent", async () => {
+    apiFetchMock.mockImplementation(async (path: string) => {
+      if (String(path).startsWith("/documents")) {
+        return {
+          ok: true,
+          json: async () => ({
+            documents: [{ document_id: "doc-pin", title: "Pinned document" }],
+          }),
+        };
+      }
+      if (String(path) === "/notebooks") {
+        return { ok: true, json: async () => ({ notebooks: [] }) };
+      }
+      return { ok: false, json: async () => ({}) };
+    });
     renderTree("read");
 
-    fireEvent.click(screen.getByLabelText("Pin Kalshi liquidity preprint.pdf"));
+    await screen.findByText("Pinned document");
+    fireEvent.click(screen.getByLabelText("Pin Pinned document"));
 
-    expect(usePinned.getState().isPinned("document:kalshi-paper")).toBe(true);
-    expect(
-      screen.getByLabelText("Unpin Kalshi liquidity preprint.pdf"),
-    ).toBeTruthy();
+    expect(usePinned.getState().isPinned("document:doc-pin")).toBe(true);
+    expect(screen.getByLabelText("Unpin Pinned document")).toBeTruthy();
     expect(screen.getByRole("button", { name: /Pinned\s*1/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Recent\s*1/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Recent\s*0/ })).toBeTruthy();
   });
 
   it("loads live Write pieces into the workflow tree and opens the Write loop", async () => {
