@@ -1249,7 +1249,7 @@ describe("books api — meta-reading boundary", () => {
       length_amount: 12,
       research_tier: "fast",
       corpus_scope: "soft",
-      document_ids: [" doc-a ", " ", "doc-b"],
+      document_ids: [" doc-a ", " ", "doc-b", " doc-a ", "doc-b"],
     });
 
     expect(apiFetchMock).toHaveBeenCalledTimes(1);

@@ -392,7 +392,8 @@ function requireNonEmptyRequestString(value: unknown, field: string): string {
 
 function sanitizeOptionalRequestStringArray(value: unknown): string[] | undefined {
   const strings = safeStringArray(value);
-  return strings.length > 0 ? strings : undefined;
+  const deduped = Array.from(new Set(strings));
+  return deduped.length > 0 ? deduped : undefined;
 }
 
 function safeStringArray(value: unknown): string[] {
