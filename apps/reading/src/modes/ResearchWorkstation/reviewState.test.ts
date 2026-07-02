@@ -233,15 +233,15 @@ describe("scheduleClaimReview", () => {
 describe("emitClaimReviewed", () => {
   it("posts a claim.reviewed typed event with scheduler metadata and no body", async () => {
     await expect(emitClaimReviewed({
-      investigationId: "read-syn-1",
-      synthesisId: "syn-1",
-      claimId: "2",
+      investigationId: " read-syn-1 ",
+      synthesisId: " syn-1 ",
+      claimId: " 2 ",
       reviewedAt: new Date("2026-06-30T10:00:00Z"),
       nextDueAt: new Date("2026-07-01T10:00:00Z"),
-      rating: "good",
+      rating: " good ",
       ease: 2.5,
       intervalDays: 1,
-      dueLabel: "Due tomorrow",
+      dueLabel: " Due tomorrow ",
     })).resolves.toBe(true);
 
     expect(postTypedEventMock).toHaveBeenCalledTimes(1);
@@ -254,10 +254,53 @@ describe("emitClaimReviewed", () => {
     expect(env.synthesis_id).toBe("syn-1");
     expect(env.payload.action_type).toBe("claim.reviewed");
     expect(env.payload.claim_id).toBe("2");
+    expect(env.payload.rating).toBe("good");
+    expect(env.payload.ease).toBe(2.5);
+    expect(env.payload.interval_days).toBe(1);
+    expect(env.payload.due_label).toBe("Due tomorrow");
     expect(env.payload.next_due_at).toBe("2026-07-01T10:00:00.000Z");
     for (const forbidden of ["content", "excerpt", "text", "body", "full_text", "snippet"]) {
       expect(env.payload[forbidden]).toBeUndefined();
     }
+  });
+
+  it("drops malformed review handles and dates before touching the typed-event funnel", async () => {
+    const valid = {
+      investigationId: "read-syn",
+      synthesisId: "syn",
+      claimId: "1",
+      reviewedAt: new Date("2026-06-30T10:00:00Z"),
+      nextDueAt: new Date("2026-07-01T10:00:00Z"),
+    };
+
+    await expect(emitClaimReviewed({ ...valid, investigationId: " " })).resolves.toBe(false);
+    await expect(emitClaimReviewed({ ...valid, synthesisId: " " })).resolves.toBe(false);
+    await expect(emitClaimReviewed({ ...valid, claimId: " " })).resolves.toBe(false);
+    await expect(emitClaimReviewed({ ...valid, reviewedAt: new Date(Number.NaN) })).resolves.toBe(false);
+    await expect(emitClaimReviewed({ ...valid, nextDueAt: new Date(Number.NaN) })).resolves.toBe(false);
+
+    expect(postTypedEventMock).not.toHaveBeenCalled();
+  });
+
+  it("nulls malformed optional scheduler metadata before posting", async () => {
+    await expect(emitClaimReviewed({
+      investigationId: "read-syn",
+      synthesisId: "syn",
+      claimId: "1",
+      reviewedAt: new Date("2026-06-30T10:00:00Z"),
+      nextDueAt: new Date("2026-07-01T10:00:00Z"),
+      rating: " ",
+      ease: Number.POSITIVE_INFINITY,
+      intervalDays: -1,
+      dueLabel: " ",
+    })).resolves.toBe(true);
+
+    expect(postTypedEventMock).toHaveBeenCalledTimes(1);
+    const env = postTypedEventMock.mock.calls[0][0] as { payload: Record<string, unknown> };
+    expect(env.payload.rating).toBeNull();
+    expect(env.payload.ease).toBeNull();
+    expect(env.payload.interval_days).toBeNull();
+    expect(env.payload.due_label).toBeNull();
   });
 
   it("is best-effort and never throws into the reader", async () => {
