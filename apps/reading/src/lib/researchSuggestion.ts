@@ -80,10 +80,13 @@ export async function acceptPromotion(args: {
    * provenance (`document_id`). */
   documentId: string;
 }): Promise<PromotionResult> {
+  const assetId = requireNonEmptyString(args.assetId, "assetId");
+  const prompt = requireNonEmptyString(args.prompt, "prompt");
+  const documentId = requireNonEmptyString(args.documentId, "documentId");
   const started = await startInvestigation({
-    question: args.prompt,
+    question: prompt,
     context: "Promoted from a meta-reading asset (Read → Research).",
-    spawn_context: `read-meta-asset:${args.assetId}`,
+    spawn_context: `read-meta-asset:${assetId}`,
   });
   const investigationId = requireInvestigationId(started.investigation_id);
 
@@ -93,16 +96,16 @@ export async function acceptPromotion(args: {
   try {
     await postTypedEvent({
       investigation_id: investigationId,
-      document_id: args.documentId,
+      document_id: documentId,
       payload: {
         action_type: "seam.read_to_research",
-        entity_id: `read-meta-asset:${args.assetId}`,
+        entity_id: `read-meta-asset:${assetId}`,
         entity_kind: "document_region",
-        provenance_ref: args.assetId,
+        provenance_ref: assetId,
         terminates: true,
         from_workflow: "read",
         to_workflow: "research",
-        document_id: args.documentId,
+        document_id: documentId,
         launched_investigation_id: investigationId,
       },
       role: "read/meta_reading",

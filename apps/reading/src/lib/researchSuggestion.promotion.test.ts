@@ -51,7 +51,7 @@ describe("suggestPromotion (pure)", () => {
 });
 
 describe("acceptPromotion", () => {
-  it("trims the launched investigation id before recording the seam event", async () => {
+  it("trims promotion inputs and the launched investigation id before recording the seam event", async () => {
     startInvestigationMock.mockResolvedValue({
       investigation_id: " inv-promoted ",
       status: "in_progress",
@@ -63,20 +63,55 @@ describe("acceptPromotion", () => {
     });
 
     const result = await acceptPromotion({
-      assetId: "asset-1",
-      prompt: "What matters?",
-      documentId: "doc-1",
+      assetId: " asset-1 ",
+      prompt: " What matters? ",
+      documentId: " doc-1 ",
     });
 
     expect(result).toEqual({ investigation_id: "inv-promoted" });
+    expect(startInvestigationMock).toHaveBeenCalledWith({
+      question: "What matters?",
+      context: "Promoted from a meta-reading asset (Read → Research).",
+      spawn_context: "read-meta-asset:asset-1",
+    });
     expect(postTypedEventMock).toHaveBeenCalledTimes(1);
     expect(postTypedEventMock.mock.calls[0][0]).toMatchObject({
       investigation_id: "inv-promoted",
       document_id: "doc-1",
       payload: {
+        entity_id: "read-meta-asset:asset-1",
+        provenance_ref: "asset-1",
+        document_id: "doc-1",
         launched_investigation_id: "inv-promoted",
       },
     });
+  });
+
+  it("rejects malformed promotion inputs before launching research or emitting a seam event", async () => {
+    await expect(
+      acceptPromotion({
+        assetId: " ",
+        prompt: "What matters?",
+        documentId: "doc-1",
+      }),
+    ).rejects.toThrow(/assetId/);
+    await expect(
+      acceptPromotion({
+        assetId: "asset-1",
+        prompt: " ",
+        documentId: "doc-1",
+      }),
+    ).rejects.toThrow(/prompt/);
+    await expect(
+      acceptPromotion({
+        assetId: "asset-1",
+        prompt: "What matters?",
+        documentId: " ",
+      }),
+    ).rejects.toThrow(/documentId/);
+
+    expect(startInvestigationMock).not.toHaveBeenCalled();
+    expect(postTypedEventMock).not.toHaveBeenCalled();
   });
 
   it("rejects malformed launched ids before emitting a seam event", async () => {
