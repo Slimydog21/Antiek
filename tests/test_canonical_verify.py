@@ -48,3 +48,11 @@ def test_canonical_verify_read_foundation_hermetic() -> None:
     proc = _run("read-foundation")
     assert proc.returncode == 0, proc.stderr or proc.stdout
     assert "CANONICAL_VERIFY_OK: read-foundation" in proc.stdout
+
+
+def test_canonical_verify_read_library_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("read-library")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: read-library" in proc.stdout

@@ -6,6 +6,7 @@
 #   cascade              — hermetic cascade contract + adapter + light route
 #   handoff <path.md>    — verify_handoff.ts + audit_agent_session.sh
 #   read-foundation      — Read SPR-01 servable-corpus gate + lock
+#   read-library         — Read SPR-02 library browse + no-body catalog gate
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -29,7 +30,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -89,6 +90,19 @@ cmd_read_foundation() {
   echo "CANONICAL_VERIFY_OK: read-foundation"
 }
 
+cmd_read_library() {
+  echo "== read-library: catalog endpoint + no-body drift guard =="
+  "${PY}" -m pytest tests/test_library_api.py tests/test_servability_drift_guard.py tests/test_contracts_read_lock.py -q --tb=no
+  echo "== read-library: Library mode + typed catalog client =="
+  (cd apps/reading && npm run test -- \
+    src/modes/Library/Library.test.tsx \
+    src/components/library/useLibrary.test.ts \
+    src/components/library/LibraryView.test.tsx \
+    src/components/library/WorkCard.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: read-library"
+}
+
 cmd_handoff() {
   local f="${1:?handoff markdown path required}"
   echo "== handoff: schema linter =="
@@ -113,6 +127,7 @@ main() {
     profile) cmd_profile ;;
     cascade) cmd_cascade ;;
     read-foundation) cmd_read_foundation ;;
+    read-library) cmd_read_library ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;
