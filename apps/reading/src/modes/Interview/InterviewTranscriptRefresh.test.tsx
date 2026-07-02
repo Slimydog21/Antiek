@@ -310,4 +310,16 @@ describe("Interview transcript refresh bridge", () => {
     expect(await screen.findByText(/Consent not yet recorded/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "finish upload" })).toBeNull();
   });
+
+  it("enables the recording panel only after a literal true consent poll", async () => {
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({ consent_recorded: true }),
+    });
+
+    render(<InterviewRecording interviewId="int-1" consentRecorded={false} />);
+
+    expect(await screen.findByRole("button", { name: "finish upload" })).toBeTruthy();
+    expect(screen.queryByText(/Consent not yet recorded/)).toBeNull();
+  });
 });

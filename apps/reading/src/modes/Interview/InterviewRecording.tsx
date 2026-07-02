@@ -22,6 +22,16 @@ type Props = {
   consentRecorded?: boolean;
 };
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function safeConsentRecorded(value: unknown): boolean {
+  return record(value)?.consent_recorded === true;
+}
+
 export default function InterviewRecording({
   interviewId,
   consentRecorded: initialConsent,
@@ -41,12 +51,7 @@ export default function InterviewRecording({
         if (!resp.ok) return;
         const data = await resp.json();
         if (!cancelled) {
-          setConsentRecorded(
-            typeof data === "object" &&
-              data !== null &&
-              !Array.isArray(data) &&
-              (data as Record<string, unknown>).consent_recorded === true,
-          );
+          setConsentRecorded(safeConsentRecorded(data));
         }
       } catch {
         // best-effort; the substrate is still the gatekeeper
