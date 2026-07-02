@@ -29,6 +29,40 @@ function observerLabel(observer: string): string {
   return observer || "Reviewer";
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function safeOutcomeRow(value: unknown): OutcomeRow | null {
+  const row = record(value);
+  const outcomeId = nonEmptyString(row?.outcome_id);
+  const synthesisId = nonEmptyString(row?.synthesis_id);
+  if (!row || !outcomeId || !synthesisId) return null;
+  return {
+    outcome_id: outcomeId,
+    synthesis_id: synthesisId,
+    observer: nonEmptyString(row.observer) ?? "",
+    observed_at: nonEmptyString(row.observed_at) ?? "",
+  };
+}
+
+function safeOutcomeRows(value: unknown): OutcomeRow[] {
+  const body = record(value);
+  const outcomes = Array.isArray(body?.outcomes) ? body.outcomes : [];
+  return outcomes.flatMap((item) => {
+    const row = safeOutcomeRow(item);
+    return row ? [row] : [];
+  });
+}
+
 function observerFilterParam(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return "";
@@ -59,8 +93,7 @@ export default function OutcomesIndex() {
       if (!resp.ok) {
         throw new Error(`Could not load review history (HTTP ${resp.status}).`);
       }
-      const data = await resp.json();
-      setRows(data.outcomes ?? []);
+      setRows(safeOutcomeRows(await resp.json()));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
