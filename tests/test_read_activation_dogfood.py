@@ -5,10 +5,10 @@ import re
 from pathlib import Path
 
 from tools.activation.read_dogfood import (
+    REQUIRED_FLOAT_MENU_LABELS,
     append_session_template,
     load_jsonl,
     main,
-    REQUIRED_FLOAT_MENU_LABELS,
     session_template,
     validate_sessions,
 )
@@ -58,7 +58,7 @@ def _session(
     return {
         "session_id": f"session-{idx}",
         "date": "2026-06-30",
-        "build_sha": "abc123",
+        "build_sha": "0123456789abcdef",
         "url": "https://app.example/read/doc-1",
         "operator": "operator",
         "document_id": f"doc-{idx}",
@@ -764,6 +764,17 @@ def test_deployed_build_sha_must_be_git_sha_shaped() -> None:
     assert any("build_sha must be a 6-40 character git SHA" in f for f in report.failures)
 
 
+def test_deployed_build_sha_rejects_template_placeholder() -> None:
+    record = _session(1, live=True, citation=True, entry_door="search")
+    record["build_sha"] = "abc123"
+
+    report = validate_sessions([record])
+
+    assert report.closure_ready is False
+    assert report.valid_sessions == 0
+    assert any("build_sha still has template value" in f for f in report.failures)
+
+
 def test_deployed_build_sha_accepts_full_git_sha() -> None:
     record = _session(1, live=True, citation=True, entry_door="search")
     record["build_sha"] = "0123456789abcdef0123456789abcdef01234567"
@@ -900,9 +911,19 @@ def test_inert_template_is_jsonl_safe_and_validator_compatible(capsys) -> None:
     record = json.loads(out)
     report = validate_sessions([record])
 
-    assert report.valid_sessions == 1
+    assert report.valid_sessions == 0
     assert report.live_provider_sessions == 0
     assert report.citation_trace_sessions == 0
+    assert any("build_sha still has template value" in failure for failure in report.failures)
+    assert any(failure.startswith("closure requires ") for failure in report.failures)
+
+
+def test_replaced_inert_template_is_validator_compatible() -> None:
+    record = session_template("inert")
+    record["build_sha"] = "0123456789abcdef"
+    report = validate_sessions([record])
+
+    assert report.valid_sessions == 1
     assert all(failure.startswith("closure requires ") for failure in report.failures)
 
 
@@ -921,6 +942,7 @@ def test_live_citation_template_requires_operator_replacement() -> None:
 
 def test_replaced_live_citation_template_carries_non_library_trace_evidence() -> None:
     record = session_template("live-citation")
+    record["build_sha"] = "0123456789abcdef"
     record["steps"]["3"]["first_answer"] = "The dialogue grounded the highlighted claim."
     record["steps"]["4"]["investigation_id"] = "inv-real-20260702-001"
     record["steps"]["5"]["source_document_id"] = "source-doc-real"
@@ -993,6 +1015,7 @@ def test_append_template_creates_log_file_and_parent_dirs(tmp_path, capsys) -> N
     assert "template first_answer" in out
     assert "template investigation_id" in out
     assert "template result_url" in out
+    assert "build_sha still has template value" in out
 
 
 def test_append_write_trace_template_preserves_direct_source_url(tmp_path, capsys) -> None:
@@ -1010,6 +1033,7 @@ def test_append_write_trace_template_preserves_direct_source_url(tmp_path, capsy
     assert "from=" not in records[0]["steps"]["5"]["result_url"]
     assert "0 citation-traced, 0 non-library" in out
     assert "template result_url" in out
+    assert "build_sha still has template value" in out
 
 
 def test_append_template_adds_line_to_existing_log(tmp_path) -> None:
