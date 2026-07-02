@@ -51,6 +51,12 @@ export function isClaimReviewedPayload(
   );
 }
 
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
 function parseTimeMs(value: string): number | null {
   const ms = Date.parse(value);
   return Number.isFinite(ms) ? ms : null;
@@ -86,7 +92,7 @@ export function resolveDueClaimsFromEvents(
     if (dueAt === null || dueAt > nowMs) continue;
     due.push({
       claimId: payload.claim_id,
-      dueLabel: payload.due_label ?? "Due for review",
+      dueLabel: nonEmptyString(payload.due_label) ?? "Due for review",
     });
   }
   return due.sort((a, b) => a.claimId.localeCompare(b.claimId));
