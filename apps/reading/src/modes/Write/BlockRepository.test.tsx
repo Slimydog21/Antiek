@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import { DRAG_MIME } from "../CreationStudio/BlockPalette";
 import type { RepositoryHit } from "./writeApi";
 
 /**
@@ -73,5 +74,81 @@ describe("BlockRepository — tap-to-add, no id", () => {
     await waitFor(() =>
       expect(screen.getByText(/No blocks/i)).toBeTruthy(),
     );
+  });
+
+  it("drops malformed folders and hits before rendering or selecting", async () => {
+    const onAdd = vi.fn();
+    listFoldersMock.mockResolvedValue([
+      { folder_id: " folder-1 ", name: "  Saved insights  ", member_count: "2" },
+      { folder_id: " ", name: "Invisible folder", member_count: 1 },
+      { folder_id: "folder-2", name: "", member_count: 1 },
+    ]);
+    searchRepositoryMock.mockResolvedValue([
+      {
+        node_id: " node-1 ",
+        label: "  Useful claim  ",
+        node_type: "claim",
+        source_tier: "2",
+        document_id: "doc-1",
+        document_title: "  Source document  ",
+        score: 1,
+      },
+      {
+        node_id: " ",
+        label: "Invisible hit",
+        node_type: "claim",
+        source_tier: 1,
+        document_id: null,
+        document_title: null,
+        score: 1,
+      },
+    ]);
+
+    render(<BlockRepository onAdd={onAdd} />);
+    await userEvent.click(await screen.findByText("Useful claim"));
+
+    expect(await screen.findByText("Saved insights · 2")).toBeTruthy();
+    expect(screen.getByText("Source document · tier 2")).toBeTruthy();
+    expect(screen.queryByText("Invisible folder")).toBeNull();
+    expect(screen.queryByText("Invisible hit")).toBeNull();
+    expect(onAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        node_id: "node-1",
+        label: "Useful claim",
+        document_title: "Source document",
+        source_tier: 2,
+      }),
+    );
+  });
+
+  it("serializes sanitized drag payloads", async () => {
+    searchRepositoryMock.mockResolvedValue([
+      {
+        node_id: " node-1 ",
+        label: "  Useful claim  ",
+        node_type: "claim",
+        source_tier: null,
+        document_id: null,
+        document_title: null,
+        score: 1,
+      },
+    ]);
+    render(<BlockRepository onAdd={vi.fn()} />);
+    const row = await screen.findByTitle("Tap to add to the outline (or drag)");
+    const data = new Map<string, string>();
+
+    fireEvent.dragStart(row, {
+      dataTransfer: {
+        setData: (type: string, value: string) => data.set(type, value),
+        effectAllowed: "",
+      },
+    });
+
+    expect(JSON.parse(data.get(DRAG_MIME) ?? "{}")).toEqual({
+      from: "palette",
+      block_kind: "insight",
+      block_id: "node-1",
+      label: "Useful claim",
+    });
   });
 });
