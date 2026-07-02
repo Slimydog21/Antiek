@@ -43,13 +43,13 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from acquisition.urls import (
+from acquisition.urls import (  # noqa: E402
     fetch,
     html_to_markdown,
     ingest_url,
     url_doc_id,
 )
-from acquisition.urls.client import _detect_charset
+from acquisition.urls.client import _detect_charset  # noqa: E402
 
 _HTML_ARTICLE = b"""<!DOCTYPE html>
 <html lang="en">

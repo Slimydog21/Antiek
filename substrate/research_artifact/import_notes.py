@@ -98,8 +98,12 @@ def import_agent_notes(
             size_bytes=len(text.encode("utf-8")),
             source_event_ids=body.source_event_ids or [iid],
         )
+        # ``emit_typed`` returns None when events are disabled — guard so
+        # ``event_ids`` stays ``list[str]`` (same convention as
+        # substrate/books/voice_note.py).
         eid = emit_typed(iid, payload, role=generating_role, events_dir=events_dir)
-        event_ids.append(eid)
+        if eid is not None:
+            event_ids.append(eid)
         existing.add(intent)
         imported += 1
 

@@ -1,0 +1,51 @@
+# {{ ansible_managed }}
+#
+# One arXiv OAI-PMH incremental sync pass. Triggered by
+# antiek-arxiv-oai-sync.timer.
+#
+# This service is intentionally oneshot: systemd owns the schedule, while
+# tools.arxiv_oai_sync owns the high-water mark and mid-harvest resume cursor.
+# All arXiv state files are pinned under {{ antiek_state_dir }} so the existing
+# service hardening never writes into an implicit home-directory default.
+
+[Unit]
+Description=Antiek arXiv OAI-PMH incremental sync
+Documentation=https://github.com/Slimydog21/Antiek/blob/main/tools/arxiv_oai_sync.py
+Wants=network-online.target
+After=network-online.target antiek.service
+
+[Service]
+Type=oneshot
+User={{ antiek_user }}
+Group={{ antiek_group }}
+WorkingDirectory={{ antiek_install_dir }}
+EnvironmentFile={{ antiek_secrets_file }}
+
+Environment="PATH={{ antiek_install_dir }}/.venv/bin:/usr/bin:/bin"
+Environment="ANTIEK_STATE_DIR={{ antiek_state_dir }}"
+Environment="ANTIEK_DUCKDB_PATH={{ antiek_state_dir }}/antiek.duckdb"
+Environment="ANTIEK_ARXIV_THROTTLE_PATH={{ antiek_state_dir }}/arxiv_throttle.json"
+Environment="ANTIEK_ARXIV_GOVERNOR_LOCK_PATH={{ antiek_state_dir }}/arxiv_throttle.json.governor.lock"
+Environment="ANTIEK_ARXIV_OAI_STATE_PATH={{ antiek_state_dir }}/arxiv_oai_harvest.json"
+Environment="ANTIEK_ARXIV_OAI_SYNC_PATH={{ antiek_state_dir }}/arxiv_oai_sync.json"
+
+ExecStartPre=/usr/bin/mkdir -p {{ antiek_state_dir }}/reports
+ExecStart={{ antiek_install_dir }}/.venv/bin/python -m tools.arxiv_oai_sync incremental --census-json {{ antiek_state_dir }}/reports/arxiv_oai_census.json
+ExecStartPost={{ antiek_install_dir }}/.venv/bin/python -m tools.source_census --source arxiv --db-path {{ antiek_state_dir }}/antiek.duckdb --out {{ antiek_state_dir }}/reports/source_census.json
+
+StandardOutput=journal
+StandardError=journal
+TimeoutStartSec=21600
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths={{ antiek_state_dir }} /tmp /var/tmp
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true

@@ -44,6 +44,24 @@ dependencies = [
   # no OS keyring daemon: see runtime/byok/store.py docstring for the
   # mechanism rationale on this headless single-writer host.
   "pynacl>=1.5",
+  # .antiek native container format (services/antiek_format/): Ed25519
+  # detached signing binds canonical bytes (manifest + content + edges) to a
+  # creator keypair; native_reader/sidecar_reader verify on read. The package
+  # is otherwise self-contained (stdlib + these deps; it imports nothing from
+  # substrate/ or other internal packages). Declared CORE (not optional)
+  # because services/antiek_format/__init__.py imports signature at package
+  # import time, so leaving cryptography undeclared makes the whole format
+  # package (and its 63-test gate suite) uncollectable on a clean venv.
+  # Installed in .venv as 48.0.0; floor set at 42.0 (first release with the
+  # stable Ed25519 primitive API this code uses).
+  "cryptography>=42.0",
+  # native_reader.py uses jsonschema to validate the .antiek manifest against
+  # manifest.schema.json on read, when jsonschema is available; it falls back
+  # to a hand-rolled validator otherwise (soft dep — absence does not break
+  # the package, but declaring it ensures the validation path is exercised in
+  # CI). The format package's only other external import is duckdb (already
+  # core above) for the sidecar reader/writer graph-edge paths.
+  "jsonschema>=4.0",
 ]
 
 [project.optional-dependencies]

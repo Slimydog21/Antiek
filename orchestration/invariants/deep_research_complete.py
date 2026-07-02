@@ -16,11 +16,7 @@ runner ``DONE`` without synthesis until Path A convergence (SPR-DRL-06).
 
 from __future__ import annotations
 
-from typing import Optional, Tuple
-
-# Phase postconditions delegated here — keep in sync with
-# orchestration/phase_runner/postconditions.py check_phase_6..9.
-DEEP_RESEARCH_TERMINAL_PHASES: tuple[int, ...] = (6, 7, 8, 9)
+from collections.abc import Callable
 
 from orchestration.phase_runner.postconditions import (
     check_phase_6,
@@ -32,6 +28,10 @@ from orchestration.phase_runner.postconditions import (
 )
 from substrate.event_log import trajectory
 from substrate.schemas import ActionType
+
+# Phase postconditions delegated here — keep in sync with
+# orchestration/phase_runner/postconditions.py check_phase_6..9.
+DEEP_RESEARCH_TERMINAL_PHASES: tuple[int, ...] = (6, 7, 8, 9)
 
 
 class DeepResearchIncompleteError(Exception):
@@ -46,10 +46,10 @@ class DeepResearchIncompleteError(Exception):
 def check_deep_research_complete(
     investigation_id: str,
     *,
-    research_dir: Optional[str] = None,
-    knowledge_skills_dir: Optional[str] = None,
+    research_dir: str | None = None,
+    knowledge_skills_dir: str | None = None,
     require_terminal_event: bool = True,
-) -> Tuple[bool, str]:
+) -> tuple[bool, str]:
     """Return ``(passed, reason)`` for the DeepResearchComplete contract.
 
     When ``require_terminal_event`` is False, phases 6–9 are checked only.
@@ -71,7 +71,7 @@ def check_deep_research_complete(
         knowledge_skills_dir or default_knowledge_skills_dir()
     )
 
-    phase_checks = (
+    phase_checks: tuple[tuple[int, Callable[[], tuple[bool, str]]], ...] = (
         (6, lambda: check_phase_6(investigation_id)),
         (7, lambda: check_phase_7(
             investigation_id, research_dir=resolved_research_dir,
@@ -102,8 +102,8 @@ def check_deep_research_complete(
 def assert_deep_research_complete(
     investigation_id: str,
     *,
-    research_dir: Optional[str] = None,
-    knowledge_skills_dir: Optional[str] = None,
+    research_dir: str | None = None,
+    knowledge_skills_dir: str | None = None,
     require_terminal_event: bool = True,
 ) -> None:
     """Raise ``DeepResearchIncompleteError`` when the contract is not met."""

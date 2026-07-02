@@ -339,6 +339,37 @@ def test_parse_non_gap_claim_with_empty_chunks_rejected():
         parse_evidence_response(json.dumps(payload))
 
 
+def test_parse_rejects_fabricated_chunk_ids_with_canonical_set():
+    payload = _good_response()
+    payload["supporting_claims"][0]["chunk_ids"] = [
+        "chunk-1",
+        "chunk-fake",
+        "chunk-1",
+    ]
+    out = parse_evidence_response(
+        json.dumps(payload),
+        canonical_chunk_ids={"chunk-1"},
+    )
+    assert out.supporting_claims[0].chunk_ids == ("chunk-1",)
+
+    payload["supporting_claims"][0]["chunk_ids"] = ["chunk-fake"]
+    with pytest.raises(EvidenceValidationError, match="chunk_ids cannot be empty"):
+        parse_evidence_response(
+            json.dumps(payload),
+            canonical_chunk_ids={"chunk-1"},
+        )
+
+
+def test_parse_filters_fabricated_edge_ids_when_canonical_set_supplied():
+    payload = _good_response()
+    payload["supporting_claims"][0]["edge_ids"] = ["edge-1", "edge-fake"]
+    out = parse_evidence_response(
+        json.dumps(payload),
+        canonical_edge_ids={"edge-1"},
+    )
+    assert out.supporting_claims[0].edge_ids == ("edge-1",)
+
+
 def test_parse_evidentiary_gaps_not_a_list_rejected():
     payload = _good_response()
     payload["evidentiary_gaps"] = {"not": "a list"}
