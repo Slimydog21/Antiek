@@ -30,6 +30,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from substrate.coordination.gate_ledger import (
     GateStatus,
@@ -899,6 +901,52 @@ def test_roadmap_response_serializes_operator_actions_and_phase2_audit() -> None
     assert response.loop3.fully_unlocked is False
     assert response.source_gate.state == "missing"
     assert response.source_gate.reference_source == "arxiv"
+
+
+def test_source_gate_endpoint_is_narrow_read_only_view(monkeypatch) -> None:
+    """Acquisition surfaces can load source-gate state without the full roadmap."""
+    from interfaces.research.api import coordination
+
+    class DummyRow:
+        source = "web"
+        blocked = True
+        failures = ("metadata_complete_pct=94.0 < 95.0",)
+
+    class DummySourceGate:
+        source_path = "reports/source_census.json"
+        state = "blocked"
+        reference_source = "arxiv"
+        source_count = 1
+        blocked_count = 1
+        rows = (DummyRow(),)
+        error = None
+
+    monkeypatch.setattr(
+        coordination,
+        "build_source_gate_view",
+        lambda: DummySourceGate(),
+    )
+    app = FastAPI()
+    coordination.register_coordination_routes(app)
+
+    response = TestClient(app).get("/coordination/source-gate")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "source_path": "reports/source_census.json",
+        "state": "blocked",
+        "reference_source": "arxiv",
+        "source_count": 1,
+        "blocked_count": 1,
+        "rows": [
+            {
+                "source": "web",
+                "blocked": True,
+                "failures": ["metadata_complete_pct=94.0 < 95.0"],
+            }
+        ],
+        "error": None,
+    }
 
 
 def test_operator_gate_focus_does_not_override_structural_dependency_focus() -> None:

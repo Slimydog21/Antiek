@@ -1,10 +1,11 @@
-"""Coordination API — read-only HTTP surface for gates + roadmap + cost + consent.
+"""Coordination API — read-only HTTP surface for gates + roadmap + source gate + cost + consent.
 
-Thin adapter over :mod:`substrate.coordination`. Four GET endpoints, no writes:
+Thin adapter over :mod:`substrate.coordination`. Five GET endpoints, no writes:
 
   GET /coordination/gates     the gate ledger (a view over operator_gate_actions.md)
   GET /coordination/roadmap   the 45-sprint roadmap + DRW critical path +
                                dependency blockers + operator-action summary
+  GET /coordination/source-gate the source census gate used by acquisition flows
   GET /coordination/cost      per-workflow + aggregate inference cost (SPR-07)
   GET /coordination/consent   per-IP-holder consent / escrow (accruing) / servability (SPR-07)
 
@@ -851,6 +852,17 @@ def register_coordination_routes(app: FastAPI) -> None:
             loop3,
             build_source_gate_view(),
         )
+
+    @app.get(
+        "/coordination/source-gate",
+        response_model=SourceGateResponse,
+        tags=["coordination"],
+    )
+    async def get_source_gate() -> SourceGateResponse:
+        """The source-onboarding gate — read fresh from reports/source_census.json
+        so acquisition surfaces can show the exact gate without loading the full
+        roadmap. A missing census is an honest no-op state, not a failure."""
+        return SourceGateResponse.from_view(build_source_gate_view())
 
     @app.get(
         "/coordination/cost",

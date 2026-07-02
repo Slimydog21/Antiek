@@ -543,6 +543,7 @@ cmd_unified_coordination_gate_ledger() {
     src/modes/Coordination/Coordination.test.tsx \
     src/modes/Coordination/Roadmap.test.tsx \
     src/modes/OperatorDashboard/OperatorDashboard.test.tsx \
+    src/modes/Sources/Sources.test.tsx \
     --reporter=dot)
   echo "CANONICAL_VERIFY_OK: unified-coordination-gate-ledger"
 }
