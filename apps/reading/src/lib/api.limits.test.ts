@@ -13,6 +13,7 @@ import {
   getDistillation,
   getHealth,
   getDeliverable,
+  getInvestigationStatus,
   getNotebook,
   getTrajectory,
   ingestSource,
@@ -277,6 +278,45 @@ describe("api client investigation and watch-list response boundaries", () => {
           parent_investigation_id: null,
         },
       ],
+    });
+  });
+
+  it("sanitizes investigation status responses before terminal surfaces render them", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          investigation_id: " ",
+          status: "stopped",
+          current_phase: "2",
+          last_delivered_action_type: " synthesis.completed ",
+          terminal_payload: [],
+          rubric_score: {
+            composite: "1.7",
+            voice_style: -1,
+            conviction: 0.5,
+            citation_density: "0.4",
+            constraint_compliance: Number.POSITIVE_INFINITY,
+            notes: "  Solid answer  ",
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(getInvestigationStatus("fallback-inv")).resolves.toEqual({
+      investigation_id: "fallback-inv",
+      status: "failed",
+      current_phase: null,
+      last_delivered_action_type: "synthesis.completed",
+      terminal_payload: null,
+      rubric_score: {
+        composite: 1,
+        voice_style: null,
+        conviction: 0.5,
+        citation_density: 0.4,
+        constraint_compliance: null,
+        notes: "Solid answer",
+      },
     });
   });
 
