@@ -198,22 +198,21 @@ def reconstruct_thread(
     provenance_edges: Sequence[ProvenanceEdge] = (),
     built_workflows: Iterable[Workflow] = ("research", "read", "write", "speak"),
 ) -> Thread:
-    """Reconstruct ``node_id``'s cross-workflow thread — a VIEW, no writes.
+    """Reconstruct an entity's cross-workflow thread — a VIEW, no writes.
 
     Walks the SPR-03 seam events (the cross-workflow hops) that carry
-    ``node_id`` by reference, in emission order, and composes them into an
-    ordered list of :class:`ThreadHop`. The within-graph ``provenance_edges``
-    (``supported_by`` / ``answers`` / etc. — diligence #4) let the origin hop
-    name the workflow that birthed the entity even before any seam fired.
+    ``node_id`` or chain to it by provenance lineage, in emission order, and
+    composes them into an ordered list of :class:`ThreadHop`. The within-graph
+    ``provenance_edges`` (``supported_by`` / ``answers`` / etc. — diligence #4)
+    let the origin hop name the workflow that birthed the entity even before any
+    seam fired.
 
     Args:
-        node_id: the canonical entity id the thread is about. EVERY hop that
-            carries the canonical entity references *this exact id* — that is
-            the no-duplicate invariant (assert it with
-            ``assert_single_canonical_entity``).
+        node_id: the id to seed the thread with. It may be the canonical entity
+            id or a typed reference hop id, such as an outline_block. The thread
+            infers the canonical entity id from the lineage when possible.
         seam_events: the seam events (the shape ``trajectory`` yields, or any
-            mapping with ``event_id`` / ``action_type`` / ``payload``). Only
-            events whose ``entity_id`` equals ``node_id`` participate.
+            mapping with ``event_id`` / ``action_type`` / ``payload``).
         origin_entity_kind: the entity kind at birth, if known (used for the
             origin hop when no seam names it). Defaults to the first seam's kind.
         provenance_edges: the within-graph edges touching ``node_id`` (read-only
@@ -309,6 +308,11 @@ def reconstruct_thread(
         if origin_entity_kind is not None
         else (relevant[0][2] if relevant else "insight_node")  # type: ignore[assignment]
     )
+    canonical_entity_id = node_id
+    for _ev, _action, entity_kind, _provenance_ref, entity_id in relevant:
+        if entity_kind == resolved_kind and entity_id is not None:
+            canonical_entity_id = entity_id
+            break
 
     hops: list[ThreadHop] = []
     stubs: list[ThreadStub] = []
@@ -321,7 +325,7 @@ def reconstruct_thread(
         hops.append(
             ThreadHop(
                 workflow=origin_wf,
-                entity_id=node_id,
+                entity_id=canonical_entity_id,
                 entity_kind=resolved_kind,
                 seam_event_id=None,
                 seam_action_type=None,
@@ -330,7 +334,7 @@ def reconstruct_thread(
             )
         )
         return Thread(
-            canonical_entity_id=node_id,
+            canonical_entity_id=canonical_entity_id,
             canonical_entity_kind=resolved_kind,
             hops=tuple(hops),
             stubs=(),
@@ -338,13 +342,13 @@ def reconstruct_thread(
 
     # The origin hop is the FROM-workflow of the first seam (where the entity
     # lived before it was first handed across a boundary). No seam produced it.
-    # Its entity id is the canonical node id (the origin is the entity itself).
+    # Its entity id is the canonical id (the origin is the entity itself).
     first_ev, first_action, _kind, _prov, _eid = relevant[0]
     origin_from, _to, _prov_seam = _SEAM_ACTION_DIRECTION[first_action]
     hops.append(
         ThreadHop(
             workflow=origin_from,
-            entity_id=node_id,
+            entity_id=canonical_entity_id,
             entity_kind=resolved_kind,
             seam_event_id=None,
             seam_action_type=None,
@@ -363,7 +367,7 @@ def reconstruct_thread(
         hops.append(
             ThreadHop(
                 workflow=to_wf,
-                entity_id=hop_entity_id if hop_entity_id is not None else node_id,
+                entity_id=hop_entity_id if hop_entity_id is not None else canonical_entity_id,
                 entity_kind=hop_entity_kind or resolved_kind,
                 seam_event_id=str(ev.get("event_id")) if ev.get("event_id") else None,
                 seam_action_type=action_type,
@@ -384,7 +388,7 @@ def reconstruct_thread(
             )
 
     return Thread(
-        canonical_entity_id=node_id,
+        canonical_entity_id=canonical_entity_id,
         canonical_entity_kind=resolved_kind,
         hops=tuple(hops),
         stubs=tuple(stubs),

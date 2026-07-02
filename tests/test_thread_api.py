@@ -105,6 +105,45 @@ def test_thread_route_refuses_copied_entity(monkeypatch) -> None:
 
 
 def test_thread_route_accepts_outline_block_trace_reference(monkeypatch) -> None:
+    events = [
+        _seam_event(
+            "evt-1",
+            "seam.research_to_read",
+            provenance_ref="evt-origin",
+            emitted_at="2026-05-25T10:00:00",
+        ),
+        _seam_event(
+            "evt-2",
+            "seam.read_to_write",
+            provenance_ref="evt-1",
+            emitted_at="2026-05-25T10:01:00",
+        ),
+        _seam_event(
+            "evt-3",
+            "seam.write_to_read",
+            entity_id="oblk-api-1",
+            entity_kind="outline_block",
+            provenance_ref="evt-2",
+            emitted_at="2026-05-25T10:02:00",
+        ),
+    ]
+    client = _client(monkeypatch, events)
+
+    response = client.get(f"/thread/{NODE}")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert [hop["workflow"] for hop in body["hops"]] == [
+        "research",
+        "read",
+        "write",
+        "read",
+    ]
+    assert body["hops"][-1]["entity_id"] == "oblk-api-1"
+    assert body["hops"][-1]["entity_kind"] == "outline_block"
+
+
+def test_thread_route_can_start_from_outline_block_reference(monkeypatch) -> None:
     client = _client(
         monkeypatch,
         [
@@ -131,16 +170,12 @@ def test_thread_route_accepts_outline_block_trace_reference(monkeypatch) -> None
         ],
     )
 
-    response = client.get(f"/thread/{NODE}")
+    response = client.get("/thread/oblk-api-1")
 
     assert response.status_code == 200, response.text
     body = response.json()
-    assert [hop["workflow"] for hop in body["hops"]] == [
-        "research",
-        "read",
-        "write",
-        "read",
-    ]
+    assert body["canonical_entity_id"] == NODE
+    assert body["canonical_entity_kind"] == "insight_node"
     assert body["hops"][-1]["entity_id"] == "oblk-api-1"
     assert body["hops"][-1]["entity_kind"] == "outline_block"
 

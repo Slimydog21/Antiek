@@ -11,7 +11,7 @@
  *
  * Crucially this is a VIEW, not a stored entity (see thread.py rigor #2). The
  * frontend never mutates a thread; it reconstructs nothing — it renders what
- * GET /thread/{node_id} returns.
+ * GET /thread/{entityId} returns.
  */
 import type { Workflow } from "./workflowTaxonomy";
 
@@ -46,7 +46,7 @@ export interface Thread {
   isDegenerate: boolean;
 }
 
-/** The wire shape from GET /thread/{node_id} (snake_case from FastAPI). */
+/** The wire shape from GET /thread/{entityId} (snake_case from FastAPI). */
 export interface ThreadResponseWire {
   canonical_entity_id: string;
   canonical_entity_kind: string;
