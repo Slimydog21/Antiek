@@ -645,6 +645,8 @@ cmd_handoff() {
 cmd_agent_gates() {
   echo "== agent-gates: vitest handoff linter =="
   (cd apps/reading && npm run test:handoff)
+  echo "== agent-gates: settings activation boundary =="
+  (cd apps/reading && npm run test -- src/modes/Settings/Settings.test.tsx --reporter=dot)
   echo "== agent-gates: pytest audit + canonical wrapper =="
   "${PY}" -m pytest \
     tests/test_audit_agent_session.py \
