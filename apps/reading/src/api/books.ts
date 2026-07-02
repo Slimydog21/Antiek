@@ -57,6 +57,63 @@ export interface BookListResponse {
   count: number;
 }
 
+function safeServability(value: unknown): Servability {
+  switch (value) {
+    case "public_domain":
+    case "platform_authored":
+    case "publisher_opted_in":
+    case "source_declared_open":
+    case "gated_metadata_only":
+    case "taken_down":
+      return value;
+    default:
+      return "gated_metadata_only";
+  }
+}
+
+function safeNullableServability(value: unknown): Servability | null {
+  if (value == null) return null;
+  return safeServability(value);
+}
+
+function safeBookSummary(value: unknown): BookSummary | null {
+  const book = record(value);
+  if (!book) return null;
+  const documentId = nonEmptyString(book.document_id);
+  if (!documentId) return null;
+  const servability = safeServability(book.servability);
+  const takenDown = book.taken_down === true || servability === "taken_down";
+  const servableFullText =
+    book.servable_full_text === true &&
+    !takenDown &&
+    servability !== "gated_metadata_only";
+  return {
+    document_id: documentId,
+    title: nullableString(book.title),
+    author: nullableString(book.author),
+    servability,
+    servable_full_text: servableFullText,
+    page_count: nonNegativeSafeInteger(book.page_count) ?? 0,
+    cover_uri: nullableString(book.cover_uri),
+    ip_holder_id: nullableString(book.ip_holder_id),
+    taken_down: takenDown,
+  };
+}
+
+function safeBookListResponse(value: unknown): BookListResponse {
+  const body = record(value);
+  const books = Array.isArray(body?.books)
+    ? body.books.flatMap((item) => {
+        const book = safeBookSummary(item);
+        return book ? [book] : [];
+      })
+    : [];
+  return {
+    books,
+    count: nonNegativeSafeInteger(body?.count) ?? books.length,
+  };
+}
+
 export interface FullTextResponse {
   document_id: string;
   servable: boolean;
@@ -90,6 +147,71 @@ export interface FullTextResponse {
   license: string | null;
 }
 
+function safeTocItem(value: unknown): TocItem | null {
+  const item = record(value);
+  if (!item) return null;
+  const title = nonEmptyString(item.title);
+  if (!title) return null;
+  const pageIndex = nonNegativeSafeInteger(item.page_index);
+  return {
+    title,
+    page_index: pageIndex,
+    level: nonNegativeSafeInteger(item.level) ?? 1,
+  };
+}
+
+function safeBookDetail(value: unknown): BookDetail {
+  const summary = safeBookSummary(value);
+  const body = record(value);
+  if (!summary || !body) {
+    throw new Error("Malformed book response.");
+  }
+  const toc = Array.isArray(body.toc)
+    ? body.toc.flatMap((item) => {
+        const tocItem = safeTocItem(item);
+        return tocItem ? [tocItem] : [];
+      })
+    : [];
+  return {
+    ...summary,
+    pagination_scheme: nonEmptyString(body.pagination_scheme) ?? "unknown",
+    provenance: nullableString(body.provenance),
+    license_basis: nullableString(body.license_basis),
+    toc,
+  };
+}
+
+function safeRightsTier(value: unknown): "T1" | "T2" | "T3" | null {
+  return value === "T1" || value === "T2" || value === "T3" ? value : null;
+}
+
+function safeFullTextResponse(value: unknown): FullTextResponse {
+  const body = record(value);
+  const documentId = body ? nonEmptyString(body.document_id) : null;
+  if (!body || !documentId) {
+    throw new Error("Malformed book full-text response.");
+  }
+  const fullText = typeof body.full_text === "string" ? body.full_text : null;
+  const servable = body.servable === true && fullText !== null;
+  return {
+    document_id: documentId,
+    servable,
+    servability: safeNullableServability(body.servability),
+    full_text: servable ? fullText : null,
+    snippet: typeof body.snippet === "string" ? body.snippet : null,
+    structured_blocks:
+      servable && typeof body.structured_blocks === "string" ? body.structured_blocks : null,
+    representative_chunk_id: servable ? nullableString(body.representative_chunk_id) : null,
+    title: nullableString(body.title),
+    author: nullableString(body.author),
+    reason: nonEmptyString(body.reason) ?? (servable ? "servable" : "not_servable"),
+    tier: safeRightsTier(body.tier),
+    ad_eligible: body.ad_eligible === true && servable,
+    canonical_url: nullableString(body.canonical_url),
+    license: nullableString(body.license),
+  };
+}
+
 export type CorpusStatus = "servable" | "gated" | "all";
 
 /** List the corpus. `servable` (default) returns only full-text-servable
@@ -98,14 +220,14 @@ export type CorpusStatus = "servable" | "gated" | "all";
 export async function listBooks(status: CorpusStatus = "servable"): Promise<BookListResponse> {
   const resp = await apiFetch(`${API_BASE}/books?status=${encodeURIComponent(status)}`);
   if (!resp.ok) throw new Error(`GET /books: HTTP ${resp.status}`);
-  return (await resp.json()) as BookListResponse;
+  return safeBookListResponse(await resp.json());
 }
 
 export async function getBook(documentId: string): Promise<BookDetail> {
   const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}`);
   if (resp.status === 404) throw new Error("book_not_found");
   if (!resp.ok) throw new Error(`GET /books/{id}: HTTP ${resp.status}`);
-  return (await resp.json()) as BookDetail;
+  return safeBookDetail(await resp.json());
 }
 
 /** Fetch the body the gate permits: full text for servable books, a
@@ -116,7 +238,7 @@ export async function getBookFullText(documentId: string): Promise<FullTextRespo
   );
   if (resp.status === 404) throw new Error("book_not_found");
   if (!resp.ok) throw new Error(`GET /books/{id}/full-text: HTTP ${resp.status}`);
-  return (await resp.json()) as FullTextResponse;
+  return safeFullTextResponse(await resp.json());
 }
 
 export interface TranscribeResponse {

@@ -19,8 +19,11 @@ vi.mock("../lib/api", () => ({
 import {
   askBook,
   generateMetaReading,
+  getBook,
+  getBookFullText,
   getFileSuggestion,
   getSavedMetaReading,
+  listBooks,
   listPersonalSpace,
   listPersonalSpaceCategories,
   recordAdImpressions,
@@ -95,6 +98,168 @@ beforeEach(() => {
   apiFetchMock.mockResolvedValue(
     new Response(JSON.stringify(metaReadingResponse()), { status: 200 }),
   );
+});
+
+describe("books api — source-book boundary", () => {
+  it("lists encoded corpus status and sanitizes source-book summaries", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          books: [
+            {
+              document_id: "  doc-1  ",
+              title: "  The Book  ",
+              author: "  Author  ",
+              servability: "future_open",
+              servable_full_text: true,
+              page_count: "12",
+              cover_uri: "  https://example.test/cover.png  ",
+              ip_holder_id: 123,
+              taken_down: false,
+            },
+            {
+              document_id: " ",
+              title: "No identity",
+              servability: "public_domain",
+              servable_full_text: true,
+            },
+          ],
+          count: "2",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const result = await listBooks("gated");
+
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+    expect(apiFetchMock.mock.calls[0][0]).toBe("/api/books?status=gated");
+    expect(result).toEqual({
+      books: [
+        {
+          document_id: "doc-1",
+          title: "The Book",
+          author: "Author",
+          servability: "gated_metadata_only",
+          servable_full_text: false,
+          page_count: 0,
+          cover_uri: "https://example.test/cover.png",
+          ip_holder_id: null,
+          taken_down: false,
+        },
+      ],
+      count: 1,
+    });
+  });
+
+  it("sanitizes one book detail and its table of contents", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          document_id: "  doc-1  ",
+          title: "  The Book  ",
+          author: null,
+          servability: "taken_down",
+          servable_full_text: true,
+          page_count: 9,
+          cover_uri: "",
+          ip_holder_id: "  rights-1  ",
+          taken_down: false,
+          pagination_scheme: "  page_markers  ",
+          provenance: "  archive  ",
+          license_basis: " ",
+          toc: [
+            { title: "  Chapter 1  ", page_index: 0, level: 0 },
+            { title: "Bad page", page_index: "2", level: "1" },
+            { title: " ", page_index: 1, level: 1 },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(getBook("doc 1")).resolves.toEqual({
+      document_id: "doc-1",
+      title: "The Book",
+      author: null,
+      servability: "taken_down",
+      servable_full_text: false,
+      page_count: 9,
+      cover_uri: null,
+      ip_holder_id: "rights-1",
+      taken_down: true,
+      pagination_scheme: "page_markers",
+      provenance: "archive",
+      license_basis: null,
+      toc: [
+        { title: "Chapter 1", page_index: 0, level: 0 },
+        { title: "Bad page", page_index: null, level: 1 },
+      ],
+    });
+    expect(apiFetchMock.mock.calls[0][0]).toBe("/api/books/doc%201");
+  });
+
+  it("rejects malformed book detail identity", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ document_id: " ", title: "Missing id" }), {
+        status: 200,
+      }),
+    );
+
+    await expect(getBook("doc-1")).rejects.toThrow("Malformed book response.");
+  });
+
+  it("sanitizes full-text responses without widening the legal gate", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          document_id: "  doc-1  ",
+          servable: true,
+          servability: "public_domain",
+          full_text: 7,
+          snippet: "preview",
+          structured_blocks: "{\"blocks\":[]}",
+          representative_chunk_id: " chunk-1 ",
+          title: "  The Book  ",
+          author: "  Author  ",
+          reason: " ",
+          tier: "T4",
+          ad_eligible: true,
+          canonical_url: "  https://arxiv.org/abs/1  ",
+          license: " ",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(getBookFullText("doc 1")).resolves.toEqual({
+      document_id: "doc-1",
+      servable: false,
+      servability: "public_domain",
+      full_text: null,
+      snippet: "preview",
+      structured_blocks: null,
+      representative_chunk_id: null,
+      title: "The Book",
+      author: "Author",
+      reason: "not_servable",
+      tier: null,
+      ad_eligible: false,
+      canonical_url: "https://arxiv.org/abs/1",
+      license: null,
+    });
+    expect(apiFetchMock.mock.calls[0][0]).toBe("/api/books/doc%201/full-text");
+  });
+
+  it("rejects malformed full-text identity", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ document_id: "", servable: false }), { status: 200 }),
+    );
+
+    await expect(getBookFullText("doc-1")).rejects.toThrow(
+      "Malformed book full-text response.",
+    );
+  });
 });
 
 describe("books api — talk-to-book boundary", () => {
