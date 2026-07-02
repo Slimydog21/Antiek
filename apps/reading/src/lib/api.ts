@@ -867,6 +867,51 @@ export interface InvestigationStatus {
   rubric_score: RubricScore | null;
 }
 
+function safeDetailedInvestigationStatus(
+  value: unknown,
+): InvestigationStatus["status"] {
+  return value === "in_progress" ||
+    value === "completed" ||
+    value === "failed" ||
+    value === "not_found"
+    ? value
+    : "failed";
+}
+
+function rubricScore(value: unknown): number | null {
+  const score = finiteNonNegativeNumber(value);
+  return score === null ? null : Math.min(score, 1);
+}
+
+function safeRubricScore(value: unknown): RubricScore | null {
+  const score = record(value);
+  if (!score) return null;
+  return {
+    composite: rubricScore(score.composite) ?? 0,
+    voice_style: rubricScore(score.voice_style),
+    conviction: rubricScore(score.conviction),
+    citation_density: rubricScore(score.citation_density),
+    constraint_compliance: rubricScore(score.constraint_compliance),
+    notes: nonEmptyString(score.notes) ?? "",
+  };
+}
+
+function safeInvestigationStatusResponse(
+  value: unknown,
+  fallbackInvestigationId: string,
+): InvestigationStatus {
+  const body = record(value);
+  return {
+    investigation_id:
+      nonEmptyString(body?.investigation_id) ?? fallbackInvestigationId,
+    status: safeDetailedInvestigationStatus(body?.status),
+    current_phase: nonNegativeInteger(body?.current_phase),
+    last_delivered_action_type: nullableString(body?.last_delivered_action_type),
+    terminal_payload: record(body?.terminal_payload),
+    rubric_score: safeRubricScore(body?.rubric_score),
+  };
+}
+
 /** GET /investigations/{id} — fetch terminal-state status. */
 export async function getInvestigationStatus(
   investigationId: string,
@@ -881,7 +926,7 @@ export async function getInvestigationStatus(
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeInvestigationStatusResponse(await resp.json(), investigationId);
 }
 
 export interface ChunkResponse {
