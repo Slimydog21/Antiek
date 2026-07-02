@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { apiFetch } from "../../lib/api";
@@ -94,8 +94,10 @@ export default function Outcomes() {
   const [error, setError] = useState<string | null>(null);
   const [draftNote, setDraftNote] = useState<string>("");
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const loadSeq = useRef(0);
 
   const reload = useCallback(async () => {
+    const seq = ++loadSeq.current;
     if (!synthesisId) return;
     setLoading(true);
     setError(null);
@@ -104,11 +106,18 @@ export default function Outcomes() {
       if (!resp.ok) {
         throw new Error(`GET /outcomes failed: HTTP ${resp.status}`);
       }
-      setOutcomes(safeOutcomeRows(await resp.json()));
+      const nextOutcomes = safeOutcomeRows(await resp.json());
+      if (loadSeq.current === seq) {
+        setOutcomes(nextOutcomes);
+      }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (loadSeq.current === seq) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
-      setLoading(false);
+      if (loadSeq.current === seq) {
+        setLoading(false);
+      }
     }
   }, [synthesisId]);
 
