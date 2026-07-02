@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to UNIFIED_SPRINTS. Status changes are deliberate roadmap
 # events, not prose-only handoffs.
-UNIFIED_LOCK_VERSION: int = 6
+UNIFIED_LOCK_VERSION: int = 7
 
 
 @dataclass(frozen=True)
@@ -97,7 +97,18 @@ UNIFIED_SPRINTS: dict[int, UnifiedDeliverable] = {
         # unified-thread-navigation.
         status="live",
     ),
-    7: UnifiedDeliverable(7, "cost-consent-surface", "Cost + consent surface"),
+    7: UnifiedDeliverable(
+        7,
+        "cost-consent-surface",
+        "Cost + consent surface",
+        # Live: realized DispatchCall cost is read from the canonical event log,
+        # remote-exec and unmapped spend are counted rather than dropped, idle
+        # and zero-buyer states render honest zeroes, margin gaps are labelled
+        # as stubs, consent/escrow/servability is a read-only G2/G3-gated view,
+        # no payout or escrow mutation path is imported, and the Coordination UI
+        # renders the money and consent state via unified-cost-consent-surface.
+        status="live",
+    ),
     8: UnifiedDeliverable(8, "flywheel-conformance", "Flywheel conformance"),
 }
 
