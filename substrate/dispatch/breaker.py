@@ -35,7 +35,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
-from enum import Enum
+from enum import StrEnum
 
 __all__ = [
     "BreakerState",
@@ -53,7 +53,7 @@ DEFAULT_FAILURE_THRESHOLD = 5
 DEFAULT_COOLDOWN_S = 30.0
 
 
-class BreakerState(str, Enum):
+class BreakerState(StrEnum):
     CLOSED = "closed"
     OPEN = "open"
     HALF_OPEN = "half_open"

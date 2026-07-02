@@ -1733,7 +1733,7 @@ def discover_all(args: argparse.Namespace) -> DiscoveryOutcome:
 
 import json as _json  # noqa: E402
 import time as _time  # noqa: E402
-from datetime import UTC
+from datetime import UTC  # noqa: E402
 
 # The investigation_id every continuous-engine event is filed under. A standing
 # corpus ingest is a system sweep, not a single user investigation, so it uses
@@ -1932,7 +1932,6 @@ class ContinuousRunner:
         """Run ONE scheduling round. Returns a structured round summary (also
         emitted to the event log). Does not loop — `run()` loops over this so a
         test can drive a single round deterministically."""
-        now = self._now()
         verdict = self.governor.check()
 
         if verdict.state is BudgetState.HALT:

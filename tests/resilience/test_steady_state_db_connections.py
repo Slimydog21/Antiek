@@ -56,10 +56,12 @@ def test_fault_during_write_window_closes_connection_and_releases_lock(tmp_path)
 
     n = 50
     for _ in range(n):
-        with pytest.raises(_WriteWindowFault):
-            with connect_write(db, timeout_s=5, purpose="write") as con:
-                con.execute("CREATE TABLE IF NOT EXISTS t (x INTEGER)")
-                raise _WriteWindowFault("fault mid-write")
+        with (
+            pytest.raises(_WriteWindowFault),
+            connect_write(db, timeout_s=5, purpose="write") as con,
+        ):
+            con.execute("CREATE TABLE IF NOT EXISTS t (x INTEGER)")
+            raise _WriteWindowFault("fault mid-write")
         # The LockedConnection closed the DuckDB handle and released the flock on
         # the exception path (try/finally in __exit__/close).
         assert is_locked(db) is False
@@ -81,9 +83,8 @@ def test_connect_write_timeout_cleans_up_fd_under_contention(tmp_path):
     # invariant (db_lock closes the lock fd before raising). See the module
     # perf note for why this loop stays small.
     for _ in range(5):
-        with locked_db(db):
-            with pytest.raises(WriteLockTimeout):
-                connect_write(db, timeout_s=0.2, poll_interval_s=0.05, purpose="probe")
+        with locked_db(db), pytest.raises(WriteLockTimeout):
+            connect_write(db, timeout_s=0.2, poll_interval_s=0.05, purpose="probe")
         assert is_locked(db) is False
 
     assert open_fd_count() <= baseline_fds + 2

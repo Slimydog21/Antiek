@@ -253,7 +253,7 @@ def fetch_work_record(
             base_url=base_url,
         )
         if throttle is not None:
-            payload = throttle.run_with_retry(lambda: _http_get(url, client=client))
+            payload = throttle.run_with_retry(lambda url=url: _http_get(url, client=client))
         else:
             payload = _http_get(url, client=client)
         results = payload.get("results") or []

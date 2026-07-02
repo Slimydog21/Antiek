@@ -24,10 +24,12 @@ def test_investigation_fault_releases_funnel_so_sibling_writes(tmp_path):
         pass
 
     # Investigation A acquires the write lock, starts a write, then faults.
-    with pytest.raises(_InvestigationAFault):
-        with connect_write(db, timeout_s=5, purpose="investigation-A") as con_a:
-            con_a.execute("CREATE TABLE IF NOT EXISTS t (x INTEGER)")
-            raise _InvestigationAFault("A seam fault mid-write")
+    with (
+        pytest.raises(_InvestigationAFault),
+        connect_write(db, timeout_s=5, purpose="investigation-A") as con_a,
+    ):
+        con_a.execute("CREATE TABLE IF NOT EXISTS t (x INTEGER)")
+        raise _InvestigationAFault("A seam fault mid-write")
 
     # A's fault released the funnel — no orphaned lock.
     assert is_locked(db) is False
@@ -69,16 +71,18 @@ def test_injected_seam_fault_in_A_does_not_stall_sibling_B(tmp_path):
     register_provider(_Stub())
     db = str(tmp_path / "graph.duckdb")
     try:
-        with pytest.raises(ProviderError):
-            with connect_write(db, timeout_s=5, purpose="investigation-A") as con_a:
-                con_a.execute("CREATE TABLE IF NOT EXISTS t (x INTEGER)")
-                # A dispatches during its write; the provider faults (503).
-                with provider_fault(kind="503", provider="seam"):
-                    from substrate.dispatch.router import get_provider
+        with (
+            pytest.raises(ProviderError),
+            connect_write(db, timeout_s=5, purpose="investigation-A") as con_a,
+        ):
+            con_a.execute("CREATE TABLE IF NOT EXISTS t (x INTEGER)")
+            # A dispatches during its write; the provider faults (503).
+            with provider_fault(kind="503", provider="seam"):
+                from substrate.dispatch.router import get_provider
 
-                    get_provider("seam").call(
-                        model="m", prompt="p", max_tokens=8, temperature=0.0
-                    )
+                get_provider("seam").call(
+                    model="m", prompt="p", max_tokens=8, temperature=0.0
+                )
         # The seam fault propagated out of A's write block; the funnel is free.
         assert is_locked(db) is False
         with connect_write(db, timeout_s=5, purpose="investigation-B") as con_b:

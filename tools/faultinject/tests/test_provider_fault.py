@@ -65,18 +65,16 @@ def test_timeout_kind_raises_provider_error(stub_registered):
 
 
 def test_invalid_kind_rejected(stub_registered):
-    with pytest.raises(ValueError):
-        with provider_fault(kind="418", provider="stub"):
-            pass
+    with pytest.raises(ValueError), provider_fault(kind="418", provider="stub"):
+        pass
 
 
 def test_unregistered_provider_surfaces_loudly():
     from substrate.dispatch.router import reset_provider_registry
 
     reset_provider_registry()
-    with pytest.raises(KeyError):
-        with provider_fault(kind="503", provider="does-not-exist"):
-            pass
+    with pytest.raises(KeyError), provider_fault(kind="503", provider="does-not-exist"):
+        pass
 
 
 def test_fail_on_call_survives_first_fails_second(stub_registered):
@@ -106,9 +104,8 @@ def test_call_restored_even_when_body_raises(stub_registered):
     class Boom(RuntimeError):
         pass
 
-    with pytest.raises(Boom):
-        with provider_fault(kind="503", provider="stub"):
-            raise Boom()
+    with pytest.raises(Boom), provider_fault(kind="503", provider="stub"):
+        raise Boom()
     assert get_provider("stub").call(**_CALL_KWARGS) == {"ok": True, "model": "m"}
 
 
@@ -116,17 +113,18 @@ def test_arm_generic_entry_point(stub_registered):
     from substrate.dispatch.base import ProviderError
     from substrate.dispatch.router import get_provider
 
-    with arm("provider_fault", kind="503", provider="stub"):
-        with pytest.raises(ProviderError):
-            get_provider("stub").call(**_CALL_KWARGS)
+    with arm("provider_fault", kind="503", provider="stub"), pytest.raises(ProviderError):
+        get_provider("stub").call(**_CALL_KWARGS)
 
 
 def test_double_arm_same_provider_refused(stub_registered):
     from substrate.dispatch.router import get_provider
 
-    with provider_fault(kind="503", provider="stub"):
-        with pytest.raises(RuntimeError):
-            with provider_fault(kind="timeout", provider="stub"):
-                pass
+    with (
+        provider_fault(kind="503", provider="stub"),
+        pytest.raises(RuntimeError),
+        provider_fault(kind="timeout", provider="stub"),
+    ):
+        pass
     # Outer restored cleanly and the guard was released.
     assert get_provider("stub").call(**_CALL_KWARGS) == {"ok": True, "model": "m"}
