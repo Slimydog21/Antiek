@@ -82,8 +82,7 @@ def test_roadmap_consumes_speak_sprint_status_and_focus_advances() -> None:
     assert by_id["speak:7"].status.value == "live"
     assert by_id["speak:8"].status.value == "live"
     assert by_id["speak:9"].status.value == "live"
-    assert roadmap.execution_focus() is not None
-    assert roadmap.execution_focus().node_id == "unified:8"
+    assert roadmap.execution_focus() is None
 
 
 def test_speak_lock_version_present() -> None:

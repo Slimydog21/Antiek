@@ -55,8 +55,13 @@ def test_unified_sprint_7_cost_consent_surface_is_live() -> None:
     assert lock.resolve_unified_sprint(7).status == "live"
 
 
-def test_remaining_unified_sprints_stay_planned_until_promoted() -> None:
-    assert lock.resolve_unified_sprint(8).status == "planned"
+def test_unified_sprint_8_flywheel_conformance_is_live() -> None:
+    assert lock.resolve_unified_sprint(8).slug == "flywheel-conformance"
+    assert lock.resolve_unified_sprint(8).status == "live"
+
+
+def test_all_unified_sprints_are_live() -> None:
+    assert {lock.resolve_unified_sprint(n).status for n in range(1, 9)} == {"live"}
 
 
 def test_roadmap_consumes_unified_sprint_status_and_focus_advances() -> None:
@@ -70,10 +75,9 @@ def test_roadmap_consumes_unified_sprint_status_and_focus_advances() -> None:
     assert by_id["unified:5"].status.value == "live"
     assert by_id["unified:6"].status.value == "live"
     assert by_id["unified:7"].status.value == "live"
-    assert by_id["unified:8"].status.value == "planned"
-    assert roadmap.execution_focus() is not None
-    assert roadmap.execution_focus().node_id == "unified:8"
+    assert by_id["unified:8"].status.value == "live"
+    assert roadmap.execution_focus() is None
 
 
 def test_unified_lock_version_present() -> None:
-    assert isinstance(lock.UNIFIED_LOCK_VERSION, int) and lock.UNIFIED_LOCK_VERSION >= 7
+    assert isinstance(lock.UNIFIED_LOCK_VERSION, int) and lock.UNIFIED_LOCK_VERSION >= 8

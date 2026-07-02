@@ -314,6 +314,14 @@ def test_canonical_verify_unified_cost_consent_surface_hermetic() -> None:
     assert "CANONICAL_VERIFY_OK: unified-cost-consent-surface" in proc.stdout
 
 
+def test_canonical_verify_unified_flywheel_conformance_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("unified-flywheel-conformance")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: unified-flywheel-conformance" in proc.stdout
+
+
 def test_canonical_verify_deep_research_hermetic() -> None:
     if not PY.is_file():
         return

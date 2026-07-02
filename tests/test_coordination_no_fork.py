@@ -381,10 +381,7 @@ def test_execution_focus_skips_live_ready_rows() -> None:
     roadmap = build_roadmap()
     focus = roadmap.execution_focus()
 
-    assert focus is not None
-    assert focus.kind == "dependency_ready"
-    assert focus.node_id == "unified:8"
-    assert focus.blocked_sprints == ()
+    assert focus is None
 
 
 def test_execution_focus_falls_back_to_first_dependency_ready_row() -> None:
@@ -435,10 +432,7 @@ def test_roadmap_response_serializes_execution_focus() -> None:
 
     response = RoadmapResponse.from_roadmap(build_roadmap())
 
-    assert response.execution_focus is not None
-    assert response.execution_focus.kind == "dependency_ready"
-    assert response.execution_focus.node_id == "unified:8"
-    assert response.execution_focus.blocked_sprints == []
+    assert response.execution_focus is None
 
 
 def test_roadmap_reads_rosters_from_fixture_via_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

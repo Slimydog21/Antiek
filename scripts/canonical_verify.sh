@@ -39,9 +39,10 @@
 #   unified-coordination-gate-ledger — Unified SPR-05 gate ledger + roadmap
 #   unified-thread-navigation — Unified SPR-06 cross-workflow thread navigation
 #   unified-cost-consent-surface — Unified SPR-07 cost + consent surface
+#   unified-flywheel-conformance — Unified SPR-08 flywheel + conformance gate
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
-#   deep-research        — ANT-DRL P-50..P-56 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
-#   html-transport       — ANT-AHT P-57 ResearchArtifact transport gates
+#   deep-research        — ANT-DRL P-51..P-57 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
+#   html-transport       — ANT-AHT P-58 ResearchArtifact transport gates
 #
 # USAGE (from repo root):
 #   ./scripts/canonical_verify.sh cascade
@@ -64,7 +65,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|speak-economics-matrix|speak-biography-authoring|speak-publishing-physical|unified-substrate-contract-lock|unified-remote-exec-fanout|unified-seams-and-collisions|unified-navigation-ia-taxonomy|unified-coordination-gate-ledger|unified-thread-navigation|unified-cost-consent-surface|handoff <md>|agent-gates|deep-research|html-transport}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|speak-economics-matrix|speak-biography-authoring|speak-publishing-physical|unified-substrate-contract-lock|unified-remote-exec-fanout|unified-seams-and-collisions|unified-navigation-ia-taxonomy|unified-coordination-gate-ledger|unified-thread-navigation|unified-cost-consent-surface|unified-flywheel-conformance|handoff <md>|agent-gates|deep-research|html-transport}" >&2
   exit 2
 }
 
@@ -545,6 +546,20 @@ cmd_unified_cost_consent_surface() {
   echo "CANONICAL_VERIFY_OK: unified-cost-consent-surface"
 }
 
+cmd_unified_flywheel_conformance() {
+  echo "== unified-flywheel-conformance: flywheel + integration invariants =="
+  "${PY}" -m pytest \
+    tests/e2e/test_flywheel.py \
+    tests/test_integration_invariants.py \
+    tests/test_contracts_unified_lock.py \
+    -q --tb=no
+  echo "== unified-flywheel-conformance: conformance gate + negative controls =="
+  "${PY}" -m pytest tests/test_conformance_gate.py -q --tb=no
+  echo "== unified-flywheel-conformance: standalone conformance script =="
+  "${PY}" tools/codegen/check_conformance.py
+  echo "CANONICAL_VERIFY_OK: unified-flywheel-conformance"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -608,7 +623,7 @@ cmd_agent_gates() {
 }
 
 cmd_html_transport() {
-  echo "== html-transport: P-57 ANT-AHT bundle =="
+  echo "== html-transport: P-58 ANT-AHT bundle =="
   "${PY}" -m pytest \
     tests/test_research_artifact_template.py \
     tests/test_research_artifact_export.py \
@@ -625,19 +640,19 @@ cmd_html_transport() {
 }
 
 cmd_deep_research() {
-  echo "== deep-research: P-50 Loop 1 E2E =="
+  echo "== deep-research: P-51 Loop 1 E2E =="
   "${PY}" -m pytest tests/test_loop_one_orchestrator.py::test_loop_one_happy_path_emits_completed -q --tb=no
-  echo "== deep-research: P-51 invariant negative =="
+  echo "== deep-research: P-52 invariant negative =="
   "${PY}" -m pytest tests/test_deep_research_complete.py::test_drw_only_trajectory_fails_without_synthesis -q --tb=no
-  echo "== deep-research: P-52 session reconstruct =="
+  echo "== deep-research: P-53 session reconstruct =="
   "${PY}" -m pytest tests/test_cascade_session.py -q --tb=no
-  echo "== deep-research: P-53 PromotionFunnel serialize =="
+  echo "== deep-research: P-54 PromotionFunnel serialize =="
   "${PY}" -m pytest tests/test_research_runner.py::test_promotion_funnel_serialized_no_lock_timeout -q --tb=no
-  echo "== deep-research: P-54 knowledge.reused (two-run) =="
+  echo "== deep-research: P-55 knowledge.reused (two-run) =="
   "${PY}" -m pytest tests/test_flywheel_reuse.py::test_two_run_contract_gather_emits_knowledge_reused_on_second_start -q --tb=no
-  echo "== deep-research: P-55 Exa gather mock E2E =="
+  echo "== deep-research: P-56 Exa gather mock E2E =="
   "${PY}" -m pytest tests/test_exa_gather_loop.py -q --tb=short
-  echo "== deep-research: P-56 parent-terminal observability =="
+  echo "== deep-research: P-57 parent-terminal observability =="
   "${PY}" -m pytest tests/test_drw_parent_terminal.py -q --tb=short
   echo "CANONICAL_VERIFY_OK: deep-research"
 }
@@ -682,6 +697,7 @@ main() {
     unified-coordination-gate-ledger) cmd_unified_coordination_gate_ledger ;;
     unified-thread-navigation) cmd_unified_thread_navigation ;;
     unified-cost-consent-surface) cmd_unified_cost_consent_surface ;;
+    unified-flywheel-conformance) cmd_unified_flywheel_conformance ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     deep-research) cmd_deep_research ;;
