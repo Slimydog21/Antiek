@@ -121,4 +121,82 @@ describe("CommandPalette", () => {
       expect(getBrainstormQuestionSelection()).toEqual(QUESTION);
     });
   });
+
+  it("sanitizes remote index rows before rendering navigation entries", async () => {
+    apiFetchMock.mockImplementation(async (path: string) => {
+      if (path === "/investigations") {
+        return {
+          ok: true,
+          json: async () => ({
+            investigations: [
+              { investigation_id: " inv-dirty ", topic: "  Dirty investigation  " },
+              { investigation_id: " ", topic: "Skipped investigation" },
+            ],
+          }),
+        };
+      }
+      if (path === "/documents") {
+        return {
+          ok: true,
+          json: async () => ({
+            documents: [
+              { document_id: " doc dirty ", title: "  Dirty document  " },
+              { document_id: "", title: "Skipped document" },
+            ],
+          }),
+        };
+      }
+      if (path === "/notebooks") {
+        return {
+          ok: true,
+          json: async () => ({
+            notebooks: [
+              { notebook_id: " nb-dirty ", title: "  Dirty notebook  " },
+              { notebook_id: " ", title: "Skipped notebook" },
+            ],
+          }),
+        };
+      }
+      if (path === "/watch-for-later") {
+        return {
+          ok: true,
+          json: async () => ({
+            questions: [
+              {
+                question_id: " q-dirty ",
+                question_text: "  Dirty parked question  ",
+                source_investigation_id: " inv-dirty ",
+                source_document_id: " doc dirty ",
+                anchor_region_id: " ",
+                parked_at: " 2026-07-01T00:00:00Z ",
+                parent_event_id: null,
+              },
+              {
+                question_id: "q-bad",
+                question_text: " ",
+                source_investigation_id: "inv",
+                parked_at: "2026-07-01T00:00:00Z",
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    renderPalette();
+
+    window.dispatchEvent(new Event("antiek:palette:toggle"));
+    await userEvent.type(await screen.findByRole("textbox"), "dirty");
+
+    expect(await screen.findByText("Dirty investigation")).toBeTruthy();
+    expect(await screen.findByText("Replay: Dirty investigation")).toBeTruthy();
+    expect(await screen.findByText("Dirty document")).toBeTruthy();
+    expect(await screen.findByText("Dirty notebook")).toBeTruthy();
+    expect(await screen.findByText("Dirty parked question")).toBeTruthy();
+    expect(screen.queryByText(/Skipped/)).toBeNull();
+
+    await userEvent.click(screen.getByText("Dirty document"));
+    expect(screen.getByTestId("location").textContent).toBe("/read/doc%20dirty");
+  });
 });
