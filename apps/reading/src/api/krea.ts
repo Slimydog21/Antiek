@@ -92,6 +92,38 @@ export interface JobResult {
 export type GenerateResponse = GenerateResult | SceneDisabled;
 export type JobResponse = JobResult | SceneDisabled;
 
+export interface KreaFailureEntry {
+  timestamp: string;
+  reason: string;
+  scene_key?: string | null;
+  upstream_status?: number | null;
+}
+
+export interface KreaStatusSnapshot {
+  enabled: boolean;
+  key_present: boolean;
+  kill_switch: boolean;
+  gate_verdict: string | null;
+  reasons: string[];
+  budget: {
+    spent_today: number;
+    cap: number;
+    remaining: number;
+  };
+  rate_window: {
+    occupancy: number;
+    max: number;
+    window_s: number;
+  };
+  cache: {
+    entries: number;
+    max_entries: number;
+  };
+  last_success_at: string | null;
+  failure_counts: Record<string, number>;
+  failures: KreaFailureEntry[];
+}
+
 /** Build the query string for a scene request. */
 function sceneQuery(scene: SceneState): string {
   const p = new URLSearchParams({
@@ -217,6 +249,17 @@ export async function getJob(jobId: string): Promise<JobResponse> {
     };
   }
   throw new Error(`GET /krea/jobs/{id} failed: HTTP ${resp.status}`);
+}
+
+/** Read the Krea observability surface. This route is always HTTP 200 when
+ *  reachable, including disabled/no-key states. Network failures throw so the
+ *  caller can distinguish "status unavailable" from "Krea disabled". */
+export async function getKreaStatus(): Promise<KreaStatusSnapshot> {
+  const resp = await apiFetch(`${API_BASE}/krea/status`);
+  if (!resp.ok) {
+    throw new Error(`GET /krea/status failed: HTTP ${resp.status}`);
+  }
+  return (await resp.json()) as KreaStatusSnapshot;
 }
 
 /** Parse JSON tolerantly — a partial/garbage body becomes null (the caller

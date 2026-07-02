@@ -4,11 +4,13 @@ import { moodFromTheme, prefersDark, type SceneMood } from "./mood";
 import { useSceneClock } from "./useSceneClock";
 import { useSceneArt } from "./useSceneArt";
 import type { SceneFetcher } from "../krea/useKreaScene";
+import { useKreaStatus } from "../krea/useKreaStatus";
 import { Peaks } from "./layers/Peaks";
 import { Clouds } from "./layers/Clouds";
 import { Snow } from "./layers/Snow";
 import { PenguinJourney } from "./layers/PenguinJourney";
 import { KreaArtLayer } from "./layers/KreaArtLayer";
+import { SceneStatusBadge } from "./SceneStatusBadge";
 // The scene's consolidated keyframes + reduced-motion guard (one motion home,
 // sanctioned in motion.guard.test.ts) — see scene.css.
 import "./scene.css";
@@ -73,6 +75,9 @@ export function Scene({ mood: moodProp, fetchScene, reducedMotion }: SceneProps)
 
   // Periodic, mood-gated Krea art (never per frame — see useSceneArt).
   const art = useSceneArt(mood, fetchScene);
+  // Status is fetched once at scene mount, matching useKreaScene's
+  // mount/state-key scheduling style rather than adding a polling loop.
+  const kreaStatus = useKreaStatus();
 
   return (
     <div
@@ -93,6 +98,10 @@ export function Scene({ mood: moodProp, fetchScene, reducedMotion }: SceneProps)
       <Snow mood={mood} reducedMotion={frozen} />
       {/* z-4 scenery penguin */}
       <PenguinJourney mood={mood} />
+      <SceneStatusBadge
+        status={kreaStatus.data}
+        error={kreaStatus.status === "error" ? kreaStatus.error : null}
+      />
     </div>
   );
 }
