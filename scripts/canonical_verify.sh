@@ -13,6 +13,7 @@
 #   read-voice-notes     — Read SPR-06 voice-note capture + distillation gate
 #   read-rabbit-hole     — Read SPR-07 conversational rabbit-hole + voice replies
 #   read-passage-research — Read SPR-08 research-from-passage gate
+#   read-ad-escrow       — Read SPR-09 rights-holder escrow accrual gate
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -36,7 +37,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -133,8 +134,8 @@ cmd_read_curate() {
 }
 
 cmd_read_ad_border() {
-  echo "== read-ad-border: slot model + targeting + impression/accrual backend =="
-  "${PY}" -m pytest tests/test_reader_ad_slots.py tests/test_read_ad_escrow.py tests/test_contracts_read_lock.py -q --tb=no
+  echo "== read-ad-border: slot model + targeting backend =="
+  "${PY}" -m pytest tests/test_reader_ad_slots.py tests/test_contracts_read_lock.py -q --tb=no
   echo "== read-ad-border: reader rails + impression client =="
   (cd apps/reading && npm run test -- \
     src/api/books.test.ts \
@@ -142,6 +143,17 @@ cmd_read_ad_border() {
     src/modes/Reading/HouseSlot.test.tsx \
     --reporter=dot)
   echo "CANONICAL_VERIFY_OK: read-ad-border"
+}
+
+cmd_read_ad_escrow() {
+  echo "== read-ad-escrow: rights-holder accrual + payout gate backend =="
+  "${PY}" -m pytest tests/test_read_ad_escrow.py tests/test_contracts_read_lock.py -q --tb=no
+  echo "== read-ad-escrow: impression client + reader flush =="
+  (cd apps/reading && npm run test -- \
+    src/api/books.test.ts \
+    src/modes/Reading/Reading.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: read-ad-escrow"
 }
 
 cmd_read_voice_notes() {
@@ -220,6 +232,7 @@ main() {
     read-voice-notes) cmd_read_voice_notes ;;
     read-rabbit-hole) cmd_read_rabbit_hole ;;
     read-passage-research) cmd_read_passage_research ;;
+    read-ad-escrow) cmd_read_ad_escrow ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;
