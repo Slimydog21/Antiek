@@ -432,11 +432,15 @@ describe("api client investigation and watch-list response boundaries", () => {
       ),
     );
 
-    await expect(launchParkedQuestion("q-1")).resolves.toEqual({
+    await expect(launchParkedQuestion(" q dirty/1 ")).resolves.toEqual({
       investigation_id: "inv-new",
       status: "in_progress",
       start_event_id: "evt-start",
     });
+    expect(fetch).toHaveBeenCalledWith(
+      "/watch-for-later/q%20dirty%2F1/launch",
+      expect.objectContaining({ method: "POST" }),
+    );
 
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(
@@ -452,6 +456,13 @@ describe("api client investigation and watch-list response boundaries", () => {
     await expect(launchParkedQuestion("q-2")).rejects.toMatchObject({
       status: 502,
     });
+  });
+
+  it("rejects blank parked-question launch handles before network", async () => {
+    await expect(launchParkedQuestion(" ")).rejects.toThrow(
+      "question_id must be a non-empty string",
+    );
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

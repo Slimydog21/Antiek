@@ -593,8 +593,9 @@ export async function listWatchForLater(
 export async function launchParkedQuestion(
   question_id: string,
 ): Promise<StartInvestigationResponse> {
+  const resolvedQuestionId = requireRequestString(question_id, "question_id");
   const resp = await apiFetch(
-    `${API_BASE}/watch-for-later/${encodeURIComponent(question_id)}/launch`,
+    `${API_BASE}/watch-for-later/${encodeURIComponent(resolvedQuestionId)}/launch`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -602,7 +603,7 @@ export async function launchParkedQuestion(
   );
   if (!resp.ok) {
     throw new ApiError(
-      `POST /watch-for-later/${question_id}/launch failed: HTTP ${resp.status}`,
+      `POST /watch-for-later/{question_id}/launch failed: HTTP ${resp.status}`,
       resp.status,
       await resp.text(),
     );
@@ -637,18 +638,23 @@ function newQuestionId(): string {
 export async function parkQuestionForLater(
   req: ParkQuestionRequest,
 ): Promise<ParkQuestionResult> {
+  const investigationId = requireRequestString(req.investigation_id, "investigation_id");
+  const questionText = requireRequestString(req.question_text, "question_text");
+  const sourceDocumentId = optionalRequestString(req.source_document_id);
+  const parentEventId = optionalRequestString(req.parent_event_id);
+  const anchorRegionId = optionalRequestString(req.anchor_region_id);
   const question_id = newQuestionId();
   const emitted = await postTypedEvent({
-    investigation_id: req.investigation_id,
-    document_id: req.source_document_id ?? undefined,
-    parent_event_id: req.parent_event_id ?? undefined,
+    investigation_id: investigationId,
+    document_id: sourceDocumentId,
+    parent_event_id: parentEventId,
     role: "operator",
     policy_id: "operator/brainstorm",
     payload: {
       action_type: "question.identified",
       question_id,
-      question_text: req.question_text,
-      anchor_region_id: req.anchor_region_id ?? null,
+      question_text: questionText,
+      anchor_region_id: anchorRegionId ?? null,
     },
   });
   return { ...emitted, question_id };
