@@ -173,6 +173,31 @@ describe("InvestigationsIndex", () => {
     expect(await screen.findByText("investigation_id must be a non-empty string")).toBeTruthy();
     expect(navigateMock).not.toHaveBeenCalled();
   });
+
+  it("sanitizes validation error detail before rendering", async () => {
+    apiFetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ count: 0, investigations: [] }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 422,
+        json: async () => ({ detail: { code: "bad_request" } }),
+      } as Response);
+
+    renderIndex();
+
+    await screen.findByText("No investigations match this filter.");
+    fireEvent.change(screen.getByPlaceholderText("What's the question? (≥ 3 chars)"), {
+      target: { value: "What should we research next?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Start investigation" }));
+
+    expect(await screen.findByText("Validation: rejected")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("[object Object]");
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
 });
 
 function row(id: string, question: string, cost: unknown) {
