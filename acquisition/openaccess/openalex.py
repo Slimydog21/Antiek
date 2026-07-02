@@ -158,7 +158,10 @@ def _http_get(url: str, *, client: httpx.Client | None) -> dict:
 
         r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
     else:
-        with httpx.Client(follow_redirects=True) as c:
+        with httpx.Client(
+            follow_redirects=True,
+            timeout=DEFAULT_TIMEOUT_S,  # module default; same pattern as acquisition/papers/core.py DEFAULT_TIMEOUT_S
+        ) as c:
             def _send() -> httpx.Response:
                 return c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 
@@ -250,7 +253,7 @@ def fetch_work_record(
             base_url=base_url,
         )
         if throttle is not None:
-            payload = throttle.run_with_retry(lambda: _http_get(url, client=client))
+            payload = throttle.run_with_retry(lambda url=url: _http_get(url, client=client))
         else:
             payload = _http_get(url, client=client)
         results = payload.get("results") or []

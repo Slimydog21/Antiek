@@ -260,7 +260,9 @@ def _http_get(
         r.raise_for_status()
         return r.content
 
-    with httpx.Client() as c:
+    with httpx.Client(
+        timeout=DEFAULT_TIMEOUT_S,  # module default; same pattern as acquisition/papers/core.py DEFAULT_TIMEOUT_S
+    ) as c:
         def _send() -> httpx.Response:
             return c.get(url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 

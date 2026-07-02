@@ -1,0 +1,24 @@
+# Quarantine ledger — Antiek × Beck Test-Integrity SPR-04
+#
+# POLICY (never-delete-signal):
+# - Quarantine ISOLATES flaky tests; it never deletes, skips, or edits them.
+# - A quarantined test STILL RUNS and its result is RECORDED.
+# - Promotion back requires satisfying the entry's `promote_when` condition
+#   (verified via `python -m tools.flaky_quarantine --check`).
+# - Deleting a quarantined test is a separate, documented PR — only when the
+#   production path it covered is gone.
+#
+# The harness PROPOSES entries (`--propose`); the operator reviews and commits.
+# This file is the source of truth once entries are committed.
+#
+# Per-entry fields:
+#   nodeid         — pytest node id (e.g. tests/x/test_y.py::test_z)
+#   reason         — order-dependent | rng-flap | clock-flap | async-race |
+#                    resource-leak | unknown-flap
+#   evidence       — pass/fail counts over the N runs that justified quarantine
+#   quarantined_at — ISO date (YYYY-MM-DD)
+#   quarantined_by — who proposed/committed the entry
+#   promote_when   — condition to un-quarantine (e.g. "passes 3 consecutive
+#                    shuffled runs")
+#   ignore_failures — optional (default true): when true, intermittent failures
+#                     do not red the gate; set false to surface consistent failures
