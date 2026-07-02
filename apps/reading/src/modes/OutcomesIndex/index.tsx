@@ -57,9 +57,12 @@ function safeOutcomeRow(value: unknown): OutcomeRow | null {
 function safeOutcomeRows(value: unknown): OutcomeRow[] {
   const body = record(value);
   const outcomes = Array.isArray(body?.outcomes) ? body.outcomes : [];
+  const seen = new Set<string>();
   return outcomes.flatMap((item) => {
     const row = safeOutcomeRow(item);
-    return row ? [row] : [];
+    if (!row || seen.has(row.outcome_id)) return [];
+    seen.add(row.outcome_id);
+    return [row];
   });
 }
 
