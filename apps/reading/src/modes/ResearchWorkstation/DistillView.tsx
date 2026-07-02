@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   getDistillation,
@@ -55,15 +55,24 @@ type LoadState =
 
 export default function DistillView({ investigationId, running, onChase }: DistillViewProps) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
+  const loadSeq = useRef(0);
+  const activeInvestigationId = useRef(investigationId);
+  activeInvestigationId.current = investigationId;
 
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
+    const targetId = investigationId;
     setState({ kind: "loading" });
     try {
       const res = await getDistillation(investigationId);
-      setState({ kind: "loaded", insights: res.insights, questions: res.questions });
+      if (loadSeq.current === seq && activeInvestigationId.current === targetId) {
+        setState({ kind: "loaded", insights: res.insights, questions: res.questions });
+      }
     } catch (e) {
-      const reason = e instanceof ApiError ? e.body || null : null;
-      setState({ kind: "error", reason });
+      if (loadSeq.current === seq && activeInvestigationId.current === targetId) {
+        const reason = e instanceof ApiError ? e.body || null : null;
+        setState({ kind: "error", reason });
+      }
     }
   }, [investigationId]);
 
