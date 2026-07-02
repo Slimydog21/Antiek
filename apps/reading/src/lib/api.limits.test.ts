@@ -741,6 +741,12 @@ describe("api client write editor response boundaries", () => {
               document_title: "  Source doc  ",
             },
             {
+              block_id: "blk-1",
+              block_kind: "question",
+              label: "Duplicate claim",
+              body: "Should not repeat",
+            },
+            {
               block_id: "blk-empty",
               body: " ",
             },
