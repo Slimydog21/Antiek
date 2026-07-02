@@ -9,6 +9,12 @@ interface CrossDocSidebarProps {
   onCiteJump?: (eventId: string) => void;
 }
 
+interface CrossDocLink {
+  key: string;
+  event: Event & { payload: CrossDocQuestionAnsweredPayload };
+  payload: CrossDocQuestionAnsweredPayload;
+}
+
 /**
  * Live feed of cross-document question→answer links.
  *
@@ -43,15 +49,7 @@ export default function CrossDocSidebar({
     return map;
   }, [events]);
 
-  const links = useMemo(
-    () =>
-      events.filter(
-        (e): e is Event & { payload: CrossDocQuestionAnsweredPayload } =>
-          e.action_type === "cross_doc.question_answered" &&
-          crossDocQuestionAnsweredView(e.payload) !== null,
-      ),
-    [events],
-  );
+  const links = useMemo(() => safeCrossDocLinks(events), [events]);
 
   return (
     <div className="flex flex-col h-full bg-ice-0 dark:bg-charcoal-2 border-l border-rule dark:border-charcoal-1">
@@ -72,15 +70,12 @@ export default function CrossDocSidebar({
           </div>
         ) : (
           <ul className="flex flex-col gap-2.5">
-            {links.map((e) => {
-              const payload = crossDocQuestionAnsweredView(e.payload);
+            {links.map(({ key, event, payload }) => {
               return (
                 <CrossDocCard
-                  key={e.event_id}
-                  event={e}
-                  questionText={
-                    payload ? questionTextById.get(payload.question_id) : undefined
-                  }
+                  key={key}
+                  event={event}
+                  questionText={questionTextById.get(payload.question_id)}
                   onCiteJump={onCiteJump}
                 />
               );
@@ -146,6 +141,33 @@ function shortenId(id: string): string {
 
 function shortenDocId(id: string): string {
   return id.length > 12 ? id.slice(0, 12) + "…" : id;
+}
+
+function safeCrossDocLinks(events: Event[]): CrossDocLink[] {
+  const seen = new Set<string>();
+  return events.flatMap((event) => {
+    if (event.action_type !== "cross_doc.question_answered") return [];
+    const payload = crossDocQuestionAnsweredView(event.payload);
+    if (!payload) return [];
+    const key = [
+      payload.question_id,
+      payload.question_document_id,
+      payload.answer_document_id,
+      payload.answer_note_id,
+    ].join("\0");
+    if (seen.has(key)) return [];
+    seen.add(key);
+    return [
+      {
+        key,
+        event: {
+          ...event,
+          payload,
+        },
+        payload,
+      },
+    ];
+  });
 }
 
 function record(value: unknown): Record<string, unknown> | null {
