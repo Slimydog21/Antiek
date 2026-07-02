@@ -5,14 +5,52 @@ import PdfViewer from "./PdfViewer";
 /**
  * PdfViewer renders a PDF for highlight-to-distill region selection
  * in Loop 2 wrestling mode. Master-spec §6 primary-source connection.
- *
- * NOTE: this story is a placeholder. Storybook needs actual PDF bytes
- * (Uint8Array) to render meaningfully. Sprint 18 follow-up wires a
- * fixture PDF (e.g. a 1-page LaTeX-rendered abstract committed to
- * `src/fixtures/`) for full interactive stories. For Sprint 17 we
- * ship the story registration so the component appears in the
- * design system index.
  */
+const STORY_PDF_SOURCE = `%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length 229 >>
+stream
+BT
+/F1 18 Tf
+72 720 Td
+(Antiek PdfViewer story fixture) Tj
+0 -32 Td
+/F1 12 Tf
+(A real one-page PDF used for highlight-to-distill Storybook coverage.) Tj
+0 -22 Td
+(Select this text to exercise the region selection surface.) Tj
+ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f
+0000000009 00000 n
+0000000058 00000 n
+0000000115 00000 n
+0000000241 00000 n
+0000000311 00000 n
+trailer
+<< /Root 1 0 R /Size 6 >>
+startxref
+590
+%%EOF
+`;
+
+export const pdfViewerStoryBytes = new TextEncoder().encode(STORY_PDF_SOURCE);
+
 const meta = {
   title: "Loop 2 / PdfViewer",
   component: PdfViewer,
@@ -21,7 +59,7 @@ const meta = {
     docs: {
       description: {
         component:
-          "Sprint 17 placeholder. Full story setup with fixture PDF bytes lands in Sprint 18.",
+          "Interactive one-page PDF fixture for highlight-to-distill region selection.",
       },
     },
   },
@@ -31,9 +69,9 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Placeholder: Story = {
+export const OnePageFixture: Story = {
   args: {
-    pdfBytes: new Uint8Array(0),
+    pdfBytes: pdfViewerStoryBytes,
     investigationId: "inv-storybook-demo",
     documentId: "doc-quantum-2026",
   },
@@ -51,6 +89,11 @@ export const Placeholder: Story = {
  * The harness selects by `[role="region"][aria-label="PDF perf target"]`.
  */
 export const PdfPerfTarget: Story = {
+  args: {
+    pdfBytes: pdfViewerStoryBytes,
+    investigationId: "inv-storybook-perf",
+    documentId: "doc-pdf-perf-target",
+  },
   render: () => (
     <div className="h-screen w-screen bg-ice-2 dark:bg-space-2 p-6 flex items-center justify-center">
       <section
