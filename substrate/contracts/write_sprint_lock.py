@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to WRITE_SPRINTS. Status changes are deliberate roadmap
 # events, not prose-only handoffs.
-WRITE_LOCK_VERSION: int = 1
+WRITE_LOCK_VERSION: int = 2
 
 
 @dataclass(frozen=True)
@@ -36,7 +36,16 @@ WRITE_SPRINTS: dict[int, WriteDeliverable] = {
         # composer integration are covered by write-outline-block.
         status="live",
     ),
-    2: WriteDeliverable(2, "edit-trajectory-capture", "Edit trajectory capture"),
+    2: WriteDeliverable(
+        2,
+        "edit-trajectory-capture",
+        "Edit trajectory capture",
+        # Live: granular edit.captured events, stable locators, deterministic
+        # authoring trajectory reconstruction, reverted-edit exclusion,
+        # ungated storage harvest, G8-gated training harvest, and frontend
+        # diff/payload mapping are covered by write-edit-capture.
+        status="live",
+    ),
     3: WriteDeliverable(3, "block-repository-folders", "Block repository folders"),
     4: WriteDeliverable(4, "structured-block-editor", "Structured block editor"),
     5: WriteDeliverable(5, "brainstorm-interview", "Brainstorm interview"),
