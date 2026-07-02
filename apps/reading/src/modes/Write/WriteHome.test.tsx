@@ -229,6 +229,50 @@ describe("WriteHome — the re-homed door", () => {
     await waitFor(() => expect(getDeliverableMock).toHaveBeenCalledWith("dlv-valid"));
   });
 
+  it("dedupes duplicate listed piece ids after trimming", async () => {
+    listDeliverablesMock.mockResolvedValue({
+      count: 3,
+      deliverables: [
+        {
+          deliverable_id: " dlv-dup ",
+          title: "First memo",
+          deliverable_kind: "general_essay",
+          investigation_root_id: "inv-root",
+          status: "draft",
+          created_at: null,
+          updated_at: null,
+          section_count: 1,
+        },
+        {
+          deliverable_id: "dlv-dup",
+          title: "Duplicate memo",
+          deliverable_kind: "general_essay",
+          investigation_root_id: "inv-root",
+          status: "draft",
+          created_at: null,
+          updated_at: null,
+          section_count: 2,
+        },
+        {
+          deliverable_id: "dlv-other",
+          title: "Other memo",
+          deliverable_kind: "general_essay",
+          investigation_root_id: null,
+          status: "draft",
+          created_at: null,
+          updated_at: null,
+          section_count: 0,
+        },
+      ],
+    });
+
+    mountAt("/write");
+
+    expect(await screen.findByText("First memo")).toBeTruthy();
+    expect(screen.queryByText("Duplicate memo")).toBeNull();
+    expect(screen.getByText("Other memo")).toBeTruthy();
+  });
+
   it("encodes listed piece ids before opening them", async () => {
     listDeliverablesMock.mockResolvedValue({
       count: 1,
