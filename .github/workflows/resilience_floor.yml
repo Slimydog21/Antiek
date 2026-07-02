@@ -46,7 +46,7 @@ jobs:
       # Production dirs the timeout + bulkhead lints scan (never tests/ etc.).
       SCOPE_DIRS: acquisition substrate interfaces roles runtime tools middleware
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v6
