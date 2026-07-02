@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 
 /**
  * Speak.test — the project page (Product Depth SPR-08 M2 + M4).
@@ -39,6 +39,23 @@ vi.mock("../../lib/api", async (orig) => ({
 }));
 
 import Speak from "./index";
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+function RouteSwitchProbe() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate("/speak/proj-fresh")}>
+      open fresh story
+    </button>
+  );
+}
 
 beforeEach(() => {
   api.getProject.mockReset().mockResolvedValue({
@@ -117,6 +134,55 @@ describe("Speak project page", () => {
     expect((await screen.findAllByText("aunt@x.com")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("Uncle Theo").length).toBeGreaterThan(0);
     expect(screen.getByText("shared")).toBeTruthy();
+  });
+
+  it("keeps stale project reloads from overwriting the active routed story", async () => {
+    const stale = deferred<{ id: string; name: string; willBePublic: boolean; subjectStatusWord: null }>();
+    const fresh = deferred<{ id: string; name: string; willBePublic: boolean; subjectStatusWord: null }>();
+    api.getProject.mockReturnValueOnce(stale.promise).mockReturnValueOnce(fresh.promise);
+    api.getEconomics.mockResolvedValue({ splitApplies: false, creatorCarriesCost: true });
+    api.listVoices
+      .mockResolvedValueOnce([
+        { interviewId: "iv-stale", who: "stale@x.com", state: "shared", link: "stale-link" },
+      ])
+      .mockResolvedValueOnce([
+        { interviewId: "iv-fresh", who: "fresh@x.com", state: "shared", link: "fresh-link" },
+      ]);
+
+    render(
+      <MemoryRouter initialEntries={["/speak/proj-stale"]}>
+        <RouteSwitchProbe />
+        <Routes>
+          <Route path="/speak/:projectId" element={<Speak />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /open fresh story/i }));
+    await act(async () => {
+      fresh.resolve({
+        id: "proj-fresh",
+        name: "Fresh person",
+        willBePublic: false,
+        subjectStatusWord: null,
+      });
+    });
+
+    expect(await screen.findByText("Fresh person")).toBeTruthy();
+    expect((await screen.findAllByText("fresh@x.com")).length).toBeGreaterThan(0);
+
+    await act(async () => {
+      stale.resolve({
+        id: "proj-stale",
+        name: "Stale person",
+        willBePublic: false,
+        subjectStatusWord: null,
+      });
+    });
+
+    expect(screen.getByText("Fresh person")).toBeTruthy();
+    expect(screen.queryByText("Stale person")).toBeNull();
+    expect(screen.queryByText("stale@x.com")).toBeNull();
   });
 
   it("frames agreement as corroborated, never proven; shows disagreement", async () => {
