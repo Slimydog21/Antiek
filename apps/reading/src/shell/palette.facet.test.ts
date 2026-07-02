@@ -9,7 +9,7 @@
  */
 import { describe, it, expect } from "vitest";
 
-import { rankEntries, entryWorkflow, type FacetEntry } from "./paletteFacet";
+import { rankEntries, entryWorkflow, leadingWorkflow, type FacetEntry } from "./paletteFacet";
 import { workflowForPath } from "./workflowTaxonomy";
 
 // A small synthetic entry set spanning workflows + a shared route.
@@ -57,6 +57,14 @@ describe("palette workflow facet (SPR-04 M4)", () => {
     // a Read entry -> must still surface under "read".
     const ranked = rankEntries(ENTRIES, "read");
     expect(ranked.some((e) => e.id === "r:library")).toBe(true);
+  });
+
+  it("accepts natural workflow nouns as workflow leads", () => {
+    expect(leadingWorkflow("reading notes")).toBe("read");
+    expect(leadingWorkflow("writing draft")).toBe("write");
+
+    expect(rankEntries(ENTRIES, "reading")[0]?.id).toBe("r:library");
+    expect(rankEntries(ENTRIES, "writing")[0]?.id).toBe("r:create");
   });
 
   it("does not pull shared acquisition routes back into the Read facet", () => {

@@ -29,7 +29,9 @@ export function leadingWorkflow(q: string): Workflow | null {
   const byLabel: Record<string, Workflow> = {
     research: "research",
     read: "read",
+    reading: "read",
     write: "write",
+    writing: "write",
     speak: "speak",
   };
   return byLabel[first] ?? null;
