@@ -253,8 +253,11 @@ jobs:
       - name: Canonical verify — speak consent rights gate
         run: ./scripts/canonical_verify.sh speak-consent-rights-gate
 
+      - name: Canonical verify — speak async voice interview
+        run: ./scripts/canonical_verify.sh speak-async-voice-interview
+
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md
 
-      - name: Canonical verify — deep-research (P-35..P-41)
+      - name: Canonical verify — deep-research (P-36..P-42)
         run: ./scripts/canonical_verify.sh deep-research

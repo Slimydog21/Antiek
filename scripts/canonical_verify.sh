@@ -24,9 +24,10 @@
 #   write-pre-outline-freeform — Write SPR-08 context window promote/generate
 #   write-style-conditioning — Write SPR-09 prompt-level style conditioning
 #   speak-consent-rights-gate — Speak SPR-01 consent + public publish gate
+#   speak-async-voice-interview — Speak SPR-02 async voice-note interview
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
-#   deep-research        — ANT-DRL P-35..P-41 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
-#   html-transport       — ANT-AHT P-42 ResearchArtifact transport gates
+#   deep-research        — ANT-DRL P-36..P-42 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
+#   html-transport       — ANT-AHT P-43 ResearchArtifact transport gates
 #
 # USAGE (from repo root):
 #   ./scripts/canonical_verify.sh cascade
@@ -49,7 +50,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|handoff <md>|agent-gates|deep-research|html-transport}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|handoff <md>|agent-gates|deep-research|html-transport}" >&2
   exit 2
 }
 
@@ -310,6 +311,22 @@ cmd_speak_consent_rights_gate() {
   echo "CANONICAL_VERIFY_OK: speak-consent-rights-gate"
 }
 
+cmd_speak_async_voice_interview() {
+  echo "== speak-async-voice-interview: async voice-note interview + single voice owner =="
+  "${PY}" -m pytest \
+    tests/test_async_interview.py \
+    tests/test_speak_invitee_voice.py \
+    tests/test_acquisition_voice.py \
+    tests/test_seam_voice_single_owner.py \
+    tests/test_contracts_speak_lock.py \
+    -q --tb=no
+  echo "== speak-async-voice-interview: invitee voice UI =="
+  (cd apps/reading && npm run test -- \
+    src/modes/SpeakInvite/SpeakInvite.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: speak-async-voice-interview"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -373,7 +390,7 @@ cmd_agent_gates() {
 }
 
 cmd_html_transport() {
-  echo "== html-transport: P-42 ANT-AHT bundle =="
+  echo "== html-transport: P-43 ANT-AHT bundle =="
   "${PY}" -m pytest \
     tests/test_research_artifact_template.py \
     tests/test_research_artifact_export.py \
@@ -390,19 +407,19 @@ cmd_html_transport() {
 }
 
 cmd_deep_research() {
-  echo "== deep-research: P-35 Loop 1 E2E =="
+  echo "== deep-research: P-36 Loop 1 E2E =="
   "${PY}" -m pytest tests/test_loop_one_orchestrator.py::test_loop_one_happy_path_emits_completed -q --tb=no
-  echo "== deep-research: P-36 invariant negative =="
+  echo "== deep-research: P-37 invariant negative =="
   "${PY}" -m pytest tests/test_deep_research_complete.py::test_drw_only_trajectory_fails_without_synthesis -q --tb=no
-  echo "== deep-research: P-37 session reconstruct =="
+  echo "== deep-research: P-38 session reconstruct =="
   "${PY}" -m pytest tests/test_cascade_session.py -q --tb=no
-  echo "== deep-research: P-38 PromotionFunnel serialize =="
+  echo "== deep-research: P-39 PromotionFunnel serialize =="
   "${PY}" -m pytest tests/test_research_runner.py::test_promotion_funnel_serialized_no_lock_timeout -q --tb=no
-  echo "== deep-research: P-39 knowledge.reused (two-run) =="
+  echo "== deep-research: P-40 knowledge.reused (two-run) =="
   "${PY}" -m pytest tests/test_flywheel_reuse.py::test_two_run_contract_gather_emits_knowledge_reused_on_second_start -q --tb=no
-  echo "== deep-research: P-40 Exa gather mock E2E =="
+  echo "== deep-research: P-41 Exa gather mock E2E =="
   "${PY}" -m pytest tests/test_exa_gather_loop.py -q --tb=short
-  echo "== deep-research: P-41 parent-terminal observability =="
+  echo "== deep-research: P-42 parent-terminal observability =="
   "${PY}" -m pytest tests/test_drw_parent_terminal.py -q --tb=short
   echo "CANONICAL_VERIFY_OK: deep-research"
 }
@@ -432,6 +449,7 @@ main() {
     write-pre-outline-freeform) cmd_write_pre_outline_freeform ;;
     write-style-conditioning) cmd_write_style_conditioning ;;
     speak-consent-rights-gate) cmd_speak_consent_rights_gate ;;
+    speak-async-voice-interview) cmd_speak_async_voice_interview ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     deep-research) cmd_deep_research ;;

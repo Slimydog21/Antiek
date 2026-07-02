@@ -194,6 +194,14 @@ def test_canonical_verify_speak_consent_rights_gate_hermetic() -> None:
     assert "CANONICAL_VERIFY_OK: speak-consent-rights-gate" in proc.stdout
 
 
+def test_canonical_verify_speak_async_voice_interview_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("speak-async-voice-interview")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: speak-async-voice-interview" in proc.stdout
+
+
 def test_canonical_verify_deep_research_hermetic() -> None:
     if not PY.is_file():
         return

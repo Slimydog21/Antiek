@@ -219,13 +219,23 @@ export const CANONICAL_ROADMAP: RoadmapView = {
       label: "Speak",
       directory: "speak",
       count: 9,
-      sprints: Array.from({ length: 9 }, (_, i) => ({
+      sprints: [
+        "consent-rights-gate",
+        "async-voice-interview",
+        "project-invitations",
+        "compounding-interviewer",
+        "cross-interviewee-verification",
+        "contributor-economics",
+        "economics-matrix",
+        "biography-authoring",
+        "publishing-physical",
+      ].map((slug, i) => ({
         spec: "speak",
         spec_label: "Speak",
         sprint: i + 1,
-        slug: i === 0 ? "consent-rights-gate" : `sprint-${i + 1}`,
+        slug,
         node_id: `speak:${i + 1}`,
-        status: i === 0 ? "live" : "planned",
+        status: i < 2 ? "live" : "planned",
         on_critical_path: false,
         blocked_on: [],
         unblocked: true,
@@ -253,7 +263,7 @@ export const CANONICAL_ROADMAP: RoadmapView = {
   dependency_blockers: [],
   execution_focus: {
     kind: "dependency_ready",
-    node_id: "speak:2",
+    node_id: "speak:3",
     blocked_sprints: [],
   },
   substrate_layers: [
