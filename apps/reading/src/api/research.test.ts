@@ -14,11 +14,14 @@ vi.mock("../lib/api", async () => {
 import {
   approvePlan,
   createPlan,
+  editPlan,
   getBudgetDefaults,
+  getPlan,
   getSession,
   getSessionCost,
   getSuggestions,
   launchPlan,
+  sessionStreamUrl,
   steerResearch,
 } from "./research";
 
@@ -73,14 +76,26 @@ describe("research api - cascade plan boundary", () => {
 
   it("preserves explicit sub_questions for the manual createPlan branch", async () => {
     await createPlan({
-      problem: "Break down the energy transition",
-      sub_questions: ["Who controls critical minerals?"],
+      problem: " Break down the energy transition ",
+      sub_questions: [" Who controls critical minerals? ", " ", "Who refines them?"],
     });
 
     expect(postedJsonBody()).toEqual({
       problem: "Break down the energy transition",
-      sub_questions: ["Who controls critical minerals?"],
+      sub_questions: ["Who controls critical minerals?", "Who refines them?"],
     });
+  });
+
+  it("rejects malformed createPlan requests before sending", async () => {
+    expect(() => createPlan({ problem: " " })).toThrow(/problem/);
+    expect(() =>
+      createPlan({
+        problem: "Break down energy",
+        max_depth: Number.POSITIVE_INFINITY,
+      }),
+    ).toThrow(/max_depth/);
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
   it("sanitizes returned plan trees before the cascade UI renders them", async () => {
@@ -271,6 +286,154 @@ describe("research api - cascade plan boundary", () => {
       investigation_id: "inv-1",
       state: "paused",
     });
+  });
+
+  it("trims plan lifecycle handles and edit bodies before sending", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ ...createPlanResponse(), launchable: true }), {
+        status: 200,
+      }),
+    );
+    await getPlan(" root with space ");
+    expect(apiFetchMock.mock.calls[0][0]).toBe("/api/research/plans/root%20with%20space");
+
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ ...createPlanResponse(), launchable: true }), {
+        status: 200,
+      }),
+    );
+    await editPlan(" root with space ", {
+      op: "split",
+      target_local_id: " root ",
+      question: "  sharper question  ",
+      budget_usd: 1.25,
+      max_depth: 2,
+      into: [" leaf 1 ", " ", "leaf 2"],
+    });
+    expect(apiFetchMock.mock.calls[1][0]).toBe(
+      "/api/research/plans/root%20with%20space/edit",
+    );
+    expect(JSON.parse((apiFetchMock.mock.calls[1][1] as RequestInit).body as string)).toEqual({
+      op: "split",
+      target_local_id: "root",
+      question: "sharper question",
+      budget_usd: 1.25,
+      max_depth: 2,
+      into: ["leaf 1", "leaf 2"],
+    });
+
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          root_node_id: "root",
+          approval: { state: "approved", plan_version: 1, approved_by: "operator" },
+          launchable: true,
+        }),
+        { status: 200 },
+      ),
+    );
+    await approvePlan(" root with space ", " operator ");
+    expect(apiFetchMock.mock.calls[2][0]).toBe(
+      "/api/research/plans/root%20with%20space/approve",
+    );
+    expect(JSON.parse((apiFetchMock.mock.calls[2][1] as RequestInit).body as string)).toEqual({
+      approver: "operator",
+    });
+  });
+
+  it("rejects malformed plan lifecycle request handles before sending", async () => {
+    expect(() => getPlan(" ")).toThrow(/rootId/);
+    expect(() =>
+      editPlan("root", { op: "reword", target_local_id: " ", question: "new question" }),
+    ).toThrow(/target_local_id/);
+    expect(() =>
+      editPlan("root", { op: "reword", target_local_id: "root", question: " " }),
+    ).toThrow(/question/);
+    expect(() =>
+      editPlan("root", { op: "set_budget", target_local_id: "root", budget_usd: -1 }),
+    ).toThrow(/budget_usd/);
+    expect(() => approvePlan(" ", "operator")).toThrow(/rootId/);
+    expect(() => approvePlan("root", " ")).toThrow(/approver/);
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("trims session lifecycle handles and launch budgets before sending", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          session_id: "sess-1",
+          researches: [],
+          aggregate_cap_usd: 1.5,
+        }),
+        { status: 200 },
+      ),
+    );
+    await launchPlan(" root with space ", {
+      per_research_budget_usd: 0.75,
+      aggregate_budget_usd: null,
+    });
+    expect(apiFetchMock.mock.calls[0][0]).toBe(
+      "/api/research/plans/root%20with%20space/launch",
+    );
+    expect(postedJsonBody()).toEqual({
+      per_research_budget_usd: 0.75,
+      aggregate_budget_usd: null,
+    });
+
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ session_id: "sess-1", live: true, researches: [] }), {
+        status: 200,
+      }),
+    );
+    await getSession(" sess with space ");
+    expect(apiFetchMock.mock.calls[1][0]).toBe(
+      "/api/research/sessions/sess%20with%20space",
+    );
+
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ per_research: {} }), { status: 200 }),
+    );
+    await getSessionCost(" sess with space ");
+    expect(apiFetchMock.mock.calls[2][0]).toBe(
+      "/api/research/sessions/sess%20with%20space/cost",
+    );
+
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ session_id: "sess-1", investigation_id: "inv-1", state: "running" }),
+        { status: 200 },
+      ),
+    );
+    await steerResearch(" sess with space ", " inv with space ", "redirect", { q: "next" });
+    expect(apiFetchMock.mock.calls[3][0]).toBe(
+      "/api/research/sessions/sess%20with%20space/researches/inv%20with%20space/steer",
+    );
+    expect(JSON.parse((apiFetchMock.mock.calls[3][1] as RequestInit).body as string)).toEqual({
+      kind: "redirect",
+      payload: { q: "next" },
+    });
+
+    expect(sessionStreamUrl(" sess with space ")).toBe(
+      "/api/research/sessions/sess%20with%20space/stream",
+    );
+  });
+
+  it("rejects malformed session lifecycle requests before sending", async () => {
+    expect(() => launchPlan(" ")).toThrow(/rootId/);
+    expect(() => launchPlan("root", { per_research_budget_usd: -1 })).toThrow(
+      /per_research_budget_usd/,
+    );
+    expect(() => launchPlan("root", { aggregate_budget_usd: Number.NaN })).toThrow(
+      /aggregate_budget_usd/,
+    );
+    expect(() => getSession(" ")).toThrow(/sessionId/);
+    expect(() => getSessionCost(" ")).toThrow(/sessionId/);
+    expect(() => steerResearch(" ", "inv", "pause")).toThrow(/sessionId/);
+    expect(() => steerResearch("sess", " ", "pause")).toThrow(/investigationId/);
+    expect(() => sessionStreamUrl(" ")).toThrow(/sessionId/);
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
   it("sanitizes research budget defaults, suggestions, and approvals", async () => {

@@ -206,6 +206,32 @@ function requireString(value: unknown, field: string): string {
   return text;
 }
 
+function requireRequestString(value: unknown, field: string): string {
+  const text = nonEmptyString(value);
+  if (!text) throw new TypeError(`${field} must be a non-empty string`);
+  return text;
+}
+
+function optionalRequestStrings(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = safeStringArray(value);
+  return items.length > 0 ? items : undefined;
+}
+
+function optionalNonNegativeBudget(value: unknown, field: string): number | undefined {
+  if (value == null) return undefined;
+  const amount = finiteNonNegativeNumber(value);
+  if (amount === null) throw new TypeError(`${field} must be a non-negative number`);
+  return amount;
+}
+
+function optionalNonNegativeDepth(value: unknown, field: string): number | undefined {
+  if (value == null) return undefined;
+  const depth = nonNegativeSafeInteger(value);
+  if (depth === null) throw new TypeError(`${field} must be a non-negative safe integer`);
+  return depth;
+}
+
 function safePlanApproval(value: unknown): PlanApproval {
   const approval = record(value);
   return {
@@ -441,11 +467,23 @@ export function createPlan(req: {
   sub_questions?: string[];
   max_depth?: number;
 }): Promise<CreatePlanResponse> {
-  return post("/research/plans", req).then(safeCreatePlanResponse);
+  const body: {
+    problem: string;
+    sub_questions?: string[];
+    max_depth?: number;
+  } = {
+    problem: requireRequestString(req.problem, "problem"),
+  };
+  const subQuestions = optionalRequestStrings(req.sub_questions);
+  if (subQuestions) body.sub_questions = subQuestions;
+  const maxDepth = optionalNonNegativeDepth(req.max_depth, "max_depth");
+  if (maxDepth !== undefined) body.max_depth = maxDepth;
+  return post("/research/plans", body).then(safeCreatePlanResponse);
 }
 
 export function getPlan(rootId: string): Promise<PlanResponse> {
-  return get(`/research/plans/${encodeURIComponent(rootId)}`).then(safePlanResponse);
+  const resolvedRootId = requireRequestString(rootId, "rootId");
+  return get(`/research/plans/${encodeURIComponent(resolvedRootId)}`).then(safePlanResponse);
 }
 
 export function editPlan(rootId: string, edit: {
@@ -456,12 +494,35 @@ export function editPlan(rootId: string, edit: {
   max_depth?: number;
   into?: string[];
 }): Promise<PlanResponse> {
-  return post(`/research/plans/${encodeURIComponent(rootId)}/edit`, edit)
+  const resolvedRootId = requireRequestString(rootId, "rootId");
+  const body: {
+    op: "add_child" | "remove" | "reword" | "set_budget" | "split";
+    target_local_id: string;
+    question?: string;
+    budget_usd?: number;
+    max_depth?: number;
+    into?: string[];
+  } = {
+    op: edit.op,
+    target_local_id: requireRequestString(edit.target_local_id, "target_local_id"),
+  };
+  if (edit.question !== undefined) {
+    body.question = requireRequestString(edit.question, "question");
+  }
+  const budget = optionalNonNegativeBudget(edit.budget_usd, "budget_usd");
+  if (budget !== undefined) body.budget_usd = budget;
+  const maxDepth = optionalNonNegativeDepth(edit.max_depth, "max_depth");
+  if (maxDepth !== undefined) body.max_depth = maxDepth;
+  const into = optionalRequestStrings(edit.into);
+  if (into) body.into = into;
+  return post(`/research/plans/${encodeURIComponent(resolvedRootId)}/edit`, body)
     .then(safePlanResponse);
 }
 
 export function approvePlan(rootId: string, approver = "__operator__"): Promise<ApproveResponse> {
-  return post(`/research/plans/${encodeURIComponent(rootId)}/approve`, { approver })
+  const resolvedRootId = requireRequestString(rootId, "rootId");
+  const resolvedApprover = requireRequestString(approver, "approver");
+  return post(`/research/plans/${encodeURIComponent(resolvedRootId)}/approve`, { approver: resolvedApprover })
     .then(safeApproveResponse);
 }
 
@@ -471,17 +532,38 @@ export function launchPlan(rootId: string, req: {
   per_research_budget_usd?: number;
   aggregate_budget_usd?: number | null;
 } = {}): Promise<LaunchResponse> {
-  return post(`/research/plans/${encodeURIComponent(rootId)}/launch`, req)
+  const resolvedRootId = requireRequestString(rootId, "rootId");
+  const body: {
+    per_research_budget_usd?: number;
+    aggregate_budget_usd?: number | null;
+  } = {};
+  const perResearchBudget = optionalNonNegativeBudget(
+    req.per_research_budget_usd,
+    "per_research_budget_usd",
+  );
+  if (perResearchBudget !== undefined) body.per_research_budget_usd = perResearchBudget;
+  if (req.aggregate_budget_usd === null) {
+    body.aggregate_budget_usd = null;
+  } else {
+    const aggregateBudget = optionalNonNegativeBudget(
+      req.aggregate_budget_usd,
+      "aggregate_budget_usd",
+    );
+    if (aggregateBudget !== undefined) body.aggregate_budget_usd = aggregateBudget;
+  }
+  return post(`/research/plans/${encodeURIComponent(resolvedRootId)}/launch`, body)
     .then(safeLaunchResponse);
 }
 
 export function getSession(sessionId: string): Promise<SessionStatus> {
-  return get(`/research/sessions/${encodeURIComponent(sessionId)}`)
+  const resolvedSessionId = requireRequestString(sessionId, "sessionId");
+  return get(`/research/sessions/${encodeURIComponent(resolvedSessionId)}`)
     .then(safeSessionStatus);
 }
 
 export function getSessionCost(sessionId: string): Promise<SessionCost> {
-  return get(`/research/sessions/${encodeURIComponent(sessionId)}/cost`)
+  const resolvedSessionId = requireRequestString(sessionId, "sessionId");
+  return get(`/research/sessions/${encodeURIComponent(resolvedSessionId)}/cost`)
     .then(safeSessionCost);
 }
 
@@ -491,8 +573,10 @@ export function steerResearch(
   kind: SteerKind,
   payload?: Record<string, unknown>,
 ): Promise<{ session_id: string; investigation_id: string; state: ResearchRunState | null }> {
+  const resolvedSessionId = requireRequestString(sessionId, "sessionId");
+  const resolvedInvestigationId = requireRequestString(investigationId, "investigationId");
   return post(
-    `/research/sessions/${encodeURIComponent(sessionId)}/researches/${encodeURIComponent(investigationId)}/steer`,
+    `/research/sessions/${encodeURIComponent(resolvedSessionId)}/researches/${encodeURIComponent(resolvedInvestigationId)}/steer`,
     { kind, payload: payload ?? null },
   ).then(safeSteerResponse);
 }
@@ -501,5 +585,6 @@ export function steerResearch(
  * polls `getSession` (the durable, authoritative source) for robustness;
  * this is here for a future EventSource upgrade to step-level liveness. */
 export function sessionStreamUrl(sessionId: string): string {
-  return `${API_BASE}/research/sessions/${encodeURIComponent(sessionId)}/stream`;
+  const resolvedSessionId = requireRequestString(sessionId, "sessionId");
+  return `${API_BASE}/research/sessions/${encodeURIComponent(resolvedSessionId)}/stream`;
 }
