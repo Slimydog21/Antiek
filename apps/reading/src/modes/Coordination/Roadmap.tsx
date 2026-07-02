@@ -197,6 +197,11 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
         sprintById={sprintById}
       />
 
+      <ExecutionFocusSection
+        blockers={blockers}
+        dependencyReady={dependencyReady}
+      />
+
       <ReadyNowSection sprints={dependencyReady} />
       <DependencyBlockersSection blockers={blockers} />
 
@@ -210,6 +215,52 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
       {/* Substrate-execution layer — the real foundation beneath the products. */}
       <SubstrateLayerSection layers={roadmap.substrate_layers} />
     </section>
+  );
+}
+
+function ExecutionFocusSection({
+  blockers,
+  dependencyReady,
+}: {
+  blockers: ResolvedDependencyBlocker[];
+  dependencyReady: SprintView[];
+}) {
+  const topBlocker = blockers[0];
+  const fallbackReady = dependencyReady[0];
+
+  if (!topBlocker && !fallbackReady) return null;
+
+  return (
+    <LemonCard colour="glacial" elevation="z1">
+      <div className="p-4 space-y-2">
+        <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+          Execution focus
+        </p>
+        {topBlocker ? (
+          <div className="space-y-1">
+            <p className="text-sm font-serif text-ink dark:text-bright">
+              Unblock {topBlocker.node_id}
+              {topBlocker.blocker_sprint
+                ? ` — ${formatSprintLabel(topBlocker.blocker_sprint)}`
+                : ""}
+            </p>
+            <p className="text-xs font-mono text-shadow-2 dark:text-moonlight">
+              Clears dependency pressure for {topBlocker.blocked_sprints.length}{" "}
+              {topBlocker.blocked_sprints.length === 1 ? "sprint" : "sprints"}.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            <p className="text-sm font-serif text-ink dark:text-bright">
+              Next dependency-ready sprint: {formatSprintLabel(fallbackReady)}
+            </p>
+            <p className="text-xs font-mono text-shadow-2 dark:text-moonlight">
+              {fallbackReady.slug.replace(/-/g, " ")} · {fallbackReady.node_id}
+            </p>
+          </div>
+        )}
+      </div>
+    </LemonCard>
   );
 }
 
