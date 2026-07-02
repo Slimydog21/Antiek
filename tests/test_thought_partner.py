@@ -60,6 +60,20 @@ def client(monkeypatch):
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", os.path.join(tmpdir, "events"))
     monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
     monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
+    # PIN unkeyed-ness rather than inherit it: on a developer/agent box
+    # with real provider keys exported, anything that (re)registers
+    # providers from env would turn the unkeyed-503 test into a LIVE
+    # model call that returns 200 (caught by cross-CLI review on PR
+    # #106 — the runner's OPENROUTER_API_KEY made the test fail 200!=503).
+    # The full key list mirrors substrate/dispatch/providers/bootstrap.py.
+    for key_env in (
+        "ANTHROPIC_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "HERMES_API_KEY",
+        "OPENROUTER_API_KEY",
+        "XIAOMI_API_KEY",
+    ):
+        monkeypatch.delenv(key_env, raising=False)
     from interfaces.research.api.app import create_app
 
     app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
