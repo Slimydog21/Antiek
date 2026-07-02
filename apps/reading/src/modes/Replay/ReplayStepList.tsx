@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Event } from "../../generated/types";
 import { apiFetch } from "../../lib/api";
@@ -52,16 +52,25 @@ export default function ReplayStepList({ investigationId }: Props) {
   const [steps, setSteps] = useState<StepEvent[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const loadSeq = useRef(0);
 
   const reload = useCallback(async () => {
-    if (!investigationId) return;
+    const seq = ++loadSeq.current;
+    if (!investigationId) {
+      setSteps([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
     setLoading(true);
     try {
       const resp = await apiFetch(
         `/trajectory/${encodeURIComponent(investigationId)}`,
       );
       if (!resp.ok) {
-        setError(`HTTP ${resp.status}`);
+        if (loadSeq.current === seq) {
+          setError(`HTTP ${resp.status}`);
+        }
         return;
       }
       const raw = safeTrajectoryEvents(await resp.json());
@@ -75,12 +84,18 @@ export default function ReplayStepList({ investigationId }: Props) {
           phase: typeof e.phase === "number" && Number.isFinite(e.phase) ? e.phase : null,
           emitted_at: e.emitted_at,
         }));
-      setSteps(filtered);
-      setError(null);
+      if (loadSeq.current === seq) {
+        setSteps(filtered);
+        setError(null);
+      }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (loadSeq.current === seq) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     } finally {
-      setLoading(false);
+      if (loadSeq.current === seq) {
+        setLoading(false);
+      }
     }
   }, [investigationId]);
 
