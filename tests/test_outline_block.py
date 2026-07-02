@@ -350,6 +350,50 @@ def test_placed_event_emitted(db, monkeypatch):
     assert "outline_block.placed" in actions
 
 
+def test_insight_placement_emits_read_to_write_seam(db):
+    events_dir = os.environ["ANTIEK_RESEARCH_EVENTS_DIR"]
+    with connect_write(db["path"], purpose="t") as con:
+        place_block(
+            con, section_id=db["section"], block_kind="insight",
+            provenance_kind="graph_node", node_id=db["node"], block_index=0,
+            investigation_id="__operator__",
+        )
+
+    jsonl = os.path.join(events_dir, "__operator__.jsonl")
+    events = [json.loads(line) for line in open(jsonl)]
+    placed = next(e for e in events if e["action_type"] == "outline_block.placed")
+    seam = next(e for e in events if e["action_type"] == "seam.read_to_write")
+
+    assert seam["parent_event_id"] == placed["event_id"]
+    assert seam["payload"] == {
+        "action_type": "seam.read_to_write",
+        "entity_id": db["node"],
+        "entity_kind": "insight_node",
+        "provenance_ref": placed["event_id"],
+        "terminates": True,
+        "from_workflow": "read",
+        "to_workflow": "write",
+        "target_section_id": db["section"],
+    }
+    assert "content" not in seam["payload"]
+    assert "text" not in seam["payload"]
+
+
+def test_non_insight_graph_node_placement_does_not_emit_insight_seam(db):
+    events_dir = os.environ["ANTIEK_RESEARCH_EVENTS_DIR"]
+    with connect_write(db["path"], purpose="t") as con:
+        place_block(
+            con, section_id=db["section"], block_kind="claim",
+            provenance_kind="graph_node", node_id=db["node"], block_index=0,
+            investigation_id="__operator__",
+        )
+
+    jsonl = os.path.join(events_dir, "__operator__.jsonl")
+    actions = [json.loads(line)["action_type"] for line in open(jsonl)]
+    assert "outline_block.placed" in actions
+    assert "seam.read_to_write" not in actions
+
+
 def test_new_action_types_in_typed_union():
     for at in ("outline_block.placed", "outline_block.moved", "outline_block.removed"):
         assert at in TYPED_PAYLOAD_ACTION_TYPES
