@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useLocation, useNavigate, type NavigateFunction } from "react-router-dom";
 import type { ReactNode } from "react";
 
-import { createDeliverable } from "../lib/api";
 import { SHORTCUT_EVENTS } from "../workspace/shortcuts";
 import {
   WORKFLOWS,
@@ -95,19 +94,10 @@ const SCENES: Record<Exclude<Workflow, "shared">, SceneDef> = {
         id: "new-deliverable",
         label: "New piece",
         primary: true,
-        // The button used to only `navigate("/create")`, which lands on
-        // the empty "Select or create a deliverable to begin" canvas and
-        // creates nothing — it read as a dead button. The #12 hotfix made it
-        // create + open; Write SPR-07 lands it on the REAL loop (/write/{id} —
-        // outline + tap-to-add repository + generate + edit), not the demoted
-        // studio (/create), so the door and this action agree.
-        run: async (navigate) => {
-          const d = await createDeliverable({
-            title: "Untitled piece",
-            deliverable_kind: "general_essay",
-          });
-          navigate(`/write/${d.deliverable_id}`);
-        },
+        // The Write home owns title, project type, and the research-connection
+        // step. Creating here would bypass that flow and mint an unlinked
+        // "Untitled piece", so chrome opens the real Write door instead.
+        to: "/write",
       },
     ],
   },
