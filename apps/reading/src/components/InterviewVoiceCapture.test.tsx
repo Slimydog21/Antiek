@@ -11,6 +11,7 @@ vi.mock("../lib/api", async (orig) => ({
 
 const apiFetchMock = vi.mocked(apiFetch);
 const stopTrack = vi.fn();
+const buildUploadUrl = vi.fn((durationSeconds: number) => `/voice/int-1?duration=${durationSeconds}`);
 
 class FakeMediaRecorder {
   ondataavailable: ((event: { data: Blob }) => void) | null = null;
@@ -27,6 +28,7 @@ class FakeMediaRecorder {
 
 beforeEach(() => {
   apiFetchMock.mockReset();
+  buildUploadUrl.mockClear();
   stopTrack.mockReset();
   Object.defineProperty(navigator, "mediaDevices", {
     configurable: true,
@@ -73,11 +75,20 @@ describe("InterviewVoiceCapture", () => {
       json: async () => ({ audio_url: { href: "https://cdn.example/audio.webm" } }),
     } as Response);
 
-    render(<InterviewVoiceCapture sessionId="int-1" onUploaded={onUploaded} />);
+    render(
+      <InterviewVoiceCapture
+        buildUploadUrl={buildUploadUrl}
+        onUploaded={onUploaded}
+      />,
+    );
 
     await recordAndUpload();
 
     await screen.findByText(/Upload complete/i);
+    expect(apiFetchMock).toHaveBeenCalledWith(
+      "/voice/int-1?duration=0",
+      expect.objectContaining({ method: "POST" }),
+    );
     expect(onUploaded).toHaveBeenCalledWith("");
     expect(typeof onUploaded.mock.calls[0]?.[0]).toBe("string");
     expect(stopTrack).toHaveBeenCalled();
@@ -93,7 +104,7 @@ describe("InterviewVoiceCapture", () => {
 
     render(
       <InterviewVoiceCapture
-        sessionId="int-1"
+        buildUploadUrl={buildUploadUrl}
         onUploadError={onUploadError}
       />,
     );

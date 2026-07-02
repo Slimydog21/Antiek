@@ -6,10 +6,15 @@ import {
   createDeliverable,
   createSection,
   exportDeliverable,
+  challengeNote,
+  getChunk,
+  getDistillation,
   getHealth,
   getDeliverable,
   getNotebook,
   getTrajectory,
+  ingestSource,
+  ingestVoiceNote,
   launchParkedQuestion,
   listDeliverables,
   listInvestigations,
@@ -17,6 +22,7 @@ import {
   postTypedEvent,
   reorderBlock,
   searchBlocks,
+  transcribeAudio,
   undoAiAction,
   updateSectionProse,
 } from "./api";
@@ -722,5 +728,248 @@ describe("api client notebook response boundary", () => {
         created_at: "",
       },
     ]);
+  });
+});
+
+describe("api client research graph response boundaries", () => {
+  it("sanitizes voice-note, transcription, and source ingest responses", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          status: "surprise",
+          document_id: " doc-voice ",
+          document_loaded_event_id: " ",
+          chunks_written: "3",
+          skipped_reason: null,
+          title: "  Voice memo  ",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(
+      ingestVoiceNote({ transcript: "captured idea" }),
+    ).resolves.toEqual({
+      status: "ingested",
+      document_id: "doc-voice",
+      document_loaded_event_id: null,
+      chunks_written: 0,
+      skipped_reason: null,
+      title: "Voice memo",
+    });
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          transcript: "  captured idea  ",
+          language: " en ",
+          duration_seconds: "12",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(transcribeAudio(new Blob(["audio"]))).resolves.toEqual({
+      transcript: "captured idea",
+      language: "en",
+      duration_seconds: 12,
+    });
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          status: "error",
+          detected_kind: " ",
+          document_id: " doc-source ",
+          document_loaded_event_id: " ev-source ",
+          chunks_written: 4,
+          skipped_reason: " ",
+          error_message: "  parse failed  ",
+          title: "  Source title  ",
+          episodes_processed: "2",
+          episodes_ingested: 1,
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(ingestSource({ url: "https://example.test" })).resolves.toEqual({
+      status: "error",
+      detected_kind: "url",
+      document_id: "doc-source",
+      document_loaded_event_id: "ev-source",
+      chunks_written: 4,
+      skipped_reason: null,
+      error_message: "parse failed",
+      title: "Source title",
+      episodes_processed: 0,
+      episodes_ingested: 1,
+    });
+  });
+
+  it("rejects malformed voice-note and transcription success responses", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ status: "ingested", document_id: " " }), {
+        status: 200,
+      }),
+    );
+
+    await expect(ingestVoiceNote({ transcript: "x" })).rejects.toMatchObject({
+      status: 502,
+    });
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ transcript: null }), { status: 200 }),
+    );
+
+    await expect(transcribeAudio(new Blob(["audio"]))).rejects.toMatchObject({
+      status: 502,
+    });
+  });
+
+  it("sanitizes distillation and challenge-note responses before graph state receives them", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          investigation_id: " ",
+          insights: [
+            {
+              node_id: " node-1 ",
+              kind: "surprise",
+              text: "  Useful finding  ",
+              confidence: " high ",
+              source_document_id: " doc-1 ",
+              chunk_id: " ",
+              refinement_count: "2",
+              escalated: "yes",
+            },
+            {
+              node_id: "node-empty",
+              text: " ",
+            },
+          ],
+          questions: [
+            {
+              node_id: " q-1 ",
+              text: "  What next?  ",
+              reserved_child_investigation_id: " child-1 ",
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(getDistillation("inv-fallback")).resolves.toEqual({
+      investigation_id: "inv-fallback",
+      insights: [
+        {
+          node_id: "node-1",
+          kind: "surprise",
+          text: "Useful finding",
+          confidence: "high",
+          source_document_id: "doc-1",
+          chunk_id: null,
+          refinement_count: 0,
+          escalated: false,
+          reserved_child_investigation_id: null,
+        },
+      ],
+      questions: [
+        {
+          node_id: "q-1",
+          kind: "question",
+          text: "What next?",
+          confidence: null,
+          source_document_id: null,
+          chunk_id: null,
+          refinement_count: 0,
+          escalated: false,
+          reserved_child_investigation_id: "child-1",
+        },
+      ],
+    });
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          node_id: " node-1 ",
+          applied: "yes",
+          superseded: true,
+          new_text: " ",
+          escalated: true,
+          reserved_child_investigation_id: " child-2 ",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(
+      challengeNote("node-1", { investigation_id: "inv-1" }),
+    ).resolves.toEqual({
+      node_id: "node-1",
+      applied: false,
+      superseded: true,
+      new_text: null,
+      escalated: true,
+      reserved_child_investigation_id: "child-2",
+    });
+  });
+
+  it("rejects malformed challenge-note handles", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ node_id: " ", applied: true }), {
+        status: 200,
+      }),
+    );
+
+    await expect(
+      challengeNote("node-1", { investigation_id: "inv-1" }),
+    ).rejects.toMatchObject({ status: 502 });
+  });
+
+  it("sanitizes chunk responses without widening servability metadata", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          chunk_id: " ",
+          text: 7,
+          section_path: " p.12 ",
+          token_count: "12",
+          document_id: " doc-1 ",
+          document_title: "  Source doc  ",
+          source_tier: "2",
+          servable: false,
+          ip_holder_name: "  Hidden owner  ",
+          ip_holder_status: "claimed",
+          servability: " restricted ",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(getChunk("chunk-fallback")).resolves.toEqual({
+      chunk_id: "chunk-fallback",
+      text: "",
+      section_path: "p.12",
+      token_count: 0,
+      document_id: "doc-1",
+      document_title: "Source doc",
+      source_tier: 0,
+      servable: false,
+      ip_holder_name: null,
+      ip_holder_status: null,
+      servability: "restricted",
+    });
+  });
+
+  it("rejects chunk responses without a document handle", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ chunk_id: "chunk-1", document_id: " " }), {
+        status: 200,
+      }),
+    );
+
+    await expect(getChunk("chunk-1")).rejects.toMatchObject({ status: 502 });
   });
 });

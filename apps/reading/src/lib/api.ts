@@ -1418,6 +1418,19 @@ export interface VoiceNoteIngestResponse {
   title: string | null;
 }
 
+function safeVoiceNoteIngestResponse(value: unknown): VoiceNoteIngestResponse {
+  const body = record(value);
+  if (!body) throw malformedApiResponse("Malformed API response: voice note ingest");
+  return {
+    status: body.status === "skipped" ? "skipped" : "ingested",
+    document_id: requireApiString(body.document_id, "document_id"),
+    document_loaded_event_id: nullableString(body.document_loaded_event_id),
+    chunks_written: nonNegativeInteger(body.chunks_written) ?? 0,
+    skipped_reason: nullableString(body.skipped_reason),
+    title: nullableString(body.title),
+  };
+}
+
 export async function ingestVoiceNote(
   req: VoiceNoteIngestRequest,
 ): Promise<VoiceNoteIngestResponse> {
@@ -1433,7 +1446,7 @@ export async function ingestVoiceNote(
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeVoiceNoteIngestResponse(await resp.json());
 }
 
 // ── Read SPR-06 / SPR-04: voice transcription ──────────────────────
@@ -1454,6 +1467,18 @@ export interface TranscribeResponse {
   duration_seconds: number;
 }
 
+function safeTranscribeResponse(value: unknown): TranscribeResponse {
+  const body = record(value);
+  if (!body || typeof body.transcript !== "string") {
+    throw malformedApiResponse("Malformed API response: transcription");
+  }
+  return {
+    transcript: body.transcript.trim(),
+    language: nullableString(body.language),
+    duration_seconds: finiteNonNegativeNumber(body.duration_seconds) ?? 0,
+  };
+}
+
 /** POST /voice/transcribe — audio blob → transcript (Whisper). 503 when
  *  the operator OpenAI key is unset (honest no-key). Preserves the status
  *  on ApiError so the caller can distinguish no-key from a transient. */
@@ -1470,7 +1495,28 @@ export async function transcribeAudio(audio: Blob): Promise<TranscribeResponse> 
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeTranscribeResponse(await resp.json());
+}
+
+function safeIngestStatus(value: unknown): IngestSourceResponse["status"] {
+  return value === "skipped" || value === "error" ? value : "ingested";
+}
+
+function safeIngestSourceResponse(value: unknown): IngestSourceResponse {
+  const body = record(value);
+  if (!body) throw malformedApiResponse("Malformed API response: source ingest");
+  return {
+    status: safeIngestStatus(body.status),
+    detected_kind: nonEmptyString(body.detected_kind) ?? "url",
+    document_id: nullableString(body.document_id),
+    document_loaded_event_id: nullableString(body.document_loaded_event_id),
+    chunks_written: nonNegativeInteger(body.chunks_written) ?? 0,
+    skipped_reason: nullableString(body.skipped_reason),
+    error_message: nullableString(body.error_message),
+    title: nullableString(body.title),
+    episodes_processed: nonNegativeInteger(body.episodes_processed) ?? 0,
+    episodes_ingested: nonNegativeInteger(body.episodes_ingested) ?? 0,
+  };
 }
 
 /** POST /sources/ingest — add a URL to the substrate graph. */
@@ -1489,7 +1535,7 @@ export async function ingestSource(
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeIngestSourceResponse(await resp.json());
 }
 
 // ── SPR-03: distill surface (insights / open questions / living notes) ──
@@ -1581,6 +1627,50 @@ export async function exportResearchArtifact(
   return resp.json();
 }
 
+function safeDistilledNode(value: unknown, fallbackKind: "insight" | "question"): DistilledNode | null {
+  const node = record(value);
+  if (!node) return null;
+  const nodeId = nonEmptyString(node.node_id);
+  const text = nonEmptyString(node.text);
+  if (!nodeId || !text) return null;
+  return {
+    node_id: nodeId,
+    kind: nonEmptyString(node.kind) ?? fallbackKind,
+    text,
+    confidence: nullableString(node.confidence),
+    source_document_id: nullableString(node.source_document_id),
+    chunk_id: nullableString(node.chunk_id),
+    refinement_count: nonNegativeInteger(node.refinement_count) ?? 0,
+    escalated: node.escalated === true,
+    reserved_child_investigation_id: nullableString(node.reserved_child_investigation_id),
+  };
+}
+
+function safeDistillationResponse(
+  value: unknown,
+  fallbackInvestigationId: string,
+): DistillationResponse {
+  const body = record(value);
+  const insights = Array.isArray(body?.insights)
+    ? body.insights.flatMap((item) => {
+        const node = safeDistilledNode(item, "insight");
+        return node ? [node] : [];
+      })
+    : [];
+  const questions = Array.isArray(body?.questions)
+    ? body.questions.flatMap((item) => {
+        const node = safeDistilledNode(item, "question");
+        return node ? [node] : [];
+      })
+    : [];
+  return {
+    investigation_id:
+      nonEmptyString(body?.investigation_id) ?? fallbackInvestigationId,
+    insights,
+    questions,
+  };
+}
+
 /** GET /research/{id}/distill — the durable product of a research:
  *  its insights + open questions, read off the graph. */
 export async function getDistillation(
@@ -1596,7 +1686,7 @@ export async function getDistillation(
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeDistillationResponse(await resp.json(), investigationId);
 }
 
 export interface ChallengeNoteResponse {
@@ -1610,6 +1700,19 @@ export interface ChallengeNoteResponse {
   escalated: boolean;
   /** The reserved (un-launched) child research id, when escalated. */
   reserved_child_investigation_id?: string | null;
+}
+
+function safeChallengeNoteResponse(value: unknown): ChallengeNoteResponse {
+  const body = record(value);
+  if (!body) throw malformedApiResponse("Malformed API response: challenge note");
+  return {
+    node_id: requireApiString(body.node_id, "node_id"),
+    applied: body.applied === true,
+    superseded: body.superseded === true,
+    new_text: nullableString(body.new_text),
+    escalated: body.escalated === true,
+    reserved_child_investigation_id: nullableString(body.reserved_child_investigation_id),
+  };
 }
 
 /** POST /research/notes/{nodeId}/challenge — drive the shipped living-note
@@ -1635,7 +1738,28 @@ export async function challengeNote(
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeChallengeNoteResponse(await resp.json());
+}
+
+function safeChunkResponse(value: unknown, fallbackChunkId: string): ChunkResponse {
+  const body = record(value);
+  if (!body) throw malformedApiResponse("Malformed API response: chunk");
+  const documentId = nonEmptyString(body.document_id);
+  if (!documentId) throw malformedApiResponse("Malformed API response: document_id");
+  const servable = body.servable === true;
+  return {
+    chunk_id: nonEmptyString(body.chunk_id) ?? fallbackChunkId,
+    text: typeof body.text === "string" ? body.text : "",
+    section_path: nullableString(body.section_path),
+    token_count: nonNegativeInteger(body.token_count) ?? 0,
+    document_id: documentId,
+    document_title: nullableString(body.document_title),
+    source_tier: nonNegativeInteger(body.source_tier) ?? 0,
+    servable,
+    ip_holder_name: servable ? nullableString(body.ip_holder_name) : null,
+    ip_holder_status: servable ? nullableString(body.ip_holder_status) : null,
+    servability: nullableString(body.servability),
+  };
 }
 
 /** GET /chunks/{id} — used by Mode A's claim hover modal. */
@@ -1650,7 +1774,7 @@ export async function getChunk(chunkId: string): Promise<ChunkResponse> {
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeChunkResponse(await resp.json(), chunkId);
 }
 
 // ── SPR-10: §9 provenance + economics, surfaced (accrual, NOT disbursement) ──
