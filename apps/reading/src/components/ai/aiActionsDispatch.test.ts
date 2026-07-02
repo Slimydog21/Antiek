@@ -604,6 +604,74 @@ describe("AI tool-call · full dispatch round-trip", () => {
     window.localStorage.removeItem(etagKey);
   });
 
+  it("add_to_notebook degrades malformed reference blocks to notes", () => {
+    const nbId = "ai-test-nb-bad-block";
+    const lsKey = "antiek.notebook." + nbId;
+    const etagKey = lsKey + ".etag";
+    window.localStorage.removeItem(lsKey);
+    window.localStorage.removeItem(etagKey);
+    const { actions } = parseAssistantReply(
+      "x\n\n@@actions\n" +
+        JSON.stringify([
+          {
+            kind: "add_to_notebook",
+            notebook_id: nbId,
+            block: {
+              kind: "claim_card",
+              text: 'claim text with "quotes"',
+              attrs: { claim_id: "   ", investigation_id: "inv-1" },
+            },
+          },
+        ]) +
+        "\n@@end",
+    );
+
+    dispatchAiAction(actions[0]);
+
+    const stored = window.localStorage.getItem(lsKey) ?? "";
+    expect(stored).toContain("<antiek-note");
+    expect(stored).toContain("claim text with &quot;quotes&quot;");
+    expect(stored).not.toContain("<antiek-claim-card");
+    expect(stored).not.toContain('claim_id=""');
+
+    window.localStorage.removeItem(lsKey);
+    window.localStorage.removeItem(etagKey);
+  });
+
+  it("add_to_notebook omits blank optional ids while preserving usable question text", () => {
+    const nbId = "ai-test-nb-free-question";
+    const lsKey = "antiek.notebook." + nbId;
+    const etagKey = lsKey + ".etag";
+    window.localStorage.removeItem(lsKey);
+    window.localStorage.removeItem(etagKey);
+    const { actions } = parseAssistantReply(
+      "x\n\n@@actions\n" +
+        JSON.stringify([
+          {
+            kind: "add_to_notebook",
+            notebook_id: nbId,
+            block: {
+              kind: "question_card",
+              text: "What changed?",
+              attrs: { parked_question_id: "   " },
+            },
+          },
+        ]) +
+        "\n@@end",
+    );
+
+    dispatchAiAction(actions[0]);
+
+    const stored = window.localStorage.getItem(lsKey) ?? "";
+    expect(stored).toContain("<antiek-question-card");
+    expect(stored).toContain('text="What changed?"');
+    expect(stored).not.toContain("parked_question_id");
+    expect(stored).not.toContain('parked_question_id=""');
+
+    window.localStorage.removeItem(lsKey);
+    window.localStorage.removeItem(etagKey);
+  });
+
   it("toast dispatches the lemon toast queue (dynamic import resolves)", async () => {
     const { actions } = parseAssistantReply(
       "x\n\n@@actions\n" +
