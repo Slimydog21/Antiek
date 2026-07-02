@@ -632,7 +632,11 @@ cmd_agent_gates() {
   echo "== agent-gates: vitest handoff linter =="
   (cd apps/reading && npm run test:handoff)
   echo "== agent-gates: pytest audit + canonical wrapper =="
-  "${PY}" -m pytest tests/test_audit_agent_session.py tests/test_canonical_verify.py -q --tb=no
+  "${PY}" -m pytest \
+    tests/test_audit_agent_session.py \
+    tests/test_canonical_verify.py \
+    tests/test_platform_exec_matrix.py \
+    -q --tb=no
   echo "CANONICAL_VERIFY_OK: agent-gates"
 }
 

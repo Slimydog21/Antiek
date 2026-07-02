@@ -42,20 +42,21 @@
 | P-34 | Speak economics matrix | `substrate/speak/economics_mode.py` + Speak settings matrix | `./scripts/canonical_verify.sh speak-economics-matrix` | — | Live pricing/legal/payout activation |
 | P-35 | Speak biography authoring | `substrate/speak/biography.py` + Write outline bridge + Speak assembly surface | `./scripts/canonical_verify.sh speak-biography-authoring` | — | Live model/provider draft quality QA |
 | P-36 | Speak publishing + physical | `substrate/speak/publish.py` + `substrate/speak/physical_book.py` + Read servability seam | `./scripts/canonical_verify.sh speak-publishing-physical` | — | Live POD vendor/shipping/payment fulfillment |
-| P-37 | Unified substrate contract + lock | `substrate/contracts/` + `dependency_map.py` + `unified_sprint_lock.py` | `./scripts/canonical_verify.sh unified-substrate-contract-lock` | — | Live untracked spec-file citation regeneration |
-| P-38 | Unified remote exec fanout | `runtime/remote_exec/` + `runtime/research_runner/` factory seam | `./scripts/canonical_verify.sh unified-remote-exec-fanout` | `infrastructure/runbooks/remote-exec-fanout.md` live smoke | Live Daytona credentials/provider throughput |
-| P-39 | Unified seams + collisions | `substrate/seams/` + seam/collision guards | `./scripts/canonical_verify.sh unified-seams-and-collisions` | — | Live product-side write-to-speak commission implementation |
-| P-40 | Unified navigation IA taxonomy | `apps/reading/src/shell/workflowTaxonomy.ts` + `NavRail` | `./scripts/canonical_verify.sh unified-navigation-ia-taxonomy` | — | Browser/device visual QA for final rail polish |
-| P-41 | Unified coordination gate ledger | `substrate/coordination/gate_ledger.py` + Coordination mode | `./scripts/canonical_verify.sh unified-coordination-gate-ledger` | — | Browser/device visual QA for final Coordination polish |
-| P-42 | Unified thread navigation | `substrate/seams/thread.py` + `ThreadBreadcrumb` | `./scripts/canonical_verify.sh unified-thread-navigation` | — | Browser/device visual QA for breadcrumb placement |
-| P-43 | Unified cost + consent surface | `substrate/coordination/cost_view.py` + `consent_view.py` + Coordination cost UI | `./scripts/canonical_verify.sh unified-cost-consent-surface` | — | Live provider billing and payout activation |
-| P-44 | Unified flywheel conformance | `tests/e2e/test_flywheel.py` + `tests/test_integration_invariants.py` + `tools/codegen/check_conformance.py` | `./scripts/canonical_verify.sh unified-flywheel-conformance` | — | Live product-module replacement of documented stubs |
-| P-45 | Agent handoff schema | `tools/agent/verify_handoff.ts` | `./scripts/canonical_verify.sh handoff <md>` | — | Narrative quality / intent |
-| P-46 | Session theater grep | `scripts/audit_agent_session.sh` | paired with handoff subcommand | — | Claims outside markdown packet |
-| P-47 | AMS spec ref-lint | `scripts/agent_ams_ref_lint.sh` | `bash scripts/agent_ams_ref_lint.sh <sprint.html>` | — | Playwright mountain shell |
-| P-48 | Reading substrate pytest | `.github/workflows/ci.yml` `pytest` job | CI on `main` (full suite) | — | Local hardware parity |
-| P-49 | Werner mascot / hop | `apps/reading` Werner paths per Werner htmlspec | `canonical_verify.sh agent-gates` + case study §5 | Werner operator card (htmlspec) | Measured p95 / fps without artifact |
-| P-50 | Serve / rights / legal | production deploy surfaces | **No** informational CI job alone (F7) | operator deploy checklist | Jurisdiction-specific legal review |
+| P-37 | DRW reader-surface transfer | `substrate/contracts/drw_sprint_lock.py` + `reading_surface.py` + Roadmap UI | `./scripts/canonical_verify.sh drw-reading-surface-transfer` | — | Live browser/device reader polish |
+| P-38 | Unified substrate contract + lock | `substrate/contracts/` + `dependency_map.py` + `unified_sprint_lock.py` | `./scripts/canonical_verify.sh unified-substrate-contract-lock` | — | Live untracked spec-file citation regeneration |
+| P-39 | Unified remote exec fanout | `runtime/remote_exec/` + `runtime/research_runner/` factory seam | `./scripts/canonical_verify.sh unified-remote-exec-fanout` | `infrastructure/runbooks/remote-exec-fanout.md` live smoke | Live Daytona credentials/provider throughput |
+| P-40 | Unified seams + collisions | `substrate/seams/` + seam/collision guards | `./scripts/canonical_verify.sh unified-seams-and-collisions` | — | Live product-side write-to-speak commission implementation |
+| P-41 | Unified navigation IA taxonomy | `apps/reading/src/shell/workflowTaxonomy.ts` + `NavRail` | `./scripts/canonical_verify.sh unified-navigation-ia-taxonomy` | — | Browser/device visual QA for final rail polish |
+| P-42 | Unified coordination gate ledger | `substrate/coordination/gate_ledger.py` + Coordination mode | `./scripts/canonical_verify.sh unified-coordination-gate-ledger` | — | Browser/device visual QA for final Coordination polish |
+| P-43 | Unified thread navigation | `substrate/seams/thread.py` + `ThreadBreadcrumb` | `./scripts/canonical_verify.sh unified-thread-navigation` | — | Browser/device visual QA for breadcrumb placement |
+| P-44 | Unified cost + consent surface | `substrate/coordination/cost_view.py` + `consent_view.py` + Coordination cost UI | `./scripts/canonical_verify.sh unified-cost-consent-surface` | — | Live provider billing and payout activation |
+| P-45 | Unified flywheel conformance | `tests/e2e/test_flywheel.py` + `tests/test_integration_invariants.py` + `tools/codegen/check_conformance.py` | `./scripts/canonical_verify.sh unified-flywheel-conformance` | — | Live product-module replacement of documented stubs |
+| P-46 | Agent handoff schema | `tools/agent/verify_handoff.ts` | `./scripts/canonical_verify.sh handoff <md>` | — | Narrative quality / intent |
+| P-47 | Session theater grep | `scripts/audit_agent_session.sh` | paired with handoff subcommand | — | Claims outside markdown packet |
+| P-48 | AMS spec ref-lint | `scripts/agent_ams_ref_lint.sh` | `bash scripts/agent_ams_ref_lint.sh <sprint.html>` | — | Playwright mountain shell |
+| P-49 | Reading substrate pytest | `.github/workflows/ci.yml` `pytest` job | CI on `main` (full suite) | — | Local hardware parity |
+| P-50 | Werner mascot / hop | `apps/reading` Werner paths per Werner htmlspec | `canonical_verify.sh agent-gates` + case study §5 | Werner operator card (htmlspec) | Measured p95 / fps without artifact |
+| P-51 | Serve / rights / legal | production deploy surfaces | **No** informational CI job alone (F7) | operator deploy checklist | Jurisdiction-specific legal review |
 
 ## How to use
 
