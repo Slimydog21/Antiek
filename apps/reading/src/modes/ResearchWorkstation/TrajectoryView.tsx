@@ -44,6 +44,21 @@ function safePhase(value: unknown): number {
   return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
 }
 
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function eventKey(event: Event, index: number): string {
+  return [
+    nonEmptyString(event.event_id) ?? "missing-event-id",
+    nonEmptyString(event.action_type) ?? "unknown-action",
+    nonEmptyString(event.emitted_at) ?? "unknown-time",
+    index,
+  ].join(":");
+}
+
 export default function TrajectoryView({
   investigation,
 }: {
@@ -88,8 +103,8 @@ export default function TrajectoryView({
             <div className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight border-b border-rule dark:border-charcoal-1 pb-1">
               Phase {g.phase}{g.label ? ` · ${g.label}` : ""}
             </div>
-            {g.events.map((e) => (
-              <PhaseRow key={e.event_id ?? Math.random()} event={e} />
+            {g.events.map((e, index) => (
+              <PhaseRow key={eventKey(e, index)} event={e} />
             ))}
           </div>
         ))}
