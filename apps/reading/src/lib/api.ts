@@ -1200,6 +1200,48 @@ export interface BlockSearchHit {
   document_title: string | null;
 }
 
+function safeBlockKind(value: unknown): BlockKind {
+  return value === "insight" ||
+    value === "open_question" ||
+    value === "operator_note" ||
+    value === "claim"
+    ? value
+    : "claim";
+}
+
+function safeBlockSearchHit(value: unknown): BlockSearchHit | null {
+  const hit = record(value);
+  if (!hit) return null;
+  const blockId = nonEmptyString(hit.block_id);
+  const body = nonEmptyString(hit.body);
+  if (!blockId || !body) return null;
+  return {
+    block_id: blockId,
+    block_kind: safeBlockKind(hit.block_kind),
+    label: nonEmptyString(hit.label) ?? body,
+    body,
+    source_tier: nonNegativeInteger(hit.source_tier),
+    document_title: nullableString(hit.document_title),
+  };
+}
+
+function safeBlockSearchResponse(value: unknown): {
+  count: number;
+  hits: BlockSearchHit[];
+} {
+  const body = record(value);
+  const hits = Array.isArray(body?.hits)
+    ? body.hits.flatMap((item) => {
+        const hit = safeBlockSearchHit(item);
+        return hit ? [hit] : [];
+      })
+    : [];
+  return {
+    count: nonNegativeInteger(body?.count) ?? hits.length,
+    hits,
+  };
+}
+
 export async function searchBlocks(
   q: string,
   limit = 20,
@@ -1216,7 +1258,7 @@ export async function searchBlocks(
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeBlockSearchResponse(await resp.json());
 }
 
 export async function reorderBlock(req: {
@@ -1258,6 +1300,17 @@ export interface UpdateSectionProseResponse {
   claim_event_id: string | null;
 }
 
+function safeUpdateSectionProseResponse(value: unknown): UpdateSectionProseResponse {
+  const body = record(value);
+  if (!body) throw malformedApiResponse("Malformed API response: section prose");
+  return {
+    status: body.status === "saved_and_promoted" ? "saved_and_promoted" : "saved",
+    section_id: requireApiString(body.section_id, "section_id"),
+    claim_node_id: nullableString(body.claim_node_id),
+    claim_event_id: nullableString(body.claim_event_id),
+  };
+}
+
 export async function updateSectionProse(
   sectionId: string,
   req: UpdateSectionProseRequest,
@@ -1277,7 +1330,7 @@ export async function updateSectionProse(
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeUpdateSectionProseResponse(await resp.json());
 }
 
 export type ExportFormatName =
@@ -1298,6 +1351,34 @@ export interface ExportFormatResponse {
   content_encoding: "text" | "base64";
 }
 
+function safeExportFormat(value: unknown, fallbackFormat: ExportFormatName): ExportFormatName {
+  return value === "markdown" ||
+    value === "html" ||
+    value === "json" ||
+    value === "pdf" ||
+    value === "epub" ||
+    value === "substack"
+    ? value
+    : fallbackFormat;
+}
+
+function safeExportResponse(
+  value: unknown,
+  fallbackFormat: ExportFormatName,
+): ExportFormatResponse {
+  const body = record(value);
+  const content = typeof body?.content === "string" ? body.content : null;
+  if (!body || content === null) {
+    throw malformedApiResponse("Malformed API response: export");
+  }
+  return {
+    format: safeExportFormat(body.format, fallbackFormat),
+    content,
+    filename: nonEmptyString(body.filename) ?? `deliverable.${fallbackFormat}`,
+    content_encoding: body.content_encoding === "base64" ? "base64" : "text",
+  };
+}
+
 export async function exportDeliverable(
   id: string,
   format: ExportFormatName,
@@ -1315,7 +1396,7 @@ export async function exportDeliverable(
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeExportResponse(await resp.json(), format);
 }
 
 // ── Sprint 13: voice notes ─────────────────────────────────────────
