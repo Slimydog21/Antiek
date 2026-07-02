@@ -39,6 +39,19 @@ function nonEmptyString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function requireNonEmptyString(value: unknown, field: string): string {
+  const text = nonEmptyString(value);
+  if (!text) {
+    throw new TypeError(`${field} must be a non-empty string`);
+  }
+  return text;
+}
+
+function requireSaveKind(value: unknown): PerDocNotebookSavePayload["save_kind"] {
+  if (value === "explicit" || value === "autosave") return value;
+  throw new TypeError("save_kind must be explicit or autosave");
+}
+
 function optionalString(value: unknown): string | undefined {
   return value == null ? undefined : nonEmptyString(value) ?? undefined;
 }
@@ -77,20 +90,27 @@ export async function savePerDocNotebook(
   documentId: string,
   payload: PerDocNotebookSavePayload,
 ): Promise<PerDocNotebookResponse> {
+  const resolvedDocumentId = requireNonEmptyString(documentId, "documentId");
+  const requestPayload: PerDocNotebookSavePayload = {
+    notebook_id: requireNonEmptyString(payload.notebook_id, "notebook_id"),
+    content_json: payload.content_json ?? null,
+    blocks: Array.isArray(payload.blocks) ? payload.blocks : [],
+    save_kind: requireSaveKind(payload.save_kind),
+  };
   const resp = await apiFetch(
-    `${API_BASE}/notebooks/by-doc/${encodeURIComponent(documentId)}/save`,
+    `${API_BASE}/notebooks/by-doc/${encodeURIComponent(resolvedDocumentId)}/save`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(requestPayload),
     },
   );
   if (!resp.ok) {
     throw new ApiError(
-      `POST /notebooks/by-doc/${documentId}/save failed: HTTP ${resp.status}`,
+      `POST /notebooks/by-doc/${resolvedDocumentId}/save failed: HTTP ${resp.status}`,
       resp.status,
       await resp.text(),
     );
   }
-  return safePerDocNotebookResponse(await resp.json(), documentId);
+  return safePerDocNotebookResponse(await resp.json(), resolvedDocumentId);
 }

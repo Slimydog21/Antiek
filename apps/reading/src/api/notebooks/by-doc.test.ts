@@ -41,7 +41,10 @@ describe("savePerDocNotebook", () => {
       ),
     );
 
-    const saved = await savePerDocNotebook("doc/with space", payload);
+    const saved = await savePerDocNotebook(" doc/with space ", {
+      ...payload,
+      notebook_id: " nb-doc-1 ",
+    });
 
     expect(apiFetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = apiFetchMock.mock.calls[0];
@@ -54,6 +57,47 @@ describe("savePerDocNotebook", () => {
     });
     expect(JSON.parse(init.body as string)).toEqual(payload);
     expect(saved.notebook_id).toBe("nb-doc-1");
+  });
+
+  it("normalizes malformed optional request fields without fabricating body blocks", async () => {
+    apiFetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({ notebook_id: "nb-doc-1", blocks: [] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+
+    await savePerDocNotebook("doc-1", {
+      notebook_id: " nb-doc-1 ",
+      content_json: undefined,
+      blocks: "not-array" as unknown as unknown[],
+      save_kind: "autosave",
+    });
+
+    const [, init] = apiFetchMock.mock.calls[0];
+    expect(JSON.parse(init.body as string)).toEqual({
+      notebook_id: "nb-doc-1",
+      content_json: null,
+      blocks: [],
+      save_kind: "autosave",
+    });
+  });
+
+  it("rejects malformed save request fields before sending", async () => {
+    const payload = {
+      notebook_id: "nb-doc-1",
+      content_json: { type: "doc", content: [] },
+      blocks: [],
+      save_kind: "explicit" as const,
+    };
+
+    await expect(savePerDocNotebook(" ", payload)).rejects.toThrow(/documentId/);
+    await expect(savePerDocNotebook("doc-1", { ...payload, notebook_id: " " })).rejects.toThrow(/notebook_id/);
+    await expect(
+      savePerDocNotebook("doc-1", { ...payload, save_kind: "draft" as "explicit" }),
+    ).rejects.toThrow(/save_kind/);
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
   it("sanitizes optional save response fields", async () => {
