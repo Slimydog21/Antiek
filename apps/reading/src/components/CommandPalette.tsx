@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { apiFetch, type ParkedQuestionEntry } from "../lib/api";
+import { useOpenDocument } from "../lib/openDocument";
 import {
   dispatchBrainstormQuestionSelection,
 } from "../modes/BrainstormStation/WatchForLaterPanel";
@@ -72,6 +73,7 @@ interface PaletteInvestigation {
 interface PaletteDocument {
   kind: "document";
   id: string;
+  documentId: string;
   title: string;
   subtitle: string;
   path: string;
@@ -206,6 +208,7 @@ function safeDocuments(value: unknown): PaletteDocument[] {
     return [{
       kind: "document" as const,
       id: `doc:${documentId}`,
+      documentId,
       title: nullableString(doc?.title) ?? documentId,
       subtitle: `Document · ${documentId.slice(0, 8)}`,
       path: `/read/${encodeURIComponent(documentId)}`,
@@ -340,6 +343,7 @@ export default function CommandPalette() {
   >(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const navigate = useNavigate();
+  const openDocument = useOpenDocument();
 
   const loadIndex = useCallback(async () => {
     try {
@@ -621,6 +625,10 @@ export default function CommandPalette() {
     } else {
       if (entry.kind === "parked_question") {
         dispatchBrainstormQuestionSelection(entry.question);
+      } else if (entry.kind === "document") {
+        openDocument(entry.documentId);
+        setOpen(false);
+        return;
       }
       navigate(entry.path);
     }

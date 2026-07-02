@@ -10,11 +10,19 @@ import {
   resetBrainstormQuestionSelection,
 } from "../modes/BrainstormStation/WatchForLaterPanel";
 
-const apiFetchMock = vi.hoisted(() => vi.fn());
+const { apiFetchMock, openDocumentMock } = vi.hoisted(() => ({
+  apiFetchMock: vi.fn(),
+  openDocumentMock: vi.fn(),
+}));
 
 vi.mock("../lib/api", async (orig) => ({
   ...(await orig<typeof import("../lib/api")>()),
   apiFetch: apiFetchMock,
+}));
+
+vi.mock("../lib/openDocument", async (orig) => ({
+  ...(await orig<typeof import("../lib/openDocument")>()),
+  useOpenDocument: () => openDocumentMock,
 }));
 
 const QUESTION: ParkedQuestionEntry = {
@@ -42,6 +50,7 @@ function renderPalette() {
 }
 
 beforeEach(() => {
+  openDocumentMock.mockReset();
   apiFetchMock.mockReset().mockImplementation(async (path: string) => {
     if (path === "/watch-for-later") {
       return {
@@ -221,5 +230,29 @@ describe("CommandPalette", () => {
 
     await userEvent.click(screen.getByText("Dirty piece"));
     expect(screen.getByTestId("location").textContent).toBe("/write/dlv%20dirty");
+  });
+
+  it("opens document results through the shared reader resolver", async () => {
+    apiFetchMock.mockImplementation(async (path: string) => {
+      if (path === "/documents") {
+        return {
+          ok: true,
+          json: async () => ({
+            documents: [{ document_id: " doc-palette ", title: "  Palette document  " }],
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    });
+
+    renderPalette();
+
+    window.dispatchEvent(new Event("antiek:palette:toggle"));
+    await userEvent.type(await screen.findByRole("textbox"), "palette document");
+    await userEvent.click(await screen.findByText("Palette document"));
+
+    expect(openDocumentMock).toHaveBeenCalledTimes(1);
+    expect(openDocumentMock).toHaveBeenCalledWith("doc-palette");
+    expect(screen.getByTestId("location").textContent).toBe("/");
   });
 });
