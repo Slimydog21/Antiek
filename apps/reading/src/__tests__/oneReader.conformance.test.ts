@@ -77,7 +77,7 @@ export const EXPECTED_OPEN_DOORS: Readonly<Record<string, string>> = {
   "LibraryView.open": "src/components/library/LibraryView.tsx:71", // → openDocument('/read/:id')
   "Reading.openDoc": "src/modes/Reading/index.tsx:41", // BookReader — the current /read/:id reader
   "DocumentsIndex.open": "src/modes/DocumentsIndex/index.tsx:164", // converged from /wrestle/:id → openDocument
-  "CommandPalette.openDocument": "src/components/CommandPalette.tsx:423", // converged from /wrestle/:id → /read/:id
+  "CommandPalette.openDocument": "src/components/CommandPalette.tsx:629", // converged from /wrestle/:id → openDocument
   "ChunkModal.openInDocument": "src/modes/ResearchWorkstation/ChunkModal.tsx:188", // converged from /wrestle/:id → openDocument
   "MasterMdViewer.cmdClick": "src/modes/ResearchWorkstation/MasterMdViewer.tsx:820", // converged from openPdfPanel → openDocument
   "DRW.citeSource": "src/modes/DeepResearchWorkspace/Canvas/BlockCard.tsx:117", // onCiteSource; host-wired in index.tsx
@@ -211,12 +211,6 @@ describe("oneReader conformance — door (a): every door routes to the one Reade
     "MetaReading.openCitation": "modes/Reading/MetaReading/index.tsx",
   };
 
-  // CommandPalette routes a document result via its generic entry.path navigator;
-  // for it the one-door target IS the canonical /read/:id route (equivalent to
-  // openDocument(id) with no opts), so we accept either the openDocument call or
-  // the /read/ path — but NEVER a /wrestle/:id document open.
-  const PALETTE_ROUTE_DOORS = new Set(["CommandPalette.openDocument"]);
-
   for (const door of Object.keys(EXPECTED_OPEN_DOORS)) {
     const file = DOOR_FILE[door];
     if (!file) continue; // Reading.openDoc / Route./read/:documentId are the route itself (asserted below)
@@ -228,14 +222,8 @@ describe("oneReader conformance — door (a): every door routes to the one Reade
       expect(src).not.toMatch(/navigate\([`'"]\/wrestle\/\$\{/);
       expect(src).not.toMatch(/navigate\([`'"]\/wrestle\/:/);
       expect(src).not.toMatch(/path:\s*[`'"]\/wrestle\/\$\{/);
-      if (PALETTE_ROUTE_DOORS.has(door)) {
-        // The palette builds a /read/:id route for a document result.
-        expect(src).toMatch(/\/read\/\$\{encodeURIComponent\([^)]*\)\}/);
-      } else {
-        // Every other door calls the one-door resolver.
-        expect(src).toMatch(/useOpenDocument\(\)/);
-        expect(src).toMatch(/openDocument\(/);
-      }
+      expect(src).toMatch(/useOpenDocument\(\)/);
+      expect(src).toMatch(/openDocument\(/);
     });
   }
 

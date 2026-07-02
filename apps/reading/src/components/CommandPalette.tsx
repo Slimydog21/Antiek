@@ -366,9 +366,9 @@ export default function CommandPalette() {
       if (dResp?.ok) {
         // SPR-05 one door: open in the ONE Reader (the gated /read/:id route
         // openDocument navigates to) — was a /wrestle/:id mis-route (the
-        // pdf.js page-1 surface that can't fetch by id). The palette
-        // navigates entry.path generically, so this IS openDocument(id) with
-        // no opts: the same route the door resolves to.
+        // pdf.js page-1 surface that can't fetch by id). The palette keeps the
+        // canonical path for ranking/display, but selection calls
+        // openDocument(id) so future reader options stay behind one resolver.
         setDocuments(safeDocuments(await dResp.json()));
       }
 
