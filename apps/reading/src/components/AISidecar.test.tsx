@@ -1,4 +1,5 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Event } from "../generated/types";
@@ -111,5 +112,37 @@ describe("AISidecar", () => {
       expect(document.body.textContent).not.toMatch(/NaN|Infinity/),
     );
     expect(document.body.textContent).not.toMatch(/fake · bad\/row|bad\/mismatch|bad\/wrong-action/);
+  });
+
+  it("sanitizes malformed thought-partner replies before parsing actions", async () => {
+    apiFetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.includes("/billing/summary/")) {
+        return okJson({
+          free_tokens_consumed: 12,
+          free_tokens_remaining: 4_999_988,
+          record_count: 1,
+        });
+      }
+      if (path.includes("/trajectory")) {
+        return okJson({ events: [] });
+      }
+      if (path === "/thought-partner") {
+        return okJson({
+          shape: "UNBOUNDED",
+          text: "  Reply text  ",
+        });
+      }
+      return okJson({});
+    });
+
+    render(<AISidecar />);
+
+    await userEvent.type(await screen.findByPlaceholderText("What's the question?"), "challenge this");
+    await userEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(await screen.findByText("Reply text")).toBeTruthy();
+    expect(screen.getByText("SYNTHESIS")).toBeTruthy();
+    expect(screen.queryByText("UNBOUNDED")).toBeNull();
   });
 });

@@ -58,6 +58,24 @@ interface ThoughtPartnerReply {
   text: string;
 }
 
+const THOUGHT_PARTNER_SHAPES = new Set<ThoughtPartnerReply["shape"]>([
+  "CHALLENGE",
+  "SYNTHESIS",
+  "EXTENSION",
+]);
+
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 function finiteNonNegativeNumber(value: unknown): number | null {
   const parsed =
     typeof value === "number"
@@ -70,6 +88,22 @@ function finiteNonNegativeNumber(value: unknown): number | null {
 
 function tokenCountLabel(value: unknown): string {
   return Math.floor(finiteNonNegativeNumber(value) ?? 0).toLocaleString();
+}
+
+function safeThoughtPartnerReply(value: unknown): ThoughtPartnerReply {
+  const data = record(value);
+  const rawShape = data?.shape;
+  const text =
+    nonEmptyString(data?.text) ??
+    nonEmptyString(data?.body) ??
+    (data ? JSON.stringify(data) : null) ??
+    "No response text returned.";
+  return {
+    shape: THOUGHT_PARTNER_SHAPES.has(rawShape as ThoughtPartnerReply["shape"])
+      ? (rawShape as ThoughtPartnerReply["shape"])
+      : "SYNTHESIS",
+    text,
+  };
 }
 
 export default function AISidecar() {
@@ -127,17 +161,17 @@ export default function AISidecar() {
         const calls = events
           .filter((e) => e.action_type === "dispatch.call")
           .filter((e) => {
-            const p = e.payload as unknown as Record<string, unknown>;
-            return typeof p.call_id === "string" && p.call_id.length > 0;
+            const p = record(e.payload);
+            return Boolean(nonEmptyString(p?.call_id));
           })
           .slice(-8)
           .map((e) => {
-            const p = e.payload as unknown as Record<string, unknown>;
+            const p = record(e.payload) ?? {};
             return {
-              call_id: String(p.call_id),
-              tier: typeof p.tier === "string" ? p.tier : "?",
-              provider: typeof p.provider === "string" ? p.provider : "?",
-              model: typeof p.model === "string" ? p.model : "?",
+              call_id: nonEmptyString(p.call_id) ?? "unknown",
+              tier: nonEmptyString(p.tier) ?? "?",
+              provider: nonEmptyString(p.provider) ?? "?",
+              model: nonEmptyString(p.model) ?? "?",
               latency_ms: finiteNonNegativeNumber(p.latency_ms) ?? 0,
               fell_back: (finiteNonNegativeNumber(p.fallback_chain_index) ?? 0) > 0,
             };
@@ -208,15 +242,14 @@ export default function AISidecar() {
         });
         return;
       }
-      const data = await resp.json();
-      const rawText: string = data.text ?? data.body ?? JSON.stringify(data);
+      const data = safeThoughtPartnerReply(await resp.json());
       // S8 WP-8.4 acceptance: "When the AI asks 'open this PDF', it
       // dispatches a workspace open() action." Parse the structured
       // @@actions block out of the reply, dispatch each, and surface
       // the executed actions as a transparency log below the prose.
-      const { prose, actions, parseErrors } = parseAssistantReply(rawText);
+      const { prose, actions, parseErrors } = parseAssistantReply(data.text);
       setReply({
-        shape: data.shape ?? "SYNTHESIS",
+        shape: data.shape,
         text: prose,
       });
       if (actions.length > 0) {
