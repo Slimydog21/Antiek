@@ -129,6 +129,15 @@ beforeEach(() => {
             owner: " Operator ",
           },
         },
+        engineering_deferrals: {
+          open_count: "16.9",
+          total_deferrals: "19",
+          first_open: {
+            deferral_id: " D1 ",
+            title: " Multi-user pivot ",
+            unlock_criterion: " G7 closes ",
+          },
+        },
       });
     }
     return okJson({});
@@ -172,6 +181,10 @@ describe("OperatorDashboard", () => {
     ).toBeTruthy();
     expect(
       screen.getByText("Closeable now: OA-005 · Wedge ratification. Blocks: Phase 8 enforcing."),
+    ).toBeTruthy();
+    expect(screen.getByText("Deferrals 16/19 not closed")).toBeTruthy();
+    expect(
+      screen.getByText("Do not pre-build D1 · Multi-user pivot. Unlock: G7 closes."),
     ).toBeTruthy();
     expect(screen.getByRole("link", { name: "open →" }).getAttribute("href")).toBe(
       "/coordination",

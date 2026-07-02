@@ -82,6 +82,8 @@ function roadmap(
     operator_gate_focus: null,
     read_activation: null,
     operator_actions: null,
+    phase2_audit: null,
+    engineering_deferrals: null,
     substrate_layers: [],
   };
 }
@@ -596,6 +598,47 @@ describe("Roadmap", () => {
     expect(
       screen.getByText(
         "Next audit action: Keep docs/OPERATOR_ACTIONS.md as the authoritative operator gate list.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("surfaces engineering deferrals as do-not-prebuild status", () => {
+    render(
+      <Roadmap
+        roadmap={{
+          ...roadmap([]),
+          engineering_deferrals: {
+            source_path: "docs/engineering_deferrals.md",
+            total_deferrals: 19,
+            open_count: 16,
+            status_counts: {
+              deferred: 7,
+              partial: 5,
+              substrate_shipped: 4,
+              closed: 3,
+            },
+            first_open: {
+              deferral_id: "D1",
+              title: "Sprint 22 multi-user pivot cluster",
+              status: "partial",
+              status_raw: "Partial substrate prep",
+              unlock_criterion: "G7 closes — earliest ~Nov 2026",
+              blocks: "D8 and second-user exit criteria",
+            },
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Engineering deferrals")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "16/19 not closed · 7 deferred · 5 partial · 4 substrate shipped · 3 closed",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Do not pre-build D1 — Sprint 22 multi-user pivot cluster. Unlock: G7 closes — earliest ~Nov 2026. Source: docs/engineering_deferrals.md.",
       ),
     ).toBeTruthy();
   });

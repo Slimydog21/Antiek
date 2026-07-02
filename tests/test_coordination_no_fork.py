@@ -48,6 +48,10 @@ from substrate.coordination.phase2_audit import (
     load_phase2_audit,
 )
 from substrate.coordination.activation_view import build_read_activation_view
+from substrate.coordination.engineering_deferrals import (
+    DeferralStatus,
+    load_engineering_deferrals,
+)
 from substrate.coordination.roadmap import (
     Roadmap,
     SpecRoster,
@@ -220,6 +224,60 @@ by operator action or real-data accumulation, not substrate.
     )
     mutated = load_phase2_audit(audit_path, scorecard_path)
     assert mutated.engineering_blocked_count == 0
+
+
+def test_engineering_deferrals_view_surfaces_do_not_prebuild_ledger() -> None:
+    view = load_engineering_deferrals()
+
+    assert view.source_path == "docs/engineering_deferrals.md"
+    assert len(view.deferrals) == 19
+    assert view.deferrals[0].deferral_id == "D1"
+    assert view.deferrals[0].status is DeferralStatus.PARTIAL
+    assert view.deferrals[0].unlock_criterion is not None
+    assert "G7" in view.deferrals[0].unlock_criterion
+    assert view.deferrals[-1].deferral_id == "D19"
+    assert view.first_open() is not None
+    assert view.first_open().deferral_id == "D1"
+    assert view.status_counts() == {
+        "partial": 4,
+        "substrate_shipped": 5,
+        "deferred": 7,
+        "closed": 3,
+    }
+
+
+def test_engineering_deferrals_fixture_mutation_is_reflected(tmp_path: Path) -> None:
+    path = tmp_path / "engineering_deferrals.md"
+    path.write_text(
+        """# Deferrals
+
+## D1 — Multi-user
+
+**Status:** ❌ Deferred.
+**Unlock criterion:** G7 closes.
+**Blocks-what:** multi-user activation.
+
+## D2 — Closed tidy
+
+**Status:** ✅ Closed on 2026-07-02.
+**Unlock criterion:** satisfied.
+**Blocks-what:** nothing.
+""",
+        encoding="utf-8",
+    )
+
+    view = load_engineering_deferrals(path)
+    assert view.first_open() is not None
+    assert view.first_open().deferral_id == "D1"
+    assert view.status_counts() == {"deferred": 1, "closed": 1}
+
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("❌ Deferred.", "✅ Closed.", 1),
+        encoding="utf-8",
+    )
+    mutated = load_engineering_deferrals(path)
+    assert mutated.first_open() is None
+    assert mutated.status_counts() == {"closed": 2}
 
 
 def test_operator_gate_actions_summary_tracks_appended_follow_ons() -> None:
@@ -686,12 +744,14 @@ def test_roadmap_response_serializes_operator_actions_and_phase2_audit() -> None
 
     operator_actions = load_operator_actions()
     phase2_audit = load_phase2_audit()
+    deferrals = load_engineering_deferrals()
 
     response = RoadmapResponse.from_roadmap(
         build_roadmap(),
         load_gate_ledger(),
         operator_actions=operator_actions,
         phase2_audit=phase2_audit,
+        engineering_deferrals=deferrals,
     )
 
     assert response.operator_actions.source_path == "docs/OPERATOR_ACTIONS.md"
@@ -704,6 +764,11 @@ def test_roadmap_response_serializes_operator_actions_and_phase2_audit() -> None
     assert response.phase2_audit.total_score.unmet == 5
     assert response.phase2_audit.exit_criteria is not None
     assert response.phase2_audit.exit_criteria.unmet == 18
+    assert response.engineering_deferrals.source_path == "docs/engineering_deferrals.md"
+    assert response.engineering_deferrals.total_deferrals == 19
+    assert response.engineering_deferrals.open_count == 16
+    assert response.engineering_deferrals.first_open is not None
+    assert response.engineering_deferrals.first_open.deferral_id == "D1"
 
 
 def test_operator_gate_focus_does_not_override_structural_dependency_focus() -> None:

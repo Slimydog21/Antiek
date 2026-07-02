@@ -60,6 +60,15 @@ interface CoordinationSummary {
       owner: string;
     } | null;
   } | null;
+  engineeringDeferrals: {
+    open_count: number;
+    total_deferrals: number;
+    first_open: {
+      deferral_id: string;
+      title: string;
+      unlock_criterion: string | null;
+    } | null;
+  } | null;
   readActivation: {
     valid_sessions: number;
     total_sessions: number;
@@ -211,6 +220,7 @@ function safeCoordinationSummary(value: unknown): CoordinationSummary {
   const body = record(value);
   const operatorGate = record(body?.operator_gate_focus);
   const operatorActions = record(body?.operator_actions);
+  const engineeringDeferrals = record(body?.engineering_deferrals);
   const readActivation = record(body?.read_activation);
   const gateId = nonEmptyString(operatorGate?.gate_id);
   const safeAction = (value: unknown) => {
@@ -245,6 +255,23 @@ function safeCoordinationSummary(value: unknown): CoordinationSummary {
           source_path: nullableString(operatorActions.source_path),
           closeable_action: safeAction(operatorActions.closeable_action),
           next_action: safeAction(operatorActions.next_action),
+        }
+      : null,
+    engineeringDeferrals: engineeringDeferrals
+      ? {
+          open_count: safeCount(engineeringDeferrals.open_count),
+          total_deferrals: safeCount(engineeringDeferrals.total_deferrals),
+          first_open: (() => {
+            const firstOpen = record(engineeringDeferrals.first_open);
+            const deferralId = nonEmptyString(firstOpen?.deferral_id);
+            return firstOpen && deferralId
+              ? {
+                  deferral_id: deferralId,
+                  title: nonEmptyString(firstOpen.title) ?? deferralId,
+                  unlock_criterion: nullableString(firstOpen.unlock_criterion),
+                }
+              : null;
+          })(),
         }
       : null,
     readActivation: readActivation
@@ -521,6 +548,7 @@ function CoordinationTile({
 }) {
   const activation = coordination?.readActivation ?? null;
   const operatorActions = coordination?.operatorActions ?? null;
+  const engineeringDeferrals = coordination?.engineeringDeferrals ?? null;
   const actionFocus =
     operatorActions?.closeable_action ?? operatorActions?.next_action ?? null;
   const remaining = activation?.remaining_requirements ?? {};
@@ -618,6 +646,28 @@ function CoordinationTile({
       ) : (
         <p className="text-xs italic text-shadow-1 dark:text-moonlight">
           Operator action status unavailable.
+        </p>
+      )}
+      {engineeringDeferrals ? (
+        <div className="space-y-0.5 border-t border-rule dark:border-charcoal-1 pt-2">
+          <p className="text-xs font-mono text-ink dark:text-bright">
+            Deferrals {engineeringDeferrals.open_count}/{engineeringDeferrals.total_deferrals} not closed
+          </p>
+          {engineeringDeferrals.first_open ? (
+            <p className="text-xs text-ink-soft dark:text-starlight">
+              Do not pre-build {engineeringDeferrals.first_open.deferral_id} ·{" "}
+              {engineeringDeferrals.first_open.title}. Unlock:{" "}
+              {engineeringDeferrals.first_open.unlock_criterion || "not specified"}.
+            </p>
+          ) : (
+            <p className="text-xs italic text-shadow-1 dark:text-moonlight">
+              No open deferrals reported.
+            </p>
+          )}
+        </div>
+      ) : (
+        <p className="text-xs italic text-shadow-1 dark:text-moonlight">
+          Deferral status unavailable.
         </p>
       )}
     </div>

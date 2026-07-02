@@ -355,6 +355,27 @@ export const CANONICAL_ROADMAP: RoadmapView = {
         "every unmet exit criterion is blocked by operator action or real-data accumulation, not substrate.",
     },
   },
+  engineering_deferrals: {
+    source_path: "docs/engineering_deferrals.md",
+    total_deferrals: 19,
+    open_count: 16,
+    status_counts: {
+      deferred: 7,
+      partial: 5,
+      substrate_shipped: 4,
+      closed: 3,
+    },
+    first_open: {
+      deferral_id: "D1",
+      title: "Sprint 22 multi-user pivot cluster",
+      status: "partial",
+      status_raw: "Deferred. Substrate prep is partial.",
+      unlock_criterion:
+        "G7 (six-month solo-operator compounding window per master-spec §13.4) closes — earliest ~Nov 2026.",
+      blocks:
+        "D8 (Sprint 25+ ads at scale), D9 (Sprint 30+ federation activation), every second-user exit criterion.",
+    },
+  },
   substrate_layers: [
     { name: "Write coordination (db_lock)", owner: "runtime/db_lock.py", status: "Hardened (substrate-execution SPR-01)" },
     { name: "Dispatch router + idempotency", owner: "substrate/dispatch/", status: "Hardened (substrate-execution SPR-02/03)" },

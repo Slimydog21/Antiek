@@ -10,9 +10,9 @@ Thin adapter over :mod:`substrate.coordination`. Four GET endpoints, no writes:
 
 **Read-only is enforced, not promised (rigor #5).** This module imports only
 read entry points (``load_gate_ledger`` / ``load_operator_actions`` /
-``load_phase2_audit`` / ``build_roadmap`` / ``build_cost_view`` /
-``build_consent_view``); there is no import of any writer (``connect_write``,
-the escrow writer
+``load_phase2_audit`` / ``load_engineering_deferrals`` / ``build_roadmap`` /
+``build_cost_view`` / ``build_consent_view``); there is no import of any writer
+(``connect_write``, the escrow writer
 ``ip_holders.accrue_escrow``, the gate file's path for writing) and **no import
 of any payout module** (``tools.stripe_connect.payouts``). There is
 no POST/PUT/PATCH/DELETE route. The cost endpoint opens DuckDB ``read_only=True``
@@ -46,6 +46,11 @@ from substrate.coordination.cost_view import (
     WorkflowCost,
     build_cost_view,
     speak_policy_by_investigation_from_db,
+)
+from substrate.coordination.engineering_deferrals import (
+    EngineeringDeferral,
+    EngineeringDeferralsView,
+    load_engineering_deferrals,
 )
 from substrate.coordination.gate_ledger import (
     Gate,
@@ -375,6 +380,62 @@ class Phase2AuditResponse(BaseModel):
         )
 
 
+class EngineeringDeferralResponse(BaseModel):
+    deferral_id: str
+    title: str
+    status: str
+    status_raw: str
+    unlock_criterion: str | None
+    blocks: str | None
+
+    @classmethod
+    def from_deferral(
+        cls,
+        deferral: EngineeringDeferral,
+    ) -> EngineeringDeferralResponse:
+        return cls(
+            deferral_id=deferral.deferral_id,
+            title=deferral.title,
+            status=deferral.status.value,
+            status_raw=deferral.status_raw,
+            unlock_criterion=deferral.unlock_criterion,
+            blocks=deferral.blocks,
+        )
+
+
+class EngineeringDeferralsSummaryResponse(BaseModel):
+    """Read-only summary of ``docs/engineering_deferrals.md``.
+
+    This is the "do not pre-build" companion to operator actions. It exposes
+    counts and the first still-open deferral so agents see sequencing blockers
+    in the same place as roadmap and gate status.
+    """
+
+    source_path: str
+    total_deferrals: int
+    open_count: int
+    status_counts: dict[str, int]
+    first_open: EngineeringDeferralResponse | None
+
+    @classmethod
+    def from_view(
+        cls,
+        view: EngineeringDeferralsView,
+    ) -> EngineeringDeferralsSummaryResponse:
+        first_open = view.first_open()
+        return cls(
+            source_path=view.source_path,
+            total_deferrals=len(view.deferrals),
+            open_count=len(view.open_deferrals()),
+            status_counts=view.status_counts(),
+            first_open=(
+                EngineeringDeferralResponse.from_deferral(first_open)
+                if first_open is not None
+                else None
+            ),
+        )
+
+
 class RoadmapResponse(BaseModel):
     total_sprints: int
     superseded_count: int
@@ -390,6 +451,7 @@ class RoadmapResponse(BaseModel):
     read_activation: ReadActivationStatusResponse
     operator_actions: OperatorActionsSummaryResponse
     phase2_audit: Phase2AuditResponse
+    engineering_deferrals: EngineeringDeferralsSummaryResponse
     substrate_layers: list[SubstrateLayerResponse]
 
     @classmethod
@@ -400,6 +462,7 @@ class RoadmapResponse(BaseModel):
         read_activation: ReadActivationView | None = None,
         operator_actions: OperatorActionsView | None = None,
         phase2_audit: Phase2AuditView | None = None,
+        engineering_deferrals: EngineeringDeferralsView | None = None,
     ) -> RoadmapResponse:
         focus = rm.execution_focus()
         operator_focus = None
@@ -447,6 +510,9 @@ class RoadmapResponse(BaseModel):
             ),
             phase2_audit=Phase2AuditResponse.from_view(
                 phase2_audit or load_phase2_audit()
+            ),
+            engineering_deferrals=EngineeringDeferralsSummaryResponse.from_view(
+                engineering_deferrals or load_engineering_deferrals()
             ),
             substrate_layers=[
                 SubstrateLayerResponse(
@@ -662,6 +728,7 @@ def register_coordination_routes(app: FastAPI) -> None:
             build_read_activation_view(),
             load_operator_actions(),
             load_phase2_audit(),
+            load_engineering_deferrals(),
         )
 
     @app.get(

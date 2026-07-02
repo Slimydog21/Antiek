@@ -37,6 +37,9 @@ read** from canonical sources this package never writes:
   scorecard + v5 reconciliation as read-only status, so sprint-level execution
   truth is visible beside roadmap dependency state.
 
+* :mod:`substrate.coordination.engineering_deferrals` surfaces the explicit
+  "do not pre-build" deferral ledger from ``docs/engineering_deferrals.md``.
+
 The binding rule for the whole package: **integration, not duplication — the
 ledger is a view over the source, never a second gate store.** If the operator
 edits the gate file or a roster changes, the dashboard reflects it on next read.
@@ -62,6 +65,13 @@ from .cost_view import (
     WorkflowCost,
     build_cost_view,
     workflow_for_role,
+)
+from .engineering_deferrals import (
+    DeferralStatus,
+    EngineeringDeferral,
+    EngineeringDeferralsView,
+    load_engineering_deferrals,
+    parse_engineering_deferrals,
 )
 from .gate_ledger import (
     Gate,
@@ -136,6 +146,12 @@ __all__ = [
     "WorkflowCost",
     "build_cost_view",
     "workflow_for_role",
+    # engineering deferrals
+    "DeferralStatus",
+    "EngineeringDeferral",
+    "EngineeringDeferralsView",
+    "load_engineering_deferrals",
+    "parse_engineering_deferrals",
     # consent view (SPR-07)
     "ConsentView",
     "DisbursementGate",
