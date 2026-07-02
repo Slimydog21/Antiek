@@ -121,6 +121,16 @@ function assertPositiveSafeInteger(value: number, field: string): void {
   }
 }
 
+function requireRequestString(value: unknown, field: string): string {
+  const text = nonEmptyString(value);
+  if (!text) throw new TypeError(`${field} must be a non-empty string`);
+  return text;
+}
+
+function optionalRequestString(value: unknown): string | undefined {
+  return nonEmptyString(value) ?? undefined;
+}
+
 export async function postTypedEvent(
   envelope: TypedEventEnvelope,
 ): Promise<EmittedEventResponse> {
@@ -274,10 +284,30 @@ export interface StartInvestigationResponse {
 export async function startInvestigation(
   req: StartInvestigationRequest,
 ): Promise<StartInvestigationResponse> {
+  const body: StartInvestigationRequest = {
+    question: requireRequestString(req.question, "question"),
+  };
+  const context = optionalRequestString(req.context);
+  const topicSlug = optionalRequestString(req.topic_slug);
+  const parentInvestigationId = optionalRequestString(req.parent_investigation_id);
+  const spawnContext = optionalRequestString(req.spawn_context);
+  const investigationId = optionalRequestString(req.investigation_id);
+  if (context) body.context = context;
+  if (topicSlug) body.topic_slug = topicSlug;
+  if (parentInvestigationId) body.parent_investigation_id = parentInvestigationId;
+  if (spawnContext) body.spawn_context = spawnContext;
+  if (investigationId) body.investigation_id = investigationId;
+  if (req.max_sub_questions !== undefined) {
+    assertPositiveSafeInteger(req.max_sub_questions, "max_sub_questions");
+    body.max_sub_questions = req.max_sub_questions;
+  }
+  if (req.research_tier === "fast" || req.research_tier === "deep") {
+    body.research_tier = req.research_tier;
+  }
   const resp = await apiFetch(`${API_BASE}/investigations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
+    body: JSON.stringify(body),
   });
   if (!resp.ok) {
     throw new ApiError(
