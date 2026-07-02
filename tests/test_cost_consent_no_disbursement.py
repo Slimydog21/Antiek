@@ -1,5 +1,10 @@
 """SPR-07 — the load-bearing guard suite for the unified cost + consent surface.
 
+Canonical gate: ``./scripts/canonical_verify.sh unified-cost-consent-surface``.
+It pairs this backend cost/consent/no-disbursement proof with the Coordination
+cost/consent UI tests. Live provider billing, Stripe payout activation, and
+payout reconciliation remain operator proof.
+
 This file proves the invariants the spec calls its most dangerous to violate:
 
 * **No disbursement path** (M5, rigor #5 / defensibility) — the cost/consent
@@ -56,6 +61,20 @@ from substrate.schemas.events import DispatchCallPayload
 from substrate.speak.economics_mode import resolve_policy
 
 _REPO = Path(__file__).resolve().parents[1]
+
+
+def test_cost_consent_docs_name_canonical_gate_and_operator_boundary() -> None:
+    """The cost/consent proof docs name the canonical gate and live-money boundary."""
+    import substrate.coordination.consent_view as consent_view
+    import substrate.coordination.cost_view as cost_view
+
+    combined = " ".join(
+        f"{cost_view.__doc__ or ''} {consent_view.__doc__ or ''} {__doc__ or ''}".split()
+    )
+
+    assert "./scripts/canonical_verify.sh unified-cost-consent-surface" in combined
+    assert "Coordination cost/consent UI tests" in combined
+    assert "Live provider billing, Stripe payout activation, and payout reconciliation remain operator proof" in combined
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────

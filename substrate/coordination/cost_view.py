@@ -1,5 +1,10 @@
 """Unified cost view — per-workflow + aggregate inference cost (SPR-07 M1/M3).
 
+Canonical gate: ``./scripts/canonical_verify.sh unified-cost-consent-surface``
+proves cost grouping, margin honesty, no-disbursement separation, and the
+Coordination cost/consent UI tests. Live provider billing reconciliation remains
+operator proof, not a JSONL fixture claim.
+
 The operator's money question has two halves; this module is the first. It reads
 the **canonical cost source** — ``DispatchCall`` events on the investigation
 JSONL trajectories — and groups realized spend per workflow (Research / Read /

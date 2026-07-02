@@ -1,5 +1,10 @@
 """Cross-workflow *thread* reconstruction (antiek-unified SPR-06 M1).
 
+Canonical gate: ``./scripts/canonical_verify.sh unified-thread-navigation``
+proves thread reconstruction/API plus the ``ThreadBreadcrumb``/``ThreadJump``
+UI tests. Browser/device visual QA for final breadcrumb placement remains
+operator verification, not a substrate view claim.
+
 A **thread** is the trajectory of ONE graph entity across the four workflows
 (Research / Read / Write / Speak): a Speak interview claim → an insight → a
 Write outline block → a Read published page. The load-bearing invariant — the

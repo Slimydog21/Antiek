@@ -4,6 +4,9 @@ import { findForkedHop, type Thread, type ThreadHop } from "./threadModel";
 /**
  * ThreadBreadcrumb (antiek-unified SPR-06 M2) — the unified cross-workflow
  * trail.
+ * Canonical gate: `./scripts/canonical_verify.sh unified-thread-navigation`.
+ * The gate covers reconstruction/API plus this breadcrumb/jump UI; final
+ * browser/device placement polish remains operator verification.
  *
  * Renders one graph entity's trajectory across the four workflows as a
  * navigable breadcrumb, e.g.
