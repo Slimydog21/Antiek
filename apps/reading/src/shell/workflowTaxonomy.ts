@@ -737,23 +737,15 @@ const READ_SUBSURFACE_ROUTES: ReadonlyArray<{ workflow: Workflow; prefix: string
 
 /** Resolve which workflow a pathname belongs to (for active-rail state). */
 export function workflowForPath(pathname: string): Workflow {
-  // Longest-prefix match against routed modes. Strip params for matching.
-  const candidates = [
-    ...MODE_TAXONOMY.filter((m) => m.route).map((m) => ({
-      workflow: m.workflow,
-      // Convert "/speak/:projectId" → "/speak" prefix.
-      prefix: m.route!.replace(/\/:.*/, ""),
-    })),
-    ...READ_SUBSURFACE_ROUTES,
-  ];
-  // Sort by prefix length desc so "/speak/invite" beats "/speak".
-  candidates.sort((a, b) => b.prefix.length - a.prefix.length);
-  for (const c of candidates) {
-    if (c.prefix === "/" ) continue; // handle root last
-    if (pathname === c.prefix || pathname.startsWith(c.prefix + "/")) {
-      return c.workflow;
+  for (const surface of READ_SUBSURFACE_ROUTES) {
+    if (pathname === surface.prefix || pathname.startsWith(`${surface.prefix}/`)) {
+      return surface.workflow;
     }
   }
+
+  const mode = modeForPath(pathname);
+  if (mode) return mode.workflow;
+
   if (pathname === "/" || pathname === "") return "research";
   return "research";
 }
