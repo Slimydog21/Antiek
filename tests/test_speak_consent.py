@@ -22,6 +22,8 @@ from substrate.speak import publish_gate, subject_consent, takedown, third_party
 from substrate.speak.consent import ConsentScope, ScopedConsentRequired
 from substrate.speak.publish_gate import PublishBlocked
 from substrate.speak.schema import ensure_speak_schema
+from substrate.contracts import verify_conformance
+from substrate.contracts.interviewer import ConsentContract
 
 
 @pytest.fixture
@@ -76,6 +78,48 @@ def test_revoke_consent_removes_scope(speak_db):
     state = consent_mod.consent_state(con, iv)
     assert state.has(ConsentScope.RECORD)
     assert not state.has(ConsentScope.PUBLISH)
+
+
+def test_consent_gate_state_conforms_to_shared_contract(speak_db):
+    con, iv = speak_db["con"], speak_db["interview_id"]
+    consent_mod.record_consent(
+        con,
+        interview_id=iv,
+        scopes=[ConsentScope.PUBLISH, ConsentScope.RECORD, ConsentScope.ATTRIBUTE],
+    )
+
+    gate = consent_mod.consent_gate_state(
+        con,
+        iv,
+        ip_holder_id="iph-1",
+        verified_before_publish=True,
+        right_of_publicity_cleared=True,
+    )
+
+    result = verify_conformance(type(gate), ConsentContract)
+    assert result.ok, result.diff
+    assert gate.scopes == (
+        ConsentScope.RECORD,
+        ConsentScope.ATTRIBUTE,
+        ConsentScope.PUBLISH,
+    )
+    assert gate.to_contract().scopes == ("record", "attribute", "publish")
+    assert gate.publishable is True
+
+
+def test_consent_gate_state_is_deny_by_default(speak_db):
+    con, iv = speak_db["con"], speak_db["interview_id"]
+    consent_mod.record_consent(con, interview_id=iv, scopes=[ConsentScope.RECORD])
+
+    gate = consent_mod.consent_gate_state(
+        con,
+        iv,
+        verified_before_publish=True,
+        right_of_publicity_cleared=True,
+    )
+
+    assert gate.to_contract().scopes == ("record",)
+    assert gate.publishable is False
 
 
 # ── M2 third-party tagging ──────────────────────────────────────────────

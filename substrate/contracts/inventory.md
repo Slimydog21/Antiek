@@ -18,7 +18,7 @@ product-spec sprint pages (`specs/{deep-research-workspace,read,write,speak}/`)
 | `ServableEntryContract` | Read SPR-01 (+ `provenance_class` from this sprint) | Read, Speak | committed | `constants.BOOK_SERVABILITY_STATUSES` (L545-551); seam #4 |
 | `AccrualContract` | Read SPR-09 / Speak SPR-07 | Read, Speak | committed | `speak/contributor.py::AccrualLine`; single escrow-balance writer = `ip_holders.accrue_escrow` (NOT publisher_escrow.py — reporting only; corrected post-SPR-03); seam #3 |
 | `InterviewerResultContract` | Speak interviewer | Speak, Write | provisional | (Speak interviewer shape not fully pinned) |
-| `ConsentContract` | Speak SPR-01 | Speak, Read (seam #4) | provisional | `substrate/speak/` consent + rights gate |
+| `ConsentContract` | Speak SPR-01 | Speak, Read (seam #4) | committed | `substrate/speak/consent.py::ConsentGateState` + speak→read servability gate |
 | `EconomicsCellContract` | Speak SPR-07 | Speak, cost surface (SPR-07 unified) | committed | economics matrix (`CREATOR_REV_SHARE` 70% public) |
 
 ## DRW citation audit (the seam-#6 risk surface)
