@@ -154,6 +154,36 @@ describe("MyResearch — one monitor, plain language (M1)", () => {
     // The standalone research is its own row, not under a family header.
     expect(screen.getByText("Standalone")).toBeTruthy();
   });
+
+  it("normalizes malformed summary ids, parent ids, and statuses", () => {
+    listState.current.investigations = [
+      inv({
+        investigation_id: " inv-parent ",
+        question: " Parent ",
+        status: "completed",
+      }),
+      inv({
+        investigation_id: " inv-child ",
+        question: " Child ",
+        status: "unexpected" as InvestigationSummary["status"],
+        parent_investigation_id: " inv-parent ",
+      }),
+      inv({
+        investigation_id: " ",
+        question: "Invisible broken row",
+        status: "completed",
+      }),
+    ];
+
+    renderMonitor();
+
+    expect(screen.getAllByText("Parent").length).toBeGreaterThan(0);
+    expect(screen.getByText("Child")).toBeTruthy();
+    expect(screen.getByText("2 researches")).toBeTruthy();
+    expect(screen.getByText("unavailable")).toBeTruthy();
+    expect(screen.queryByText("unexpected")).toBeNull();
+    expect(screen.queryByText("Invisible broken row")).toBeNull();
+  });
 });
 
 describe("MyResearch — honest aggregate (M2)", () => {

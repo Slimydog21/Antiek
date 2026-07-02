@@ -65,7 +65,7 @@ interface PlainStatus {
   running: boolean;
 }
 
-function plainStatus(status: InvestigationSummary["status"]): PlainStatus {
+function plainStatus(status: unknown): PlainStatus {
   switch (status) {
     case "in_progress":
       return { label: "working", colour: "sun", running: true };
@@ -81,16 +81,33 @@ function plainStatus(status: InvestigationSummary["status"]): PlainStatus {
     case "not_found":
       return { label: "unavailable", colour: "muted", running: false };
     default:
-      // Exhaustive over the union; a new status is a compile error here.
-      return assertNever(status);
+      return { label: "unavailable", colour: "muted", running: false };
   }
 }
 
-function assertNever(x: never): never {
-  // A status the union doesn't cover reached here — fail loudly in dev
-  // rather than silently mislabelling. Returns a safe muted fallback shape
-  // only to satisfy the never-return at runtime (unreachable in practice).
-  throw new Error(`unhandled investigation status: ${String(x)}`);
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function displayString(value: unknown, fallback: string): string {
+  return nonEmptyString(value) ?? fallback;
+}
+
+function normalizeSummaries(items: InvestigationSummary[]): InvestigationSummary[] {
+  return items.flatMap((summary) => {
+    const investigationId = nonEmptyString(summary.investigation_id);
+    if (!investigationId) return [];
+    return [
+      {
+        ...summary,
+        investigation_id: investigationId,
+        question: displayString(summary.question, "Untitled research"),
+        parent_investigation_id: nonEmptyString(summary.parent_investigation_id),
+      },
+    ];
+  });
 }
 
 // ── Grouping: a "session" is a parent research + the researches spawned from
@@ -194,6 +211,10 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
   // The substrate's own list, polled. Limit generous — the monitor is the
   // home for ALL researches, not a recent slice.
   const { investigations, loading, error, refetch } = useInvestigationList({ limit: 200 });
+  const visibleInvestigations = useMemo(
+    () => normalizeSummaries(investigations),
+    [investigations],
+  );
 
   // The real host-local concurrency bound, read off the contract (never
   // hardcoded — it would drift from runtime/research_runner). Best-effort: a
@@ -214,8 +235,8 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
     };
   }, []);
 
-  const agg = useMemo(() => aggregate(investigations), [investigations]);
-  const groups = useMemo(() => groupByParent(investigations), [investigations]);
+  const agg = useMemo(() => aggregate(visibleInvestigations), [visibleInvestigations]);
+  const groups = useMemo(() => groupByParent(visibleInvestigations), [visibleInvestigations]);
 
   // Honest "N running, M queued": the host-local runner multiplexes browse
   // loops under a bounded semaphore (the contract's max_concurrency). More
@@ -307,7 +328,7 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
             research list is empty is that no model provider is configured, so
             we reuse the shared AIActionFailure no-reason branch which says
             exactly that — never a hopeful spinner. */}
-        {!loading && !error && investigations.length === 0 && (
+        {!loading && !error && visibleInvestigations.length === 0 && (
           <div className="rounded-md border border-rule px-4 py-8 dark:border-charcoal-1">
             <AIActionFailure
               title="No research yet"
@@ -317,7 +338,7 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
           </div>
         )}
 
-        {loading && investigations.length === 0 && (
+        {loading && visibleInvestigations.length === 0 && (
           <p className="text-sm italic text-shadow-1 dark:text-moonlight">Loading…</p>
         )}
 
