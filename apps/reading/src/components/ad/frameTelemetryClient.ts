@@ -189,7 +189,8 @@ export class FrameTelemetryEmitter {
       return;
     }
     if (status === 404) {
-      // The deferred SPR-09 route. Surface it — do not pretend it succeeded.
+      // Route absent (the live route is ad_routes.py:141; a 404 means an old
+      // deployment predating it). Surface it — do not pretend it succeeded.
       this.onError?.({ kind: "route-absent", status, windowId: this.windowId });
       return;
     }
