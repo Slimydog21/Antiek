@@ -298,17 +298,22 @@ def find_unreachable_augmentations() -> list[tuple[Path, int, str, str]]:
 
 # ── Route reachability ──────────────────────────────────────────────────────
 #
-# Routes are declared centrally as `<Route path="…" …>` in App.tsx. A route is
-# reachable if its STATIC path prefix (everything up to the first :param) has an
-# inbound nav literal — `<Link to="…">`, a `to="…"`/`href="…"` prop, or a
-# `navigate("…")` / `<Navigate to="…">` — anywhere in apps/reading/src/ that
-# isn't the `<Route …>` declaration itself.
+# Routes are declared centrally as `<Route path="…" …>` in App.tsx. A real page
+# route is reachable if its STATIC path prefix (everything up to the first
+# :param) has an inbound nav literal — `<Link to="…">`, a `to="…"`/`href="…"`
+# prop, `navigate("…")`, `<Navigate to="…">`, or a direct `window.open("…")`
+# popout target — anywhere in apps/reading/src/ that isn't the `<Route …>`
+# declaration itself. Redirect-only `<Route ... element={<Navigate .../>}>`
+# entries are compatibility aliases, not product surfaces, so they are excluded
+# from the stranded-page set.
 
 _ROUTE_DEF_RE = re.compile(r'<Route\s+path="([^"]+)"')
+_REDIRECT_ROUTE_RE = re.compile(r'<Route\b[^>]*\belement=\{\s*<Navigate\b')
 # Inbound nav references, in three forms this codebase actually uses:
 #   1. JSX props        — `to="…"` / `href="…"` (optionally brace-wrapped)
 #   2. programmatic      — `navigate("…")`
 #   3. CONFIG-OBJECT key — `to: "…"` / `path: "…"` / `route: "…"`
+#   4. popout windows    — `window.open("/_panel/${id}", …)`
 # Most navigation here is registered via config tables (the SceneChrome scene
 # registry, workflowTaxonomy, CommandPalette facets, Map/index) whose keys are
 # `to`/`path`/`route` followed by a COLON, not a JSX `=` — so form 3 is what
@@ -324,6 +329,8 @@ _NAV_REF_RE = re.compile(
     navigate\(\s*["'`]([^"'`]+)["'`]               # navigate("…")
     |                                              # …or…
     (?<![A-Za-z0-9_])(?:to|path|route)\s*:\s*["'`]([^"'`]+)["'`]  # config key (left word-boundary: open_route:/cache_path: must NOT match)
+    |                                              # …or…
+    window\.open\(\s*["'`]([^"'`]+)["'`]           # window.open("…") / window.open(`…`)
     """,
     re.VERBOSE,
 )
@@ -358,6 +365,8 @@ def _route_definitions() -> list[tuple[int, str]]:
         return []
     seen: dict[str, int] = {}
     for lineno, line in enumerate(_APP_TSX.read_text(encoding="utf-8").splitlines(), 1):
+        if _REDIRECT_ROUTE_RE.search(line):
+            continue
         for m in _ROUTE_DEF_RE.finditer(line):
             prefix = _static_prefix(m.group(1))
             if prefix is None:
@@ -383,8 +392,9 @@ def _collect_nav_references() -> set[str]:
             if _ROUTE_DEF_RE.search(line):
                 continue  # the route declaration is not an inbound reference
             for m in _NAV_REF_RE.finditer(line):
-                # group(1): to=/href=  group(2): navigate(  group(3): config key
-                dest = m.group(1) or m.group(2) or m.group(3)
+                # group(1): to=/href=  group(2): navigate(
+                # group(3): config key  group(4): window.open(
+                dest = m.group(1) or m.group(2) or m.group(3) or m.group(4)
                 if not dest or not dest.startswith("/"):
                     continue
                 refs.add(dest)
