@@ -165,7 +165,7 @@ export default function WriteHome() {
         // investigation_root_id; reused, not a new column — see decision D-1).
         investigation_root_id: resolved.investigationId,
       });
-      navigate(`/write/${d.deliverable_id}`);
+      navigate(`/write/${encodeURIComponent(d.deliverable_id)}`);
     } finally {
       setStarting(false);
     }
@@ -252,7 +252,9 @@ export default function WriteHome() {
                 <li key={p.deliverable_id}>
                   <button
                     type="button"
-                    onClick={() => navigate(`/write/${p.deliverable_id}`)}
+                    onClick={() =>
+                      navigate(`/write/${encodeURIComponent(p.deliverable_id)}`)
+                    }
                     className="w-full rounded border border-rule bg-ice-0 px-3 py-2 text-left hover:border-ocean dark:border-charcoal-1 dark:bg-charcoal-2"
                   >
                     <span className="block font-serif text-ink dark:text-bright">{p.title}</span>
