@@ -52,6 +52,16 @@ type LoadState =
   | { kind: "loaded"; insights: DistilledNode[]; questions: DistilledNode[] }
   | { kind: "error"; reason: string | null };
 
+function safeDistilledNodes(nodes: DistilledNode[]): DistilledNode[] {
+  const seen = new Set<string>();
+  return nodes.flatMap((node) => {
+    const nodeId = typeof node.node_id === "string" ? node.node_id.trim() : "";
+    if (!nodeId || seen.has(nodeId)) return [];
+    seen.add(nodeId);
+    return [{ ...node, node_id: nodeId }];
+  });
+}
+
 export default function DistillView({ investigationId, running, onChase }: DistillViewProps) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const loadSeq = useRef(0);
@@ -65,7 +75,11 @@ export default function DistillView({ investigationId, running, onChase }: Disti
     try {
       const res = await getDistillation(investigationId);
       if (loadSeq.current === seq && activeInvestigationId.current === targetId) {
-        setState({ kind: "loaded", insights: res.insights, questions: res.questions });
+        setState({
+          kind: "loaded",
+          insights: safeDistilledNodes(res.insights),
+          questions: safeDistilledNodes(res.questions),
+        });
       }
     } catch (e) {
       if (loadSeq.current === seq && activeInvestigationId.current === targetId) {

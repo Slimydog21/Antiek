@@ -1383,6 +1383,11 @@ describe("api client research graph response boundaries", () => {
               escalated: "yes",
             },
             {
+              node_id: "node-1",
+              kind: "insight",
+              text: "Duplicate finding",
+            },
+            {
               node_id: "node-empty",
               text: " ",
             },
@@ -1392,6 +1397,10 @@ describe("api client research graph response boundaries", () => {
               node_id: " q-1 ",
               text: "  What next?  ",
               reserved_child_investigation_id: " child-1 ",
+            },
+            {
+              node_id: "q-1",
+              text: "Duplicate question",
             },
           ],
         }),
