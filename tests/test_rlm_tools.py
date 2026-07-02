@@ -62,6 +62,7 @@ from substrate.graph.rlm_tools import (  # noqa: E402
     _parse_ddg_html,
     equipped_llm_batch,
     extract_json,
+    fetch_url,
     get_builtin_tool_names,
     get_tool_specs,
     tools_for_category,
@@ -380,6 +381,61 @@ def test_parse_ddg_html_with_results():
     assert "Example Title" in out
     assert "snippet" in out
     assert "https://example.com" in out
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["javascript:alert(1)", "data:text/html,owned", "file:///etc/passwd", "/relative"],
+)
+def test_fetch_url_rejects_non_http_urls_before_requests(monkeypatch, url):
+    import substrate.graph.rlm_tools as tools
+
+    calls: list[str] = []
+
+    class _Requests:
+        @staticmethod
+        def get(request_url, **_kwargs):
+            calls.append(request_url)
+            raise AssertionError("requests.get should not be called")
+
+    monkeypatch.setattr(tools, "_REQUESTS_AVAILABLE", True)
+    monkeypatch.setattr(tools, "requests", _Requests)
+
+    out = fetch_url(url)
+
+    assert "fetch_url only supports absolute http(s) URLs" in out
+    assert calls == []
+
+
+def test_fetch_url_trims_safe_http_url_and_extracts_text(monkeypatch):
+    import substrate.graph.rlm_tools as tools
+
+    calls: list[str] = []
+
+    class _Response:
+        is_redirect = False
+        status_code = 200
+        headers: dict[str, str] = {}
+        text = "<html><body><script>bad()</script><p>Hello fetch.</p></body></html>"
+
+        def raise_for_status(self):
+            return None
+
+    class _Requests:
+        @staticmethod
+        def get(request_url, **_kwargs):
+            calls.append(request_url)
+            return _Response()
+
+    monkeypatch.setattr(tools, "_REQUESTS_AVAILABLE", True)
+    monkeypatch.setattr(tools, "requests", _Requests)
+
+    out = fetch_url(" https://example.com/page ")
+
+    assert calls == ["https://example.com/page"]
+    assert "Source: https://example.com/page" in out
+    assert "Hello fetch." in out
+    assert "bad()" not in out
 
 
 # ---------------------------------------------------------------------------
