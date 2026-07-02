@@ -98,6 +98,14 @@ python tools/activation/read_dogfood.py --template live
 python tools/activation/read_dogfood.py --template live-citation
 ```
 
+To create or extend a dogfood log directly, append the selected template and
+then edit the appended line with the real session evidence:
+
+```bash
+python tools/activation/read_dogfood.py --template live-citation --append reports/read-dogfood.jsonl
+python tools/activation/read_dogfood.py --template live-citation --append reports/read-dogfood.jsonl --json
+```
+
 It is intentionally a **closure guard**, not a session recorder and not an AI
 quality judge. It checks that the log has the required fields, 10 distinct valid
 sessions, at least 5 sessions with live provider-backed AI, at least 3 sessions

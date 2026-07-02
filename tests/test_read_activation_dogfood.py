@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 from tools.activation.read_dogfood import (
+    append_session_template,
     load_jsonl,
     main,
     session_template,
@@ -881,6 +882,57 @@ def test_template_rejects_unknown_kind() -> None:
         assert "template kind must be one of" in str(exc)
     else:
         raise AssertionError("session_template accepted an unknown kind")
+
+
+def test_append_template_creates_log_file_and_parent_dirs(tmp_path, capsys) -> None:
+    path = tmp_path / "operator" / "read-dogfood.jsonl"
+
+    assert main(["--template", "live-citation", "--append", str(path)]) == 0
+    out = capsys.readouterr().out
+
+    records = load_jsonl(path)
+    assert len(records) == 1
+    assert records[0]["citation_traced"] is True
+    assert records[0]["steps"]["5"]["result_url"].endswith(
+        "?chunk=chunk-1&from=doc-1&fromPage=0"
+    )
+    assert "read-dogfood: 1/1 valid sessions" in out
+    assert "remaining:" in out
+
+
+def test_append_template_adds_line_to_existing_log(tmp_path) -> None:
+    path = tmp_path / "read-dogfood.jsonl"
+    append_session_template(path, session_template("inert"))
+
+    assert main(["--template", "live", "--append", str(path)]) == 0
+
+    records = load_jsonl(path)
+    assert len(records) == 2
+    assert records[0]["live_provider_ai"] is False
+    assert records[1]["live_provider_ai"] is True
+
+
+def test_append_template_can_print_json_report(tmp_path, capsys) -> None:
+    path = tmp_path / "read-dogfood.jsonl"
+
+    assert main(["--template", "live", "--append", str(path), "--json"]) == 0
+    report = json.loads(capsys.readouterr().out)
+
+    assert report["total_sessions"] == 1
+    assert report["valid_sessions"] == 1
+    assert report["live_provider_sessions"] == 1
+    assert report["remaining_requirements"]["valid_sessions"] == 9
+
+
+def test_append_requires_template(tmp_path) -> None:
+    path = tmp_path / "read-dogfood.jsonl"
+
+    try:
+        main(["--append", str(path)])
+    except SystemExit as exc:
+        assert exc.code == 2
+    else:
+        raise AssertionError("--append without --template did not fail")
 
 
 def test_activation_spec_minimal_record_shape_is_validator_compatible() -> None:

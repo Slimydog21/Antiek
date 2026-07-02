@@ -808,6 +808,40 @@ def _blocking_issue_ids(record: dict[str, Any]) -> tuple[str, ...]:
     )
 
 
+def append_session_template(path: Path, record: dict[str, Any]) -> None:
+    """Append one JSONL session record, creating the log directory if needed."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True))
+        handle.write("\n")
+
+
+def _print_report(report: DogfoodReport, *, as_json: bool) -> None:
+    if as_json:
+        print(json.dumps(report.as_dict(), indent=2, sort_keys=True))
+        return
+
+    print(
+        "read-dogfood: "
+        f"{report.valid_sessions}/{report.total_sessions} valid sessions, "
+        f"{report.live_provider_sessions} live-provider, "
+        f"{report.citation_trace_sessions} citation-traced, "
+        f"{report.non_library_sessions} non-library, "
+        f"verdict={report.final_verdict or 'missing'}"
+    )
+    remaining = report.remaining_requirements()
+    if any(remaining.values()):
+        print(
+            "  remaining: "
+            f"{remaining['valid_sessions']} valid, "
+            f"{remaining['live_provider_sessions']} live-provider, "
+            f"{remaining['citation_trace_sessions']} citation-traced, "
+            f"{remaining['non_library_sessions']} non-library"
+        )
+    for failure in report.failures:
+        print(f"  - {failure}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -829,11 +863,34 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Print the report as JSON instead of human-readable text.",
     )
+    parser.add_argument(
+        "--append",
+        type=Path,
+        metavar="LOG",
+        help=(
+            "Append the selected --template record to LOG, then print the "
+            "current report. The operator must edit the appended line with "
+            "real evidence before using it for closure."
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.template:
-        print(json.dumps(session_template(args.template), sort_keys=True))
+        record = session_template(args.template)
+        if args.append is None:
+            print(json.dumps(record, sort_keys=True))
+            return 0
+        try:
+            append_session_template(args.append, record)
+            report = validate_sessions(load_jsonl(args.append))
+        except (OSError, ValueError) as exc:
+            print(f"read-dogfood: {exc}", file=sys.stderr)
+            return 2
+        _print_report(report, as_json=args.json)
         return 0
+
+    if args.append is not None:
+        parser.error("--append requires --template")
 
     if args.log is None:
         parser.error("the following arguments are required: log")
@@ -844,28 +901,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"read-dogfood: {exc}", file=sys.stderr)
         return 2
 
-    if args.json:
-        print(json.dumps(report.as_dict(), indent=2, sort_keys=True))
-    else:
-        print(
-            "read-dogfood: "
-            f"{report.valid_sessions}/{report.total_sessions} valid sessions, "
-            f"{report.live_provider_sessions} live-provider, "
-            f"{report.citation_trace_sessions} citation-traced, "
-            f"{report.non_library_sessions} non-library, "
-            f"verdict={report.final_verdict or 'missing'}"
-        )
-        remaining = report.remaining_requirements()
-        if any(remaining.values()):
-            print(
-                "  remaining: "
-                f"{remaining['valid_sessions']} valid, "
-                f"{remaining['live_provider_sessions']} live-provider, "
-                f"{remaining['citation_trace_sessions']} citation-traced, "
-                f"{remaining['non_library_sessions']} non-library"
-            )
-        for failure in report.failures:
-            print(f"  - {failure}")
+    _print_report(report, as_json=args.json)
     return 0 if report.closure_ready else 1
 
 
