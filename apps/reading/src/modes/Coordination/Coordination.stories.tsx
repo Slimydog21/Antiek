@@ -249,6 +249,16 @@ export const CANONICAL_ROADMAP: RoadmapView = {
     },
   ],
   unblocked_now: readyNowIds,
+  dependency_blockers: [
+    {
+      node_id: "drw:5",
+      blocked_sprints: Array.from({ length: 9 }, (_, i) => `read:${i + 1}`),
+    },
+    {
+      node_id: "drw:6",
+      blocked_sprints: Array.from({ length: 9 }, (_, i) => `read:${i + 1}`),
+    },
+  ],
   substrate_layers: [
     { name: "Write coordination (db_lock)", owner: "runtime/db_lock.py", status: "Hardened (substrate-execution SPR-01)" },
     { name: "Dispatch router + idempotency", owner: "substrate/dispatch/", status: "Hardened (substrate-execution SPR-02/03)" },

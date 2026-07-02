@@ -120,6 +120,14 @@ class SubstrateLayer:
 
 
 @dataclass(frozen=True)
+class DependencyBlocker:
+    """One dependency node and the sprint rows currently waiting on it."""
+
+    node_id: str
+    blocked_sprints: tuple[SprintRow, ...]
+
+
+@dataclass(frozen=True)
 class Roadmap:
     """The reconciled cross-spec roadmap. A VIEW — derived on read from the
     roster files + SPR-01's DAG; it authors nothing."""
@@ -150,6 +158,28 @@ class Roadmap:
 
     def blocked(self) -> tuple[SprintRow, ...]:
         return tuple(s for s in self.all_sprints() if not s.unblocked)
+
+    def dependency_blockers(self) -> tuple[DependencyBlocker, ...]:
+        """Dependency nodes sorted by the number of sprint rows they block.
+
+        A sprint can wait on multiple blockers, so counts are per blocker node,
+        not a partition of ``blocked()``. Duplicate blocker IDs on a row are
+        deduped before aggregation.
+        """
+        by_blocker: dict[str, list[SprintRow]] = {}
+        for sprint in self.blocked():
+            for blocker in set(sprint.blocked_on):
+                by_blocker.setdefault(blocker, []).append(sprint)
+        blockers = (
+            DependencyBlocker(node_id=node_id, blocked_sprints=tuple(blocked_sprints))
+            for node_id, blocked_sprints in by_blocker.items()
+        )
+        return tuple(
+            sorted(
+                blockers,
+                key=lambda b: (-len(b.blocked_sprints), b.node_id),
+            )
+        )
 
     def critical_path_rows(self) -> tuple[SprintRow, ...]:
         by_id = {s.node_id: s for s in self.all_sprints()}

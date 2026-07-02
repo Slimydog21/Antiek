@@ -3,7 +3,7 @@
 Thin adapter over :mod:`substrate.coordination`. Four GET endpoints, no writes:
 
   GET /coordination/gates     the gate ledger (a view over operator_gate_actions.md)
-  GET /coordination/roadmap   the 45-sprint roadmap + DRW critical path + unblocked-now
+  GET /coordination/roadmap   the 45-sprint roadmap + DRW critical path + dependency blockers
   GET /coordination/cost      per-workflow + aggregate inference cost (SPR-07)
   GET /coordination/consent   per-IP-holder consent / escrow (accruing) / servability (SPR-07)
 
@@ -131,6 +131,11 @@ class SubstrateLayerResponse(BaseModel):
     status: str
 
 
+class DependencyBlockerResponse(BaseModel):
+    node_id: str
+    blocked_sprints: list[str]
+
+
 class RoadmapResponse(BaseModel):
     total_sprints: int
     superseded_count: int
@@ -139,6 +144,7 @@ class RoadmapResponse(BaseModel):
     critical_path: list[str]
     rosters: list[RosterResponse]
     unblocked_now: list[str]      # node ids
+    dependency_blockers: list[DependencyBlockerResponse]
     substrate_layers: list[SubstrateLayerResponse]
 
     @classmethod
@@ -160,6 +166,13 @@ class RoadmapResponse(BaseModel):
                 for r in rm.rosters
             ],
             unblocked_now=[s.node_id for s in rm.unblocked_now()],
+            dependency_blockers=[
+                DependencyBlockerResponse(
+                    node_id=b.node_id,
+                    blocked_sprints=[s.node_id for s in b.blocked_sprints],
+                )
+                for b in rm.dependency_blockers()
+            ],
             substrate_layers=[
                 SubstrateLayerResponse(name=l.name, owner=l.owner, status=l.status)
                 for l in rm.substrate_layers
