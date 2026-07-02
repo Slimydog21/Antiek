@@ -68,12 +68,19 @@ export default function Settings() {
             </div>
 
             {providerKeys.status === "ready" ? (
-              <div className="flex flex-wrap gap-2">
-                {providerKeys.providers.map((provider) => (
-                  <LemonTag key={provider} colour="aurora" dot>
-                    {provider}
-                  </LemonTag>
-                ))}
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  {providerKeys.providers.map((provider) => (
+                    <LemonTag key={provider} colour="aurora" dot>
+                      {provider}
+                    </LemonTag>
+                  ))}
+                </div>
+                <p className="text-sm text-shadow-1 dark:text-moonlight">
+                  Provider keys make live Dialogue and research spin-out sessions eligible
+                  for the Read activation walk; closure still requires the
+                  dogfood log in <code className="font-mono">specs/activation/golden-path.md</code>.
+                </p>
               </div>
             ) : (
               <p className="text-sm text-shadow-1 dark:text-moonlight">

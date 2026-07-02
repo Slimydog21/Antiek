@@ -55,6 +55,8 @@ describe("Settings", () => {
     expect(screen.getByText("Agentic activation")).toBeTruthy();
     expect(screen.getByText("deepseek")).toBeTruthy();
     expect(screen.getByText("anthropic")).toBeTruthy();
+    expect(screen.getByText(/Provider keys make live Dialogue/i)).toBeTruthy();
+    expect(screen.getByText(/specs\/activation\/golden-path\.md/i)).toBeTruthy();
     expect(screen.queryByText(/Settings surface stub/i)).toBeNull();
     expect(screen.getByText("/coordination/cost-consent")).toBeTruthy();
   });
