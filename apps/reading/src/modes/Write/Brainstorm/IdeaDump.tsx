@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { emitBrainstormBlocks, type BrainstormEmitResult } from "../writeApi";
+import { safeBrainstormEmitResult } from "./brainstormData";
 import { canAskMore, initClarify, recordTurn, type ClarifyState } from "./clarifyLoop";
 
 /**
@@ -57,13 +58,13 @@ export function IdeaDump({
     setError(null);
     setResult(null);
     try {
-      const r = await emitBrainstormBlocks({
+      const r = safeBrainstormEmitResult(await emitBrainstormBlocks({
         section_id: sectionId,
         deliverable_id: deliverableId,
         insights: lines(insights),
         questions: lines(questions),
         data_points: lines(data),
-      });
+      }));
       setResult(r);
       await onEmitted?.();
     } catch (e) {
