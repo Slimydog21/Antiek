@@ -32,7 +32,12 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 
-from substrate.contracts import dependency_map, drw_sprint_lock, read_sprint_lock
+from substrate.contracts import (
+    dependency_map,
+    drw_sprint_lock,
+    read_sprint_lock,
+    write_sprint_lock,
+)
 
 # ── Where the rosters live ───────────────────────────────────────────────────
 #
@@ -286,6 +291,19 @@ def _read_status(sprint: int) -> SprintStatus:
     }.get(d.status, SprintStatus.UNKNOWN)
 
 
+def _write_status(sprint: int) -> SprintStatus:
+    """Write sprint status from the frozen Write sprint-lock."""
+    try:
+        d = write_sprint_lock.resolve_write_sprint(sprint)
+    except KeyError:
+        return SprintStatus.UNKNOWN
+    return {
+        "live": SprintStatus.LIVE,
+        "provisional": SprintStatus.PROVISIONAL,
+        "planned": SprintStatus.PLANNED,
+    }.get(d.status, SprintStatus.UNKNOWN)
+
+
 def _built(status: SprintStatus) -> bool:
     """A node counts as 'built' (can unblock consumers) when its owning sprint is
     live or provisional. Planned/unknown does not unblock."""
@@ -306,6 +324,11 @@ def _node_status(node_id: str) -> SprintStatus:
     if node_id.startswith("read:"):
         try:
             return _read_status(int(node_id.split(":")[1]))
+        except (ValueError, IndexError):
+            return SprintStatus.UNKNOWN
+    if node_id.startswith("write:"):
+        try:
+            return _write_status(int(node_id.split(":")[1]))
         except (ValueError, IndexError):
             return SprintStatus.UNKNOWN
     return SprintStatus.UNKNOWN
@@ -354,6 +377,8 @@ def build_roadmap(specs_root: Path | None = None) -> Roadmap:
                 status = _drw_status(sprint)
             elif spec == "read":
                 status = _read_status(sprint)
+            elif spec == "write":
+                status = _write_status(sprint)
             else:
                 status = SprintStatus.UNKNOWN
             deps = _dependencies_for(node_id)
