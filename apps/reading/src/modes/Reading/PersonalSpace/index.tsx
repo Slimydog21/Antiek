@@ -16,7 +16,33 @@ import type {
 import { acceptFiling, suggestFiling } from "../../../lib/researchSuggestion";
 
 function uniqueStrings(values: string[]): string[] {
-  return Array.from(new Set(values));
+  const seen = new Set<string>();
+  return values.flatMap((value) => {
+    const trimmed = value.trim();
+    if (!trimmed || seen.has(trimmed)) return [];
+    seen.add(trimmed);
+    return [trimmed];
+  });
+}
+
+function uniqueAssets(assets: PersonalAsset[]): PersonalAsset[] {
+  const seen = new Set<string>();
+  return assets.flatMap((asset) => {
+    const assetId = asset.asset_id.trim();
+    if (!assetId || seen.has(assetId)) return [];
+    seen.add(assetId);
+    return [{ ...asset, asset_id: assetId, document_ids: uniqueStrings(asset.document_ids) }];
+  });
+}
+
+function uniqueCategories(categories: AssetCategory[]): AssetCategory[] {
+  const seen = new Set<string>();
+  return categories.flatMap((category) => {
+    const categoryId = category.category_id.trim();
+    if (!categoryId || seen.has(categoryId)) return [];
+    seen.add(categoryId);
+    return [{ ...category, category_id: categoryId, asset_ids: uniqueStrings(category.asset_ids) }];
+  });
 }
 
 /**
@@ -65,8 +91,8 @@ export default function PersonalSpace({ metaDocsOnly = false }: Props) {
         listPersonalSpace(),
         listPersonalSpaceCategories(),
       ]);
-      setAssets(space.assets);
-      setCategories(cats.categories);
+      setAssets(uniqueAssets(space.assets));
+      setCategories(uniqueCategories(cats.categories));
       setOrdering(cats.ordering);
       setStabilityBound(cats.stability_bound);
     } catch (e: unknown) {

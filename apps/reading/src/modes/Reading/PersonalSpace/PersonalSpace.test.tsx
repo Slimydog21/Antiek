@@ -116,6 +116,53 @@ describe("M1 — list + open + empty", () => {
     expect(screen.getByText("Meditations")).toBeTruthy();
   });
 
+  it("renders duplicate asset ids once after API normalization", async () => {
+    listMock.mockResolvedValue(space({
+      assets: [
+        {
+          asset_id: " a1 ",
+          kind: "meta_reading",
+          title: "First duplicate asset",
+          prompt: "free will",
+          document_ids: [" doc-1 ", "doc-1"],
+          emitted_at: null,
+          open_route: "/read/meta-reading/a1",
+        },
+        {
+          asset_id: "a1",
+          kind: "meta_reading",
+          title: "Duplicate asset",
+          prompt: "free will duplicate",
+          document_ids: ["doc-dup"],
+          emitted_at: null,
+          open_route: "/read/meta-reading/a1-duplicate",
+        },
+        {
+          asset_id: "read:doc-2",
+          kind: "saved_read",
+          title: "Meditations",
+          prompt: null,
+          document_ids: ["doc-2"],
+          emitted_at: null,
+          open_route: "/read/doc-2",
+        },
+      ],
+      count: 3,
+    }));
+    categoriesMock.mockResolvedValue(cats({
+      categories: [
+        { category_id: "cat:a1", label: "free · will", asset_ids: [" a1 ", "a1"], ordering: "theme" },
+        { category_id: "cat:read:doc-2", label: "stoicism", asset_ids: ["read:doc-2"], ordering: "theme" },
+      ],
+    }));
+
+    render(<PersonalSpace />);
+
+    expect(await screen.findByText("First duplicate asset")).toBeTruthy();
+    expect(screen.queryByText("Duplicate asset")).toBeNull();
+    expect(screen.getByText("Meditations")).toBeTruthy();
+  });
+
   it("opens an asset back into its reader/meta-doc route", async () => {
     render(<PersonalSpace />);
     const opener = (await screen.findAllByTestId("personal-asset-open"))[0];
@@ -252,6 +299,25 @@ describe("M2 — system categories + honest ordering label", () => {
     // Both same-labelled sections survive, each with its own asset.
     expect(screen.getAllByTestId("personal-space-category").length).toBe(2);
     expect(screen.getByText("Meditations")).toBeTruthy();
+  });
+
+  it("renders duplicate category ids once after API normalization", async () => {
+    categoriesMock.mockResolvedValue({
+      categories: [
+        { category_id: " cat:a1 ", label: "free · will", asset_ids: ["a1"], ordering: "theme" },
+        { category_id: "cat:a1", label: "duplicate free · will", asset_ids: ["read:doc-2"], ordering: "theme" },
+        { category_id: "cat:read:doc-2", label: "stoicism", asset_ids: ["read:doc-2"], ordering: "theme" },
+      ],
+      ordering: "theme",
+      stability_bound: 4,
+    });
+    render(<PersonalSpace />);
+    await screen.findByText("How my books treat free will");
+
+    expect(screen.getAllByTestId("personal-space-category").length).toBe(2);
+    expect(screen.getByText("free · will")).toBeTruthy();
+    expect(screen.queryByText("duplicate free · will")).toBeNull();
+    expect(screen.getByText("stoicism")).toBeTruthy();
   });
 
   it("SAYS recency when the corpus is below the stability bound (honest fallback)", async () => {
