@@ -52,11 +52,11 @@ export interface PlaceUserBlockBody {
 
 export type PlaceBlockBody = PlaceNodeBlockBody | PlaceUserBlockBody;
 
-async function _json<T>(resp: Response, what: string): Promise<T> {
+async function _json(resp: Response, what: string): Promise<unknown> {
   if (!resp.ok) {
     throw new ApiError(`${what} failed: HTTP ${resp.status}`, resp.status, await resp.text());
   }
-  return resp.json() as Promise<T>;
+  return resp.json();
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -312,7 +312,7 @@ export async function searchRepository(opts: {
     params.set("limit", String(opts.limit));
   }
   const qs = params.toString();
-  const body = await _json<{ hits: RepositoryHit[] }>(
+  const body = await _json(
     await apiFetch(`${API_BASE}/write/blocks/search${qs ? `?${qs}` : ""}`),
     "GET /write/blocks/search",
   );
@@ -320,26 +320,26 @@ export async function searchRepository(opts: {
 }
 
 export async function listFolders(): Promise<FolderSummary[]> {
-  const body = await _json<{ folders: FolderSummary[] }>(
+  const body = await _json(
     await apiFetch(`${API_BASE}/write/folders`), "GET /write/folders",
   );
   return safeFoldersResponse(body);
 }
 
 export async function createFolder(name: string): Promise<string> {
-  const body = await _json<{ folder_id: string }>(
+  const body = record(await _json(
     await apiFetch(`${API_BASE}/write/folders`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     }),
     "POST /write/folders",
-  );
-  return requireNonEmptyString(body.folder_id, "folder_id");
+  ));
+  return requireNonEmptyString(body?.folder_id, "folder_id");
 }
 
 export async function addFolderBlock(folderId: string, nodeId: string): Promise<void> {
-  await _json<unknown>(
+  await _json(
     await apiFetch(`${API_BASE}/write/folders/${encodeURIComponent(folderId)}/blocks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -353,15 +353,15 @@ export async function addFolderBlock(folderId: string, nodeId: string): Promise<
  * new outline_block_id. */
 export async function placeBlock(body: PlaceBlockBody): Promise<string> {
   assertNonNegativeSafeInteger(body.block_index, "block_index");
-  const r = await _json<{ outline_block_id: string }>(
+  const r = record(await _json(
     await apiFetch(`${API_BASE}/write/blocks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
     "POST /write/blocks",
-  );
-  return requireNonEmptyString(r.outline_block_id, "outline_block_id");
+  ));
+  return requireNonEmptyString(r?.outline_block_id, "outline_block_id");
 }
 
 /** One block as it sits in a section's outline.
@@ -394,7 +394,7 @@ export function blockDisplayText(b: OutlineBlockView): string {
 export async function getSectionBlocks(
   sectionId: string,
 ): Promise<OutlineBlockView[]> {
-  const body = await _json<{ blocks: OutlineBlockView[] }>(
+  const body = await _json(
     await apiFetch(`${API_BASE}/write/sections/${encodeURIComponent(sectionId)}/blocks`),
     "GET /write/sections/{id}/blocks",
   );
@@ -408,7 +408,7 @@ export async function moveBlock(
   toIndex: number,
 ): Promise<void> {
   assertNonNegativeSafeInteger(toIndex, "to_index");
-  await _json<unknown>(
+  await _json(
     await apiFetch(`${API_BASE}/write/blocks/${encodeURIComponent(outlineBlockId)}/move`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -436,7 +436,7 @@ export interface TraceTarget {
  * opens). Honest about gating: `full_text_allowed=false` for a gated source
  * (§9.0 no-leak). The shared reader that opens it is DRW SPR-10. */
 export async function getTraceTarget(outlineBlockId: string): Promise<TraceTarget> {
-  return safeTraceTarget(await _json<TraceTarget>(
+  return safeTraceTarget(await _json(
     await apiFetch(`${API_BASE}/write/blocks/${encodeURIComponent(outlineBlockId)}/trace`),
     "GET /write/blocks/{id}/trace",
   ));
@@ -450,7 +450,7 @@ export interface PromoteResult {
 
 /** Promote a pre-outline context window to a structured outline (SPR-08). */
 export async function promoteContext(body: unknown): Promise<PromoteResult> {
-  return safePromoteResult(await _json<PromoteResult>(
+  return safePromoteResult(await _json(
     await apiFetch(`${API_BASE}/write/context/promote`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -489,7 +489,7 @@ export async function generateSection(
     opts.paragraphIndex === undefined
       ? undefined
       : JSON.stringify({ paragraph_index: opts.paragraphIndex });
-  return safeGenerationResult(await _json<GenerationResult>(
+  return safeGenerationResult(await _json(
     await apiFetch(`${API_BASE}/write/sections/${encodeURIComponent(sectionId)}/generate`, {
       method: "POST",
       ...(body
@@ -525,7 +525,7 @@ export interface BrainstormEmitResult {
 export async function emitBrainstormBlocks(
   body: BrainstormEmitBody,
 ): Promise<BrainstormEmitResult> {
-  return safeBrainstormEmitResult(await _json<BrainstormEmitResult>(
+  return safeBrainstormEmitResult(await _json(
     await apiFetch(`${API_BASE}/write/brainstorm/emit-blocks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
