@@ -23,6 +23,7 @@ from tools.source_census import (
     METADATA_COMPLETE_MIN,
     REFERENCE_SOURCE,
     SourceCensus,
+    compute_source_census,
     evaluate,
     gate_failures,
     load_censuses,
@@ -183,6 +184,128 @@ def test_json_round_trip(tmp_path):
     loaded = load_censuses(path)
     assert {c.source for c in loaded} == {"web", "podcasts"}
     assert loaded == sorted(censuses, key=lambda c: c.source)
+
+
+# ── DB-backed producer (SR-10 P3b local engineering) ────────────────────────
+
+
+def _init_docs_db(tmp_path):
+    import duckdb
+
+    from substrate.graph import init_database_at_path
+
+    path = str(tmp_path / "graph.duckdb")
+    init_database_at_path(path)
+    return duckdb.connect(path)
+
+
+def _insert_doc(
+    con,
+    document_id: str,
+    *,
+    source_uri: str | None,
+    title: str | None,
+    metadata: dict,
+    content_class: str | None = "restricted_pending_opt_in",
+    raw_text: str | None = None,
+) -> None:
+    con.execute(
+        "INSERT INTO documents "
+        "(document_id, source_uri, title, author, source_tier, document_type, "
+        "raw_text, metadata, content_class) VALUES (?, ?, ?, ?, 3, ?, ?, ?, ?)",
+        [
+            document_id,
+            source_uri,
+            title,
+            "Author",
+            "academic_paper",
+            raw_text,
+            json.dumps(metadata),
+            content_class,
+        ],
+    )
+
+
+def test_compute_source_census_for_arxiv_documents(tmp_path):
+    con = _init_docs_db(tmp_path)
+    try:
+        _insert_doc(
+            con,
+            "doc-arxiv-2401-0001",
+            source_uri="https://arxiv.org/abs/2401.0001",
+            title="Paper 1",
+            metadata={"source": "arxiv_oai_pmh", "arxiv_id": "2401.0001", "rights_tier": "T1"},
+            content_class="restricted_pending_opt_in",
+        )
+        _insert_doc(
+            con,
+            "doc-arxiv-2401-0002",
+            source_uri="https://arxiv.org/abs/2401.0002",
+            title="Paper 2",
+            metadata={"source": "arxiv_oai_pmh", "arxiv_id": "2401.0002", "rights_tier": "T3"},
+            content_class="restricted_pending_opt_in",
+        )
+        _insert_doc(
+            con,
+            "doc-other",
+            source_uri="https://example.com/post",
+            title="Not arXiv",
+            metadata={"source": "web"},
+            content_class="personal_reading",
+        )
+
+        c = compute_source_census(con, "arxiv")
+    finally:
+        con.close()
+
+    assert c.source == "arxiv"
+    assert c.total == 2
+    assert c.t1_pct == 50.0
+    assert c.open_pct == 0.0  # OAI metadata rows are gated until body ingest.
+    assert c.metadata_complete_pct == 100.0
+    assert c.linkback_resolvable_pct == 100.0
+    assert c.dedup_overlap_pct == 0.0
+
+
+def test_compute_source_census_counts_missing_metadata_and_dedup_overlap(tmp_path):
+    con = _init_docs_db(tmp_path)
+    try:
+        # Same DOI -> same canonical identity; one duplicate among three rows.
+        _insert_doc(
+            con,
+            "web-1",
+            source_uri="https://example.com/a",
+            title="A",
+            metadata={"source": "web", "doi": "10.1000/ABC"},
+            content_class="public_domain",
+        )
+        _insert_doc(
+            con,
+            "web-2",
+            source_uri="https://example.com/b",
+            title="A corrected",
+            metadata={"source": "web", "doi": "https://doi.org/10.1000/abc"},
+            content_class="restricted_pending_opt_in",
+        )
+        _insert_doc(
+            con,
+            "web-3",
+            source_uri=None,
+            title=None,
+            metadata={"source": "web", "source_id": "local-3"},
+            content_class="restricted_pending_opt_in",
+        )
+
+        c = compute_source_census(con, "web")
+    finally:
+        con.close()
+
+    assert c.total == 3
+    assert round(c.metadata_complete_pct, 2) == round((2 / 3) * 100, 2)
+    assert round(c.linkback_resolvable_pct, 2) == round((2 / 3) * 100, 2)
+    assert round(c.dedup_overlap_pct, 2) == round((1 / 3) * 100, 2)
+    assert round(c.open_pct, 2) == round((1 / 3) * 100, 2)
+    assert c.t1_pct == c.open_pct
 
 
 # ── the CLI gate (tools/lint/source_gate.py) end-to-end ──────────────────────

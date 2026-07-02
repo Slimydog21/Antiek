@@ -486,7 +486,7 @@ def make_contract_gather_stub(
     steps: int = 2,
     cost_per_step: float = 0.01,
     delay_s: float = 0.0,
-):
+) -> Callable[[LoopContext], AsyncIterator[StepEvent]]:
     """Honest production gather placeholder — not real research.
 
     Unlike ``make_demo_loop`` (benchmark/test MOCK, reuse-blind), this stub
@@ -525,13 +525,13 @@ def make_contract_gather_stub(
 def make_exa_gather_loop(
     *,
     top_k: int = 3,
-    client: Optional[object] = None,
-    legal_gate: Optional[object] = None,
-    events_dir: Optional[str] = None,
-    daily_budget_usd: Optional[float] = None,
-    db_path: Optional[str] = None,
-    embedder: Optional[object] = None,
-):
+    client: object | None = None,
+    legal_gate: object | None = None,
+    events_dir: str | None = None,
+    daily_budget_usd: float | None = None,
+    db_path: str | None = None,
+    embedder: object | None = None,
+) -> Callable[[LoopContext], AsyncIterator[StepEvent]]:
     """Real DRW gather, wired to the Exa Wedge-1 discovery layer.
 
     Unlike ``make_contract_gather_stub`` (which retrieves nothing), this
@@ -561,7 +561,13 @@ def make_exa_gather_loop(
     """
     # Lazy import: keep the Exa stack off the import path for the stub-only
     # prod default (and for tests that never touch this factory).
-    from acquisition.search.exa import discover, promote_discovery
+    # ``ExaClient`` / ``LegalGate`` are pulled in only to type-narrow the
+    # ``object``-typed factory params at the two call sites below (cast is
+    # a runtime no-op; both modules are already loaded by the adapter import).
+    from typing import cast
+
+    from acquisition.search.exa import ExaClient, discover, promote_discovery
+    from substrate.legal_gate import LegalGate
 
     async def _loop(ctx: LoopContext) -> AsyncIterator[StepEvent]:
         yield ctx.plan_event(f"[exa] plan: {ctx.sub_question}", gather_mode="exa")
@@ -570,7 +576,7 @@ def make_exa_gather_loop(
         proposals = discover(
             query=sub_q,
             investigation_id=ctx.investigation_id,
-            client=client,
+            client=cast(ExaClient | None, client),
             events_dir=events_dir,
             daily_budget_usd=daily_budget_usd,
             db_path=db_path,
@@ -582,7 +588,7 @@ def make_exa_gather_loop(
             result = promote_discovery(
                 p,
                 investigation_id=ctx.investigation_id,
-                legal_gate=legal_gate,
+                legal_gate=cast(LegalGate | None, legal_gate),
                 events_dir=events_dir,
                 db_path=db_path,
                 embedder=embedder,

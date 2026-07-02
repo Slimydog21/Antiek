@@ -82,7 +82,7 @@ class DispatchDistiller:
         prompt = self._build_prompt(text, context, source_event_ids)
         result = dispatch(prompt, role=self._role)
         response_text = getattr(result, "text", None) or getattr(result, "response_text", "") or str(result)
-        return self._parse(response_text)
+        return self._parse(response_text, source_event_ids)
 
     def _build_prompt(self, text: str, context: str, source_event_ids: Sequence[str]) -> str:
         ids = ", ".join(source_event_ids) if source_event_ids else "(none)"
@@ -95,8 +95,11 @@ class DispatchDistiller:
         )
 
     @staticmethod
-    def _parse(response_text: str) -> Distillation:
-        notes = parse_notes_response(response_text)
+    def _parse(response_text: str, canonical_event_ids: Sequence[str] = ()) -> Distillation:
+        notes = parse_notes_response(
+            response_text,
+            canonical_event_ids=canonical_event_ids,
+        )
         # Questions ride in the same JSON object under a "questions" key.
         questions: list[DistilledQuestion] = []
         from roles._json_decode import extract_json_object

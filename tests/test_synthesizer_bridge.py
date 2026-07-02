@@ -142,9 +142,25 @@ async def _post_synthesize(
         "action_type": "synthesize.requested",
         "question": "Is X causally linked to Y?",
         "decomposition_block": "[decomposition]",
-        "evidence_block": "[evidence]",
+        "evidence_block": json.dumps([
+            {
+                "supporting_claims": [
+                    {
+                        "claim": "X correlates with Y in primary evidence.",
+                        "chunk_ids": ["chunk-1"],
+                    },
+                ],
+            },
+        ]),
         "parameters_block": "[parameters]",
-        "substrate_block": "[substrate]",
+        "substrate_block": json.dumps({
+            "paths": [
+                {
+                    "path_node_ids": ["n-1", "n-2"],
+                    "path_edge_ids": ["e-1"],
+                },
+            ],
+        }),
         "constraints": constraints or [],
     }
     r = await ac.post(

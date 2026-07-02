@@ -31,6 +31,7 @@ harness_check_that_now_catches: |
   tools/ops/smoke_drw_1.sh exit 1; parent event log;
   tests/regression/agent_failures/README.md onboarding.
 
+fix_commit: GAP  # open gap — mitigated, not fully closed; candidate = mitigation_sha below (flip to the SHA when phase-8 is truly fixed, per the phase8-skill-patch-gate-in-shadow-mode fixture's convention)
 status: mitigated
 mitigation_sha: 93098fd5
 mitigation_note: orchestrator phase-8 patch_from_synthesis fallback when SKILL.md templates absent
