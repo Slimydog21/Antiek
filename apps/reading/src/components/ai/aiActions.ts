@@ -516,6 +516,16 @@ export function dispatchAiAction(
     }
 
     case "add_to_notebook": {
+      const notebookId = nonEmptyString(action.notebook_id);
+      const block = safeNotebookActionBlock(action.block);
+      if (!notebookId || !block) {
+        return {
+          action,
+          label: "Skipped invalid notebook action",
+          undo: null,
+          at,
+        };
+      }
       // The notebook editor consumes a localStorage-backed HTML string;
       // we append a custom-element tag the TipTap NodeView extensions
       // recognise. (See modes/Notebook/Editor.tsx for the storage
@@ -526,8 +536,8 @@ export function dispatchAiAction(
       // reload its content. Cross-tab consumers also get the standard
       // browser `storage` event; same-tab consumers need this custom
       // signal because `storage` only fires across tabs.
-      const html = aiBlockToHtml(action.block);
-      const lsKey = "antiek.notebook." + action.notebook_id;
+      const html = aiBlockToHtml(block);
+      const lsKey = "antiek.notebook." + notebookId;
       const etagKey = lsKey + ".etag";
       let previous: string | null = null;
       let prevEtag = 0;
@@ -547,7 +557,7 @@ export function dispatchAiAction(
         // Same-tab signal: editors keyed by `notebook_id` reload.
         window.dispatchEvent(
           new CustomEvent("antiek:notebook:appended", {
-            detail: { notebookId: action.notebook_id, etag: nextEtag },
+            detail: { notebookId, etag: nextEtag },
           }),
         );
       } catch {
@@ -555,19 +565,19 @@ export function dispatchAiAction(
       }
       const descriptor: AiEventDescriptor = {
         target_kind: "notebook",
-        target_id: action.notebook_id,
+        target_id: notebookId,
         prev_state: { etag: prevEtag, html: previous },
         next_state: {
           etag: nextEtag,
-          block_kind: action.block.kind,
+          block_kind: block.kind,
           appended_html: html,
         },
-        summary: `add_to_notebook ${action.notebook_id} +1 ${action.block.kind}`,
+        summary: `add_to_notebook ${notebookId} +1 ${block.kind}`,
       };
       return withEventLog(
         {
           action,
-          label: `📓 Added a ${action.block.kind} to “${action.notebook_id}”`,
+          label: `📓 Added a ${block.kind} to “${notebookId}”`,
           undo: () => {
             try {
               if (previous === null) {
@@ -582,7 +592,7 @@ export function dispatchAiAction(
               }
               window.dispatchEvent(
                 new CustomEvent("antiek:notebook:appended", {
-                  detail: { notebookId: action.notebook_id, etag: prevEtag, force: true },
+                  detail: { notebookId, etag: prevEtag, force: true },
                 }),
               );
             } catch {
@@ -668,6 +678,38 @@ export function dispatchAiAction(
       };
     }
   }
+}
+
+const NOTEBOOK_ACTION_BLOCK_KINDS = new Set<NotebookActionBlock["kind"]>([
+  "note",
+  "claim_card",
+  "region_embed",
+  "cross_doc_link",
+  "master_section",
+  "question_card",
+  "chat_exchange",
+  "image",
+  "latex",
+]);
+
+function safeNotebookActionBlock(value: unknown): NotebookActionBlock | null {
+  const raw = record(value);
+  if (!raw) return null;
+  const attrs = record(raw.attrs) ?? undefined;
+  const text = textValue(raw.text) ?? textValue(attrs?.text);
+  const kind = nonEmptyString(raw.kind);
+  if (!kind || !NOTEBOOK_ACTION_BLOCK_KINDS.has(kind as NotebookActionBlock["kind"])) {
+    return {
+      kind: "note",
+      text: text ?? "Unsupported notebook block",
+      ...(attrs ? { attrs } : {}),
+    };
+  }
+  return {
+    kind: kind as NotebookActionBlock["kind"],
+    ...(attrs ? { attrs } : {}),
+    ...(textValue(raw.text) ? { text: textValue(raw.text)! } : {}),
+  } as NotebookActionBlock;
 }
 
 function aiBlockToHtml(block: NotebookActionBlock): string {
@@ -791,6 +833,12 @@ function escapeAttr(value: string): string {
 
 function textValue(value: unknown): string | null {
   return typeof value === "string" ? value : null;
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 function nonEmptyString(value: unknown): string | null {
