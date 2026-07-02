@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MATRIX = ROOT / "docs" / "agent-execution" / "PLATFORM_EXEC_MATRIX.md"
 AGENT_GATES = ROOT / ".github" / "workflows" / "agent_execution_gates.yml"
 CANONICAL_VERIFY = ROOT / "scripts" / "canonical_verify.sh"
+WERNER_ADAPTER = ROOT / "docs" / "agent-execution" / "WERNER_EXEC_ADAPTER.md"
 
 _META_COMMANDS = {"agent-gates", "handoff"}
 _PROVENANCE_INVARIANT_TRIGGER_PATHS = {
@@ -238,3 +239,12 @@ def test_agent_gates_trigger_on_matrix_entrypoint_dirs() -> None:
             f"agent_execution_gates.yml {event_name} does not trigger on "
             f"platform matrix entry-point dir(s): {missing}"
         )
+
+
+def test_werner_adapter_names_agent_gate_and_measured_live_boundary() -> None:
+    """P-50 agent-gates are hermetic; live mascot p95/fps needs operator proof."""
+    text = WERNER_ADAPTER.read_text(encoding="utf-8")
+
+    assert "./scripts/canonical_verify.sh agent-gates" in text
+    assert "p95/fps" in text
+    assert "not proved by agent-gates" in text

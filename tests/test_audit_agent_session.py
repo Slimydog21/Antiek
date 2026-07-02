@@ -32,6 +32,14 @@ def test_audit_pass_fixture() -> None:
     assert "AUDIT_OK" in proc.stdout
 
 
+def test_audit_script_docs_name_canonical_pair_and_packet_boundary() -> None:
+    src = AUDIT_SCRIPT.read_text(encoding="utf-8")
+
+    assert "./scripts/canonical_verify.sh handoff <md>" in src
+    assert "tools/agent/verify_handoff.ts" in src
+    assert "claims outside the packet remain outside this proof" in src
+
+
 def test_audit_fails_on_pytest_tail_fixture() -> None:
     proc = _run_audit(FIXTURES / "handoff_fail_pytest_tail.md")
     assert proc.returncode != 0

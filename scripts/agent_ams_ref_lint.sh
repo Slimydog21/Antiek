@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # ANT-EXEC-H2V SPR-05 — agent wrapper for AMS ref-lint (Phase E bounded closure).
 #
+# Matrix gate: bash scripts/agent_ams_ref_lint.sh <sprint.html>. It proves
+# sprint/spec path references are not fiction; Playwright Mountain Shell and
+# other live UI behavior remain operator proof, not a ref-lint claim.
+#
 # Thin entry for executors closing handoffs that cite UI/spec paths. Calls the
 # canonical AMS ref-lint (tools/ams-v2/ref-lint.sh → verify_spec_refs.ts).
 #
