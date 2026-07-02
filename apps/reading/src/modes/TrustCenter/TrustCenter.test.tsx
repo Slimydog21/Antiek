@@ -121,4 +121,49 @@ describe("TrustCenter", () => {
     expect(screen.getAllByText("Epsilon: 0").length).toBeGreaterThan(0);
     expect(screen.getByText("Epsilon: 10")).toBeTruthy();
   });
+
+  it("sanitizes malformed trust payload shape before rendering", async () => {
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        differential_privacy_epsilon_budgets: {
+          " query_content_telemetry ": "4.25",
+          " ": 9,
+          malformed_category: "Infinity",
+        },
+        deletion_sla_days: "12.9",
+        substrate_controls: [
+          " encryption at rest (per-graph keys via KMS) ",
+          "",
+          42,
+        ],
+        compliance_frameworks: [
+          " GDPR Article 13/14 transparency ",
+          null,
+        ],
+        loop_3_unlock_status: {
+          " trajectory_volume ": true,
+          sft_readiness: "yes",
+          " ": true,
+        },
+      }),
+    });
+
+    render(<TrustCenter />);
+
+    expect(await screen.findByText("Privacy budget")).toBeTruthy();
+    expect(screen.getByText("Search Content Telemetry")).toBeTruthy();
+    expect(screen.getByText("Epsilon: 4.25")).toBeTruthy();
+    expect(screen.getByText("Epsilon: 0")).toBeTruthy();
+    expect(screen.getByText(/completed within 12 days/)).toBeTruthy();
+    expect(screen.getByText("Encryption at rest with managed keys")).toBeTruthy();
+    expect(screen.getByText("GDPR transparency notice")).toBeTruthy();
+    expect(screen.getByText("Enough approved activity")).toBeTruthy();
+    expect(screen.getByText("Training data quality review")).toBeTruthy();
+    expect(screen.getByText("Met")).toBeTruthy();
+    expect(screen.getByText("Not met")).toBeTruthy();
+
+    expect(document.body.textContent).not.toMatch(/NaN|Infinity|Epsilon: -/);
+    expect(screen.queryByText(/undefined|null|42/)).toBeNull();
+  });
 });

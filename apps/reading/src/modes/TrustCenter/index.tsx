@@ -17,15 +17,88 @@ interface TrustCenterData {
   loop_3_unlock_status: Record<string, boolean>;
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const text = nonEmptyString(item);
+        return text ? [text] : [];
+      })
+    : [];
+}
+
+function nonNegativeInteger(value: unknown): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
+}
+
 function normalizedEpsilon(value: unknown): number {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-    return 0;
-  }
-  return Math.min(value, EPSILON_CAP);
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0
+    ? Math.min(parsed, EPSILON_CAP)
+    : 0;
 }
 
 function formatEpsilon(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+function safeNumberMap(value: unknown): Record<string, number> {
+  const source = record(value);
+  if (!source) return {};
+  return Object.fromEntries(
+    Object.entries(source).flatMap(([key, rawValue]) => {
+      const safeKey = nonEmptyString(key);
+      if (!safeKey) return [];
+      return [[safeKey, normalizedEpsilon(rawValue)]];
+    }),
+  );
+}
+
+function safeBooleanMap(value: unknown): Record<string, boolean> {
+  const source = record(value);
+  if (!source) return {};
+  return Object.fromEntries(
+    Object.entries(source).flatMap(([key, rawValue]) => {
+      const safeKey = nonEmptyString(key);
+      if (!safeKey) return [];
+      return [[safeKey, rawValue === true]];
+    }),
+  );
+}
+
+function safeTrustCenterData(value: unknown): TrustCenterData {
+  const body = record(value);
+  return {
+    differential_privacy_epsilon_budgets: safeNumberMap(
+      body?.differential_privacy_epsilon_budgets,
+    ),
+    deletion_sla_days: nonNegativeInteger(body?.deletion_sla_days),
+    substrate_controls: stringArray(body?.substrate_controls),
+    compliance_frameworks: stringArray(body?.compliance_frameworks),
+    loop_3_unlock_status: safeBooleanMap(body?.loop_3_unlock_status),
+  };
 }
 
 export default function TrustCenter() {
@@ -44,7 +117,7 @@ export default function TrustCenter() {
         throw new Error(`Could not load the Trust Center (HTTP ${resp.status}).`);
       }
       setError(null);
-      setData(await resp.json());
+      setData(safeTrustCenterData(await resp.json()));
     } catch (e: unknown) {
       if (requestId !== reloadSeq.current) return;
       setData(null);
