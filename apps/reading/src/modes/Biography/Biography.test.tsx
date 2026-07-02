@@ -6,7 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 
 import { BANNED_PATTERNS } from "../../shared/language";
 
@@ -25,15 +25,12 @@ import { BANNED_PATTERNS } from "../../shared/language";
  *     — an engine failure shows the honest AIActionFailure, never a fake start.
  */
 
-const {
-  startInvestigationMock,
-  createBiographyMock,
-  makeShareLinkMock,
-} = vi.hoisted(() => ({
-  startInvestigationMock: vi.fn(),
-  createBiographyMock: vi.fn(),
-  makeShareLinkMock: vi.fn(),
-}));
+const { startInvestigationMock, createBiographyMock, makeShareLinkMock } =
+  vi.hoisted(() => ({
+    startInvestigationMock: vi.fn(),
+    createBiographyMock: vi.fn(),
+    makeShareLinkMock: vi.fn(),
+  }));
 
 vi.mock("../../lib/api", async (orig) => ({
   ...(await orig<typeof import("../../lib/api")>()),
@@ -59,15 +56,23 @@ beforeEach(() => {
     deliverableId: "dlv-bio-1",
     projectId: "proj-bio-1",
   });
-  makeShareLinkMock.mockReset().mockResolvedValue(
-    "https://interview.antiek.ai/interview-abc?token=tok-xyz",
-  );
+  makeShareLinkMock
+    .mockReset()
+    .mockResolvedValue(
+      "https://interview.antiek.ai/interview-abc?token=tok-xyz",
+    );
 });
 afterEach(cleanup);
+
+function LocationProbe() {
+  const location = useLocation();
+  return <div data-testid="location">{location.pathname}</div>;
+}
 
 function mount() {
   return render(
     <MemoryRouter initialEntries={["/biography"]}>
+      <LocationProbe />
       <Routes>
         <Route path="/biography" element={<Biography />} />
         <Route path="/inv/:id" element={<div>RESEARCH SURFACE</div>} />
@@ -86,7 +91,9 @@ describe("Biography landing (SPR-11 M1)", () => {
     const steps = screen.getByTestId("biography-steps");
     expect(steps.querySelectorAll("li").length).toBe(3);
     // The start CTA exists.
-    expect(screen.getByRole("button", { name: /start a biography/i })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /start a biography/i }),
+    ).toBeTruthy();
   });
 
   it("the landing copy obeys §5 voice discipline (no substrate jargon)", () => {
@@ -169,7 +176,9 @@ describe("Biography onboarding + invite-to-talk (SPR-11 M3)", () => {
   it("offers a one-tap 'send to a friend' that yields a Speak invite link", async () => {
     await start();
     fireEvent.click(screen.getByRole("button", { name: /send to a friend/i }));
-    await waitFor(() => expect(makeShareLinkMock).toHaveBeenCalledWith("proj-bio-1"));
+    await waitFor(() =>
+      expect(makeShareLinkMock).toHaveBeenCalledWith("proj-bio-1"),
+    );
     // The invite link (the SPR-10 token link) is surfaced to share.
     expect(
       await screen.findByText(/interview\.antiek\.ai\/interview-abc/),
@@ -180,5 +189,38 @@ describe("Biography onboarding + invite-to-talk (SPR-11 M3)", () => {
     await start();
     fireEvent.click(screen.getByTestId("biography-open-speak"));
     expect(screen.getByText(/SPEAK SURFACE/)).toBeTruthy();
+  });
+
+  it("encodes composed route ids before opening the three workstation surfaces", async () => {
+    const composeDirtyBiography = () => {
+      createBiographyMock.mockResolvedValue({
+        investigationId: "inv dirty/1",
+        deliverableId: "dlv dirty/2",
+        projectId: "proj dirty/3",
+      });
+    };
+
+    composeDirtyBiography();
+    await start();
+    fireEvent.click(screen.getByTestId("biography-open-research"));
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/inv/inv%20dirty%2F1",
+    );
+
+    cleanup();
+    composeDirtyBiography();
+    await start();
+    fireEvent.click(screen.getByTestId("biography-open-write"));
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/write/dlv%20dirty%2F2",
+    );
+
+    cleanup();
+    composeDirtyBiography();
+    await start();
+    fireEvent.click(screen.getByTestId("biography-open-speak"));
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/speak/proj%20dirty%2F3",
+    );
   });
 });
