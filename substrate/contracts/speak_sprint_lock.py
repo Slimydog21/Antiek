@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to SPEAK_SPRINTS. Status changes are deliberate roadmap
 # events, not prose-only handoffs.
-SPEAK_LOCK_VERSION: int = 6
+SPEAK_LOCK_VERSION: int = 7
 
 
 @dataclass(frozen=True)
@@ -91,7 +91,17 @@ SPEAK_SPRINTS: dict[int, SpeakDeliverable] = {
         # speak-contributor-economics.
         status="live",
     ),
-    7: SpeakDeliverable(7, "economics-matrix", "Economics matrix"),
+    7: SpeakDeliverable(
+        7,
+        "economics-matrix",
+        "Economics matrix",
+        # Live: all four invitation/publishing cells, public-always-splits
+        # binding rule, 10% public / 50% private margins, creator cost carry,
+        # flip-to-public consent recheck, read-only economics endpoint gates,
+        # physical-book payer allocation, and the four-cell Speak settings
+        # surface are covered by speak-economics-matrix.
+        status="live",
+    ),
     8: SpeakDeliverable(8, "biography-authoring", "Biography authoring"),
     9: SpeakDeliverable(9, "publishing-physical", "Publishing + physical"),
 }

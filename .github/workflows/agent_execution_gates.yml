@@ -268,8 +268,11 @@ jobs:
       - name: Canonical verify — speak contributor economics
         run: ./scripts/canonical_verify.sh speak-contributor-economics
 
+      - name: Canonical verify — speak economics matrix
+        run: ./scripts/canonical_verify.sh speak-economics-matrix
+
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md
 
-      - name: Canonical verify — deep-research (P-40..P-46)
+      - name: Canonical verify — deep-research (P-41..P-47)
         run: ./scripts/canonical_verify.sh deep-research

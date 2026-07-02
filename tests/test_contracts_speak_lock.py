@@ -50,8 +50,13 @@ def test_speak_sprint_6_contributor_economics_is_live() -> None:
     assert lock.resolve_speak_sprint(6).status == "live"
 
 
+def test_speak_sprint_7_economics_matrix_is_live() -> None:
+    assert lock.resolve_speak_sprint(7).slug == "economics-matrix"
+    assert lock.resolve_speak_sprint(7).status == "live"
+
+
 def test_remaining_speak_sprints_stay_planned_until_promoted() -> None:
-    assert {lock.resolve_speak_sprint(n).status for n in range(7, 10)} == {"planned"}
+    assert {lock.resolve_speak_sprint(n).status for n in range(8, 10)} == {"planned"}
 
 
 def test_roadmap_consumes_speak_sprint_status_and_focus_advances() -> None:
@@ -64,11 +69,12 @@ def test_roadmap_consumes_speak_sprint_status_and_focus_advances() -> None:
     assert by_id["speak:4"].status.value == "live"
     assert by_id["speak:5"].status.value == "live"
     assert by_id["speak:6"].status.value == "live"
-    for n in range(7, 10):
+    assert by_id["speak:7"].status.value == "live"
+    for n in range(8, 10):
         assert by_id[f"speak:{n}"].status.value == "planned"
     assert roadmap.execution_focus() is not None
-    assert roadmap.execution_focus().node_id == "speak:7"
+    assert roadmap.execution_focus().node_id == "speak:8"
 
 
 def test_speak_lock_version_present() -> None:
-    assert isinstance(lock.SPEAK_LOCK_VERSION, int) and lock.SPEAK_LOCK_VERSION >= 6
+    assert isinstance(lock.SPEAK_LOCK_VERSION, int) and lock.SPEAK_LOCK_VERSION >= 7
