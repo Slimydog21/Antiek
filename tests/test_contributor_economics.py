@@ -24,6 +24,14 @@ from substrate.speak.schema import ensure_speak_schema
 from substrate.speak.third_party import record_claim
 
 
+def test_contributor_doc_names_canonical_gate_and_payout_boundary():
+    doc = contributor.__doc__ or ""
+    assert "./scripts/canonical_verify.sh speak-contributor-economics" in doc
+    assert "Speak\nsettings owed-not-paid surface" in doc
+    assert "Live Stripe Connect/KYC payout activation" in doc
+    assert "operator-side proof" in doc
+
+
 @pytest.fixture
 def db(monkeypatch):
     tmpdir = tempfile.mkdtemp(prefix="speak-econ-test-")

@@ -26,6 +26,11 @@ Two invariants are load-bearing and honest:
   • Contribution is heuristic and gameable. Someone could spam plausible
     "facts". The slop gate + cross-interviewee corroboration (SPR-05)
     blunt it; we don't pretend the measurement is perfect.
+
+Covered by ``./scripts/canonical_verify.sh speak-contributor-economics``:
+payee mapping, escrow-only accrual, disbursement refusal, and the Speak
+settings owed-not-paid surface. Live Stripe Connect/KYC payout activation
+remains operator-side proof in the platform matrix.
 """
 
 from __future__ import annotations

@@ -17,6 +17,11 @@ These labels feed two consumers:
   • the compounding interviewer (SPR-04): single-sourced claims and
     contradictions are what it probes next.
 
+Covered by ``./scripts/canonical_verify.sh speak-cross-interviewee-verification``:
+backend independent-attestation/contradiction behavior and the Speak agreement
+surface. Human judgment on nuanced contradictions remains the operator-side
+proof in the platform matrix.
+
 Reuses, not forks: contradiction maps onto the grounder's CONTRADICTED
 verdict idea; confidence weighting echoes the confidence × (6 − tier)
 discipline. Clustering uses embeddings to PROPOSE candidate matches and
