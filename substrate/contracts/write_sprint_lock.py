@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to WRITE_SPRINTS. Status changes are deliberate roadmap
 # events, not prose-only handoffs.
-WRITE_LOCK_VERSION: int = 4
+WRITE_LOCK_VERSION: int = 5
 
 
 @dataclass(frozen=True)
@@ -67,7 +67,16 @@ WRITE_SPRINTS: dict[int, WriteDeliverable] = {
         # write-structured-editor.
         status="live",
     ),
-    5: WriteDeliverable(5, "brainstorm-interview", "Brainstorm interview"),
+    5: WriteDeliverable(
+        5,
+        "brainstorm-interview",
+        "Brainstorm interview",
+        # Live: bounded clarify loop, operator-confirmed drivers, brainstorm
+        # driver parsing, honest brainstorm-originated OutlineBlocks, asserted
+        # data flagged unverified, section ownership checks, dedupe, and
+        # no-piece sentinel blocking are covered by write-brainstorm-interview.
+        status="live",
+    ),
     6: WriteDeliverable(6, "draft-generation-style", "Draft generation style"),
     7: WriteDeliverable(7, "trace-to-source", "Trace to source"),
     8: WriteDeliverable(8, "pre-outline-freeform", "Pre-outline freeform"),

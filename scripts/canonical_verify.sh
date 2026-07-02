@@ -18,6 +18,7 @@
 #   write-edit-capture   — Write SPR-02 edit trajectory capture + G8 gate
 #   write-block-repository — Write SPR-03 folders/search/drag provenance gate
 #   write-structured-editor — Write SPR-04 TipTap block editor + locator gate
+#   write-brainstorm-interview — Write SPR-05 brainstorm drivers + section gate
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -41,7 +42,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -213,6 +214,24 @@ cmd_write_structured_editor() {
   echo "CANONICAL_VERIFY_OK: write-structured-editor"
 }
 
+cmd_write_brainstorm_interview() {
+  echo "== write-brainstorm-interview: brainstorm drivers + section-owned blocks =="
+  "${PY}" -m pytest \
+    tests/test_brainstorm_interview.py \
+    tests/test_write_routes.py \
+    tests/test_contracts_write_lock.py \
+    -q --tb=no
+  echo "== write-brainstorm-interview: client, bounded clarify loop, section UI =="
+  (cd apps/reading && npm run test -- \
+    src/modes/Write/writeApi.test.ts \
+    src/modes/Write/Brainstorm/clarifyLoop.test.ts \
+    src/modes/Write/Brainstorm/IdeaDump.test.tsx \
+    src/modes/Write/Outline.test.tsx \
+    src/modes/Write/WriteHome.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: write-brainstorm-interview"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -294,6 +313,7 @@ main() {
     write-edit-capture) cmd_write_edit_capture ;;
     write-block-repository) cmd_write_block_repository ;;
     write-structured-editor) cmd_write_structured_editor ;;
+    write-brainstorm-interview) cmd_write_brainstorm_interview ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;
