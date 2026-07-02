@@ -82,6 +82,12 @@ def test_closure_ready_when_golden_path_rule_is_satisfied() -> None:
     assert report.citation_trace_sessions == 3
     assert report.non_library_sessions == 1
     assert report.final_verdict == "ACTIVATE"
+    assert report.remaining_requirements() == {
+        "valid_sessions": 0,
+        "live_provider_sessions": 0,
+        "citation_trace_sessions": 0,
+        "non_library_sessions": 0,
+    }
     assert report.failures == ()
 
 
@@ -97,6 +103,24 @@ def test_mechanically_complete_log_requires_final_verdict() -> None:
     assert report.closure_ready is False
     assert report.final_verdict is None
     assert any("final verdict required" in f for f in report.failures)
+
+
+def test_partial_log_reports_remaining_requirements() -> None:
+    records = [
+        _session(1, live=True, citation=True, entry_door="search"),
+        _session(2, live=True, citation=False, entry_door="library"),
+        _session(3, live=False, citation=False, entry_door="library"),
+    ]
+
+    report = validate_sessions(records)
+
+    assert report.remaining_requirements() == {
+        "valid_sessions": 7,
+        "live_provider_sessions": 3,
+        "citation_trace_sessions": 2,
+        "non_library_sessions": 0,
+    }
+    assert report.as_dict()["remaining_requirements"] == report.remaining_requirements()
 
 
 def test_final_verdict_must_be_allowed_value() -> None:
