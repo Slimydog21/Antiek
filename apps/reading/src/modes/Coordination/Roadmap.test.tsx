@@ -8,14 +8,19 @@ afterEach(() => {
   cleanup();
 });
 
-function sprint(n: number, blockedOn: string[], unblocked = false): SprintView {
+function sprint(
+  n: number,
+  blockedOn: string[],
+  unblocked = false,
+  spec: "drw" | "read" = "read",
+): SprintView {
   return {
-    spec: "read",
-    spec_label: "Read",
+    spec,
+    spec_label: spec === "drw" ? "Research (DRW)" : "Read",
     sprint: n,
-    slug: `read-sprint-${n}`,
-    node_id: `read:${n}`,
-    status: "unknown",
+    slug: spec === "drw" && n === 5 ? "cascade-planner" : `${spec}-sprint-${n}`,
+    node_id: `${spec}:${n}`,
+    status: spec === "drw" ? "planned" : "unknown",
     on_critical_path: false,
     blocked_on: blockedOn,
     unblocked,
@@ -27,21 +32,26 @@ function roadmap(
   unblockedNow: string[] = [],
   dependencyBlockers: DependencyBlockerView[] = [],
 ): RoadmapView {
+  const specs: Array<"drw" | "read"> = ["drw", "read"];
   return {
     total_sprints: sprints.length,
     superseded_count: 0,
     superseded_note: "",
     reconciliation: `Read ${sprints.length} = ${sprints.length}`,
     critical_path: [],
-    rosters: [
-      {
-        spec: "read",
-        label: "Read",
-        directory: "read",
-        count: sprints.length,
-        sprints,
-      },
-    ],
+    rosters: specs.flatMap((spec) => {
+      const rows = sprints.filter((s) => s.spec === spec);
+      if (rows.length === 0) return [];
+      return [
+        {
+          spec,
+          label: spec === "drw" ? "Research (DRW)" : "Read",
+          directory: spec === "drw" ? "deep-research-workspace" : "read",
+          count: rows.length,
+          sprints: rows,
+        },
+      ];
+    }),
     unblocked_now: unblockedNow,
     dependency_blockers: dependencyBlockers,
     substrate_layers: [],
@@ -50,7 +60,14 @@ function roadmap(
 
 describe("Roadmap", () => {
   it("renders dependency-ready empty state and blocker summary", () => {
-    render(<Roadmap roadmap={roadmap([sprint(1, ["drw:5"])])} />);
+    render(
+      <Roadmap
+        roadmap={roadmap([
+          sprint(5, [], true, "drw"),
+          sprint(1, ["drw:5"]),
+        ])}
+      />,
+    );
 
     expect(
       screen.getByText("0 dependency-ready · 1 blocked by dependency state"),
@@ -62,6 +79,9 @@ describe("Roadmap", () => {
     ).toBeTruthy();
     expect(screen.getByText("Dependency blockers")).toBeTruthy();
     expect(screen.getByText("drw:5")).toBeTruthy();
+    expect(
+      screen.getByText("Research (DRW) · SPR-05 · cascade planner · planned"),
+    ).toBeTruthy();
     expect(screen.getByText("Read · SPR-01")).toBeTruthy();
     expect(screen.getByText("blocks 1 sprint")).toBeTruthy();
     expect(screen.getByText("waits on drw:5")).toBeTruthy();
@@ -81,6 +101,8 @@ describe("Roadmap", () => {
       <Roadmap
         roadmap={roadmap(
           [
+            sprint(5, [], true, "drw"),
+            sprint(6, [], true, "drw"),
             sprint(1, ["drw:5", "drw:5"]),
             sprint(2, ["drw:5"]),
             sprint(3, ["drw:5"]),
@@ -110,6 +132,9 @@ describe("Roadmap", () => {
     expect(text.indexOf("drw:5")).toBeLessThan(text.indexOf("drw:6"));
     expect(screen.getByText("blocks 4 sprints")).toBeTruthy();
     expect(screen.getByText("blocks 1 sprint")).toBeTruthy();
+    expect(
+      screen.getByText("Research (DRW) · SPR-05 · cascade planner · planned"),
+    ).toBeTruthy();
     expect(
       screen.getByText("Read · SPR-01, Read · SPR-02, Read · SPR-03 +1 more"),
     ).toBeTruthy();
