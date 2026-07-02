@@ -117,6 +117,30 @@ describe("CostConsent", () => {
     expect(screen.queryByText("stubbed")).toBeNull();
   });
 
+  it("shows the sanitized backend note for stubbed margins", () => {
+    render(
+      <CostSection
+        cost={costView({
+          per_workflow: [
+            {
+              workflow: "write",
+              raw_cost_usd: "0.08",
+              call_count: 3,
+              remote_exec_cost_usd: "0",
+              margin_status: "stubbed",
+              margin_rate: null,
+              margined_cost_usd: null,
+              margin_note: "Economics matrix pending for Write.",
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("stubbed")).toBeTruthy();
+    expect(screen.getByText("Economics matrix pending for Write.")).toBeTruthy();
+  });
+
   it("sanitizes malformed escrow money and claim rates", () => {
     render(<ConsentSection consent={consentView()} />);
 

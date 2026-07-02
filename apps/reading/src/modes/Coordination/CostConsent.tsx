@@ -28,12 +28,14 @@ import { apiFetch } from "../../lib/api";
 
 // ── Wire shapes (mirror the coordination API response models) ────────────────
 
+type MarginStatus = "applied" | "stubbed";
+
 export interface WorkflowCostView {
   workflow: string; // research | read | write | speak | unmapped
   raw_cost_usd: string;
   call_count: number;
   remote_exec_cost_usd: string;
-  margin_status: string; // applied | stubbed
+  margin_status: MarginStatus;
   margin_rate: string | null;
   margined_cost_usd: string | null;
   margin_note: string;
@@ -351,7 +353,7 @@ export function CostSection({ cost }: { cost: CostView }) {
           <span className="flex items-center gap-2">
             <LemonTag colour="sun">stubbed</LemonTag>
             <span className="text-[11px] italic text-shadow-1 dark:text-moonlight">
-              raw cost only
+              {w.margin_note}
             </span>
           </span>
         ),
