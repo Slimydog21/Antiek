@@ -31,7 +31,12 @@ must show the default thresholds (`min_sealed_investigations: 10000` and
 explicit. The script deliberately does not infer that a `policy_id` is
 open-weight from model-name appearance alone.
 
-**Current state (2026-05-17):** 0 production investigations. Zero open-weight policy coverage.
+**Current state (2026-07-02):** Evidence verifier substrate is shipped, but
+live evidence remains absent. `compounding.verification.trajectory_volume` is
+committed and `substrate/loop_3/evidence_status.py` runs it with production
+defaults. The gate remains unchecked until the committed command reports
+≥10,000 sealed investigations and ≥80% open-weight policy coverage from an
+explicit policy registry.
 
 ---
 
@@ -61,7 +66,11 @@ upload, or independently reproduce the SFT run.
 
 **Why this matters:** RL from a zero-shot base model is wildly inefficient and unstable. SFT is the standard precondition. Skipping SFT is the textbook way to burn $X thousand on training a worse model than the one you started with.
 
-**Current state:** Not started.
+**Current state (2026-07-02):** Evidence verifier substrate is shipped, but no
+real SFT model evidence has been provided. `compounding.verification.sft_readiness`
+validates the metadata, dispatch registration, artifact reference, metrics, and
+training-log chain. `reports/loop3/sft-model.json` remains a placeholder, so
+the criterion remains unchecked.
 
 ---
 
@@ -86,7 +95,13 @@ or the reward noise floor.
 
 **Why this matters:** RL maximizes whatever reward you give it. If the reward is noise, you train noise. If the reward is decorrelated from outcome, you train against the outcome. Either is worse than not training.
 
-**Current state:** Schema locked (`middleware/outcomes/events.py`), scorer not implemented, no production emissions, no correlation analysis.
+**Current state (2026-07-02):** Evidence verifier substrate is shipped for the
+volume portion of this gate, but live reward evidence remains absent.
+`compounding.verification.reward_signal` counts sealed `dispatch.call`,
+`rubric.scored`, and `outcome.recorded` events and explicitly reports that it
+does not prove reward/outcome correlation or reward noise floor. The broader
+correlation and noise-floor evidence is still required before this criterion can
+be checked.
 
 ---
 
@@ -115,7 +130,11 @@ only and does not unlock Loop 3 by itself.
 
 **Why this matters:** Today every Antiek tier uses a closed-weight provider because it is the better choice — cheaper, smarter, or more reliable depending on tier. RL training produces an open-weight model. If there is no concrete reason to *deploy* an open-weight model, the training run produces an artifact for the trophy case. Don't train trophies.
 
-**Current state:** No argument exists. The Researchmaxx vision posits open-weight for the "tab model" product, but Antiek has not yet validated that posture against measurement.
+**Current state (2026-07-02):** Evidence verifier substrate is shipped, but no
+measured open-weight deployment argument exists. `compounding.verification.open_weight_justification`
+validates the decision document and category-specific measurement artifact.
+`reports/loop3/open-weight-justification.json` remains a placeholder, and the
+Researchmaxx vision has not yet been validated against measurement.
 
 ---
 
@@ -146,7 +165,12 @@ evals.
 
 **Why this matters:** RL is the most expensive optimization in the toolbox. If GEPA hasn't been tried, prompt-tuning is cheaper and may close the gap. If there's no measured gap, there's nothing for RL to close.
 
-**Current state:** No eval set, no baseline, no GEPA run, no ceiling.
+**Current state (2026-07-02):** Evidence verifier substrate is shipped, but the
+headroom evidence remains insufficient. `compounding.verification.eval_headroom`
+validates the eval set, current-policy score, ceiling, reward-noise floor, and
+GEPA plateau artifact. The committed placeholder still points at the current
+50-example fixture and must fail until the curated eval set is expanded to
+≥200 rows with the required measurements.
 
 ---
 
