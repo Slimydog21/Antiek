@@ -92,6 +92,26 @@ describe("WorkCard", () => {
     expect(container.textContent).not.toMatch(/full_text|raw_text|body/i);
   });
 
+  it.each(["javascript:alert(1)", "data:text/html,owned", "/relative/cover.png"])(
+    "falls back to the deterministic spine for unsafe cover URIs: %s",
+    (cover_uri) => {
+      const { container } = render(<WorkCard work={{ ...servable, cover_uri }} />);
+
+      expect(container.querySelector("img")).toBeNull();
+      expect(screen.getAllByText("A Servable Title").length).toBeGreaterThan(0);
+    },
+  );
+
+  it("renders a trimmed safe cover URI", () => {
+    const { container } = render(
+      <WorkCard work={{ ...servable, cover_uri: " https://example.test/cover.png " }} />,
+    );
+
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(
+      "https://example.test/cover.png",
+    );
+  });
+
   it("a taken-down work is non-actionable", () => {
     const onRead = vi.fn();
     const onClaim = vi.fn();

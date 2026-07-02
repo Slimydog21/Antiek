@@ -71,6 +71,18 @@ function nullableString(value: unknown): string | null {
   return value == null ? null : nonEmptyString(value);
 }
 
+function safeCoverUri(value: unknown): string | null {
+  const uri = nullableString(value);
+  if (!uri) return null;
+  if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(uri)) return uri;
+  try {
+    const parsed = new URL(uri);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? uri : null;
+  } catch {
+    return null;
+  }
+}
+
 function nonNegativeSafeInteger(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
     ? value
@@ -108,7 +120,7 @@ function safeLibraryWork(value: unknown): BookSummary | null {
       !takenDown &&
       servability !== "gated_metadata_only",
     page_count: nonNegativeSafeInteger(work.page_count) ?? 0,
-    cover_uri: nullableString(work.cover_uri),
+    cover_uri: safeCoverUri(work.cover_uri),
     ip_holder_id: nullableString(work.ip_holder_id),
     taken_down: takenDown,
   };

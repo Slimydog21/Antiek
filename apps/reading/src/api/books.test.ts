@@ -153,6 +153,59 @@ describe("books api — source-book boundary", () => {
     });
   });
 
+  it.each(["javascript:alert(1)", "data:text/html,owned", "/relative/cover.png"])(
+    "drops unsafe source-book cover URIs before rendering: %s",
+    async (cover_uri) => {
+      apiFetchMock.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            books: [
+              {
+                document_id: "doc-cover",
+                title: "Unsafe Cover",
+                servability: "public_domain",
+                servable_full_text: true,
+                cover_uri,
+              },
+            ],
+            count: 1,
+          }),
+          { status: 200 },
+        ),
+      );
+
+      await expect(listBooks("all")).resolves.toMatchObject({
+        books: [{ document_id: "doc-cover", cover_uri: null }],
+        count: 1,
+      });
+    },
+  );
+
+  it("preserves strict base64 image cover URIs", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          books: [
+            {
+              document_id: "doc-cover",
+              title: "Inline Cover",
+              servability: "public_domain",
+              servable_full_text: true,
+              cover_uri: " data:image/png;base64,AAAA ",
+            },
+          ],
+          count: 1,
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(listBooks("all")).resolves.toMatchObject({
+      books: [{ document_id: "doc-cover", cover_uri: "data:image/png;base64,AAAA" }],
+      count: 1,
+    });
+  });
+
   it("dedupes duplicate source-book ids after trimming", async () => {
     apiFetchMock.mockResolvedValueOnce(
       new Response(

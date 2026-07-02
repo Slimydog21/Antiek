@@ -41,6 +41,19 @@ function placeholderHue(seed: string): number {
   return h;
 }
 
+function safeCoverUri(value: string | null): string | null {
+  if (!value) return null;
+  const uri = value.trim();
+  if (!uri) return null;
+  if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(uri)) return uri;
+  try {
+    const parsed = new URL(uri);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? uri : null;
+  } catch {
+    return null;
+  }
+}
+
 /** A short, human source line from the servability basis — "what kind of thing
  *  this is", distinct from the author. */
 function sourceLine(work: BookSummary): string {
@@ -66,6 +79,7 @@ export default function WorkCard({ work, onRead, onClaim }: WorkCardProps) {
   const hue = placeholderHue(work.document_id);
   const servable = work.servable_full_text;
   const removed = work.taken_down || work.servability === "taken_down";
+  const coverUri = safeCoverUri(work.cover_uri);
 
   const action = () => {
     if (removed) return;
@@ -93,7 +107,7 @@ export default function WorkCard({ work, onRead, onClaim }: WorkCardProps) {
           removed ? "" : cardLift
         }`}
         style={
-          work.cover_uri
+          coverUri
             ? undefined
             : {
                 background: `linear-gradient(160deg, hsl(${hue} 45% 32%), hsl(${
@@ -102,9 +116,9 @@ export default function WorkCard({ work, onRead, onClaim }: WorkCardProps) {
               }
         }
       >
-        {work.cover_uri ? (
+        {coverUri ? (
           <img
-            src={work.cover_uri}
+            src={coverUri}
             alt={`Cover of ${title}`}
             className="absolute inset-0 h-full w-full object-cover"
           />

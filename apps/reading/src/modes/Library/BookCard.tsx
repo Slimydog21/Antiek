@@ -25,10 +25,24 @@ function placeholderHue(seed: string): number {
   return h;
 }
 
+function safeCoverUri(value: string | null): string | null {
+  if (!value) return null;
+  const uri = value.trim();
+  if (!uri) return null;
+  if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(uri)) return uri;
+  try {
+    const parsed = new URL(uri);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? uri : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function BookCard({ book, onOpen }: BookCardProps) {
   const { label, colour } = servabilityLabel(book.servability);
   const title = book.title ?? book.document_id;
   const hue = placeholderHue(book.document_id);
+  const coverUri = safeCoverUri(book.cover_uri);
 
   return (
     <button
@@ -40,14 +54,14 @@ export default function BookCard({ book, onOpen }: BookCardProps) {
       <div
         className={`relative aspect-[2/3] w-full rounded-hog border-edge border-sun overflow-hidden shadow-z1 dark:shadow-z1-night ${cardLift}`}
         style={
-          book.cover_uri
+          coverUri
             ? undefined
             : { background: `linear-gradient(160deg, hsl(${hue} 45% 32%), hsl(${(hue + 40) % 360} 50% 22%))` }
         }
       >
-        {book.cover_uri ? (
+        {coverUri ? (
           <img
-            src={book.cover_uri}
+            src={coverUri}
             alt={`Cover of ${title}`}
             className="absolute inset-0 h-full w-full object-cover"
           />

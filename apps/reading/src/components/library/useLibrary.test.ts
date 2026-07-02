@@ -118,6 +118,67 @@ describe("fetchLibraryPage", () => {
     });
   });
 
+  it.each(["javascript:alert(1)", "data:text/html,owned", "/relative/cover.png"])(
+    "drops unsafe catalog cover URIs before rendering: %s",
+    async (cover_uri) => {
+      apiFetchMock.mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            works: [
+              {
+                document_id: "doc-cover",
+                title: "Unsafe Cover",
+                servability: "public_domain",
+                servable_full_text: true,
+                cover_uri,
+              },
+            ],
+            total: 1,
+            page: 1,
+            page_size: 20,
+          }),
+          { status: 200 },
+        ),
+      );
+
+      await expect(
+        fetchLibraryPage({ filter: "all", search: "", page: 1, pageSize: 20 }),
+      ).resolves.toMatchObject({
+        works: [{ document_id: "doc-cover", cover_uri: null }],
+        total: 1,
+      });
+    },
+  );
+
+  it("preserves strict base64 image cover URIs from the catalog", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          works: [
+            {
+              document_id: "doc-cover",
+              title: "Inline Cover",
+              servability: "public_domain",
+              servable_full_text: true,
+              cover_uri: " data:image/png;base64,AAAA ",
+            },
+          ],
+          total: 1,
+          page: 1,
+          page_size: 20,
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(
+      fetchLibraryPage({ filter: "all", search: "", page: 1, pageSize: 20 }),
+    ).resolves.toMatchObject({
+      works: [{ document_id: "doc-cover", cover_uri: "data:image/png;base64,AAAA" }],
+      total: 1,
+    });
+  });
+
   it("dedupes duplicate catalog work ids after trimming", async () => {
     apiFetchMock.mockResolvedValueOnce(
       new Response(
