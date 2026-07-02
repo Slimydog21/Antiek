@@ -240,5 +240,8 @@ jobs:
       - name: Canonical verify — speak project invitations
         run: ./scripts/canonical_verify.sh speak-project-invitations
 
+      - name: Canonical verify — speak compounding interviewer
+        run: ./scripts/canonical_verify.sh speak-compounding-interviewer
+
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md

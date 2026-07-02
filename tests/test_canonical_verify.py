@@ -208,3 +208,11 @@ def test_canonical_verify_speak_project_invitations_hermetic() -> None:
     proc = _run("speak-project-invitations")
     assert proc.returncode == 0, proc.stderr or proc.stdout
     assert "CANONICAL_VERIFY_OK: speak-project-invitations" in proc.stdout
+
+
+def test_canonical_verify_speak_compounding_interviewer_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("speak-compounding-interviewer")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: speak-compounding-interviewer" in proc.stdout

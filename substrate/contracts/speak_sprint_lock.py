@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to SPEAK_SPRINTS. Status changes are deliberate roadmap
 # events, not prose-only handoffs.
-SPEAK_LOCK_VERSION: int = 3
+SPEAK_LOCK_VERSION: int = 4
 
 
 @dataclass(frozen=True)
@@ -58,7 +58,17 @@ SPEAK_SPRINTS: dict[int, SpeakDeliverable] = {
         # speak-project-invitations.
         status="live",
     ),
-    4: SpeakDeliverable(4, "compounding-interviewer", "Compounding interviewer"),
+    4: SpeakDeliverable(
+        4,
+        "compounding-interviewer",
+        "Compounding interviewer",
+        # Live: accumulated context conditioning, must-cover/open-question
+        # chasing, non-leading corroboration prompts, deepening targets,
+        # record-only privacy filtering, DRW+Speak composite gap source,
+        # interviewer role parser/prompt guards, trajectory capture, and the
+        # Loop-3 no-training gate are covered by speak-compounding-interviewer.
+        status="live",
+    ),
     5: SpeakDeliverable(
         5,
         "cross-interviewee-verification",
