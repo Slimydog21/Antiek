@@ -126,6 +126,22 @@ def test_partial_log_reports_remaining_requirements() -> None:
         "non_library_sessions": 0,
     }
     assert report.as_dict()["remaining_requirements"] == report.remaining_requirements()
+    assert report.as_dict()["invalid_session_count"] == 0
+    assert report.as_dict()["invalid_sessions"] == []
+
+
+def test_report_names_invalid_sessions_without_inflating_remaining_counts() -> None:
+    invalid = _session(1, live=True, citation=True, entry_door="search")
+    invalid["date"] = "June 30, 2026"
+    valid = _session(2, live=True, citation=True, entry_door="search")
+
+    report = validate_sessions([invalid, valid])
+
+    assert report.valid_sessions == 1
+    assert report.invalid_sessions == ("session-1",)
+    assert report.remaining_requirements()["valid_sessions"] == 9
+    assert report.as_dict()["invalid_session_count"] == 1
+    assert report.as_dict()["invalid_sessions"] == ["session-1"]
 
 
 def test_final_verdict_must_be_allowed_value() -> None:
@@ -971,6 +987,8 @@ def test_append_template_creates_log_file_and_parent_dirs(tmp_path, capsys) -> N
         "?chunk=chunk-1&from=doc-1&fromPage=0"
     )
     assert "read-dogfood: 0/1 valid sessions" in out
+    assert "1 invalid" in out
+    assert "invalid sessions: 2026-06-30-operator-001" in out
     assert "remaining:" in out
     assert "template first_answer" in out
     assert "template investigation_id" in out
@@ -1014,6 +1032,8 @@ def test_append_template_can_print_json_report(tmp_path, capsys) -> None:
 
     assert report["total_sessions"] == 1
     assert report["valid_sessions"] == 0
+    assert report["invalid_session_count"] == 1
+    assert report["invalid_sessions"] == ["2026-06-30-operator-001"]
     assert report["live_provider_sessions"] == 0
     assert report["remaining_requirements"]["valid_sessions"] == 10
     assert any("template first_answer" in failure for failure in report["failures"])
