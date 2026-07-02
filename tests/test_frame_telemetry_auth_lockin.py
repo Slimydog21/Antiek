@@ -71,8 +71,9 @@ def test_route_is_not_in_the_auth_open_paths_allowlist():
     """The money-write route must never be allowlisted-open. Reads the
     middleware's allowlist directly so this fails the instant someone adds the
     path (or a prefix of it) to the exempt set."""
-    from interfaces.research.api import app as app_module
     import inspect
+
+    from interfaces.research.api import app as app_module
 
     src = inspect.getsource(app_module.create_app)
     # The allowlist literal lives inside create_app. The route must not appear
