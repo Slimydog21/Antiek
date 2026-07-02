@@ -284,11 +284,15 @@ Consequences, each anchored to an existing binding surface:
    escalation to the operator, and §9.0.1 already records that ad
    revenue ($0.05-$0.20/session) structurally cannot fund token costs.
    Ads pay *IP holders and creators*; they do not fund compute.
-5. **Programmatic display remains rejected until its recorded trigger
-   fires.** §9.4 Option A + engineering_deferrals D7 + Thread 3
-   (quarterly-renewed DEFER, currently $0 advertiser spend against a
-   ~$50K/mo manual-curation trigger; only SSP candidates ever named:
-   Google Ad Manager or Magnite). Nothing in this spec re-opens that.
+5. **Programmatic display remains rejected until BOTH of its recorded
+   gates fire.** Two separate recorded decisions, both unfired: (a)
+   engineering_deferrals **D7** — unlock is D1 (multi-user pivot)
+   closing plus a first creator cohort live and accruing; (b)
+   sprint30_thread_decisions **Thread 3** — the quarterly-renewed
+   DEFER whose trigger is aggregate advertiser spend exceeding
+   ~$50K/mo manual-curation capacity (currently $0), with the only
+   SSP candidates ever named being Google Ad Manager or Magnite.
+   Nothing in this spec re-opens either.
 
 ---
 
@@ -334,11 +338,21 @@ Consequences, each anchored to an existing binding surface:
 Axon-style learned auction and turns on measured, flag-gated,
 explainable re-ranking of house/lead-gen fills:
 
+0. **Fill-decision record (precursor, ~1 day).** Persist the serving
+   decision at fill time: one typed record linking window_id → chosen
+   fill (kind, inventory_id, candidate set, per-candidate features and
+   scores, ranker/artifact version). Today the `ad_fill` handler
+   returns its `AdFillResponse` and records NOTHING (verified
+   2026-07-02: no emission or persistence anywhere in the fill path,
+   `interfaces/research/api/ad_routes.py`), so without this precursor
+   the label join below has nothing to join to. Ships under the
+   standing schema discipline: EVENT_SCHEMA_VERSION bump + bump-log +
+   same-commit TS regen on python 3.14.
 1. **Label extraction (offline).** A batch job derives per-impression
    value labels in [0,1] from `frame_attention_accruals` — realized
    attention-weighted value of the fill's window (area × (1+prominence)
    × (1+dwell/1000) blend already normalized by `weigh_second`) —
-   joined to the fill decision recorded by the ad routes. Labels are
+   joined to the fill-decision record from step 0. Labels are
    computed ONLY from batches that pass W2's trust hardening (S1
    server-minted value + S2 anti-gaming filter); pre-hardening rows are
    excluded by version stamp (`frame-telemetry-v1` rows with
@@ -359,10 +373,10 @@ explainable re-ranking of house/lead-gen fills:
    enough to replay any serving decision byte-for-byte offline. An
    inspection CLI renders "why this fill won" from the log alone.
 
-**What this wedge does NOT do.** No vendor contact. No new event-log
-schema (fill decisions already flow through typed events; if a new
-payload field is needed it follows the EVENT_SCHEMA_VERSION bump +
-same-commit py3.14 TS-codegen rule). No serving-gate change. No pricing
+**What this wedge does NOT do.** No vendor contact. Exactly ONE
+schema change — the step-0 fill-decision record (honestly declared;
+an earlier draft claimed fill decisions were already event-logged,
+which verification refuted). No serving-gate change. No pricing
 change (ad_value stays $0 until SPR-10 pricing + OA-016 advertisers
 exist). No touching `synthesis_rubric` hot paths (194.85μs p95 lock).
 
@@ -629,9 +643,10 @@ the operator, with a losing spike recorded as a dated REJECT.
 ## 9. Wedge 4 — Supply-side monetization via MAX (DEFER — possibly REJECT permanently)
 
 Requires, in order: (a) a native Antiek mobile app — none exists or is
-planned; (b) the §9.4/D7/Thread-3 programmatic unlock (aggregate
-advertiser spend > ~$50K/mo manual-curation capacity; currently $0;
-DEFER renewed quarterly in writing); (c) G2/G3 and the §9.0 quadruple
+planned; (b) the programmatic unlock: BOTH D7 (D1 multi-user close +
+live accruing creator cohort) AND Thread 3 (advertiser spend >
+~$50K/mo manual-curation capacity; currently $0; DEFER renewed
+quarterly in writing); (c) G2/G3 and the §9.0 quadruple
 gate; (d) overturning Thread 3's recorded SSP candidate list (Google Ad
 Manager or Magnite — AppLovin has never been on it) with a written
 rationale; (e) AppLovin publisher policy fit (substantive original
@@ -759,10 +774,11 @@ this touches W1/W2, which involve no AppLovin relationship.
 
 The §9.0 quadruple gate is unaffected and unaffectable by this spec:
 retrieval-time gating (G1, closed) + lawyer review (G2, open) + first
-publisher affirmative opt-in (G3, open) + Stripe real-mode (OA-007),
-plus OA-008 (external anti-gaming red-team — precondition for Sprints
-23-24 shipping), OA-016 (3 signed advertisers >$5K/mo), OA-017
-(KYC/1099 counsel). W2 makes the eventual crossing of those gates
+publisher affirmative opt-in (G3, open) — the G-gates live in
+`docs/operator_gate_actions.md` — plus Stripe real-mode (OA-007),
+OA-008 (external anti-gaming red-team — precondition for Sprints
+23-24 shipping), OA-016 (3 signed advertisers >$5K/mo), and OA-017
+(KYC/1099 counsel) — the OA items live in `docs/OPERATOR_ACTIONS.md`. W2 makes the eventual crossing of those gates
 *safer* (server-minted value, anti-gaming filter, provable
 statements); it does not move them. Rights states remain deny-by-
 default; `personal_reading` produces zero ad attribution, zero escrow,
