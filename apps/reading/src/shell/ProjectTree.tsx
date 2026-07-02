@@ -1,9 +1,13 @@
 import { useNavigate, useLocation } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import { usePinned } from "../components/navigation/pinnedStore";
 import { LemonTag } from "../components/lemon/LemonTag";
+import { listBooks } from "../api/books";
+import type { BookSummary } from "../api/books";
+import type { InvestigationSummary } from "../lib/api";
+import { useInvestigationList } from "../hooks/useInvestigationList";
 import {
   WORKFLOWS,
   workflowForPath,
@@ -22,10 +26,7 @@ import {
  *
  * The sections are driven by WORKFLOWS[wf].nouns from the taxonomy, so the
  * tree re-scopes automatically when the rail switches workflows. Within a
- * section, Recent/Pinned items come from the mock fixtures today and from
- * the live hooks once each workflow's data layer lands (the architecture —
- * workflow-scoped nouns + click-to-open / Cmd-click-to-float — is what's
- * load-bearing here; the data is swappable, same as the pre-SPR-04 tree).
+ * section, Recent/Pinned items come from live workflow data where it exists.
  *
  * This SUPERSEDES the flat Pinned/Recent/All tree at
  * components/navigation/ProjectTree.tsx; PanelRegistry now points here.
@@ -37,22 +38,6 @@ type TreeNode = {
   id: string;
   title: string;
   status?: "running" | "done" | "failed";
-};
-
-// Mock recent items, tagged with the workflow noun-section they belong to.
-// Replaced by live hooks per-workflow as each data layer lands.
-const MOCK_RECENT: Record<Exclude<Workflow, "shared">, TreeNode[]> = {
-  research: [
-    { kind: "investigation", id: "nvda-q4", title: "NVDA Q4 risk model", status: "running" },
-    { kind: "investigation", id: "web-gaming-2026", title: "Web gaming 2026", status: "done" },
-    { kind: "investigation", id: "kalshi-liquidity", title: "Kalshi liquidity gate", status: "done" },
-  ],
-  read: [
-    { kind: "document", id: "kalshi-paper", title: "Kalshi liquidity preprint.pdf" },
-    { kind: "notebook", id: "synth-nvda", title: "NVDA synthesis · draft 2" },
-  ],
-  write: [],
-  speak: [],
 };
 
 // The "All" links per workflow → the workflow's index routes (nouns).
@@ -100,6 +85,64 @@ const panelKindForNode = (n: TreeNode) => {
   }
 };
 
+function investigationStatus(status: InvestigationSummary["status"]): TreeNode["status"] {
+  switch (status) {
+    case "in_progress":
+      return "running";
+    case "completed":
+    case "stopped":
+      return "done";
+    case "failed":
+    case "not_found":
+      return "failed";
+  }
+}
+
+function investigationNode(inv: InvestigationSummary): TreeNode {
+  return {
+    kind: "investigation",
+    id: inv.investigation_id,
+    title: inv.question ?? "Untitled investigation",
+    status: investigationStatus(inv.status),
+  };
+}
+
+function documentNode(book: BookSummary): TreeNode {
+  return {
+    kind: "document",
+    id: book.document_id,
+    title: book.title ?? "Untitled document",
+  };
+}
+
+function useReadDocuments() {
+  const [documents, setDocuments] = useState<BookSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const resp = await listBooks("all");
+        if (!cancelled) {
+          setDocuments(resp.books);
+          setError(null);
+        }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return { documents, loading, error };
+}
+
 export function ProjectTree({
   /** Override the active workflow (Storybook); defaults to the route. */
   workflow: forced,
@@ -116,10 +159,19 @@ export function ProjectTree({
   const pinned = usePinned((s) => s.pinned);
   const togglePin = usePinned((s) => s.toggle);
   const openPanel = useWorkspace((s) => s.open);
+  const research = useInvestigationList();
+  const read = useReadDocuments();
 
   const pinnedKey = (n: TreeNode) => `${n.kind}:${n.id}`;
 
-  const recent = MOCK_RECENT[workflow];
+  const researchNodes = research.investigations.map(investigationNode);
+  const readNodes = read.documents.map(documentNode);
+  const recent =
+    workflow === "research" ? researchNodes : workflow === "read" ? readNodes : [];
+  const recentLoading =
+    workflow === "research" ? research.loading : workflow === "read" ? read.loading : false;
+  const recentError =
+    workflow === "research" ? research.error : workflow === "read" ? read.error : null;
   const pinnedNodes = recent.filter((n) => pinned.has(pinnedKey(n)));
   const recentNodes = recent.filter((n) => !pinned.has(pinnedKey(n)));
 
@@ -184,9 +236,17 @@ export function ProjectTree({
         onToggle={() => setExpanded((s) => ({ ...s, recent: !s.recent }))}
         count={recentNodes.length}
       >
-        {recentNodes.length === 0 ? (
+        {recentLoading ? (
+          <p className="px-3 py-2 text-[12px] text-ink-mute dark:text-moonlight">
+            Loading recent items...
+          </p>
+        ) : recentError ? (
+          <p className="px-3 py-2 text-[12px] text-danger">
+            Could not load recent items: {recentError}
+          </p>
+        ) : recentNodes.length === 0 ? (
           <p className="px-3 py-2 text-[12px] italic text-ink-mute dark:text-moonlight">
-            No recent {meta.label.toLowerCase()} items yet.
+            No recent items yet.
           </p>
         ) : (
           recentNodes.map((n) => (
@@ -285,6 +345,7 @@ function NodeRow({
       <button
         type="button"
         onClick={onClick}
+        data-node-id={node.id}
         className="flex-1 flex items-center gap-2 px-3 py-1.5 hover:bg-sun/20 dark:hover:bg-sun/10 text-left min-w-0"
         title="Click to open. Cmd/Ctrl+Click to open as floating panel."
       >
