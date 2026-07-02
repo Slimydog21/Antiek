@@ -363,7 +363,7 @@ async def test_end_to_end_post_drives_orchestrator(
     # (which drives the same 9-phase chain with the same stubs).
     monkeypatch.setattr(
         "orchestration.loop_one.orchestrator._render_chunks_block_for_sub_question",
-        lambda _q, top_k=5: (
+        lambda _q, top_k=5, policy_tag="attribution_eligible": (
             "[chunk-1] Source tier: 1 | Document: PsiQuantum photonic quantum "
             "roadmap | Section: Fixture | Similarity: 1.000\n\n"
             "PsiQuantum photonic quantum roadmap evidence: Quantum X holds "

@@ -159,18 +159,39 @@ def _keyword_search_chunks(
     con: duckdb.DuckDBPyConnection,
     keywords: list[str],
     top_k: int,
+    *,
+    policy_tag: str = "attribution_eligible",
 ) -> list[dict[str, Any]]:
     """Lexical fallback. For each keyword run a LIKE; collect chunks
     with their match count; rank by match count then source tier.
-    Cheap, deterministic, works without sentence-transformers."""
+    Cheap, deterministic, works without sentence-transformers.
+
+    §9.0 retrieval gate: this path applies the SAME canonical
+    ``non_privileged_chunk_sql_clause`` as the embedding path
+    (``substrate.graph.search.search``). Without it, the lexical fallback
+    was an UNGATED chunk-serve path — restricted_pending_opt_in /
+    personal_reading chunks could leak into research evidence on a
+    non-privileged ``policy_tag`` even though the embedding path withheld
+    them. Both retrieval paths must gate identically or the gate is a
+    fiction. RG-04 / SR-03 doctrine (deny-by-default on the money path).
+    """
     if not keywords:
         return []
+    # Local import keeps the module import graph acyclic (orchestration →
+    # substrate at call time, not at module load).
+    from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
+
     where = " OR ".join(["LOWER(c.text) LIKE ?" for _ in keywords])
     params = [f"%{k}%" for k in keywords]
     score_expr = " + ".join([
         "(CASE WHEN LOWER(c.text) LIKE ? THEN 1 ELSE 0 END)" for _ in keywords
     ])
-    params_full = params + params + [top_k]
+    gate_sql, gate_params = non_privileged_chunk_sql_clause(
+        table_alias="d", policy_tag=policy_tag,
+    )
+    # Param order must match the SQL text: SELECT score_expr (?), then the
+    # WHERE keyword LIKEs (?), then the gate clause (?), then LIMIT.
+    params_full = params + params + gate_params + [top_k]
     rows = con.execute(
         f"""
         SELECT
@@ -179,7 +200,7 @@ def _keyword_search_chunks(
             ({score_expr}) AS hit_count
         FROM chunks c
         JOIN documents d ON c.document_id = d.document_id
-        WHERE {where}
+        WHERE ({where}){gate_sql}
         ORDER BY hit_count DESC, d.source_tier ASC, c.token_count DESC
         LIMIT ?
         """,
@@ -196,11 +217,22 @@ def _render_chunks_block_for_sub_question(
     sub_question: str,
     *,
     top_k: int = 5,
+    policy_tag: str = "attribution_eligible",
 ) -> str:
     """Hybrid corpus search: embedding cosine + keyword LIKE, merged
     and deduped. The keyword path is the workhorse when
     sentence-transformers isn't installed (HashEmbedding's semantic
-    locality is too weak to drive useful retrieval on its own)."""
+    locality is too weak to drive useful retrieval on its own).
+
+    ``policy_tag`` flows into BOTH retrieval paths (embedding + keyword) so
+    the §9.0 gate is applied identically. Default ``attribution_eligible``
+    (the public, monetizable lane) preserves prior behaviour. An owner
+    researching their OWN acquired corpus runs the privileged
+    ``private_research`` lane (set ``ANTIEK_RESEARCH_POLICY_TAG`` at the
+    Phase-2 call site) so their restricted_pending_opt_in / personal_reading
+    documents are visible to their own research — a fair-use owner-read that
+    never serves/attributes that content publicly.
+    """
     try:
         import duckdb
 
@@ -217,11 +249,12 @@ def _render_chunks_block_for_sub_question(
             emb_half = max(1, top_k // 2)
             emb_res = graph_search(
                 con, sub_question, model=embedder, top_k=emb_half,
+                policy_tag=policy_tag,
             )
             embedding_hits = emb_res.get("results", [])
-            # Keyword side — fill the rest
+            # Keyword side — fill the rest (same §9.0 gate as the embedding path)
             kw_hits = _keyword_search_chunks(
-                con, keywords, top_k=top_k,
+                con, keywords, top_k=top_k, policy_tag=policy_tag,
             )
         finally:
             con.close()
@@ -498,13 +531,24 @@ async def _run_phase_2(
         return False
 
     async def work() -> None:
+        # §9.0 research lane. Default 'attribution_eligible' (public lane,
+        # unchanged behaviour). An owner researching their OWN acquired corpus
+        # sets ANTIEK_RESEARCH_POLICY_TAG=private_research so their gated
+        # (restricted_pending_opt_in / personal_reading) documents are visible
+        # to their own research — a fair-use owner-read. This NEVER changes the
+        # serve/attribute path (master-spec §9.0 legal gate is untouched); it
+        # only widens what the owner's research retrieval can SEE.
+        research_policy_tag = (
+            os.environ.get("ANTIEK_RESEARCH_POLICY_TAG", "").strip()
+            or "attribution_eligible"
+        )
         sem = asyncio.Semaphore(PHASE_2_MAX_CONCURRENCY)
         delivered_action = _action_value(ActionType.EVIDENCE_RETRIEVE_DELIVERED)
 
         async def _retrieve_one(sq: SubQuestion) -> EvidenceRetrieveDeliveredPayload:
             async with sem:
                 chunks_block = _render_chunks_block_for_sub_question(
-                    sq.sub_question, top_k=5,
+                    sq.sub_question, top_k=5, policy_tag=research_policy_tag,
                 )
                 await broadcast_emit(
                     broadcaster,
