@@ -74,6 +74,65 @@ export class AsrError extends Error {
  * UI forever. */
 export const DEFAULT_ASR_TIMEOUT_MS = 130_000;
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function nonNegativeSafeInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
+function nonNegativeFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
+function malformed(message: string): AsrError {
+  return new AsrError("http", message, 200);
+}
+
+function safeTranscriptionResult(value: unknown): TranscriptionResult {
+  const body = record(value);
+  if (!body || typeof body.transcript !== "string") {
+    throw malformed("Malformed transcription response.");
+  }
+  return {
+    transcript: body.transcript.trim(),
+    language: nullableString(body.language),
+    durationSeconds: nonNegativeFiniteNumber(body.duration_seconds) ?? 0,
+  };
+}
+
+function safeVoiceBlobUploadResult(value: unknown): VoiceBlobUploadResult {
+  const body = record(value);
+  const audioRef = body ? nonEmptyString(body.audio_ref) : null;
+  const byteSize = body ? nonNegativeSafeInteger(body.byte_size) : null;
+  const sha256 = body ? nonEmptyString(body.sha256) : null;
+  if (!body || !audioRef || byteSize === null || !sha256) {
+    throw malformed("Malformed voice-blob response.");
+  }
+  return {
+    audioRef,
+    byteSize,
+    sha256,
+  };
+}
+
 /**
  * Transcribe a captured audio blob via the live `/voice/transcribe` route.
  *
@@ -133,16 +192,7 @@ export async function transcribe(
     throw new AsrError("http", `POST /voice/transcribe: HTTP ${resp.status}`, resp.status);
   }
 
-  const body = (await resp.json()) as {
-    transcript: string;
-    language: string | null;
-    duration_seconds: number;
-  };
-  return {
-    transcript: body.transcript,
-    language: body.language,
-    durationSeconds: body.duration_seconds,
-  };
+  return safeTranscriptionResult(await resp.json());
 }
 
 /** Store a captured audio blob and return the object reference that typed
@@ -159,14 +209,5 @@ export async function uploadVoiceBlob(audio: Blob): Promise<VoiceBlobUploadResul
   if (!resp.ok) {
     throw new AsrError("http", `POST /voice/blob: HTTP ${resp.status}`, resp.status);
   }
-  const body = (await resp.json()) as {
-    audio_ref: string;
-    byte_size: number;
-    sha256: string;
-  };
-  return {
-    audioRef: body.audio_ref,
-    byteSize: body.byte_size,
-    sha256: body.sha256,
-  };
+  return safeVoiceBlobUploadResult(await resp.json());
 }
