@@ -116,10 +116,13 @@ function safeLibraryWork(value: unknown): BookSummary | null {
 
 function safeLibraryPage(value: unknown, args: UseLibraryArgs): LibraryPage {
   const body = record(value);
+  const seen = new Set<string>();
   const works = Array.isArray(body?.works)
     ? body.works.flatMap((item) => {
         const work = safeLibraryWork(item);
-        return work ? [work] : [];
+        if (!work || seen.has(work.document_id)) return [];
+        seen.add(work.document_id);
+        return [work];
       })
     : [];
   return {
