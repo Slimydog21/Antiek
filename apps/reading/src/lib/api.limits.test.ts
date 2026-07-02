@@ -1356,8 +1356,8 @@ describe("api client research graph response boundaries", () => {
       ),
     );
 
-    await expect(getChunk("chunk-fallback")).resolves.toEqual({
-      chunk_id: "chunk-fallback",
+    await expect(getChunk(" chunk dirty/1 ")).resolves.toEqual({
+      chunk_id: "chunk dirty/1",
       text: "",
       section_path: "p.12",
       token_count: 0,
@@ -1369,6 +1369,10 @@ describe("api client research graph response boundaries", () => {
       ip_holder_status: null,
       servability: "restricted",
     });
+    expect(fetch).toHaveBeenCalledWith(
+      "/chunks/chunk%20dirty%2F1",
+      expect.objectContaining({ credentials: "include" }),
+    );
   });
 
   it("rejects chunk responses without a document handle", async () => {
@@ -1379,6 +1383,11 @@ describe("api client research graph response boundaries", () => {
     );
 
     await expect(getChunk("chunk-1")).rejects.toMatchObject({ status: 502 });
+  });
+
+  it("rejects blank chunk request handles before network", async () => {
+    await expect(getChunk(" ")).rejects.toThrow("chunkId must be a non-empty string");
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 
@@ -1421,8 +1430,8 @@ describe("api client attribution and consent response boundaries", () => {
       ),
     );
 
-    await expect(getAttributionReport("syn-fallback")).resolves.toEqual({
-      synthesis_id: "syn-fallback",
+    await expect(getAttributionReport(" syn dirty/1 ")).resolves.toEqual({
+      synthesis_id: "syn dirty/1",
       target_question: "Who gets credit?",
       option_a: {
         algorithm: "A",
@@ -1452,6 +1461,17 @@ describe("api client attribution and consent response boundaries", () => {
         document_ip_holder_status: {},
       },
     });
+    expect(fetch).toHaveBeenCalledWith(
+      "/attribution/synthesis/syn%20dirty%2F1",
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it("rejects blank attribution request handles before network", async () => {
+    await expect(getAttributionReport(" ")).rejects.toThrow(
+      "synthesisId must be a non-empty string",
+    );
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("sanitizes consent and escrow views with disbursement deny-by-default", async () => {
