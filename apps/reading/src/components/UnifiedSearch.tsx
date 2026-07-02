@@ -337,15 +337,17 @@ export default function UnifiedSearch({
       const docId =
         nonEmptyString(p?.document_id) ??
         nonEmptyString(p?.source_document_id);
-      if (!docId || seen.has(docId)) continue;
-      seen.add(docId);
+      const chunkId = nonEmptyString(p?.chunk_id);
+      const key = `${docId ?? ""}:${chunkId ?? "root"}`;
+      if (!docId || seen.has(key)) continue;
+      seen.add(key);
       sources.push({
         kind: "research",
         document_id: docId,
         document_title:
           nonEmptyString(p?.document_title) ??
           nonEmptyString(p?.title),
-        chunk_id: nonEmptyString(p?.chunk_id),
+        chunk_id: chunkId,
         snippet:
           nonEmptyString(p?.snippet) ?? "Research source",
       });

@@ -575,6 +575,61 @@ describe("UnifiedSearch — M3 every result opens via openDocument", () => {
     expect(openDocumentMock).toHaveBeenCalledWith("doc-web-1", { chunkId: "chunk-9" });
   });
 
+  it("keeps same-document research sources distinct when they cite different chunks", async () => {
+    resetInvestigationState({
+      startedId: "inv-src",
+      phase: "streaming",
+      events: [
+        {
+          action_type: "dispatch.call",
+          event_id: "doc-root",
+          investigation_id: "inv-src",
+          param_version: "1",
+          emitted_at: "2026-01-01T00:00:00Z",
+          payload: {
+            document_id: "doc-web-1",
+            document_title: "Shared Web Source",
+            snippet: "document-level source",
+          },
+        } as unknown as Event,
+        {
+          action_type: "dispatch.call",
+          event_id: "doc-root-replay",
+          investigation_id: "inv-src",
+          param_version: "1",
+          emitted_at: "2026-01-01T00:00:01Z",
+          payload: {
+            document_id: "doc-web-1",
+            document_title: "Duplicate Shared Web Source",
+            snippet: "duplicate document-level source",
+          },
+        } as unknown as Event,
+        {
+          action_type: "dispatch.call",
+          event_id: "doc-chunk",
+          investigation_id: "inv-src",
+          param_version: "1",
+          emitted_at: "2026-01-01T00:00:02Z",
+          payload: {
+            document_id: "doc-web-1",
+            document_title: "Shared Web Source",
+            chunk_id: "chunk-9",
+            snippet: "chunk-specific source",
+          },
+        } as unknown as Event,
+      ],
+    });
+
+    renderSearch();
+
+    await screen.findByText("document-level source");
+    expect(screen.getByText("chunk-specific source")).toBeTruthy();
+    expect(screen.queryByText("duplicate document-level source")).toBeNull();
+
+    fireEvent.click(screen.getByText("chunk-specific source").closest("button")!);
+    expect(openDocumentMock).toHaveBeenCalledWith("doc-web-1", { chunkId: "chunk-9" });
+  });
+
   it("drops malformed research source payloads instead of minting Reader links", async () => {
     resetInvestigationState({
       startedId: "inv-src",
