@@ -18,6 +18,7 @@ vi.mock("../../lib/api", () => ({
 
 import {
   blockDisplayText,
+  createFolder,
   emitBrainstormBlocks,
   generateSection,
   getTraceTarget,
@@ -77,7 +78,7 @@ describe("writeApi client contracts", () => {
   });
 
   it("places graph-node blocks without inline content and user-authored blocks without node ids", async () => {
-    apiFetchMock.mockResolvedValueOnce(jsonResponse({ outline_block_id: "oblk-node" }));
+    apiFetchMock.mockResolvedValueOnce(jsonResponse({ outline_block_id: " oblk-node " }));
 
     await expect(
       placeBlock({
@@ -115,6 +116,30 @@ describe("writeApi client contracts", () => {
       content: "my own paragraph seed",
       block_index: 3,
     });
+  });
+
+  it("rejects malformed id responses from write mutations", async () => {
+    apiFetchMock.mockResolvedValueOnce(jsonResponse({ outline_block_id: " " }));
+    await expect(
+      placeBlock({
+        section_id: "sec-1",
+        block_kind: "claim",
+        provenance_kind: "graph_node",
+        node_id: "node-claim",
+        block_index: 0,
+      }),
+    ).rejects.toThrow(/outline_block_id/);
+
+    apiFetchMock.mockResolvedValueOnce(jsonResponse({ folder_id: "" }));
+    await expect(createFolder("Saved insights")).rejects.toThrow(/folder_id/);
+  });
+
+  it("trims folder ids returned from createFolder", async () => {
+    apiFetchMock.mockResolvedValueOnce(jsonResponse({ folder_id: " folder-1 " }));
+
+    await expect(createFolder("Saved insights")).resolves.toBe("folder-1");
+    expect(apiFetchMock.mock.calls[0][0]).toBe("/api/write/folders");
+    expect(postedJsonBody()).toEqual({ name: "Saved insights" });
   });
 
   it("rejects malformed write indices before sending requests", async () => {
