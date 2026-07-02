@@ -87,6 +87,36 @@ describe("CostConsent", () => {
     expect(document.body.textContent).toContain("applied");
   });
 
+  it("renders contextual Speak margins as applied money instead of a stub", () => {
+    render(
+      <CostSection
+        cost={costView({
+          per_workflow: [
+            {
+              workflow: "speak",
+              raw_cost_usd: "0.40",
+              call_count: 1,
+              remote_exec_cost_usd: "0",
+              margin_status: "applied",
+              margin_rate: "0.10",
+              margined_cost_usd: "0.440",
+              margin_note:
+                "Speak economics matrix applied from investigation policy context at 10%.",
+            },
+          ],
+          aggregate_raw_cost_usd: "0.40",
+          aggregate_call_count: 1,
+          aggregate_remote_exec_cost_usd: "0",
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Speak")).toBeTruthy();
+    expect(screen.getByText("$0.4400")).toBeTruthy();
+    expect(screen.getByText("+10%")).toBeTruthy();
+    expect(screen.queryByText("stubbed")).toBeNull();
+  });
+
   it("sanitizes malformed escrow money and claim rates", () => {
     render(<ConsentSection consent={consentView()} />);
 
