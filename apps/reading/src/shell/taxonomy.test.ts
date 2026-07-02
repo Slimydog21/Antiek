@@ -93,6 +93,20 @@ describe("workflowTaxonomy completeness (SPR-04 rigor #3)", () => {
   const discovered = discoverModeIds();
   const taxonomyIds = new Set(MODE_TAXONOMY.map((m) => m.id));
 
+  it("documents the canonical navigation IA gate and visual QA boundary", () => {
+    const taxonomySource = readFileSync(
+      resolve(_here, "workflowTaxonomy.ts"),
+      "utf-8",
+    );
+
+    expect(taxonomySource).toContain(
+      "./scripts/canonical_verify.sh unified-navigation-ia-taxonomy",
+    );
+    expect(taxonomySource).toContain(
+      "browser/device visual QA for final rail polish remains",
+    );
+  });
+
   it("discovers a non-trivial mode set from the filesystem", () => {
     // Guard against the glob silently returning nothing (which would
     // make every other check vacuously pass).

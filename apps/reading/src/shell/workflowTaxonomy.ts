@@ -3,12 +3,13 @@
  * frontend mode to one of the four product workflows (Research / Read /
  * Write / Speak) or to an explicit `shared` operator/governance bucket.
  *
- * SPR-04 (antiek-unified Wave 2). The product is unified behind four
- * workflows; the ~37 self-registering modes under `src/modes/` carry no
- * Research/Read/Write/Speak framing of their own. This file IS the
- * framing. Nothing is allowed to be orphaned: a build-time completeness
- * check (`taxonomy.test.ts`) enumerates the mode directories and FAILS
- * if any registered mode is absent here.
+ * SPR-04 (antiek-unified Wave 2). Canonical gate:
+ * `./scripts/canonical_verify.sh unified-navigation-ia-taxonomy`.
+ * The product is unified behind four workflows; the ~37 self-registering
+ * modes under `src/modes/` carry no Research/Read/Write/Speak framing of
+ * their own. This file IS the framing. Nothing is allowed to be orphaned: a
+ * build-time completeness check (`taxonomy.test.ts`) enumerates the mode
+ * directories and FAILS if any registered mode is absent here.
  *
  * Why a hand-authored map and not auto-derivation: the grouping is a
  * product decision (which workflow story does this surface tell?), not
@@ -31,6 +32,8 @@
  *                      index.tsx of their own)
  *   - route table:     src/App.tsx  (canonical "what is mounted")
  *   - panel registry:  src/workspace/PanelRegistry.tsx
+ *   - proof boundary:  browser/device visual QA for final rail polish remains
+ *                      an operator verification, not a taxonomy unit-test claim
  */
 
 export type Workflow = "research" | "read" | "write" | "speak" | "shared";
