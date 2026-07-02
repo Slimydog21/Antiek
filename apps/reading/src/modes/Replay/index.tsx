@@ -19,6 +19,14 @@ import { PanelHost } from "../../workspace/PanelHost";
  * operator-graded outcomes. Live updates let the operator grade as
  * the investigation runs rather than waiting for completion + reload.
  */
+function safeTrajectoryEvents(value: unknown): Event[] {
+  const source =
+    typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>).events
+      : value;
+  return Array.isArray(source) ? source.filter(isEventFrame) : [];
+}
+
 export default function Replay() {
   const { investigationId } = useParams<{ investigationId: string }>();
   const [events, setEvents] = useState<Event[]>([]);
@@ -44,9 +52,7 @@ export default function Replay() {
           `GET /trajectory failed: HTTP ${resp.status}`,
         );
       }
-      const data = await resp.json();
-      const list: unknown = data.events ?? data;
-      setEvents(Array.isArray(list) ? list.filter(isEventFrame) : []);
+      setEvents(safeTrajectoryEvents(await resp.json()));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
       setEvents([]);

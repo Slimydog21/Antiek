@@ -76,4 +76,27 @@ describe("ReplayStepList", () => {
     expect(screen.getByText("evidence · retrieve ✓")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/bad-|dispatch|NaN|ph NaN/);
   });
+
+  it("accepts bare trajectory arrays while still dropping malformed rows", async () => {
+    apiFetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => [
+        event("valid-array", "investigation.completed", { phase: 8 }),
+        {
+          event_id: "bad-array-action",
+          investigation_id: "inv-1",
+          action_type: "not.a.real.action",
+          payload: { action_type: "not.a.real.action" },
+          param_version: "test",
+          emitted_at: "2026-07-01T12:00:01Z",
+        },
+      ],
+    });
+
+    render(<ReplayStepList investigationId="inv-1" />);
+
+    await waitFor(() => expect(screen.getByText("Steps · 1")).toBeTruthy());
+    expect(screen.getByText("investigation · completed")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/bad-array/);
+  });
 });

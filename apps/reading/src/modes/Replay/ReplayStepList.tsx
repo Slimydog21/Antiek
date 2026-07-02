@@ -40,6 +40,14 @@ const SIGNIFICANT_ACTIONS = new Set([
   "investigation.failed",
 ]);
 
+function safeTrajectoryEvents(value: unknown): Event[] {
+  const source =
+    typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>).events
+      : value;
+  return Array.isArray(source) ? source.filter(isEventFrame) : [];
+}
+
 export default function ReplayStepList({ investigationId }: Props) {
   const [steps, setSteps] = useState<StepEvent[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -56,10 +64,7 @@ export default function ReplayStepList({ investigationId }: Props) {
         setError(`HTTP ${resp.status}`);
         return;
       }
-      const data = await resp.json();
-      const raw: Event[] = Array.isArray(data.events)
-        ? data.events.filter(isEventFrame)
-        : [];
+      const raw = safeTrajectoryEvents(await resp.json());
       const filtered: StepEvent[] = raw
         .filter((e) =>
           SIGNIFICANT_ACTIONS.has(e.action_type),
