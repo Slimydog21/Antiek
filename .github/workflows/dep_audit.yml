@@ -1,0 +1,48 @@
+# AGH SPR-08 — weekly dependency-vulnerability audit. INFORMATIONAL BY
+# TRIGGER, not by swallow: this workflow runs only on a schedule and on
+# manual dispatch — it can never gate a PR — and precisely because it gates
+# nothing, its failures are left LOUD (no `|| true`, no continue-on-error).
+# A red run here means "an advisory needs human eyes", which is the entire
+# point. (Contrast prod_parity's historical continue-on-error, which made
+# its signal structurally invisible — the defect class AGH SPR-04 removed.)
+name: dep_audit
+on:
+  schedule:
+    # Weekly, Mondays 07:41 UTC — off the hour to dodge scheduler congestion,
+    # matching the prod_parity convention.
+    - cron: "41 7 * * 1"
+  workflow_dispatch: {}
+
+jobs:
+  npm-audit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/reading
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: npm audit (runtime deps, high+)
+        # --omit=dev: the shipped bundle's exposure is what pages someone.
+        # Dev-tree advisories arrive via the full report below + dependabot.
+        run: npm audit --omit=dev --audit-level=high
+      - name: npm audit (full report, informational tail)
+        if: always()
+        run: npm audit || true  # full-tree visibility only; the gate above already fired honestly
+
+  pip-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: pip-audit against the pinned constraints lock
+        # tools/lints/constraints.txt is the repo's full pinned resolution
+        # (the same lock enforce_declared_bar installs under) — auditing it
+        # audits what CI actually runs.
+        run: |
+          pip install pip-audit
+          pip-audit -r tools/lints/constraints.txt --disable-pip
