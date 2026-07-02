@@ -81,6 +81,30 @@ export default function NotesFeed({ events, onCiteJump }: NotesFeedProps) {
   );
 }
 
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const trimmed = nonEmptyString(item);
+        return trimmed ? [trimmed] : [];
+      })
+    : [];
+}
+
+function isConfidenceLevel(value: unknown): value is ConfidenceLevel {
+  return (
+    value === "high" ||
+    value === "moderate" ||
+    value === "low" ||
+    value === "unknown"
+  );
+}
+
 function NoteCard({
   event,
   onCiteJump,
@@ -89,24 +113,29 @@ function NoteCard({
   onCiteJump?: (eventId: string) => void;
 }) {
   const p = event.payload;
+  const noteText = nonEmptyString(p.note_text) ?? "note unavailable";
+  const confidence = isConfidenceLevel(p.confidence) ? p.confidence : "unknown";
+  const sourceEventIds = stringList(p.source_event_ids);
+  const documentId = nonEmptyString(event.document_id);
+
   return (
     <li className="border border-amber-200 rounded-md bg-sun/10/30 px-3 py-2.5 flex flex-col gap-1.5">
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm text-ink dark:text-bright leading-snug flex-1">
-          {p.note_text}
+          {noteText}
         </p>
         {/* Server-side default is "unknown"; the TS field type is
             ``ConfidenceLevel | undefined`` because Pydantic ``default=``
             produces an optional TS field via the codegen. Fall back
             here so the badge always renders. */}
-        <ConfidenceBadge level={p.confidence ?? "unknown"} />
+        <ConfidenceBadge level={confidence} />
       </div>
-      {p.source_event_ids.length > 0 && (
+      {sourceEventIds.length > 0 && (
         <div className="flex flex-wrap gap-1 pt-0.5">
           <span className="text-[10px] font-mono text-shadow-1 dark:text-moonlight mr-0.5">
             from:
           </span>
-          {p.source_event_ids.map((eid) => (
+          {sourceEventIds.map((eid) => (
             <button
               key={eid}
               onClick={() => onCiteJump?.(eid)}
@@ -120,10 +149,10 @@ function NoteCard({
       )}
       <div className="text-[9px] font-mono text-ink-mute dark:text-moonlight pt-0.5">
         {shortenEventId(event.event_id)}
-        {event.document_id && (
+        {documentId && (
           <>
             {" · "}
-            <span title={event.document_id}>doc={shortenDocId(event.document_id)}</span>
+            <span title={documentId}>doc={shortenDocId(documentId)}</span>
           </>
         )}
       </div>
