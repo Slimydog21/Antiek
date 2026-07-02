@@ -7,8 +7,8 @@ import type { LemonColumn } from "../../components/lemon";
  *
  * Renders the reconciled 45-sprint count (DRW 10 + Read 9 + Write 9 + Speak 9 +
  * unified 8; shell's 6 superseded), the DRW critical path (drw:1 → drw:3 →
- * drw:10) made explicit, what's unblocked-now (derived from dependency state,
- * not hand-set), and the substrate-execution layer beneath the products.
+ * drw:10) made explicit, what's dependency-ready (derived from dependency
+ * state, not hand-set), and the substrate-execution layer beneath the products.
  *
  * Presentational: renders the data the parent fetched from
  * GET /coordination/roadmap. It authors no roster and writes no state.
@@ -94,7 +94,7 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
             {roadmap.reconciliation}
           </p>
           <p className="text-xs font-mono text-shadow-2 dark:text-moonlight">
-            {readyNow.length} ready now · {blockedCount} blocked by dependency state
+            {readyNow.length} dependency-ready · {blockedCount} blocked by dependency state
           </p>
         </div>
       </LemonCard>
@@ -143,7 +143,7 @@ function ReadyNowSection({ sprints }: { sprints: SprintView[] }) {
   return (
     <div className="space-y-2">
       <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
-        Ready now
+        Dependency-ready
       </p>
       <LemonCard elevation="z1">
         {sprints.length > 0 ? (
@@ -169,7 +169,7 @@ function ReadyNowSection({ sprints }: { sprints: SprintView[] }) {
           </ul>
         ) : (
           <p className="px-4 py-3 text-sm font-serif italic text-shadow-1 dark:text-moonlight">
-            No sprint is unblocked by the current dependency state.
+            No sprint is dependency-ready under the current dependency state.
           </p>
         )}
       </LemonCard>
@@ -227,12 +227,12 @@ function RosterTable({
     },
     {
       key: "blocked",
-      header: "Unblocked / waiting on",
+      header: "Dependency state",
       width: "30%",
       render: (s) =>
         s.unblocked ? (
           <LemonTag colour="muted" dot>
-            unblocked
+            dependency-ready
           </LemonTag>
         ) : (
           <span className="text-xs font-mono text-shadow-2 dark:text-moonlight">
