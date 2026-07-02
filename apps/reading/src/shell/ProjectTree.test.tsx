@@ -11,11 +11,13 @@ const {
   apiFetchMock,
   listDeliverablesMock,
   listInvestigationsMock,
+  listPeopleMock,
   openDocumentMock,
 } = vi.hoisted(() => ({
   apiFetchMock: vi.fn(),
   listDeliverablesMock: vi.fn(),
   listInvestigationsMock: vi.fn(),
+  listPeopleMock: vi.fn(),
   openDocumentMock: vi.fn(),
 }));
 
@@ -29,6 +31,11 @@ vi.mock("../lib/api", async (orig) => ({
 vi.mock("../lib/openDocument", async (orig) => ({
   ...(await orig<typeof import("../lib/openDocument")>()),
   useOpenDocument: () => openDocumentMock,
+}));
+
+vi.mock("../lib/speakApi", async (orig) => ({
+  ...(await orig<typeof import("../lib/speakApi")>()),
+  listPeople: listPeopleMock,
 }));
 
 function LocationProbe() {
@@ -72,6 +79,7 @@ beforeEach(() => {
   });
   listDeliverablesMock.mockReset().mockResolvedValue({ count: 0, deliverables: [] });
   listInvestigationsMock.mockReset().mockResolvedValue({ count: 0, investigations: [] });
+  listPeopleMock.mockReset().mockResolvedValue([]);
   openDocumentMock.mockReset();
   usePinned.getState().clear();
   useWorkspace.getState().reset();
@@ -305,5 +313,42 @@ describe("ProjectTree workflow actions", () => {
       title: "Preview memo",
     });
     expect(screen.getByTestId("location").textContent).toBe("/library");
+  });
+
+  it("loads live Speak people and opens the Speak project", async () => {
+    listPeopleMock.mockResolvedValue([
+      { id: " person-live ", name: "  Ada Lovelace  ", willBePublic: false, voiceCount: 2 },
+      { id: "person-zero", name: "Grace Hopper", willBePublic: true, voiceCount: 0 },
+      { id: " ", name: "Skipped person", willBePublic: false, voiceCount: 1 },
+      { id: "person-untitled", name: " ", willBePublic: false, voiceCount: -1 },
+    ]);
+
+    renderTree("speak");
+
+    expect(await screen.findByText("Ada Lovelace · 2 voices")).toBeTruthy();
+    expect(screen.getByText("Grace Hopper · no voices yet")).toBeTruthy();
+    expect(screen.getByText("Untitled remembrance · no voices yet")).toBeTruthy();
+    expect(screen.queryByText(/Skipped person/)).toBeNull();
+    expect(screen.getByRole("button", { name: /Recent\s*3/ })).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Ada Lovelace · 2 voices"));
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe("/speak/person-live");
+    });
+  });
+
+  it("routes Speak people on Cmd/Ctrl-click because no floating Speak panel exists", async () => {
+    listPeopleMock.mockResolvedValue([
+      { id: "person-route", name: "Route person", willBePublic: false, voiceCount: 1 },
+    ]);
+
+    renderTree("speak");
+
+    fireEvent.click(await screen.findByText("Route person · 1 voice"), { metaKey: true });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe("/speak/person-route");
+    });
+    expect(useWorkspace.getState().floatingIds).toEqual([]);
   });
 });
