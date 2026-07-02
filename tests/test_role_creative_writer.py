@@ -122,6 +122,20 @@ def test_parser_happy_path():
     assert r.uncited_blocks == ["node-2"]
 
 
+def test_parser_normalizes_block_refs_through_shared_validator():
+    raw = (
+        '{"prose_text": "The substrate compounds nonlinearly [b: node-1].", '
+        '"prose_provenance": {"0": [" node-1 ", "node-1"]}, '
+        '"uncited_blocks": [" node-2 ", "node-2"]}'
+    )
+    r = parse_creative_writer_response(
+        raw, known_block_ids={"node-1", "node-2"},
+    )
+
+    assert r.prose_provenance == {0: ["node-1"]}
+    assert r.uncited_blocks == ["node-2"]
+
+
 def test_parser_handles_markdown_fenced_json():
     raw = (
         "```json\n"
