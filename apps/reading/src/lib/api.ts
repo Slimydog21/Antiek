@@ -5,6 +5,7 @@
 // gate fails CI and the TS side breaks at the type level.
 
 import type { Event, TypedPayload } from "../generated/types";
+import { isEventFrame } from "./eventFrame";
 
 // Mirrors the FastAPI response model. Not in substrate/schemas because
 // this is an API-layer concern (the typed event itself is what gets
@@ -250,7 +251,23 @@ export async function getTrajectory(
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeTrajectoryResponse(await resp.json(), investigationId);
+}
+
+function safeTrajectoryResponse(
+  value: unknown,
+  fallbackInvestigationId: string,
+): { investigation_id: string; count: number; events: Event[] } {
+  const body = record(value);
+  const events = Array.isArray(body?.events)
+    ? body.events.filter(isEventFrame)
+    : [];
+  return {
+    investigation_id:
+      nonEmptyString(body?.investigation_id) ?? fallbackInvestigationId,
+    count: nonNegativeInteger(body?.count) ?? events.length,
+    events,
+  };
 }
 
 export async function getHealth(): Promise<{

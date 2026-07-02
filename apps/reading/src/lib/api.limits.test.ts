@@ -53,6 +53,55 @@ describe("api client numeric request bounds", () => {
 });
 
 describe("api client investigation and watch-list response boundaries", () => {
+  it("sanitizes trajectory event frames at the shared API boundary", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          investigation_id: " inv-1 ",
+          count: "bad",
+          events: [
+            {
+              event_id: "evt-valid",
+              investigation_id: "inv-1",
+              action_type: "dispatch.call",
+              payload: { action_type: "dispatch.call", provider: "openai" },
+              param_version: "v1",
+              emitted_at: "2026-07-01T00:00:00Z",
+            },
+            {
+              event_id: "evt-bad-action",
+              investigation_id: "inv-1",
+              action_type: "not.a.real.action",
+              payload: { action_type: "not.a.real.action" },
+              param_version: "v1",
+              emitted_at: "2026-07-01T00:00:01Z",
+            },
+            {
+              event_id: "evt-mismatch",
+              investigation_id: "inv-1",
+              action_type: "dispatch.call",
+              payload: { action_type: "phase.enter" },
+              param_version: "v1",
+              emitted_at: "2026-07-01T00:00:02Z",
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(getTrajectory("fallback-inv")).resolves.toMatchObject({
+      investigation_id: "inv-1",
+      count: 1,
+      events: [
+        {
+          event_id: "evt-valid",
+          action_type: "dispatch.call",
+        },
+      ],
+    });
+  });
+
   it("sanitizes investigation list rows before sidebar consumers render them", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(
