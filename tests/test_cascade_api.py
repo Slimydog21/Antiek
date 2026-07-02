@@ -141,9 +141,11 @@ def test_launch_watch_and_cost(client):
     assert len(body["researches"]) == 3
     final = _poll_until_terminal(client, sid)
     assert all(x["state"] == "done" for x in final["researches"])
-    # Cost meter reflects contract gather stub (3 researches × 2 steps × 0.01).
+    # Cost meter reflects the reuse-consuming default loop, cold pack = full
+    # work (3 researches × 3 steps × 0.01) — the branch's own pin for this
+    # default; ANTIEK_DRW_GATHER=stub would give 3 × 2 × 0.01.
     cost = client.get(f"/research/sessions/{sid}/cost").json()
-    assert cost["session_total_usd"] == pytest.approx(0.06)
+    assert cost["session_total_usd"] == pytest.approx(0.09)
     assert cost["session_total_usd"] == pytest.approx(sum(cost["per_research"].values()))
 
 

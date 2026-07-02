@@ -265,7 +265,7 @@ def test_factory_snapshot_dirs_do_not_accumulate(monkeypatch, isolated_tmpbase, 
         cr.close_prod_retrieval_substrate(s)
 
 
-def test_session_teardown_closes_substrate_freeing_disk():
+def test_session_teardown_closes_substrate_freeing_disk(monkeypatch):
     """The teardown half of the disk-reclamation fix: on completion,
     _run_to_completion must CLOSE the runner's retrieval substrate so the temp DB
     copy its connection held open (the vss-internal index copy / the pinned-inode
@@ -282,6 +282,13 @@ def test_session_teardown_closes_substrate_freeing_disk():
     restart/explicit drop. Closing the substrate's connection (not evicting the
     session object) is what reclaims the disk."""
     import asyncio
+
+    # Isolation: since the main merge, _run_to_completion also runs the Loop 1
+    # synthesis tail when a module-global runner was wired by an earlier
+    # create_app() in this process (the global is never reset). This unit probe
+    # tests the TEARDOWN half only, with fakes that do not implement the
+    # synthesis-tail session surface — pin the global to the unwired state.
+    monkeypatch.setattr(cr, "_SYNTHESIS_TAIL_RUNNER", None)
 
     closed = {"n": 0}
 
@@ -312,12 +319,16 @@ def test_session_teardown_closes_substrate_freeing_disk():
     )
 
 
-def test_teardown_never_raises_when_substrate_close_fails():
+def test_teardown_never_raises_when_substrate_close_fails(monkeypatch):
     """Graceful degradation through cleanup: if the substrate's close() raises,
     teardown must swallow it (a teardown that propagated could wedge the
     completion task / crash the background loop). The disk is then reclaimed on
     GC instead — never at the cost of an exception."""
     import asyncio
+
+    # Isolation: pin the module-global synthesis-tail runner to the unwired
+    # state (see test_session_teardown_closes_substrate_freeing_disk).
+    monkeypatch.setattr(cr, "_SYNTHESIS_TAIL_RUNNER", None)
 
     class _BadSub:
         def close(self) -> None:
