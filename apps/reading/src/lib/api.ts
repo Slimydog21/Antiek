@@ -90,6 +90,25 @@ export class ApiError extends Error {
   }
 }
 
+function malformedApiResponse(message: string): ApiError {
+  return new ApiError(message, 502, "");
+}
+
+function requireApiString(value: unknown, field: string): string {
+  const text = nonEmptyString(value);
+  if (!text) throw malformedApiResponse(`Malformed API response: ${field}`);
+  return text;
+}
+
+function safeEmittedEventResponse(value: unknown): EmittedEventResponse {
+  const body = record(value);
+  if (!body) throw malformedApiResponse("Malformed API response: body");
+  return {
+    event_id: requireApiString(body.event_id, "event_id"),
+    action_type: requireApiString(body.action_type, "action_type"),
+  };
+}
+
 function assertNonNegativeSafeInteger(value: number, field: string): void {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new RangeError(`${field} must be a non-negative safe integer`);
@@ -118,7 +137,7 @@ export async function postTypedEvent(
       body,
     );
   }
-  return resp.json();
+  return safeEmittedEventResponse(await resp.json());
 }
 
 export interface AIUndoRequest {
@@ -142,7 +161,7 @@ export async function undoAiAction(
       body,
     );
   }
-  return resp.json();
+  return safeEmittedEventResponse(await resp.json());
 }
 
 export async function getTrajectory(
@@ -226,16 +245,6 @@ export interface StartInvestigationResponse {
   investigation_id: string;
   status: string;
   start_event_id: string;
-}
-
-function malformedApiResponse(message: string): ApiError {
-  return new ApiError(message, 502, "");
-}
-
-function requireApiString(value: unknown, field: string): string {
-  const text = nonEmptyString(value);
-  if (!text) throw malformedApiResponse(`Malformed API response: ${field}`);
-  return text;
 }
 
 /** POST /investigations — kick off a cold research investigation. */
