@@ -87,6 +87,16 @@ beforeEach(() => {
         loop_3_all_evidence_passed: "true",
       });
     }
+    if (path.startsWith("/billing/summary/__operator__/")) {
+      return okJson({
+        period: " 2026-07 ",
+        free_tokens_consumed: "1234.9",
+        free_tokens_remaining: "4998765.1",
+        total_margin_usd: "0.025",
+        total_billable_usd: "0.275",
+        record_count: "2.9",
+      });
+    }
     if (path.startsWith("/payouts/transfers")) {
       return okJson({
         transfers: [
@@ -295,6 +305,14 @@ describe("OperatorDashboard", () => {
     expect(
       screen.getByText("Training evidence 1/3 · evidence incomplete."),
     ).toBeTruthy();
+    expect(screen.getByText("Billing usage")).toBeTruthy();
+    expect(
+      screen.getByText("2026-07 · billable $0.2750 · margin $0.0250"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Free tier 1,234 consumed · 4,998,765 remaining."),
+    ).toBeTruthy();
+    expect(screen.getByText("2 usage records aggregated.")).toBeTruthy();
     expect(screen.getByText("Federation status")).toBeTruthy();
     expect(screen.getByText("CONFIGURED · 2 partners")).toBeTruthy();
     expect(
@@ -308,6 +326,7 @@ describe("OperatorDashboard", () => {
       .getAllByRole("link", { name: "open →" })
       .map((link) => link.getAttribute("href"));
     expect(openLinks).toContain("/coordination");
+    expect(openLinks).toContain("/billing");
     expect(openLinks).toContain("/privacy");
     expect(openLinks).toContain("/marketplace");
     expect(openLinks).toContain("/federation");

@@ -33,6 +33,16 @@ interface CompositeSnapshot {
   marketplace: MarketplaceSummary | null;
   federation: FederationSummary | null;
   trust: TrustSummary | null;
+  billing: BillingSummary | null;
+}
+
+interface BillingSummary {
+  period: string;
+  free_tokens_consumed: number;
+  free_tokens_remaining: number;
+  total_margin_usd: string;
+  total_billable_usd: string;
+  record_count: number;
 }
 
 interface TrustSummary {
@@ -174,6 +184,11 @@ function centsToUsd(value: unknown): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function fourDecimalUsd(value: string): string {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? `$${parsed.toFixed(4)}` : "$0.0000";
+}
+
 function decimalUsd(value: string): string {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? `$${parsed.toFixed(2)}` : "$0.00";
@@ -245,6 +260,27 @@ function safeFederationSummary(value: unknown): FederationSummary {
       body?.require_opt_in_for_outbound_citations === false ? false : true,
     require_attribution_for_outbound_citations:
       body?.require_attribution_for_outbound_citations === false ? false : true,
+  };
+}
+
+function safeUsdString(value: unknown): string {
+  return String(nonNegativeFiniteNumber(value) ?? 0);
+}
+
+function currentPeriod(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function safeBillingSummary(value: unknown): BillingSummary {
+  const body = record(value);
+  return {
+    period: nonEmptyString(body?.period) ?? currentPeriod(),
+    free_tokens_consumed: safeCount(body?.free_tokens_consumed),
+    free_tokens_remaining: safeCount(body?.free_tokens_remaining),
+    total_margin_usd: safeUsdString(body?.total_margin_usd),
+    total_billable_usd: safeUsdString(body?.total_billable_usd),
+    record_count: safeCount(body?.record_count),
   };
 }
 
@@ -519,6 +555,7 @@ export default function OperatorDashboard() {
     marketplace: null,
     federation: null,
     trust: null,
+    billing: null,
   });
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -536,6 +573,7 @@ export default function OperatorDashboard() {
         marketplaceResp,
         federationResp,
         trustResp,
+        billingResp,
       ] = await Promise.all([
         apiFetch("/publishers"),
         apiFetch("/stats").catch(() => null),
@@ -545,6 +583,7 @@ export default function OperatorDashboard() {
         apiFetch("/marketplace/snapshot").catch(() => null),
         apiFetch("/federation/config").catch(() => null),
         apiFetch("/trust-center").catch(() => null),
+        apiFetch(`/billing/summary/__operator__/${currentPeriod()}`).catch(() => null),
       ]);
 
       if (!publishersResp.ok) {
@@ -585,6 +624,11 @@ export default function OperatorDashboard() {
         trust = safeTrustSummary(await trustResp.json());
       }
 
+      let billing: BillingSummary | null = null;
+      if (billingResp?.ok) {
+        billing = safeBillingSummary(await billingResp.json());
+      }
+
       setSnapshot({
         stats,
         pendingDeletions,
@@ -593,6 +637,7 @@ export default function OperatorDashboard() {
         marketplace,
         federation,
         trust,
+        billing,
       });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -776,10 +821,60 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
         </div>
       </div>
       <CoordinationTile coordination={snapshot.coordination} />
+      <BillingTile billing={snapshot.billing} />
       <TrustTile trust={snapshot.trust} />
       <MarketplaceTile marketplace={snapshot.marketplace} />
       <FederationTile federation={snapshot.federation} />
     </section>
+  );
+}
+
+function BillingTile({ billing }: { billing: BillingSummary | null }) {
+  if (!billing) {
+    return (
+      <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className="text-sm font-serif text-ink dark:text-bright">
+            Billing usage
+          </h3>
+          <Link
+            to="/billing"
+            className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+          >
+            open →
+          </Link>
+        </div>
+        <p className="mt-2 text-xs italic text-shadow-1 dark:text-moonlight">
+          Billing summary unavailable.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-3 space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-sm font-serif text-ink dark:text-bright">
+          Billing usage
+        </h3>
+        <Link
+          to="/billing"
+          className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+        >
+          open →
+        </Link>
+      </div>
+      <p className="text-xs font-mono text-ink dark:text-bright">
+        {billing.period} · billable {fourDecimalUsd(billing.total_billable_usd)} · margin{" "}
+        {fourDecimalUsd(billing.total_margin_usd)}
+      </p>
+      <p className="text-xs text-ink-soft dark:text-starlight">
+        Free tier {billing.free_tokens_consumed.toLocaleString()} consumed ·{" "}
+        {billing.free_tokens_remaining.toLocaleString()} remaining.
+      </p>
+      <p className="text-xs text-ink-soft dark:text-starlight">
+        {billing.record_count.toLocaleString()} usage records aggregated.
+      </p>
+    </div>
   );
 }
 
