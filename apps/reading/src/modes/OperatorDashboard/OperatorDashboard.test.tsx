@@ -68,6 +68,25 @@ beforeEach(() => {
         ],
       });
     }
+    if (path === "/trust-center") {
+      return okJson({
+        differential_privacy_epsilon_budgets: {
+          skill_invocation_frequency: "2",
+          source_tier_preference_signals: Number.NaN,
+          query_content_telemetry: "0.5",
+          " ": 9,
+        },
+        deletion_sla_days: "30.9",
+        substrate_controls: [" encryption at rest ", "", 42, " policy gating "],
+        compliance_frameworks: [" GDPR ", null],
+        loop_3_evidence_status: {
+          trajectory_volume: true,
+          sft_readiness: "yes",
+          validated_reward: false,
+        },
+        loop_3_all_evidence_passed: "true",
+      });
+    }
     if (path.startsWith("/payouts/transfers")) {
       return okJson({
         transfers: [
@@ -268,6 +287,14 @@ describe("OperatorDashboard", () => {
       ),
     ).toBeTruthy();
     expect(screen.getByText("Signal: publisher claims need work.")).toBeTruthy();
+    expect(screen.getByText("Privacy controls")).toBeTruthy();
+    expect(
+      screen.getByText("Privacy budget 2.50/10.00 · deletion SLA 30 days"),
+    ).toBeTruthy();
+    expect(screen.getByText("2 controls · 1 frameworks.")).toBeTruthy();
+    expect(
+      screen.getByText("Training evidence 1/3 · evidence incomplete."),
+    ).toBeTruthy();
     expect(screen.getByText("Federation status")).toBeTruthy();
     expect(screen.getByText("CONFIGURED · 2 partners")).toBeTruthy();
     expect(
@@ -281,6 +308,7 @@ describe("OperatorDashboard", () => {
       .getAllByRole("link", { name: "open →" })
       .map((link) => link.getAttribute("href"));
     expect(openLinks).toContain("/coordination");
+    expect(openLinks).toContain("/privacy");
     expect(openLinks).toContain("/marketplace");
     expect(openLinks).toContain("/federation");
     expect(
