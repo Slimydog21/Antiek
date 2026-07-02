@@ -27,6 +27,7 @@ from runtime.db_lock import connect_write
 from substrate.graph.ops import insert_chunk, insert_document, insert_node
 from substrate.graph.schema import init_database_at_path
 from substrate.write.outline_block import OutlineBlock, place_block, place_user_authored_block
+import substrate.write.trace as trace_module
 from substrate.write.trace import resolve_trace_target
 
 
@@ -75,6 +76,15 @@ def _read(path):
 
 
 # ── M4 — the mandatory gated-source-no-leak gate ───────────────────
+
+
+def test_trace_module_names_live_book_reader_surface():
+    doc = trace_module.__doc__ or ""
+
+    assert "/read/:documentId" in doc
+    assert "BookReader" in doc
+    assert "./scripts/canonical_verify.sh write-trace-to-source" in doc
+    assert "No Read/BookReader mode exists yet" not in doc
 
 
 def test_public_domain_source_opens_at_span(db):

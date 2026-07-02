@@ -17,11 +17,11 @@ servability gate. A brainstorm-originated block traces to its **session**
 (labeled, no invented document); a deleted source is **unavailable**,
 stated plainly.
 
-What is NOT here — and is honestly blocked on DRW SPR-10: the shared
-reading surface that *renders* the target (highlights + rabbit holes +
-return-to-writing). No Read/BookReader mode exists yet. This module
-computes the target; the reader that opens it is the downstream. The
-editor already emits the intent (``apps/reading/.../traceIntent.ts``).
+What is NOT here: rendering. The Read ``BookReader`` now exists at
+``/read/:documentId`` and the Write surface routes servable trace targets
+there (covered by ``./scripts/canonical_verify.sh write-trace-to-source``).
+This module computes the target; the reader renders it downstream. The editor
+emits the intent (``apps/reading/.../traceIntent.ts``).
 """
 
 from __future__ import annotations
