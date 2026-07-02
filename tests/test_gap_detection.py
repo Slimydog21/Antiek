@@ -32,7 +32,9 @@ from substrate.research_bridge.gap import (
     GapCluster,
     _parse_cascade_response,
     _parse_cluster_response,
+    record_prompt_answer,
 )
+from substrate.research_bridge.schema import init_research_bridge
 
 
 class _ConstEmbedding:
@@ -304,3 +306,51 @@ def test_research_bridge_cascade_parser_validates_cluster_id_with_shared_helper(
     assert grounding_drops == 0
     assert len(prompts) == 1
     assert prompts[0].cluster_id == "rgcl-1"
+
+
+def test_research_bridge_prompt_answers_require_existing_documents(db):
+    con = connect_write(db, purpose="seed")
+    try:
+        init_research_bridge(con)
+        con.execute(
+            "INSERT INTO research_gap_runs "
+            "(run_id, scope_block_ids, scope_question_ids, cluster_model_id) "
+            "VALUES ('rgrun-1', '[]', '[]', 'test')"
+        )
+        con.execute(
+            "INSERT INTO research_gap_prompts "
+            "(prompt_id, run_id, order_index, prompt_text, target_provider) "
+            "VALUES ('rgpr-1', 'rgrun-1', 0, 'Research the source answer.', 'grok')"
+        )
+
+        with pytest.raises(ValueError, match="does not exist"):
+            record_prompt_answer(
+                con,
+                prompt_id="rgpr-1",
+                answer_document_id="doc-fabricated",
+            )
+        with pytest.raises(ValueError, match="non-empty"):
+            record_prompt_answer(
+                con,
+                prompt_id="rgpr-1",
+                answer_document_id="   ",
+            )
+
+        con.execute(
+            "INSERT INTO documents (document_id, source_tier, document_type) "
+            "VALUES ('doc-answer-1', 3, 'external_deep_research')"
+        )
+        answer_id = record_prompt_answer(
+            con,
+            prompt_id="rgpr-1",
+            answer_document_id=" doc-answer-1 ",
+        )
+        row = con.execute(
+            "SELECT answer_document_id FROM research_gap_prompt_answers "
+            "WHERE answer_id = ?",
+            [answer_id],
+        ).fetchone()
+    finally:
+        con.close()
+
+    assert row == ("doc-answer-1",)
