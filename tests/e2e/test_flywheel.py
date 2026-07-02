@@ -20,46 +20,50 @@ green):
       - the SPR-06 thread reconstruction + no-duplicate assertion
         (``reconstruct_thread`` / ``assert_single_canonical_entity``).
       - the seam-#4 servability gate (``substrate.seams.servability_gate``) —
-        the speak→read publish-gate translation, decoupled from substrate.books.
+        the speak→read publish-gate translation.
+      - the live Speak public-publish → Read serve path
+        (``substrate.speak.publish`` → ``substrate.books.serve``), which
+        persists a published biography into ``documents`` and serves it only
+        after the Speak publish gate is stamped.
 
   * STUB (a product's real internals are unbuilt; the test conforms the
     contract and is structured so the real module drops in without a rewrite):
       - Research's ``promote_insight`` — we use a fixture ``InsightNodeContract``
         node, not a live DB promotion. The contract is the same one the real
         promoter conforms to (``tests/test_contracts_conformance.py``).
-      - Read's corpus surface (DRW SPR-10 / ``substrate/books/``) — UNMERGED on
-        this base. ``import substrate.books`` raises ``ModuleNotFoundError``
-        here (verified). So the **served-back-in-Read leg is proven at the
-        CONTRACT level**: we assert ``ServableEntryContract.serves_full_text``
-        through the seam-#4 ``servability_gate`` (both decoupled from
-        substrate.books), and mark plainly that the full live Read-serving leg
-        lands when Read's ``substrate/books/`` merges.
-      - Write's block repository (Write SPR-03) and Speak's interview/publish
-        paths — represented by the contracts the seams carry; no live module.
+      - Write's block repository (Write SPR-03) — represented by the contract
+        shape the seam carries.
 
 So the honest claim this test warrants is: *the integration substrate is sound
 and conformance-gated; one entity traverses the committed flywheel hops as one
-node with unbroken provenance.* NOT "the full product flywheel works end to end"
-— most product internals are unbuilt.
+node with unbroken provenance, and the Speak→Read public biography leg now
+lands in the real Read corpus serve path.*
 
-HERMETIC: no DB writes, no network, no live LLM. The flywheel is emitted as a
-list of seam events in the exact ``substrate.event_log.trajectory`` row shape
-(event_id / action_type / emitted_at / payload-with-entity-reference) — the
-same shape SPR-06's ``test_thread_no_duplicate`` uses — so a live caller that
-passes real ``trajectory()`` rows drops in unchanged.
+HERMETIC: temp DB writes only, no network, no live LLM. The thread flywheel is
+emitted as a list of seam events in the exact
+``substrate.event_log.trajectory`` row shape (event_id / action_type /
+emitted_at / payload-with-entity-reference) — the same shape SPR-06's
+``test_thread_no_duplicate`` uses — so a live caller that passes real
+``trajectory()`` rows drops in unchanged.
 """
 
 from __future__ import annotations
 
+from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 import pytest
 
+from runtime.db_lock import connect_write
+from substrate.books.serve import serve_full_text
 # ── REAL integration substrate (SPR-01 / SPR-03 / SPR-06) ────────────────────
 from substrate.contracts.interviewer import ConsentContract, InterviewerResultContract
 from substrate.contracts.nodes import InsightNodeContract
 from substrate.contracts.outline_block import OutlineBlockContract
 from substrate.contracts.servable import ServableEntryContract
+from substrate.graph.ops import insert_deliverable, insert_document, insert_section
+from substrate.graph.schema import init_database
 from substrate.seams import (
     ReadToWriteSeam,
     ResearchToReadSeam,
@@ -72,6 +76,9 @@ from substrate.seams.thread import (
     assert_single_canonical_entity,
     reconstruct_thread,
 )
+from substrate.speak import contributor, project, publish, publish_gate, subject_consent
+from substrate.speak.schema import ensure_speak_schema
+from substrate.speak.third_party import record_claim
 
 # We reuse the SPR-03 per-seam no-copy assertion DIRECTLY (diligence #4): the
 # e2e same-node-id check IS that per-seam guard applied across every hop.
@@ -82,6 +89,19 @@ from tests.test_seam_no_copy import _assert_no_copy
 CANONICAL_INSIGHT = "insight-7f3a9c"
 CANONICAL_TEXT = "Werner traded antiques before software."
 INVESTIGATION = "inv-werner-1"
+
+
+@pytest.fixture()
+def flywheel_db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
+    """A hermetic graph DB + event directory for the live Speak→Read leg."""
+    events_dir = tmp_path / "events"
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(events_dir))
+    monkeypatch.setenv("ANTIEK_SPEAK_PUBLIC_PUBLISHING", "1")
+    db_path = str(tmp_path / "flywheel.duckdb")
+    with connect_write(db_path, purpose="flywheel_e2e_setup") as con:
+        init_database(con)
+        ensure_speak_schema(con)
+    return db_path
 
 
 # ── Step 0 — Research creates the insight (STUB: fixture node, not a live promote)
@@ -126,6 +146,59 @@ def _seam_event(
         "emitted_at": emitted_at,
         "payload": payload,
     }
+
+
+def _seed_public_biography_ready_project(con: Any) -> tuple[str, str]:
+    """Create the minimum live Speak + Write state for a public biography.
+
+    Returns ``(project_id, deliverable_id)``. The project passes every public
+    gate; the deliverable carries the prose that Read must later serve.
+    """
+    p = project.create_project(
+        con,
+        title="Werner's biography",
+        subject_ref="werner",
+        subject_status="deceased",
+        publish_intent="will_be_public",
+    )
+    subject_consent.record_subject_consent(
+        con,
+        project_id=p.project_id,
+        subject_ref="werner",
+        subject_status="deceased",
+        consent_granted=False,
+        rationale="Subject deceased; public biography may publish after review.",
+    )
+    contributor.map_contributor(
+        con,
+        interview_id="iv-werner-1",
+        project_id=p.project_id,
+        display_name="Werner interviewee",
+    )
+    claim = record_claim(
+        con,
+        project_id=p.project_id,
+        interview_id="iv-werner-1",
+        text=CANONICAL_TEXT,
+        about_subject=True,
+        subject_ref="werner",
+    )
+    publish_gate.operator_attest_claim(con, claim.claim_id, project_id=p.project_id)
+
+    deliverable_id = insert_deliverable(
+        con,
+        title="Werner's biography",
+        deliverable_kind="biography_section",
+        investigation_root_id=p.project_id,
+    )
+    insert_section(
+        con,
+        deliverable_id=deliverable_id,
+        section_index=0,
+        title="The antiques years",
+        prose_text=CANONICAL_TEXT,
+    )
+    return p.project_id, deliverable_id
 
 
 # ── Fixtures: the committed flywheel, emitted as REAL seam contracts + events ──
@@ -349,16 +422,19 @@ def test_same_node_id_at_every_hop(
 
 def test_platform_authored_gate_fires_speak_derived_serves_only_after_publish_gate(
     flywheel_seams: dict[str, Any],
+    flywheel_db: str,
 ) -> None:
     """Acceptance: the platform_authored gate fires — a speak-derived doc only
     serves full text AFTER the publish gate passes (seam #4). This is the
-    served-back-in-Read leg, proven at the CONTRACT level via the seam-#4
-    ``servability_gate`` (decoupled from substrate.books, which is UNMERGED on
-    this base — the full live Read-serving leg lands when Read's
-    ``substrate/books/`` merges; honesty #1).
+    served-back-in-Read leg through the LIVE path:
+    ``substrate.speak.publish.publish`` persists a ``documents`` row with
+    ``provenance_class='speak_derived'`` and
+    ``speak_publish_gate_passed=True``; ``substrate.books.serve.serve_full_text``
+    then serves that body.
 
-    The gate decision is deny-by-default and routed through the seam, not
-    Read's internals."""
+    The gate decision remains deny-by-default and routed through the seam.
+    A forged Speak-derived public contribution without the persisted publish
+    proof gets only a snippet."""
     served_entry = flywheel_seams["served_entry"]
     consent = flywheel_seams["consent"]
     s_speak2read = flywheel_seams["seams"]["speak_to_read"]
@@ -372,17 +448,51 @@ def test_platform_authored_gate_fires_speak_derived_serves_only_after_publish_ga
         served_entry, publish_gate_passed=s_speak2read.publish_gate_passed
     ) is True
 
-    # NEGATIVE (the gate must MATTER): a speak_derived doc whose publish gate
-    # did NOT pass is NOT served full text. A gate that served regardless would
-    # guard nothing.
-    assert servability_gate.serves_full_text(
-        served_entry, publish_gate_passed=False
-    ) is False
-    # And the stamped entry's own derivation agrees (deny-by-default).
-    gated = servability_gate.gate_speak_derived_entry(
-        served_entry, publish_gate_passed=False
-    )
-    assert gated.serves_full_text is False
+    with connect_write(flywheel_db, purpose="flywheel_e2e_publish") as con:
+        project_id, deliverable_id = _seed_public_biography_ready_project(con)
+        result = publish.publish(
+            con,
+            project_id=project_id,
+            deliverable_id=deliverable_id,
+            subject_ref="werner",
+            ad_revenue_usd=Decimal("0"),
+        )
+        served = serve_full_text(con, result.publication_id)
+
+        assert result.served is True
+        assert result.content_class == publish.PUBLIC_BIOGRAPHY_CONTENT_CLASS
+        assert served.servable is True
+        assert served.reason == "servable"
+        assert served.full_text and CANONICAL_TEXT in served.full_text
+        assert served.document_id == result.publication_id
+
+        metadata = con.execute(
+            "SELECT metadata FROM documents WHERE document_id = ?",
+            [result.publication_id],
+        ).fetchone()[0]
+        assert '"provenance_class": "speak_derived"' in metadata
+        assert '"speak_publish_gate_passed": true' in metadata
+
+        # NEGATIVE (the gate must MATTER): a forged speak_derived public
+        # contribution without a passed publish gate is not served full text.
+        insert_document(
+            con,
+            document_id="doc-forged-speak-bio",
+            source_tier=1,
+            document_type="book",
+            title="Forged biography",
+            raw_text="This body must not serve without the Speak gate.",
+            content_class=publish.PUBLIC_BIOGRAPHY_CONTENT_CLASS,
+            metadata={
+                "provenance_class": "speak_derived",
+                "speak_publish_gate_passed": False,
+            },
+        )
+        denied = serve_full_text(con, "doc-forged-speak-bio")
+        assert denied.servable is False
+        assert denied.full_text is None
+        assert denied.snippet == "This body must not serve without the Speak gate."
+        assert denied.reason == "speak_publish_gate_required"
 
 
 def test_speak_claim_leg_is_its_own_thread_by_reference(
