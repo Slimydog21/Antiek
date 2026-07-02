@@ -34,8 +34,10 @@ export default function Replay() {
   const [error, setError] = useState<string | null>(null);
   const [wsConnected, setWsConnected] = useState<boolean>(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const loadSeq = useRef(0);
 
   const reload = useCallback(async () => {
+    const seq = ++loadSeq.current;
     if (!investigationId) {
       setEvents([]);
       setLoading(false);
@@ -52,12 +54,19 @@ export default function Replay() {
           `GET /trajectory failed: HTTP ${resp.status}`,
         );
       }
-      setEvents(safeTrajectoryEvents(await resp.json()));
+      const nextEvents = safeTrajectoryEvents(await resp.json());
+      if (loadSeq.current === seq) {
+        setEvents(nextEvents);
+      }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-      setEvents([]);
+      if (loadSeq.current === seq) {
+        setError(e instanceof Error ? e.message : String(e));
+        setEvents([]);
+      }
     } finally {
-      setLoading(false);
+      if (loadSeq.current === seq) {
+        setLoading(false);
+      }
     }
   }, [investigationId]);
 
