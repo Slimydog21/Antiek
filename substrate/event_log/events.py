@@ -74,13 +74,15 @@ ANTIEK_HOME                   override base dir (defaults to ~/.antiek)
 
 from __future__ import annotations
 
+import argparse
+import contextlib
 import json
 import os
 import sys
 import time
 import traceback
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -96,13 +98,14 @@ try:
         EVENT_SCHEMA_VERSION,
         ActionType,
         Event,
-        TypedPayload,
     )
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(_here))  # substrate/
-    from constants import ANTIEK_PARAM_VERSION  # type: ignore[no-redef]
-    from schemas.events import (  # type: ignore[no-redef]
+    from constants import (  # type: ignore[no-redef,import-not-found]
+        ANTIEK_PARAM_VERSION,
+    )
+    from schemas.events import (  # type: ignore[no-redef,import-not-found]
         DEFAULT_POLICY_ID,
         EVENT_SCHEMA_VERSION,
         ActionType,
@@ -148,7 +151,7 @@ def _parquet_path(investigation_id: str, *, events_dir: str | None = None) -> st
 # ---------------------------------------------------------------------------
 
 
-def _safe(fn, *args, **kwargs):
+def _safe(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     """Telemetry must never break a real synthesis."""
     try:
         return fn(*args, **kwargs)
@@ -169,7 +172,7 @@ def _events_disabled() -> bool:
     return os.environ.get("ANTIEK_EVENTS_DISABLED", "").lower() in ("1", "true", "yes")
 
 
-def _append_jsonl(path: str, row: dict[str, Any]):
+def _append_jsonl(path: str, row: dict[str, Any]) -> None:
     """Append a single JSON line. Open in 'a' mode — atomic at OS level for
     single-line writes ≤ PIPE_BUF. We never write multi-line payloads."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -335,10 +338,10 @@ class EventEmitter:
             enabled=not _events_disabled(),
         )
 
-    def set_synthesis_id(self, synthesis_id: str):
+    def set_synthesis_id(self, synthesis_id: str) -> None:
         self.synthesis_id = synthesis_id
 
-    def set_document_id(self, document_id: str | None):
+    def set_document_id(self, document_id: str | None) -> None:
         """Convenience for wrestling-loop callers entering a per-document span."""
         self.default_document_id = document_id
 
@@ -489,8 +492,8 @@ def seal_investigation(
         return pq
 
     try:
-        import pyarrow as pa  # type: ignore[import]
-        import pyarrow.parquet as pq_writer  # type: ignore[import]
+        import pyarrow as pa  # type: ignore[import-not-found]
+        import pyarrow.parquet as pq_writer  # type: ignore[import-not-found]
     except ImportError:
         print(
             "events.seal_investigation: pyarrow not installed; "
@@ -546,7 +549,7 @@ def trajectory(
     rows: list[dict[str, Any]] = []
     if os.path.exists(pq):
         try:
-            import pyarrow.parquet as pq_reader  # type: ignore[import]
+            import pyarrow.parquet as pq_reader
             table = pq_reader.read_table(pq)
             rows = table.to_pylist()
         except ImportError:
@@ -563,12 +566,13 @@ def trajectory(
                 except json.JSONDecodeError:
                     continue
 
+    if len(rows) == 1 and not isinstance(rows[0].get("payload"), str):
+        return rows
+
     for r in rows:
         if isinstance(r.get("payload"), str):
-            try:
+            with contextlib.suppress(TypeError, ValueError):
                 r["payload"] = json.loads(r["payload"])
-            except (TypeError, ValueError):
-                pass
 
     rows.sort(key=lambda r: (r.get("emitted_at") or "", r.get("event_id") or ""))
     return rows
@@ -614,9 +618,9 @@ def validate_trajectory(
     fields. Returns a report dict; non-zero ``issues`` count = problems found.
     """
     rows = trajectory(investigation_id, events_dir=events_dir)
-    seen_ids: set = set()
+    seen_ids: set[str] = set()
     issues: list[str] = []
-    policies: set = set()
+    policies: set[str] = set()
     for i, r in enumerate(rows):
         eid = r.get("event_id")
         if not eid:
@@ -627,7 +631,7 @@ def validate_trajectory(
             issues.append(f"row {i}: missing action_type")
         if r.get("policy_id"):
             policies.add(r["policy_id"])
-    seen2: set = set()
+    seen2: set[str] = set()
     for i, r in enumerate(rows):
         eid = r.get("event_id")
         parent = r.get("parent_event_id")
@@ -650,7 +654,7 @@ def validate_trajectory(
 # ---------------------------------------------------------------------------
 
 
-def _cmd_emit(args):
+def _cmd_emit(args: argparse.Namespace) -> None:
     payload = json.loads(args.payload) if args.payload else None
     eid = log_event(
         args.investigation_id, args.action_type,
@@ -662,29 +666,28 @@ def _cmd_emit(args):
     print(eid or "<failed-or-disabled>")
 
 
-def _cmd_trajectory(args):
+def _cmd_trajectory(args: argparse.Namespace) -> None:
     print(json.dumps(trajectory(args.investigation_id, events_dir=args.events_dir),
                      indent=2, default=str))
 
 
-def _cmd_counts(args):
+def _cmd_counts(args: argparse.Namespace) -> None:
     print(json.dumps(action_counts(args.investigation_id, events_dir=args.events_dir),
                      indent=2))
 
 
-def _cmd_seal(args):
+def _cmd_seal(args: argparse.Namespace) -> None:
     out = seal_investigation(args.investigation_id, events_dir=args.events_dir,
                              delete_jsonl=not args.keep_jsonl)
     print(out or "<nothing-to-seal>")
 
 
-def _cmd_validate(args):
+def _cmd_validate(args: argparse.Namespace) -> None:
     print(json.dumps(validate_trajectory(args.investigation_id, events_dir=args.events_dir),
                      indent=2))
 
 
-def main():
-    import argparse
+def main() -> None:
     p = argparse.ArgumentParser(description="Antiek typed event log (Parquet trajectory)")
     sub = p.add_subparsers(dest="cmd", required=True)
 

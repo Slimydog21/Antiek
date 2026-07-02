@@ -70,10 +70,9 @@ def test_upstream_provider_error_envelope(cascade_client, monkeypatch):
 
 
 def test_timeout_envelope(cascade_client, monkeypatch):
-    import asyncio
 
     def _timeout(problem: str, max_depth: int):
-        raise asyncio.TimeoutError()
+        raise TimeoutError()
 
     monkeypatch.setattr(cr, "_decompose", _timeout)
     r = cascade_client.post("/research/plans", json={"problem": "P"})
