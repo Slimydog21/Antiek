@@ -131,6 +131,24 @@ describe("ChaseThread — reserved-id reuse (M2)", () => {
     expect(recordSpawnMock).toHaveBeenCalledWith("inv-fresh", "inv-parent");
   });
 
+  it("encodes the launched child id before opening it in the main research view", async () => {
+    startInvestigationMock.mockResolvedValue({
+      investigation_id: " inv dirty/fresh ",
+      status: "in_progress",
+      start_event_id: "e2",
+    });
+    renderChase({
+      spawnContext: "an unflagged passage",
+      parentInvestigationId: "inv-parent",
+    });
+
+    fireEvent.click(screen.getByText("Follow this"));
+    await screen.findByText(/following the thread/i);
+    fireEvent.click(screen.getByRole("button", { name: /open in main view/i }));
+
+    expect(navigateMock).toHaveBeenCalledWith("/inv/inv%20dirty%2Ffresh");
+  });
+
   it("surfaces malformed launched ids instead of recording a child", async () => {
     startInvestigationMock.mockResolvedValue({
       investigation_id: " ",
