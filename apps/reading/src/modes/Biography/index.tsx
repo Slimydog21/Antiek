@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import Werner from "../../brand/Werner";
 import { LemonButton } from "../../components/lemon";
 import { startInvestigation } from "../../lib/api";
+import { requireInvestigationId } from "../../lib/investigationData";
 import {
   createBiography,
   makeShareLink,
@@ -60,8 +61,9 @@ export default function Biography() {
         context:
           "A biography: gather what is known, written, and remembered about this person.",
       });
+      const investigationId = requireInvestigationId(research.investigation_id);
       const comp = await createBiography({
-        investigationId: research.investigation_id,
+        investigationId,
         subjectName: trimmed,
       });
       setComposed(comp);

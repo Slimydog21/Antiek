@@ -50,7 +50,7 @@ import Biography from "./index";
 
 beforeEach(() => {
   startInvestigationMock.mockReset().mockResolvedValue({
-    investigation_id: "inv-bio-1",
+    investigation_id: " inv-bio-1 ",
     status: "in_progress",
     start_event_id: "ev-1",
   });
@@ -127,6 +127,21 @@ describe("Biography landing (SPR-11 M1)", () => {
     fireEvent.click(screen.getByRole("button", { name: /start a biography/i }));
     expect(await screen.findByRole("alert")).toBeTruthy();
     // Did not advance to the onboarding (no "started" headline).
+    expect(screen.queryByTestId("biography-surfaces")).toBeNull();
+  });
+
+  it("shows an honest failure when the research start returns a malformed id", async () => {
+    startInvestigationMock.mockResolvedValue({
+      investigation_id: " ",
+      status: "in_progress",
+      start_event_id: "ev-1",
+    });
+    mount();
+    const input = screen.getByLabelText(/whose biography/i);
+    fireEvent.change(input, { target: { value: "Dad" } });
+    fireEvent.click(screen.getByRole("button", { name: /start a biography/i }));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(createBiographyMock).not.toHaveBeenCalled();
     expect(screen.queryByTestId("biography-surfaces")).toBeNull();
   });
 });
