@@ -99,4 +99,83 @@ describe("fetchFill", () => {
       { position: "top", kind: "house", house: null, revenue_usd_cents: 0 },
     ]);
   });
+
+  it("sanitizes live slot fills before rendering or telemetry", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          slot_id: " slot:doc-1:p4:top ",
+          document_id: " doc-1 ",
+          page_index: "4",
+          position: "top",
+          kind: "ad",
+          ad: {
+            inventory_id: " inv-1 ",
+            advertiser_display_name: "  Vertical SaaS Inc.  ",
+            creative_url: "  https://example.com/c.png  ",
+            landing_url: "  https://example.com/?ref=antiek  ",
+          },
+          house: { title: "ignored" },
+          revenue_usd_cents: "120",
+        }),
+      }) as Response),
+    );
+
+    const result = await fetchFill({
+      lens: "read",
+      documentId: "doc-1",
+      pageIndex: 4,
+      positions: ["top"],
+    });
+
+    expect(result).toEqual({
+      served: true,
+      fills: [
+        {
+          slot_id: "slot:doc-1:p4:top",
+          document_id: "doc-1",
+          page_index: undefined,
+          position: "top",
+          kind: "ad",
+          ad: {
+            inventory_id: "inv-1",
+            advertiser_display_name: "Vertical SaaS Inc.",
+            creative_url: "https://example.com/c.png",
+            landing_url: "https://example.com/?ref=antiek",
+          },
+          house: null,
+          revenue_usd_cents: 0,
+        },
+      ],
+    });
+  });
+
+  it("falls back to neutral house when a response is for the wrong edge", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          position: "bottom",
+          kind: "ad",
+          ad: {
+            inventory_id: "inv-1",
+            advertiser_display_name: "Advertiser",
+            creative_url: "https://example.com/c.png",
+            landing_url: "https://example.com/",
+          },
+          revenue_usd_cents: 120,
+        }),
+      }) as Response),
+    );
+
+    await expect(
+      fetchFill({ lens: "read", documentId: "doc-1", pageIndex: 4, positions: ["top"] }),
+    ).resolves.toEqual({
+      served: false,
+      fills: [{ position: "top", kind: "house", house: null, revenue_usd_cents: 0 }],
+    });
+  });
 });

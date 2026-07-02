@@ -84,10 +84,82 @@ function houseFill(position: BorderPosition): SlotFill {
   return { position, kind: "house", house: null, revenue_usd_cents: 0 };
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
 function safePageIndex(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
     ? value
     : null;
+}
+
+function safeMoneyCents(value: unknown): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : 0;
+}
+
+function safeCreative(value: unknown): AdCreative | null {
+  const creative = record(value);
+  if (!creative) return null;
+  const inventoryId = nonEmptyString(creative.inventory_id);
+  const advertiser = nonEmptyString(creative.advertiser_display_name);
+  const creativeUrl = nonEmptyString(creative.creative_url);
+  const landingUrl = nonEmptyString(creative.landing_url);
+  if (!inventoryId || !advertiser || !creativeUrl || !landingUrl) return null;
+  return {
+    inventory_id: inventoryId,
+    advertiser_display_name: advertiser,
+    creative_url: creativeUrl,
+    landing_url: landingUrl,
+  };
+}
+
+function safeHousePromo(value: unknown): HousePromo | null {
+  if (value == null) return null;
+  const house = record(value);
+  if (!house) return null;
+  return {
+    promoted_document_id: nullableString(house.promoted_document_id),
+    title: nullableString(house.title),
+    author: nullableString(house.author),
+  };
+}
+
+function safeSlotFill(value: unknown, expectedPosition: BorderPosition): SlotFill | null {
+  const body = record(value);
+  if (!body || body.position !== expectedPosition) return null;
+  const base = {
+    slot_id: nonEmptyString(body.slot_id) ?? undefined,
+    document_id: nonEmptyString(body.document_id) ?? undefined,
+    page_index: safePageIndex(body.page_index) ?? undefined,
+    position: expectedPosition,
+    revenue_usd_cents: safeMoneyCents(body.revenue_usd_cents),
+  };
+  if (body.kind === "ad") {
+    const ad = safeCreative(body.ad);
+    if (ad) return { ...base, kind: "ad", ad, house: null };
+  }
+  return {
+    ...base,
+    kind: "house",
+    ad: null,
+    house: safeHousePromo(body.house),
+    revenue_usd_cents: 0,
+  };
 }
 
 /**
@@ -119,10 +191,10 @@ export async function fetchFill(opts: {
           signal: opts.signal,
         });
         if (!resp.ok) return { fill: houseFill(position), served: false };
-        const body = (await resp.json()) as SlotFill;
+        const body = safeSlotFill(await resp.json(), position);
         return {
-          fill: body?.position === position ? body : houseFill(position),
-          served: body?.position === position,
+          fill: body ?? houseFill(position),
+          served: body !== null,
         };
       }),
     );
