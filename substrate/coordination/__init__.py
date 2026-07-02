@@ -29,6 +29,10 @@ read** from canonical sources this package never writes:
   as ``tools.activation.read_dogfood``. It is status only; the CLI + operator
   verdict remain the closure authority.
 
+* :mod:`substrate.coordination.operator_actions` surfaces the broader OA-001+
+  operator-only living index from ``docs/OPERATOR_ACTIONS.md`` as read-only
+  status, so counsel/publisher/deploy tasks do not live only in prose.
+
 The binding rule for the whole package: **integration, not duplication — the
 ledger is a view over the source, never a second gate store.** If the operator
 edits the gate file or a roster changes, the dashboard reflects it on next read.
@@ -64,6 +68,13 @@ from .gate_ledger import (
     load_gate_ledger,
     parse_gate_ledger,
 )
+from .operator_actions import (
+    OperatorAction,
+    OperatorActionsView,
+    OperatorActionStatus,
+    load_operator_actions,
+    parse_operator_actions,
+)
 from .roadmap import (
     DependencyBlocker,
     Roadmap,
@@ -86,6 +97,12 @@ __all__ = [
     "Product",
     "load_gate_ledger",
     "parse_gate_ledger",
+    # operator actions
+    "OperatorAction",
+    "OperatorActionStatus",
+    "OperatorActionsView",
+    "load_operator_actions",
+    "parse_operator_actions",
     # roadmap
     "DependencyBlocker",
     "Roadmap",

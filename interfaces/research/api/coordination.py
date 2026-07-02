@@ -3,15 +3,17 @@
 Thin adapter over :mod:`substrate.coordination`. Four GET endpoints, no writes:
 
   GET /coordination/gates     the gate ledger (a view over operator_gate_actions.md)
-  GET /coordination/roadmap   the 45-sprint roadmap + DRW critical path + dependency blockers
+  GET /coordination/roadmap   the 45-sprint roadmap + DRW critical path +
+                               dependency blockers + operator-action summary
   GET /coordination/cost      per-workflow + aggregate inference cost (SPR-07)
   GET /coordination/consent   per-IP-holder consent / escrow (accruing) / servability (SPR-07)
 
 **Read-only is enforced, not promised (rigor #5).** This module imports only
-read entry points (``load_gate_ledger`` / ``build_roadmap`` / ``build_cost_view`` /
-``build_consent_view``); there is no import of any writer (``connect_write``, the
-escrow writer ``ip_holders.accrue_escrow``, the gate file's path for writing) and
-**no import of any payout module** (``tools.stripe_connect.payouts``). There is
+read entry points (``load_gate_ledger`` / ``load_operator_actions`` /
+``build_roadmap`` / ``build_cost_view`` / ``build_consent_view``); there is no
+import of any writer (``connect_write``, the escrow writer
+``ip_holders.accrue_escrow``, the gate file's path for writing) and **no import
+of any payout module** (``tools.stripe_connect.payouts``). There is
 no POST/PUT/PATCH/DELETE route. The cost endpoint opens DuckDB ``read_only=True``
 only to resolve Speak project economics context; the consent endpoint does the
 same for escrow/servability state. A future maintainer (or auditor) confirms
@@ -48,6 +50,11 @@ from substrate.coordination.gate_ledger import (
     Gate,
     GateLedger,
     load_gate_ledger,
+)
+from substrate.coordination.operator_actions import (
+    OperatorAction,
+    OperatorActionsView,
+    load_operator_actions,
 )
 from substrate.coordination.roadmap import (
     ExecutionFocus,
@@ -220,6 +227,62 @@ class ReadActivationStatusResponse(BaseModel):
         )
 
 
+class OperatorActionResponse(BaseModel):
+    action_id: str
+    title: str
+    status: str
+    status_raw: str
+    blocks: str
+    owner: str
+
+    @classmethod
+    def from_action(cls, action: OperatorAction) -> OperatorActionResponse:
+        return cls(
+            action_id=action.action_id,
+            title=action.title,
+            status=action.status.value,
+            status_raw=action.status_raw,
+            blocks=action.blocks,
+            owner=action.owner,
+        )
+
+
+class OperatorActionsSummaryResponse(BaseModel):
+    """Read-only summary of ``docs/OPERATOR_ACTIONS.md``.
+
+    The full action state stays in the markdown quick table. This response only
+    exposes counts plus the first not-closed and closeable items so product
+    surfaces can show the operator what needs a human decision next.
+    """
+
+    source_path: str
+    total_actions: int
+    open_count: int
+    closeable_count: int
+    status_counts: dict[str, int]
+    next_action: OperatorActionResponse | None
+    closeable_action: OperatorActionResponse | None
+
+    @classmethod
+    def from_view(cls, view: OperatorActionsView) -> OperatorActionsSummaryResponse:
+        closeable = view.closeable_actions()
+        return cls(
+            source_path=view.source_path,
+            total_actions=len(view.actions),
+            open_count=len(view.open_actions()),
+            closeable_count=len(closeable),
+            status_counts=view.status_counts(),
+            next_action=(
+                OperatorActionResponse.from_action(view.first_open())
+                if view.first_open() is not None
+                else None
+            ),
+            closeable_action=(
+                OperatorActionResponse.from_action(closeable[0]) if closeable else None
+            ),
+        )
+
+
 class RoadmapResponse(BaseModel):
     total_sprints: int
     superseded_count: int
@@ -233,6 +296,7 @@ class RoadmapResponse(BaseModel):
     execution_focus: ExecutionFocusResponse | None
     operator_gate_focus: OperatorGateFocusResponse | None
     read_activation: ReadActivationStatusResponse
+    operator_actions: OperatorActionsSummaryResponse
     substrate_layers: list[SubstrateLayerResponse]
 
     @classmethod
@@ -241,6 +305,7 @@ class RoadmapResponse(BaseModel):
         rm: Roadmap,
         gate_ledger: GateLedger | None = None,
         read_activation: ReadActivationView | None = None,
+        operator_actions: OperatorActionsView | None = None,
     ) -> RoadmapResponse:
         focus = rm.execution_focus()
         operator_focus = None
@@ -282,6 +347,9 @@ class RoadmapResponse(BaseModel):
             operator_gate_focus=operator_focus,
             read_activation=ReadActivationStatusResponse.from_view(
                 read_activation or build_read_activation_view()
+            ),
+            operator_actions=OperatorActionsSummaryResponse.from_view(
+                operator_actions or load_operator_actions()
             ),
             substrate_layers=[
                 SubstrateLayerResponse(
@@ -495,6 +563,7 @@ def register_coordination_routes(app: FastAPI) -> None:
             build_roadmap(),
             load_gate_ledger(),
             build_read_activation_view(),
+            load_operator_actions(),
         )
 
     @app.get(
