@@ -1,5 +1,10 @@
 """Consent / servability / IP-holder view — the other half of SPR-07 (M2/M3).
 
+Canonical gate: ``./scripts/canonical_verify.sh unified-cost-consent-surface``
+proves the read-only consent/escrow/servability view, no-disbursement guard, and
+Coordination cost/consent UI tests. Live provider billing, Stripe payout
+activation, and payout reconciliation remain operator proof.
+
 The operator's permissions question: "what am I accruing, who consented, what's
 servable, and what is gated." This module answers it as a **read-only view** over
 the canonical sources, forking none:

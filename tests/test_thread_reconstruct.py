@@ -1,5 +1,10 @@
 """Thread reconstruction unit tests (antiek-unified SPR-06 M1).
 
+Canonical gate: ``./scripts/canonical_verify.sh unified-thread-navigation``.
+It pairs this reconstruction/API proof with the ``ThreadBreadcrumb`` UI tests;
+browser/device visual QA for final breadcrumb placement remains operator
+verification, not a unit-test claim.
+
 Covers the M1 verification gate "Thread reconstructs — correct ordered hops"
 for the degenerate (1-workflow) and full-flywheel (N-workflow) cases, plus the
 honest-stub behavior for a hop into an unbuilt workflow (intellectual honesty
@@ -14,6 +19,17 @@ from substrate.seams.thread import (
     Thread,
     reconstruct_thread,
 )
+
+
+def test_thread_docs_name_canonical_gate_and_visual_boundary() -> None:
+    """The thread proof docs name the canonical gate and visual-QA boundary."""
+    import substrate.seams.thread as thread_module
+
+    combined = " ".join(((thread_module.__doc__ or "") + " " + (__doc__ or "")).split())
+
+    assert "./scripts/canonical_verify.sh unified-thread-navigation" in combined
+    assert "ThreadBreadcrumb" in combined
+    assert "Browser/device visual QA for final breadcrumb placement remains" in combined
 
 
 def _ev(event_id: str, action_type: str, node_id: str, emitted_at: str) -> dict[str, Any]:

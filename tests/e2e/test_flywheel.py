@@ -1,5 +1,11 @@
 """The end-to-end flywheel test — antiek-unified SPR-08 M1.
 
+Canonical gate: ``./scripts/canonical_verify.sh unified-flywheel-conformance``.
+It pairs this hermetic flywheel composition with integration invariants, the
+contract conformance gate, negative controls, and the standalone conformance
+script. Live product-module replacement of documented stubs remains the matrix
+boundary until those rows flip to real conformers.
+
 The capstone proof that "four products are one product" is mechanically true:
 a SINGLE graph entity flows Research → Read → Write → Speak → Read through the
 REAL SPR-03 typed seams, and at every hop it is the SAME node id with unbroken
@@ -89,6 +95,19 @@ from tests.test_seam_no_copy import _assert_no_copy
 CANONICAL_INSIGHT = "insight-7f3a9c"
 CANONICAL_TEXT = "Werner traded antiques before software."
 INVESTIGATION = "inv-werner-1"
+
+
+def test_flywheel_docs_name_canonical_gate_and_stub_boundary() -> None:
+    """The flywheel proof docs name the canonical gate and stub-replacement boundary."""
+    from tools.codegen import check_conformance
+
+    combined = " ".join(
+        f"{__doc__ or ''} {check_conformance.__doc__ or ''}".split()
+    )
+
+    assert "./scripts/canonical_verify.sh unified-flywheel-conformance" in combined
+    assert "standalone conformance script" in combined
+    assert "Live product-module replacement of documented stubs remains" in combined
 
 
 @pytest.fixture()

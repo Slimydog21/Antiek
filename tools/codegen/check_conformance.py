@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """CI gate: the contract-conformance gate — antiek-unified SPR-08 M2.
 
+Canonical gate: ``./scripts/canonical_verify.sh unified-flywheel-conformance``.
+That command runs this standalone script together with the hermetic flywheel
+composition, integration invariants, and negative controls. Documented stubs
+are explicit coverage rows until the owning live product module replaces them.
+
 This is the artifact that KEEPS "four products are one product" true after the
 unified spec ships. It runs SPR-01's ``verify_conformance`` against each
 product's *actual* implementation (or a documented stub where the product is
