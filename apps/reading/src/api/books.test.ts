@@ -320,6 +320,37 @@ describe("books api — source-book boundary", () => {
     expect(apiFetchMock.mock.calls[0][0]).toBe("/api/books/doc%201/full-text");
   });
 
+  it.each([
+    "javascript:alert(1)",
+    "data:text/html,owned",
+    "/abs/2401.00001",
+    "http://arxiv.org/abs/2401.00001",
+    "https://evil.example/abs/2401.00001",
+    "https://arxiv.org/pdf/2401.00001",
+  ])("nulls unsafe or non-canonical arXiv full-text links: %s", async (canonical_url) => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          document_id: "doc-arxiv",
+          servable: false,
+          full_text: null,
+          snippet: null,
+          reason: "rights_tier_linkback",
+          tier: "T2",
+          ad_eligible: false,
+          canonical_url,
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(getBookFullText("doc-arxiv")).resolves.toMatchObject({
+      document_id: "doc-arxiv",
+      tier: "T2",
+      canonical_url: null,
+    });
+  });
+
   it("rejects blank source-book request ids before sending", async () => {
     await expect(getBook(" ")).rejects.toThrow(/documentId/);
     await expect(getBookFullText(" ")).rejects.toThrow(/documentId/);

@@ -194,6 +194,21 @@ function safeRightsTier(value: unknown): "T1" | "T2" | "T3" | null {
   return value === "T1" || value === "T2" || value === "T3" ? value : null;
 }
 
+function safeArxivCanonicalUrl(value: unknown): string | null {
+  const url = nullableString(value);
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" &&
+      parsed.hostname === "arxiv.org" &&
+      parsed.pathname.startsWith("/abs/")
+      ? url
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function safeFullTextResponse(value: unknown): FullTextResponse {
   const body = record(value);
   const documentId = body ? nonEmptyString(body.document_id) : null;
@@ -216,7 +231,7 @@ function safeFullTextResponse(value: unknown): FullTextResponse {
     reason: nonEmptyString(body.reason) ?? (servable ? "servable" : "not_servable"),
     tier: safeRightsTier(body.tier),
     ad_eligible: body.ad_eligible === true && servable,
-    canonical_url: nullableString(body.canonical_url),
+    canonical_url: safeArxivCanonicalUrl(body.canonical_url),
     license: nullableString(body.license),
   };
 }
