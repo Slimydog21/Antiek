@@ -26,10 +26,13 @@ function finiteNonNegativeNumber(value: unknown): number | null {
 }
 
 export function safeFolders(folders: FolderSummary[]): FolderSummary[] {
+  const seen = new Set<string>();
   return folders.flatMap((folder) => {
     const folderId = nonEmptyString(folder.folder_id);
     const name = nonEmptyString(folder.name);
     if (!folderId || !name) return [];
+    if (seen.has(folderId)) return [];
+    seen.add(folderId);
     return [
       {
         ...folder,
@@ -42,10 +45,13 @@ export function safeFolders(folders: FolderSummary[]): FolderSummary[] {
 }
 
 export function safeRepositoryHits(hits: RepositoryHit[]): RepositoryHit[] {
+  const seen = new Set<string>();
   return hits.flatMap((hit) => {
     const nodeId = nonEmptyString(hit.node_id);
     const label = nonEmptyString(hit.label);
     if (!nodeId || !label) return [];
+    if (seen.has(nodeId)) return [];
+    seen.add(nodeId);
     return [
       {
         ...hit,
