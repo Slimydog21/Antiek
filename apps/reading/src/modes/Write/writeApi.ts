@@ -477,8 +477,9 @@ export interface GenerationResult {
   prose_provenance?: Record<string, string[]>;
 }
 
-/** Generate a section's prose from its attached blocks (SPR-06). The live
- * model path may return 503 until creative_writer is wired into dispatch. */
+/** Generate a section's prose from its attached blocks (SPR-06). The route is
+ * wired through creative_writer; provider/credential failure still surfaces as
+ * a clear 503 rather than fabricated prose. */
 export async function generateSection(
   sectionId: string,
   opts: { paragraphIndex?: number } = {},

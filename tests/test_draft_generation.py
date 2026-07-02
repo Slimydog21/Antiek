@@ -12,9 +12,10 @@ M5 voice_style gate WINS — sub-threshold prose returns gate_failed even if
 M1 context-building — OutlineBlocks → CreativeWriterContext with the right
    citation ids.
 
-The live generation path (the actual prose a model returns) needs API
-credentials + creative_writer wired into the dispatch config; it is marked
-PARTIAL in the handoff, not faked green here.
+The REST route is wired through creative_writer and covered by
+``tests/test_write_routes.py`` with hermetic dispatch injection. Real provider
+credentials and output-quality judgment remain the platform matrix's live
+provider proof; this suite does not fake them green.
 """
 
 from __future__ import annotations
@@ -37,6 +38,15 @@ from substrate.write.draft_generation import (  # noqa: E402
     validate_generated_citations,
 )
 from substrate.write.outline_block import OutlineBlock  # noqa: E402
+
+
+def test_module_doc_names_wired_route_and_live_provider_boundary():
+    doc = __doc__ or ""
+    assert "REST route is wired through creative_writer" in doc
+    assert "tests/test_write_routes.py" in doc
+    assert "live\nprovider proof" in doc
+    assert "marked\nPARTIAL" not in doc
+    assert "creative_writer wired into the dispatch config" not in doc
 
 
 def _oblock(obid, *, node_id=None, content=None, kind="insight", prov="graph_node"):
