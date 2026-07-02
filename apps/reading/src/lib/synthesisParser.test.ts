@@ -65,6 +65,22 @@ describe("parseSynthesis — claim provenance for named-source render", () => {
     expect(synth!.totalCostUsd).toBe(0.25);
   });
 
+  it("dedupes patched domain names before rendering the header count", () => {
+    const synth = parseSynthesis([
+      ev("synthesize.delivered", {
+        thesis_summary: "Because Y.",
+        thesis_components: [],
+      }),
+      ev("investigation.completed", {
+        master_md_path: "/tmp/MASTER.md",
+        domains_patched: [" history ", "", 7, "history", "math"],
+      }),
+    ]);
+
+    expect(synth).not.toBeNull();
+    expect(synth!.domainsPatched).toEqual(["history", "math"]);
+  });
+
   it("returns null when there is no synthesis yet (caller falls back)", () => {
     expect(
       parseSynthesis([ev("investigation.start_requested", { question: "Q" })]),
