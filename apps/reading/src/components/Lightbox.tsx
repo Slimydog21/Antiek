@@ -10,6 +10,8 @@
  * just the spec-compliant "open this image in a dedicated panel"
  * surface.
  */
+import { safeImageSrc } from "../lib/safeImageSrc";
+
 type Props = {
   src?: string | null;
   alt?: string | null;
@@ -17,7 +19,8 @@ type Props = {
 };
 
 export default function Lightbox({ src, alt, caption }: Props) {
-  if (!src) {
+  const imageSrc = safeImageSrc(src);
+  if (!imageSrc) {
     return (
       <div className="h-full flex items-center justify-center bg-ice-2 dark:bg-space-2 text-ink-mute dark:text-moonlight font-mono text-[12px] p-6 text-center">
         Lightbox opened without a src.
@@ -28,7 +31,7 @@ export default function Lightbox({ src, alt, caption }: Props) {
     <figure className="h-full flex flex-col bg-ice-0 dark:bg-charcoal-2 overflow-hidden">
       <div className="flex-1 min-h-0 flex items-center justify-center overflow-auto p-3">
         <img
-          src={src}
+          src={imageSrc}
           alt={alt ?? ""}
           className="max-w-full max-h-full object-contain"
         />
