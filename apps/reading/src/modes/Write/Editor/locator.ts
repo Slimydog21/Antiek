@@ -113,13 +113,74 @@ export function resolveLocator(
   return null;
 }
 
-/** Split a block's text into sentences (simple, deterministic). Used for
- * sentence-granularity locators + edit capture. */
+/**
+ * Common abbreviations whose trailing period is not necessarily a sentence
+ * boundary. Dot-free forms; deliberately conservative.
+ */
+const TITLE_ABBREV_SET = new Set(["Dr", "Mr", "Mrs", "Ms", "Prof", "Sr", "Jr"]);
+const INLINE_ABBREV_SET = new Set([
+  "Inc", "Ltd", "Corp", "Ph",
+  "i", "e", "g", // i.e. / e.g. single-letter segments before periods.
+  "etc", "vol", "Vol", "p", "pp", "ed", "Ed",
+]);
+
+function tokenBeforePeriod(text: string, punctIdx: number): string {
+  return text.slice(0, punctIdx).match(/(\b\w+)$/)?.[1] ?? "";
+}
+
+function firstContinuationChar(text: string, boundaryEnd: number): string {
+  return text.slice(boundaryEnd).trimStart()[0] ?? "";
+}
+
+function isDottedInitialismBeforePeriod(text: string, punctIdx: number): boolean {
+  return /(?:^|\s)(?:[A-Z]\.)+[A-Z]$/.test(text.slice(0, punctIdx));
+}
+
+function isSentenceBoundaryPeriod(text: string, punctIdx: number, boundaryEnd: number): boolean {
+  const token = tokenBeforePeriod(text, punctIdx);
+  const next = firstContinuationChar(text, boundaryEnd);
+  if (punctIdx > 0 && /\d/.test(text[punctIdx - 1])) return false;
+  if (isDottedInitialismBeforePeriod(text, punctIdx)) return false;
+  if (TITLE_ABBREV_SET.has(token)) return false;
+  if (INLINE_ABBREV_SET.has(token) && (next === "" || /[a-z0-9]/.test(next))) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Split a block's text into sentences. Used for sentence-granularity locators
+ * and edit capture. Handles common abbreviations (Dr., Mr., U.S., i.e., etc.)
+ * and decimal numbers (3.14, €2.50) that the naive `/(?<=[.!?])\s+/` regex
+ * would false-split.
+ *
+ * Strategy: walk every `[.!?]<optional-quote>\s+` boundary candidate, then
+ * suppress the split when the period is (a) part of a known abbreviation,
+ * (b) part of a multi-period abbreviation (i.e., e.g.), or (c) preceded by a
+ * digit (decimal). `!` and `?` always split — they never appear inside
+ * abbreviations or numbers.
+ */
 export function splitIntoSentences(text: string): string[] {
-  return text
-    .split(/(?<=[.!?])\s+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+  const parts: string[] = [];
+  let last = 0;
+  // Match `[.!?]`, optionally followed by a closing quote/bracket, then whitespace.
+  const boundaryRe = /[.!?]["')\]]?\s+/g;
+  let m: RegExpExecArray | null;
+  while ((m = boundaryRe.exec(text)) !== null) {
+    const punctIdx = m.index;
+    // `!` and `?` are always genuine sentence boundaries.
+    if (text[punctIdx] !== ".") {
+      parts.push(text.slice(last, m.index + m[0].length).trim());
+      last = m.index + m[0].length;
+      continue;
+    }
+    if (!isSentenceBoundaryPeriod(text, punctIdx, m.index + m[0].length)) continue;
+    parts.push(text.slice(last, m.index + m[0].length).trim());
+    last = m.index + m[0].length;
+  }
+  const tail = text.slice(last).trim();
+  if (tail.length > 0) parts.push(tail);
+  return parts.filter((s) => s.length > 0);
 }
 
 /** Map a UI locator to the backend EditLocator shape. A lego block's
