@@ -901,6 +901,33 @@ def test_live_citation_template_carries_non_library_trace_evidence() -> None:
     assert all(failure.startswith("closure requires ") for failure in report.failures)
 
 
+def test_write_trace_citation_template_omits_reader_return_origin() -> None:
+    record = session_template("write-trace-citation")
+    report = validate_sessions([record])
+
+    assert record["url"] == "https://antiek.ai/write/piece-1"
+    assert record["entry_door"] == "write_trace_to_source"
+    assert record["steps"]["5"]["result_url"] == (
+        "https://antiek.ai/read/source-doc-1?chunk=chunk-1"
+    )
+    assert report.valid_sessions == 1
+    assert report.live_provider_sessions == 1
+    assert report.citation_trace_sessions == 1
+    assert report.non_library_sessions == 1
+    assert not any("from={document_id}" in failure for failure in report.failures)
+
+
+def test_write_trace_citation_template_cli_is_jsonl_safe(capsys) -> None:
+    assert main(["--template", "write-trace-citation"]) == 0
+    out = capsys.readouterr().out
+
+    assert out.count("\n") == 1
+    record = json.loads(out)
+
+    assert record["entry_door"] == "write_trace_to_source"
+    assert "from=" not in record["steps"]["5"]["result_url"]
+
+
 def test_template_rejects_unknown_kind() -> None:
     try:
         session_template("finished")

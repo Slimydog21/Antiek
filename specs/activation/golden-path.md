@@ -100,13 +100,20 @@ single JSONL-compatible template and replace the evidence before appending it:
 python tools/activation/read_dogfood.py --template inert
 python tools/activation/read_dogfood.py --template live
 python tools/activation/read_dogfood.py --template live-citation
+python tools/activation/read_dogfood.py --template write-trace-citation
 ```
+
+Use `write-trace-citation` only for a session that starts from the Write
+surface trace-to-source affordance. Its step 5 URL opens the traced Reader
+source with chunk/anchor evidence but intentionally has no Reader-origin
+`from=` return parameter.
 
 To create or extend a dogfood log directly, append the selected template and
 then edit the appended line with the real session evidence:
 
 ```bash
 python tools/activation/read_dogfood.py --template live-citation --append reports/read-dogfood.jsonl
+python tools/activation/read_dogfood.py --template write-trace-citation --append reports/read-dogfood.jsonl
 python tools/activation/read_dogfood.py --template live-citation --append reports/read-dogfood.jsonl --json
 ```
 

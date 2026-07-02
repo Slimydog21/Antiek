@@ -105,6 +105,12 @@ NON_LIBRARY_ENTRY_DOORS: frozenset[str] = frozenset(
 WRITE_TRACE_ENTRY_DOORS: frozenset[str] = frozenset(
     {"write_trace", "write_trace_to_source"}
 )
+SESSION_TEMPLATE_KINDS: tuple[str, ...] = (
+    "inert",
+    "live",
+    "live-citation",
+    "write-trace-citation",
+)
 ALLOWED_STEP_STATUSES: frozenset[str] = frozenset({"pass", "fail", "inert"})
 ALLOWED_FINAL_VERDICTS: tuple[str, ...] = (
     "ACTIVATE",
@@ -304,11 +310,14 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
 
 def session_template(kind: str) -> dict[str, Any]:
     """Return one JSONL-safe seed record for an operator-authored dogfood note."""
-    if kind not in {"inert", "live", "live-citation"}:
-        raise ValueError("template kind must be one of: inert, live, live-citation")
+    if kind not in SESSION_TEMPLATE_KINDS:
+        raise ValueError(
+            "template kind must be one of: " + ", ".join(SESSION_TEMPLATE_KINDS)
+        )
 
-    live = kind in {"live", "live-citation"}
-    citation = kind == "live-citation"
+    live = kind in {"live", "live-citation", "write-trace-citation"}
+    citation = kind in {"live-citation", "write-trace-citation"}
+    write_trace = kind == "write-trace-citation"
     steps: dict[str, dict[str, Any]] = {
         "1": {
             "status": "pass",
@@ -342,25 +351,36 @@ def session_template(kind: str) -> dict[str, Any]:
             "Research spin-out requires provider activation keys."
         )
     if citation:
+        result_url = (
+            "https://antiek.ai/read/source-doc-1"
+            "?chunk=chunk-1&from=doc-1&fromPage=0"
+        )
+        if write_trace:
+            result_url = "https://antiek.ai/read/source-doc-1?chunk=chunk-1"
         steps["5"].update(
             {
                 "source_document_id": "source-doc-1",
                 "chunk_id": "chunk-1",
-                "result_url": (
-                    "https://antiek.ai/read/source-doc-1"
-                    "?chunk=chunk-1&from=doc-1&fromPage=0"
-                ),
+                "result_url": result_url,
             }
         )
+
+    url = "https://antiek.ai/read/doc-1"
+    document_id = "doc-1"
+    entry_door = "library" if not citation else "command_palette"
+    if write_trace:
+        url = "https://antiek.ai/write/piece-1"
+        document_id = "source-doc-1"
+        entry_door = "write_trace_to_source"
 
     return {
         "session_id": "2026-06-30-operator-001",
         "date": "2026-06-30",
         "build_sha": "abc123",
-        "url": "https://antiek.ai/read/doc-1",
+        "url": url,
         "operator": "Operator",
-        "document_id": "doc-1",
-        "entry_door": "library" if not citation else "command_palette",
+        "document_id": document_id,
+        "entry_door": entry_door,
         "provider_status": "ready" if live else "absent",
         "live_provider_ai": live,
         "citation_traced": citation,
@@ -888,7 +908,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--template",
-        choices=("inert", "live", "live-citation"),
+        choices=SESSION_TEMPLATE_KINDS,
         help=(
             "Print one JSONL-compatible seed session and exit. The operator must "
             "replace the evidence before appending it to the dogfood log."
