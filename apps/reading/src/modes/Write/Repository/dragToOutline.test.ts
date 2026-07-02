@@ -45,6 +45,25 @@ describe("parsePaletteDrag", () => {
   it("parses a valid palette envelope", () => {
     expect(parsePaletteDrag(JSON.stringify(insight))).toEqual(insight);
   });
+  it("sanitizes a dirty palette envelope down to the fields the outline needs", () => {
+    expect(
+      parsePaletteDrag(
+        JSON.stringify({
+          from: "palette",
+          block_kind: " claim ",
+          block_id: " node-abc ",
+          label: "  Claim label  ",
+          node_id: "wrong-field",
+          block_index: 99,
+        }),
+      ),
+    ).toEqual({
+      from: "palette",
+      block_kind: "claim",
+      block_id: "node-abc",
+      label: "Claim label",
+    });
+  });
   it("rejects non-palette / malformed data", () => {
     expect(parsePaletteDrag("")).toBeNull();
     expect(parsePaletteDrag("not json")).toBeNull();
@@ -54,5 +73,6 @@ describe("parsePaletteDrag", () => {
     expect(parsePaletteDrag(JSON.stringify({ from: "palette", block_id: "   ", block_kind: "insight" }))).toBeNull();
     expect(parsePaletteDrag(JSON.stringify({ from: "palette", block_id: "node-1" }))).toBeNull();
     expect(parsePaletteDrag(JSON.stringify({ from: "palette", block_id: "node-1", block_kind: "" }))).toBeNull();
+    expect(parsePaletteDrag(JSON.stringify({ from: "palette", block_id: "node-1", block_kind: "future_kind" }))).toBeNull();
   });
 });
