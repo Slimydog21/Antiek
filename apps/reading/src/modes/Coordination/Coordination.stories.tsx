@@ -141,8 +141,8 @@ const drwSprints = [
   { n: 6, slug: "parallel-orchestration", status: "live" },
   { n: 7, slug: "structural-gap-detection", status: "live" },
   { n: 8, slug: "universal-ingest", status: "live" },
-  { n: 9, slug: "glassbox-monitor-ui", status: "planned" },
-  { n: 10, slug: "reading-surface", status: "provisional" },
+  { n: 9, slug: "glassbox-monitor-ui", status: "live" },
+  { n: 10, slug: "reading-surface", status: "transferred" },
 ];
 
 const CRITICAL = ["drw:1", "drw:3", "drw:10"];

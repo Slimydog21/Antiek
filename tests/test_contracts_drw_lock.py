@@ -49,14 +49,14 @@ def test_renumber_breaks_a_downstream_citation(monkeypatch):
         lock.resolve_drw_sprint(10)
 
 
-def test_drw_sprint_10_remains_provisional_but_reader_contract_moved_owner():
-    # DRW SPR-10 itself was never built, so the DRW sprint-lock stays
-    # provisional for that historical deliverable. The live ReaderSurfaceContract
-    # moved to antiek-reader SPR-01; do not confuse the sprint status with the
-    # contract's current pinned ownership.
+def test_drw_sprint_10_is_transferred_to_reader_contract_owner():
+    # DRW SPR-10 itself was never built as a DRW deliverable. The live
+    # ReaderSurfaceContract moved to antiek-reader SPR-01; the sprint-lock
+    # records that transfer explicitly so the roadmap does not present it as
+    # unexecuted work or falsely as live DRW work.
     from substrate.contracts import reading_surface
 
-    assert lock.resolve_drw_sprint(10).status == "provisional"
+    assert lock.resolve_drw_sprint(10).status == "transferred"
     assert reading_surface.PROVISIONAL is False
     assert reading_surface.PINNED_BY == "antiek-reader SPR-01"
 
@@ -78,4 +78,4 @@ def test_owned_contracts_reference_real_contract_names():
 
 
 def test_lock_version_present():
-    assert isinstance(lock.LOCK_VERSION, int) and lock.LOCK_VERSION >= 5
+    assert isinstance(lock.LOCK_VERSION, int) and lock.LOCK_VERSION >= 6

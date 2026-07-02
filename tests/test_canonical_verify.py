@@ -258,6 +258,14 @@ def test_canonical_verify_speak_publishing_physical_hermetic() -> None:
     assert "CANONICAL_VERIFY_OK: speak-publishing-physical" in proc.stdout
 
 
+def test_canonical_verify_drw_reading_surface_transfer_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("drw-reading-surface-transfer")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: drw-reading-surface-transfer" in proc.stdout
+
+
 def test_canonical_verify_unified_substrate_contract_lock_hermetic() -> None:
     if not PY.is_file():
         return

@@ -82,7 +82,7 @@ type ResolvedExecutionFocus =
 
 const sprintStatusColour = (s: string): "muted" | "sun" | "default" => {
   if (s === "live") return "muted";
-  if (s === "provisional") return "sun";
+  if (s === "provisional" || s === "transferred") return "sun";
   return "default";
 };
 

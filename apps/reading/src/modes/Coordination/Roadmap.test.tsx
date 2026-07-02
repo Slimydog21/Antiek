@@ -15,7 +15,7 @@ afterEach(() => {
 
 function drwStatus(n: number): string {
   if (n <= 4) return "live";
-  if (n === 10) return "provisional";
+  if (n === 10) return "transferred";
   return "planned";
 }
 
@@ -142,7 +142,7 @@ describe("Roadmap", () => {
     ).toBeTruthy();
     expect(
       screen.getByText(
-        "Research (DRW) · SPR-10 · reading surface · provisional",
+        "Research (DRW) · SPR-10 · reading surface · transferred",
       ),
     ).toBeTruthy();
   });
