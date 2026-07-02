@@ -698,8 +698,8 @@ export async function generateMetaReading(
     body: JSON.stringify({ research_tier: "deep", corpus_scope: "hard", ...req }),
   });
   if (resp.status === 422) {
-    const body = await resp.json().catch(() => ({ detail: "Invalid length." }));
-    throw new Error(typeof body.detail === "string" ? body.detail : "Invalid length.");
+    const body = record(await resp.json().catch(() => null));
+    throw new Error(nonEmptyString(body?.detail) ?? "Invalid length.");
   }
   if (resp.status === 503) throw new Error("Meta-reading isn’t available right now.");
   if (!resp.ok) throw new Error(`POST /corpus/meta-reading: HTTP ${resp.status}`);
