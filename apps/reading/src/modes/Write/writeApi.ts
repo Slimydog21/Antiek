@@ -59,6 +59,221 @@ async function _json<T>(resp: Response, what: string): Promise<T> {
   return resp.json() as Promise<T>;
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function finiteNumber(value: unknown): number | null {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function finiteNonNegativeNumber(value: unknown): number | null {
+  const parsed = finiteNumber(value);
+  return parsed !== null && parsed >= 0 ? parsed : null;
+}
+
+function nonNegativeSafeInteger(value: unknown): number | null {
+  const parsed = finiteNumber(value);
+  return parsed !== null && Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function safeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const text = nonEmptyString(item);
+    return text ? [text] : [];
+  });
+}
+
+function safeNumberArray(value: unknown): number[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const number = nonNegativeSafeInteger(item);
+    return number === null ? [] : [number];
+  });
+}
+
+function safeRepositoryHit(value: unknown): RepositoryHit | null {
+  const hit = record(value);
+  if (!hit) return null;
+  const nodeId = nonEmptyString(hit.node_id);
+  const label = nonEmptyString(hit.label);
+  if (!nodeId || !label) return null;
+  return {
+    node_id: nodeId,
+    label,
+    node_type: nonEmptyString(hit.node_type) ?? "insight",
+    source_tier: finiteNonNegativeNumber(hit.source_tier),
+    document_id: nullableString(hit.document_id),
+    document_title: nullableString(hit.document_title),
+    score: finiteNumber(hit.score) ?? 0,
+  };
+}
+
+function safeRepositoryHits(value: unknown): RepositoryHit[] {
+  const body = record(value);
+  const hits = body?.hits;
+  if (!Array.isArray(hits)) return [];
+  return hits.flatMap((item) => {
+    const hit = safeRepositoryHit(item);
+    return hit ? [hit] : [];
+  });
+}
+
+function safeFolder(value: unknown): FolderSummary | null {
+  const folder = record(value);
+  if (!folder) return null;
+  const folderId = nonEmptyString(folder.folder_id);
+  const name = nonEmptyString(folder.name);
+  if (!folderId || !name) return null;
+  return {
+    folder_id: folderId,
+    name,
+    member_count: nonNegativeSafeInteger(folder.member_count) ?? 0,
+  };
+}
+
+function safeFoldersResponse(value: unknown): FolderSummary[] {
+  const body = record(value);
+  const folders = body?.folders;
+  if (!Array.isArray(folders)) return [];
+  return folders.flatMap((item) => {
+    const folder = safeFolder(item);
+    return folder ? [folder] : [];
+  });
+}
+
+function safeOutlineBlock(value: unknown): OutlineBlockView | null {
+  const block = record(value);
+  if (!block) return null;
+  const outlineBlockId = nonEmptyString(block.outline_block_id);
+  const sectionId = nonEmptyString(block.section_id);
+  if (!outlineBlockId || !sectionId) return null;
+  return {
+    outline_block_id: outlineBlockId,
+    section_id: sectionId,
+    block_kind: nonEmptyString(block.block_kind) ?? "insight",
+    provenance_kind: nonEmptyString(block.provenance_kind) ?? "graph_node",
+    node_id: nullableString(block.node_id),
+    content: nullableString(block.content),
+    node_label: nullableString(block.node_label),
+    block_index: nonNegativeSafeInteger(block.block_index) ?? 0,
+    is_user_originated: block.is_user_originated === true,
+  };
+}
+
+function safeSectionBlocksResponse(value: unknown): OutlineBlockView[] {
+  const body = record(value);
+  const blocks = body?.blocks;
+  if (!Array.isArray(blocks)) return [];
+  return blocks.flatMap((item) => {
+    const block = safeOutlineBlock(item);
+    return block ? [block] : [];
+  });
+}
+
+function safeTraceTarget(value: unknown): TraceTarget {
+  const target = record(value) ?? {};
+  const fullTextAllowed = target.full_text_allowed === true;
+  return {
+    kind: nonEmptyString(target.kind) ?? "unknown",
+    full_text_allowed: fullTextAllowed,
+    document_id: fullTextAllowed ? nullableString(target.document_id) : null,
+    document_title: fullTextAllowed ? nullableString(target.document_title) : null,
+    chunk_ids: fullTextAllowed ? safeStringArray(target.chunk_ids) : [],
+    primary_chunk_index: fullTextAllowed
+      ? nonNegativeSafeInteger(target.primary_chunk_index)
+      : null,
+    primary_section_path: fullTextAllowed ? nullableString(target.primary_section_path) : null,
+    servability_status: nullableString(target.servability_status),
+    detail: nullableString(target.detail),
+  };
+}
+
+function safePromoteResult(value: unknown): PromoteResult {
+  const body = record(value);
+  const deliverableId = body ? nonEmptyString(body.deliverable_id) : null;
+  const sectionId = body ? nonEmptyString(body.section_id) : null;
+  if (!deliverableId || !sectionId) {
+    throw new Error("Malformed write promotion response.");
+  }
+  return {
+    deliverable_id: deliverableId,
+    section_id: sectionId,
+    block_ids: safeStringArray(body?.block_ids),
+  };
+}
+
+const GENERATION_STATUSES = new Set<GenerationResult["status"]>([
+  "generated",
+  "gap",
+  "gate_failed",
+  "invalid",
+]);
+
+function safeProseProvenance(value: unknown): Record<string, string[]> {
+  const source = record(value);
+  if (!source) return {};
+  return Object.fromEntries(
+    Object.entries(source).flatMap(([key, rawIds]) => {
+      const paragraph = nonEmptyString(key);
+      const ids = safeStringArray(rawIds);
+      return paragraph && ids.length ? [[paragraph, ids]] : [];
+    }),
+  );
+}
+
+function safeGenerationResult(value: unknown, sectionId: string): GenerationResult {
+  const body = record(value);
+  const status =
+    typeof body?.status === "string" &&
+    GENERATION_STATUSES.has(body.status as GenerationResult["status"])
+      ? (body.status as GenerationResult["status"])
+      : "invalid";
+  return {
+    status,
+    section_id: nonEmptyString(body?.section_id) ?? sectionId,
+    prose_text: nonEmptyString(body?.prose_text) ?? undefined,
+    detail: nonEmptyString(body?.detail) ?? undefined,
+    gate_passed: typeof body?.gate_passed === "boolean" ? body.gate_passed : null,
+    all_claims_cited:
+      typeof body?.all_claims_cited === "boolean" ? body.all_claims_cited : null,
+    unsupported_paragraphs: safeNumberArray(body?.unsupported_paragraphs),
+    fabricated_citations: safeStringArray(body?.fabricated_citations),
+    prose_provenance: safeProseProvenance(body?.prose_provenance),
+  };
+}
+
+function safeBrainstormEmitResult(value: unknown): BrainstormEmitResult {
+  const body = record(value);
+  return {
+    block_ids: safeStringArray(body?.block_ids),
+    insight_count: nonNegativeSafeInteger(body?.insight_count) ?? 0,
+    question_count: nonNegativeSafeInteger(body?.question_count) ?? 0,
+    data_count: nonNegativeSafeInteger(body?.data_count) ?? 0,
+    skipped_duplicates: nonNegativeSafeInteger(body?.skipped_duplicates) ?? 0,
+    flagged_unverified: safeStringArray(body?.flagged_unverified),
+  };
+}
+
 function assertNonNegativeSafeInteger(value: number, field: string): void {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new RangeError(`${field} must be a non-negative safe integer`);
@@ -101,14 +316,14 @@ export async function searchRepository(opts: {
     await apiFetch(`${API_BASE}/write/blocks/search${qs ? `?${qs}` : ""}`),
     "GET /write/blocks/search",
   );
-  return body.hits;
+  return safeRepositoryHits(body);
 }
 
 export async function listFolders(): Promise<FolderSummary[]> {
   const body = await _json<{ folders: FolderSummary[] }>(
     await apiFetch(`${API_BASE}/write/folders`), "GET /write/folders",
   );
-  return body.folders;
+  return safeFoldersResponse(body);
 }
 
 export async function createFolder(name: string): Promise<string> {
@@ -183,7 +398,7 @@ export async function getSectionBlocks(
     await apiFetch(`${API_BASE}/write/sections/${encodeURIComponent(sectionId)}/blocks`),
     "GET /write/sections/{id}/blocks",
   );
-  return body.blocks;
+  return safeSectionBlocksResponse(body);
 }
 
 /** Move/reorder a placed block within or across sections (drag-to-reorder). */
@@ -221,10 +436,10 @@ export interface TraceTarget {
  * opens). Honest about gating: `full_text_allowed=false` for a gated source
  * (§9.0 no-leak). The shared reader that opens it is DRW SPR-10. */
 export async function getTraceTarget(outlineBlockId: string): Promise<TraceTarget> {
-  return _json<TraceTarget>(
+  return safeTraceTarget(await _json<TraceTarget>(
     await apiFetch(`${API_BASE}/write/blocks/${encodeURIComponent(outlineBlockId)}/trace`),
     "GET /write/blocks/{id}/trace",
-  );
+  ));
 }
 
 export interface PromoteResult {
@@ -235,14 +450,14 @@ export interface PromoteResult {
 
 /** Promote a pre-outline context window to a structured outline (SPR-08). */
 export async function promoteContext(body: unknown): Promise<PromoteResult> {
-  return _json<PromoteResult>(
+  return safePromoteResult(await _json<PromoteResult>(
     await apiFetch(`${API_BASE}/write/context/promote`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
     "POST /write/context/promote",
-  );
+  ));
 }
 
 export interface GenerationResult {
@@ -274,7 +489,7 @@ export async function generateSection(
     opts.paragraphIndex === undefined
       ? undefined
       : JSON.stringify({ paragraph_index: opts.paragraphIndex });
-  return _json<GenerationResult>(
+  return safeGenerationResult(await _json<GenerationResult>(
     await apiFetch(`${API_BASE}/write/sections/${encodeURIComponent(sectionId)}/generate`, {
       method: "POST",
       ...(body
@@ -285,7 +500,7 @@ export async function generateSection(
         : {}),
     }),
     "POST /write/sections/{id}/generate",
-  );
+  ), sectionId);
 }
 
 export interface BrainstormEmitBody {
@@ -310,12 +525,12 @@ export interface BrainstormEmitResult {
 export async function emitBrainstormBlocks(
   body: BrainstormEmitBody,
 ): Promise<BrainstormEmitResult> {
-  return _json<BrainstormEmitResult>(
+  return safeBrainstormEmitResult(await _json<BrainstormEmitResult>(
     await apiFetch(`${API_BASE}/write/brainstorm/emit-blocks`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }),
     "POST /write/brainstorm/emit-blocks",
-  );
+  ));
 }

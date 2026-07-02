@@ -21,9 +21,12 @@ import {
   createFolder,
   emitBrainstormBlocks,
   generateSection,
+  getSectionBlocks,
   getTraceTarget,
+  listFolders,
   moveBlock,
   placeBlock,
+  promoteContext,
   searchRepository,
 } from "./writeApi";
 import type { OutlineBlockView } from "./writeApi";
@@ -75,6 +78,94 @@ describe("writeApi client contracts", () => {
     await expect(searchRepository({ limit: 9007199254740992 })).rejects.toThrow(/limit/);
 
     expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  it("sanitizes repository search results before they become outline sources", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        hits: [
+          {
+            node_id: " node-1 ",
+            label: "  Claim text  ",
+            node_type: "",
+            source_tier: "2",
+            document_id: " doc-1 ",
+            document_title: "  Source  ",
+            score: "0.7",
+          },
+          {
+            node_id: "",
+            label: "Missing node id",
+            node_type: "claim",
+            score: 0.4,
+          },
+        ],
+      }),
+    );
+
+    await expect(searchRepository({ q: "hazard" })).resolves.toEqual([
+      {
+        node_id: "node-1",
+        label: "Claim text",
+        node_type: "insight",
+        source_tier: 2,
+        document_id: "doc-1",
+        document_title: "Source",
+        score: 0.7,
+      },
+    ]);
+  });
+
+  it("sanitizes write folders and section blocks from API responses", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        folders: [
+          { folder_id: " folder-1 ", name: "  Saved  ", member_count: "3" },
+          { folder_id: " ", name: "Skipped", member_count: 1 },
+        ],
+      }),
+    );
+
+    await expect(listFolders()).resolves.toEqual([
+      { folder_id: "folder-1", name: "Saved", member_count: 3 },
+    ]);
+
+    apiFetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        blocks: [
+          {
+            outline_block_id: " oblk-1 ",
+            section_id: " sec-1 ",
+            block_kind: "",
+            provenance_kind: "",
+            node_id: " node-1 ",
+            content: " ",
+            node_label: "  Claim label  ",
+            block_index: "4",
+            is_user_originated: "yes",
+          },
+          {
+            outline_block_id: "",
+            section_id: "sec-1",
+            block_index: 0,
+          },
+        ],
+      }),
+    );
+
+    await expect(getSectionBlocks("sec-1")).resolves.toEqual([
+      {
+        outline_block_id: "oblk-1",
+        section_id: "sec-1",
+        block_kind: "insight",
+        provenance_kind: "graph_node",
+        node_id: "node-1",
+        content: null,
+        node_label: "Claim label",
+        block_index: 4,
+        is_user_originated: false,
+      },
+    ]);
   });
 
   it("places graph-node blocks without inline content and user-authored blocks without node ids", async () => {
@@ -180,15 +271,40 @@ describe("writeApi client contracts", () => {
   });
 
   it("generates whole sections without a body and paragraph repairs with a scoped body", async () => {
-    apiFetchMock.mockResolvedValueOnce(jsonResponse({ status: "generated", section_id: "sec-1" }));
-    await generateSection("sec 1");
+    apiFetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        status: "generated",
+        section_id: " sec-1 ",
+        prose_text: "  Draft paragraph.  ",
+        unsupported_paragraphs: ["0", 1.5, 2],
+        fabricated_citations: [" c1 ", ""],
+        prose_provenance: { " 0 ": [" oblk-1 ", "", 7] },
+      }),
+    );
+    await expect(generateSection("sec 1")).resolves.toEqual({
+      status: "generated",
+      section_id: "sec-1",
+      prose_text: "Draft paragraph.",
+      detail: undefined,
+      gate_passed: null,
+      all_claims_cited: null,
+      unsupported_paragraphs: [0, 2],
+      fabricated_citations: ["c1"],
+      prose_provenance: { "0": ["oblk-1"] },
+    });
     expect(apiFetchMock.mock.calls[0]).toEqual([
       "/api/write/sections/sec%201/generate",
       { method: "POST" },
     ]);
 
-    apiFetchMock.mockResolvedValueOnce(jsonResponse({ status: "generated", section_id: "sec-1" }));
-    await generateSection("sec 1", { paragraphIndex: 4 });
+    apiFetchMock.mockResolvedValueOnce(
+      jsonResponse({ status: "unexpected", section_id: "", detail: "  model branch  " }),
+    );
+    await expect(generateSection("sec 1", { paragraphIndex: 4 })).resolves.toMatchObject({
+      status: "invalid",
+      section_id: "sec 1",
+      detail: "model branch",
+    });
     const [, init] = apiFetchMock.mock.calls[1] as [string, RequestInit];
     expect(init).toMatchObject({
       method: "POST",
@@ -197,24 +313,111 @@ describe("writeApi client contracts", () => {
     expect(JSON.parse(init.body as string)).toEqual({ paragraph_index: 4 });
   });
 
-  it("emits brainstorm drivers as user-originated blocks through the write endpoint", async () => {
+  it("sanitizes trace and promotion responses at the write API boundary", async () => {
     apiFetchMock.mockResolvedValueOnce(
       jsonResponse({
-        block_ids: ["b1"],
-        insight_count: 1,
-        question_count: 1,
-        data_count: 1,
-        skipped_duplicates: 0,
-        flagged_unverified: ["Revenue doubled"],
+        kind: "",
+        full_text_allowed: true,
+        document_id: " doc-1 ",
+        document_title: "  Source Book  ",
+        chunk_ids: [" c1 ", "", 9],
+        primary_chunk_index: "2",
+        primary_section_path: "  Page 3  ",
+        servability_status: " servable ",
+        detail: " ",
       }),
     );
 
-    await emitBrainstormBlocks({
+    await expect(getTraceTarget("oblk-1")).resolves.toEqual({
+      kind: "unknown",
+      full_text_allowed: true,
+      document_id: "doc-1",
+      document_title: "Source Book",
+      chunk_ids: ["c1"],
+      primary_chunk_index: 2,
+      primary_section_path: "Page 3",
+      servability_status: "servable",
+      detail: null,
+    });
+
+    apiFetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        deliverable_id: " dlv-1 ",
+        section_id: " sec-1 ",
+        block_ids: [" oblk-1 ", "", 7],
+      }),
+    );
+
+    await expect(promoteContext({ objective: "draft" })).resolves.toEqual({
+      deliverable_id: "dlv-1",
+      section_id: "sec-1",
+      block_ids: ["oblk-1"],
+    });
+  });
+
+  it("masks gated trace locators in the write API client", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        kind: "document",
+        full_text_allowed: false,
+        document_id: "doc-gated",
+        document_title: "Gated Book",
+        chunk_ids: ["secret-chunk"],
+        primary_chunk_index: 8,
+        primary_section_path: "Restricted appendix",
+        servability_status: " restricted_pending_opt_in ",
+        detail: "  gated source  ",
+      }),
+    );
+
+    await expect(getTraceTarget("oblk-gated")).resolves.toEqual({
+      kind: "document",
+      full_text_allowed: false,
+      document_id: null,
+      document_title: null,
+      chunk_ids: [],
+      primary_chunk_index: null,
+      primary_section_path: null,
+      servability_status: "restricted_pending_opt_in",
+      detail: "gated source",
+    });
+  });
+
+  it("rejects malformed promotion handles instead of producing stray drafts", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      jsonResponse({ deliverable_id: "dlv-1", section_id: " " }),
+    );
+
+    await expect(promoteContext({ objective: "draft" })).rejects.toThrow(
+      "Malformed write promotion response.",
+    );
+  });
+
+  it("emits brainstorm drivers as user-originated blocks through the write endpoint", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        block_ids: [" b1 ", "", 5],
+        insight_count: "1",
+        question_count: 1,
+        data_count: 1.5,
+        skipped_duplicates: -1,
+        flagged_unverified: [" Revenue doubled ", ""],
+      }),
+    );
+
+    await expect(emitBrainstormBlocks({
       section_id: "sec-1",
       deliverable_id: "deliv-1",
       insights: ["Insight"],
       questions: ["Question?"],
       data_points: ["Revenue doubled"],
+    })).resolves.toEqual({
+      block_ids: ["b1"],
+      insight_count: 1,
+      question_count: 1,
+      data_count: 0,
+      skipped_duplicates: 0,
+      flagged_unverified: ["Revenue doubled"],
     });
 
     expect(apiFetchMock.mock.calls[0][0]).toBe("/api/write/brainstorm/emit-blocks");
