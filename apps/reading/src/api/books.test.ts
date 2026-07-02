@@ -200,6 +200,24 @@ describe("books api — source-book boundary", () => {
     expect(apiFetchMock.mock.calls[0][0]).toBe("/api/books/doc%201");
   });
 
+  it("trims source-book request ids before encoding them", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          document_id: "doc-1",
+          title: "The Book",
+          servability: "public_domain",
+          servable_full_text: true,
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await getBook(" doc 1 ");
+
+    expect(apiFetchMock.mock.calls[0][0]).toBe("/api/books/doc%201");
+  });
+
   it("rejects malformed book detail identity", async () => {
     apiFetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ document_id: " ", title: "Missing id" }), {
@@ -252,6 +270,13 @@ describe("books api — source-book boundary", () => {
     expect(apiFetchMock.mock.calls[0][0]).toBe("/api/books/doc%201/full-text");
   });
 
+  it("rejects blank source-book request ids before sending", async () => {
+    await expect(getBook(" ")).rejects.toThrow(/documentId/);
+    await expect(getBookFullText(" ")).rejects.toThrow(/documentId/);
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed full-text identity", async () => {
     apiFetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ document_id: "", servable: false }), { status: 200 }),
@@ -282,6 +307,27 @@ describe("books api — talk-to-book boundary", () => {
       research_tier: "deep",
     });
     expect(result).toEqual(askBookResponse());
+  });
+
+  it("trims talk-to-book request ids and questions before sending", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(askBookResponse()), { status: 200 }),
+    );
+
+    await askBook(" doc with space ", "  what is on page seven?  ");
+
+    const [url] = apiFetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/books/doc%20with%20space/ask");
+    expect(postedJsonBody()).toMatchObject({
+      question: "what is on page seven?",
+    });
+  });
+
+  it("rejects malformed talk-to-book request inputs before sending", async () => {
+    await expect(askBook(" ", "question")).rejects.toThrow(/documentId/);
+    await expect(askBook("doc-1", " ")).rejects.toThrow(/question/);
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
   it("preserves explicit history and fast tier for multi-turn continuation", async () => {
@@ -657,8 +703,8 @@ describe("books api — ad impression boundary", () => {
     expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
-  it("posts reader impressions with session id and keepalive", async () => {
-    await recordAdImpressions("doc with space", "session-1", [
+  it("posts reader impressions with trimmed handles, session id, and keepalive", async () => {
+    await recordAdImpressions(" doc with space ", " session-1 ", [
       {
         slot_id: "slot:doc:p0:top",
         page_index: 0,
@@ -704,6 +750,31 @@ describe("books api — ad impression boundary", () => {
         },
       ],
     });
+  });
+
+  it("does not flush reader impressions with malformed flush handles", async () => {
+    await recordAdImpressions(" ", "session-1", [
+      {
+        slot_id: "slot:doc:p0:top",
+        page_index: 0,
+        fill_kind: "house",
+        revenue_usd_cents: 0,
+        focused_dwell_ms: 1200,
+        tab_focused: true,
+      },
+    ]);
+    await recordAdImpressions("doc-1", " ", [
+      {
+        slot_id: "slot:doc:p0:top",
+        page_index: 0,
+        fill_kind: "house",
+        revenue_usd_cents: 0,
+        focused_dwell_ms: 1200,
+        tab_focused: true,
+      },
+    ]);
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
   it("drops malformed impressions before flushing valid ones", async () => {
@@ -849,6 +920,16 @@ describe("books api — spin-research boundary", () => {
     });
   });
 
+  it("trims spin-research request ids before encoding them", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify(spinResearchResponse()), { status: 200 }),
+    );
+
+    await spinResearch(" doc spin ", 0);
+
+    expect(apiFetchMock.mock.calls[0][0]).toBe("/api/books/doc%20spin/spin-research");
+  });
+
   it("sends null passage text when the reader has no selected passage", async () => {
     apiFetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify(spinResearchResponse()), { status: 200 }),
@@ -882,6 +963,12 @@ describe("books api — spin-research boundary", () => {
       expect(apiFetchMock).not.toHaveBeenCalled();
     },
   );
+
+  it("rejects malformed spin-research document ids before sending", async () => {
+    await expect(spinResearch(" ", 0)).rejects.toThrow(/documentId/);
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
 
   it("parses future servability values without narrowing them away", async () => {
     const futureResponse = { ...spinResearchResponse(), servability: "future_open" };
@@ -1246,7 +1333,7 @@ describe("books api — saved meta-reading boundary", () => {
       ),
     );
 
-    const result = await getSavedMetaReading("mr saved");
+    const result = await getSavedMetaReading(" mr saved ");
 
     expect(apiFetchMock).toHaveBeenCalledTimes(1);
     expect(apiFetchMock.mock.calls[0][0]).toBe("/api/meta-readings/mr%20saved");
@@ -1281,6 +1368,12 @@ describe("books api — saved meta-reading boundary", () => {
     await expect(getSavedMetaReading("mr")).rejects.toThrow(
       "Malformed saved meta-reading response.",
     );
+  });
+
+  it("rejects blank saved meta-reading ids before sending", async () => {
+    await expect(getSavedMetaReading(" ")).rejects.toThrow(/assetId/);
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
   });
 });
 
@@ -1409,7 +1502,7 @@ describe("books api — file suggestion boundary", () => {
       new Response(JSON.stringify(suggestionResponse), { status: 200 }),
     );
 
-    const result = await getFileSuggestion("doc with space");
+    const result = await getFileSuggestion(" doc with space ");
 
     expect(apiFetchMock).toHaveBeenCalledTimes(1);
     expect(apiFetchMock.mock.calls[0][0]).toBe(
@@ -1479,10 +1572,16 @@ describe("books api — file suggestion boundary", () => {
   it("treats embedder unavailability as no suggestion, not a filing failure", async () => {
     apiFetchMock.mockResolvedValueOnce(new Response("no embedder", { status: 503 }));
 
-    await expect(getFileSuggestion("doc-1")).resolves.toEqual({
+    await expect(getFileSuggestion(" doc-1 ")).resolves.toEqual({
       document_id: "doc-1",
       matches: [],
     });
+  });
+
+  it("rejects blank filing suggestion document ids before sending", async () => {
+    await expect(getFileSuggestion(" ")).rejects.toThrow(/documentId/);
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
   it("keeps unexpected suggestion failures loud with the endpoint name", async () => {
