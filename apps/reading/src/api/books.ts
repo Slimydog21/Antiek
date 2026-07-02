@@ -962,9 +962,13 @@ function safeFileSuggestionResponse(
         return match ? [match] : [];
       })
     : [];
+  const uniqueMatches = matches.filter(
+    (match, index, list) =>
+      list.findIndex((candidate) => candidate.investigation_id === match.investigation_id) === index,
+  );
   return {
     document_id: nonEmptyString(body?.document_id) ?? fallbackDocumentId,
-    matches,
+    matches: uniqueMatches,
   };
 }
 

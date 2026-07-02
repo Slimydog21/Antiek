@@ -1587,6 +1587,11 @@ describe("books api — file suggestion boundary", () => {
               question: "q2",
               score: "0.5",
             },
+            {
+              investigation_id: " inv-1 ",
+              question: "duplicate q",
+              score: 0.9,
+            },
           ],
         }),
         { status: 200 },
