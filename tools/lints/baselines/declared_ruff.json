@@ -714,7 +714,7 @@
     {
       "col": 9,
       "kind": "ruff:F401",
-      "line": 42,
+      "line": 43,
       "path": "orchestration/audit/phase_audit.py"
     },
     {
@@ -934,21 +934,39 @@
       "path": "orchestration/continuous/scoring.py"
     },
     {
+      "col": 17,
+      "kind": "ruff:SIM105",
+      "line": 1018,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:SIM105",
+      "line": 1147,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:SIM105",
+      "line": 1252,
+      "path": "orchestration/loop_one/orchestrator.py"
+    },
+    {
       "col": 16,
       "kind": "ruff:SIM115",
-      "line": 171,
+      "line": 176,
       "path": "orchestration/phase_runner/postconditions.py"
     },
     {
       "col": 16,
       "kind": "ruff:SIM115",
-      "line": 246,
+      "line": 251,
       "path": "orchestration/phase_runner/postconditions.py"
     },
     {
       "col": 9,
       "kind": "ruff:SIM102",
-      "line": 514,
+      "line": 519,
       "path": "orchestration/phase_runner/postconditions.py"
     },
     {
@@ -1080,13 +1098,25 @@
     {
       "col": 17,
       "kind": "ruff:SIM105",
-      "line": 329,
+      "line": 271,
       "path": "runtime/remote_exec/runner.py"
     },
     {
       "col": 13,
       "kind": "ruff:SIM105",
-      "line": 371,
+      "line": 290,
+      "path": "runtime/remote_exec/runner.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:SIM105",
+      "line": 337,
+      "path": "runtime/remote_exec/runner.py"
+    },
+    {
+      "col": 13,
+      "kind": "ruff:SIM105",
+      "line": 379,
       "path": "runtime/remote_exec/runner.py"
     },
     {
@@ -1094,6 +1124,12 @@
       "kind": "ruff:F841",
       "line": 129,
       "path": "runtime/research_runner/budget.py"
+    },
+    {
+      "col": 17,
+      "kind": "ruff:SIM105",
+      "line": 366,
+      "path": "runtime/research_runner/host_local.py"
     },
     {
       "col": 7,

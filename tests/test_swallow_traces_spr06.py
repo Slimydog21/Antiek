@@ -20,7 +20,6 @@ import logging
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Site 5 — postconditions._events_of_type: malformed trajectory row skipped.
 # Idiom: `phase_runner:`-prefixed stderr (matches runner.py). Injection:
@@ -92,3 +91,38 @@ async def test_remote_teardown_failure_is_traced(monkeypatch, caplog):
         "sandbox teardown failed" in rec.message and "sbx-leak-1" in rec.message
         for rec in caplog.records
     )
+
+
+# ---------------------------------------------------------------------------
+# Trace-channel failure — the trace itself must not break isolation (codex
+# review of PR #141). A broken stderr/logger must NOT turn a swallowed failure
+# into a propagated exception. Verified here for the stderr-print site
+# (BrokenPipeError is the realistic failure); every trace wraps its channel in
+# `contextlib.suppress(Exception)`, so the logging sites are guarded the same way.
+# ---------------------------------------------------------------------------
+
+
+def test_broken_trace_channel_still_isolated(monkeypatch):
+    import sys
+
+    from orchestration.phase_runner import postconditions
+    from substrate.schemas.events import ActionType
+
+    at = ActionType.AUTO_PATCH_APPLIED
+    monkeypatch.setattr(
+        postconditions, "trajectory",
+        lambda _iid: [{"action_type": at.value, "bad": "row"}],
+    )
+
+    class _BrokenErr:
+        def write(self, *a):
+            raise BrokenPipeError("stderr gone")
+
+        def flush(self, *a):
+            pass
+
+    monkeypatch.setattr(sys, "stderr", _BrokenErr())
+
+    # Even with the trace channel broken, the skip stays isolated: no raise,
+    # empty result (the malformed row is still dropped).
+    assert postconditions._events_of_type("inv-broken", at) == []

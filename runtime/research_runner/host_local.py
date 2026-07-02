@@ -363,8 +363,12 @@ class HostLocalRunner:
             try:
                 seal_investigation(iid, events_dir=self._events_dir)
             except Exception as e:  # seal is best-effort
-                logger.warning("investigation seal failed (best-effort): iid=%s events_dir=%s: %r",
-                               iid, self._events_dir, e)
+                try:
+                    logger.warning(
+                        "investigation seal failed (best-effort): iid=%s "
+                        "events_dir=%s: %r", iid, self._events_dir, e)
+                except Exception:
+                    pass  # a broken log channel must not break the finish path
         await st.queue.put(StepEvent(iid, 0, "done", state=st.state))
         await st.queue.put(_STREAM_DONE)
 
