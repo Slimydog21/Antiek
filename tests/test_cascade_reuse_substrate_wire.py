@@ -109,11 +109,14 @@ def test_reuse_substrate_degrades_to_none_on_failure(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_wire_fires_knowledge_reused_end_to_end(tmp_path, events_dir):
-    """The substrate _reuse_substrate() produces, fed to the runner over a graph
-    with a servable prior unit, yields exactly one knowledge.reused — the wire
-    reaches the observable flywheel signal. Red-proof: the None path (no wire)
-    emits zero (asserted in the same run)."""
+async def test_reuse_substrate_output_fires_knowledge_reused(tmp_path, events_dir):
+    """The substrate _reuse_substrate() PRODUCES, fed to a runner over a graph
+    with a servable prior unit, yields exactly one knowledge.reused; the None
+    path fires zero (red-proof). NOTE: this proves the substrate-and-runner
+    integration, NOT that cascade_routes.launch() threads it into ITS runner —
+    a true launch()-path assertion (runner._retrieval_substrate is not None) is
+    a follow-up, and the RO/RW-coexistence + lifecycle concerns (see PR #140 /
+    SPR-02 spec) mean prod firing is UNPROVEN here."""
     emb = HashEmbedding()
     db = os.path.join(tmp_path, "graph.duckdb")
     init_database_at_path(db)
