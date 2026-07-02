@@ -34,6 +34,8 @@
  *   raised               1    docked panel raised over dock chrome (z=0→1)
  *   floatingPanelBase    2    elevation.ts `FLOATING_Z_BASE`; WorkspaceStore
  *                             "Floating panels: z = 2…50 (via zCounter)"
+ *   sceneBadge           5    SceneStatusBadge.tsx (ALC SPR-03/#144) — was a
+ *                             bare `zIndex: 5`, now catalogued here
  *   floatingPanelCeiling 50   WorkspaceStore / README "z = 2…50" upper edge
  *   windowBase          40    windowsStore.ts `WINDOW_Z_BASE`
  *   mascot              60    PenguinMascot.tsx `z-[60]`
@@ -66,6 +68,14 @@ export const zIndex = Object.freeze({
    * `elevation.ts FLOATING_Z_BASE` (which the shadow-depth math reads).
    */
   floatingPanelBase: 2,
+  /**
+   * Scene fallback-status badge (SceneStatusBadge, ALC SPR-03 / #144). A small
+   * operator observability chip painted over the scene floor (z≈0) and above a
+   * floating panel's base, but well below a workspace window — the reader must
+   * see "live art is off" without it competing with real chrome. Catalogued
+   * here (was a bare `zIndex: 5` literal) so it can't silently drift.
+   */
+  sceneBadge: 5,
   /** Top of the floating-panel band ("z = 2…50") — documents the headroom. */
   floatingPanelCeiling: 50,
   /**
@@ -96,6 +106,7 @@ export type ZIndexLayer = keyof typeof zIndex;
 export const Z_LADDER_ORDER = [
   "raised",
   "floatingPanelBase",
+  "sceneBadge",
   "windowBase",
   "floatingPanelCeiling",
   "mascot",
