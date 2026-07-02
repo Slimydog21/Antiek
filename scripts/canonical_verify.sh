@@ -31,6 +31,7 @@
 #   speak-contributor-economics — Speak SPR-06 contributor escrow economics
 #   speak-economics-matrix — Speak SPR-07 publishing-mode economics matrix
 #   speak-biography-authoring — Speak SPR-08 biography outline + draft
+#   speak-publishing-physical — Speak SPR-09 publish + physical quote
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -54,7 +55,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|speak-economics-matrix|speak-biography-authoring|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|speak-economics-matrix|speak-biography-authoring|speak-publishing-physical|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -420,6 +421,21 @@ cmd_speak_biography_authoring() {
   echo "CANONICAL_VERIFY_OK: speak-biography-authoring"
 }
 
+cmd_speak_publishing_physical() {
+  echo "== speak-publishing-physical: publish gate + servability + physical quote =="
+  "${PY}" -m pytest \
+    tests/test_speak_publish.py \
+    tests/test_seam_platform_authored_gate.py \
+    tests/test_speak_api.py::test_full_operator_journey_to_public_publish \
+    tests/test_contracts_speak_lock.py \
+    -q --tb=no
+  echo "== speak-publishing-physical: Speak publish/quote UI =="
+  (cd apps/reading && npm run test -- \
+    src/modes/Speak/Speak.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: speak-publishing-physical"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -514,6 +530,7 @@ main() {
     speak-contributor-economics) cmd_speak_contributor_economics ;;
     speak-economics-matrix) cmd_speak_economics_matrix ;;
     speak-biography-authoring) cmd_speak_biography_authoring ;;
+    speak-publishing-physical) cmd_speak_publishing_physical ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;
