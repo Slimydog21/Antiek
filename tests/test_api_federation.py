@@ -48,6 +48,7 @@ def test_register_returns_one_time_secret_then_public_view_hides_it(isolated_db)
     assert r.status_code == 201, r.text
     body = r.json()
     assert body["partner_id"] == "prt-lab"
+    assert body["substrate_url"] == "https://lab.example"
     assert body["state"] == "pending_handshake"
     assert "shared_secret_hex" in body
     secret = body["shared_secret_hex"]
@@ -63,6 +64,38 @@ def test_register_returns_one_time_secret_then_public_view_hides_it(isolated_db)
     assert r.status_code == 200
     for p in r.json()["partners"]:
         assert "shared_secret_hex" not in p
+
+
+def test_register_trims_substrate_url(isolated_db):
+    c = _client()
+    r = c.post(
+        "/federation/partners",
+        json={
+            "display_name": "Partner Lab",
+            "substrate_url": "  https://lab.example/federation  ",
+            "partner_id": "prt-lab",
+        },
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["substrate_url"] == "https://lab.example/federation"
+
+
+@pytest.mark.parametrize(
+    "substrate_url",
+    ["javascript:alert(1)", "data:text/html,owned", "/relative", "lab.example"],
+)
+def test_register_rejects_non_http_substrate_urls(isolated_db, substrate_url):
+    c = _client()
+    r = c.post(
+        "/federation/partners",
+        json={
+            "display_name": "Partner Lab",
+            "substrate_url": substrate_url,
+            "partner_id": "prt-lab",
+        },
+    )
+    assert r.status_code == 422
+    assert c.get("/federation/partners/prt-lab").status_code == 404
 
 
 def test_trust_then_revoke_terminal(isolated_db):

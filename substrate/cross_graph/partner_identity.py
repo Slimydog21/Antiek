@@ -48,6 +48,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlparse
 
 # Optional hook fired after EVERY partner state transition. Signature:
 # (newly-landed record). The audit-event bridge in event_emit.py uses
@@ -93,6 +94,22 @@ class PartnerIdentityError(Exception):
     """Surfaces structural issues — unknown partner, invalid state
     transition, malformed token. Token-verification failures return
     None rather than raising so callers can branch on the result."""
+
+
+def normalize_partner_substrate_url(value: str) -> str:
+    """Trim and validate a partner substrate endpoint.
+
+    Federation URLs are later surfaced as outbound delivery targets and audit
+    payloads, so the registry only accepts absolute HTTP(S) origins/paths.
+    """
+
+    url = value.strip()
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise PartnerIdentityError(
+            "substrate_url must be an absolute http(s) URL"
+        )
+    return url
 
 
 @dataclass(frozen=True)
@@ -175,11 +192,12 @@ def register_partner(
             f"partner_id {pid!r} already registered; use a fresh id "
             "or revoke the existing record first"
         )
+    normalized_url = normalize_partner_substrate_url(substrate_url)
     now = _now_iso()
     record = PartnerSubstrate(
         partner_id=pid,
         display_name=display_name,
-        substrate_url=substrate_url,
+        substrate_url=normalized_url,
         shared_secret_hex=shared_secret_hex,
         state=PartnerTrustState.PENDING_HANDSHAKE,
         registered_at=now,
