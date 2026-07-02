@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { getDistillation, ApiError } from "../../lib/api";
@@ -95,18 +95,28 @@ function AutoNotebookForInvestigation({
   // as a document.
   const investigation = useInvestigation(investigationId);
   const [distill, setDistill] = useState<DistillState>({ kind: "loading" });
+  const loadSeq = useRef(0);
+  const activeInvestigationId = useRef(investigationId);
+  activeInvestigationId.current = investigationId;
 
   const loadDistill = useCallback(async () => {
+    const seq = ++loadSeq.current;
+    const targetId = investigationId;
+    setDistill({ kind: "loading" });
     try {
       const res = await getDistillation(investigationId);
-      setDistill({
-        kind: "loaded",
-        insights: res.insights,
-        questions: res.questions,
-      });
+      if (loadSeq.current === seq && activeInvestigationId.current === targetId) {
+        setDistill({
+          kind: "loaded",
+          insights: res.insights,
+          questions: res.questions,
+        });
+      }
     } catch (e) {
-      const reason = e instanceof ApiError ? e.body || null : null;
-      setDistill({ kind: "error", reason });
+      if (loadSeq.current === seq && activeInvestigationId.current === targetId) {
+        const reason = e instanceof ApiError ? e.body || null : null;
+        setDistill({ kind: "error", reason });
+      }
     }
   }, [investigationId]);
 
