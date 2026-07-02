@@ -86,6 +86,53 @@ function researchFilterParam(value: string): string {
   return trimmed.startsWith("inv-") ? trimmed : `inv-${trimmed}`;
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function sourceTier(value: unknown): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 1 && value <= 5
+    ? value
+    : 0;
+}
+
+function safeDocumentRow(value: unknown): DocumentRow | null {
+  const row = record(value);
+  const documentId = nonEmptyString(row?.document_id);
+  if (!row || !documentId) return null;
+  return {
+    document_id: documentId,
+    title: nullableString(row.title),
+    source_uri: nullableString(row.source_uri),
+    document_type: nullableString(row.document_type),
+    source_tier: sourceTier(row.source_tier),
+    investigation_id: nullableString(row.investigation_id),
+    content_class: nullableString(row.content_class),
+    ip_holder_id: nullableString(row.ip_holder_id),
+  };
+}
+
+function safeDocumentRows(value: unknown): DocumentRow[] {
+  const body = record(value);
+  const rows = Array.isArray(body?.documents) ? body.documents : [];
+  return rows.flatMap((item) => {
+    const row = safeDocumentRow(item);
+    return row ? [row] : [];
+  });
+}
+
 export default function DocumentsIndex() {
   const openDocument = useOpenDocument();
   // SPR-09 window-adaptation contract: in a WorkspaceWindow, fill the host
@@ -114,8 +161,7 @@ export default function DocumentsIndex() {
       if (!resp.ok) {
         throw new Error(`Could not load documents (HTTP ${resp.status}).`);
       }
-      const data = await resp.json();
-      setRows(data.documents ?? []);
+      setRows(safeDocumentRows(await resp.json()));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
