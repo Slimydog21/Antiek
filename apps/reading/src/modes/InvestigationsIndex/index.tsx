@@ -78,9 +78,12 @@ function safeInvestigationRow(value: unknown): InvestigationRow | null {
 function safeInvestigationRows(value: unknown): InvestigationRow[] {
   const body = record(value);
   const rows = Array.isArray(body?.investigations) ? body.investigations : [];
+  const seen = new Set<string>();
   return rows.flatMap((item) => {
     const row = safeInvestigationRow(item);
-    return row ? [row] : [];
+    if (!row || seen.has(row.investigation_id)) return [];
+    seen.add(row.investigation_id);
+    return [row];
   });
 }
 

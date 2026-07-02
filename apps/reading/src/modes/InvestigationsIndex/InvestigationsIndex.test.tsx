@@ -108,6 +108,12 @@ describe("InvestigationsIndex", () => {
             parent_investigation_id: " parent dirty ",
           },
           {
+            investigation_id: "inv dirty",
+            question: "Duplicate investigation",
+            status: "in_progress",
+            cost_usd_total: "99",
+          },
+          {
             investigation_id: " ",
             question: "Skipped investigation",
             status: "completed",
@@ -119,6 +125,7 @@ describe("InvestigationsIndex", () => {
     renderIndex();
 
     expect(await screen.findByText("inv dirty")).toBeTruthy();
+    expect(screen.queryByText("Duplicate investigation")).toBeNull();
     expect(screen.queryByText("Skipped investigation")).toBeNull();
     expect(screen.getByText("1 shown · $0.50 total cost")).toBeTruthy();
     expect(screen.getAllByText("completed").length).toBeGreaterThanOrEqual(2);

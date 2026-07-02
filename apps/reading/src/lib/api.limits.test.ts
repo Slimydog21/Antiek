@@ -405,6 +405,12 @@ describe("api client investigation and watch-list response boundaries", () => {
               spawned_by_daemon: true,
             },
             {
+              investigation_id: "inv-1",
+              question: "Duplicate investigation",
+              status: "in_progress",
+              cost_usd_total: "99",
+            },
+            {
               investigation_id: "inv-2",
               question: " ",
               status: "mystery",
