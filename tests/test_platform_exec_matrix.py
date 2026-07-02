@@ -7,8 +7,8 @@ the operator cannot map that command to a row.
 
 from __future__ import annotations
 
-from fnmatch import fnmatchcase
 import re
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,6 +30,7 @@ _READ_ACTIVATION_TRIGGER_PATHS = {
     "tools/activation/read_dogfood.py",
     "tests/test_read_activation_dogfood.py",
 }
+_HANDOFF_FIXTURE = "tests/fixtures/agent_execution/handoff_pass.md"
 
 
 def _workflow_canonical_commands() -> set[str]:
@@ -117,6 +118,16 @@ def test_agent_workflow_runs_every_matrix_canonical_command() -> None:
         "PLATFORM_EXEC_MATRIX.md names canonical verifier(s) not run by "
         f"agent_execution_gates.yml: {missing}"
     )
+
+
+def test_agent_workflow_runs_handoff_fixture_gate_for_schema_rows() -> None:
+    workflow = AGENT_GATES.read_text(encoding="utf-8")
+    matrix = MATRIX.read_text(encoding="utf-8")
+
+    assert "| P-46 | Agent handoff schema |" in matrix
+    assert "| P-47 | Session theater grep |" in matrix
+    assert f"./scripts/canonical_verify.sh handoff {_HANDOFF_FIXTURE}" in workflow
+    assert (ROOT / _HANDOFF_FIXTURE).is_file()
 
 
 def test_platform_matrix_canonical_commands_exist_in_script() -> None:
