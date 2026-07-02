@@ -284,6 +284,70 @@ def validate_sessions(records: list[dict[str, Any]]) -> DogfoodReport:
     )
 
 
+def session_template(kind: str) -> dict[str, Any]:
+    """Return one JSONL-safe seed record for an operator-authored dogfood note."""
+    if kind not in {"inert", "live", "live-citation"}:
+        raise ValueError("template kind must be one of: inert, live, live-citation")
+
+    live = kind in {"live", "live-citation"}
+    citation = kind == "live-citation"
+    steps: dict[str, dict[str, Any]] = {
+        "1": {
+            "status": "pass",
+            "visible_content_note": "Visible heading/table/math/figure or structured blocks.",
+        },
+        "2": {
+            "status": "pass",
+            "selected_text": "Exact selected passage text.",
+            "menu_labels": ["Ask", "Investigate", "Trace source"],
+        },
+        "3": {"status": "pass" if live else "inert"},
+        "4": {"status": "pass" if live else "inert"},
+        "5": {"status": "pass"},
+        "6": {
+            "status": "pass",
+            "return_context_note": "Back/return preserved enough context to keep reading.",
+        },
+        "7": {
+            "status": "pass",
+            "operator_note": "Read for 20+ minutes; note dead ends or friction here.",
+        },
+    }
+    if live:
+        steps["3"]["first_answer"] = "First useful provider-backed answer."
+        steps["4"]["investigation_id"] = "child-investigation-id"
+    else:
+        steps["3"]["exact_no_key_copy"] = (
+            "Dialogue requires provider activation keys."
+        )
+        steps["4"]["exact_no_key_copy"] = (
+            "Research spin-out requires provider activation keys."
+        )
+    if citation:
+        steps["5"].update(
+            {
+                "source_document_id": "source-doc-1",
+                "chunk_id": "chunk-1",
+                "result_url": "https://antiek.ai/read/source-doc-1?chunk=chunk-1",
+            }
+        )
+
+    return {
+        "session_id": "2026-06-30-operator-001",
+        "date": "2026-06-30",
+        "build_sha": "abc123",
+        "url": "https://antiek.ai/read/doc-1",
+        "operator": "Operator",
+        "document_id": "doc-1",
+        "entry_door": "library" if not citation else "command_palette",
+        "provider_status": "ready" if live else "absent",
+        "live_provider_ai": live,
+        "citation_traced": citation,
+        "minutes_reading": 22,
+        "steps": steps,
+    }
+
+
 def _step_followup_failures(prefix: str, steps: dict[Any, Any]) -> list[str]:
     failures: list[str] = []
     for step_id, raw_step in sorted(steps.items(), key=lambda item: str(item[0])):
@@ -721,13 +785,33 @@ def _blocking_issue_ids(record: dict[str, Any]) -> tuple[str, ...]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("log", type=Path, help="Read activation dogfood JSONL log")
+    parser.add_argument(
+        "log",
+        nargs="?",
+        type=Path,
+        help="Read activation dogfood JSONL log",
+    )
+    parser.add_argument(
+        "--template",
+        choices=("inert", "live", "live-citation"),
+        help=(
+            "Print one JSONL-compatible seed session and exit. The operator must "
+            "replace the evidence before appending it to the dogfood log."
+        ),
+    )
     parser.add_argument(
         "--json",
         action="store_true",
         help="Print the report as JSON instead of human-readable text.",
     )
     args = parser.parse_args(argv)
+
+    if args.template:
+        print(json.dumps(session_template(args.template), sort_keys=True))
+        return 0
+
+    if args.log is None:
+        parser.error("the following arguments are required: log")
 
     try:
         report = validate_sessions(load_jsonl(args.log))

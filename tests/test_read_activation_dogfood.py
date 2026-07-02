@@ -4,7 +4,12 @@ import json
 import re
 from pathlib import Path
 
-from tools.activation.read_dogfood import load_jsonl, validate_sessions
+from tools.activation.read_dogfood import (
+    load_jsonl,
+    main,
+    session_template,
+    validate_sessions,
+)
 
 
 def _session(
@@ -786,6 +791,40 @@ def test_jsonl_loader_accepts_comments_and_blank_lines(tmp_path) -> None:
     )
 
     assert load_jsonl(path) == [first, second]
+
+
+def test_inert_template_is_jsonl_safe_and_validator_compatible(capsys) -> None:
+    assert main(["--template", "inert"]) == 0
+    out = capsys.readouterr().out
+
+    assert out.count("\n") == 1
+    record = json.loads(out)
+    report = validate_sessions([record])
+
+    assert report.valid_sessions == 1
+    assert report.live_provider_sessions == 0
+    assert report.citation_trace_sessions == 0
+    assert all(failure.startswith("closure requires ") for failure in report.failures)
+
+
+def test_live_citation_template_carries_non_library_trace_evidence() -> None:
+    record = session_template("live-citation")
+    report = validate_sessions([record])
+
+    assert report.valid_sessions == 1
+    assert report.live_provider_sessions == 1
+    assert report.citation_trace_sessions == 1
+    assert report.non_library_sessions == 1
+    assert all(failure.startswith("closure requires ") for failure in report.failures)
+
+
+def test_template_rejects_unknown_kind() -> None:
+    try:
+        session_template("finished")
+    except ValueError as exc:
+        assert "template kind must be one of" in str(exc)
+    else:
+        raise AssertionError("session_template accepted an unknown kind")
 
 
 def test_activation_spec_minimal_record_shape_is_validator_compatible() -> None:

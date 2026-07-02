@@ -87,6 +87,15 @@ The dogfood log is JSONL: one session object per line. The validator is:
 python tools/activation/read_dogfood.py path/to/read-dogfood.jsonl
 ```
 
+To seed a new operator-authored row without hand-copying the schema, print a
+single JSONL-compatible template and replace the evidence before appending it:
+
+```bash
+python tools/activation/read_dogfood.py --template inert
+python tools/activation/read_dogfood.py --template live
+python tools/activation/read_dogfood.py --template live-citation
+```
+
 It is intentionally a **closure guard**, not a session recorder and not an AI
 quality judge. It checks that the log has the required fields, 10 distinct valid
 sessions, at least 5 sessions with live provider-backed AI, at least 3 sessions
