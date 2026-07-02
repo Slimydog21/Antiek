@@ -84,9 +84,10 @@ its own implementation PR.
 
 ## D2 — Autoresearch Wedge 3: config sweeps
 
-**Status:** ❌ Deferred. Substrate primitive (autoresearch runner) exists
-at `tools/prompt_autoresearch/`; Wedge 1 + Wedge 2 (shadow-mode gate)
-shipped. Wedge 3 not started.
+**Status:** ✅ Substrate shipped; activation deferred. The autoresearch runner
+exists at `tools/prompt_autoresearch/`; Wedge 1 + Wedge 2 (shadow-mode gate)
+shipped; the Wedge 3 sweep substrate now exists at
+`substrate/autoresearch/wedge3_sweep.py`.
 **Unlock criterion:** **≥500 graded outcomes** in the cohort + Wedge 1
 ratified at G6.
 **Spec reference:** `docs/integration_autoresearch.md` Wedge 3;
@@ -99,11 +100,19 @@ Why ≥500: below that volume the gradient between configs is dominated by
 noise. The substrate's `outcomes` table is the ground-truth source; query
 it for the cohort count before considering Wedge 3 work.
 
-**Action when unlocked:** extend `tools/prompt_autoresearch/` to sweep
-context-pack assembly strategies + dispatch-tier routing decisions
-(currently only prompts mutate). Reuse the budget-cap discipline from
-Wedge 1. Composite-score logic from `tools/prompt_autoresearch/score.py`
-applies directly.
+Current implemented evidence:
+
+- Pure-functional sweep engine: `substrate/autoresearch/wedge3_sweep.py`.
+- Proposal + operator verdict/proposal ledger primitives:
+  `substrate/autoresearch/proposal.py`.
+- Regression tests: `tests/test_autoresearch_wedge3.py`.
+- The engine aborts as `cohort_too_small` below `COHORT_MIN_OUTCOMES = 500`
+  and never auto-promotes; operator review remains required.
+
+**Action when unlocked:** connect the sweep engine to the real outcomes table
+and run it only after ≥500 graded outcomes + G6 Wedge 1 ratification. Reuse the
+budget-cap discipline from Wedge 1. Composite-score logic from
+`tools/prompt_autoresearch/score.py` applies directly.
 
 ---
 
@@ -176,21 +185,43 @@ enforced throughout.
 
 ## D5 — Prime Intellect items A and B
 
-**Status:** ❌ Deferred. Items F + D shipped (trajectory→verifiers compat
-test + parameter_extractor fixture at 50 examples). Items A + B not
-started.
+**Status:** ✅ Substrate shipped; activation deferred. Items F + D shipped
+(trajectory→verifiers compat test + parameter_extractor fixture at 50
+examples). Item A now has GEPA substrate; item B now has the
+parameter_extractor verifiers-environment scaffold. G8 remains the
+activation/training gate.
 **Unlock criterion:** G8 (Loop 3 unlock) — items A + B are Phase 2 of
 the Prime track, behind the Loop 3 gate per §14.2.
 **Spec reference:** `docs/integration_prime_intellect.md` items A + B;
 master-spec §3.4.
 **Blocks-what:** item E (hosted `prime rl run`).
 
-Item A: GEPA on `parameter_extractor`. Item B: `verifiers` env stub for
-`parameter_extractor` (substrate only — training forbidden until unlock).
+Current implemented evidence:
+
+- Item A GEPA substrate: `tools/gepa/optimizer.py`, `tools/gepa/pareto_front.py`.
+- Item B parameter-extractor env scaffold:
+  `interfaces/research/environments/parameter_extractor_env.py`.
+- Rubric/verifiers adapter: `tools/eval/antiek_rubric_to_verifiers.py`.
+- Compatibility fixture: `tests/fixtures/parameter_extractor_v0.jsonl`.
+- Regression tests:
+  `tests/test_gepa.py`, `tests/test_gepa_phase8_bridge.py`,
+  `tests/test_gepa_phase8_applier_e2e.py`,
+  `tests/test_parameter_extractor_env.py`,
+  `tests/test_antiek_rubric_to_verifiers.py`,
+  `tests/test_prime_intellect_compat.py`.
+
+2026-07-02 verification:
+
+```bash
+./.venv/bin/python -m pytest tests/test_autoresearch_wedge3.py tests/test_parameter_extractor_env.py tests/test_gepa.py tests/test_antiek_rubric_to_verifiers.py tests/test_prime_intellect_compat.py -q --tb=no
+```
+
+Result: `40 passed`.
 
 **Action when unlocked:** integration_prime_intellect.md §A and §B
 contain the exact contracts. Hub publishing is REJECTED per the spec —
-keep the env stubs substrate-only.
+keep the env stubs substrate-only. No hosted `prime rl run` belongs here; D6
+still owns that post-G8 decision.
 
 ---
 
