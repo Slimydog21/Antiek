@@ -40,6 +40,7 @@ isolation) and yields ``StepEvent``s. Graph promotion is the
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -355,10 +356,11 @@ class HostLocalRunner:
             log_event(iid, action, payload=payload or {}, role="user_agent",
                       events_dir=self._events_dir)
         if self._seal_on_complete:
-            try:
+            # seal is best-effort (also clears the SIM105 my contextlib import
+            # line-shifted out of the declared-bar baseline — shrink real debt,
+            # do not re-mint a phantom)
+            with contextlib.suppress(Exception):
                 seal_investigation(iid, events_dir=self._events_dir)
-            except Exception:  # pragma: no cover — seal is best-effort
-                pass
         await st.queue.put(StepEvent(iid, 0, "done", state=st.state))
         await st.queue.put(_STREAM_DONE)
 
@@ -437,10 +439,25 @@ class HostLocalRunner:
                 st.task.cancel()
 
     async def join(self) -> None:
-        """Await all in-flight researches (test/CLI convenience)."""
+        """Await all in-flight researches (test/CLI convenience), then release
+        the reuse substrate's read-only DB connection.
+
+        The SPR-02 wire hands the runner a read-only ``retrieval_substrate``
+        that holds a DuckDB connection; DuckDB enforces in-process exclusion
+        between a read-only and a read-write handle to the same file, so leaving
+        it open past the runner's life both leaks the connection and can block a
+        later writer on the same DB. ``join`` is the terminal point, so close it
+        here (best-effort — a substrate without ``close`` or a double-close must
+        never turn a completed research into a failure)."""
         tasks = [st.task for st in self._states.values() if st.task is not None]
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        sub = self._retrieval_substrate
+        if sub is not None and hasattr(sub, "close"):
+            # teardown is best-effort — a double-close or a substrate without a
+            # live connection must never turn a completed research into a failure
+            with contextlib.suppress(Exception):
+                sub.close()
 
 
 # ---------------------------------------------------------------------------
