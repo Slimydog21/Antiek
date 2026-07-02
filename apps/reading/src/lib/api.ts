@@ -1810,6 +1810,75 @@ export interface AttributionReportResponse {
   option_c: AttributionAlgorithmShares;
 }
 
+function safeNumberMap(value: unknown): Record<string, number> {
+  const source = record(value);
+  if (!source) return {};
+  return Object.fromEntries(
+    Object.entries(source).flatMap(([key, raw]) => {
+      const id = nonEmptyString(key);
+      const amount = finiteNonNegativeNumber(raw);
+      return id && amount !== null ? [[id, amount]] : [];
+    }),
+  );
+}
+
+function safeStringMap(value: unknown): Record<string, string> {
+  const source = record(value);
+  if (!source) return {};
+  return Object.fromEntries(
+    Object.entries(source).flatMap(([key, raw]) => {
+      const id = nonEmptyString(key);
+      const text = nonEmptyString(raw);
+      return id && text ? [[id, text]] : [];
+    }),
+  );
+}
+
+function safeNullableStringMap(value: unknown): Record<string, string | null> {
+  const source = record(value);
+  if (!source) return {};
+  return Object.fromEntries(
+    Object.entries(source).flatMap(([key, raw]) => {
+      const id = nonEmptyString(key);
+      return id ? [[id, nullableString(raw)]] : [];
+    }),
+  );
+}
+
+function safeAttributionAlgorithm(
+  value: unknown,
+  fallbackAlgorithm: AttributionAlgorithmShares["algorithm"],
+): AttributionAlgorithmShares {
+  const body = record(value);
+  const algorithm =
+    body?.algorithm === "A" || body?.algorithm === "B" || body?.algorithm === "C"
+      ? body.algorithm
+      : fallbackAlgorithm;
+  return {
+    algorithm,
+    shares: safeNumberMap(body?.shares),
+    document_titles: safeStringMap(body?.document_titles),
+    document_count: nonNegativeInteger(body?.document_count) ?? 0,
+    claim_count: nonNegativeInteger(body?.claim_count) ?? 0,
+    document_ip_holders: safeNullableStringMap(body?.document_ip_holders),
+    document_ip_holder_status: safeStringMap(body?.document_ip_holder_status),
+  };
+}
+
+function safeAttributionReport(
+  value: unknown,
+  fallbackSynthesisId: string,
+): AttributionReportResponse {
+  const body = record(value);
+  return {
+    synthesis_id: nonEmptyString(body?.synthesis_id) ?? fallbackSynthesisId,
+    target_question: nonEmptyString(body?.target_question) ?? "",
+    option_a: safeAttributionAlgorithm(body?.option_a, "A"),
+    option_b: safeAttributionAlgorithm(body?.option_b, "B"),
+    option_c: safeAttributionAlgorithm(body?.option_c, "C"),
+  };
+}
+
 /** GET /attribution/synthesis/{id} — Phase 1 telemetry only; no payout is
  *  attached to the result. The accrual view defaults to Option B (§9.3
  *  recommended default). ``emit_event`` defaults false (a read shouldn't write
@@ -1827,7 +1896,7 @@ export async function getAttributionReport(
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeAttributionReport(await resp.json(), synthesisId);
 }
 
 /** Why an accrued balance is NOT disbursable. ``disbursable`` is always false
@@ -1869,6 +1938,69 @@ export interface ConsentViewResponse {
   gate_source_path: string;
 }
 
+function safeDisbursementGate(value: unknown): DisbursementGate {
+  const gate = record(value);
+  return {
+    disbursable: gate?.disbursable === true,
+    open_gate_ids: safeStringList(gate?.open_gate_ids),
+    holder_claimed: gate?.holder_claimed === true,
+    fully_unlocked: gate?.fully_unlocked === true,
+    label: nonEmptyString(gate?.label) ?? "gated",
+  };
+}
+
+function safeIpHolderConsent(value: unknown): IpHolderConsent | null {
+  const holder = record(value);
+  if (!holder) return null;
+  const ipHolderId = nonEmptyString(holder.ip_holder_id);
+  const displayName = nonEmptyString(holder.display_name);
+  if (!ipHolderId || !displayName) return null;
+  return {
+    ip_holder_id: ipHolderId,
+    display_name: displayName,
+    status: nonEmptyString(holder.status) ?? "pre_onboarded",
+    escrow_balance_usd: nonEmptyString(holder.escrow_balance_usd) ?? "0",
+    gate: safeDisbursementGate(holder.gate),
+    serves_full_text:
+      typeof holder.serves_full_text === "boolean" ? holder.serves_full_text : null,
+    servability_note: nullableString(holder.servability_note),
+  };
+}
+
+function safeEscrowReport(value: unknown): ConsentViewResponse["escrow_report"] {
+  const report = record(value);
+  return {
+    pre_onboarded: nonNegativeInteger(report?.pre_onboarded) ?? 0,
+    invited: nonNegativeInteger(report?.invited) ?? 0,
+    claimed: nonNegativeInteger(report?.claimed) ?? 0,
+    opted_out: nonNegativeInteger(report?.opted_out) ?? 0,
+    claim_rate: finiteNonNegativeNumber(report?.claim_rate) ?? 0,
+    total_escrow_accrued_cents: nonNegativeInteger(report?.total_escrow_accrued_cents) ?? 0,
+    total_escrow_paid_cents: nonNegativeInteger(report?.total_escrow_paid_cents) ?? 0,
+    unclaimed_escrow_cents: nonNegativeInteger(report?.unclaimed_escrow_cents) ?? 0,
+    publishers_with_nontrivial_accrual:
+      nonNegativeInteger(report?.publishers_with_nontrivial_accrual) ?? 0,
+  };
+}
+
+function safeConsentViewResponse(value: unknown): ConsentViewResponse {
+  const body = record(value);
+  const holders = Array.isArray(body?.holders)
+    ? body.holders.flatMap((item) => {
+        const holder = safeIpHolderConsent(item);
+        return holder ? [holder] : [];
+      })
+    : [];
+  return {
+    holders,
+    escrow_report: safeEscrowReport(body?.escrow_report),
+    disbursement_gates_open: safeStringList(body?.disbursement_gates_open),
+    total_escrow_accruing_usd: nonEmptyString(body?.total_escrow_accruing_usd) ?? "0",
+    any_disbursable: body?.any_disbursable === true,
+    gate_source_path: nonEmptyString(body?.gate_source_path) ?? "",
+  };
+}
+
 /** GET /coordination/consent — the read-only escrow/consent view. Every
  *  balance is accruing-not-paid; ``any_disbursable`` is false while a legal
  *  gate is open. Read-only on the backend (no escrow write, no payout). */
@@ -1881,7 +2013,7 @@ export async function getConsentView(): Promise<ConsentViewResponse> {
       await resp.text(),
     );
   }
-  return resp.json();
+  return safeConsentViewResponse(await resp.json());
 }
 
 // ── antiek-reader SPR-06: passage-Dialogue Region wire helper ──────────────

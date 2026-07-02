@@ -7,7 +7,9 @@ import {
   createSection,
   exportDeliverable,
   challengeNote,
+  getAttributionReport,
   getChunk,
+  getConsentView,
   getDistillation,
   getHealth,
   getDeliverable,
@@ -971,5 +973,159 @@ describe("api client research graph response boundaries", () => {
     );
 
     await expect(getChunk("chunk-1")).rejects.toMatchObject({ status: 502 });
+  });
+});
+
+describe("api client attribution and consent response boundaries", () => {
+  it("sanitizes attribution reports before economics surfaces render shares", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          synthesis_id: " ",
+          target_question: "  Who gets credit?  ",
+          option_a: {
+            algorithm: "Z",
+            shares: {
+              " doc-1 ": "0.6",
+              " ": 0.4,
+              "doc-bad": -1,
+            },
+            document_titles: {
+              " doc-1 ": "  Source one  ",
+              "doc-empty": " ",
+            },
+            document_count: "2",
+            claim_count: 3,
+            document_ip_holders: {
+              " doc-1 ": " rights-1 ",
+              "doc-2": " ",
+            },
+            document_ip_holder_status: {
+              " rights-1 ": " claimed ",
+              " ": "hidden",
+            },
+          },
+          option_b: null,
+          option_c: {
+            algorithm: "C",
+            shares: { "doc-3": 0.25 },
+          },
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(getAttributionReport("syn-fallback")).resolves.toEqual({
+      synthesis_id: "syn-fallback",
+      target_question: "Who gets credit?",
+      option_a: {
+        algorithm: "A",
+        shares: { "doc-1": 0.6 },
+        document_titles: { "doc-1": "Source one" },
+        document_count: 0,
+        claim_count: 3,
+        document_ip_holders: { "doc-1": "rights-1", "doc-2": null },
+        document_ip_holder_status: { "rights-1": "claimed" },
+      },
+      option_b: {
+        algorithm: "B",
+        shares: {},
+        document_titles: {},
+        document_count: 0,
+        claim_count: 0,
+        document_ip_holders: {},
+        document_ip_holder_status: {},
+      },
+      option_c: {
+        algorithm: "C",
+        shares: { "doc-3": 0.25 },
+        document_titles: {},
+        document_count: 0,
+        claim_count: 0,
+        document_ip_holders: {},
+        document_ip_holder_status: {},
+      },
+    });
+  });
+
+  it("sanitizes consent and escrow views with disbursement deny-by-default", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          holders: [
+            {
+              ip_holder_id: " rights-1 ",
+              display_name: "  Publisher One  ",
+              status: " claimed ",
+              escrow_balance_usd: " 12.50 ",
+              gate: {
+                disbursable: "yes",
+                open_gate_ids: [" G2 ", "", 7, "G3"],
+                holder_claimed: true,
+                fully_unlocked: "yes",
+                label: " ",
+              },
+              serves_full_text: "true",
+              servability_note: "  opt-in pending  ",
+            },
+            {
+              ip_holder_id: " ",
+              display_name: "Invisible",
+            },
+          ],
+          escrow_report: {
+            pre_onboarded: "2",
+            invited: 1,
+            claimed: -1,
+            opted_out: 0,
+            claim_rate: "0.5",
+            total_escrow_accrued_cents: "1250",
+            total_escrow_paid_cents: 100,
+            unclaimed_escrow_cents: Number.POSITIVE_INFINITY,
+            publishers_with_nontrivial_accrual: 1,
+          },
+          disbursement_gates_open: [" G2 ", null, "G3"],
+          total_escrow_accruing_usd: " 12.50 ",
+          any_disbursable: "yes",
+          gate_source_path: "  /config/gates  ",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(getConsentView()).resolves.toEqual({
+      holders: [
+        {
+          ip_holder_id: "rights-1",
+          display_name: "Publisher One",
+          status: "claimed",
+          escrow_balance_usd: "12.50",
+          gate: {
+            disbursable: false,
+            open_gate_ids: ["G2", "G3"],
+            holder_claimed: true,
+            fully_unlocked: false,
+            label: "gated",
+          },
+          serves_full_text: null,
+          servability_note: "opt-in pending",
+        },
+      ],
+      escrow_report: {
+        pre_onboarded: 0,
+        invited: 1,
+        claimed: 0,
+        opted_out: 0,
+        claim_rate: 0.5,
+        total_escrow_accrued_cents: 0,
+        total_escrow_paid_cents: 100,
+        unclaimed_escrow_cents: 0,
+        publishers_with_nontrivial_accrual: 1,
+      },
+      disbursement_gates_open: ["G2", "G3"],
+      total_escrow_accruing_usd: "12.50",
+      any_disbursable: false,
+      gate_source_path: "/config/gates",
+    });
   });
 });
