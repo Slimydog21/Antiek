@@ -48,6 +48,18 @@ describe("api client numeric request bounds", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("rejects malformed research read and challenge handles before sending requests", async () => {
+    await expect(getTrajectory(" ")).rejects.toThrow(/investigationId/);
+    await expect(getInvestigationStatus(" ")).rejects.toThrow(/investigationId/);
+    await expect(getDistillation(" ")).rejects.toThrow(/investigationId/);
+    await expect(challengeNote(" ", { investigation_id: "inv-1" })).rejects.toThrow(/nodeId/);
+    await expect(challengeNote("node-1", { investigation_id: " " })).rejects.toThrow(
+      /investigation_id/,
+    );
+
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed section block indices before sending requests", async () => {
     await expect(
       attachBlock({
@@ -220,6 +232,52 @@ describe("api client investigation and watch-list response boundaries", () => {
         },
       ],
     });
+  });
+
+  it("trims research read handles before constructing request URLs", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ investigation_id: " ", count: 0, events: [] }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ investigation_id: " ", status: "completed" }), {
+          status: 200,
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ investigation_id: " ", insights: [], questions: [] }),
+          { status: 200 },
+        ),
+      );
+
+    await expect(getTrajectory(" inv dirty/1 ", 2)).resolves.toMatchObject({
+      investigation_id: "inv dirty/1",
+    });
+    await expect(getInvestigationStatus(" inv dirty/1 ")).resolves.toMatchObject({
+      investigation_id: "inv dirty/1",
+    });
+    await expect(getDistillation(" inv dirty/1 ")).resolves.toMatchObject({
+      investigation_id: "inv dirty/1",
+    });
+
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      new URL("/trajectory/inv%20dirty%2F1?limit=2", window.location.origin).toString(),
+      expect.any(Object),
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      "/investigations/inv%20dirty%2F1",
+      expect.any(Object),
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      "/research/inv%20dirty%2F1/distill",
+      expect.any(Object),
+    );
   });
 
   it("sanitizes investigation list rows before sidebar consumers render them", async () => {
@@ -968,6 +1026,30 @@ describe("api client research graph response boundaries", () => {
     await expect(
       challengeNote("node-1", { investigation_id: "inv-1" }),
     ).rejects.toMatchObject({ status: 502 });
+  });
+
+  it("trims challenge-note request handles and body text before sending", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ node_id: " node-1 ", applied: true }), { status: 200 }),
+    );
+
+    await expect(
+      challengeNote(" node dirty/1 ", {
+        investigation_id: " inv dirty/1 ",
+        challenge_text: "  sharpen this  ",
+      }),
+    ).resolves.toMatchObject({
+      node_id: "node-1",
+      applied: true,
+    });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/research/notes/node%20dirty%2F1/challenge");
+    expect(JSON.parse(init.body as string)).toEqual({
+      investigation_id: "inv dirty/1",
+      challenge_text: "sharpen this",
+    });
   });
 
   it("sanitizes chunk responses without widening servability metadata", async () => {
