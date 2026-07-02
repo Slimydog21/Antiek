@@ -150,7 +150,8 @@ def _document_ip_holder(
     ).fetchone()
     if row is None:
         return None
-    return row[0]
+    result: str | None = row[0]
+    return result
 
 
 def _load_problem_question(
