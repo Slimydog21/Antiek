@@ -66,6 +66,12 @@ function record(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 function stringOrNumber(value: unknown): string | number | null {
   if (typeof value === "string") return value;
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -75,7 +81,10 @@ function stringOrNumber(value: unknown): string | number | null {
 async function readDetail(resp: Response): Promise<string> {
   try {
     const body = record(await resp.json());
-    return typeof body.detail === "string" ? body.detail : `HTTP ${resp.status}`;
+    const detail = nonEmptyString(body.detail);
+    if (detail) return detail;
+    const nested = record(body.detail);
+    return nonEmptyString(nested.message) ?? `HTTP ${resp.status}`;
   } catch {
     return `HTTP ${resp.status}`;
   }

@@ -184,6 +184,28 @@ describe("Speak project page", () => {
     expect(await screen.findByText(/legal gate g2 open/i)).toBeTruthy();
   });
 
+  it("sanitizes nested gated-action refusal details before rendering", async () => {
+    api.getProject.mockResolvedValue({
+      id: "p1", name: "Grandma Rosa", willBePublic: true, subjectStatusWord: null,
+    });
+    api.getEconomics.mockResolvedValue({ splitApplies: true, creatorCarriesCost: false });
+    apiFetchMock.mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        detail: { message: "  publishing blocked: legal gate G2 open  " },
+      }),
+    });
+
+    mount();
+    await screen.findByText("Grandma Rosa");
+    fireEvent.click(screen.getByRole("button", { name: /^settings$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /try to publish/i }));
+
+    expect(await screen.findByText(/Not yet — publishing blocked: legal gate G2 open/i)).toBeTruthy();
+    expect(document.body.textContent).not.toContain("[object Object]");
+  });
+
   it("requires literal served=true before saying publishing succeeded", async () => {
     api.getProject.mockResolvedValue({
       id: "p1", name: "Grandma Rosa", willBePublic: true, subjectStatusWord: null,
