@@ -2,9 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 
 import { apiFetch } from "../../lib/api";
 import { GateLedger } from "./GateLedger";
-import type { GateView } from "./GateLedger";
+import type { CoordProduct, GateImpactView, GateView } from "./GateLedger";
 import { Roadmap } from "./Roadmap";
-import type { RoadmapView } from "./Roadmap";
+import type { RoadmapView, RosterView, SprintView, SubstrateLayerView } from "./Roadmap";
 
 /**
  * Coordination mode — one operator surface for "what's blocked and why"
@@ -31,6 +31,174 @@ interface GatesResponse {
   gates: GateView[];
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function nonNegativeInteger(value: unknown): number {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : 0;
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const text = nonEmptyString(item);
+        return text ? [text] : [];
+      })
+    : [];
+}
+
+function gateStatus(value: unknown): GateView["status"] {
+  return value === "closed" ||
+    value === "calendar" ||
+    value === "data_bound"
+    ? value
+    : "open";
+}
+
+function coordProduct(value: unknown): CoordProduct | null {
+  return value === "research" ||
+    value === "read" ||
+    value === "write" ||
+    value === "speak"
+    ? value
+    : null;
+}
+
+function safeGateImpact(value: unknown): GateImpactView | null {
+  const impact = record(value);
+  const product = coordProduct(impact?.product);
+  const effect = nonEmptyString(impact?.effect);
+  if (!impact || !product || !effect) return null;
+  return { product, effect };
+}
+
+function safeGate(value: unknown): GateView | null {
+  const gate = record(value);
+  const gateId = nonEmptyString(gate?.gate_id);
+  if (!gate || !gateId) return null;
+  return {
+    gate_id: gateId,
+    title: nonEmptyString(gate.title) ?? gateId,
+    status: gateStatus(gate.status),
+    status_raw: nonEmptyString(gate.status_raw) ?? "",
+    is_provisional: gate.is_provisional === true,
+    owner: nullableString(gate.owner),
+    blocks: nullableString(gate.blocks),
+    closure_record: nullableString(gate.closure_record),
+    impacts: Array.isArray(gate.impacts)
+      ? gate.impacts.flatMap((item) => {
+          const impact = safeGateImpact(item);
+          return impact ? [impact] : [];
+        })
+      : [],
+  };
+}
+
+function safeGatesResponse(value: unknown): GatesResponse {
+  const body = record(value);
+  const gates = Array.isArray(body?.gates)
+    ? body.gates.flatMap((item) => {
+        const gate = safeGate(item);
+        return gate ? [gate] : [];
+      })
+    : [];
+  return {
+    source_path: nonEmptyString(body?.source_path) ?? "",
+    gates,
+  };
+}
+
+function safeSprint(value: unknown): SprintView | null {
+  const sprint = record(value);
+  const nodeId = nonEmptyString(sprint?.node_id);
+  if (!sprint || !nodeId) return null;
+  return {
+    spec: nonEmptyString(sprint.spec) ?? "",
+    spec_label: nonEmptyString(sprint.spec_label) ?? "",
+    sprint: nonNegativeInteger(sprint.sprint),
+    slug: nonEmptyString(sprint.slug) ?? nodeId,
+    node_id: nodeId,
+    status: nonEmptyString(sprint.status) ?? "unknown",
+    on_critical_path: sprint.on_critical_path === true,
+    blocked_on: stringList(sprint.blocked_on),
+    unblocked: sprint.unblocked === true,
+  };
+}
+
+function safeRoster(value: unknown): RosterView | null {
+  const roster = record(value);
+  const spec = nonEmptyString(roster?.spec);
+  if (!roster || !spec) return null;
+  const sprints = Array.isArray(roster.sprints)
+    ? roster.sprints.flatMap((item) => {
+        const sprint = safeSprint(item);
+        return sprint ? [sprint] : [];
+      })
+    : [];
+  return {
+    spec,
+    label: nonEmptyString(roster.label) ?? spec,
+    directory: nonEmptyString(roster.directory) ?? "",
+    count: nonNegativeInteger(roster.count),
+    sprints,
+  };
+}
+
+function safeSubstrateLayer(value: unknown): SubstrateLayerView | null {
+  const layer = record(value);
+  const name = nonEmptyString(layer?.name);
+  if (!layer || !name) return null;
+  return {
+    name,
+    owner: nonEmptyString(layer.owner) ?? "",
+    status: nonEmptyString(layer.status) ?? "unknown",
+  };
+}
+
+function safeRoadmapView(value: unknown): RoadmapView {
+  const body = record(value);
+  const rosters = Array.isArray(body?.rosters)
+    ? body.rosters.flatMap((item) => {
+        const roster = safeRoster(item);
+        return roster ? [roster] : [];
+      })
+    : [];
+  return {
+    total_sprints: nonNegativeInteger(body?.total_sprints),
+    superseded_count: nonNegativeInteger(body?.superseded_count),
+    superseded_note: nonEmptyString(body?.superseded_note) ?? "",
+    reconciliation: nonEmptyString(body?.reconciliation) ?? "",
+    critical_path: stringList(body?.critical_path),
+    rosters,
+    unblocked_now: stringList(body?.unblocked_now),
+    substrate_layers: Array.isArray(body?.substrate_layers)
+      ? body.substrate_layers.flatMap((item) => {
+          const layer = safeSubstrateLayer(item);
+          return layer ? [layer] : [];
+        })
+      : [],
+  };
+}
+
 export default function Coordination() {
   const [gates, setGates] = useState<GatesResponse | null>(null);
   const [roadmap, setRoadmap] = useState<RoadmapView | null>(null);
@@ -51,8 +219,8 @@ export default function Coordination() {
       if (!roadmapResp.ok) {
         throw new Error(`GET /coordination/roadmap failed: HTTP ${roadmapResp.status}`);
       }
-      setGates((await gatesResp.json()) as GatesResponse);
-      setRoadmap((await roadmapResp.json()) as RoadmapView);
+      setGates(safeGatesResponse(await gatesResp.json()));
+      setRoadmap(safeRoadmapView(await roadmapResp.json()));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
