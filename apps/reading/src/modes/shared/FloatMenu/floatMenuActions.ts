@@ -58,6 +58,23 @@ export function outboundText(selection: FloatMenuSelection): string | null {
 export const WITHHELD_OUTBOUND_REASON =
   "This selection includes a restricted source, so its text can’t be sent to search or a new research.";
 
+function requireNonEmptyString(value: unknown, field: string): string {
+  if (typeof value !== "string") {
+    throw new TypeError(`${field} must be a non-empty string`);
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new TypeError(`${field} must be a non-empty string`);
+  }
+  return trimmed;
+}
+
+function optionalNonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
 // ─── NOTE ────────────────────────────────────────────────────────────────
 //
 // DESTINATION: `postTypedEvent` → /events/typed (the ONLY sanctioned client
@@ -91,12 +108,23 @@ export async function saveFloatMenuNote(
   args: SaveNoteArgs,
 ): Promise<{ eventId: string }> {
   const { investigationId, selection, noteText } = args;
-  const noteId = args.noteId ?? `mn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const resolvedInvestigationId = requireNonEmptyString(investigationId, "investigationId");
+  const resolvedNoteText = requireNonEmptyString(noteText, "noteText");
+  const excerpt = requireNonEmptyString(selection.text, "selection.text");
+  const noteId =
+    args.noteId == null
+      ? `mn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      : requireNonEmptyString(args.noteId, "noteId");
+  const documentId = optionalNonEmptyString(selection.provenance.documentId);
+  const chunkId = optionalNonEmptyString(selection.provenance.chunkId);
+  const voiceTranscript = optionalNonEmptyString(args.voiceClip?.transcript);
+  const voiceEventId = optionalNonEmptyString(args.voiceClip?.eventId);
+  const audioRef = optionalNonEmptyString(args.voiceClip?.audioRef);
   const payload: MarginaliaNotedPayload = {
     action_type: "marginalia.noted",
     note_id: noteId,
-    note_text: noteText,
-    excerpt: selection.text,
+    note_text: resolvedNoteText,
+    excerpt,
     // §9 load-bearing label: a marginalia note is the reader's own authorship.
     // (A voice note routed through here carries the SAME "user" label — voice-in
     // is human-authored. The §9 sin is letting a model reply inherit "user", or
@@ -104,16 +132,16 @@ export async function saveFloatMenuNote(
     source_kind: "user",
     // Provenance chain: the chunk the selection lands in (null when the host
     // resolved none — honest, never invented).
-    chunk_id: selection.provenance.chunkId ?? null,
-    voice_transcript: args.voiceClip?.transcript ?? null,
-    voice_event_id: args.voiceClip?.eventId ?? null,
-    audio_ref: args.voiceClip?.audioRef ?? null,
+    chunk_id: chunkId,
+    voice_transcript: voiceTranscript,
+    voice_event_id: voiceEventId,
+    audio_ref: audioRef,
   };
   const emitted = await postTypedEvent({
-    investigation_id: investigationId,
+    investigation_id: resolvedInvestigationId,
     // The document the selection sits in completes the claim→chunk→document
     // chain on the Event envelope (omitted when the host resolved none).
-    document_id: selection.provenance.documentId ?? undefined,
+    ...(documentId ? { document_id: documentId } : {}),
     payload,
   });
   return { eventId: emitted.event_id };
