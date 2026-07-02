@@ -217,13 +217,38 @@ function optionalRequestString(value: unknown): string | undefined {
   return nonEmptyString(value) ?? undefined;
 }
 
+function sanitizeTypedEventEnvelope(envelope: TypedEventEnvelope): TypedEventEnvelope {
+  if (!record(envelope.payload)) {
+    throw new TypeError("payload must be an object");
+  }
+  if (envelope.phase !== undefined) {
+    assertNonNegativeSafeInteger(envelope.phase, "phase");
+  }
+  const documentId = optionalRequestString(envelope.document_id);
+  const synthesisId = optionalRequestString(envelope.synthesis_id);
+  const role = optionalRequestString(envelope.role);
+  const policyId = optionalRequestString(envelope.policy_id);
+  const parentEventId = optionalRequestString(envelope.parent_event_id);
+  return {
+    investigation_id: requireRequestString(envelope.investigation_id, "investigation_id"),
+    payload: envelope.payload,
+    ...(documentId ? { document_id: documentId } : {}),
+    ...(synthesisId ? { synthesis_id: synthesisId } : {}),
+    ...(envelope.phase !== undefined ? { phase: envelope.phase } : {}),
+    ...(role ? { role } : {}),
+    ...(policyId ? { policy_id: policyId } : {}),
+    ...(parentEventId ? { parent_event_id: parentEventId } : {}),
+  };
+}
+
 export async function postTypedEvent(
   envelope: TypedEventEnvelope,
 ): Promise<EmittedEventResponse> {
+  const body = sanitizeTypedEventEnvelope(envelope);
   const resp = await apiFetch(`${API_BASE}/events/typed`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(envelope),
+    body: JSON.stringify(body),
   });
   if (!resp.ok) {
     const body = await resp.text();
@@ -244,10 +269,14 @@ export interface AIUndoRequest {
 export async function undoAiAction(
   req: AIUndoRequest,
 ): Promise<EmittedEventResponse> {
+  const body = {
+    event_id: requireRequestString(req.event_id, "event_id"),
+    investigation_id: requireRequestString(req.investigation_id, "investigation_id"),
+  };
   const resp = await apiFetch(`${API_BASE}/ai/undo`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
+    body: JSON.stringify(body),
   });
   if (!resp.ok) {
     const body = await resp.text();
