@@ -157,6 +157,27 @@ describe("CommandPalette", () => {
           }),
         };
       }
+      if (path === "/deliverables") {
+        return {
+          ok: true,
+          json: async () => ({
+            deliverables: [
+              {
+                deliverable_id: " dlv dirty ",
+                title: "  Dirty piece  ",
+                investigation_root_id: " inv-dirty ",
+                section_count: "3.9",
+              },
+              {
+                deliverable_id: " ",
+                title: "Skipped piece",
+                investigation_root_id: "inv",
+                section_count: 1,
+              },
+            ],
+          }),
+        };
+      }
       if (path === "/watch-for-later") {
         return {
           ok: true,
@@ -193,10 +214,12 @@ describe("CommandPalette", () => {
     expect(await screen.findByText("Replay: Dirty investigation")).toBeTruthy();
     expect(await screen.findByText("Dirty document")).toBeTruthy();
     expect(await screen.findByText("Dirty notebook")).toBeTruthy();
+    expect(await screen.findByText("Dirty piece")).toBeTruthy();
+    expect(screen.getByText("Piece · 3 sections · linked research")).toBeTruthy();
     expect(await screen.findByText("Dirty parked question")).toBeTruthy();
     expect(screen.queryByText(/Skipped/)).toBeNull();
 
-    await userEvent.click(screen.getByText("Dirty document"));
-    expect(screen.getByTestId("location").textContent).toBe("/read/doc%20dirty");
+    await userEvent.click(screen.getByText("Dirty piece"));
+    expect(screen.getByTestId("location").textContent).toBe("/write/dlv%20dirty");
   });
 });
