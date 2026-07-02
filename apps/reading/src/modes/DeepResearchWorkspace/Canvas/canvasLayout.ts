@@ -72,7 +72,24 @@ export function autoLayoutPosition(index: number): { x: number; y: number } {
 export function isBlockPositionEvent(
   e: Event,
 ): e is Event & { payload: BlockPositionPayload } {
-  return e.payload.action_type === "block.positioned";
+  const payload = e.payload as unknown;
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return false;
+  }
+  const p = payload as Record<string, unknown>;
+  return (
+    p.action_type === "block.positioned" &&
+    typeof p.node_id === "string" &&
+    p.node_id.length > 0 &&
+    typeof p.x === "number" &&
+    Number.isFinite(p.x) &&
+    typeof p.y === "number" &&
+    Number.isFinite(p.y) &&
+    (typeof p.region_id === "string" || p.region_id === null || p.region_id === undefined) &&
+    (typeof p.region_label === "string" ||
+      p.region_label === null ||
+      p.region_label === undefined)
+  );
 }
 
 /**

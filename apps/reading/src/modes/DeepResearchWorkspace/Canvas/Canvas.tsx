@@ -39,7 +39,7 @@ import {
   postTypedEvent,
 } from "../../../lib/api";
 import type { DistilledNode } from "../../../lib/api";
-import type { Event } from "../../../generated/types";
+import { isEventFrame } from "../../../lib/eventFrame";
 import AIActionFailure from "../../../shared/AIActionFailure";
 import Thinking from "../../../shared/Thinking";
 
@@ -99,7 +99,10 @@ export default function Canvas({
       ]);
       const nodes = [...distill.insights, ...distill.questions];
       const nodeIds = nodes.map((n) => n.node_id);
-      const persisted = replayPositions(trajectory.events as Event[]);
+      const events = Array.isArray(trajectory.events)
+        ? trajectory.events.filter(isEventFrame)
+        : [];
+      const persisted = replayPositions(events);
       const positions = resolvePositions(nodeIds, persisted);
       setState({
         kind: "loaded",
