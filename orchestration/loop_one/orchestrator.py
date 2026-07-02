@@ -1220,13 +1220,17 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
             except Exception:  # diagnostic emit is best-effort — never fail the phase
                 # A swallowed AUTO_PATCH_APPLIED emit lets phase_audit later
                 # mint a FALSE `no_auto_patch` critical finding, so this loss
-                # must not be silent.
-                _log.exception(
-                    "phase-8 auto_patch AUTO_PATCH_APPLIED emit failed for %s "
-                    "(status=%s); phase_audit may later report a false "
-                    "no_auto_patch finding",
-                    ctx.investigation_id, status,
-                )
+                # must not be silent. The trace is itself guarded so a broken
+                # log channel cannot turn a best-effort emit into a phase fail.
+                try:
+                    _log.exception(
+                        "phase-8 auto_patch AUTO_PATCH_APPLIED emit failed for "
+                        "%s (status=%s); phase_audit may later report a false "
+                        "no_auto_patch finding",
+                        ctx.investigation_id, status,
+                    )
+                except Exception:
+                    pass
     return await _drive_phase(ctx, phase=8, work=work())
 
 
@@ -1347,11 +1351,14 @@ async def run_synthesis_tail_from_pack(
             try:
                 audit_phase_log(ctx.investigation_id, emit=True)
             except Exception:  # audit diagnostics are best-effort
-                _log.exception(
-                    "audit_phase_log diagnostics failed for %s on the "
-                    "cascade-tail path (audit is best-effort; run continues)",
-                    ctx.investigation_id,
-                )
+                try:
+                    _log.exception(
+                        "audit_phase_log diagnostics failed for %s on the "
+                        "cascade-tail path (audit is best-effort; run continues)",
+                        ctx.investigation_id,
+                    )
+                except Exception:
+                    pass
             return ctx
 
     try:
@@ -1448,13 +1455,17 @@ async def _run_investigation(
                 audit_phase_log(ctx.investigation_id, emit=True)
             except Exception:  # audit diagnostics are best-effort
                 # The comment above promises dashboards surface the gap; a
-                # silently-swallowed audit call would break exactly that.
-                _log.exception(
-                    "audit_phase_log diagnostics failed for %s on the "
-                    "investigation-failed path (audit is best-effort; "
-                    "run continues)",
-                    ctx.investigation_id,
-                )
+                # silently-swallowed audit call would break exactly that. The
+                # trace is guarded so a broken log channel can't break the path.
+                try:
+                    _log.exception(
+                        "audit_phase_log diagnostics failed for %s on the "
+                        "investigation-failed path (audit is best-effort; "
+                        "run continues)",
+                        ctx.investigation_id,
+                    )
+                except Exception:
+                    pass
             return
 
     # Phase 9: assert completion-ready + DeepResearchComplete contract.
