@@ -1,5 +1,5 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import Outcomes from "./index";
@@ -13,6 +13,14 @@ vi.mock("../../lib/api", async (orig) => {
     apiFetch: apiFetchMock,
   };
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
 
 beforeEach(() => {
   Object.defineProperty(window, "matchMedia", {
@@ -75,6 +83,26 @@ function renderOutcomes() {
   );
 }
 
+function RouteSwitchProbe() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate("/outcomes/syn-fresh")}>
+      open fresh synthesis
+    </button>
+  );
+}
+
+function renderOutcomesWithSwitch() {
+  return render(
+    <MemoryRouter initialEntries={["/outcomes/syn-stale"]}>
+      <RouteSwitchProbe />
+      <Routes>
+        <Route path="/outcomes/:synthesisId" element={<Outcomes />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
 describe("Outcomes", () => {
   it("sanitizes outcome detail rows before rendering counts and history", async () => {
     renderOutcomes();
@@ -88,5 +116,64 @@ describe("Outcomes", () => {
     expect(document.body.textContent).not.toMatch(
       /Skipped|outcome dirty|Skipped nested note/,
     );
+  });
+
+  it("keeps stale outcome detail loads from overwriting the active synthesis", async () => {
+    const stale = deferred<{
+      ok: true;
+      status: 200;
+      json: () => Promise<{ outcomes: unknown[] }>;
+    }>();
+    const fresh = deferred<{
+      ok: true;
+      status: 200;
+      json: () => Promise<{ outcomes: unknown[] }>;
+    }>();
+    apiFetchMock.mockReset();
+    apiFetchMock.mockReturnValueOnce(stale.promise).mockReturnValueOnce(fresh.promise);
+
+    renderOutcomesWithSwitch();
+    fireEvent.click(screen.getByRole("button", { name: /open fresh synthesis/i }));
+
+    await act(async () => {
+      fresh.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          outcomes: [
+            {
+              outcome_id: "fresh-outcome",
+              observer: "fresh reviewer",
+              observed_at: "2026-06-03",
+              thesis_outcomes: [{ kind: "validated", note: "fresh note" }],
+            },
+          ],
+        }),
+      });
+    });
+
+    expect(await screen.findByText("2026-06-03 · fresh reviewer")).toBeTruthy();
+    expect(screen.getByText("validated — fresh note")).toBeTruthy();
+
+    await act(async () => {
+      stale.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          outcomes: [
+            {
+              outcome_id: "stale-outcome",
+              observer: "stale reviewer",
+              observed_at: "2026-06-02",
+              thesis_outcomes: [{ kind: "validated", note: "stale note" }],
+            },
+          ],
+        }),
+      });
+    });
+
+    expect(screen.getByText("validated — fresh note")).toBeTruthy();
+    expect(screen.queryByText("validated — stale note")).toBeNull();
+    expect(screen.queryByText("2026-06-02 · stale reviewer")).toBeNull();
   });
 });
