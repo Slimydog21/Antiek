@@ -43,6 +43,9 @@ read** from canonical sources this package never writes:
 * :mod:`substrate.coordination.loop3_status` summarizes the G8/Loop-3 manual
   checklist plus verifier evidence without mutating or authorizing training.
 
+* :mod:`substrate.coordination.source_gate_status` surfaces the source-onboarding
+  corpus-value kill-gate without writing the operator-produced census.
+
 The binding rule for the whole package: **integration, not duplication — the
 ledger is a view over the source, never a second gate store.** If the operator
 edits the gate file or a roster changes, the dashboard reflects it on next read.
@@ -113,6 +116,11 @@ from .roadmap import (
     SprintStatus,
     build_roadmap,
 )
+from .source_gate_status import (
+    SourceGateRow,
+    SourceGateView,
+    build_source_gate_view,
+)
 
 __all__ = [
     # activation view
@@ -151,6 +159,10 @@ __all__ = [
     "SprintStatus",
     "SpecRoster",
     "build_roadmap",
+    # source gate
+    "SourceGateRow",
+    "SourceGateView",
+    "build_source_gate_view",
     # cost view (SPR-07)
     "CostView",
     "MarginStatus",

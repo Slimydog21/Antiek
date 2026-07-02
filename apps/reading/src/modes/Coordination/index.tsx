@@ -20,6 +20,8 @@ import type {
   ReadActivationStatusView,
   RoadmapView,
   RosterView,
+  SourceGateRowView,
+  SourceGateView,
   SprintView,
   SubstrateLayerView,
 } from "./Roadmap";
@@ -408,6 +410,36 @@ function safeLoop3Coordination(value: unknown): Loop3CoordinationView | null {
   };
 }
 
+function safeSourceGateRow(value: unknown): SourceGateRowView | null {
+  const row = record(value);
+  const source = nonEmptyString(row?.source);
+  if (!row || !source) return null;
+  return {
+    source,
+    blocked: row.blocked === true,
+    failures: stringList(row.failures),
+  };
+}
+
+function safeSourceGate(value: unknown): SourceGateView | null {
+  const gate = record(value);
+  if (!gate) return null;
+  return {
+    source_path: nonEmptyString(gate.source_path) ?? "",
+    state: nonEmptyString(gate.state) ?? "missing",
+    reference_source: nonEmptyString(gate.reference_source) ?? "arxiv",
+    source_count: nonNegativeInteger(gate.source_count),
+    blocked_count: nonNegativeInteger(gate.blocked_count),
+    rows: Array.isArray(gate.rows)
+      ? gate.rows.flatMap((item) => {
+          const row = safeSourceGateRow(item);
+          return row ? [row] : [];
+        })
+      : [],
+    error: nullableString(gate.error),
+  };
+}
+
 function safeRoadmapView(value: unknown): RoadmapView {
   const body = record(value);
   const rosters = Array.isArray(body?.rosters)
@@ -440,6 +472,7 @@ function safeRoadmapView(value: unknown): RoadmapView {
       body?.engineering_deferrals,
     ),
     loop3: safeLoop3Coordination(body?.loop3),
+    source_gate: safeSourceGate(body?.source_gate),
     substrate_layers: Array.isArray(body?.substrate_layers)
       ? body.substrate_layers.flatMap((item) => {
           const layer = safeSubstrateLayer(item);

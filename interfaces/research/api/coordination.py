@@ -11,7 +11,7 @@ Thin adapter over :mod:`substrate.coordination`. Four GET endpoints, no writes:
 **Read-only is enforced, not promised (rigor #5).** This module imports only
 read entry points (``load_gate_ledger`` / ``load_operator_actions`` /
 ``load_phase2_audit`` / ``load_engineering_deferrals`` / ``build_roadmap`` /
-``build_loop3_coordination_view`` / ``build_cost_view`` /
+``build_loop3_coordination_view`` / ``build_source_gate_view`` / ``build_cost_view`` /
 ``build_consent_view``); there is no import of any writer (``connect_write``,
 the escrow writer
 ``ip_holders.accrue_escrow``, the gate file's path for writing) and **no import
@@ -79,6 +79,11 @@ from substrate.coordination.roadmap import (
     Roadmap,
     SprintRow,
     build_roadmap,
+)
+from substrate.coordination.source_gate_status import (
+    SourceGateRow,
+    SourceGateView,
+    build_source_gate_view,
 )
 
 # ── Response shapes ──────────────────────────────────────────────────────────
@@ -500,6 +505,42 @@ class Loop3CoordinationResponse(BaseModel):
         )
 
 
+class SourceGateRowResponse(BaseModel):
+    source: str
+    blocked: bool
+    failures: list[str]
+
+    @classmethod
+    def from_row(cls, row: SourceGateRow) -> SourceGateRowResponse:
+        return cls(
+            source=row.source,
+            blocked=row.blocked,
+            failures=list(row.failures),
+        )
+
+
+class SourceGateResponse(BaseModel):
+    source_path: str
+    state: str
+    reference_source: str
+    source_count: int
+    blocked_count: int
+    rows: list[SourceGateRowResponse]
+    error: str | None
+
+    @classmethod
+    def from_view(cls, view: SourceGateView) -> SourceGateResponse:
+        return cls(
+            source_path=view.source_path,
+            state=view.state,
+            reference_source=view.reference_source,
+            source_count=view.source_count,
+            blocked_count=view.blocked_count,
+            rows=[SourceGateRowResponse.from_row(row) for row in view.rows],
+            error=view.error,
+        )
+
+
 class RoadmapResponse(BaseModel):
     total_sprints: int
     superseded_count: int
@@ -517,6 +558,7 @@ class RoadmapResponse(BaseModel):
     phase2_audit: Phase2AuditResponse
     engineering_deferrals: EngineeringDeferralsSummaryResponse
     loop3: Loop3CoordinationResponse | None
+    source_gate: SourceGateResponse
     substrate_layers: list[SubstrateLayerResponse]
 
     @classmethod
@@ -529,6 +571,7 @@ class RoadmapResponse(BaseModel):
         phase2_audit: Phase2AuditView | None = None,
         engineering_deferrals: EngineeringDeferralsView | None = None,
         loop3: Loop3CoordinationView | None = None,
+        source_gate: SourceGateView | None = None,
     ) -> RoadmapResponse:
         focus = rm.execution_focus()
         operator_focus = None
@@ -581,6 +624,9 @@ class RoadmapResponse(BaseModel):
                 engineering_deferrals or load_engineering_deferrals()
             ),
             loop3=Loop3CoordinationResponse.from_view(loop3) if loop3 is not None else None,
+            source_gate=SourceGateResponse.from_view(
+                source_gate or build_source_gate_view()
+            ),
             substrate_layers=[
                 SubstrateLayerResponse(
                     name=layer.name,
@@ -803,6 +849,7 @@ def register_coordination_routes(app: FastAPI) -> None:
             load_phase2_audit(),
             load_engineering_deferrals(),
             loop3,
+            build_source_gate_view(),
         )
 
     @app.get(

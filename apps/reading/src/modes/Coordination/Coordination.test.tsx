@@ -266,6 +266,26 @@ describe("Coordination", () => {
             events_dir: " /tmp/events ",
             open_weight_policy_file: " reports/loop3/open-weight-policy-ids.json ",
           },
+          source_gate: {
+            source_path: " reports/source_census.json ",
+            state: " blocked ",
+            reference_source: " arxiv ",
+            source_count: "1",
+            blocked_count: "1",
+            rows: [
+              {
+                source: " web ",
+                blocked: true,
+                failures: [" metadata_complete_pct=94.0 < 95.0 ", " "],
+              },
+              {
+                source: " ",
+                blocked: true,
+                failures: ["Skipped row"],
+              },
+            ],
+            error: " ",
+          },
           substrate_layers: [
             {
               name: " db lock ",
@@ -339,6 +359,15 @@ describe("Coordination", () => {
     ).toBeTruthy();
     expect(
       screen.getByText("First failing evidence: trajectory_volume — events dir missing."),
+    ).toBeTruthy();
+    expect(screen.getByText("Source onboarding gate")).toBeTruthy();
+    expect(
+      screen.getByText("state=blocked · sources=1 · blocked=1 · reference=arxiv"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "metadata_complete_pct=94.0 < 95.0 Source: reports/source_census.json.",
+      ),
     ).toBeTruthy();
     expect(screen.getByText("waits on drw:10")).toBeTruthy();
     expect(screen.getByText("1 dependency-ready · 1 blocked by dependency state")).toBeTruthy();

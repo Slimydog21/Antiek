@@ -53,6 +53,7 @@ from substrate.coordination.engineering_deferrals import (
     load_engineering_deferrals,
 )
 from substrate.coordination.loop3_status import build_loop3_coordination_view
+from substrate.coordination.source_gate_status import build_source_gate_view
 from substrate.coordination.roadmap import (
     Roadmap,
     SpecRoster,
@@ -63,6 +64,7 @@ from substrate.coordination.roadmap import (
 from substrate.loop_3.evidence_status import CriterionEvidenceStatus, Loop3EvidenceSnapshot
 from substrate.loop_3.checklist_store import set_criterion
 from substrate.loop_3.unlock_gate import Loop3UnlockCriterion
+from tools.source_census import SourceCensus, save_censuses
 from tools.activation.read_dogfood import append_session_template, session_template
 
 # ── 1. The no-fork equality: two independent parses agree ────────────────────
@@ -337,6 +339,48 @@ def test_loop3_coordination_view_compares_manual_and_evidence(tmp_path: Path, mo
     assert view.first_failing_evidence is not None
     assert view.first_failing_evidence.criterion == "trajectory_volume"
     assert view.first_failing_evidence.evidence_summary == "trajectory_volume missing"
+
+
+def test_source_gate_view_surfaces_missing_census_as_noop(tmp_path: Path) -> None:
+    view = build_source_gate_view(tmp_path / "missing-source-census.json")
+
+    assert view.state == "missing"
+    assert view.source_count == 0
+    assert view.blocked_count == 0
+    assert view.reference_source == "arxiv"
+    assert view.error is not None
+    assert "no source census yet" in view.error
+
+
+def test_source_gate_view_surfaces_blocked_and_invalid_census(tmp_path: Path) -> None:
+    path = tmp_path / "source_census.json"
+    save_censuses(
+        [
+            SourceCensus(
+                source="web",
+                total=10,
+                t1_pct=50.0,
+                open_pct=80.0,
+                metadata_complete_pct=94.0,
+                dedup_overlap_pct=40.0,
+                linkback_resolvable_pct=98.0,
+            )
+        ],
+        path,
+    )
+
+    blocked = build_source_gate_view(path)
+    assert blocked.state == "blocked"
+    assert blocked.source_count == 1
+    assert blocked.blocked_count == 1
+    assert blocked.rows[0].source == "web"
+    assert blocked.rows[0].blocked is True
+    assert any("metadata_complete_pct" in failure for failure in blocked.rows[0].failures)
+
+    path.write_text("{bad json\n", encoding="utf-8")
+    invalid = build_source_gate_view(path)
+    assert invalid.state == "invalid"
+    assert invalid.error is not None
 
 
 def test_operator_gate_actions_summary_tracks_appended_follow_ons() -> None:
@@ -818,6 +862,14 @@ def test_roadmap_response_serializes_operator_actions_and_phase2_audit() -> None
         first_failing_evidence = None
         events_dir = "/tmp/events"
         open_weight_policy_file = "reports/loop3/open-weight-policy-ids.json"
+    class DummySourceGate:
+        source_path = "reports/source_census.json"
+        state = "missing"
+        reference_source = "arxiv"
+        source_count = 0
+        blocked_count = 0
+        rows = ()
+        error = "no source census yet"
 
     response = RoadmapResponse.from_roadmap(
         build_roadmap(),
@@ -826,6 +878,7 @@ def test_roadmap_response_serializes_operator_actions_and_phase2_audit() -> None
         phase2_audit=phase2_audit,
         engineering_deferrals=deferrals,
         loop3=DummyLoop3(),
+        source_gate=DummySourceGate(),
     )
 
     assert response.operator_actions.source_path == "docs/OPERATOR_ACTIONS.md"
@@ -846,6 +899,8 @@ def test_roadmap_response_serializes_operator_actions_and_phase2_audit() -> None
     assert response.loop3 is not None
     assert response.loop3.total_criteria == 5
     assert response.loop3.fully_unlocked is False
+    assert response.source_gate.state == "missing"
+    assert response.source_gate.reference_source == "arxiv"
 
 
 def test_operator_gate_focus_does_not_override_structural_dependency_focus() -> None:
