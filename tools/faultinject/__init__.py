@@ -17,7 +17,7 @@ call onward. See ``README.md`` for the seam-to-injection map and usage.
 
 from __future__ import annotations
 
-from .inject import INJECTORS, FaultArmed, arm
+from .inject import INJECTORS, REGISTRY, FaultArmed, RegisteredInjector, arm
 from .locked_db import locked_db
 from .provider_fault import provider_fault
 from .readonly_fs import readonly_fs
@@ -28,5 +28,7 @@ __all__ = [
     "provider_fault",
     "arm",
     "INJECTORS",
+    "REGISTRY",
+    "RegisteredInjector",
     "FaultArmed",
 ]

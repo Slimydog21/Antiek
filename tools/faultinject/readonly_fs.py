@@ -76,6 +76,21 @@ def _resolve(path: Any) -> Path | None:
         return None
 
 
+def _matches_target(path: Any, target: Path) -> bool:
+    candidate = _resolve(path)
+    if candidate is None:
+        return False
+    if candidate == target:
+        return True
+    if target.is_dir():
+        try:
+            candidate.relative_to(target)
+            return True
+        except ValueError:
+            return False
+    return False
+
+
 @contextmanager
 def readonly_fs(
     target_path: str | os.PathLike[str],
@@ -84,11 +99,12 @@ def readonly_fs(
 ) -> Iterator[None]:
     """Arm a read-only-FS fault for writes to ``target_path`` only.
 
-    While armed, a write-mode ``open`` / ``os.open`` targeting ``target_path``,
-    or an ``os.replace`` / ``os.rename`` whose source or destination is
-    ``target_path``, raises ``OSError(errno.EROFS)``. Reads and writes to every
-    other path are untouched. See :class:`tools.faultinject.inject._CallGate`
-    for ``fail_on_call`` semantics.
+    While armed, a write-mode ``open`` / ``os.open`` targeting ``target_path``
+    (or a descendant when ``target_path`` is an existing directory), or an
+    ``os.replace`` / ``os.rename`` whose source or destination matches that
+    scope, raises ``OSError(errno.EROFS)``. Reads and writes to every other path
+    are untouched. See :class:`tools.faultinject.inject._CallGate` for
+    ``fail_on_call`` semantics.
     """
     global _armed
     target = _resolve(target_path)
@@ -115,22 +131,26 @@ def readonly_fs(
         return OSError(errno.EROFS, os.strerror(errno.EROFS), str(path))
 
     def _fake_open(file: Any, mode: str = "r", *args: Any, **kwargs: Any):
-        if _is_write_mode(mode) and _resolve(file) == target and gate.should_fault():
+        if _is_write_mode(mode) and _matches_target(file, target) and gate.should_fault():
             raise _erofs(file)
         return real_open(file, mode, *args, **kwargs)
 
     def _fake_replace(src: Any, dst: Any, *args: Any, **kwargs: Any):
-        if (_resolve(dst) == target or _resolve(src) == target) and gate.should_fault():
+        if (
+            _matches_target(dst, target) or _matches_target(src, target)
+        ) and gate.should_fault():
             raise _erofs(dst)
         return real_replace(src, dst, *args, **kwargs)
 
     def _fake_rename(src: Any, dst: Any, *args: Any, **kwargs: Any):
-        if (_resolve(dst) == target or _resolve(src) == target) and gate.should_fault():
+        if (
+            _matches_target(dst, target) or _matches_target(src, target)
+        ) and gate.should_fault():
             raise _erofs(dst)
         return real_rename(src, dst, *args, **kwargs)
 
     def _fake_os_open(path: Any, flags: int, *args: Any, **kwargs: Any):
-        if (flags & _WRITE_FLAGS) and _resolve(path) == target and gate.should_fault():
+        if (flags & _WRITE_FLAGS) and _matches_target(path, target) and gate.should_fault():
             raise _erofs(path)
         return real_os_open(path, flags, *args, **kwargs)
 

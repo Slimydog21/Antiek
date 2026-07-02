@@ -32,9 +32,10 @@ it. The real seam injectors deliberately raise the real seam error instead
 from __future__ import annotations
 
 import threading
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, ContextManager
 
-__all__ = ["FaultArmed", "arm", "INJECTORS"]
+__all__ = ["FaultArmed", "RegisteredInjector", "REGISTRY", "arm", "INJECTORS"]
 
 
 class FaultArmed(RuntimeError):
@@ -46,6 +47,12 @@ class FaultArmed(RuntimeError):
     would hit. ``FaultArmed`` exists for the generic :func:`arm` dispatch and
     for callers/tests that want a single "some fault fired" base to catch.
     """
+
+
+@dataclass(frozen=True)
+class RegisteredInjector:
+    name: str
+    description: str
 
 
 class _CallGate:
@@ -95,17 +102,40 @@ class _CallGate:
 # tuple of names plus a lazy dispatcher so importing this core module does not
 # import the seam adapters (preserving inert-by-default + a cheap import).
 INJECTORS: tuple[str, ...] = ("readonly_fs", "locked_db", "provider_fault")
+REGISTRY: dict[str, RegisteredInjector] = {
+    "readonly_fs": RegisteredInjector(
+        name="readonly_fs",
+        description="Path-scoped EROFS at filesystem write primitives.",
+    ),
+    "locked_db": RegisteredInjector(
+        name="locked_db",
+        description="Real flock contention on runtime.db_lock sidecar path.",
+    ),
+    "provider_fault": RegisteredInjector(
+        name="provider_fault",
+        description="Deterministic 503 or timeout at dispatch provider .call.",
+    ),
+}
 
 
-def arm(name: str, /, **kwargs: Any):
-    """Return the named injector's context manager, e.g.::
+def arm(name: str | ContextManager[Any], /, **kwargs: Any):
+    """Return an injector context manager.
+
+    Supports both forms used by the resilience suites::
 
         with arm("readonly_fs", target_path=p):
+            ...
+
+        with arm(readonly_fs(p)):
             ...
 
     Thin convenience over the three named context managers. Imports the seam
     adapter lazily so ``import tools.faultinject.inject`` stays side-effect-free.
     """
+    if not isinstance(name, str):
+        if kwargs:
+            raise TypeError("keyword arguments are only valid with named arm(...)")
+        return name
     if name not in INJECTORS:
         raise KeyError(f"unknown injector {name!r}; known: {INJECTORS}")
     if name == "readonly_fs":
