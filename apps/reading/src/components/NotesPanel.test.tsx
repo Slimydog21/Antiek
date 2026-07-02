@@ -1,15 +1,21 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Event } from "../generated/types";
-import { EMPTY_SNAPSHOT } from "../workspace/panel.types";
-import { useWorkspace } from "../workspace/WorkspaceStore";
 import NotesPanel from "./NotesPanel";
+
+const { openDocumentMock } = vi.hoisted(() => ({
+  openDocumentMock: vi.fn(),
+}));
+
+vi.mock("../lib/openDocument", () => ({
+  useOpenDocument: () => openDocumentMock,
+}));
 
 afterEach(() => cleanup());
 
 beforeEach(() => {
-  useWorkspace.setState({ ...EMPTY_SNAPSHOT });
+  openDocumentMock.mockReset();
 });
 
 const dispatchEvent = (payload: Record<string, unknown>): Event =>
@@ -385,7 +391,7 @@ describe("NotesPanel", () => {
     expect(document.body.textContent).not.toMatch(/NaN|Infinity|undefined/);
   });
 
-  it("opens the PDF panel at the selected region page from a grounded claim", () => {
+  it("opens the canonical Reader at the selected region page from a grounded claim", () => {
     render(
       <NotesPanel
         events={[
@@ -437,13 +443,10 @@ describe("NotesPanel", () => {
 
     fireEvent.click(screen.getByTitle("open region region-pass in viewer"));
 
-    const panel = useWorkspace.getState().panels["pdf:doc-1:p7"];
-    expect(panel.kind).toBe("PdfViewer");
-    expect(panel.props).toEqual({ documentId: "doc-1", initialPage: 7 });
-    expect(panel.title).toBe("PDF · region-pass");
+    expect(openDocumentMock).toHaveBeenCalledWith("doc-1", { page: 6 });
   });
 
-  it("opens the PDF panel from a claim attribution chip before grounding", () => {
+  it("opens the canonical Reader from a claim attribution chip before grounding", () => {
     render(
       <NotesPanel
         events={[
@@ -486,9 +489,6 @@ describe("NotesPanel", () => {
 
     fireEvent.click(screen.getByTitle("open attribution region region-attr in viewer"));
 
-    const panel = useWorkspace.getState().panels["pdf:doc-1:p3"];
-    expect(panel.kind).toBe("PdfViewer");
-    expect(panel.props).toEqual({ documentId: "doc-1", initialPage: 3 });
-    expect(panel.title).toBe("PDF · region-attr");
+    expect(openDocumentMock).toHaveBeenCalledWith("doc-1", { page: 2 });
   });
 });
