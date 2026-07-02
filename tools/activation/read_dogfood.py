@@ -66,7 +66,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 REQUIRED_SESSION_FIELDS: tuple[str, ...] = (
     "session_id",
@@ -583,7 +583,42 @@ def _citation_evidence_failures(
         failures.append(prefix + "citation step 5 requires result_url")
     elif not _is_http_url(result_url):
         failures.append(prefix + "citation step 5 result_url must be an http(s) URL")
+    else:
+        result_target = _reader_document_from_url(result_url)
+        if source_document_id and result_target != source_document_id:
+            failures.append(
+                prefix
+                + "citation step 5 result_url must open /read/{source_document_id}"
+            )
+        if anchor and not _url_carries_anchor(result_url, anchor):
+            failures.append(
+                prefix
+                + "citation step 5 result_url must include the recorded chunk_id or anchor"
+            )
     return failures
+
+
+def _reader_document_from_url(value: str) -> str | None:
+    parsed = urlparse(value)
+    marker = "/read/"
+    if marker not in parsed.path:
+        return None
+    suffix = parsed.path.split(marker, 1)[1]
+    if not suffix:
+        return None
+    return unquote(suffix.split("/", 1)[0])
+
+
+def _url_carries_anchor(value: str, anchor: str) -> bool:
+    parsed = urlparse(value)
+    wanted = anchor.strip()
+    if not wanted:
+        return False
+    query_values: list[str] = []
+    for values in parse_qs(parsed.query, keep_blank_values=True).values():
+        query_values.extend(values)
+    haystack = "\n".join([*query_values, parsed.fragment])
+    return wanted in unquote(haystack)
 
 
 def _has_minimum_reading_time(value: Any) -> bool:
