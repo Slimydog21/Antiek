@@ -126,6 +126,33 @@ describe("CascadeProposal — propose the sub-question tree (M1)", () => {
     expect(await screen.findByText(/estimated up to \$1\.50 for 3 researches/i)).toBeTruthy();
   });
 
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, -0.5, "0.50"])(
+    "omits the budget estimate when the backend cost default is malformed: %s",
+    async (perResearchCost) => {
+      getBudgetDefaultsMock.mockResolvedValue({
+        per_research_cost_usd: perResearchCost,
+        per_research_max_steps: 50,
+      });
+      createPlanMock.mockResolvedValue(CREATE_RESP);
+      renderProposal();
+
+      expect(await screen.findByText(/critical-mineral supply/i)).toBeTruthy();
+      expect(screen.queryByText(/estimated up to/i)).toBeNull();
+      expect(document.body.textContent).not.toMatch(/NaN|Infinity|-\$/);
+    },
+  );
+
+  it("keeps a valid zero-dollar backend budget estimate visible", async () => {
+    getBudgetDefaultsMock.mockResolvedValue({
+      per_research_cost_usd: 0,
+      per_research_max_steps: 50,
+    });
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    renderProposal();
+
+    expect(await screen.findByText(/estimated up to \$0\.00 for 3 researches/i)).toBeTruthy();
+  });
+
   it("counts and renders the leaves the backend launches, not just the top level", async () => {
     // cascade_session launches one research per tree LEAF. A nested proposal
     // (pn-2 splits in two) has 4 leaves — pn-1, pn-2a, pn-2b, pn-3 — not the 3
