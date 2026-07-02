@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import datetime as dt
 import enum
+import inspect
 import sys
 import types
 import typing
@@ -478,7 +479,12 @@ def _python_to_ts_inner(tp: Any, *, field_name: str, model_name: str) -> str:
 
 def _emit_interface(model: type[BaseModel], lines: list[str]) -> None:
     name = model.__name__
-    docstring = (model.__doc__ or "").strip()
+    # inspect.cleandoc, not .strip(): Python 3.13+ auto-dedents docstrings
+    # at compile time, so bare .strip() emits indented continuation lines
+    # on ≤3.12 but dedented ones on 3.13+ — 1,700+ lines of whitespace-only
+    # divergence that reds check_staleness whenever the generator and CI
+    # run different interpreters. cleandoc normalizes both to the same text.
+    docstring = inspect.cleandoc(model.__doc__ or "")
     lines.append("")
     if docstring:
         lines.append("/**")
