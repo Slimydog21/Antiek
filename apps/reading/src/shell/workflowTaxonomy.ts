@@ -571,43 +571,14 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     route: "/payouts",
     sharedReason: "IP-economics audit; governance, not a workflow tool.",
   },
-
-  // Sprint 23-25+ economics surfaces. BUILT as components but NOT routed
-  // yet (Sprint 23-24 / 25+). Honest: built=false, shared bucket with a
-  // reason. They are operator/advertiser/creator governance surfaces —
-  // not one of the four workflows.
-  {
-    id: "AdvertiserConsole",
-    workflow: "shared",
-    label: "Advertiser console",
-    blurb: "Operator-only ad inventory + campaign console (Sprint 23-24).",
-    built: false,
-    sharedReason: "Ad-economics console (Sprint 23-24); cross-cutting, unrouted.",
-  },
-  {
-    id: "CreatorPayouts",
-    workflow: "shared",
-    label: "Creator payouts",
-    blurb: "User-facing self-service payout view (Sprint 23-24).",
-    built: false,
-    sharedReason: "IP-economics self-service (Sprint 23-24); cross-cutting, unrouted.",
-  },
-  {
-    id: "PayoutDashboard",
-    workflow: "shared",
-    label: "Payout dashboard",
-    blurb: "Unified creator + publisher payout dashboard (Sprint 25+).",
-    built: false,
-    sharedReason: "IP-economics dashboard (Sprint 25+); cross-cutting, unrouted.",
-  },
-  {
-    id: "MarketplaceMetrics",
-    workflow: "shared",
-    label: "Marketplace metrics",
-    blurb: "Marketplace §2 metrics dashboard (Sprint 25+).",
-    built: false,
-    sharedReason: "Marketplace observability (Sprint 25+); cross-cutting, unrouted.",
-  },
+  // AGH SPR-03: the four never-routed ad-economics orphan surfaces
+  // (AdvertiserConsole, CreatorPayouts, PayoutDashboard, MarketplaceMetrics)
+  // were deleted — each fetched a backend route that does not exist and
+  // rendered a shape no real route returns. The live §9 economics surfaces
+  // are OperatorDashboard (/operator) and PayoutsAudit (/payouts) above; the
+  // deleted vision + its required backend contract is preserved in the
+  // deletion commit body for a future ad-economics sprint to rebuild
+  // against a real route.
 ];
 
 /** All workflow ids, in rail order. */
