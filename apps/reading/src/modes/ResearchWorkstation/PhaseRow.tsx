@@ -17,6 +17,37 @@ function nonNegativeSafeInteger(value: unknown): number | null {
   return parsed !== null && Number.isSafeInteger(parsed) ? parsed : null;
 }
 
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const trimmed = nonEmptyString(item);
+        return trimmed ? [trimmed] : [];
+      })
+    : [];
+}
+
+function recordList(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) =>
+        item !== null && typeof item === "object"
+          ? [item as Record<string, unknown>]
+          : [],
+      )
+    : [];
+}
+
+function payloadRecord(event: Event): Record<string, unknown> {
+  return event.payload !== null && typeof event.payload === "object"
+    ? (event.payload as unknown as Record<string, unknown>)
+    : {};
+}
+
 /**
  * Renders one trajectory event. Variant-based: each substantive
  * action_type gets a dedicated rendering shape. Noise events
@@ -65,15 +96,19 @@ export default function PhaseRow({ event }: { event: Event }) {
 // ── Variants ─────────────────────────────────────────────────────────
 
 function DecomposeRow({ event }: { event: Event }) {
-  const p = event.payload as {
-    decomposition?: Array<{
-      sub_question: string;
-      category?: string;
-      evidence_type_required?: string;
-    }>;
-    keywords?: Array<{ term: string }>;
-  };
-  const subQs = p.decomposition ?? [];
+  const p = payloadRecord(event);
+  const subQs = recordList(p.decomposition).flatMap((item) => {
+    const subQuestion = nonEmptyString(item.sub_question);
+    return subQuestion
+      ? [
+          {
+            sub_question: subQuestion,
+            category: nonEmptyString(item.category),
+            evidence_type_required: nonEmptyString(item.evidence_type_required),
+          },
+        ]
+      : [];
+  });
   return (
     <Card>
       <CardHeader label="Decomposed" detail={`${subQs.length} sub-question${subQs.length === 1 ? "" : "s"}`} />
@@ -99,30 +134,31 @@ function DecomposeRow({ event }: { event: Event }) {
 }
 
 function EvidenceRow({ event }: { event: Event }) {
-  const p = event.payload as {
-    sub_question?: string;
-    insufficient_evidence?: boolean;
-    supporting_claims?: Array<{
-      claim: string;
-      evidence_type?: string;
-      source_tier_min?: number | null;
-      chunk_ids?: string[];
-    }>;
-    evidentiary_gaps?: Array<{ gap?: string; description?: string }>;
-  };
-  const claims = p.supporting_claims ?? [];
-  const gaps = p.evidentiary_gaps ?? [];
+  const p = payloadRecord(event);
+  const claims = recordList(p.supporting_claims).flatMap((item) => {
+    const claim = nonEmptyString(item.claim);
+    return claim ? [{ claim, chunk_ids: stringList(item.chunk_ids) }] : [];
+  });
+  const gaps = recordList(p.evidentiary_gaps).map(
+    (item) =>
+      nonEmptyString(item.gap) ??
+      nonEmptyString(item.description) ??
+      "(empty)",
+  );
+  const subQuestion = nonEmptyString(p.sub_question);
   return (
     <Card>
       <CardHeader
         label={
-          p.insufficient_evidence ? "Evidence — insufficient" : "Evidence retrieved"
+          p.insufficient_evidence === true
+            ? "Evidence — insufficient"
+            : "Evidence retrieved"
         }
         detail={`${claims.length} claim${claims.length === 1 ? "" : "s"} · ${gaps.length} gap${gaps.length === 1 ? "" : "s"}`}
       />
-      {p.sub_question && (
+      {subQuestion && (
         <div className="text-xs text-shadow-1 dark:text-moonlight mb-2 font-serif italic">
-          For: "{p.sub_question}"
+          For: "{subQuestion}"
         </div>
       )}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -137,7 +173,7 @@ function EvidenceRow({ event }: { event: Event }) {
             {claims.map((c, i) => (
               <li key={i}>
                 <span className="text-ink dark:text-bright">{c.claim}</span>
-                {c.chunk_ids && c.chunk_ids.length > 0 && (
+                {c.chunk_ids.length > 0 && (
                   <span className="text-[10px] font-mono text-ink-mute dark:text-moonlight ml-1.5">
                     [{c.chunk_ids.length} chunk{c.chunk_ids.length === 1 ? "" : "s"}]
                   </span>
@@ -155,7 +191,7 @@ function EvidenceRow({ event }: { event: Event }) {
               <li className="text-ink-mute dark:text-moonlight italic">(none)</li>
             )}
             {gaps.map((g, i) => (
-              <li key={i}>{g.gap ?? g.description ?? "(empty)"}</li>
+              <li key={i}>{g}</li>
             ))}
           </ul>
         </div>
@@ -165,10 +201,8 @@ function EvidenceRow({ event }: { event: Event }) {
 }
 
 function ParameterRow({ event }: { event: Event }) {
-  const p = event.payload as {
-    constraints?: Array<{ strictness?: string }>;
-  };
-  const cs = p.constraints ?? [];
+  const p = payloadRecord(event);
+  const cs = recordList(p.constraints);
   const hard = cs.filter((c) => c.strictness === "hard").length;
   const soft = cs.filter((c) => c.strictness === "soft").length;
   return (
@@ -182,12 +216,9 @@ function ParameterRow({ event }: { event: Event }) {
 }
 
 function ConnectorRow({ event }: { event: Event }) {
-  const p = event.payload as {
-    paths?: unknown[];
-    mapped_nodes?: unknown[];
-  };
-  const np = p.paths?.length ?? 0;
-  const nn = p.mapped_nodes?.length ?? 0;
+  const p = payloadRecord(event);
+  const np = Array.isArray(p.paths) ? p.paths.length : 0;
+  const nn = Array.isArray(p.mapped_nodes) ? p.mapped_nodes.length : 0;
   return (
     <Card>
       <CardHeader
@@ -199,16 +230,14 @@ function ConnectorRow({ event }: { event: Event }) {
 }
 
 function SynthesizeRow({ event }: { event: Event }) {
-  const p = event.payload as {
-    thesis_summary?: string;
-    implicit_recommendation?: string;
-  };
-  const summary = p.thesis_summary ?? "";
+  const p = payloadRecord(event);
+  const summary = nonEmptyString(p.thesis_summary) ?? "";
+  const recommendation = nonEmptyString(p.implicit_recommendation) ?? "";
   return (
     <Card highlight>
       <CardHeader
         label="Thesis synthesized"
-        detail={p.implicit_recommendation ?? ""}
+        detail={recommendation}
       />
       <p className="text-sm text-ink dark:text-bright leading-relaxed font-serif">
         {summary.length > 280 ? summary.slice(0, 280) + "…" : summary}
@@ -236,12 +265,15 @@ function DispatchRow({ event }: { event: Event }) {
   const outputTokens = nonNegativeSafeInteger(p.output_tokens);
   const costUsd = finiteNonNegativeNumber(p.cost_usd) ?? 0;
   const latencyMs = finiteNonNegativeNumber(p.latency_ms) ?? 0;
+  const targetRole = nonEmptyString(p.target_role) ?? "role?";
+  const provider = nonEmptyString(p.provider) ?? "provider?";
+  const model = nonEmptyString(p.model) ?? "model?";
   return (
     <div className="text-[11px] font-mono text-ink-mute dark:text-moonlight flex gap-2 flex-wrap">
       <span>→</span>
-      <span>{p.target_role}</span>
+      <span>{targetRole}</span>
       <span>·</span>
-      <span>{p.provider}/{p.model}</span>
+      <span>{provider}/{model}</span>
       <span>·</span>
       <span>in={inputTokens ?? "?"} out={outputTokens ?? "?"}</span>
       <span>·</span>
@@ -253,8 +285,8 @@ function DispatchRow({ event }: { event: Event }) {
 }
 
 function SkillPatchRow({ event }: { event: Event }) {
-  const p = event.payload as { domains_patched?: string[] };
-  const ds = p.domains_patched ?? [];
+  const p = payloadRecord(event);
+  const ds = stringList(p.domains_patched);
   return (
     <div className="text-[11px] font-mono text-shadow-1 dark:text-moonlight italic">
       ✦ Phase 8: patched {ds.length === 0 ? "no" : ds.length} domain skill
