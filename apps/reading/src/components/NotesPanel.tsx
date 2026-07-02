@@ -16,7 +16,7 @@ import type {
 import ChatInput from "./ChatInput";
 import ClaimCard from "./ClaimCard";
 import type { GroundingStatus } from "./ClaimCard";
-import { openPdfPanel } from "../workspace/actions";
+import { useOpenDocument } from "../lib/openDocument";
 
 type GroundingFailureReason = NonNullable<
   Extract<GroundingStatus, { result: "failed" }>
@@ -127,6 +127,7 @@ export default function NotesPanel({
   documentId,
 }: NotesPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const openDocument = useOpenDocument();
 
   const lastRegion = useMemo(
     () => findLastSelectedRegion(events, documentId),
@@ -178,6 +179,7 @@ export default function NotesPanel({
                 documentId={documentId}
                 groundingByClaim={groundingByClaim}
                 selectedRegionPages={selectedRegionPages}
+                openDocument={openDocument}
               />
             ))}
           </ul>
@@ -205,6 +207,7 @@ interface FeedRowProps {
   documentId: string | null;
   groundingByClaim: Map<string, GroundingStatus>;
   selectedRegionPages: Map<string, number>;
+  openDocument: ReturnType<typeof useOpenDocument>;
 }
 
 function FeedRow({
@@ -214,6 +217,7 @@ function FeedRow({
   documentId,
   groundingByClaim,
   selectedRegionPages,
+  openDocument,
 }: FeedRowProps) {
   const at = String(event.action_type);
 
@@ -243,6 +247,7 @@ function FeedRow({
           emittedAt={event.emitted_at}
           groundingByClaim={groundingByClaim}
           selectedRegionPages={selectedRegionPages}
+          openDocument={openDocument}
         />
       );
     }
@@ -395,6 +400,7 @@ function AssistantClaimsBubble({
   documentId,
   groundingByClaim,
   selectedRegionPages,
+  openDocument,
 }: {
   eventId: string;
   emittedAt: string;
@@ -403,6 +409,7 @@ function AssistantClaimsBubble({
   documentId: string | null;
   groundingByClaim: Map<string, GroundingStatus>;
   selectedRegionPages: Map<string, number>;
+  openDocument: ReturnType<typeof useOpenDocument>;
 }) {
   const claims = Array.isArray(payload.claims)
     ? payload.claims.flatMap((claim) => {
@@ -436,10 +443,12 @@ function AssistantClaimsBubble({
               documentId={documentId}
               grounding={groundingByClaim.get(c.claim_id) ?? null}
               onLocateRegion={(regionId) => {
-                openPdfPanel({
-                  documentId,
-                  page: selectedRegionPages.get(regionId),
-                  title: `PDF · ${regionId}`,
+                const selectedPage = selectedRegionPages.get(regionId);
+                openDocument(documentId, {
+                  page:
+                    selectedPage === undefined
+                      ? undefined
+                      : Math.max(0, selectedPage - 1),
                 });
               }}
             />

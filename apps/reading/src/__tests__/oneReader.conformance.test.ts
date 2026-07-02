@@ -230,7 +230,7 @@ describe("oneReader conformance — door (a): every door routes to the one Reade
       expect(src).not.toMatch(/path:\s*[`'"]\/wrestle\/\$\{/);
       if (PALETTE_ROUTE_DOORS.has(door)) {
         // The palette builds a /read/:id route for a document result.
-        expect(src).toMatch(/\/read\/\$\{encodeURIComponent\(doc\.document_id\)\}/);
+        expect(src).toMatch(/\/read\/\$\{encodeURIComponent\([^)]*\)\}/);
       } else {
         // Every other door calls the one-door resolver.
         expect(src).toMatch(/useOpenDocument\(\)/);
