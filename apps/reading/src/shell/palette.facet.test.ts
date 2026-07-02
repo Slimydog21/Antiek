@@ -33,7 +33,7 @@ const routeRow = (
 });
 
 const ENTRIES: Row[] = [
-  routeRow("r:research", "Research workstation", "Mode A (/)", "/"),
+  routeRow("r:research", "Research home", "Mode A (/)", "/"),
   routeRow("r:library", "Library", "shelf (/library)", "/library"),
   routeRow("r:wrestle", "Document wrestler", "Mode B (/wrestle)", "/wrestle"),
   routeRow("r:docs", "Documents", "by tier (/documents)", "/documents"),

@@ -34,6 +34,7 @@ describe("operator route registry", () => {
 
     expect(byId.get("home")?.group).toBe("Home");
     expect(byId.get("research")?.group).toBe("Research");
+    expect(byId.get("research")?.title).toBe("Research home");
     expect(byId.get("deep-research")?.group).toBe("Research");
     expect(byId.get("my-research")?.group).toBe("Research");
     expect(byId.get("brainstorm")?.group).toBe("Research");
