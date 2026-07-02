@@ -328,6 +328,19 @@ def test_unblocked_now_is_derived_from_dependency_state() -> None:
     assert len(roadmap.unblocked_now()) + len(roadmap.blocked()) == roadmap.total_sprints
 
 
+def test_unblocked_now_entries_are_real_unblocked_rows() -> None:
+    """The operator-facing ready-now list must not contain dangling ids or
+    blocked rows; every entry resolves to a sprint row with no unmet DRW deps."""
+    roadmap = build_roadmap()
+    by_id = {s.node_id: s for s in roadmap.all_sprints()}
+
+    assert roadmap.unblocked_now(), "roadmap should surface at least one ready row"
+    for sprint in roadmap.unblocked_now():
+        assert by_id[sprint.node_id] is sprint
+        assert sprint.unblocked is True
+        assert sprint.blocked_on == ()
+
+
 def test_roadmap_reads_rosters_from_fixture_via_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """The roadmap reads roster filenames from disk (it authors nothing). Point
     it at a fixture and it reflects the fixture's files."""

@@ -58,6 +58,17 @@ const sprintStatusColour = (s: string): "muted" | "sun" | "default" => {
 };
 
 export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
+  const sprintById = new Map(
+    roadmap.rosters.flatMap((r) => r.sprints.map((s) => [s.node_id, s] as const)),
+  );
+  const seenReadyIds = new Set<string>();
+  const readyNow = roadmap.unblocked_now.flatMap((nodeId) => {
+    if (seenReadyIds.has(nodeId)) return [];
+    seenReadyIds.add(nodeId);
+    const sprint = sprintById.get(nodeId);
+    return sprint?.unblocked ? [sprint] : [];
+  });
+
   return (
     <section className="space-y-5">
       <header className="space-y-1">
@@ -108,6 +119,8 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
         </p>
       </div>
 
+      <ReadyNowSection sprints={readyNow} />
+
       {/* Per-spec rosters. */}
       <div className="space-y-4">
         {roadmap.rosters.map((r) => (
@@ -118,6 +131,44 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
       {/* Substrate-execution layer — the real foundation beneath the products. */}
       <SubstrateLayerSection layers={roadmap.substrate_layers} />
     </section>
+  );
+}
+
+function ReadyNowSection({ sprints }: { sprints: SprintView[] }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+        Ready now
+      </p>
+      <LemonCard elevation="z1">
+        {sprints.length > 0 ? (
+          <ul className="divide-y divide-rule dark:divide-charcoal-1">
+            {sprints.map((s) => (
+              <li
+                key={s.node_id}
+                className="flex flex-col gap-1 px-4 py-2.5 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <p className="text-sm font-serif text-ink dark:text-bright">
+                    {s.spec_label || s.spec} · SPR-{String(s.sprint).padStart(2, "0")}
+                  </p>
+                  <p className="text-xs font-mono text-shadow-2 dark:text-moonlight">
+                    {s.slug.replace(/-/g, " ")}
+                  </p>
+                </div>
+                <LemonTag colour="muted" dot>
+                  {s.node_id}
+                </LemonTag>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="px-4 py-3 text-sm font-serif italic text-shadow-1 dark:text-moonlight">
+            No sprint is unblocked by the current dependency state.
+          </p>
+        )}
+      </LemonCard>
+    </div>
   );
 }
 

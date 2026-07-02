@@ -79,6 +79,17 @@ describe("Coordination", () => {
                   unblocked: false,
                 },
                 {
+                  spec: "drw",
+                  spec_label: "Research (DRW)",
+                  sprint: 1,
+                  slug: " lock-the-spine ",
+                  node_id: " drw:1 ",
+                  status: "live",
+                  on_critical_path: true,
+                  blocked_on: [],
+                  unblocked: true,
+                },
+                {
                   node_id: " ",
                   slug: "Skipped sprint",
                 },
@@ -89,7 +100,7 @@ describe("Coordination", () => {
               label: "Skipped roster",
             },
           ],
-          unblocked_now: [" read:2 ", " "],
+          unblocked_now: [" drw:1 ", " drw:1 ", " read:2 ", " missing:9 ", " "],
           substrate_layers: [
             {
               name: " db lock ",
@@ -117,6 +128,10 @@ describe("Coordination", () => {
 
     expect(screen.getByText("library browse")).toBeTruthy();
     expect(screen.getByText("waits on drw:10")).toBeTruthy();
+    expect(screen.getByText("Ready now")).toBeTruthy();
+    expect(screen.getAllByText("lock the spine").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("drw:1")).toHaveLength(2);
+    expect(screen.queryByText("missing:9")).toBeNull();
     expect(screen.getByText("db lock")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(
       /Skipped sprint|Skipped roster|Skipped layer/,
