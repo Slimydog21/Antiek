@@ -34,6 +34,15 @@ interface CompositeSnapshot {
   federation: FederationSummary | null;
   trust: TrustSummary | null;
   billing: BillingSummary | null;
+  investigations: InvestigationSummary | null;
+}
+
+interface InvestigationSummary {
+  total: number;
+  in_progress: number;
+  completed: number;
+  failed: number;
+  total_cost_usd: number;
 }
 
 interface BillingSummary {
@@ -282,6 +291,29 @@ function safeBillingSummary(value: unknown): BillingSummary {
     total_billable_usd: safeUsdString(body?.total_billable_usd),
     record_count: safeCount(body?.record_count),
   };
+}
+
+function safeInvestigationSummary(value: unknown): InvestigationSummary {
+  const body = record(value);
+  const rows = Array.isArray(body?.investigations) ? body.investigations : [];
+  const summary: InvestigationSummary = {
+    total: 0,
+    in_progress: 0,
+    completed: 0,
+    failed: 0,
+    total_cost_usd: 0,
+  };
+  for (const item of rows) {
+    const row = record(item);
+    if (!nonEmptyString(row?.investigation_id)) continue;
+    summary.total += 1;
+    const status = nonEmptyString(row?.status) ?? "in_progress";
+    if (status === "completed") summary.completed += 1;
+    else if (status === "failed") summary.failed += 1;
+    else summary.in_progress += 1;
+    summary.total_cost_usd += nonNegativeFiniteNumber(row?.cost_usd_total) ?? 0;
+  }
+  return summary;
 }
 
 function safeNumberMapTotal(value: unknown): number {
@@ -556,6 +588,7 @@ export default function OperatorDashboard() {
     federation: null,
     trust: null,
     billing: null,
+    investigations: null,
   });
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -574,6 +607,7 @@ export default function OperatorDashboard() {
         federationResp,
         trustResp,
         billingResp,
+        investigationsResp,
       ] = await Promise.all([
         apiFetch("/publishers"),
         apiFetch("/stats").catch(() => null),
@@ -584,6 +618,7 @@ export default function OperatorDashboard() {
         apiFetch("/federation/config").catch(() => null),
         apiFetch("/trust-center").catch(() => null),
         apiFetch(`/billing/summary/__operator__/${currentPeriod()}`).catch(() => null),
+        apiFetch("/investigations?limit=200").catch(() => null),
       ]);
 
       if (!publishersResp.ok) {
@@ -629,6 +664,11 @@ export default function OperatorDashboard() {
         billing = safeBillingSummary(await billingResp.json());
       }
 
+      let investigations: InvestigationSummary | null = null;
+      if (investigationsResp?.ok) {
+        investigations = safeInvestigationSummary(await investigationsResp.json());
+      }
+
       setSnapshot({
         stats,
         pendingDeletions,
@@ -638,6 +678,7 @@ export default function OperatorDashboard() {
         federation,
         trust,
         billing,
+        investigations,
       });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -821,11 +862,61 @@ function CompositeSnapshotSection({ snapshot }: { snapshot: CompositeSnapshot })
         </div>
       </div>
       <CoordinationTile coordination={snapshot.coordination} />
+      <InvestigationsTile investigations={snapshot.investigations} />
       <BillingTile billing={snapshot.billing} />
       <TrustTile trust={snapshot.trust} />
       <MarketplaceTile marketplace={snapshot.marketplace} />
       <FederationTile federation={snapshot.federation} />
     </section>
+  );
+}
+
+function InvestigationsTile({
+  investigations,
+}: {
+  investigations: InvestigationSummary | null;
+}) {
+  if (!investigations) {
+    return (
+      <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className="text-sm font-serif text-ink dark:text-bright">
+            Research workload
+          </h3>
+          <Link
+            to="/investigations"
+            className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+          >
+            open →
+          </Link>
+        </div>
+        <p className="mt-2 text-xs italic text-shadow-1 dark:text-moonlight">
+          Investigation workload unavailable.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="border border-rule dark:border-charcoal-1 rounded-md px-3 py-3 space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-sm font-serif text-ink dark:text-bright">
+          Research workload
+        </h3>
+        <Link
+          to="/investigations"
+          className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+        >
+          open →
+        </Link>
+      </div>
+      <p className="text-xs font-mono text-ink dark:text-bright">
+        {investigations.total} visible · {investigations.in_progress} in progress ·{" "}
+        {investigations.completed} completed · {investigations.failed} failed
+      </p>
+      <p className="text-xs text-ink-soft dark:text-starlight">
+        Visible research cost ${investigations.total_cost_usd.toFixed(4)}.
+      </p>
+    </div>
   );
 }
 
