@@ -222,6 +222,16 @@ describe("FloatMenu — open on selection (M1)", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
+  it("preserves the menu when the selection collapses while a menu control has focus", () => {
+    render(<Host />);
+    const scope = screen.getByTestId("scope");
+    selectTextIn(scope, "the selected passage");
+    screen.getByRole("menuitem", { name: "Dialogue" }).focus();
+    clearSelection();
+    expect(screen.getByRole("menu", { name: "Highlight actions" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Dialogue" })).toBeTruthy();
+  });
+
   it("repositions when a new selection arrives (reset to menu view)", () => {
     render(<Host />);
     const scope = screen.getByTestId("scope");

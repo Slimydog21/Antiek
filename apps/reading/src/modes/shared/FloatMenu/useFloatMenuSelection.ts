@@ -111,17 +111,23 @@ export function useFloatMenuSelection({
   const [selection, setSelection] = useState<FloatMenuSelection | null>(null);
 
   useEffect(() => {
+    function interactingWithFloatMenu() {
+      return Boolean(document.activeElement?.closest("[data-floatmenu]"));
+    }
+
     function onSelectionChange() {
       const sel = window.getSelection();
       const scope = scopeRef.current;
       // Empty selection / no scope → dismiss (rigor #3: empty selection → no
       // window, no crash). Clear only if currently open to avoid render churn.
       if (!sel || sel.rangeCount === 0 || !scope) {
+        if (interactingWithFloatMenu()) return;
         setSelection((s) => (s ? null : s));
         return;
       }
       const text = sel.toString().trim();
       if (!text || text.length < minLength) {
+        if (interactingWithFloatMenu()) return;
         setSelection((s) => (s ? null : s));
         return;
       }
@@ -130,6 +136,7 @@ export function useFloatMenuSelection({
       // menu (HighlightToolbar.tsx:52). A selection elsewhere on the page is
       // not ours; dismiss.
       if (!scope.contains(range.commonAncestorContainer)) {
+        if (interactingWithFloatMenu()) return;
         setSelection((s) => (s ? null : s));
         return;
       }
@@ -137,6 +144,7 @@ export function useFloatMenuSelection({
       // A collapsed selection has a zero-area rect — treat as dismissed
       // (rigor #3: selection collapses while menu open → dismiss).
       if (r.width === 0 && r.height === 0) {
+        if (interactingWithFloatMenu()) return;
         setSelection((s) => (s ? null : s));
         return;
       }

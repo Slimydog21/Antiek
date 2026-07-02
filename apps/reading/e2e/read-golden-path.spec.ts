@@ -8,11 +8,12 @@
  *
  *   1. rich typed blocks render at /read/doc-1;
  *   2. selecting text opens the shared FloatMenu;
+ *   3. Dialogue surfaces the honest activation SPR-03 provider boundary;
  *   5. clicking a citation opens the source through the canonical Reader URL;
  *   6. the source page can return to the original document/page.
  *
- * Steps 3-4 remain provider-key activation work. Step 7 remains operator
- * dogfood, enforced by tools/activation/read_dogfood.py.
+ * Step 4 remains provider-key activation work. Step 7 remains operator dogfood,
+ * enforced by tools/activation/read_dogfood.py.
  */
 import { expect, test, type Page, type Route } from "@playwright/test";
 
@@ -149,32 +150,26 @@ async function installReaderStubs(page: Page): Promise<void> {
   await page.route(/\/trajectory\/read-/, (route) =>
     json(route, 200, { investigation_id: "read-e2e", count: 0, events: [] }),
   );
+  await page.route(/\/thought-partner\/stream$/, (route) =>
+    route.fulfill({
+      status: 503,
+      contentType: "text/plain",
+      headers: { "access-control-allow-origin": "*" },
+      body: "no model provider configured",
+    }),
+  );
 }
 
-async function selectTextInsideReader(page: Page, needle: string): Promise<void> {
-  const selected = await page.evaluate((wanted) => {
-    const root = document.querySelector("[data-reader-root]");
-    if (!root) return false;
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    let node = walker.nextNode();
-    while (node) {
-      const text = node.textContent ?? "";
-      const start = text.indexOf(wanted);
-      if (start !== -1) {
-        const range = document.createRange();
-        range.setStart(node, start);
-        range.setEnd(node, start + wanted.length);
-        const selection = window.getSelection();
-        selection?.removeAllRanges();
-        selection?.addRange(range);
-        document.dispatchEvent(new Event("selectionchange"));
-        return true;
-      }
-      node = walker.nextNode();
-    }
-    return false;
-  }, needle);
-  expect(selected).toBe(true);
+async function selectReaderParagraphText(page: Page): Promise<void> {
+  const paragraph = page.locator("[data-reader-root] p").first();
+  const box = await paragraph.boundingBox();
+  expect(box).not.toBeNull();
+  if (!box) return;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(box.x + 8, y);
+  await page.mouse.down();
+  await page.mouse.move(box.x + Math.min(box.width - 8, 280), y, { steps: 12 });
+  await page.mouse.up();
 }
 
 test.describe("Read activation golden path on the real app route", () => {
@@ -186,9 +181,22 @@ test.describe("Read activation golden path on the real app route", () => {
     await expect(page.getByRole("heading", { name: "Chapter One" })).toBeVisible();
     await expect(page.getByText("A cited claim with enough text for selection")).toBeVisible();
 
-    await selectTextInsideReader(page, "cited claim with enough text");
+    await selectReaderParagraphText(page);
     await expect(page.getByRole("menu", { name: "Highlight actions" })).toBeVisible();
-    await expect(page.getByRole("menuitem", { name: "Dialogue" })).toBeVisible();
+    const dialogueAction = page.getByRole("menuitem", { name: "Dialogue" });
+    await expect(dialogueAction).toBeVisible();
+    // The real mouse drag above proves selection opens the menu. Activate the
+    // fixed menu from the page context so Playwright cannot collapse the
+    // selection by clicking a shell-adjusted coordinate outside the menu.
+    await dialogueAction.focus();
+    await dialogueAction.evaluate((el) => (el as HTMLElement).click());
+    await expect(page.getByPlaceholder("Ask about this passage…")).toBeVisible();
+    await page
+      .getByRole("button", { name: "Ask", exact: true })
+      .evaluate((el) => (el as HTMLElement).click());
+    const dialogueBoundary = page.getByRole("alert");
+    await expect(dialogueBoundary).toContainText("model provider");
+    await expect(dialogueBoundary).toContainText("activation SPR-03");
     await page.keyboard.press("Escape");
 
     await page.getByRole("button", { name: "Open the cited source [1]" }).click();
