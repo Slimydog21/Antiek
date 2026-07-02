@@ -16,7 +16,7 @@
  * Flag mocked ON (the production default) so the ice-fishing experience is live.
  */
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 vi.mock("../werner/iceFishingFlags", () => ({
@@ -150,5 +150,55 @@ describe("PenguinMascot — the fixed station (flag on)", () => {
     advanceFrames(30000);
     expect(parseFloat(el.style.left)).toBe(startLeft);
     expect(parseFloat(el.style.top)).toBe(startTop);
+  });
+
+  // The load-bearing seam DESIGN.md §6 flags: deleting the ambient roam must NOT
+  // break directed choreography (waddle-to-button), because strollTo/restGait
+  // were re-homed out of the roam effect. Without this pin, a future ref-scope
+  // or effect-order regression would make waddleToEl a silent no-op. We drive the
+  // opt-in data-werner-target click path (a plain document click → stage.
+  // waddleToEl) with a mocked on-screen rect, and assert Werner walks TO the
+  // control and then RETURNS to his station.
+  it("still waddles to an activated control and returns to his station (choreography seam intact)", () => {
+    const { getByText } = render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes>
+          <Route
+            path="*"
+            element={
+              <>
+                <button data-werner-target="hit">Bump me</button>
+                <PenguinMascot />
+              </>
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    const target = getByText("Bump me") as HTMLButtonElement;
+    // jsdom lays nothing out → getBoundingClientRect is all zeros, which the
+    // stage treats as "off-screen/detached → no-op". Give it a real on-screen
+    // rect so waddleToEl actually engages.
+    target.getBoundingClientRect = () =>
+      ({ left: 600, top: 400, width: 80, height: 40, right: 680, bottom: 440, x: 600, y: 400, toJSON: () => ({}) }) as DOMRect;
+
+    const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
+    const homeLeft = parseFloat(el.style.left);
+    const homeTop = parseFloat(el.style.top);
+
+    // Activate the control → Werner walks OUT to its center (640, 420).
+    act(() => {
+      fireEvent.click(target);
+    });
+    expect(parseFloat(el.style.left)).not.toBe(homeLeft);
+    expect(parseFloat(el.style.left)).toBeGreaterThan(homeLeft); // toward the button (right)
+
+    // Advance the full excursion: walk (WADDLE_MS=1800) + hit emote (800) +
+    // return-home stroll (STATION_RETURN_MS=900). He must be back on station.
+    act(() => {
+      vi.advanceTimersByTime(1800 + 800 + 900 + 50);
+    });
+    expect(parseFloat(el.style.left)).toBe(homeLeft);
+    expect(parseFloat(el.style.top)).toBe(homeTop);
   });
 });
