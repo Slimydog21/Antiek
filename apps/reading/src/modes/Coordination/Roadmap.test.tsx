@@ -2,7 +2,12 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { Roadmap } from "./Roadmap";
-import type { DependencyBlockerView, RoadmapView, SprintView } from "./Roadmap";
+import type {
+  DependencyBlockerView,
+  ExecutionFocusView,
+  RoadmapView,
+  SprintView,
+} from "./Roadmap";
 
 afterEach(() => {
   cleanup();
@@ -47,6 +52,7 @@ function roadmap(
   unblockedNow: string[] = [],
   dependencyBlockers: DependencyBlockerView[] = [],
   criticalPath: string[] = [],
+  executionFocus: ExecutionFocusView | null = null,
 ): RoadmapView {
   const specs: Array<"drw" | "read"> = ["drw", "read"];
   return {
@@ -70,6 +76,7 @@ function roadmap(
     }),
     unblocked_now: unblockedNow,
     dependency_blockers: dependencyBlockers,
+    execution_focus: executionFocus,
     substrate_layers: [],
   };
 }
@@ -253,6 +260,128 @@ describe("Roadmap", () => {
       screen.getByText("Unblock drw:5 — Research (DRW) · SPR-05"),
     ).toBeTruthy();
     expect(screen.queryByText("Next dependency-ready sprint: Read · SPR-01")).toBeNull();
+  });
+
+  it("uses valid API execution focus and falls back when it is stale", () => {
+    const rows = [
+      sprint(5, [], true, "drw"),
+      sprint(6, [], true, "drw"),
+      sprint(1, ["drw:5"]),
+      sprint(2, ["drw:5"]),
+      sprint(3, ["drw:6"]),
+    ];
+
+    const { rerender } = render(
+      <Roadmap
+        roadmap={roadmap(
+          rows,
+          [],
+          [
+            { node_id: "drw:5", blocked_sprints: ["read:1", "read:2"] },
+            { node_id: "drw:6", blocked_sprints: ["read:3"] },
+          ],
+          [],
+          {
+            kind: "dependency_blocker",
+            node_id: "drw:5",
+            blocked_sprints: ["read:2", "read:1"],
+          },
+        )}
+      />,
+    );
+
+    expect(
+      screen.getByText("Unblock drw:5 — Research (DRW) · SPR-05"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Clears dependency pressure for 2 sprints."),
+    ).toBeTruthy();
+
+    rerender(
+      <Roadmap
+        roadmap={roadmap(
+          rows,
+          [],
+          [
+            { node_id: "drw:5", blocked_sprints: ["read:1", "read:2"] },
+            { node_id: "drw:6", blocked_sprints: ["read:3"] },
+          ],
+          [],
+          {
+            kind: "dependency_blocker",
+            node_id: "drw:6",
+            blocked_sprints: ["read:3"],
+          },
+        )}
+      />,
+    );
+
+    expect(
+      screen.getByText("Unblock drw:5 — Research (DRW) · SPR-05"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Clears dependency pressure for 2 sprints."),
+    ).toBeTruthy();
+
+    rerender(
+      <Roadmap
+        roadmap={roadmap(
+          rows,
+          [],
+          [
+            { node_id: "drw:5", blocked_sprints: ["read:1", "read:2"] },
+            { node_id: "drw:6", blocked_sprints: ["read:3"] },
+          ],
+          [],
+          {
+            kind: "dependency_blocker",
+            node_id: "drw:5",
+            blocked_sprints: ["read:1"],
+          },
+        )}
+      />,
+    );
+
+    expect(
+      screen.getByText("Unblock drw:5 — Research (DRW) · SPR-05"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Clears dependency pressure for 2 sprints."),
+    ).toBeTruthy();
+    expect(screen.queryByText("Clears dependency pressure for 1 sprint.")).toBeNull();
+    expect(screen.queryByText("Unblock drw:6")).toBeNull();
+  });
+
+  it("uses valid dependency-ready API focus and falls back when it is stale", () => {
+    const rows = [sprint(1, [], true), sprint(2, [], true)];
+    const { rerender } = render(
+      <Roadmap
+        roadmap={roadmap(rows, ["read:1", "read:2"], [], [], {
+          kind: "dependency_ready",
+          node_id: "read:1",
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText("Next dependency-ready sprint: Read · SPR-01"),
+    ).toBeTruthy();
+    expect(screen.getByText("read sprint 1 · read:1")).toBeTruthy();
+
+    rerender(
+      <Roadmap
+        roadmap={roadmap(rows, ["read:1", "read:2"], [], [], {
+          kind: "dependency_ready",
+          node_id: "read:2",
+        })}
+      />,
+    );
+
+    expect(
+      screen.getByText("Next dependency-ready sprint: Read · SPR-01"),
+    ).toBeTruthy();
+    expect(screen.getByText("read sprint 1 · read:1")).toBeTruthy();
+    expect(screen.queryByText("Next dependency-ready sprint: Read · SPR-02")).toBeNull();
   });
 
   it("hides execution focus when there is no blocker and no dependency-ready row", () => {

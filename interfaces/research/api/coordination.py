@@ -22,6 +22,8 @@ of any such path here — greppable, and asserted in
 
 from __future__ import annotations
 
+from typing import Literal
+
 import duckdb
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -42,6 +44,7 @@ from substrate.coordination.gate_ledger import (
     load_gate_ledger,
 )
 from substrate.coordination.roadmap import (
+    ExecutionFocus,
     Roadmap,
     SprintRow,
     build_roadmap,
@@ -136,6 +139,20 @@ class DependencyBlockerResponse(BaseModel):
     blocked_sprints: list[str]
 
 
+class ExecutionFocusResponse(BaseModel):
+    kind: Literal["dependency_blocker", "dependency_ready"]
+    node_id: str
+    blocked_sprints: list[str]
+
+    @classmethod
+    def from_focus(cls, focus: ExecutionFocus) -> ExecutionFocusResponse:
+        return cls(
+            kind=focus.kind,
+            node_id=focus.node_id,
+            blocked_sprints=[s.node_id for s in focus.blocked_sprints],
+        )
+
+
 class RoadmapResponse(BaseModel):
     total_sprints: int
     superseded_count: int
@@ -145,10 +162,12 @@ class RoadmapResponse(BaseModel):
     rosters: list[RosterResponse]
     unblocked_now: list[str]      # node ids
     dependency_blockers: list[DependencyBlockerResponse]
+    execution_focus: ExecutionFocusResponse | None
     substrate_layers: list[SubstrateLayerResponse]
 
     @classmethod
     def from_roadmap(cls, rm: Roadmap) -> RoadmapResponse:
+        focus = rm.execution_focus()
         return cls(
             total_sprints=rm.total_sprints,
             superseded_count=rm.superseded_count,
@@ -173,6 +192,9 @@ class RoadmapResponse(BaseModel):
                 )
                 for b in rm.dependency_blockers()
             ],
+            execution_focus=(
+                ExecutionFocusResponse.from_focus(focus) if focus is not None else None
+            ),
             substrate_layers=[
                 SubstrateLayerResponse(name=l.name, owner=l.owner, status=l.status)
                 for l in rm.substrate_layers
@@ -375,8 +397,8 @@ def register_coordination_routes(app: FastAPI) -> None:
     )
     async def get_roadmap() -> RoadmapResponse:
         """The cross-spec roadmap — 45 sprints reconciled from the real roster
-        files + SPR-01's dependency DAG, DRW critical path explicit, unblocked-
-        now derived from dependency state."""
+        files + SPR-01's dependency DAG, DRW critical path explicit, dependency
+        blockers and execution focus derived from dependency state."""
         return RoadmapResponse.from_roadmap(build_roadmap())
 
     @app.get(

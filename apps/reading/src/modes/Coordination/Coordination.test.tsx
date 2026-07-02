@@ -115,6 +115,11 @@ describe("Coordination", () => {
               blocked_sprints: ["read:2"],
             },
           ],
+          execution_focus: {
+            kind: "dependency_blocker",
+            node_id: " missing:9 ",
+            blocked_sprints: [" read:2 "],
+          },
           substrate_layers: [
             {
               name: " db lock ",
@@ -148,6 +153,7 @@ describe("Coordination", () => {
     expect(screen.getByText("dependency-ready")).toBeTruthy();
     expect(screen.getByText("Dependency blockers")).toBeTruthy();
     expect(screen.getByText("drw:10")).toBeTruthy();
+    expect(screen.getByText("Unblock drw:10")).toBeTruthy();
     expect(screen.getByText("blocks 1 sprint")).toBeTruthy();
     expect(screen.queryByText("missing:9")).toBeNull();
     expect(screen.getAllByText("lock the spine").length).toBeGreaterThanOrEqual(1);

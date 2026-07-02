@@ -34,7 +34,13 @@ from substrate.coordination.gate_ledger import (
     parse_gate_ledger,
     parse_quick_status_table,
 )
-from substrate.coordination.roadmap import build_roadmap
+from substrate.coordination.roadmap import (
+    Roadmap,
+    SpecRoster,
+    SprintRow,
+    SprintStatus,
+    build_roadmap,
+)
 
 # ── 1. The no-fork equality: two independent parses agree ────────────────────
 
@@ -363,6 +369,51 @@ def test_dependency_blockers_are_derived_and_sorted() -> None:
             assert blocker.node_id in sprint.blocked_on
 
 
+def test_execution_focus_prefers_top_dependency_blocker() -> None:
+    """The roadmap's canonical next action is the top dependency blocker when
+    blocked rows exist."""
+    roadmap = build_roadmap()
+    focus = roadmap.execution_focus()
+
+    assert focus is not None
+    assert focus.kind == "dependency_blocker"
+    assert focus.node_id == "drw:5"
+    assert [s.node_id for s in focus.blocked_sprints] == [
+        f"read:{i}" for i in range(1, 10)
+    ]
+
+
+def test_execution_focus_falls_back_to_first_dependency_ready_row() -> None:
+    """If nothing is blocked, the canonical next action is the first ready row
+    in roster order."""
+    sprint = SprintRow(
+        spec="read",
+        spec_label="Read",
+        sprint=1,
+        slug="reader-root",
+        node_id="read:1",
+        status=SprintStatus.UNKNOWN,
+        on_critical_path=False,
+        blocked_on=(),
+        unblocked=True,
+    )
+    roadmap = Roadmap(
+        rosters=(
+            SpecRoster(spec="read", label="Read", directory="read", sprints=(sprint,)),
+        ),
+        critical_path=(),
+        superseded_count=0,
+        superseded_note="",
+    )
+
+    focus = roadmap.execution_focus()
+
+    assert focus is not None
+    assert focus.kind == "dependency_ready"
+    assert focus.node_id == "read:1"
+    assert focus.blocked_sprints == ()
+
+
 def test_roadmap_response_serializes_dependency_blockers() -> None:
     """The HTTP adapter exposes the substrate-owned blocker summary without
     duplicating sprint rows into a second roadmap."""
@@ -374,6 +425,21 @@ def test_roadmap_response_serializes_dependency_blockers() -> None:
     assert "drw:5" in by_id
     assert by_id["drw:5"].blocked_sprints == [f"read:{i}" for i in range(1, 10)]
     assert all(isinstance(node_id, str) for node_id in by_id["drw:5"].blocked_sprints)
+
+
+def test_roadmap_response_serializes_execution_focus() -> None:
+    """The HTTP adapter exposes the substrate-owned next action with node-id
+    references only, not duplicated sprint rows."""
+    from interfaces.research.api.coordination import RoadmapResponse
+
+    response = RoadmapResponse.from_roadmap(build_roadmap())
+
+    assert response.execution_focus is not None
+    assert response.execution_focus.kind == "dependency_blocker"
+    assert response.execution_focus.node_id == "drw:5"
+    assert response.execution_focus.blocked_sprints == [
+        f"read:{i}" for i in range(1, 10)
+    ]
 
 
 def test_roadmap_reads_rosters_from_fixture_via_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
