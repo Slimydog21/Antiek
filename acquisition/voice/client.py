@@ -97,10 +97,10 @@ class WhisperTranscriber:
         else:
             with httpx.Client(timeout=DEFAULT_TIMEOUT_S) as c:
                 def _send() -> httpx.Response:
-                return c.post(
-                    url, headers=headers, files=files, data=data,
-                    timeout=DEFAULT_TIMEOUT_S,  # module default; same pattern as acquisition/papers/core.py DEFAULT_TIMEOUT_S
-                )
+                    return c.post(
+                        url, headers=headers, files=files, data=data,
+                        timeout=DEFAULT_TIMEOUT_S,  # module default; same pattern as acquisition/papers/core.py DEFAULT_TIMEOUT_S
+                    )
 
                 r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
         r.raise_for_status()
