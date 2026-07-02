@@ -57,7 +57,7 @@ diverges. Both v1 failures are now verified dead — see
   (`apps/reading/src/design/tokens.css` + `tokens.ts`) and proved AA, but the
   Tailwind mirror (`apps/reading/tailwind.config.js`) still carries the loud
   hexes for ~56 utility consumers — a **disclosed follow-up**, not done here
-  (out of SPR-09 scope). Tracked as **D17** in `engineering_deferrals.md`.
+  (out of SPR-09 scope). Tracked as **D20** *[ID renumbered from D17 on 2026-07-02 — the deferrals doc carried two D17s; the live-ingest cluster kept the ID]* in `engineering_deferrals.md`.
 - **v2 is the build default; v1 is the wired rollback.** `VITE_ANTIEK_UI ?? "v2"`
   selects the v2 shell; `VITE_ANTIEK_UI=v1` + redeploy falls back to
   `apps/reading/src/AppLegacy.tsx`. Rollback is a flag flip, not a revert.
@@ -95,8 +95,9 @@ diverges. Both v1 failures are now verified dead — see
    procedural floor ships fine without it (the routes return a typed-503
    graceful-absence), so this is optional polish, **not a gate** — that is why it
    is recorded here and not in `operator_gate_actions.md`.
-2. **D17** — re-tone `apps/reading/tailwind.config.js` to mirror the softened
-   vars (see `engineering_deferrals.md` D17).
+2. **D20** *[renumbered from D17, 2026-07-02]* — re-tone
+   `apps/reading/tailwind.config.js` to mirror the softened
+   vars (see `engineering_deferrals.md` D20).
 3. **Backend deploy of accumulated non-AMS2 `main`** — operator's call, separate
    from this PR.
 

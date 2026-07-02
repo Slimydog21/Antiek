@@ -56,6 +56,17 @@ def _isolated_substrate_env(monkeypatch, tmp_path):
     even when a test fails mid-way."""
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(tmp_path / "t.duckdb"))
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    # PIN unkeyed-ness (see tests/test_thought_partner.py): real provider
+    # keys in the runner's env must never reach the dispatch path — the
+    # mock provider registered per-test is the only allowed provider.
+    for key_env in (
+        "ANTHROPIC_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "HERMES_API_KEY",
+        "OPENROUTER_API_KEY",
+        "XIAOMI_API_KEY",
+    ):
+        monkeypatch.delenv(key_env, raising=False)
     reset_provider_registry()
     yield
     reset_provider_registry()
