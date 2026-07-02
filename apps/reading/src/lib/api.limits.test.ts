@@ -5,6 +5,7 @@ import {
   appendNotebookBlock,
   createDeliverable,
   createSection,
+  exportDeliverable,
   getHealth,
   getDeliverable,
   getNotebook,
@@ -17,6 +18,7 @@ import {
   reorderBlock,
   searchBlocks,
   undoAiAction,
+  updateSectionProse,
 } from "./api";
 
 beforeEach(() => {
@@ -494,6 +496,119 @@ describe("api client write deliverable response boundaries", () => {
       prose_text: null,
       prose_provenance: null,
       block_count: 1,
+    });
+  });
+});
+
+describe("api client write editor response boundaries", () => {
+  it("sanitizes block search hits before the repository picker renders them", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          count: "bad",
+          hits: [
+            {
+              block_id: " blk-1 ",
+              block_kind: "mystery",
+              label: " ",
+              body: "  The useful claim  ",
+              source_tier: "2",
+              document_title: "  Source doc  ",
+            },
+            {
+              block_id: "blk-empty",
+              body: " ",
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(searchBlocks("claim")).resolves.toEqual({
+      count: 1,
+      hits: [
+        {
+          block_id: "blk-1",
+          block_kind: "claim",
+          label: "The useful claim",
+          body: "The useful claim",
+          source_tier: null,
+          document_title: "Source doc",
+        },
+      ],
+    });
+  });
+
+  it("sanitizes section prose save responses before editor state receives them", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          status: "unexpected",
+          section_id: " sec-1 ",
+          claim_node_id: " ",
+          claim_event_id: " evt-1 ",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(
+      updateSectionProse("sec-1", {
+        prose_text: "Draft",
+      }),
+    ).resolves.toEqual({
+      status: "saved",
+      section_id: "sec-1",
+      claim_node_id: null,
+      claim_event_id: "evt-1",
+    });
+  });
+
+  it("rejects malformed section prose save responses", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ status: "saved", section_id: " " }), {
+        status: 200,
+      }),
+    );
+
+    await expect(
+      updateSectionProse("sec-1", {
+        prose_text: "Draft",
+      }),
+    ).rejects.toMatchObject({ status: 502 });
+  });
+
+  it("sanitizes export responses before download code consumes them", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          format: "docx",
+          content: "# Draft",
+          filename: " ",
+          content_encoding: "binary",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(exportDeliverable("dlv-1", "markdown")).resolves.toEqual({
+      format: "markdown",
+      content: "# Draft",
+      filename: "deliverable.markdown",
+      content_encoding: "text",
+    });
+  });
+
+  it("rejects malformed export content", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ format: "markdown", content: null }), {
+        status: 200,
+      }),
+    );
+
+    await expect(exportDeliverable("dlv-1", "markdown")).rejects.toMatchObject({
+      status: 502,
     });
   });
 });
