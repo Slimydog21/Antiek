@@ -189,6 +189,48 @@ describe("Speak project lists", () => {
     ]);
   });
 
+  it("dedupes duplicate private project ids after trimming", async () => {
+    apiFetchMock.mockResolvedValue(
+      jsonResponse({
+        projects: [
+          {
+            project_id: " proj-dup ",
+            subject_ref: "First Maria",
+            publish_intent: "private_never_published",
+            interview_count: 2,
+          },
+          {
+            project_id: "proj-dup",
+            subject_ref: "Duplicate Maria",
+            publish_intent: "will_be_public",
+            interview_count: 9,
+          },
+          {
+            project_id: "proj-other",
+            subject_ref: "Other person",
+            publish_intent: "private_never_published",
+            interview_count: 0,
+          },
+        ],
+      }),
+    );
+
+    await expect(listPeople()).resolves.toEqual([
+      {
+        id: "proj-dup",
+        name: "First Maria",
+        willBePublic: false,
+        voiceCount: 2,
+      },
+      {
+        id: "proj-other",
+        name: "Other person",
+        willBePublic: false,
+        voiceCount: 0,
+      },
+    ]);
+  });
+
   it("treats malformed project list wrappers as empty", async () => {
     apiFetchMock.mockResolvedValueOnce(jsonResponse({ projects: { project_id: "proj-1" } }));
 
@@ -232,6 +274,43 @@ describe("Speak project lists", () => {
         id: "proj-title",
         name: "Public title",
         voiceCount: 0,
+      },
+    ]);
+  });
+
+  it("dedupes duplicate public-feed project ids after trimming", async () => {
+    apiFetchMock.mockResolvedValue(
+      jsonResponse({
+        projects: [
+          {
+            project_id: " proj-public ",
+            subject_ref: "First Rosa",
+            interview_count: 3,
+          },
+          {
+            project_id: "proj-public",
+            subject_ref: "Duplicate Rosa",
+            interview_count: 9,
+          },
+          {
+            project_id: "proj-other",
+            subject_ref: "Other Rosa",
+            interview_count: 1,
+          },
+        ],
+      }),
+    );
+
+    await expect(listPublicFeed()).resolves.toEqual([
+      {
+        id: "proj-public",
+        name: "First Rosa",
+        voiceCount: 3,
+      },
+      {
+        id: "proj-other",
+        name: "Other Rosa",
+        voiceCount: 1,
       },
     ]);
   });

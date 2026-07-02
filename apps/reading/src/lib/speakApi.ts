@@ -228,10 +228,15 @@ function toAgreementPoint(raw: Record<string, unknown>): AgreementPoint | null {
 export async function listPeople(): Promise<RememberedPerson[]> {
   const resp = await apiFetch("/speak/projects");
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const seen = new Set<string>();
   return arrayField(await resp.json(), "projects").flatMap((row) => {
     try {
       const item = record(row);
-      return item ? [toPerson(item)] : [];
+      if (!item) return [];
+      const person = toPerson(item);
+      if (seen.has(person.id)) return [];
+      seen.add(person.id);
+      return [person];
     } catch {
       return [];
     }
@@ -338,13 +343,17 @@ export async function assembleDraft(id: string, isPublic: boolean): Promise<Asse
 export async function listPublicFeed(): Promise<FeedItem[]> {
   const resp = await apiFetch("/speak/feed");
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const seen = new Set<string>();
   return arrayField(await resp.json(), "projects").flatMap((r) => {
     try {
       const row = record(r);
       if (!row) return [];
+      const id = requireNonEmptyField(row.project_id, "project_id");
+      if (seen.has(id)) return [];
+      seen.add(id);
       return [
         {
-          id: requireNonEmptyField(row.project_id, "project_id"),
+          id,
           name:
             nonEmptyString(row.subject_ref) ??
             nonEmptyString(row.title) ??

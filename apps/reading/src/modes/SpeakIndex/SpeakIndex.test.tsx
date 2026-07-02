@@ -102,6 +102,19 @@ describe("SpeakIndex — the warm door", () => {
     expect(link.getAttribute("href")).toBe("/speak/person%20with%2Fslash");
   });
 
+  it("renders duplicate private projects once after API normalization", async () => {
+    listPeopleMock.mockResolvedValue([
+      { id: "person-dup", name: "First Grandma", voiceCount: 1, willBePublic: false },
+      { id: "person-dup", name: "Duplicate Grandma", voiceCount: 9, willBePublic: true },
+      { id: "person-other", name: "Other Grandma", voiceCount: 0, willBePublic: false },
+    ]);
+    mount();
+
+    expect(await screen.findByText("First Grandma")).toBeTruthy();
+    expect(screen.queryByText("Duplicate Grandma")).toBeNull();
+    expect(screen.getByText("Other Grandma")).toBeTruthy();
+  });
+
   // ── M1 — the public/private split ──
   it("has a public-feed tab with an honest empty state and an 'add your memory' entry", async () => {
     mount();
@@ -134,6 +147,21 @@ describe("SpeakIndex — the warm door", () => {
       "/speak/public%20with%2Fslash",
       "/speak/public%20with%2Fslash",
     ]);
+  });
+
+  it("renders duplicate public-feed projects once after API normalization", async () => {
+    listPublicFeedMock.mockResolvedValue([
+      { id: "public-dup", name: "First public story", voiceCount: 3 },
+      { id: "public-dup", name: "Duplicate public story", voiceCount: 9 },
+      { id: "public-other", name: "Other public story", voiceCount: 1 },
+    ]);
+    mount();
+
+    fireEvent.click(await screen.findByRole("tab", { name: /public remembrances/i }));
+
+    expect(await screen.findByText("First public story")).toBeTruthy();
+    expect(screen.queryByText("Duplicate public story")).toBeNull();
+    expect(screen.getByText("Other public story")).toBeTruthy();
   });
 
   it("keeps stale public-feed reloads from overwriting the active tab feed", async () => {
