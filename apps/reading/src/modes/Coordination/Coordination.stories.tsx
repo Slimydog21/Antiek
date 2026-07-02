@@ -264,6 +264,15 @@ export const CANONICAL_ROADMAP: RoadmapView = {
   unblocked_now: readyNowIds,
   dependency_blockers: [],
   execution_focus: null,
+  operator_gate_focus: {
+    gate_id: "G2",
+    title: "Lawyer review of Kalshi-pattern notification template",
+    status: "open",
+    status_raw: "OPEN",
+    owner: "Operator + counsel",
+    blocks: "All Stripe payouts; first publisher outreach",
+    source_path: "docs/operator_gate_actions.md",
+  },
   substrate_layers: [
     { name: "Write coordination (db_lock)", owner: "runtime/db_lock.py", status: "Hardened (substrate-execution SPR-01)" },
     { name: "Dispatch router + idempotency", owner: "substrate/dispatch/", status: "Hardened (substrate-execution SPR-02/03)" },

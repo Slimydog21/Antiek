@@ -447,6 +447,69 @@ def test_roadmap_response_serializes_execution_focus() -> None:
     response = RoadmapResponse.from_roadmap(build_roadmap())
 
     assert response.execution_focus is None
+    assert response.operator_gate_focus is None
+
+
+def test_roadmap_response_serializes_operator_gate_focus_from_ledger() -> None:
+    """When structural dependencies have no focus, the roadmap response points
+    at the first open operator gate from the canonical ledger, not a fork."""
+    from interfaces.research.api.coordination import RoadmapResponse
+
+    ledger = load_gate_ledger()
+    response = RoadmapResponse.from_roadmap(build_roadmap(), ledger)
+
+    first_open = ledger.open_gates()[0]
+    assert response.execution_focus is None
+    assert response.operator_gate_focus is not None
+    assert response.operator_gate_focus.gate_id == first_open.gate_id
+    assert response.operator_gate_focus.title == first_open.title
+    assert response.operator_gate_focus.status == first_open.status.value
+    assert response.operator_gate_focus.status_raw == first_open.status_raw
+    assert response.operator_gate_focus.source_path == ledger.source_path
+
+
+def test_operator_gate_focus_does_not_override_structural_dependency_focus() -> None:
+    """Dependency blockers remain the first focus; operator gates only surface
+    after structural roadmap focus is clear."""
+    from interfaces.research.api.coordination import RoadmapResponse
+
+    blocked = SprintRow(
+        spec="read",
+        spec_label="Read",
+        sprint=1,
+        slug="reader-root",
+        node_id="read:1",
+        status=SprintStatus.UNKNOWN,
+        on_critical_path=False,
+        blocked_on=("drw:5",),
+        unblocked=False,
+    )
+    roadmap = Roadmap(
+        rosters=(
+            SpecRoster(spec="read", label="Read", directory="read", sprints=(blocked,)),
+        ),
+        critical_path=(),
+        superseded_count=0,
+        superseded_note="",
+    )
+    ledger = parse_gate_ledger(
+        """# gates
+
+## G2 — Lawyer review
+
+**Status:** ❌ OPEN
+**Owner:** Operator + counsel
+**Blocks:** All payouts
+""",
+        source_path="fixture.md",
+    )
+
+    response = RoadmapResponse.from_roadmap(roadmap, ledger)
+
+    assert response.execution_focus is not None
+    assert response.execution_focus.kind == "dependency_blocker"
+    assert response.execution_focus.node_id == "drw:5"
+    assert response.operator_gate_focus is None
 
 
 def test_roadmap_response_names_activation_boundary() -> None:

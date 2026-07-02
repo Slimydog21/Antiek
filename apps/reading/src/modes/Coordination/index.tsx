@@ -7,6 +7,7 @@ import { Roadmap } from "./Roadmap";
 import type {
   DependencyBlockerView,
   ExecutionFocusView,
+  OperatorGateFocusView,
   RoadmapView,
   RosterView,
   SprintView,
@@ -206,6 +207,22 @@ function safeExecutionFocus(value: unknown): ExecutionFocusView | null {
   };
 }
 
+function safeOperatorGateFocus(value: unknown): OperatorGateFocusView | null {
+  const focus = record(value);
+  const gateId = nonEmptyString(focus?.gate_id);
+  const title = nonEmptyString(focus?.title);
+  if (!focus || !gateId || !title) return null;
+  return {
+    gate_id: gateId,
+    title,
+    status: gateStatus(focus.status),
+    status_raw: nonEmptyString(focus.status_raw) ?? "",
+    owner: nullableString(focus.owner),
+    blocks: nullableString(focus.blocks),
+    source_path: nonEmptyString(focus.source_path) ?? "",
+  };
+}
+
 function safeRoadmapView(value: unknown): RoadmapView {
   const body = record(value);
   const rosters = Array.isArray(body?.rosters)
@@ -230,6 +247,7 @@ function safeRoadmapView(value: unknown): RoadmapView {
         })
       : [],
     execution_focus: safeExecutionFocus(body?.execution_focus),
+    operator_gate_focus: safeOperatorGateFocus(body?.operator_gate_focus),
     substrate_layers: Array.isArray(body?.substrate_layers)
       ? body.substrate_layers.flatMap((item) => {
           const layer = safeSubstrateLayer(item);
