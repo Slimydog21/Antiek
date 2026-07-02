@@ -169,7 +169,15 @@ def _check_auto_patch_for_phase_8(
             continue
         try:
             e = Event.model_validate(row)
-        except Exception:
+        except Exception as exc:
+            # A skipped AUTO_PATCH_APPLIED row can flip this check to a false
+            # `no_auto_patch` critical (the patched row it needed was dropped),
+            # so surface it (matching the module's stderr idiom below).
+            print(
+                f"audit_phase_log: malformed AUTO_PATCH_APPLIED row skipped "
+                f"for {investigation_id}: {exc!r}",
+                file=sys.stderr,
+            )
             continue
         if isinstance(e.payload, AutoPatchAppliedPayload) and e.payload.patched:
             return []  # at least one patched domain — gate satisfied

@@ -231,6 +231,14 @@ class CascadeSession:
             try:
                 linked += self._link_findings(leaf)
             except Exception:  # isolation: a bad merge for one leaf is not fatal
+                # Trace the silent loss: without this, a failing leaf drops its
+                # question->resolved_by->insight edges and `linked` just
+                # undercounts, with no record of which leaf or why.
+                _log.exception(
+                    "per-leaf finding-link failed for investigation_id=%s "
+                    "(question_node_id=%s); leaf skipped, siblings continue",
+                    leaf.investigation_id, leaf.question_node_id,
+                )
                 continue
         return {"linked_findings": linked}
 
