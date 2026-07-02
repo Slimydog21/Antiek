@@ -650,6 +650,7 @@ cmd_agent_gates() {
     tests/test_audit_agent_session.py \
     tests/test_canonical_verify.py \
     tests/test_platform_exec_matrix.py \
+    -k "not test_canonical_verify_agent_gates_hermetic" \
     -q --tb=no
   echo "CANONICAL_VERIFY_OK: agent-gates"
 }

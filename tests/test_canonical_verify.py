@@ -41,6 +41,12 @@ def test_canonical_verify_handoff_uses_repo_local_tsx() -> None:
     assert "npx --yes tsx" not in src
 
 
+def test_canonical_verify_agent_gates_hermetic() -> None:
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert "CANONICAL_VERIFY_OK: agent-gates" in src
+    assert "-k \"not test_canonical_verify_agent_gates_hermetic\"" in src
+
+
 def test_canonical_verify_usage_names_every_dispatch_subcommand() -> None:
     src = SCRIPT.read_text(encoding="utf-8")
     usage_match = re.search(r"Usage: canonical_verify\.sh \{([^}]*)\}", src)
