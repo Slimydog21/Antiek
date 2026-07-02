@@ -100,9 +100,12 @@ function displayString(value: unknown, fallback: string): string {
 }
 
 function normalizeSummaries(items: InvestigationSummary[]): InvestigationSummary[] {
+  const seen = new Set<string>();
   return items.flatMap((summary) => {
     const investigationId = nonEmptyString(summary.investigation_id);
     if (!investigationId) return [];
+    if (seen.has(investigationId)) return [];
+    seen.add(investigationId);
     return [
       {
         ...summary,
@@ -124,10 +127,14 @@ function normalizeLinkedWritePieces(
   deliverables: DeliverableSummary[],
 ): Map<string, LinkedWritePiece[]> {
   const byResearch = new Map<string, LinkedWritePiece[]>();
+  const seen = new Set<string>();
   for (const deliverable of deliverables) {
     const deliverableId = nonEmptyString(deliverable.deliverable_id);
     const researchId = nonEmptyString(deliverable.investigation_root_id);
     if (!deliverableId || !researchId) continue;
+    const key = `${researchId}\u0000${deliverableId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     const piece: LinkedWritePiece = {
       deliverableId,
       title: displayString(deliverable.title, "Untitled piece"),

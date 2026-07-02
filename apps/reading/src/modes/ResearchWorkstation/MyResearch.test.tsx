@@ -192,6 +192,32 @@ describe("MyResearch — one monitor, plain language (M1)", () => {
     expect(screen.queryByText("Invisible broken row")).toBeNull();
   });
 
+  it("dedupes duplicate summary ids after trimming", () => {
+    listState.current.investigations = [
+      inv({
+        investigation_id: " inv-dup ",
+        question: "First canonical row",
+        status: "completed",
+      }),
+      inv({
+        investigation_id: "inv-dup",
+        question: "Duplicate canonical row",
+        status: "failed",
+      }),
+      inv({
+        investigation_id: "inv-other",
+        question: "Other row",
+        status: "completed",
+      }),
+    ];
+
+    renderMonitor();
+
+    expect(screen.getByText("First canonical row")).toBeTruthy();
+    expect(screen.queryByText("Duplicate canonical row")).toBeNull();
+    expect(screen.getByText("Other row")).toBeTruthy();
+  });
+
   it("surfaces linked Write pieces on their backing research rows", async () => {
     listState.current.investigations = [
       inv({
@@ -248,6 +274,57 @@ describe("MyResearch — one monitor, plain language (M1)", () => {
     expect(linked.getAttribute("title")).toBe("2 sections");
     expect(screen.queryByText("Unlinked memo")).toBeNull();
     expect(screen.queryByText("Invisible memo")).toBeNull();
+  });
+
+  it("dedupes duplicate linked Write piece ids per research after trimming", async () => {
+    listState.current.investigations = [
+      inv({
+        investigation_id: "inv-root",
+        question: "Research with duplicate pieces",
+        status: "completed",
+      }),
+    ];
+    listDeliverablesMock.mockResolvedValue({
+      count: 3,
+      deliverables: [
+        {
+          deliverable_id: " dlv-dup ",
+          title: "First memo",
+          deliverable_kind: "research_memo",
+          investigation_root_id: " inv-root ",
+          status: "draft",
+          created_at: null,
+          updated_at: null,
+          section_count: 1,
+        },
+        {
+          deliverable_id: "dlv-dup",
+          title: "Duplicate memo",
+          deliverable_kind: "research_memo",
+          investigation_root_id: "inv-root",
+          status: "draft",
+          created_at: null,
+          updated_at: null,
+          section_count: 1,
+        },
+        {
+          deliverable_id: "dlv-other",
+          title: "Other memo",
+          deliverable_kind: "research_memo",
+          investigation_root_id: "inv-root",
+          status: "draft",
+          created_at: null,
+          updated_at: null,
+          section_count: 2,
+        },
+      ],
+    });
+
+    renderMonitor();
+
+    expect(await screen.findByText("First memo")).toBeTruthy();
+    expect(screen.queryByText("Duplicate memo")).toBeNull();
+    expect(screen.getByText("Other memo")).toBeTruthy();
   });
 });
 
