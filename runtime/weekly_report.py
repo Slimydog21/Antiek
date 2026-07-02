@@ -162,6 +162,22 @@ def _parse_event_ts(s: Any) -> datetime | None:
     return ts
 
 
+def _naive_utc_bounds(start: datetime, end: datetime) -> tuple[datetime, datetime]:
+    """Normalize window bounds to tzinfo-naive UTC ONCE, at the public seams.
+
+    Everything this module compares bounds against is naive UTC
+    (``_parse_event_ts`` output, phase-log ``created_at``, budget-sidecar
+    day stems), but callers may reasonably pass tz-aware bounds —
+    ``datetime.now(UTC)`` is the modern idiom. Mixing them raises
+    ``TypeError: can't compare offset-naive and offset-aware datetimes``.
+    Coercing here makes every public window function caller-tz-agnostic."""
+    if start.tzinfo is not None:
+        start = start.astimezone(UTC).replace(tzinfo=None)
+    if end.tzinfo is not None:
+        end = end.astimezone(UTC).replace(tzinfo=None)
+    return start, end
+
+
 # ---------------------------------------------------------------------------
 # Trajectory iteration across all investigations
 # ---------------------------------------------------------------------------
@@ -195,6 +211,7 @@ def iter_window_events(
     objects whose ``emitted_at`` lies in ``[start, end]``. Malformed
     rows are skipped silently — the report's job is to surface
     aggregate signal, not relitigate per-row corruption."""
+    start, end = _naive_utc_bounds(start, end)
     for iid in _iter_investigation_ids(events_dir):
         for row in trajectory(iid, events_dir=events_dir):
             ts = _parse_event_ts(row.get("emitted_at"))
@@ -221,6 +238,7 @@ def collect_phase_telemetry(
     """Aggregate per-phase entered / exited / verified counts across
     all investigations whose phase_log ``created_at`` falls in the
     window."""
+    start, end = _naive_utc_bounds(start, end)
     d = log_dir or phase_log_default_dir()
     if not os.path.isdir(d):
         return {
@@ -317,12 +335,14 @@ def collect_investigation_lifecycle(events: list[Event]) -> dict[str, Any]:
         at = (e.action_type.value if hasattr(e.action_type, "value") else e.action_type)
         if at == ActionType.INVESTIGATION_START_REQUESTED.value:
             starts.add(e.investigation_id)
-        elif at == ActionType.INVESTIGATION_COMPLETED.value:
-            if isinstance(e.payload, InvestigationCompletedPayload):
-                completed.append(e.payload)
-        elif at == ActionType.INVESTIGATION_FAILED.value:
-            if isinstance(e.payload, InvestigationFailedPayload):
-                failed.append(e.payload)
+        elif at == ActionType.INVESTIGATION_COMPLETED.value and isinstance(
+            e.payload, InvestigationCompletedPayload
+        ):
+            completed.append(e.payload)
+        elif at == ActionType.INVESTIGATION_FAILED.value and isinstance(
+            e.payload, InvestigationFailedPayload
+        ):
+            failed.append(e.payload)
 
     avg_phases_verified = (
         round(
@@ -557,22 +577,26 @@ def collect_acquisition_cost(
             "top_day": None,
         }
 
+    # `day` (below) is naive-UTC (parsed from the YYYY-MM-DD sidecar stem);
+    # bounds are tz-normalized by the shared seam helper, then the start bound
+    # is floored to midnight so a same-day sidecar is never excluded.
+    start, _end_naive = _naive_utc_bounds(start, end)
+    _start_day = start.replace(hour=0, minute=0, second=0, microsecond=0)
+
     # Walk each provider sidecar in the date window. Format:
     #   exa_<YYYY-MM-DD>.json
     # Future providers extend by glob pattern.
     for f in sorted(budget_path.glob("exa_*.json")):
         try:
             stem_date = f.stem.replace("exa_", "")
-            day_naive = datetime.strptime(stem_date, "%Y-%m-%d")
-            tz = start.tzinfo or end.tzinfo
-            day = day_naive.replace(tzinfo=tz) if tz else day_naive
+            # Naive UTC (a YYYY-MM-DD stem carries no tz); compared against the
+            # tz-normalized bounds computed above.
+            day = datetime.strptime(stem_date, "%Y-%m-%d")
         except ValueError:
             continue
-        start_floor = start.replace(hour=0, minute=0, second=0, microsecond=0)
-        if day < start_floor:
+        if day < _start_day:
             continue
-        end_ceil = end.replace(hour=23, minute=59, second=59, microsecond=999999)
-        if day > end_ceil:
+        if day > _end_naive:
             continue
         try:
             data = json.loads(f.read_text())
@@ -611,7 +635,12 @@ def build_report(
 ) -> WeeklyReport:
     """Aggregate all sections. Reads the entire window's event
     history into memory once and partitions it across the section
-    aggregators — keeps each event read once."""
+    aggregators — keeps each event read once.
+
+    Bounds are normalized here as well as in the callees: the callees
+    guard their own public seams, while normalizing at this one keeps the
+    rendered ``window`` field consistent with what was actually filtered."""
+    start, end = _naive_utc_bounds(start, end)
     events = list(iter_window_events(start, end, events_dir=events_dir))
     phase = collect_phase_telemetry(start, end, log_dir=log_dir)
     lifecycle = collect_investigation_lifecycle(events)

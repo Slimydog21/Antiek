@@ -36,9 +36,11 @@ Failure-mode discipline:
 
 from __future__ import annotations
 
+import json
 import os
 import sys
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
 _PKG_ROOT = os.path.dirname(
@@ -49,9 +51,9 @@ if _PKG_ROOT not in sys.path:
 
 from middleware.constraint_check import (  # noqa: E402
     ConstraintLoopResult,
+    Violation,
     run_constraint_loop,
 )
-from middleware.constraint_check.constraints import Violation  # noqa: E402
 from roles.synthesizer import (  # noqa: E402
     SynthesizerValidationError,
     ThesisResult,
@@ -76,7 +78,7 @@ from substrate.schemas import (  # noqa: E402
     ViolationJustification,
 )
 
-from .broadcast import EventBroadcaster, EventHandler  # noqa: E402
+from .broadcast import EventBroadcaster  # noqa: E402 — after the sys.path bootstrap above
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -187,12 +189,104 @@ def _empty_delivered_payload(
     )
 
 
+def _collect_refs_from_json_block(block: str, keys: set[str]) -> tuple[str, ...]:
+    try:
+        value = json.loads(block)
+    except json.JSONDecodeError:
+        return ()
+
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def collect(item: Any) -> None:
+        if isinstance(item, str):
+            cleaned = item.strip()
+            if cleaned and cleaned not in seen:
+                out.append(cleaned)
+                seen.add(cleaned)
+        elif isinstance(item, list):
+            for child in item:
+                collect(child)
+
+    def visit(item: Any) -> None:
+        if isinstance(item, dict):
+            for key, child in item.items():
+                if key in keys:
+                    collect(child)
+                else:
+                    visit(child)
+        elif isinstance(item, list):
+            for child in item:
+                visit(child)
+
+    visit(value)
+    return tuple(out)
+
+
+def _extract_bracketed_line_ids(block: str) -> tuple[str, ...]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw_line in block.splitlines():
+        line = raw_line.strip()
+        if not line.startswith("[") or "]" not in line:
+            continue
+        ref_id = line[1:].split("]", 1)[0].strip()
+        if not ref_id or any(
+            ch.isspace() or ch in '{}[]":,' for ch in ref_id
+        ):
+            continue
+        if ref_id and ref_id not in seen:
+            out.append(ref_id)
+            seen.add(ref_id)
+    return tuple(out)
+
+
+def _merge_refs(*groups: tuple[str, ...]) -> tuple[str, ...]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for group in groups:
+        for ref in group:
+            if ref not in seen:
+                out.append(ref)
+                seen.add(ref)
+    return tuple(out)
+
+
+def _canonical_refs_for_request(req: SynthesizeRequestedPayload) -> tuple[
+    tuple[str, ...],
+    tuple[str, ...],
+    tuple[str, ...],
+]:
+    chunk_ids = _merge_refs(
+        _collect_refs_from_json_block(
+            req.evidence_block,
+            {"chunk_id", "chunk_ids", "source_chunk_ids"},
+        ),
+        _collect_refs_from_json_block(
+            req.parameters_block,
+            {"chunk_id", "chunk_ids", "source_chunk_ids"},
+        ),
+        _extract_bracketed_line_ids(req.evidence_block),
+    )
+    node_ids = _collect_refs_from_json_block(
+        req.substrate_block,
+        {"node_id", "node_ids", "path_node_ids"},
+    )
+    edge_ids = _collect_refs_from_json_block(
+        req.substrate_block,
+        {"edge_id", "edge_ids", "path_edge_ids"},
+    )
+    return chunk_ids, node_ids, edge_ids
+
+
 # ---------------------------------------------------------------------------
 # Dispatch + parse
 # ---------------------------------------------------------------------------
 
 
-def _research_tier_override(investigation_id: str) -> tuple[str | None, str | None]:
+def _research_tier_override(
+    investigation_id: str,
+) -> tuple[str | None, str | None]:
     """Resolve the (provider, model) research-tier override for THIS
     investigation's SYNTHESIZER dispatch, READ from the persisted start
     event. Returns ``(provider, model)`` to swap the synthesizer's config
@@ -295,12 +389,7 @@ def _dispatch_once(prompt: str, event: Event) -> tuple[str | None, str]:
             parent_event_id=event.event_id,
             provider_override=provider_override,
             model_override=model_override,
-            # §14.4 window: synthesis voice stays on ``synthesis`` (Opus-class)
-            # even when engaged routing defaults to GLM ``speed``.
-            **{
-                **dispatch_routing_kwargs(event.investigation_id),
-                "brain": "premium",
-            },
+            **dispatch_routing_kwargs(event.investigation_id),
         )
         return result.text, f"{result.provider}/{result.model}"
     except (ProviderError, KeyError) as exc:
@@ -317,6 +406,9 @@ def _dispatch_and_parse(
     event: Event,
     *,
     rerender_with_prefix: Callable[[str], str] | None = None,
+    canonical_chunk_ids: tuple[str, ...] = (),
+    canonical_node_ids: tuple[str, ...] = (),
+    canonical_edge_ids: tuple[str, ...] = (),
 ) -> tuple[ThesisResult | None, str]:
     """Dispatch + parse with one self-repair retry on parse failure.
 
@@ -338,7 +430,12 @@ def _dispatch_and_parse(
         return None, policy_id
 
     try:
-        return parse_synthesizer_response(response_text), policy_id
+        return parse_synthesizer_response(
+            response_text,
+            canonical_chunk_ids=canonical_chunk_ids,
+            canonical_node_ids=canonical_node_ids,
+            canonical_edge_ids=canonical_edge_ids,
+        ), policy_id
     except SynthesizerValidationError as exc:
         first_error = exc
         print(
@@ -372,7 +469,12 @@ def _dispatch_and_parse(
         return None, retry_policy
 
     try:
-        return parse_synthesizer_response(retry_text), retry_policy
+        return parse_synthesizer_response(
+            retry_text,
+            canonical_chunk_ids=canonical_chunk_ids,
+            canonical_node_ids=canonical_node_ids,
+            canonical_edge_ids=canonical_edge_ids,
+        ), retry_policy
     except SynthesizerValidationError as exc2:
         print(
             f"synthesizer.handle: self-repair retry also failed — {exc2}",
@@ -386,7 +488,9 @@ def _dispatch_and_parse(
 # ---------------------------------------------------------------------------
 
 
-def make_synthesizer_handler(broadcaster: EventBroadcaster) -> EventHandler:
+def make_synthesizer_handler(
+    broadcaster: EventBroadcaster,
+) -> Callable[[Event], Awaitable[None]]:
     """Build the synthesizer handler. Registered against
     ``ActionType.SYNTHESIZE_REQUESTED``."""
 
@@ -394,6 +498,9 @@ def make_synthesizer_handler(broadcaster: EventBroadcaster) -> EventHandler:
         if not isinstance(event.payload, SynthesizeRequestedPayload):
             return
         req = event.payload
+        canonical_chunk_ids, canonical_node_ids, canonical_edge_ids = (
+            _canonical_refs_for_request(req)
+        )
 
         # ── 1. First dispatch ──
         first_prompt = render_full_prompt(
@@ -403,7 +510,13 @@ def make_synthesizer_handler(broadcaster: EventBroadcaster) -> EventHandler:
             parameters_block=req.parameters_block,
             substrate_block=req.substrate_block,
         )
-        first_result, policy_id = _dispatch_and_parse(first_prompt, event)
+        first_result, policy_id = _dispatch_and_parse(
+            first_prompt,
+            event,
+            canonical_chunk_ids=canonical_chunk_ids,
+            canonical_node_ids=canonical_node_ids,
+            canonical_edge_ids=canonical_edge_ids,
+        )
         if first_result is None:
             await _emit_delivered(
                 event,
@@ -421,10 +534,7 @@ def make_synthesizer_handler(broadcaster: EventBroadcaster) -> EventHandler:
         # the behavior we want for unconstrained syntheses.
         latest_result: ThesisResult = first_result
 
-        def synthesizer_callable(
-            violations: list[Violation],
-            iteration: int,
-        ) -> list[Claim]:
+        def synthesizer_callable(violations: list[Violation], iteration: int) -> list[Claim]:
             nonlocal latest_result
             prefix = build_revision_prefix(violations)
             revised_prompt = render_full_prompt(
@@ -436,7 +546,11 @@ def make_synthesizer_handler(broadcaster: EventBroadcaster) -> EventHandler:
                 extra_user_prefix=prefix,
             )
             revised_result, _revised_policy = _dispatch_and_parse(
-                revised_prompt, event,
+                revised_prompt,
+                event,
+                canonical_chunk_ids=canonical_chunk_ids,
+                canonical_node_ids=canonical_node_ids,
+                canonical_edge_ids=canonical_edge_ids,
             )
             if revised_result is None:
                 # Loop receives the previous claims unchanged. The

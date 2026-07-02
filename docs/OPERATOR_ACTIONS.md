@@ -13,8 +13,12 @@ Do NOT execute these actions yourself — flag them and stop.
 This file is paired with:
 - `docs/operator_gate_actions.md` — the original 8-gate framing
   (G1-G8) for Phase 2 activation
-- `docs/phase2_execution_audit_v3_2026_05_23.md` — the current
-  exhaustive audit; section §7 enumerates 69 unexecuted items
+- `docs/phase2_execution_audit_v4_2026_05_23.md` — the current
+  exhaustive audit (supersedes v3; v3 §7's item count is stale — at
+  least three of its "unexecuted" items are verifiably shipped on main:
+  the `/trust-center/*` routes in `interfaces/research/api/app.py`,
+  `interfaces/research/api/creator_payouts.py`, and
+  `substrate/ad_inventory/advertiser_onboarding.py`)
 - `docs/sprint-breakdown.html` — canonical Phase 2 deliverable list
 
 ---

@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Sequence
-from typing import Any, cast
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
@@ -150,7 +150,8 @@ def _document_ip_holder(
     ).fetchone()
     if row is None:
         return None
-    return cast(str | None, row[0])
+    result: str | None = row[0]
+    return result
 
 
 def _load_problem_question(
@@ -163,9 +164,9 @@ def _load_problem_question(
     from substrate.event_log import trajectory
 
     if plan_root_node_id:
-        from runtime.db_lock import connect_read
+        import duckdb
 
-        con = connect_read(db_path)
+        con = duckdb.connect(db_path, read_only=True)
         try:
             row = con.execute(
                 "SELECT canonical_label FROM nodes WHERE node_id = ?",
@@ -217,9 +218,9 @@ def build_session_evidence_pack(
     chunks: list[PackChunk] = []
     leaf_ids: list[str] = []
 
-    from runtime.db_lock import connect_read
+    import duckdb
 
-    con = connect_read(db_path)
+    con = duckdb.connect(db_path, read_only=True)
     try:
         for iid, sub_q in researches:
             leaf_ids.append(iid)

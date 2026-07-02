@@ -11,9 +11,7 @@ _STYLE_RE = re.compile(r"<style[\s\S]*?</style>", re.IGNORECASE)
 
 
 def sanitize_html_fragment(raw: str, *, max_chars: int = 200_000) -> str:
-    text = raw[:max_chars]
-    text = _SCRIPT_RE.sub("", text)
-    return _STYLE_RE.sub("", text)
+    return _STYLE_RE.sub("", _SCRIPT_RE.sub("", raw[:max_chars]))
 
 
 def markdown_to_safe_html(markdown: str, *, max_chars: int = 500_000) -> str:

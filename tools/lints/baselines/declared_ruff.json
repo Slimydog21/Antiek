@@ -40,30 +40,6 @@
       "path": "acquisition/arxiv/pdf_fetch.py"
     },
     {
-      "col": 9,
-      "kind": "ruff:SIM105",
-      "line": 176,
-      "path": "acquisition/arxiv/rate_governor.py"
-    },
-    {
-      "col": 25,
-      "kind": "ruff:B904",
-      "line": 271,
-      "path": "acquisition/arxiv/rate_governor.py"
-    },
-    {
-      "col": 13,
-      "kind": "ruff:SIM105",
-      "line": 281,
-      "path": "acquisition/arxiv/rate_governor.py"
-    },
-    {
-      "col": 17,
-      "kind": "ruff:SIM105",
-      "line": 316,
-      "path": "acquisition/arxiv/rate_governor.py"
-    },
-    {
       "col": 17,
       "kind": "ruff:SIM105",
       "line": 205,
@@ -86,12 +62,6 @@
       "kind": "ruff:UP042",
       "line": 65,
       "path": "acquisition/corpus_quality.py"
-    },
-    {
-      "col": 65,
-      "kind": "ruff:B023",
-      "line": 253,
-      "path": "acquisition/openaccess/openalex.py"
     },
     {
       "col": 9,
@@ -4094,18 +4064,6 @@
       "kind": "ruff:SIM103",
       "line": 30,
       "path": "tools/prompt_autoresearch/budget.py"
-    },
-    {
-      "col": 1,
-      "kind": "ruff:E402",
-      "line": 1733,
-      "path": "tools/run_corpus_ingest.py"
-    },
-    {
-      "col": 9,
-      "kind": "ruff:F841",
-      "line": 1932,
-      "path": "tools/run_corpus_ingest.py"
     },
     {
       "col": 25,

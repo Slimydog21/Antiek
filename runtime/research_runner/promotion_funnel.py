@@ -24,22 +24,22 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from typing import Any, cast
+from typing import Any
 
 try:
-    from runtime.db_lock import connect_write
-    from runtime.research_runner.protocol import StepEvent
-    from substrate.graph.insight_question import (
+    from ...graph.insight_question import (
         graph_db_path,
         promote_insight,
         promote_question,
     )
+    from ...runtime.db_lock import connect_write
+    from .protocol import StepEvent
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import connect_write
-    from runtime.research_runner.protocol import StepEvent
-    from substrate.graph.insight_question import (
+    from runtime.db_lock import connect_write  # type: ignore[no-redef]
+    from runtime.research_runner.protocol import StepEvent  # type: ignore[no-redef]
+    from substrate.graph.insight_question import (  # type: ignore[no-redef]
         graph_db_path,
         promote_insight,
         promote_question,
@@ -78,7 +78,8 @@ class PromotionFunnel:
     def __init__(self, *, db_path: str | None = None, embedding_provider: Any = None):
         self._db_path = db_path or graph_db_path()
         self._embedding_provider = embedding_provider
-        self._queue: asyncio.Queue[StepEvent | object] = asyncio.Queue()
+        # Items are StepEvents plus the _FUNNEL_DONE sentinel object.
+        self._queue: asyncio.Queue[Any] = asyncio.Queue()
         self._worker: asyncio.Task[None] | None = None
         self.promoted_insights = 0
         self.promoted_questions = 0
@@ -108,11 +109,10 @@ class PromotionFunnel:
             if item is _FUNNEL_DONE:
                 self._queue.task_done()
                 return
-            ev = cast(StepEvent, item)
             try:
-                await asyncio.to_thread(self._promote, ev)
+                await asyncio.to_thread(self._promote, item)
             except Exception as exc:  # one bad promotion must not wedge the funnel
-                self.errors.append(f"{ev.investigation_id}: {type(exc).__name__}: {exc}")
+                self.errors.append(f"{item.investigation_id}: {type(exc).__name__}: {exc}")
             finally:
                 self._queue.task_done()
 

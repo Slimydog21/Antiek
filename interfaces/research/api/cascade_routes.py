@@ -38,9 +38,9 @@ import asyncio
 import json
 import logging
 import os
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import contextmanager
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -50,6 +50,7 @@ from interfaces.research.api.dispatch_failure import classify_dispatch_failure
 from orchestration.cascade_session import CascadeSession, Leaf, reconstruct_session
 from roles.cascade_planner import (
     PlanNotApproved,
+    PlanReport,
     SubQuestion,
     approve_plan,
     build_plan,
@@ -66,15 +67,16 @@ from runtime.research_runner import (
     Command,
     CommandKind,
     HostLocalRunner,
-    LoopContext,
     PromotionFunnel,
-    StepEvent,
     make_contract_gather_stub,
     make_exa_gather_loop,
 )
+from runtime.research_runner.protocol import BrowseLoop
 from substrate.graph import default_db_path, ensure_initialized
 
-ResearchLoopFn = Callable[[LoopContext], AsyncIterator[StepEvent]]
+if TYPE_CHECKING:
+    from orchestration.session_evidence_pack import SessionEvidencePack
+    from processing.embedding import EmbeddingProvider
 
 logger = logging.getLogger(__name__)
 
@@ -90,10 +92,11 @@ _SESSION_TASKS: dict[str, asyncio.Task[None]] = {}
 
 # Optional hook set by ``create_app`` after Loop 1 handlers register.
 # Runs Path A synthesis tail (phases 6–9) once gather + merge finish.
-_SYNTHESIS_TAIL_RUNNER: Any | None = None
+SynthesisTailRunner = Callable[[CascadeSession, "SessionEvidencePack"], Awaitable[object]]
+_SYNTHESIS_TAIL_RUNNER: SynthesisTailRunner | None = None
 
 
-def set_synthesis_tail_runner(runner: Any) -> None:
+def set_synthesis_tail_runner(runner: SynthesisTailRunner) -> None:
     """Wire the Loop 1 synthesis tail into cascade background completion."""
     global _SYNTHESIS_TAIL_RUNNER
     _SYNTHESIS_TAIL_RUNNER = runner
@@ -130,19 +133,19 @@ def _translate() -> Iterator[None]:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
 
-def _embedding_provider() -> Any:
+def _embedding_provider() -> EmbeddingProvider:
     from processing.embedding import default_embedding_provider
     return default_embedding_provider()
 
 
-def _decompose(problem: str, max_depth: int) -> Any:
+def _decompose(problem: str, max_depth: int) -> PlanReport:
     """The decomposer the plan endpoint uses when the caller does not supply
     sub-questions. A module attribute so tests can monkeypatch it to a
     deterministic fake without a live model."""
     return build_plan(problem, decomposer=DispatchDecomposer(), max_depth=max_depth)
 
 
-def _research_loop_factory() -> ResearchLoopFn:
+def _research_loop_factory() -> BrowseLoop:
     """The browse loop each investigation runs.
 
     Default = the contract gather stub (an honest placeholder that does
@@ -157,17 +160,15 @@ def _research_loop_factory() -> ResearchLoopFn:
     """
     mode = os.environ.get("ANTIEK_DRW_GATHER", "stub").strip().lower()
     if mode == "exa":
-        return make_exa_gather_loop(top_k=3)
-    return make_contract_gather_stub(steps=2, cost_per_step=0.01)
+        return cast(BrowseLoop, make_exa_gather_loop(top_k=3))
+    return cast(BrowseLoop, make_contract_gather_stub(steps=2, cost_per_step=0.01))
 
 
 def _command(kind: str, payload: dict[str, Any] | None) -> Command:
     try:
         return Command(kind=CommandKind(kind), payload=payload or {})
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400, detail=f"unknown steer command {kind!r}"
-        ) from exc
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"unknown steer command {kind!r}") from e
 
 
 # ---------------------------------------------------------------------------
@@ -294,14 +295,11 @@ async def create_plan(req: CreatePlanRequest) -> dict[str, Any]:
     """Decompose a problem into an editable, focus-checked sub-question tree
     and persist it. Returns the root node id + the editable tree."""
     if req.sub_questions:
+        sub_questions = req.sub_questions
+
         class _Fixed:
-            def decompose(
-                self,
-                q: str,
-                *,
-                context: str = "",
-            ) -> list[SubQuestion]:
-                return [SubQuestion(question=s) for s in (req.sub_questions or [])]
+            def decompose(self, q: str, *, context: str = "") -> list[SubQuestion]:
+                return [SubQuestion(question=s) for s in sub_questions]
         report = build_plan(req.problem, decomposer=_Fixed(), max_depth=req.max_depth)
     else:
         try:
@@ -522,7 +520,7 @@ async def session_stream(session_id: str) -> StreamingResponse:
     clients dedup on (investigation_id, seq)."""
     live = _SESSIONS.get(session_id)
 
-    async def _live(session: CascadeSession) -> AsyncIterator[str]:
+    async def _live(live_session: CascadeSession) -> AsyncIterator[str]:
         # Poll-drain rather than consume ``session.stream()`` directly: the
         # drain + ``asyncio.sleep`` give the in-process research tasks loop
         # time (so the fan-out progresses while the client watches) and the
@@ -530,19 +528,19 @@ async def session_stream(session_id: str) -> StreamingResponse:
         # hangs waiting on a queue sentinel.
         idle_after_complete = 0
         while True:
-            for ev in session.drain_nowait():
+            for ev in live_session.drain_nowait():
                 yield _sse({
                     "investigation_id": ev.investigation_id, "seq": ev.seq, "kind": ev.kind,
                     "text": ev.text, "cost_usd": ev.cost_usd, "tokens": ev.tokens,
                     "state": ev.state.value if ev.state else None, "data": ev.data,
                 })
-            if session.is_complete():
+            if live_session.is_complete():
                 # Drain one more cycle to flush any final events, then close.
                 idle_after_complete += 1
                 if idle_after_complete >= 2:
                     break
             await asyncio.sleep(0.02)
-        for ev in session.drain_nowait():
+        for ev in live_session.drain_nowait():
             yield _sse({
                 "investigation_id": ev.investigation_id, "seq": ev.seq, "kind": ev.kind,
                 "text": ev.text, "cost_usd": ev.cost_usd, "tokens": ev.tokens,

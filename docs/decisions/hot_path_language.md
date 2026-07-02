@@ -118,6 +118,32 @@ The spec's named candidates that this commit could NOT measure because they requ
 
 ### HP-8: Parquet read paths
 
+## M3-M5 Closeout Addendum — 2026-06-30
+
+The M3-M5 execution wave measured the five sprint-level paths named in
+`docs/specs/are-12-m3-m5/` with a schema-versioned JSONL timing harness.
+
+Artifacts:
+
+- Baseline: `tests/benchmarks/results/baseline_m3_20260630.jsonl`
+- M4 report: `tests/benchmarks/results/m4_report_20260630.{json,md}`
+- M5 strong run: `tests/benchmarks/results/optimized_m5_strong_20260630.jsonl`
+- M5 strong analysis: `tests/benchmarks/results/m5_strong_analysis_20260630.{json,md}`
+- M5 closeout gate: `tests/benchmarks/results/m5_closeout_20260630.json`
+- Archive: `tests/benchmarks/results/archive/are12-results-20260630.tar.gz`
+
+Closeout result:
+
+- `m5_closeout_20260630.json` status: `pass`
+- Strong validation: 100 samples per path, 500 rows total
+- At least one path improved by >=25%: yes (`loop_3_rl_prep`, 76.54%)
+- No path regressed by >5%: yes
+
+The target selection came from `m4_report_20260630`: `event_log_parquet_read`
+and `loop_3_rl_prep`. The applied changes were intentionally narrow:
+`trajectory()` fast-returns for a single already-decoded row, and
+`build_env_from_trajectory()` hoists the telemetry action exclusion set.
+
 **Why TODO:** Parquet reads need a representative Parquet file with the substrate's actual row count and schema. `substrate/event_log/events.py` likely owns the canonical read path.
 
 **Likely verdict:** stay if DuckDB reads are within ~50 µs/row for the actual schema. Polars / pyarrow rewrites would only matter if the read becomes user-visible latency.

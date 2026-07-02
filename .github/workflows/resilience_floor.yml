@@ -1,0 +1,96 @@
+# Resilience Floor — nygard-resilience capstone (SPR-08).
+#
+# The permanent gate that keeps the resilience invariants (SPR-01..07) from
+# regressing. Each step is independent so the operator sees which one failed.
+# It runs the fault-injection self-tests, the fail-loud regression + typed-error
+# unit, the chaos suite, the steady-state + bulkhead-isolation proofs, the
+# circuit-breaker tests, and the two resilience lints (enforce mode, against their
+# committed baselines).
+#
+# Informational-first, per the team convention (cf. beck-test's test_integrity):
+# land it green here, then the OPERATOR flips it to a required check in branch
+# protection. This sprint produces the green, ready branch only — it does not
+# merge, push, deploy, or run first-light.
+
+name: resilience-floor
+
+on:
+  pull_request:
+    paths:
+      - 'tools/faultinject/**'
+      - 'tests/resilience/**'
+      - 'tests/regression/test_retriever_readonly_fs_2026_05_17.py'
+      - 'tests/test_retriever_infra_error.py'
+      - 'tests/test_dispatch_breaker.py'
+      - 'tests/test_dispatch_breaker_integration.py'
+      - 'substrate/dispatch/breaker.py'
+      - 'substrate/dispatch/router.py'
+      - 'substrate/errors.py'
+      - 'substrate/graph/retrieval_substrate.py'
+      - 'tools/lints/no_unbounded_external_call.py'
+      - 'tools/lints/no_seam_call_under_write_lock.py'
+      - 'tools/lints/baselines/no_unbounded_external_call.json'
+      - 'tools/lints/baselines/no_seam_call_under_write_lock.json'
+      - '.github/workflows/resilience_floor.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/faultinject/**'
+      - 'tests/resilience/**'
+      - 'substrate/dispatch/breaker.py'
+
+jobs:
+  resilience-quality-gate:
+    runs-on: ubuntu-latest
+    env:
+      # Production dirs the timeout + bulkhead lints scan (never tests/ etc.).
+      SCOPE_DIRS: acquisition substrate interfaces roles runtime tools middleware
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install (core + dev)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: SPR-01 — fault-injection harness self-tests
+        run: pytest tools/faultinject/tests/ -q
+
+      - name: SPR-02 — fail-loud regression fixture + typed error
+        run: |
+          pytest \
+            tests/regression/test_retriever_readonly_fs_2026_05_17.py \
+            tests/test_retriever_infra_error.py \
+            --doctest-modules substrate/errors.py -q
+
+      - name: SPR-04 — circuit breaker (unit + router integration)
+        run: |
+          pytest \
+            tests/test_dispatch_breaker.py \
+            tests/test_dispatch_breaker_integration.py -q
+
+      - name: SPR-06 — chaos suite (infra-fault replays)
+        run: pytest tests/resilience/test_chaos_suite.py -q
+
+      - name: SPR-07 — steady-state + bulkhead isolation
+        run: pytest tests/resilience/ -q
+
+      - name: SPR-03 — timeout-discipline lint (enforce vs baseline)
+        run: |
+          python -m tools.lints.cli_with_baseline enforce unbounded_external_call \
+            --paths $SCOPE_DIRS \
+            --baseline-file tools/lints/baselines/no_unbounded_external_call.json \
+            --check-stale
+
+      - name: SPR-05 — bulkhead seam-under-write-lock guard (enforce vs baseline)
+        run: |
+          python -m tools.lints.cli_with_baseline enforce seam_under_write_lock \
+            --paths $SCOPE_DIRS \
+            --baseline-file tools/lints/baselines/no_seam_call_under_write_lock.json \
+            --check-stale

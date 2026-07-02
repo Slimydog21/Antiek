@@ -30,6 +30,7 @@ import asyncio
 import os
 import sys
 from collections.abc import Iterable
+from typing import Any
 
 # Direct import — orchestration depends on substrate.
 _PKG_ROOT = os.path.dirname(
@@ -59,7 +60,7 @@ DEFAULT_AWAITED_ACTION_TYPES: tuple[str, ...] = (
 async def broadcast_emit(
     broadcaster: EventBroadcaster,
     investigation_id: str,
-    payload,
+    payload: Any,
     *,
     role: str | None = None,
     policy_id: str | None = None,
@@ -135,13 +136,9 @@ class InvestigationCoordinator:
         """Resolve any pending future matching
         ``(investigation_id, action_type)``. No-op when nobody is
         waiting — the event flows through normally."""
-        raw_action = event.action_type
-        action = (
-            str(raw_action.value)
-            if hasattr(raw_action, "value")
-            else str(raw_action)
-        )
+        action_value = getattr(event.action_type, "value", event.action_type)
         inv = event.investigation_id
+        action = str(action_value)
         correlation = ""
         payload = event.payload
         if hasattr(payload, "sub_question"):

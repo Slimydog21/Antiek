@@ -253,6 +253,10 @@ role_tiers:
   # at tests/test_loop_one_orchestrator.py:176 had this routed to
   # ``pro``; matching production. Fixed 2026-05-18.
   knowledge_extractor: pro
+  # AGH SPR-01: same production-only routing gap as the knowledge_extractor
+  # precedent above. The endpoint dispatches role="thought_partner"; the role
+  # tier entry alone is the established fix, with no constants.py change.
+  thought_partner: pro
 
 # ---------------------------------------------------------------------------
 # Per-tier defaults. Roles can override at call time, but these are

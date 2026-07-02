@@ -1,0 +1,52 @@
+# arXiv rate-governor egress-guard mutants (project_researchmaxx_arxiv.md — the
+# IP-ban failure mode). acquisition/arxiv/rate_governor.py is the host-global
+# seam every arXiv egress routes through; is_arxiv_url is the runtime host check
+# that decides WHETHER a fetch is governed, and govern_if_arxiv is the boundary
+# gate that routes an arXiv send through the flock + >=3s spacing + 429 ban
+# sentinel. A broken host check means ungoverned arXiv egress → the historical
+# 429 ban. Targeting tests live in tests/test_rate_governor.py.
+
+[[mutant]]
+id = "rate_governor.is_arxiv_url_host_match_swap"
+target = "acquisition/arxiv/rate_governor.py"
+op = "swap_compare"
+swap = " in "
+anchor = { qualname = "is_arxiv_url", match = "return host in _ARXIV_HOSTS or host.endswith(_ARXIV_HOST_SUFFIX)" }
+test_selector = ["tests/test_rate_governor.py", "-k", "is_arxiv or non_arxiv_host or govern_if_arxiv"]
+rationale = """
+is_arxiv_url is THE runtime fetch-boundary check that makes governance host-based
+(bypass-proof) rather than module-location-based: a true result routes the send
+through the host-global flock + >=3s spacing + 429 ban sentinel. Swapping
+``host in _ARXIV_HOSTS`` to ``host not in _ARXIV_HOSTS`` inverts the membership
+test so arxiv.org is no longer recognized as arXiv — the egress goes UNGOVERNED,
+re-opening the IP-ban hole. tests/test_rate_governor.py asserts
+is_arxiv_url("https://arxiv.org/pdf/...") is True (and the non-arXiv host is
+False), so the swap must break a test. A survivor is a fake gate over the egress
+guard that exists specifically because the box was 429-banned."""
+added = "2026-06-04"
+added_by = "abt-02 fake-gate-detector seed"
+
+[[mutant]]
+id = "rate_governor.govern_if_arxiv_guard_invert"
+target = "acquisition/arxiv/rate_governor.py"
+op = "invert_guard"
+anchor = { qualname = "govern_if_arxiv", match = "if is_arxiv_url(url):" }
+test_selector = ["tests/test_rate_governor.py::test_oa_download_pdf_of_arxiv_work_is_inside_the_host_global_governor_flock"]
+rationale = """
+govern_if_arxiv is the ROOT host-based runtime gate: ``if is_arxiv_url(url)`` →
+route an arXiv send through the governed (flock-held) >=3s-spaced path; else send
+directly. Inverting the guard sends arXiv egress DIRECTLY, ungoverned — the exact
+IP-ban failure the seam closes.
+SELECTOR PROVENANCE (rigor #1, fairness): the original seed pointed the selector
+at ``test_govern_if_arxiv_to_a_non_arxiv_host_does_not_acquire_the_flock``, which
+let the inversion SURVIVE — but on inspection that was a WRONG SELECTOR, not a
+fake gate: that test routes its govern_if_arxiv call through the DEFAULT lock path
+(it passes only ``throttle=``, not the held tmp lock), so neither polarity
+contends. The genuinely-targeting test is
+``test_oa_download_pdf_of_arxiv_work_is_inside_the_host_global_governor_flock``,
+which drives a real arXiv fetch and asserts it is governed behind a held flock;
+the inversion makes the arXiv send go ungoverned and that test FAILS. Verified:
+with this selector the mutant is KILLED. The gate is REAL; the survivor was a
+selector defect, now corrected (NOT a loosening of what counts as killed)."""
+added = "2026-06-04"
+added_by = "abt-02 fake-gate-detector seed"

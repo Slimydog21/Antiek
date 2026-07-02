@@ -248,7 +248,7 @@ async def test_redirect_changes_sub_question(events_dir):
     seen = []
 
     async def watching_loop(ctx: LoopContext):
-        for _ in range(6):
+        for _i in range(6):
             sub_q = await ctx.checkpoint()
             seen.append(sub_q)
             await asyncio.sleep(0.01)

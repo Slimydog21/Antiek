@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://antiek.local/schemas/antiek-manifest-1.0.0.json",
+  "title": "Antiek native container manifest",
+  "description": "Schema-version 1.0.0 of the .antiek manifest.json. See services/antiek_format/SPEC.md for normative prose. Major-version bumps require a new schema file alongside this one.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "content_class",
+    "document_id",
+    "parent_document_id",
+    "created_at",
+    "creator_user_id",
+    "creator_pubkey"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Semver M.m.p. Major-mismatch refuses; minor-mismatch warns."
+    },
+    "content_class": {
+      "type": "string",
+      "enum": ["notebook", "theme_notebook", "deliverable", "pdf_sidecar"]
+    },
+    "document_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Substrate-resident id. For per-doc notebooks this matches notebook_documents.document_id."
+    },
+    "parent_document_id": {
+      "type": ["string", "null"],
+      "description": "Source PDF for a per-doc notebook; null for theme_notebook or deliverable."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC first-save time."
+    },
+    "creator_user_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "creator_pubkey": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9+/=]+$",
+      "description": "Base64-encoded 32-byte Ed25519 public key."
+    },
+    "title": {"type": ["string", "null"]},
+    "notebook_id": {"type": ["string", "null"]},
+    "format_version": {"type": ["integer", "null"], "minimum": 1},
+    "edges_present": {"type": "boolean"},
+    "parent_pdf_sha256": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 (lowercase hex) of the parent PDF bytes. REQUIRED when content_class == 'pdf_sidecar'; null/absent otherwise. Used by the receiving substrate to verify the sidecar matches the imported PDF."
+    },
+    "parent_pdf_size_bytes": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Byte length of the parent PDF at sidecar-write time. Carried alongside parent_pdf_sha256 so a length-mismatch warning can fire before a hash compute on huge PDFs. REQUIRED when content_class == 'pdf_sidecar'."
+    },
+    "parent_pdf_filename_hint": {
+      "type": ["string", "null"],
+      "description": "The PDF's original basename at write time. Informational only — the substrate does NOT match on this; it's surfaced in the UI so the user can recognise which file the sidecar was made for if the hash check fails."
+    },
+    "highlights_present": {
+      "type": "boolean",
+      "description": "Hint flag — does highlights.jsonl exist? (Sidecar variant only; reader skips probe when absent.)"
+    },
+    "anchors_present": {
+      "type": "boolean",
+      "description": "Hint flag — does anchors.jsonl exist? (Sidecar variant only.)"
+    },
+    "chunker_version_at_write": {
+      "type": ["string", "null"],
+      "description": "Informational: substrate.voice.CHUNKER_VERSION at sidecar-write time. The reader does NOT trust this — it re-resolves each anchor under the receiving substrate's chunker (SPEC.md §11.3). Carried so a chunker-delta warning can be surfaced if the receiving substrate's version differs."
+    },
+    "blocks_index": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["block_id", "block_type", "position", "source_event_ids"],
+        "properties": {
+          "block_id": {"type": "string", "minLength": 1},
+          "block_type": {
+            "type": "string",
+            "enum": [
+              "highlight_card",
+              "voice_block",
+              "ai_qa",
+              "cite_link",
+              "cross_doc_jump",
+              "prose"
+            ]
+          },
+          "position": {"type": "number"},
+          "source_event_ids": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "audio_path": {"type": ["string", "null"]},
+          "audio_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+          "demoted": {"type": "boolean"}
+        },
+        "additionalProperties": true
+      }
+    }
+  }
+}

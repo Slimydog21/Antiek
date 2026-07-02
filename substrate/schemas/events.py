@@ -479,6 +479,11 @@ class ActionType(str, Enum):
     #    landed NULL-that-serves on the public gate). NEVER carries raw_text
     #    (§9.0: events carry no body).
     DOCUMENT_CONTENT_CLASS_DEFAULTED = "document.content_class_defaulted"
+    # antiek-yegge-execute SPR-01 — worker registration by the future worker
+    # registry (SPR-04). One event per first-class worker spawn; see
+    # WorkerIdentityPayload. Distinct from investigation.spawned_from (which
+    # records a child investigation chasing a parent's open question).
+    WORKER_IDENTITY = "worker.identity"
 
 
 # Schema version stamped into every emitted row. Bump when any payload
@@ -708,7 +713,22 @@ class ActionType(str, Enum):
 #     at the read side. The payload carries document_id + document_type + the
 #     applied content_class ONLY — NEVER raw_text (§9.0: events carry no body).
 #     specs/antiek-personal-lane/ SPR-01. 2026-05-31.
-EVENT_SCHEMA_VERSION: int = 27
+# v27: antiek-yegge-execute SPR-01 — worker-identity + token-burn telemetry.
+#     (a) ONE new typed event (worker.identity) records the registration of a
+#     first-class worker (subprocess / asyncio_task / thread / role_invocation /
+#     variant) by a future worker registry (SPR-04); it carries worker_id +
+#     parent_worker_id + role + spawn_kind + an optional context_hash for
+#     cache/variant tracking. event_log stores the worker_id string verbatim
+#     (UUID-v7 validity is SPR-04's job, not event_log's).
+#     (b) token_burn is NOT a new event type — it would duplicate the canonical
+#     DISPATCH_CALL payload (cost_view.py: "every cent comes off a
+#     DispatchCallPayload"). Instead DISPATCH_CALL gains FIVE optional fields
+#     (cached_input_tokens, task_id, parent_run_id, feature_label, session_id)
+#     default-None so every existing emitter + cost_view read stays byte-
+#     identical; SPR-05 dashboards query the enriched DISPATCH_CALL rather than
+#     a forked second per-call event. Operator decision 2026-07-02 (extend,
+#     don't fork). specs/antiek-yegge-execute/ SPR-01. 2026-07-02.
+EVENT_SCHEMA_VERSION: int = 28
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -743,6 +763,16 @@ class DispatchCallPayload(_PayloadBase):
 
     The cost-tracking decorator populates these fields after the call
     returns; the event is then written to the trajectory.
+
+    The five optional ``*_ext`` fields below carry the token-burn telemetry
+    antiek-yegge-execute SPR-01 specified as a *separate* ``token_burn`` event.
+    That was a substrate-fit defect against current main: ``DISPATCH_CALL`` is
+    already the canonical per-LLM-call token+cost event (``cost_view.py``:
+    "every cent comes off a DispatchCallPayload"), so a second event would fork
+    the convention. Instead the fields land here, default-None, so every
+    existing emitter and cost_view read stays byte-identical and SPR-05's
+    dashboards query the enriched DISPATCH_CALL rather than a duplicate.
+    Operator decision 2026-07-02 (extend, don't fork).
     """
 
     action_type: Literal[ActionType.DISPATCH_CALL] = ActionType.DISPATCH_CALL
@@ -772,6 +802,38 @@ class DispatchCallPayload(_PayloadBase):
     prompt_hash: str
     finish_reason: Literal["stop", "length", "tool_use", "content_filter", "error"] | None = None
     context_pack_event_id: str | None = None
+    # ── token-burn telemetry (antiek-yegge-execute SPR-01, added 2026-07-02) ──
+    # All optional + default-None/0 so existing emitters (router.py, base.py,
+    # remote_exec cost) and cost_view reads are byte-unchanged. Populated only
+    # by the SPR-05 token-burn middleware when it ships; absent (None/0) before.
+    cached_input_tokens: int = Field(default=0, ge=0)
+    task_id: str | None = None
+    parent_run_id: str | None = None
+    feature_label: str | None = None
+    session_id: str | None = None
+
+
+class WorkerIdentityPayload(_PayloadBase):
+    """Records the registration of a first-class worker by the worker registry
+    (antiek-yegge-execute SPR-04, not yet built). One event per spawn.
+
+    Added by SPR-01 (yegge-execute) on 2026-07-02. event_log stores the
+    ``worker_id`` string verbatim — UUID-v7 validity + sortability is SPR-04's
+    responsibility, not event_log's; this payload does not validate the id's
+    shape, only that it is non-empty. ``spawn_kind`` IS validated against the
+    closed set so a typo (e.g. "async") cannot land as an un-queryable string.
+    """
+
+    action_type: Literal[ActionType.WORKER_IDENTITY] = ActionType.WORKER_IDENTITY
+    worker_id: str
+    parent_worker_id: str | None = None
+    role: str
+    session_id: str
+    spawn_kind: Literal[
+        "subprocess", "asyncio_task", "thread", "role_invocation", "variant"
+    ]
+    expected_lifetime_s: int | None = Field(default=None, ge=0)
+    context_hash: str | None = None
 
 
 class ContextLayer(BaseModel):
@@ -3784,7 +3846,7 @@ class DocumentFiledIntoInvestigationPayload(_PayloadBase):
 
 
 TypedPayload = Annotated[
-    DispatchCallPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
+    DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
     Field(discriminator="action_type"),
 ]
 
@@ -3793,6 +3855,8 @@ TypedPayload = Annotated[
 # reconstruction switches on this set: typed if member, dict otherwise.
 TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.DISPATCH_CALL.value,
+    # antiek-yegge-execute SPR-01 — worker registration (future registry, SPR-04).
+    ActionType.WORKER_IDENTITY.value,
     ActionType.CONTEXT_PACK_ASSEMBLED.value,
     # AFF SPR-06 — flywheel reuse half.
     ActionType.KNOWLEDGE_REUSED.value,

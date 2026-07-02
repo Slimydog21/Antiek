@@ -23,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -49,6 +50,28 @@ from substrate.schemas import ActionType, Event  # noqa: E402
 # ---------------------------------------------------------------------------
 # Per-investigation tag-based stub provider
 # ---------------------------------------------------------------------------
+
+
+def _prompt_excerpt(prompt: str, *, limit: int = 240) -> str:
+    excerpt = " ".join(prompt.split())
+    if len(excerpt) > limit:
+        return f"{excerpt[:limit]}..."
+    return excerpt
+
+
+def _inv_id_from_prompt(prompt: str) -> str:
+    match = re.search(r"Investigation ID:\s*`([^`]+)`", prompt)
+    if match:
+        return match.group(1)
+
+    match = re.search(r"Sub-question [A-D] for (\S+)", prompt)
+    if match:
+        return match.group(1).rstrip('",').rstrip()
+
+    raise AssertionError(
+        "Could not extract investigation id from prompt excerpt: "
+        f"{_prompt_excerpt(prompt)!r}"
+    )
 
 
 def _decomposer_response_for(inv_id: str) -> str:
@@ -153,7 +176,7 @@ _EVIDENCE_RESPONSE = json.dumps({
         {
             "claim": "Quantum X holds at threshold",
             "evidence_type": "direct",
-            "chunk_ids": ["chunk-1"],
+            "chunk_ids": ["chunk-1", "chunk-INV_PLACEHOLDER-1"],
             "edge_ids": [],
             "source_tier_min": 1,
             "confidence": "high",
@@ -214,18 +237,7 @@ class _PerInvestigationStub:
         """Find the investigation_id by looking for the decomposer
         prompt's ``Investigation ID: \\`<id>\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\`\\``` marker OR a per-inv
         sub-question token."""
-        import re as _re
-        m = _re.search(r"Investigation ID:\s*`([^`]+)`", prompt)
-        if m:
-            return m.group(1)
-        # Fall back: look for "Sub-question A for inv-<id>" pattern
-        # (injected by _decomposer_response_for via the stub
-        # substitution; the synthesizer's user prompt includes the
-        # decomposition_block which has it).
-        m = _re.search(r"Sub-question [A-D] for (\S+)", prompt)
-        if m:
-            return m.group(1).rstrip('"').rstrip(",").rstrip()
-        return "(unknown-inv)"
+        return _inv_id_from_prompt(prompt)
 
     def call(self, *, model, prompt, max_tokens, temperature) -> RawProviderResponse:
         # Identify role.
@@ -245,7 +257,11 @@ class _PerInvestigationStub:
             tag = "unknown"
 
         self.call_count[tag] = self.call_count.get(tag, 0) + 1
-        inv_id = self._extract_inv_id(prompt)
+        inv_id = (
+            self._extract_inv_id(prompt)
+            if tag in {"decomposer", "synthesizer", "evidence_retriever"}
+            else None
+        )
 
         if tag == "decomposer":
             text = _decomposer_response_for(inv_id)
@@ -264,11 +280,9 @@ class _PerInvestigationStub:
 
         # Substitute investigation_id placeholder + sub-question
         # placeholder (the evidence_retriever parser cross-checks).
-        import re as _re
-        inv_match = _re.search(r"Investigation ID:\s*`([^`]+)`", prompt)
-        if inv_match:
-            text = text.replace("INV_PLACEHOLDER", inv_match.group(1))
-        sq_match = _re.search(r"Sub-question:\s*\n\s*>\s*(.+)", prompt)
+        if inv_id is not None:
+            text = text.replace("INV_PLACEHOLDER", inv_id)
+        sq_match = re.search(r"Sub-question:\s*\n\s*>\s*(.+)", prompt)
         if sq_match:
             text = text.replace("(any sub-question)", sq_match.group(1).strip())
 
@@ -310,6 +324,36 @@ def _patch_dispatch(monkeypatch, config: DispatchConfig) -> None:
     monkeypatch.setattr(
         router.DispatchConfig, "from_yaml",
         classmethod(lambda cls, path: config),
+    )
+
+
+def _chunks_block_for_sub_question(
+    sub_question: str, top_k: int = 5, policy_tag: str = "attribution_eligible",
+) -> str:
+    if "Sub-question" not in sub_question:
+        return (
+            "[chunk-1] Source tier: 1 | Document: Shared quantum fixture "
+            "| Section: Evidence | Similarity: 1.000\n\n"
+            "Quantum X holds at threshold under tier-1 primary evidence.\n"
+        )
+
+    inv_id = _inv_id_from_prompt(sub_question)
+    return (
+        "[chunk-1] Source tier: 1 | Document: Shared quantum fixture "
+        "| Section: Evidence | Similarity: 1.000\n\n"
+        "Quantum X holds at threshold under tier-1 primary evidence.\n\n"
+        "---\n"
+        f"[chunk-{inv_id}-1] Source tier: 1 | Document: {inv_id} quantum "
+        "fixture | Section: Synthesis | Similarity: 1.000\n\n"
+        f"Quantum substrate evidence supports {inv_id} per primary sources.\n"
+    )
+
+
+@pytest.fixture(autouse=True)
+def _pin_canonical_chunks(monkeypatch):
+    monkeypatch.setattr(
+        "orchestration.loop_one.orchestrator._render_chunks_block_for_sub_question",
+        _chunks_block_for_sub_question,
     )
 
 
@@ -424,7 +468,7 @@ async def test_three_concurrent_investigations_complete_independently(
     assert all(r is not None for r in results), (
         f"Some investigations didn't terminate: {results}"
     )
-    for (inv_id, _, _), body in zip(inv_specs, results):
+    for (inv_id, _, _), body in zip(inv_specs, results, strict=True):
         assert body["status"] == "completed", (
             f"{inv_id}: {body['status']} — {body.get('terminal_payload')}"
         )
@@ -432,7 +476,7 @@ async def test_three_concurrent_investigations_complete_independently(
     # Cross-contamination check — each investigation's thesis MUST
     # mention its own ID. The PerInvestigationStub's synthesizer
     # response embeds the inv_id in the thesis_summary.
-    for (inv_id, _, _), body in zip(inv_specs, results):
+    for (inv_id, _, _), body in zip(inv_specs, results, strict=True):
         tp = body["terminal_payload"]
         assert inv_id in tp["thesis_summary"], (
             f"{inv_id}: thesis_summary doesn't reference its own id "
@@ -442,7 +486,7 @@ async def test_three_concurrent_investigations_complete_independently(
     # Per-investigation MASTER.md isolation — each is at a distinct
     # topic-slug path.
     paths = {inv_id: body["terminal_payload"]["master_md_path"]
-             for (inv_id, _, _), body in zip(inv_specs, results)}
+             for (inv_id, _, _), body in zip(inv_specs, results, strict=True)}
     assert len(set(paths.values())) == 3, (
         f"MASTER.md paths collided: {paths}"
     )

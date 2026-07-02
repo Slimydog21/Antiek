@@ -166,18 +166,31 @@ def _keyword_search_chunks(
     con: Any,
     keywords: list[str],
     top_k: int,
+    *,
+    policy_tag: str = "attribution_eligible",
 ) -> list[dict[str, Any]]:
     """Lexical fallback. For each keyword run a LIKE; collect chunks
     with their match count; rank by match count then source tier.
-    Cheap, deterministic, works without sentence-transformers."""
+    Cheap, deterministic, works without sentence-transformers.
+
+    The lexical path applies the same non-privileged document gate as the
+    embedding search path so restricted/personal chunks do not leak through
+    the fallback lane.
+    """
     if not keywords:
         return []
+    from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
+
     where = " OR ".join(["LOWER(c.text) LIKE ?" for _ in keywords])
     params = [f"%{k}%" for k in keywords]
     score_expr = " + ".join([
         "(CASE WHEN LOWER(c.text) LIKE ? THEN 1 ELSE 0 END)" for _ in keywords
     ])
-    params_full = params + params + [top_k]
+    gate_sql, gate_params = non_privileged_chunk_sql_clause(
+        table_alias="d",
+        policy_tag=policy_tag,
+    )
+    params_full = params + params + gate_params + [top_k]
     rows = con.execute(
         f"""
         SELECT
@@ -186,7 +199,7 @@ def _keyword_search_chunks(
             ({score_expr}) AS hit_count
         FROM chunks c
         JOIN documents d ON c.document_id = d.document_id
-        WHERE {where}
+        WHERE ({where}){gate_sql}
         ORDER BY hit_count DESC, d.source_tier ASC, c.token_count DESC
         LIMIT ?
         """,
@@ -203,11 +216,16 @@ def _render_chunks_block_for_sub_question(
     sub_question: str,
     *,
     top_k: int = 5,
+    policy_tag: str = "attribution_eligible",
 ) -> str:
     """Hybrid corpus search: embedding cosine + keyword LIKE, merged
     and deduped. The keyword path is the workhorse when
     sentence-transformers isn't installed (HashEmbedding's semantic
-    locality is too weak to drive useful retrieval on its own)."""
+    locality is too weak to drive useful retrieval on its own).
+
+    ``policy_tag`` flows into both retrieval paths. The public lane remains
+    ``attribution_eligible``; owner research can opt into ``private_research``.
+    """
     try:
         from processing.embedding.embed import default_embedding_provider
         from runtime.db_lock import connect_read
@@ -223,11 +241,12 @@ def _render_chunks_block_for_sub_question(
             emb_half = max(1, top_k // 2)
             emb_res = graph_search(
                 con, sub_question, model=embedder, top_k=emb_half,
+                policy_tag=policy_tag,
             )
             embedding_hits = emb_res.get("results", [])
-            # Keyword side — fill the rest
+            # Keyword side — fill the rest behind the same retrieval gate.
             kw_hits = _keyword_search_chunks(
-                con, keywords, top_k=top_k,
+                con, keywords, top_k=top_k, policy_tag=policy_tag,
             )
         finally:
             con.close()
@@ -276,11 +295,12 @@ def _prior_graph_knowledge_section(question: str) -> str:
     """Phase 1 orientation cites seeded graph chunks when provenance
     exists; falls back to structural seed markers for empty graphs."""
     block = _render_chunks_block_for_sub_question(question, top_k=3)
-    chunk_ids = re.findall(r"chunk_id:\s*(\S+)", block)
+    chunk_ids = re.findall(r"chunk_id:\s*(\S+)|^\[([^\]]+)\]", block, re.MULTILINE)
     if chunk_ids:
+        ids = [a or b for a, b in chunk_ids]
         return "\n".join(
             f"- {cid} cited from substrate graph search for orientation."
-            for cid in chunk_ids
+            for cid in ids
         )
     return (
         "chunk_orientation_marker and node_orchestrator_start seed the "
@@ -507,13 +527,19 @@ async def _run_phase_2(
         return False
 
     async def work() -> None:
+        research_policy_tag = (
+            os.environ.get("ANTIEK_RESEARCH_POLICY_TAG", "").strip()
+            or "attribution_eligible"
+        )
         sem = asyncio.Semaphore(PHASE_2_MAX_CONCURRENCY)
         delivered_action = _action_value(ActionType.EVIDENCE_RETRIEVE_DELIVERED)
 
         async def _retrieve_one(sq: SubQuestion) -> EvidenceRetrieveDeliveredPayload:
             async with sem:
                 chunks_block = _render_chunks_block_for_sub_question(
-                    sq.sub_question, top_k=5,
+                    sq.sub_question,
+                    top_k=5,
+                    policy_tag=research_policy_tag,
                 )
                 await broadcast_emit(
                     broadcaster,

@@ -40,15 +40,15 @@ isolation) and yields ``StepEvent``s. Graph promotion is the
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import os
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import Any, cast
 
 try:
-    from runtime.research_runner.budget import BudgetManager
-    from runtime.research_runner.protocol import (
+    from ...event_log import log_event, seal_investigation
+    from ...schemas.events import ActionType
+    from .budget import BudgetManager
+    from .protocol import (
         BudgetExceeded,
         Command,
         CommandKind,
@@ -60,13 +60,11 @@ try:
         StepEvent,
         StopResearch,
     )
-    from substrate.event_log import log_event, seal_investigation
-    from substrate.schemas.events import ActionType
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.research_runner.budget import BudgetManager
-    from runtime.research_runner.protocol import (
+    from runtime.research_runner.budget import BudgetManager  # type: ignore[no-redef]
+    from runtime.research_runner.protocol import (  # type: ignore[no-redef]
         BudgetExceeded,
         Command,
         CommandKind,
@@ -78,8 +76,8 @@ except ImportError:  # pragma: no cover — direct-script fallback
         StepEvent,
         StopResearch,
     )
-    from substrate.event_log import log_event, seal_investigation
-    from substrate.schemas.events import ActionType
+    from substrate.event_log import log_event, seal_investigation  # type: ignore[no-redef]
+    from substrate.schemas.events import ActionType  # type: ignore[no-redef]
 
 
 # Policy cap, not a runtime limit — see module docstring. The product
@@ -146,24 +144,17 @@ class LoopContext:
         self._seq += 1
         return self._seq
 
-    def step(
-        self,
-        text: str,
-        *,
-        cost_usd: float = 0.0,
-        tokens: int = 0,
-        **data: Any,
-    ) -> StepEvent:
+    def step(self, text: str, *, cost_usd: float = 0.0, tokens: int = 0, **data) -> StepEvent:
         return StepEvent(self.investigation_id, self._next_seq(), "step",
                          text=text, cost_usd=cost_usd, tokens=tokens, data=data)
 
-    def note(self, text: str, **data: Any) -> StepEvent:
+    def note(self, text: str, **data) -> StepEvent:
         return StepEvent(self.investigation_id, self._next_seq(), "note", text=text, data=data)
 
-    def question(self, text: str, **data: Any) -> StepEvent:
+    def question(self, text: str, **data) -> StepEvent:
         return StepEvent(self.investigation_id, self._next_seq(), "question", text=text, data=data)
 
-    def plan_event(self, text: str, **data: Any) -> StepEvent:
+    def plan_event(self, text: str, **data) -> StepEvent:
         return StepEvent(self.investigation_id, self._next_seq(), "plan", text=text, data=data)
 
 
@@ -172,8 +163,8 @@ class _ResearchState:
         self.plan = plan
         self.state = RunState.PENDING
         self.ctx: LoopContext | None = None
-        self.queue: asyncio.Queue[StepEvent | object] = asyncio.Queue()
-        self.task: asyncio.Task[None] | None = None
+        self.queue: asyncio.Queue = asyncio.Queue()
+        self.task: asyncio.Task | None = None
         self.error: str | None = None
         self.follow_ups: list[str] = []
         self.started = False
@@ -358,22 +349,16 @@ class HostLocalRunner:
         if self._on_emit is not None and ev.kind in ("note", "question"):
             await self._on_emit(ev)
 
-    async def _finish(
-        self,
-        st: _ResearchState,
-        action: ActionType | None,
-        payload: dict[str, Any] | None,
-        *,
-        halted: bool = False,
-        already_logged: bool = False,
-    ) -> None:
+    async def _finish(self, st, action, payload, *, halted=False, already_logged=False) -> None:
         iid = st.plan.investigation_id
         if action is not None and not already_logged:
             log_event(iid, action, payload=payload or {}, role="user_agent",
                       events_dir=self._events_dir)
         if self._seal_on_complete:
-            with contextlib.suppress(Exception):  # pragma: no cover — best-effort
+            try:
                 seal_investigation(iid, events_dir=self._events_dir)
+            except Exception:  # pragma: no cover — seal is best-effort
+                pass
         await st.queue.put(StepEvent(iid, 0, "done", state=st.state))
         await st.queue.put(_STREAM_DONE)
 
@@ -385,7 +370,7 @@ class HostLocalRunner:
             item = await st.queue.get()
             if item is _STREAM_DONE:
                 return
-            yield cast(StepEvent, item)
+            yield item
 
     # -- protocol: steer -----------------------------------------------
 
@@ -471,7 +456,7 @@ def make_demo_loop(
     delay_s: float = 0.0,
     emit_note: bool = True,
     fail_on_step: int | None = None,
-) -> Callable[[LoopContext], AsyncIterator[StepEvent]]:
+):
     """Build a deterministic browse loop for tests. A real loop calls Exa /
     Browserbase between checkpoints; this one just sleeps + charges."""
 
@@ -540,12 +525,12 @@ def make_contract_gather_stub(
 def make_exa_gather_loop(
     *,
     top_k: int = 3,
-    client: Any | None = None,
-    legal_gate: Any | None = None,
+    client: object | None = None,
+    legal_gate: object | None = None,
     events_dir: str | None = None,
     daily_budget_usd: float | None = None,
     db_path: str | None = None,
-    embedder: Any | None = None,
+    embedder: object | None = None,
 ) -> Callable[[LoopContext], AsyncIterator[StepEvent]]:
     """Real DRW gather, wired to the Exa Wedge-1 discovery layer.
 
@@ -576,7 +561,13 @@ def make_exa_gather_loop(
     """
     # Lazy import: keep the Exa stack off the import path for the stub-only
     # prod default (and for tests that never touch this factory).
-    from acquisition.search.exa import discover, promote_discovery
+    # ``ExaClient`` / ``LegalGate`` are pulled in only to type-narrow the
+    # ``object``-typed factory params at the two call sites below (cast is
+    # a runtime no-op; both modules are already loaded by the adapter import).
+    from typing import cast
+
+    from acquisition.search.exa import ExaClient, discover, promote_discovery
+    from substrate.legal_gate import LegalGate
 
     async def _loop(ctx: LoopContext) -> AsyncIterator[StepEvent]:
         yield ctx.plan_event(f"[exa] plan: {ctx.sub_question}", gather_mode="exa")
@@ -585,7 +576,7 @@ def make_exa_gather_loop(
         proposals = discover(
             query=sub_q,
             investigation_id=ctx.investigation_id,
-            client=client,
+            client=cast(ExaClient | None, client),
             events_dir=events_dir,
             daily_budget_usd=daily_budget_usd,
             db_path=db_path,
@@ -597,7 +588,7 @@ def make_exa_gather_loop(
             result = promote_discovery(
                 p,
                 investigation_id=ctx.investigation_id,
-                legal_gate=legal_gate,
+                legal_gate=cast(LegalGate | None, legal_gate),
                 events_dir=events_dir,
                 db_path=db_path,
                 embedder=embedder,

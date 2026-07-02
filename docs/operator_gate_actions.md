@@ -1,8 +1,10 @@
 # Operator-only gate actions
 
-**Last touched 2026-05-23 (session-end snapshot).**
+**Last touched 2026-07-02 (doc-truth pass — stale pointers/counts fixed; per-gate sections retain their original snapshot dates).**
 
-The audit identified eight binding gates blocking activation of substrate that
+The audit identified the binding gates blocking activation of substrate that
+is tracked live in the quick-status table below (gates have been appended
+since the original eight; the table, not this sentence, is the register) —
 is already shipped in code. **Engineering cannot close these gates.** Each one
 requires the operator (or an external party) to act. This document is the
 checklist with minimum inputs and an explicit owner.
@@ -19,12 +21,13 @@ checklist with minimum inputs and an explicit owner.
 | G6 autoresearch Wedge 1 verdict | ⏳ open | Phase 8 enforcing + Wedges 2-4 |
 | G7 six-month compounding demo | ⏳ calendar (~Nov 2026) | Multi-user pivot Sprint 22 |
 | G8 Loop 3 unlock criteria | ⏳ data-bound | RLM + SFT + hosted RL track |
-| G9 arXiv researcher-payout counsel/KYC | ❌ open (counsel) | arXiv SPR-07/08 (researcher identity + KYC/payout); branch `caffen/arxiv-ingest` |
+| G9 arXiv researcher-payout counsel/KYC | ❌ open (counsel) | arXiv SPR-07/08 (researcher identity + KYC/payout); merged to main (`8c0132f`, `7ae2318`) |
 | G10 Stripe Press §9.10 publisher opt-in | ❌ open (operator BizDev) | The ONLY servable path for any in-copyright Stripe Press title; until granted, every Stripe Press title is gated/personal-read, never servable |
 | G11 X no-training constraint | ✅ enforced in code / ⏳ standing operator duty | Keeping ALL BYOK X content (`personal_reading`, `social_thread`) out of every training/RL export — X dev terms forbid training on X data |
 | G12 Bernays per-title copyright-renewal check | ❌ open (operator, per-title) | Making any 1927–1930 Bernays title servable — the in-copyright titles must NEVER be relabeled to a servable class without a per-title US renewal-records check |
+| G13 Auth diagnostic matrix | ✅ closed 2026-06-02 | Login failure triage now points to `docs/diagnostics/auth-failure-mode-matrix.md`; do not conflate Layer A transport with Layer B allowlist silence |
 
-**3 closed, 2 calendar/data-bound, 4 that need operator/counsel effort (G2, G3, G6, G9), plus 3 personal-reading-lane operator gate-actions (G10 Stripe Press, G11 X no-training, G12 Bernays renewal).**
+**4 closed, 2 calendar/data-bound, 4 that need operator/counsel effort (G2, G3, G6, G9), plus 3 personal-reading-lane operator gate-actions (G10 Stripe Press, G11 X no-training, G12 Bernays renewal).**
 
 ## Highest-leverage next action
 
@@ -354,7 +357,7 @@ ingestion-failures record).
 SPR-07 builds the ORCID-keyed claim flow over the existing `(arxiv_id,
 author_position)` accrual ledger; SPR-08 wires KYC + Stripe Connect payout. The
 internal accrual + tiered-serving + compliance substrate already shipped (arXiv
-SPR-01..09 on `caffen/arxiv-ingest`); only the money-movement is gated.
+SPR-01..09 merged to main — `8c0132f`, `7ae2318`); only the money-movement is gated.
 
 ---
 
@@ -370,10 +373,10 @@ on G2 + G3 immediately:
 - **G7 compounding demo** — ~Nov 2026 earliest
 - **G8 Loop 3 unlock** — gated by G6 + ≥500 graded outcomes; ≥3 months out
 
-**Bottom line:** of the 8 gates, **3 are now closed** (G1, G4, G5),
-**2 close this month with operator effort** (G2, G3), **1 needs operator
-to run mutations** (G6), **1 closes in late 2026** (G7), **1 closes
-Q1 2027 at the earliest** (G8).
+**Bottom line:** the quick-status table at the top is the live
+closed/open register — a prose recount here drifted from its own table
+within weeks (it said "8 gates" while the table held twelve). Per-gate
+timing detail lives in the sections above.
 
 ---
 

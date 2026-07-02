@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>SPR-DRL-08 · Parallel Search gather loop</title>
+<title>SPR-DRL-08 · Parallel Search gather loop (superseded)</title>
 <style>
 /* htmlspec — Lemon UI inspired style system
  * Inline this entire file into <style> of every output HTML file.
@@ -583,50 +583,50 @@ hr.divider {
 <main class="page">
 <header class="hero">
 <p class="eyebrow"><a href="index.html">&larr; Perfect Deep Research Loop</a> · Sprint 08</p>
-<h1>Parallel Search gather loop</h1><p class="tagline">Wire Parallel Search API into DRW browse loop; real chunks in pack.</p>
+<h1>Parallel Search gather loop (superseded)</h1><p class="tagline">Rejected alternate path retained for history; canonical SPR-DRL-08 is Exa gather.</p>
 <div class="meta-row">
 <span class="tag tag--blue"><span class="dot"></span>Wave 6</span>
-<span class="tag tag--green"><span class="dot"></span>done</span>
-<span class="tag tag--grey">Budget: 5 milestones</span></div></header>
-<section class="block"><h2>Parent context</h2><p>Operator ratified Parallel-first (not Exa-first). Path A convergence (SPR-DRL-06) is green; cascade_routes still defaults to make_contract_gather_stub.</p><p>Mirror acquisition/search/exa/ shape for parallel/. Reuse promote_discovery pattern via ingest_url. Depends SPR-DRL-06 + SPR-DRL-07.</p>
-<div class="callout callout--info"><strong>Position:</strong> Wave 6 gather adapter — Parallel Search only.</div></section>
-<section class="block"><h2>Goal</h2><p><strong>Wire Parallel Search API into DRW browse loop; real chunks in pack.</strong></p><p>No Parallel Task API one-call research; no Exa in this sprint; no Browserbase.</p></section>
+<span class="tag tag--yellow"><span class="dot"></span>superseded</span>
+<span class="tag tag--grey">Historical alternate</span></div></header>
+<section class="block"><h2>Parent context</h2><p>This page records a rejected Parallel-first proposal. The executable sprint moved to <a href="sprint-08-exa-gather.html">sprint-08-exa-gather.html</a>; current handoff and ledger state are in <span class="file">docs/htmlspec/deep-research-loop/SPR-DRL-handoff.md</span>.</p><p>The Exa-first path is the canonical ANT-DRL implementation because it matches the operator DRW Wedge 1 integration while preserving attribution through <code>ingest_url</code>, <code>PromotionFunnel</code>, and <code>SessionEvidencePack</code>.</p>
+<div class="callout callout--info"><strong>Position:</strong> Do not execute as current ANT-DRL work.</div></section>
+<section class="block"><h2>Goal</h2><p><strong>Historical note only: this is not the active SPR-DRL-08 plan.</strong></p><p>Parallel-first gather remains a future provider-swap idea, not a landed sprint or current gate.</p></section>
 <section class="block"><h2>Technical milestones</h2>
 <div class="milestone"><div class="num">1</div><div>
-<div class="title">acquisition/search/parallel/</div><p class="desc">client.py: POST https://api.parallel.ai/v1/search (x-api-key, objective + search_queries). adapter.py: discover() → DiscoveryProposed with provider=parallel.</p>
-<div class="criteria"><strong>Acceptance criteria</strong><ul><li>MockTransport hermetic test</li><li>DiscoveryProvider includes parallel</li><li>disc-parallel- id prefix</li></ul></div>
-<div class="files"><span class="file">acquisition/search/parallel/client.py</span><span class="file">acquisition/search/parallel/adapter.py</span><span class="file">substrate/schemas/events.py</span></div></div></div>
+<div class="title">Rejected provider branch</div><p class="desc">The draft proposed a Parallel Search client and adapter. Those files did not land in ANT-DRL.</p>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>No current implementation claim</li><li>Canonical provider remains Exa Wedge 1</li></ul></div>
+<div class="files"><span class="file">substrate/schemas/events.py</span></div></div></div>
 <div class="milestone"><div class="num">2</div><div>
-<div class="title">make_parallel_gather_loop</div><p class="desc">Browse loop: discover(sub_question) → promote_discovery top-k → StepEvents with discovery_id + document_id.</p>
-<div class="criteria"><strong>Acceptance criteria</strong><ul><li>gather_mode=parallel on steps</li><li>budget sidecar or cost estimate on proposal</li></ul></div>
-<div class="files"><span class="file">runtime/research_runner/host_local.py</span><span class="file">acquisition/search/parallel/adapter.py</span></div></div></div>
+<div class="title">Canonical gather loop</div><p class="desc">The active browse loop is <code>make_exa_gather_loop</code>, not a Parallel loop.</p>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>See SPR-DRL-08 Exa page for active checks</li><li>Do not add a Parallel gate to canonical verify</li></ul></div>
+<div class="files"><span class="file">runtime/research_runner/host_local.py</span><span class="file">acquisition/search/exa/adapter.py</span></div></div></div>
 <div class="milestone"><div class="num">3</div><div>
-<div class="title">Factory seam</div><p class="desc">ANTIEK_DRW_GATHER=parallel|stub (default stub); PARALLEL_API_KEY from env only.</p>
-<div class="criteria"><strong>Acceptance criteria</strong><ul><li>grep shows env gate</li><li>test_cascade_api asserts stub default</li></ul></div>
-<div class="files"><span class="file">interfaces/research/api/cascade_routes.py</span><span class="file">.env</span></div></div></div>
+<div class="title">Factory seam</div><p class="desc">Current factory is <code>ANTIEK_DRW_GATHER=exa|stub</code>; stub remains the hermetic default.</p>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>Environment examples avoid secret material</li><li>Stub default remains covered</li></ul></div>
+<div class="files"><span class="file">interfaces/research/api/cascade_routes.py</span><span class="file">apps/reading/.env.example</span></div></div></div>
 <div class="milestone"><div class="num">4</div><div>
 <div class="title">Pack chunks from ingest</div><p class="desc">Ingested docs → doc-url-* in SessionEvidencePack (not doc-gather-* placeholders).</p>
-<div class="criteria"><strong>Acceptance criteria</strong><ul><li>pack test with mocked parallel discover + ingest</li><li>content_hash stable</li></ul></div>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>See Exa gather page for landed mocked discover + ingest coverage</li><li>content_hash stable</li></ul></div>
 <div class="files"><span class="file">orchestration/session_evidence_pack.py</span><span class="file">runtime/research_runner/promotion_funnel.py</span></div></div></div>
 <div class="milestone"><div class="num">5</div><div>
-<div class="title">P-16 harness + decision</div><p class="desc">Matrix row + tests/test_parallel_gather_loop.py; deep-research-exa-gather.md → parallel-first decision doc.</p>
-<div class="criteria"><strong>Acceptance criteria</strong><ul><li>P-16 row with command</li><li>docs/decisions/deep-research-parallel-gather.md exists</li></ul></div>
-<div class="files"><span class="file">docs/agent-execution/PLATFORM_EXEC_MATRIX.md</span><span class="file">scripts/canonical_verify.sh</span><span class="file">tests/test_parallel_gather_loop.py</span><span class="file">docs/decisions/deep-research-parallel-gather.md</span></div></div></div>
+<div class="title">P-16 harness + decision</div><p class="desc">P-16 landed as Exa gather; the draft Parallel gather test and decision document were not created.</p>
+<div class="criteria"><strong>Acceptance criteria</strong><ul><li>P-16 row points at Exa gather</li><li>Canonical verify remains Exa-first</li></ul></div>
+<div class="files"><span class="file">docs/agent-execution/PLATFORM_EXEC_MATRIX.md</span><span class="file">scripts/canonical_verify.sh</span><span class="file">tests/test_exa_gather_loop.py</span><span class="file">docs/decisions/deep-research-exa-gather.md</span></div></div></div>
 </section>
 <section class="block"><h2>Rigor — operating manual for this sprint</h2>
 <div class="rigor">
 <div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Calibrate confidence</h4><p>Report Parallel index/cache blind spots in Not proved.</p></div>
-<div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman rejected alt</h4><p>Steelman Exa-first — rejected; operator chose Parallel. Steelman Parallel Task API as gather — rejected; collapses attribution like /answer.</p></div>
-<div class="rigor-card"><span class="label">3 · Rigor</span><h4>Mechanical checks</h4><p>Zero live PARALLEL_API_KEY in CI; httpx.MockTransport only.</p></div>
-<div class="rigor-card"><span class="label">4 · Diligence</span><h4>Read before write</h4><p>Read exa/adapter.py as template; Parallel API needs objective + 2-3 search_queries per call.</p></div>
+<div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman rejected alt</h4><p>Parallel-first could become a future provider option; it was rejected for ANT-DRL because operator DRW is Exa Wedge 1.</p></div>
+<div class="rigor-card"><span class="label">3 · Rigor</span><h4>Mechanical checks</h4><p>No nonexistent Parallel files should appear as landed dependencies.</p></div>
+<div class="rigor-card"><span class="label">4 · Diligence</span><h4>Read before write</h4><p>Read <a href="sprint-08-exa-gather.html">sprint-08-exa-gather.html</a> before doing new gather work.</p></div>
 <div class="rigor-card"><span class="label">5 · Defensibility</span><h4>Survives turnover</h4><p>Handoff diagrams parallel search → ingest_url → funnel → pack chunk chain.</p></div>
 </div></section>
 <section class="block"><h2>Dependencies</h2><div class="two-col">
 <div><h3>Upstream</h3><ul><li>SPR-DRL-06</li><li>SPR-DRL-07</li></ul></div>
-<div><h3>External</h3><ul><li>acquisition/urls/adapter.py</li><li>substrate/legal_gate/</li><li>https://docs.parallel.ai/api-reference/search/search</li></ul></div></div></section>
-<section class="block"><h2>Out of scope</h2><ul><li>Exa gather (SPR-DRL-10)</li><li>Parallel Task/FindAll APIs</li><li>Browserbase</li><li>SerpAPI</li><li>Live Parallel in CI</li></ul></section>
+<div><h3>External</h3><ul><li>acquisition/urls/adapter.py</li><li>substrate/legal_gate/</li><li>docs/integration_exa_browserbase.md</li></ul></div></div></section>
+<section class="block"><h2>Out of scope</h2><ul><li>Executing this page as current sprint work</li><li>Parallel Task/FindAll APIs</li><li>Browserbase</li><li>SerpAPI</li><li>Live provider keys in CI</li></ul></section>
 <section class="block"><h2>Verification gates</h2>
-<table class="spec"><thead><tr><th>Gate</th><th>Command</th><th>Expected</th></tr></thead><tbody><tr><td><strong>Parallel gather</strong></td><td><code>./.venv/bin/python -m pytest tests/test_parallel_gather_loop.py -q</code></td><td>all passed</td></tr><tr><td><strong>Deep-research profile</strong></td><td><code>./scripts/canonical_verify.sh deep-research</code></td><td>CANONICAL_VERIFY_OK: deep-research</td></tr></tbody></table></section>
+<table class="spec"><thead><tr><th>Gate</th><th>Command</th><th>Expected</th></tr></thead><tbody><tr><td><strong>Canonical Exa gather</strong></td><td><code>./.venv/bin/python -m pytest tests/test_exa_gather_loop.py -q</code></td><td>all passed</td></tr><tr><td><strong>Deep-research profile</strong></td><td><code>./scripts/canonical_verify.sh deep-research</code></td><td>CANONICAL_VERIFY_OK: deep-research</td></tr></tbody></table></section>
 <section class="block"><h2>Handoff packet</h2>
 <p class="lede">Paste this block at the end of your final message when the sprint is done.</p>
 <pre><code>## Sprint SPR-DRL-08 — Handoff

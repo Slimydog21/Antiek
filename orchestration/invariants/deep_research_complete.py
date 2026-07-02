@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from orchestration.phase_runner.postconditions import (  # noqa: E402
+from orchestration.phase_runner.postconditions import (
     check_phase_6,
     check_phase_7,
     check_phase_8,
@@ -26,8 +26,8 @@ from orchestration.phase_runner.postconditions import (  # noqa: E402
     default_knowledge_skills_dir,
     default_research_dir,
 )
-from substrate.event_log import trajectory  # noqa: E402
-from substrate.schemas import ActionType  # noqa: E402
+from substrate.event_log import trajectory
+from substrate.schemas import ActionType
 
 # Phase postconditions delegated here — keep in sync with
 # orchestration/phase_runner/postconditions.py check_phase_6..9.

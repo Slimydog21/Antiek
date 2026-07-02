@@ -1,0 +1,4 @@
+{
+  "_comment": "The known-red escape valve for the reachability gate. A probe listed here is INTENTIONALLY red during a fix window; the runner reports its RED but does NOT fail the build until 'until_date' passes (UTC), after which the valve self-closes and the red fails the run again. An entry MUST carry a tracking link ('until_issue_link') and a hard expiry ('until_date', YYYY-MM-DD) so the valve can never silently become permanent. Shrink this list as fixes land; deleting the last entry returns the gate to strict. See ../README.md and docs/decisions/reachability-gate.md.",
+  "probes": []
+}

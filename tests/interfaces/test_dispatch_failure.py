@@ -59,6 +59,7 @@ from substrate.dispatch.base import ProviderError
             False,
         ),
         (TimeoutError(), "timeout", 504, True),
+        (TimeoutError(), "timeout", 504, True),
         (ValueError("build_plan blew up"), "unknown", 500, True),
         (RuntimeError("db locked"), "unknown", 500, True),
     ],

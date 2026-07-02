@@ -29,8 +29,11 @@ Failure-mode discipline (mirrors decomposer + evidence_retriever):
 
 from __future__ import annotations
 
+import json
 import os
 import sys
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
 _PKG_ROOT = os.path.dirname(
@@ -58,7 +61,7 @@ from substrate.schemas import (  # noqa: E402
     ParameterExtractRequestedPayload,
 )
 
-from .broadcast import EventBroadcaster, EventHandler  # noqa: E402
+from .broadcast import EventBroadcaster  # noqa: E402 — after the sys.path bootstrap above
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -98,6 +101,46 @@ def _empty_delivered_payload() -> ParameterExtractDeliveredPayload:
     )
 
 
+def _extract_canonical_chunk_ids(evidence_block: str) -> tuple[str, ...]:
+    """Return chunk ids present in the JSON-stringified evidence block.
+
+    The upstream Evidence Retriever emits nested JSON with ``chunk_ids`` lists.
+    Keep this parser structural: if the block is not JSON, do not regex-guess
+    citations from prose.
+    """
+    try:
+        evidence = json.loads(evidence_block)
+    except json.JSONDecodeError:
+        return ()
+
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def visit(value: Any) -> None:
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key in {"chunk_id", "chunk_ids", "source_chunk_ids"}:
+                    collect(item)
+                else:
+                    visit(item)
+        elif isinstance(value, list):
+            for item in value:
+                visit(item)
+
+    def collect(value: Any) -> None:
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if cleaned and cleaned not in seen:
+                out.append(cleaned)
+                seen.add(cleaned)
+        elif isinstance(value, list):
+            for item in value:
+                collect(item)
+
+    visit(evidence)
+    return tuple(out)
+
+
 # ---------------------------------------------------------------------------
 # Dispatch + parse
 # ---------------------------------------------------------------------------
@@ -106,6 +149,8 @@ def _empty_delivered_payload() -> ParameterExtractDeliveredPayload:
 def _dispatch_and_parse(
     prompt: str,
     event: Event,
+    *,
+    canonical_chunk_ids: tuple[str, ...] = (),
 ) -> tuple[ParameterExtractResult | None, str]:
     """Run one parameter_extractor dispatch + parse. Returns
     ``(result, policy_id)`` on success, ``(None, fallback_id)`` on
@@ -129,7 +174,10 @@ def _dispatch_and_parse(
         return None, "parameter-extractor-fallback/no-provider"
 
     try:
-        parsed = parse_parameter_extractor_response(response_text)
+        parsed = parse_parameter_extractor_response(
+            response_text,
+            canonical_chunk_ids=canonical_chunk_ids,
+        )
         return parsed, policy_id
     except ParameterValidationError as exc:
         print(
@@ -144,7 +192,9 @@ def _dispatch_and_parse(
 # ---------------------------------------------------------------------------
 
 
-def make_parameter_extractor_handler(broadcaster: EventBroadcaster) -> EventHandler:
+def make_parameter_extractor_handler(
+    broadcaster: EventBroadcaster,
+) -> Callable[[Event], Awaitable[None]]:
     """Build the handler closed over a broadcaster. Registered against
     ``ActionType.PARAMETER_EXTRACT_REQUESTED``."""
 
@@ -153,9 +203,14 @@ def make_parameter_extractor_handler(broadcaster: EventBroadcaster) -> EventHand
             return  # defensive — handler keyed on action_type
         req = event.payload
         evidence_block = req.evidence_block or ""
+        canonical_chunk_ids = _extract_canonical_chunk_ids(evidence_block)
 
         prompt = render_full_prompt(evidence_block=evidence_block)
-        result, policy_id = _dispatch_and_parse(prompt, event)
+        result, policy_id = _dispatch_and_parse(
+            prompt,
+            event,
+            canonical_chunk_ids=canonical_chunk_ids,
+        )
 
         if result is None:
             await _emit_delivered(

@@ -266,7 +266,10 @@ def fetch_feed(
 
         r = govern_if_arxiv(feed_url, _send)
     else:
-        with httpx.Client(follow_redirects=True) as c:
+        with httpx.Client(
+            follow_redirects=True,
+            timeout=DEFAULT_TIMEOUT_S,  # module default; same pattern as acquisition/papers/core.py DEFAULT_TIMEOUT_S
+        ) as c:
             def _send() -> httpx.Response:
                 return c.get(feed_url, headers=headers, timeout=DEFAULT_TIMEOUT_S)
 

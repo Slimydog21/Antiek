@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Awaitable, Callable
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
 _PKG_ROOT = os.path.dirname(
@@ -60,7 +61,7 @@ from substrate.schemas import (  # noqa: E402
     SupportingClaim,
 )
 
-from .broadcast import EventBroadcaster, EventHandler  # noqa: E402
+from .broadcast import EventBroadcaster  # noqa: E402 — after the sys.path bootstrap above
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -110,6 +111,26 @@ def _empty_delivered_payload(
     )
 
 
+def _extract_chunk_ids_from_block(chunks_block: str) -> tuple[str, ...]:
+    """Extract canonical chunk ids from rendered chunk lines.
+
+    The request contract renders chunks as ``[chunk_id] ...`` lines. Only that
+    structural prefix counts; IDs mentioned later in prose are not accepted as
+    provenance candidates.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw_line in chunks_block.splitlines():
+        line = raw_line.strip()
+        if not line.startswith("[") or "]" not in line:
+            continue
+        chunk_id = line[1:].split("]", 1)[0].strip()
+        if chunk_id and chunk_id not in seen:
+            out.append(chunk_id)
+            seen.add(chunk_id)
+    return tuple(out)
+
+
 # ---------------------------------------------------------------------------
 # Dispatch + parse helper
 # ---------------------------------------------------------------------------
@@ -120,6 +141,7 @@ def _dispatch_and_parse(
     event: Event,
     *,
     sub_question: str,
+    canonical_chunk_ids: tuple[str, ...] = (),
 ) -> tuple[EvidenceResult | None, str]:
     """Run one evidence_retriever dispatch + parse. Returns
     ``(EvidenceResult, policy_id)`` on success, ``(None, fallback_id)``
@@ -146,6 +168,7 @@ def _dispatch_and_parse(
         parsed = parse_evidence_response(
             response_text,
             expected_sub_question=sub_question,
+            canonical_chunk_ids=canonical_chunk_ids,
         )
         return parsed, policy_id
     except EvidenceValidationError as exc:
@@ -161,7 +184,9 @@ def _dispatch_and_parse(
 # ---------------------------------------------------------------------------
 
 
-def make_evidence_retriever_handler(broadcaster: EventBroadcaster) -> EventHandler:
+def make_evidence_retriever_handler(
+    broadcaster: EventBroadcaster,
+) -> Callable[[Event], Awaitable[None]]:
     """Build the handler closed over a broadcaster. Registered against
     ``ActionType.EVIDENCE_RETRIEVE_REQUESTED``."""
 
@@ -172,6 +197,7 @@ def make_evidence_retriever_handler(broadcaster: EventBroadcaster) -> EventHandl
         sub_question = req.sub_question.strip()
         if not sub_question:
             return  # nothing to retrieve
+        canonical_chunk_ids = _extract_chunk_ids_from_block(req.chunks_block)
 
         prompt = render_full_prompt(
             sub_question=sub_question,
@@ -183,7 +209,10 @@ def make_evidence_retriever_handler(broadcaster: EventBroadcaster) -> EventHandl
         )
 
         result, policy_id = _dispatch_and_parse(
-            prompt, event, sub_question=sub_question,
+            prompt,
+            event,
+            sub_question=sub_question,
+            canonical_chunk_ids=canonical_chunk_ids,
         )
         if result is None:
             await _emit_delivered(

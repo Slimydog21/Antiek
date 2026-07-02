@@ -27,7 +27,7 @@ Each entry below carries:
 - **Action when unlocked** — what an agent should do the day the criterion
   fires
 
-The thirteen deferrals, by unlock criterion category:
+The deferrals below, by unlock criterion category (count-free on purpose — this line once said "thirteen" while the doc held twenty):
 
 ---
 
@@ -438,7 +438,7 @@ changes only CI strictness (advisory→blocking), not behavior.
 need **+** the committed cost report (~$830 egress).
 **Spec reference:** `~/specs/antiek-arxiv-ingest/sprint-10-deferred-s3-mirror-search-index.html`.
 **Blocks-what:** nothing on the arXiv mainline — tiered serving, accrual, and
-compliance all shipped without it (arXiv SPR-01..09 on `caffen/arxiv-ingest`).
+compliance all shipped without it (arXiv SPR-01..09, merged to main — `8c0132f`, `7ae2318`).
 **Action when unlocked:** the mirror is a read-optimized search index *only* over
 substrate-owned data; DuckDB stays the primary store.
 
@@ -470,7 +470,12 @@ fully-global alternative) move enforcement to a global httpx transport on every
 external Client — the latter risks false-positives on the many legitimate
 non-arXiv fetchers, so it is deferred unless egress genuinely spreads.
 
-## D17 — Mountain Shell v2 yellow re-tone is var-deep only (Tailwind mirror lags)
+## D20 — Mountain Shell v2 yellow re-tone is var-deep only (Tailwind mirror lags)
+
+> ID renumbered from a duplicate "D17" on 2026-07-02: two deferrals carried
+> D17; every live cross-reference ("D17 ingest" in the traceability matrix,
+> gate doc, and retrieval-gate-closure) means the Personal-Reading live-ingest
+> cluster, which therefore KEEPS D17. This entry had zero inbound references.
 
 **Status:** ⚠️ Partial. The design *tokens* are re-toned + AA-proven (SPR-09
 `af21f19`: `apps/reading/src/design/tokens.css` + `tokens.ts` softened the
@@ -547,11 +552,11 @@ A/B in `docs/decisions/retrieval-gate-closure.md`). What RG-06 adds for D17 is a
 
 ## D18 — arXiv source-census producer (the source-onboarding gate's data feed)
 
-**Status:** ❌ Deferred. The GATE shipped (PR #42 / `abde67e`); its PRODUCER did not.
-**Unlock criterion:** a prod corpus **+** an unbanned arXiv ingest window (arXiv still 429-bans the box; the host-global governor makes a window safe) — operator-run.
+**Status:** ⚠️ Partially closed. The GATE shipped (PR #42 / `abde67e`), the DB-backed PRODUCER now exists (`tools/source_census.py::compute_source_census`), and the arXiv OAI timer emits `{{ antiek_state_dir }}/reports/source_census.json` after each successful sync. The first live report capture + threshold calibration remain operator-run.
+**Unlock criterion:** a prod corpus **+** an unbanned arXiv ingest window (arXiv still 429-bans the box; the host-global governor makes a window safe) — operator-run for the first live report/capstone.
 **Spec reference:** `docs/decisions/arxiv-corpus-first-reframe.md`; reframe P3b in `~/specs/antiek-arxiv-ingest/.caffenagent/reframe-run.json`.
-**Blocks-what:** nothing now — `tools/lint/source_gate.py` is wired into `ci.yml` but is a **no-op (exit 0) until `reports/source_census.json` exists**, so the gate cannot block any onboarding until a census is produced. The thresholds (metadata-complete ≥95% / linkback-resolvable ≥99% / dedup-overlap <20%) are PROVISIONAL until calibrated on the first real census.
-**Action when unlocked:** implement `compute_source_census(con, source)` over the real corpus — `dedup_overlap_pct` via the one `substrate.dedup` identity ladder; metadata / linkback / t1 / open via plain `documents` SQL — then emit + commit `reports/source_census.json`, calibrate the PROVISIONAL thresholds against the first real arXiv census, and the wired CI gate enforces automatically.
+**Blocks-what:** nothing now — `tools/lint/source_gate.py` is wired into `ci.yml` but is a **no-op (exit 0) until committed `reports/source_census.json` exists**, so the gate cannot block any onboarding until the live census is captured into the repo. The thresholds (metadata-complete ≥95% / linkback-resolvable ≥99% / dedup-overlap <20%) are PROVISIONAL until calibrated on the first real census.
+**Action when unlocked:** deploy/run `antiek-arxiv-oai-sync.timer`, collect `{{ antiek_state_dir }}/reports/source_census.json` from the prod corpus, review/calibrate the PROVISIONAL thresholds against that first real arXiv census, then commit `reports/source_census.json` so the wired CI gate enforces automatically.
 
 ## D19 — Multi-operator owner-read requires user_id retrieval scoping
 
@@ -603,7 +608,7 @@ Realistic-earliest unlock dates assuming everything else moves on schedule:
   resolution, marginalia audio-blob storage, the review-state resolver) have no
   calendar binding; the canon ratification is an independent operator-discretion
   action that only flips CI strictness.
-- **D17 (Mountain Shell v2 Tailwind yellow-mirror re-tone)** — operator-discretion
+- **D20 (Mountain Shell v2 Tailwind yellow-mirror re-tone)** — operator-discretion
   / anytime cheap tidy; no calendar binding. Shipped baseline (var-deep re-tone)
   is AA-passing; this is chrome-consistency polish only.
 
