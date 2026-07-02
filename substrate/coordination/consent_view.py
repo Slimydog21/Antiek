@@ -26,9 +26,10 @@ the canonical sources, forking none:
 * **Servability** — the SPR-03 seam ``substrate.seams.servability_gate``
   (``serves_full_text`` / ``gate_speak_derived_entry``) over the
   ``ServableEntryContract``. Deny-by-default; a ``speak_derived`` entry serves
-  full text only when its Speak publish gate passed. (Read's ``substrate.books``
-  serving layer is unmerged on this base — by composing against the *contracts +
-  seam* we read the real servability rule without coupling to Read internals.)
+  full text only when its Speak publish gate passed. Read's
+  ``substrate.books`` serving layer now uses the same seam projection, so this
+  coordination view composes against the shared contract instead of reparsing
+  Read or Speak internals.
 
 The load-bearing invariant this view exists to make legible:
 **accrual ≠ disbursement.** Escrow balances accrue from day one — even with zero

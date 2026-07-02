@@ -16,14 +16,10 @@ takedown first. SPR-01 already put a ``provenance_class ∈
 passed" to that boolean, expressed as a contract Read calls rather than a
 reach into ``substrate/speak/``.
 
-Why a seam adapter and not an edit to Read's ``serve.py``: at this sprint
-``substrate/books/serve.py`` does not exist yet (Read SPR-01's serving layer is
-unbuilt — verified: no ``substrate/books`` package in the tree). Read SPR-01
-owns ``serve.py`` and will call this adapter; building ``serve.py`` here would
-be implementing Read's internals, which is exactly the duplication this whole
-spec forbids. So the load-bearing artifact is the *gate decision* and the
-*flag-stamping* — the seam — and the test proves the deny-by-default behavior
-on the contract.
+Read's serving layer now exists in ``substrate/books/serve.py``. This module is
+still the seam owner: it translates Speak's publish outcome into the
+``ServableEntryContract`` vocabulary and projects live ``documents`` rows into
+that same contract shape, so Read's SQL gate and the seam contract cannot drift.
 
 The decoupling is the point: Read passes the *outcome* of Speak's gate (a
 single boolean it received over the speak→read seam, or by calling
@@ -34,8 +30,74 @@ project rows. Read's servability check stays a pure function of the
 
 from __future__ import annotations
 
+import json
+from typing import Any
+
 from substrate.contracts.interviewer import ConsentContract
 from substrate.contracts.servable import ServableEntryContract
+
+
+_DOCUMENT_TO_CONTRACT_CONTENT_CLASS: dict[str, str] = {
+    "public_domain": "public_domain",
+    "source_declared_open": "source_declared_open",
+    "opt_in_licensed": "publisher_opted_in",
+    "user_owned": "platform_authored",
+    "user_public_contribution": "platform_authored",
+}
+
+
+def _metadata_dict(metadata_raw: Any) -> dict[str, Any]:
+    if isinstance(metadata_raw, dict):
+        return metadata_raw
+    if isinstance(metadata_raw, str) and metadata_raw.strip():
+        try:
+            loaded = json.loads(metadata_raw)
+        except json.JSONDecodeError:
+            return {}
+        return loaded if isinstance(loaded, dict) else {}
+    return {}
+
+
+def document_servable_entry(
+    document_id: str,
+    *,
+    content_class: str | None,
+    metadata: Any = None,
+    taken_down: bool = False,
+) -> ServableEntryContract:
+    """Project a live ``documents`` row into the seam servability contract.
+
+    The documents table stores rights provenance classes such as
+    ``user_public_contribution``; the seam contract stores Read's servability
+    vocabulary such as ``platform_authored``. This function is the single
+    reviewed bridge between those vocabularies.
+    """
+    if taken_down:
+        return ServableEntryContract(
+            document_id=document_id,
+            content_class="taken_down",
+            taken_down=True,
+        )
+
+    contract_class = _DOCUMENT_TO_CONTRACT_CONTENT_CLASS.get(
+        content_class or "",
+        "gated_metadata_only",
+    )
+    meta = _metadata_dict(metadata)
+    provenance_class = None
+    if contract_class == "platform_authored":
+        provenance_class = (
+            "speak_derived"
+            if meta.get("provenance_class") == "speak_derived"
+            else "operator_authored"
+        )
+    return ServableEntryContract(
+        document_id=document_id,
+        content_class=contract_class,  # type: ignore[arg-type]
+        taken_down=False,
+        provenance_class=provenance_class,  # type: ignore[arg-type]
+        speak_publish_gate_passed=meta.get("speak_publish_gate_passed") is True,
+    )
 
 
 def speak_publish_gate_passed(consent: ConsentContract) -> bool:
@@ -62,9 +124,9 @@ def gate_speak_derived_entry(
 
     For ``operator_authored`` (or any non-``platform_authored``) entry the
     flag is irrelevant and the entry is returned unchanged — operator-authored
-    stays auto-servable (no regression for Write output). This is the function
-    Read's future ``serve.py`` calls; the returned ``ServableEntryContract`` is
-    the same frozen contract SPR-01 owns, with one field set."""
+    stays auto-servable (no regression for Write output). The returned
+    ``ServableEntryContract`` is the same frozen contract SPR-01 owns, with one
+    field set."""
     if (
         entry.content_class != "platform_authored"
         or entry.provenance_class != "speak_derived"

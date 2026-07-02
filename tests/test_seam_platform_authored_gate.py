@@ -55,6 +55,55 @@ def test_speak_derived_not_served_without_publish_gate():
     assert gated.speak_publish_gate_passed is False
 
 
+def test_documents_row_projects_to_speak_derived_servable_entry():
+    entry = servability_gate.document_servable_entry(
+        "doc-bio-live",
+        content_class="user_public_contribution",
+        metadata={
+            "provenance_class": "speak_derived",
+            "speak_publish_gate_passed": True,
+        },
+    )
+
+    assert entry.content_class == "platform_authored"
+    assert entry.provenance_class == "speak_derived"
+    assert entry.speak_publish_gate_passed is True
+    assert entry.serves_full_text is True
+
+
+def test_documents_row_projection_defaults_platform_content_to_operator_authored():
+    entry = servability_gate.document_servable_entry(
+        "doc-op-live",
+        content_class="user_owned",
+        metadata={},
+    )
+
+    assert entry.content_class == "platform_authored"
+    assert entry.provenance_class == "operator_authored"
+    assert entry.serves_full_text is True
+
+
+def test_documents_row_projection_preserves_deny_by_default_and_takedown():
+    gated = servability_gate.document_servable_entry(
+        "doc-gated",
+        content_class="restricted_pending_opt_in",
+        metadata={"provenance_class": "speak_derived", "speak_publish_gate_passed": True},
+    )
+    taken_down = servability_gate.document_servable_entry(
+        "doc-down",
+        content_class="user_public_contribution",
+        metadata={"provenance_class": "speak_derived", "speak_publish_gate_passed": True},
+        taken_down=True,
+    )
+
+    assert gated.content_class == "gated_metadata_only"
+    assert gated.provenance_class is None
+    assert gated.serves_full_text is False
+    assert taken_down.content_class == "taken_down"
+    assert taken_down.taken_down is True
+    assert taken_down.serves_full_text is False
+
+
 def test_speak_derived_served_after_publish_gate():
     entry = _speak_derived()
     assert servability_gate.serves_full_text(entry, publish_gate_passed=True) is True

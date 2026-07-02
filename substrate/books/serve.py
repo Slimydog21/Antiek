@@ -27,7 +27,6 @@ no second gating mechanism to drift out of sync.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from typing import Any
 
@@ -37,6 +36,7 @@ from substrate.constants import (
     SERVABLE_CONTENT_CLASSES,
     SERVE_SNIPPET_MAX_CHARS,
 )
+from substrate.seams.servability_gate import document_servable_entry
 
 from .servability import ServabilityStatus, is_servable_full_text, servability_of
 
@@ -225,19 +225,13 @@ def _speak_derived_publish_gate_failed(content_class: str | None, metadata_raw: 
     Operator-authored/platform-authored entries without that provenance marker
     keep the existing behavior.
     """
-    if content_class != "user_public_contribution":
-        return False
-    metadata: dict[str, Any]
-    if isinstance(metadata_raw, dict):
-        metadata = metadata_raw
-    elif isinstance(metadata_raw, str) and metadata_raw.strip():
-        try:
-            loaded = json.loads(metadata_raw)
-        except json.JSONDecodeError:
-            return False
-        metadata = loaded if isinstance(loaded, dict) else {}
-    else:
-        return False
-    if metadata.get("provenance_class") != "speak_derived":
-        return False
-    return metadata.get("speak_publish_gate_passed") is not True
+    entry = document_servable_entry(
+        "__serve_probe__",
+        content_class=content_class,
+        metadata=metadata_raw,
+    )
+    return (
+        entry.content_class == "platform_authored"
+        and entry.provenance_class == "speak_derived"
+        and not entry.speak_publish_gate_passed
+    )
