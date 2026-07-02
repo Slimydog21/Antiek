@@ -7,6 +7,7 @@ the operator cannot map that command to a row.
 
 from __future__ import annotations
 
+from fnmatch import fnmatchcase
 import re
 from pathlib import Path
 
@@ -46,6 +47,11 @@ def _script_canonical_commands() -> set[str]:
     return set(re.findall(r"^\s*([a-z0-9-]+)\)\s+cmd_", text, re.MULTILINE))
 
 
+def _canonical_verify_test_inputs() -> set[str]:
+    text = CANONICAL_VERIFY.read_text(encoding="utf-8")
+    return set(re.findall(r"tests/[A-Za-z0-9_./-]+\.py", text))
+
+
 def _workflow_event_paths(event_name: str) -> set[str]:
     text = AGENT_GATES.read_text(encoding="utf-8")
     match = re.search(
@@ -55,6 +61,10 @@ def _workflow_event_paths(event_name: str) -> set[str]:
     )
     assert match is not None, f"{event_name} paths block not found"
     return set(re.findall(r"      - '([^']+)'", match.group("body")))
+
+
+def _path_is_covered(path: str, patterns: set[str]) -> bool:
+    return any(fnmatchcase(path, pattern) for pattern in patterns)
 
 
 def test_platform_matrix_names_every_ci_canonical_command() -> None:
@@ -126,4 +136,20 @@ def test_agent_gates_trigger_on_read_activation_dogfood_inputs() -> None:
         assert not missing, (
             f"agent_execution_gates.yml {event_name} does not trigger on "
             f"Read activation dogfood input(s): {missing}"
+        )
+
+
+def test_agent_gates_trigger_on_canonical_verify_test_inputs() -> None:
+    """A verifier test change must schedule the workflow that consumes it."""
+    canonical_tests = _canonical_verify_test_inputs()
+    assert canonical_tests, "canonical_verify.sh references no test inputs"
+
+    for event_name in ("push", "pull_request"):
+        paths = _workflow_event_paths(event_name)
+        missing = sorted(
+            path for path in canonical_tests if not _path_is_covered(path, paths)
+        )
+        assert not missing, (
+            f"agent_execution_gates.yml {event_name} does not trigger on "
+            f"canonical verifier test input(s): {missing}"
         )
