@@ -505,6 +505,29 @@ describe("UnifiedSearch — M3 every result opens via openDocument", () => {
     });
   });
 
+  it("renders same-chunk local hits from different documents with stable keys", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    corpusSearchMock.mockResolvedValue({
+      query: "shared chunk",
+      hits: [
+        hit({ chunk_id: "shared-c1", document_id: "doc-a", document_title: "First Book" }),
+        hit({ chunk_id: "shared-c1", document_id: "doc-b", document_title: "Second Book" }),
+      ],
+      count: 2,
+    });
+
+    renderSearch();
+    fireEvent.change(screen.getByLabelText("Unified search"), { target: { value: "shared chunk" } });
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(await screen.findByText("First Book")).toBeTruthy();
+    expect(screen.getByText("Second Book")).toBeTruthy();
+    expect(errorSpy.mock.calls.flat().join("\n")).not.toContain(
+      "Encountered two children with the same key",
+    );
+    errorSpy.mockRestore();
+  });
+
   it.each([
     { page_index: 4.5, label: "fractional" },
     { page_index: 9007199254740992, label: "unsafe" },

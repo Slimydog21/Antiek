@@ -102,10 +102,15 @@ function safeCorpusSearchResponse(value: unknown, fallbackQuery: string): Corpus
   if (!body) {
     throw new Error("Malformed corpus search response.");
   }
+  const seen = new Set<string>();
   const hits = Array.isArray(body.hits)
     ? body.hits.flatMap((item) => {
         const hit = sanitizeHit(item);
-        return hit ? [hit] : [];
+        if (!hit) return [];
+        const key = `${hit.document_id}\u0000${hit.chunk_id}`;
+        if (seen.has(key)) return [];
+        seen.add(key);
+        return [hit];
       })
     : [];
   return {
