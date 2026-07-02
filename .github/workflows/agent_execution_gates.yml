@@ -11,7 +11,9 @@ on:
       - 'docs/operator_gate_actions.md'
       - 'docs/master-product-spec.md'
       - 'docs/engineering_deferrals.md'
+      - 'specs/activation/**'
       - 'tools/agent/**'
+      - 'tools/activation/read_dogfood.py'
       - 'scripts/canonical_verify.sh'
       - 'scripts/repro_cascade_decompose_contract.py'
       - 'scripts/audit_decomposer_call_sites.sh'
@@ -117,6 +119,7 @@ on:
       - 'tests/test_agent_ams_ref_lint.py'
       - 'tests/test_invariant_registry_meta.py'
       - 'tests/test_provenance_ref_lint.py'
+      - 'tests/test_read_activation_dogfood.py'
       - '.github/workflows/agent_execution_gates.yml'
   pull_request:
     branches: [main]
@@ -125,7 +128,9 @@ on:
       - 'docs/operator_gate_actions.md'
       - 'docs/master-product-spec.md'
       - 'docs/engineering_deferrals.md'
+      - 'specs/activation/**'
       - 'tools/agent/**'
+      - 'tools/activation/read_dogfood.py'
       - 'scripts/canonical_verify.sh'
       - 'scripts/repro_cascade_decompose_contract.py'
       - 'scripts/audit_decomposer_call_sites.sh'
@@ -231,6 +236,7 @@ on:
       - 'tests/test_agent_ams_ref_lint.py'
       - 'tests/test_invariant_registry_meta.py'
       - 'tests/test_provenance_ref_lint.py'
+      - 'tests/test_read_activation_dogfood.py'
       - '.github/workflows/agent_execution_gates.yml'
   workflow_dispatch:
 
