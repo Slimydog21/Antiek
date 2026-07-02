@@ -15,6 +15,12 @@ function assertNonNegativeSafeInteger(value: number, field: string): void {
   }
 }
 
+function assertPositiveSafeInteger(value: number, field: string): void {
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new RangeError(`${field} must be a positive safe integer`);
+  }
+}
+
 export type Servability =
   | "public_domain"
   | "platform_authored"
@@ -384,6 +390,11 @@ function requireNonEmptyRequestString(value: unknown, field: string): string {
   return text;
 }
 
+function sanitizeOptionalRequestStringArray(value: unknown): string[] | undefined {
+  const strings = safeStringArray(value);
+  return strings.length > 0 ? strings : undefined;
+}
+
 function safeStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
@@ -537,11 +548,13 @@ function safeCurateResponse(value: unknown, fallbackPrompt: string): CurateRespo
  * to the prompt — a gated book is never curated into a readable list.
  * Returns 503 if the embedding model isn't available server-side. */
 export async function curateBooks(prompt: string, limit = 20): Promise<CurateResponse> {
-  const params = new URLSearchParams({ prompt, limit: String(limit) });
+  const resolvedPrompt = requireNonEmptyRequestString(prompt, "prompt");
+  assertPositiveSafeInteger(limit, "limit");
+  const params = new URLSearchParams({ prompt: resolvedPrompt, limit: String(limit) });
   const resp = await apiFetch(`${API_BASE}/books/curate?${params.toString()}`);
   if (resp.status === 503) throw new Error("Curation is temporarily unavailable.");
   if (!resp.ok) throw new Error(`GET /books/curate: HTTP ${resp.status}`);
-  return safeCurateResponse(await resp.json(), prompt);
+  return safeCurateResponse(await resp.json(), resolvedPrompt);
 }
 
 // ── SPR-08 M2: talk-to-book (multi-turn, page-cited) ──────────────────
@@ -719,10 +732,20 @@ function safeMetaReadingResponse(value: unknown): MetaReadingResponse {
 export async function generateMetaReading(
   req: MetaReadingRequest,
 ): Promise<MetaReadingResponse> {
+  const body: MetaReadingRequest = {
+    prompt: requireNonEmptyRequestString(req.prompt, "prompt"),
+    length_unit: req.length_unit === "minutes" ? "minutes" : "pages",
+    length_amount: req.length_amount,
+    research_tier: req.research_tier === "fast" ? "fast" : "deep",
+    corpus_scope: req.corpus_scope === "soft" ? "soft" : "hard",
+  };
+  assertPositiveSafeInteger(body.length_amount, "length_amount");
+  const documentIds = sanitizeOptionalRequestStringArray(req.document_ids);
+  if (documentIds) body.document_ids = documentIds;
   const resp = await apiFetch(`${API_BASE}/corpus/meta-reading`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ research_tier: "deep", corpus_scope: "hard", ...req }),
+    body: JSON.stringify(body),
   });
   if (resp.status === 422) {
     const body = record(await resp.json().catch(() => null));
