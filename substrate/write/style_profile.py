@@ -1,9 +1,9 @@
 """Prompt-level style conditioning (specs/write/ SPR-09).
 
-The operator's thesis: a writer's last-mile edits reveal their style, so
-future generation can offer a *selectable* style that produces similar
-prose. Per the Q1 decision, v1 does the **capture + prompt-level
-conditioning** half now and **defers training** to the gated Loop-3 track.
+The operator's thesis: a writer's last-mile edits reveal their style. The
+shipped v1 offers a selectable prompt-level style by retrieving exemplars and
+injecting them into ``creative_writer``; it **defers training** to the gated
+Loop-3 track.
 
 This module is the prompt-level half, and the honesty discipline is the
 whole point:
