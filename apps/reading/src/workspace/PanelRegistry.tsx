@@ -97,8 +97,7 @@ export const PanelRegistry: Record<PanelKind, Renderer> = {
   // S10 row 10.14 — Replay step timeline panel
   ReplayStepList: lazy(() => import("../modes/Replay/ReplayStepList")),
 
-  // S10 row 10.10 — Interview tri-pane panels
-  InterviewRecording: lazy(() => import("../modes/Interview/InterviewRecording")),
+  // S10 row 10.10 — retired Interview panels that do not post audio.
   InterviewTranscript: lazy(() => import("../modes/Interview/InterviewTranscript")),
   InterviewNotes: lazy(() => import("../modes/Interview/InterviewNotes")),
 
