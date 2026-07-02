@@ -42,6 +42,18 @@ def _matrix_canonical_commands() -> set[str]:
     return set(re.findall(r"canonical_verify\.sh ([a-z0-9-]+)", text))
 
 
+def _matrix_literal_file_refs() -> set[str]:
+    text = MATRIX.read_text(encoding="utf-8")
+    refs = set(re.findall(r"`([^`]+\.(?:md|py|ts|tsx))`", text))
+    return {
+        ref
+        for ref in refs
+        if not ref.startswith(("./", "pytest ", "canonical_verify.sh "))
+        and " " not in ref
+        and "<" not in ref
+    }
+
+
 def _script_canonical_commands() -> set[str]:
     text = CANONICAL_VERIFY.read_text(encoding="utf-8")
     return set(re.findall(r"^\s*([a-z0-9-]+)\)\s+cmd_", text, re.MULTILINE))
@@ -103,6 +115,17 @@ def test_platform_matrix_row_ids_are_contiguous() -> None:
     row_numbers = [int(n) for n in re.findall(r"^\| P-(\d{2}) \|", text, re.MULTILINE)]
 
     assert row_numbers == list(range(1, len(row_numbers) + 1))
+
+
+def test_platform_matrix_literal_file_refs_exist() -> None:
+    missing = sorted(
+        ref for ref in _matrix_literal_file_refs() if not (ROOT / ref).exists()
+    )
+
+    assert not missing, (
+        "PLATFORM_EXEC_MATRIX.md names literal file ref(s) that do not exist "
+        f"from repo root: {missing}"
+    )
 
 
 def test_unified_substrate_lock_row_names_invariant_registry_when_verified() -> None:
