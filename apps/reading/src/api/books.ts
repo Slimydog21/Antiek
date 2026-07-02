@@ -224,7 +224,8 @@ export async function listBooks(status: CorpusStatus = "servable"): Promise<Book
 }
 
 export async function getBook(documentId: string): Promise<BookDetail> {
-  const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}`);
+  const resolvedDocumentId = requireNonEmptyRequestString(documentId, "documentId");
+  const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(resolvedDocumentId)}`);
   if (resp.status === 404) throw new Error("book_not_found");
   if (!resp.ok) throw new Error(`GET /books/{id}: HTTP ${resp.status}`);
   return safeBookDetail(await resp.json());
@@ -233,8 +234,9 @@ export async function getBook(documentId: string): Promise<BookDetail> {
 /** Fetch the body the gate permits: full text for servable books, a
  * bounded snippet for gated books, nothing for taken-down books. */
 export async function getBookFullText(documentId: string): Promise<FullTextResponse> {
+  const resolvedDocumentId = requireNonEmptyRequestString(documentId, "documentId");
   const resp = await apiFetch(
-    `${API_BASE}/books/${encodeURIComponent(documentId)}/full-text`,
+    `${API_BASE}/books/${encodeURIComponent(resolvedDocumentId)}/full-text`,
   );
   if (resp.status === 404) throw new Error("book_not_found");
   if (!resp.ok) throw new Error(`GET /books/{id}/full-text: HTTP ${resp.status}`);
@@ -427,11 +429,14 @@ export async function recordAdImpressions(
     .map((item) => sanitizeImpression(item))
     .filter((item): item is ImpressionItem => item !== null);
   if (safeImpressions.length === 0) return;
+  const resolvedDocumentId = nonEmptyString(documentId);
+  const resolvedSessionId = nonEmptyString(sessionId);
+  if (!resolvedDocumentId || !resolvedSessionId) return;
   try {
-    await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/ad-impressions`, {
+    await apiFetch(`${API_BASE}/books/${encodeURIComponent(resolvedDocumentId)}/ad-impressions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: sessionId, impressions: safeImpressions }),
+      body: JSON.stringify({ session_id: resolvedSessionId, impressions: safeImpressions }),
       keepalive: true, // survive a page-unload flush
     });
   } catch {
@@ -475,9 +480,10 @@ export async function spinResearch(
   pageIndex: number,
   passageText?: string,
 ): Promise<SpinResearchResponse> {
+  const resolvedDocumentId = requireNonEmptyRequestString(documentId, "documentId");
   assertNonNegativeSafeInteger(pageIndex, "page_index");
-  const safePassageText = passageText?.trim() || null;
-  const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/spin-research`, {
+  const safePassageText = nullableString(passageText);
+  const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(resolvedDocumentId)}/spin-research`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ page_index: pageIndex, passage_text: safePassageText }),
@@ -623,11 +629,13 @@ export async function askBook(
   question: string,
   opts?: { history?: TalkTurn[]; researchTier?: "fast" | "deep" },
 ): Promise<AskBookResponse> {
-  const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(documentId)}/ask`, {
+  const resolvedDocumentId = requireNonEmptyRequestString(documentId, "documentId");
+  const resolvedQuestion = requireNonEmptyRequestString(question, "question");
+  const resp = await apiFetch(`${API_BASE}/books/${encodeURIComponent(resolvedDocumentId)}/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      question,
+      question: resolvedQuestion,
       history: opts?.history ?? [],
       research_tier: opts?.researchTier ?? "deep",
     }),
@@ -926,14 +934,15 @@ function safeFileSuggestionResponse(
 export async function getFileSuggestion(
   documentId: string,
 ): Promise<FileSuggestionResponse> {
-  const params = new URLSearchParams({ document_id: documentId });
+  const resolvedDocumentId = requireNonEmptyRequestString(documentId, "documentId");
+  const params = new URLSearchParams({ document_id: resolvedDocumentId });
   const resp = await apiFetch(`${API_BASE}/meta-readings/file-suggestion?${params.toString()}`);
   if (resp.status === 503) {
     // Embedder unavailable — no suggestion, not an error the surface surfaces.
-    return { document_id: documentId, matches: [] };
+    return { document_id: resolvedDocumentId, matches: [] };
   }
   if (!resp.ok) throw new Error(`GET /meta-readings/file-suggestion: HTTP ${resp.status}`);
-  return safeFileSuggestionResponse(await resp.json(), documentId);
+  return safeFileSuggestionResponse(await resp.json(), resolvedDocumentId);
 }
 
 export interface SavedMetaReading {
@@ -972,8 +981,9 @@ function safeSavedMetaReading(value: unknown): SavedMetaReading {
 /** Re-open a saved meta-reading asset by id (Read SPR-13 M1 — opens back into
  * the meta-doc view). Reads the saved event off the log. */
 export async function getSavedMetaReading(assetId: string): Promise<SavedMetaReading> {
-  const resp = await apiFetch(`${API_BASE}/meta-readings/${encodeURIComponent(assetId)}`);
-  if (resp.status === 404) throw new Error(`Saved reading ${assetId} not found.`);
+  const resolvedAssetId = requireNonEmptyRequestString(assetId, "assetId");
+  const resp = await apiFetch(`${API_BASE}/meta-readings/${encodeURIComponent(resolvedAssetId)}`);
+  if (resp.status === 404) throw new Error(`Saved reading ${resolvedAssetId} not found.`);
   if (!resp.ok) throw new Error(`GET /meta-readings/{id}: HTTP ${resp.status}`);
   return safeSavedMetaReading(await resp.json());
 }
