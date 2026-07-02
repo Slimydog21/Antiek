@@ -100,11 +100,38 @@ const VOICE_STATE: Record<string, VoiceState> = {
   incomplete: "unfinished",
 };
 
-export function requireNonEmptyField(value: unknown, field: string): string {
-  if (typeof value !== "string") {
-    throw new TypeError(`${field} must be a non-empty string`);
-  }
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
   const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nonNegativeSafeInteger(value: unknown): number | null {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const text = nonEmptyString(item);
+    return text ? [text] : [];
+  });
+}
+
+export function requireNonEmptyField(value: unknown, field: string): string {
+  const trimmed = nonEmptyString(value);
   if (!trimmed) {
     throw new TypeError(`${field} must be a non-empty string`);
   }
@@ -112,23 +139,22 @@ export function requireNonEmptyField(value: unknown, field: string): string {
 }
 
 export function toPerson(raw: Record<string, unknown>): RememberedPerson {
-  const subject = typeof raw.subject_ref === "string" ? raw.subject_ref : null;
-  const title = typeof raw.title === "string" ? raw.title : "";
-  const publish = typeof raw.publish_intent === "string" ? raw.publish_intent : "";
-  const count = typeof raw.interview_count === "number" ? raw.interview_count : 0;
+  const subject = nonEmptyString(raw.subject_ref);
+  const title = nonEmptyString(raw.title) ?? "Untitled story";
+  const publish = nonEmptyString(raw.publish_intent) ?? "";
   return {
     id: requireNonEmptyField(raw.project_id, "project_id"),
     name: subject ?? title,
     willBePublic: publish === "will_be_public",
-    voiceCount: count,
+    voiceCount: nonNegativeSafeInteger(raw.interview_count) ?? 0,
   };
 }
 
 export function toProjectDetail(raw: Record<string, unknown>): ProjectDetail {
-  const subject = typeof raw.subject_ref === "string" ? raw.subject_ref : null;
-  const title = typeof raw.title === "string" ? raw.title : "";
-  const publish = typeof raw.publish_intent === "string" ? raw.publish_intent : "";
-  const status = typeof raw.subject_status === "string" ? raw.subject_status : "";
+  const subject = nonEmptyString(raw.subject_ref);
+  const title = nonEmptyString(raw.title) ?? "Untitled story";
+  const publish = nonEmptyString(raw.publish_intent) ?? "";
+  const status = nonEmptyString(raw.subject_status) ?? "";
   return {
     id: requireNonEmptyField(raw.project_id, "project_id"),
     name: subject ?? title,
@@ -140,28 +166,26 @@ export function toProjectDetail(raw: Record<string, unknown>): ProjectDetail {
 
 export function toEconomics(raw: Record<string, unknown>): EconomicsView {
   return {
-    splitApplies: Boolean(raw.split_applies),
-    creatorCarriesCost: Boolean(raw.creator_carries_cost),
+    splitApplies: raw.split_applies === true,
+    creatorCarriesCost: raw.creator_carries_cost === true,
     // Read-only gate state. The backend denies by default; the UI shows
     // these gated and never offers a way to close them.
-    publicPublishingAllowed: Boolean(raw.public_publishing_allowed),
-    publicPublishingReason:
-      typeof raw.public_publishing_reason === "string" ? raw.public_publishing_reason : "",
-    disbursementAllowed: Boolean(raw.disbursement_allowed),
-    disbursementReason:
-      typeof raw.disbursement_reason === "string" ? raw.disbursement_reason : "",
+    publicPublishingAllowed: raw.public_publishing_allowed === true,
+    publicPublishingReason: nonEmptyString(raw.public_publishing_reason) ?? "",
+    disbursementAllowed: raw.disbursement_allowed === true,
+    disbursementReason: nonEmptyString(raw.disbursement_reason) ?? "",
   };
 }
 
 export function toVoice(raw: Record<string, unknown>): ArrivingVoice {
-  const email = typeof raw.informant_email === "string" ? raw.informant_email : null;
-  const handle = typeof raw.informant_handle === "string" ? raw.informant_handle : null;
-  const status = typeof raw.status === "string" ? raw.status : "invited";
+  const email = nonEmptyString(raw.informant_email);
+  const handle = nonEmptyString(raw.informant_handle);
+  const status = nonEmptyString(raw.status) ?? "invited";
   return {
     interviewId: requireNonEmptyField(raw.interview_id, "interview_id"),
     who: email ?? handle ?? "Someone you invited",
     state: VOICE_STATE[status] ?? "invited",
-    link: typeof raw.link === "string" ? raw.link : "",
+    link: nonEmptyString(raw.link) ?? "",
   };
 }
 
@@ -172,16 +196,31 @@ export function toAgreementKind(label: string): AgreementPoint["kind"] {
   return "single";
 }
 
+function toAgreementPoint(raw: Record<string, unknown>): AgreementPoint | null {
+  const label = nonEmptyString(raw.label) ?? "";
+  const text =
+    nonEmptyString(raw.canonical_text) ??
+    (label ? label.replace(/_/g, " ") : null);
+  if (!text) return null;
+  return {
+    text,
+    kind: toAgreementKind(label),
+    voices: nonNegativeSafeInteger(raw.independent_attesters) ?? 1,
+  };
+}
+
 // ── calls ──────────────────────────────────────────────────────────────
 
 export async function listPeople(): Promise<RememberedPerson[]> {
   const resp = await apiFetch("/speak/projects");
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const data = await resp.json();
-  const rows: Record<string, unknown>[] = Array.isArray(data.projects) ? data.projects : [];
+  const body = record(data);
+  const rows = Array.isArray(body?.projects) ? body.projects : [];
   return rows.flatMap((row) => {
     try {
-      return [toPerson(row)];
+      const item = record(row);
+      return item ? [toPerson(item)] : [];
     } catch {
       return [];
     }
@@ -204,10 +243,12 @@ export async function listVoices(id: string): Promise<ArrivingVoice[]> {
   const resp = await apiFetch(`/speak/projects/${encodeURIComponent(id)}/invites`);
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const data = await resp.json();
-  const rows: Record<string, unknown>[] = Array.isArray(data.invites) ? data.invites : [];
+  const body = record(data);
+  const rows = Array.isArray(body?.invites) ? body.invites : [];
   return rows.flatMap((row) => {
     try {
-      return [toVoice(row)];
+      const item = record(row);
+      return item ? [toVoice(item)] : [];
     } catch {
       return [];
     }
@@ -250,13 +291,13 @@ export async function whatEveryoneAgreesOn(id: string): Promise<AgreementPoint[]
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const data = await resp.json();
-  const clusters: Record<string, unknown>[] = Array.isArray(data.clusters) ? data.clusters : [];
-  return clusters.map((c) => ({
-    text: typeof c.canonical_text === "string" ? c.canonical_text
-      : typeof c.label === "string" ? String(c.label).replace(/_/g, " ") : "",
-    kind: toAgreementKind(typeof c.label === "string" ? c.label : ""),
-    voices: typeof c.independent_attesters === "number" ? c.independent_attesters : 1,
-  }));
+  const body = record(data);
+  const clusters = Array.isArray(body?.clusters) ? body.clusters : [];
+  return clusters.flatMap((cluster) => {
+    const item = record(cluster);
+    const point = item ? toAgreementPoint(item) : null;
+    return point ? [point] : [];
+  });
 }
 
 export interface AssembledDraft {
@@ -278,8 +319,11 @@ export async function assembleDraft(id: string, isPublic: boolean): Promise<Asse
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const data = await resp.json();
-  const excluded = Array.isArray(data.excluded_claim_ids) ? data.excluded_claim_ids.length : 0;
-  return { prose: typeof data.prose_text === "string" ? data.prose_text : "", excludedCount: excluded };
+  const body = record(data);
+  return {
+    prose: nonEmptyString(body?.prose_text) ?? "",
+    excludedCount: stringArray(body?.excluded_claim_ids).length,
+  };
 }
 
 /**
@@ -291,19 +335,20 @@ export async function listPublicFeed(): Promise<FeedItem[]> {
   const resp = await apiFetch("/speak/feed");
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const data = await resp.json();
-  const rows: Record<string, unknown>[] = Array.isArray(data.projects) ? data.projects : [];
+  const body = record(data);
+  const rows = Array.isArray(body?.projects) ? body.projects : [];
   return rows.flatMap((r) => {
     try {
+      const row = record(r);
+      if (!row) return [];
       return [
         {
-          id: requireNonEmptyField(r.project_id, "project_id"),
+          id: requireNonEmptyField(row.project_id, "project_id"),
           name:
-            typeof r.subject_ref === "string" && r.subject_ref
-              ? r.subject_ref
-              : typeof r.title === "string"
-                ? r.title
-                : "",
-          voiceCount: typeof r.interview_count === "number" ? r.interview_count : 0,
+            nonEmptyString(row.subject_ref) ??
+            nonEmptyString(row.title) ??
+            "Untitled story",
+          voiceCount: nonNegativeSafeInteger(row.interview_count) ?? 0,
         },
       ];
     } catch {
@@ -341,11 +386,12 @@ export async function releasePayout(
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const data = await resp.json();
+  const body = record(data);
   return {
-    spentUsd: typeof data.spent_usd === "string" ? data.spent_usd : "0",
-    budgetUsd: typeof data.budget_usd === "string" ? data.budget_usd : "0",
-    budgetExhausted: Boolean(data.budget_exhausted),
-    cappedCount: Array.isArray(data.capped_interview_ids) ? data.capped_interview_ids.length : 0,
+    spentUsd: nonEmptyString(body?.spent_usd) ?? "0",
+    budgetUsd: nonEmptyString(body?.budget_usd) ?? "0",
+    budgetExhausted: body?.budget_exhausted === true,
+    cappedCount: stringArray(body?.capped_interview_ids).length,
   };
 }
 

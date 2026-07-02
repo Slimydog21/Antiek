@@ -2,14 +2,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { apiFetch } from "./api";
 import {
+  assembleDraft,
   createBiography,
   createPerson,
+  getEconomics,
   getProject,
   inviteByEmail,
   listPeople,
   listPublicFeed,
   listVoices,
   makeShareLink,
+  releasePayout,
+  whatEveryoneAgreesOn,
 } from "./speakApi";
 
 vi.mock("./api", () => ({
@@ -130,9 +134,15 @@ describe("Speak project lists", () => {
         projects: [
           {
             project_id: " proj-private ",
-            subject_ref: "Maria",
+            subject_ref: "  Maria  ",
             publish_intent: "private_never_published",
-            interview_count: 2,
+            interview_count: "2",
+          },
+          {
+            project_id: "proj-title",
+            title: "  Fallback title  ",
+            publish_intent: "will_be_public",
+            interview_count: -1,
           },
           {
             project_id: " ",
@@ -151,6 +161,12 @@ describe("Speak project lists", () => {
         willBePublic: false,
         voiceCount: 2,
       },
+      {
+        id: "proj-title",
+        name: "Fallback title",
+        willBePublic: true,
+        voiceCount: 0,
+      },
     ]);
   });
 
@@ -160,8 +176,13 @@ describe("Speak project lists", () => {
         projects: [
           {
             project_id: " proj-public ",
-            subject_ref: "Rosa",
-            interview_count: 3,
+            subject_ref: "  Rosa  ",
+            interview_count: "3",
+          },
+          {
+            project_id: "proj-title",
+            title: "  Public title  ",
+            interview_count: 1.5,
           },
           {
             project_id: "",
@@ -177,6 +198,11 @@ describe("Speak project lists", () => {
         id: "proj-public",
         name: "Rosa",
         voiceCount: 3,
+      },
+      {
+        id: "proj-title",
+        name: "Public title",
+        voiceCount: 0,
       },
     ]);
   });
@@ -194,6 +220,45 @@ describe("Speak project lists", () => {
       "project_id must be a non-empty string",
     );
   });
+
+  it("sanitizes project detail and economics booleans without truthy-string activation", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        project_id: " proj-1 ",
+        subject_ref: " ",
+        title: "  Rosa's story  ",
+        publish_intent: "will_be_public",
+        subject_status: "living_subject",
+      }),
+    );
+
+    await expect(getProject("proj-1")).resolves.toEqual({
+      id: "proj-1",
+      name: "Rosa's story",
+      willBePublic: true,
+      subjectStatusWord: "living subject",
+    });
+
+    apiFetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        split_applies: "true",
+        creator_carries_cost: true,
+        public_publishing_allowed: "yes",
+        public_publishing_reason: "  waits on counsel  ",
+        disbursement_allowed: false,
+        disbursement_reason: "  gated  ",
+      }),
+    );
+
+    await expect(getEconomics("proj-1")).resolves.toEqual({
+      splitApplies: false,
+      creatorCarriesCost: true,
+      publicPublishingAllowed: false,
+      publicPublishingReason: "waits on counsel",
+      disbursementAllowed: false,
+      disbursementReason: "gated",
+    });
+  });
 });
 
 describe("Speak invites", () => {
@@ -203,9 +268,15 @@ describe("Speak invites", () => {
         invites: [
           {
             interview_id: " iv-valid ",
-            informant_email: "aunt@example.com",
+            informant_email: "  aunt@example.com  ",
             status: "completed",
-            link: "https://antiek.ai/speak/invite/ok",
+            link: "  https://antiek.ai/speak/invite/ok  ",
+          },
+          {
+            interview_id: "iv-handle",
+            informant_handle: "  family friend  ",
+            status: "nonsense",
+            link: null,
           },
           {
             interview_id: " ",
@@ -223,6 +294,12 @@ describe("Speak invites", () => {
         who: "aunt@example.com",
         state: "shared",
         link: "https://antiek.ai/speak/invite/ok",
+      },
+      {
+        interviewId: "iv-handle",
+        who: "family friend",
+        state: "invited",
+        link: "",
       },
     ]);
   });
@@ -255,5 +332,91 @@ describe("Speak invites", () => {
     await expect(makeShareLink("proj-1")).rejects.toThrow(
       "link must be a non-empty string",
     );
+  });
+});
+
+describe("Speak synthesis and payout boundaries", () => {
+  it("sanitizes agreement clusters without saying malformed claims are proven", async () => {
+    apiFetchMock.mockResolvedValue(
+      jsonResponse({
+        clusters: [
+          {
+            canonical_text: "  Everyone remembers the bakery.  ",
+            label: "multiply_attested",
+            independent_attesters: "2",
+          },
+          {
+            canonical_text: "",
+            label: "contradicted",
+            independent_attesters: -1,
+          },
+          {
+            label: "single_pass",
+            independent_attesters: 1.5,
+          },
+          {
+            canonical_text: "",
+            label: "",
+          },
+        ],
+      }),
+    );
+
+    await expect(whatEveryoneAgreesOn("proj-1")).resolves.toEqual([
+      {
+        text: "Everyone remembers the bakery.",
+        kind: "corroborated",
+        voices: 2,
+      },
+      {
+        text: "contradicted",
+        kind: "disagreement",
+        voices: 1,
+      },
+      {
+        text: "single pass",
+        kind: "single",
+        voices: 1,
+      },
+    ]);
+  });
+
+  it("sanitizes biography draft text and excluded claim counts", async () => {
+    apiFetchMock.mockResolvedValue(
+      jsonResponse({
+        prose_text: "  Drafted life story.  ",
+        excluded_claim_ids: [" c1 ", "", 7, "c2"],
+      }),
+    );
+
+    await expect(assembleDraft("proj-1", true)).resolves.toEqual({
+      prose: "Drafted life story.",
+      excludedCount: 2,
+    });
+  });
+
+  it("sanitizes release payout figures without truthy-string budget exhaustion", async () => {
+    apiFetchMock.mockResolvedValue(
+      jsonResponse({
+        spent_usd: " 3.25 ",
+        budget_usd: "",
+        budget_exhausted: "true",
+        capped_interview_ids: [" iv-1 ", "", 9, "iv-2"],
+      }),
+    );
+
+    await expect(
+      releasePayout("proj-1", {
+        informationGoal: "capture bakery story",
+        budgetUsd: "5",
+        perInterviewCapUsd: "1",
+        adRevenueUsd: "0",
+      }),
+    ).resolves.toEqual({
+      spentUsd: "3.25",
+      budgetUsd: "0",
+      budgetExhausted: false,
+      cappedCount: 2,
+    });
   });
 });
