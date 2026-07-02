@@ -3,9 +3,44 @@
 **Date:** 2026-05-25
 **Branch:** `read/wave-1-legal-spine`
 **Source spec:** `specs/read/` (9 sprints, 4 waves)
-**Status:** SPR-01 complete; SPR-05/06/08/09 **backend** complete; the four
-React-frontend sprints (SPR-02/03/04/07) are blocked on the unbuilt DRW
-shared reading surface.
+**Status:** Historical decision memo. The backend-first split below was true
+on 2026-05-25. It is now superseded by the current `reader/integration`
+state: the Read React surfaces landed on the shared reader route, and the
+canonical Read gates exercise them.
+
+## 2026-07 current state — blocker superseded
+
+The old "DRW frontend blocker" is closed in the current tree by the one-reader
+surface:
+
+- Library/browse mode is `apps/reading/src/modes/Library/` and opens work
+  through the canonical `/read/:documentId` route.
+- Book reader is `apps/reading/src/modes/Reading/index.tsx` (`BookReader`) and
+  mounts the shared reader host at `/read/:documentId`.
+- Reader ad rails and impression flushing are wired through
+  `apps/reading/src/modes/Reading/AdBorder.tsx`,
+  `apps/reading/src/modes/Reading/useReaderImpressions.ts`, and
+  `apps/reading/src/api/books.ts`.
+- Voice notes are wired through `apps/reading/src/modes/Reading/VoiceNote.tsx`.
+- Passage-to-research is wired through
+  `apps/reading/src/modes/Reading/ResearchThis.tsx`.
+- Conversational rabbit-hole UI is wired through
+  `apps/reading/src/modes/Reading/TalkToBook.tsx` and the reader companion
+  tests.
+
+Current proof commands:
+
+- `./scripts/canonical_verify.sh read-reader`
+- `./scripts/canonical_verify.sh read-ad-border`
+- `./scripts/canonical_verify.sh read-voice-notes`
+- `./scripts/canonical_verify.sh read-passage-research`
+
+The remaining live gaps are the ones named in the active platform matrix's
+`Default ### Not proved` column: browser/device visual QA, live provider
+latency/audio QA, and live advertiser/provider activation. They are no longer
+"React surface does not exist" blockers.
+
+The original memo follows for provenance.
 
 ## What's built (this session)
 
@@ -23,7 +58,7 @@ All reuse existing substrate rather than reinventing it: SPR-05/09 ride
 `substrate/books/serve.py` (the SPR-01 gate) + the existing
 `question.escalated_to_research` event.
 
-## The DRW frontend blocker (intellectual honesty)
+## Historical DRW frontend blocker (superseded)
 
 Read's README states it plainly: Read is **downstream of the Research
 (DRW) spec**, depending on **DRW SPR-10 — the shared reading surface** —
