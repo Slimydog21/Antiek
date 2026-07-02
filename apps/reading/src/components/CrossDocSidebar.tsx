@@ -1,10 +1,6 @@
 import { useMemo } from "react";
 
-import type {
-  CrossDocQuestionAnsweredPayload,
-  Event,
-  QuestionIdentifiedPayload,
-} from "../generated/types";
+import type { CrossDocQuestionAnsweredPayload, Event } from "../generated/types";
 
 interface CrossDocSidebarProps {
   events: Event[];
@@ -40,8 +36,8 @@ export default function CrossDocSidebar({
     const map = new Map<string, string>();
     for (const e of events) {
       if (e.action_type === "question.identified") {
-        const p = e.payload as QuestionIdentifiedPayload;
-        map.set(p.question_id, p.question_text);
+        const p = questionIdentifiedView(e.payload);
+        if (p) map.set(p.question_id, p.question_text);
       }
     }
     return map;
@@ -51,7 +47,8 @@ export default function CrossDocSidebar({
     () =>
       events.filter(
         (e): e is Event & { payload: CrossDocQuestionAnsweredPayload } =>
-          e.action_type === "cross_doc.question_answered",
+          e.action_type === "cross_doc.question_answered" &&
+          crossDocQuestionAnsweredView(e.payload) !== null,
       ),
     [events],
   );
@@ -75,14 +72,19 @@ export default function CrossDocSidebar({
           </div>
         ) : (
           <ul className="flex flex-col gap-2.5">
-            {links.map((e) => (
-              <CrossDocCard
-                key={e.event_id}
-                event={e}
-                questionText={questionTextById.get(e.payload.question_id)}
-                onCiteJump={onCiteJump}
-              />
-            ))}
+            {links.map((e) => {
+              const payload = crossDocQuestionAnsweredView(e.payload);
+              return (
+                <CrossDocCard
+                  key={e.event_id}
+                  event={e}
+                  questionText={
+                    payload ? questionTextById.get(payload.question_id) : undefined
+                  }
+                  onCiteJump={onCiteJump}
+                />
+              );
+            })}
           </ul>
         )}
       </div>
@@ -99,7 +101,8 @@ function CrossDocCard({
   questionText: string | undefined;
   onCiteJump?: (eventId: string) => void;
 }) {
-  const p = event.payload;
+  const p = crossDocQuestionAnsweredView(event.payload);
+  if (!p) return null;
   return (
     <li className="border border-violet-200 rounded-md bg-violet-50/30 px-3 py-2.5 flex flex-col gap-1.5">
       <div className="text-[10px] font-mono text-violet-700 uppercase tracking-wide">
@@ -143,4 +146,49 @@ function shortenId(id: string): string {
 
 function shortenDocId(id: string): string {
   return id.length > 12 ? id.slice(0, 12) + "…" : id;
+}
+
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function questionIdentifiedView(
+  payload: unknown,
+): { question_id: string; question_text: string } | null {
+  const p = record(payload);
+  if (!p || p.action_type !== "question.identified") return null;
+  const questionId = nonEmptyString(p.question_id);
+  const questionText = nonEmptyString(p.question_text);
+  return questionId && questionText
+    ? { question_id: questionId, question_text: questionText }
+    : null;
+}
+
+function crossDocQuestionAnsweredView(
+  payload: unknown,
+): CrossDocQuestionAnsweredPayload | null {
+  const p = record(payload);
+  if (!p || p.action_type !== "cross_doc.question_answered") return null;
+  const questionId = nonEmptyString(p.question_id);
+  const questionDocumentId = nonEmptyString(p.question_document_id);
+  const answerDocumentId = nonEmptyString(p.answer_document_id);
+  const answerNoteId = nonEmptyString(p.answer_note_id);
+  if (!questionId || !questionDocumentId || !answerDocumentId || !answerNoteId) {
+    return null;
+  }
+  return {
+    action_type: "cross_doc.question_answered",
+    question_id: questionId,
+    question_document_id: questionDocumentId,
+    answer_document_id: answerDocumentId,
+    answer_note_id: answerNoteId,
+  };
 }
