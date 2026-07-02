@@ -34,15 +34,65 @@ const STATUS_FILTERS = [
   "pending",
 ] as const;
 
-function nonNegativeFiniteNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
     : null;
 }
 
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function nonNegativeFiniteNumber(value: unknown): number | null {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function safeCents(value: unknown): number {
+  return Math.floor(nonNegativeFiniteNumber(value) ?? 0);
+}
+
 function centsToUsd(value: unknown): string {
-  const cents = nonNegativeFiniteNumber(value) ?? 0;
+  const cents = safeCents(value);
   return `$${(cents / 100).toFixed(2)}`;
+}
+
+function safePayoutRow(value: unknown): PayoutRow | null {
+  const row = record(value);
+  const transferAttemptId = nonEmptyString(row?.transfer_attempt_id);
+  const decisionId = nonEmptyString(row?.decision_id);
+  if (!row || !transferAttemptId || !decisionId) return null;
+  return {
+    transfer_attempt_id: transferAttemptId,
+    decision_id: decisionId,
+    stripe_transfer_id: nullableString(row.stripe_transfer_id),
+    recipient_account_id: nullableString(row.recipient_account_id),
+    amount_usd_cents: safeCents(row.amount_usd_cents),
+    status: nonEmptyString(row.status) ?? "pending",
+    note: nullableString(row.note),
+    initiated_at: nullableString(row.initiated_at),
+  };
+}
+
+function safePayoutRows(value: unknown): PayoutRow[] {
+  const body = record(value);
+  const transfers = Array.isArray(body?.transfers) ? body.transfers : [];
+  return transfers.flatMap((item) => {
+    const row = safePayoutRow(item);
+    return row ? [row] : [];
+  });
 }
 
 export default function PayoutsAudit() {
@@ -66,8 +116,7 @@ export default function PayoutsAudit() {
       if (!resp.ok) {
         throw new Error(`GET /payouts/transfers: HTTP ${resp.status}`);
       }
-      const data = await resp.json();
-      setRows(data.transfers ?? []);
+      setRows(safePayoutRows(await resp.json()));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -85,7 +134,7 @@ export default function PayoutsAudit() {
       const k = r.status;
       acc[k] = acc[k] ?? { count: 0, amount_cents: 0 };
       acc[k].count += 1;
-      acc[k].amount_cents += nonNegativeFiniteNumber(r.amount_usd_cents) ?? 0;
+      acc[k].amount_cents += safeCents(r.amount_usd_cents);
     }
     return acc;
   }, [rows]);
