@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 
 import { SceneChrome } from "./SceneChrome";
@@ -35,6 +35,18 @@ describe("SceneChrome Write actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "New piece" }));
 
     expect(screen.getByTestId("location").textContent).toBe("/write");
+  });
+});
+
+describe("SceneChrome Research tabs", () => {
+  it("labels the Research door as Research home, not a generic Workstation", () => {
+    renderAt("/");
+    const tabs = within(screen.getByRole("navigation", { name: "Research views" }));
+
+    expect(tabs.getByRole("button", { name: "Research home" })).toBeTruthy();
+    expect(tabs.getByRole("button", { name: "My research" })).toBeTruthy();
+    expect(tabs.getByRole("button", { name: "Outcomes" })).toBeTruthy();
+    expect(tabs.queryByRole("button", { name: "Workstation" })).toBeNull();
   });
 });
 
