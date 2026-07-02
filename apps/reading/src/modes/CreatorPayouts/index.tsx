@@ -43,13 +43,43 @@ interface CreatorPayouts {
   total_paid_cents: number;
 }
 
-const nonNegativeFiniteNumber = (value: unknown): number | null =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
     : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function nonNegativeFiniteNumber(value: unknown): number | null {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function safeCents(value: unknown): number {
+  return Math.floor(nonNegativeFiniteNumber(value) ?? 0);
+}
+
+function safeRolloverMonth(value: unknown): number | null {
+  const month = safeCents(value);
+  return month > 0 ? month : null;
+}
 
 const USD = (cents: unknown) =>
-  `$${((nonNegativeFiniteNumber(cents) ?? 0) / 100).toLocaleString(undefined, {
+  `$${(safeCents(cents) / 100).toLocaleString(undefined, {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -62,6 +92,55 @@ const STATUS_COLOR: Record<string, string> = {
   skipped_platform: "bg-ice-3 dark:bg-charcoal-1 text-ink-soft dark:text-starlight",
 };
 
+function safeTransfer(value: unknown): PayoutTransfer | null {
+  const transfer = record(value);
+  const transferAttemptId = nonEmptyString(transfer?.transfer_attempt_id);
+  if (!transfer || !transferAttemptId) return null;
+  return {
+    transfer_attempt_id: transferAttemptId,
+    stripe_transfer_id: nullableString(transfer.stripe_transfer_id),
+    amount_usd_cents: safeCents(transfer.amount_usd_cents),
+    status: nonEmptyString(transfer.status) ?? "pending",
+    initiated_at: nullableString(transfer.initiated_at),
+    note: nullableString(transfer.note),
+  };
+}
+
+function safeAccrualEntry(value: unknown): RolloverHistoryEntry | null {
+  const entry = record(value);
+  const at = nonEmptyString(entry?.at);
+  if (!entry || !at) return null;
+  return {
+    at,
+    kind: nonEmptyString(entry.kind) ?? "accrual",
+    cents: safeCents(entry.cents),
+  };
+}
+
+function safeCreatorPayouts(value: unknown): CreatorPayouts {
+  const body = record(value);
+  return {
+    user_id: nonEmptyString(body?.user_id) ?? "__operator__",
+    current_balance_cents: safeCents(body?.current_balance_cents),
+    minimum_payout_cents: safeCents(body?.minimum_payout_cents),
+    rollover_state: nonEmptyString(body?.rollover_state) ?? "accruing",
+    rollover_started_month: safeRolloverMonth(body?.rollover_started_month),
+    accrual_history: Array.isArray(body?.accrual_history)
+      ? body.accrual_history.flatMap((item) => {
+          const entry = safeAccrualEntry(item);
+          return entry ? [entry] : [];
+        })
+      : [],
+    transfers: Array.isArray(body?.transfers)
+      ? body.transfers.flatMap((item) => {
+          const transfer = safeTransfer(item);
+          return transfer ? [transfer] : [];
+        })
+      : [],
+    total_paid_cents: safeCents(body?.total_paid_cents),
+  };
+}
+
 export default function CreatorPayouts() {
   const [data, setData] = useState<CreatorPayouts | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +151,7 @@ export default function CreatorPayouts() {
       if (!resp.ok) {
         throw new Error(`GET /me/payouts failed: HTTP ${resp.status}`);
       }
-      setData(await resp.json());
+      setData(safeCreatorPayouts(await resp.json()));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
