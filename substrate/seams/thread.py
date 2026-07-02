@@ -78,9 +78,9 @@ class ThreadHop:
     """
 
     workflow: Workflow
-    # The entity AS REFERENCED on this hop — the same id the seam carried. The
-    # no-duplicate guard asserts ``entity_id`` is identical across the hops that
-    # carry the canonical entity (see ``assert_single_canonical_entity``).
+    # The entity AS REFERENCED on this hop — the same id the seam carried. Some
+    # hops carry the canonical entity itself; others carry a typed reference
+    # owned by the receiving workflow (for example an outline_block).
     entity_id: str
     entity_kind: EntityKind
     # The seam event id that produced this hop (the handoff into this workflow).
@@ -117,8 +117,8 @@ class Thread:
     ``hops`` is the ordered list of workflow touches (origin first). ``stubs``
     are workflows the trajectory references but that are not built; they are
     surfaced honestly, never faked into ``hops``. ``canonical_entity_id`` is the
-    single node id the thread is *about* — every hop that carries the canonical
-    entity references this exact id (the no-duplicate invariant).
+    single id the thread is *about* — every hop that carries the canonical
+    entity kind references this exact id (the no-duplicate invariant).
     """
 
     canonical_entity_id: str
@@ -357,14 +357,14 @@ def reconstruct_thread(
     # The hop carries the id THIS seam actually referenced (``hop_entity_id``) —
     # NOT a forced node_id. If a buggy seam copied the entity, the hop surfaces
     # the divergent id here and the no-duplicate guard fails on it (rigor #3).
-    for ev, action_type, _kind, provenance_ref, hop_entity_id in relevant:
+    for ev, action_type, hop_entity_kind, provenance_ref, hop_entity_id in relevant:
         _from, to_wf, is_provisional = _SEAM_ACTION_DIRECTION[action_type]
         hop_built = to_wf in built
         hops.append(
             ThreadHop(
                 workflow=to_wf,
                 entity_id=hop_entity_id if hop_entity_id is not None else node_id,
-                entity_kind=resolved_kind,
+                entity_kind=hop_entity_kind or resolved_kind,
                 seam_event_id=str(ev.get("event_id")) if ev.get("event_id") else None,
                 seam_action_type=action_type,
                 provenance_ref=provenance_ref,
@@ -396,10 +396,10 @@ def assert_single_canonical_entity(thread: Thread) -> None:
 
     Composes the SPR-03 ``tests/test_seam_no_copy.py::_assert_no_copy``
     same-node-id guarantee across a *whole* trajectory: every hop carrying the
-    canonical entity must reference the SAME node id. If any hop holds a
-    different id, a workflow is holding a copy/fork rather than the one node —
-    the breadcrumb would lie, and this assertion fails (rigor #3 — a copy must
-    fail the guard or the guard proves nothing).
+    canonical entity kind must reference the SAME id. Hops carrying typed
+    references owned by a workflow (for example ``outline_block`` on a
+    write→read trace) are valid lineage members, but they do not assert that the
+    outline block id equals the insight node id.
 
     A breadcrumb over copied entities is worse than no breadcrumb: it asserts a
     continuity that the data does not support (defensibility #5). This assertion
@@ -408,6 +408,13 @@ def assert_single_canonical_entity(thread: Thread) -> None:
     """
     canonical = thread.canonical_entity_id
     for hop in thread.hops:
+        if hop.entity_kind != thread.canonical_entity_kind:
+            assert hop.seam_event_id and hop.provenance_ref, (
+                f"thread hop {hop.workflow!r} references typed entity "
+                f"{hop.entity_kind!r}/{hop.entity_id!r} without seam provenance; "
+                "non-canonical reference hops must be chained by an emitted seam."
+            )
+            continue
         assert hop.entity_id == canonical, (
             f"thread holds a copy: canonical node_id={canonical!r} but the "
             f"{hop.workflow!r} hop references {hop.entity_id!r} — a different id "

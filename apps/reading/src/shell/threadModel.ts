@@ -2,8 +2,10 @@
  * threadModel.ts — the frontend mirror of the SPR-06 thread VIEW.
  *
  * A "thread" is one graph entity's trajectory across the four workflows
- * (Research / Read / Write / Speak), referenced by the SAME node id at every
- * hop — a copy is a provenance bug. These types mirror the server-side
+ * (Research / Read / Write / Speak). Hops that carry the canonical entity kind
+ * must reference the same id; hops that carry workflow-owned references (for
+ * example an outline_block) stay valid through seam provenance. These types
+ * mirror the server-side
  * `substrate/seams/thread.py` / `interfaces/research/api/thread.py`
  * `ThreadResponse`; the breadcrumb + jump render this shape.
  *
@@ -13,8 +15,7 @@
  */
 import type { Workflow } from "./workflowTaxonomy";
 
-/** One workflow's touch on the thread. `entityId` is the id the seam carried —
- *  the SAME canonical id at every hop (the no-duplicate invariant). */
+/** One workflow's touch on the thread. `entityId` is the id the seam carried. */
 export interface ThreadHop {
   workflow: Exclude<Workflow, "shared">;
   entityId: string;
@@ -86,13 +87,19 @@ export function threadFromWire(wire: ThreadResponseWire): Thread {
 /**
  * The client-side no-duplicate check (mirrors thread.py
  * `assert_single_canonical_entity`). The breadcrumb's warrant is that every hop
- * references the one canonical id; if the server ever served a forked thread
- * (it refuses to — 409), the UI ALSO refuses to render continuity it can't
- * support. Returns the offending hop's id if a copy is present, else null.
+ * carrying the canonical entity kind references the one canonical id; if the
+ * server ever served a forked canonical entity (it refuses to — 409), the UI
+ * ALSO refuses to render continuity it can't support. Returns the offending
+ * hop's id if a copy is present, else null.
  */
 export function findForkedHop(thread: Thread): string | null {
   for (const hop of thread.hops) {
-    if (hop.entityId !== thread.canonicalEntityId) return hop.entityId;
+    if (
+      hop.entityKind === thread.canonicalEntityKind &&
+      hop.entityId !== thread.canonicalEntityId
+    ) {
+      return hop.entityId;
+    }
   }
   return null;
 }
