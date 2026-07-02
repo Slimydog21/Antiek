@@ -37,3 +37,13 @@ describe("SceneChrome Write actions", () => {
     expect(screen.getByTestId("location").textContent).toBe("/write");
   });
 });
+
+describe("SceneChrome Read tabs", () => {
+  it("routes Library to the real Read shelf, not the PDF ingest surface", () => {
+    renderAt("/read/doc-1");
+
+    fireEvent.click(screen.getByRole("button", { name: "Library" }));
+
+    expect(screen.getByTestId("location").textContent).toBe("/library");
+  });
+});
