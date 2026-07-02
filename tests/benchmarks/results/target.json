@@ -1,0 +1,20 @@
+{
+  "paths": [
+    {
+      "name": "event_log_parquet_read",
+      "file": "substrate/event_log/events.py",
+      "function": "trajectory",
+      "line_range": "535-574",
+      "reason": "highest p95 from M4 report generated on 2026-06-30"
+    },
+    {
+      "name": "loop_3_rl_prep",
+      "file": "substrate/loop_3/verifiers_env.py",
+      "function": "build_env_from_trajectory",
+      "line_range": "101-116",
+      "reason": "second-highest p95 from M4 report generated on 2026-06-30"
+    }
+  ],
+  "generated_from": "tests/benchmarks/results/m4_report_20260630.md",
+  "date": "2026-06-30T00:00:00Z"
+}

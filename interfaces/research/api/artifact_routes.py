@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -13,8 +14,6 @@ if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
-from pathlib import Path
-
 from substrate.research_artifact import (  # noqa: E402
     export_research_artifact,
     import_agent_notes,

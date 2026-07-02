@@ -23,8 +23,9 @@ checklist with minimum inputs and an explicit owner.
 | G10 Stripe Press §9.10 publisher opt-in | ❌ open (operator BizDev) | The ONLY servable path for any in-copyright Stripe Press title; until granted, every Stripe Press title is gated/personal-read, never servable |
 | G11 X no-training constraint | ✅ enforced in code / ⏳ standing operator duty | Keeping ALL BYOK X content (`personal_reading`, `social_thread`) out of every training/RL export — X dev terms forbid training on X data |
 | G12 Bernays per-title copyright-renewal check | ❌ open (operator, per-title) | Making any 1927–1930 Bernays title servable — the in-copyright titles must NEVER be relabeled to a servable class without a per-title US renewal-records check |
+| G13 Auth diagnostic matrix | ✅ closed 2026-06-02 | Login failure triage now points to `docs/diagnostics/auth-failure-mode-matrix.md`; do not conflate Layer A transport with Layer B allowlist silence |
 
-**3 closed, 2 calendar/data-bound, 4 that need operator/counsel effort (G2, G3, G6, G9), plus 3 personal-reading-lane operator gate-actions (G10 Stripe Press, G11 X no-training, G12 Bernays renewal).**
+**4 closed, 2 calendar/data-bound, 4 that need operator/counsel effort (G2, G3, G6, G9), plus 3 personal-reading-lane operator gate-actions (G10 Stripe Press, G11 X no-training, G12 Bernays renewal).**
 
 ## Highest-leverage next action
 

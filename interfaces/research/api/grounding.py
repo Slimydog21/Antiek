@@ -33,6 +33,8 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Awaitable, Callable
+from typing import Any, cast
 
 # Direct import — interfaces/research/api/ depends on substrate.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -61,7 +63,7 @@ from substrate.schemas import (  # noqa: E402
     Event,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402 — after the sys.path bootstrap above
 
 # Top-K chunks to surface to the grounder. 5 is enough for a tight
 # decision; more dilutes the prompt and increases cost.
@@ -93,7 +95,7 @@ def _search_chunks_for_claim(
     claim_text: str,
     embedder: EmbeddingProvider,
     top_k: int = GROUNDING_SEARCH_TOP_K,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Read-side query against ``substrate.graph.search``. Scoped to
     ``document_id`` when set; spanning all chunks otherwise (the
     wrestling bridge always sets document_id, but the grounder
@@ -107,10 +109,10 @@ def _search_chunks_for_claim(
         )
     finally:
         con.close()
-    return result["results"]
+    return cast(list[dict[str, Any]], result["results"])
 
 
-def _render_chunks_for_prompt(chunks: list[dict]) -> str:
+def _render_chunks_for_prompt(chunks: list[dict[str, Any]]) -> str:
     """Format the search results for the grounder prompt. Each chunk
     gets a numbered entry with its chunk_id and full text excerpt so
     the model can quote it back."""
@@ -128,13 +130,15 @@ def _render_chunks_for_prompt(chunks: list[dict]) -> str:
 
 def _parse_grounder_response(
     text: str,
+    *,
+    canonical_chunk_ids: list[str] | None = None,
 ) -> tuple[bool, str | None, float, str | None]:
     """Back-compat shim. The real parser lives at
     ``roles.grounder.parse_grounder_response`` (Sprint 4 day 4-5
     extraction). Existing tests import this name + the tuple shape;
     keep the wrapper to avoid disturbing the test suite during the
     role-module promotion."""
-    v = parse_grounder_response(text)
+    v = parse_grounder_response(text, canonical_chunk_ids=canonical_chunk_ids)
     return v.grounded, v.located_chunk_id, v.confidence, v.reason
 
 
@@ -148,7 +152,7 @@ def make_grounding_handler(
     *,
     db_path: str | None = None,
     embedder: EmbeddingProvider | None = None,
-):
+) -> Callable[[Event], Awaitable[None]]:
     """Build the handler closed over a broadcaster + db path +
     embedder. Registered against ``ActionType.CLAIM_CHALLENGE_RAISED``;
     on fire it produces a passed/failed event and broadcasts it."""
@@ -259,7 +263,10 @@ def make_grounding_handler(
             return
 
         # 4. Parse + emit.
-        grounded, chunk_id, confidence, reason = _parse_grounder_response(response_text)
+        grounded, chunk_id, confidence, reason = _parse_grounder_response(
+            response_text,
+            canonical_chunk_ids=searched_chunk_ids,
+        )
 
         if grounded and chunk_id and chunk_id in searched_chunk_ids:
             await _emit_grounding_passed(

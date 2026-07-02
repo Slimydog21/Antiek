@@ -19,6 +19,5 @@
 
 ## Follow-ups (non-blocking)
 
-- Wire `windowsStore` / `panelLayoutLogic` to import cascade constants (drift guard)
 - Promote `feel-panels-cascade` into `e2e:ams` once Storybook boots in that project
 - Chase floating panel inherits S2 automatically via `PanelLayoutPanel` — no extra work needed

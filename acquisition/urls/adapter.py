@@ -482,7 +482,10 @@ def ingest_url(
 
         snap_path = reader_snapshot_path_for(document_id)
         ingested_at = datetime.now(UTC).isoformat()
-        raw_html = page.body
+        # ``FetchedHtml.body`` is declared ``bytes``, but the guard below
+        # tolerates duck-typed ``fetched=`` callers passing str — the union
+        # keeps that existing isinstance narrowing honest for mypy.
+        raw_html: str | bytes = page.body
         if isinstance(raw_html, bytes):
             raw_html = raw_html.decode(page.charset or "utf-8", errors="replace")
         snap_html = build_reader_snapshot(
