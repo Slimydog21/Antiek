@@ -68,6 +68,27 @@ function uniqueStringList(value: unknown): string[] {
   return Array.from(new Set(stringList(value)));
 }
 
+function safeEvents(events: Event[]): Event[] {
+  const seen = new Set<string>();
+  return events.flatMap((event) => {
+    const eventId = nonEmptyString(event.event_id);
+    if (eventId) {
+      if (seen.has(eventId)) return [];
+      seen.add(eventId);
+    }
+    return [event];
+  });
+}
+
+function eventKey(event: Event, index: number): string {
+  return [
+    nonEmptyString(event.event_id) ?? "missing-event-id",
+    nonEmptyString(event.action_type) ?? "unknown-action",
+    nonEmptyString(event.emitted_at) ?? "unknown-time",
+    index,
+  ].join(":");
+}
+
 function isClaimConfidence(value: unknown): value is Claim["confidence"] {
   return (
     value === "high" ||
@@ -143,30 +164,31 @@ export default function NotesPanel({
 }: NotesPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const openDocument = useOpenDocument();
+  const feedEvents = useMemo(() => safeEvents(events), [events]);
 
   const lastRegion = useMemo(
-    () => findLastSelectedRegion(events, documentId),
-    [events, documentId],
+    () => findLastSelectedRegion(feedEvents, documentId),
+    [feedEvents, documentId],
   );
 
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [events.length]);
+  }, [feedEvents.length]);
 
   const pendingRequestIds = useMemo(
-    () => findPendingRequestIds(events),
-    [events],
+    () => findPendingRequestIds(feedEvents),
+    [feedEvents],
   );
 
   const groundingByClaim = useMemo(
-    () => findGroundingByClaim(events),
-    [events],
+    () => findGroundingByClaim(feedEvents),
+    [feedEvents],
   );
 
   const selectedRegionPages = useMemo(
-    () => findSelectedRegionPages(events, documentId),
-    [events, documentId],
+    () => findSelectedRegionPages(feedEvents, documentId),
+    [feedEvents, documentId],
   );
 
   return (
@@ -176,15 +198,15 @@ export default function NotesPanel({
         <StatusBadge status={status} reconnects={reconnects} />
       </div>
       <div ref={scrollRef} className="flex-1 overflow-auto px-3 py-3">
-        {events.length === 0 ? (
+        {feedEvents.length === 0 ? (
           <div className="text-sm text-ink-mute dark:text-moonlight font-mono">
             no events yet — load a PDF, then ask or highlight.
           </div>
         ) : (
           <ul className="flex flex-col gap-2.5">
-            {events.map((e) => (
+            {feedEvents.map((e, index) => (
               <FeedRow
-                key={e.event_id}
+                key={eventKey(e, index)}
                 event={e}
                 isPending={
                   e.action_type === "distillation.requested" &&

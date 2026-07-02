@@ -60,9 +60,10 @@ const feedEvent = (
   actionType: string,
   payload: Record<string, unknown>,
   index: number,
+  eventId = `event-feed-${index}`,
 ): Event =>
   ({
-    event_id: `event-feed-${index}`,
+    event_id: eventId,
     investigation_id: "inv-1",
     document_id: "doc-1",
     action_type: actionType,
@@ -245,6 +246,46 @@ describe("NotesPanel", () => {
     expect(screen.getByText('selected p?: ""')).toBeTruthy();
     expect(screen.getByText("loaded document (? KB)")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/NaN|Infinity|undefined/);
+  });
+
+  it("dedupes replayed feed event ids before rendering rows", () => {
+    render(
+      <NotesPanel
+        events={[
+          feedEvent(
+            "document.loaded",
+            {
+              media_type: "application/pdf",
+              size_bytes: 2048,
+              title: "First loaded document",
+            },
+            1,
+            "event-replay",
+          ),
+          feedEvent(
+            "document.loaded",
+            {
+              media_type: "application/pdf",
+              size_bytes: 4096,
+              title: "Duplicate loaded document",
+            },
+            2,
+            "event-replay",
+          ),
+        ]}
+        status="open"
+        reconnects={0}
+        investigationId="inv-1"
+        documentId="doc-1"
+      />,
+    );
+
+    expect(
+      screen.getByText("loaded application/pdf (2 KB · First loaded document)"),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText("loaded application/pdf (4 KB · Duplicate loaded document)"),
+    ).toBeNull();
   });
 
   it("sanitizes malformed delivered payloads before rendering claim rows", () => {
