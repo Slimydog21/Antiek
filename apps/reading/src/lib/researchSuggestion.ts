@@ -17,6 +17,24 @@
 import { postTypedEvent, startInvestigation } from "./api";
 import { requireInvestigationId } from "./investigationData";
 
+function requireNonEmptyString(value: unknown, field: string): string {
+  if (typeof value !== "string") {
+    throw new TypeError(`${field} must be a non-empty string`);
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new TypeError(`${field} must be a non-empty string`);
+  }
+  return trimmed;
+}
+
+function requireNonNegativeFiniteNumber(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new RangeError(`${field} must be a non-negative finite number`);
+  }
+  return value;
+}
+
 export interface PromotionSuggestion {
   /** The investigation question the promotion would seed (the asset's prompt). */
   question: string;
@@ -156,18 +174,22 @@ export async function acceptFiling(args: {
   matchScore: number;
   question: string;
 }): Promise<FilingResult> {
+  const documentId = requireNonEmptyString(args.documentId, "documentId");
+  const investigationId = requireNonEmptyString(args.investigationId, "investigationId");
+  const question = requireNonEmptyString(args.question, "question");
+  const matchScore = requireNonNegativeFiniteNumber(args.matchScore, "matchScore");
   await postTypedEvent({
-    investigation_id: args.investigationId,
-    document_id: args.documentId,
+    investigation_id: investigationId,
+    document_id: documentId,
     payload: {
       action_type: "document.filed_into_investigation",
-      filed_document_id: args.documentId,
-      target_investigation_id: args.investigationId,
-      match_score: args.matchScore,
-      target_question: args.question,
+      filed_document_id: documentId,
+      target_investigation_id: investigationId,
+      match_score: matchScore,
+      target_question: question,
     },
     role: "read/personal_space",
     policy_id: "read/personal_space/file",
   });
-  return { investigation_id: args.investigationId };
+  return { investigation_id: investigationId };
 }
