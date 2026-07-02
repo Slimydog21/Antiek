@@ -44,7 +44,6 @@ import contextlib
 import os
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import Optional
 
 try:
     from substrate.event_log import log_event, seal_investigation
