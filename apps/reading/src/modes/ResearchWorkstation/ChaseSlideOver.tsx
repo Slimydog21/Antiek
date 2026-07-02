@@ -75,7 +75,7 @@ export default function ChaseSlideOver({ spawnContext, parentInvestigationId }: 
     return (
       <SpawnedTrajectory
         childId={spawnedId}
-        onOpenInMain={() => navigate(`/inv/${spawnedId}`)}
+        onOpenInMain={() => navigate(`/inv/${encodeURIComponent(spawnedId)}`)}
       />
     );
   }

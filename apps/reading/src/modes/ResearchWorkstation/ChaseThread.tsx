@@ -126,7 +126,7 @@ export default function ChaseThread({
     return (
       <LaunchedThread
         childId={launchedId}
-        onOpenInMain={() => navigate(`/inv/${launchedId}`)}
+        onOpenInMain={() => navigate(`/inv/${encodeURIComponent(launchedId)}`)}
       />
     );
   }

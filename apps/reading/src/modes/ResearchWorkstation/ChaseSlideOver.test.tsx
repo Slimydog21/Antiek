@@ -103,6 +103,25 @@ describe("ChaseSlideOver — floating chase panel contract", () => {
     expect(await screen.findByText("inv-child")).toBeTruthy();
   });
 
+  it("encodes the spawned child id before opening it in the main research view", async () => {
+    startInvestigationMock.mockResolvedValue({
+      investigation_id: " inv dirty/child ",
+      status: "in_progress",
+      start_event_id: "e1",
+    });
+
+    renderPanel({
+      spawnContext: "the original highlighted passage",
+      parentInvestigationId: "inv-parent",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Spawn investigation/i }));
+    await screen.findByText("inv dirty/child");
+    fireEvent.click(screen.getByRole("button", { name: /open in main view/i }));
+
+    expect(navigateMock).toHaveBeenCalledWith("/inv/inv%20dirty%2Fchild");
+  });
+
   it("surfaces malformed child investigation ids instead of recording a spawn", async () => {
     startInvestigationMock.mockResolvedValue({
       investigation_id: " ",
