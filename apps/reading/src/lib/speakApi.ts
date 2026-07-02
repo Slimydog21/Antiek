@@ -16,6 +16,7 @@
  * or "true". The label vocabulary the surface may say lives here.
  */
 import { apiFetch } from "./api";
+import { requireInvestigationId } from "./investigationData";
 
 /** A person being remembered, translated from a Speak project row. */
 export interface RememberedPerson {
@@ -98,6 +99,17 @@ const VOICE_STATE: Record<string, VoiceState> = {
   declined: "declined",
   incomplete: "unfinished",
 };
+
+function requireNonEmptyField(value: unknown, field: string): string {
+  if (typeof value !== "string") {
+    throw new TypeError(`${field} must be a non-empty string`);
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    throw new TypeError(`${field} must be a non-empty string`);
+  }
+  return trimmed;
+}
 
 export function toPerson(raw: Record<string, unknown>): RememberedPerson {
   const subject = typeof raw.subject_ref === "string" ? raw.subject_ref : null;
@@ -358,9 +370,9 @@ export async function createBiography(args: {
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const data = await resp.json();
   return {
-    investigationId: String(data.investigation_id ?? ""),
-    deliverableId: String(data.deliverable_id ?? ""),
-    projectId: String(data.project_id ?? ""),
+    investigationId: requireInvestigationId(data.investigation_id),
+    deliverableId: requireNonEmptyField(data.deliverable_id, "deliverable_id"),
+    projectId: requireNonEmptyField(data.project_id, "project_id"),
   };
 }
 
