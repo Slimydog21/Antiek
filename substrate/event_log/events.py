@@ -650,6 +650,95 @@ def validate_trajectory(
 
 
 # ---------------------------------------------------------------------------
+# Worker-identity helpers (antiek-yegge-execute SPR-01)
+# ---------------------------------------------------------------------------
+
+
+def emit_worker_identity(
+    investigation_id: str,
+    *,
+    worker_id: str,
+    role: str,
+    session_id: str,
+    spawn_kind: str,
+    parent_worker_id: str | None = None,
+    expected_lifetime_s: int | None = None,
+    context_hash: str | None = None,
+    events_dir: str | None = None,
+) -> str | None:
+    """Emit a ``worker.identity`` event for a first-class worker registration.
+
+    Thin wrapper over :func:`emit_typed` that builds the
+    ``WorkerIdentityPayload``. The payload validates ``spawn_kind`` against its
+    closed set + requires non-empty ``worker_id``/``role``/``session_id``;
+    validation errors re-raise (a malformed event is a substrate bug, per the
+    emit_typed contract). ``worker_id`` UUID-v7 shape is NOT validated here —
+    that is the future registry's (SPR-04) responsibility.
+
+    Example::
+
+        emit_worker_identity(
+            "inv-1", worker_id="0192-...", role="extractor",
+            session_id="sess-1", spawn_kind="asyncio_task",
+        )
+    """
+    from ..schemas.events import WorkerIdentityPayload
+
+    payload = WorkerIdentityPayload(
+        worker_id=worker_id,
+        parent_worker_id=parent_worker_id,
+        role=role,
+        session_id=session_id,
+        spawn_kind=spawn_kind,  # type: ignore[arg-type]
+        expected_lifetime_s=expected_lifetime_s,
+        context_hash=context_hash,
+    )
+    return emit_typed(investigation_id, payload, events_dir=events_dir)
+
+
+def query_worker_identity(
+    investigation_id: str,
+    *,
+    worker_id: str | None = None,
+    parent_worker_id: str | None = None,
+    role: str | None = None,
+    events_dir: str | None = None,
+) -> list[dict[str, Any]]:
+    """Return the ``worker.identity`` rows for an investigation, optionally
+    filtered by ``worker_id`` / ``parent_worker_id`` / ``role``.
+
+    Returns the payload dicts (already JSON-decoded) ordered by emission time.
+    Empty list when no worker-identity events match — an honest absent, never a
+    fabricated row.
+
+    Example::
+
+        rows = query_worker_identity("inv-1", role="extractor")
+    """
+    rows = [
+        r
+        for r in trajectory(investigation_id, events_dir=events_dir)
+        if r.get("action_type") == ActionType.WORKER_IDENTITY.value
+    ]
+    payload_list: list[dict[str, Any]] = []
+    for r in rows:
+        payload = r.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        if worker_id is not None and payload.get("worker_id") != worker_id:
+            continue
+        if parent_worker_id is not None and payload.get("parent_worker_id") != parent_worker_id:
+            continue
+        if role is not None and payload.get("role") != role:
+            continue
+        out = dict(payload)
+        out["_event_id"] = r.get("event_id")
+        out["_emitted_at"] = r.get("emitted_at")
+        payload_list.append(out)
+    return payload_list
+
+
+# ---------------------------------------------------------------------------
 # CLI — diagnostic surface only
 # ---------------------------------------------------------------------------
 
