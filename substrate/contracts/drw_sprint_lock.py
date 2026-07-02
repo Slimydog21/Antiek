@@ -26,7 +26,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to DRW_SPRINTS. The SPR-08 conformance gate records the
 # version a downstream citation was validated against.
-LOCK_VERSION: int = 4
+LOCK_VERSION: int = 5
 
 
 @dataclass(frozen=True)
@@ -107,7 +107,10 @@ DRW_SPRINTS: dict[int, Deliverable] = {
         9, "glassbox-monitor-ui",
         "Glass-box N-research monitor UI",
         (),
-        status="planned",
+        # Live after the canonical cascade gate covered launch gating,
+        # durable session polling/reconnect, per-research steering, launched
+        # child lineage, and aggregate cost display.
+        status="live",
     ),
     10: Deliverable(
         10, "reading-surface",

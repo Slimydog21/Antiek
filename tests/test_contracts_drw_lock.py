@@ -61,11 +61,12 @@ def test_drw_sprint_10_remains_provisional_but_reader_contract_moved_owner():
     assert reading_surface.PINNED_BY == "antiek-reader SPR-01"
 
 
-def test_cascade_planner_orchestration_gap_detection_and_ingest_are_live():
+def test_cascade_planner_orchestration_gap_detection_ingest_and_monitor_are_live():
     assert lock.resolve_drw_sprint(5).status == "live"
     assert lock.resolve_drw_sprint(6).status == "live"
     assert lock.resolve_drw_sprint(7).status == "live"
     assert lock.resolve_drw_sprint(8).status == "live"
+    assert lock.resolve_drw_sprint(9).status == "live"
 
 
 def test_owned_contracts_reference_real_contract_names():
@@ -77,4 +78,4 @@ def test_owned_contracts_reference_real_contract_names():
 
 
 def test_lock_version_present():
-    assert isinstance(lock.LOCK_VERSION, int) and lock.LOCK_VERSION >= 4
+    assert isinstance(lock.LOCK_VERSION, int) and lock.LOCK_VERSION >= 5
