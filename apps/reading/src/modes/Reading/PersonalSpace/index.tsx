@@ -15,6 +15,10 @@ import type {
 } from "../../../api/books";
 import { acceptFiling, suggestFiling } from "../../../lib/researchSuggestion";
 
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values));
+}
+
 /**
  * PersonalSpace — the reader's "personal bed of information that labels itself"
  * (Read SPR-13). Their CREATED deliverables (SPR-08 meta-readings) + saved reads
@@ -100,7 +104,7 @@ export default function PersonalSpace({ metaDocsOnly = false }: Props) {
         {
           category_id: "recency",
           label: "Recently read & created",
-          asset_ids: visibleAssets.map((a) => a.asset_id),
+          asset_ids: uniqueStrings(visibleAssets.map((a) => a.asset_id)),
           ordering: "recency" as const,
         },
       ].filter((c) => c.asset_ids.length > 0);
@@ -108,7 +112,7 @@ export default function PersonalSpace({ metaDocsOnly = false }: Props) {
     return categories
       .map((c) => ({
         ...c,
-        asset_ids: c.asset_ids.filter((id) => visibleIds.has(id)),
+        asset_ids: uniqueStrings(c.asset_ids.filter((id) => visibleIds.has(id))),
       }))
       .filter((c) => c.asset_ids.length > 0);
   }, [categories, ordering, visibleAssets, visibleIds]);
