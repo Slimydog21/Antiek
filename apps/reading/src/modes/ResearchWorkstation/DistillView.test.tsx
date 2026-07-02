@@ -13,7 +13,7 @@
  *     the no-key state.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type { DistilledNode } from "../../lib/api";
 
@@ -47,6 +47,14 @@ function question(node_id: string, text: string, extra: Partial<DistilledNode> =
   return { node_id, kind: "question", text, confidence: null, source_document_id: "doc-1", refinement_count: 0, escalated: false, reserved_child_investigation_id: null, ...extra };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 describe("DistillView — first-class insights + questions (M2)", () => {
   it("renders both sections from the graph result", async () => {
     getDistillationMock.mockResolvedValue({
@@ -62,6 +70,44 @@ describe("DistillView — first-class insights + questions (M2)", () => {
     // grounding shown in human terms, never a raw id label.
     expect(screen.getByText("grounded in a source")).toBeTruthy();
     expect(screen.queryByText("doc-1")).toBeNull();
+  });
+
+  it("keeps stale distillation responses from overwriting the active investigation", async () => {
+    const stale = deferred<{
+      investigation_id: string;
+      insights: DistilledNode[];
+      questions: DistilledNode[];
+    }>();
+    const fresh = deferred<{
+      investigation_id: string;
+      insights: DistilledNode[];
+      questions: DistilledNode[];
+    }>();
+    getDistillationMock.mockReturnValueOnce(stale.promise).mockReturnValueOnce(fresh.promise);
+
+    const rendered = render(<DistillView investigationId="inv-stale" />);
+    rendered.rerender(<DistillView investigationId="inv-fresh" />);
+
+    await act(async () => {
+      fresh.resolve({
+        investigation_id: "inv-fresh",
+        insights: [insight("fresh", "Fresh research insight.")],
+        questions: [],
+      });
+    });
+
+    expect(await screen.findByText("Fresh research insight.")).toBeTruthy();
+
+    await act(async () => {
+      stale.resolve({
+        investigation_id: "inv-stale",
+        insights: [insight("stale", "Stale research insight.")],
+        questions: [],
+      });
+    });
+
+    expect(screen.getByText("Fresh research insight.")).toBeTruthy();
+    expect(screen.queryByText("Stale research insight.")).toBeNull();
   });
 });
 
