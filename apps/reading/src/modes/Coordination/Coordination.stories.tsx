@@ -140,7 +140,7 @@ const drwSprints = [
   { n: 5, slug: "cascade-planner", status: "live" },
   { n: 6, slug: "parallel-orchestration", status: "live" },
   { n: 7, slug: "structural-gap-detection", status: "live" },
-  { n: 8, slug: "universal-ingest", status: "planned" },
+  { n: 8, slug: "universal-ingest", status: "live" },
   { n: 9, slug: "glassbox-monitor-ui", status: "planned" },
   { n: 10, slug: "reading-surface", status: "provisional" },
 ];
@@ -253,7 +253,7 @@ export const CANONICAL_ROADMAP: RoadmapView = {
   dependency_blockers: [],
   execution_focus: {
     kind: "dependency_ready",
-    node_id: "drw:8",
+    node_id: "drw:9",
     blocked_sprints: [],
   },
   substrate_layers: [

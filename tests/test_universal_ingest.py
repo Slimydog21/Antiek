@@ -125,10 +125,11 @@ def test_external_detection_both_ways():
     # A plain note should not be tagged external.
     plain = detect_external_research("Just a quick personal note about lunch.")
     assert not plain.is_external
-    # The detector keys on vendor signals; assert the plain doc is never
-    # mis-tagged (the precision-protecting direction), and the vendor doc's
-    # detection is at least attempted (confidence surfaced).
-    assert det.confidence >= 0.0
+    # The detector keys on vendor signals in both directions: vendor reports
+    # become external_deep_research, ordinary notes stay uploads.
+    assert det.is_external
+    assert det.vendor == "chatgpt"
+    assert det.confidence >= 0.5
 
 
 # --------------------------------------------------------------------------
