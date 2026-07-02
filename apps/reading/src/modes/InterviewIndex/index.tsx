@@ -62,6 +62,10 @@ function stringArray(value: unknown): string[] {
     : [];
 }
 
+function uniqueStringArray(value: unknown): string[] {
+  return Array.from(new Set(stringArray(value)));
+}
+
 function nonNegativeInteger(value: unknown): number {
   const parsed =
     typeof value === "number"
@@ -82,7 +86,7 @@ function safeProject(value: unknown): InterviewProject | null {
     title,
     topic_description: nullableString(project.topic_description),
     deliverable_id: nullableString(project.deliverable_id),
-    must_cover: stringArray(project.must_cover),
+    must_cover: uniqueStringArray(project.must_cover),
     framing: nullableString(project.framing),
     interview_count: nonNegativeInteger(project.interview_count),
     completed_count: nonNegativeInteger(project.completed_count),

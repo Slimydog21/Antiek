@@ -70,6 +70,10 @@ function stringArray(value: unknown): string[] {
     : [];
 }
 
+function uniqueStringArray(value: unknown): string[] {
+  return Array.from(new Set(stringArray(value)));
+}
+
 function safeQuestion(value: unknown): Landing["pending_questions"][number] | null {
   const question = record(value);
   const id = nonEmptyString(question?.id);
@@ -120,8 +124,8 @@ function safeLanding(value: unknown): Landing | null {
     project_id: projectId,
     project_title: projectTitle,
     subject_ref: nullableString(body.subject_ref),
-    required_consent_scopes: stringArray(body.required_consent_scopes),
-    granted_consent_scopes: stringArray(body.granted_consent_scopes),
+    required_consent_scopes: uniqueStringArray(body.required_consent_scopes),
+    granted_consent_scopes: uniqueStringArray(body.granted_consent_scopes),
     status: nonEmptyString(body.status) ?? "invited",
     pending_questions: safeQuestions(body.pending_questions),
     transcript: safeTranscript(body.transcript),
