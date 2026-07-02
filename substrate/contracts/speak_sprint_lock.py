@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to SPEAK_SPRINTS. Status changes are deliberate roadmap
 # events, not prose-only handoffs.
-SPEAK_LOCK_VERSION: int = 4
+SPEAK_LOCK_VERSION: int = 5
 
 
 @dataclass(frozen=True)
@@ -73,6 +73,12 @@ SPEAK_SPRINTS: dict[int, SpeakDeliverable] = {
         5,
         "cross-interviewee-verification",
         "Cross-interviewee verification",
+        # Live: independent-attester counting, same-interviewee de-dupe,
+        # contradiction preservation, multiply-attested corroboration,
+        # never-proven wording, project-scoped corroboration endpoint, and
+        # Speak agreement/disagreement rendering are covered by
+        # speak-cross-interviewee-verification.
+        status="live",
     ),
     6: SpeakDeliverable(6, "contributor-economics", "Contributor economics"),
     7: SpeakDeliverable(7, "economics-matrix", "Economics matrix"),

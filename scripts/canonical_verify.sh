@@ -27,9 +27,10 @@
 #   speak-async-voice-interview — Speak SPR-02 async voice-note interview
 #   speak-project-invitations — Speak SPR-03 projects + invite links
 #   speak-compounding-interviewer — Speak SPR-04 context-conditioned interviewer
+#   speak-cross-interviewee-verification — Speak SPR-05 corroboration honesty
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
-#   deep-research        — ANT-DRL P-38..P-44 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
-#   html-transport       — ANT-AHT P-45 ResearchArtifact transport gates
+#   deep-research        — ANT-DRL P-39..P-45 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
+#   html-transport       — ANT-AHT P-46 ResearchArtifact transport gates
 #
 # USAGE (from repo root):
 #   ./scripts/canonical_verify.sh cascade
@@ -52,7 +53,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|handoff <md>|agent-gates|deep-research|html-transport}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|handoff <md>|agent-gates|deep-research|html-transport}" >&2
   exit 2
 }
 
@@ -356,6 +357,21 @@ cmd_speak_compounding_interviewer() {
   echo "CANONICAL_VERIFY_OK: speak-compounding-interviewer"
 }
 
+cmd_speak_cross_interviewee_verification() {
+  echo "== speak-cross-interviewee-verification: independent corroboration + honest surface =="
+  "${PY}" -m pytest \
+    tests/test_cross_interviewee.py \
+    tests/properties/test_speak_properties.py \
+    tests/test_speak_api.py \
+    tests/test_contracts_speak_lock.py \
+    -q --tb=no
+  echo "== speak-cross-interviewee-verification: Speak agreement UI =="
+  (cd apps/reading && npm run test -- \
+    src/modes/Speak/Speak.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: speak-cross-interviewee-verification"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -419,7 +435,7 @@ cmd_agent_gates() {
 }
 
 cmd_html_transport() {
-  echo "== html-transport: P-45 ANT-AHT bundle =="
+  echo "== html-transport: P-46 ANT-AHT bundle =="
   "${PY}" -m pytest \
     tests/test_research_artifact_template.py \
     tests/test_research_artifact_export.py \
@@ -436,19 +452,19 @@ cmd_html_transport() {
 }
 
 cmd_deep_research() {
-  echo "== deep-research: P-38 Loop 1 E2E =="
+  echo "== deep-research: P-39 Loop 1 E2E =="
   "${PY}" -m pytest tests/test_loop_one_orchestrator.py::test_loop_one_happy_path_emits_completed -q --tb=no
-  echo "== deep-research: P-39 invariant negative =="
+  echo "== deep-research: P-40 invariant negative =="
   "${PY}" -m pytest tests/test_deep_research_complete.py::test_drw_only_trajectory_fails_without_synthesis -q --tb=no
-  echo "== deep-research: P-40 session reconstruct =="
+  echo "== deep-research: P-41 session reconstruct =="
   "${PY}" -m pytest tests/test_cascade_session.py -q --tb=no
-  echo "== deep-research: P-41 PromotionFunnel serialize =="
+  echo "== deep-research: P-42 PromotionFunnel serialize =="
   "${PY}" -m pytest tests/test_research_runner.py::test_promotion_funnel_serialized_no_lock_timeout -q --tb=no
-  echo "== deep-research: P-42 knowledge.reused (two-run) =="
+  echo "== deep-research: P-43 knowledge.reused (two-run) =="
   "${PY}" -m pytest tests/test_flywheel_reuse.py::test_two_run_contract_gather_emits_knowledge_reused_on_second_start -q --tb=no
-  echo "== deep-research: P-43 Exa gather mock E2E =="
+  echo "== deep-research: P-44 Exa gather mock E2E =="
   "${PY}" -m pytest tests/test_exa_gather_loop.py -q --tb=short
-  echo "== deep-research: P-44 parent-terminal observability =="
+  echo "== deep-research: P-45 parent-terminal observability =="
   "${PY}" -m pytest tests/test_drw_parent_terminal.py -q --tb=short
   echo "CANONICAL_VERIFY_OK: deep-research"
 }
@@ -481,6 +497,7 @@ main() {
     speak-async-voice-interview) cmd_speak_async_voice_interview ;;
     speak-project-invitations) cmd_speak_project_invitations ;;
     speak-compounding-interviewer) cmd_speak_compounding_interviewer ;;
+    speak-cross-interviewee-verification) cmd_speak_cross_interviewee_verification ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     deep-research) cmd_deep_research ;;
