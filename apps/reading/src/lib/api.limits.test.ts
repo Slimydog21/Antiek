@@ -1561,7 +1561,7 @@ describe("api client attribution and consent response boundaries", () => {
               escrow_balance_usd: " 12.50 ",
               gate: {
                 disbursable: "yes",
-                open_gate_ids: [" G2 ", "", 7, "G3"],
+                open_gate_ids: [" G2 ", "", 7, "G3", "G2", " G3 "],
                 holder_claimed: true,
                 fully_unlocked: "yes",
                 label: " ",
@@ -1585,7 +1585,7 @@ describe("api client attribution and consent response boundaries", () => {
             unclaimed_escrow_cents: Number.POSITIVE_INFINITY,
             publishers_with_nontrivial_accrual: 1,
           },
-          disbursement_gates_open: [" G2 ", null, "G3"],
+          disbursement_gates_open: [" G2 ", null, "G3", "G2", " G3 "],
           total_escrow_accruing_usd: " 12.50 ",
           any_disbursable: "yes",
           gate_source_path: "  /config/gates  ",
