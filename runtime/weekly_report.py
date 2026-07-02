@@ -335,12 +335,14 @@ def collect_investigation_lifecycle(events: list[Event]) -> dict[str, Any]:
         at = (e.action_type.value if hasattr(e.action_type, "value") else e.action_type)
         if at == ActionType.INVESTIGATION_START_REQUESTED.value:
             starts.add(e.investigation_id)
-        elif at == ActionType.INVESTIGATION_COMPLETED.value:
-            if isinstance(e.payload, InvestigationCompletedPayload):
-                completed.append(e.payload)
-        elif at == ActionType.INVESTIGATION_FAILED.value:
-            if isinstance(e.payload, InvestigationFailedPayload):
-                failed.append(e.payload)
+        elif at == ActionType.INVESTIGATION_COMPLETED.value and isinstance(
+            e.payload, InvestigationCompletedPayload
+        ):
+            completed.append(e.payload)
+        elif at == ActionType.INVESTIGATION_FAILED.value and isinstance(
+            e.payload, InvestigationFailedPayload
+        ):
+            failed.append(e.payload)
 
     avg_phases_verified = (
         round(
