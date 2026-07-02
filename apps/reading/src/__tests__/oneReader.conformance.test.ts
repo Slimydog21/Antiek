@@ -186,6 +186,14 @@ describe("oneReader conformance — pinned sets (lockstep guards, run today)", (
     const _region: Region | null = null;
     expect([opts, _door, _props, _doc, _region]).toHaveLength(5);
   });
+
+  it("openDocument contract prose describes the converged one-door state, not the old /wrestle mis-route as current", () => {
+    const contract = readFileSync(resolve(SRC, "lib/openDocument.contract.ts"), "utf-8");
+
+    expect(contract).toContain("Those doors now route through");
+    expect(contract).toContain("`openDocument` as the single resolver");
+    expect(contract).not.toContain("currently navigate to `/wrestle/{id}`");
+  });
 });
 
 // ───────────────────────────────────────────────────────────────────────────
