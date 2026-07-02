@@ -82,6 +82,18 @@ function safeNullableServability(value: unknown): Servability | null {
   return safeServability(value);
 }
 
+function safeCoverUri(value: unknown): string | null {
+  const uri = nullableString(value);
+  if (!uri) return null;
+  if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(uri)) return uri;
+  try {
+    const parsed = new URL(uri);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? uri : null;
+  } catch {
+    return null;
+  }
+}
+
 function safeBookSummary(value: unknown): BookSummary | null {
   const book = record(value);
   if (!book) return null;
@@ -100,7 +112,7 @@ function safeBookSummary(value: unknown): BookSummary | null {
     servability,
     servable_full_text: servableFullText,
     page_count: nonNegativeSafeInteger(book.page_count) ?? 0,
-    cover_uri: nullableString(book.cover_uri),
+    cover_uri: safeCoverUri(book.cover_uri),
     ip_holder_id: nullableString(book.ip_holder_id),
     taken_down: takenDown,
   };

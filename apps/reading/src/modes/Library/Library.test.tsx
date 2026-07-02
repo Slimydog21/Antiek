@@ -97,6 +97,26 @@ describe("BookCard", () => {
     expect(screen.getByText("Preview only")).toBeTruthy();
   });
 
+  it.each(["javascript:alert(1)", "data:text/html,owned", "/relative/cover.png"])(
+    "falls back to the deterministic spine for unsafe cover URIs: %s",
+    (cover_uri) => {
+      const { container } = render(<BookCard book={{ ...servableBook, cover_uri }} />);
+
+      expect(container.querySelector("img")).toBeNull();
+      expect(screen.getAllByText("Meditations").length).toBeGreaterThan(0);
+    },
+  );
+
+  it("renders a trimmed safe cover URI", () => {
+    const { container } = render(
+      <BookCard book={{ ...servableBook, cover_uri: " https://example.test/cover.png " }} />,
+    );
+
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(
+      "https://example.test/cover.png",
+    );
+  });
+
   it("calls onOpen with the document id when clicked", () => {
     const onOpen = vi.fn();
     render(<BookCard book={servableBook} onOpen={onOpen} />);
