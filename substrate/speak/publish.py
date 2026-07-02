@@ -27,7 +27,9 @@ from decimal import Decimal
 from typing import Any
 
 from substrate.books.servability import is_servable_full_text, servability_of
+from substrate.books.model import upsert_book_asset
 from substrate.event_log import emit_typed
+from substrate.graph.ops import insert_document
 from substrate.schemas.events import SeamSpeakToReadPayload
 
 from . import contributor as contributor_mod
@@ -52,6 +54,34 @@ class PublishResult:
     servability: str           # ServabilityStatus value
     content_class: str | None
     accrual_lines: tuple[AccrualLine, ...] = field(default_factory=tuple)
+
+
+def _deliverable_text(con: Any, deliverable_id: str | None) -> tuple[str | None, str | None]:
+    """Return (title, body) for a Write deliverable, if one backs the publish.
+
+    Speak publishing registers the publication id as the Read document id. The
+    served body is the persisted Write prose, ordered by section. Empty sections
+    are ignored; no body is fabricated when no prose exists.
+    """
+    if deliverable_id is None:
+        return None, None
+    title_row = con.execute(
+        "SELECT title FROM deliverables WHERE deliverable_id = ?",
+        [deliverable_id],
+    ).fetchone()
+    rows = con.execute(
+        "SELECT title, prose_text FROM deliverable_sections "
+        "WHERE deliverable_id = ? ORDER BY section_index, created_at",
+        [deliverable_id],
+    ).fetchall()
+    parts: list[str] = []
+    for section_title, prose_text in rows:
+        text = (prose_text or "").strip()
+        if not text:
+            continue
+        heading = (section_title or "").strip()
+        parts.append(f"## {heading}\n\n{text}" if heading else text)
+    return (title_row[0] if title_row else None), "\n\n".join(parts) if parts else None
 
 
 def publish(
@@ -94,6 +124,31 @@ def publish(
             "(publication_id, project_id, deliverable_id, visibility, content_class, served) "
             "VALUES (?, ?, ?, 'public', ?, ?)",
             [publication_id, project_id, deliverable_id, content_class, served],
+        )
+        title, body = _deliverable_text(con, deliverable_id)
+        insert_document(
+            con,
+            document_id=publication_id,
+            source_tier=1,
+            document_type="book",
+            title=title or "Published biography",
+            raw_text=body,
+            investigation_id=project_id,
+            content_class=content_class,
+            metadata={
+                "provenance_class": "speak_derived",
+                "speak_project_id": project_id,
+                "speak_publication_id": publication_id,
+                "speak_deliverable_id": deliverable_id,
+                "speak_publish_gate_passed": True,
+            },
+            on_conflict="ignore",
+        )
+        upsert_book_asset(
+            con,
+            document_id=publication_id,
+            provenance="Speak public biography publish",
+            license_basis="Speak SPR-01 public publish gate passed",
         )
         # M2 — route the contributor split (SPR-06). Zero buyers → $0,
         # share tracked. Accrue, never disburse.
