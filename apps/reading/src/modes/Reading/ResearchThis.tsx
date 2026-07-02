@@ -7,6 +7,13 @@ import { track } from "../../lib/analytics";
 import { requireInvestigationId } from "../../lib/investigationData";
 import AIActionFailure from "../../shared/AIActionFailure";
 
+const SPIN_RESEARCH_PROVIDER_UNAVAILABLE = "Spin research isn’t available right now.";
+
+function spinResearchFailureReason(e: unknown): string | null {
+  const reason = e instanceof Error ? e.message : String(e);
+  return reason === SPIN_RESEARCH_PROVIDER_UNAVAILABLE ? null : reason;
+}
+
 /**
  * ResearchThis (Read SPR-08) — spin a deep research from the current
  * passage and hand off to the Research workflow.
@@ -34,11 +41,11 @@ export interface ResearchThisProps {
 export default function ResearchThis({ documentId, pageIndex, passageText }: ResearchThisProps) {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null | undefined>(undefined);
 
   const spin = async () => {
     setBusy(true);
-    setError(null);
+    setError(undefined);
     try {
       const res = await spinResearch(documentId, pageIndex, passageText);
       const investigationId = requireInvestigationId(res.investigation_id);
@@ -51,7 +58,7 @@ export default function ResearchThis({ documentId, pageIndex, passageText }: Res
       // usePosition persisting this page.
       navigate(`/inv/${encodeURIComponent(investigationId)}`);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(spinResearchFailureReason(e));
       setBusy(false);
     }
   };
@@ -68,7 +75,7 @@ export default function ResearchThis({ documentId, pageIndex, passageText }: Res
       >
         {busy ? "Spinning research…" : "Research this page"}
       </LemonButton>
-      {error && (
+      {error !== undefined && (
         error === "book_not_found" ? (
           <span className="text-[11px] font-mono text-emperor" role="alert">
             Book not found.

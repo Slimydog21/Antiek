@@ -156,6 +156,8 @@ cmd_read_reader() {
   echo "== read-reader: book reader surface =="
   (cd apps/reading && npm run test -- \
     src/modes/Reading/Reading.test.tsx \
+    src/modes/Reading/ResearchThis.test.tsx \
+    src/modes/Reading/TalkToBook.test.tsx \
     src/modes/Reading/paginateBlocks.test.ts \
     src/modes/Reading/TocPanel.test.tsx \
     --reporter=dot)
