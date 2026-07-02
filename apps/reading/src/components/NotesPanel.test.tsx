@@ -294,6 +294,12 @@ describe("NotesPanel", () => {
                   attribution_region_ids: [" region-1 ", "", 9, "region-1"],
                 },
                 {
+                  claim_id: "claim-1",
+                  text: "Duplicate claim text.",
+                  confidence: "high",
+                  attribution_region_ids: ["region-duplicate"],
+                },
+                {
                   claim_id: "claim-2",
                   text: "",
                   confidence: "high",
@@ -321,6 +327,7 @@ describe("NotesPanel", () => {
     ).toBeTruthy();
     expect(screen.getByText("Summary text.")).toBeTruthy();
     expect(screen.getByText("Valid claim text.")).toBeTruthy();
+    expect(screen.queryByText("Duplicate claim text.")).toBeNull();
     expect(screen.getAllByTitle("open attribution region region-1 in viewer")).toHaveLength(1);
     expect(screen.queryByText("claim-2")).toBeNull();
     expect(document.body.textContent).not.toMatch(/NaN|Infinity|undefined/);
