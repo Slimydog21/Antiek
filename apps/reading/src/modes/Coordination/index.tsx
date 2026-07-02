@@ -6,6 +6,7 @@ import type { CoordProduct, GateImpactView, GateView } from "./GateLedger";
 import { Roadmap } from "./Roadmap";
 import type {
   DependencyBlockerView,
+  ExecutionFocusView,
   RoadmapView,
   RosterView,
   SprintView,
@@ -190,6 +191,21 @@ function safeDependencyBlocker(value: unknown): DependencyBlockerView | null {
   };
 }
 
+function safeExecutionFocus(value: unknown): ExecutionFocusView | null {
+  const focus = record(value);
+  const kind =
+    focus?.kind === "dependency_blocker" || focus?.kind === "dependency_ready"
+      ? focus.kind
+      : null;
+  const nodeId = nonEmptyString(focus?.node_id);
+  if (!focus || !kind || !nodeId) return null;
+  return {
+    kind,
+    node_id: nodeId,
+    blocked_sprints: stringList(focus.blocked_sprints),
+  };
+}
+
 function safeRoadmapView(value: unknown): RoadmapView {
   const body = record(value);
   const rosters = Array.isArray(body?.rosters)
@@ -212,6 +228,7 @@ function safeRoadmapView(value: unknown): RoadmapView {
           return blocker ? [blocker] : [];
         })
       : [],
+    execution_focus: safeExecutionFocus(body?.execution_focus),
     substrate_layers: Array.isArray(body?.substrate_layers)
       ? body.substrate_layers.flatMap((item) => {
           const layer = safeSubstrateLayer(item);

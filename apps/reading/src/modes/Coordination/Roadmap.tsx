@@ -45,6 +45,18 @@ export interface DependencyBlockerView {
   blocked_sprints: string[];
 }
 
+export type ExecutionFocusView =
+  | {
+      kind: "dependency_blocker";
+      node_id: string;
+      blocked_sprints: string[];
+    }
+  | {
+      kind: "dependency_ready";
+      node_id: string;
+      blocked_sprints?: string[];
+    };
+
 export interface RoadmapView {
   total_sprints: number;
   superseded_count: number;
@@ -54,6 +66,7 @@ export interface RoadmapView {
   rosters: RosterView[];
   unblocked_now: string[];
   dependency_blockers: DependencyBlockerView[];
+  execution_focus: ExecutionFocusView | null;
   substrate_layers: SubstrateLayerView[];
 }
 
@@ -62,6 +75,10 @@ interface ResolvedDependencyBlocker {
   blocker_sprint: SprintView | null;
   blocked_sprints: SprintView[];
 }
+
+type ResolvedExecutionFocus =
+  | { kind: "dependency_blocker"; blocker: ResolvedDependencyBlocker }
+  | { kind: "dependency_ready"; sprint: SprintView };
 
 const sprintStatusColour = (s: string): "muted" | "sun" | "default" => {
   if (s === "live") return "muted";
@@ -145,6 +162,45 @@ function resolveDependencyBlockers(
   );
 }
 
+function resolveExecutionFocus(
+  rawFocus: ExecutionFocusView | null,
+  blockers: ResolvedDependencyBlocker[],
+  dependencyReady: SprintView[],
+): ResolvedExecutionFocus | null {
+  const topBlocker = blockers[0];
+  const fallbackReady = dependencyReady[0];
+
+  if (
+    rawFocus?.kind === "dependency_blocker" &&
+    topBlocker &&
+    rawFocus.node_id === topBlocker.node_id
+  ) {
+    const actualBlockedIds = new Set(
+      topBlocker.blocked_sprints.map((s) => s.node_id),
+    );
+    const focusBlockedIds = new Set(rawFocus.blocked_sprints);
+    if (
+      actualBlockedIds.size === focusBlockedIds.size &&
+      [...actualBlockedIds].every((nodeId) => focusBlockedIds.has(nodeId))
+    ) {
+      return { kind: "dependency_blocker", blocker: topBlocker };
+    }
+  }
+
+  if (
+    rawFocus?.kind === "dependency_ready" &&
+    !topBlocker &&
+    fallbackReady &&
+    rawFocus.node_id === fallbackReady.node_id
+  ) {
+    return { kind: "dependency_ready", sprint: fallbackReady };
+  }
+
+  if (topBlocker) return { kind: "dependency_blocker", blocker: topBlocker };
+  if (fallbackReady) return { kind: "dependency_ready", sprint: fallbackReady };
+  return null;
+}
+
 export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
   const allSprints = roadmap.rosters.flatMap((r) => r.sprints);
   const sprintById = new Map(
@@ -162,6 +218,11 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
     roadmap.dependency_blockers,
     sprintById,
     allSprints,
+  );
+  const executionFocus = resolveExecutionFocus(
+    roadmap.execution_focus,
+    blockers,
+    dependencyReady,
   );
 
   return (
@@ -198,8 +259,7 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
       />
 
       <ExecutionFocusSection
-        blockers={blockers}
-        dependencyReady={dependencyReady}
+        focus={executionFocus}
       />
 
       <ReadyNowSection sprints={dependencyReady} />
@@ -219,16 +279,11 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
 }
 
 function ExecutionFocusSection({
-  blockers,
-  dependencyReady,
+  focus,
 }: {
-  blockers: ResolvedDependencyBlocker[];
-  dependencyReady: SprintView[];
+  focus: ResolvedExecutionFocus | null;
 }) {
-  const topBlocker = blockers[0];
-  const fallbackReady = dependencyReady[0];
-
-  if (!topBlocker && !fallbackReady) return null;
+  if (!focus) return null;
 
   return (
     <LemonCard colour="glacial" elevation="z1">
@@ -236,26 +291,26 @@ function ExecutionFocusSection({
         <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
           Execution focus
         </p>
-        {topBlocker ? (
+        {focus.kind === "dependency_blocker" ? (
           <div className="space-y-1">
             <p className="text-sm font-serif text-ink dark:text-bright">
-              Unblock {topBlocker.node_id}
-              {topBlocker.blocker_sprint
-                ? ` — ${formatSprintLabel(topBlocker.blocker_sprint)}`
+              Unblock {focus.blocker.node_id}
+              {focus.blocker.blocker_sprint
+                ? ` — ${formatSprintLabel(focus.blocker.blocker_sprint)}`
                 : ""}
             </p>
             <p className="text-xs font-mono text-shadow-2 dark:text-moonlight">
-              Clears dependency pressure for {topBlocker.blocked_sprints.length}{" "}
-              {topBlocker.blocked_sprints.length === 1 ? "sprint" : "sprints"}.
+              Clears dependency pressure for {focus.blocker.blocked_sprints.length}{" "}
+              {focus.blocker.blocked_sprints.length === 1 ? "sprint" : "sprints"}.
             </p>
           </div>
         ) : (
           <div className="space-y-1">
             <p className="text-sm font-serif text-ink dark:text-bright">
-              Next dependency-ready sprint: {formatSprintLabel(fallbackReady)}
+              Next dependency-ready sprint: {formatSprintLabel(focus.sprint)}
             </p>
             <p className="text-xs font-mono text-shadow-2 dark:text-moonlight">
-              {fallbackReady.slug.replace(/-/g, " ")} · {fallbackReady.node_id}
+              {focus.sprint.slug.replace(/-/g, " ")} · {focus.sprint.node_id}
             </p>
           </div>
         )}

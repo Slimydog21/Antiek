@@ -30,6 +30,7 @@ import re
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import Literal
 
 from substrate.contracts import dependency_map, drw_sprint_lock
 
@@ -128,6 +129,15 @@ class DependencyBlocker:
 
 
 @dataclass(frozen=True)
+class ExecutionFocus:
+    """The single next roadmap action implied by dependency state."""
+
+    kind: Literal["dependency_blocker", "dependency_ready"]
+    node_id: str
+    blocked_sprints: tuple[SprintRow, ...] = ()
+
+
+@dataclass(frozen=True)
 class Roadmap:
     """The reconciled cross-spec roadmap. A VIEW — derived on read from the
     roster files + SPR-01's DAG; it authors nothing."""
@@ -180,6 +190,25 @@ class Roadmap:
                 key=lambda b: (-len(b.blocked_sprints), b.node_id),
             )
         )
+
+    def execution_focus(self) -> ExecutionFocus | None:
+        """The next operator action implied by the canonical roadmap state.
+
+        Dependency blockers win over ready rows: clearing a high fan-out blocker
+        changes more downstream state than starting another already-ready sprint.
+        """
+        blockers = self.dependency_blockers()
+        if blockers:
+            top = blockers[0]
+            return ExecutionFocus(
+                kind="dependency_blocker",
+                node_id=top.node_id,
+                blocked_sprints=top.blocked_sprints,
+            )
+        ready = self.unblocked_now()
+        if ready:
+            return ExecutionFocus(kind="dependency_ready", node_id=ready[0].node_id)
+        return None
 
     def critical_path_rows(self) -> tuple[SprintRow, ...]:
         by_id = {s.node_id: s for s in self.all_sprints()}
