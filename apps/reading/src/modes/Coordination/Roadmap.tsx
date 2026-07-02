@@ -82,6 +82,25 @@ export interface ReadActivationStatusView {
   failures: string[];
 }
 
+export interface OperatorActionView {
+  action_id: string;
+  title: string;
+  status: string;
+  status_raw: string;
+  blocks: string;
+  owner: string;
+}
+
+export interface OperatorActionsSummaryView {
+  source_path: string;
+  total_actions: number;
+  open_count: number;
+  closeable_count: number;
+  status_counts: Record<string, number>;
+  next_action: OperatorActionView | null;
+  closeable_action: OperatorActionView | null;
+}
+
 export interface RoadmapView {
   total_sprints: number;
   superseded_count: number;
@@ -95,6 +114,7 @@ export interface RoadmapView {
   execution_focus: ExecutionFocusView | null;
   operator_gate_focus: OperatorGateFocusView | null;
   read_activation: ReadActivationStatusView | null;
+  operator_actions?: OperatorActionsSummaryView | null;
   substrate_layers: SubstrateLayerView[];
 }
 
@@ -286,6 +306,9 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
           {roadmap.read_activation ? (
             <ActivationStatus activation={roadmap.read_activation} />
           ) : null}
+          {roadmap.operator_actions ? (
+            <OperatorActionsStatus operatorActions={roadmap.operator_actions} />
+          ) : null}
         </div>
       </LemonCard>
 
@@ -356,6 +379,49 @@ function ActivationStatus({
         <p className="text-xs font-mono text-emperor">
           {activation.invalid_session_count} invalid session
           {activation.invalid_session_count === 1 ? "" : "s"} need repair.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function OperatorActionsStatus({
+  operatorActions,
+}: {
+  operatorActions: OperatorActionsSummaryView;
+}) {
+  const statusCounts = operatorActions.status_counts ?? {};
+  const statusText = [
+    ["open", statusCounts.open],
+    ["partially done", statusCounts.partially_done],
+    ["closed", statusCounts.closed],
+  ]
+    .filter(([, value]) => Number(value) > 0)
+    .map(([label, value]) => `${value} ${label}`)
+    .join(" · ");
+  const focus = operatorActions.closeable_action ?? operatorActions.next_action;
+  return (
+    <div className="mt-2 rounded border border-rule dark:border-charcoal-1 bg-ice-0/70 dark:bg-charcoal-2/70 px-3 py-2">
+      <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+        Operator actions
+      </p>
+      <p className="text-xs font-mono text-ink dark:text-bright">
+        {operatorActions.open_count}/{operatorActions.total_actions} not closed
+        {operatorActions.closeable_count > 0
+          ? ` · ${operatorActions.closeable_count} awaiting operator test`
+          : ""}
+        {statusText ? ` · ${statusText}` : ""}
+      </p>
+      {focus ? (
+        <p className="text-xs text-ink-soft dark:text-starlight leading-relaxed">
+          {operatorActions.closeable_action ? "Closeable now" : "Next action"}:{" "}
+          {focus.action_id} — {focus.title}. Blocks: {focus.blocks}. Source:{" "}
+          {operatorActions.source_path || "docs/OPERATOR_ACTIONS.md"}.
+        </p>
+      ) : (
+        <p className="text-xs text-ink-soft dark:text-starlight leading-relaxed">
+          No not-closed operator actions in{" "}
+          {operatorActions.source_path || "docs/OPERATOR_ACTIONS.md"}.
         </p>
       )}
     </div>

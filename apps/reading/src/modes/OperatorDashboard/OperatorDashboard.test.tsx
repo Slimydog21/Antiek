@@ -109,6 +109,26 @@ beforeEach(() => {
           },
           invalid_session_count: "1",
         },
+        operator_actions: {
+          open_count: "19.8",
+          total_actions: "20",
+          closeable_count: "1",
+          source_path: " docs/OPERATOR_ACTIONS.md ",
+          next_action: {
+            action_id: " OA-001 ",
+            title: " Counsel review ",
+            status_raw: " OPEN ",
+            blocks: " payouts ",
+            owner: " Legal ",
+          },
+          closeable_action: {
+            action_id: " OA-005 ",
+            title: " Wedge ratification ",
+            status_raw: " AWAITING OPERATOR TEST ",
+            blocks: " Phase 8 enforcing ",
+            owner: " Operator ",
+          },
+        },
       });
     }
     return okJson({});
@@ -146,6 +166,12 @@ describe("OperatorDashboard", () => {
       screen.getByText(
         "Remaining: 9 valid, 5 live-provider, 2 citation-traced, 1 non-library. 1 invalid session need repair.",
       ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Operator actions 19/20 not closed · 1 awaiting operator test"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Closeable now: OA-005 · Wedge ratification. Blocks: Phase 8 enforcing."),
     ).toBeTruthy();
     expect(screen.getByRole("link", { name: "open →" }).getAttribute("href")).toBe(
       "/coordination",

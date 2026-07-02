@@ -40,6 +40,26 @@ interface CoordinationSummary {
     owner: string | null;
     blocks: string | null;
   } | null;
+  operatorActions: {
+    open_count: number;
+    total_actions: number;
+    closeable_count: number;
+    source_path: string | null;
+    closeable_action: {
+      action_id: string;
+      title: string;
+      status_raw: string;
+      blocks: string;
+      owner: string;
+    } | null;
+    next_action: {
+      action_id: string;
+      title: string;
+      status_raw: string;
+      blocks: string;
+      owner: string;
+    } | null;
+  } | null;
   readActivation: {
     valid_sessions: number;
     total_sessions: number;
@@ -190,8 +210,22 @@ function numberRecord(value: unknown): Record<string, number> {
 function safeCoordinationSummary(value: unknown): CoordinationSummary {
   const body = record(value);
   const operatorGate = record(body?.operator_gate_focus);
+  const operatorActions = record(body?.operator_actions);
   const readActivation = record(body?.read_activation);
   const gateId = nonEmptyString(operatorGate?.gate_id);
+  const safeAction = (value: unknown) => {
+    const action = record(value);
+    const actionId = nonEmptyString(action?.action_id);
+    return action && actionId
+      ? {
+          action_id: actionId,
+          title: nonEmptyString(action.title) ?? actionId,
+          status_raw: nonEmptyString(action.status_raw) ?? "",
+          blocks: nonEmptyString(action.blocks) ?? "—",
+          owner: nonEmptyString(action.owner) ?? "Operator",
+        }
+      : null;
+  };
   return {
     operatorGate:
       operatorGate && gateId
@@ -203,6 +237,16 @@ function safeCoordinationSummary(value: unknown): CoordinationSummary {
             blocks: nullableString(operatorGate.blocks),
           }
         : null,
+    operatorActions: operatorActions
+      ? {
+          open_count: safeCount(operatorActions.open_count),
+          total_actions: safeCount(operatorActions.total_actions),
+          closeable_count: safeCount(operatorActions.closeable_count),
+          source_path: nullableString(operatorActions.source_path),
+          closeable_action: safeAction(operatorActions.closeable_action),
+          next_action: safeAction(operatorActions.next_action),
+        }
+      : null,
     readActivation: readActivation
       ? {
           valid_sessions: safeCount(readActivation.valid_sessions),
@@ -476,6 +520,9 @@ function CoordinationTile({
   coordination: CoordinationSummary | null;
 }) {
   const activation = coordination?.readActivation ?? null;
+  const operatorActions = coordination?.operatorActions ?? null;
+  const actionFocus =
+    operatorActions?.closeable_action ?? operatorActions?.next_action ?? null;
   const remaining = activation?.remaining_requirements ?? {};
   const remainingText = [
     ["valid", remaining.valid_sessions],
@@ -546,6 +593,31 @@ function CoordinationTile({
       ) : (
         <p className="text-xs italic text-shadow-1 dark:text-moonlight">
           Activation dogfood status unavailable.
+        </p>
+      )}
+      {operatorActions ? (
+        <div className="space-y-0.5 border-t border-rule dark:border-charcoal-1 pt-2">
+          <p className="text-xs font-mono text-ink dark:text-bright">
+            Operator actions {operatorActions.open_count}/{operatorActions.total_actions} not closed
+            {operatorActions.closeable_count > 0
+              ? ` · ${operatorActions.closeable_count} awaiting operator test`
+              : ""}
+          </p>
+          {actionFocus ? (
+            <p className="text-xs text-ink-soft dark:text-starlight">
+              {operatorActions.closeable_action ? "Closeable now" : "Next"}:{" "}
+              {actionFocus.action_id} · {actionFocus.title}. Blocks:{" "}
+              {actionFocus.blocks}.
+            </p>
+          ) : (
+            <p className="text-xs italic text-shadow-1 dark:text-moonlight">
+              No operator actions reported.
+            </p>
+          )}
+        </div>
+      ) : (
+        <p className="text-xs italic text-shadow-1 dark:text-moonlight">
+          Operator action status unavailable.
         </p>
       )}
     </div>

@@ -81,6 +81,7 @@ function roadmap(
     execution_focus: executionFocus,
     operator_gate_focus: null,
     read_activation: null,
+    operator_actions: null,
     substrate_layers: [],
   };
 }
@@ -492,6 +493,56 @@ describe("Roadmap", () => {
 
     expect(
       screen.getByText(/Dogfood log is malformed; repair the JSONL before counting it/),
+    ).toBeTruthy();
+  });
+
+  it("surfaces operator action counts and closeable OA focus", () => {
+    render(
+      <Roadmap
+        roadmap={{
+          ...roadmap([]),
+          operator_actions: {
+            source_path: "docs/OPERATOR_ACTIONS.md",
+            total_actions: 20,
+            open_count: 19,
+            closeable_count: 1,
+            status_counts: {
+              open: 17,
+              awaiting_operator_test: 1,
+              partially_done: 1,
+              closed: 1,
+            },
+            next_action: {
+              action_id: "OA-001",
+              title: "Lawyer review",
+              status: "open",
+              status_raw: "OPEN",
+              blocks: "All Stripe payouts",
+              owner: "Operator + counsel",
+            },
+            closeable_action: {
+              action_id: "OA-005",
+              title: "Autoresearch Wedge 1 ratification",
+              status: "awaiting_operator_test",
+              status_raw: "AWAITING OPERATOR TEST",
+              blocks: "Phase 8 enforcing + Wedges 2-4",
+              owner: "Operator",
+            },
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Operator actions")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "19/20 not closed · 1 awaiting operator test · 17 open · 1 partially done · 1 closed",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Closeable now: OA-005 — Autoresearch Wedge 1 ratification. Blocks: Phase 8 enforcing + Wedges 2-4. Source: docs/OPERATOR_ACTIONS.md.",
+      ),
     ).toBeTruthy();
   });
 

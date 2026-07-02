@@ -39,6 +39,11 @@ from substrate.coordination.gate_ledger import (
     parse_gate_ledger,
     parse_quick_status_table,
 )
+from substrate.coordination.operator_actions import (
+    OperatorActionStatus,
+    canonical_operator_actions_path,
+    load_operator_actions,
+)
 from substrate.coordination.activation_view import build_read_activation_view
 from substrate.coordination.roadmap import (
     Roadmap,
@@ -74,6 +79,71 @@ def test_ledger_equals_independent_quick_status_parse() -> None:
 def test_all_eight_gates_present() -> None:
     ledger = load_gate_ledger()
     assert ledger.gate_ids() == ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8")
+
+
+def _independent_operator_action_rows(md: str) -> list[tuple[str, str]]:
+    rows: list[tuple[str, str]] = []
+    in_table = False
+    for line in md.splitlines():
+        if line.strip() == "| ID | Title | Status | Blocks | Owner |":
+            in_table = True
+            continue
+        if not in_table:
+            continue
+        if line.startswith("|---"):
+            continue
+        if not line.startswith("|"):
+            if rows:
+                break
+            continue
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) == 5 and cells[0].startswith("OA-"):
+            rows.append((cells[0], cells[2]))
+    return rows
+
+
+def test_operator_actions_view_tracks_living_index_without_fork() -> None:
+    md = canonical_operator_actions_path().read_text(encoding="utf-8")
+    view = load_operator_actions()
+    independent = _independent_operator_action_rows(md)
+
+    assert [a.action_id for a in view.actions] == [row[0] for row in independent]
+    assert len(view.actions) == 20
+    assert view.source_path == "docs/OPERATOR_ACTIONS.md"
+    assert view.open_actions()[0].action_id == "OA-001"
+    assert view.closeable_actions()[0].action_id == "OA-005"
+    assert view.status_counts() == {
+        "open": 17,
+        "awaiting_operator_test": 1,
+        "partially_done": 1,
+        "closed": 1,
+    }
+    status_by_id = {a.action_id: a.status for a in view.actions}
+    assert status_by_id["OA-010"] is OperatorActionStatus.CLOSED
+    assert status_by_id["OA-005"] is OperatorActionStatus.AWAITING_OPERATOR_TEST
+
+
+def test_operator_actions_fixture_mutation_is_reflected(tmp_path: Path) -> None:
+    md = """# Operator Actions
+
+## Quick status table
+
+| ID | Title | Status | Blocks | Owner |
+|---|---|---|---|---|
+| OA-001 | Counsel | OPEN | payouts | Operator + counsel |
+| OA-002 | Wedge ratification | AWAITING OPERATOR TEST | Wedges 2-4 | Operator |
+
+"""
+    p = tmp_path / "OPERATOR_ACTIONS.md"
+    p.write_text(md, encoding="utf-8")
+    view = load_operator_actions(p)
+    assert view.open_actions()[0].action_id == "OA-001"
+    assert view.closeable_actions()[0].action_id == "OA-002"
+
+    p.write_text(md.replace("OPEN", "CLOSED", 1), encoding="utf-8")
+    mutated = load_operator_actions(p)
+    assert mutated.open_actions()[0].action_id == "OA-002"
+    assert mutated.status_counts()["closed"] == 1
 
 
 def test_operator_gate_actions_summary_tracks_appended_follow_ons() -> None:
