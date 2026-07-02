@@ -110,7 +110,7 @@ vi.mock("../modes/ResearchWorkstation/CascadeProposal", () => ({
   }) => (
     <section data-testid="mock-cascade-proposal">
       <p>Planning: {problem}</p>
-      <button type="button" onClick={() => onLaunched("cascade-session-1")}>
+      <button type="button" onClick={() => onLaunched("cascade session/1")}>
         Launch cascade
       </button>
       <button type="button" onClick={onFallBackToAsk}>
@@ -428,7 +428,9 @@ describe("UnifiedSearch — re-homed research affordances", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Launch cascade" }));
 
-    expect(navigateMock).toHaveBeenCalledWith("/deep-research/cascade-session-1");
+    expect(navigateMock).toHaveBeenCalledWith(
+      "/deep-research/cascade%20session%2F1",
+    );
   });
 
   it("backs out of cascade planning to the one-shot research path without clearing the query", () => {

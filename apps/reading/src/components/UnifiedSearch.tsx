@@ -677,7 +677,9 @@ export default function UnifiedSearch({
         >
           <CascadeProposal
             problem={query.trim()}
-            onLaunched={(sessionId) => navigate(`/deep-research/${sessionId}`)}
+            onLaunched={(sessionId) =>
+              navigate(`/deep-research/${encodeURIComponent(sessionId)}`)
+            }
             onFallBackToAsk={() => setPlanningCascade(false)}
           />
         </div>
