@@ -106,6 +106,10 @@ function record(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function objectRecord(value: unknown): Record<string, unknown> {
+  return record(value) ?? {};
+}
+
 function nonEmptyString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -230,13 +234,13 @@ export async function listPeople(): Promise<RememberedPerson[]> {
 export async function getProject(id: string): Promise<ProjectDetail> {
   const resp = await apiFetch(`/speak/projects/${encodeURIComponent(id)}`);
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  return toProjectDetail(await resp.json());
+  return toProjectDetail(objectRecord(await resp.json()));
 }
 
 export async function getEconomics(id: string): Promise<EconomicsView> {
   const resp = await apiFetch(`/speak/projects/${encodeURIComponent(id)}/economics`);
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  return toEconomics(await resp.json());
+  return toEconomics(objectRecord(await resp.json()));
 }
 
 export async function listVoices(id: string): Promise<ArrivingVoice[]> {
@@ -262,7 +266,7 @@ export async function inviteByEmail(id: string, email: string): Promise<Arriving
     body: JSON.stringify({ informant_email: email }),
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  return toVoice(await resp.json());
+  return toVoice(objectRecord(await resp.json()));
 }
 
 /** A generic, link-only invite (the shareable "anyone with the link" door for
@@ -274,7 +278,7 @@ export async function makeShareLink(id: string): Promise<string> {
     body: JSON.stringify({ informant_handle: "a friend or family member" }),
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  return requireNonEmptyField(toVoice(await resp.json()).link, "link");
+  return requireNonEmptyField(toVoice(objectRecord(await resp.json())).link, "link");
 }
 
 /**
@@ -433,7 +437,7 @@ export async function createBiography(args: {
     }),
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const data = await resp.json();
+  const data = objectRecord(await resp.json());
   return {
     investigationId: requireInvestigationId(data.investigation_id),
     deliverableId: requireNonEmptyField(data.deliverable_id, "deliverable_id"),
@@ -454,6 +458,6 @@ export async function createPerson(name: string): Promise<string> {
     }),
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const data = await resp.json();
+  const data = objectRecord(await resp.json());
   return requireNonEmptyField(data.project_id, "project_id");
 }

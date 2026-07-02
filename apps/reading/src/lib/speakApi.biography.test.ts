@@ -83,6 +83,17 @@ describe("createBiography", () => {
     ).rejects.toThrow("deliverable_id must be a non-empty string");
   });
 
+  it("rejects non-object biography composition responses through field validation", async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse(null));
+
+    await expect(
+      createBiography({
+        investigationId: "inv-root",
+        subjectName: "Maria",
+      }),
+    ).rejects.toThrow("investigation_id must be a non-empty string");
+  });
+
   it("rejects malformed returned investigation ids", async () => {
     apiFetchMock.mockResolvedValue(
       jsonResponse({
@@ -120,6 +131,14 @@ describe("createPerson", () => {
 
   it("rejects malformed returned project ids", async () => {
     apiFetchMock.mockResolvedValue(jsonResponse({ project_id: " " }));
+
+    await expect(createPerson("Maria")).rejects.toThrow(
+      "project_id must be a non-empty string",
+    );
+  });
+
+  it("rejects non-object create-person responses through field validation", async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse("created"));
 
     await expect(createPerson("Maria")).rejects.toThrow(
       "project_id must be a non-empty string",
@@ -221,6 +240,14 @@ describe("Speak project lists", () => {
     );
   });
 
+  it("rejects non-object project details through field validation", async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse(["not", "a", "project"]));
+
+    await expect(getProject("proj-bad")).rejects.toThrow(
+      "project_id must be a non-empty string",
+    );
+  });
+
   it("sanitizes project detail and economics booleans without truthy-string activation", async () => {
     apiFetchMock.mockResolvedValueOnce(
       jsonResponse({
@@ -313,6 +340,14 @@ describe("Speak invites", () => {
         link: "https://antiek.ai/speak/invite/bad",
       }),
     );
+
+    await expect(inviteByEmail("proj-1", "aunt@example.com")).rejects.toThrow(
+      "interview_id must be a non-empty string",
+    );
+  });
+
+  it("rejects non-object invite responses through field validation", async () => {
+    apiFetchMock.mockResolvedValue(jsonResponse(null));
 
     await expect(inviteByEmail("proj-1", "aunt@example.com")).rejects.toThrow(
       "interview_id must be a non-empty string",
