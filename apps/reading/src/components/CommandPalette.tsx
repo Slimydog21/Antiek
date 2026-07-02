@@ -34,8 +34,8 @@ import { toast } from "./lemon/LemonToast";
  * Command Palette (PostHog Wedge 3, master-spec §5.6 + §4.5).
  *
  * Cmd/Ctrl+K opens; ESC closes. Single fuzzy-search surface across:
- *   - Routes (workstation, brainstorm, notebooks, sources, privacy,
- *     pricing, operator dashboard, wrestler)
+ *   - Routes (workflow doors, built workflow surfaces, governance,
+ *     pricing, operator dashboard)
  *   - Investigations (GET /investigations)
  *   - Documents (GET /documents)
  *   - Notebooks (GET /notebooks)
