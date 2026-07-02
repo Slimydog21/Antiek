@@ -200,6 +200,11 @@ async def _run_note_synthesis(
     if not history:
         return
     recent = history[-SYNTHESIS_HISTORY_WINDOW:]
+    canonical_event_ids = tuple(
+        str(r.get("event_id")).strip()
+        for r in recent
+        if isinstance(r.get("event_id"), str) and str(r.get("event_id")).strip()
+    )
     rendered_history = _format_recent_events_for_prompt(recent)
 
     # 2. Build context pack. The session layer carries the recent
@@ -255,7 +260,10 @@ async def _run_note_synthesis(
         return
 
     # 4. Parse + emit + broadcast.
-    notes = parse_notes_response(response_text)
+    notes = parse_notes_response(
+        response_text,
+        canonical_event_ids=canonical_event_ids,
+    )
     for note in notes:
         emitted_id = emit_typed(
             triggering_event.investigation_id,

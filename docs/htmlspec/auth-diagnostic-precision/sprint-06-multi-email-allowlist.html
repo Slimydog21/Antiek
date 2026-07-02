@@ -576,7 +576,7 @@ hr.divider {
 <body><main class="page"><header class="hero"><p class="eyebrow"><a href="index.html">← ANT-AUTH-DIAG</a> · SPR-06</p>
 <h1>Multi-email allowlist & prod onboarding</h1><p class="tagline">Split ANTIEK_OPERATOR_EMAIL in middleware; onboard the@faisalnazer.com with probe evidence.</p>
 <div class="meta-row"><span class="tag tag--blue"><span class="dot"></span>Wave per index</span>
-<span class="tag tag--yellow"><span class="dot"></span>Ready</span></div></header><section class="block"><h2>Parent context</h2><p class="lede">Standalone briefing — do not require master spec open.</p><p>Bug: <code>app.py</code> L1247 compares session email to full env string <code>a@x.com,b@y.com</code>. Fix: shared <code>_operator_allowlist()</code> frozenset used by auth routes and middleware.</p>
+<span class="tag tag--yellow"><span class="dot"></span>Blocked M3</span></div></header><section class="block"><h2>Parent context</h2><p class="lede">Standalone briefing — do not require master spec open.</p><p>Bug: <code>app.py</code> L1247 compares session email to full env string <code>a@x.com,b@y.com</code>. Fix: shared <code>_operator_allowlist()</code> frozenset used by auth routes and middleware.</p>
 <p>Scope note: session still mints <code>user_id=__operator__</code> — this sprint is allowlist consistency + prod env, not full multi-tenant.</p>
 <div class="callout callout--info"><strong>Position:</strong> SPR-06 of ANT-AUTH-DIAG — login diagnostic precision program.</div></section><section class="block"><h2>Goal</h2><p><strong>Comma-separated allowlist works for magic-link request, callback, and session cookie paths; operator email live.</strong></p></section><section class="block"><h2>Technical milestones</h2><p class="lede">Mechanically verified before complete.</p><div class="milestone"><div class="num">1</div><div>
 <div class="title">Shared allowlist helper</div><p class="desc">Single function in substrate or app module; imported both places.</p>
@@ -587,7 +587,7 @@ hr.divider {
 <div class="files"><span class="file">infrastructure/runbooks/magic-link-auth.md</span></div></div></div><div class="milestone"><div class="num">3</div><div>
 <div class="title">Prod verification (operator-gated)</div><p class="desc">SSH only with approval; paste grep + auth_probe output.</p>
 <div class="criteria"><strong>Acceptance criteria</strong><ul><li>Handoff contains redacted allowlist line count</li><li>auth_probe exit 0 after change</li></ul></div>
-<div class="files"><span class="file">/etc/antiek/secrets.env (operator)</span></div></div></div></section><section class="block"><h2>Rigor</h2><div class="rigor">
+<div class="files"><code>/etc/antiek/secrets.env</code> (operator)</div></div></div></section><section class="block"><h2>Rigor</h2><div class="rigor">
 <div class="rigor-card"><span class="label">1 · Intellectual honesty</span><h4>Evidence-calibrated</h4><p>If SSH not approved, status=blocked for M3 — do not fake prod evidence.</p></div>
 <div class="rigor-card"><span class="label">2 · Fairness</span><h4>Steelman rejected</h4><p>Steelman: per-email user_id — defer to Sprint 19; document __operator__ unchanged.</p></div>
 <div class="rigor-card"><span class="label">3 · Rigor</span><h4>Mechanical gates</h4><p>pytest covers comma list for middleware path specifically.</p></div>

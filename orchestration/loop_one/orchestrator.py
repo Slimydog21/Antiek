@@ -270,11 +270,12 @@ def _prior_graph_knowledge_section(question: str) -> str:
     """Phase 1 orientation cites seeded graph chunks when provenance
     exists; falls back to structural seed markers for empty graphs."""
     block = _render_chunks_block_for_sub_question(question, top_k=3)
-    chunk_ids = re.findall(r"chunk_id:\s*(\S+)", block)
+    chunk_ids = re.findall(r"chunk_id:\s*(\S+)|^\[([^\]]+)\]", block, re.MULTILINE)
     if chunk_ids:
+        ids = [a or b for a, b in chunk_ids]
         return "\n".join(
             f"- {cid} cited from substrate graph search for orientation."
-            for cid in chunk_ids
+            for cid in ids
         )
     return (
         "chunk_orientation_marker and node_orchestrator_start seed the "

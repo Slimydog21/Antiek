@@ -153,7 +153,7 @@ _EVIDENCE_RESPONSE = json.dumps({
         {
             "claim": "Quantum X holds at threshold",
             "evidence_type": "direct",
-            "chunk_ids": ["chunk-1"],
+            "chunk_ids": ["chunk-1", "chunk-INV_PLACEHOLDER-1"],
             "edge_ids": [],
             "source_tier_min": 1,
             "confidence": "high",
@@ -224,7 +224,7 @@ class _PerInvestigationStub:
         # decomposition_block which has it).
         m = _re.search(r"Sub-question [A-D] for (\S+)", prompt)
         if m:
-            return m.group(1).rstrip('"').rstrip(",").rstrip()
+            return m.group(1).rstrip('",').rstrip()
         return "(unknown-inv)"
 
     def call(self, *, model, prompt, max_tokens, temperature) -> RawProviderResponse:
@@ -265,9 +265,7 @@ class _PerInvestigationStub:
         # Substitute investigation_id placeholder + sub-question
         # placeholder (the evidence_retriever parser cross-checks).
         import re as _re
-        inv_match = _re.search(r"Investigation ID:\s*`([^`]+)`", prompt)
-        if inv_match:
-            text = text.replace("INV_PLACEHOLDER", inv_match.group(1))
+        text = text.replace("INV_PLACEHOLDER", inv_id)
         sq_match = _re.search(r"Sub-question:\s*\n\s*>\s*(.+)", prompt)
         if sq_match:
             text = text.replace("(any sub-question)", sq_match.group(1).strip())
@@ -310,6 +308,25 @@ def _patch_dispatch(monkeypatch, config: DispatchConfig) -> None:
     monkeypatch.setattr(
         router.DispatchConfig, "from_yaml",
         classmethod(lambda cls, path: config),
+    )
+
+
+def _chunks_block_for_sub_question(sub_question: str, top_k: int = 5) -> str:
+    import re as _re
+
+    match = _re.search(r"Sub-question [A-D] for (\S+)", sub_question)
+    inv_id = (
+        match.group(1).rstrip('",').rstrip()
+        if match else "(unknown-inv)"
+    )
+    return (
+        "[chunk-1] Source tier: 1 | Document: Shared quantum fixture "
+        "| Section: Evidence | Similarity: 1.000\n\n"
+        "Quantum X holds at threshold under tier-1 primary evidence.\n\n"
+        "---\n"
+        f"[chunk-{inv_id}-1] Source tier: 1 | Document: {inv_id} quantum "
+        "fixture | Section: Synthesis | Similarity: 1.000\n\n"
+        f"Quantum substrate evidence supports {inv_id} per primary sources.\n"
     )
 
 
@@ -398,6 +415,10 @@ async def test_three_concurrent_investigations_complete_independently(
     _, bus = app_and_bus
     register_provider(_PerInvestigationStub())
     _patch_dispatch(monkeypatch, _all_role_config())
+    monkeypatch.setattr(
+        "orchestration.loop_one.orchestrator._render_chunks_block_for_sub_question",
+        _chunks_block_for_sub_question,
+    )
 
     inv_specs = [
         ("inv-conc-alpha", "Question A about quantum?", "topic-alpha"),
@@ -424,7 +445,7 @@ async def test_three_concurrent_investigations_complete_independently(
     assert all(r is not None for r in results), (
         f"Some investigations didn't terminate: {results}"
     )
-    for (inv_id, _, _), body in zip(inv_specs, results):
+    for (inv_id, _, _), body in zip(inv_specs, results, strict=True):
         assert body["status"] == "completed", (
             f"{inv_id}: {body['status']} — {body.get('terminal_payload')}"
         )
@@ -432,7 +453,7 @@ async def test_three_concurrent_investigations_complete_independently(
     # Cross-contamination check — each investigation's thesis MUST
     # mention its own ID. The PerInvestigationStub's synthesizer
     # response embeds the inv_id in the thesis_summary.
-    for (inv_id, _, _), body in zip(inv_specs, results):
+    for (inv_id, _, _), body in zip(inv_specs, results, strict=True):
         tp = body["terminal_payload"]
         assert inv_id in tp["thesis_summary"], (
             f"{inv_id}: thesis_summary doesn't reference its own id "
@@ -442,7 +463,7 @@ async def test_three_concurrent_investigations_complete_independently(
     # Per-investigation MASTER.md isolation — each is at a distinct
     # topic-slug path.
     paths = {inv_id: body["terminal_payload"]["master_md_path"]
-             for (inv_id, _, _), body in zip(inv_specs, results)}
+             for (inv_id, _, _), body in zip(inv_specs, results, strict=True)}
     assert len(set(paths.values())) == 3, (
         f"MASTER.md paths collided: {paths}"
     )

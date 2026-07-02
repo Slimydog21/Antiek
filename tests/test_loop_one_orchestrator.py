@@ -60,8 +60,9 @@ from substrate.schemas import (  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def _isolate_state(tmp_path, monkeypatch):
+    db_path = tmp_path / "graph.duckdb"
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
-    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(tmp_path / "graph.duckdb"))
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(db_path))
     monkeypatch.setenv("ANTIEK_EMBEDDING_PROVIDER", "hash")
     monkeypatch.setenv("ANTIEK_RESEARCH_PHASE_LOG_DIR", str(tmp_path / "phase_logs"))
     monkeypatch.setenv("ANTIEK_RESEARCH_DIR", str(tmp_path / "research"))
@@ -78,6 +79,53 @@ def _isolate_state(tmp_path, monkeypatch):
         "## Open Questions\n\n(Findings will be added.)\n\n"
         "## Monitoring Checklist\n\n(Findings will be added.)\n"
     )
+    import duckdb
+
+    from substrate.graph.schema import init_database_at_path
+
+    init_database_at_path(str(db_path))
+    con = duckdb.connect(str(db_path))
+    try:
+        con.execute(
+            "INSERT INTO documents "
+            "(document_id, source_uri, title, author, source_tier, document_type, "
+            "raw_text, metadata, content_class) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                "doc-psi-quantum",
+                "https://example.test/psiquantum-roadmap",
+                "PsiQuantum photonic quantum roadmap",
+                "Antiek fixture",
+                1,
+                "academic_paper",
+                (
+                    "PsiQuantum photonic quantum roadmap evidence. "
+                    "Quantum X holds at threshold with demonstrated execution "
+                    "capability and primary-source support."
+                ),
+                "{}",
+                "restricted_pending_opt_in",
+            ],
+        )
+        con.execute(
+            "INSERT INTO chunks "
+            "(chunk_id, document_id, chunk_index, section_path, text, token_count) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                "chunk-1",
+                "doc-psi-quantum",
+                0,
+                "Fixture",
+                (
+                    "PsiQuantum photonic quantum roadmap evidence: Quantum X "
+                    "holds at threshold, the photonic substrate is established "
+                    "by primary sources, and execution capability is documented."
+                ),
+                32,
+            ],
+        )
+    finally:
+        con.close()
     _reset_default_provider()
     reset_provider_registry()
     yield
@@ -404,6 +452,16 @@ async def test_loop_one_happy_path_emits_completed(
 ):
     _, bus = app_and_bus
     inv = "inv-loop-happy"
+    monkeypatch.setattr(
+        "orchestration.loop_one.orchestrator._render_chunks_block_for_sub_question",
+        lambda _q, top_k=5: (
+            "[chunk-1] Source tier: 1 | Document: PsiQuantum photonic quantum "
+            "roadmap | Section: Fixture | Similarity: 1.000\n\n"
+            "PsiQuantum photonic quantum roadmap evidence: Quantum X holds "
+            "at threshold, the photonic substrate is established by primary "
+            "sources, and execution capability is documented.\n"
+        ),
+    )
 
     # Tag-based stub that responds for every role + the knowledge
     # extractor. Sub-question text varies per call but the evidence
