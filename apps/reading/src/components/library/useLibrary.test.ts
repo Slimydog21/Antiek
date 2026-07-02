@@ -118,6 +118,60 @@ describe("fetchLibraryPage", () => {
     });
   });
 
+  it("dedupes duplicate catalog work ids after trimming", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          works: [
+            {
+              document_id: " doc-dup ",
+              title: "First work",
+              author: "Ada",
+              servability: "public_domain",
+              servable_full_text: true,
+            },
+            {
+              document_id: "doc-dup",
+              title: "Duplicate work",
+              author: "Grace",
+              servability: "publisher_opted_in",
+              servable_full_text: true,
+            },
+            {
+              document_id: "doc-other",
+              title: "Other work",
+              author: "Lin",
+              servability: "platform_authored",
+              servable_full_text: true,
+            },
+          ],
+          total: "3",
+          page: 1,
+          page_size: 20,
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(
+      fetchLibraryPage({ filter: "all", search: "", page: 1, pageSize: 20 }),
+    ).resolves.toMatchObject({
+      works: [
+        {
+          document_id: "doc-dup",
+          title: "First work",
+          author: "Ada",
+        },
+        {
+          document_id: "doc-other",
+          title: "Other work",
+          author: "Lin",
+        },
+      ],
+      total: 2,
+    });
+  });
+
   it("turns a 404 into the route-absent sentinel, not an empty page", async () => {
     apiFetchMock.mockResolvedValueOnce(new Response("not found", { status: 404 }));
 

@@ -160,6 +160,25 @@ describe("Library", () => {
     expect(navigateMock).toHaveBeenCalledWith("/read/doc-pd");
   });
 
+  it("renders duplicate catalog documents once after API normalization", async () => {
+    listBooksMock.mockResolvedValue({
+      books: [
+        { ...servableBook, document_id: " doc-dup ", title: "First Read" },
+        { ...servableBook, document_id: "doc-dup", title: "Duplicate Read" },
+        { ...servableBook, document_id: "doc-other", title: "Other Read" },
+      ],
+      count: 3,
+    });
+    renderLibrary();
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Open First Read/ })).toBeTruthy(),
+    );
+    expect(screen.queryByRole("button", { name: /Open Duplicate Read/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Open Other Read/ })).toBeTruthy();
+    expect(screen.getByText(/2 books readable in full/)).toBeTruthy();
+  });
+
   it("switching to Preview reloads the gated set", async () => {
     listBooksMock
       .mockResolvedValueOnce({ books: [servableBook], count: 1 })

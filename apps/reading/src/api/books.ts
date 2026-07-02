@@ -108,10 +108,13 @@ function safeBookSummary(value: unknown): BookSummary | null {
 
 function safeBookListResponse(value: unknown): BookListResponse {
   const body = record(value);
+  const seen = new Set<string>();
   const books = Array.isArray(body?.books)
     ? body.books.flatMap((item) => {
         const book = safeBookSummary(item);
-        return book ? [book] : [];
+        if (!book || seen.has(book.document_id)) return [];
+        seen.add(book.document_id);
+        return [book];
       })
     : [];
   return {

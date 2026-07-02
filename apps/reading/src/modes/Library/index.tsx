@@ -39,6 +39,22 @@ const FILTERS: { key: CorpusStatus; label: string; hint: string }[] = [
   { key: "all", label: "All", hint: "Everything, flagged" },
 ];
 
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function uniqueBooks(books: BookSummary[]): BookSummary[] {
+  const seen = new Set<string>();
+  return books.flatMap((book) => {
+    const documentId = nonEmptyString(book.document_id);
+    if (!documentId || seen.has(documentId)) return [];
+    seen.add(documentId);
+    return [{ ...book, document_id: documentId }];
+  });
+}
+
 export default function Library() {
   const navigate = useNavigate();
   const openDocument = useOpenDocument();
@@ -66,7 +82,7 @@ export default function Library() {
     setError(null);
     try {
       const data = await listBooks(status);
-      setBooks(data.books);
+      setBooks(uniqueBooks(data.books));
       // Pull active research themes only for the default servable shelf — the
       // theme-ranked feed is the Read DOOR's first view. Best-effort: if the
       // research list is unavailable, the feed falls back to recency (the empty

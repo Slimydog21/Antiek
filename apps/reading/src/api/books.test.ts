@@ -153,6 +153,56 @@ describe("books api — source-book boundary", () => {
     });
   });
 
+  it("dedupes duplicate source-book ids after trimming", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          books: [
+            {
+              document_id: " doc-dup ",
+              title: "First title",
+              author: "Ada",
+              servability: "public_domain",
+              servable_full_text: true,
+            },
+            {
+              document_id: "doc-dup",
+              title: "Duplicate title",
+              author: "Grace",
+              servability: "publisher_opted_in",
+              servable_full_text: true,
+            },
+            {
+              document_id: "doc-other",
+              title: "Other title",
+              author: "Lin",
+              servability: "platform_authored",
+              servable_full_text: true,
+            },
+          ],
+          count: "3",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(listBooks("all")).resolves.toMatchObject({
+      books: [
+        {
+          document_id: "doc-dup",
+          title: "First title",
+          author: "Ada",
+        },
+        {
+          document_id: "doc-other",
+          title: "Other title",
+          author: "Lin",
+        },
+      ],
+      count: 2,
+    });
+  });
+
   it("sanitizes one book detail and its table of contents", async () => {
     apiFetchMock.mockResolvedValueOnce(
       new Response(
