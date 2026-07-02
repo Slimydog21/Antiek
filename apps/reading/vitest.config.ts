@@ -1,8 +1,15 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
+const posthogVitestMock = new URL("./src/test/posthog-js-vitest.ts", import.meta.url).pathname;
+
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      "posthog-js": posthogVitestMock,
+    },
+  },
   test: {
     environment: "jsdom",
     globals: false,

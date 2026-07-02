@@ -3,9 +3,10 @@ import type { BeforeSendFn, CaptureResult, Properties, Property } from "posthog-
 
 const projectToken = import.meta.env.VITE_POSTHOG_PROJECT_TOKEN?.trim();
 const apiHost = import.meta.env.VITE_POSTHOG_HOST?.trim();
+const runningUnderVitest = import.meta.env.MODE === "test";
 
 /** True when a project token is configured (analytics on). */
-export const posthogEnabled = Boolean(projectToken);
+export const posthogEnabled = Boolean(projectToken) && !runningUnderVitest;
 
 /**
  * Strip the query string and fragment from a URL, keeping origin + path.
