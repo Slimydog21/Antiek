@@ -26,7 +26,7 @@ from dataclasses import dataclass
 
 # Bump on ANY change to DRW_SPRINTS. The SPR-08 conformance gate records the
 # version a downstream citation was validated against.
-LOCK_VERSION: int = 1
+LOCK_VERSION: int = 2
 
 
 @dataclass(frozen=True)
@@ -73,13 +73,17 @@ DRW_SPRINTS: dict[int, Deliverable] = {
         5, "cascade-planner",
         "Cascade one problem into N approved research plans",
         (),  # produces ResearchPlan (owned by SPR-02's protocol module)
-        status="planned",
+        # Live after the canonical cascade gate covered planner dispatch,
+        # edit-contract hardening, approval, and HTTP plan routes.
+        status="live",
     ),
     6: Deliverable(
         6, "parallel-orchestration",
         "Launch + glass-box orchestration of N parallel researches",
         (),
-        status="planned",
+        # Live after the canonical cascade gate covered steer isolation,
+        # route membership, aggregate/recovery, and event-log reconstruction.
+        status="live",
     ),
     7: Deliverable(
         7, "structural-gap-detection",
