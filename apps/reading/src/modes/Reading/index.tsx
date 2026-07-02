@@ -156,7 +156,11 @@ export default function BookReader() {
       try {
         const chunk = await getChunk(optChunk);
         if (!cancelled) {
-          setChunkPageIndex(pageIndexFromChunkSectionPath(chunk.section_path));
+          setChunkPageIndex(
+            chunk.document_id === documentId
+              ? pageIndexFromChunkSectionPath(chunk.section_path)
+              : null,
+          );
         }
       } catch {
         if (!cancelled) setChunkPageIndex(null);

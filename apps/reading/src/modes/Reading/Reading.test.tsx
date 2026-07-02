@@ -387,6 +387,28 @@ describe("BookReader", () => {
     expect(screen.getByText(/Page 2 of 2/)).toBeTruthy();
   });
 
+  it("does not jump pages when a chunk link resolves to another document", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    getChunkMock.mockResolvedValue({
+      chunk_id: "chunk-other-doc",
+      text: "wrong document source",
+      section_path: "Page 2",
+      token_count: 12,
+      document_id: "doc-other",
+      document_title: "A Different Book",
+      source_tier: 2,
+      servable: true,
+      servability: null,
+    });
+
+    await renderReader("/read/doc-1?chunk=chunk-other-doc");
+
+    await waitFor(() => expect(screen.getByText("The opening of the book.")).toBeTruthy());
+    expect(screen.getByText(/Page 1 of 2/)).toBeTruthy();
+    expect(screen.queryByText("The second page.")).toBeNull();
+  });
+
   it("shows the preview banner and snippet for a gated book", async () => {
     getBookMock.mockResolvedValue(
       makeDetail({ servability: "gated_metadata_only", servable_full_text: false }),
