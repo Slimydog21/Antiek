@@ -1589,6 +1589,48 @@ describe("books api — personal-space boundary", () => {
     });
   });
 
+  it("dedupes duplicate personal-space asset ids after trimming", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          assets: [
+            {
+              asset_id: " asset-dup ",
+              kind: "meta_reading",
+              title: "First asset",
+              document_ids: ["doc-1"],
+              open_route: "/read/meta-reading/asset-dup",
+            },
+            {
+              asset_id: "asset-dup",
+              kind: "meta_reading",
+              title: "Duplicate asset",
+              document_ids: ["doc-2"],
+              open_route: "/read/meta-reading/asset-dup-duplicate",
+            },
+            {
+              asset_id: "asset-other",
+              kind: "saved_read",
+              title: "Other asset",
+              document_ids: ["doc-other"],
+              open_route: "/read/doc-other",
+            },
+          ],
+          count: 3,
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(listPersonalSpace()).resolves.toMatchObject({
+      assets: [
+        { asset_id: "asset-dup", title: "First asset", document_ids: ["doc-1"] },
+        { asset_id: "asset-other", title: "Other asset", document_ids: ["doc-other"] },
+      ],
+      count: 2,
+    });
+  });
+
   it("sanitizes personal-space categories and falls back to recency ordering", async () => {
     apiFetchMock.mockResolvedValueOnce(
       new Response(
@@ -1625,6 +1667,57 @@ describe("books api — personal-space boundary", () => {
       ],
       ordering: "recency",
       stability_bound: 0,
+    });
+  });
+
+  it("dedupes duplicate personal-space category ids after trimming", async () => {
+    apiFetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          categories: [
+            {
+              category_id: " cat-dup ",
+              label: "First category",
+              asset_ids: ["asset-1"],
+              ordering: "theme",
+            },
+            {
+              category_id: "cat-dup",
+              label: "Duplicate category",
+              asset_ids: ["asset-2"],
+              ordering: "theme",
+            },
+            {
+              category_id: "cat-other",
+              label: "Other category",
+              asset_ids: ["asset-other"],
+              ordering: "theme",
+            },
+          ],
+          ordering: "theme",
+          stability_bound: 4,
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(listPersonalSpaceCategories()).resolves.toEqual({
+      categories: [
+        {
+          category_id: "cat-dup",
+          label: "First category",
+          asset_ids: ["asset-1"],
+          ordering: "theme",
+        },
+        {
+          category_id: "cat-other",
+          label: "Other category",
+          asset_ids: ["asset-other"],
+          ordering: "theme",
+        },
+      ],
+      ordering: "theme",
+      stability_bound: 4,
     });
   });
 });

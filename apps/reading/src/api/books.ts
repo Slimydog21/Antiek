@@ -861,15 +861,18 @@ function canonicalPersonalOpenRoute(
 
 function safePersonalSpaceResponse(value: unknown): PersonalSpaceResponse {
   const body = record(value);
+  const seen = new Set<string>();
   const assets = Array.isArray(body?.assets)
     ? body.assets.flatMap((item) => {
         const asset = safePersonalAsset(item);
-        return asset ? [asset] : [];
+        if (!asset || seen.has(asset.asset_id)) return [];
+        seen.add(asset.asset_id);
+        return [asset];
       })
     : [];
   return {
     assets,
-    count: nonNegativeSafeInteger(body?.count) ?? assets.length,
+    count: assets.length,
   };
 }
 
@@ -915,10 +918,13 @@ function safeAssetCategory(value: unknown): AssetCategory | null {
 
 function safeCategorizedSpaceResponse(value: unknown): CategorizedSpaceResponse {
   const body = record(value);
+  const seen = new Set<string>();
   const categories = Array.isArray(body?.categories)
     ? body.categories.flatMap((item) => {
         const category = safeAssetCategory(item);
-        return category ? [category] : [];
+        if (!category || seen.has(category.category_id)) return [];
+        seen.add(category.category_id);
+        return [category];
       })
     : [];
   return {
