@@ -442,4 +442,53 @@ describe("NotesPanel", () => {
     expect(panel.props).toEqual({ documentId: "doc-1", initialPage: 7 });
     expect(panel.title).toBe("PDF · region-pass");
   });
+
+  it("opens the PDF panel from a claim attribution chip before grounding", () => {
+    render(
+      <NotesPanel
+        events={[
+          feedEvent(
+            "document.region_selected",
+            {
+              region_id: "region-attr",
+              page: 3,
+              char_start: 10,
+              char_end: 30,
+              bbox: [0, 0, 10, 10],
+              text_excerpt: "source passage",
+            },
+            1,
+          ),
+          feedEvent(
+            "distillation.delivered",
+            {
+              request_event_id: "event-request-1",
+              claims: [
+                {
+                  claim_id: "claim-attr",
+                  text: "Attributed claim.",
+                  confidence: "moderate",
+                  attribution_region_ids: ["region-attr"],
+                },
+              ],
+              rendered_text: "Claim summary.",
+              token_count: 256,
+            },
+            2,
+          ),
+        ]}
+        status="open"
+        reconnects={0}
+        investigationId="inv-1"
+        documentId="doc-1"
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle("open attribution region region-attr in viewer"));
+
+    const panel = useWorkspace.getState().panels["pdf:doc-1:p3"];
+    expect(panel.kind).toBe("PdfViewer");
+    expect(panel.props).toEqual({ documentId: "doc-1", initialPage: 3 });
+    expect(panel.title).toBe("PDF · region-attr");
+  });
 });
