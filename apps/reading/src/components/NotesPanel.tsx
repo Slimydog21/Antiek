@@ -16,6 +16,7 @@ import type {
 import ChatInput from "./ChatInput";
 import ClaimCard from "./ClaimCard";
 import type { GroundingStatus } from "./ClaimCard";
+import { openPdfPanel } from "../workspace/actions";
 
 type GroundingFailureReason = NonNullable<
   Extract<GroundingStatus, { result: "failed" }>
@@ -147,6 +148,11 @@ export default function NotesPanel({
     [events],
   );
 
+  const selectedRegionPages = useMemo(
+    () => findSelectedRegionPages(events, documentId),
+    [events, documentId],
+  );
+
   return (
     <div className="flex flex-col h-full bg-ice-0 dark:bg-charcoal-2 border-l border-rule dark:border-charcoal-1">
       <div className="px-4 py-2 text-xs font-mono bg-ice-3 dark:bg-charcoal-1 border-b border-rule dark:border-charcoal-1 flex items-center justify-between">
@@ -171,6 +177,7 @@ export default function NotesPanel({
                 investigationId={investigationId}
                 documentId={documentId}
                 groundingByClaim={groundingByClaim}
+                selectedRegionPages={selectedRegionPages}
               />
             ))}
           </ul>
@@ -197,6 +204,7 @@ interface FeedRowProps {
   investigationId: string;
   documentId: string | null;
   groundingByClaim: Map<string, GroundingStatus>;
+  selectedRegionPages: Map<string, number>;
 }
 
 function FeedRow({
@@ -205,6 +213,7 @@ function FeedRow({
   investigationId,
   documentId,
   groundingByClaim,
+  selectedRegionPages,
 }: FeedRowProps) {
   const at = String(event.action_type);
 
@@ -233,6 +242,7 @@ function FeedRow({
           documentId={documentId}
           emittedAt={event.emitted_at}
           groundingByClaim={groundingByClaim}
+          selectedRegionPages={selectedRegionPages}
         />
       );
     }
@@ -384,6 +394,7 @@ function AssistantClaimsBubble({
   investigationId,
   documentId,
   groundingByClaim,
+  selectedRegionPages,
 }: {
   eventId: string;
   emittedAt: string;
@@ -391,6 +402,7 @@ function AssistantClaimsBubble({
   investigationId: string;
   documentId: string | null;
   groundingByClaim: Map<string, GroundingStatus>;
+  selectedRegionPages: Map<string, number>;
 }) {
   const claims = Array.isArray(payload.claims)
     ? payload.claims.flatMap((claim) => {
@@ -423,6 +435,13 @@ function AssistantClaimsBubble({
               investigationId={investigationId}
               documentId={documentId}
               grounding={groundingByClaim.get(c.claim_id) ?? null}
+              onLocateRegion={(regionId) => {
+                openPdfPanel({
+                  documentId,
+                  page: selectedRegionPages.get(regionId),
+                  title: `PDF · ${regionId}`,
+                });
+              }}
             />
           </div>
         ))}
@@ -539,6 +558,26 @@ function findLastSelectedRegion(
     }
   }
   return null;
+}
+
+function findSelectedRegionPages(
+  events: Event[],
+  documentId: string | null,
+): Map<string, number> {
+  const pages = new Map<string, number>();
+  if (!documentId) return pages;
+  for (const e of events) {
+    if (
+      e.action_type === "document.region_selected" &&
+      e.document_id === documentId
+    ) {
+      const p = e.payload as DocumentRegionSelectedPayload;
+      const regionId = nonEmptyString(p.region_id);
+      const page = nonNegativeSafeInteger(p.page);
+      if (regionId && page !== null) pages.set(regionId, page);
+    }
+  }
+  return pages;
 }
 
 function findPendingRequestIds(events: Event[]): Set<string> {
