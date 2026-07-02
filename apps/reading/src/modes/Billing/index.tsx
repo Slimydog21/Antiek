@@ -31,19 +31,38 @@ interface BillingSummary {
 
 const FREE_TIER_CAP = 5_000_000;
 
-function nonNegativeFiniteNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
     : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nonNegativeFiniteNumber(value: unknown): number | null {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function safeTokenCount(value: unknown): number {
   return Math.floor(nonNegativeFiniteNumber(value) ?? 0);
 }
 
-function formatUsd(value: string): string {
-  const parsed = Number(value);
-  return `$${(Number.isFinite(parsed) && parsed >= 0 ? parsed : 0).toFixed(4)}`;
+function safeUsdString(value: unknown): string {
+  return String(nonNegativeFiniteNumber(value) ?? 0);
+}
+
+function formatUsd(value: unknown): string {
+  return `$${(nonNegativeFiniteNumber(value) ?? 0).toFixed(4)}`;
 }
 
 function currentPeriod(): string {
@@ -51,6 +70,24 @@ function currentPeriod(): string {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   return `${yyyy}-${mm}`;
+}
+
+function safeBillingSummary(value: unknown): BillingSummary {
+  const body = record(value);
+  return {
+    user_id: nonEmptyString(body?.user_id) ?? "__operator__",
+    period: nonEmptyString(body?.period) ?? currentPeriod(),
+    free_tokens_consumed: safeTokenCount(body?.free_tokens_consumed),
+    free_tokens_remaining: safeTokenCount(body?.free_tokens_remaining),
+    paid_public_token_cost_usd: safeUsdString(body?.paid_public_token_cost_usd),
+    paid_public_margin_usd: safeUsdString(body?.paid_public_margin_usd),
+    paid_private_token_cost_usd: safeUsdString(body?.paid_private_token_cost_usd),
+    paid_private_margin_usd: safeUsdString(body?.paid_private_margin_usd),
+    total_raw_usd: safeUsdString(body?.total_raw_usd),
+    total_margin_usd: safeUsdString(body?.total_margin_usd),
+    total_billable_usd: safeUsdString(body?.total_billable_usd),
+    record_count: safeTokenCount(body?.record_count),
+  };
 }
 
 export default function Billing() {
@@ -74,7 +111,7 @@ export default function Billing() {
       if (!resp.ok) {
         throw new Error(`GET /billing/summary: HTTP ${resp.status}`);
       }
-      setData(await resp.json());
+      setData(safeBillingSummary(await resp.json()));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
