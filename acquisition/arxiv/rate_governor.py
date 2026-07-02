@@ -459,7 +459,7 @@ def governed_request[ResponseT: _ResponseLike](
     return gov.governed_request(send)
 
 
-def govern_if_arxiv[ResponseT: _ResponseLike](
+def govern_if_arxiv[ResponseT](
     url: str,
     send: Callable[[], ResponseT],
     *,
@@ -490,10 +490,20 @@ def govern_if_arxiv[ResponseT: _ResponseLike](
 
     Because the host check is at the boundary on the resolved URL, a fetcher
     cannot bypass the arXiv governor by living outside ``acquisition/arxiv/``.
+
+    Type contract: ``ResponseT`` is UNBOUNDED because the non-arXiv branch is a
+    pure passthrough — a caller fetching a non-arXiv host may return any type
+    (e.g. the X API client sends a ``str`` body through the boundary
+    convention). A send that CAN resolve to an arXiv host must produce a
+    ``_ResponseLike`` (the throttle reads ``.status_code``/``.headers`` for the
+    429 ban sentinel) — that branch narrows via the cast below.
     """
     if is_arxiv_url(url):
         eff_throttle = throttle if throttle is not None else canonical_arxiv_throttle()
-        return governed_request(send, governor=governor, throttle=eff_throttle)
+        governed_send = cast("Callable[[], _ResponseLike]", send)
+        return cast(
+            "ResponseT", governed_request(governed_send, governor=governor, throttle=eff_throttle)
+        )
     return send()
 
 
