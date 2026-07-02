@@ -820,7 +820,7 @@ def register_krea_routes(app: FastAPI) -> None:
         return None
 
     @app.post("/krea/generate", tags=["krea"])
-    def krea_generate(req: GenerateRequest):
+    def krea_generate(req: GenerateRequest) -> JSONResponse:
         """Submit a generation. Returns 200 {job_id,status} when enabled +
         under budget; otherwise the typed 503 fallback. Charges the budget
         on ANY 2xx submit answer (a gated request never bills; a non-2xx
@@ -869,7 +869,7 @@ def register_krea_routes(app: FastAPI) -> None:
         )
 
     @app.get("/krea/jobs/{job_id}", tags=["krea"])
-    def krea_job(job_id: str):
+    def krea_job(job_id: str) -> JSONResponse:
         """Poll a submitted job. 200 {job_id,status,image_url?,error_code?}
         when enabled; typed 503 fallback when disabled / on any upstream
         failure (incl. 402 → no_api_balance and a completed job missing
@@ -894,7 +894,7 @@ def register_krea_routes(app: FastAPI) -> None:
         mood: str = Query(default="calm", max_length=64),
         day_night: str = Query(default="day", max_length=64),
         season: str = Query(default="summer", max_length=64),
-    ):
+    ) -> JSONResponse:
         """The higher-level endpoint SPR-04 consumes. Encapsulates
         prompt-building + cache + budget + submit + poll-to-completion
         behind a single GET keyed by scene-state.
