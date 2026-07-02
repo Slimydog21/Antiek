@@ -36,9 +36,12 @@ export default function NotebookCanvas({
   onMoveBlock,
   onEditBlock,
 }: Props) {
+  const seen = new Set<string>();
   const blocks = notebook.blocks.flatMap((block) => {
     const blockId = safeBlockId(block);
-    return blockId ? [{ block, blockId }] : [];
+    if (!blockId || seen.has(blockId)) return [];
+    seen.add(blockId);
+    return [{ block, blockId }];
   });
   const blockCount = blocks.length;
   return (
