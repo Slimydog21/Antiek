@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -38,6 +39,21 @@ def test_canonical_verify_handoff_uses_repo_local_tsx() -> None:
     src = SCRIPT.read_text(encoding="utf-8")
     assert "apps/reading/node_modules/.bin/tsx" in src
     assert "npx --yes tsx" not in src
+
+
+def test_canonical_verify_usage_names_every_dispatch_subcommand() -> None:
+    src = SCRIPT.read_text(encoding="utf-8")
+    usage_match = re.search(r"Usage: canonical_verify\.sh \{([^}]*)\}", src)
+    assert usage_match, "canonical_verify.sh usage string not found"
+
+    usage_commands = {
+        part.strip().split()[0] for part in usage_match.group(1).split("|")
+    }
+    dispatch_commands = set(
+        re.findall(r"^\s*([a-z0-9-]+)\)\s+cmd_", src, re.MULTILINE)
+    )
+
+    assert usage_commands == dispatch_commands
 
 
 def test_canonical_verify_cascade_hermetic() -> None:
