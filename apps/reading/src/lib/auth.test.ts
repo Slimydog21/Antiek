@@ -5,14 +5,26 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createElement } from "react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+
+vi.mock("./posthogClient", () => ({
+  posthog: {
+    identify: vi.fn(),
+    reset: vi.fn(),
+  },
+  posthogEnabled: true,
+}));
 
 import {
   AUTH_TRANSPORT_FETCH_MESSAGE,
+  AuthProvider,
   authCallbackDiagnosticCode,
   authCallbackErrorDisplay,
   authLoginErrorDisplay,
   requestMagicLink,
   stripAuthCallbackErrorParam,
+  useAuth,
 } from "./auth";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -29,9 +41,25 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
+
+function AuthProbe() {
+  const { state } = useAuth();
+  if (state.status === "loading") {
+    return createElement("div", { role: "status" }, "loading");
+  }
+  if (state.status === "unauthenticated") {
+    return createElement("div", null, "unauthenticated");
+  }
+  return createElement(
+    "div",
+    null,
+    `${state.identity.user_id}|${state.identity.email ?? "no-email"}|${state.identity.auth_method}`,
+  );
+}
 
 describe("requestMagicLink", () => {
   it("A-TRANSPORT-FETCH: fetch reject yields Cannot reach Antiek API (not Failed to fetch)", async () => {
@@ -70,6 +98,58 @@ describe("requestMagicLink", () => {
       message: "Resend API error",
       diagnostic_code: "B-POLICY-EMAIL-503",
       layer: "B",
+    });
+  });
+
+  it("sanitizes malformed error detail before rendering login diagnostics", async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse(503, {
+        detail: { code: " ", message: ["not", "text"] },
+      }),
+    );
+
+    const result = await requestMagicLink("operator@example.com");
+
+    expect(result).toMatchObject({
+      kind: "error",
+      code: "email_delivery_failed",
+      message: "Couldn't send the sign-in link.",
+      diagnostic_code: "B-POLICY-EMAIL-503",
+      layer: "B",
+    });
+  });
+});
+
+describe("AuthProvider identity boundary", () => {
+  it("sanitizes auth identities before marking the app authenticated", async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse(200, {
+        user_id: " user-1 ",
+        email: " ",
+        auth_method: ["magic_link"],
+      }),
+    );
+
+    render(createElement(AuthProvider, null, createElement(AuthProbe)));
+
+    await waitFor(() => {
+      expect(screen.getByText("user-1|no-email|unknown")).toBeTruthy();
+    });
+  });
+
+  it("treats malformed auth identities as unauthenticated", async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(
+      jsonResponse(200, {
+        user_id: " ",
+        email: "operator@example.com",
+        auth_method: "magic_link",
+      }),
+    );
+
+    render(createElement(AuthProvider, null, createElement(AuthProbe)));
+
+    await waitFor(() => {
+      expect(screen.getByText("unauthenticated")).toBeTruthy();
     });
   });
 });

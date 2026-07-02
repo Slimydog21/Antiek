@@ -52,15 +52,41 @@ export interface AuthContextValue {
 
 const AuthCtx = createContext<AuthContextValue | null>(null);
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function safeAuthIdentity(value: unknown): AuthIdentity {
+  const body = record(value);
+  const userId = nonEmptyString(body?.user_id);
+  if (!userId) throw new Error("Malformed auth/me response: user_id");
+  return {
+    user_id: userId,
+    email: nullableString(body?.email),
+    auth_method: nonEmptyString(body?.auth_method) ?? "unknown",
+  };
+}
+
 async function fetchIdentity(): Promise<AuthIdentity | null> {
   const r = await apiFetch(authUrl("/auth/me"));
   if (r.status === 401) return null;
   if (!r.ok) throw new Error(`auth/me HTTP ${r.status}`);
-  const body = (await r.json()) as AuthIdentity;
   // The middleware returns "unauthenticated_local" when no auth env
   // vars are set (local dev). Treat that as authenticated so dev
   // doesn't loop through the login page.
-  return body;
+  return safeAuthIdentity(await r.json());
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -147,6 +173,17 @@ function authRequestError(
   };
 }
 
+function safeAuthRequestDetail(value: unknown): { code?: string; message?: string } {
+  const body = record(value);
+  const detail = record(body?.error) ?? record(body?.detail) ?? {};
+  const code = nonEmptyString(detail.code);
+  const message = nonEmptyString(detail.message);
+  return {
+    ...(code ? { code } : {}),
+    ...(message ? { message } : {}),
+  };
+}
+
 export async function requestMagicLink(email: string, nextPath: string = "/"): Promise<AuthRequestResult> {
   try {
     const r = await apiFetch(authUrl("/auth/request"), {
@@ -159,8 +196,7 @@ export async function requestMagicLink(email: string, nextPath: string = "/"): P
     }
     let detail: { code?: string; message?: string } = {};
     try {
-      const body = (await r.json()) as { error?: { code?: string; message?: string }; detail?: { message?: string; code?: string } };
-      detail = body.error ?? body.detail ?? {};
+      detail = safeAuthRequestDetail(await r.json());
     } catch {
       // fall through to generic
     }
