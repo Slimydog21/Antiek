@@ -29,6 +29,7 @@
 #   speak-compounding-interviewer — Speak SPR-04 context-conditioned interviewer
 #   speak-cross-interviewee-verification — Speak SPR-05 corroboration honesty
 #   speak-contributor-economics — Speak SPR-06 contributor escrow economics
+#   speak-economics-matrix — Speak SPR-07 publishing-mode economics matrix
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -52,7 +53,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|speak-economics-matrix|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -386,6 +387,22 @@ cmd_speak_contributor_economics() {
   echo "CANONICAL_VERIFY_OK: speak-contributor-economics"
 }
 
+cmd_speak_economics_matrix() {
+  echo "== speak-economics-matrix: four-cell policy + binding split =="
+  "${PY}" -m pytest \
+    tests/test_economics_matrix.py \
+    tests/test_speak_api.py::test_full_operator_journey_to_public_publish \
+    tests/test_speak_api.py::test_economics_surfaces_gate_status_gated_by_default \
+    tests/test_speak_payout_verifier.py::test_economics_has_no_public_but_no_split_path \
+    tests/test_contracts_speak_lock.py \
+    -q --tb=no
+  echo "== speak-economics-matrix: Speak settings four-cell matrix =="
+  (cd apps/reading && npm run test -- \
+    src/modes/Speak/SpeakSettings.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: speak-economics-matrix"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -478,6 +495,7 @@ main() {
     speak-compounding-interviewer) cmd_speak_compounding_interviewer ;;
     speak-cross-interviewee-verification) cmd_speak_cross_interviewee_verification ;;
     speak-contributor-economics) cmd_speak_contributor_economics ;;
+    speak-economics-matrix) cmd_speak_economics_matrix ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;
