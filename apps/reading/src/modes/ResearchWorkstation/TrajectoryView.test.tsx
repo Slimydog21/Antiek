@@ -1,5 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Event } from "../../generated/types";
 import type { InvestigationState } from "../../hooks/useInvestigation";
@@ -100,5 +100,33 @@ describe("TrajectoryView", () => {
     expect(screen.getByText("Phase 0")).toBeTruthy();
     expect(screen.getByText("Unphased angle")).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/NaN|Infinity|undefined/);
+  });
+
+  it("uses deterministic keys for events without usable ids", () => {
+    const randomSpy = vi.spyOn(Math, "random");
+
+    render(
+      <TrajectoryView
+        investigation={state({
+          events: [
+            ev(
+              "decompose.delivered",
+              { decomposition: [{ sub_question: "First missing id" }] },
+              { event_id: " " },
+            ),
+            ev(
+              "decompose.delivered",
+              { decomposition: [{ sub_question: "Second missing id" }] },
+              { event_id: null as unknown as string, emitted_at: "2026-07-01T12:00:01Z" },
+            ),
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("First missing id")).toBeTruthy();
+    expect(screen.getByText("Second missing id")).toBeTruthy();
+    expect(randomSpy).not.toHaveBeenCalled();
+    randomSpy.mockRestore();
   });
 });
