@@ -243,5 +243,8 @@ jobs:
       - name: Canonical verify — speak compounding interviewer
         run: ./scripts/canonical_verify.sh speak-compounding-interviewer
 
+      - name: Canonical verify — speak cross-interviewee verification
+        run: ./scripts/canonical_verify.sh speak-cross-interviewee-verification
+
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md

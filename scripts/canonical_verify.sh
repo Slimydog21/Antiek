@@ -27,6 +27,7 @@
 #   speak-async-voice-interview — Speak SPR-02 async voice-note interview
 #   speak-project-invitations — Speak SPR-03 projects + invite links
 #   speak-compounding-interviewer — Speak SPR-04 context-conditioned interviewer
+#   speak-cross-interviewee-verification — Speak SPR-05 corroboration honesty
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -50,7 +51,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -354,6 +355,21 @@ cmd_speak_compounding_interviewer() {
   echo "CANONICAL_VERIFY_OK: speak-compounding-interviewer"
 }
 
+cmd_speak_cross_interviewee_verification() {
+  echo "== speak-cross-interviewee-verification: independent corroboration + honest surface =="
+  "${PY}" -m pytest \
+    tests/test_cross_interviewee.py \
+    tests/properties/test_speak_properties.py \
+    tests/test_speak_api.py \
+    tests/test_contracts_speak_lock.py \
+    -q --tb=no
+  echo "== speak-cross-interviewee-verification: Speak agreement UI =="
+  (cd apps/reading && npm run test -- \
+    src/modes/Speak/Speak.test.tsx \
+    --reporter=dot)
+  echo "CANONICAL_VERIFY_OK: speak-cross-interviewee-verification"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -444,6 +460,7 @@ main() {
     speak-async-voice-interview) cmd_speak_async_voice_interview ;;
     speak-project-invitations) cmd_speak_project_invitations ;;
     speak-compounding-interviewer) cmd_speak_compounding_interviewer ;;
+    speak-cross-interviewee-verification) cmd_speak_cross_interviewee_verification ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;

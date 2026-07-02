@@ -216,3 +216,11 @@ def test_canonical_verify_speak_compounding_interviewer_hermetic() -> None:
     proc = _run("speak-compounding-interviewer")
     assert proc.returncode == 0, proc.stderr or proc.stdout
     assert "CANONICAL_VERIFY_OK: speak-compounding-interviewer" in proc.stdout
+
+
+def test_canonical_verify_speak_cross_interviewee_verification_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("speak-cross-interviewee-verification")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: speak-cross-interviewee-verification" in proc.stdout
