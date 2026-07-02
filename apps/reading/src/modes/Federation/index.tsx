@@ -21,6 +21,54 @@ interface FederationConfig {
   require_attribution_for_outbound_citations: boolean;
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function safePartnerList(value: unknown): string[] {
+  const seen = new Set<string>();
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const partner = nonEmptyString(item);
+    if (!partner || seen.has(partner)) return [];
+    seen.add(partner);
+    return [partner];
+  });
+}
+
+function strictBoolean(value: unknown): boolean {
+  return typeof value === "boolean" ? value : true;
+}
+
+function safeFederationConfig(value: unknown): FederationConfig {
+  const body = record(value);
+  return {
+    allowed_partner_substrates: safePartnerList(
+      body?.allowed_partner_substrates,
+    ),
+    require_opt_in_for_outbound_citations: strictBoolean(
+      body?.require_opt_in_for_outbound_citations,
+    ),
+    require_attribution_for_outbound_citations: strictBoolean(
+      body?.require_attribution_for_outbound_citations,
+    ),
+  };
+}
+
+function errorDetail(value: unknown, fallback: string): string {
+  const body = record(value);
+  const detail = record(body?.detail);
+  return nonEmptyString(detail?.message) ?? fallback;
+}
+
 export default function Federation() {
   const [config, setConfig] = useState<FederationConfig | null>(null);
   const [draft, setDraft] = useState<FederationConfig | null>(null);
@@ -36,7 +84,7 @@ export default function Federation() {
       if (!resp.ok) {
         throw new Error(`GET federation-config: HTTP ${resp.status}`);
       }
-      const data: FederationConfig = await resp.json();
+      const data = safeFederationConfig(await resp.json());
       setConfig(data);
       setDraft(data);
     } catch (e: unknown) {
@@ -61,11 +109,11 @@ export default function Federation() {
       });
       if (!resp.ok) {
         const errorBody = await resp.json().catch(() => null);
-        const detail =
-          errorBody?.detail?.message ?? `PUT failed: HTTP ${resp.status}`;
-        throw new Error(detail);
+        throw new Error(
+          errorDetail(errorBody, `PUT failed: HTTP ${resp.status}`),
+        );
       }
-      const updated: FederationConfig = await resp.json();
+      const updated = safeFederationConfig(await resp.json());
       setConfig(updated);
       setDraft(updated);
       setSavedAt(new Date().toISOString());
