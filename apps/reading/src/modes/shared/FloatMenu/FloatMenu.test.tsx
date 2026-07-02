@@ -310,15 +310,24 @@ describe("NOTE persists with a user-sourced label + provenance (M2)", () => {
       rect: { top: 0, left: 0, width: 10, height: 10 },
       provenance: { documentId: "doc-9", chunkId: "chunk-7" },
     };
-    await saveFloatMenuNote({ investigationId: "inv-1", selection, noteText: "my note" });
+    await saveFloatMenuNote({ investigationId: " inv-1 ", selection, noteText: " my note ", noteId: " note-1 " });
     expect(postTypedEventMock).toHaveBeenCalledTimes(1);
     const envelope = postTypedEventMock.mock.calls[0][0] as {
       investigation_id: string;
       document_id?: string;
-      payload: { action_type: string; source_kind: string; note_text: string; excerpt: string; chunk_id: string | null };
+      payload: {
+        action_type: string;
+        source_kind: string;
+        note_id: string;
+        note_text: string;
+        excerpt: string;
+        chunk_id: string | null;
+      };
     };
+    expect(envelope.investigation_id).toBe("inv-1");
     // user-sourced label (§9 — never a model label on a user note).
     expect(envelope.payload.action_type).toBe("marginalia.noted");
+    expect(envelope.payload.note_id).toBe("note-1");
     expect(envelope.payload.source_kind).toBe("user");
     // provenance chain claim→chunk→document.
     expect(envelope.payload.chunk_id).toBe("chunk-7");
@@ -339,6 +348,65 @@ describe("NOTE persists with a user-sourced label + provenance (M2)", () => {
     expect(postTypedEventMock).toHaveBeenCalledTimes(1);
     const payload = (postTypedEventMock.mock.calls[0][0] as { payload: { source_kind: string } }).payload;
     expect(payload.source_kind).toBe("user");
+  });
+
+  it("omits blank optional provenance and voice refs instead of minting graph handles", async () => {
+    const selection: FloatMenuSelection = {
+      text: " anchored by text only ",
+      rect: { top: 0, left: 0, width: 10, height: 10 },
+      provenance: { documentId: " ", chunkId: " " },
+    };
+    await saveFloatMenuNote({
+      investigationId: "inv-1",
+      selection,
+      noteText: "note",
+      voiceClip: { transcript: " transcript ", eventId: " ", audioRef: " " },
+    });
+
+    expect(postTypedEventMock).toHaveBeenCalledTimes(1);
+    const envelope = postTypedEventMock.mock.calls[0][0] as {
+      document_id?: string;
+      payload: {
+        excerpt: string;
+        voice_transcript: string | null;
+        voice_event_id: string | null;
+        audio_ref: string | null;
+        chunk_id: string | null;
+      };
+    };
+    expect(envelope.document_id).toBeUndefined();
+    expect(envelope.payload.chunk_id).toBeNull();
+    expect(envelope.payload.excerpt).toBe("anchored by text only");
+    expect(envelope.payload.voice_transcript).toBe("transcript");
+    expect(envelope.payload.voice_event_id).toBeNull();
+    expect(envelope.payload.audio_ref).toBeNull();
+  });
+
+  it("rejects malformed marginalia inputs before emitting a typed event", async () => {
+    const selection: FloatMenuSelection = {
+      text: "selected text",
+      rect: { top: 0, left: 0, width: 10, height: 10 },
+      provenance: { documentId: "doc-9", chunkId: "chunk-7" },
+    };
+
+    await expect(saveFloatMenuNote({ investigationId: " ", selection, noteText: "note" })).rejects.toThrow(
+      /investigationId/,
+    );
+    await expect(saveFloatMenuNote({ investigationId: "inv-1", selection, noteText: " " })).rejects.toThrow(
+      /noteText/,
+    );
+    await expect(
+      saveFloatMenuNote({
+        investigationId: "inv-1",
+        selection: { ...selection, text: " " },
+        noteText: "note",
+      }),
+    ).rejects.toThrow(/selection\.text/);
+    await expect(
+      saveFloatMenuNote({ investigationId: "inv-1", selection, noteText: "note", noteId: " " }),
+    ).rejects.toThrow(/noteId/);
+
+    expect(postTypedEventMock).not.toHaveBeenCalled();
   });
 });
 
