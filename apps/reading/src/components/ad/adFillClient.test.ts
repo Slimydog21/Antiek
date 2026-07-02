@@ -152,6 +152,73 @@ describe("fetchFill", () => {
     });
   });
 
+  it.each([
+    {
+      creative_url: "javascript:alert(1)",
+      landing_url: "https://example.com/",
+    },
+    {
+      creative_url: "https://example.com/c.png",
+      landing_url: "data:text/html,owned",
+    },
+    {
+      creative_url: "/relative/c.png",
+      landing_url: "https://example.com/",
+    },
+  ])("degrades unsafe paid creative URLs to house fill %#", async (adUrls) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          slot_id: "slot:doc-1:p4:top",
+          document_id: "doc-1",
+          page_index: 4,
+          position: "top",
+          kind: "ad",
+          ad: {
+            inventory_id: "inv-1",
+            advertiser_display_name: "Unsafe Advertiser",
+            ...adUrls,
+          },
+          house: {
+            promoted_document_id: "safe-house-doc",
+            title: "Safe house promo",
+            author: "Curator",
+          },
+          revenue_usd_cents: 120,
+        }),
+      }) as Response),
+    );
+
+    const result = await fetchFill({
+      lens: "read",
+      documentId: "doc-1",
+      pageIndex: 4,
+      positions: ["top"],
+    });
+
+    expect(result).toEqual({
+      served: true,
+      fills: [
+        {
+          slot_id: "slot:doc-1:p4:top",
+          document_id: "doc-1",
+          page_index: 4,
+          position: "top",
+          kind: "house",
+          ad: null,
+          house: {
+            promoted_document_id: "safe-house-doc",
+            title: "Safe house promo",
+            author: "Curator",
+          },
+          revenue_usd_cents: 0,
+        },
+      ],
+    });
+  });
+
   it("falls back to neutral house when a response is for the wrong edge", async () => {
     vi.stubGlobal(
       "fetch",

@@ -41,6 +41,17 @@ export interface AdSlotProps {
   voiceContext?: string;
 }
 
+function safeExternalHref(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "#";
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? trimmed : "#";
+  } catch {
+    return "#";
+  }
+}
+
 export default function AdSlot({
   ad,
   pattern = "page-border",
@@ -72,6 +83,7 @@ export default function AdSlot({
     // server side.
     onImpression(ad.campaign_id);
   }
+  const creativeHref = safeExternalHref(ad.creative_url);
 
   if (pattern === "inline-sponsor") {
     return (
@@ -86,7 +98,7 @@ export default function AdSlot({
               Sponsored · {ad.sector}
             </span>
             <a
-              href={ad.creative_url}
+              href={creativeHref}
               target="_blank"
               rel="noreferrer noopener sponsored"
               onClick={() => onClick?.(ad.campaign_id)}
@@ -115,7 +127,7 @@ export default function AdSlot({
           Sponsored · {ad.sector} · {ad.intent}
         </span>
         <a
-          href={ad.creative_url}
+          href={creativeHref}
           target="_blank"
           rel="noreferrer noopener sponsored"
           onClick={() => onClick?.(ad.campaign_id)}

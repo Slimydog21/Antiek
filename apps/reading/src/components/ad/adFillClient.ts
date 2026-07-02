@@ -100,6 +100,17 @@ function nullableString(value: unknown): string | null {
   return value == null ? null : nonEmptyString(value);
 }
 
+function safeHttpUrl(value: unknown): string | null {
+  const url = nonEmptyString(value);
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 function safePageIndex(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
     ? value
@@ -117,8 +128,8 @@ function safeCreative(value: unknown): AdCreative | null {
   if (!creative) return null;
   const inventoryId = nonEmptyString(creative.inventory_id);
   const advertiser = nonEmptyString(creative.advertiser_display_name);
-  const creativeUrl = nonEmptyString(creative.creative_url);
-  const landingUrl = nonEmptyString(creative.landing_url);
+  const creativeUrl = safeHttpUrl(creative.creative_url);
+  const landingUrl = safeHttpUrl(creative.landing_url);
   if (!inventoryId || !advertiser || !creativeUrl || !landingUrl) return null;
   return {
     inventory_id: inventoryId,
