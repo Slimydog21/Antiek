@@ -10,6 +10,7 @@
 import { describe, it, expect } from "vitest";
 
 import { rankEntries, entryWorkflow, type FacetEntry } from "./paletteFacet";
+import { workflowForPath } from "./workflowTaxonomy";
 
 // A small synthetic entry set spanning workflows + a shared route.
 // Typed as FacetEntry (the minimal shape the facet logic needs) + an id
@@ -17,13 +18,29 @@ import { rankEntries, entryWorkflow, type FacetEntry } from "./paletteFacet";
 // CommandPalette.tsx (which would pull in lib/api and leak module mocks
 // into other test files).
 type Row = FacetEntry & { id: string; path?: string; run?: () => void };
+const routeRow = (
+  id: string,
+  title: string,
+  subtitle: string,
+  path: string,
+): Row => ({
+  kind: "route",
+  id,
+  title,
+  subtitle,
+  path,
+  workflow: workflowForPath(path),
+});
+
 const ENTRIES: Row[] = [
-  { kind: "route", id: "r:research", title: "Research workstation", subtitle: "Mode A (/)", path: "/", workflow: "research" },
-  { kind: "route", id: "r:wrestle", title: "Document wrestler", subtitle: "Mode B (/wrestle)", path: "/wrestle", workflow: "read" },
-  { kind: "route", id: "r:docs", title: "Documents", subtitle: "by tier (/documents)", path: "/documents", workflow: "read" },
-  { kind: "route", id: "r:create", title: "Creation studio", subtitle: "Mode C (/create)", path: "/create", workflow: "write" },
-  { kind: "route", id: "r:speak", title: "Speak", subtitle: "projects (/speak)", path: "/speak", workflow: "speak" },
-  { kind: "route", id: "r:settings", title: "Settings", subtitle: "operator (/settings)", path: "/settings", workflow: "shared" },
+  routeRow("r:research", "Research workstation", "Mode A (/)", "/"),
+  routeRow("r:library", "Library", "shelf (/library)", "/library"),
+  routeRow("r:wrestle", "Document wrestler", "Mode B (/wrestle)", "/wrestle"),
+  routeRow("r:docs", "Documents", "by tier (/documents)", "/documents"),
+  routeRow("r:sources", "Sources", "ingest URLs (/sources)", "/sources"),
+  routeRow("r:create", "Creation studio", "Mode C (/create)", "/create"),
+  routeRow("r:speak", "Speak", "projects (/speak)", "/speak"),
+  routeRow("r:settings", "Settings", "operator (/settings)", "/settings"),
   { kind: "action", id: "wf:goto:read", title: "Go to Read", subtitle: "library", run: () => {}, workflow: "read" },
 ];
 
@@ -36,10 +53,20 @@ describe("palette workflow facet (SPR-04 M4)", () => {
   });
 
   it("a workflow-lead query matches that workflow even without a text hit", () => {
-    // "Documents" has no literal "read" in its title/subtitle, but it is
-    // a Read entry → must still surface under "read".
+    // "Library" has no literal "read" in its title/subtitle, but it is
+    // a Read entry -> must still surface under "read".
     const ranked = rankEntries(ENTRIES, "read");
-    expect(ranked.some((e) => e.id === "r:docs")).toBe(true);
+    expect(ranked.some((e) => e.id === "r:library")).toBe(true);
+  });
+
+  it("does not pull shared acquisition routes back into the Read facet", () => {
+    const ranked = rankEntries(ENTRIES, "read");
+    expect(entryWorkflow(ENTRIES.find((e) => e.id === "r:docs")!)).toBe("shared");
+    expect(entryWorkflow(ENTRIES.find((e) => e.id === "r:sources")!)).toBe(
+      "shared",
+    );
+    expect(ranked.some((e) => e.id === "r:docs")).toBe(false);
+    expect(ranked.some((e) => e.id === "r:sources")).toBe(false);
   });
 
   it("does not pull unrelated workflows up (write stays below read for 'read')", () => {
