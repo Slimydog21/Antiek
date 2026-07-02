@@ -6,9 +6,9 @@ import NotesFeed from "./NotesFeed";
 
 afterEach(() => cleanup());
 
-const noteEvent = (payload: Record<string, unknown>): Event =>
+const noteEvent = (payload: Record<string, unknown>, eventId = "event-note-1"): Event =>
   ({
-    event_id: "event-note-1",
+    event_id: eventId,
     investigation_id: "inv-1",
     document_id: " doc-1 ",
     action_type: "note.emerged",
@@ -65,5 +65,20 @@ describe("NotesFeed", () => {
     expect(screen.getByText("high")).toBeTruthy();
     expect(onCiteJump).toHaveBeenCalledWith("event-source-1");
     expect(onCiteJump).toHaveBeenCalledTimes(1);
+  });
+
+  it("dedupes replayed note event ids before counting or rendering cards", () => {
+    render(
+      <NotesFeed
+        events={[
+          noteEvent({ note_text: "First delivered note." }, "event-note-replay"),
+          noteEvent({ note_text: "Duplicate replay note." }, "event-note-replay"),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("1 insight")).toBeTruthy();
+    expect(screen.getByText("First delivered note.")).toBeTruthy();
+    expect(screen.queryByText("Duplicate replay note.")).toBeNull();
   });
 });
