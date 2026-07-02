@@ -37,6 +37,8 @@ from datetime import UTC
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 if TYPE_CHECKING:
+    from orchestration.cascade_session import CascadeSession
+    from orchestration.session_evidence_pack import SessionEvidencePack
     from substrate.attribution.compute import AttributionResult
     from substrate.auth import SessionClaims
     from substrate.ip_holders import IpHolder
@@ -1539,7 +1541,10 @@ def create_app(
             set_synthesis_tail_runner,
         )
 
-        async def _run_cascade_synthesis_tail(session, pack) -> None:
+        async def _run_cascade_synthesis_tail(
+            session: CascadeSession,
+            pack: SessionEvidencePack,
+        ) -> None:
             await session.run_synthesis_tail(
                 pack, broadcaster=bus, coordinator=_loop_coordinator,
             )

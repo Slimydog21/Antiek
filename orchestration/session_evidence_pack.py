@@ -13,7 +13,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any, Optional, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
@@ -62,7 +63,7 @@ class SessionEvidencePack(BaseModel):
     content_hash: str = ""
 
     @model_validator(mode="after")
-    def _validate_provenance_and_hash(self) -> "SessionEvidencePack":
+    def _validate_provenance_and_hash(self) -> SessionEvidencePack:
         if self.schema_version not in _SUPPORTED_SCHEMA_VERSIONS:
             raise ValueError(
                 f"unsupported schema_version {self.schema_version!r}; "
@@ -149,7 +150,8 @@ def _document_ip_holder(
     ).fetchone()
     if row is None:
         return None
-    return row[0]
+    result: str | None = row[0]
+    return result
 
 
 def _load_problem_question(

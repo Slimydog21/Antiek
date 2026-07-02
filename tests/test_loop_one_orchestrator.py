@@ -35,6 +35,9 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
 
 from interfaces.research.api import EventBroadcaster, create_app  # noqa: E402
+from orchestration.invariants.deep_research_complete import (  # noqa: E402
+    check_deep_research_complete,
+)
 from processing.embedding import _reset_default_provider  # noqa: E402
 from substrate.dispatch import (  # noqa: E402
     DispatchConfig,
@@ -47,9 +50,6 @@ from substrate.dispatch import (  # noqa: E402
     reset_provider_registry,
 )
 from substrate.event_log import trajectory  # noqa: E402
-from orchestration.invariants.deep_research_complete import (  # noqa: E402
-    check_deep_research_complete,
-)
 from substrate.schemas import (  # noqa: E402
     ActionType,
     Event,

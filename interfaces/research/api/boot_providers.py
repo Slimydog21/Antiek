@@ -7,7 +7,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def log_zero_providers_warning_if_needed(registered_providers: set[str] | set) -> None:
+def log_zero_providers_warning_if_needed(registered_providers: set[str]) -> None:
     """Loud-but-running boot posture when no dispatch providers registered."""
     if registered_providers:
         return
