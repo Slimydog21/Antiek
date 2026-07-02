@@ -231,5 +231,8 @@ jobs:
       - name: Canonical verify — write style conditioning
         run: ./scripts/canonical_verify.sh write-style-conditioning
 
+      - name: Canonical verify — speak consent rights gate
+        run: ./scripts/canonical_verify.sh speak-consent-rights-gate
+
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md

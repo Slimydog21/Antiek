@@ -23,6 +23,7 @@
 #   write-trace-to-source — Write SPR-07 provenance trace + gated no-leak
 #   write-pre-outline-freeform — Write SPR-08 context window promote/generate
 #   write-style-conditioning — Write SPR-09 prompt-level style conditioning
+#   speak-consent-rights-gate — Speak SPR-01 consent + public publish gate
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -46,7 +47,7 @@ else
 fi
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -296,6 +297,17 @@ cmd_write_style_conditioning() {
   echo "CANONICAL_VERIFY_OK: write-style-conditioning"
 }
 
+cmd_speak_consent_rights_gate() {
+  echo "== speak-consent-rights-gate: scoped consent + publish gate =="
+  "${PY}" -m pytest \
+    tests/test_speak_consent.py \
+    tests/test_speak_publish.py \
+    tests/test_seam_platform_authored_gate.py \
+    tests/test_contracts_speak_lock.py \
+    -q --tb=no
+  echo "CANONICAL_VERIFY_OK: speak-consent-rights-gate"
+}
+
 cmd_read_voice_notes() {
   echo "== read-voice-notes: transcription + confirmed-note backend =="
   "${PY}" -m pytest tests/test_voice_notes.py tests/test_contracts_read_lock.py -q --tb=no
@@ -382,6 +394,7 @@ main() {
     write-trace-to-source) cmd_write_trace_to_source ;;
     write-pre-outline-freeform) cmd_write_pre_outline_freeform ;;
     write-style-conditioning) cmd_write_style_conditioning ;;
+    speak-consent-rights-gate) cmd_speak_consent_rights_gate ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;

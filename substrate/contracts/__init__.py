@@ -60,6 +60,12 @@ from .read_sprint_lock import (
     ReadDeliverable,
     resolve_read_sprint,
 )
+from .speak_sprint_lock import (
+    SPEAK_LOCK_VERSION,
+    SPEAK_SPRINTS,
+    SpeakDeliverable,
+    resolve_speak_sprint,
+)
 from .write_sprint_lock import (
     WRITE_LOCK_VERSION,
     WRITE_SPRINTS,
@@ -128,6 +134,10 @@ __all__ = [
     "READ_SPRINTS",
     "ReadDeliverable",
     "resolve_read_sprint",
+    "SPEAK_LOCK_VERSION",
+    "SPEAK_SPRINTS",
+    "SpeakDeliverable",
+    "resolve_speak_sprint",
     "WRITE_LOCK_VERSION",
     "WRITE_SPRINTS",
     "WriteDeliverable",
