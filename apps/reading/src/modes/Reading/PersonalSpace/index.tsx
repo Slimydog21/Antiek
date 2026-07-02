@@ -243,7 +243,7 @@ function AssetRow({
     : null;
 
   // The doc this asset is about — the first owned doc, the match subject.
-  const subjectDocId = asset.document_ids[0]?.trim() || null;
+  const subjectDocId = firstDocumentId(asset.document_ids);
 
   // Fetch the suggestion lazily once per row (a READ, never a mutation — the
   // backend match selector only ranks). No suggestion fetched ⇒ none shown.
@@ -361,7 +361,7 @@ function truncate(s: string, max = 40): string {
 }
 
 function savedReadDocumentId(asset: PersonalAsset): string | null {
-  const primary = asset.document_ids[0]?.trim();
+  const primary = firstDocumentId(asset.document_ids);
   if (primary) return primary;
   const match = asset.open_route.match(/^\/read\/([^/?#]+)(?:[?#].*)?$/);
   if (!match || match[1] === "meta-reading") return null;
@@ -370,6 +370,10 @@ function savedReadDocumentId(asset: PersonalAsset): string | null {
   } catch {
     return null;
   }
+}
+
+function firstDocumentId(documentIds: string[]): string | null {
+  return documentIds.find((id) => id.trim().length > 0)?.trim() ?? null;
 }
 
 function safeCreatedAssetRoute(route: string): string | null {
