@@ -52,6 +52,14 @@ function finiteNonNegativeNumber(value: unknown): number | null {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
+function validationDetail(value: unknown): string {
+  const body = record(value);
+  const detail = body?.detail;
+  if (typeof detail === "string" && detail.trim()) return detail.trim();
+  const nested = record(detail);
+  return nonEmptyString(nested?.message) ?? "rejected";
+}
+
 function safeInvestigationRow(value: unknown): InvestigationRow | null {
   const row = record(value);
   const investigationId = nonEmptyString(row?.investigation_id);
@@ -112,9 +120,9 @@ export default function InvestigationsIndex() {
         }),
       });
       if (resp.status === 422) {
-        const body = await resp.json().catch(() => null);
+        const body: unknown = await resp.json().catch(() => null);
         throw new Error(
-          `Validation: ${body?.detail ?? "rejected"}`,
+          `Validation: ${validationDetail(body)}`,
         );
       }
       if (!resp.ok) {
