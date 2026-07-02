@@ -6,6 +6,7 @@ import { generateMetaReading, getSavedMetaReading } from "../../../api/books";
 import type { BookCitation, MetaReadingResponse } from "../../../api/books";
 import ReadAloud from "../../../components/voice/ReadAloud";
 import ReadingColumn from "../../../components/reader/ReadingColumn";
+import { requireInvestigationId } from "../../../lib/investigationData";
 import { useOpenDocument } from "../../../lib/openDocument";
 import { acceptPromotion, suggestPromotion } from "../../../lib/researchSuggestion";
 import AIActionFailure from "../../../shared/AIActionFailure";
@@ -179,7 +180,7 @@ export default function MetaReading() {
         prompt: prompt.trim(),
         documentId: deliverable.corpus_document_ids[0],
       });
-      setPromoted(res.investigation_id);
+      setPromoted(requireInvestigationId(res.investigation_id));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
       setErrorSource("promotion");

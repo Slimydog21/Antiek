@@ -270,7 +270,7 @@ describe("MetaReading (M4)", () => {
   });
 
   it("promotion happens ONLY on explicit user accept", async () => {
-    acceptPromotionMock.mockResolvedValue({ investigation_id: "inv-xyz" });
+    acceptPromotionMock.mockResolvedValue({ investigation_id: " inv-xyz " });
     await generate();
     fireEvent.click(screen.getByRole("button", { name: /Chase it as a research/ }));
     await screen.findByTestId("promote-done");
@@ -279,6 +279,19 @@ describe("MetaReading (M4)", () => {
       prompt: "free will across my books",
       documentId: "doc-mr",
     });
+    fireEvent.click(screen.getByRole("button", { name: /Open it/i }));
+    expect(navigateMock).toHaveBeenCalledWith("/inv/inv-xyz");
+  });
+
+  it("surfaces malformed promotion ids instead of showing an open link", async () => {
+    acceptPromotionMock.mockResolvedValue({ investigation_id: " " });
+    await generate();
+    fireEvent.click(screen.getByRole("button", { name: /Chase it as a research/ }));
+
+    expect(await screen.findByText(/Couldn’t promote this reading/i)).toBeTruthy();
+    expect(screen.getByText(/Engine: investigation_id must be a non-empty string/i)).toBeTruthy();
+    expect(screen.queryByTestId("promote-done")).toBeNull();
+    expect(navigateMock).not.toHaveBeenCalledWith(expect.stringMatching(/^\/inv\//));
   });
 
   it("frames promotion failures as retryable engine failures, not a fake promotion", async () => {
