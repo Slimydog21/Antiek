@@ -12,6 +12,11 @@ import { parsePaletteDrag } from "./Repository/dragToOutline";
 import { WriteEditor } from "./Editor/Editor";
 import { EDIT_CAPTURE_POLICY } from "./EditCapture";
 import { IdeaDump } from "./Brainstorm/IdeaDump";
+import {
+  safeGenerationResult,
+  safeOutlineBlocks,
+  safeProseProvenance,
+} from "./outlineData";
 import SubAgentProposal from "./SubAgentProposal";
 import VoiceToDraft from "./VoiceToDraft";
 import Xray from "./Xray";
@@ -182,7 +187,8 @@ function SectionCard({
 
   const refreshBlocks = useCallback(async () => {
     try {
-      setBlocks(await getSectionBlocks(section.section_id));
+      const nextBlocks = await getSectionBlocks(section.section_id);
+      setBlocks(Array.isArray(nextBlocks) ? safeOutlineBlocks(nextBlocks) : []);
     } catch {
       setBlocks([]);
     }
@@ -195,7 +201,7 @@ function SectionCard({
   // Keep the persisted prose/provenance in sync if the section reloads.
   useEffect(() => {
     setProseText(section.prose_text);
-    setProseProvenance(section.prose_provenance ?? {});
+    setProseProvenance(safeProseProvenance(section.prose_provenance));
   }, [section.prose_text, section.prose_provenance]);
 
   async function handleDrop(e: React.DragEvent) {
@@ -245,7 +251,10 @@ function SectionCard({
     setGenResult(null);
     setGenError(null);
     try {
-      const r = await generateSection(section.section_id, { paragraphIndex });
+      const r = safeGenerationResult(
+        await generateSection(section.section_id, { paragraphIndex }),
+        section.section_id,
+      );
       setGenResult(r);
       if (r.status === "generated" && r.prose_text) {
         // Load the real prose into the editor (M4). Plain prose becomes
@@ -255,7 +264,7 @@ function SectionCard({
         // (the server persisted it via SECTION_DRAFT_GENERATED — the link
         // exists in the graph, this is just the immediate echo).
         setProseText(r.prose_text);
-        setProseProvenance(r.prose_provenance ?? {});
+        setProseProvenance(safeProseProvenance(r.prose_provenance));
       }
     } catch (e) {
       // Honest no-key / no-result: a 503 (provider not configured) or any
