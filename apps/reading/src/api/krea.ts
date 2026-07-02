@@ -108,6 +108,17 @@ function nullableString(value: unknown): string | null {
   return value == null ? null : nonEmptyString(value);
 }
 
+function safeHttpUrl(value: unknown): string | null {
+  const url = nullableString(value);
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 function fallbackSignal(
   reason = "upstream_bad_response",
   sceneKey: string | null = null,
@@ -131,7 +142,7 @@ function safeSceneDisabled(value: unknown): SceneDisabled {
 function safeSceneArt(value: unknown): SceneArt | null {
   const body = record(value);
   if (!body) return null;
-  const imageUrl = nonEmptyString(body.image_url);
+  const imageUrl = safeHttpUrl(body.image_url);
   const sceneKey = nonEmptyString(body.scene_key);
   if (!imageUrl || !sceneKey) return null;
   return {
@@ -164,7 +175,7 @@ function safeJobResult(value: unknown): JobResult | null {
     enabled: true,
     job_id: jobId,
     status: nonEmptyString(body.status) ?? "unknown",
-    image_url: nullableString(body.image_url),
+    image_url: safeHttpUrl(body.image_url),
   };
 }
 
