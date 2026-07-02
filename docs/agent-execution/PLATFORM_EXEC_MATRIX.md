@@ -38,12 +38,13 @@
 | P-30 | Speak project invitations | `substrate/speak/project.py` + `invitations.py` + Speak index | `./scripts/canonical_verify.sh speak-project-invitations` | — | Real invite delivery/email/domain QA |
 | P-31 | Speak compounding interviewer | `substrate/speak/interviewer_context.py` + DRW gap source + interviewer role | `./scripts/canonical_verify.sh speak-compounding-interviewer` | — | Live interviewer output-quality QA |
 | P-32 | Speak cross-interviewee verification | `substrate/speak/corroboration.py` + Speak agreement surface | `./scripts/canonical_verify.sh speak-cross-interviewee-verification` | — | Human judgment on nuanced contradictions |
-| P-33 | Agent handoff schema | `tools/agent/verify_handoff.ts` | `./scripts/canonical_verify.sh handoff <md>` | — | Narrative quality / intent |
-| P-34 | Session theater grep | `scripts/audit_agent_session.sh` | paired with handoff subcommand | — | Claims outside markdown packet |
-| P-35 | AMS spec ref-lint | `scripts/agent_ams_ref_lint.sh` | `bash scripts/agent_ams_ref_lint.sh <sprint.html>` | — | Playwright mountain shell |
-| P-36 | Reading substrate pytest | `.github/workflows/ci.yml` `pytest` job | CI on `main` (full suite) | — | Local hardware parity |
-| P-37 | Werner mascot / hop | `apps/reading` Werner paths per Werner htmlspec | `canonical_verify.sh agent-gates` + case study §5 | Werner operator card (htmlspec) | Measured p95 / fps without artifact |
-| P-38 | Serve / rights / legal | production deploy surfaces | **No** informational CI job alone (F7) | operator deploy checklist | Jurisdiction-specific legal review |
+| P-33 | Speak contributor economics | `substrate/speak/contributor.py` + Speak settings owed-not-paid surface | `./scripts/canonical_verify.sh speak-contributor-economics` | — | Live Stripe Connect/KYC payout activation |
+| P-34 | Agent handoff schema | `tools/agent/verify_handoff.ts` | `./scripts/canonical_verify.sh handoff <md>` | — | Narrative quality / intent |
+| P-35 | Session theater grep | `scripts/audit_agent_session.sh` | paired with handoff subcommand | — | Claims outside markdown packet |
+| P-36 | AMS spec ref-lint | `scripts/agent_ams_ref_lint.sh` | `bash scripts/agent_ams_ref_lint.sh <sprint.html>` | — | Playwright mountain shell |
+| P-37 | Reading substrate pytest | `.github/workflows/ci.yml` `pytest` job | CI on `main` (full suite) | — | Local hardware parity |
+| P-38 | Werner mascot / hop | `apps/reading` Werner paths per Werner htmlspec | `canonical_verify.sh agent-gates` + case study §5 | Werner operator card (htmlspec) | Measured p95 / fps without artifact |
+| P-39 | Serve / rights / legal | production deploy surfaces | **No** informational CI job alone (F7) | operator deploy checklist | Jurisdiction-specific legal review |
 
 ## How to use
 
