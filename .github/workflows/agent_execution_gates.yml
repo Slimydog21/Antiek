@@ -89,6 +89,7 @@ on:
       - 'tests/test_passage_research.py'
       - 'tests/test_contracts_speak_lock.py'
       - 'tests/test_contracts_unified_lock.py'
+      - 'tests/test_cost_consent_no_disbursement.py'
       - 'tests/test_contracts_dependency_map.py'
       - 'tests/test_contracts_drw_lock.py'
       - 'tests/test_contracts_conformance.py'
@@ -194,6 +195,7 @@ on:
       - 'tests/test_passage_research.py'
       - 'tests/test_contracts_speak_lock.py'
       - 'tests/test_contracts_unified_lock.py'
+      - 'tests/test_cost_consent_no_disbursement.py'
       - 'tests/test_contracts_dependency_map.py'
       - 'tests/test_contracts_drw_lock.py'
       - 'tests/test_contracts_conformance.py'
@@ -359,6 +361,9 @@ jobs:
 
       - name: Canonical verify — unified thread navigation
         run: ./scripts/canonical_verify.sh unified-thread-navigation
+
+      - name: Canonical verify — unified cost consent surface
+        run: ./scripts/canonical_verify.sh unified-cost-consent-surface
 
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md
