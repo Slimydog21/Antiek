@@ -30,6 +30,7 @@ Platform notes (the CI host is the reference; macOS-vs-Linux differences noted):
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 from dataclasses import dataclass
@@ -112,10 +113,9 @@ def active_semaphore_count() -> int:
     total = 0
     shm = "/dev/shm"
     if os.path.isdir(shm):
-        try:
+        # OSError suppressed: a vanishing /dev/shm entry mid-listdir is benign.
+        with contextlib.suppress(OSError):
             total += sum(1 for n in os.listdir(shm) if n.startswith("sem."))
-        except OSError:  # pragma: no cover
-            pass
     try:  # multiprocessing's resource-tracker cache, when present
         from multiprocessing import resource_tracker as _rt
 
@@ -136,7 +136,7 @@ def asyncio_semaphore_permits(sem) -> int:
     including exceptions. This exposes the permit count so a steady-state test can
     prove no permit is leaked when a task under the semaphore faults repeatedly.
     """
-    return int(getattr(sem, "_value"))
+    return int(sem._value)
 
 
 @dataclass(frozen=True)

@@ -4,7 +4,6 @@ deterministic via fail_on_call; teardown restores even on raise."""
 from __future__ import annotations
 
 import errno
-import logging
 import os
 import shutil
 import tempfile
@@ -17,8 +16,8 @@ from tools.faultinject import arm, readonly_fs
 def test_write_to_target_raises_erofs(tmp_path):
     target = tmp_path / "cache.idx"
     with readonly_fs(target):
-        with pytest.raises(OSError) as ei:
-            open(target, "w")
+        with pytest.raises(OSError) as ei, open(target, "w"):
+            pass  # unreachable: the open above must raise EROFS
         assert ei.value.errno == errno.EROFS
     # Disarmed: the same write now succeeds.
     with open(target, "w") as fh:
@@ -39,8 +38,8 @@ def test_scoped_to_target_other_paths_unaffected(tmp_path):
         # Reads (even of the target's directory) are untouched — write-only fault.
         assert existing.read_text() == "readable"
         # The armed target still faults on write.
-        with pytest.raises(OSError) as ei:
-            open(target, "w")
+        with pytest.raises(OSError) as ei, open(target, "w"):
+            pass  # unreachable: the open above must raise EROFS
         assert ei.value.errno == errno.EROFS
 
 
@@ -73,8 +72,8 @@ def test_fail_on_call_survives_first_fails_second(tmp_path):
         with open(target, "w") as fh:
             fh.write("first")
         # Call 2 faults.
-        with pytest.raises(OSError) as ei:
-            open(target, "w")
+        with pytest.raises(OSError) as ei, open(target, "w"):
+            pass  # unreachable: the open above must raise EROFS
         assert ei.value.errno == errno.EROFS
     assert target.read_text() == "first"
 
@@ -85,9 +84,8 @@ def test_teardown_restores_even_when_body_raises(tmp_path):
     class Boom(RuntimeError):
         pass
 
-    with pytest.raises(Boom):
-        with readonly_fs(target):
-            raise Boom()
+    with pytest.raises(Boom), readonly_fs(target):
+        raise Boom()
     # After the exception, the primitive is restored: writing works.
     with open(target, "w") as fh:
         fh.write("restored")
@@ -97,8 +95,8 @@ def test_teardown_restores_even_when_body_raises(tmp_path):
 def test_arm_generic_entry_point(tmp_path):
     target = tmp_path / "cache.idx"
     with arm("readonly_fs", target_path=target):
-        with pytest.raises(OSError) as ei:
-            open(target, "w")
+        with pytest.raises(OSError) as ei, open(target, "w"):
+            pass  # unreachable: the open above must raise EROFS
         assert ei.value.errno == errno.EROFS
 
 
@@ -149,9 +147,8 @@ def test_drives_real_retriever_vss_open_seam(tmp_path, monkeypatch):
     # The injected EROFS reaches the real shutil.copy call site and surfaces as a
     # typed RetrieverInfraError carrying the errno — proving readonly_fs fires at
     # the real retriever write seam (not just on a synthetic tmp path).
-    with readonly_fs(copy_target):
-        with pytest.raises(RetrieverInfraError) as ei:
-            rs.DuckDbVssSubstrate.open(str(db), model=_StubModel())
+    with readonly_fs(copy_target), pytest.raises(RetrieverInfraError) as ei:
+        rs.DuckDbVssSubstrate.open(str(db), model=_StubModel())
     assert ei.value.errno == errno.EROFS
     assert "retrieval" in ei.value.seam
 
@@ -162,17 +159,15 @@ def test_nested_arming_refused_and_outer_recovers(tmp_path):
     a = tmp_path / "a.idx"
     b = tmp_path / "b.idx"
     with readonly_fs(a):
-        with pytest.raises(RuntimeError):
-            with readonly_fs(b):
-                pass
+        with pytest.raises(RuntimeError), readonly_fs(b):
+            pass
         # Outer fault is still intact after the refused inner arm.
-        with pytest.raises(OSError) as ei:
-            open(a, "w")
+        with pytest.raises(OSError) as ei, open(a, "w"):
+            pass  # unreachable: the open above must raise EROFS
         assert ei.value.errno == errno.EROFS
     # Outer disarmed cleanly — and a fresh arm works (guard was released).
-    with readonly_fs(b):
-        with pytest.raises(OSError):
-            open(b, "w")
+    with readonly_fs(b), pytest.raises(OSError), open(b, "w"):
+        pass  # unreachable: the open above must raise EROFS
     with open(a, "w") as fh:
         fh.write("ok")
     assert a.read_text() == "ok"

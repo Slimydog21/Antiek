@@ -47,6 +47,7 @@ Time + sleep + the lock path are injectable so CI tests serialize against the
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import fcntl
 import os
@@ -174,10 +175,8 @@ def _stale_pid_check(lock_path: str) -> None:
     try:
         os.kill(pid, 0)
     except (ProcessLookupError, PermissionError):
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(lock_path)
-        except OSError:
-            pass
 
 
 # ── per-thread re-entrancy for the governor flock ──────────────────────────
@@ -274,15 +273,13 @@ class _GovernorLock:
                             f"{self._lock_path} within {self._timeout_s}s. "
                             f"Another arXiv job is holding it; inspect with "
                             f"`cat {self._lock_path}` (PID + purpose)."
-                        )
+                        ) from e
                     self._sleep(self._poll_interval_s)
         except GovernorLockTimeout:
             raise
         except Exception:
-            try:
+            with contextlib.suppress(OSError):
                 os.close(fd)
-            except OSError:
-                pass
             raise
         # Stamp pid + purpose + timestamp for ops debugging (best-effort).
         try:
@@ -314,10 +311,8 @@ class _GovernorLock:
             try:
                 fcntl.flock(self._fd, fcntl.LOCK_UN)
             finally:
-                try:
+                with contextlib.suppress(OSError):
                     os.close(self._fd)
-                except OSError:
-                    pass
         self._fd = None
         return False
 
