@@ -99,6 +99,46 @@ def test_post_twitter_thread_happy(temp_substrate):
     assert "Thread by @foo" in (body["title"] or "")
 
 
+def test_post_twitter_thread_trims_thread_url(temp_substrate):
+    import duckdb
+
+    client = _client(temp_substrate)
+    payload = _good_thread_payload()
+    payload["thread_url"] = "  https://x.com/foo/status/1234  "
+    resp = client.post("/sources/twitter", json=payload)
+    assert resp.status_code == 202
+    document_id = resp.json()["document_id"]
+
+    con = duckdb.connect(temp_substrate["db_path"])
+    try:
+        (source_uri,) = con.execute(
+            "SELECT source_uri FROM documents WHERE document_id = ?",
+            [document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert source_uri == "https://x.com/foo/status/1234"
+
+
+@pytest.mark.parametrize(
+    "thread_url",
+    [
+        "javascript:alert(1)",
+        "data:text/html,owned",
+        "/relative/thread",
+        "https://example.com/thread",
+    ],
+)
+def test_post_twitter_thread_rejects_unsafe_or_wrong_host_thread_urls(
+    temp_substrate, thread_url
+):
+    client = _client(temp_substrate)
+    payload = _good_thread_payload()
+    payload["thread_url"] = thread_url
+    resp = client.post("/sources/twitter", json=payload)
+    assert resp.status_code == 422
+
+
 def test_post_twitter_empty_tweets_422(temp_substrate):
     client = _client(temp_substrate)
     resp = client.post("/sources/twitter", json={
