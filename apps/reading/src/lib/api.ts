@@ -969,6 +969,13 @@ export interface ChunkResponse {
 
 export type SourceKind = "arxiv" | "youtube" | "podcast" | "url";
 
+const SOURCE_KINDS = new Set<SourceKind>([
+  "arxiv",
+  "youtube",
+  "podcast",
+  "url",
+]);
+
 export interface IngestSourceRequest {
   url: string;
   kind?: SourceKind;
@@ -988,6 +995,39 @@ export interface IngestSourceResponse {
   title: string | null;
   episodes_processed: number;
   episodes_ingested: number;
+}
+
+function requireSourceKind(value: unknown): SourceKind {
+  const kind = requireRequestString(value, "kind");
+  if (!SOURCE_KINDS.has(kind as SourceKind)) {
+    throw new TypeError("kind must be a supported source kind");
+  }
+  return kind as SourceKind;
+}
+
+function optionalNonNegativeNumber(value: unknown, field: string): number | undefined {
+  if (value === undefined) return undefined;
+  const number = finiteNonNegativeNumber(value);
+  if (number === null) throw new RangeError(`${field} must be a non-negative finite number`);
+  return number;
+}
+
+function optionalNonNegativeInteger(value: unknown, field: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number") {
+    throw new RangeError(`${field} must be a non-negative safe integer`);
+  }
+  assertNonNegativeSafeInteger(value, field);
+  return value;
+}
+
+function optionalPositiveInteger(value: unknown, field: string): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number") {
+    throw new RangeError(`${field} must be a positive safe integer`);
+  }
+  assertPositiveSafeInteger(value, field);
+  return value;
 }
 
 // ── Sprint 13: deliverables (creation surface) ─────────────────────
@@ -1582,10 +1622,21 @@ function safeVoiceNoteIngestResponse(value: unknown): VoiceNoteIngestResponse {
 export async function ingestVoiceNote(
   req: VoiceNoteIngestRequest,
 ): Promise<VoiceNoteIngestResponse> {
+  const investigationId = optionalRequestString(req.investigation_id);
+  const title = optionalRequestString(req.title);
+  const durationSeconds = optionalNonNegativeNumber(req.duration_seconds, "duration_seconds");
+  const language = optionalRequestString(req.language);
+  const body = {
+    transcript: requireRequestString(req.transcript, "transcript"),
+    ...(investigationId ? { investigation_id: investigationId } : {}),
+    ...(title ? { title } : {}),
+    ...(durationSeconds !== undefined ? { duration_seconds: durationSeconds } : {}),
+    ...(language ? { language } : {}),
+  };
   const resp = await apiFetch(`${API_BASE}/voice-notes/ingest`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
+    body: JSON.stringify(body),
   });
   if (!resp.ok) {
     throw new ApiError(
@@ -1631,6 +1682,9 @@ function safeTranscribeResponse(value: unknown): TranscribeResponse {
  *  the operator OpenAI key is unset (honest no-key). Preserves the status
  *  on ApiError so the caller can distinguish no-key from a transient. */
 export async function transcribeAudio(audio: Blob): Promise<TranscribeResponse> {
+  if (!(audio instanceof Blob) || audio.size <= 0) {
+    throw new TypeError("audio must be a non-empty Blob");
+  }
   const resp = await apiFetch(`${API_BASE}/voice/transcribe`, {
     method: "POST",
     headers: { "Content-Type": audio.type || "application/octet-stream" },
@@ -1671,10 +1725,21 @@ function safeIngestSourceResponse(value: unknown): IngestSourceResponse {
 export async function ingestSource(
   req: IngestSourceRequest,
 ): Promise<IngestSourceResponse> {
+  const kind = req.kind === undefined ? undefined : requireSourceKind(req.kind);
+  const investigationId = optionalRequestString(req.investigation_id);
+  const sourceTier = optionalNonNegativeInteger(req.source_tier, "source_tier");
+  const maxEpisodes = optionalPositiveInteger(req.max_episodes, "max_episodes");
+  const body = {
+    url: requireRequestString(req.url, "url"),
+    ...(kind ? { kind } : {}),
+    ...(investigationId ? { investigation_id: investigationId } : {}),
+    ...(sourceTier !== undefined ? { source_tier: sourceTier } : {}),
+    ...(maxEpisodes !== undefined ? { max_episodes: maxEpisodes } : {}),
+  };
   const resp = await apiFetch(`${API_BASE}/sources/ingest`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
+    body: JSON.stringify(body),
   });
   if (!resp.ok) {
     throw new ApiError(
