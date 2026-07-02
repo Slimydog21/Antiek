@@ -210,7 +210,7 @@ export default function Speak() {
       setActionBusy(true);
       setActionNote(`${label}…`);
       try {
-        const resp = await apiFetch(`/speak/projects/${projectId}${path}`, {
+        const resp = await apiFetch(`/speak/projects/${encodeURIComponent(projectId)}${path}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),

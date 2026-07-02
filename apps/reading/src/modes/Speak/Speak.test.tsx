@@ -73,9 +73,9 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-function mount() {
+function mount(initialEntry = "/speak/p1") {
   return render(
-    <MemoryRouter initialEntries={["/speak/p1"]}>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
         <Route path="/speak/:projectId" element={<Speak />} />
       </Routes>
@@ -190,6 +190,30 @@ describe("Speak project page", () => {
     fireEvent.click(screen.getByRole("button", { name: /^settings$/i }));
     fireEvent.click(await screen.findByRole("button", { name: /try to publish/i }));
     expect(await screen.findByText(/legal gate g2 open/i)).toBeTruthy();
+  });
+
+  it("encodes route project ids before calling gated project actions", async () => {
+    api.getProject.mockResolvedValue({
+      id: "proj dirty/1", name: "Grandma Rosa", willBePublic: true, subjectStatusWord: null,
+    });
+    api.getEconomics.mockResolvedValue({ splitApplies: true, creatorCarriesCost: false });
+    apiFetchMock.mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ detail: "publishing blocked" }),
+    });
+
+    mount("/speak/proj%20dirty%2F1");
+    await screen.findByText("Grandma Rosa");
+    fireEvent.click(screen.getByRole("button", { name: /^settings$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /try to publish/i }));
+
+    await waitFor(() =>
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        "/speak/projects/proj%20dirty%2F1/publish",
+        expect.any(Object),
+      ),
+    );
   });
 
   it("sanitizes nested gated-action refusal details before rendering", async () => {
