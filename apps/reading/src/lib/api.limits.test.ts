@@ -8,8 +8,10 @@ import {
   launchParkedQuestion,
   listInvestigations,
   listWatchForLater,
+  postTypedEvent,
   reorderBlock,
   searchBlocks,
+  undoAiAction,
 } from "./api";
 
 beforeEach(() => {
@@ -49,6 +51,83 @@ describe("api client numeric request bounds", () => {
     ).rejects.toThrow(/new_block_index/);
 
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("api client emitted-event response boundary", () => {
+  it("sanitizes emitted event handles from typed-event and undo endpoints", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          event_id: " evt-applied ",
+          action_type: " ai.action.applied ",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(
+      postTypedEvent({
+        investigation_id: "inv-1",
+        payload: {
+          action_type: "ai.action.applied",
+          target_kind: "ui_layout",
+          target_id: "panel-1",
+          operator_prompt: "open panel",
+          prev_state: {},
+          next_state: { open: true },
+          prev_state_hash: "hash",
+          summary: "opened panel",
+        },
+      }),
+    ).resolves.toEqual({
+      event_id: "evt-applied",
+      action_type: "ai.action.applied",
+    });
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          event_id: " evt-undone ",
+          action_type: " ai.action.undone ",
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(
+      undoAiAction({
+        event_id: "evt-applied",
+        investigation_id: "inv-1",
+      }),
+    ).resolves.toEqual({
+      event_id: "evt-undone",
+      action_type: "ai.action.undone",
+    });
+  });
+
+  it("rejects malformed emitted event success responses", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ event_id: " ", action_type: "ai.action.applied" }), {
+        status: 200,
+      }),
+    );
+
+    await expect(
+      postTypedEvent({
+        investigation_id: "inv-1",
+        payload: {
+          action_type: "ai.action.applied",
+          target_kind: "ui_layout",
+          target_id: "panel-1",
+          operator_prompt: "open panel",
+          prev_state: {},
+          next_state: { open: true },
+          prev_state_hash: "hash",
+          summary: "opened panel",
+        },
+      }),
+    ).rejects.toMatchObject({ status: 502 });
   });
 });
 
