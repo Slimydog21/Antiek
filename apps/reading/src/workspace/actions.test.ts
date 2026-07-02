@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import type { Claim } from "../generated/types";
 import { EMPTY_SNAPSHOT } from "./panel.types";
-import { openClaimInspector } from "./actions";
+import { openClaimInspector, openNotebook } from "./actions";
 import { useWorkspace } from "./WorkspaceStore";
 
 beforeEach(() => {
@@ -10,6 +10,26 @@ beforeEach(() => {
 });
 
 describe("workspace actions", () => {
+  it("openNotebook trims notebook ids before deriving panel id and props", () => {
+    const id = openNotebook({ notebookId: "  nb-1  " });
+
+    expect(id).toBe("notebookeditor:nb-1");
+    expect(useWorkspace.getState().panels[id].props).toEqual({
+      notebookId: "nb-1",
+    });
+    expect(useWorkspace.getState().panels[id].title).toBe("Notebook");
+  });
+
+  it("openNotebook treats blank notebook ids as a new untitled notebook", () => {
+    const id = openNotebook({ notebookId: "   ", kind: "Notebook" });
+
+    expect(id).toBe("notebook:new");
+    expect(useWorkspace.getState().panels[id].props).toEqual({
+      notebookId: null,
+    });
+    expect(useWorkspace.getState().panels[id].title).toBe("Untitled notebook");
+  });
+
   it("openClaimInspector preserves the full claim payload when the caller has it", () => {
     const claim: Claim = {
       claim_id: "claim-1",
