@@ -154,10 +154,272 @@ function get<T>(path: string): Promise<T> {
   return apiFetch(`${API_BASE}${path}`).then((r) => jsonOrThrow<T>(r, `GET ${path}`));
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function finiteNonNegativeNumber(value: unknown): number | null {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim() !== ""
+        ? Number(value)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function positiveSafeInteger(value: unknown): number | null {
+  const parsed = finiteNonNegativeNumber(value);
+  return parsed !== null && Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function nonNegativeSafeInteger(value: unknown): number | null {
+  const parsed = finiteNonNegativeNumber(value);
+  return parsed !== null && Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function safeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const text = nonEmptyString(item);
+    return text ? [text] : [];
+  });
+}
+
+function requireString(value: unknown, field: string): string {
+  const text = nonEmptyString(value);
+  if (!text) throw new Error(`Malformed research response: ${field}.`);
+  return text;
+}
+
+function safePlanApproval(value: unknown): PlanApproval {
+  const approval = record(value);
+  return {
+    state: approval?.state === "approved" ? "approved" : "draft",
+    approved_at: nullableString(approval?.approved_at),
+    approved_by: nullableString(approval?.approved_by),
+    plan_version: positiveSafeInteger(approval?.plan_version) ?? 1,
+  };
+}
+
+function safePlanNode(value: unknown, fallbackLocalId: string): PlanNode | null {
+  const node = record(value);
+  if (!node) return null;
+  const localId = nonEmptyString(node.local_id) ?? fallbackLocalId;
+  const question = nonEmptyString(node.question);
+  if (!question) return null;
+  const children = Array.isArray(node.children)
+    ? node.children.flatMap((child, index) => {
+        const safe = safePlanNode(child, `${localId}.${index + 1}`);
+        return safe ? [safe] : [];
+      })
+    : [];
+  return {
+    local_id: localId,
+    question,
+    rationale: nonEmptyString(node.rationale) ?? "",
+    focus_boundary: nonEmptyString(node.focus_boundary) ?? "",
+    budget_usd: finiteNonNegativeNumber(node.budget_usd),
+    max_depth: nonNegativeSafeInteger(node.max_depth),
+    graph_node_id: nullableString(node.graph_node_id),
+    children,
+  };
+}
+
+function safePlanTree(value: unknown): PlanTree {
+  const tree = record(value);
+  const root = safePlanNode(tree?.root, "root");
+  if (!root) throw new Error("Malformed research response: tree.root.");
+  return {
+    root,
+    seed_kind: nonEmptyString(tree?.seed_kind) ?? "problem",
+    seed_provenance: record(tree?.seed_provenance) ?? {},
+    approval: safePlanApproval(tree?.approval),
+    root_investigation_id: nullableString(tree?.root_investigation_id),
+  };
+}
+
+function safeCreatePlanResponse(value: unknown): CreatePlanResponse {
+  const body = record(value);
+  if (!body) throw new Error("Malformed research response: body.");
+  return {
+    root_node_id: requireString(body.root_node_id, "root_node_id"),
+    tree: safePlanTree(body.tree),
+    capped_nodes: safeStringArray(body.capped_nodes),
+    over_broad_leaves: safeStringArray(body.over_broad_leaves),
+  };
+}
+
+function safePlanResponse(value: unknown): PlanResponse {
+  const body = record(value);
+  if (!body) throw new Error("Malformed research response: body.");
+  return {
+    root_node_id: requireString(body.root_node_id, "root_node_id"),
+    tree: safePlanTree(body.tree),
+    launchable: body.launchable === true,
+  };
+}
+
+function safeApproveResponse(value: unknown): ApproveResponse {
+  const body = record(value);
+  if (!body) throw new Error("Malformed research response: body.");
+  return {
+    root_node_id: requireString(body.root_node_id, "root_node_id"),
+    approval: safePlanApproval(body.approval),
+    launchable: body.launchable === true,
+  };
+}
+
+function safeBudgetDefaults(value: unknown): BudgetDefaults {
+  const body = record(value);
+  return {
+    per_research_cost_usd: finiteNonNegativeNumber(body?.per_research_cost_usd) ?? 0,
+    per_research_max_steps: positiveSafeInteger(body?.per_research_max_steps) ?? 1,
+    host_local_max_concurrency: positiveSafeInteger(body?.host_local_max_concurrency) ?? 1,
+  };
+}
+
+function safeSuggestion(value: unknown): Suggestion | null {
+  const suggestion = record(value);
+  if (!suggestion) return null;
+  const key = nonEmptyString(suggestion.key);
+  const question = nonEmptyString(suggestion.question);
+  if (!key || !question) return null;
+  return {
+    key,
+    question,
+    suggested_retrieval: nullableString(suggestion.suggested_retrieval),
+    seen_in_research_count: nonNegativeSafeInteger(suggestion.seen_in_research_count) ?? 0,
+    source_investigation_id: nullableString(suggestion.source_investigation_id),
+  };
+}
+
+function safeSuggestionsResponse(value: unknown): SuggestionsResponse {
+  const body = record(value);
+  const suggestions = Array.isArray(body?.suggestions)
+    ? body.suggestions.flatMap((item) => {
+        const suggestion = safeSuggestion(item);
+        return suggestion ? [suggestion] : [];
+      })
+    : [];
+  return {
+    count: nonNegativeSafeInteger(body?.count) ?? suggestions.length,
+    suggestions,
+  };
+}
+
+function safeResearchState(value: unknown): ResearchRunState {
+  return typeof value === "string" && TERMINAL_STATES.has(value as ResearchRunState)
+    ? (value as ResearchRunState)
+    : value === "pending" || value === "running" || value === "paused" || value === "stopping"
+      ? value
+      : "failed";
+}
+
+function safeResearchStatus(value: unknown): ResearchStatus | null {
+  const research = record(value);
+  if (!research) return null;
+  const investigationId = nonEmptyString(research.investigation_id);
+  if (!investigationId) return null;
+  return {
+    investigation_id: investigationId,
+    sub_question: nonEmptyString(research.sub_question) ?? "Untitled research",
+    state: safeResearchState(research.state),
+    question_node_id: nullableString(research.question_node_id),
+  };
+}
+
+function safeSessionCost(value: unknown): SessionCost {
+  const body = record(value);
+  const perResearchRaw = record(body?.per_research);
+  const per_research = perResearchRaw
+    ? Object.fromEntries(
+        Object.entries(perResearchRaw).flatMap(([key, raw]) => {
+          const id = nonEmptyString(key);
+          const amount = finiteNonNegativeNumber(raw);
+          return id && amount !== null ? [[id, amount]] : [];
+        }),
+      )
+    : {};
+  return {
+    per_research,
+    session_total_usd: finiteNonNegativeNumber(body?.session_total_usd) ?? 0,
+    aggregate_spent_usd: finiteNonNegativeNumber(body?.aggregate_spent_usd) ?? 0,
+    aggregate_cap_usd: finiteNonNegativeNumber(body?.aggregate_cap_usd) ?? 0,
+  };
+}
+
+function safeSessionStatus(value: unknown): SessionStatus {
+  const body = record(value);
+  if (!body) throw new Error("Malformed research response: body.");
+  const researches = Array.isArray(body.researches)
+    ? body.researches.flatMap((item) => {
+        const research = safeResearchStatus(item);
+        return research ? [research] : [];
+      })
+    : [];
+  return {
+    session_id: requireString(body.session_id, "session_id"),
+    live: body.live === true,
+    researches,
+    cost: body.cost == null ? null : safeSessionCost(body.cost),
+    all_terminal:
+      typeof body.all_terminal === "boolean" ? body.all_terminal : undefined,
+  };
+}
+
+function safeLaunchResponse(value: unknown): LaunchResponse {
+  const body = record(value);
+  if (!body) throw new Error("Malformed research response: body.");
+  const researches = Array.isArray(body.researches)
+    ? body.researches.flatMap((item) => {
+        const research = record(item);
+        const investigationId = nonEmptyString(research?.investigation_id);
+        if (!investigationId) return [];
+        return [{
+          investigation_id: investigationId,
+          sub_question: nonEmptyString(research?.sub_question) ?? "Untitled research",
+          question_node_id: nullableString(research?.question_node_id),
+        }];
+      })
+    : [];
+  return {
+    session_id: requireString(body.session_id, "session_id"),
+    researches,
+    aggregate_cap_usd: finiteNonNegativeNumber(body.aggregate_cap_usd),
+  };
+}
+
+function safeSteerResponse(value: unknown): {
+  session_id: string;
+  investigation_id: string;
+  state: ResearchRunState | null;
+} {
+  const body = record(value);
+  if (!body) throw new Error("Malformed research response: body.");
+  return {
+    session_id: requireString(body.session_id, "session_id"),
+    investigation_id: requireString(body.investigation_id, "investigation_id"),
+    state: body.state == null ? null : safeResearchState(body.state),
+  };
+}
+
 // ── Plan lifecycle (SPR-05 over HTTP) ───────────────────────────────────
 
 export function getBudgetDefaults(): Promise<BudgetDefaults> {
-  return get("/research/budget-defaults");
+  return get<unknown>("/research/budget-defaults").then(safeBudgetDefaults);
 }
 
 /** SPR-09: the daemon's scored gaps as suggested next researches. READ-ONLY —
@@ -165,7 +427,8 @@ export function getBudgetDefaults(): Promise<BudgetDefaults> {
  * goes through `startInvestigation` (the existing capped launch path), not
  * here. `limit` bounds the displayed count (rank + cap, never a flood). */
 export function getSuggestions(limit = 8): Promise<SuggestionsResponse> {
-  return get(`/research/suggestions?limit=${encodeURIComponent(String(limit))}`);
+  return get<unknown>(`/research/suggestions?limit=${encodeURIComponent(String(limit))}`)
+    .then(safeSuggestionsResponse);
 }
 
 export function createPlan(req: {
@@ -173,11 +436,11 @@ export function createPlan(req: {
   sub_questions?: string[];
   max_depth?: number;
 }): Promise<CreatePlanResponse> {
-  return post("/research/plans", req);
+  return post<unknown>("/research/plans", req).then(safeCreatePlanResponse);
 }
 
 export function getPlan(rootId: string): Promise<PlanResponse> {
-  return get(`/research/plans/${encodeURIComponent(rootId)}`);
+  return get<unknown>(`/research/plans/${encodeURIComponent(rootId)}`).then(safePlanResponse);
 }
 
 export function editPlan(rootId: string, edit: {
@@ -188,11 +451,13 @@ export function editPlan(rootId: string, edit: {
   max_depth?: number;
   into?: string[];
 }): Promise<PlanResponse> {
-  return post(`/research/plans/${encodeURIComponent(rootId)}/edit`, edit);
+  return post<unknown>(`/research/plans/${encodeURIComponent(rootId)}/edit`, edit)
+    .then(safePlanResponse);
 }
 
 export function approvePlan(rootId: string, approver = "__operator__"): Promise<ApproveResponse> {
-  return post(`/research/plans/${encodeURIComponent(rootId)}/approve`, { approver });
+  return post<unknown>(`/research/plans/${encodeURIComponent(rootId)}/approve`, { approver })
+    .then(safeApproveResponse);
 }
 
 // ── Launch + session (SPR-06) ───────────────────────────────────────────
@@ -201,15 +466,18 @@ export function launchPlan(rootId: string, req: {
   per_research_budget_usd?: number;
   aggregate_budget_usd?: number | null;
 } = {}): Promise<LaunchResponse> {
-  return post(`/research/plans/${encodeURIComponent(rootId)}/launch`, req);
+  return post<unknown>(`/research/plans/${encodeURIComponent(rootId)}/launch`, req)
+    .then(safeLaunchResponse);
 }
 
 export function getSession(sessionId: string): Promise<SessionStatus> {
-  return get(`/research/sessions/${encodeURIComponent(sessionId)}`);
+  return get<unknown>(`/research/sessions/${encodeURIComponent(sessionId)}`)
+    .then(safeSessionStatus);
 }
 
 export function getSessionCost(sessionId: string): Promise<SessionCost> {
-  return get(`/research/sessions/${encodeURIComponent(sessionId)}/cost`);
+  return get<unknown>(`/research/sessions/${encodeURIComponent(sessionId)}/cost`)
+    .then(safeSessionCost);
 }
 
 export function steerResearch(
@@ -218,10 +486,10 @@ export function steerResearch(
   kind: SteerKind,
   payload?: Record<string, unknown>,
 ): Promise<{ session_id: string; investigation_id: string; state: ResearchRunState | null }> {
-  return post(
+  return post<unknown>(
     `/research/sessions/${encodeURIComponent(sessionId)}/researches/${encodeURIComponent(investigationId)}/steer`,
     { kind, payload: payload ?? null },
-  );
+  ).then(safeSteerResponse);
 }
 
 /** SSE endpoint URL — the finer-grained per-step stream. The SPR-09 monitor
