@@ -30,6 +30,68 @@ export interface CorpusSearchResponse {
   count: number;
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nonNegativeSafeInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function sanitizeHit(value: unknown): CorpusSearchHit | null {
+  const hit = record(value);
+  if (!hit) return null;
+  const chunkId = nonEmptyString(hit.chunk_id);
+  const documentId = nonEmptyString(hit.document_id);
+  if (!chunkId || !documentId) return null;
+  const pageIndex = nonNegativeSafeInteger(hit.page_index);
+  const pageResolved = hit.page_resolved === true && pageIndex !== null;
+  return {
+    chunk_id: chunkId,
+    document_id: documentId,
+    document_title:
+      typeof hit.document_title === "string" && hit.document_title.trim()
+        ? hit.document_title.trim()
+        : null,
+    page_index: pageResolved ? pageIndex : null,
+    page_resolved: pageResolved,
+    snippet: typeof hit.snippet === "string" ? hit.snippet.trim() : "",
+    similarity: finiteNumber(hit.similarity) ?? 0,
+  };
+}
+
+function safeCorpusSearchResponse(value: unknown, fallbackQuery: string): CorpusSearchResponse {
+  const body = record(value);
+  if (!body) {
+    throw new Error("Malformed corpus search response.");
+  }
+  const hits = Array.isArray(body.hits)
+    ? body.hits.flatMap((item) => {
+        const hit = sanitizeHit(item);
+        return hit ? [hit] : [];
+      })
+    : [];
+  return {
+    query: typeof body.query === "string" ? body.query : fallbackQuery,
+    hits,
+    count: nonNegativeSafeInteger(body.count) ?? hits.length,
+  };
+}
+
 /** Search the owned corpus by a natural-language query. `documentId` optionally
  * scopes to one document. Returns 503 when the embedding model isn't available
  * server-side. An empty/whitespace query returns an empty result (no request
@@ -45,5 +107,5 @@ export async function corpusSearch(
   const resp = await apiFetch(`${API_BASE}/corpus/search?${params.toString()}`);
   if (resp.status === 503) throw new Error("Search is temporarily unavailable.");
   if (!resp.ok) throw new Error(`GET /corpus/search: HTTP ${resp.status}`);
-  return (await resp.json()) as CorpusSearchResponse;
+  return safeCorpusSearchResponse(await resp.json(), query);
 }
