@@ -212,3 +212,39 @@ def test_literal_aliases_emitted():
         "StalenessResolution",
     ):
         assert f"export type {alias} =" in ts, f"missing Literal alias {alias!r}"
+
+
+# ---------------------------------------------------------------------------
+# 7. Interpreter-independent docstring emission
+# ---------------------------------------------------------------------------
+
+
+def test_docstring_emission_is_interpreter_independent():
+    """Python 3.13+ auto-dedents docstrings at compile time; ≤3.12 does
+    not. ``_emit_interface`` must emit the SAME dedented JSDoc block
+    regardless of which interpreter compiled the model — otherwise the
+    committed types.ts reds ``check_staleness`` whenever the regenerating
+    interpreter differs from CI's 3.14 (observed: 1,700+ whitespace-only
+    diff lines between 3.12 and 3.14 emission). Assigning ``__doc__``
+    dynamically bypasses compile-time dedent, so this probe reproduces
+    the ≤3.12 raw form on every interpreter."""
+    from pydantic import BaseModel as _BaseModel
+
+    from tools.codegen.emit_types import _emit_interface
+
+    class _Probe(_BaseModel):
+        x: int
+
+    _Probe.__doc__ = (
+        "First line.\n"
+        "    Indented continuation, as a <=3.12 compiler leaves it.\n"
+        "    Another continuation line."
+    )
+    lines: list[str] = []
+    _emit_interface(_Probe, lines)
+    doc_lines = [line for line in lines if line.startswith(" * ")]
+    assert doc_lines == [
+        " * First line.",
+        " * Indented continuation, as a <=3.12 compiler leaves it.",
+        " * Another continuation line.",
+    ], f"docstring emission not interpreter-independent: {doc_lines!r}"

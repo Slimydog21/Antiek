@@ -139,6 +139,7 @@ from substrate.ingest_budget import (
     BudgetGovernor,
     BudgetState,
 )
+from substrate.quality_gate import QualityGateResult, QualityGateVerdict
 
 # Check names — stable string ids so CI, the dashboard, and the merge step refer
 # to the same checks. Order is the reading order of the spec's M2 list.
@@ -528,8 +529,6 @@ def _pass_public_probe() -> QualityGateResult:
     ``NON_ATTRIBUTABLE_CONTENT_CLASSES`` — i.e. the probe makes the check BITE on
     that misconfiguration rather than passing vacuously because no quality result
     was attached. It mints no rights logic; it is a fixture for the real predicate."""
-    from substrate.quality_gate import QualityGateResult, QualityGateVerdict
-
     return QualityGateResult(verdict=QualityGateVerdict.PASS_PUBLIC, checks=())
 
 
@@ -981,7 +980,7 @@ def _check_budget(con: Any, db_path: str, governor: BudgetGovernor | None) -> Ch
         name=CHECK_BUDGET,
         ok=not over,
         count=1 if over else 0,
-        offending=(("db_size_bytes=%d" % db_size,) if over else ()),
+        offending=((f"db_size_bytes={db_size}",) if over else ()),
         detail=(
             f"corpus within SPR-09 budget ceiling ({verdict.render()})"
             if not over

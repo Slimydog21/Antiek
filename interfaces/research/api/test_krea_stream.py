@@ -2,11 +2,14 @@
 
 SPR-02 returned NO-GO on a near-real-time *generative* stream
 (``docs/ams-v2/stream-spike.md``): doc-derived ceiling ~0.25 gen fps
-(Flux ~4 s/image) vs the ≥10 gen-fps "near-real-time" bar, and a
-poll-driven pseudo-stream at that rate is ~$0.60/min, exhausting the
-50-unit daily cap in ~3.3 minutes. So SPR-05 ships PERIODIC mood-gated
-Krea stills over a 60fps procedural floor, riding the EXISTING periodic
-``/krea/scene`` path — NOT a stream.
+(~4 s/image per the spike's 2026-05 doc snapshot) vs the ≥10 gen-fps
+"near-real-time" bar, and a poll-driven pseudo-stream at that rate is
+15 submits/min, exhausting the 50-unit daily cap in ~3.3 minutes (the
+spike priced that at ~$0.60/min from its era's per-image rate; at the
+corrected 2026-06-12 docs.krea.ai price of $0.007/request it is
+~$0.105/min — the NO-GO is latency- and cap-bound, unchanged). So
+SPR-05 ships PERIODIC mood-gated Krea stills over a 60fps procedural
+floor, riding the EXISTING periodic ``/krea/scene`` path — NOT a stream.
 
 This module is NOT a duplicate of ``tests/test_krea_routes.py`` (SPR-02),
 which enumerates the per-route failure modes. This file LOCKS THREE
@@ -45,16 +48,18 @@ MEASURED CADENCE CEILING (derivation, rigor #5 — every number sourced):
   * Per-process RATE LIMIT (krea_routes ``_DEFAULT_RATE_LIMIT_MAX`` = 6 /
     ``_DEFAULT_RATE_LIMIT_WINDOW_S`` = 60 s) ⇒ ceiling ≤ 6 real upstream
     submits / minute = ≤ 6 billable units / minute.
-  * 6 units/min × ~$0.04/image (doc-derived Flux) = ~$0.24/min upper
-    bound — and that is only ever reached on a runaway of DISTINCT
-    scene-states; real usage fetches only on mood change.
+  * 6 units/min × $0.007/request (flux-1-dev, docs.krea.ai 2026-06-12;
+    drawn from the prepaid API balance — there is NO API free tier) =
+    ~$0.042/min upper bound — and that is only ever reached on a runaway
+    of DISTINCT scene-states; real usage fetches only on mood change.
   * Procedural floor = 60 fps ⇒ 120 ticks = 2 s. A runaway loop fetching
     the SAME scene-state every frame for 120 ticks makes exactly
     **1 upstream submit** (the warm cache absorbs the other 119) — proven
     by test (b). That is the anti-per-frame-billing invariant: fetch rate
     is decoupled from frame rate.
-  * Daily cap (``_DEFAULT_DAILY_UNIT_CAP`` = 50 = ~$2.00/day) is the hard
-    ceiling regardless of cadence — proven by test (a)'s over-budget case.
+  * Daily cap (``_DEFAULT_DAILY_UNIT_CAP`` = 50 ≈ $0.35/day at
+    $0.007/request) is the hard ceiling regardless of cadence — proven by
+    test (a)'s over-budget case.
 
 Self-verify (from the worktree, or /Users/slimydog/Desktop/Antiek):
   ./.venv/bin/python -m pytest tests/test_krea_routes.py \
@@ -82,9 +87,11 @@ def _clean_krea_env(monkeypatch):
         "KREA_API_TOKEN",
         "KREA_KILL_SWITCH",
         "ANTIEK_KREA_BASE_URL",
+        "ANTIEK_KREA_MODEL_PATH",
         "KREA_DAILY_UNIT_CAP",
         "KREA_RATE_LIMIT_MAX",
         "KREA_CACHE_TTL_S",
+        "KREA_POLL_BUDGET_S",
     ):
         monkeypatch.delenv(var, raising=False)
     yield
@@ -180,21 +187,29 @@ def test_disabled_kill_switch_scene_503_zero_upstream(monkeypatch):
 def test_disabled_over_budget_scene_503_zero_further_upstream(monkeypatch):
     """Push past KREA_DAILY_UNIT_CAP: the first scene-state spends the one
     unit; the next DISTINCT scene-state trips over_daily_budget and makes
-    NO further upstream call. This is the hard daily ceiling (50 units =
-    ~$2.00/day at the default) that bounds the living scene regardless of
-    cadence."""
+    NO further upstream call. This is the hard daily ceiling (50 units ≈
+    $0.35/day at flux-1-dev's $0.007/request, docs.krea.ai 2026-06-12)
+    that bounds the living scene regardless of cadence."""
     monkeypatch.setenv("KREA_API_TOKEN", "test-token")
     monkeypatch.setenv("KREA_DAILY_UNIT_CAP", "1")  # cap at one image/day
     app = _app()
     submits = {"n": 0}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/generate/image":
+        # Submit path is model-in-path (docs.krea.ai flux-1-dev reference,
+        # 2026-06-12): /generate/image/{model_path}.
+        if request.url.path.startswith("/generate/image/"):
             submits["n"] += 1
-            return httpx.Response(200, json={"job_id": "j", "status": "queued"})
+            # Submit worked example (docs.krea.ai flux-1-dev, 2026-06-12).
+            return httpx.Response(200, json={
+                "job_id": "j", "status": "queued",
+                "created_at": "2026-06-12T00:00:00Z",
+            })
+        # Completed-job shape: result.urls array of URI strings
+        # (docs.krea.ai jobs reference, 2026-06-12).
         return httpx.Response(200, json={
             "job_id": "j", "status": "completed",
-            "output": {"image_url": "https://img/a.png"},
+            "result": {"urls": ["https://img/a.png"]},
         })
 
     client = _client_with_transport(app, handler)
@@ -240,12 +255,18 @@ def test_runaway_identical_scene_state_caps_at_one_submit_over_120_ticks(
     submits = {"n": 0}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/generate/image":
+        # Model-in-path submit (docs.krea.ai flux-1-dev, 2026-06-12).
+        if request.url.path.startswith("/generate/image/"):
             submits["n"] += 1
-            return httpx.Response(200, json={"job_id": "j", "status": "queued"})
+            # Submit worked example (docs.krea.ai flux-1-dev, 2026-06-12).
+            return httpx.Response(200, json={
+                "job_id": "j", "status": "queued",
+                "created_at": "2026-06-12T00:00:00Z",
+            })
+        # Completed result.urls shape (docs.krea.ai jobs, 2026-06-12).
         return httpx.Response(200, json={
             "job_id": "j", "status": "completed",
-            "output": {"image_url": "https://img/same.png"},
+            "result": {"urls": ["https://img/same.png"]},
         })
 
     client = _client_with_transport(app, handler)
@@ -273,9 +294,10 @@ def test_runaway_distinct_scene_states_bounded_by_rate_limit(monkeypatch):
     never helps) is bounded by the per-process RATE LIMIT. With
     KREA_RATE_LIMIT_MAX=6 / 60s, the upstream submit count over a burst of
     20 distinct states stays at the cap (6) — the rest return rate_limited
-    fallback. This is the units/min ceiling: ≤ 6 units/min = ~$0.24/min at
-    Flux ~$0.04/image, well inside the SPR-02 envelope (the rejected
-    pseudo-stream was ~$0.60/min)."""
+    fallback. This is the units/min ceiling: ≤ 6 units/min ≈ $0.042/min at
+    flux-1-dev's $0.007/request (docs.krea.ai, 2026-06-12), well inside
+    the SPR-02 envelope (the rejected pseudo-stream burned 15 units/min —
+    ~$0.60/min at the spike's 2026-05 per-image snapshot)."""
     monkeypatch.setenv("KREA_API_TOKEN", "test-token")
     monkeypatch.setenv("KREA_RATE_LIMIT_MAX", "6")     # the default ceiling
     monkeypatch.setenv("KREA_DAILY_UNIT_CAP", "1000")  # rate, not budget, gates
@@ -283,12 +305,18 @@ def test_runaway_distinct_scene_states_bounded_by_rate_limit(monkeypatch):
     submits = {"n": 0}
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/generate/image":
+        # Model-in-path submit (docs.krea.ai flux-1-dev, 2026-06-12).
+        if request.url.path.startswith("/generate/image/"):
             submits["n"] += 1
-            return httpx.Response(200, json={"job_id": "j", "status": "queued"})
+            # Submit worked example (docs.krea.ai flux-1-dev, 2026-06-12).
+            return httpx.Response(200, json={
+                "job_id": "j", "status": "queued",
+                "created_at": "2026-06-12T00:00:00Z",
+            })
+        # Completed result.urls shape (docs.krea.ai jobs, 2026-06-12).
         return httpx.Response(200, json={
             "job_id": "j", "status": "completed",
-            "output": {"image_url": "https://img/x.png"},
+            "result": {"urls": ["https://img/x.png"]},
         })
 
     client = _client_with_transport(app, handler)

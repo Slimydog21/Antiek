@@ -1,0 +1,4 @@
+{
+  "_comment": "Shrink-only baseline for tools/lint/provenance_edge_audit.py. Each entry grandfathers a pre-existing dangling provenance reference (synthesis_substrate_manifest orphan or non-null edge grounding that no longer resolves). The list may only ever shrink: remove a key when the underlying data is repaired; re-mint with `python tools/lint/provenance_edge_audit.py --graph <db> --update-baseline` ONLY for a deliberate, reviewed grandfather, never to silence a live regression.",
+  "baselined_keys": []
+}

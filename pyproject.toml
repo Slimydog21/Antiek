@@ -173,6 +173,12 @@ target-version = "py314"
 select = ["E", "F", "I", "B", "UP", "SIM", "RET"]
 ignore = ["E501"]  # line length handled by formatter
 
+[tool.ruff.lint.per-file-ignores]
+# CLI harness scripts that bootstrap sys.path (insert the repo root onto sys.path)
+# BEFORE importing substrate modules — those imports MUST follow the path fix, so
+# module-level-import-not-at-top-of-file (E402) is the correct pattern, not a bug.
+"tools/verify_ad_economics.py" = ["E402"]
+
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI dependency-injection markers are idiomatic call-in-default usage,
 # not the mutable-default bug B008 targets. Treat them as immutable calls.
