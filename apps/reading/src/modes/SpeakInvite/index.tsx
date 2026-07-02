@@ -45,6 +45,89 @@ interface Landing {
 type Phase = "loading" | "invalid" | "error" | "ready";
 type Mode = "voice" | "text";
 
+function record(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function nullableString(value: unknown): string | null {
+  return value == null ? null : nonEmptyString(value);
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const text = nonEmptyString(item);
+        return text ? [text] : [];
+      })
+    : [];
+}
+
+function safeQuestion(value: unknown): Landing["pending_questions"][number] | null {
+  const question = record(value);
+  const id = nonEmptyString(question?.id);
+  const text = nonEmptyString(question?.text);
+  return question && id && text ? { id, text } : null;
+}
+
+function safeQuestions(value: unknown): Landing["pending_questions"] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const question = safeQuestion(item);
+        return question ? [question] : [];
+      })
+    : [];
+}
+
+function safeTranscriptRow(value: unknown): Landing["transcript"][number] | null {
+  const row = record(value);
+  const role = nonEmptyString(row?.role);
+  const text = nonEmptyString(row?.text);
+  if (!row || !role || !text) return null;
+  const questionId = nonEmptyString(row.question_id);
+  return {
+    role,
+    text,
+    ts: nullableString(row.ts),
+    ...(questionId ? { question_id: questionId } : {}),
+  };
+}
+
+function safeTranscript(value: unknown): Landing["transcript"] {
+  return Array.isArray(value)
+    ? value.flatMap((item) => {
+        const row = safeTranscriptRow(item);
+        return row ? [row] : [];
+      })
+    : [];
+}
+
+function safeLanding(value: unknown): Landing | null {
+  const body = record(value);
+  const interviewId = nonEmptyString(body?.interview_id);
+  const projectId = nonEmptyString(body?.project_id);
+  const projectTitle = nonEmptyString(body?.project_title);
+  if (!body || !interviewId || !projectId || !projectTitle) return null;
+  return {
+    interview_id: interviewId,
+    project_id: projectId,
+    project_title: projectTitle,
+    subject_ref: nullableString(body.subject_ref),
+    required_consent_scopes: stringArray(body.required_consent_scopes),
+    granted_consent_scopes: stringArray(body.granted_consent_scopes),
+    status: nonEmptyString(body.status) ?? "invited",
+    pending_questions: safeQuestions(body.pending_questions),
+    transcript: safeTranscript(body.transcript),
+  };
+}
+
 export default function SpeakInvite() {
   const { token } = useParams<{ token: string }>();
   const [landing, setLanding] = useState<Landing | null>(null);
@@ -79,7 +162,11 @@ export default function SpeakInvite() {
         setPhase("error");
         return;
       }
-      const data: Landing = await r.json();
+      const data = safeLanding(await r.json());
+      if (!data) {
+        setPhase("invalid");
+        return;
+      }
       setLanding(data);
       setActiveQ((cur) => cur ?? data.pending_questions[0]?.id ?? null);
       setPhase("ready");
