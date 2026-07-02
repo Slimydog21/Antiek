@@ -337,7 +337,10 @@ def session_template(kind: str) -> dict[str, Any]:
             {
                 "source_document_id": "source-doc-1",
                 "chunk_id": "chunk-1",
-                "result_url": "https://antiek.ai/read/source-doc-1?chunk=chunk-1",
+                "result_url": (
+                    "https://antiek.ai/read/source-doc-1"
+                    "?chunk=chunk-1&from=doc-1&fromPage=0"
+                ),
             }
         )
 
@@ -668,6 +671,12 @@ def _citation_evidence_failures(
                 prefix
                 + "citation step 5 result_url must include the recorded chunk_id or anchor"
             )
+        origin_document_id = _required_text(record.get("document_id"))
+        if origin_document_id and not _url_carries_return_origin(result_url, origin_document_id):
+            failures.append(
+                prefix
+                + "citation step 5 result_url must include from={document_id} return context"
+            )
     return failures
 
 
@@ -692,6 +701,13 @@ def _url_carries_anchor(value: str, anchor: str) -> bool:
         query_values.extend(values)
     haystack = "\n".join([*query_values, parsed.fragment])
     return wanted in unquote(haystack)
+
+
+def _url_carries_return_origin(value: str, document_id: str) -> bool:
+    parsed = urlparse(value)
+    origins = parse_qs(parsed.query, keep_blank_values=True).get("from", [])
+    wanted = document_id.strip()
+    return wanted in [unquote(origin).strip() for origin in origins]
 
 
 def _has_minimum_reading_time(value: Any) -> bool:
