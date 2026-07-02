@@ -61,6 +61,9 @@ export default function WriteHome() {
   // The piece-view surface: the outline loop, or the imported research canvas
   // (M1 — the SPR-03 Canvas of the linked investigation's blocks).
   const [pieceView, setPieceView] = useState<"outline" | "canvas">("outline");
+  const detailLoadSeq = useRef(0);
+  const activeDeliverableId = useRef(deliverableId);
+  activeDeliverableId.current = deliverableId;
 
   // The active tap-to-add handler, registered by the Outline (binds the tap to
   // the active section). A ref so re-registers don't re-render the repository.
@@ -70,17 +73,26 @@ export default function WriteHome() {
   }, []);
 
   const refresh = useCallback(async () => {
+    const seq = ++detailLoadSeq.current;
+    const targetId = deliverableId;
     if (!deliverableId) {
       setDetail(null);
       return;
     }
     setLoading(true);
     try {
-      setDetail(safeDeliverableDetail(await getDeliverable(deliverableId)));
+      const next = safeDeliverableDetail(await getDeliverable(deliverableId));
+      if (detailLoadSeq.current === seq && activeDeliverableId.current === targetId) {
+        setDetail(next);
+      }
     } catch {
-      setDetail(null);
+      if (detailLoadSeq.current === seq && activeDeliverableId.current === targetId) {
+        setDetail(null);
+      }
     } finally {
-      setLoading(false);
+      if (detailLoadSeq.current === seq && activeDeliverableId.current === targetId) {
+        setLoading(false);
+      }
     }
   }, [deliverableId]);
 
@@ -90,11 +102,19 @@ export default function WriteHome() {
 
   useEffect(() => {
     if (deliverableId) return; // only list pieces on the home (no piece) view
+    let cancelled = false;
     listDeliverables()
-      .then((r) =>
-        setPieces(Array.isArray(r.deliverables) ? safeDeliverableSummaries(r.deliverables) : []),
-      )
-      .catch(() => setPieces([]));
+      .then((r) => {
+        if (!cancelled) {
+          setPieces(Array.isArray(r.deliverables) ? safeDeliverableSummaries(r.deliverables) : []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPieces([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [deliverableId]);
 
   // Trace-to-source (SPR-05 M5): when a citation chip in the editor is clicked
