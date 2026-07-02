@@ -33,6 +33,7 @@ from substrate.write.draft_generation import (  # noqa: E402
     build_creative_writer_context,
     enforce_voice_gate,
     extract_inline_citations,
+    default_dispatch_fn,
     generate_section,
     merge_regenerated_paragraph,
     validate_generated_citations,
@@ -47,6 +48,13 @@ def test_module_doc_names_wired_route_and_live_provider_boundary():
     assert "live\nprovider proof" in doc
     assert "marked\nPARTIAL" not in doc
     assert "creative_writer wired into the dispatch config" not in doc
+
+
+def test_default_dispatch_adapter_doc_names_local_proof_boundary():
+    doc = default_dispatch_fn.__doc__ or ""
+    assert "route tests monkeypatch this adapter" in doc
+    assert "live provider credentials/output quality" in doc
+    assert "not unit-tested here" not in doc
 
 
 def _oblock(obid, *, node_id=None, content=None, kind="insight", prov="graph_node"):
