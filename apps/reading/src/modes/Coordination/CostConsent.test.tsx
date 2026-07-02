@@ -1,14 +1,25 @@
-import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { apiFetch } from "../../lib/api";
 import {
   ConsentSection,
   CostSection,
+  default as CostConsent,
   type ConsentView,
   type CostView,
 } from "./CostConsent";
 
-afterEach(() => cleanup());
+vi.mock("../../lib/api", () => ({
+  apiFetch: vi.fn(),
+}));
+
+const apiFetchMock = vi.mocked(apiFetch);
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
 
 const costView = (over: Partial<CostView> = {}): CostView => ({
   per_workflow: [
@@ -83,5 +94,85 @@ describe("CostConsent", () => {
     expect(document.body.textContent).toContain("$0.0000");
     expect(document.body.textContent).toContain("$0.00");
     expect(document.body.textContent).toContain("0%");
+  });
+
+  it("sanitizes cost and consent API responses before rendering", async () => {
+    apiFetchMock.mockImplementation(async (input) => {
+      const path = String(input);
+      if (path === "/coordination/cost") {
+        return {
+          ok: true,
+          json: async () => ({
+            per_workflow: [
+              {
+                workflow: " read ",
+                raw_cost_usd: " 0.25 ",
+                call_count: "2.9",
+                remote_exec_cost_usd: -1,
+                margin_status: "unexpected",
+                margin_rate: "Infinity",
+                margined_cost_usd: "NaN",
+              },
+              {
+                workflow: " ",
+                raw_cost_usd: "999",
+              },
+            ],
+            aggregate_raw_cost_usd: " 0.25 ",
+            aggregate_call_count: "2.9",
+            aggregate_remote_exec_cost_usd: "Infinity",
+            has_unmapped_spend: "yes",
+            events_dir: " /tmp/events ",
+          }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          holders: [
+            {
+              ip_holder_id: " holder dirty ",
+              display_name: " ",
+              status: " invited ",
+              escrow_balance_usd: "Infinity",
+              gate: {
+                disbursable: true,
+                open_gate_ids: [" G2 ", " "],
+                holder_claimed: true,
+                fully_unlocked: false,
+                label: " ",
+              },
+              serves_full_text: "yes",
+              servability_note: " gated until consent ",
+            },
+            {
+              ip_holder_id: " ",
+              display_name: "Skipped holder",
+            },
+          ],
+          escrow_report: {
+            claim_rate: "Infinity",
+            total_escrow_paid_cents: "Infinity",
+          },
+          disbursement_gates_open: [" G2 ", " "],
+          total_escrow_accruing_usd: "NaN",
+          any_disbursable: "yes",
+          gate_source_path: " /tmp/gates.md ",
+        }),
+      } as Response;
+    });
+
+    render(<CostConsent />);
+
+    expect(await screen.findByText("Read")).toBeTruthy();
+    expect(screen.getByText("holder dirty")).toBeTruthy();
+    expect(screen.queryByText("Skipped holder")).toBeNull();
+    expect(screen.getByText("disbursement gated on G2")).toBeTruthy();
+    expect(screen.getAllByText("not disbursable").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("disbursable")).toBeNull();
+    expect(screen.getByText("not surfaced here")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/NaN|Infinity|\$-/);
+    expect(document.body.textContent).not.toContain("Unclassified");
+    expect(document.body.textContent).not.toContain("Some spend could not be attributed");
   });
 });
