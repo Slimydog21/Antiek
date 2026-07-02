@@ -47,6 +47,15 @@ _EXEMPLARS = [
 ]
 
 
+def test_style_profile_doc_names_shipped_prompt_level_v1():
+    import substrate.write.style_profile as sp
+
+    doc = sp.__doc__ or ""
+    assert "shipped v1 offers a selectable prompt-level style" in doc
+    assert "injecting them into ``creative_writer``" in doc
+    assert "future generation can offer" not in doc
+
+
 # ── M1 — exemplar set, by retrieval, no weights ────────────────────
 
 
