@@ -7,9 +7,9 @@ import { operatorRouteGroups } from "../../shell/operatorRoutes";
  *
  * The substrate has grown enough that the operator benefits from
  * a single page listing every surface with a one-line description.
- * Routes are grouped by category (workstation / governance / audit /
- * config / Storybook) so the operator can locate any surface
- * without leaving home.
+ * Routes are grouped by the four product workflows first, then
+ * governance and audit surfaces, so the operator can locate any
+ * surface without leaving home.
  */
 
 const GROUPS = operatorRouteGroups();
@@ -31,9 +31,9 @@ export default function Map() {
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Every operator-facing surface in the substrate.
               Routes route through the same auth middleware; the
-              left-side categories group by intent (workstation
-              for daily work, governance for policy, audit for
-              after-the-fact review).
+              sections group by intent: the four workflows for daily
+              work, governance for policy, and audit for after-the-fact
+              review.
             </p>
             <div className="flex flex-wrap gap-3 pt-1">
               {KEYBOARD_HINTS.map((h) => (

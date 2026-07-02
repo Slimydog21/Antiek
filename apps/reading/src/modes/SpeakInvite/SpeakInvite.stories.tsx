@@ -12,7 +12,7 @@ import SpeakInvite from "./index";
  * exercised end-to-end in tests/test_speak_api.py.
  */
 const meta = {
-  title: "Workstation / Speak / Invitee Landing",
+  title: "Speak / Invitee Landing",
   component: SpeakInvite,
   parameters: { layout: "fullscreen" },
   tags: ["autodocs"],

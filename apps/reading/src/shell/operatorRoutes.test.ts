@@ -25,11 +25,28 @@ describe("operator route registry", () => {
     );
   });
 
-  it("keeps shared acquisition routes out of the Workstation discovery group", () => {
+  it("groups product routes by workflow instead of the old generic Workstation bucket", () => {
     const byId = new Map(OPERATOR_ROUTES.map((route) => [route.id, route]));
 
     expect(byId.get("documents")?.group).toBe("Governance");
     expect(byId.get("sources")?.group).toBe("Governance");
-    expect(byId.get("notebooks")?.group).toBe("Workstation");
+    expect(byId.get("skill-rules")?.group).toBe("Governance");
+
+    expect(byId.get("home")?.group).toBe("Home");
+    expect(byId.get("research")?.group).toBe("Research");
+    expect(byId.get("deep-research")?.group).toBe("Research");
+    expect(byId.get("my-research")?.group).toBe("Research");
+    expect(byId.get("brainstorm")?.group).toBe("Research");
+    expect(byId.get("library")?.group).toBe("Read");
+    expect(byId.get("library-browse")?.group).toBe("Read");
+    expect(byId.get("wrestle")?.group).toBe("Read");
+    expect(byId.get("readings")?.group).toBe("Read");
+    expect(byId.get("meta-readings")?.group).toBe("Read");
+    expect(byId.get("meta-reading")?.group).toBe("Read");
+    expect(byId.get("notebooks")?.group).toBe("Read");
+    expect(byId.get("write")?.group).toBe("Write");
+    expect(byId.get("create")?.group).toBe("Write");
+    expect(byId.get("speak")?.group).toBe("Speak");
+    expect(byId.get("biography")?.group).toBe("Speak");
   });
 });

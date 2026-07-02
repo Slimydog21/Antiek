@@ -13,7 +13,7 @@ import InvestigationsIndex from "./index";
  * as a regression target for the retired component and its error path.
  */
 const meta = {
-  title: "Workstation / InvestigationsIndex",
+  title: "Research / InvestigationsIndex",
   component: InvestigationsIndex,
   parameters: {
     layout: "fullscreen",

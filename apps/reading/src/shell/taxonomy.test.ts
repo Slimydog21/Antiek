@@ -410,10 +410,26 @@ describe("Read door re-home + operator-surface eviction (Read SPR-06)", () => {
     const interviewIndexStory = readSrc(
       "modes/InterviewIndex/InterviewIndex.stories.tsx",
     );
+    const speakIndexStory = readSrc("modes/SpeakIndex/SpeakIndex.stories.tsx");
+    const speakConsoleStory = readSrc("modes/Speak/Speak.stories.tsx");
+    const speakInvitesStory = readSrc("modes/Speak/Invites.stories.tsx");
+    const speakInviteStory = readSrc("modes/SpeakInvite/SpeakInvite.stories.tsx");
+    const biographyStory = readSrc("modes/Biography/Biography.stories.tsx");
+    const investigationsStory = readSrc(
+      "modes/InvestigationsIndex/InvestigationsIndex.stories.tsx",
+    );
     const paletteStory = readRawSrc("components/CommandPalette.stories.tsx");
 
     expect(documentsStory).toContain('title: "Governance / DocumentsIndex"');
     expect(mapStory).toContain('title: "Governance / Map"');
+    expect(investigationsStory).toContain(
+      'title: "Research / InvestigationsIndex"',
+    );
+    expect(speakIndexStory).toContain('title: "Speak / Index"');
+    expect(speakConsoleStory).toContain('title: "Speak / Console"');
+    expect(speakInvitesStory).toContain('title: "Speak / Invites"');
+    expect(speakInviteStory).toContain('title: "Speak / Invitee Landing"');
+    expect(biographyStory).toContain('title: "Speak / Biography"');
     expect(interviewStory).toContain('title: "Speak / Interview"');
     expect(interviewTranscriptStory).toContain(
       'title: "Speak / Interview / Transcript"',
@@ -421,6 +437,20 @@ describe("Read door re-home + operator-surface eviction (Read SPR-06)", () => {
     expect(interviewIndexStory).toContain('title: "Speak / InterviewIndex"');
     expect(documentsStory).not.toContain('title: "Workstation / DocumentsIndex"');
     expect(mapStory).not.toContain('title: "Workstation / Map"');
+    expect(investigationsStory).not.toContain(
+      'title: "Workstation / InvestigationsIndex"',
+    );
+    expect(speakIndexStory).not.toContain('title: "Workstation / Speak / Index"');
+    expect(speakConsoleStory).not.toContain(
+      'title: "Workstation / Speak / Console"',
+    );
+    expect(speakInvitesStory).not.toContain(
+      'title: "Workstation / Speak / Invites"',
+    );
+    expect(speakInviteStory).not.toContain(
+      'title: "Workstation / Speak / Invitee Landing"',
+    );
+    expect(biographyStory).not.toContain('title: "Workstation / Biography"');
     expect(interviewStory).not.toContain('title: "Workstation / Interview"');
     expect(interviewTranscriptStory).not.toContain(
       'title: "Workstation / Interview / Transcript"',

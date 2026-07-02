@@ -14,7 +14,7 @@ import SpeakConsole from "./index";
  * tests/test_speak_api.py.
  */
 const meta = {
-  title: "Workstation / Speak / Console",
+  title: "Speak / Console",
   component: SpeakConsole,
   parameters: { layout: "fullscreen" },
   tags: ["autodocs"],

@@ -23,6 +23,24 @@ describe("Application map", () => {
     }
   });
 
+  it("renders the four workflow groups before governance and audit", () => {
+    render(
+      <MemoryRouter>
+        <Map />
+      </MemoryRouter>,
+    );
+
+    const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(headings.slice(0, 6)).toEqual([
+      "Home",
+      "Research",
+      "Read",
+      "Write",
+      "Speak",
+      "Governance",
+    ]);
+  });
+
   it("labels the meta-reading generator as proposed", () => {
     render(
       <MemoryRouter>
