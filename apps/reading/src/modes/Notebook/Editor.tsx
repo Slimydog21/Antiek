@@ -38,11 +38,16 @@ type Props = {
 const LS_PREFIX = "antiek.notebook.";
 const LS_ETAG_SUFFIX = ".etag";
 
+export function normalizeNotebookId(value: string | null | undefined): string {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed.length > 0 ? trimmed : "scratch";
+}
+
 function lsKey(notebookId: string): string {
-  return LS_PREFIX + notebookId;
+  return LS_PREFIX + normalizeNotebookId(notebookId);
 }
 function lsEtagKey(notebookId: string): string {
-  return LS_PREFIX + notebookId + LS_ETAG_SUFFIX;
+  return LS_PREFIX + normalizeNotebookId(notebookId) + LS_ETAG_SUFFIX;
 }
 
 function parseStoredEtag(value: string | null): number {
@@ -100,7 +105,8 @@ function writeStored(
 }
 
 export function notebookContentEndpoint(notebookId: string): string {
-  return `${API_BASE}/notebooks/${encodeURIComponent(notebookId)}/content`;
+  const id = normalizeNotebookId(notebookId);
+  return `${API_BASE}/notebooks/${encodeURIComponent(id)}/content`;
 }
 
 export function NotebookEditor({
@@ -109,6 +115,7 @@ export function NotebookEditor({
   placeholder,
   className = "",
 }: Props) {
+  const normalizedNotebookId = normalizeNotebookId(notebookId);
   const [slash, setSlash] = useState<{ open: boolean; query: string }>({
     open: false,
     query: "",
@@ -123,7 +130,7 @@ export function NotebookEditor({
   const etagRef = useRef<number>(0);
 
   // Seed the initial etag from the existing stored snapshot (if any).
-  const initialStored = readStored(notebookId);
+  const initialStored = readStored(normalizedNotebookId);
   if (initialStored && etagRef.current === 0) {
     etagRef.current = initialStored.etag;
   }
@@ -172,18 +179,21 @@ export function NotebookEditor({
       saveTimer.current = setTimeout(async () => {
         const doc = e.getJSON();
         try {
-          const r = await apiFetch(notebookContentEndpoint(notebookId), {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ doc }),
-          });
+          const r = await apiFetch(
+            notebookContentEndpoint(normalizedNotebookId),
+            {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ doc }),
+            },
+          );
           if (!r.ok) {
             throw new Error(`HTTP ${r.status}`);
           }
           setSaved("saved");
           // Keep a local mirror so a reload while offline shows the
           // last-known-good state.
-          writeStored(notebookId, e.getHTML(), etagRef.current);
+          writeStored(normalizedNotebookId, e.getHTML(), etagRef.current);
           etagRef.current += 1;
         } catch (err) {
           // Offline / network error vs. true etag conflict are
@@ -198,7 +208,11 @@ export function NotebookEditor({
           // Conflict (writeStored returned null because another tab
           // raced ahead of our baseline etag): the local write was
           // refused. Indicator shows "conflict — reload" + a toast.
-          const nextEtag = writeStored(notebookId, e.getHTML(), etagRef.current);
+          const nextEtag = writeStored(
+            normalizedNotebookId,
+            e.getHTML(),
+            etagRef.current,
+          );
           if (nextEtag === null) {
             setSaved("conflict");
             toast.err(
@@ -234,7 +248,7 @@ export function NotebookEditor({
   useEffect(() => {
     const reloadFromStorage = (opts: { force?: boolean } = {}) => {
       if (!editor) return;
-      const stored = readStored(notebookId);
+      const stored = readStored(normalizedNotebookId);
       if (!stored) return;
       // Only swap if the etag advanced past our baseline — avoids
       // clobbering an in-flight local edit on every dispatched action.
@@ -245,11 +259,13 @@ export function NotebookEditor({
     };
     const onCustom = (e: Event) => {
       const ce = e as CustomEvent<{ notebookId: string; force?: boolean }>;
-      if (ce.detail?.notebookId !== notebookId) return;
+      if (normalizeNotebookId(ce.detail?.notebookId) !== normalizedNotebookId) {
+        return;
+      }
       reloadFromStorage({ force: ce.detail.force });
     };
     const onStorage = (e: StorageEvent) => {
-      if (e.key !== "antiek.notebook." + notebookId) return;
+      if (e.key !== lsKey(normalizedNotebookId)) return;
       reloadFromStorage();
     };
     window.addEventListener("antiek:notebook:appended", onCustom);
@@ -258,7 +274,7 @@ export function NotebookEditor({
       window.removeEventListener("antiek:notebook:appended", onCustom);
       window.removeEventListener("storage", onStorage);
     };
-  }, [editor, notebookId]);
+  }, [editor, normalizedNotebookId]);
 
   if (!editor) {
     return (
