@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 
+import type { Event } from "../../generated/types";
 import { apiFetch } from "../../lib/api";
+import { isEventFrame } from "../../lib/eventFrame";
 
 /**
  * ReplayStepList (S10 row 10.14) — docked-left step-pill timeline
@@ -55,18 +57,18 @@ export default function ReplayStepList({ investigationId }: Props) {
         return;
       }
       const data = await resp.json();
-      const raw: Array<Record<string, unknown>> = Array.isArray(data.events)
-        ? data.events
+      const raw: Event[] = Array.isArray(data.events)
+        ? data.events.filter(isEventFrame)
         : [];
       const filtered: StepEvent[] = raw
         .filter((e) =>
-          SIGNIFICANT_ACTIONS.has(String(e.action_type ?? "")),
+          SIGNIFICANT_ACTIONS.has(e.action_type),
         )
         .map((e) => ({
-          event_id: String(e.event_id ?? ""),
-          action_type: String(e.action_type ?? ""),
-          phase: typeof e.phase === "number" ? e.phase : null,
-          emitted_at: (e.emitted_at as string | null) ?? null,
+          event_id: e.event_id,
+          action_type: e.action_type,
+          phase: typeof e.phase === "number" && Number.isFinite(e.phase) ? e.phase : null,
+          emitted_at: e.emitted_at,
         }));
       setSteps(filtered);
       setError(null);
