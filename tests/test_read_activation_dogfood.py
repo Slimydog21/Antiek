@@ -953,6 +953,22 @@ def test_append_template_creates_log_file_and_parent_dirs(tmp_path, capsys) -> N
     assert "remaining:" in out
 
 
+def test_append_write_trace_template_preserves_direct_source_url(tmp_path, capsys) -> None:
+    path = tmp_path / "operator" / "read-dogfood.jsonl"
+
+    assert main(["--template", "write-trace-citation", "--append", str(path)]) == 0
+    out = capsys.readouterr().out
+
+    records = load_jsonl(path)
+    assert len(records) == 1
+    assert records[0]["entry_door"] == "write_trace_to_source"
+    assert records[0]["steps"]["5"]["result_url"] == (
+        "https://antiek.ai/read/source-doc-1?chunk=chunk-1"
+    )
+    assert "from=" not in records[0]["steps"]["5"]["result_url"]
+    assert "1 citation-traced, 1 non-library" in out
+
+
 def test_append_template_adds_line_to_existing_log(tmp_path) -> None:
     path = tmp_path / "read-dogfood.jsonl"
     append_session_template(path, session_template("inert"))
