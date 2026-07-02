@@ -82,6 +82,40 @@ describe("SpeakInvite — phone-first, voice-first", () => {
     expect(screen.getByPlaceholderText(/share whatever comes to mind/i)).toBeTruthy();
   });
 
+  it("sanitizes invite landing payloads before rendering", async () => {
+    apiFetchMock.mockResolvedValue(
+      landingResponse({
+        interview_id: " iv dirty ",
+        project_id: " p dirty ",
+        project_title: " Grandma Rosa's story ",
+        subject_ref: " Grandma Rosa ",
+        required_consent_scopes: [" record ", " publish ", " "],
+        granted_consent_scopes: [" record ", null],
+        status: " invited ",
+        pending_questions: [
+          { id: " q dirty ", text: " What's your earliest memory? " },
+          { id: " ", text: "Skipped question" },
+        ],
+        transcript: [
+          {
+            role: " informant ",
+            text: " Shared memory ",
+            ts: " 2026-06-05 ",
+            question_id: " q dirty ",
+          },
+          { role: "informant", text: " " },
+          { role: "operator", text: "Skipped operator prompt" },
+        ],
+      }),
+    );
+    mount();
+
+    expect(await screen.findByText(/what's your earliest memory/i)).toBeTruthy();
+    expect(screen.getByText(/what you've shared so far/i)).toBeTruthy();
+    expect(screen.getByText("Shared memory")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/Skipped| iv dirty | q dirty /);
+  });
+
   it("declining terminates cleanly (thank-you, no dead end) and never enters recording", async () => {
     apiFetchMock.mockImplementation((url: string) => {
       if (typeof url === "string" && url.includes("/decline")) {
