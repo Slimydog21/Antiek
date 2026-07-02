@@ -59,6 +59,7 @@ export interface RoadmapView {
 
 interface ResolvedDependencyBlocker {
   node_id: string;
+  blocker_sprint: SprintView | null;
   blocked_sprints: SprintView[];
 }
 
@@ -83,6 +84,7 @@ function deriveDependencyBlockers(sprints: SprintView[]): ResolvedDependencyBloc
   }
   return Array.from(byBlocker, ([node_id, blocked_sprints]) => ({
     node_id,
+    blocker_sprint: null,
     blocked_sprints,
   })).sort(
     (a, b) =>
@@ -97,6 +99,11 @@ function resolveDependencyBlockers(
   allSprints: SprintView[],
 ): ResolvedDependencyBlocker[] {
   const derived = deriveDependencyBlockers(allSprints);
+  const withBlockerSprints = (blockers: ResolvedDependencyBlocker[]) =>
+    blockers.map((blocker) => ({
+      ...blocker,
+      blocker_sprint: sprintById.get(blocker.node_id) ?? blocker.blocker_sprint,
+    }));
   const resolved = rawBlockers.flatMap((blocker) => {
     const seen = new Set<string>();
     const blocked_sprints = blocker.blocked_sprints.flatMap((nodeId) => {
@@ -110,10 +117,16 @@ function resolveDependencyBlockers(
         : [];
     });
     return blocked_sprints.length > 0
-      ? [{ node_id: blocker.node_id, blocked_sprints }]
+      ? [
+          {
+            node_id: blocker.node_id,
+            blocker_sprint: sprintById.get(blocker.node_id) ?? null,
+            blocked_sprints,
+          },
+        ]
       : [];
   });
-  if (resolved.length === 0) return derived;
+  if (resolved.length === 0) return withBlockerSprints(derived);
 
   const sorted = resolved.sort(
     (a, b) =>
@@ -127,7 +140,9 @@ function resolveDependencyBlockers(
       .join(",")}`;
   const sortedSignature = sorted.map(serialize).join("|");
   const derivedSignature = derived.map(serialize).join("|");
-  return sortedSignature === derivedSignature ? sorted : derived;
+  return withBlockerSprints(
+    sortedSignature === derivedSignature ? sorted : derived,
+  );
 }
 
 export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
@@ -243,6 +258,13 @@ function DependencyBlockersSection({
                   <p className="text-sm font-serif text-ink dark:text-bright">
                     {blocker.node_id}
                   </p>
+                  {blocker.blocker_sprint && (
+                    <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
+                      {formatSprintLabel(blocker.blocker_sprint)} ·{" "}
+                      {blocker.blocker_sprint.slug.replace(/-/g, " ")} ·{" "}
+                      {blocker.blocker_sprint.status}
+                    </p>
+                  )}
                   <p className="text-xs font-mono text-shadow-2 dark:text-moonlight">
                     {sample.map(formatSprintLabel).join(", ")}
                     {hidden > 0 ? ` +${hidden} more` : ""}
