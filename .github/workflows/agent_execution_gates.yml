@@ -77,6 +77,7 @@ on:
       - 'tests/fixtures/agent_execution/**'
       - 'tests/test_audit_agent_session.py'
       - 'tests/test_canonical_verify.py'
+      - 'tests/test_platform_exec_matrix.py'
       - 'tests/test_cascade_planner.py'
       - 'tests/test_cascade_api.py'
       - 'tests/test_cascade_create_plan_light.py'
@@ -194,6 +195,7 @@ on:
       - 'tests/fixtures/agent_execution/**'
       - 'tests/test_audit_agent_session.py'
       - 'tests/test_canonical_verify.py'
+      - 'tests/test_platform_exec_matrix.py'
       - 'tests/test_cascade_planner.py'
       - 'tests/test_cascade_api.py'
       - 'tests/test_cascade_create_plan_light.py'
@@ -397,5 +399,5 @@ jobs:
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md
 
-      - name: Canonical verify — deep-research (P-51..P-57)
+      - name: Canonical verify — deep-research (P-52..P-58)
         run: ./scripts/canonical_verify.sh deep-research

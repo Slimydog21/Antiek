@@ -42,32 +42,33 @@
 | P-34 | Speak economics matrix | `substrate/speak/economics_mode.py` + Speak settings matrix | `./scripts/canonical_verify.sh speak-economics-matrix` | — | Live pricing/legal/payout activation |
 | P-35 | Speak biography authoring | `substrate/speak/biography.py` + Write outline bridge + Speak assembly surface | `./scripts/canonical_verify.sh speak-biography-authoring` | — | Live model/provider draft quality QA |
 | P-36 | Speak publishing + physical | `substrate/speak/publish.py` + `substrate/speak/physical_book.py` + Read servability seam | `./scripts/canonical_verify.sh speak-publishing-physical` | — | Live POD vendor/shipping/payment fulfillment |
-| P-37 | Unified substrate contract + lock | `substrate/contracts/` + `dependency_map.py` + `unified_sprint_lock.py` | `./scripts/canonical_verify.sh unified-substrate-contract-lock` | — | Live untracked spec-file citation regeneration |
-| P-38 | Unified remote exec fanout | `runtime/remote_exec/` + `runtime/research_runner/` factory seam | `./scripts/canonical_verify.sh unified-remote-exec-fanout` | `infrastructure/runbooks/remote-exec-fanout.md` live smoke | Live Daytona credentials/provider throughput |
-| P-39 | Unified seams + collisions | `substrate/seams/` + seam/collision guards | `./scripts/canonical_verify.sh unified-seams-and-collisions` | — | Live product-side write-to-speak commission implementation |
-| P-40 | Unified navigation IA taxonomy | `apps/reading/src/shell/workflowTaxonomy.ts` + `NavRail` | `./scripts/canonical_verify.sh unified-navigation-ia-taxonomy` | — | Browser/device visual QA for final rail polish |
-| P-41 | Unified coordination gate ledger | `substrate/coordination/gate_ledger.py` + Coordination mode | `./scripts/canonical_verify.sh unified-coordination-gate-ledger` | — | Browser/device visual QA for final Coordination polish |
-| P-42 | Unified thread navigation | `substrate/seams/thread.py` + `ThreadBreadcrumb` | `./scripts/canonical_verify.sh unified-thread-navigation` | — | Browser/device visual QA for breadcrumb placement |
-| P-43 | Unified cost + consent surface | `substrate/coordination/cost_view.py` + `consent_view.py` + Coordination cost UI | `./scripts/canonical_verify.sh unified-cost-consent-surface` | — | Live provider billing and payout activation |
-| P-44 | Unified flywheel conformance | `tests/e2e/test_flywheel.py` + `tests/test_integration_invariants.py` + `tools/codegen/check_conformance.py` | `./scripts/canonical_verify.sh unified-flywheel-conformance` | — | Live product-module replacement of documented stubs |
-| P-45 | Agent handoff schema | `tools/agent/verify_handoff.ts` | `./scripts/canonical_verify.sh handoff <md>` | — | Narrative quality / intent |
-| P-46 | Session theater grep | `scripts/audit_agent_session.sh` | paired with handoff subcommand | — | Claims outside markdown packet |
-| P-47 | AMS spec ref-lint | `scripts/agent_ams_ref_lint.sh` | `bash scripts/agent_ams_ref_lint.sh <sprint.html>` | — | Playwright mountain shell |
-| P-48 | Reading substrate pytest | `.github/workflows/ci.yml` `pytest` job | CI on `main` (full suite) | — | Local hardware parity |
-| P-49 | Werner mascot / hop | `apps/reading` Werner paths per Werner htmlspec | `canonical_verify.sh agent-gates` + case study §5 | Werner operator card (htmlspec) | Measured p95 / fps without artifact |
-| P-50 | Serve / rights / legal | production deploy surfaces | **No** informational CI job alone (F7) | operator deploy checklist | Jurisdiction-specific legal review |
-| P-51 | Loop 1 E2E (DeepResearchComplete) | `orchestration/loop_one/orchestrator.py` | `pytest tests/test_loop_one_orchestrator.py::test_loop_one_happy_path_emits_completed -q` | — | Live LLM on all 5 roles |
-| P-52 | DeepResearchComplete negative | `orchestration/invariants/deep_research_complete.py` | `pytest tests/test_deep_research_complete.py::test_drw_only_trajectory_fails_without_synthesis -q` | — | Production DRW with Exa adapter |
-| P-53 | Cascade session reconstruct | `orchestration/cascade_session.py` | `pytest tests/test_cascade_session.py -q` | — | SSE transport reconnect E2E |
-| P-54 | PromotionFunnel serialize | `runtime/research_runner/promotion_funnel.py` | `pytest tests/test_research_runner.py::test_promotion_funnel_serialized_no_lock_timeout -q` | — | Remote-exec fan-out under load |
-| P-55 | knowledge.reused flywheel | `runtime/research_runner/host_local.py` start path | `pytest tests/test_flywheel_reuse.py::test_two_run_contract_gather_emits_knowledge_reused_on_second_start -q` | — | Live dispatch cost delta > 0 on reuse-consuming loop |
-| P-56 | Exa gather mock E2E | `runtime/research_runner/host_local.py make_exa_gather_loop` | `pytest tests/test_exa_gather_loop.py -q` | — | Live EXA_API_KEY discover→ingest cost |
-| P-57 | Parent-terminal observability | `interfaces/research/api/cascade_routes.py _run_to_completion + session_status` | `pytest tests/test_drw_parent_terminal.py -q` | `docs/decisions/deep-research-smoke-checklist.md` | Real session-parent DeepResearchComplete on smoke DRW #1 |
-| P-58 | ResearchArtifact HTML transport | `substrate/research_artifact/` + `ArtifactOutlineShelf` (DistillView) | `./scripts/canonical_verify.sh html-transport` | — | Full Write canvas tab-complete; book/EPUB reader HTML ingest |
+| P-37 | DRW reader-surface transfer | `substrate/contracts/drw_sprint_lock.py` + `reading_surface.py` + Roadmap UI | `./scripts/canonical_verify.sh drw-reading-surface-transfer` | — | Live browser/device reader polish |
+| P-38 | Unified substrate contract + lock | `substrate/contracts/` + `dependency_map.py` + `unified_sprint_lock.py` | `./scripts/canonical_verify.sh unified-substrate-contract-lock` | — | Live untracked spec-file citation regeneration |
+| P-39 | Unified remote exec fanout | `runtime/remote_exec/` + `runtime/research_runner/` factory seam | `./scripts/canonical_verify.sh unified-remote-exec-fanout` | `infrastructure/runbooks/remote-exec-fanout.md` live smoke | Live Daytona credentials/provider throughput |
+| P-40 | Unified seams + collisions | `substrate/seams/` + seam/collision guards | `./scripts/canonical_verify.sh unified-seams-and-collisions` | — | Live product-side write-to-speak commission implementation |
+| P-41 | Unified navigation IA taxonomy | `apps/reading/src/shell/workflowTaxonomy.ts` + `NavRail` | `./scripts/canonical_verify.sh unified-navigation-ia-taxonomy` | — | Browser/device visual QA for final rail polish |
+| P-42 | Unified coordination gate ledger | `substrate/coordination/gate_ledger.py` + Coordination mode | `./scripts/canonical_verify.sh unified-coordination-gate-ledger` | — | Browser/device visual QA for final Coordination polish |
+| P-43 | Unified thread navigation | `substrate/seams/thread.py` + `ThreadBreadcrumb` | `./scripts/canonical_verify.sh unified-thread-navigation` | — | Browser/device visual QA for breadcrumb placement |
+| P-44 | Unified cost + consent surface | `substrate/coordination/cost_view.py` + `consent_view.py` + Coordination cost UI | `./scripts/canonical_verify.sh unified-cost-consent-surface` | — | Live provider billing and payout activation |
+| P-45 | Unified flywheel conformance | `tests/e2e/test_flywheel.py` + `tests/test_integration_invariants.py` + `tools/codegen/check_conformance.py` | `./scripts/canonical_verify.sh unified-flywheel-conformance` | — | Live product-module replacement of documented stubs |
+| P-46 | Agent handoff schema | `tools/agent/verify_handoff.ts` | `./scripts/canonical_verify.sh handoff <md>` | — | Narrative quality / intent |
+| P-47 | Session theater grep | `scripts/audit_agent_session.sh` | paired with handoff subcommand | — | Claims outside markdown packet |
+| P-48 | AMS spec ref-lint | `scripts/agent_ams_ref_lint.sh` | `bash scripts/agent_ams_ref_lint.sh <sprint.html>` | — | Playwright mountain shell |
+| P-49 | Reading substrate pytest | `.github/workflows/ci.yml` `pytest` job | CI on `main` (full suite) | — | Local hardware parity |
+| P-50 | Werner mascot / hop | `apps/reading` Werner paths per Werner htmlspec | `canonical_verify.sh agent-gates` + case study §5 | Werner operator card (htmlspec) | Measured p95 / fps without artifact |
+| P-51 | Serve / rights / legal | production deploy surfaces | **No** informational CI job alone (F7) | operator deploy checklist | Jurisdiction-specific legal review |
+| P-52 | Loop 1 E2E (DeepResearchComplete) | `orchestration/loop_one/orchestrator.py` | `pytest tests/test_loop_one_orchestrator.py::test_loop_one_happy_path_emits_completed -q` | — | Live LLM on all 5 roles |
+| P-53 | DeepResearchComplete negative | `orchestration/invariants/deep_research_complete.py` | `pytest tests/test_deep_research_complete.py::test_drw_only_trajectory_fails_without_synthesis -q` | — | Production DRW with Exa adapter |
+| P-54 | Cascade session reconstruct | `orchestration/cascade_session.py` | `pytest tests/test_cascade_session.py -q` | — | SSE transport reconnect E2E |
+| P-55 | PromotionFunnel serialize | `runtime/research_runner/promotion_funnel.py` | `pytest tests/test_research_runner.py::test_promotion_funnel_serialized_no_lock_timeout -q` | — | Remote-exec fan-out under load |
+| P-56 | knowledge.reused flywheel | `runtime/research_runner/host_local.py` start path | `pytest tests/test_flywheel_reuse.py::test_two_run_contract_gather_emits_knowledge_reused_on_second_start -q` | — | Live dispatch cost delta > 0 on reuse-consuming loop |
+| P-57 | Exa gather mock E2E | `runtime/research_runner/host_local.py make_exa_gather_loop` | `pytest tests/test_exa_gather_loop.py -q` | — | Live EXA_API_KEY discover→ingest cost |
+| P-58 | Parent-terminal observability | `interfaces/research/api/cascade_routes.py _run_to_completion + session_status` | `pytest tests/test_drw_parent_terminal.py -q` | `docs/decisions/deep-research-smoke-checklist.md` | Real session-parent DeepResearchComplete on smoke DRW #1 |
+| P-59 | ResearchArtifact HTML transport | `substrate/research_artifact/` + `ArtifactOutlineShelf` (DistillView) | `./scripts/canonical_verify.sh html-transport` | — | Full Write canvas tab-complete; book/EPUB reader HTML ingest |
 
-**Profile:** `./scripts/canonical_verify.sh deep-research` runs P-51..P-57 hermetic gates (ANT-DRL SPR-DRL-02, SPR-DRL-08, SPR-DRL-09).
+**Profile:** `./scripts/canonical_verify.sh deep-research` runs P-52..P-58 hermetic gates (ANT-DRL SPR-DRL-02, SPR-DRL-08, SPR-DRL-09).
 
-**Profile:** `./scripts/canonical_verify.sh html-transport` runs P-58 (ANT-AHT SPR-AHT-01..06).
+**Profile:** `./scripts/canonical_verify.sh html-transport` runs P-59 (ANT-AHT SPR-AHT-01..06).
 
 ## How to use
 
