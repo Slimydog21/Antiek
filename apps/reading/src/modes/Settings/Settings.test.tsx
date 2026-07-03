@@ -95,7 +95,8 @@ function roadmapResponse(
     merge_base_distance: 238,
     max_behind: 25,
     message: "base is 238 commits behind origin/main (limit N=25)",
-    remediation: "run `git rebase origin/main`",
+    remediation:
+      "run `.venv/bin/python -m tools.ops.rebase_preflight --json`, then `git rebase origin/main` in a disposable worktree",
     error: null,
   },
   autoresearch_readiness: Record<string, unknown> | null | undefined = {
@@ -222,7 +223,11 @@ describe("Settings", () => {
     expect(
       screen.getByText(/base is 238 commits behind origin\/main/i),
     ).toBeTruthy();
-    expect(screen.getByText("run `git rebase origin/main`")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "run `.venv/bin/python -m tools.ops.rebase_preflight --json`, then `git rebase origin/main` in a disposable worktree",
+      ),
+    ).toBeTruthy();
   });
 
   it("surfaces prompt autoresearch readiness from the coordination roadmap", async () => {

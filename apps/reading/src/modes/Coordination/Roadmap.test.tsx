@@ -623,7 +623,8 @@ describe("Roadmap", () => {
             merge_base_distance: 238,
             max_behind: 25,
             message: "base is 238 commits behind origin/main (limit N=25)",
-            remediation: "run `git rebase origin/main`",
+            remediation:
+              "run `.venv/bin/python -m tools.ops.rebase_preflight --json`, then `git rebase origin/main` in a disposable worktree",
             error: null,
           },
         }}
@@ -640,7 +641,11 @@ describe("Roadmap", () => {
     expect(
       screen.getByText(/base is 238 commits behind origin\/main/),
     ).toBeTruthy();
-    expect(screen.getByText(/Next: run `git rebase origin\/main`\./)).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Next: run `.venv\/bin\/python -m tools\.ops\.rebase_preflight --json`, then `git rebase origin\/main` in a disposable worktree\./,
+      ),
+    ).toBeTruthy();
   });
 
   it("surfaces prompt autoresearch readiness without treating it as closure", () => {

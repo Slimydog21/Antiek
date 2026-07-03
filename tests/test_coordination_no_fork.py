@@ -956,7 +956,10 @@ def test_roadmap_response_serializes_branch_health_status() -> None:
         merge_base_distance=238,
         max_behind=25,
         message="base is 238 commits behind origin/main (limit N=25)",
-        remediation="run `git rebase origin/main`",
+        remediation=(
+            "run `.venv/bin/python -m tools.ops.rebase_preflight --json`, "
+            "then `git rebase origin/main` in a disposable worktree"
+        ),
         error=None,
     )
 
@@ -970,7 +973,10 @@ def test_roadmap_response_serializes_branch_health_status() -> None:
     assert response.branch_health.branch == "reader/integration"
     assert response.branch_health.merge_base_distance == 238
     assert response.branch_health.max_behind == 25
-    assert response.branch_health.remediation == "run `git rebase origin/main`"
+    assert response.branch_health.remediation == (
+        "run `.venv/bin/python -m tools.ops.rebase_preflight --json`, "
+        "then `git rebase origin/main` in a disposable worktree"
+    )
 
 
 def test_roadmap_response_serializes_autoresearch_readiness_status() -> None:
