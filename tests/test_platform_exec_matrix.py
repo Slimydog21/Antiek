@@ -514,6 +514,74 @@ def test_speak_profile_rows_name_current_scope() -> None:
         )
 
 
+def test_unified_profile_rows_name_current_scope() -> None:
+    """P-37..P-45 must track the concrete tests bundled by Unified profiles."""
+    script = CANONICAL_VERIFY.read_text(encoding="utf-8")
+    matrix = MATRIX.read_text(encoding="utf-8")
+
+    expected = {
+        "37": {
+            "command": "drw-reading-surface-transfer",
+            "body": ("`substrate/contracts/drw_sprint_lock.py`", "`substrate/contracts/reading_surface.py`"),
+            "script": ("tests/test_contracts_drw_lock.py", "src/modes/Coordination/Roadmap.test.tsx"),
+        },
+        "38": {
+            "command": "unified-substrate-contract-lock",
+            "body": ("`substrate/contracts/`", "`substrate/invariants/`"),
+            "script": ("tests/test_contracts_unified_lock.py", "tests/test_invariant_registry_meta.py"),
+        },
+        "39": {
+            "command": "unified-remote-exec-fanout",
+            "body": ("`runtime/remote_exec/`", "`runtime/research_runner/` factory seam"),
+            "script": ("tests/test_remote_exec_runner.py", "tests/test_remote_exec_fallback.py"),
+        },
+        "40": {
+            "command": "unified-seams-and-collisions",
+            "body": ("`substrate/seams/`", "seam/collision guards"),
+            "script": ("tests/test_seam_conformance.py", "tests/e2e/test_flywheel.py"),
+        },
+        "41": {
+            "command": "unified-navigation-ia-taxonomy",
+            "body": ("`apps/reading/src/shell/workflowTaxonomy.ts`", "`NavRail`"),
+            "script": ("src/shell/taxonomy.test.ts", "src/shell/navrail.panel.test.tsx"),
+        },
+        "42": {
+            "command": "unified-coordination-gate-ledger",
+            "body": ("`substrate/coordination/gate_ledger.py`", "Coordination mode"),
+            "script": ("tests/test_coordination_no_fork.py", "src/modes/Coordination/Coordination.test.tsx"),
+        },
+        "43": {
+            "command": "unified-thread-navigation",
+            "body": ("`substrate/seams/thread.py`", "`ThreadBreadcrumb`"),
+            "script": ("tests/test_thread_reconstruct.py", "src/shell/ThreadBreadcrumb.test.tsx"),
+        },
+        "44": {
+            "command": "unified-cost-consent-surface",
+            "body": ("`substrate/coordination/cost_view.py`", "`substrate/coordination/consent_view.py`"),
+            "script": ("tests/test_cost_consent_no_disbursement.py", "src/modes/Coordination/CostConsent.test.tsx"),
+        },
+        "45": {
+            "command": "unified-flywheel-conformance",
+            "body": ("`tests/e2e/test_flywheel.py`", "`tools/codegen/check_conformance.py`"),
+            "script": ("tests/e2e/test_flywheel.py", "tools/codegen/check_conformance.py"),
+        },
+    }
+
+    for row_id, markers in expected.items():
+        row = re.search(rf"^\| P-{row_id} \|(?P<body>.*)\|$", matrix, re.MULTILINE)
+        assert row is not None, f"P-{row_id} row missing"
+        body = row.group("body")
+
+        assert f"`./scripts/canonical_verify.sh {markers['command']}`" in body
+        missing_body = [marker for marker in markers["body"] if marker not in body]
+        missing_script = [marker for marker in markers["script"] if marker not in script]
+
+        assert not missing_body, f"P-{row_id} row missing marker(s): {missing_body}"
+        assert not missing_script, (
+            f"canonical Unified profile missing P-{row_id} marker(s): {missing_script}"
+        )
+
+
 def test_agent_gates_trigger_on_provenance_invariant_inputs() -> None:
     """P-38 now runs the invariant registry, including parser provenance checks."""
     for event_name in ("push", "pull_request"):
