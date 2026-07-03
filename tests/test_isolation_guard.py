@@ -27,6 +27,7 @@ import os
 
 import pytest
 
+from runtime.db_lock import connect_write
 from substrate.graph import default_db_path
 from tests.conftest import _check_store_isolated, _real_store_path
 
@@ -68,6 +69,16 @@ def test_check_isolated_rejects_symlink_alias(tmp_path):
         pytest.skip(f"cannot create symlink: {exc}")
     with pytest.raises(AssertionError, match="REAL store"):
         _check_store_isolated(str(alias), real)
+
+
+def test_connect_write_to_real_store_blocked_when_enforcement_on(monkeypatch):
+    """M4 integration: with enforcement active (as autouse sets), an explicit
+    ``connect_write(real)`` fails — the leaky path through the write funnel, not
+    only ``default_db_path()`` at fixture boundaries."""
+    monkeypatch.setenv("ANTIEK_ENFORCE_TEST_STORE_ISOLATION", "1")
+    real = _real_store_path()
+    with pytest.raises(AssertionError, match="REAL store"):
+        connect_write(real, purpose="spr04-leaky-proof")
 
 
 def test_real_store_read_marker_is_recognized():
