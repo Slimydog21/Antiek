@@ -121,6 +121,7 @@ def test_antiek_research_bridge_dogfood_log_validate(tmp_path: Path, capsys) -> 
     assert "planned projects: 0/5" in out
     assert "filled project entries: 0/5" in out
     assert "complete project entries: 0/5" in out
+    assert "project session ids: 0/5" in out
 
 
 def test_antiek_research_bridge_wave4_validate(tmp_path: Path, capsys) -> None:

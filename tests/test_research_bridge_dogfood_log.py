@@ -29,6 +29,7 @@ def test_dogfood_scaffold_creates_template_and_operator_log(tmp_path: Path) -> N
     for label in (
         "Project name",
         "Goal",
+        "Session ID",
         "Provider mix",
         "Block count at start / end",
         "Mode(s) used",
@@ -115,6 +116,7 @@ def test_dogfood_log_validate_reports_missing_log(tmp_path: Path) -> None:
     assert result.operator_log_path == tmp_path / "operator-log.md"
     assert result.missing_requirements == ("operator-log.md is missing",)
     assert result.complete_project_entries == ()
+    assert result.project_entries == ()
 
 
 def test_dogfood_log_validate_rejects_unfilled_scaffold(tmp_path: Path) -> None:
@@ -204,6 +206,7 @@ Replace the old workflow.
     )
     assert result.filled_project_entries == result.planned_projects
     assert result.complete_project_entries == ()
+    assert result.project_entries == ()
     assert result.missing_requirements == ("expected 5 complete project entries, found 0",)
 
 
@@ -230,6 +233,10 @@ def test_dogfood_log_validate_accepts_five_complete_project_entries(
 ## Goal
 
 Produce dogfood project {idx}.
+
+## Session ID
+
+sess-{idx}
 
 ## Provider mix
 
@@ -291,6 +298,13 @@ Yes.
 
     assert result.ok is True
     assert result.complete_project_entries == result.planned_projects
+    assert tuple(entry.session_id for entry in result.project_entries) == (
+        "sess-1",
+        "sess-2",
+        "sess-3",
+        "sess-4",
+        "sess-5",
+    )
 
 
 def test_dogfood_log_cli_validate(tmp_path: Path, capsys) -> None:
@@ -303,6 +317,7 @@ def test_dogfood_log_cli_validate(tmp_path: Path, capsys) -> None:
     assert "planned projects: 0/5" in out
     assert "filled project entries: 0/5" in out
     assert "complete project entries: 0/5" in out
+    assert "project session ids: 0/5" in out
 
 
 def test_wave4_candidates_validate_allows_empty_scaffold(tmp_path: Path) -> None:

@@ -18,6 +18,10 @@ One line.
 
 One sentence.
 
+## Session ID
+
+Bridge session id used for this project.
+
 ## Provider mix
 
 Which external LLMs or research providers did the operator use?
@@ -106,11 +110,18 @@ class DogfoodScaffoldResult:
 
 
 @dataclass(frozen=True)
+class DogfoodProjectEntry:
+    project_name: str
+    session_id: str
+
+
+@dataclass(frozen=True)
 class DogfoodLogValidation:
     operator_log_path: Path
     planned_projects: tuple[str, ...]
     filled_project_entries: tuple[str, ...]
     complete_project_entries: tuple[str, ...]
+    project_entries: tuple[DogfoodProjectEntry, ...]
     missing_requirements: tuple[str, ...]
 
     @property
@@ -241,6 +252,7 @@ def _filled_project_entries(text: str) -> tuple[str, ...]:
 
 _REQUIRED_PROJECT_FIELDS = (
     "Goal",
+    "Session ID",
     "Provider mix",
     "Block count at start / end",
     "Mode(s) used",
@@ -283,7 +295,11 @@ def _non_placeholder_section(section: str) -> bool:
 
 
 def _complete_project_entries(text: str) -> tuple[str, ...]:
-    complete: list[str] = []
+    return tuple(entry.project_name for entry in _complete_project_entry_records(text))
+
+
+def _complete_project_entry_records(text: str) -> tuple[DogfoodProjectEntry, ...]:
+    complete: list[DogfoodProjectEntry] = []
     parts = text.split("\n## Project name")
     for part in parts[1:]:
         body = part.strip()
@@ -302,7 +318,10 @@ def _complete_project_entries(text: str) -> tuple[str, ...]:
                 missing_field = True
                 break
         if not missing_field:
-            complete.append(name)
+            session_id = _project_section_after_heading(body, "Session ID").strip()
+            complete.append(
+                DogfoodProjectEntry(project_name=name, session_id=session_id)
+            )
     return tuple(complete)
 
 
@@ -407,13 +426,15 @@ def validate_dogfood_log(root: str | Path | None = None) -> DogfoodLogValidation
             planned_projects=(),
             filled_project_entries=(),
             complete_project_entries=(),
+            project_entries=(),
             missing_requirements=("operator-log.md is missing",),
         )
 
     text = operator_log_path.read_text(encoding="utf-8")
     planned = _planned_project_names(text)
     entries = _filled_project_entries(text)
-    complete_entries = _complete_project_entries(text)
+    project_entries = _complete_project_entry_records(text)
+    complete_entries = tuple(entry.project_name for entry in project_entries)
     missing: list[str] = []
     if len(planned) < 5:
         missing.append(f"expected 5 planned projects, found {len(planned)}")
@@ -428,6 +449,7 @@ def validate_dogfood_log(root: str | Path | None = None) -> DogfoodLogValidation
         planned_projects=planned,
         filled_project_entries=entries,
         complete_project_entries=complete_entries,
+        project_entries=project_entries,
         missing_requirements=tuple(missing),
     )
 
@@ -486,6 +508,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"planned projects: {len(result.planned_projects)}/5")
         print(f"filled project entries: {len(result.filled_project_entries)}/5")
         print(f"complete project entries: {len(result.complete_project_entries)}/5")
+        print(f"project session ids: {len(result.project_entries)}/5")
         if result.ok:
             print("DOGFOOD_LOG_OK")
             return 0
