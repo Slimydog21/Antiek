@@ -225,6 +225,22 @@ def test_unified_substrate_lock_row_names_invariant_registry_when_verified() -> 
     assert "substrate/invariants/" in row.group("body")
 
 
+def test_cascade_adapter_row_names_canonical_bundle() -> None:
+    """P-02 is part of the cascade profile, not an orphan raw pytest command."""
+    script = CANONICAL_VERIFY.read_text(encoding="utf-8")
+    matrix = MATRIX.read_text(encoding="utf-8")
+
+    row = re.search(r"^\| P-02 \|(?P<body>.*)\|$", matrix, re.MULTILINE)
+    assert row is not None
+    body = row.group("body")
+
+    assert "tests/test_cascade_planner.py::test_dispatch_decomposer_maps_stub_response" in script
+    assert "`roles/cascade_planner/planner.py`" in body
+    assert "`tests/test_cascade_planner.py`" in body
+    assert "included in `canonical_verify.sh cascade`" in body
+    assert "pytest tests/test_cascade_planner.py::test_dispatch_decomposer_maps_stub_response -q" not in body
+
+
 def test_agent_gates_trigger_on_provenance_invariant_inputs() -> None:
     """P-38 now runs the invariant registry, including parser provenance checks."""
     for event_name in ("push", "pull_request"):
