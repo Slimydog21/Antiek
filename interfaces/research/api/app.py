@@ -2891,8 +2891,31 @@ def create_app(
                 "FROM deliverable_sections WHERE deliverable_id = ? "
                 "ORDER BY section_index ASC", [deliverable_id],
             ).fetchall()
+            # GPW SPR-04: the sellable artifact must carry its attribution. The
+            # substrate stores prose_provenance (paragraph_index → block_ids,
+            # what get_deliverable already returns for the X-ray), but the
+            # export stripped it. Fetch a SELF-CONTAINED per-section row for the
+            # JSON export — each row carries its OWN prose_provenance, so there
+            # is NO cross-section keying (``section_index`` is NOT unique per
+            # deliverable: only ``section_id`` is, and several callers hardcode
+            # index 0, so a map keyed by index would misattribute). The shared
+            # ``secs`` 3-tuple every other format branch unpacks is untouched.
+            # NULL provenance stays None (never fabricated).
+            json_secs = con.execute(
+                "SELECT section_index, title, prose_text, prose_provenance "
+                "FROM deliverable_sections WHERE deliverable_id = ? "
+                "ORDER BY section_index ASC", [deliverable_id],
+            ).fetchall()
         finally:
             con.close()
+
+        def _decode_provenance(raw: Any) -> Any:
+            if not raw:
+                return None
+            try:
+                return _json.loads(raw)
+            except (ValueError, TypeError):
+                return None
         title = head[0]
         kind = head[1]
         if format == "markdown":
@@ -3093,8 +3116,14 @@ def create_app(
                     "section_index": idx,
                     "title": sec_title,
                     "prose_text": prose,
+                    # Each section's OWN paragraph_index → block_ids map (None
+                    # when it has no stored provenance). Read off THIS row, not
+                    # a section_index-keyed lookup — index is not unique, so a
+                    # map would misattribute a sibling's provenance. The X-ray
+                    # the substrate keeps, now carried into the artifact.
+                    "prose_provenance": _decode_provenance(prov),
                 }
-                for idx, sec_title, prose in secs
+                for idx, sec_title, prose, prov in json_secs
             ],
         }
         return ExportFormat(
