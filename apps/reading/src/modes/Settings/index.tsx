@@ -7,6 +7,8 @@ import { useProviderKeys } from "../../hooks/useProviderKeys";
 import { apiFetch } from "../../lib/api";
 import type {
   AdrbDogfoodStatusView,
+  AutoresearchReadinessItemView,
+  AutoresearchReadinessView,
   BranchHealthView,
   ReadActivationStatusView,
 } from "../Coordination/Roadmap";
@@ -123,6 +125,10 @@ export default function Settings() {
           <BranchHealthStatus status={readActivation} />
         </LemonCard>
 
+        <LemonCard title="Prompt autoresearch readiness" elevation="z1">
+          <AutoresearchStatus status={readActivation} />
+        </LemonCard>
+
         <LemonCard title="Control surfaces" elevation="z1" colour="glacial">
           <div className="p-4 grid gap-2 sm:grid-cols-2">
             <ControlLink href="/trust" title="Trust Center" body="Published privacy, deletion, and training commitments" />
@@ -137,12 +143,20 @@ export default function Settings() {
 }
 
 type ReadActivationLoadState =
-  | { status: "loading"; activation: null; adrb: null; branch: null; error: null }
+  | {
+      status: "loading";
+      activation: null;
+      adrb: null;
+      branch: null;
+      autoresearch: null;
+      error: null;
+    }
   | {
       status: "ready";
       activation: ReadActivationStatusView | null;
       adrb: AdrbDogfoodStatusView | null;
       branch: BranchHealthView | null;
+      autoresearch: AutoresearchReadinessView | null;
       error: null;
     }
   | {
@@ -150,6 +164,7 @@ type ReadActivationLoadState =
       activation: null;
       adrb: null;
       branch: null;
+      autoresearch: null;
       error: string;
     };
 
@@ -159,6 +174,7 @@ function useReadActivationStatus(): ReadActivationLoadState {
     activation: null,
     adrb: null,
     branch: null,
+    autoresearch: null,
     error: null,
   });
 
@@ -168,6 +184,7 @@ function useReadActivationStatus(): ReadActivationLoadState {
       activation: null,
       adrb: null,
       branch: null,
+      autoresearch: null,
       error: null,
     });
     try {
@@ -181,6 +198,7 @@ function useReadActivationStatus(): ReadActivationLoadState {
         activation: safeReadActivationStatus(body?.read_activation),
         adrb: safeAdrbDogfoodStatus(body?.adrb_dogfood),
         branch: safeBranchHealth(body?.branch_health),
+        autoresearch: safeAutoresearchReadiness(body?.autoresearch_readiness),
         error: null,
       });
     } catch (error: unknown) {
@@ -189,6 +207,7 @@ function useReadActivationStatus(): ReadActivationLoadState {
         activation: null,
         adrb: null,
         branch: null,
+        autoresearch: null,
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -291,6 +310,78 @@ function ReadDogfoodStatus({ status }: { status: ReadActivationLoadState }) {
           {nextSession.append_command ? ` · ${nextSession.append_command}` : ""}
         </p>
       )}
+    </div>
+  );
+}
+
+function AutoresearchStatus({ status }: { status: ReadActivationLoadState }) {
+  if (status.status === "loading") {
+    return (
+      <div className="p-4 text-sm text-shadow-1 dark:text-moonlight">
+        Loading prompt autoresearch readiness...
+      </div>
+    );
+  }
+
+  if (status.status === "error") {
+    return (
+      <div className="p-4 space-y-2">
+        <LemonTag colour="danger">unreachable</LemonTag>
+        <p className="text-sm text-shadow-1 dark:text-moonlight">
+          {status.error}
+        </p>
+      </div>
+    );
+  }
+
+  const readiness = status.autoresearch;
+  if (!readiness) {
+    return (
+      <div className="p-4 space-y-2">
+        <LemonTag colour="muted">unavailable</LemonTag>
+        <p className="text-sm text-shadow-1 dark:text-moonlight">
+          Coordination did not return prompt autoresearch readiness.
+        </p>
+      </div>
+    );
+  }
+
+  const blocker = readiness.first_blocker;
+  return (
+    <div className="p-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-serif text-ink dark:text-bright">
+          Autoresearch Wedge 1
+        </p>
+        <LemonTag
+          colour={
+            readiness.all_satisfied
+              ? "aurora"
+              : readiness.state === "error"
+                ? "danger"
+                : "sun"
+          }
+        >
+          {readiness.all_satisfied ? "ready" : readiness.state}
+        </LemonTag>
+      </div>
+      <p className="text-xs font-mono text-ink dark:text-bright">
+        {readiness.satisfied_count}/{readiness.total_items} satisfied ·{" "}
+        {readiness.operator_bound_count} operator-bound ·{" "}
+        {readiness.missing_count} missing
+      </p>
+      <p className="text-sm text-shadow-1 dark:text-moonlight">
+        {readiness.error
+          ? `Readiness check failed: ${readiness.error}`
+          : blocker
+            ? `Next: ${blocker.item_id} — ${blocker.evidence}.`
+            : "Wedge 1 readiness is mechanically satisfied; operator judgment remains the product bar."}{" "}
+        Source:{" "}
+        <code className="font-mono">
+          {readiness.source_path || "tools.prompt_autoresearch.readiness_cli"}
+        </code>
+        .
+      </p>
     </div>
   );
 }
@@ -611,5 +702,45 @@ function safeBranchHealth(value: unknown): BranchHealthView | null {
     message: nonEmptyString(branch.message) ?? "",
     remediation: nonEmptyString(branch.remediation) ?? "",
     error: nullableString(branch.error),
+  };
+}
+
+function safeAutoresearchReadinessItem(
+  value: unknown,
+): AutoresearchReadinessItemView | null {
+  const item = record(value);
+  const itemId = nonEmptyString(item?.item_id);
+  if (!item || !itemId) return null;
+  return {
+    item_id: itemId,
+    label: nonEmptyString(item.label) ?? itemId,
+    status: nonEmptyString(item.status) ?? "missing",
+    evidence: nonEmptyString(item.evidence) ?? "",
+  };
+}
+
+function safeAutoresearchReadiness(
+  value: unknown,
+): AutoresearchReadinessView | null {
+  const readiness = record(value);
+  if (!readiness) return null;
+  return {
+    state: nonEmptyString(readiness.state) ?? "error",
+    all_satisfied: readiness.all_satisfied === true,
+    total_items: nonNegativeInteger(readiness.total_items),
+    satisfied_count: nonNegativeInteger(readiness.satisfied_count),
+    operator_bound_count: nonNegativeInteger(readiness.operator_bound_count),
+    missing_count: nonNegativeInteger(readiness.missing_count),
+    first_blocker: safeAutoresearchReadinessItem(readiness.first_blocker),
+    items: Array.isArray(readiness.items)
+      ? readiness.items.flatMap((item) => {
+          const safe = safeAutoresearchReadinessItem(item);
+          return safe ? [safe] : [];
+        })
+      : [],
+    source_path:
+      nonEmptyString(readiness.source_path) ??
+      "tools.prompt_autoresearch.readiness_cli",
+    error: nullableString(readiness.error),
   };
 }

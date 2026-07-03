@@ -973,6 +973,55 @@ def test_roadmap_response_serializes_branch_health_status() -> None:
     assert response.branch_health.remediation == "run `git rebase origin/main`"
 
 
+def test_roadmap_response_serializes_autoresearch_readiness_status() -> None:
+    from interfaces.research.api.coordination import (
+        AutoresearchReadinessResponse,
+        RoadmapResponse,
+    )
+    from tools.prompt_autoresearch.readiness import ReadinessItem, ReadinessReport
+
+    readiness = AutoresearchReadinessResponse.from_report(
+        ReadinessReport(
+            items=[
+                ReadinessItem(
+                    id="program",
+                    label="program reviewed",
+                    status="operator_bound",
+                    evidence="write synthesizer-program-review.md",
+                ),
+                ReadinessItem(
+                    id="tooling",
+                    label="tooling present",
+                    status="satisfied",
+                    evidence="required tool files present",
+                ),
+                ReadinessItem(
+                    id="budget",
+                    label="budget enforced",
+                    status="missing",
+                    evidence="BudgetCap.total_cap_usd=7.00",
+                ),
+            ],
+        )
+    )
+
+    response = RoadmapResponse.from_roadmap(
+        build_roadmap(),
+        load_gate_ledger(),
+        autoresearch_readiness=readiness,
+    )
+
+    assert response.autoresearch_readiness.state == "incomplete"
+    assert response.autoresearch_readiness.satisfied_count == 1
+    assert response.autoresearch_readiness.operator_bound_count == 1
+    assert response.autoresearch_readiness.missing_count == 1
+    assert response.autoresearch_readiness.first_blocker is not None
+    assert response.autoresearch_readiness.first_blocker.item_id == "program"
+    assert response.autoresearch_readiness.first_blocker.evidence == (
+        "write synthesizer-program-review.md"
+    )
+
+
 def test_roadmap_response_serializes_operator_actions_and_phase2_audit() -> None:
     from interfaces.research.api.coordination import RoadmapResponse
 

@@ -98,11 +98,33 @@ function roadmapResponse(
     remediation: "run `git rebase origin/main`",
     error: null,
   },
+  autoresearch_readiness: Record<string, unknown> | null | undefined = {
+    state: "incomplete",
+    all_satisfied: false,
+    total_items: 6,
+    satisfied_count: 3,
+    operator_bound_count: 3,
+    missing_count: 0,
+    first_blocker: {
+      item_id: "program",
+      label: "roles/synthesizer/program.md written and operator-reviewed",
+      status: "operator_bound",
+      evidence: "write reports/autoresearch/synthesizer-program-review.md",
+    },
+    items: [],
+    source_path: "tools.prompt_autoresearch.readiness_cli",
+    error: null,
+  },
 ) {
   return {
     ok: true,
     status: 200,
-    json: async () => ({ read_activation, adrb_dogfood, branch_health }),
+    json: async () => ({
+      read_activation,
+      adrb_dogfood,
+      branch_health,
+      autoresearch_readiness,
+    }),
   } as Response;
 }
 
@@ -203,6 +225,22 @@ describe("Settings", () => {
     expect(screen.getByText("run `git rebase origin/main`")).toBeTruthy();
   });
 
+  it("surfaces prompt autoresearch readiness from the coordination roadmap", async () => {
+    render(<Settings />);
+
+    expect(await screen.findByText("Prompt autoresearch readiness")).toBeTruthy();
+    expect(screen.getByText("Autoresearch Wedge 1")).toBeTruthy();
+    expect(screen.getByText("3/6 satisfied · 3 operator-bound · 0 missing")).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Next: program — write reports\/autoresearch\/synthesizer-program-review\.md\./,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("tools.prompt_autoresearch.readiness_cli"),
+    ).toBeTruthy();
+  });
+
   it("handles missing Read activation status without inventing evidence", async () => {
     apiFetchMock.mockResolvedValue(roadmapResponse(null));
 
@@ -238,6 +276,19 @@ describe("Settings", () => {
     ).toBeTruthy();
   });
 
+  it("handles missing prompt autoresearch readiness without inventing evidence", async () => {
+    apiFetchMock.mockResolvedValue(
+      roadmapResponse(undefined, undefined, undefined, null),
+    );
+
+    render(<Settings />);
+
+    expect(await screen.findByText("Prompt autoresearch readiness")).toBeTruthy();
+    expect(
+      screen.getByText(/Coordination did not return prompt autoresearch readiness/i),
+    ).toBeTruthy();
+  });
+
   it("reports roadmap fetch failures on the activation readout", async () => {
     apiFetchMock.mockResolvedValue({
       ok: false,
@@ -250,7 +301,7 @@ describe("Settings", () => {
     await waitFor(() => {
       expect(
         screen.getAllByText("GET /coordination/roadmap failed: HTTP 503"),
-      ).toHaveLength(3);
+      ).toHaveLength(4);
     });
   });
 
