@@ -653,6 +653,13 @@ cmd_agent_gates() {
   (cd apps/reading && npm run test:handoff)
   echo "== agent-gates: settings activation boundary =="
   (cd apps/reading && npm run test -- src/modes/Settings/Settings.test.tsx --reporter=dot)
+  echo "== agent-gates: Read activation CLI + closure guard =="
+  "${PY}" -m pytest \
+    tests/test_read_activation_dogfood.py \
+    tests/test_antiek_read_activation_cli.py \
+    -q --tb=no
+  echo "== agent-gates: Read activation e2e evidence draft helper =="
+  (cd apps/reading && npm run test:ams -- --run e2e/_ams/read_activation_evidence.test.ts --reporter=dot)
   echo "== agent-gates: pytest audit + canonical wrapper =="
   "${PY}" -m pytest \
     tests/test_audit_agent_session.py \
