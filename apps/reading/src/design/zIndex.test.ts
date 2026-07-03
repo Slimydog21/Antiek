@@ -17,7 +17,7 @@ describe("zIndex ladder — pinned values (no behaviour change)", () => {
     // Re-exported numbers, value-for-value from the pre-consolidation sources:
     expect(zIndex.raised).toBe(1); //                docked-over-dock-chrome
     expect(zIndex.floatingPanelBase).toBe(2); //     elevation.ts FLOATING_Z_BASE
-    expect(zIndex.sceneBadge).toBe(5); //            SceneStatusBadge.tsx (#144)
+    expect(zIndex.sceneBadge).toBe(5); //            SceneStatusBadge.tsx (PR 144)
     expect(zIndex.windowBase).toBe(40); //           windowsStore WINDOW_Z_BASE
     expect(zIndex.floatingPanelCeiling).toBe(50); // WorkspaceStore "z = 2…50"
     expect(zIndex.mascot).toBe(60); //               PenguinMascot z-[60]
