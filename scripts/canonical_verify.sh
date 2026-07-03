@@ -718,6 +718,7 @@ cmd_agent_gates() {
     tests/test_g2_counsel_packet_probe.py \
     tests/test_autoresearch_wedge1_probe.py \
     tests/test_auth_vendor_decision_probe.py \
+    tests/test_rebase_preflight.py \
     tests/test_red_team_external_report_probe.py \
     tests/test_phase1_deploy_probe.py \
     tests/test_kms_key_probe.py \

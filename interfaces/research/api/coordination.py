@@ -472,7 +472,8 @@ def build_branch_health() -> BranchHealthResponse:
             f"(limit N={MAX_BEHIND})"
         ),
         remediation=(
-            "run `git rebase origin/main`"
+            "run `.venv/bin/python -m tools.ops.rebase_preflight --json`, "
+            "then `git rebase origin/main` in a disposable worktree"
             if stale
             else "branch freshness is within the merge-age budget"
         ),

@@ -768,6 +768,7 @@ def test_agent_gates_matrix_row_names_current_scope() -> None:
             "test_operator_actions_probe_contracts.py"
         ),
         "tests/test_g2_counsel_packet_probe.py": "operator support probes",
+        "tests/test_rebase_preflight.py": "operator support probes",
     }
     missing = sorted(
         marker

@@ -196,7 +196,8 @@ describe("Coordination", () => {
             merge_base_distance: "238.9",
             max_behind: "25",
             message: " base is 238 commits behind origin/main (limit N=25) ",
-            remediation: " run `git rebase origin/main` ",
+            remediation:
+              " run `.venv/bin/python -m tools.ops.rebase_preflight --json`, then `git rebase origin/main` in a disposable worktree ",
             error: " ",
           },
           autoresearch_readiness: {
