@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from .db_path import ensure_research_bridge_initialized
 from .dogfood_log import (
@@ -168,6 +170,84 @@ def render_readiness_summary(readiness: DogfoodReadiness) -> str:
     return "\n".join(lines) + "\n"
 
 
+def readiness_to_json_payload(readiness: DogfoodReadiness) -> dict[str, Any]:
+    return {
+        "ok": readiness.ok,
+        "dogfood_root": str(readiness.dogfood_root),
+        "metrics_path": str(readiness.metrics_path),
+        "verdict_path": str(readiness.verdict_path),
+        "missing_requirements": list(readiness.missing_requirements),
+        "checks": {
+            "dogfood_log": {
+                "ok": readiness.log_validation.ok,
+                "operator_log_path": str(readiness.log_validation.operator_log_path),
+                "planned_projects": len(readiness.log_validation.planned_projects),
+                "filled_project_entries": len(
+                    readiness.log_validation.filled_project_entries
+                ),
+                "complete_project_entries": len(
+                    readiness.log_validation.complete_project_entries
+                ),
+                "project_session_ids": len(readiness.log_validation.project_entries),
+                "missing_requirements": list(
+                    readiness.log_validation.missing_requirements
+                ),
+            },
+            "wave4_candidates": {
+                "ok": readiness.wave4_validation.ok,
+                "wave4_candidates_path": str(
+                    readiness.wave4_validation.wave4_candidates_path
+                ),
+                "valid_candidates": len(readiness.wave4_validation.candidates),
+                "missing_requirements": list(
+                    readiness.wave4_validation.missing_requirements
+                ),
+            },
+            "session_reconciliation": {
+                "ok": readiness.reconciliation.ok,
+                "operator_log_path": str(readiness.reconciliation.operator_log_path),
+                "reconciled_sessions": len(readiness.reconciliation.sessions),
+                "sessions": [
+                    {
+                        "project_name": row.project_name,
+                        "session_id": row.session_id,
+                        "blocks_pasted": row.blocks_pasted,
+                        "gap_runs": row.gap_runs,
+                        "draft_exports": row.draft_exports,
+                        "prompt_signals": row.prompt_signals,
+                    }
+                    for row in readiness.reconciliation.sessions
+                ],
+                "missing_requirements": list(
+                    readiness.reconciliation.missing_requirements
+                ),
+            },
+            "metrics_artifact": {
+                "ok": readiness.metrics_artifact.ok,
+                "path": str(readiness.metrics_artifact.path),
+                "current": readiness.metrics_artifact.current,
+                "missing_requirements": list(
+                    readiness.metrics_artifact.missing_requirements
+                ),
+            },
+            "verdict_document": {
+                "ok": readiness.verdict_validation.ok,
+                "path": str(readiness.verdict_validation.path),
+                "mode_a_verdict": readiness.verdict_validation.mode_a_verdict,
+                "mode_b_verdict": readiness.verdict_validation.mode_b_verdict,
+                "next_questions": list(readiness.verdict_validation.next_questions),
+                "missing_requirements": list(
+                    readiness.verdict_validation.missing_requirements
+                ),
+            },
+        },
+    }
+
+
+def render_readiness_json(readiness: DogfoodReadiness) -> str:
+    return json.dumps(readiness_to_json_payload(readiness), sort_keys=True) + "\n"
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Check whether Deep Research Bridge dogfood is ready for verdict closure.",
@@ -192,6 +272,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Verdict path. Defaults to ~/Desktop/Antiek/docs/adrb_post_dogfood_verdict.md.",
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Write a stable machine-readable readiness payload.",
+    )
     args = parser.parse_args(argv)
 
     db_path = ensure_research_bridge_initialized(args.db)
@@ -201,7 +286,10 @@ def main(argv: list[str] | None = None) -> int:
         metrics_path=args.metrics_path,
         verdict_path=args.verdict_path,
     )
-    sys.stdout.write(render_readiness_summary(readiness))
+    if args.json:
+        sys.stdout.write(render_readiness_json(readiness))
+    else:
+        sys.stdout.write(render_readiness_summary(readiness))
     return 0 if readiness.ok else 1
 
 

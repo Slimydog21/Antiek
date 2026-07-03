@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -139,6 +140,38 @@ def test_antiek_research_bridge_readiness_reports_missing_evidence(
     assert "metrics artifact: FAIL" in out
     assert "verdict document: FAIL" in out
     assert "missing: dogfood_metrics.md is missing" in out
+
+
+def test_antiek_research_bridge_readiness_json_reports_missing_evidence(
+    db: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = tmp_path / "adrb"
+    verdict = tmp_path / "adrb_post_dogfood_verdict.md"
+    assert main(["research", "bridge", "dogfood-log", "init", "--root", str(root)]) == 0
+    capsys.readouterr()
+
+    rc = main([
+        "research",
+        "bridge",
+        "readiness",
+        "--db",
+        db,
+        "--dogfood-root",
+        str(root),
+        "--verdict-path",
+        str(verdict),
+        "--json",
+    ])
+
+    assert rc == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert payload["checks"]["dogfood_log"]["complete_project_entries"] == 0
+    assert payload["checks"]["metrics_artifact"]["ok"] is False
+    assert payload["checks"]["verdict_document"]["ok"] is False
+    assert "dogfood_metrics.md is missing" in payload["missing_requirements"]
 
 
 def test_antiek_research_bridge_dogfood_log_validate(tmp_path: Path, capsys) -> None:

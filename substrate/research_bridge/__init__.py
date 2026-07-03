@@ -21,6 +21,8 @@ from .dogfood_readiness import (
     DogfoodMetricsArtifactValidation,
     DogfoodReadiness,
     audit_dogfood_readiness,
+    readiness_to_json_payload,
+    render_readiness_json,
     render_readiness_summary,
     validate_metrics_artifact,
 )
@@ -123,6 +125,8 @@ __all__ = [
     "default_dogfood_dir",
     "default_dogfood_metrics_path",
     "audit_dogfood_readiness",
+    "readiness_to_json_payload",
+    "render_readiness_json",
     "render_readiness_summary",
     "validate_metrics_artifact",
     "render_dogfood_report",

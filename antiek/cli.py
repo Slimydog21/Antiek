@@ -20,6 +20,7 @@ from substrate.research_bridge.dogfood_log import (
 )
 from substrate.research_bridge.dogfood_readiness import (
     audit_dogfood_readiness,
+    render_readiness_json,
     render_readiness_summary,
 )
 from substrate.research_bridge.dogfood_reconcile import (
@@ -59,7 +60,10 @@ def _cmd_research_bridge_readiness(args: argparse.Namespace) -> int:
         metrics_path=args.metrics_path,
         verdict_path=args.verdict_path,
     )
-    sys.stdout.write(render_readiness_summary(readiness))
+    if args.json:
+        sys.stdout.write(render_readiness_json(readiness))
+    else:
+        sys.stdout.write(render_readiness_summary(readiness))
     return 0 if readiness.ok else 1
 
 
@@ -247,6 +251,11 @@ def _build_parser() -> argparse.ArgumentParser:
             "Verdict path. Defaults to "
             "~/Desktop/Antiek/docs/adrb_post_dogfood_verdict.md."
         ),
+    )
+    readiness.add_argument(
+        "--json",
+        action="store_true",
+        help="Write a stable machine-readable readiness payload.",
     )
     readiness.set_defaults(func=_cmd_research_bridge_readiness)
 
