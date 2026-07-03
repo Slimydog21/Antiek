@@ -110,7 +110,7 @@ def build_creative_writer_context(
     Empty for a single-section deliverable."""
     cw_blocks: list[CreativeWriterBlock] = []
     for b in blocks:
-        cite_id = b.node_id if b.provenance_kind == "graph_node" else b.outline_block_id
+        cite_id = b.node_id if (b.provenance_kind == "graph_node" and b.node_id) else b.outline_block_id  # noqa: E501
         body = _block_text(b, node_label_resolver=node_label_resolver)
         cw_blocks.append(CreativeWriterBlock(
             block_id=cite_id, block_kind=b.block_kind,
@@ -234,7 +234,7 @@ class GenerationResult:
     # Empty for gap/invalid (nothing parsed). On a 'generated' result this is
     # the map the X-ray persists + reads back (Write SPR-09 M3). Kept here so
     # the caller does not need a second parse of the raw model output.
-    prose_provenance: dict = field(default_factory=dict)
+    prose_provenance: dict[int, list[str]] = field(default_factory=dict)
 
 
 def generate_section(
@@ -343,8 +343,8 @@ def persist_section_draft(
         from ..event_log import emit_typed
         from ..graph.ops import update_section_prose
     except ImportError:  # pragma: no cover — direct-script fallback
-        from substrate.event_log import emit_typed  # type: ignore[no-redef]
-        from substrate.graph.ops import update_section_prose  # type: ignore[no-redef]
+        from substrate.event_log import emit_typed
+        from substrate.graph.ops import update_section_prose
     from substrate.schemas.events import SectionDraftGeneratedPayload
 
     # JSON object keys are strings — store paragraph indices as string keys so
