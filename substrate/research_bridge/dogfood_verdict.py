@@ -117,6 +117,10 @@ def _section_verdict(text: str, heading: str) -> str | None:
     return match.group(1)
 
 
+def _has_required_citations(section: str) -> bool:
+    return "operator-log.md" in section and "dogfood_metrics.md" in section
+
+
 def _next_questions(text: str) -> tuple[str, ...]:
     section = _section_after_heading(text, "Next 3 Sharp Questions")
     questions: list[str] = []
@@ -145,6 +149,8 @@ def validate_verdict_doc(path: str | Path | None = None) -> DogfoodVerdictValida
         )
 
     text = verdict_path.read_text(encoding="utf-8")
+    mode_a_section = _section_after_heading(text, "Mode A Verdict")
+    mode_b_section = _section_after_heading(text, "Mode B Verdict")
     mode_a = _section_verdict(text, "Mode A Verdict")
     mode_b = _section_verdict(text, "Mode B Verdict")
     questions = _next_questions(text)
@@ -157,12 +163,20 @@ def validate_verdict_doc(path: str | Path | None = None) -> DogfoodVerdictValida
         missing.append("Mode A Verdict must declare SHIP, KILL, or ITERATE")
     if mode_b is None:
         missing.append("Mode B Verdict must declare SHIP, KILL, or ITERATE")
-    if "operator-log.md" not in text:
+    if mode_a_section and not _has_required_citations(mode_a_section):
+        missing.append(
+            "Mode A Verdict must cite both operator-log.md and dogfood_metrics.md"
+        )
+    if mode_b_section and not _has_required_citations(mode_b_section):
+        missing.append(
+            "Mode B Verdict must cite both operator-log.md and dogfood_metrics.md"
+        )
+    if not mode_a_section and "operator-log.md" not in text:
         missing.append("cite operator-log.md evidence")
-    if "dogfood_metrics.md" not in text:
+    if not mode_a_section and "dogfood_metrics.md" not in text:
         missing.append("cite dogfood_metrics.md evidence")
-    if len(questions) < 3:
-        missing.append(f"expected 3 next sharp questions, found {len(questions)}")
+    if len(questions) != 3:
+        missing.append(f"expected exactly 3 next sharp questions, found {len(questions)}")
     if not wave4.strip():
         missing.append("Wave 4 section is missing")
     elif not re.search(r"\b(propose|decline|conditional|candidate|no wave 4)\b", wave4, re.I):
