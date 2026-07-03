@@ -82,3 +82,21 @@ export {
 } from "./choreography";
 
 export { default as WernerRig, type WernerRigProps } from "./WernerRig";
+
+// SPR-01 — the station-activity surface. Importing this registers the built-in
+// activities (ice-fishing self-registers as the default); the mascot + shell
+// render "the active (default) activity" through these accessors instead of
+// hard-coding the fishing behavior.
+export {
+  registerActivity,
+  getActivity,
+  listActivities,
+  getDefaultActivity,
+  iceFishingActivity,
+  type ActivityId,
+  type ActivityUnlock,
+  type CursorInstrument,
+  type CursorInstrumentProps,
+  type InstrumentSeamField,
+  type StationActivity,
+} from "./activities";
