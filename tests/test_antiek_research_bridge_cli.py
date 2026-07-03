@@ -185,6 +185,9 @@ Salvage if killed or iterated:
 ## Wave 4
 
 Decision: conditional Wave 4 for Mode B prompt sharpening only.
+
+Candidates:
+1. Provider-specific prompt sharpening.
 """,
         encoding="utf-8",
     )
