@@ -571,23 +571,47 @@ def attach_block_to_section(
     )
 
 
+# Sentinel distinguishing "caller did not supply prose_provenance" (PRESERVE the
+# stored map — the prose-edit path) from "caller passed a value, including None"
+# (REPLACE it — the generation/regeneration path). See update_section_prose.
+_PRESERVE_PROVENANCE: Any = object()
+
+
 def update_section_prose(
     con: LockedConnection,
     *,
     section_id: str,
     prose_text: str,
-    prose_provenance: Any | None = None,
+    prose_provenance: Any = _PRESERVE_PROVENANCE,
 ) -> None:
-    """Persist generated/edited prose for a section. ``prose_provenance``
-    is a JSON map (paragraph_index → list of contributing block_ids)
-    or None."""
+    """Persist generated/edited prose for a section.
+
+    ``prose_provenance`` is a JSON map (paragraph_index → list of contributing
+    block_ids). It is PRESERVE-UNLESS-SUPPLIED: the generation path (which has
+    a fresh paragraph→blocks map) passes it and it is written; the prose-EDIT
+    path (``patch_section_prose``) does NOT supply it, and the existing
+    provenance is left intact rather than wiped. Passing ``prose_provenance``
+    explicitly (including ``None`` to clear it) REPLACES the stored map — the
+    inverse asymmetry: preserve by default, replace only when told to. This is
+    why a one-paragraph typo fix no longer destroys the whole section's
+    X-ray / citation map."""
     _assert_write_locked(con)
-    con.execute(
-        "UPDATE deliverable_sections "
-        "SET prose_text = ?, prose_provenance = ?, updated_at = CURRENT_TIMESTAMP "
-        "WHERE section_id = ?",
-        [prose_text, _maybe_json(prose_provenance), section_id],
-    )
+    if prose_provenance is _PRESERVE_PROVENANCE:
+        # Prose-only edit: touch prose_text, leave the provenance column intact.
+        con.execute(
+            "UPDATE deliverable_sections "
+            "SET prose_text = ?, updated_at = CURRENT_TIMESTAMP "
+            "WHERE section_id = ?",
+            [prose_text, section_id],
+        )
+    else:
+        # Explicit provenance supplied (generation / regeneration): replace it.
+        con.execute(
+            "UPDATE deliverable_sections "
+            "SET prose_text = ?, prose_provenance = ?, updated_at = CURRENT_TIMESTAMP "
+            "WHERE section_id = ?",
+            [prose_text, _maybe_json(prose_provenance), section_id],
+        )
 
 
 # ---------------------------------------------------------------------------
