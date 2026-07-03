@@ -480,7 +480,9 @@ class DuckDbVssSubstrate:
             "query": text,
             "top_k": top_k,
             "results": results,
-            "node_matches": search_nodes_by_label(self._con, text, limit=10),
+            "node_matches": search_nodes_by_label(
+                self._con, text, limit=10, policy_tag=policy_tag,
+            ),
         }
 
     def close(self) -> None:

@@ -408,7 +408,14 @@ def test_search_node_label_ilike(db_path):
 
     con = connect_read(db_path)
     try:
-        rows = search_nodes_by_label(con, "psiQuantum", limit=5)
+        # This node is seeded with no provenance (no chunk/document, no edge).
+        # SPR-01 gate: the non-privileged serve path fails such a node CLOSED,
+        # so this ILIKE-mechanic assertion runs on the owner (operator_only)
+        # path, where every labeled node is returned. The §9.0 serve-path
+        # exclusion is proven in tests/test_serve_node_gate.py.
+        rows = search_nodes_by_label(
+            con, "psiQuantum", limit=5, policy_tag="operator_only",
+        )
     finally:
         con.close()
     assert rows and rows[0]["label"] == "PsiQuantum Inc"
