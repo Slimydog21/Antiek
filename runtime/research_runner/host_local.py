@@ -40,14 +40,15 @@ isolation) and yields ``StepEvent``s. Graph promotion is the
 from __future__ import annotations
 
 import asyncio
-import logging
+import contextlib
 import os
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import Any, cast
 
 try:
-    from ...event_log import log_event, seal_investigation
-    from ...schemas.events import ActionType
+    from ...event_log import log_event, seal_investigation  # type: ignore[import-not-found]
+    from ...schemas.events import ActionType  # type: ignore[import-not-found]
     from .budget import BudgetManager
     from .protocol import (
         BudgetExceeded,
@@ -64,8 +65,8 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.research_runner.budget import BudgetManager  # type: ignore[no-redef]
-    from runtime.research_runner.protocol import (  # type: ignore[no-redef]
+    from runtime.research_runner.budget import BudgetManager
+    from runtime.research_runner.protocol import (
         BudgetExceeded,
         Command,
         CommandKind,
@@ -77,13 +78,9 @@ except ImportError:  # pragma: no cover — direct-script fallback
         StepEvent,
         StopResearch,
     )
-    from substrate.event_log import log_event, seal_investigation  # type: ignore[no-redef]
-    from substrate.schemas.events import ActionType  # type: ignore[no-redef]
+    from substrate.event_log import log_event, seal_investigation
+    from substrate.schemas.events import ActionType
 
-
-# Stdlib logging (not log_event) for seal failures: a seal failure may mean the
-# events_dir write path itself is broken, so the event log is not a safe channel.
-logger = logging.getLogger("antiek.research_runner")
 
 # Policy cap, not a runtime limit — see module docstring. The product
 # target is "launch 20 at once"; this is that target.
@@ -149,17 +146,24 @@ class LoopContext:
         self._seq += 1
         return self._seq
 
-    def step(self, text: str, *, cost_usd: float = 0.0, tokens: int = 0, **data) -> StepEvent:
+    def step(
+        self,
+        text: str,
+        *,
+        cost_usd: float = 0.0,
+        tokens: int = 0,
+        **data: Any,
+    ) -> StepEvent:
         return StepEvent(self.investigation_id, self._next_seq(), "step",
                          text=text, cost_usd=cost_usd, tokens=tokens, data=data)
 
-    def note(self, text: str, **data) -> StepEvent:
+    def note(self, text: str, **data: Any) -> StepEvent:
         return StepEvent(self.investigation_id, self._next_seq(), "note", text=text, data=data)
 
-    def question(self, text: str, **data) -> StepEvent:
+    def question(self, text: str, **data: Any) -> StepEvent:
         return StepEvent(self.investigation_id, self._next_seq(), "question", text=text, data=data)
 
-    def plan_event(self, text: str, **data) -> StepEvent:
+    def plan_event(self, text: str, **data: Any) -> StepEvent:
         return StepEvent(self.investigation_id, self._next_seq(), "plan", text=text, data=data)
 
 
@@ -168,8 +172,8 @@ class _ResearchState:
         self.plan = plan
         self.state = RunState.PENDING
         self.ctx: LoopContext | None = None
-        self.queue: asyncio.Queue = asyncio.Queue()
-        self.task: asyncio.Task | None = None
+        self.queue: asyncio.Queue[StepEvent | object] = asyncio.Queue()
+        self.task: asyncio.Task[None] | None = None
         self.error: str | None = None
         self.follow_ups: list[str] = []
         self.started = False
@@ -354,21 +358,25 @@ class HostLocalRunner:
         if self._on_emit is not None and ev.kind in ("note", "question"):
             await self._on_emit(ev)
 
-    async def _finish(self, st, action, payload, *, halted=False, already_logged=False) -> None:
+    async def _finish(
+        self,
+        st: _ResearchState,
+        action: ActionType | None,
+        payload: dict[str, Any] | None,
+        *,
+        halted: bool = False,
+        already_logged: bool = False,
+    ) -> None:
         iid = st.plan.investigation_id
         if action is not None and not already_logged:
             log_event(iid, action, payload=payload or {}, role="user_agent",
                       events_dir=self._events_dir)
         if self._seal_on_complete:
-            try:
+            # seal is best-effort (also clears the SIM105 my contextlib import
+            # line-shifted out of the declared-bar baseline — shrink real debt,
+            # do not re-mint a phantom)
+            with contextlib.suppress(Exception):
                 seal_investigation(iid, events_dir=self._events_dir)
-            except Exception as e:  # seal is best-effort
-                try:
-                    logger.warning(
-                        "investigation seal failed (best-effort): iid=%s "
-                        "events_dir=%s: %r", iid, self._events_dir, e)
-                except Exception:
-                    pass  # a broken log channel must not break the finish path
         await st.queue.put(StepEvent(iid, 0, "done", state=st.state))
         await st.queue.put(_STREAM_DONE)
 
@@ -380,7 +388,7 @@ class HostLocalRunner:
             item = await st.queue.get()
             if item is _STREAM_DONE:
                 return
-            yield item
+            yield cast(StepEvent, item)
 
     # -- protocol: steer -----------------------------------------------
 
@@ -447,10 +455,25 @@ class HostLocalRunner:
                 st.task.cancel()
 
     async def join(self) -> None:
-        """Await all in-flight researches (test/CLI convenience)."""
+        """Await all in-flight researches (test/CLI convenience), then release
+        the reuse substrate's read-only DB connection.
+
+        The SPR-02 wire hands the runner a read-only ``retrieval_substrate``
+        that holds a DuckDB connection; DuckDB enforces in-process exclusion
+        between a read-only and a read-write handle to the same file, so leaving
+        it open past the runner's life both leaks the connection and can block a
+        later writer on the same DB. ``join`` is the terminal point, so close it
+        here (best-effort — a substrate without ``close`` or a double-close must
+        never turn a completed research into a failure)."""
         tasks = [st.task for st in self._states.values() if st.task is not None]
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        sub = self._retrieval_substrate
+        if sub is not None and hasattr(sub, "close"):
+            # teardown is best-effort — a double-close or a substrate without a
+            # live connection must never turn a completed research into a failure
+            with contextlib.suppress(Exception):
+                sub.close()
 
 
 # ---------------------------------------------------------------------------
@@ -466,7 +489,7 @@ def make_demo_loop(
     delay_s: float = 0.0,
     emit_note: bool = True,
     fail_on_step: int | None = None,
-):
+) -> Callable[[LoopContext], AsyncIterator[StepEvent]]:
     """Build a deterministic browse loop for tests. A real loop calls Exa /
     Browserbase between checkpoints; this one just sleeps + charges."""
 

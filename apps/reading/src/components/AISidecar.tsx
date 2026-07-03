@@ -44,7 +44,11 @@ interface DispatchEvent {
   provider: string;
   model: string;
   latency_ms: number;
-  fallback_reason: string | null;
+  // The real DispatchCallPayload has no fallback_reason string — it carries
+  // fallback_chain_index (0 = primary provider, >0 = a fallback rung was
+  // used). Derive the warning marker from that so it actually fires on a
+  // real fallback instead of being permanently dead.
+  fell_back: boolean;
 }
 
 interface ThoughtPartnerReply {
@@ -60,6 +64,7 @@ export default function AISidecar() {
   // rather than flipping a local boolean. So no `open` state here.
   const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [recentCalls, setRecentCalls] = useState<DispatchEvent[]>([]);
+  const [contextError, setContextError] = useState<string | null>(null);
   const [draft, setDraft] = useState<string>("");
   const [reply, setReply] = useState<ThoughtPartnerReply | null>(null);
   const [pending, setPending] = useState<boolean>(false);
@@ -83,9 +88,10 @@ export default function AISidecar() {
 
   const reloadContext = useCallback(async () => {
     try {
+      setContextError(null);
       const [u, t] = await Promise.all([
-        apiFetch(`/billing/summary/__operator__/${period}`).catch(() => null),
-        apiFetch("/trajectory?limit=8").catch(() => null),
+        apiFetch(`/billing/summary/__operator__/${period}`),
+        apiFetch("/trajectory?limit=8"),
       ]);
       if (u?.ok) {
         const data = await u.json();
@@ -94,34 +100,40 @@ export default function AISidecar() {
           free_tokens_remaining: data.free_tokens_remaining ?? 5_000_000,
           record_count: data.record_count ?? 0,
         });
+      } else {
+        setContextError(`Failed to load usage (HTTP ${u.status}).`);
       }
       if (t?.ok) {
         const data = await t.json();
         type RawDispatchEvent = {
+          event_id?: string;
+          action_type?: string;
           payload?: Record<string, unknown> & {
             call_id?: string;
             tier?: string;
             provider?: string;
             model?: string;
             latency_ms?: number;
-            fallback_reason?: string | null;
+            fallback_chain_index?: number;
           };
         };
         const events = (data.events ?? [])
-          .filter((e: RawDispatchEvent) => e.payload?.call_id)
-          .slice(-8)
+          .filter((e: RawDispatchEvent) => e.action_type === "dispatch.call")
+          .slice(0, 8)
           .map((e: RawDispatchEvent) => ({
-            call_id: e.payload?.call_id ?? "",
+            call_id: e.payload?.call_id ?? e.event_id ?? "",
             tier: e.payload?.tier ?? "?",
             provider: e.payload?.provider ?? "?",
             model: e.payload?.model ?? "?",
             latency_ms: e.payload?.latency_ms ?? 0,
-            fallback_reason: e.payload?.fallback_reason ?? null,
+            fell_back: (e.payload?.fallback_chain_index ?? 0) > 0,
           }));
         setRecentCalls(events);
+      } else {
+        setContextError(`Failed to load recent dispatch (HTTP ${t.status}).`);
       }
-    } catch {
-      // Sidecar is non-blocking; offline state shows last-loaded values.
+    } catch (e: unknown) {
+      setContextError(e instanceof Error ? e.message : String(e));
     }
   }, [period]);
 
@@ -371,7 +383,11 @@ export default function AISidecar() {
             <p className="text-xs font-mono text-shadow-1 dark:text-moonlight uppercase">
               Recent dispatch
             </p>
-            {recentCalls.length === 0 ? (
+            {contextError ? (
+              <p className="text-[11px] text-red-700 dark:text-red-300">
+                {contextError}
+              </p>
+            ) : recentCalls.length === 0 ? (
               <p className="text-[11px] italic text-shadow-1 dark:text-moonlight">
                 No recent calls in this session.
               </p>
@@ -387,7 +403,7 @@ export default function AISidecar() {
                     </span>
                     <span className="text-shadow-1 dark:text-moonlight shrink-0">
                       {c.latency_ms}ms
-                      {c.fallback_reason ? " ⚠" : ""}
+                      {c.fell_back ? " ⚠" : ""}
                     </span>
                   </li>
                 ))}

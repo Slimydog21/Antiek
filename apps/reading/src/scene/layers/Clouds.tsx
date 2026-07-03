@@ -5,6 +5,7 @@ import { cloudX, makeClouds, type CloudPuff } from "../field";
 import { fieldSeed } from "../field";
 import { moodAlpha, resolveToken } from "../palette";
 import { moodKey, type SceneMood } from "../mood";
+import { sceneLayerTransform } from "../../design/motion/sceneMotion";
 
 /**
  * Clouds (SPR-04, milestone 2 — parallax cloud drift).
@@ -63,11 +64,12 @@ export function Clouds({ mood, reducedMotion }: CloudsProps) {
     const draw = (t: number) => {
       const W = canvas.width;
       const H = canvas.height;
+      const drift = sceneLayerTransform("clouds", t, { reducedMotion });
       ctx.clearRect(0, 0, W, H);
       ctx.globalCompositeOperation = "source-over";
       for (const c of puffs) {
-        const cx = cloudX(c, t, W);
-        const cy = c.y * H;
+        const cx = cloudX(c, t, W) + drift.x * dpr;
+        const cy = c.y * H + drift.y * dpr;
         const radius = c.scale * Math.min(W, H) * 0.22;
         if (radius <= 0) continue;
         const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);

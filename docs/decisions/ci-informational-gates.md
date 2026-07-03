@@ -38,11 +38,35 @@ issue, **not** an accessibility violation. Accessibility is still exercised by
 
 **Reconsider-if:** the test-runner's index resolution is made stable in CI.
 
-## 3. lostpixel — visual regression
+## 3. lostpixel — visual regression → NOW BLOCKING (AGH SPR-04, 2026-07-03)
 
-**Why informational.** No visual baselines exist for the new four-workflow shell
-yet; establishing/approving them is an operator action in the Lost Pixel
-dashboard, not a code fix. The job still runs and uploads diffs.
+**Was informational** because no visual baselines existed for the new
+four-workflow shell. **The reconsider-if has fired:** 381 baseline PNGs are now
+committed under `apps/reading/.lostpixel/baseline/`, and `lostpixel.config.ts`
+sets `imagePathBaseline: ".lostpixel/baseline"` + `generateOnly: false`, so the
+job compares current renders against a real committed baseline. AGH SPR-04
+un-swallowed the step (removed the `|| echo ::warning`): its exit code is now
+lost-pixel's own, so a real visual regression reds the PR. A legitimate visual
+change lands its updated baseline PNGs in the same PR (`npm run
+visualtest:update`).
 
-**Reconsider-if:** baselines are committed under
-`apps/reading/.lostpixel/baseline/` (then flip the step back to blocking).
+## 4. prod_parity — scheduled prod-drift probe (STAYS informational — documented, not a swallow)
+
+**Why informational, and why that is correct.** `prod_parity.yml` runs
+`tools/prod_parity/check.py` against live `api.antiek.ai/health` on a schedule
+with `continue-on-error: true` + a `::warning::`, so the scheduled probe cannot
+red a run. That is deliberate: the **real blocking parity enforcement is at
+deploy time** in `infrastructure/ansible/playbooks/deploy.yml`, which sets the
+`antiek_build_sha` fact from the just-pulled SHA and fails the play on a missing
+build / unregistered providers / bad health (the prod-parity check asserts
+against that SHA). A *scheduled* probe of live prod must NOT hard-block CI: a
+normal merge→deploy lag or a transient prod blip would red the board on
+something no PR changed. So the split is: **block at deploy (Ansible),** **inform
+on schedule (this probe).** AGH SPR-04 verified the cited Ansible surface exists
+and is genuinely blocking, and added this entry so the register is complete —
+the workflow's inline rationale was correct but this decision doc had not
+recorded it.
+
+**Reconsider-if:** a dedicated post-deploy GitHub job (not a schedule) is added
+that asserts parity immediately after a deploy — that job should be blocking;
+this scheduled probe stays informational.

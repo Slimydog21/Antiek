@@ -34,11 +34,13 @@ from __future__ import annotations
 import os
 import urllib.parse
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
-from .licenses import LicenseResolution, resolve_oa_license
+from acquisition.licenses_core import LicenseResolution
+
+from .licenses import resolve_oa_license
 from .throttle import OAThrottle
 
 DEFAULT_BASE_URL = "https://doaj.org/api/v2"
@@ -76,7 +78,7 @@ def _extract_license_uri(bibjson: dict[str, Any]) -> str | None:
     if not isinstance(first, dict):
         return None
     url = first.get("url")
-    if url:
+    if isinstance(url, str) and url:
         return url
     # No URL — fall back to the short type ("CC BY-NC-ND"), normalised to a
     # CC fragment so the resolver's CC rows match.
@@ -85,13 +87,15 @@ def _extract_license_uri(bibjson: dict[str, Any]) -> str | None:
         return f"creativecommons.org/licenses/{t[len('cc-'):]}/4.0/"
     if t in ("cc0", "cc-zero"):
         return "creativecommons.org/publicdomain/zero/1.0/"
-    return first.get("type")
+    license_type = first.get("type")
+    return license_type if isinstance(license_type, str) else None
 
 
 def _extract_fulltext_url(bibjson: dict[str, Any]) -> str | None:
     for link in bibjson.get("link") or []:
         if (link.get("type") or "").lower() == "fulltext":
-            return link.get("url")
+            url = link.get("url")
+            return url if isinstance(url, str) else None
     return None
 
 
@@ -146,8 +150,8 @@ def _build_journal_url(issn: str, *, base_url: str | None) -> str:
 
 def _get_json(
     url: str, *, client: httpx.Client | None, throttle: OAThrottle | None
-) -> dict:
-    def _get() -> dict:
+) -> dict[str, Any]:
+    def _get() -> dict[str, Any]:
         from acquisition.arxiv.rate_governor import (
             canonical_arxiv_throttle,
             govern_if_arxiv,
@@ -169,7 +173,7 @@ def _get_json(
 
                 r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
         r.raise_for_status()
-        return r.json()
+        return cast("dict[str, Any]", r.json())
 
     return throttle.run_with_retry(_get) if throttle is not None else _get()
 

@@ -14,6 +14,16 @@ export interface WernerFishingLayerProps {
 
 /**
  * Viewport fishing line from rod tip → live bait (SPR-14). pointer-events:none.
+ *
+ * Fixed-station model (2026-07-02): the line is shown ONLY while the pointer is
+ * ACTIVE — it hangs from Werner's stationary rod tip to the cursor-bait (the
+ * cursor IS the bait). When the pointer goes IDLE the line hides, because
+ * Werner's own-hole never-catch gag (`werner-fishing`, a line inside the rod's
+ * rotating frame) takes over the fishing visual — and the two must never draw
+ * at once (one rod, one line). Under the OLD reel this exclusivity came for free
+ * (the reel had already pulled Werner ONTO the bait, collapsing this line to
+ * zero length); with a fixed rod tip that coincidence never happens, so we gate
+ * on `pointerIdle` explicitly. See docs/htmlspec/werner-fixed-station/DESIGN.md.
  */
 export function WernerFishingLayer({ disabled = false }: WernerFishingLayerProps) {
   const pathRef = useRef<SVGPathElement | null>(null);
@@ -30,7 +40,15 @@ export function WernerFishingLayer({ disabled = false }: WernerFishingLayerProps
         `button[data-testid="${MASCOT_TEST_ID}"]`,
       ) as HTMLButtonElement | null;
       const reading = follow.read();
-      if (!path || !mascot || !reading.live || reading.tabHidden) {
+      // Hide the cursor-line when there is no live bait, the tab is hidden, OR
+      // the pointer is idle (the own-hole gag owns the fishing visual then).
+      if (
+        !path ||
+        !mascot ||
+        !reading.live ||
+        reading.tabHidden ||
+        reading.pointerIdle
+      ) {
         if (path) path.setAttribute("d", "");
         raf = window.requestAnimationFrame(tick);
         return;

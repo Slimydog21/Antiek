@@ -137,7 +137,7 @@ describe("M2 — a new generated frame triggers a fadeKey crossfade (no hard cut
   });
 });
 
-describe("M2 — KreaArtLayer is presentational: tokenized crossfade, z-1, fallback paints nothing", () => {
+describe("M2 — KreaArtLayer is presentational: clock-driven crossfade, z-1, fallback paints nothing", () => {
   const liveArt = (over: Partial<SceneArt> = {}): SceneArt => ({
     imageUrl: "https://art/night.png",
     prevImageUrl: "https://art/day.png",
@@ -148,29 +148,27 @@ describe("M2 — KreaArtLayer is presentational: tokenized crossfade, z-1, fallb
     ...over,
   });
 
-  it("uses the --motion-slow / --ease-standard tokens for the opacity transition (no magic number)", () => {
-    const { container } = render(<KreaArtLayer art={liveArt()} />);
+  it("uses the scene-clock envelope for opacity (no CSS remount snap)", () => {
+    const { container } = render(<KreaArtLayer art={liveArt()} clockMs={600} />);
     const layer = container.querySelector('[data-testid="krea-art-layer"]') as HTMLElement;
     expect(layer.getAttribute("data-krea")).toBe("live");
-    // The incoming art keyed on fadeKey carries the tokenized opacity transition.
-    const incoming = container.querySelector(
-      '[data-krea="live"] > div:last-child',
-    ) as HTMLElement;
-    expect(incoming.style.transition).toContain("var(--motion-slow)");
-    expect(incoming.style.transition).toContain("var(--ease-standard)");
-    // The crossfade KEYFRAME (akb-krea-fade-in) lives in scene.css (motion home)
-    // and is referenced here via the var-driven animation — not a hard cut.
-    expect(incoming.style.animation).toContain("akb-krea-fade-in");
-    expect(incoming.style.animation).toContain("var(--motion-slow)");
-  });
-
-  it("under frozen (reduced-motion) drops the transition (static art, no animation)", () => {
-    const { container } = render(<KreaArtLayer art={liveArt()} frozen />);
+    expect(Number(layer.getAttribute("data-crossfade-opacity"))).toBeGreaterThan(0);
     const incoming = container.querySelector(
       '[data-krea="live"] > div:last-child',
     ) as HTMLElement;
     expect(incoming.style.transition).toBe("");
     expect(incoming.style.animation).toBe("");
+    expect(Number(incoming.style.opacity)).toBeGreaterThan(0);
+  });
+
+  it("under frozen (reduced-motion) cuts instantly to the painted opacity", () => {
+    const { container } = render(<KreaArtLayer art={liveArt()} frozen clockMs={0} />);
+    const incoming = container.querySelector(
+      '[data-krea="live"] > div:last-child',
+    ) as HTMLElement;
+    expect(incoming.style.transition).toBe("");
+    expect(incoming.style.animation).toBe("");
+    expect(Number(incoming.style.opacity)).toBe(0.82);
   });
 
   it("fallback paints nothing (the procedural floor is the whole picture)", () => {

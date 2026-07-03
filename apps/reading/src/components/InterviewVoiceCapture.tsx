@@ -3,8 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 
 /**
- * Browser-side voice capture for Loop 4 interviews (master-spec
- * §11.5 + acquisition/voice/webrtc.py substrate).
+ * Browser-side voice capture for Speak invitees (master-spec
+ * §11.5 + Product Depth SPR-08 M3).
  *
  * Substrate-first: capture happens entirely in MediaRecorder + an
  * uploadable Blob. No WebRTC peer-to-peer signaling is needed since
@@ -14,8 +14,8 @@ import { apiFetch } from "../lib/api";
  *   1. Starts a MediaRecorder bound to the user's microphone (16kHz
  *      mono opus inside webm) once the operator clicks 'Start'.
  *   2. Streams chunks as ondataavailable fires (~200ms intervals).
- *   3. Posts the accumulated Blob to ``POST /voice/sessions/{id}/upload``
- *      when the operator clicks 'Stop'.
+ *   3. Posts the accumulated Blob to the caller-provided upload route
+ *      when the invitee clicks 'Stop'.
  *
  * Consent gate (§11.5 binding): the operator must explicitly grant
  * mic access. The component shows a clear state-machine that mirrors
@@ -37,17 +37,15 @@ type CaptureState =
   | "error";
 
 interface Props {
-  sessionId: string;
   onUploaded?: (audioUrl: string) => void;
   /**
-   * Build the upload URL from the captured duration. Defaults to the operator
-   * voice route (``/voice/sessions/{id}/upload``). The Speak invitee surface
-   * passes a builder that targets the TOKEN-gated route
-   * (``/speak/invite/{token}/voice``) so a non-power-user's recording goes
+   * Build the upload URL from the captured duration. The Speak invitee surface
+   * targets the TOKEN-gated route (``/speak/invite/{token}/voice``), so a
+   * non-power-user's recording goes
    * through the same single voice owner without an operator session — no
    * second pipeline (Product Depth SPR-08 M3).
    */
-  buildUploadUrl?: (durationSeconds: number) => string;
+  buildUploadUrl: (durationSeconds: number) => string;
   /** Called when the upload comes back non-OK, so the host can show an honest,
    *  reason-carrying failure (e.g. AIActionFailure on a no-key 503) instead of
    *  the generic inline error. */
@@ -55,7 +53,6 @@ interface Props {
 }
 
 export default function InterviewVoiceCapture({
-  sessionId,
   onUploaded,
   buildUploadUrl,
   onUploadError,
@@ -164,10 +161,7 @@ export default function InterviewVoiceCapture({
       // for a single-field upload (master-spec §11.5). The URL is
       // pluggable so the token-gated invitee route can be targeted
       // without forking the capture component (SPR-08 M3).
-      const url = buildUploadUrl
-        ? buildUploadUrl(durationSeconds)
-        : `/voice/sessions/${encodeURIComponent(sessionId)}/upload` +
-          `?duration_seconds=${durationSeconds}`;
+      const url = buildUploadUrl(durationSeconds);
       const resp = await apiFetch(url, {
         method: "POST",
         headers: { "Content-Type": "audio/webm" },

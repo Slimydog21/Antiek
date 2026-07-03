@@ -14,8 +14,8 @@
  * rod length math, the monotonic bend, and the structural contract — but jsdom
  * lays nothing out, so it cannot prove the rod RENDERS long on screen or that the
  * tip the line will leave is the rod's actual drawn tip. Only a real-Chromium
- * pixel/geometry sample can. This is the browser analogue of reel-weighty.spec.ts
- * (SPR-03) and follows that file's harness exactly (Storybook iframe URL,
+ * pixel/geometry sample can. It follows the _ams/penguin.spec.ts harness exactly
+ * (Storybook iframe URL,
  * [data-testid="penguin-mascot"], boundingBox sampling).
  *
  * TWO assertions, one per felt claim:

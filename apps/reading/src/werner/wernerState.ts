@@ -13,6 +13,15 @@
  * failure mode where the controller thinks it's idle while a stale walk
  * timer is still firing).
  *
+ * HISTORICAL NOTE (2026-07-02 fixed-station rework): comments below still refer
+ * to "the reel" and "the roam" — the cursor-pursuit + autonomous-wander that the
+ * mascot used to run. Both were removed (Werner is now fixed; the cursor is the
+ * bait). This reducer is retained UNCHANGED as a general state machine; the
+ * `following` state + `follow` event are a latent capability the current mascot
+ * never enables, and `shouldFish` (idle + pointer-idle → the own-hole gag) is
+ * still the live gate for the fishing cartoon. See
+ * docs/htmlspec/werner-fixed-station/DESIGN.md.
+ *
  * States:
  *   idle       — at rest; the mascot's own autonomous roam owns position.
  *   following  — biasing the roam toward the lagged cursor (still ambient).

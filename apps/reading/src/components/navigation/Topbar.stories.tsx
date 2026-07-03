@@ -33,7 +33,7 @@ export const Research: Story = {
 
 export const Investigation: Story = {
   render: () => (
-    <MemoryRouter initialEntries={["/inv/nvda-q4"]}>
+    <MemoryRouter initialEntries={["/inv/story-investigation"]}>
       <div className="bg-ice-2 dark:bg-space-2 min-h-[80vh]">
         <Topbar />
       </div>

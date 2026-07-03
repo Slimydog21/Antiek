@@ -91,10 +91,25 @@ def _escrow_of(db_path, ip_holder_id):
 # ── frame-telemetry: happy path + accrual through the SPR-05 seam ────
 
 
-def _batch(window_id="win-1", *, asset_id="pd-earner", cents=1000):
+def _mint_value(monkeypatch, cents):
+    """Patch the SERVER-side value seam (AFA-S1, frame-telemetry-v2).
+
+    The window's ad value is minted server-side, never sent by the client, so
+    accrual-math tests inject the value here rather than in the request body.
+    The production default is 0 (unpriced until SPR-10)."""
+    from interfaces.research.api import ad_routes
+
+    monkeypatch.setattr(
+        ad_routes, "resolve_window_value_cents", lambda _window_id: cents
+    )
+
+
+def _batch(window_id="win-1", *, asset_id="pd-earner"):
+    # AFA-S1 (frame-telemetry-v2): no ad_value_usd_cents on the wire — the
+    # server prices the window (see _mint_value). The forged-value red-proof
+    # test adds the field back to prove it is IGNORED.
     return {
         "window_id": window_id,
-        "ad_value_usd_cents": cents,
         "schema_version": FRAME_TELEMETRY_SCHEMA_VERSION,
         "seconds": [
             {
@@ -125,7 +140,8 @@ def _batch(window_id="win-1", *, asset_id="pd-earner", cents=1000):
     }
 
 
-def test_frame_telemetry_accepts_and_accrues(isolated_db):
+def test_frame_telemetry_accepts_and_accrues(isolated_db, monkeypatch):
+    _mint_value(monkeypatch, 1000)  # SERVER prices the window (AFA-S1)
     _seed_book(isolated_db, document_id="pd-earner", title="Earner",
                author="A", content_class="public_domain",
                raw_text="public domain body", rights_holder_name="Earner Estate")
@@ -133,10 +149,11 @@ def test_frame_telemetry_accepts_and_accrues(isolated_db):
     assert holder is not None
     before = _escrow_of(isolated_db, holder)
 
-    resp = _client().post("/api/ad/frame-telemetry", json=_batch(cents=1000))
+    resp = _client().post("/api/ad/frame-telemetry", json=_batch())
     assert resp.status_code == 202, resp.text
     body = resp.json()
     assert body["window_id"] == "win-1"
+    # The value is the SERVER-minted value, not anything the client sent.
     assert body["total_ad_value_cents"] == 1000
     # The single eligible asset earns the whole window; reconciles to the cent.
     assert body["contributor_cents"] + body["house_cents"] == 1000
@@ -149,7 +166,43 @@ def test_frame_telemetry_accepts_and_accrues(isolated_db):
     assert after > before
 
 
-def test_frame_telemetry_idempotent_on_repost(isolated_db):
+def test_frame_telemetry_ignores_client_supplied_value(isolated_db):
+    """RED-PROOF (AFA-S1): a client that forges ``ad_value_usd_cents`` cannot
+    influence the accrued value — the field is dropped from the inbound shape
+    and the server mints the value (0, unpriced, by default). On pre-fix code
+    this batch accrued 999_999 cents; post-fix it accrues 0."""
+    _seed_book(isolated_db, document_id="pd-earner", title="Earner", author="A",
+               content_class="public_domain", raw_text="body",
+               rights_holder_name="Earner Estate")
+    holder = _ip_holder_of(isolated_db, "pd-earner")
+    before = _escrow_of(isolated_db, holder)
+
+    forged = _batch()
+    forged["ad_value_usd_cents"] = 999_999  # a lie the wire shape ignores
+    resp = _client().post("/api/ad/frame-telemetry", json=forged)
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    # The server minted 0 (no pricing yet); the forged value is nowhere.
+    assert body["total_ad_value_cents"] == 0
+    assert body["contributor_cents"] == 0
+    # Escrow did NOT move on a forged value.
+    assert _escrow_of(isolated_db, holder) == before
+
+
+def test_frame_telemetry_v1_batch_rejected(isolated_db):
+    """A stale v1 emitter (which still carries a client value) is rejected 409
+    by the version gate — there is no ordering window in which a client-priced
+    v1 batch accrues against v2 semantics."""
+    stale = _batch()
+    stale["schema_version"] = "frame-telemetry-v1"
+    stale["ad_value_usd_cents"] = 5000
+    resp = _client().post("/api/ad/frame-telemetry", json=stale)
+    assert resp.status_code == 409
+    assert "schema mismatch" in resp.json()["detail"]
+
+
+def test_frame_telemetry_idempotent_on_repost(isolated_db, monkeypatch):
+    _mint_value(monkeypatch, 1000)
     _seed_book(isolated_db, document_id="pd-earner", title="Earner", author="A",
                content_class="public_domain", raw_text="body",
                rights_holder_name="Earner Estate")
@@ -164,11 +217,12 @@ def test_frame_telemetry_idempotent_on_repost(isolated_db):
     assert once == twice
 
 
-def test_unknown_asset_is_house_not_an_earner(isolated_db):
+def test_unknown_asset_is_house_not_an_earner(isolated_db, monkeypatch):
+    _mint_value(monkeypatch, 500)
     # No documents row for this asset → NULL content_class → ineligible
     # (deny-by-default). The whole window becomes a house second.
     resp = _client().post(
-        "/api/ad/frame-telemetry", json=_batch(asset_id="ghost-asset", cents=500)
+        "/api/ad/frame-telemetry", json=_batch(asset_id="ghost-asset")
     )
     assert resp.status_code == 202
     body = resp.json()
@@ -178,14 +232,15 @@ def test_unknown_asset_is_house_not_an_earner(isolated_db):
     assert body["reconciles"] is True
 
 
-def test_client_content_class_hint_is_not_trusted(isolated_db):
+def test_client_content_class_hint_is_not_trusted(isolated_db, monkeypatch):
+    _mint_value(monkeypatch, 400)
     # A private user_owned book is INELIGIBLE to earn. A malicious client echoes
     # content_class="public_domain"; the backend must resolve the real class
     # (user_owned) server-side and refuse to accrue.
     _seed_book(isolated_db, document_id="private-1", title="Private", author="Me",
                content_class="user_owned", raw_text="private body",
                rights_holder_name="Me Estate")
-    batch = _batch(asset_id="private-1", cents=400)
+    batch = _batch(asset_id="private-1")
     batch["seconds"][0]["samples"][0]["content_class"] = "public_domain"  # lie
     batch["seconds"][1]["samples"][0]["content_class"] = "public_domain"
     resp = _client().post("/api/ad/frame-telemetry", json=batch)
@@ -274,14 +329,15 @@ def test_no_gated_body_in_fill_payload(isolated_db):
     assert _GATED_BODY not in resp.text
 
 
-def test_no_gated_body_in_telemetry_payload(isolated_db):
+def test_no_gated_body_in_telemetry_payload(isolated_db, monkeypatch):
+    _mint_value(monkeypatch, 600)
     # A gated book IS eligible to earn (to escrow, §9.10) but its body must never
     # surface in the accrual response.
     _seed_book(isolated_db, document_id="gated-earner", title="Gated", author="Z",
                content_class="restricted_pending_opt_in", raw_text=_GATED_BODY,
                rights_holder_name="Pending Estate")
     resp = _client().post(
-        "/api/ad/frame-telemetry", json=_batch(asset_id="gated-earner", cents=600)
+        "/api/ad/frame-telemetry", json=_batch(asset_id="gated-earner")
     )
     assert resp.status_code == 202
     assert _GATED_BODY not in resp.text

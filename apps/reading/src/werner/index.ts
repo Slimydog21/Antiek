@@ -2,18 +2,23 @@
  * Werner steering + choreography engine (SPR-05 / SPR-10).
  *
  * The public surface the mascot (and tests) consume. One penguin, one
- * position, one roam loop, one reduced-motion guard — this module is the
- * STEERING + EMOTE layer that rides on the mascot's existing machinery
- * (PenguinMascot.tsx), it does not fork a second penguin.
+ * position, one reduced-motion guard — this module is the STEERING + EMOTE
+ * layer that rides on the mascot's existing machinery (PenguinMascot.tsx), it
+ * does not fork a second penguin.
  *
  *   wernerState  — the pure state machine (idle/following/waddling/emoting/frozen)
  *   WernerStage  — the imperative command controller (the SPR-10 seam)
- *   useMouseFollow — the ~0.5s-lagged cursor pursuit (read-only ref seam)
+ *   useMouseFollow — the live/idle cursor read seam (read-only ref; feeds the
+ *                  bait + line their `live`/`pointerIdle`/`tabHidden` signals)
  *   emotes       — the emote vocabulary mapped onto existing animated marks
  *   choreography — the PRODUCT_ACTIVATE → waddle-to-control listener (SPR-10),
  *                  plus the opt-in `data-werner-target` click path (SPR-10 M4)
  *   WernerRig    — the vector WALK-CYCLE rig (SPR-06 M1): feet + flippers that
  *                  animate off the existing walk signal (no second motion source)
+ *
+ * The WERNER-ICE reel (pursuit integrator + reel/roam constants) was removed
+ * with the 2026-07-02 fixed-station rework — Werner no longer chases the cursor;
+ * see docs/htmlspec/werner-fixed-station/DESIGN.md.
  */
 
 export {
@@ -54,27 +59,6 @@ export {
 } from "./useMouseFollow";
 
 export { wernerIceFishingCursor } from "./iceFishingFlags";
-export {
-  REEL_TAU_MS,
-  REEL_MAX_PX_PER_S,
-  REEL_SPRING_OMEGA_RAD_PER_S,
-  REEL_SPRING_MASS,
-  ROAM_STROLL_MS,
-  ROAM_REST_MIN_MS,
-  ROAM_REST_MAX_MS,
-} from "./iceFishingConstants";
-export {
-  reelStep,
-  reelSpringStep,
-  reelStateStep,
-  makeReelState,
-  isReelSettled,
-  DEFAULT_REEL_CONFIG,
-  REEL_MAX_DT_MS,
-  type ReelConfig,
-  type ReelState,
-  type Vec2,
-} from "./reelPursuit";
 export { WernerIceBait } from "./WernerIceBait";
 export { WernerFishingLayer } from "./WernerFishingLayer";
 export { WernerIceCursorShell } from "./WernerIceCursorShell";

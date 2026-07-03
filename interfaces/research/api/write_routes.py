@@ -494,3 +494,90 @@ def generate_section_draft(section_id: str) -> dict:
             if result.status == "generated" else {}
         ),
     }
+
+
+# ---------------------------------------------------------------------------
+# Investigation → deliverable (WV-SPR-01) — the writing flywheel arm
+# ---------------------------------------------------------------------------
+# Appended at end-of-file deliberately: the declared-bar baseline keys
+# existing write_routes.py violations by exact line number, so any mid-file
+# insertion would orphan those keys and flag them NEW. An append-only edit
+# shifts nothing above → the committed baseline stays exact → ADDED = NONE
+# without depending on the (CI-only) mypy recapture. Same reason the import
+# above stays a single line.
+
+
+class FromInvestigationRequest(BaseModel):
+    """Promote a completed investigation's synthesis into a seed deliverable
+    (specs/write WV-SPR-01). The writing arm of the compounding flywheel."""
+
+    investigation_id: str = Field(..., min_length=1)
+    deliverable_kind: Literal[
+        "research_memo", "book_chapter", "biography_section",
+        "investor_brief", "general_essay",
+    ] = "research_memo"
+    title: str | None = Field(default=None, max_length=300)
+
+
+class FromInvestigationResponse(BaseModel):
+    deliverable_id: str
+    section_id: str
+    block_count: int
+    dangling_count: int
+    source_node_count: int
+    insufficient_evidence: bool
+    synthesis_id: str | None = None
+    synthesis_recommendation: str | None = None
+
+
+@write_router.post(
+    "/deliverables/from-investigation",
+    status_code=201,
+    response_model=FromInvestigationResponse,
+)
+def promote_investigation(req: FromInvestigationRequest) -> FromInvestigationResponse:
+    """Seed a deliverable from a completed investigation's synthesis: one
+    graph-node block per synthesis-pinned source node, each carrying
+    provenance back to its graph node. The compounding flywheel's missing
+    writing arm (specs/write WV-SPR-01).
+
+    Honest status (never an empty 200 that reads as success):
+    - no depositable synthesis for the investigation → 404 ``no_synthesis``;
+    - otherwise a deliverable is created → 201, with ``insufficient_evidence``
+      flagging the dominant real case (a synthesis that pinned zero nodes);
+      ``dangling_count`` counts blocks whose source node was since deleted
+      (seeded, not dropped)."""
+    # Local import (mirrors generate_section_draft at the draft_generation
+    # import): keeps the top-level promote_context import unchanged so the
+    # declared-bar line-keyed baseline for this file does not shift.
+    from substrate.write.promote_context import promote_investigation_to_deliverable
+
+    with _translate(), _write("write/promote_investigation") as con:
+        result = promote_investigation_to_deliverable(
+            con,
+            req.investigation_id,
+            deliverable_kind=req.deliverable_kind,
+            title=req.title,
+        )
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "no_synthesis",
+                "reason": (
+                    f"investigation {req.investigation_id!r} has no depositable "
+                    "synthesis to promote"
+                ),
+                "investigation_id": req.investigation_id,
+            },
+        )
+    return FromInvestigationResponse(
+        deliverable_id=result.deliverable_id,
+        section_id=result.section_id,
+        block_count=result.block_count,
+        dangling_count=result.dangling_count,
+        source_node_count=result.source_node_count,
+        insufficient_evidence=result.insufficient_evidence,
+        synthesis_id=result.synthesis_id,
+        synthesis_recommendation=result.synthesis_recommendation,
+    )

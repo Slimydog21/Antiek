@@ -68,8 +68,11 @@ Self-verify (from the worktree, or /Users/slimydog/Desktop/Antiek):
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
+
 import httpx
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.routing import WebSocketRoute
 
@@ -79,7 +82,7 @@ from interfaces.research.api.app import create_app
 
 
 @pytest.fixture(autouse=True)
-def _clean_krea_env(monkeypatch):
+def _clean_krea_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Default to the NO-KEY, kill-switch-OFF posture for every test;
     individual tests opt into a key / kill-switch / budget overrides.
     Mirrors the SPR-02 suite so budget never bleeds across tests."""
@@ -97,13 +100,16 @@ def _clean_krea_env(monkeypatch):
     yield
 
 
-def _app():
+def _app() -> FastAPI:
     # register_wrestling=False keeps the test app lean (no dispatch import),
     # exactly as the SPR-02 suite does.
     return create_app(register_wrestling=False)
 
 
-def _client_with_transport(app, handler) -> httpx.Client:
+def _client_with_transport(
+    app: FastAPI,
+    handler: Callable[[httpx.Request], httpx.Response],
+) -> httpx.Client:
     """Inject an httpx.Client backed by a MockTransport so the Krea routes
     use it instead of a real network client. NO network is ever touched.
     Returns the client so the test can close it."""
@@ -113,7 +119,7 @@ def _client_with_transport(app, handler) -> httpx.Client:
     return client
 
 
-def _krea_paths(app) -> set[str]:
+def _krea_paths(app: FastAPI) -> set[str]:
     return {
         getattr(r, "path", "")
         for r in app.routes
@@ -129,7 +135,7 @@ def _krea_paths(app) -> set[str]:
 # the scene agent's browser pixel-diff; here we lock the SERVER half.)
 
 
-def test_disabled_no_key_scene_503_zero_upstream():
+def test_disabled_no_key_scene_503_zero_upstream() -> None:
     """No key (the sandbox default) → 503 no_key, scene_key carried, and
     the upstream handler is NEVER invoked (it would raise if it were)."""
     app = _app()
@@ -157,7 +163,9 @@ def test_disabled_no_key_scene_503_zero_upstream():
         client.close()
 
 
-def test_disabled_kill_switch_scene_503_zero_upstream(monkeypatch):
+def test_disabled_kill_switch_scene_503_zero_upstream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """KREA_KILL_SWITCH=1 forces fallback EVEN WITH a real key — the
     operator panic lever. The /krea/scene path must short-circuit before
     any upstream call."""
@@ -184,7 +192,9 @@ def test_disabled_kill_switch_scene_503_zero_upstream(monkeypatch):
         client.close()
 
 
-def test_disabled_over_budget_scene_503_zero_further_upstream(monkeypatch):
+def test_disabled_over_budget_scene_503_zero_further_upstream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Push past KREA_DAILY_UNIT_CAP: the first scene-state spends the one
     unit; the next DISTINCT scene-state trips over_daily_budget and makes
     NO further upstream call. This is the hard daily ceiling (50 units ≈
@@ -242,8 +252,8 @@ def test_disabled_over_budget_scene_503_zero_further_upstream(monkeypatch):
 
 
 def test_runaway_identical_scene_state_caps_at_one_submit_over_120_ticks(
-    monkeypatch,
-):
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A runaway loop that re-requests the SAME scene-state once per frame
     for 120 ticks (= 2 s at the 60fps floor) makes EXACTLY ONE upstream
     submit; the warm cache absorbs the other 119. Fetch rate is decoupled
@@ -274,7 +284,7 @@ def test_runaway_identical_scene_state_caps_at_one_submit_over_120_ticks(
         tc = TestClient(app)
         TICKS = 120  # 2 s at the 60fps procedural floor
         params = {"mood": "calm", "day_night": "day", "season": "summer"}
-        statuses = []
+        statuses: list[int] = []
         for _ in range(TICKS):
             statuses.append(tc.get("/krea/scene", params=params).status_code)
         # Every request succeeded from the warm cache after the first.
@@ -289,7 +299,9 @@ def test_runaway_identical_scene_state_caps_at_one_submit_over_120_ticks(
         client.close()
 
 
-def test_runaway_distinct_scene_states_bounded_by_rate_limit(monkeypatch):
+def test_runaway_distinct_scene_states_bounded_by_rate_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A runaway loop that re-requests DISTINCT scene-states (so the cache
     never helps) is bounded by the per-process RATE LIMIT. With
     KREA_RATE_LIMIT_MAX=6 / 60s, the upstream submit count over a burst of
@@ -323,7 +335,7 @@ def test_runaway_distinct_scene_states_bounded_by_rate_limit(monkeypatch):
     try:
         tc = TestClient(app)
         BURST = 20  # 20 distinct scene-states hammered with no cache help
-        reasons = []
+        reasons: list[str] = []
         for i in range(BURST):
             # Each iteration is a DISTINCT scene-state (unique mood) so the
             # cache never absorbs it — the rate limit is the only governor.
@@ -347,7 +359,7 @@ def test_runaway_distinct_scene_states_bounded_by_rate_limit(monkeypatch):
 # ── (c) NO streaming route was added under /krea (RULE-1) ────────────────
 
 
-def test_krea_namespace_is_exactly_three_routes_no_stream():
+def test_krea_namespace_is_exactly_three_routes_no_stream() -> None:
     """The /krea namespace exposes EXACTLY the three SPR-02 routes and
     nothing matching a streaming shape. SPR-05 (NO-GO) adds no SSE /
     WebSocket / EventSource / /krea/stream endpoint."""
@@ -369,7 +381,7 @@ def test_krea_namespace_is_exactly_three_routes_no_stream():
     assert streamy == [], f"a /krea streaming route appeared: {streamy}"
 
 
-def test_no_krea_websocket_route():
+def test_no_krea_websocket_route() -> None:
     """No WebSocket route lives under /krea. (The app DOES have a
     pre-existing, non-krea ``/ws/events`` websocket — that one is fine and
     out of scope; this asserts SPR-05 added no krea-namespaced WS channel.)"""
@@ -381,7 +393,7 @@ def test_no_krea_websocket_route():
     assert krea_ws == [], f"a /krea websocket route appeared: {krea_ws}"
 
 
-def test_krea_stream_path_404s_no_handler():
+def test_krea_stream_path_404s_no_handler() -> None:
     """A direct probe of the would-be streaming path 404s — there is no
     handler. (Belt-and-suspenders to the route-surface assertion: a route
     accidentally registered under a name that dodged the marker scan would

@@ -31,12 +31,14 @@ the default under test). The poll loop is exercised with a mock clock
 
 from __future__ import annotations
 
+import logging
+
 import httpx
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 import interfaces.research.api.krea_routes as kr
-from interfaces.research.api.app import create_app
 
 # ── Fixtures / helpers ──────────────────────────────────────────────────
 
@@ -60,8 +62,14 @@ def _clean_krea_env(monkeypatch):
 
 
 def _app():
-    # register_wrestling=False keeps the test app lean (no dispatch import).
-    return create_app(register_wrestling=False)
+    app = FastAPI()
+
+    @app.get("/health")
+    def health():
+        return {"status": "ok"}
+
+    kr.register_krea_routes(app)
+    return app
 
 
 def _client_with_transport(app, handler) -> httpx.Client:
@@ -77,6 +85,20 @@ def _client_with_transport(app, handler) -> httpx.Client:
 # The submit path the live API serves (docs.krea.ai flux-1-dev reference,
 # 2026-06-12): the model is vendor-prefixed IN THE URL; no model body key.
 _SUBMIT_PATH = "/generate/image/bfl/flux-1-dev"
+_FAKE_TOKEN = "sk-PLANTEDLEAKMARKERabcdef0123456789"
+_ALL_KREA_REASONS = (
+    "no_key",
+    "kill_switch",
+    "over_daily_budget",
+    "rate_limited",
+    "upstream_error",
+    "upstream_timeout",
+    "upstream_bad_response",
+    "job_failed",
+    "job_timeout",
+    "job_cancelled",
+    "no_api_balance",
+)
 
 
 def _submit_ok_body() -> dict:
@@ -900,3 +922,192 @@ def test_scene_prompt_within_limit_for_every_mood_matrix_combination():
     worst = kr._scene_prompt("m" * 64, "d" * 64, "s" * 64)
     assert len(worst) <= kr._PROMPT_MAX_CHARS
     kr.GenerateRequest(prompt=worst)
+
+
+# ── SPR-03 fallback observability: /krea/status + scrubbed failure ring ──
+
+
+def _trip_reason(reason: str, monkeypatch, *, leak: bool = False):
+    leak_text = f'upstream echoed Authorization: Bearer {_FAKE_TOKEN}'
+    if reason != "no_key":
+        monkeypatch.setenv("KREA_API_TOKEN", _FAKE_TOKEN)
+    if reason == "kill_switch":
+        monkeypatch.setenv("KREA_KILL_SWITCH", "1")
+    elif reason == "over_daily_budget":
+        monkeypatch.setenv("KREA_DAILY_UNIT_CAP", "0")
+    elif reason == "rate_limited":
+        monkeypatch.setenv("KREA_RATE_LIMIT_MAX", "0")
+    elif reason == "job_timeout":
+        monkeypatch.setenv("KREA_POLL_BUDGET_S", "0")
+
+    app = _app()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if reason == "upstream_timeout":
+            raise httpx.TimeoutException(leak_text if leak else "timed out")
+        if request.url.path == _SUBMIT_PATH:
+            if reason == "upstream_error":
+                return httpx.Response(500, text=leak_text if leak else "boom")
+            if reason == "no_api_balance":
+                return httpx.Response(402, text=leak_text if leak else "empty")
+            if reason == "upstream_bad_response":
+                return httpx.Response(200, text=leak_text if leak else "<html>")
+            return httpx.Response(200, json=_submit_ok_body())
+        if reason == "job_failed":
+            code = f"generation_failed {leak_text}" if leak else "generation_failed"
+            return httpx.Response(
+                200,
+                json={
+                    "job_id": "job_abc",
+                    "status": "failed",
+                    "error": {"code": code, "message": leak_text},
+                },
+            )
+        if reason == "job_cancelled":
+            return httpx.Response(200, json={"job_id": "job_abc", "status": "cancelled"})
+        if reason == "job_timeout":
+            return httpx.Response(200, json={"job_id": "job_abc", "status": "processing"})
+        return httpx.Response(404)
+
+    client = _client_with_transport(app, handler)
+    tc = TestClient(app)
+
+    def call():
+        if reason in {"no_key", "kill_switch", "over_daily_budget", "rate_limited"}:
+            return tc.get("/krea/scene", params={
+                "mood": "calm",
+                "day_night": "day",
+                "season": "summer",
+            })
+        if reason in {"job_failed", "job_cancelled", "job_timeout"}:
+            return tc.get("/krea/scene", params={
+                "mood": "calm",
+                "day_night": "day",
+                "season": "summer",
+            })
+        return tc.post("/krea/generate", json={"prompt": "x"})
+
+    return app, client, tc, call
+
+
+def _krea_warning_records(caplog):
+    return [
+        rec for rec in caplog.records
+        if rec.name == "antiek.interfaces.krea"
+        and rec.levelno == logging.WARNING
+    ]
+
+
+def test_status_route_registered_and_200_in_no_key_state():
+    app = _app()
+    tc = TestClient(app)
+    paths = {r.path for r in app.routes if hasattr(r, "path")}  # type: ignore[attr-defined]
+    assert "/krea/status" in paths
+    r = tc.get("/krea/status")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["enabled"] is False
+    assert body["gate_verdict"] == "no_key"
+    assert body["key_present"] is False
+
+
+def test_status_shape_contract_no_key_posture():
+    body = TestClient(_app()).get("/krea/status").json()
+    assert set(body) == {
+        "enabled",
+        "key_present",
+        "kill_switch",
+        "gate_verdict",
+        "reasons",
+        "budget",
+        "rate_window",
+        "cache",
+        "last_success_at",
+        "failure_counts",
+        "failures",
+    }
+    assert body["reasons"] == list(_ALL_KREA_REASONS)
+    assert set(body["budget"]) == {"spent_today", "cap", "remaining"}
+    assert set(body["rate_window"]) == {"occupancy", "max", "window_s"}
+    assert set(body["cache"]) == {"entries", "max_entries"}
+    assert body["failures"] == []
+
+
+@pytest.mark.parametrize("reason", _ALL_KREA_REASONS)
+def test_each_503_reason_records_ring_warning_and_body(reason, monkeypatch, caplog):
+    app, client, _tc, call = _trip_reason(reason, monkeypatch)
+    try:
+        with caplog.at_level(logging.WARNING, logger="antiek.interfaces.krea"):
+            r = call()
+        assert r.status_code == 503
+        body = r.json()
+        assert body["enabled"] is False
+        assert body["isFallback"] is True
+        assert body["reason"] == reason
+        assert set(body) == {"enabled", "isFallback", "reason", "scene_key"}
+        snap = app.state.krea_failures.snapshot()
+        assert len(snap["entries"]) == 1
+        entry = snap["entries"][0]
+        assert set(entry) == {"timestamp", "reason", "scene_key", "upstream_status"}
+        assert entry["reason"] == reason
+        assert entry["scene_key"] in {None, "calm|day|summer"}
+        assert snap["failure_counts"][reason] == 1
+        assert len(_krea_warning_records(caplog)) == 1
+    finally:
+        client.close()
+
+
+def test_warning_logs_once_per_enabled_to_disabled_transition(monkeypatch, caplog):
+    monkeypatch.setenv("KREA_API_TOKEN", _FAKE_TOKEN)
+    monkeypatch.setenv("KREA_DAILY_UNIT_CAP", "0")
+    app = _app()
+    tc = TestClient(app)
+    with caplog.at_level(logging.WARNING, logger="antiek.interfaces.krea"):
+        for _ in range(3):
+            r = tc.get("/krea/scene")
+            assert r.status_code == 503
+        for _ in range(3):
+            s = tc.get("/krea/status")
+            assert s.status_code == 200
+    recs = _krea_warning_records(caplog)
+    assert len(recs) == 1
+    assert "over_daily_budget" in recs[0].getMessage()
+
+
+def test_status_redacts_token_from_status_ring_logs_and_body(monkeypatch, caplog):
+    app, client, tc, call = _trip_reason("upstream_error", monkeypatch, leak=True)
+    try:
+        with caplog.at_level(logging.WARNING, logger="antiek.interfaces.krea"):
+            r = call()
+        assert r.status_code == 503
+        status_text = tc.get("/krea/status").text
+        ring_text = str(app.state.krea_failures.snapshot())
+        log_text = "\n".join(rec.getMessage() for rec in caplog.records)
+        for channel in (r.text, status_text, ring_text, log_text):
+            assert _FAKE_TOKEN not in channel
+            assert "PLANTEDLEAKMARKER" not in channel
+            assert "Bearer" not in channel
+        entry = app.state.krea_failures.snapshot()["entries"][0]
+        assert entry["reason"] == "upstream_error"
+        assert entry["upstream_status"] == 500
+    finally:
+        client.close()
+
+
+def test_failure_ring_is_bounded(monkeypatch):
+    monkeypatch.setenv("KREA_API_TOKEN", _FAKE_TOKEN)
+    monkeypatch.setenv("KREA_DAILY_UNIT_CAP", "0")
+    app = _app()
+    tc = TestClient(app)
+    for i in range(51):
+        r = tc.get("/krea/scene", params={
+            "mood": f"mood{i}",
+            "day_night": "day",
+            "season": "summer",
+        })
+        assert r.status_code == 503
+    snap = app.state.krea_failures.snapshot()
+    assert len(snap["entries"]) == 50
+    keys = [entry["scene_key"] for entry in snap["entries"]]
+    assert "mood0|day|summer" not in keys
+    assert "mood50|day|summer" in keys

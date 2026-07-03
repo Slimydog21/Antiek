@@ -1,57 +1,41 @@
 import { useEffect, useRef } from "react";
 
 /**
- * useMouseFollow (SPR-05 / WERNER-ICE) — sample-delay lagged hook + live bait read.
+ * useMouseFollow (SPR-05 / WERNER-ICE) — the pointer read seam (live + idle).
  *
- * Lag budget (honest): TWO axes combine into the felt lag.
- *   1. LAG_MS — the sample delay in THIS hook: how STALE the hook is (Werner
- *      chases where the cursor was ~0.5s ago).
- *   2. the REEL — how the mascot CLOSES that gap, in PenguinMascot. As of
- *      SPR-03 the reel is a critically-damped SPRING (REEL_SPRING_OMEGA_RAD_PER_S),
- *      with the first-order exponential (REEL_TAU_MS, now 950ms) kept as a
- *      documented fallback. The spring is the "slower, weightier pull": it
- *      accelerates off the mark then decelerates as it nears, settling without
- *      overshoot — a line with mass.
- * SPR-03 deliberately left LAG_MS at 500: the operator's ask ("the pull should
- * get slower as it closes") is about axis 2, the reel approach — NOT axis 1, the
- * trailing staleness. Raising LAG_MS would make Werner trail FARTHER behind
- * (a different feel) rather than pull SLOWER, so the change went into the reel.
- * Idle roam uses ROAM_STROLL_MS / REST_* only.
+ * ── FIXED-STATION MODEL (2026-07-02) ────────────────────────────────────────
+ * Werner no longer CHASES the cursor — the reel that consumed this hook's lagged
+ * `target` was removed (docs/htmlspec/werner-fixed-station/DESIGN.md). What the
+ * station uses from this hook is the LIVE read:
+ *   - `live`       — the exact live pointer position → the bait worm rides it
+ *                    (the cursor IS the bait) and the fishing line's free end
+ *                    lands there (WernerIceBait / WernerFishingLayer).
+ *   - `pointerIdle`— has the pointer been still ≥ POINTER_IDLE_MS? This gates the
+ *                    own-hole never-catch gag (idle) vs. the line-to-cursor
+ *                    (active) — the station's one XOR.
+ *   - `tabHidden`  — the bait + line hide when the tab is hidden.
+ * The lagged `target` (+ `ease`, `centerLaggedTarget`, LAG_MS) and the ring
+ * buffer below are RETAINED but currently dormant — the reel was their only
+ * consumer. They are kept intact (and tested) rather than ripped out mid-rework:
+ * trimming this shared hook to live-only is a separate, focused cleanup, because
+ * the bait + line depend on the SAME sampling loop for `live`/`pointerIdle`.
  *
- * Tab-return (M4): sampling pauses while hidden (visibilitychange below) and we
- * never backfill a straight-line jump, so the lagged TARGET picks up where it
- * left off. The matching guard against a catch-up LURCH lives in the reel
- * integrator (reelPursuit.ts clamps dtMs to REEL_MAX_DT_MS), so even a giant
- * post-stall frame advances Werner by at most one clamped slice.
+ * Sample-delay lag (dormant): the pointer is recorded into a small ring buffer
+ * stamped with the (fake-clock-aware) time of each sample; the lagged `target`
+ * is the pointer position from ~LAG_MS ago. It ramps from ~0 to LAG_MS over the
+ * first half-second (a cold start can't invent history). No current consumer.
  *
- * It is a SAMPLE-DELAY pursuit, not an ease-time-constant chase. We record
- * the pointer into a small ring buffer stamped with the (fake-clock-aware)
- * time of each sample. The follow TARGET is the pointer position from
- * ~LAG_MS ago — literally "where the mouse was 0.5 seconds back" — and Werner
- * eases toward THAT. So he trails the cursor by a real half-second rather
- * than rubber-banding toward the live cursor with a 0.5s response curve.
- * The two feel different: the ease-constant version always snaps toward you;
- * this version is genuinely behind, which reads as a lively, attentive
- * companion rather than a cursor-locked reticle.
- *
- * It is honestly an APPROXIMATION of "0.5 seconds": the lag is exactly LAG_MS
- * only while the buffer spans that window. Right after mount (buffer not yet
- * deep enough) the oldest sample we have is younger than 0.5s, so the
- * effective lag ramps from ~0 up to LAG_MS over the first half-second. We
- * accept that — a cold start that snaps to a true 0.5s-old point would
- * require inventing history. After the ramp it is a faithful 0.5s
- * sample-delay.
+ * Tab-return: sampling pauses while hidden (visibilitychange below) and we never
+ * backfill a straight-line jump, so `live`/`target` pick up where they left off.
  *
  * This hook does NOT move anything. It is a pure read seam: it exposes, via a
  * ref the caller polls (no re-render per pointer move — that would thrash the
- * whole shell), the lagged target the mascot's roam should bias toward, plus
- * whether the pointer has gone idle. The mascot's existing chained-timeout
- * roam reads `read()` at the top of each leg.
+ * whole shell), the live/idle pointer read the bait, the line, and the station
+ * gag consume.
  *
- * Reduced motion: the hook installs NO listeners and `read()` returns a
- * frozen `{ target: null }`, so the caller falls back to its own bounded
- * wander and there is zero involuntary cursor pursuit. Same when the tab is
- * hidden (we stop sampling on visibilitychange) — no work between wakeups.
+ * Reduced motion: the hook installs NO listeners and `read()` returns a frozen
+ * `{ live: null, target: null }`, so there is zero involuntary behaviour. Same
+ * when the tab is hidden — no work between wakeups.
  */
 
 /** ~0.5 seconds sample-delay for the lagged hook (WERNER-ICE lag budget). */
@@ -168,14 +152,21 @@ export function useMouseFollow(
       if (disabledRef.current) return FROZEN_READING;
       const buf = ring.current;
       if (count.current === 0) {
-        const live = lastMove.current
-          ? { x: lastMove.current.x, y: lastMove.current.y }
-          : null;
+        // No ring samples yet (before the first sampler tick). `live` + idleness
+        // still come from lastMove, so a pointer that JUST moved reads as active
+        // even in this pre-sample window — otherwise the fishing line to the
+        // cursor-bait would be suppressed for up to one SAMPLE_INTERVAL_MS after
+        // the very first move on the page. Idle only if truly no recent move.
+        const last = lastMove.current;
+        const live = last ? { x: last.x, y: last.y } : null;
+        const pointerIdle = last
+          ? nowRef.current() - last.t >= POINTER_IDLE_MS
+          : true;
         return {
           target: null,
           live,
           tabHidden: tabHiddenRef.current,
-          pointerIdle: true,
+          pointerIdle,
           ease: FOLLOW_EASE,
         };
       }

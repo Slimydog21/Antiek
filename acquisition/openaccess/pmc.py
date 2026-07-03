@@ -23,11 +23,13 @@ from __future__ import annotations
 import os
 import urllib.parse
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
-from .licenses import LicenseResolution, resolve_oa_license
+from acquisition.licenses_core import LicenseResolution
+
+from .licenses import resolve_oa_license
 from .throttle import OAThrottle
 
 DEFAULT_BASE_URL = "https://www.ebi.ac.uk/europepmc/webservices/rest"
@@ -81,7 +83,8 @@ def _extract_open_pdf_url(article: dict[str, Any]) -> str | None:
         style = (u.get("documentStyle") or "").lower()
         avail = (u.get("availability") or "").lower()
         if style == "pdf" and avail == _OPEN_AVAILABILITY:
-            return u.get("url")
+            url = u.get("url")
+            return url if isinstance(url, str) else None
     return None
 
 
@@ -136,7 +139,7 @@ def _search(
 ) -> list[PMCArticle]:
     url = _build_search_url(query, base_url=base_url)
 
-    def _get() -> dict:
+    def _get() -> dict[str, Any]:
         from acquisition.arxiv.rate_governor import (
             canonical_arxiv_throttle,
             govern_if_arxiv,
@@ -158,7 +161,7 @@ def _search(
 
                 r = govern_if_arxiv(url, _send, throttle=canonical_arxiv_throttle())
         r.raise_for_status()
-        return r.json()
+        return cast("dict[str, Any]", r.json())
 
     payload = throttle.run_with_retry(_get) if throttle is not None else _get()
     return parse_search_response(payload)

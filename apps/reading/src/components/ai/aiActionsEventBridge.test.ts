@@ -85,8 +85,12 @@ describe("AISidecar event-log bridge", () => {
       },
       CONTEXT,
     );
-    await flushMicrotasks();
-    expect(postTypedEventMock).toHaveBeenCalledTimes(1);
+    // vi.waitFor (not a fixed-round flush): the emit chain includes a real
+    // Web Crypto sha256 digest whose resolution can slip past a fixed
+    // macrotask+microtask budget on a slower/CI runner — the flake the
+    // AGH SPR-04 vitest gate caught (green locally, 0-calls under CI). waitFor
+    // retries until the mock is actually called, deterministic on any host.
+    await vi.waitFor(() => expect(postTypedEventMock).toHaveBeenCalledTimes(1));
     const call = postTypedEventMock.mock.calls[0][0];
     expect(call.investigation_id).toBe("inv-test-bridge");
     expect(call.role).toBe("ai_sidecar");
@@ -108,8 +112,12 @@ describe("AISidecar event-log bridge", () => {
       },
       CONTEXT,
     );
-    await flushMicrotasks();
-    expect(postTypedEventMock).toHaveBeenCalledTimes(1);
+    // vi.waitFor (not a fixed-round flush): the emit chain includes a real
+    // Web Crypto sha256 digest whose resolution can slip past a fixed
+    // macrotask+microtask budget on a slower/CI runner — the flake the
+    // AGH SPR-04 vitest gate caught (green locally, 0-calls under CI). waitFor
+    // retries until the mock is actually called, deterministic on any host.
+    await vi.waitFor(() => expect(postTypedEventMock).toHaveBeenCalledTimes(1));
     const p = postTypedEventMock.mock.calls[0][0].payload as { target_kind: string; target_id: string; prev_state: Record<string, unknown>; next_state: Record<string, unknown> };
     expect(p.target_kind).toBe("notebook");
     expect(p.target_id).toBe("scratch");
@@ -127,8 +135,12 @@ describe("AISidecar event-log bridge", () => {
       },
       CONTEXT,
     );
-    await flushMicrotasks();
-    expect(postTypedEventMock).toHaveBeenCalledTimes(1);
+    // vi.waitFor (not a fixed-round flush): the emit chain includes a real
+    // Web Crypto sha256 digest whose resolution can slip past a fixed
+    // macrotask+microtask budget on a slower/CI runner — the flake the
+    // AGH SPR-04 vitest gate caught (green locally, 0-calls under CI). waitFor
+    // retries until the mock is actually called, deterministic on any host.
+    await vi.waitFor(() => expect(postTypedEventMock).toHaveBeenCalledTimes(1));
     const p = postTypedEventMock.mock.calls[0][0].payload as { target_kind: string; next_state: Record<string, unknown> };
     expect(p.target_kind).toBe("investigation_chase");
     expect(p.next_state.open).toBe(true);
@@ -171,14 +183,16 @@ describe("AISidecar event-log bridge", () => {
       },
       CONTEXT,
     );
-    await flushMicrotasks();
-    expect(postTypedEventMock).toHaveBeenCalledTimes(1);
+    // vi.waitFor (not a fixed-round flush): the emit chain includes a real
+    // Web Crypto sha256 digest whose resolution can slip past a fixed
+    // macrotask+microtask budget on a slower/CI runner — the flake the
+    // AGH SPR-04 vitest gate caught (green locally, 0-calls under CI). waitFor
+    // retries until the mock is actually called, deterministic on any host.
+    await vi.waitFor(() => expect(postTypedEventMock).toHaveBeenCalledTimes(1));
 
     expect(record.undo).toBeTypeOf("function");
     record.undo!();
-    await flushMicrotasks();
-
-    expect(postTypedEventMock).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(postTypedEventMock).toHaveBeenCalledTimes(2));
     const undonePayload = postTypedEventMock.mock.calls[1][0].payload as {
       action_type: string;
       inverted_event_id: string;

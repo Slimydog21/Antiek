@@ -58,6 +58,54 @@ class PromoteResult:
     block_ids: list[str] = field(default_factory=list)
 
 
+@dataclass
+class InvestigationPromoteResult:
+    """Outcome of promoting an investigation's synthesis into a seed
+    deliverable (specs/write WV-SPR-01). Every field is honest about a
+    real ordering state — none is silently coerced.
+
+    - ``block_count``          blocks actually placed (one per pinned node).
+    - ``dangling_count``       placed blocks whose source node is gone from
+                               the graph (``block_count - dangling_count``
+                               = live). Seeded, not dropped — the writer
+                               sees 'source unavailable' via provenance.
+    - ``source_node_count``    distinct nodes the synthesis pinned.
+    - ``insufficient_evidence`` the dominant real case (the dogfood finding:
+                               every real investigation ended here) — a
+                               synthesis that exists but pinned zero nodes.
+                               Surfaced as a flag, never papered over.
+    """
+
+    deliverable_id: str
+    section_id: str
+    block_ids: list[str] = field(default_factory=list)
+    block_count: int = 0
+    dangling_count: int = 0
+    source_node_count: int = 0
+    insufficient_evidence: bool = False
+    synthesis_id: str | None = None
+    synthesis_recommendation: str | None = None
+
+
+# Outline block_kind for a synthesis-pinned graph node. The writing outline is
+# composed of distilled-truth units; insight/question/claim map directly. Every
+# other node_type (entity/person/metric/mechanism/...) falls back to 'insight':
+# block_kind is descriptive, the node_id is the load-bearing provenance
+# (``resolve_provenance`` reads it back). This is a documented mapping, not a
+# silent coercion — a reviewer can argue for skipping non-distilled-truth nodes,
+# but promoting them with their real node_id preserves the chain and the
+# operator prunes in the SPR-02 dogfood.
+_NODE_TYPE_TO_BLOCK_KIND: dict[str, str] = {
+    "insight": "insight",
+    "question": "open_question",
+    "claim": "claim",
+}
+
+
+def _block_kind_for_node_type(node_type: str | None) -> str:
+    return _NODE_TYPE_TO_BLOCK_KIND.get(node_type or "", "insight")
+
+
 def promote_to_outline(
     con: LockedConnection,
     *,
@@ -94,3 +142,121 @@ def promote_to_outline(
         )
         result.block_ids.append(obid)
     return result
+
+
+def promote_investigation_to_deliverable(
+    con: LockedConnection,
+    investigation_id: str,
+    *,
+    deliverable_kind: str,
+    title: str | None = None,
+) -> InvestigationPromoteResult | None:
+    """Promote a completed investigation's synthesis into a seed deliverable
+    (specs/write WV-SPR-01 M2) — the compounding flywheel's missing writing
+    arm. A deliverable is created with one outline section holding one
+    graph-node block per synthesis-pinned source node, each carrying
+    provenance back to its graph node (``resolve_provenance`` resolves
+    node → document → chunks).
+
+    Returns ``None`` when the investigation has **no** depositable synthesis
+    (the route maps this to 404 — never an empty 200). Returns a result with
+    ``insufficient_evidence=True`` when the synthesis exists but pinned zero
+    source nodes — the dominant real case per the dogfood finding, surfaced
+    honestly rather than papered over with placeholder blocks.
+
+    Dangling source nodes (pinned by the synthesis but since deleted from the
+    graph) are STILL placed — with their ``node_id`` — so the writer sees
+    'source unavailable' via ``resolve_provenance`` (status ``dangling``)
+    rather than a silent drop. ``block_count - dangling_count`` = live blocks.
+
+    Single-writer discipline: ``con`` must be a ``LockedConnection`` from
+    ``runtime.db_lock.connect_write``. Reads (synthesis lookup, node types)
+    and writes (deliverable/section/blocks) share one lock so the promotion
+    is atomic.
+    """
+    # 1. Find the investigation's most-recent synthesis. syntheses.investigation_id
+    #    is a free TEXT (no FK), so an arbitrary id is a legitimate "no synthesis"
+    #    → the caller (route) returns 404.
+    syn = con.execute(
+        "SELECT synthesis_id, target_question, implicit_recommendation "
+        "FROM syntheses WHERE investigation_id = ? "
+        "ORDER BY archived_at DESC, synthesis_id DESC LIMIT 1",
+        [investigation_id],
+    ).fetchone()
+    if syn is None:
+        return None
+    synthesis_id, target_question, recommendation = syn[0], syn[1], syn[2]
+
+    # 2. The synthesis's pinned source NODES — the distilled-truth units the
+    #    writing outline is built from (manifest entity_kind='node').
+    node_rows = con.execute(
+        "SELECT entity_id FROM synthesis_substrate_manifest "
+        "WHERE synthesis_id = ? AND entity_kind = 'node' "
+        "ORDER BY entity_id",
+        [synthesis_id],
+    ).fetchall()
+    source_node_ids: list[str] = [r[0] for r in node_rows]
+
+    # 3. Resolve each pinned node's type + liveness in one query. Nodes absent
+    #    here are dangling (deleted since the synthesis pinned them).
+    live_types: dict[str, str | None] = {}
+    if source_node_ids:
+        placeholders = ", ".join(["?"] * len(source_node_ids))
+        type_rows = con.execute(
+            f"SELECT node_id, node_type FROM nodes "
+            f"WHERE node_id IN ({placeholders})",
+            source_node_ids,
+        ).fetchall()
+        live_types = {r[0]: r[1] for r in type_rows}
+
+    # 4. Create the deliverable (linked to its source investigation) + one
+    #    section titled with the synthesis's target question.
+    did = insert_deliverable(
+        con,
+        title=title or target_question or "(untitled deliverable)",
+        deliverable_kind=deliverable_kind,
+        investigation_root_id=investigation_id,
+        metadata={
+            "promoted_from": "investigation_synthesis",
+            "source_synthesis_id": synthesis_id,
+        },
+    )
+    sid = insert_section(
+        con,
+        deliverable_id=did,
+        section_index=0,
+        title=(target_question[:120] if target_question else None),
+    )
+
+    # 5. One graph-node block per pinned source node. A dangling node's type is
+    #    unknown (it is gone) → it places as a generic 'insight' block whose
+    #    resolve_provenance is 'dangling'. No node is dropped.
+    block_ids: list[str] = []
+    dangling = 0
+    for index, node_id in enumerate(source_node_ids):
+        if node_id not in live_types:
+            dangling += 1
+        block_kind = _block_kind_for_node_type(live_types.get(node_id))
+        obid = place_block(
+            con,
+            section_id=sid,
+            block_kind=block_kind,
+            provenance_kind="graph_node",
+            node_id=node_id,
+            block_index=index,
+            deliverable_id=did,
+            investigation_id=investigation_id,
+        )
+        block_ids.append(obid)
+
+    return InvestigationPromoteResult(
+        deliverable_id=did,
+        section_id=sid,
+        block_ids=block_ids,
+        block_count=len(block_ids),
+        dangling_count=dangling,
+        source_node_count=len(source_node_ids),
+        insufficient_evidence=(len(block_ids) == 0),
+        synthesis_id=synthesis_id,
+        synthesis_recommendation=recommendation,
+    )

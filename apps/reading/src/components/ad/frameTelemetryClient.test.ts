@@ -91,12 +91,15 @@ describe("FrameTelemetryEmitter — one batch per window (M4)", () => {
     await Promise.resolve();
 
     const batch = JSON.parse(calls.at(-1)!.body);
+    // AFA-S1 (frame-telemetry-v2): the flushed payload carries NO value field —
+    // the client prices nothing. A value on the wire would be a value a client
+    // could forge, so its absence is the security property, asserted here.
     expect(Object.keys(batch).sort()).toEqual(
-      ["ad_value_usd_cents", "schema_version", "seconds", "window_id"].sort(),
+      ["schema_version", "seconds", "window_id"].sort(),
     );
     expect(batch.window_id).toBe("win:read:a");
     expect(batch.schema_version).toBe(FRAME_TELEMETRY_SCHEMA_VERSION);
-    expect(batch.ad_value_usd_cents).toBe(0); // honest unpriced default
+    expect(batch.ad_value_usd_cents).toBeUndefined(); // server prices, client never
   });
 
   it("flushes on the periodic interval without closing the window", async () => {

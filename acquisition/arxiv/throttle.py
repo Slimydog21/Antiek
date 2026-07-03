@@ -39,7 +39,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Protocol
 
 # arXiv API terms of use: at most one request per three seconds. We honor
 # the ceiling, not a fraction of it, because the ban is IP-scoped and the
@@ -78,10 +78,6 @@ class _ResponseLike(Protocol):
 
     @property
     def headers(self) -> Mapping[str, str]: ...
-
-    def raise_for_status(self) -> None: ...
-
-    def json(self) -> Any: ...
 
 
 class ArxivBanned(RuntimeError):

@@ -4,11 +4,13 @@ import { moodFromTheme, prefersDark, type SceneMood } from "./mood";
 import { useSceneClock } from "./useSceneClock";
 import { useSceneArt } from "./useSceneArt";
 import type { SceneFetcher } from "../krea/useKreaScene";
+import { useKreaStatus } from "../krea/useKreaStatus";
 import { Peaks } from "./layers/Peaks";
 import { Clouds } from "./layers/Clouds";
 import { Snow } from "./layers/Snow";
 import { PenguinJourney } from "./layers/PenguinJourney";
 import { KreaArtLayer } from "./layers/KreaArtLayer";
+import { SceneStatusBadge } from "./SceneStatusBadge";
 // The scene's consolidated keyframes + reduced-motion guard (one motion home,
 // sanctioned in motion.guard.test.ts) — see scene.css.
 import "./scene.css";
@@ -73,26 +75,34 @@ export function Scene({ mood: moodProp, fetchScene, reducedMotion }: SceneProps)
 
   // Periodic, mood-gated Krea art (never per frame — see useSceneArt).
   const art = useSceneArt(mood, fetchScene);
+  // Status is fetched once at scene mount, matching useKreaScene's
+  // mount/state-key scheduling style rather than adding a polling loop.
+  const kreaStatus = useKreaStatus();
 
   return (
     <div
       className="pointer-events-none absolute inset-0 z-0 overflow-hidden"
       data-testid="scene-root"
       data-scene-mood={mood.dayPart}
+      data-scene-clock={clock.t}
       data-scene-frozen={frozen ? "true" : "false"}
       data-scene-fallback={art.isFallback ? "true" : "false"}
       aria-hidden="true"
     >
       {/* z-0 sky + peaks (with bounded parallax) */}
-      <Peaks mood={mood} frozen={frozen} />
+      <Peaks mood={mood} frozen={frozen} clockMs={clock.t} />
       {/* z-1 periodic Krea art, crossfaded on mood change (nothing in fallback) */}
-      <KreaArtLayer art={art} frozen={frozen} />
+      <KreaArtLayer art={art} frozen={frozen} clockMs={clock.t} />
       {/* z-2 clouds (canvas) */}
       <Clouds mood={mood} reducedMotion={frozen} />
       {/* z-3 snow (canvas) */}
       <Snow mood={mood} reducedMotion={frozen} />
       {/* z-4 scenery penguin */}
       <PenguinJourney mood={mood} />
+      <SceneStatusBadge
+        status={kreaStatus.data}
+        error={kreaStatus.status === "error" ? kreaStatus.error : null}
+      />
     </div>
   );
 }

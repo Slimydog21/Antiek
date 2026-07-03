@@ -1,0 +1,24 @@
+# AGH SPR-08 — automated dependency-advisory eyes. Before this file, zero
+# automation watched either dependency tree; the realized cost was a live-CVE
+# dependency (xhtml2pdf 0.2.14) sitting invisible on main until a manual
+# hardenx run tripped over it. Dependabot opens PRs; nothing here merges
+# anything — the operator (or a reviewing agent lane) judges each bump.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/apps/reading"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3

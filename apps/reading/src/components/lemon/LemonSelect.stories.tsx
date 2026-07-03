@@ -73,9 +73,9 @@ export const Placeholder: Story = {
             onChange={setV}
             placeholder="Pick an investigation…"
             options={[
-              { value: "nvda-q4", label: "NVDA Q4 risk model" },
-              { value: "web-gaming-2026", label: "Web gaming 2026" },
-              { value: "kalshi", label: "Kalshi liquidity gate" },
+              { value: "story-investigation-1", label: "Story investigation 1" },
+              { value: "story-investigation-2", label: "Story investigation 2" },
+              { value: "story-investigation-3", label: "Story investigation 3" },
             ]}
           />
         </div>

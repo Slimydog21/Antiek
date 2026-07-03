@@ -1,5 +1,12 @@
 # Werner Ice Fishing Cursor — Operator acceptance
 
+> **⚠️ Criterion #3 SUPERSEDED 2026-07-02.** The operator re-opened the "Werner reels toward the
+> cursor" decision. Werner no longer follows the cursor at all — he stands at a fixed station and
+> the cursor is the bait on his line. See `docs/htmlspec/werner-fixed-station/DESIGN.md` for the
+> replacement model and the honest supersession record. Criteria #1, #2, #6, #7 still hold; #3 is
+> retired; #4/#5 are moot (no reel handoff, no roam). This doc is kept, not deleted, so the
+> history stays legible.
+
 **Spec:** `docs/htmlspec/werner-ice-fishing-cursor/index.html`  
 **Branch:** `caffen/SPR-13` (SPR-13–16 combined)  
 **PR:** https://github.com/Slimydog21/Antiek/pull/54  

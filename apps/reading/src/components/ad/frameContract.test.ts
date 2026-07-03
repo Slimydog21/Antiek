@@ -40,8 +40,9 @@ import {
 
 describe("frameContract — pins the TS mirror against frame_attention.py", () => {
   it("stamps the exact Python FRAME_TELEMETRY_SCHEMA_VERSION", () => {
-    // frame_attention.py:117 — FRAME_TELEMETRY_SCHEMA_VERSION = "frame-telemetry-v1".
-    expect(FRAME_TELEMETRY_SCHEMA_VERSION).toBe("frame-telemetry-v1");
+    // frame_attention.py — FRAME_TELEMETRY_SCHEMA_VERSION = "frame-telemetry-v2"
+    // (AFA-S1 bumped v1->v2 when ad_value_usd_cents left the client wire shape).
+    expect(FRAME_TELEMETRY_SCHEMA_VERSION).toBe("frame-telemetry-v2");
   });
 
   it("mirrors the four VALID_LENSES exactly (frame_attention.py:151)", () => {
@@ -83,15 +84,19 @@ describe("frameContract — pins the TS mirror against frame_attention.py", () =
     );
   });
 
-  it("WindowFrameBatch carries exactly the Python fields (frame_attention.py:242-245)", () => {
+  it("WindowFrameBatch carries exactly the CLIENT-INBOUND Python fields (v2: no value)", () => {
+    // AFA-S1 (frame-telemetry-v2): ad_value_usd_cents is REMOVED from the
+    // client mirror — the server prices the window, the client never does.
+    // The Python server-side dataclass keeps the field (server-populated); the
+    // inbound WindowFrameBatchIn (ad_routes.py) drops it, and this is that
+    // inbound shape.
     const batch = {
       window_id: "win:read:abc",
       seconds: [],
-      ad_value_usd_cents: 0,
       schema_version: FRAME_TELEMETRY_SCHEMA_VERSION,
     } satisfies WindowFrameBatch;
     expect(Object.keys(batch).sort()).toEqual(
-      ["ad_value_usd_cents", "schema_version", "seconds", "window_id"].sort(),
+      ["schema_version", "seconds", "window_id"].sort(),
     );
   });
 });

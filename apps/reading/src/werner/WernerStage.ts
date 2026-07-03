@@ -12,8 +12,15 @@ import { emoteDurationMs, type EmoteKind } from "./emotes";
  * This is the SPR-10 seam: a small object exposing moveTo / waddleToEl /
  * emote / follow / idle / freeze. It owns the STATE MACHINE (wernerState.ts)
  * and the directed-action timers, but it does NOT own a second position. It
- * drives the mascot's EXISTING `pos` ref + chained-timeout roam through a
- * thin adapter the mascot passes in (`StageHost`). One penguin, one position.
+ * drives the mascot's EXISTING `pos` ref through a thin adapter the mascot
+ * passes in (`StageHost`). One penguin, one position.
+ *
+ * NOTE (2026-07-02 fixed-station rework): this remains a GENERAL controller.
+ * The mascot no longer runs an ambient roam or an ambient cursor-follow, so its
+ * host implements `setFollowing` as a documented no-op and never calls
+ * `follow()`. The `follow` command + `following` state are kept here as a latent
+ * capability, unused by the only current client. See
+ * docs/htmlspec/werner-fixed-station/DESIGN.md.
  *
  * Why an injected host rather than reaching into the DOM: the mascot already
  * owns clampRectToViewport, applyPos, the bob-class swap, and the roam re-arm.
@@ -44,9 +51,11 @@ export interface StageHost {
   getPos: () => { x: number; y: number };
   /** Show/clear an emote mark overlaid on the Werner mark. null clears. */
   setEmote: (kind: EmoteKind | null) => void;
-  /** Toggle the ambient cursor-bias on the host's roam (follow on/off). */
+  /** Toggle ambient cursor-follow on the host. DORMANT under the fixed station:
+   *  the mascot implements this as a no-op (Werner never chases the cursor). */
   setFollowing: (on: boolean) => void;
-  /** Pause the host's autonomous roam during a directed walk; resume after. */
+  /** Pause ambient behaviour during a directed walk; resume after. Under the
+   *  fixed station "resume" (paused=false) means "walk home to the station". */
   setRoamPaused: (paused: boolean) => void;
 }
 

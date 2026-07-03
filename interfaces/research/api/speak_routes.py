@@ -807,10 +807,13 @@ async def invitee_voice(
 
     The headline invitee fix: a non-power-user on a phone taps to talk and
     their voice — not typed text — becomes their answer. The browser POSTs
-    the recorded blob as the raw request body (``Content-Type: audio/*``),
-    exactly as the operator ``/voice/sessions/{id}/upload`` route already
-    accepts; ``?question_id=`` + ``?duration_seconds=`` ride the query
-    string (no python-multipart for a single-field upload).
+    the recorded blob as the raw request body (``Content-Type: audio/*``);
+    ``?question_id=`` + ``?duration_seconds=`` ride the query string (no
+    python-multipart for a single-field upload). This IS the single voice
+    upload owner — the operator-side ``/voice/sessions/{id}/upload`` scaffold
+    that once mirrored this shape was deleted (AGH SPR-02) as an
+    audio-discarding dead end; operator-side capture, if ever needed, revives
+    through this same transcribe path, not a second pipeline.
 
     It does NOT build a second voice pipeline. It reuses the SINGLE voice
     owner end-to-end:
@@ -859,7 +862,7 @@ async def invitee_voice(
 
 
 @speak_router.post("/invite/{token}/followups")
-async def invitee_followups(token: str) -> dict:
+async def invitee_followups(token: str) -> dict[str, Any]:
     with _translate(), _write("speak/api:invite_followups_resolve") as con:
         interview_id, _ = _require_token(con, token)
     with _translate():
@@ -872,7 +875,7 @@ async def invitee_followups(token: str) -> dict:
 
 
 @speak_router.post("/invite/{token}/decline", status_code=200)
-async def invitee_decline(token: str) -> dict:
+async def invitee_decline(token: str) -> dict[str, Any]:
     with _translate(), _write("speak/api:invite_decline_resolve") as con:
         interview_id, _ = _require_token(con, token)
     decline(_db(), interview_id)

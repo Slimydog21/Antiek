@@ -89,7 +89,11 @@ describe("NavRail → panel mount contract (SPR-04 M6)", () => {
 
   it("a content-tree node opened via the rail's tree floats a panel (ProjectTree Cmd-click path)", () => {
     // The tree's Cmd/Ctrl+click path: open a Trajectory panel floating.
-    const id = s().open("Trajectory", { id: "nvda-q4" }, { mode: "floating", title: "NVDA Q4 risk model" });
+    const id = s().open(
+      "Trajectory",
+      { id: "story-investigation" },
+      { mode: "floating", title: "Story investigation" },
+    );
     const panel = s().panels[id];
     expect(panel.kind).toBe("Trajectory");
     expect(panel.mode).toBe("floating");

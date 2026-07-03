@@ -27,9 +27,9 @@ from __future__ import annotations
 
 import os
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, cast
 
 import httpx
 
@@ -38,6 +38,7 @@ DEFAULT_USER_AGENT = "Antiek/0.1 (acquisition.search.exa)"
 DEFAULT_TIMEOUT_S = 30.0  # Exa's crawl-on-demand path is slow; URL-fetch timeout is 20s for comparison.
 _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 _MAX_RETRIES = 3
+_JsonObject = dict[str, object]
 
 # Per-call cost estimates (USD). $5/1k = $0.005/call.
 COST_PER_SEARCH_USD = 0.005
@@ -141,7 +142,7 @@ class ExaClient:
         base_url: str | None = None,
         timeout_s: float = DEFAULT_TIMEOUT_S,
         client: httpx.Client | None = None,
-        sleep: object | None = None,
+        sleep: Callable[[float], None] | None = None,
     ) -> None:
         self._api_key = _resolve_api_key(api_key)
         self._base_url = _resolve_base_url(base_url)
@@ -168,7 +169,11 @@ class ExaClient:
         if num_results < 1 or num_results > 100:
             raise ExaClientError("num_results must be 1..100")
 
-        body: dict = {"query": query, "numResults": num_results, "type": search_type}
+        body: _JsonObject = {
+            "query": query,
+            "numResults": num_results,
+            "type": search_type,
+        }
         if category is not None:
             body["category"] = category
         if include_domains:
@@ -207,7 +212,7 @@ class ExaClient:
 
     # ── internals ────────────────────────────────────────────────
 
-    def _post(self, path: str, body: dict) -> dict:
+    def _post(self, path: str, body: Mapping[str, object]) -> _JsonObject:
         # ``base_url`` is env/param-overridable, so route each send through the
         # host-based gate: the default api.exa.ai host is posted directly; were
         # the base ever an arXiv host it would be governed by the shared gate.
@@ -262,7 +267,16 @@ class ExaClient:
                     )
 
                 try:
-                    return r.json()
+                    data: object = r.json()
+                    if not isinstance(data, dict) or not all(
+                        isinstance(k, str) for k in data
+                    ):
+                        raise ExaClientError(
+                            "non-object json body from exa",
+                            status=r.status_code,
+                            url=url,
+                        )
+                    return cast(_JsonObject, data)
                 except ValueError as e:
                     raise ExaClientError(
                         f"non-json body from exa: {e}", status=r.status_code, url=url
@@ -275,7 +289,7 @@ class ExaClient:
     def _backoff_seconds(attempt: int) -> float:
         # 1s, 2s, 4s with no jitter — single-operator substrate, jitter is
         # overengineering. Sprint 18+ may add jitter when multi-user lands.
-        return 2 ** (attempt - 1)
+        return float(2 ** (attempt - 1))
 
     @staticmethod
     def _retry_after_seconds(r: httpx.Response) -> float | None:
@@ -289,10 +303,12 @@ class ExaClient:
 
     @staticmethod
     def _parse_search_response(
-        raw: dict, *, per_call_cost: float
+        raw: Mapping[str, object], *, per_call_cost: float
     ) -> ExaSearchResponse:
-        request_id = raw.get("requestId") or raw.get("autopromptString") or None
-        results_raw = raw.get("results") or []
+        request_id_raw = raw.get("requestId") or raw.get("autopromptString")
+        request_id = request_id_raw if isinstance(request_id_raw, str) else None
+        results_value = raw.get("results")
+        results_raw = results_value if isinstance(results_value, list) else []
         results: list[ExaSearchResult] = []
         # Per-result cost is the per-call cost amortized across results.
         # An empty response still charged once; we attribute that to a
@@ -300,19 +316,36 @@ class ExaClient:
         per_result_cost = (
             per_call_cost / len(results_raw) if results_raw else per_call_cost
         )
-        for r in results_raw:
-            snippet = r.get("text") or r.get("highlight") or None
+        for result_value in results_raw:
+            if not isinstance(result_value, dict):
+                continue
+            r = cast(_JsonObject, result_value)
+            snippet_value = r.get("text") or r.get("highlight")
+            snippet = snippet_value if isinstance(snippet_value, str) else None
             if isinstance(snippet, str) and len(snippet) > 300:
                 snippet = snippet[:300]
+            title = r.get("title")
+            published_date = r.get("publishedDate")
+            author = r.get("author")
+            score = r.get("score")
+            provider_response_id = r.get("id") or request_id
             results.append(
                 ExaSearchResult(
                     url=str(r.get("url", "")).strip(),
-                    title=r.get("title"),
-                    published_date=r.get("publishedDate"),
-                    author=r.get("author"),
-                    relevance_score=r.get("score"),
+                    title=title if isinstance(title, str) else None,
+                    published_date=(
+                        published_date if isinstance(published_date, str) else None
+                    ),
+                    author=author if isinstance(author, str) else None,
+                    relevance_score=(
+                        float(score) if isinstance(score, int | float) else None
+                    ),
                     text_snippet_preview=snippet,
-                    provider_response_id=r.get("id") or request_id,
+                    provider_response_id=(
+                        provider_response_id
+                        if isinstance(provider_response_id, str)
+                        else None
+                    ),
                     cost_usd_estimate=per_result_cost,
                 )
             )

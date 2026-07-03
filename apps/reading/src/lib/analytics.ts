@@ -44,11 +44,9 @@ export type AnalyticsEvents = {
     has_passage: boolean;
   };
 
-  // Write — notebook + interview-as-acquisition
+  // Write — notebook
   notebook_block_appended: { block_type: string };
   notebook_block_deleted: EmptyProps;
-  interview_turn_submitted: { role: string };
-  interview_completed: EmptyProps;
 
   // Speak
   speak_project_created: EmptyProps;

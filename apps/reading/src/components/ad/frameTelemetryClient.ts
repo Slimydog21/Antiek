@@ -8,13 +8,9 @@
 // aggregates the batch to per-asset accrual before any DB write; the emitter's
 // job is the compact batch, so request count is O(windows) not O(seconds).
 //
-// NAMED SEAM (handoff): the route `POST /api/ad/frame-telemetry` DOES NOT EXIST
-// YET — the backend has only advertiser-onboarding routes; the ingest route is
-// deferred to SPR-09. This emitter POSTs to the defined path and DEGRADES
-// GRACEFULLY: a 404 (route absent) or a schema-version mismatch SURFACES an
-// error through ``onError`` and is NOT silently dropped, but it never throws
-// into the render path and never opens a DB writer (POST-only). When SPR-09
-// lands the route, the emitter starts succeeding with no caller change.
+// Live route: interfaces/research/api/ad_routes.py:141 registers
+// `POST /api/ad/frame-telemetry`; schema or deployment mismatches surface
+// through ``onError`` and never throw into the render path.
 
 import { API_BASE } from "../../lib/api";
 import {
@@ -173,9 +169,10 @@ export class FrameTelemetryEmitter {
     const batch: WindowFrameBatch = {
       window_id: this.windowId,
       seconds,
-      // SPR-10 prices the second; until then the emitter sends 0 (honest — no
-      // fabricated value). The backend treats 0 as "unpriced this window".
-      ad_value_usd_cents: 0,
+      // AFA-S1 (frame-telemetry-v2): the emitter sends NO value. The client
+      // measures attention; the SERVER prices the window at accrual time. A
+      // value the client can set is a value the client can forge — so the
+      // field is gone from the wire shape, not merely set to 0.
       schema_version: FRAME_TELEMETRY_SCHEMA_VERSION,
     };
     const body = JSON.stringify(batch);
@@ -193,7 +190,8 @@ export class FrameTelemetryEmitter {
       return;
     }
     if (status === 404) {
-      // The deferred SPR-09 route. Surface it — do not pretend it succeeded.
+      // Route absent (the live route is ad_routes.py:141; a 404 means an old
+      // deployment predating it). Surface it — do not pretend it succeeded.
       this.onError?.({ kind: "route-absent", status, windowId: this.windowId });
       return;
     }

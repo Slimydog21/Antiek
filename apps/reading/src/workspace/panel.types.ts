@@ -51,7 +51,6 @@ export type PanelKind =
   | "DeliverableSidebar"
   | "BlockPalette"
   | "ReplayStepList"
-  | "InterviewRecording"
   | "InterviewTranscript"
   | "InterviewNotes"
   | "Lightbox"
