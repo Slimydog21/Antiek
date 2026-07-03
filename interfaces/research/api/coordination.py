@@ -28,6 +28,8 @@ payout" by the absence of any such path here — greppable, and asserted in
 
 from __future__ import annotations
 
+import subprocess
+from pathlib import Path
 from typing import Literal
 
 import duckdb
@@ -93,6 +95,9 @@ from substrate.research_bridge.dogfood_readiness import (
     DogfoodReadiness,
     audit_dogfood_readiness,
 )
+from tools.lint.merge_age_gate import MAX_BEHIND, compute_distance
+
+_REPO = Path(__file__).resolve().parents[3]
 
 # ── Response shapes ──────────────────────────────────────────────────────────
 
@@ -381,6 +386,93 @@ class AdrbDogfoodStatusResponse(BaseModel):
             missing_requirements=[message],
             error=message,
         )
+
+
+class BranchHealthResponse(BaseModel):
+    """Current branch freshness against ``origin/main``.
+
+    This reuses the merge-age gate's measurement logic but does not fetch,
+    rebase, or mutate git state. Stale-base work stays visible to the operator
+    instead of hiding behind otherwise-green product gates.
+    """
+
+    state: Literal["ok", "stale", "error"]
+    branch: str
+    head_sha: str
+    origin_main_sha: str
+    merge_base_distance: int | None
+    max_behind: int
+    message: str
+    remediation: str
+    error: str | None
+
+
+def _git_text(*args: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(_REPO), *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or f"git {' '.join(args)} failed")
+    return result.stdout.strip()
+
+
+def build_branch_health() -> BranchHealthResponse:
+    """Build a read-only branch freshness view for Coordination/Settings."""
+
+    try:
+        branch = _git_text("branch", "--show-current") or "detached"
+        head_sha = _git_text("rev-parse", "--short", "HEAD")
+        origin_main_sha = _git_text("rev-parse", "--short", "origin/main")
+        distance, err = compute_distance()
+    except Exception as exc:
+        message = str(exc) or type(exc).__name__
+        return BranchHealthResponse(
+            state="error",
+            branch="unknown",
+            head_sha="unknown",
+            origin_main_sha="unknown",
+            merge_base_distance=None,
+            max_behind=MAX_BEHIND,
+            message=f"Branch freshness check failed: {message}",
+            remediation="Fetch origin/main and rerun the merge-age gate.",
+            error=message,
+        )
+
+    if distance is None:
+        return BranchHealthResponse(
+            state="error",
+            branch=branch,
+            head_sha=head_sha,
+            origin_main_sha=origin_main_sha,
+            merge_base_distance=None,
+            max_behind=MAX_BEHIND,
+            message=err,
+            remediation="Fetch origin/main and rerun the merge-age gate.",
+            error=err,
+        )
+
+    stale = distance > MAX_BEHIND
+    return BranchHealthResponse(
+        state="stale" if stale else "ok",
+        branch=branch,
+        head_sha=head_sha,
+        origin_main_sha=origin_main_sha,
+        merge_base_distance=distance,
+        max_behind=MAX_BEHIND,
+        message=(
+            f"base is {distance} commits behind origin/main "
+            f"(limit N={MAX_BEHIND})"
+        ),
+        remediation=(
+            "run `git rebase origin/main`"
+            if stale
+            else "branch freshness is within the merge-age budget"
+        ),
+        error=None,
+    )
 
 
 class OperatorActionResponse(BaseModel):
@@ -688,6 +780,7 @@ class RoadmapResponse(BaseModel):
     operator_gate_focus: OperatorGateFocusResponse | None
     read_activation: ReadActivationStatusResponse
     adrb_dogfood: AdrbDogfoodStatusResponse
+    branch_health: BranchHealthResponse
     operator_actions: OperatorActionsSummaryResponse
     phase2_audit: Phase2AuditResponse
     engineering_deferrals: EngineeringDeferralsSummaryResponse
@@ -702,6 +795,7 @@ class RoadmapResponse(BaseModel):
         gate_ledger: GateLedger | None = None,
         read_activation: ReadActivationView | None = None,
         adrb_dogfood: AdrbDogfoodStatusResponse | None = None,
+        branch_health: BranchHealthResponse | None = None,
         operator_actions: OperatorActionsView | None = None,
         phase2_audit: Phase2AuditView | None = None,
         engineering_deferrals: EngineeringDeferralsView | None = None,
@@ -750,6 +844,7 @@ class RoadmapResponse(BaseModel):
                 read_activation or build_read_activation_view()
             ),
             adrb_dogfood=adrb_dogfood or AdrbDogfoodStatusResponse.not_checked(),
+            branch_health=branch_health or build_branch_health(),
             operator_actions=OperatorActionsSummaryResponse.from_view(
                 operator_actions or load_operator_actions()
             ),
@@ -991,6 +1086,7 @@ def register_coordination_routes(app: FastAPI) -> None:
             load_gate_ledger(),
             build_read_activation_view(),
             _build_adrb_dogfood_status(db),
+            build_branch_health(),
             load_operator_actions(),
             load_phase2_audit(),
             load_engineering_deferrals(),

@@ -108,6 +108,18 @@ export interface AdrbDogfoodStatusView {
   error: string | null;
 }
 
+export interface BranchHealthView {
+  state: "ok" | "stale" | "error" | string;
+  branch: string;
+  head_sha: string;
+  origin_main_sha: string;
+  merge_base_distance: number | null;
+  max_behind: number;
+  message: string;
+  remediation: string;
+  error: string | null;
+}
+
 export interface OperatorActionView {
   action_id: string;
   title: string;
@@ -225,6 +237,7 @@ export interface RoadmapView {
   operator_gate_focus: OperatorGateFocusView | null;
   read_activation: ReadActivationStatusView | null;
   adrb_dogfood?: AdrbDogfoodStatusView | null;
+  branch_health?: BranchHealthView | null;
   operator_actions?: OperatorActionsSummaryView | null;
   phase2_audit?: Phase2AuditView | null;
   engineering_deferrals?: EngineeringDeferralsSummaryView | null;
@@ -424,6 +437,9 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
           {roadmap.adrb_dogfood ? (
             <AdrbDogfoodStatus dogfood={roadmap.adrb_dogfood} />
           ) : null}
+          {roadmap.branch_health ? (
+            <BranchHealthStatus branchHealth={roadmap.branch_health} />
+          ) : null}
           {roadmap.operator_actions ? (
             <OperatorActionsStatus operatorActions={roadmap.operator_actions} />
           ) : null}
@@ -521,6 +537,55 @@ function ActivationStatus({
           {nextSession.append_command ? ` · ${nextSession.append_command}` : ""}
         </p>
       )}
+    </div>
+  );
+}
+
+function BranchHealthStatus({
+  branchHealth,
+}: {
+  branchHealth: BranchHealthView;
+}) {
+  const distance =
+    branchHealth.merge_base_distance == null
+      ? "unknown"
+      : String(branchHealth.merge_base_distance);
+  const stateLabel =
+    branchHealth.state === "ok"
+      ? "within budget"
+      : branchHealth.state === "error"
+        ? "error"
+        : "stale";
+  return (
+    <div className="mt-2 rounded border border-rule dark:border-charcoal-1 bg-ice-0/70 dark:bg-charcoal-2/70 px-3 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+          Branch freshness
+        </p>
+        <LemonTag
+          colour={
+            branchHealth.state === "ok"
+              ? "aurora"
+              : branchHealth.state === "error"
+                ? "danger"
+                : "sun"
+          }
+        >
+          {stateLabel}
+        </LemonTag>
+      </div>
+      <p className="text-xs font-mono text-ink dark:text-bright">
+        {branchHealth.branch || "unknown branch"} · HEAD=
+        {branchHealth.head_sha || "unknown"} · origin/main=
+        {branchHealth.origin_main_sha || "unknown"} · behind={distance}/
+        {branchHealth.max_behind}
+      </p>
+      <p className="text-xs text-ink-soft dark:text-starlight leading-relaxed">
+        {branchHealth.error
+          ? `Merge-age check failed: ${branchHealth.error}`
+          : branchHealth.message || "Branch freshness was not checked."}{" "}
+        Next: {branchHealth.remediation || "rerun the merge-age gate"}.
+      </p>
     </div>
   );
 }

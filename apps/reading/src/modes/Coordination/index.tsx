@@ -6,6 +6,7 @@ import type { CoordProduct, GateImpactView, GateView } from "./GateLedger";
 import { Roadmap } from "./Roadmap";
 import type {
   AdrbDogfoodStatusView,
+  BranchHealthView,
   DependencyBlockerView,
   EngineeringDeferralView,
   EngineeringDeferralsSummaryView,
@@ -296,6 +297,27 @@ function safeAdrbDogfoodStatus(value: unknown): AdrbDogfoodStatusView | null {
   };
 }
 
+function nullableNonNegativeInteger(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  return nonNegativeInteger(value);
+}
+
+function safeBranchHealth(value: unknown): BranchHealthView | null {
+  const health = record(value);
+  if (!health) return null;
+  return {
+    state: nonEmptyString(health.state) ?? "error",
+    branch: nonEmptyString(health.branch) ?? "",
+    head_sha: nonEmptyString(health.head_sha) ?? "",
+    origin_main_sha: nonEmptyString(health.origin_main_sha) ?? "",
+    merge_base_distance: nullableNonNegativeInteger(health.merge_base_distance),
+    max_behind: nonNegativeInteger(health.max_behind),
+    message: nonEmptyString(health.message) ?? "",
+    remediation: nonEmptyString(health.remediation) ?? "",
+    error: nullableString(health.error),
+  };
+}
+
 function safePhase2SprintScore(value: unknown): Phase2SprintScoreView | null {
   const score = record(value);
   const sprint = nonEmptyString(score?.sprint);
@@ -501,6 +523,7 @@ function safeRoadmapView(value: unknown): RoadmapView {
     operator_gate_focus: safeOperatorGateFocus(body?.operator_gate_focus),
     read_activation: safeReadActivationStatus(body?.read_activation),
     adrb_dogfood: safeAdrbDogfoodStatus(body?.adrb_dogfood),
+    branch_health: safeBranchHealth(body?.branch_health),
     operator_actions: safeOperatorActionsSummary(body?.operator_actions),
     phase2_audit: safePhase2Audit(body?.phase2_audit),
     engineering_deferrals: safeEngineeringDeferralsSummary(

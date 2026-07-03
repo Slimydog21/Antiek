@@ -82,6 +82,7 @@ function roadmap(
     operator_gate_focus: null,
     read_activation: null,
     adrb_dogfood: null,
+    branch_health: null,
     operator_actions: null,
     phase2_audit: null,
     engineering_deferrals: null,
@@ -606,6 +607,39 @@ describe("Roadmap", () => {
     expect(
       screen.getByText(/Readiness check failed: missing table research_pastes/),
     ).toBeTruthy();
+  });
+
+  it("surfaces stale branch freshness without treating gates as green", () => {
+    render(
+      <Roadmap
+        roadmap={{
+          ...roadmap([]),
+          branch_health: {
+            state: "stale",
+            branch: "reader/integration",
+            head_sha: "abc1234",
+            origin_main_sha: "def5678",
+            merge_base_distance: 238,
+            max_behind: 25,
+            message: "base is 238 commits behind origin/main (limit N=25)",
+            remediation: "run `git rebase origin/main`",
+            error: null,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Branch freshness")).toBeTruthy();
+    expect(screen.getByText("stale")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "reader/integration · HEAD=abc1234 · origin/main=def5678 · behind=238/25",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/base is 238 commits behind origin\/main/),
+    ).toBeTruthy();
+    expect(screen.getByText(/Next: run `git rebase origin\/main`\./)).toBeTruthy();
   });
 
   it("surfaces operator action counts and closeable OA focus", () => {

@@ -942,6 +942,37 @@ def test_roadmap_response_serializes_adrb_dogfood_status() -> None:
     ]
 
 
+def test_roadmap_response_serializes_branch_health_status() -> None:
+    from interfaces.research.api.coordination import (
+        BranchHealthResponse,
+        RoadmapResponse,
+    )
+
+    branch_health = BranchHealthResponse(
+        state="stale",
+        branch="reader/integration",
+        head_sha="abc1234",
+        origin_main_sha="def5678",
+        merge_base_distance=238,
+        max_behind=25,
+        message="base is 238 commits behind origin/main (limit N=25)",
+        remediation="run `git rebase origin/main`",
+        error=None,
+    )
+
+    response = RoadmapResponse.from_roadmap(
+        build_roadmap(),
+        load_gate_ledger(),
+        branch_health=branch_health,
+    )
+
+    assert response.branch_health.state == "stale"
+    assert response.branch_health.branch == "reader/integration"
+    assert response.branch_health.merge_base_distance == 238
+    assert response.branch_health.max_behind == 25
+    assert response.branch_health.remediation == "run `git rebase origin/main`"
+
+
 def test_roadmap_response_serializes_operator_actions_and_phase2_audit() -> None:
     from interfaces.research.api.coordination import RoadmapResponse
 
