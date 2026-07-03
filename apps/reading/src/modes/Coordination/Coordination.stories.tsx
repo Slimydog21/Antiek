@@ -284,6 +284,12 @@ export const CANONICAL_ROADMAP: RoadmapView = {
     non_library_sessions: 0,
     final_verdict: null,
     closure_ready: false,
+    required_counts: {
+      valid_sessions: 10,
+      live_provider_sessions: 5,
+      citation_trace_sessions: 3,
+      non_library_sessions: 1,
+    },
     remaining_requirements: {
       valid_sessions: 10,
       live_provider_sessions: 5,

@@ -245,19 +245,19 @@ def test_engineering_deferrals_view_surfaces_do_not_prebuild_ledger() -> None:
     view = load_engineering_deferrals()
 
     assert view.source_path == "docs/engineering_deferrals.md"
-    assert len(view.deferrals) == 19
+    assert len(view.deferrals) == 20
     assert view.deferrals[0].deferral_id == "D1"
     assert view.deferrals[0].status is DeferralStatus.PARTIAL
     assert view.deferrals[0].unlock_criterion is not None
     assert "G7" in view.deferrals[0].unlock_criterion
-    assert view.deferrals[-1].deferral_id == "D19"
+    assert view.deferrals[-1].deferral_id == "D21"
     assert view.first_open() is not None
     assert view.first_open().deferral_id == "D1"
     assert view.status_counts() == {
-        "partial": 4,
+        "partial": 3,
         "substrate_shipped": 5,
-        "deferred": 7,
-        "closed": 3,
+        "deferred": 8,
+        "closed": 4,
     }
 
 
@@ -857,6 +857,18 @@ def test_roadmap_response_serializes_read_activation_status(tmp_path: Path) -> N
     assert response.read_activation.total_sessions == 1
     assert response.read_activation.valid_sessions == 1
     assert response.read_activation.closure_ready is False
+    assert response.read_activation.required_counts == {
+        "valid_sessions": REQUIRED_VALID_SESSIONS,
+        "live_provider_sessions": REQUIRED_LIVE_PROVIDER_SESSIONS,
+        "citation_trace_sessions": REQUIRED_CITATION_TRACE_SESSIONS,
+        "non_library_sessions": REQUIRED_NON_LIBRARY_SESSIONS,
+    }
+    assert response.read_activation.remaining_requirements == {
+        "valid_sessions": 9,
+        "live_provider_sessions": REQUIRED_LIVE_PROVIDER_SESSIONS,
+        "citation_trace_sessions": REQUIRED_CITATION_TRACE_SESSIONS,
+        "non_library_sessions": REQUIRED_NON_LIBRARY_SESSIONS,
+    }
 
 
 def test_roadmap_response_serializes_operator_actions_and_phase2_audit() -> None:
@@ -907,7 +919,7 @@ def test_roadmap_response_serializes_operator_actions_and_phase2_audit() -> None
     assert response.phase2_audit.exit_criteria is not None
     assert response.phase2_audit.exit_criteria.unmet == 18
     assert response.engineering_deferrals.source_path == "docs/engineering_deferrals.md"
-    assert response.engineering_deferrals.total_deferrals == 19
+    assert response.engineering_deferrals.total_deferrals == 20
     assert response.engineering_deferrals.open_count == 16
     assert response.engineering_deferrals.first_open is not None
     assert response.engineering_deferrals.first_open.deferral_id == "D1"

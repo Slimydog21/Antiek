@@ -244,6 +244,12 @@ beforeEach(() => {
           non_library_sessions: "0",
           final_verdict: " ",
           closure_ready: "true",
+          required_counts: {
+            valid_sessions: "10",
+            live_provider_sessions: "5",
+            citation_trace_sessions: "3",
+            non_library_sessions: "1",
+          },
           remaining_requirements: {
             valid_sessions: "9",
             live_provider_sessions: "5",
@@ -373,7 +379,9 @@ describe("OperatorDashboard", () => {
     expect(screen.getByText("OPEN · Legal")).toBeTruthy();
     expect(screen.getByText("Blocks: payouts")).toBeTruthy();
     expect(
-      screen.getByText("Read dogfood 1/2 valid · 0 live-provider · 1 citation-traced"),
+      screen.getByText(
+        "Read dogfood 1/10 required valid (2 total) · 0 live-provider · 1 citation-traced",
+      ),
     ).toBeTruthy();
     expect(
       screen.getByText(

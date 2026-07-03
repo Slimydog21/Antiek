@@ -104,7 +104,12 @@ describe("InterviewVoiceCapture", () => {
         json: async () => ({ audio_url, transcript: " invite transcript " }),
       } as Response);
 
-      render(<InterviewVoiceCapture sessionId="int-1" onUploaded={onUploaded} />);
+      render(
+        <InterviewVoiceCapture
+          buildUploadUrl={buildUploadUrl}
+          onUploaded={onUploaded}
+        />,
+      );
 
       await recordAndUpload();
 
@@ -123,7 +128,12 @@ describe("InterviewVoiceCapture", () => {
       json: async () => ({ audio_url: " https://cdn.example/audio.webm " }),
     } as Response);
 
-    render(<InterviewVoiceCapture sessionId="int-1" onUploaded={onUploaded} />);
+    render(
+      <InterviewVoiceCapture
+        buildUploadUrl={buildUploadUrl}
+        onUploaded={onUploaded}
+      />,
+    );
 
     await recordAndUpload();
 
