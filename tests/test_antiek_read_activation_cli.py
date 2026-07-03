@@ -402,6 +402,118 @@ def test_antiek_read_activation_record_session_preflights_invalid_evidence(
     assert "session-1: build_sha must be a 6-40 character git SHA" in captured.err
 
 
+def _write_activation_draft(path: Path, *, session_id: str = "draft-session-1") -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "kind": "read_activation_record_session_draft",
+                "record_session_fields_template": {
+                    "session_id": session_id,
+                    "date": "2026-07-03",
+                    "build_sha": "0123456789abcdef",
+                    "url": "https://app.example/read/doc-1",
+                    "operator": "operator",
+                    "document_id": "doc-1",
+                    "entry_door": "library",
+                    "provider_status": "absent",
+                    "live_provider_ai": False,
+                    "citation_traced": True,
+                    "minutes_reading": "<minutes_reading_at_least_20>",
+                    "visible_content_note": "Real Reader route rendered Chapter One.",
+                    "selected_text": "The exact highlighted passage.",
+                    "return_context_note": "Return reopened /read/doc-1?page=0.",
+                    "operator_note": "<operator_20_minute_reading_note>",
+                    "dialogue_no_key_copy": "Dialogue requires provider activation keys.",
+                    "research_no_key_copy": "Research spin-out requires provider activation keys.",
+                    "source_document_id": "source-doc-1",
+                    "chunk_id": "chunk-1",
+                    "result_url": (
+                        "https://app.example/read/source-doc-1"
+                        "?chunk=chunk-1&from=doc-1"
+                    ),
+                },
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_antiek_read_activation_record_draft_json_appends_after_step_7(
+    tmp_path: Path,
+    capsys,
+) -> None:  # type: ignore[no-untyped-def]
+    draft_path = tmp_path / "read-activation-record-session-draft.json"
+    log_path = tmp_path / "read-dogfood.jsonl"
+    _write_activation_draft(draft_path)
+
+    rc = main(
+        [
+            "read",
+            "activation",
+            "record-draft",
+            "--draft",
+            str(draft_path),
+            "--log",
+            str(log_path),
+            "--minutes-reading",
+            "24",
+            "--operator-note",
+            "Read for 24 minutes without blocking friction.",
+            "--json",
+        ]
+    )
+
+    assert rc == 0
+    records = load_jsonl(log_path)
+    assert len(records) == 1
+    assert records[0]["session_id"] == "draft-session-1"
+    assert records[0]["minutes_reading"] == 24
+    assert records[0]["steps"]["7"]["operator_note"] == (
+        "Read for 24 minutes without blocking friction."
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == 1
+    assert payload["recorded_session_id"] == "draft-session-1"
+    assert payload["draft_path"] == str(draft_path)
+    assert payload["log_path"] == str(log_path)
+    assert payload["view"]["valid_sessions"] == 1
+    assert payload["view"]["invalid_session_count"] == 0
+
+
+def test_antiek_read_activation_record_draft_preflights_before_append(
+    tmp_path: Path,
+    capsys,
+) -> None:  # type: ignore[no-untyped-def]
+    draft_path = tmp_path / "read-activation-record-session-draft.json"
+    log_path = tmp_path / "read-dogfood.jsonl"
+    _write_activation_draft(draft_path)
+
+    rc = main(
+        [
+            "read",
+            "activation",
+            "record-draft",
+            "--draft",
+            str(draft_path),
+            "--log",
+            str(log_path),
+            "--minutes-reading",
+            "12",
+            "--operator-note",
+            "Only read briefly.",
+        ]
+    )
+
+    assert rc == 2
+    assert not log_path.exists()
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "record-draft: session evidence is invalid; not appending" in captured.err
+    assert "draft-session-1: minutes_reading must be at least 20" in captured.err
+
+
 def test_antiek_read_activation_next_session_recommends_citation_for_missing_log(
     tmp_path: Path,
     capsys,

@@ -126,6 +126,9 @@ TEMPLATE_CITATION_RESULT_URLS: frozenset[str] = frozenset(
         "https://antiek.ai/read/source-doc-1?chunk=chunk-1",
     }
 )
+EVIDENCE_DRAFT_KIND = "read_activation_record_session_draft"
+EVIDENCE_DRAFT_PENDING_MINUTES = "<minutes_reading_at_least_20>"
+EVIDENCE_DRAFT_PENDING_OPERATOR_NOTE = "<operator_20_minute_reading_note>"
 REQUIRED_VALID_SESSIONS = 10
 REQUIRED_LIVE_PROVIDER_SESSIONS = 5
 REQUIRED_CITATION_TRACE_SESSIONS = 3
@@ -563,6 +566,62 @@ def validate_session_record(record: dict[str, Any]) -> tuple[str, ...]:
     prefix = f"{session_id}: "
     report = validate_sessions([record])
     return tuple(failure for failure in report.failures if failure.startswith(prefix))
+
+
+def build_session_record_from_draft(
+    draft: dict[str, Any],
+    *,
+    minutes_reading: int,
+    operator_note: str,
+    verdict: str | None = None,
+    blocking_issue_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build an append-ready dogfood record from a golden-path draft artifact."""
+    if draft.get("schema_version") != 1:
+        raise ValueError("draft schema_version must be 1")
+    if draft.get("kind") != EVIDENCE_DRAFT_KIND:
+        raise ValueError(f"draft kind must be {EVIDENCE_DRAFT_KIND}")
+    fields = draft.get("record_session_fields_template")
+    if not isinstance(fields, dict):
+        raise ValueError("draft record_session_fields_template must be an object")
+    if fields.get("minutes_reading") != EVIDENCE_DRAFT_PENDING_MINUTES:
+        raise ValueError("draft minutes_reading placeholder is missing")
+    if fields.get("operator_note") != EVIDENCE_DRAFT_PENDING_OPERATOR_NOTE:
+        raise ValueError("draft operator_note placeholder is missing")
+
+    return build_session_record(
+        session_id=_require_record_text("session_id", fields.get("session_id")),
+        date=_require_record_text("date", fields.get("date")),
+        build_sha=_require_record_text("build_sha", fields.get("build_sha")),
+        url=_require_record_text("url", fields.get("url")),
+        operator=_require_record_text("operator", fields.get("operator")),
+        document_id=_require_record_text("document_id", fields.get("document_id")),
+        entry_door=_require_record_text("entry_door", fields.get("entry_door")),
+        provider_status=_required_text(fields.get("provider_status")) or None,
+        minutes_reading=minutes_reading,
+        visible_content_note=_require_record_text(
+            "visible_content_note",
+            fields.get("visible_content_note"),
+        ),
+        selected_text=_require_record_text("selected_text", fields.get("selected_text")),
+        return_context_note=_require_record_text(
+            "return_context_note",
+            fields.get("return_context_note"),
+        ),
+        operator_note=operator_note,
+        live_provider_ai=fields.get("live_provider_ai") is True,
+        citation_traced=fields.get("citation_traced") is True,
+        first_answer=_required_text(fields.get("first_answer")) or None,
+        investigation_id=_required_text(fields.get("investigation_id")) or None,
+        dialogue_no_key_copy=_required_text(fields.get("dialogue_no_key_copy")) or None,
+        research_no_key_copy=_required_text(fields.get("research_no_key_copy")) or None,
+        source_document_id=_required_text(fields.get("source_document_id")) or None,
+        chunk_id=_required_text(fields.get("chunk_id")) or None,
+        anchor=_required_text(fields.get("anchor")) or None,
+        result_url=_required_text(fields.get("result_url")) or None,
+        verdict=verdict,
+        blocking_issue_ids=blocking_issue_ids,
+    )
 
 
 def _require_record_text(field: str, value: Any) -> str:

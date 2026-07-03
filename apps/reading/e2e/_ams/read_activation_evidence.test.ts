@@ -30,6 +30,16 @@ describe("read activation evidence draft", () => {
       "<minutes_reading_at_least_20>",
       "<operator_20_minute_reading_note>",
     ]);
+    expect(draft.record_session_fields_template).toMatchObject({
+      session_id: "read-golden-path-e2e-abcdef0",
+      provider_status: "absent",
+      live_provider_ai: false,
+      citation_traced: true,
+      minutes_reading: "<minutes_reading_at_least_20>",
+      operator_note: "<operator_20_minute_reading_note>",
+      source_document_id: "doc-source-42",
+      chunk_id: "chunk-7",
+    });
     expect(draft.record_session_argv_template).toContain("record-session");
     expect(draft.record_session_argv_template).toContain("--citation-traced");
     expect(draft.record_session_argv_template).toContain("--dialogue-no-key-copy");
