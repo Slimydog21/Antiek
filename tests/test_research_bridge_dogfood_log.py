@@ -13,6 +13,91 @@ from substrate.research_bridge.dogfood_log import (
     write_dogfood_scaffold,
 )
 
+PROJECT_NAMES = (
+    "Sell-side AI infra memo",
+    "Anthropic market scan",
+    "AlphaSense earnings read",
+    "Mixed-provider author brief",
+    "Operator status-quo replacement",
+)
+
+
+def _complete_project_entry(name: str, idx: int, session_id: str | None = None) -> str:
+    session = session_id if session_id is not None else f"sess-{idx}"
+    return f"""## Project name
+
+{name}
+
+## Goal
+
+Produce dogfood project {idx}.
+
+## Session ID
+
+{session}
+
+## Provider mix
+
+Grok and Claude.
+
+## Block count at start / end
+
+- Start: {idx}
+- End: {idx + 2}
+
+## Mode(s) used
+
+A and B.
+
+## Draft produced
+
+runs/adrb/drafts/project-{idx}.md
+
+## Did mode A produce something I'd send / publish?
+
+with-edits. It needed a pass but preserved the outline.
+
+## Did mode B's prompts cause me to actually run prompts?
+
+Yes. Prompt {idx} was run manually.
+
+## What failed?
+
+The first outline was too broad.
+
+## What surprised me?
+
+The gap prompts found a missing comparison.
+
+## Would I open this again tomorrow?
+
+Yes.
+"""
+
+
+def _write_operator_log(
+    root: Path,
+    *,
+    planned: tuple[str, ...] = PROJECT_NAMES,
+    entries: tuple[str, ...],
+) -> None:
+    planned_lines = "\n".join(
+        f"{idx}. {name}" for idx, name in enumerate(planned, start=1)
+    )
+    (root / "operator-log.md").write_text(
+        f"""# Antiek Deep Research Bridge Operator Log
+
+## Five projects chosen up front
+
+{planned_lines}
+
+## Project entries
+
+"""
+        + "\n".join(entries),
+        encoding="utf-8",
+    )
+
 
 def test_dogfood_scaffold_creates_template_and_operator_log(tmp_path: Path) -> None:
     result = write_dogfood_scaffold(tmp_path)
@@ -214,84 +299,12 @@ def test_dogfood_log_validate_accepts_five_complete_project_entries(
     tmp_path: Path,
 ) -> None:
     write_dogfood_scaffold(tmp_path)
-    entries = []
-    for idx, name in enumerate(
-        (
-            "Sell-side AI infra memo",
-            "Anthropic market scan",
-            "AlphaSense earnings read",
-            "Mixed-provider author brief",
-            "Operator status-quo replacement",
+    _write_operator_log(
+        tmp_path,
+        entries=tuple(
+            _complete_project_entry(name, idx)
+            for idx, name in enumerate(PROJECT_NAMES, start=1)
         ),
-        start=1,
-    ):
-        entries.append(
-            f"""## Project name
-
-{name}
-
-## Goal
-
-Produce dogfood project {idx}.
-
-## Session ID
-
-sess-{idx}
-
-## Provider mix
-
-Grok and Claude.
-
-## Block count at start / end
-
-- Start: {idx}
-- End: {idx + 2}
-
-## Mode(s) used
-
-A and B.
-
-## Draft produced
-
-runs/adrb/drafts/project-{idx}.md
-
-## Did mode A produce something I'd send / publish?
-
-with-edits. It needed a pass but preserved the outline.
-
-## Did mode B's prompts cause me to actually run prompts?
-
-Yes. Prompt {idx} was run manually.
-
-## What failed?
-
-The first outline was too broad.
-
-## What surprised me?
-
-The gap prompts found a missing comparison.
-
-## Would I open this again tomorrow?
-
-Yes.
-"""
-        )
-    (tmp_path / "operator-log.md").write_text(
-        """# Antiek Deep Research Bridge Operator Log
-
-## Five projects chosen up front
-
-1. Sell-side AI infra memo
-2. Anthropic market scan
-3. AlphaSense earnings read
-4. Mixed-provider author brief
-5. Operator status-quo replacement
-
-## Project entries
-
-"""
-        + "\n".join(entries),
-        encoding="utf-8",
     )
 
     result = validate_dogfood_log(tmp_path)
@@ -304,6 +317,46 @@ Yes.
         "sess-3",
         "sess-4",
         "sess-5",
+    )
+
+
+def test_dogfood_log_validate_rejects_entries_for_unplanned_projects(
+    tmp_path: Path,
+) -> None:
+    write_dogfood_scaffold(tmp_path)
+    entries = tuple(
+        _complete_project_entry(name, idx)
+        for idx, name in enumerate(PROJECT_NAMES[:-1] + ("Unplanned project",), start=1)
+    )
+    _write_operator_log(tmp_path, entries=entries)
+
+    result = validate_dogfood_log(tmp_path)
+
+    assert result.ok is False
+    assert result.complete_project_entries[-1] == "Unplanned project"
+    assert (
+        "complete entries missing planned projects: Operator status-quo replacement"
+        in result.missing_requirements
+    )
+    assert (
+        "complete entries include unplanned projects: Unplanned project"
+        in result.missing_requirements
+    )
+
+
+def test_dogfood_log_validate_rejects_duplicate_session_ids(tmp_path: Path) -> None:
+    write_dogfood_scaffold(tmp_path)
+    entries = tuple(
+        _complete_project_entry(name, idx, session_id="sess-dup" if idx <= 2 else None)
+        for idx, name in enumerate(PROJECT_NAMES, start=1)
+    )
+    _write_operator_log(tmp_path, entries=entries)
+
+    result = validate_dogfood_log(tmp_path)
+
+    assert result.ok is False
+    assert "project session ids must be unique; duplicates: sess-dup" in (
+        result.missing_requirements
     )
 
 

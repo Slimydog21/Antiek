@@ -444,6 +444,30 @@ def validate_dogfood_log(root: str | Path | None = None) -> DogfoodLogValidation
         missing.append(
             f"expected 5 complete project entries, found {len(complete_entries)}"
         )
+    if len(planned) >= 5 and len(complete_entries) >= 5:
+        planned_set = set(planned)
+        complete_set = set(complete_entries)
+        missing_projects = tuple(sorted(planned_set.difference(complete_set)))
+        extra_projects = tuple(sorted(complete_set.difference(planned_set)))
+        if missing_projects:
+            missing.append(
+                "complete entries missing planned projects: "
+                + ", ".join(missing_projects)
+            )
+        if extra_projects:
+            missing.append(
+                "complete entries include unplanned projects: "
+                + ", ".join(extra_projects)
+            )
+    session_ids = [entry.session_id for entry in project_entries]
+    duplicate_session_ids = tuple(
+        sorted({session_id for session_id in session_ids if session_ids.count(session_id) > 1})
+    )
+    if duplicate_session_ids:
+        missing.append(
+            "project session ids must be unique; duplicates: "
+            + ", ".join(duplicate_session_ids)
+        )
     return DogfoodLogValidation(
         operator_log_path=operator_log_path,
         planned_projects=planned,
