@@ -1,0 +1,28 @@
+- subsystem: orchestration/phase_log
+  signal_type: regression
+  signal_check_path: orchestration/phase_log/log.py
+  abundance_score: high
+  demand_score: high
+  notes: "Phase logs are core orchestration telemetry with durable code paths and direct product demand for traceable runs."
+  origin: SPR-02 seed registry
+- subsystem: substrate/synthesis_rubric
+  signal_type: rubric
+  signal_check_path: substrate/synthesis_rubric/scorer.py
+  abundance_score: medium
+  demand_score: high
+  notes: "The rubric scorer provides explicit quality checks; high demand comes from synthesis gate pressure."
+  origin: SPR-02 seed registry
+- subsystem: roles/cascade_planner
+  signal_type: categorical
+  signal_check_path: roles/cascade_planner/tree_contract.py
+  abundance_score: high
+  demand_score: medium
+  notes: "Planner tree contracts give categorical pass/fail structure with plentiful planner fixtures and code paths."
+  origin: SPR-02 seed registry
+- subsystem: substrate/voice_style
+  signal_type: absent
+  signal_check_path: null
+  abundance_score: low
+  demand_score: low
+  notes: ""
+  origin: SPR-02 seed registry
