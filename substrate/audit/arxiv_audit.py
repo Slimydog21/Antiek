@@ -277,7 +277,7 @@ def record_event(
     return event_id
 
 
-def _row_to_event(r: tuple) -> ArxivAuditEvent:
+def _row_to_event(r: tuple[Any, ...]) -> ArxivAuditEvent:
     return ArxivAuditEvent(
         event_id=r[0],
         arxiv_id=r[1],
