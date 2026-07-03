@@ -30,7 +30,7 @@ vi.mock("../../workspace/useViewportTier", () => ({
 import Settings from "./index";
 
 function roadmapResponse(
-  read_activation: Record<string, unknown> | null = {
+  read_activation: Record<string, unknown> | null | undefined = {
     source_path: "reports/read-dogfood.jsonl",
     state: "incomplete",
     total_sessions: 2,
@@ -67,11 +67,31 @@ function roadmapResponse(
       },
     },
   },
+  adrb_dogfood: Record<string, unknown> | null | undefined = {
+    state: "incomplete",
+    closure_ready: false,
+    dogfood_root: "runs/adrb",
+    operator_log_path: "runs/adrb/operator-log.md",
+    metrics_path: "runs/adrb/dogfood_metrics.md",
+    verdict_path: "docs/adrb_post_dogfood_verdict.md",
+    expected_project_count: 5,
+    complete_project_entries: 2,
+    reconciled_sessions: 1,
+    valid_wave4_candidates: 0,
+    metrics_current: false,
+    mode_a_verdict: null,
+    mode_b_verdict: "ITERATE",
+    missing_requirements: [
+      "expected 5 complete project entries, found 2",
+      "dogfood_metrics.md is stale; regenerate dogfood-report",
+    ],
+    error: null,
+  },
 ) {
   return {
     ok: true,
     status: 200,
-    json: async () => ({ read_activation }),
+    json: async () => ({ read_activation, adrb_dogfood }),
   } as Response;
 }
 
@@ -137,6 +157,25 @@ describe("Settings", () => {
     expect(apiFetchMock).toHaveBeenCalledWith("/coordination/roadmap");
   });
 
+  it("surfaces Research Bridge dogfood counters from the coordination roadmap", async () => {
+    render(<Settings />);
+
+    expect(await screen.findByText("Research Bridge dogfood")).toBeTruthy();
+    expect(screen.getByText("Deep Research Bridge dogfood")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "2/5 projects · 1 reconciled · metrics=stale/missing · verdict A=missing B=ITERATE",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Remaining: expected 5 complete project entries, found 2; dogfood_metrics\.md is stale/i,
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/runs\/adrb/i)).toBeTruthy();
+    expect(screen.getByText(/docs\/adrb_post_dogfood_verdict\.md/i)).toBeTruthy();
+  });
+
   it("handles missing Read activation status without inventing evidence", async () => {
     apiFetchMock.mockResolvedValue(roadmapResponse(null));
 
@@ -145,6 +184,19 @@ describe("Settings", () => {
     expect(await screen.findByText("unavailable")).toBeTruthy();
     expect(
       screen.getByText(/Coordination did not return Read activation evidence status/i),
+    ).toBeTruthy();
+  });
+
+  it("handles missing Research Bridge dogfood status without inventing evidence", async () => {
+    apiFetchMock.mockResolvedValue(roadmapResponse(undefined, null));
+
+    render(<Settings />);
+
+    expect(await screen.findByText("unavailable")).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Coordination did not return Research Bridge dogfood evidence status/i,
+      ),
     ).toBeTruthy();
   });
 
@@ -159,8 +211,8 @@ describe("Settings", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("GET /coordination/roadmap failed: HTTP 503"),
-      ).toBeTruthy();
+        screen.getAllByText("GET /coordination/roadmap failed: HTTP 503"),
+      ).toHaveLength(2);
     });
   });
 

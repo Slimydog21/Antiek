@@ -81,6 +81,7 @@ function roadmap(
     execution_focus: executionFocus,
     operator_gate_focus: null,
     read_activation: null,
+    adrb_dogfood: null,
     operator_actions: null,
     phase2_audit: null,
     engineering_deferrals: null,
@@ -529,6 +530,81 @@ describe("Roadmap", () => {
 
     expect(
       screen.getByText(/Dogfood log is malformed; repair the JSONL before counting it/),
+    ).toBeTruthy();
+  });
+
+  it("shows Deep Research Bridge dogfood status without treating it as closure", () => {
+    render(
+      <Roadmap
+        roadmap={{
+          ...roadmap([]),
+          adrb_dogfood: {
+            state: "incomplete",
+            closure_ready: false,
+            dogfood_root: "runs/adrb",
+            operator_log_path: "runs/adrb/operator-log.md",
+            metrics_path: "runs/adrb/dogfood_metrics.md",
+            verdict_path: "docs/adrb_post_dogfood_verdict.md",
+            expected_project_count: 5,
+            complete_project_entries: 2,
+            reconciled_sessions: 1,
+            valid_wave4_candidates: 0,
+            metrics_current: false,
+            mode_a_verdict: null,
+            mode_b_verdict: "ITERATE",
+            missing_requirements: [
+              "expected 5 complete project entries, found 2",
+              "dogfood_metrics.md is stale; regenerate dogfood-report",
+            ],
+            error: null,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Deep Research Bridge dogfood")).toBeTruthy();
+    expect(screen.getByText("ADRB operator evidence")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "2/5 projects · 1 reconciled · metrics=stale/missing · verdict A=missing B=ITERATE",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Remaining: expected 5 complete project entries, found 2; dogfood_metrics\.md is stale/i,
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Source: runs\/adrb/i)).toBeTruthy();
+  });
+
+  it("surfaces Deep Research Bridge readiness errors as repair work", () => {
+    render(
+      <Roadmap
+        roadmap={{
+          ...roadmap([]),
+          adrb_dogfood: {
+            state: "error",
+            closure_ready: false,
+            dogfood_root: "",
+            operator_log_path: "",
+            metrics_path: "",
+            verdict_path: "",
+            expected_project_count: 5,
+            complete_project_entries: 0,
+            reconciled_sessions: 0,
+            valid_wave4_candidates: 0,
+            metrics_current: false,
+            mode_a_verdict: null,
+            mode_b_verdict: null,
+            missing_requirements: ["missing table research_pastes"],
+            error: "missing table research_pastes",
+          },
+        }}
+      />,
+    );
+
+    expect(
+      screen.getByText(/Readiness check failed: missing table research_pastes/),
     ).toBeTruthy();
   });
 

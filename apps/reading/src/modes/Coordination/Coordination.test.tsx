@@ -168,6 +168,26 @@ describe("Coordination", () => {
             },
             failures: [" bad row ", " "],
           },
+          adrb_dogfood: {
+            state: " incomplete ",
+            closure_ready: false,
+            dogfood_root: " runs/adrb ",
+            operator_log_path: " runs/adrb/operator-log.md ",
+            metrics_path: " runs/adrb/dogfood_metrics.md ",
+            verdict_path: " docs/adrb_post_dogfood_verdict.md ",
+            expected_project_count: "5",
+            complete_project_entries: "2",
+            reconciled_sessions: "1",
+            valid_wave4_candidates: "0",
+            metrics_current: false,
+            mode_a_verdict: " ",
+            mode_b_verdict: " ITERATE ",
+            missing_requirements: [
+              " expected 5 complete project entries, found 2 ",
+              " ",
+            ],
+            error: " ",
+          },
           operator_actions: {
             source_path: " docs/OPERATOR_ACTIONS.md ",
             total_actions: "20.8",
@@ -333,6 +353,17 @@ describe("Coordination", () => {
     expect(screen.getByText("library browse")).toBeTruthy();
     expect(screen.getByText("structural status is not activation closure")).toBeTruthy();
     expect(screen.getByText("Read activation dogfood")).toBeTruthy();
+    expect(screen.getByText("Deep Research Bridge dogfood")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "2/5 projects · 1 reconciled · metrics=stale/missing · verdict A=missing B=ITERATE",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Remaining: expected 5 complete project entries, found 2. Source: runs/adrb.",
+      ),
+    ).toBeTruthy();
     expect(
       screen.getByText(
         "1/10 required valid (2 total) · 0 live-provider · 1 citation-traced · 0 non-library · verdict=missing",

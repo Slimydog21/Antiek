@@ -88,6 +88,11 @@ from substrate.coordination.source_gate_status import (
     SourceGateView,
     build_source_gate_view,
 )
+from substrate.research_bridge.dogfood_log import DOGFOOD_PROJECT_COUNT
+from substrate.research_bridge.dogfood_readiness import (
+    DogfoodReadiness,
+    audit_dogfood_readiness,
+)
 
 # ── Response shapes ──────────────────────────────────────────────────────────
 
@@ -281,6 +286,100 @@ class ReadActivationStatusResponse(BaseModel):
             next_session=ReadActivationNextSessionResponse.from_recommendation(
                 recommend_read_activation_next_session(view),
             ),
+        )
+
+
+class AdrbDogfoodStatusResponse(BaseModel):
+    """Deep Research Bridge dogfood closure status.
+
+    This is a read-only projection over the ADRB dogfood log, bridge substrate
+    rows, metrics artifact, and verdict document. It does not initialize schema
+    or create operator artifacts; missing evidence is data for the operator.
+    """
+
+    state: Literal["not_checked", "incomplete", "ready", "error"]
+    closure_ready: bool
+    dogfood_root: str
+    operator_log_path: str
+    metrics_path: str
+    verdict_path: str
+    expected_project_count: int
+    complete_project_entries: int
+    reconciled_sessions: int
+    valid_wave4_candidates: int
+    metrics_current: bool
+    mode_a_verdict: str | None
+    mode_b_verdict: str | None
+    missing_requirements: list[str]
+    error: str | None
+
+    @classmethod
+    def from_readiness(
+        cls,
+        readiness: DogfoodReadiness,
+    ) -> AdrbDogfoodStatusResponse:
+        return cls(
+            state="ready" if readiness.ok else "incomplete",
+            closure_ready=readiness.ok,
+            dogfood_root=str(readiness.dogfood_root),
+            operator_log_path=str(readiness.log_validation.operator_log_path),
+            metrics_path=str(readiness.metrics_path),
+            verdict_path=str(readiness.verdict_path),
+            expected_project_count=DOGFOOD_PROJECT_COUNT,
+            complete_project_entries=len(
+                readiness.log_validation.complete_project_entries
+            ),
+            reconciled_sessions=len(readiness.reconciliation.sessions),
+            valid_wave4_candidates=len(readiness.wave4_validation.candidates),
+            metrics_current=readiness.metrics_artifact.current,
+            mode_a_verdict=readiness.verdict_validation.mode_a_verdict,
+            mode_b_verdict=readiness.verdict_validation.mode_b_verdict,
+            missing_requirements=list(readiness.missing_requirements),
+            error=None,
+        )
+
+    @classmethod
+    def not_checked(cls) -> AdrbDogfoodStatusResponse:
+        return cls(
+            state="not_checked",
+            closure_ready=False,
+            dogfood_root="",
+            operator_log_path="",
+            metrics_path="",
+            verdict_path="",
+            expected_project_count=DOGFOOD_PROJECT_COUNT,
+            complete_project_entries=0,
+            reconciled_sessions=0,
+            valid_wave4_candidates=0,
+            metrics_current=False,
+            mode_a_verdict=None,
+            mode_b_verdict=None,
+            missing_requirements=["ADRB dogfood readiness was not checked"],
+            error=None,
+        )
+
+    @classmethod
+    def from_error(
+        cls,
+        error: Exception,
+    ) -> AdrbDogfoodStatusResponse:
+        message = str(error) or type(error).__name__
+        return cls(
+            state="error",
+            closure_ready=False,
+            dogfood_root="",
+            operator_log_path="",
+            metrics_path="",
+            verdict_path="",
+            expected_project_count=DOGFOOD_PROJECT_COUNT,
+            complete_project_entries=0,
+            reconciled_sessions=0,
+            valid_wave4_candidates=0,
+            metrics_current=False,
+            mode_a_verdict=None,
+            mode_b_verdict=None,
+            missing_requirements=[message],
+            error=message,
         )
 
 
@@ -588,6 +687,7 @@ class RoadmapResponse(BaseModel):
     execution_focus: ExecutionFocusResponse | None
     operator_gate_focus: OperatorGateFocusResponse | None
     read_activation: ReadActivationStatusResponse
+    adrb_dogfood: AdrbDogfoodStatusResponse
     operator_actions: OperatorActionsSummaryResponse
     phase2_audit: Phase2AuditResponse
     engineering_deferrals: EngineeringDeferralsSummaryResponse
@@ -601,6 +701,7 @@ class RoadmapResponse(BaseModel):
         rm: Roadmap,
         gate_ledger: GateLedger | None = None,
         read_activation: ReadActivationView | None = None,
+        adrb_dogfood: AdrbDogfoodStatusResponse | None = None,
         operator_actions: OperatorActionsView | None = None,
         phase2_audit: Phase2AuditView | None = None,
         engineering_deferrals: EngineeringDeferralsView | None = None,
@@ -648,6 +749,7 @@ class RoadmapResponse(BaseModel):
             read_activation=ReadActivationStatusResponse.from_view(
                 read_activation or build_read_activation_view()
             ),
+            adrb_dogfood=adrb_dogfood or AdrbDogfoodStatusResponse.not_checked(),
             operator_actions=OperatorActionsSummaryResponse.from_view(
                 operator_actions or load_operator_actions()
             ),
@@ -839,6 +941,15 @@ def _resolve_db_path() -> str:
     return path
 
 
+def _build_adrb_dogfood_status(db_path: str) -> AdrbDogfoodStatusResponse:
+    try:
+        return AdrbDogfoodStatusResponse.from_readiness(
+            audit_dogfood_readiness(db_path)
+        )
+    except Exception as exc:  # pragma: no cover - exact DB error varies by DuckDB
+        return AdrbDogfoodStatusResponse.from_error(exc)
+
+
 # ── Routes (GET-only — no writer imported, no mutating verb) ─────────────────
 
 def register_coordination_routes(app: FastAPI) -> None:
@@ -879,6 +990,7 @@ def register_coordination_routes(app: FastAPI) -> None:
             build_roadmap(),
             load_gate_ledger(),
             build_read_activation_view(),
+            _build_adrb_dogfood_status(db),
             load_operator_actions(),
             load_phase2_audit(),
             load_engineering_deferrals(),

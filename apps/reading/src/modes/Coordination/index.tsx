@@ -5,6 +5,7 @@ import { GateLedger } from "./GateLedger";
 import type { CoordProduct, GateImpactView, GateView } from "./GateLedger";
 import { Roadmap } from "./Roadmap";
 import type {
+  AdrbDogfoodStatusView,
   DependencyBlockerView,
   EngineeringDeferralView,
   EngineeringDeferralsSummaryView,
@@ -273,6 +274,28 @@ function safeReadActivationStatus(value: unknown): ReadActivationStatusView | nu
   };
 }
 
+function safeAdrbDogfoodStatus(value: unknown): AdrbDogfoodStatusView | null {
+  const dogfood = record(value);
+  if (!dogfood) return null;
+  return {
+    state: nonEmptyString(dogfood.state) ?? "not_checked",
+    closure_ready: dogfood.closure_ready === true,
+    dogfood_root: nonEmptyString(dogfood.dogfood_root) ?? "",
+    operator_log_path: nonEmptyString(dogfood.operator_log_path) ?? "",
+    metrics_path: nonEmptyString(dogfood.metrics_path) ?? "",
+    verdict_path: nonEmptyString(dogfood.verdict_path) ?? "",
+    expected_project_count: nonNegativeInteger(dogfood.expected_project_count),
+    complete_project_entries: nonNegativeInteger(dogfood.complete_project_entries),
+    reconciled_sessions: nonNegativeInteger(dogfood.reconciled_sessions),
+    valid_wave4_candidates: nonNegativeInteger(dogfood.valid_wave4_candidates),
+    metrics_current: dogfood.metrics_current === true,
+    mode_a_verdict: nullableString(dogfood.mode_a_verdict),
+    mode_b_verdict: nullableString(dogfood.mode_b_verdict),
+    missing_requirements: stringList(dogfood.missing_requirements),
+    error: nullableString(dogfood.error),
+  };
+}
+
 function safePhase2SprintScore(value: unknown): Phase2SprintScoreView | null {
   const score = record(value);
   const sprint = nonEmptyString(score?.sprint);
@@ -477,6 +500,7 @@ function safeRoadmapView(value: unknown): RoadmapView {
     execution_focus: safeExecutionFocus(body?.execution_focus),
     operator_gate_focus: safeOperatorGateFocus(body?.operator_gate_focus),
     read_activation: safeReadActivationStatus(body?.read_activation),
+    adrb_dogfood: safeAdrbDogfoodStatus(body?.adrb_dogfood),
     operator_actions: safeOperatorActionsSummary(body?.operator_actions),
     phase2_audit: safePhase2Audit(body?.phase2_audit),
     engineering_deferrals: safeEngineeringDeferralsSummary(

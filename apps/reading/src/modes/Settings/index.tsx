@@ -5,7 +5,10 @@ import LemonCard from "../../components/lemon/LemonCard";
 import { LemonTag } from "../../components/lemon";
 import { useProviderKeys } from "../../hooks/useProviderKeys";
 import { apiFetch } from "../../lib/api";
-import type { ReadActivationStatusView } from "../Coordination/Roadmap";
+import type {
+  AdrbDogfoodStatusView,
+  ReadActivationStatusView,
+} from "../Coordination/Roadmap";
 
 /**
  * Operator Settings.
@@ -111,6 +114,10 @@ export default function Settings() {
           <ReadDogfoodStatus status={readActivation} />
         </LemonCard>
 
+        <LemonCard title="Research Bridge dogfood" elevation="z1">
+          <AdrbDogfoodStatus status={readActivation} />
+        </LemonCard>
+
         <LemonCard title="Control surfaces" elevation="z1" colour="glacial">
           <div className="p-4 grid gap-2 sm:grid-cols-2">
             <ControlLink href="/trust" title="Trust Center" body="Published privacy, deletion, and training commitments" />
@@ -125,19 +132,25 @@ export default function Settings() {
 }
 
 type ReadActivationLoadState =
-  | { status: "loading"; activation: null; error: null }
-  | { status: "ready"; activation: ReadActivationStatusView | null; error: null }
-  | { status: "error"; activation: null; error: string };
+  | { status: "loading"; activation: null; adrb: null; error: null }
+  | {
+      status: "ready";
+      activation: ReadActivationStatusView | null;
+      adrb: AdrbDogfoodStatusView | null;
+      error: null;
+    }
+  | { status: "error"; activation: null; adrb: null; error: string };
 
 function useReadActivationStatus(): ReadActivationLoadState {
   const [state, setState] = useState<ReadActivationLoadState>({
     status: "loading",
     activation: null,
+    adrb: null,
     error: null,
   });
 
   const load = useCallback(async () => {
-    setState({ status: "loading", activation: null, error: null });
+    setState({ status: "loading", activation: null, adrb: null, error: null });
     try {
       const response = await apiFetch("/coordination/roadmap");
       if (!response.ok) {
@@ -147,12 +160,14 @@ function useReadActivationStatus(): ReadActivationLoadState {
       setState({
         status: "ready",
         activation: safeReadActivationStatus(body?.read_activation),
+        adrb: safeAdrbDogfoodStatus(body?.adrb_dogfood),
         error: null,
       });
     } catch (error: unknown) {
       setState({
         status: "error",
         activation: null,
+        adrb: null,
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -253,6 +268,89 @@ function ReadDogfoodStatus({ status }: { status: ReadActivationLoadState }) {
         <p className="text-xs font-mono text-ink-soft dark:text-starlight">
           Next: {nextSession.recommended_template || nextSession.next_action}
           {nextSession.append_command ? ` · ${nextSession.append_command}` : ""}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function AdrbDogfoodStatus({ status }: { status: ReadActivationLoadState }) {
+  if (status.status === "loading") {
+    return (
+      <div className="p-4 text-sm text-shadow-1 dark:text-moonlight">
+        Loading Research Bridge dogfood evidence...
+      </div>
+    );
+  }
+
+  if (status.status === "error") {
+    return (
+      <div className="p-4 space-y-2">
+        <LemonTag colour="danger">unreachable</LemonTag>
+        <p className="text-sm text-shadow-1 dark:text-moonlight">
+          {status.error}
+        </p>
+      </div>
+    );
+  }
+
+  const dogfood = status.adrb;
+  if (!dogfood) {
+    return (
+      <div className="p-4 space-y-2">
+        <LemonTag colour="muted">unavailable</LemonTag>
+        <p className="text-sm text-shadow-1 dark:text-moonlight">
+          Coordination did not return Research Bridge dogfood evidence status.
+        </p>
+      </div>
+    );
+  }
+
+  const missing = dogfood.missing_requirements ?? [];
+  const missingText =
+    missing.length > 0
+      ? missing.slice(0, 3).join("; ") + (missing.length > 3 ? "..." : "")
+      : "";
+
+  return (
+    <div className="p-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-serif text-ink dark:text-bright">
+          Deep Research Bridge dogfood
+        </p>
+        <LemonTag
+          colour={
+            dogfood.closure_ready
+              ? "aurora"
+              : dogfood.state === "error"
+                ? "danger"
+                : "sun"
+          }
+        >
+          {dogfood.closure_ready ? "ready" : dogfood.state}
+        </LemonTag>
+      </div>
+      <p className="text-xs font-mono text-ink dark:text-bright">
+        {dogfood.complete_project_entries}/{dogfood.expected_project_count}{" "}
+        projects · {dogfood.reconciled_sessions} reconciled · metrics=
+        {dogfood.metrics_current ? "current" : "stale/missing"} · verdict A=
+        {dogfood.mode_a_verdict || "missing"} B=
+        {dogfood.mode_b_verdict || "missing"}
+      </p>
+      <p className="text-sm text-shadow-1 dark:text-moonlight">
+        {dogfood.closure_ready
+          ? "Bridge dogfood evidence is mechanically ready; the operator verdict remains the product bar."
+          : dogfood.error
+            ? `Readiness check failed: ${dogfood.error}`
+            : missingText
+              ? `Remaining: ${missingText}.`
+              : "No bridge dogfood closure evidence is ready yet."}{" "}
+        Source:{" "}
+        <code className="font-mono">{dogfood.dogfood_root || "runs/adrb"}</code>.
+      </p>
+      {dogfood.verdict_path && (
+        <p className="text-xs font-mono text-ink-soft dark:text-starlight">
+          Verdict: {dogfood.verdict_path}
         </p>
       )}
     </div>
@@ -374,5 +472,27 @@ function safeReadActivationStatus(value: unknown): ReadActivationStatusView | nu
           remaining_requirements: numberRecord(nextSession.remaining_requirements),
         }
       : null,
+  };
+}
+
+function safeAdrbDogfoodStatus(value: unknown): AdrbDogfoodStatusView | null {
+  const dogfood = record(value);
+  if (!dogfood) return null;
+  return {
+    state: nonEmptyString(dogfood.state) ?? "not_checked",
+    closure_ready: dogfood.closure_ready === true,
+    dogfood_root: nonEmptyString(dogfood.dogfood_root) ?? "",
+    operator_log_path: nonEmptyString(dogfood.operator_log_path) ?? "",
+    metrics_path: nonEmptyString(dogfood.metrics_path) ?? "",
+    verdict_path: nonEmptyString(dogfood.verdict_path) ?? "",
+    expected_project_count: nonNegativeInteger(dogfood.expected_project_count),
+    complete_project_entries: nonNegativeInteger(dogfood.complete_project_entries),
+    reconciled_sessions: nonNegativeInteger(dogfood.reconciled_sessions),
+    valid_wave4_candidates: nonNegativeInteger(dogfood.valid_wave4_candidates),
+    metrics_current: dogfood.metrics_current === true,
+    mode_a_verdict: nullableString(dogfood.mode_a_verdict),
+    mode_b_verdict: nullableString(dogfood.mode_b_verdict),
+    missing_requirements: stringList(dogfood.missing_requirements),
+    error: nullableString(dogfood.error),
   };
 }
