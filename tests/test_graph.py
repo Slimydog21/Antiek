@@ -395,6 +395,111 @@ def test_search_with_edges_attaches_edges_and_nodes(db_path):
     assert {"PsiQuantum", "photon"} <= labels
 
 
+def test_render_subgraph_block_surfaces_edge_ids_for_the_role(db_path, monkeypatch):
+    """GPW SPR-02 keystone: the orchestrator's subgraph_block renderer turns
+    the sub-question's graph neighborhood into a block the evidence-retriever
+    role can read + cite — replacing the '(subgraph search not yet wired)'
+    placeholder. Proves a REAL seeded edge (with its edge_id) reaches the block."""
+    from orchestration.loop_one.orchestrator import (
+        _render_subgraph_block_for_sub_question,
+    )
+
+    model = _StubEmbeddingModel()
+    c1, _, _ = _seed_three_chunks(db_path, model)
+    con = connect_write(db_path, purpose="seed_graph")
+    try:
+        n1 = insert_node(
+            con, canonical_label="PsiQuantum", node_type="organization",
+            graph_scope="cross_domain", investigation_id="seed",
+        )
+        n2 = insert_node(
+            con, canonical_label="photon", node_type="entity",
+            graph_scope="cross_domain", investigation_id="seed",
+        )
+        eid = insert_edge(
+            con, source_node_id=n1, target_node_id=n2,
+            relation="uses", source_tier=1, extraction_confidence=0.9,
+            graph_scope="cross_domain", investigation_id="seed",
+            chunk_id=c1, source_document_id="d1",
+        )
+    finally:
+        con.close()
+
+    # Point the helper's internal default_db_path() + embedder at the fixtures.
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
+    import processing.embedding.embed as _embmod
+    monkeypatch.setattr(_embmod, "default_embedding_provider", lambda: model)
+
+    block = _render_subgraph_block_for_sub_question("PsiQuantum photonic", top_k=1)
+
+    assert "(subgraph search not yet wired)" not in block  # placeholder gone
+    assert eid in block                                    # the citable edge_id is present
+    assert "PsiQuantum --[uses]--> photon" in block        # the relation is rendered
+    assert "## Nodes" in block and "photon" in block
+
+
+def test_render_subgraph_block_empty_graph_degrades_cleanly(db_path, monkeypatch):
+    """No graph edges -> a labelled note, never a crash (best-effort, additive)."""
+    from orchestration.loop_one.orchestrator import (
+        _render_subgraph_block_for_sub_question,
+    )
+
+    model = _StubEmbeddingModel()
+    _seed_three_chunks(db_path, model)  # chunks but NO edges
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
+    import processing.embedding.embed as _embmod
+    monkeypatch.setattr(_embmod, "default_embedding_provider", lambda: model)
+
+    block = _render_subgraph_block_for_sub_question("PsiQuantum photonic", top_k=1)
+    assert block == "(no knowledge-graph edges for this sub-question)"
+
+
+def test_render_subgraph_block_withholds_free_text_insight_labels(db_path, monkeypatch):
+    """§9.0 guard (adversarial-review-driven): a free-text node label (an
+    ``insight`` node whose canonical_label IS a distilled sentence, possibly
+    from a personal_reading source reached via a cross-rights duplicate_of edge)
+    must NOT be reproduced in the subgraph block — it is withheld and referenced
+    by id. Canonical entity labels still surface. Closes the leak path the
+    edge/node read cannot gate (nodes carry no rights provenance)."""
+    from orchestration.loop_one.orchestrator import (
+        _render_subgraph_block_for_sub_question,
+    )
+
+    model = _StubEmbeddingModel()
+    c1, _, _ = _seed_three_chunks(db_path, model)
+    secret = "PRIVATE INSIGHT: the fabricator yield collapses above 40 qubits"
+    con = connect_write(db_path, purpose="seed_graph")
+    try:
+        org = insert_node(
+            con, canonical_label="PsiQuantum", node_type="organization",
+            graph_scope="cross_domain", investigation_id="seed",
+        )
+        # A free-text INSIGHT node — the leak vector.
+        ins = insert_node(
+            con, canonical_label=secret, node_type="insight",
+            graph_scope="cross_domain", investigation_id="seed",
+        )
+        insert_edge(
+            con, source_node_id=org, target_node_id=ins,
+            relation="yields_insight", source_tier=1, extraction_confidence=0.9,
+            graph_scope="cross_domain", investigation_id="seed",
+            chunk_id=c1, source_document_id="d1",
+        )
+    finally:
+        con.close()
+
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
+    import processing.embedding.embed as _embmod
+    monkeypatch.setattr(_embmod, "default_embedding_provider", lambda: model)
+
+    block = _render_subgraph_block_for_sub_question("PsiQuantum photonic", top_k=1)
+
+    assert secret not in block                # the free-text insight is WITHHELD
+    assert "text withheld (§9.0)" in block     # and marked as such
+    assert "PsiQuantum" in block               # canonical entity label still surfaces
+    assert "yields_insight" in block           # the relation (structure) still surfaces
+
+
 def test_search_node_label_ilike(db_path):
     con = connect_write(db_path, purpose="seed")
     try:
