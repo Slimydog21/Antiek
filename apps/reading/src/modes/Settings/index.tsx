@@ -7,6 +7,7 @@ import { useProviderKeys } from "../../hooks/useProviderKeys";
 import { apiFetch } from "../../lib/api";
 import type {
   AdrbDogfoodStatusView,
+  BranchHealthView,
   ReadActivationStatusView,
 } from "../Coordination/Roadmap";
 
@@ -118,6 +119,10 @@ export default function Settings() {
           <AdrbDogfoodStatus status={readActivation} />
         </LemonCard>
 
+        <LemonCard title="Branch freshness" elevation="z1">
+          <BranchHealthStatus status={readActivation} />
+        </LemonCard>
+
         <LemonCard title="Control surfaces" elevation="z1" colour="glacial">
           <div className="p-4 grid gap-2 sm:grid-cols-2">
             <ControlLink href="/trust" title="Trust Center" body="Published privacy, deletion, and training commitments" />
@@ -132,25 +137,39 @@ export default function Settings() {
 }
 
 type ReadActivationLoadState =
-  | { status: "loading"; activation: null; adrb: null; error: null }
+  | { status: "loading"; activation: null; adrb: null; branch: null; error: null }
   | {
       status: "ready";
       activation: ReadActivationStatusView | null;
       adrb: AdrbDogfoodStatusView | null;
+      branch: BranchHealthView | null;
       error: null;
     }
-  | { status: "error"; activation: null; adrb: null; error: string };
+  | {
+      status: "error";
+      activation: null;
+      adrb: null;
+      branch: null;
+      error: string;
+    };
 
 function useReadActivationStatus(): ReadActivationLoadState {
   const [state, setState] = useState<ReadActivationLoadState>({
     status: "loading",
     activation: null,
     adrb: null,
+    branch: null,
     error: null,
   });
 
   const load = useCallback(async () => {
-    setState({ status: "loading", activation: null, adrb: null, error: null });
+    setState({
+      status: "loading",
+      activation: null,
+      adrb: null,
+      branch: null,
+      error: null,
+    });
     try {
       const response = await apiFetch("/coordination/roadmap");
       if (!response.ok) {
@@ -161,6 +180,7 @@ function useReadActivationStatus(): ReadActivationLoadState {
         status: "ready",
         activation: safeReadActivationStatus(body?.read_activation),
         adrb: safeAdrbDogfoodStatus(body?.adrb_dogfood),
+        branch: safeBranchHealth(body?.branch_health),
         error: null,
       });
     } catch (error: unknown) {
@@ -168,6 +188,7 @@ function useReadActivationStatus(): ReadActivationLoadState {
         status: "error",
         activation: null,
         adrb: null,
+        branch: null,
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -270,6 +291,81 @@ function ReadDogfoodStatus({ status }: { status: ReadActivationLoadState }) {
           {nextSession.append_command ? ` · ${nextSession.append_command}` : ""}
         </p>
       )}
+    </div>
+  );
+}
+
+function BranchHealthStatus({ status }: { status: ReadActivationLoadState }) {
+  if (status.status === "loading") {
+    return (
+      <div className="p-4 text-sm text-shadow-1 dark:text-moonlight">
+        Loading branch freshness...
+      </div>
+    );
+  }
+
+  if (status.status === "error") {
+    return (
+      <div className="p-4 space-y-2">
+        <LemonTag colour="danger">unreachable</LemonTag>
+        <p className="text-sm text-shadow-1 dark:text-moonlight">
+          {status.error}
+        </p>
+      </div>
+    );
+  }
+
+  const branch = status.branch;
+  if (!branch) {
+    return (
+      <div className="p-4 space-y-2">
+        <LemonTag colour="muted">unavailable</LemonTag>
+        <p className="text-sm text-shadow-1 dark:text-moonlight">
+          Coordination did not return branch freshness status.
+        </p>
+      </div>
+    );
+  }
+
+  const distance =
+    branch.merge_base_distance == null
+      ? "unknown"
+      : String(branch.merge_base_distance);
+
+  return (
+    <div className="p-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm font-serif text-ink dark:text-bright">
+          Merge-age gate
+        </p>
+        <LemonTag
+          colour={
+            branch.state === "ok"
+              ? "aurora"
+              : branch.state === "error"
+                ? "danger"
+                : "sun"
+          }
+        >
+          {branch.state === "ok" ? "within budget" : branch.state}
+        </LemonTag>
+      </div>
+      <p className="text-xs font-mono text-ink dark:text-bright">
+        {branch.branch || "unknown branch"} · HEAD=
+        {branch.head_sha || "unknown"} · origin/main=
+        {branch.origin_main_sha || "unknown"} · behind={distance}/
+        {branch.max_behind}
+      </p>
+      <p className="text-sm text-shadow-1 dark:text-moonlight">
+        {branch.error
+          ? `Merge-age check failed: ${branch.error}`
+          : branch.message || "Branch freshness was not checked."}{" "}
+        Next:{" "}
+        <code className="font-mono">
+          {branch.remediation || "rerun merge-age gate"}
+        </code>
+        .
+      </p>
     </div>
   );
 }
@@ -494,5 +590,26 @@ function safeAdrbDogfoodStatus(value: unknown): AdrbDogfoodStatusView | null {
     mode_b_verdict: nullableString(dogfood.mode_b_verdict),
     missing_requirements: stringList(dogfood.missing_requirements),
     error: nullableString(dogfood.error),
+  };
+}
+
+function nullableNonNegativeInteger(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  return nonNegativeInteger(value);
+}
+
+function safeBranchHealth(value: unknown): BranchHealthView | null {
+  const branch = record(value);
+  if (!branch) return null;
+  return {
+    state: nonEmptyString(branch.state) ?? "error",
+    branch: nonEmptyString(branch.branch) ?? "",
+    head_sha: nonEmptyString(branch.head_sha) ?? "",
+    origin_main_sha: nonEmptyString(branch.origin_main_sha) ?? "",
+    merge_base_distance: nullableNonNegativeInteger(branch.merge_base_distance),
+    max_behind: nonNegativeInteger(branch.max_behind),
+    message: nonEmptyString(branch.message) ?? "",
+    remediation: nonEmptyString(branch.remediation) ?? "",
+    error: nullableString(branch.error),
   };
 }

@@ -87,11 +87,22 @@ function roadmapResponse(
     ],
     error: null,
   },
+  branch_health: Record<string, unknown> | null | undefined = {
+    state: "stale",
+    branch: "reader/integration",
+    head_sha: "abc1234",
+    origin_main_sha: "def5678",
+    merge_base_distance: 238,
+    max_behind: 25,
+    message: "base is 238 commits behind origin/main (limit N=25)",
+    remediation: "run `git rebase origin/main`",
+    error: null,
+  },
 ) {
   return {
     ok: true,
     status: 200,
-    json: async () => ({ read_activation, adrb_dogfood }),
+    json: async () => ({ read_activation, adrb_dogfood, branch_health }),
   } as Response;
 }
 
@@ -176,6 +187,22 @@ describe("Settings", () => {
     expect(screen.getByText(/docs\/adrb_post_dogfood_verdict\.md/i)).toBeTruthy();
   });
 
+  it("surfaces stale branch freshness from the coordination roadmap", async () => {
+    render(<Settings />);
+
+    expect(await screen.findByText("Branch freshness")).toBeTruthy();
+    expect(screen.getByText("Merge-age gate")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "reader/integration · HEAD=abc1234 · origin/main=def5678 · behind=238/25",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/base is 238 commits behind origin\/main/i),
+    ).toBeTruthy();
+    expect(screen.getByText("run `git rebase origin/main`")).toBeTruthy();
+  });
+
   it("handles missing Read activation status without inventing evidence", async () => {
     apiFetchMock.mockResolvedValue(roadmapResponse(null));
 
@@ -200,6 +227,17 @@ describe("Settings", () => {
     ).toBeTruthy();
   });
 
+  it("handles missing branch freshness without inventing evidence", async () => {
+    apiFetchMock.mockResolvedValue(roadmapResponse(undefined, undefined, null));
+
+    render(<Settings />);
+
+    expect(await screen.findByText("Branch freshness")).toBeTruthy();
+    expect(
+      screen.getByText(/Coordination did not return branch freshness status/i),
+    ).toBeTruthy();
+  });
+
   it("reports roadmap fetch failures on the activation readout", async () => {
     apiFetchMock.mockResolvedValue({
       ok: false,
@@ -212,7 +250,7 @@ describe("Settings", () => {
     await waitFor(() => {
       expect(
         screen.getAllByText("GET /coordination/roadmap failed: HTTP 503"),
-      ).toHaveLength(2);
+      ).toHaveLength(3);
     });
   });
 

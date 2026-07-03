@@ -188,6 +188,17 @@ describe("Coordination", () => {
             ],
             error: " ",
           },
+          branch_health: {
+            state: " stale ",
+            branch: " reader/integration ",
+            head_sha: " abc1234 ",
+            origin_main_sha: " def5678 ",
+            merge_base_distance: "238.9",
+            max_behind: "25",
+            message: " base is 238 commits behind origin/main (limit N=25) ",
+            remediation: " run `git rebase origin/main` ",
+            error: " ",
+          },
           operator_actions: {
             source_path: " docs/OPERATOR_ACTIONS.md ",
             total_actions: "20.8",
@@ -363,6 +374,15 @@ describe("Coordination", () => {
       screen.getByText(
         "Remaining: expected 5 complete project entries, found 2. Source: runs/adrb.",
       ),
+    ).toBeTruthy();
+    expect(screen.getByText("Branch freshness")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "reader/integration · HEAD=abc1234 · origin/main=def5678 · behind=238/25",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/base is 238 commits behind origin\/main/),
     ).toBeTruthy();
     expect(
       screen.getByText(
