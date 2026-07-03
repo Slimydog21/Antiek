@@ -10,6 +10,10 @@ One line.
 
 One sentence.
 
+## Session ID
+
+Bridge session id used for this project.
+
 ## Provider mix
 
 Which external LLMs or research providers did the operator use?

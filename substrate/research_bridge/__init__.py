@@ -8,6 +8,7 @@ from .db_path import (
 )
 from .dogfood_log import (
     DogfoodLogValidation,
+    DogfoodProjectEntry,
     DogfoodScaffoldResult,
     Wave4Candidate,
     Wave4CandidatesValidation,
@@ -96,6 +97,7 @@ __all__ = [
     "ensure_research_bridge_initialized",
     "DogfoodMetrics",
     "DogfoodLogValidation",
+    "DogfoodProjectEntry",
     "Wave4Candidate",
     "Wave4CandidatesValidation",
     "SessionBlockMetrics",
