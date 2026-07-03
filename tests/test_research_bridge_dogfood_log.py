@@ -114,6 +114,7 @@ def test_dogfood_log_validate_reports_missing_log(tmp_path: Path) -> None:
     assert result.ok is False
     assert result.operator_log_path == tmp_path / "operator-log.md"
     assert result.missing_requirements == ("operator-log.md is missing",)
+    assert result.complete_project_entries == ()
 
 
 def test_dogfood_log_validate_rejects_unfilled_scaffold(tmp_path: Path) -> None:
@@ -127,10 +128,13 @@ def test_dogfood_log_validate_rejects_unfilled_scaffold(tmp_path: Path) -> None:
     assert result.missing_requirements == (
         "expected 5 planned projects, found 0",
         "expected 5 filled project entries, found 0",
+        "expected 5 complete project entries, found 0",
     )
 
 
-def test_dogfood_log_validate_accepts_five_project_log(tmp_path: Path) -> None:
+def test_dogfood_log_validate_rejects_entries_without_required_fields(
+    tmp_path: Path,
+) -> None:
     write_dogfood_scaffold(tmp_path)
     (tmp_path / "operator-log.md").write_text(
         """# Antiek Deep Research Bridge Operator Log
@@ -190,7 +194,7 @@ Replace the old workflow.
 
     result = validate_dogfood_log(tmp_path)
 
-    assert result.ok is True
+    assert result.ok is False
     assert result.planned_projects == (
         "Sell-side AI infra memo",
         "Anthropic market scan",
@@ -199,6 +203,94 @@ Replace the old workflow.
         "Operator status-quo replacement",
     )
     assert result.filled_project_entries == result.planned_projects
+    assert result.complete_project_entries == ()
+    assert result.missing_requirements == ("expected 5 complete project entries, found 0",)
+
+
+def test_dogfood_log_validate_accepts_five_complete_project_entries(
+    tmp_path: Path,
+) -> None:
+    write_dogfood_scaffold(tmp_path)
+    entries = []
+    for idx, name in enumerate(
+        (
+            "Sell-side AI infra memo",
+            "Anthropic market scan",
+            "AlphaSense earnings read",
+            "Mixed-provider author brief",
+            "Operator status-quo replacement",
+        ),
+        start=1,
+    ):
+        entries.append(
+            f"""## Project name
+
+{name}
+
+## Goal
+
+Produce dogfood project {idx}.
+
+## Provider mix
+
+Grok and Claude.
+
+## Block count at start / end
+
+- Start: {idx}
+- End: {idx + 2}
+
+## Mode(s) used
+
+A and B.
+
+## Draft produced
+
+runs/adrb/drafts/project-{idx}.md
+
+## Did mode A produce something I'd send / publish?
+
+with-edits. It needed a pass but preserved the outline.
+
+## Did mode B's prompts cause me to actually run prompts?
+
+Yes. Prompt {idx} was run manually.
+
+## What failed?
+
+The first outline was too broad.
+
+## What surprised me?
+
+The gap prompts found a missing comparison.
+
+## Would I open this again tomorrow?
+
+Yes.
+"""
+        )
+    (tmp_path / "operator-log.md").write_text(
+        """# Antiek Deep Research Bridge Operator Log
+
+## Five projects chosen up front
+
+1. Sell-side AI infra memo
+2. Anthropic market scan
+3. AlphaSense earnings read
+4. Mixed-provider author brief
+5. Operator status-quo replacement
+
+## Project entries
+
+"""
+        + "\n".join(entries),
+        encoding="utf-8",
+    )
+
+    result = validate_dogfood_log(tmp_path)
+
+    assert result.ok is True
+    assert result.complete_project_entries == result.planned_projects
 
 
 def test_dogfood_log_cli_validate(tmp_path: Path, capsys) -> None:
@@ -210,6 +302,7 @@ def test_dogfood_log_cli_validate(tmp_path: Path, capsys) -> None:
     out = capsys.readouterr().out
     assert "planned projects: 0/5" in out
     assert "filled project entries: 0/5" in out
+    assert "complete project entries: 0/5" in out
 
 
 def test_wave4_candidates_validate_allows_empty_scaffold(tmp_path: Path) -> None:
