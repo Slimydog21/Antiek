@@ -677,6 +677,8 @@ cmd_agent_gates() {
     -q --tb=no
   echo "== agent-gates: Read activation e2e evidence draft helper =="
   (cd apps/reading && npm run test:ams -- --run e2e/_ams/read_activation_evidence.test.ts --reporter=dot)
+  echo "== agent-gates: role-parser provenance ref lint =="
+  "${PY}" -m pytest tests/test_provenance_ref_lint.py -q --tb=no
   echo "== agent-gates: pytest audit + canonical wrapper =="
   "${PY}" -m pytest \
     tests/test_audit_agent_session.py \

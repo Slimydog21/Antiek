@@ -331,6 +331,7 @@ def test_agent_gates_matrix_row_names_current_scope() -> None:
         "scripts/audit_agent_session.sh": "audit_agent_session.sh",
         "src/modes/Settings/Settings.test.tsx": "Settings.test.tsx",
         "src/shared/copyLint.test.ts": "copyLint.test.ts",
+        "tests/test_provenance_ref_lint.py": "test_provenance_ref_lint.py",
         "test_read_activation_dogfood.py": "read activation",
     }
     missing = sorted(
