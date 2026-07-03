@@ -33,6 +33,11 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from substrate.coordination.activation_view import build_read_activation_view
+from substrate.coordination.engineering_deferrals import (
+    DeferralStatus,
+    load_engineering_deferrals,
+)
 from substrate.coordination.gate_ledger import (
     GateStatus,
     Product,
@@ -41,6 +46,7 @@ from substrate.coordination.gate_ledger import (
     parse_gate_ledger,
     parse_quick_status_table,
 )
+from substrate.coordination.loop3_status import build_loop3_coordination_view
 from substrate.coordination.operator_actions import (
     OperatorActionStatus,
     canonical_operator_actions_path,
@@ -49,13 +55,6 @@ from substrate.coordination.operator_actions import (
 from substrate.coordination.phase2_audit import (
     load_phase2_audit,
 )
-from substrate.coordination.activation_view import build_read_activation_view
-from substrate.coordination.engineering_deferrals import (
-    DeferralStatus,
-    load_engineering_deferrals,
-)
-from substrate.coordination.loop3_status import build_loop3_coordination_view
-from substrate.coordination.source_gate_status import build_source_gate_view
 from substrate.coordination.roadmap import (
     Roadmap,
     SpecRoster,
@@ -63,11 +62,19 @@ from substrate.coordination.roadmap import (
     SprintStatus,
     build_roadmap,
 )
-from substrate.loop_3.evidence_status import CriterionEvidenceStatus, Loop3EvidenceSnapshot
+from substrate.coordination.source_gate_status import build_source_gate_view
 from substrate.loop_3.checklist_store import set_criterion
+from substrate.loop_3.evidence_status import CriterionEvidenceStatus, Loop3EvidenceSnapshot
 from substrate.loop_3.unlock_gate import Loop3UnlockCriterion
+from tools.activation.read_dogfood import (
+    REQUIRED_CITATION_TRACE_SESSIONS,
+    REQUIRED_LIVE_PROVIDER_SESSIONS,
+    REQUIRED_NON_LIBRARY_SESSIONS,
+    REQUIRED_VALID_SESSIONS,
+    append_session_template,
+    session_template,
+)
 from tools.source_census import SourceCensus, save_censuses
-from tools.activation.read_dogfood import append_session_template, session_template
 
 # ── 1. The no-fork equality: two independent parses agree ────────────────────
 
@@ -788,11 +795,17 @@ def test_read_activation_view_missing_log_is_not_started(tmp_path: Path) -> None
     assert view.total_sessions == 0
     assert view.valid_sessions == 0
     assert view.closure_ready is False
+    assert view.required_counts == {
+        "valid_sessions": REQUIRED_VALID_SESSIONS,
+        "live_provider_sessions": REQUIRED_LIVE_PROVIDER_SESSIONS,
+        "citation_trace_sessions": REQUIRED_CITATION_TRACE_SESSIONS,
+        "non_library_sessions": REQUIRED_NON_LIBRARY_SESSIONS,
+    }
     assert view.remaining_requirements == {
-        "valid_sessions": 10,
-        "live_provider_sessions": 5,
-        "citation_trace_sessions": 3,
-        "non_library_sessions": 1,
+        "valid_sessions": REQUIRED_VALID_SESSIONS,
+        "live_provider_sessions": REQUIRED_LIVE_PROVIDER_SESSIONS,
+        "citation_trace_sessions": REQUIRED_CITATION_TRACE_SESSIONS,
+        "non_library_sessions": REQUIRED_NON_LIBRARY_SESSIONS,
     }
 
 

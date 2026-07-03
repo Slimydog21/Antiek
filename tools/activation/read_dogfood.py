@@ -126,6 +126,10 @@ TEMPLATE_CITATION_RESULT_URLS: frozenset[str] = frozenset(
         "https://antiek.ai/read/source-doc-1?chunk=chunk-1",
     }
 )
+REQUIRED_VALID_SESSIONS = 10
+REQUIRED_LIVE_PROVIDER_SESSIONS = 5
+REQUIRED_CITATION_TRACE_SESSIONS = 3
+REQUIRED_NON_LIBRARY_SESSIONS = 1
 
 
 @dataclass(frozen=True)
@@ -140,16 +144,35 @@ class DogfoodReport:
     closure_ready: bool
     failures: tuple[str, ...]
 
-    def remaining_requirements(self) -> dict[str, int]:
+    def required_counts(self) -> dict[str, int]:
         return {
-            "valid_sessions": max(0, 10 - self.valid_sessions),
-            "live_provider_sessions": max(0, 5 - self.live_provider_sessions),
-            "citation_trace_sessions": max(0, 3 - self.citation_trace_sessions),
-            "non_library_sessions": max(0, 1 - self.non_library_sessions),
+            "valid_sessions": REQUIRED_VALID_SESSIONS,
+            "live_provider_sessions": REQUIRED_LIVE_PROVIDER_SESSIONS,
+            "citation_trace_sessions": REQUIRED_CITATION_TRACE_SESSIONS,
+            "non_library_sessions": REQUIRED_NON_LIBRARY_SESSIONS,
+        }
+
+    def remaining_requirements(self) -> dict[str, int]:
+        required = self.required_counts()
+        return {
+            "valid_sessions": max(0, required["valid_sessions"] - self.valid_sessions),
+            "live_provider_sessions": max(
+                0,
+                required["live_provider_sessions"] - self.live_provider_sessions,
+            ),
+            "citation_trace_sessions": max(
+                0,
+                required["citation_trace_sessions"] - self.citation_trace_sessions,
+            ),
+            "non_library_sessions": max(
+                0,
+                required["non_library_sessions"] - self.non_library_sessions,
+            ),
         }
 
     def as_dict(self) -> dict[str, Any]:
         return {
+            "required_counts": self.required_counts(),
             "total_sessions": self.total_sessions,
             "valid_sessions": self.valid_sessions,
             "invalid_session_count": len(self.invalid_sessions),
@@ -815,23 +838,28 @@ def _closure_failures(
     non_library_sessions: set[str],
 ) -> list[str]:
     failures: list[str] = []
-    if len(valid_session_ids) < 10:
+    if len(valid_session_ids) < REQUIRED_VALID_SESSIONS:
         failures.append(
-            f"closure requires >=10 valid sessions; found {len(valid_session_ids)}"
+            "closure requires "
+            f">={REQUIRED_VALID_SESSIONS} valid sessions; "
+            f"found {len(valid_session_ids)}"
         )
-    if len(valid_session_ids & live_provider_sessions) < 5:
+    if len(valid_session_ids & live_provider_sessions) < REQUIRED_LIVE_PROVIDER_SESSIONS:
         failures.append(
-            "closure requires >=5 valid sessions with live_provider_ai=true; "
+            "closure requires "
+            f">={REQUIRED_LIVE_PROVIDER_SESSIONS} valid sessions with live_provider_ai=true; "
             f"found {len(valid_session_ids & live_provider_sessions)}"
         )
-    if len(valid_session_ids & citation_trace_sessions) < 3:
+    if len(valid_session_ids & citation_trace_sessions) < REQUIRED_CITATION_TRACE_SESSIONS:
         failures.append(
-            "closure requires >=3 valid sessions with citation/source tracing; "
+            "closure requires "
+            f">={REQUIRED_CITATION_TRACE_SESSIONS} valid sessions with citation/source tracing; "
             f"found {len(valid_session_ids & citation_trace_sessions)}"
         )
-    if len(valid_session_ids & non_library_sessions) < 1:
+    if len(valid_session_ids & non_library_sessions) < REQUIRED_NON_LIBRARY_SESSIONS:
         failures.append(
-            "closure requires >=1 valid session from a non-Library door "
+            "closure requires "
+            f">={REQUIRED_NON_LIBRARY_SESSIONS} valid session from a non-Library door "
             f"({', '.join(sorted(NON_LIBRARY_ENTRY_DOORS))}); found 0"
         )
     return failures

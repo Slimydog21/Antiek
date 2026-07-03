@@ -5,7 +5,11 @@ import re
 from pathlib import Path
 
 from tools.activation.read_dogfood import (
+    REQUIRED_CITATION_TRACE_SESSIONS,
     REQUIRED_FLOAT_MENU_LABELS,
+    REQUIRED_LIVE_PROVIDER_SESSIONS,
+    REQUIRED_NON_LIBRARY_SESSIONS,
+    REQUIRED_VALID_SESSIONS,
     append_session_template,
     load_jsonl,
     main,
@@ -93,6 +97,12 @@ def test_closure_ready_when_golden_path_rule_is_satisfied() -> None:
         "citation_trace_sessions": 0,
         "non_library_sessions": 0,
     }
+    assert report.required_counts() == {
+        "valid_sessions": REQUIRED_VALID_SESSIONS,
+        "live_provider_sessions": REQUIRED_LIVE_PROVIDER_SESSIONS,
+        "citation_trace_sessions": REQUIRED_CITATION_TRACE_SESSIONS,
+        "non_library_sessions": REQUIRED_NON_LIBRARY_SESSIONS,
+    }
     assert report.failures == ()
 
 
@@ -124,6 +134,12 @@ def test_partial_log_reports_remaining_requirements() -> None:
         "live_provider_sessions": 3,
         "citation_trace_sessions": 2,
         "non_library_sessions": 0,
+    }
+    assert report.as_dict()["required_counts"] == {
+        "valid_sessions": REQUIRED_VALID_SESSIONS,
+        "live_provider_sessions": REQUIRED_LIVE_PROVIDER_SESSIONS,
+        "citation_trace_sessions": REQUIRED_CITATION_TRACE_SESSIONS,
+        "non_library_sessions": REQUIRED_NON_LIBRARY_SESSIONS,
     }
     assert report.as_dict()["remaining_requirements"] == report.remaining_requirements()
     assert report.as_dict()["invalid_session_count"] == 0
@@ -1059,6 +1075,11 @@ def test_append_template_can_print_json_report(tmp_path, capsys) -> None:
     assert report["invalid_session_count"] == 1
     assert report["invalid_sessions"] == ["2026-06-30-operator-001"]
     assert report["live_provider_sessions"] == 0
+    assert report["required_counts"]["valid_sessions"] == REQUIRED_VALID_SESSIONS
+    assert (
+        report["required_counts"]["live_provider_sessions"]
+        == REQUIRED_LIVE_PROVIDER_SESSIONS
+    )
     assert report["remaining_requirements"]["valid_sessions"] == 10
     assert any("template first_answer" in failure for failure in report["failures"])
 
