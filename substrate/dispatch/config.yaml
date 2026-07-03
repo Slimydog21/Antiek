@@ -173,6 +173,21 @@ role_tiers:
   # precedent above. The endpoint dispatches role="thought_partner"; the role
   # tier entry alone is the established fix, with no constants.py change.
   thought_partner: pro
+  # WV (writing vertical): same production-only routing gap as the
+  # knowledge_extractor / thought_partner precedents above.
+  # substrate/write/draft_generation.default_dispatch_fn dispatches
+  # role="creative_writer"; without this entry the router raised
+  # KeyError("Role 'creative_writer' not in config.role_tiers") and
+  # POST /write/sections/{id}/generate 503'd on every call — the whole
+  # writing-generate path was dead (GAP-ANALYSIS.md §1's "creative_writer
+  # WIRED" was stale on origin/main, true only on the closed-unmerged
+  # reader/integration). The role tier entry alone is the established
+  # fix, no constants.py change (per the thought_partner precedent).
+  # Tier=pro (grok-4.3, precedent-matched + cost-bounded); the operator
+  # can bump to 'synthesis' if deliverable prose quality demands it.
+  # The route is operator-auth-gated (global middleware), so this
+  # enables the operator-only generate path, not a public endpoint.
+  creative_writer: pro
 
 # ---------------------------------------------------------------------------
 # Per-tier defaults. Roles can override at call time, but these are
