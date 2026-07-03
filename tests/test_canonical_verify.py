@@ -51,6 +51,21 @@ def test_canonical_verify_agent_gates_hermetic() -> None:
     assert "tests/test_canonical_verify.py \\" not in src
 
 
+def test_canonical_verify_research_bridge_dogfood_hermetic_bundle() -> None:
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert "CANONICAL_VERIFY_OK: research-bridge-dogfood" in src
+    for test_path in (
+        "tests/test_antiek_research_bridge_cli.py",
+        "tests/test_research_bridge_dogfood_log.py",
+        "tests/test_research_bridge_dogfood_readiness.py",
+        "tests/test_research_bridge_dogfood_reconcile.py",
+        "tests/test_research_bridge_dogfood_report.py",
+        "tests/test_research_bridge_dogfood_verdict.py",
+        "tests/test_research_bridge_draft_export.py",
+    ):
+        assert test_path in src
+
+
 def test_canonical_verify_usage_names_every_dispatch_subcommand() -> None:
     src = SCRIPT.read_text(encoding="utf-8")
     usage_match = re.search(r"Usage: canonical_verify\.sh \{([^}]*)\}", src)

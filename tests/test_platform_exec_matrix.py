@@ -43,6 +43,10 @@ _READING_COPY_LINT_TRIGGER_PATHS = {
     "apps/reading/src/shared/language.ts",
     "apps/reading/src/shell/**",
 }
+_RESEARCH_BRIDGE_DOGFOOD_TRIGGER_PATHS = {
+    "antiek/cli.py",
+    "substrate/research_bridge/**",
+}
 _OPERATOR_COORDINATION_TRIGGER_PATHS = {
     "apps/reading/src/modes/OperatorDashboard/**",
 }
@@ -226,6 +230,20 @@ def test_agent_gates_trigger_on_reading_copy_lint_inputs() -> None:
         assert not missing, (
             f"agent_execution_gates.yml {event_name} does not trigger on "
             f"reading copy-lint input(s): {missing}"
+        )
+
+
+def test_agent_gates_trigger_on_research_bridge_dogfood_inputs() -> None:
+    """The Deep Research Bridge dogfood gate runs on bridge substrate edits."""
+    matrix = MATRIX.read_text(encoding="utf-8")
+    assert "research-bridge-dogfood" in matrix
+
+    for event_name in ("push", "pull_request"):
+        paths = _workflow_event_paths(event_name)
+        missing = sorted(_RESEARCH_BRIDGE_DOGFOOD_TRIGGER_PATHS - paths)
+        assert not missing, (
+            f"agent_execution_gates.yml {event_name} does not trigger on "
+            f"research bridge dogfood input(s): {missing}"
         )
 
 
