@@ -21,6 +21,10 @@ from substrate.research_bridge.dogfood_report import (
     build_report_from_db_path,
     default_dogfood_metrics_path,
 )
+from substrate.research_bridge.dogfood_verdict import (
+    validate_verdict_doc,
+    write_verdict_scaffold,
+)
 from substrate.research_bridge.draft_export import record_draft_export
 from substrate.research_bridge.gap import would_run_percentage
 
@@ -70,6 +74,26 @@ def _cmd_research_bridge_dogfood_log_validate(args: argparse.Namespace) -> int:
     print(f"filled project entries: {len(result.filled_project_entries)}/5")
     if result.ok:
         print("DOGFOOD_LOG_OK")
+        return 0
+    for missing in result.missing_requirements:
+        print(f"missing: {missing}")
+    return 1
+
+
+def _cmd_research_bridge_verdict_scaffold(args: argparse.Namespace) -> int:
+    result = write_verdict_scaffold(args.path, overwrite=args.overwrite)
+    print(f"verdict: {result.path} ({'written' if result.written else 'kept'})")
+    return 0
+
+
+def _cmd_research_bridge_verdict_validate(args: argparse.Namespace) -> int:
+    result = validate_verdict_doc(args.path)
+    print(f"verdict: {result.path}")
+    print(f"Mode A: {result.mode_a_verdict or 'missing'}")
+    print(f"Mode B: {result.mode_b_verdict or 'missing'}")
+    print(f"next questions: {len(result.next_questions)}/3")
+    if result.ok:
+        print("DOGFOOD_VERDICT_OK")
         return 0
     for missing in result.missing_requirements:
         print(f"missing: {missing}")
@@ -164,6 +188,43 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Dogfood directory. Defaults to ~/Desktop/Antiek/runs/adrb.",
     )
     dogfood_log_validate.set_defaults(func=_cmd_research_bridge_dogfood_log_validate)
+
+    verdict = bridge_subparsers.add_parser(
+        "verdict",
+        help="Scaffold or validate the Deep Research Bridge dogfood verdict.",
+    )
+    verdict_subparsers = verdict.add_subparsers(dest="verdict_command")
+    verdict_scaffold = verdict_subparsers.add_parser(
+        "scaffold",
+        help="Create the post-dogfood verdict scaffold.",
+    )
+    verdict_scaffold.add_argument(
+        "--path",
+        default=None,
+        help=(
+            "Verdict path. Defaults to "
+            "~/Desktop/Antiek/docs/adrb_post_dogfood_verdict.md."
+        ),
+    )
+    verdict_scaffold.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Rewrite the verdict scaffold if it already exists.",
+    )
+    verdict_scaffold.set_defaults(func=_cmd_research_bridge_verdict_scaffold)
+    verdict_validate = verdict_subparsers.add_parser(
+        "validate",
+        help="Validate the post-dogfood verdict document.",
+    )
+    verdict_validate.add_argument(
+        "--path",
+        default=None,
+        help=(
+            "Verdict path. Defaults to "
+            "~/Desktop/Antiek/docs/adrb_post_dogfood_verdict.md."
+        ),
+    )
+    verdict_validate.set_defaults(func=_cmd_research_bridge_verdict_validate)
 
     draft_export = bridge_subparsers.add_parser(
         "draft-export",
