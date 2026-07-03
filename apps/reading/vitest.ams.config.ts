@@ -1,14 +1,14 @@
 import { defineConfig } from "vitest/config";
 
 /**
- * vitest config for the AMS-v2 (SPR-01) PURE e2e helpers — the pixel/contrast
- * calibration in e2e/_ams/visible.pixel.test.ts.
+ * vitest config for the AMS-v2 PURE e2e helpers — pixel/contrast calibration
+ * plus small Node-only evidence/contract helpers under e2e/_ams.
  *
  * Separate from the app's jsdom vitest (whose include is `src/**`): these pure
  * helpers decode PNG buffers and compute variance/contrast, so they run in a
  * plain `node` environment with no React/jsdom. The Playwright SPECS in e2e/
  * (smoke, ams-shell, …) are run by Playwright, not vitest — this config only
- * picks up the `*.pixel.test.ts` unit calibration.
+ * picks up `_ams` unit helpers.
  *
  *   npm run test:ams     # from apps/reading
  */
@@ -17,7 +17,7 @@ export default defineConfig({
     environment: "node",
     globals: false,
     root: __dirname,
-    include: ["e2e/_ams/**/*.pixel.test.ts"],
+    include: ["e2e/_ams/**/*.test.ts"],
     exclude: ["**/node_modules/**", "**/dist/**"],
   },
 });
