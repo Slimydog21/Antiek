@@ -49,6 +49,7 @@ def test_canonical_verify_agent_gates_hermetic() -> None:
     assert "tests/test_antiek_read_activation_cli.py" in src
     assert "e2e/_ams/read_activation_evidence.test.ts" in src
     assert "tests/test_provenance_ref_lint.py" in src
+    assert "tests/test_prompt_autoresearch_readiness.py" in src
     assert "tests/test_canonical_verify.py \\" not in src
 
 

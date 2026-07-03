@@ -35,6 +35,12 @@ _READ_ACTIVATION_TRIGGER_PATHS = {
     "tools/activation/read_dogfood.py",
     "tests/test_read_activation_dogfood.py",
 }
+_PROMPT_AUTORESEARCH_TRIGGER_PATHS = {
+    "docs/OPERATOR_ACTIONS.md",
+    "docs/operator_gate_actions.md",
+    "tools/prompt_autoresearch/**",
+    "tests/test_prompt_autoresearch_readiness.py",
+}
 _READING_COPY_LINT_TRIGGER_PATHS = {
     "apps/reading/src/components/**",
     "apps/reading/src/modes/**",
@@ -222,6 +228,17 @@ def test_agent_gates_trigger_on_read_activation_dogfood_inputs() -> None:
         )
 
 
+def test_agent_gates_trigger_on_prompt_autoresearch_inputs() -> None:
+    """P-50 runs the Prompt Autoresearch readiness audit it now surfaces."""
+    for event_name in ("push", "pull_request"):
+        paths = _workflow_event_paths(event_name)
+        missing = sorted(_PROMPT_AUTORESEARCH_TRIGGER_PATHS - paths)
+        assert not missing, (
+            f"agent_execution_gates.yml {event_name} does not trigger on "
+            f"Prompt Autoresearch input(s): {missing}"
+        )
+
+
 def test_agent_gates_trigger_on_reading_copy_lint_inputs() -> None:
     """The agent gate catches user-facing copy regressions on app surfaces."""
     for event_name in ("push", "pull_request"):
@@ -332,6 +349,9 @@ def test_agent_gates_matrix_row_names_current_scope() -> None:
         "src/modes/Settings/Settings.test.tsx": "Settings.test.tsx",
         "src/shared/copyLint.test.ts": "copyLint.test.ts",
         "tests/test_provenance_ref_lint.py": "test_provenance_ref_lint.py",
+        "tests/test_prompt_autoresearch_readiness.py": (
+            "test_prompt_autoresearch_readiness.py"
+        ),
         "test_read_activation_dogfood.py": "read activation",
     }
     missing = sorted(
