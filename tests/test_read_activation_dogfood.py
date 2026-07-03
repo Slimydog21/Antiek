@@ -11,6 +11,7 @@ from tools.activation.read_dogfood import (
     REQUIRED_NON_LIBRARY_SESSIONS,
     REQUIRED_VALID_SESSIONS,
     append_session_template,
+    build_session_record,
     load_jsonl,
     main,
     session_template,
@@ -104,6 +105,63 @@ def test_closure_ready_when_golden_path_rule_is_satisfied() -> None:
         "non_library_sessions": REQUIRED_NON_LIBRARY_SESSIONS,
     }
     assert report.failures == ()
+
+
+def test_build_session_record_creates_valid_live_citation_evidence() -> None:
+    record = build_session_record(
+        session_id="session-1",
+        date="2026-07-03",
+        build_sha="0123456789abcdef",
+        url="https://app.example/read/doc-1",
+        operator="operator",
+        document_id="doc-1",
+        entry_door="command_palette",
+        minutes_reading=24,
+        visible_content_note="Structured heading and table were visible.",
+        selected_text="The exact highlighted passage.",
+        return_context_note="Back returned to the same passage.",
+        operator_note="Read for 24 minutes without blocking friction.",
+        live_provider_ai=True,
+        citation_traced=True,
+        first_answer="A useful live answer grounded in the selected passage.",
+        investigation_id="investigation-1",
+        source_document_id="source-doc-1",
+        chunk_id="chunk-1",
+        result_url="https://app.example/read/source-doc-1?chunk=chunk-1&from=doc-1",
+    )
+
+    report = validate_sessions([record])
+
+    assert report.valid_sessions == 1
+    assert report.live_provider_sessions == 1
+    assert report.citation_trace_sessions == 1
+    assert report.non_library_sessions == 1
+    assert record["steps"]["2"]["menu_labels"] == list(REQUIRED_FLOAT_MENU_LABELS)
+    assert not any("session-1:" in failure for failure in report.failures)
+
+
+def test_build_session_record_requires_inert_boundary_copy() -> None:
+    try:
+        build_session_record(
+            session_id="session-1",
+            date="2026-07-03",
+            build_sha="0123456789abcdef",
+            url="https://app.example/read/doc-1",
+            operator="operator",
+            document_id="doc-1",
+            entry_door="library",
+            minutes_reading=24,
+            visible_content_note="Structured heading and table were visible.",
+            selected_text="The exact highlighted passage.",
+            return_context_note="Back returned to the same passage.",
+            operator_note="Read for 24 minutes without blocking friction.",
+            live_provider_ai=False,
+            citation_traced=False,
+        )
+    except ValueError as exc:
+        assert str(exc) == "dialogue_no_key_copy is required"
+    else:
+        raise AssertionError("expected missing inert boundary copy to be rejected")
 
 
 def test_mechanically_complete_log_requires_final_verdict() -> None:

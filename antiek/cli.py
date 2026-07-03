@@ -50,12 +50,14 @@ from substrate.research_bridge.gap import would_run_percentage
 from tools.activation.read_dogfood import (
     SESSION_TEMPLATE_KINDS,
     append_session_template,
+    build_session_record,
     session_template,
 )
 
 READ_ACTIVATION_STATUS_JSON_SCHEMA_VERSION = 1
 READ_ACTIVATION_APPEND_TEMPLATE_JSON_SCHEMA_VERSION = 1
 READ_ACTIVATION_NEXT_SESSION_JSON_SCHEMA_VERSION = 1
+READ_ACTIVATION_RECORD_SESSION_JSON_SCHEMA_VERSION = 1
 
 
 def _read_activation_log_path(raw_path: str | None) -> Path:
@@ -173,6 +175,77 @@ def _cmd_read_activation_append_template(args: argparse.Namespace) -> int:
         sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     else:
         print(f"appended template: {args.kind}")
+        print(f"log: {log_path}")
+        print(f"state: {view.state}")
+        print(
+            "valid sessions: "
+            f"{view.valid_sessions}/{view.required_counts['valid_sessions']} "
+            f"({view.total_sessions} total, {view.invalid_session_count} invalid)"
+        )
+        for failure in view.failures:
+            print(f"failure: {failure}")
+    return 0
+
+
+def _read_activation_record_session_payload(
+    *,
+    session_id: str,
+    log_path: Path,
+    view: ReadActivationView,
+) -> dict[str, object]:
+    return {
+        "schema_version": READ_ACTIVATION_RECORD_SESSION_JSON_SCHEMA_VERSION,
+        "recorded_session_id": session_id,
+        "log_path": str(log_path),
+        "view": asdict(view),
+    }
+
+
+def _cmd_read_activation_record_session(args: argparse.Namespace) -> int:
+    log_path = _read_activation_log_path(args.log)
+    try:
+        record = build_session_record(
+            session_id=args.session_id,
+            date=args.date,
+            build_sha=args.build_sha,
+            url=args.url,
+            operator=args.operator,
+            document_id=args.document_id,
+            entry_door=args.entry_door,
+            provider_status=args.provider_status,
+            minutes_reading=args.minutes_reading,
+            visible_content_note=args.visible_content_note,
+            selected_text=args.selected_text,
+            return_context_note=args.return_context_note,
+            operator_note=args.operator_note,
+            live_provider_ai=args.live_provider_ai,
+            citation_traced=args.citation_traced,
+            first_answer=args.first_answer,
+            investigation_id=args.investigation_id,
+            dialogue_no_key_copy=args.dialogue_no_key_copy or args.no_key_copy,
+            research_no_key_copy=args.research_no_key_copy or args.no_key_copy,
+            source_document_id=args.source_document_id,
+            chunk_id=args.chunk_id,
+            anchor=args.anchor,
+            result_url=args.result_url,
+            verdict=args.verdict,
+            blocking_issue_ids=args.blocking_issue_id,
+        )
+    except ValueError as exc:
+        print(f"record-session: {exc}", file=sys.stderr)
+        return 2
+
+    append_session_template(log_path, record)
+    view = build_read_activation_view(log_path)
+    if args.json:
+        payload = _read_activation_record_session_payload(
+            session_id=record["session_id"],
+            log_path=log_path,
+            view=view,
+        )
+        sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    else:
+        print(f"recorded session: {record['session_id']}")
         print(f"log: {log_path}")
         print(f"state: {view.state}")
         print(
@@ -412,6 +485,101 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Write a stable machine-readable append result payload.",
     )
     activation_append_template.set_defaults(func=_cmd_read_activation_append_template)
+    activation_record_session = activation_subparsers.add_parser(
+        "record-session",
+        help="Append a structured Read activation dogfood evidence session.",
+    )
+    activation_record_session.add_argument(
+        "--log",
+        default=None,
+        help=(
+            "Read dogfood JSONL log. Defaults to "
+            "reports/read-dogfood.jsonl in the repository."
+        ),
+    )
+    activation_record_session.add_argument("--session-id", required=True)
+    activation_record_session.add_argument("--date", required=True)
+    activation_record_session.add_argument("--build-sha", required=True)
+    activation_record_session.add_argument("--url", required=True)
+    activation_record_session.add_argument("--operator", required=True)
+    activation_record_session.add_argument("--document-id", required=True)
+    activation_record_session.add_argument("--entry-door", required=True)
+    activation_record_session.add_argument("--provider-status", default=None)
+    activation_record_session.add_argument(
+        "--minutes-reading",
+        type=int,
+        required=True,
+    )
+    activation_record_session.add_argument("--visible-content-note", required=True)
+    activation_record_session.add_argument("--selected-text", required=True)
+    activation_record_session.add_argument("--return-context-note", required=True)
+    activation_record_session.add_argument("--operator-note", required=True)
+    activation_record_session.add_argument(
+        "--live-provider-ai",
+        action="store_true",
+        help=(
+            "Mark steps 3 and 4 as live provider-backed passes. Requires "
+            "--first-answer and --investigation-id."
+        ),
+    )
+    activation_record_session.add_argument(
+        "--first-answer",
+        default=None,
+        help="First live provider answer for golden-path step 3.",
+    )
+    activation_record_session.add_argument(
+        "--investigation-id",
+        default=None,
+        help="Child research investigation/session id for golden-path step 4.",
+    )
+    activation_record_session.add_argument(
+        "--no-key-copy",
+        default=None,
+        help=(
+            "Boundary copy to use for both inert Dialogue and Research steps "
+            "when --live-provider-ai is absent."
+        ),
+    )
+    activation_record_session.add_argument(
+        "--dialogue-no-key-copy",
+        default=None,
+        help="Exact inert Dialogue boundary copy for step 3.",
+    )
+    activation_record_session.add_argument(
+        "--research-no-key-copy",
+        default=None,
+        help="Exact inert Research boundary copy for step 4.",
+    )
+    activation_record_session.add_argument(
+        "--citation-traced",
+        action="store_true",
+        help=(
+            "Record citation/source tracing evidence. Requires "
+            "--source-document-id, --result-url, and --chunk-id or --anchor."
+        ),
+    )
+    activation_record_session.add_argument("--source-document-id", default=None)
+    activation_record_session.add_argument("--chunk-id", default=None)
+    activation_record_session.add_argument("--anchor", default=None)
+    activation_record_session.add_argument("--result-url", default=None)
+    activation_record_session.add_argument(
+        "--verdict",
+        choices=("ACTIVATE", "REPAIR", "ROLL BACK CLAIM"),
+        default=None,
+        help="Optional final operator verdict for the last evidence record.",
+    )
+    activation_record_session.add_argument(
+        "--blocking-issue-id",
+        action="append",
+        default=None,
+        help="Blocking issue id for a REPAIR verdict; repeat for multiple ids.",
+    )
+    activation_record_session.add_argument(
+        "--json",
+        action="store_true",
+        help="Write a stable machine-readable record result payload.",
+    )
+    activation_record_session.set_defaults(func=_cmd_read_activation_record_session)
 
     research = subparsers.add_parser("research", help="Research product commands.")
     research_subparsers = research.add_subparsers(dest="research_command")

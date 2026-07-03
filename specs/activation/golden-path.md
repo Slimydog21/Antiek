@@ -103,8 +103,49 @@ antiek read activation next-session
 antiek read activation next-session --json
 ```
 
-To seed a new operator-authored row without hand-copying the schema, print a
-single JSONL-compatible template and replace the evidence before appending it:
+To append a concrete operator-authored row without hand-editing raw JSONL, use
+the structured recorder. It writes the row, then immediately reports the
+post-append activation status:
+
+```bash
+antiek read activation record-session \
+  --session-id 2026-07-03-faisal-001 \
+  --date 2026-07-03 \
+  --build-sha 0123456789abcdef \
+  --url https://app.example/read/doc-1 \
+  --operator Faisal \
+  --document-id doc-1 \
+  --entry-door command_palette \
+  --minutes-reading 24 \
+  --visible-content-note "structured heading and table were visible" \
+  --selected-text "exact highlighted passage" \
+  --return-context-note "back returned to the same passage" \
+  --operator-note "read for 24 minutes; no blocking friction" \
+  --live-provider-ai \
+  --first-answer "first provider-backed answer" \
+  --investigation-id research-session-1 \
+  --citation-traced \
+  --source-document-id source-doc-1 \
+  --chunk-id chunk-1 \
+  --result-url "https://app.example/read/source-doc-1?chunk=chunk-1&from=doc-1"
+
+antiek read activation record-session --log reports/read-dogfood.jsonl --json ...
+```
+
+If provider keys are absent, omit `--live-provider-ai` and provide exact
+boundary copy instead:
+
+```bash
+antiek read activation record-session ... \
+  --dialogue-no-key-copy "Dialogue requires provider activation keys." \
+  --research-no-key-copy "Research spin-out requires provider activation keys."
+```
+
+For a final closure row, add `--verdict ACTIVATE`. A `REPAIR` verdict must also
+include one or more `--blocking-issue-id READ-...` flags.
+
+To seed a draft row instead, print a single JSONL-compatible template and
+replace the evidence before appending it:
 
 ```bash
 python tools/activation/read_dogfood.py --template inert
