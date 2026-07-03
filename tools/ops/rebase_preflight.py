@@ -20,6 +20,12 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 @dataclass(frozen=True)
+class PathBucket:
+    name: str
+    count: int
+
+
+@dataclass(frozen=True)
 class RebasePreflight:
     status: str
     branch: str
@@ -34,8 +40,10 @@ class RebasePreflight:
     origin_changed_file_count: int
     overlapping_file_count: int
     overlapping_files: tuple[str, ...]
+    overlapping_buckets: tuple[PathBucket, ...]
     merge_tree_conflict_count: int
     merge_tree_conflict_files: tuple[str, ...]
+    merge_tree_conflict_buckets: tuple[PathBucket, ...]
     remediation: str
     does_not_rebase: bool = True
 
@@ -97,6 +105,37 @@ def _merge_tree_conflicts(repo: Path, head: str, origin_main: str) -> tuple[str,
     return tuple(sorted(paths))
 
 
+def _path_bucket(path: str) -> str:
+    if path.startswith("apps/reading/"):
+        return "reading-app"
+    if path.startswith("tests/"):
+        return "tests"
+    if path.startswith("docs/"):
+        return "docs"
+    if path.startswith(".github/"):
+        return "ci"
+    if path.startswith("infrastructure/"):
+        return "infrastructure"
+    if path.startswith("acquisition/"):
+        return "acquisition"
+    if path.startswith(("substrate/", "interfaces/", "runtime/", "orchestration/")):
+        return "backend-substrate"
+    if path.startswith(("tools/", "scripts/")):
+        return "tooling"
+    return "other"
+
+
+def _bucket_counts(paths: Sequence[str]) -> tuple[PathBucket, ...]:
+    counts: dict[str, int] = {}
+    for path in paths:
+        bucket = _path_bucket(path)
+        counts[bucket] = counts.get(bucket, 0) + 1
+    return tuple(
+        PathBucket(name=name, count=count)
+        for name, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    )
+
+
 def run_preflight(repo: Path = ROOT) -> RebasePreflight:
     """Build a read-only integration-risk snapshot against ``origin/main``."""
 
@@ -137,8 +176,10 @@ def run_preflight(repo: Path = ROOT) -> RebasePreflight:
         origin_changed_file_count=len(origin_files),
         overlapping_file_count=len(overlapping_files),
         overlapping_files=overlapping_files[:50],
+        overlapping_buckets=_bucket_counts(overlapping_files),
         merge_tree_conflict_count=len(conflict_files),
         merge_tree_conflict_files=conflict_files[:50],
+        merge_tree_conflict_buckets=_bucket_counts(conflict_files),
         remediation=remediation,
     )
 
@@ -170,6 +211,22 @@ def format_text(preflight: RebasePreflight) -> str:
         f"remediation: {preflight.remediation}",
         "does_not_rebase: yes",
     ]
+    if preflight.overlapping_buckets:
+        lines.append(
+            "overlap_buckets: "
+            + ", ".join(
+                f"{bucket.name}={bucket.count}"
+                for bucket in preflight.overlapping_buckets
+            )
+        )
+    if preflight.merge_tree_conflict_buckets:
+        lines.append(
+            "conflict_buckets: "
+            + ", ".join(
+                f"{bucket.name}={bucket.count}"
+                for bucket in preflight.merge_tree_conflict_buckets
+            )
+        )
     if preflight.overlapping_files:
         lines.append("overlap_files:")
         lines.extend(f"- {path}" for path in preflight.overlapping_files)

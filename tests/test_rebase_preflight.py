@@ -60,6 +60,8 @@ def test_rebase_preflight_reports_stale_clean_branch(tmp_path: Path) -> None:
     assert result.commits_behind_origin_main == rebase_preflight.MAX_BEHIND + 1
     assert result.local_commit_count == 1
     assert result.merge_tree_conflict_count == 0
+    assert result.overlapping_buckets == ()
+    assert result.merge_tree_conflict_buckets == ()
     assert result.remediation == "run `git rebase origin/main`"
     assert _git(repo, "branch", "--show-current").stdout.strip() == "feature"
 
@@ -87,6 +89,11 @@ def test_rebase_preflight_reports_conflicts_without_mutating_worktree(
     assert result.status == "conflicts"
     assert result.merge_tree_conflict_count == 1
     assert result.merge_tree_conflict_files == ("shared.txt",)
+    assert [(b.name, b.count) for b in result.overlapping_buckets] == [("other", 1)]
+    assert [(b.name, b.count) for b in result.merge_tree_conflict_buckets] == [
+        ("other", 1)
+    ]
+    assert "conflict_buckets: other=1" in text
     assert "does_not_rebase: yes" in text
     assert _git(repo, "status", "--short").stdout == before
 
@@ -101,3 +108,5 @@ def test_rebase_preflight_json_cli(tmp_path: Path, capsys) -> None:
     assert payload["status"] == "ready"
     assert payload["does_not_rebase"] is True
     assert payload["commits_behind_origin_main"] == 0
+    assert payload["overlapping_buckets"] == []
+    assert payload["merge_tree_conflict_buckets"] == []
