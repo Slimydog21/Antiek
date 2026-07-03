@@ -28,6 +28,8 @@ from .dogfood_verdict import (
     validate_verdict_doc,
 )
 
+READINESS_JSON_SCHEMA_VERSION = 1
+
 
 @dataclass(frozen=True)
 class DogfoodMetricsArtifactValidation:
@@ -172,6 +174,7 @@ def render_readiness_summary(readiness: DogfoodReadiness) -> str:
 
 def readiness_to_json_payload(readiness: DogfoodReadiness) -> dict[str, Any]:
     return {
+        "schema_version": READINESS_JSON_SCHEMA_VERSION,
         "ok": readiness.ok,
         "dogfood_root": str(readiness.dogfood_root),
         "metrics_path": str(readiness.metrics_path),

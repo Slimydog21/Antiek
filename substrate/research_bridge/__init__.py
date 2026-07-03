@@ -18,6 +18,7 @@ from .dogfood_log import (
     write_dogfood_scaffold,
 )
 from .dogfood_readiness import (
+    READINESS_JSON_SCHEMA_VERSION,
     DogfoodMetricsArtifactValidation,
     DogfoodReadiness,
     audit_dogfood_readiness,
@@ -122,6 +123,7 @@ __all__ = [
     "DogfoodScaffoldResult",
     "DogfoodMetricsArtifactValidation",
     "DogfoodReadiness",
+    "READINESS_JSON_SCHEMA_VERSION",
     "default_dogfood_dir",
     "default_dogfood_metrics_path",
     "audit_dogfood_readiness",
