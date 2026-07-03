@@ -11,7 +11,10 @@ import pytest
 
 from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database_at_path
-from substrate.research_bridge.dogfood_log import write_dogfood_scaffold
+from substrate.research_bridge.dogfood_log import (
+    DOGFOOD_PROJECT_COUNT,
+    write_dogfood_scaffold,
+)
 from substrate.research_bridge.dogfood_readiness import (
     READINESS_JSON_SCHEMA_VERSION,
     audit_dogfood_readiness,
@@ -301,12 +304,18 @@ def test_render_readiness_json_exposes_stable_machine_contract(
 
     assert payload["schema_version"] == READINESS_JSON_SCHEMA_VERSION
     assert payload["ok"] is False
+    assert payload["expected_project_count"] == DOGFOOD_PROJECT_COUNT
     assert payload["dogfood_root"] == str(root)
     assert payload["metrics_path"] == str(root / "dogfood_metrics.md")
     assert payload["verdict_path"] == str(verdict)
     assert "dogfood_metrics.md is missing" in payload["missing_requirements"]
+    assert payload["checks"]["dogfood_log"]["expected_projects"] == DOGFOOD_PROJECT_COUNT
     assert payload["checks"]["dogfood_log"]["complete_project_entries"] == 0
     assert payload["checks"]["wave4_candidates"]["ok"] is True
+    assert (
+        payload["checks"]["session_reconciliation"]["expected_sessions"]
+        == DOGFOOD_PROJECT_COUNT
+    )
     assert payload["checks"]["session_reconciliation"]["reconciled_sessions"] == 0
     assert payload["checks"]["metrics_artifact"]["current"] is False
     assert payload["checks"]["verdict_document"]["mode_a_verdict"] is None

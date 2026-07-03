@@ -169,7 +169,10 @@ def test_antiek_research_bridge_readiness_json_reports_missing_evidence(
     payload = json.loads(capsys.readouterr().out)
     assert payload["schema_version"] == 1
     assert payload["ok"] is False
+    assert payload["expected_project_count"] == 5
+    assert payload["checks"]["dogfood_log"]["expected_projects"] == 5
     assert payload["checks"]["dogfood_log"]["complete_project_entries"] == 0
+    assert payload["checks"]["session_reconciliation"]["expected_sessions"] == 5
     assert payload["checks"]["metrics_artifact"]["ok"] is False
     assert payload["checks"]["verdict_document"]["ok"] is False
     assert "dogfood_metrics.md is missing" in payload["missing_requirements"]
