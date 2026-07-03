@@ -112,6 +112,35 @@ def test_antiek_research_bridge_dogfood_log_init_preserves_operator_log(
     assert operator_log.read_text(encoding="utf-8") == "operator notes\n"
 
 
+def test_antiek_research_bridge_readiness_reports_missing_evidence(
+    db: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = tmp_path / "adrb"
+    verdict = tmp_path / "adrb_post_dogfood_verdict.md"
+    assert main(["research", "bridge", "dogfood-log", "init", "--root", str(root)]) == 0
+
+    rc = main([
+        "research",
+        "bridge",
+        "readiness",
+        "--db",
+        db,
+        "--dogfood-root",
+        str(root),
+        "--verdict-path",
+        str(verdict),
+    ])
+
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "dogfood log: FAIL (0/5 complete projects)" in out
+    assert "metrics artifact: FAIL" in out
+    assert "verdict document: FAIL" in out
+    assert "missing: dogfood_metrics.md is missing" in out
+
+
 def test_antiek_research_bridge_dogfood_log_validate(tmp_path: Path, capsys) -> None:
     root = tmp_path / "adrb"
     assert main(["research", "bridge", "dogfood-log", "init", "--root", str(root)]) == 0

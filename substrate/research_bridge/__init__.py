@@ -17,6 +17,13 @@ from .dogfood_log import (
     validate_wave4_candidates,
     write_dogfood_scaffold,
 )
+from .dogfood_readiness import (
+    DogfoodMetricsArtifactValidation,
+    DogfoodReadiness,
+    audit_dogfood_readiness,
+    render_readiness_summary,
+    validate_metrics_artifact,
+)
 from .dogfood_reconcile import (
     DogfoodSessionEvidence,
     DogfoodSessionReconciliation,
@@ -111,8 +118,13 @@ __all__ = [
     "SessionSignalMetrics",
     "build_dogfood_metrics",
     "DogfoodScaffoldResult",
+    "DogfoodMetricsArtifactValidation",
+    "DogfoodReadiness",
     "default_dogfood_dir",
     "default_dogfood_metrics_path",
+    "audit_dogfood_readiness",
+    "render_readiness_summary",
+    "validate_metrics_artifact",
     "render_dogfood_report",
     "DogfoodVerdictScaffoldResult",
     "DogfoodVerdictValidation",
