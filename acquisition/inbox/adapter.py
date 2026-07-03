@@ -99,29 +99,37 @@ def ingest_inbox_file(
     """Ingest one dated inbox article into documents + chunks + nodes."""
 
     resolved_db_path = db_path or default_db_path()
-    full_text = path.read_text(encoding="utf-8", errors="replace")
+    # Encoding (glm-cc SPR-05 finding 3): prefer strict UTF-8; on a non-UTF-8
+    # file fall back to latin-1, which is byte-lossless and never raises — rather
+    # than errors="replace", which silently mangles bytes into U+FFFD. Record
+    # which decode was used in document metadata so degradation is never silent.
+    raw_bytes = path.read_bytes()
+    try:
+        full_text = raw_bytes.decode("utf-8")
+        encoding_used = "utf-8"
+    except UnicodeDecodeError:
+        full_text = raw_bytes.decode("latin-1")
+        encoding_used = "latin-1-fallback"
     body_hash = content_hash(full_text)
-    chash = "sha256:" + body_hash
     document_id = f"inbox:{body_hash}"
     title = path.stem
     published_at = datetime.combine(folder_date, time.min, tzinfo=UTC)
 
-    payload = DocumentLoadedPayload(
-        media_type=_media_type(path),
-        content_hash=chash,
-        size_bytes=len(full_text.encode("utf-8")),
-        title=title,
-        page_count=None,
-        source_uri=path.as_uri() if path.is_absolute() else str(path),
-    )
-    event_id = emit_typed(
-        investigation_id,
-        payload,
-        document_id=document_id,
-        role="acquisition",
-        policy_id="acquisition/inbox",
-    )
+    # Empty / whitespace-only file (glm-cc SPR-05 finding 4): chunk_markdown
+    # yields zero chunks, so a document row would be structurally present but
+    # unsearchable. Skip it explicitly (counted upstream) rather than depositing
+    # a chunk-less ghost document.
+    if not full_text.strip():
+        return IngestResult(
+            document_id=document_id,
+            guid=document_id,
+            status="empty",
+            title=title,
+            source_path=str(path),
+            already_present=False,
+        )
 
+    chash = "sha256:" + body_hash
     ensure_initialized(resolved_db_path)
     chunks: list[Chunk] = chunk_markdown(full_text)
     chunk_ids: list[str] = []
@@ -130,6 +138,35 @@ def ingest_inbox_file(
 
     with connect_write(resolved_db_path, purpose="acquisition/inbox") as con:
         already_present = _exists(con, "documents", "document_id", document_id)
+        if already_present:
+            # Idempotent re-run: nothing to write, and NO document.loaded event —
+            # emitting one per file per run would grow the event log unboundedly
+            # on a daily cron (glm-cc SPR-05 finding 1). The event fires only when
+            # a genuinely new document is loaded, below.
+            return IngestResult(
+                document_id=document_id,
+                guid=document_id,
+                status="skipped",
+                document_loaded_event_id=None,
+                title=title,
+                source_path=str(path),
+                already_present=True,
+            )
+        payload = DocumentLoadedPayload(
+            media_type=_media_type(path),
+            content_hash=chash,
+            size_bytes=len(full_text.encode("utf-8")),
+            title=title,
+            page_count=None,
+            source_uri=path.as_uri() if path.is_absolute() else str(path),
+        )
+        event_id = emit_typed(
+            investigation_id,
+            payload,
+            document_id=document_id,
+            role="acquisition",
+            policy_id="acquisition/inbox",
+        )
         insert_document(
             con,
             document_id=document_id,
@@ -146,27 +183,17 @@ def ingest_inbox_file(
                 "path": str(path),
                 "folder_date": folder_date.isoformat(),
                 "extension": path.suffix.lower(),
+                "encoding": encoding_used,
             },
             content_class=PERSONAL_READING_CONTENT_CLASS,
             on_conflict="ignore",
         )
-        if not already_present:
-            register_source_document(
-                con,
-                document_id=document_id,
-                source_kind=SourceKind.WEB,
-                content_class=PERSONAL_READING_CONTENT_CLASS,
-            )
-        if already_present:
-            return IngestResult(
-                document_id=document_id,
-                guid=document_id,
-                status="skipped",
-                document_loaded_event_id=event_id,
-                title=title,
-                source_path=str(path),
-                already_present=True,
-            )
+        register_source_document(
+            con,
+            document_id=document_id,
+            source_kind=SourceKind.WEB,
+            content_class=PERSONAL_READING_CONTENT_CLASS,
+        )
 
         for i, chunk in enumerate(chunks):
             chunk_id = insert_chunk(
@@ -275,7 +302,11 @@ def ingest_inbox_dir(
                 continue
             results.append(result)
             chunks_written += result.chunks_written
-            if result.already_present:
+            if result.status == "empty":
+                # A chunk-less file — counted as a skip with a reason, never a
+                # silent ghost document (glm-cc SPR-05 finding 4).
+                skipped.append(SkipRecord(str(article), "empty_file"))
+            elif result.already_present:
                 duplicates_skipped += 1
             else:
                 files_ingested += 1
