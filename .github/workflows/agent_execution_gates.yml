@@ -85,6 +85,7 @@ on:
       - 'substrate/contracts/**'
       - 'substrate/contracts/read_sprint_lock.py'
       - 'substrate/contracts/drw_sprint_lock.py'
+      - 'substrate/research_bridge/**'
       - 'substrate/research_bridge/detect_external.py'
       - 'substrate/research_bridge/extractors.py'
       - 'substrate/research_bridge/ingest_file.py'
@@ -233,6 +234,7 @@ on:
       - 'substrate/contracts/**'
       - 'substrate/contracts/read_sprint_lock.py'
       - 'substrate/contracts/drw_sprint_lock.py'
+      - 'substrate/research_bridge/**'
       - 'substrate/research_bridge/detect_external.py'
       - 'substrate/research_bridge/extractors.py'
       - 'substrate/research_bridge/ingest_file.py'
@@ -346,6 +348,9 @@ jobs:
 
       - name: Canonical verify — cascade (hermetic)
         run: ./scripts/canonical_verify.sh cascade
+
+      - name: Canonical verify — research bridge dogfood
+        run: ./scripts/canonical_verify.sh research-bridge-dogfood
 
       - name: Canonical verify — read foundation
         run: ./scripts/canonical_verify.sh read-foundation
