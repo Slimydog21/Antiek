@@ -780,14 +780,34 @@ def test_agent_gates_matrix_row_names_current_scope() -> None:
 def test_serve_rights_legal_row_names_operator_proof_artifacts() -> None:
     """P-51 must stay operator-proof-bound, not a fake informational CI closure."""
     matrix = MATRIX.read_text(encoding="utf-8")
+    workflow = AGENT_GATES.read_text(encoding="utf-8")
+    script = CANONICAL_VERIFY.read_text(encoding="utf-8")
+    operator_actions = (ROOT / "docs" / "OPERATOR_ACTIONS.md").read_text(
+        encoding="utf-8"
+    )
+    runbook = (ROOT / "infrastructure" / "runbooks" / "first-deploy.md").read_text(
+        encoding="utf-8"
+    )
     row = re.search(r"^\| P-51 \|(?P<body>.*)\|$", matrix, re.MULTILINE)
     assert row is not None
     body = row.group("body")
 
     assert "`docs/OPERATOR_ACTIONS.md`" in body
     assert "`infrastructure/runbooks/first-deploy.md`" in body
+    assert "`tools/ops/retrieval_gate_probe.py`" in body
+    assert "`tests/test_retrieval_gate_probe.py`" in body
     assert "**No** informational CI job alone (F7)" in body
+    assert "canonical_verify.sh agent-gates" in body
     assert "Jurisdiction-specific legal review" in body
+    assert "production-VM probe run" in body
+
+    assert "tools/ops/retrieval_gate_probe.py" in workflow
+    assert "tests/test_retrieval_gate_probe.py" in script
+    assert "tools.ops.retrieval_gate_probe" in operator_actions
+    assert "does not close OA-020" in operator_actions
+    assert "docs/decisions/oa-020-retrieval-gate-deployed.md" in operator_actions
+    assert "curl https://api.antiek.ai/health" in runbook
+    assert "tools.demo.run_cold_question" in runbook
 
 
 def test_reading_substrate_pytest_row_names_throughput_contract() -> None:

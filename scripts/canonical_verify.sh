@@ -716,6 +716,7 @@ cmd_agent_gates() {
     tests/test_ci_informational_gates.py \
     tests/test_ci_pytest_timeout_docs.py \
     tests/test_auth_diagnostic_verification.py \
+    tests/test_retrieval_gate_probe.py \
     tests/test_memory_mcp_verification_docs.py \
     tests/test_rlm_deferral_docs.py \
     tests/test_autoresearch_prime_deferral_docs.py \
