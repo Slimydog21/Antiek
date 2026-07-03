@@ -296,6 +296,19 @@ export const CANONICAL_ROADMAP: RoadmapView = {
       citation_trace_sessions: 3,
       non_library_sessions: 1,
     },
+    next_session: {
+      next_action: "collect_session",
+      recommended_template: "live-citation",
+      append_command: "antiek read activation append-template --kind live-citation",
+      rationale:
+        "A real live-citation session advances valid, live-provider, citation-trace, and non-Library coverage.",
+      remaining_requirements: {
+        valid_sessions: 10,
+        live_provider_sessions: 5,
+        citation_trace_sessions: 3,
+        non_library_sessions: 1,
+      },
+    },
     failures: [],
   },
   operator_actions: {

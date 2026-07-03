@@ -460,6 +460,19 @@ describe("Roadmap", () => {
               citation_trace_sessions: 2,
               non_library_sessions: 1,
             },
+            next_session: {
+              next_action: "collect_session",
+              recommended_template: "live-citation",
+              append_command:
+                "antiek read activation append-template --kind live-citation",
+              rationale: "A real live-citation session advances coverage.",
+              remaining_requirements: {
+                valid_sessions: 9,
+                live_provider_sessions: 5,
+                citation_trace_sessions: 2,
+                non_library_sessions: 1,
+              },
+            },
             failures: ["session-2 malformed"],
           },
         }}
@@ -476,6 +489,11 @@ describe("Roadmap", () => {
       screen.getByText("Remaining: 9 valid, 5 live-provider, 2 citation-traced, 1 non-library. Source: reports/read-dogfood.jsonl."),
     ).toBeTruthy();
     expect(screen.getByText("1 invalid session need repair.")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Next: live-citation · antiek read activation append-template --kind live-citation",
+      ),
+    ).toBeTruthy();
   });
 
   it("surfaces malformed dogfood logs as repair work", () => {
@@ -497,6 +515,13 @@ describe("Roadmap", () => {
             required_counts: {},
             remaining_requirements: {},
             failures: ["invalid JSON"],
+            next_session: {
+              next_action: "fix_log",
+              recommended_template: null,
+              append_command: null,
+              rationale: "Fix the malformed JSONL log before collecting another session.",
+              remaining_requirements: {},
+            },
           },
         }}
       />,
