@@ -446,6 +446,74 @@ def test_write_profile_rows_name_current_scope() -> None:
         )
 
 
+def test_speak_profile_rows_name_current_scope() -> None:
+    """P-28..P-36 must track the concrete tests bundled by Speak profiles."""
+    script = CANONICAL_VERIFY.read_text(encoding="utf-8")
+    matrix = MATRIX.read_text(encoding="utf-8")
+
+    expected = {
+        "28": {
+            "command": "speak-consent-rights-gate",
+            "body": ("`substrate/speak/consent.py`", "`substrate/speak/publish_gate.py`"),
+            "script": ("tests/test_speak_consent.py", "tests/test_speak_publish.py"),
+        },
+        "29": {
+            "command": "speak-async-voice-interview",
+            "body": ("`substrate/speak/async_interview.py`", "invitee voice route/UI"),
+            "script": ("tests/test_async_interview.py", "src/modes/SpeakInvite/SpeakInvite.test.tsx"),
+        },
+        "30": {
+            "command": "speak-project-invitations",
+            "body": ("`substrate/speak/project.py`", "`substrate/speak/invitations.py`"),
+            "script": ("tests/test_speak_project.py", "src/modes/SpeakIndex/SpeakIndex.test.tsx"),
+        },
+        "31": {
+            "command": "speak-compounding-interviewer",
+            "body": ("`substrate/speak/interviewer_context.py`", "DRW gap source"),
+            "script": ("tests/test_compounding_interviewer.py", "tests/test_speak_drw_gap_source.py"),
+        },
+        "32": {
+            "command": "speak-cross-interviewee-verification",
+            "body": ("`substrate/speak/corroboration.py`", "Speak agreement surface"),
+            "script": ("tests/test_cross_interviewee.py", "src/modes/Speak/Speak.test.tsx"),
+        },
+        "33": {
+            "command": "speak-contributor-economics",
+            "body": ("`substrate/speak/contributor.py`", "Speak settings owed-not-paid surface"),
+            "script": ("tests/test_contributor_economics.py", "test_release_payout_accrues_to_escrow_no_disbursement"),
+        },
+        "34": {
+            "command": "speak-economics-matrix",
+            "body": ("`substrate/speak/economics_mode.py`", "Speak settings matrix"),
+            "script": ("tests/test_economics_matrix.py", "src/modes/Speak/SpeakSettings.test.tsx"),
+        },
+        "35": {
+            "command": "speak-biography-authoring",
+            "body": ("`substrate/speak/biography.py`", "Write outline bridge"),
+            "script": ("tests/test_biography_authoring.py", "src/lib/speakApi.biography.test.ts"),
+        },
+        "36": {
+            "command": "speak-publishing-physical",
+            "body": ("`substrate/speak/publish.py`", "`substrate/speak/physical_book.py`"),
+            "script": ("tests/test_speak_publish.py", "src/modes/Speak/Speak.test.tsx"),
+        },
+    }
+
+    for row_id, markers in expected.items():
+        row = re.search(rf"^\| P-{row_id} \|(?P<body>.*)\|$", matrix, re.MULTILINE)
+        assert row is not None, f"P-{row_id} row missing"
+        body = row.group("body")
+
+        assert f"`./scripts/canonical_verify.sh {markers['command']}`" in body
+        missing_body = [marker for marker in markers["body"] if marker not in body]
+        missing_script = [marker for marker in markers["script"] if marker not in script]
+
+        assert not missing_body, f"P-{row_id} row missing marker(s): {missing_body}"
+        assert not missing_script, (
+            f"canonical Speak profile missing P-{row_id} marker(s): {missing_script}"
+        )
+
+
 def test_agent_gates_trigger_on_provenance_invariant_inputs() -> None:
     """P-38 now runs the invariant registry, including parser provenance checks."""
     for event_name in ("push", "pull_request"):
