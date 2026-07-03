@@ -18,6 +18,7 @@ from runtime.db_lock import connect_read
 
 from .db_path import ensure_research_bridge_initialized
 from .dogfood_log import default_dogfood_dir
+from .dogfood_reconcile import DogfoodSessionReconciliation, reconcile_dogfood_sessions
 
 S3_WOULD_RUN_THRESHOLD = 0.60
 
@@ -217,7 +218,11 @@ def _pct(value: float | None) -> str:
     return "n/a" if value is None else f"{value * 100:.1f}%"
 
 
-def render_dogfood_report(metrics: DogfoodMetrics) -> str:
+def render_dogfood_report(
+    metrics: DogfoodMetrics,
+    *,
+    reconciliation: DogfoodSessionReconciliation | None = None,
+) -> str:
     lines = [
         "# Antiek Deep Research Bridge Dogfood Metrics",
         "",
@@ -282,6 +287,28 @@ def render_dogfood_report(metrics: DogfoodMetrics) -> str:
             )
     lines.extend([
         "",
+        "## Dogfood Session Reconciliation",
+        "",
+    ])
+    if reconciliation is None:
+        lines.append("- Not run; pass a dogfood root to reconcile operator sessions.")
+    else:
+        lines.append(f"- Operator log: `{reconciliation.operator_log_path}`")
+        lines.append(f"- Status: {'PASS' if reconciliation.ok else 'FAIL'}")
+        lines.append(f"- Reconciled sessions: {len(reconciliation.sessions)}/5")
+        for row in reconciliation.sessions:
+            lines.append(
+                f"- {row.project_name} [{row.session_id}]: "
+                f"{row.blocks_pasted} block(s), {row.gap_runs} gap run(s), "
+                f"{row.draft_exports} draft export(s), {row.prompt_signals} prompt signal(s)"
+            )
+        if reconciliation.missing_requirements:
+            lines.append("")
+            lines.append("Missing reconciliation requirements:")
+            for missing in reconciliation.missing_requirements:
+                lines.append(f"- {missing}")
+    lines.extend([
+        "",
         "## Not Proved By This Report",
         "",
         "- Operator qualitative verdicts; read `operator-log.md` for those.",
@@ -291,10 +318,16 @@ def render_dogfood_report(metrics: DogfoodMetrics) -> str:
     return "\n".join(lines) + "\n"
 
 
-def build_report_from_db_path(db_path: str) -> str:
+def build_report_from_db_path(
+    db_path: str,
+    *,
+    dogfood_root: str | Path | None = None,
+) -> str:
     con = connect_read(db_path)
     try:
-        return render_dogfood_report(build_dogfood_metrics(con))
+        metrics = build_dogfood_metrics(con)
+        reconciliation = reconcile_dogfood_sessions(con, root=dogfood_root)
+        return render_dogfood_report(metrics, reconciliation=reconciliation)
     finally:
         con.close()
 
@@ -317,10 +350,15 @@ def main(argv: list[str] | None = None) -> int:
         "--output",
         help="Markdown output path. Defaults to stdout.",
     )
+    parser.add_argument(
+        "--dogfood-root",
+        default=None,
+        help="Dogfood directory. Defaults to ~/Desktop/Antiek/runs/adrb.",
+    )
     args = parser.parse_args(argv)
 
     db_path = ensure_research_bridge_initialized(args.db)
-    report = build_report_from_db_path(db_path)
+    report = build_report_from_db_path(db_path, dogfood_root=args.dogfood_root)
     if args.output:
         path = default_dogfood_metrics_path(args.output)
         path.parent.mkdir(parents=True, exist_ok=True)

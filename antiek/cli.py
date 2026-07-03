@@ -35,7 +35,7 @@ from substrate.research_bridge.gap import would_run_percentage
 
 def _cmd_research_bridge_dogfood_report(args: argparse.Namespace) -> int:
     db_path = ensure_research_bridge_initialized(args.db)
-    report = build_report_from_db_path(db_path)
+    report = build_report_from_db_path(db_path, dogfood_root=args.dogfood_root)
     output_path = (
         default_dogfood_metrics_path()
         if args.output is None
@@ -197,6 +197,11 @@ def _build_parser() -> argparse.ArgumentParser:
             "Markdown output path. Defaults to "
             "~/Desktop/Antiek/runs/adrb/dogfood_metrics.md."
         ),
+    )
+    dogfood_report.add_argument(
+        "--dogfood-root",
+        default=None,
+        help="Dogfood directory. Defaults to ~/Desktop/Antiek/runs/adrb.",
     )
     dogfood_report.set_defaults(func=_cmd_research_bridge_dogfood_report)
 
