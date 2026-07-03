@@ -855,6 +855,18 @@ def test_roadmap_response_serializes_read_activation_status(tmp_path: Path) -> N
     assert response.read_activation.total_sessions == 1
     assert response.read_activation.valid_sessions == 1
     assert response.read_activation.closure_ready is False
+    assert response.read_activation.required_counts == {
+        "valid_sessions": REQUIRED_VALID_SESSIONS,
+        "live_provider_sessions": REQUIRED_LIVE_PROVIDER_SESSIONS,
+        "citation_trace_sessions": REQUIRED_CITATION_TRACE_SESSIONS,
+        "non_library_sessions": REQUIRED_NON_LIBRARY_SESSIONS,
+    }
+    assert response.read_activation.remaining_requirements == {
+        "valid_sessions": 9,
+        "live_provider_sessions": REQUIRED_LIVE_PROVIDER_SESSIONS,
+        "citation_trace_sessions": REQUIRED_CITATION_TRACE_SESSIONS,
+        "non_library_sessions": REQUIRED_NON_LIBRARY_SESSIONS,
+    }
 
 
 def test_roadmap_response_serializes_operator_actions_and_phase2_audit() -> None:

@@ -182,6 +182,7 @@ interface CoordinationSummary {
     non_library_sessions: number;
     final_verdict: string | null;
     closure_ready: boolean;
+    required_counts: Record<string, number>;
     remaining_requirements: Record<string, number>;
     invalid_session_count: number;
   } | null;
@@ -662,6 +663,7 @@ function safeCoordinationSummary(value: unknown): CoordinationSummary {
           non_library_sessions: safeCount(readActivation.non_library_sessions),
           final_verdict: nullableString(readActivation.final_verdict),
           closure_ready: readActivation.closure_ready === true,
+          required_counts: numberRecord(readActivation.required_counts),
           remaining_requirements: numberRecord(readActivation.remaining_requirements),
           invalid_session_count: safeCount(readActivation.invalid_session_count),
         }
@@ -1428,7 +1430,9 @@ function CoordinationTile({
   const sourceGate = coordination?.sourceGate ?? null;
   const actionFocus =
     operatorActions?.closeable_action ?? operatorActions?.next_action ?? null;
+  const required = activation?.required_counts ?? {};
   const remaining = activation?.remaining_requirements ?? {};
+  const requiredValid = required.valid_sessions ?? activation?.total_sessions ?? 0;
   const remainingText = [
     ["valid", remaining.valid_sessions],
     ["live-provider", remaining.live_provider_sessions],
@@ -1474,7 +1478,8 @@ function CoordinationTile({
       {activation ? (
         <div className="space-y-0.5 border-t border-rule dark:border-charcoal-1 pt-2">
           <p className="text-xs font-mono text-ink dark:text-bright">
-            Read dogfood {activation.valid_sessions}/{activation.total_sessions} valid ·{" "}
+            Read dogfood {activation.valid_sessions}/{requiredValid} required valid (
+            {activation.total_sessions} total) ·{" "}
             {activation.live_provider_sessions} live-provider ·{" "}
             {activation.citation_trace_sessions} citation-traced
           </p>

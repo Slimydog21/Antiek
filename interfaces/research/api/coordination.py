@@ -230,6 +230,7 @@ class ReadActivationStatusResponse(BaseModel):
     non_library_sessions: int
     final_verdict: str | None
     closure_ready: bool
+    required_counts: dict[str, int]
     remaining_requirements: dict[str, int]
     failures: list[str]
 
@@ -246,6 +247,7 @@ class ReadActivationStatusResponse(BaseModel):
             non_library_sessions=view.non_library_sessions,
             final_verdict=view.final_verdict,
             closure_ready=view.closure_ready,
+            required_counts=dict(view.required_counts),
             remaining_requirements=dict(view.remaining_requirements),
             failures=list(view.failures),
         )

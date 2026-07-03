@@ -257,6 +257,7 @@ function safeReadActivationStatus(value: unknown): ReadActivationStatusView | nu
     non_library_sessions: nonNegativeInteger(activation.non_library_sessions),
     final_verdict: nullableString(activation.final_verdict),
     closure_ready: activation.closure_ready === true,
+    required_counts: numberRecord(activation.required_counts),
     remaining_requirements: numberRecord(activation.remaining_requirements),
     failures: stringList(activation.failures),
   };

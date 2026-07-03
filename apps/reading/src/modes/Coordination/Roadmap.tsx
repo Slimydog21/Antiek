@@ -78,6 +78,7 @@ export interface ReadActivationStatusView {
   non_library_sessions: number;
   final_verdict: string | null;
   closure_ready: boolean;
+  required_counts: Record<string, number>;
   remaining_requirements: Record<string, number>;
   failures: string[];
 }
@@ -443,7 +444,9 @@ function ActivationStatus({
 }: {
   activation: ReadActivationStatusView;
 }) {
+  const required = activation.required_counts ?? {};
   const remaining = activation.remaining_requirements ?? {};
+  const requiredValid = required.valid_sessions ?? activation.total_sessions;
   const remainingText = [
     ["valid", remaining.valid_sessions],
     ["live-provider", remaining.live_provider_sessions],
@@ -459,7 +462,8 @@ function ActivationStatus({
         Read activation dogfood
       </p>
       <p className="text-xs font-mono text-ink dark:text-bright">
-        {activation.valid_sessions}/{activation.total_sessions} valid ·{" "}
+        {activation.valid_sessions}/{requiredValid} required valid (
+        {activation.total_sessions} total) ·{" "}
         {activation.live_provider_sessions} live-provider ·{" "}
         {activation.citation_trace_sessions} citation-traced ·{" "}
         {activation.non_library_sessions} non-library · verdict=

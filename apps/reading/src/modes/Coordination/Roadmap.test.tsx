@@ -448,6 +448,12 @@ describe("Roadmap", () => {
             non_library_sessions: 0,
             final_verdict: null,
             closure_ready: false,
+            required_counts: {
+              valid_sessions: 10,
+              live_provider_sessions: 5,
+              citation_trace_sessions: 3,
+              non_library_sessions: 1,
+            },
             remaining_requirements: {
               valid_sessions: 9,
               live_provider_sessions: 5,
@@ -463,7 +469,7 @@ describe("Roadmap", () => {
     expect(screen.getByText("Read activation dogfood")).toBeTruthy();
     expect(
       screen.getByText(
-        "1/2 valid · 0 live-provider · 1 citation-traced · 0 non-library · verdict=missing",
+        "1/10 required valid (2 total) · 0 live-provider · 1 citation-traced · 0 non-library · verdict=missing",
       ),
     ).toBeTruthy();
     expect(
@@ -488,6 +494,7 @@ describe("Roadmap", () => {
             non_library_sessions: 0,
             final_verdict: null,
             closure_ready: false,
+            required_counts: {},
             remaining_requirements: {},
             failures: ["invalid JSON"],
           },
