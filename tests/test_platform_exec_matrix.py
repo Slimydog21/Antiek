@@ -55,6 +55,11 @@ _AMS_REF_LINT_TRIGGER_PATHS = {
     "tools/ams-v2/ref-lint.sh",
     "tools/specs/verify_spec_refs.ts",
 }
+_CI_PYTEST_TRIGGER_PATHS = {
+    ".github/workflows/ci.yml",
+    "docs/decisions/ci-pytest-timeout.md",
+    "tests/test_ci_pytest_timeout_docs.py",
+}
 _READING_COPY_LINT_TRIGGER_PATHS = {
     "apps/reading/src/components/**",
     "apps/reading/src/modes/**",
@@ -264,6 +269,17 @@ def test_agent_gates_trigger_on_ams_ref_lint_inputs() -> None:
         )
 
 
+def test_agent_gates_trigger_on_ci_pytest_contract_inputs() -> None:
+    """P-49 must keep the full-suite pytest throughput contract visible."""
+    for event_name in ("push", "pull_request"):
+        paths = _workflow_event_paths(event_name)
+        missing = sorted(_CI_PYTEST_TRIGGER_PATHS - paths)
+        assert not missing, (
+            f"agent_execution_gates.yml {event_name} does not trigger on "
+            f"CI pytest contract input(s): {missing}"
+        )
+
+
 def test_agent_gates_trigger_on_reading_copy_lint_inputs() -> None:
     """The agent gate catches user-facing copy regressions on app surfaces."""
     for event_name in ("push", "pull_request"):
@@ -402,3 +418,17 @@ def test_serve_rights_legal_row_names_operator_proof_artifacts() -> None:
     assert "`infrastructure/runbooks/first-deploy.md`" in body
     assert "**No** informational CI job alone (F7)" in body
     assert "Jurisdiction-specific legal review" in body
+
+
+def test_reading_substrate_pytest_row_names_throughput_contract() -> None:
+    """P-49's full-suite CI claim must name the doc/test guarding xdist scope."""
+    matrix = MATRIX.read_text(encoding="utf-8")
+    row = re.search(r"^\| P-49 \|(?P<body>.*)\|$", matrix, re.MULTILINE)
+    assert row is not None
+    body = row.group("body")
+
+    assert "`.github/workflows/ci.yml`" in body
+    assert "`docs/decisions/ci-pytest-timeout.md`" in body
+    assert "`tests/test_ci_pytest_timeout_docs.py`" in body
+    assert "CI on `main` (full suite)" in body
+    assert "Local hardware parity" in body
