@@ -392,23 +392,20 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     built: true,
     route: "/biography",
   },
-  // Speak SPR-08 ONE DOOR: the duplicate Interview surface folds into Speak
-  // (mirrors the SPR-05 InvestigationsIndex fold). Their capability — capture,
-  // transcript, corroboration, the per-informant index — is preserved inside
-  // the Speak console + home; the components stay on disk. Routing is retired:
-  //   /interviews        → redirects to /speak (the warm home)
-  //   /interview/:id      → redirects to /speak (the one door)
-  // so the canonical route for both surfaces is now /speak. (The completeness
-  // test keeps these entries honest: built=true must have a reachable route,
-  // and /speak is reachable.)
-  {
-    id: "Interview",
-    workflow: "speak",
-    label: "Interview",
-    blurb: "Interview capture (recording/transcript/notes) — folded into the Speak console (SPR-08).",
-    built: true,
-    route: "/speak",
-  },
+  // Speak SPR-08 ONE DOOR: the Interview surface folds into Speak (mirrors the
+  // SPR-05 InvestigationsIndex fold). The capture/transcript/corroboration
+  // capability is preserved inside the Speak console; routing is retired to
+  // /speak (/interviews and /interview/:id both redirect there — App.tsx
+  // InterviewRedirect). InterviewIndex (below) is the one surviving Interview
+  // MODE (real modes/InterviewIndex/index.tsx) and carries the taxonomy entry.
+  //
+  // There is NO separate "Interview" entry: the SPR-08 draft kept one, but the
+  // recording-mode index (modes/Interview/index.tsx) was retired in AGH SPR-02
+  // M6, and the SPR-04-rigor completeness gate (taxonomy.test.ts) — the current
+  // enforced standard — requires every entry to map to a real modes/*/index.tsx.
+  // A phantom "Interview" entry pointing at /speak would be exactly the stale
+  // entry that gate exists to catch. The InterviewTranscript/InterviewNotes
+  // components stay on disk as registered panels; they are not a routed mode.
   {
     id: "InterviewIndex",
     workflow: "speak",
