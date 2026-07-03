@@ -105,7 +105,10 @@ antiek read activation next-session --json
 
 To append a concrete operator-authored row without hand-editing raw JSONL, use
 the structured recorder. It writes the row, then immediately reports the
-post-append activation status:
+post-append activation status. If the row's own evidence is validator-invalid
+(for example a bad build SHA, missing live answer, or citation URL that does
+not open the recorded source), the command exits non-zero and does not append
+anything:
 
 ```bash
 antiek read activation record-session \
