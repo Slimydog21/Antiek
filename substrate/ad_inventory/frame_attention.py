@@ -126,13 +126,22 @@ from .attribution_explain import _largest_remainder_cents
 # which a client-priced batch accrues against v2 semantics.
 FRAME_TELEMETRY_SCHEMA_VERSION = "frame-telemetry-v2"
 
-# The weighting-math version. Bump WHENEVER the math in :func:`weigh_second`
-# changes (a new feature term, a different blend, a different tie-break). Kept
-# narrow and distinct from FRAME_TELEMETRY_SCHEMA_VERSION so a payout dispute
-# can isolate "the contract changed" from "the math changed". The golden test
-# (test_frame_attention_weighting::test_golden_weights_pin_the_blend_math) pins
-# the exact normalized split and trips if the math moves without a bump.
-FRAME_WEIGHTING_VERSION = "frame-weight-v1"
+# The weighting-PIPELINE version. Bump WHENEVER anything that changes a payout
+# split moves: the math in :func:`weigh_second` (a new feature term, a different
+# blend, a different tie-break) OR the aggregation that decides WHICH seconds
+# contribute (:func:`frame_attention_accrual.aggregate_window`'s anti-gaming
+# filter). Kept narrow and distinct from FRAME_TELEMETRY_SCHEMA_VERSION so a
+# payout dispute can isolate "the contract changed" from "the split changed".
+# The golden test (test_frame_attention_weighting::test_golden_weights_pin_the_
+# blend_math) pins the exact normalized split and trips if the math moves.
+#
+# v1 -> v2 (AFA-S2 M5): aggregate_window now runs the frame IVT filter
+# (substrate.anti_gaming.frame_ivt.classify_batch) before apportioning — invalid
+# seconds are excluded from BOTH numerator and denominator, a BLOCK window and a
+# fully-filtered window route to house. weigh_second's blend math is UNCHANGED
+# (the golden weight literals are identical); the version bump marks the filtered
+# era so a dispute can tell a pre-filter accrual from a post-filter one.
+FRAME_WEIGHTING_VERSION = "frame-weight-v2"
 
 
 # ---------------------------------------------------------------------------
