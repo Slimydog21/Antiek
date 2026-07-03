@@ -6,6 +6,8 @@ import type { CoordProduct, GateImpactView, GateView } from "./GateLedger";
 import { Roadmap } from "./Roadmap";
 import type {
   AdrbDogfoodStatusView,
+  AutoresearchReadinessItemView,
+  AutoresearchReadinessView,
   BranchHealthView,
   DependencyBlockerView,
   EngineeringDeferralView,
@@ -318,6 +320,46 @@ function safeBranchHealth(value: unknown): BranchHealthView | null {
   };
 }
 
+function safeAutoresearchReadinessItem(
+  value: unknown,
+): AutoresearchReadinessItemView | null {
+  const item = record(value);
+  const itemId = nonEmptyString(item?.item_id);
+  if (!item || !itemId) return null;
+  return {
+    item_id: itemId,
+    label: nonEmptyString(item.label) ?? itemId,
+    status: nonEmptyString(item.status) ?? "missing",
+    evidence: nonEmptyString(item.evidence) ?? "",
+  };
+}
+
+function safeAutoresearchReadiness(
+  value: unknown,
+): AutoresearchReadinessView | null {
+  const readiness = record(value);
+  if (!readiness) return null;
+  return {
+    state: nonEmptyString(readiness.state) ?? "error",
+    all_satisfied: readiness.all_satisfied === true,
+    total_items: nonNegativeInteger(readiness.total_items),
+    satisfied_count: nonNegativeInteger(readiness.satisfied_count),
+    operator_bound_count: nonNegativeInteger(readiness.operator_bound_count),
+    missing_count: nonNegativeInteger(readiness.missing_count),
+    first_blocker: safeAutoresearchReadinessItem(readiness.first_blocker),
+    items: Array.isArray(readiness.items)
+      ? readiness.items.flatMap((item) => {
+          const safe = safeAutoresearchReadinessItem(item);
+          return safe ? [safe] : [];
+        })
+      : [],
+    source_path:
+      nonEmptyString(readiness.source_path) ??
+      "tools.prompt_autoresearch.readiness_cli",
+    error: nullableString(readiness.error),
+  };
+}
+
 function safePhase2SprintScore(value: unknown): Phase2SprintScoreView | null {
   const score = record(value);
   const sprint = nonEmptyString(score?.sprint);
@@ -524,6 +566,9 @@ function safeRoadmapView(value: unknown): RoadmapView {
     read_activation: safeReadActivationStatus(body?.read_activation),
     adrb_dogfood: safeAdrbDogfoodStatus(body?.adrb_dogfood),
     branch_health: safeBranchHealth(body?.branch_health),
+    autoresearch_readiness: safeAutoresearchReadiness(
+      body?.autoresearch_readiness,
+    ),
     operator_actions: safeOperatorActionsSummary(body?.operator_actions),
     phase2_audit: safePhase2Audit(body?.phase2_audit),
     engineering_deferrals: safeEngineeringDeferralsSummary(

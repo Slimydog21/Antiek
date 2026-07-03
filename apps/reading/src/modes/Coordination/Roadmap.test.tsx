@@ -83,6 +83,7 @@ function roadmap(
     read_activation: null,
     adrb_dogfood: null,
     branch_health: null,
+    autoresearch_readiness: null,
     operator_actions: null,
     phase2_audit: null,
     engineering_deferrals: null,
@@ -640,6 +641,44 @@ describe("Roadmap", () => {
       screen.getByText(/base is 238 commits behind origin\/main/),
     ).toBeTruthy();
     expect(screen.getByText(/Next: run `git rebase origin\/main`\./)).toBeTruthy();
+  });
+
+  it("surfaces prompt autoresearch readiness without treating it as closure", () => {
+    render(
+      <Roadmap
+        roadmap={{
+          ...roadmap([]),
+          autoresearch_readiness: {
+            state: "incomplete",
+            all_satisfied: false,
+            total_items: 6,
+            satisfied_count: 3,
+            operator_bound_count: 3,
+            missing_count: 0,
+            first_blocker: {
+              item_id: "program",
+              label: "roles/synthesizer/program.md written and operator-reviewed",
+              status: "operator_bound",
+              evidence: "write reports/autoresearch/synthesizer-program-review.md",
+            },
+            items: [],
+            source_path: "tools.prompt_autoresearch.readiness_cli",
+            error: null,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Prompt autoresearch readiness")).toBeTruthy();
+    expect(screen.getByText("3/6 satisfied · 3 operator-bound · 0 missing")).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Next: program — write reports\/autoresearch\/synthesizer-program-review\.md\./,
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Source: tools\.prompt_autoresearch\.readiness_cli/),
+    ).toBeTruthy();
   });
 
   it("surfaces operator action counts and closeable OA focus", () => {

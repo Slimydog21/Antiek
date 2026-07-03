@@ -120,6 +120,26 @@ export interface BranchHealthView {
   error: string | null;
 }
 
+export interface AutoresearchReadinessItemView {
+  item_id: string;
+  label: string;
+  status: "satisfied" | "operator_bound" | "missing" | string;
+  evidence: string;
+}
+
+export interface AutoresearchReadinessView {
+  state: "incomplete" | "ready" | "error" | string;
+  all_satisfied: boolean;
+  total_items: number;
+  satisfied_count: number;
+  operator_bound_count: number;
+  missing_count: number;
+  first_blocker: AutoresearchReadinessItemView | null;
+  items: AutoresearchReadinessItemView[];
+  source_path: string;
+  error: string | null;
+}
+
 export interface OperatorActionView {
   action_id: string;
   title: string;
@@ -238,6 +258,7 @@ export interface RoadmapView {
   read_activation: ReadActivationStatusView | null;
   adrb_dogfood?: AdrbDogfoodStatusView | null;
   branch_health?: BranchHealthView | null;
+  autoresearch_readiness?: AutoresearchReadinessView | null;
   operator_actions?: OperatorActionsSummaryView | null;
   phase2_audit?: Phase2AuditView | null;
   engineering_deferrals?: EngineeringDeferralsSummaryView | null;
@@ -440,6 +461,11 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
           {roadmap.branch_health ? (
             <BranchHealthStatus branchHealth={roadmap.branch_health} />
           ) : null}
+          {roadmap.autoresearch_readiness ? (
+            <AutoresearchReadinessStatus
+              readiness={roadmap.autoresearch_readiness}
+            />
+          ) : null}
           {roadmap.operator_actions ? (
             <OperatorActionsStatus operatorActions={roadmap.operator_actions} />
           ) : null}
@@ -537,6 +563,47 @@ function ActivationStatus({
           {nextSession.append_command ? ` · ${nextSession.append_command}` : ""}
         </p>
       )}
+    </div>
+  );
+}
+
+function AutoresearchReadinessStatus({
+  readiness,
+}: {
+  readiness: AutoresearchReadinessView;
+}) {
+  const blocker = readiness.first_blocker;
+  return (
+    <div className="mt-2 rounded border border-rule dark:border-charcoal-1 bg-ice-0/70 dark:bg-charcoal-2/70 px-3 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[10px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+          Prompt autoresearch readiness
+        </p>
+        <LemonTag
+          colour={
+            readiness.all_satisfied
+              ? "aurora"
+              : readiness.state === "error"
+                ? "danger"
+                : "sun"
+          }
+        >
+          {readiness.all_satisfied ? "ready" : readiness.state}
+        </LemonTag>
+      </div>
+      <p className="text-xs font-mono text-ink dark:text-bright">
+        {readiness.satisfied_count}/{readiness.total_items} satisfied ·{" "}
+        {readiness.operator_bound_count} operator-bound · {readiness.missing_count}{" "}
+        missing
+      </p>
+      <p className="text-xs text-ink-soft dark:text-starlight leading-relaxed">
+        {readiness.error
+          ? `Readiness check failed: ${readiness.error}`
+          : blocker
+            ? `Next: ${blocker.item_id} — ${blocker.evidence}.`
+            : "Wedge 1 readiness is mechanically satisfied; operator judgment remains the product bar."}{" "}
+        Source: {readiness.source_path || "tools.prompt_autoresearch.readiness_cli"}.
+      </p>
     </div>
   );
 }

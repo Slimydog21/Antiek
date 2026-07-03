@@ -95,6 +95,11 @@ from substrate.research_bridge.dogfood_readiness import (
     DogfoodReadiness,
     audit_dogfood_readiness,
 )
+from tools.prompt_autoresearch.readiness import (
+    ReadinessItem,
+    ReadinessReport,
+    audit_wedge1_readiness,
+)
 from tools.lint.merge_age_gate import MAX_BEHIND, compute_distance
 
 _REPO = Path(__file__).resolve().parents[3]
@@ -475,6 +480,98 @@ def build_branch_health() -> BranchHealthResponse:
     )
 
 
+class AutoresearchReadinessItemResponse(BaseModel):
+    item_id: str
+    label: str
+    status: Literal["satisfied", "operator_bound", "missing"]
+    evidence: str
+
+    @classmethod
+    def from_item(
+        cls,
+        item: ReadinessItem,
+    ) -> AutoresearchReadinessItemResponse:
+        return cls(
+            item_id=item.id,
+            label=item.label,
+            status=item.status,  # type: ignore[arg-type]
+            evidence=item.evidence,
+        )
+
+
+class AutoresearchReadinessResponse(BaseModel):
+    """Read-only Prompt Autoresearch Wedge 1 readiness.
+
+    This mirrors ``tools.prompt_autoresearch.readiness_cli`` for operator
+    surfaces. It never runs calibration, captures traces, or marks operator
+    review complete from file presence alone.
+    """
+
+    state: Literal["incomplete", "ready", "error"]
+    all_satisfied: bool
+    total_items: int
+    satisfied_count: int
+    operator_bound_count: int
+    missing_count: int
+    first_blocker: AutoresearchReadinessItemResponse | None
+    items: list[AutoresearchReadinessItemResponse]
+    source_path: str
+    error: str | None
+
+    @classmethod
+    def from_report(
+        cls,
+        report: ReadinessReport,
+    ) -> AutoresearchReadinessResponse:
+        items = [AutoresearchReadinessItemResponse.from_item(i) for i in report.items]
+        first_blocker = next(
+            (item for item in items if item.status != "satisfied"),
+            None,
+        )
+        return cls(
+            state="ready" if report.all_satisfied else "incomplete",
+            all_satisfied=report.all_satisfied,
+            total_items=len(items),
+            satisfied_count=sum(1 for item in items if item.status == "satisfied"),
+            operator_bound_count=sum(
+                1 for item in items if item.status == "operator_bound"
+            ),
+            missing_count=sum(1 for item in items if item.status == "missing"),
+            first_blocker=first_blocker,
+            items=items,
+            source_path="tools.prompt_autoresearch.readiness_cli",
+            error=None,
+        )
+
+    @classmethod
+    def from_error(
+        cls,
+        error: Exception,
+    ) -> AutoresearchReadinessResponse:
+        message = str(error) or type(error).__name__
+        return cls(
+            state="error",
+            all_satisfied=False,
+            total_items=0,
+            satisfied_count=0,
+            operator_bound_count=0,
+            missing_count=0,
+            first_blocker=None,
+            items=[],
+            source_path="tools.prompt_autoresearch.readiness_cli",
+            error=message,
+        )
+
+
+def build_autoresearch_readiness() -> AutoresearchReadinessResponse:
+    try:
+        return AutoresearchReadinessResponse.from_report(
+            audit_wedge1_readiness(_REPO)
+        )
+    except Exception as exc:
+        return AutoresearchReadinessResponse.from_error(exc)
+
+
 class OperatorActionResponse(BaseModel):
     action_id: str
     title: str
@@ -781,6 +878,7 @@ class RoadmapResponse(BaseModel):
     read_activation: ReadActivationStatusResponse
     adrb_dogfood: AdrbDogfoodStatusResponse
     branch_health: BranchHealthResponse
+    autoresearch_readiness: AutoresearchReadinessResponse
     operator_actions: OperatorActionsSummaryResponse
     phase2_audit: Phase2AuditResponse
     engineering_deferrals: EngineeringDeferralsSummaryResponse
@@ -796,6 +894,7 @@ class RoadmapResponse(BaseModel):
         read_activation: ReadActivationView | None = None,
         adrb_dogfood: AdrbDogfoodStatusResponse | None = None,
         branch_health: BranchHealthResponse | None = None,
+        autoresearch_readiness: AutoresearchReadinessResponse | None = None,
         operator_actions: OperatorActionsView | None = None,
         phase2_audit: Phase2AuditView | None = None,
         engineering_deferrals: EngineeringDeferralsView | None = None,
@@ -845,6 +944,9 @@ class RoadmapResponse(BaseModel):
             ),
             adrb_dogfood=adrb_dogfood or AdrbDogfoodStatusResponse.not_checked(),
             branch_health=branch_health or build_branch_health(),
+            autoresearch_readiness=(
+                autoresearch_readiness or build_autoresearch_readiness()
+            ),
             operator_actions=OperatorActionsSummaryResponse.from_view(
                 operator_actions or load_operator_actions()
             ),
@@ -1087,6 +1189,7 @@ def register_coordination_routes(app: FastAPI) -> None:
             build_read_activation_view(),
             _build_adrb_dogfood_status(db),
             build_branch_health(),
+            build_autoresearch_readiness(),
             load_operator_actions(),
             load_phase2_audit(),
             load_engineering_deferrals(),

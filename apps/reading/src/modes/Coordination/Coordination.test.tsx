@@ -199,6 +199,37 @@ describe("Coordination", () => {
             remediation: " run `git rebase origin/main` ",
             error: " ",
           },
+          autoresearch_readiness: {
+            state: " incomplete ",
+            all_satisfied: false,
+            total_items: "6.2",
+            satisfied_count: "3",
+            operator_bound_count: "3",
+            missing_count: "0",
+            first_blocker: {
+              item_id: " program ",
+              label: " Synthesizer program review ",
+              status: " operator_bound ",
+              evidence:
+                " write reports/autoresearch/synthesizer-program-review.md ",
+            },
+            items: [
+              {
+                item_id: " tooling ",
+                label: " tooling present ",
+                status: " satisfied ",
+                evidence: " required tool files present ",
+              },
+              {
+                item_id: " ",
+                label: " skipped ",
+                status: " missing ",
+                evidence: " skipped ",
+              },
+            ],
+            source_path: " tools.prompt_autoresearch.readiness_cli ",
+            error: " ",
+          },
           operator_actions: {
             source_path: " docs/OPERATOR_ACTIONS.md ",
             total_actions: "20.8",
@@ -383,6 +414,13 @@ describe("Coordination", () => {
     ).toBeTruthy();
     expect(
       screen.getByText(/base is 238 commits behind origin\/main/),
+    ).toBeTruthy();
+    expect(screen.getByText("Prompt autoresearch readiness")).toBeTruthy();
+    expect(screen.getByText("3/6 satisfied · 3 operator-bound · 0 missing")).toBeTruthy();
+    expect(
+      screen.getByText(
+        /Next: program — write reports\/autoresearch\/synthesizer-program-review\.md\./,
+      ),
     ).toBeTruthy();
     expect(
       screen.getByText(
