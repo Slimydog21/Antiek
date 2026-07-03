@@ -93,6 +93,14 @@ The dogfood log is JSONL: one session object per line. The validator is:
 python tools/activation/read_dogfood.py path/to/read-dogfood.jsonl
 ```
 
+The product CLI exposes the same validator status without reaching into
+`tools/`:
+
+```bash
+antiek read activation status
+antiek read activation status --log reports/read-dogfood.jsonl --json
+```
+
 To seed a new operator-authored row without hand-copying the schema, print a
 single JSONL-compatible template and replace the evidence before appending it:
 
@@ -117,6 +125,8 @@ To create or extend a dogfood log directly, append the selected template and
 then edit the appended line with the real session evidence:
 
 ```bash
+antiek read activation append-template --kind live-citation
+antiek read activation append-template --kind write-trace-citation --json
 python tools/activation/read_dogfood.py --template live-citation --append reports/read-dogfood.jsonl
 python tools/activation/read_dogfood.py --template write-trace-citation --append reports/read-dogfood.jsonl
 python tools/activation/read_dogfood.py --template live-citation --append reports/read-dogfood.jsonl --json

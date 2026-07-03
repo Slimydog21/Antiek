@@ -18,6 +18,7 @@ from runtime.db_lock import connect_read, connect_write
 from substrate.coordination.activation_view import (
     ReadActivationView,
     build_read_activation_view,
+    default_read_dogfood_log_path,
 )
 from substrate.research_bridge.db_path import ensure_research_bridge_initialized
 from substrate.research_bridge.dogfood_log import (
@@ -44,8 +45,18 @@ from substrate.research_bridge.dogfood_verdict import (
 )
 from substrate.research_bridge.draft_export import record_draft_export
 from substrate.research_bridge.gap import would_run_percentage
+from tools.activation.read_dogfood import (
+    SESSION_TEMPLATE_KINDS,
+    append_session_template,
+    session_template,
+)
 
 READ_ACTIVATION_STATUS_JSON_SCHEMA_VERSION = 1
+READ_ACTIVATION_APPEND_TEMPLATE_JSON_SCHEMA_VERSION = 1
+
+
+def _read_activation_log_path(raw_path: str | None) -> Path:
+    return Path(raw_path) if raw_path is not None else default_read_dogfood_log_path()
 
 
 def _read_activation_status_payload(view: ReadActivationView) -> dict[str, object]:
@@ -60,7 +71,7 @@ def _render_read_activation_status_json(view: ReadActivationView) -> str:
 
 
 def _cmd_read_activation_status(args: argparse.Namespace) -> int:
-    view = build_read_activation_view(Path(args.log) if args.log is not None else None)
+    view = build_read_activation_view(_read_activation_log_path(args.log))
     if args.json:
         sys.stdout.write(_render_read_activation_status_json(view))
     else:
@@ -93,6 +104,46 @@ def _cmd_read_activation_status(args: argparse.Namespace) -> int:
         for failure in view.failures:
             print(f"failure: {failure}")
     return 0 if view.closure_ready else 1
+
+
+def _read_activation_append_template_payload(
+    *,
+    kind: str,
+    log_path: Path,
+    view: ReadActivationView,
+) -> dict[str, object]:
+    return {
+        "schema_version": READ_ACTIVATION_APPEND_TEMPLATE_JSON_SCHEMA_VERSION,
+        "appended_template": kind,
+        "log_path": str(log_path),
+        "view": asdict(view),
+    }
+
+
+def _cmd_read_activation_append_template(args: argparse.Namespace) -> int:
+    log_path = _read_activation_log_path(args.log)
+    record = session_template(args.kind)
+    append_session_template(log_path, record)
+    view = build_read_activation_view(log_path)
+    if args.json:
+        payload = _read_activation_append_template_payload(
+            kind=args.kind,
+            log_path=log_path,
+            view=view,
+        )
+        sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    else:
+        print(f"appended template: {args.kind}")
+        print(f"log: {log_path}")
+        print(f"state: {view.state}")
+        print(
+            "valid sessions: "
+            f"{view.valid_sessions}/{view.required_counts['valid_sessions']} "
+            f"({view.total_sessions} total, {view.invalid_session_count} invalid)"
+        )
+        for failure in view.failures:
+            print(f"failure: {failure}")
+    return 0
 
 
 def _cmd_research_bridge_dogfood_report(args: argparse.Namespace) -> int:
@@ -280,6 +331,30 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Write a stable machine-readable activation status payload.",
     )
     activation_status.set_defaults(func=_cmd_read_activation_status)
+    activation_append_template = activation_subparsers.add_parser(
+        "append-template",
+        help="Append a Read activation dogfood scaffold session.",
+    )
+    activation_append_template.add_argument(
+        "--kind",
+        required=True,
+        choices=SESSION_TEMPLATE_KINDS,
+        help="Template kind to append.",
+    )
+    activation_append_template.add_argument(
+        "--log",
+        default=None,
+        help=(
+            "Read dogfood JSONL log. Defaults to "
+            "reports/read-dogfood.jsonl in the repository."
+        ),
+    )
+    activation_append_template.add_argument(
+        "--json",
+        action="store_true",
+        help="Write a stable machine-readable append result payload.",
+    )
+    activation_append_template.set_defaults(func=_cmd_read_activation_append_template)
 
     research = subparsers.add_parser("research", help="Research product commands.")
     research_subparsers = research.add_subparsers(dest="research_command")
