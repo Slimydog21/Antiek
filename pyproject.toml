@@ -211,4 +211,5 @@ markers = [
     "integration: tests requiring external services / live LLM / network",
     "slow: slow tests (full multi-arm benchmark runs); excluded from the fast CI suite via -m 'not slow'",
     "real_store_read: opt-out from the SPR-04 store-isolation guard for a legitimate read-only real-store test (DOGFOOD SPR-04)",
+    "store_isolation_contract: opt-out for tests that probe ANTIEK_DUCKDB_PATH fallback contracts (DOGFOOD SPR-04)",
 ]
