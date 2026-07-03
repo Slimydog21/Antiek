@@ -43,6 +43,7 @@
 #   unified-flywheel-conformance — Unified SPR-08 flywheel + conformance gate
 #   research-bridge-dogfood — Deep Research Bridge dogfood/report/verdict gates
 #   prompt-autoresearch-wedge1 — Prompt Autoresearch Wedge 1 CLI/readiness/verdict gates
+#   ams-ref-lint        — AMS sprint/spec path-reference anti-fiction gate
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #   deep-research        — ANT-DRL P-52..P-58 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
 #   html-transport       — ANT-AHT P-59 ResearchArtifact transport gates
@@ -77,7 +78,7 @@ require_tsx() {
 }
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|speak-economics-matrix|speak-biography-authoring|speak-publishing-physical|drw-reading-surface-transfer|unified-substrate-contract-lock|unified-remote-exec-fanout|unified-seams-and-collisions|unified-navigation-ia-taxonomy|unified-coordination-gate-ledger|unified-thread-navigation|unified-cost-consent-surface|unified-flywheel-conformance|research-bridge-dogfood|prompt-autoresearch-wedge1|handoff <md>|agent-gates|deep-research|html-transport}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|speak-economics-matrix|speak-biography-authoring|speak-publishing-physical|drw-reading-surface-transfer|unified-substrate-contract-lock|unified-remote-exec-fanout|unified-seams-and-collisions|unified-navigation-ia-taxonomy|unified-coordination-gate-ledger|unified-thread-navigation|unified-cost-consent-surface|unified-flywheel-conformance|research-bridge-dogfood|prompt-autoresearch-wedge1|ams-ref-lint|handoff <md>|agent-gates|deep-research|html-transport}" >&2
   exit 2
 }
 
@@ -667,6 +668,15 @@ cmd_prompt_autoresearch_wedge1() {
   echo "CANONICAL_VERIFY_OK: prompt-autoresearch-wedge1"
 }
 
+cmd_ams_ref_lint() {
+  echo "== ams-ref-lint: sprint/spec path-reference anti-fiction gate =="
+  bash scripts/agent_ams_ref_lint.sh \
+    docs/htmlspec/antiek-hard-to-vary-execution/sprint-05-ams-bridge.html
+  echo "== ams-ref-lint: wrapper subprocess regressions =="
+  "${PY}" -m pytest tests/test_agent_ams_ref_lint.py -q --tb=no
+  echo "CANONICAL_VERIFY_OK: ams-ref-lint"
+}
+
 cmd_handoff() {
   local f="${1:?handoff markdown path required}"
   echo "== handoff: schema linter =="
@@ -796,6 +806,7 @@ main() {
     unified-flywheel-conformance) cmd_unified_flywheel_conformance ;;
     research-bridge-dogfood) cmd_research_bridge_dogfood ;;
     prompt-autoresearch-wedge1) cmd_prompt_autoresearch_wedge1 ;;
+    ams-ref-lint) cmd_ams_ref_lint ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     deep-research) cmd_deep_research ;;

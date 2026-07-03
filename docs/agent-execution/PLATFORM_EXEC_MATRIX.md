@@ -53,7 +53,7 @@
 | P-45 | Unified flywheel conformance | `tests/e2e/test_flywheel.py` + `tests/test_integration_invariants.py` + `tools/codegen/check_conformance.py` | `./scripts/canonical_verify.sh unified-flywheel-conformance` | — | Live product-module replacement of documented stubs |
 | P-46 | Agent handoff schema | `tools/agent/verify_handoff.ts` | `./scripts/canonical_verify.sh handoff <md>` | — | Narrative quality / intent |
 | P-47 | Session theater grep | `scripts/audit_agent_session.sh` | paired with handoff subcommand | — | Claims outside markdown packet |
-| P-48 | AMS spec ref-lint | `scripts/agent_ams_ref_lint.sh` | `bash scripts/agent_ams_ref_lint.sh <sprint.html>` | — | Playwright mountain shell |
+| P-48 | AMS spec ref-lint | `scripts/agent_ams_ref_lint.sh` + `tools/ams-v2/ref-lint.sh` + `tools/specs/verify_spec_refs.ts` | `./scripts/canonical_verify.sh ams-ref-lint` | — | Playwright mountain shell |
 | P-49 | Reading substrate pytest | `.github/workflows/ci.yml` `pytest` job | CI on `main` (full suite) | — | Local hardware parity |
 | P-50 | Agent execution gates | `tools/agent/verify_handoff.ts` + `scripts/audit_agent_session.sh` + `apps/reading/src/modes/Settings/Settings.test.tsx` + `apps/reading/src/shared/copyLint.test.ts` + `tests/test_provenance_ref_lint.py` + `tests/test_prompt_autoresearch_readiness.py` + read activation + Werner paths | `canonical_verify.sh agent-gates` + case study §5 | Werner operator card (htmlspec) | Live Werner p95/fps and operator UX without artifact |
 | P-51 | Serve / rights / legal | `docs/OPERATOR_ACTIONS.md` + `infrastructure/runbooks/first-deploy.md` | **No** informational CI job alone (F7) | Operator deploy checklist + production probe evidence | Jurisdiction-specific legal review |

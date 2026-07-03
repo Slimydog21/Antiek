@@ -82,6 +82,14 @@ def test_canonical_verify_prompt_autoresearch_wedge1_bundle() -> None:
         assert test_path in src
 
 
+def test_canonical_verify_ams_ref_lint_bundle() -> None:
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert "CANONICAL_VERIFY_OK: ams-ref-lint" in src
+    assert "scripts/agent_ams_ref_lint.sh" in src
+    assert "docs/htmlspec/antiek-hard-to-vary-execution/sprint-05-ams-bridge.html" in src
+    assert "tests/test_agent_ams_ref_lint.py" in src
+
+
 def test_canonical_verify_usage_names_every_dispatch_subcommand() -> None:
     src = SCRIPT.read_text(encoding="utf-8")
     usage_match = re.search(r"Usage: canonical_verify\.sh \{([^}]*)\}", src)
@@ -440,3 +448,11 @@ def test_canonical_verify_prompt_autoresearch_wedge1_hermetic() -> None:
     proc = _run("prompt-autoresearch-wedge1")
     assert proc.returncode == 0, proc.stderr or proc.stdout
     assert "CANONICAL_VERIFY_OK: prompt-autoresearch-wedge1" in proc.stdout
+
+
+def test_canonical_verify_ams_ref_lint_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("ams-ref-lint")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: ams-ref-lint" in proc.stdout

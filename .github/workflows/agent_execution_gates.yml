@@ -24,7 +24,9 @@ on:
       - 'antiek/cli.py'
       - 'tools/agent/**'
       - 'tools/activation/read_dogfood.py'
+      - 'tools/ams-v2/ref-lint.sh'
       - 'tools/prompt_autoresearch/**'
+      - 'tools/specs/verify_spec_refs.ts'
       - 'scripts/canonical_verify.sh'
       - 'scripts/repro_cascade_decompose_contract.py'
       - 'scripts/audit_decomposer_call_sites.sh'
@@ -114,6 +116,7 @@ on:
       - 'infrastructure/runbooks/remote-exec-fanout.md'
       - 'tests/**'
       - 'tests/fixtures/agent_execution/**'
+      - 'docs/htmlspec/antiek-hard-to-vary-execution/sprint-05-ams-bridge.html'
       - 'tests/test_audit_agent_session.py'
       - 'tests/test_canonical_verify.py'
       - 'tests/test_platform_exec_matrix.py'
@@ -191,7 +194,9 @@ on:
       - 'antiek/cli.py'
       - 'tools/agent/**'
       - 'tools/activation/read_dogfood.py'
+      - 'tools/ams-v2/ref-lint.sh'
       - 'tools/prompt_autoresearch/**'
+      - 'tools/specs/verify_spec_refs.ts'
       - 'scripts/canonical_verify.sh'
       - 'scripts/repro_cascade_decompose_contract.py'
       - 'scripts/audit_decomposer_call_sites.sh'
@@ -281,6 +286,7 @@ on:
       - 'infrastructure/runbooks/remote-exec-fanout.md'
       - 'tests/**'
       - 'tests/fixtures/agent_execution/**'
+      - 'docs/htmlspec/antiek-hard-to-vary-execution/sprint-05-ams-bridge.html'
       - 'tests/test_audit_agent_session.py'
       - 'tests/test_canonical_verify.py'
       - 'tests/test_platform_exec_matrix.py'
@@ -391,6 +397,9 @@ jobs:
 
       - name: Canonical verify — Prompt Autoresearch Wedge 1
         run: ./scripts/canonical_verify.sh prompt-autoresearch-wedge1
+
+      - name: Canonical verify — AMS ref-lint
+        run: ./scripts/canonical_verify.sh ams-ref-lint
 
       - name: Canonical verify — read foundation
         run: ./scripts/canonical_verify.sh read-foundation
