@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Any
 
@@ -114,18 +114,31 @@ def ensure_tables(con: Any) -> None:
         con.execute(
             """
             CREATE TABLE IF NOT EXISTS house_seconds (
-                house_id           TEXT PRIMARY KEY,
-                batch_ref          TEXT NOT NULL,
-                window_id          TEXT NOT NULL,
-                n_seconds          INTEGER NOT NULL DEFAULT 0,
-                amount_cents       INTEGER NOT NULL DEFAULT 0,
-                reason             TEXT NOT NULL,
-                telemetry_version  TEXT NOT NULL,
-                weighting_version  TEXT NOT NULL,
-                inputs_json        TEXT NOT NULL,
-                accrued_at         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                house_id             TEXT PRIMARY KEY,
+                batch_ref            TEXT NOT NULL,
+                window_id            TEXT NOT NULL,
+                n_seconds            INTEGER NOT NULL DEFAULT 0,
+                amount_cents         INTEGER NOT NULL DEFAULT 0,
+                reason               TEXT NOT NULL,
+                telemetry_version    TEXT NOT NULL,
+                weighting_version    TEXT NOT NULL,
+                inputs_json          TEXT NOT NULL,
+                fraud_verdict        TEXT NOT NULL DEFAULT 'pass',
+                excluded_counts_json TEXT NOT NULL DEFAULT '[]',
+                accrued_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
+        )
+        # AFA-S2 M5: forward-compat for a house_seconds table created before the
+        # anti-gaming audit columns existed (a pre-M5 DB). ADD COLUMN IF NOT
+        # EXISTS is a no-op on a fresh table that already has them.
+        con.execute(
+            "ALTER TABLE house_seconds ADD COLUMN IF NOT EXISTS "
+            "fraud_verdict TEXT NOT NULL DEFAULT 'pass'"
+        )
+        con.execute(
+            "ALTER TABLE house_seconds ADD COLUMN IF NOT EXISTS "
+            "excluded_counts_json TEXT NOT NULL DEFAULT '[]'"
         )
         con.execute(
             "CREATE INDEX IF NOT EXISTS idx_house_seconds_window "
@@ -379,7 +392,19 @@ def _batch_inputs(
 ) -> dict[str, Any]:
     """The exact inputs the aggregation consumed, in a canonical-JSON-round-
     trippable shape. Persisted on each row so :func:`replay` re-derives the
-    accrual against the same inputs (mirrors attribution_audit's ``inputs``)."""
+    accrual against the same inputs (mirrors attribution_audit's ``inputs``).
+
+    ORDER IS LOAD-BEARING (AFA-S2 M5): the seconds are stored in their ORIGINAL
+    order, NOT sorted by second_index. The anti-gaming filter in
+    ``aggregate_window`` is order-sensitive (non-monotonic / duplicate detection
+    depends on the sequence), so sorting the snapshot would make replay reconstruct
+    a DIFFERENT (re-ordered, and thus differently-filtered) batch than the one that
+    was accrued — the accrual and its replay would disagree. Preserving order keeps
+    replay faithful AND keeps idempotency correct: the same batch in the same order
+    yields the same ref; a re-ordered batch is a genuinely different accrual (and is
+    itself caught by the filter as non-monotonic). Samples WITHIN a second are still
+    sorted by asset_id — their order does not affect the filter, and weigh_second
+    sorts them anyway."""
     return {
         "window_id": batch.window_id,
         "ad_value_usd_cents": batch.ad_value_usd_cents,
@@ -401,7 +426,7 @@ def _batch_inputs(
                     for sm in sorted(s.samples, key=lambda x: x.asset_id)
                 ],
             }
-            for s in sorted(batch.seconds, key=lambda x: x.second_index)
+            for s in batch.seconds  # ORIGINAL order — see docstring
         ],
     }
 
@@ -452,15 +477,11 @@ def accrue_window(
         return _load_window_accrual(con, batch_ref)
 
     result = aggregate_window(batch, asset_to_ip_holder=asset_to_ip_holder)
-    result = WindowAccrual(
-        batch_ref=batch_ref,
-        window_id=result.window_id,
-        total_ad_value_cents=result.total_ad_value_cents,
-        asset_lines=result.asset_lines,
-        house=result.house,
-        telemetry_version=result.telemetry_version,
-        weighting_version=result.weighting_version,
-    )
+    # Set the real batch_ref while PRESERVING every other field — including the
+    # AFA-S2 M5 audit fields (excluded_second_counts, fraud_verdict). Rebuilding
+    # the dataclass by hand silently dropped them (a BLOCK window returned
+    # "pass"/empty); replace() cannot.
+    result = replace(result, batch_ref=batch_ref)
 
     # Write per-asset accrual rows (one per window+asset — write amplification
     # is bounded by the asset count, never the second count).
@@ -500,13 +521,16 @@ def accrue_window(
         """
         INSERT INTO house_seconds (
             house_id, batch_ref, window_id, n_seconds, amount_cents,
-            reason, telemetry_version, weighting_version, inputs_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            reason, telemetry_version, weighting_version, inputs_json,
+            fraud_verdict, excluded_counts_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             house_id, batch_ref, result.window_id, result.house.n_seconds,
             result.house.amount_cents, result.house.reason,
             result.telemetry_version, result.weighting_version, inputs_json,
+            result.fraud_verdict,
+            _canonical_json([[r, c] for r, c in result.excluded_second_counts]),
         ],
     )
 
@@ -529,7 +553,8 @@ def _load_window_accrual(con: Any, batch_ref: str) -> WindowAccrual:
     hrow = con.execute(
         """
         SELECT window_id, n_seconds, amount_cents, reason,
-               telemetry_version, weighting_version
+               telemetry_version, weighting_version,
+               fraud_verdict, excluded_counts_json
         FROM house_seconds WHERE batch_ref = ?
         """,
         [batch_ref],
@@ -551,6 +576,12 @@ def _load_window_accrual(con: Any, batch_ref: str) -> WindowAccrual:
     total = sum(line.amount_cents for line in asset_lines) + house.amount_cents
     telemetry_version = arows[0][7] if arows else hrow[4]
     weighting_version = arows[0][8] if arows else hrow[5]
+    # AFA-S2 M5 audit fields — reconstruct from the persisted house row so the
+    # idempotent-reload path reports the SAME verdict/exclusions as the fresh
+    # accrual (a BLOCK window reloads as "block", not the "pass" default).
+    excluded_second_counts = tuple(
+        (str(r), int(c)) for r, c in json.loads(hrow[7])
+    )
     return WindowAccrual(
         batch_ref=batch_ref,
         window_id=window_id,
@@ -559,6 +590,8 @@ def _load_window_accrual(con: Any, batch_ref: str) -> WindowAccrual:
         house=house,
         telemetry_version=telemetry_version,
         weighting_version=weighting_version,
+        excluded_second_counts=excluded_second_counts,
+        fraud_verdict=str(hrow[6]),
     )
 
 
