@@ -51,6 +51,7 @@ from tools.activation.read_dogfood import (
     SESSION_TEMPLATE_KINDS,
     append_session_template,
     build_session_record,
+    build_session_record_from_draft,
     session_template,
     validate_session_record,
 )
@@ -59,6 +60,7 @@ READ_ACTIVATION_STATUS_JSON_SCHEMA_VERSION = 1
 READ_ACTIVATION_APPEND_TEMPLATE_JSON_SCHEMA_VERSION = 1
 READ_ACTIVATION_NEXT_SESSION_JSON_SCHEMA_VERSION = 1
 READ_ACTIVATION_RECORD_SESSION_JSON_SCHEMA_VERSION = 1
+READ_ACTIVATION_RECORD_DRAFT_JSON_SCHEMA_VERSION = 1
 
 
 def _read_activation_log_path(raw_path: str | None) -> Path:
@@ -254,6 +256,56 @@ def _cmd_read_activation_record_session(args: argparse.Namespace) -> int:
         sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     else:
         print(f"recorded session: {record['session_id']}")
+        print(f"log: {log_path}")
+        print(f"state: {view.state}")
+        print(
+            "valid sessions: "
+            f"{view.valid_sessions}/{view.required_counts['valid_sessions']} "
+            f"({view.total_sessions} total, {view.invalid_session_count} invalid)"
+        )
+        for failure in view.failures:
+            print(f"failure: {failure}")
+    return 0
+
+
+def _cmd_read_activation_record_draft(args: argparse.Namespace) -> int:
+    log_path = _read_activation_log_path(args.log)
+    try:
+        draft = json.loads(Path(args.draft).read_text(encoding="utf-8"))
+        if not isinstance(draft, dict):
+            raise ValueError("draft must be a JSON object")
+        record = build_session_record_from_draft(
+            draft,
+            minutes_reading=args.minutes_reading,
+            operator_note=args.operator_note,
+            verdict=args.verdict,
+            blocking_issue_ids=args.blocking_issue_id,
+        )
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        print(f"record-draft: {exc}", file=sys.stderr)
+        return 2
+
+    record_failures = validate_session_record(record)
+    if record_failures:
+        print("record-draft: session evidence is invalid; not appending", file=sys.stderr)
+        for failure in record_failures:
+            print(f"record-draft: {failure}", file=sys.stderr)
+        return 2
+
+    append_session_template(log_path, record)
+    view = build_read_activation_view(log_path)
+    payload = {
+        "schema_version": READ_ACTIVATION_RECORD_DRAFT_JSON_SCHEMA_VERSION,
+        "recorded_session_id": record["session_id"],
+        "draft_path": str(args.draft),
+        "log_path": str(log_path),
+        "view": asdict(view),
+    }
+    if args.json:
+        sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    else:
+        print(f"recorded draft session: {record['session_id']}")
+        print(f"draft: {args.draft}")
         print(f"log: {log_path}")
         print(f"state: {view.state}")
         print(
@@ -588,6 +640,55 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Write a stable machine-readable record result payload.",
     )
     activation_record_session.set_defaults(func=_cmd_read_activation_record_session)
+    activation_record_draft = activation_subparsers.add_parser(
+        "record-draft",
+        help=(
+            "Append a Read activation session from a golden-path evidence draft "
+            "after adding the operator's step-7 dogfood fields."
+        ),
+    )
+    activation_record_draft.add_argument(
+        "--draft",
+        required=True,
+        help="Path to read-activation-record-session-draft.json from the e2e walk.",
+    )
+    activation_record_draft.add_argument(
+        "--log",
+        default=None,
+        help=(
+            "Read dogfood JSONL log. Defaults to "
+            "reports/read-dogfood.jsonl in the repository."
+        ),
+    )
+    activation_record_draft.add_argument(
+        "--minutes-reading",
+        type=int,
+        required=True,
+        help="Real operator reading time for golden-path step 7.",
+    )
+    activation_record_draft.add_argument(
+        "--operator-note",
+        required=True,
+        help="Real operator note for golden-path step 7.",
+    )
+    activation_record_draft.add_argument(
+        "--verdict",
+        choices=("ACTIVATE", "REPAIR", "ROLL BACK CLAIM"),
+        default=None,
+        help="Optional final operator verdict for the last evidence record.",
+    )
+    activation_record_draft.add_argument(
+        "--blocking-issue-id",
+        action="append",
+        default=None,
+        help="Blocking issue id for a REPAIR verdict; repeat for multiple ids.",
+    )
+    activation_record_draft.add_argument(
+        "--json",
+        action="store_true",
+        help="Write a stable machine-readable draft record result payload.",
+    )
+    activation_record_draft.set_defaults(func=_cmd_read_activation_record_draft)
 
     research = subparsers.add_parser("research", help="Research product commands.")
     research_subparsers = research.add_subparsers(dest="research_command")

@@ -12,6 +12,7 @@ from tools.activation.read_dogfood import (
     REQUIRED_VALID_SESSIONS,
     append_session_template,
     build_session_record,
+    build_session_record_from_draft,
     load_jsonl,
     main,
     session_template,
@@ -219,6 +220,63 @@ def test_validate_session_record_reports_bad_evidence_without_closure_gaps() -> 
     assert "session-1: build_sha must be a 6-40 character git SHA" in failures
     assert "session-1: citation step 5 result_url must open /read/{source_document_id}" in failures
     assert not any("closure requires" in failure for failure in failures)
+
+
+def test_build_session_record_from_draft_replaces_step_7_placeholders() -> None:
+    draft = {
+        "schema_version": 1,
+        "kind": "read_activation_record_session_draft",
+        "record_session_fields_template": {
+            "session_id": "draft-session-1",
+            "date": "2026-07-03",
+            "build_sha": "0123456789abcdef",
+            "url": "https://app.example/read/doc-1",
+            "operator": "operator",
+            "document_id": "doc-1",
+            "entry_door": "library",
+            "provider_status": "absent",
+            "live_provider_ai": False,
+            "citation_traced": True,
+            "minutes_reading": "<minutes_reading_at_least_20>",
+            "visible_content_note": "Real Reader route rendered Chapter One.",
+            "selected_text": "The exact highlighted passage.",
+            "return_context_note": "Return reopened /read/doc-1?page=0.",
+            "operator_note": "<operator_20_minute_reading_note>",
+            "dialogue_no_key_copy": "Dialogue requires provider activation keys.",
+            "research_no_key_copy": "Research spin-out requires provider activation keys.",
+            "source_document_id": "source-doc-1",
+            "chunk_id": "chunk-1",
+            "result_url": "https://app.example/read/source-doc-1?chunk=chunk-1&from=doc-1",
+        },
+    }
+
+    record = build_session_record_from_draft(
+        draft,
+        minutes_reading=24,
+        operator_note="Read for 24 minutes without blocking friction.",
+    )
+
+    assert record["session_id"] == "draft-session-1"
+    assert record["minutes_reading"] == 24
+    assert record["steps"]["7"]["operator_note"] == (
+        "Read for 24 minutes without blocking friction."
+    )
+    assert record["live_provider_ai"] is False
+    assert record["citation_traced"] is True
+    assert validate_session_record(record) == ()
+
+
+def test_build_session_record_from_draft_rejects_wrong_schema() -> None:
+    try:
+        build_session_record_from_draft(
+            {"schema_version": 2, "kind": "read_activation_record_session_draft"},
+            minutes_reading=24,
+            operator_note="Read for 24 minutes.",
+        )
+    except ValueError as exc:
+        assert str(exc) == "draft schema_version must be 1"
+    else:
+        raise AssertionError("expected draft schema mismatch to be rejected")
 
 
 def test_mechanically_complete_log_requires_final_verdict() -> None:

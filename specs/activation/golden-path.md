@@ -147,6 +147,21 @@ antiek read activation record-session ... \
 For a final closure row, add `--verdict ACTIVATE`. A `REPAIR` verdict must also
 include one or more `--blocking-issue-id READ-...` flags.
 
+The real-route Playwright proxy (`apps/reading/e2e/read-golden-path.spec.ts`)
+attaches `read-activation-record-session-draft.json` with observed steps 1-6
+and placeholders for step 7. After the operator completes the real 20-minute
+reading session, append that draft without rebuilding the command by hand:
+
+```bash
+antiek read activation record-draft \
+  --draft path/to/read-activation-record-session-draft.json \
+  --minutes-reading 24 \
+  --operator-note "read for 24 minutes; no blocking friction"
+```
+
+`record-draft` uses the same validator preflight as `record-session`: if the
+filled row is still invalid, it exits non-zero and does not append anything.
+
 To seed a draft row instead, print a single JSONL-compatible template and
 replace the evidence before appending it:
 
