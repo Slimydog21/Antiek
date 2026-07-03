@@ -202,8 +202,17 @@ def record_event(
     tier: str | None = None,
     amount_cents: int | None = None,
     detail: dict[str, Any] | None = None,
+    recorded_at: str | None = None,
 ) -> str:
     """Append one audit event and return its ``event_id``.
+
+    ``recorded_at``: when ``None`` (the default) the DB stamps
+    ``CURRENT_TIMESTAMP`` at insert. Pass an explicit ISO timestamp to record a
+    leg at a KNOWN instant — either backfilling historical audit events with
+    their real time, or recording several lifecycle legs as one atomic instant
+    so ``trace()`` orders them by lifecycle stage (fetch→serve→accrue) rather
+    than by sub-second insert jitter. It is NOT part of the ``event_id``
+    identity, so it never affects idempotency.
 
     Append-only + idempotent (matching ``decisions_log.persist_decision`` /
     ``attribution_audit.record_attribution``): the ``event_id`` is a deterministic
@@ -238,18 +247,33 @@ def record_event(
     ).fetchone()
     if existing is not None:
         return event_id
-    con.execute(
-        """
-        INSERT INTO arxiv_audit (
-            event_id, arxiv_id, document_id, kind, reason, tier,
-            amount_cents, detail_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        [
-            event_id, arxiv_id, document_id, kind, reason, tier,
-            amount_cents, detail_json,
-        ],
-    )
+    if recorded_at is None:
+        # Let the column default (CURRENT_TIMESTAMP) stamp the instant.
+        con.execute(
+            """
+            INSERT INTO arxiv_audit (
+                event_id, arxiv_id, document_id, kind, reason, tier,
+                amount_cents, detail_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                event_id, arxiv_id, document_id, kind, reason, tier,
+                amount_cents, detail_json,
+            ],
+        )
+    else:
+        con.execute(
+            """
+            INSERT INTO arxiv_audit (
+                event_id, arxiv_id, document_id, kind, reason, tier,
+                amount_cents, detail_json, recorded_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                event_id, arxiv_id, document_id, kind, reason, tier,
+                amount_cents, detail_json, recorded_at,
+            ],
+        )
     return event_id
 
 
