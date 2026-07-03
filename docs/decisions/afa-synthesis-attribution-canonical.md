@@ -97,11 +97,17 @@ disagree on the same page **right now**. Traced divergences:
 - **Confidence axis (B):** claim-level string weight (`CONFIDENCE_WEIGHTS`,
   `algorithms.py:95`) vs per-chunk float (`chunk_to_claim_confidence`,
   `attribution.py:256`).
-- **Tier clamp (B):** `algorithms.py:101` clamps `tier_factor = max(1, 6−int(tier))`;
-  `attribution.py:259` uses an unclamped `(6 − tier)` that can reach 0 or negative for
-  tier > 5.
+- **Tier clamp (B) — LATENT, not live:** `algorithms.py:101` clamps
+  `tier_factor = max(1, 6−int(tier))`; `attribution.py:259` uses an unclamped `(6 − tier)`
+  that reaches 0 at tier 6 and goes negative beyond. Because source tiers are documented
+  1..5, this axis only *bites* if a tier ≥6 ever appears — so it is a latent divergence,
+  distinct from the two axes above. The doc's urgency rests on the **live** axes (Option-A
+  per-citation multiplicity + the Option-B confidence type), not this one; it is listed for
+  completeness and as a reason the unified math should clamp defensively. (Independent
+  AFA-lane verification, 2026-07-03, made this latent/live distinction explicit.)
 
-Two implementations of one labeled spec section, both live-reachable and divergent, is
+The two live axes alone mean two implementations of one labeled spec section are
+live-reachable and divergent — which is
 exactly the swappable-without-loss duplication that produces a dispute where two Antiek
 surfaces disagree on the same page's split. This is the opposite of the auditability the
 operator asked for.
