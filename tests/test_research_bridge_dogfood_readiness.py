@@ -13,6 +13,7 @@ from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database_at_path
 from substrate.research_bridge.dogfood_log import write_dogfood_scaffold
 from substrate.research_bridge.dogfood_readiness import (
+    READINESS_JSON_SCHEMA_VERSION,
     audit_dogfood_readiness,
     render_readiness_json,
     render_readiness_summary,
@@ -298,6 +299,7 @@ def test_render_readiness_json_exposes_stable_machine_contract(
 
     payload = json.loads(render_readiness_json(readiness))
 
+    assert payload["schema_version"] == READINESS_JSON_SCHEMA_VERSION
     assert payload["ok"] is False
     assert payload["dogfood_root"] == str(root)
     assert payload["metrics_path"] == str(root / "dogfood_metrics.md")
