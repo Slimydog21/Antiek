@@ -266,6 +266,47 @@ def test_build_session_record_from_draft_replaces_step_7_placeholders() -> None:
     assert validate_session_record(record) == ()
 
 
+def test_build_session_record_from_draft_accepts_attribution_overrides() -> None:
+    draft = {
+        "schema_version": 1,
+        "kind": "read_activation_record_session_draft",
+        "record_session_fields_template": {
+            "session_id": "draft-session-1",
+            "date": "2026-07-03",
+            "build_sha": "0123456789abcdef",
+            "url": "https://app.example/read/doc-1",
+            "operator": "operator",
+            "document_id": "doc-1",
+            "entry_door": "library",
+            "provider_status": "absent",
+            "live_provider_ai": False,
+            "citation_traced": True,
+            "minutes_reading": "<minutes_reading_at_least_20>",
+            "visible_content_note": "Real Reader route rendered Chapter One.",
+            "selected_text": "The exact highlighted passage.",
+            "return_context_note": "Return reopened /read/doc-1?page=0.",
+            "operator_note": "<operator_20_minute_reading_note>",
+            "dialogue_no_key_copy": "Dialogue requires provider activation keys.",
+            "research_no_key_copy": "Research spin-out requires provider activation keys.",
+            "source_document_id": "source-doc-1",
+            "chunk_id": "chunk-1",
+            "result_url": "https://app.example/read/source-doc-1?chunk=chunk-1&from=doc-1",
+        },
+    }
+
+    record = build_session_record_from_draft(
+        draft,
+        minutes_reading=24,
+        operator_note="Read for 24 minutes without blocking friction.",
+        session_id="2026-07-03-faisal-001",
+        operator="Faisal",
+    )
+
+    assert record["session_id"] == "2026-07-03-faisal-001"
+    assert record["operator"] == "Faisal"
+    assert validate_session_record(record) == ()
+
+
 def test_build_session_record_from_draft_rejects_wrong_schema() -> None:
     try:
         build_session_record_from_draft(

@@ -278,6 +278,8 @@ def _cmd_read_activation_record_draft(args: argparse.Namespace) -> int:
             draft,
             minutes_reading=args.minutes_reading,
             operator_note=args.operator_note,
+            session_id=args.session_id,
+            operator=args.operator,
             verdict=args.verdict,
             blocking_issue_ids=args.blocking_issue_id,
         )
@@ -670,6 +672,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--operator-note",
         required=True,
         help="Real operator note for golden-path step 7.",
+    )
+    activation_record_draft.add_argument(
+        "--session-id",
+        default=None,
+        help="Override the draft session id before appending.",
+    )
+    activation_record_draft.add_argument(
+        "--operator",
+        default=None,
+        help="Override the draft operator name before appending.",
     )
     activation_record_draft.add_argument(
         "--verdict",

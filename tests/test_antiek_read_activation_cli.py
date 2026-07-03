@@ -461,6 +461,10 @@ def test_antiek_read_activation_record_draft_json_appends_after_step_7(
             "24",
             "--operator-note",
             "Read for 24 minutes without blocking friction.",
+            "--session-id",
+            "2026-07-03-faisal-001",
+            "--operator",
+            "Faisal",
             "--json",
         ]
     )
@@ -468,14 +472,15 @@ def test_antiek_read_activation_record_draft_json_appends_after_step_7(
     assert rc == 0
     records = load_jsonl(log_path)
     assert len(records) == 1
-    assert records[0]["session_id"] == "draft-session-1"
+    assert records[0]["session_id"] == "2026-07-03-faisal-001"
+    assert records[0]["operator"] == "Faisal"
     assert records[0]["minutes_reading"] == 24
     assert records[0]["steps"]["7"]["operator_note"] == (
         "Read for 24 minutes without blocking friction."
     )
     payload = json.loads(capsys.readouterr().out)
     assert payload["schema_version"] == 1
-    assert payload["recorded_session_id"] == "draft-session-1"
+    assert payload["recorded_session_id"] == "2026-07-03-faisal-001"
     assert payload["draft_path"] == str(draft_path)
     assert payload["log_path"] == str(log_path)
     assert payload["view"]["valid_sessions"] == 1
