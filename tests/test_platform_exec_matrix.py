@@ -378,6 +378,74 @@ def test_read_profile_rows_name_current_scope() -> None:
         )
 
 
+def test_write_profile_rows_name_current_scope() -> None:
+    """P-19..P-27 must track the concrete tests bundled by Write profiles."""
+    script = CANONICAL_VERIFY.read_text(encoding="utf-8")
+    matrix = MATRIX.read_text(encoding="utf-8")
+
+    expected = {
+        "19": {
+            "command": "write-outline-block",
+            "body": ("`substrate/write/outline_block.py`", "`/write/blocks` routes"),
+            "script": ("tests/test_outline_block.py", "tests/test_speak_write_composer.py"),
+        },
+        "20": {
+            "command": "write-edit-capture",
+            "body": ("`substrate/edit/`", "Write editor edit payload mapping"),
+            "script": ("tests/test_edit_capture.py", "src/modes/Write/Editor/editCapture.test.ts"),
+        },
+        "21": {
+            "command": "write-block-repository",
+            "body": ("`substrate/write/folders.py`", "`substrate/write/block_search.py`"),
+            "script": ("tests/test_block_repository.py", "src/modes/Write/Repository/Repository.test.tsx"),
+        },
+        "22": {
+            "command": "write-structured-editor",
+            "body": ("`apps/reading/src/modes/Write/Editor/`", "generated draft mount"),
+            "script": ("src/modes/Write/Editor/tiptapAdapter.test.ts", "src/modes/Write/Outline.test.tsx"),
+        },
+        "23": {
+            "command": "write-brainstorm-interview",
+            "body": ("`substrate/write/brainstorm_blocks.py`", "`IdeaDump` section emission"),
+            "script": ("tests/test_brainstorm_interview.py", "src/modes/Write/Brainstorm/IdeaDump.test.tsx"),
+        },
+        "24": {
+            "command": "write-draft-generation-style",
+            "body": ("`substrate/write/draft_generation.py`", "`creative_writer` route/UI"),
+            "script": ("tests/test_draft_generation.py", "tests/test_role_creative_writer.py"),
+        },
+        "25": {
+            "command": "write-trace-to-source",
+            "body": ("`substrate/write/trace.py`", "Write editor/X-ray open path"),
+            "script": ("tests/test_trace_to_source.py", "src/modes/Write/Xray.test.tsx"),
+        },
+        "26": {
+            "command": "write-pre-outline-freeform",
+            "body": ("`substrate/write/promote_context.py`", "`ContextWindow`"),
+            "script": ("tests/test_promote_context.py", "src/modes/Write/ContextWindow/ContextWindow.test.tsx"),
+        },
+        "27": {
+            "command": "write-style-conditioning",
+            "body": ("`substrate/write/style_profile.py`", "`creative_writer.style_guide` conditioning"),
+            "script": ("tests/test_style_conditioning.py", "tests/test_draft_generation.py"),
+        },
+    }
+
+    for row_id, markers in expected.items():
+        row = re.search(rf"^\| P-{row_id} \|(?P<body>.*)\|$", matrix, re.MULTILINE)
+        assert row is not None, f"P-{row_id} row missing"
+        body = row.group("body")
+
+        assert f"`./scripts/canonical_verify.sh {markers['command']}`" in body
+        missing_body = [marker for marker in markers["body"] if marker not in body]
+        missing_script = [marker for marker in markers["script"] if marker not in script]
+
+        assert not missing_body, f"P-{row_id} row missing marker(s): {missing_body}"
+        assert not missing_script, (
+            f"canonical Write profile missing P-{row_id} marker(s): {missing_script}"
+        )
+
+
 def test_agent_gates_trigger_on_provenance_invariant_inputs() -> None:
     """P-38 now runs the invariant registry, including parser provenance checks."""
     for event_name in ("push", "pull_request"):
