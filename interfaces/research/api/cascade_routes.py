@@ -35,10 +35,11 @@ aggregate budget.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, cast
 
@@ -136,6 +137,117 @@ def _translate() -> Iterator[None]:
 def _embedding_provider() -> EmbeddingProvider:
     from processing.embedding import default_embedding_provider
     return default_embedding_provider()
+
+
+class _LazyReuseSubstrate:
+    """The §9.0-gated reuse substrate the runner's flywheel hook
+    (``HostLocalRunner._maybe_reuse_prior_knowledge``) queries so a launched
+    research emits ``knowledge.reused`` and the compounding flywheel turns.
+
+    THE FIX (``docs/decisions/flywheel-reuse-single-writer.md``). #140 built the
+    substrate with ``make_substrate("brute_force", _db(), …)``, whose ``.open()``
+    calls ``connect_read`` (``read_only=True``). DuckDB refuses a read-only
+    handle to a file already held read-write in the same process, so once the
+    funnel opened its promotion writer every cascade launch raised
+    ``ConnectionException`` (6 ``test_cascade_api`` failures); #178/#190 reverted
+    it.
+
+    This NEVER calls ``connect_read``. It opens ONE plain read-write
+    ``duckdb.connect`` handle and builds a brute-force substrate from its
+    ``.cursor()`` (``make_substrate_from_con``). Three deliberate, load-bearing
+    choices:
+
+    * Read-WRITE config, not ``connect_read``. DuckDB permits multiple handles to
+      one file in one process ONLY when their configuration matches; a read-only
+      handle beside the funnel's read-write writer is exactly the forbidden
+      mismatch. A read-write handle shares the funnel's DuckDB instance (same
+      process, same config), so the reuse read coexists with — and sees live —
+      the funnel's committed writes. It is used strictly for SELECTs.
+    * NO write flock (plain ``duckdb.connect``, not ``connect_write``). The funnel
+      opens/closes its write lock per promotion. The single-writer flock
+      invariant is untouched — the funnel stays the sole flock-holding writer.
+    * LAZY open + close-on-return. A held read-write handle is the forbidden
+      mismatch for EVERY ``connect_read`` reader in the process (``load_tree``,
+      ``assert_launchable``, ``reconstruct_session``, ``GET /investigations``).
+      ``CascadeSession.launch`` runs ``assert_launchable`` (a ``connect_read``)
+      BEFORE the first ``runner.start`` reuse read, and the polling/recovery
+      readers run AFTER launch returns. So the handle opens only on the first
+      reuse read — inside ``launch``'s synchronous reuse-read burst, after
+      ``assert_launchable`` — and the launch site closes it the instant
+      ``launch()`` returns, before the background phase. The burst runs with no
+      ``await`` (cooperative scheduling), so no ``connect_read`` reader overlaps
+      the open handle.
+
+    ``brute_force`` (not the ``vss`` default) keeps the read cheap — no whole-DB
+    temp copy. ``model`` is ``_embedding_provider()`` — the SAME embedder the
+    funnel uses — so similarity is computed in one space (a hash stub when
+    sentence-transformers is absent still makes the flywheel turn)."""
+
+    name = "brute_force"
+
+    def __init__(self, db_path: str, model: Any) -> None:
+        self._db_path = db_path
+        self._model = model
+        self._parent: Any | None = None
+        self._inner: Any | None = None
+
+    def _ensure(self) -> Any:
+        if self._inner is None:
+            import duckdb
+
+            from substrate.graph.retrieval_substrate import make_substrate_from_con
+
+            # Read-write, NO flock — shares the funnel's DuckDB instance.
+            self._parent = duckdb.connect(self._db_path)
+            self._inner = make_substrate_from_con(
+                "brute_force", self._parent, model=self._model
+            )
+        return self._inner
+
+    @property
+    def _con(self) -> Any:
+        # knowledge_reuse reads node-level similarity over the substrate's own
+        # connection via ``getattr(substrate, "_con", None)``; hand it the shared
+        # cursor (opening the handle on first use).
+        return self._ensure()._con
+
+    def query(
+        self,
+        text: str,
+        *,
+        top_k: int = 5,
+        source_tier_max: int | None = None,
+        document_ids: Sequence[str] | None = None,
+        policy_tag: str = "attribution_eligible",
+    ) -> dict[str, Any]:
+        result: dict[str, Any] = self._ensure().query(
+            text,
+            top_k=top_k,
+            source_tier_max=source_tier_max,
+            document_ids=document_ids,
+            policy_tag=policy_tag,
+        )
+        return result
+
+    def close(self) -> None:
+        inner, parent = self._inner, self._parent
+        self._inner = None
+        self._parent = None
+        if inner is not None and hasattr(inner, "close"):
+            with contextlib.suppress(Exception):
+                inner.close()
+        if parent is not None:
+            with contextlib.suppress(Exception):
+                parent.close()
+
+
+def _reuse_substrate() -> _LazyReuseSubstrate | None:
+    """Build the lazy reuse substrate for a launch, or ``None`` on failure (reuse
+    is best-effort — a launch never breaks because reuse could not be set up)."""
+    try:
+        return _LazyReuseSubstrate(_db(), _embedding_provider())
+    except Exception:  # pragma: no cover — reuse is best-effort, never fatal
+        return None
 
 
 def _decompose(problem: str, max_depth: int) -> PlanReport:
@@ -409,10 +521,28 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
     ]
     budget = BudgetManager(aggregate_cap_usd=req.aggregate_budget_usd)
     funnel = PromotionFunnel(db_path=_db(), embedding_provider=_embedding_provider())
+    # Flywheel reuse ON: a §9.0-gated substrate that reads the live graph through
+    # a cursor of a read-write handle SHARING the funnel's DuckDB instance (never
+    # a conflicting connect_read). It opens lazily on the first reuse read inside
+    # launch() and is closed the instant launch() returns, so the read-write
+    # handle never overlaps a connect_read reader. Best-effort: None degrades to
+    # today's no-reuse behaviour, so a launch never breaks. See _reuse_substrate.
+    reuse_substrate = _reuse_substrate()
     runner = HostLocalRunner(_research_loop_factory(), budget=budget,
-                             on_emit=funnel.submit, seal_on_complete=False)
+                             on_emit=funnel.submit, seal_on_complete=False,
+                             retrieval_substrate=reuse_substrate)
     session = CascadeSession(session_id, runner=runner, funnel=funnel, db_path=_db())
-    await session.launch(root_id, leaves)
+    try:
+        await session.launch(root_id, leaves)
+    finally:
+        # The reuse reads happen synchronously during launch(); close the shared
+        # read handle NOW so it never overlaps the connect_read readers that run
+        # during the background/polling phase (a held read-write handle is the
+        # forbidden RO+RW same-file mismatch for every connect_read on the file).
+        # runner.join() will best-effort close it again later — idempotent.
+        if reuse_substrate is not None:
+            with contextlib.suppress(Exception):
+                reuse_substrate.close()
     _SESSIONS[session_id] = session
     # Drive the fan-out to completion (join + funnel drain + merge) in the
     # background so the session progresses without a connected stream client.
