@@ -12,6 +12,7 @@ from tools.activation.read_dogfood import (
     REQUIRED_LIVE_PROVIDER_SESSIONS,
     REQUIRED_NON_LIBRARY_SESSIONS,
     REQUIRED_VALID_SESSIONS,
+    load_jsonl,
 )
 
 
@@ -139,3 +140,76 @@ def test_antiek_read_activation_status_json_is_scriptable(
         "citation_trace_sessions": 0,
         "non_library_sessions": 0,
     }
+
+
+def test_antiek_read_activation_append_template_creates_operator_log(
+    tmp_path: Path,
+    capsys,
+) -> None:  # type: ignore[no-untyped-def]
+    log_path = tmp_path / "operator" / "read-dogfood.jsonl"
+
+    rc = main(
+        [
+            "read",
+            "activation",
+            "append-template",
+            "--kind",
+            "live-citation",
+            "--log",
+            str(log_path),
+        ]
+    )
+
+    assert rc == 0
+    records = load_jsonl(log_path)
+    assert len(records) == 1
+    assert records[0]["live_provider_ai"] is True
+    assert records[0]["citation_traced"] is True
+    assert records[0]["entry_door"] == "command_palette"
+    out = capsys.readouterr().out
+    assert "appended template: live-citation" in out
+    assert f"log: {log_path}" in out
+    assert "state: incomplete" in out
+    assert "valid sessions: 0/10 (1 total, 1 invalid)" in out
+    assert (
+        "failure: 2026-06-30-operator-001: live provider step 3 still has template first_answer"
+        in out
+    )
+    assert "failure: 2026-06-30-operator-001: citation step 5 still has template result_url" in out
+
+
+def test_antiek_read_activation_append_template_json_reports_post_append_status(
+    tmp_path: Path,
+    capsys,
+) -> None:  # type: ignore[no-untyped-def]
+    log_path = tmp_path / "read-dogfood.jsonl"
+
+    rc = main(
+        [
+            "read",
+            "activation",
+            "append-template",
+            "--kind",
+            "write-trace-citation",
+            "--log",
+            str(log_path),
+            "--json",
+        ]
+    )
+
+    assert rc == 0
+    records = load_jsonl(log_path)
+    assert len(records) == 1
+    assert records[0]["entry_door"] == "write_trace_to_source"
+    assert "from=" not in records[0]["steps"]["5"]["result_url"]
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == 1
+    assert payload["appended_template"] == "write-trace-citation"
+    assert payload["log_path"] == str(log_path)
+    view = payload["view"]
+    assert view["source_path"] == str(log_path)
+    assert view["state"] == "incomplete"
+    assert view["total_sessions"] == 1
+    assert view["valid_sessions"] == 0
+    assert view["closure_ready"] is False
+    assert any("template result_url" in failure for failure in view["failures"])
