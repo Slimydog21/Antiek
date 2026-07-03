@@ -17,12 +17,15 @@
  * tools/activation/read_dogfood.py.
  */
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { execSync } from "node:child_process";
 
 import { loginAndGotoApp } from "./_ams/auth";
+import { buildReadActivationEvidenceDraft } from "./_ams/read_activation_evidence";
 
 const ORIGINAL_DOC_ID = "doc-1";
 const SOURCE_DOC_ID = "doc-source-42";
 const SOURCE_CHUNK_ID = "chunk-7";
+const SELECTED_PASSAGE = "A cited claim with enough text for selection";
 
 async function json(route: Route, status: number, body: unknown): Promise<void> {
   await route.fulfill({
@@ -186,12 +189,14 @@ async function selectReaderParagraphText(page: Page): Promise<void> {
 
 test.describe("Read activation golden path on the real app route", () => {
   test("opens rich Reader, selects text, traces citation, and returns", async ({ page }) => {
+    const buildSha = currentGitSha();
+    const today = new Date().toISOString().slice(0, 10);
     await installReaderStubs(page);
     await loginAndGotoApp(page, `/read/${ORIGINAL_DOC_ID}`, { settleMs: 200 });
 
     await expect(page.locator("[data-reader-root]")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Chapter One" })).toBeVisible();
-    await expect(page.getByText("A cited claim with enough text for selection")).toBeVisible();
+    await expect(page.getByText(SELECTED_PASSAGE)).toBeVisible();
 
     await selectReaderParagraphText(page);
     await expect(page.getByRole("menu", { name: "Highlight actions" })).toBeVisible();
@@ -209,6 +214,7 @@ test.describe("Read activation golden path on the real app route", () => {
     const dialogueBoundary = page.getByRole("alert");
     await expect(dialogueBoundary).toContainText("model provider");
     await expect(dialogueBoundary).toContainText("activation SPR-03");
+    const dialogueBoundaryCopy = normalizeEvidenceText(await dialogueBoundary.textContent());
     await page.keyboard.press("Escape");
 
     await selectReaderParagraphText(page);
@@ -222,6 +228,7 @@ test.describe("Read activation golden path on the real app route", () => {
     const researchBoundary = chasePanel.getByRole("alert");
     await expect(researchBoundary).toContainText("model provider");
     await expect(researchBoundary).toContainText("activation SPR-03");
+    const researchBoundaryCopy = normalizeEvidenceText(await researchBoundary.textContent());
     await chasePanel.getByRole("button", { name: /back to the book/i }).click();
 
     await page.getByRole("button", { name: "Open the cited source [1]" }).click();
@@ -232,9 +239,44 @@ test.describe("Read activation golden path on the real app route", () => {
       page.getByRole("article").getByRole("heading", { name: "Source Work" }),
     ).toBeVisible();
     await expect(page.getByText("The cited source body is visible.")).toBeVisible();
+    const sourceResultUrl = page.url();
 
     await page.getByRole("button", { name: /Return to A Servable Book/ }).click();
     await expect(page).toHaveURL(/\/read\/doc-1\?page=0$/);
     await expect(page.getByRole("heading", { name: "Chapter One" })).toBeVisible();
+
+    const draft = buildReadActivationEvidenceDraft({
+      sessionId: `read-golden-path-e2e-${buildSha.slice(0, 7)}`,
+      date: today,
+      buildSha,
+      url: `${new URL(page.url()).origin}/read/${ORIGINAL_DOC_ID}`,
+      operator: process.env.READ_ACTIVATION_OPERATOR ?? "operator",
+      documentId: ORIGINAL_DOC_ID,
+      entryDoor: "library",
+      visibleContentNote:
+        "Real Reader route rendered Chapter One and structured paragraph content.",
+      selectedText: SELECTED_PASSAGE,
+      dialogueNoKeyCopy: dialogueBoundaryCopy,
+      researchNoKeyCopy: researchBoundaryCopy,
+      sourceDocumentId: SOURCE_DOC_ID,
+      chunkId: SOURCE_CHUNK_ID,
+      resultUrl: sourceResultUrl,
+      returnContextNote: "Return control reopened /read/doc-1?page=0 with Chapter One visible.",
+    });
+    await test.info().attach("read-activation-record-session-draft.json", {
+      contentType: "application/json",
+      body: Buffer.from(JSON.stringify(draft, null, 2), "utf-8"),
+    });
   });
 });
+
+function normalizeEvidenceText(value: string | null): string {
+  return (value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function currentGitSha(): string {
+  return execSync("git rev-parse --verify HEAD", {
+    cwd: new URL("../../..", import.meta.url),
+    encoding: "utf-8",
+  }).trim();
+}
