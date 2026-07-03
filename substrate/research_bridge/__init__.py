@@ -17,6 +17,12 @@ from .dogfood_log import (
     validate_wave4_candidates,
     write_dogfood_scaffold,
 )
+from .dogfood_reconcile import (
+    DogfoodSessionEvidence,
+    DogfoodSessionReconciliation,
+    reconcile_dogfood_sessions,
+    reconcile_dogfood_sessions_from_db_path,
+)
 from .dogfood_report import (
     DogfoodMetrics,
     SessionBlockMetrics,
@@ -116,6 +122,10 @@ __all__ = [
     "validate_dogfood_log",
     "validate_wave4_candidates",
     "write_dogfood_scaffold",
+    "DogfoodSessionEvidence",
+    "DogfoodSessionReconciliation",
+    "reconcile_dogfood_sessions",
+    "reconcile_dogfood_sessions_from_db_path",
     "DraftExportRecord",
     "list_draft_exports",
     "record_draft_export",

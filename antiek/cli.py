@@ -18,6 +18,9 @@ from substrate.research_bridge.dogfood_log import (
     validate_wave4_candidates,
     write_dogfood_scaffold,
 )
+from substrate.research_bridge.dogfood_reconcile import (
+    reconcile_dogfood_sessions,
+)
 from substrate.research_bridge.dogfood_report import (
     build_report_from_db_path,
     default_dogfood_metrics_path,
@@ -89,6 +92,30 @@ def _cmd_research_bridge_wave4_validate(args: argparse.Namespace) -> int:
     print(f"valid candidates: {len(result.candidates)}")
     if result.ok:
         print("WAVE4_CANDIDATES_OK")
+        return 0
+    for missing in result.missing_requirements:
+        print(f"missing: {missing}")
+    return 1
+
+
+def _cmd_research_bridge_dogfood_log_reconcile(args: argparse.Namespace) -> int:
+    db_path = ensure_research_bridge_initialized(args.db)
+    con = connect_read(db_path)
+    try:
+        result = reconcile_dogfood_sessions(con, root=args.root)
+    finally:
+        con.close()
+
+    print(f"operator-log: {result.operator_log_path}")
+    print(f"reconciled sessions: {len(result.sessions)}/5")
+    for row in result.sessions:
+        print(
+            f"- {row.project_name} [{row.session_id}]: "
+            f"{row.blocks_pasted} block(s), {row.gap_runs} gap run(s), "
+            f"{row.draft_exports} draft export(s), {row.prompt_signals} prompt signal(s)"
+        )
+    if result.ok:
+        print("DOGFOOD_SESSIONS_OK")
         return 0
     for missing in result.missing_requirements:
         print(f"missing: {missing}")
@@ -203,6 +230,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Dogfood directory. Defaults to ~/Desktop/Antiek/runs/adrb.",
     )
     dogfood_log_validate.set_defaults(func=_cmd_research_bridge_dogfood_log_validate)
+    dogfood_log_reconcile = dogfood_log_subparsers.add_parser(
+        "reconcile",
+        help="Reconcile operator dogfood sessions with bridge substrate rows.",
+    )
+    dogfood_log_reconcile.add_argument(
+        "--root",
+        default=None,
+        help="Dogfood directory. Defaults to ~/Desktop/Antiek/runs/adrb.",
+    )
+    dogfood_log_reconcile.add_argument(
+        "--db",
+        default=None,
+        help="DuckDB path. Defaults to ANTIEK_DUCKDB_PATH / substrate default.",
+    )
+    dogfood_log_reconcile.set_defaults(func=_cmd_research_bridge_dogfood_log_reconcile)
     wave4_validate = dogfood_log_subparsers.add_parser(
         "wave4-validate",
         help="Validate operator-owned Wave 4 candidate notes.",

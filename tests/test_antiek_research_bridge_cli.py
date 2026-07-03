@@ -136,6 +136,31 @@ def test_antiek_research_bridge_wave4_validate(tmp_path: Path, capsys) -> None:
     assert "WAVE4_CANDIDATES_OK" in out
 
 
+def test_antiek_research_bridge_dogfood_log_reconcile(
+    db: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    root = tmp_path / "adrb"
+    assert main(["research", "bridge", "dogfood-log", "init", "--root", str(root)]) == 0
+
+    rc = main([
+        "research",
+        "bridge",
+        "dogfood-log",
+        "reconcile",
+        "--root",
+        str(root),
+        "--db",
+        db,
+    ])
+
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "reconciled sessions: 0/5" in out
+    assert "missing: expected 5 planned projects, found 0" in out
+
+
 def test_antiek_research_bridge_verdict_scaffold_and_validate(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
