@@ -45,6 +45,7 @@ def test_canonical_verify_agent_gates_hermetic() -> None:
     src = SCRIPT.read_text(encoding="utf-8")
     assert "CANONICAL_VERIFY_OK: agent-gates" in src
     assert "tests/test_canonical_verify.py::test_canonical_verify_agent_gates_hermetic" in src
+    assert "src/shared/copyLint.test.ts" in src
     assert "tests/test_antiek_read_activation_cli.py" in src
     assert "e2e/_ams/read_activation_evidence.test.ts" in src
     assert "tests/test_canonical_verify.py \\" not in src

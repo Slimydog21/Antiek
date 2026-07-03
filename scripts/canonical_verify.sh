@@ -653,6 +653,8 @@ cmd_agent_gates() {
   (cd apps/reading && npm run test:handoff)
   echo "== agent-gates: settings activation boundary =="
   (cd apps/reading && npm run test -- src/modes/Settings/Settings.test.tsx --reporter=dot)
+  echo "== agent-gates: user-facing copy lint =="
+  (cd apps/reading && npm run test -- src/shared/copyLint.test.ts --reporter=dot)
   echo "== agent-gates: Read activation CLI + closure guard =="
   "${PY}" -m pytest \
     tests/test_read_activation_dogfood.py \
