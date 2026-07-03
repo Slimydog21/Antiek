@@ -13,7 +13,10 @@ from collections.abc import Sequence
 
 from runtime.db_lock import connect_read, connect_write
 from substrate.research_bridge.db_path import ensure_research_bridge_initialized
-from substrate.research_bridge.dogfood_log import write_dogfood_scaffold
+from substrate.research_bridge.dogfood_log import (
+    validate_dogfood_log,
+    write_dogfood_scaffold,
+)
 from substrate.research_bridge.dogfood_report import (
     build_report_from_db_path,
     default_dogfood_metrics_path,
@@ -53,6 +56,19 @@ def _cmd_research_bridge_dogfood_log_init(args: argparse.Namespace) -> int:
         f"({'written' if result.operator_log_written else 'kept'})"
     )
     return 0
+
+
+def _cmd_research_bridge_dogfood_log_validate(args: argparse.Namespace) -> int:
+    result = validate_dogfood_log(args.root)
+    print(f"operator-log: {result.operator_log_path}")
+    print(f"planned projects: {len(result.planned_projects)}/5")
+    print(f"filled project entries: {len(result.filled_project_entries)}/5")
+    if result.ok:
+        print("DOGFOOD_LOG_OK")
+        return 0
+    for missing in result.missing_requirements:
+        print(f"missing: {missing}")
+    return 1
 
 
 def _cmd_research_bridge_draft_export_record(args: argparse.Namespace) -> int:
@@ -133,6 +149,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Rewrite _template.md. operator-log.md is never overwritten.",
     )
     dogfood_log_init.set_defaults(func=_cmd_research_bridge_dogfood_log_init)
+    dogfood_log_validate = dogfood_log_subparsers.add_parser(
+        "validate",
+        help="Validate operator-owned dogfood log readiness.",
+    )
+    dogfood_log_validate.add_argument(
+        "--root",
+        default=None,
+        help="Dogfood directory. Defaults to ~/Desktop/Antiek/runs/adrb.",
+    )
+    dogfood_log_validate.set_defaults(func=_cmd_research_bridge_dogfood_log_validate)
 
     draft_export = bridge_subparsers.add_parser(
         "draft-export",
