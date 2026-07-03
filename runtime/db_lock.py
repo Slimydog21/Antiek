@@ -269,6 +269,9 @@ def connect_write(
     `purpose` is a short tag (e.g. "ingest", "extract", "supersession-review")
     stamped into the sidecar lock file so a stuck writer is identifiable.
     """
+    from runtime.test_store_guard import assert_write_path_not_real_store
+
+    assert_write_path_not_real_store(db_path)
     lock_path = _lock_path_for(db_path)
     parent = os.path.dirname(lock_path)
     if parent and not os.path.exists(parent):

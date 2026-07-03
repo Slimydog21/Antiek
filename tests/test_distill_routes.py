@@ -217,3 +217,6 @@ def test_graph_db_path_honors_env_override(monkeypatch, tmp_path):
 
     monkeypatch.delenv("ANTIEK_DUCKDB_PATH", raising=False)
     assert graph_db_path() != target  # falls back to the constant path
+    # SPR-04 teardown guard: restore tmp override so default_db_path() is not
+    # left on the real store when the autouse isolation fixture checks.
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", target)

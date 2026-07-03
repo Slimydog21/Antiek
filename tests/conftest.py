@@ -27,13 +27,14 @@ import os
 
 import pytest
 
+from runtime.test_store_guard import real_operator_graph_db_path
 from substrate.dispatch.breaker import default_breaker
 from substrate.graph import default_db_path
 
 
 def _real_store_path() -> str:
     """Canonical real operator store, symlinks resolved (realpath)."""
-    return os.path.realpath(os.path.expanduser("~/.antiek/research_graph.duckdb"))
+    return real_operator_graph_db_path()
 
 
 def _check_store_isolated(db_path: str, real: str, *, node_id: str = "") -> None:
@@ -78,12 +79,19 @@ def _isolate_antiek_store(request, monkeypatch, tmp_path):
 
     Opt out with ``@pytest.mark.real_store_read`` for the small set of
     legitimate read-only real-store tests (the marker is opt-in and registered
-    in ``pyproject.toml``); such a test owns its read-only posture.
+    in ``pyproject.toml``). Opt-out skips env redirect **and** the
+    ``connect_write`` enforcement flag — the test author owns a read-only,
+    no-write posture (honest escape hatch, not a write license).
+
+    Tests that intentionally ``delenv('ANTIEK_DUCKDB_PATH')`` mid-body to
+    probe fallback must restore a tmp override before returning so teardown
+    does not false-positive (see ``test_graph_db_path_honors_env_override``).
     """
     if request.node.get_closest_marker("real_store_read"):
         return
     real = _real_store_path()
     tmp_db = tmp_path / "graph.duckdb"
+    monkeypatch.setenv("ANTIEK_ENFORCE_TEST_STORE_ISOLATION", "1")
     monkeypatch.setenv("ANTIEK_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(tmp_db))
     _check_store_isolated(default_db_path(), real, node_id=request.node.nodeid)
