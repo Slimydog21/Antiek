@@ -168,11 +168,24 @@ def test_agent_workflow_runs_every_matrix_canonical_command() -> None:
 def test_agent_workflow_runs_handoff_fixture_gate_for_schema_rows() -> None:
     workflow = AGENT_GATES.read_text(encoding="utf-8")
     matrix = MATRIX.read_text(encoding="utf-8")
+    script = CANONICAL_VERIFY.read_text(encoding="utf-8")
+    fixture = (ROOT / _HANDOFF_FIXTURE).read_text(encoding="utf-8")
 
     assert "| P-46 | Agent handoff schema |" in matrix
     assert "| P-47 | Session theater grep |" in matrix
     assert f"./scripts/canonical_verify.sh handoff {_HANDOFF_FIXTURE}" in workflow
     assert (ROOT / _HANDOFF_FIXTURE).is_file()
+
+    assert '"${TSX}" tools/agent/verify_handoff.ts "$f"' in script
+    assert "bash scripts/audit_agent_session.sh \"$f\"" in script
+    assert "CANONICAL_VERIFY_OK: handoff ($f)" in script
+    assert "tools/agent/verify_handoff.ts" in workflow
+    assert "scripts/audit_agent_session.sh" in workflow
+    assert "tests/fixtures/agent_execution/**" in workflow
+    assert "### Not proved" in fixture
+    assert "### Status" in fixture
+    assert re.search(r"^#{2,3} Scope Map$", fixture, re.MULTILINE)
+    assert "pytest[^|]*\\|[[:space:]]*tail" not in fixture
 
 
 def test_platform_matrix_canonical_commands_exist_in_script() -> None:
