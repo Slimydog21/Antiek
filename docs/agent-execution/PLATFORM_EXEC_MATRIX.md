@@ -7,7 +7,7 @@
 | ID | Surface | Entry point | Hermetic gate (command) | Operator gate | Default `### Not proved` |
 |----|---------|-------------|-------------------------|---------------|--------------------------|
 | P-01 | Cascade auto-decompose | `POST /research/plans` omit `sub_questions` | `./scripts/canonical_verify.sh cascade` | `docs/agent-execution/OPERATOR_VERIFY_CASCADE_DECOMPOSE.md` | Live LLM decompose on operator keys |
-| P-02 | DispatchDecomposer adapter | `roles/cascade_planner/planner.py` | `pytest tests/test_cascade_planner.py::test_dispatch_decomposer_maps_stub_response -q` | same as P-01 | Event-bus decomposer parity |
+| P-02 | DispatchDecomposer adapter | `roles/cascade_planner/planner.py` + `tests/test_cascade_planner.py` | included in `canonical_verify.sh cascade` | same as P-01 | Event-bus decomposer parity |
 | P-03 | Cascade HTTP light route | `tests/test_cascade_create_plan_light.py` | included in `canonical_verify.sh cascade` | — | Full `tests/test_cascade_api.py` collection |
 | P-04 | Decomposer call sites | `scripts/audit_decomposer_call_sites.sh` | included in `canonical_verify.sh cascade` | — | Runtime-only branches |
 | P-05 | Cascade edit contract | `PlanTree` edits + `/research/plans/{root_id}/edit` | included in `canonical_verify.sh cascade` | — | Full launch/session journey |
