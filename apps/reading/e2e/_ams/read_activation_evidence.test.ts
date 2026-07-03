@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildReadActivationEvidenceDraft } from "./read_activation_evidence";
 
 describe("read activation evidence draft", () => {
-  it("builds an explicit non-append-ready record-session template", () => {
+  it("builds an explicit non-append-ready record-draft template", () => {
     const draft = buildReadActivationEvidenceDraft({
       sessionId: "read-golden-path-e2e-abcdef0",
       date: "2026-07-03",
@@ -43,6 +43,26 @@ describe("read activation evidence draft", () => {
     expect(draft.record_session_argv_template).toContain("record-session");
     expect(draft.record_session_argv_template).toContain("--citation-traced");
     expect(draft.record_session_argv_template).toContain("--dialogue-no-key-copy");
+    expect(draft.record_draft_argv_template).toEqual([
+      "antiek",
+      "read",
+      "activation",
+      "record-draft",
+      "--draft",
+      "<path_to_read_activation_record_session_draft.json>",
+      "--minutes-reading",
+      "<minutes_reading_at_least_20>",
+      "--operator-note",
+      "<operator_20_minute_reading_note>",
+      "--operator",
+      "operator",
+      "--session-id",
+      "read-golden-path-e2e-abcdef0",
+    ]);
+    expect(draft.record_draft_command_template).toContain("record-draft");
+    expect(draft.record_draft_command_template).toContain(
+      "<path_to_read_activation_record_session_draft.json>",
+    );
     expect(draft.record_session_command_template).toContain(
       "'No model provider configured; activation SPR-03.'",
     );
@@ -73,5 +93,6 @@ describe("read activation evidence draft", () => {
     expect(draft.record_session_command_template).toContain(
       "'Dialogue'\\''s provider boundary.'",
     );
+    expect(draft.record_draft_command_template).toContain("--operator operator");
   });
 });

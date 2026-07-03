@@ -149,8 +149,10 @@ include one or more `--blocking-issue-id READ-...` flags.
 
 The real-route Playwright proxy (`apps/reading/e2e/read-golden-path.spec.ts`)
 attaches `read-activation-record-session-draft.json` with observed steps 1-6
-and placeholders for step 7. After the operator completes the real 20-minute
-reading session, append that draft without rebuilding the command by hand:
+and placeholders for step 7. The artifact includes both a direct
+`record_draft_command_template` and the lower-level `record_session_command_template`.
+After the operator completes the real 20-minute reading session, append that
+draft without rebuilding the command by hand:
 
 ```bash
 antiek read activation record-draft \
