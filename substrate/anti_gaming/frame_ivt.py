@@ -390,7 +390,7 @@ def _sivt_signals(
     # SIVT-1 constant-attention: fraction of seconds sharing the modal
     # per-second signature (the sorted tuple of each sample's rounded features).
     # Real reading jitters; a near-constant signature is replayed/synthetic.
-    sig_counts: dict[tuple, int] = {}
+    sig_counts: dict[tuple[tuple[str, float, float, int], ...], int] = {}
     for sec in valid_seconds:
         key = tuple(
             sorted(
