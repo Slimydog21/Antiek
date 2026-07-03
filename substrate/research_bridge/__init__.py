@@ -21,6 +21,13 @@ from .dogfood_report import (
     default_dogfood_metrics_path,
     render_dogfood_report,
 )
+from .dogfood_verdict import (
+    DogfoodVerdictScaffoldResult,
+    DogfoodVerdictValidation,
+    default_verdict_path,
+    validate_verdict_doc,
+    write_verdict_scaffold,
+)
 from .draft_export import (
     DraftExportRecord,
     list_draft_exports,
@@ -92,6 +99,11 @@ __all__ = [
     "default_dogfood_dir",
     "default_dogfood_metrics_path",
     "render_dogfood_report",
+    "DogfoodVerdictScaffoldResult",
+    "DogfoodVerdictValidation",
+    "default_verdict_path",
+    "validate_verdict_doc",
+    "write_verdict_scaffold",
     "validate_dogfood_log",
     "write_dogfood_scaffold",
     "DraftExportRecord",

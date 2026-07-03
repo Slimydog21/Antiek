@@ -122,6 +122,82 @@ def test_antiek_research_bridge_dogfood_log_validate(tmp_path: Path, capsys) -> 
     assert "filled project entries: 0/5" in out
 
 
+def test_antiek_research_bridge_verdict_scaffold_and_validate(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = tmp_path / "adrb_post_dogfood_verdict.md"
+
+    rc = main(["research", "bridge", "verdict", "scaffold", "--path", str(path)])
+
+    assert rc == 0
+    assert path.exists()
+
+    rc = main(["research", "bridge", "verdict", "validate", "--path", str(path)])
+
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "Mode A: missing" in out
+    assert "missing: replace all TODO placeholders" in out
+
+
+def test_antiek_research_bridge_verdict_validate_accepts_complete_doc(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = tmp_path / "adrb_post_dogfood_verdict.md"
+    path.write_text(
+        """# Antiek Deep Research Bridge Post-Dogfood Verdict
+
+## Evidence Sources
+
+- Operator log: `runs/adrb/operator-log.md`
+- Metrics report: `runs/adrb/dogfood_metrics.md`
+
+## Mode A Verdict
+
+Verdict: KILL
+
+Evidence:
+- `operator-log.md` records zero drafts the operator would send.
+- `dogfood_metrics.md` records 0 Mode A draft exports.
+
+Salvage if killed or iterated:
+- Keep only the draft export recorder.
+
+## Mode B Verdict
+
+Verdict: ITERATE
+
+Evidence:
+- `operator-log.md` records mixed prompt usefulness.
+- `dogfood_metrics.md` records 60.0% would-run signals.
+
+Salvage if killed or iterated:
+- Keep prompt signal tracking and sharpen provider-specific prompts.
+
+## Next 3 Sharp Questions
+
+1. Which prompt templates move would-run above 80%?
+2. Which failures are provider limits rather than bridge limits?
+3. What blocks repeat use after the first session?
+
+## Wave 4
+
+Decision: conditional Wave 4 for Mode B prompt sharpening only.
+""",
+        encoding="utf-8",
+    )
+
+    rc = main(["research", "bridge", "verdict", "validate", "--path", str(path)])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Mode A: KILL" in out
+    assert "Mode B: ITERATE" in out
+    assert "DOGFOOD_VERDICT_OK" in out
+
+
 def test_antiek_research_bridge_draft_export_record(db: str, tmp_path: Path) -> None:
     out = tmp_path / "draft-a.md"
 
