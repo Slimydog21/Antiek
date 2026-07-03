@@ -552,6 +552,19 @@ def build_session_record(
     return record
 
 
+def validate_session_record(record: dict[str, Any]) -> tuple[str, ...]:
+    """Return validation failures owned by one dogfood session record.
+
+    The full dogfood validator also reports closure-level gaps such as
+    "need 10 valid sessions". A recorder preflight only cares whether the row
+    it is about to append is internally valid evidence.
+    """
+    session_id = _required_text(record.get("session_id")) or "<record-1>"
+    prefix = f"{session_id}: "
+    report = validate_sessions([record])
+    return tuple(failure for failure in report.failures if failure.startswith(prefix))
+
+
 def _require_record_text(field: str, value: Any) -> str:
     text = _required_text(value)
     if not text:

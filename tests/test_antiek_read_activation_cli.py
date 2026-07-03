@@ -342,6 +342,66 @@ def test_antiek_read_activation_record_session_rejects_incomplete_live_evidence(
     assert "record-session: first_answer is required" in captured.err
 
 
+def test_antiek_read_activation_record_session_preflights_invalid_evidence(
+    tmp_path: Path,
+    capsys,
+) -> None:  # type: ignore[no-untyped-def]
+    log_path = tmp_path / "read-dogfood.jsonl"
+
+    rc = main(
+        [
+            "read",
+            "activation",
+            "record-session",
+            "--log",
+            str(log_path),
+            "--session-id",
+            "session-1",
+            "--date",
+            "2026-07-03",
+            "--build-sha",
+            "not-a-sha",
+            "--url",
+            "https://app.example/read/doc-1",
+            "--operator",
+            "operator",
+            "--document-id",
+            "doc-1",
+            "--entry-door",
+            "command_palette",
+            "--minutes-reading",
+            "24",
+            "--visible-content-note",
+            "Structured heading and table were visible.",
+            "--selected-text",
+            "The exact highlighted passage.",
+            "--return-context-note",
+            "Back returned to the same passage.",
+            "--operator-note",
+            "Read for 24 minutes without blocking friction.",
+            "--live-provider-ai",
+            "--first-answer",
+            "A useful live answer grounded in the selected passage.",
+            "--investigation-id",
+            "investigation-1",
+            "--citation-traced",
+            "--source-document-id",
+            "source-doc-1",
+            "--chunk-id",
+            "chunk-1",
+            "--result-url",
+            "https://app.example/read/source-doc-1?chunk=chunk-1&from=doc-1",
+        ]
+    )
+
+    assert rc == 2
+    assert not log_path.exists()
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "session evidence is invalid; not appending" in captured.err
+    assert "session-1: build_sha must be a 6-40 character git SHA" in captured.err
+
+
 def test_antiek_read_activation_next_session_recommends_citation_for_missing_log(
     tmp_path: Path,
     capsys,

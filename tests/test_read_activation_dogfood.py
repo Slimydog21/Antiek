@@ -15,6 +15,7 @@ from tools.activation.read_dogfood import (
     load_jsonl,
     main,
     session_template,
+    validate_session_record,
     validate_sessions,
 )
 
@@ -162,6 +163,62 @@ def test_build_session_record_requires_inert_boundary_copy() -> None:
         assert str(exc) == "dialogue_no_key_copy is required"
     else:
         raise AssertionError("expected missing inert boundary copy to be rejected")
+
+
+def test_validate_session_record_returns_only_row_level_failures() -> None:
+    record = build_session_record(
+        session_id="session-1",
+        date="2026-07-03",
+        build_sha="0123456789abcdef",
+        url="https://app.example/read/doc-1",
+        operator="operator",
+        document_id="doc-1",
+        entry_door="command_palette",
+        minutes_reading=24,
+        visible_content_note="Structured heading and table were visible.",
+        selected_text="The exact highlighted passage.",
+        return_context_note="Back returned to the same passage.",
+        operator_note="Read for 24 minutes without blocking friction.",
+        live_provider_ai=True,
+        citation_traced=True,
+        first_answer="A useful live answer grounded in the selected passage.",
+        investigation_id="investigation-1",
+        source_document_id="source-doc-1",
+        chunk_id="chunk-1",
+        result_url="https://app.example/read/source-doc-1?chunk=chunk-1&from=doc-1",
+    )
+
+    assert validate_session_record(record) == ()
+
+
+def test_validate_session_record_reports_bad_evidence_without_closure_gaps() -> None:
+    record = build_session_record(
+        session_id="session-1",
+        date="2026-07-03",
+        build_sha="not-a-sha",
+        url="https://app.example/read/doc-1",
+        operator="operator",
+        document_id="doc-1",
+        entry_door="command_palette",
+        minutes_reading=24,
+        visible_content_note="Structured heading and table were visible.",
+        selected_text="The exact highlighted passage.",
+        return_context_note="Back returned to the same passage.",
+        operator_note="Read for 24 minutes without blocking friction.",
+        live_provider_ai=True,
+        citation_traced=True,
+        first_answer="A useful live answer grounded in the selected passage.",
+        investigation_id="investigation-1",
+        source_document_id="source-doc-1",
+        chunk_id="chunk-1",
+        result_url="https://app.example/read/other-source?chunk=chunk-1&from=doc-1",
+    )
+
+    failures = validate_session_record(record)
+
+    assert "session-1: build_sha must be a 6-40 character git SHA" in failures
+    assert "session-1: citation step 5 result_url must open /read/{source_document_id}" in failures
+    assert not any("closure requires" in failure for failure in failures)
 
 
 def test_mechanically_complete_log_requires_final_verdict() -> None:

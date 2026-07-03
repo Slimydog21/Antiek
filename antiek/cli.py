@@ -52,6 +52,7 @@ from tools.activation.read_dogfood import (
     append_session_template,
     build_session_record,
     session_template,
+    validate_session_record,
 )
 
 READ_ACTIVATION_STATUS_JSON_SCHEMA_VERSION = 1
@@ -233,6 +234,13 @@ def _cmd_read_activation_record_session(args: argparse.Namespace) -> int:
         )
     except ValueError as exc:
         print(f"record-session: {exc}", file=sys.stderr)
+        return 2
+
+    record_failures = validate_session_record(record)
+    if record_failures:
+        print("record-session: session evidence is invalid; not appending", file=sys.stderr)
+        for failure in record_failures:
+            print(f"record-session: {failure}", file=sys.stderr)
         return 2
 
     append_session_template(log_path, record)
