@@ -119,7 +119,7 @@ describe("Scene — compositor", () => {
     expect(krea.getAttribute("data-krea")).toBe("fallback");
   });
 
-  it("preserves the #144 Krea status badge mount and status wiring", () => {
+  it("preserves the Krea status badge mount and status wiring (PR 144)", () => {
     const { getByTestId } = render(<Scene fetchScene={fallbackFetch} reducedMotion />);
     const badge = getByTestId("scene-status-badge");
     expect(badge.getAttribute("data-reason")).toBe("no_key");
