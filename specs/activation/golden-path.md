@@ -156,11 +156,16 @@ reading session, append that draft without rebuilding the command by hand:
 antiek read activation record-draft \
   --draft path/to/read-activation-record-session-draft.json \
   --minutes-reading 24 \
-  --operator-note "read for 24 minutes; no blocking friction"
+  --operator-note "read for 24 minutes; no blocking friction" \
+  --operator Faisal \
+  --session-id 2026-07-03-faisal-001
 ```
 
 `record-draft` uses the same validator preflight as `record-session`: if the
 filled row is still invalid, it exits non-zero and does not append anything.
+Use `--operator` and `--session-id` when the e2e artifact was generated with
+default attribution or when you are appending multiple sessions from the same
+walk shape.
 
 To seed a draft row instead, print a single JSONL-compatible template and
 replace the evidence before appending it:

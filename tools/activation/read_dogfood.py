@@ -573,6 +573,8 @@ def build_session_record_from_draft(
     *,
     minutes_reading: int,
     operator_note: str,
+    session_id: str | None = None,
+    operator: str | None = None,
     verdict: str | None = None,
     blocking_issue_ids: list[str] | None = None,
 ) -> dict[str, Any]:
@@ -590,11 +592,17 @@ def build_session_record_from_draft(
         raise ValueError("draft operator_note placeholder is missing")
 
     return build_session_record(
-        session_id=_require_record_text("session_id", fields.get("session_id")),
+        session_id=_require_record_text(
+            "session_id",
+            session_id if session_id is not None else fields.get("session_id"),
+        ),
         date=_require_record_text("date", fields.get("date")),
         build_sha=_require_record_text("build_sha", fields.get("build_sha")),
         url=_require_record_text("url", fields.get("url")),
-        operator=_require_record_text("operator", fields.get("operator")),
+        operator=_require_record_text(
+            "operator",
+            operator if operator is not None else fields.get("operator"),
+        ),
         document_id=_require_record_text("document_id", fields.get("document_id")),
         entry_door=_require_record_text("entry_door", fields.get("entry_door")),
         provider_status=_required_text(fields.get("provider_status")) or None,
