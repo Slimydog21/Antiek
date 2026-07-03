@@ -39,7 +39,12 @@ _PROMPT_AUTORESEARCH_TRIGGER_PATHS = {
     "docs/OPERATOR_ACTIONS.md",
     "docs/operator_gate_actions.md",
     "tools/prompt_autoresearch/**",
+    "tests/test_autoresearch_wedge1_probe.py",
+    "tests/test_prompt_autoresearch.py",
+    "tests/test_prompt_autoresearch_calibration.py",
+    "tests/test_prompt_autoresearch_docs.py",
     "tests/test_prompt_autoresearch_readiness.py",
+    "tests/test_prompt_autoresearch_verdict.py",
 }
 _READING_COPY_LINT_TRIGGER_PATHS = {
     "apps/reading/src/components/**",
@@ -229,7 +234,7 @@ def test_agent_gates_trigger_on_read_activation_dogfood_inputs() -> None:
 
 
 def test_agent_gates_trigger_on_prompt_autoresearch_inputs() -> None:
-    """P-50 runs the Prompt Autoresearch readiness audit it now surfaces."""
+    """P-53 runs the Prompt Autoresearch Wedge 1 closure bundle."""
     for event_name in ("push", "pull_request"):
         paths = _workflow_event_paths(event_name)
         missing = sorted(_PROMPT_AUTORESEARCH_TRIGGER_PATHS - paths)

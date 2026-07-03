@@ -68,6 +68,20 @@ def test_canonical_verify_research_bridge_dogfood_hermetic_bundle() -> None:
         assert test_path in src
 
 
+def test_canonical_verify_prompt_autoresearch_wedge1_bundle() -> None:
+    src = SCRIPT.read_text(encoding="utf-8")
+    assert "CANONICAL_VERIFY_OK: prompt-autoresearch-wedge1" in src
+    for test_path in (
+        "tests/test_prompt_autoresearch.py",
+        "tests/test_prompt_autoresearch_calibration.py",
+        "tests/test_prompt_autoresearch_readiness.py",
+        "tests/test_prompt_autoresearch_verdict.py",
+        "tests/test_autoresearch_wedge1_probe.py",
+        "tests/test_prompt_autoresearch_docs.py",
+    ):
+        assert test_path in src
+
+
 def test_canonical_verify_usage_names_every_dispatch_subcommand() -> None:
     src = SCRIPT.read_text(encoding="utf-8")
     usage_match = re.search(r"Usage: canonical_verify\.sh \{([^}]*)\}", src)
@@ -418,3 +432,11 @@ def test_canonical_verify_html_transport_hermetic() -> None:
     proc = _run("html-transport")
     assert proc.returncode == 0, proc.stderr or proc.stdout
     assert "CANONICAL_VERIFY_OK: html-transport" in proc.stdout
+
+
+def test_canonical_verify_prompt_autoresearch_wedge1_hermetic() -> None:
+    if not PY.is_file():
+        return
+    proc = _run("prompt-autoresearch-wedge1")
+    assert proc.returncode == 0, proc.stderr or proc.stdout
+    assert "CANONICAL_VERIFY_OK: prompt-autoresearch-wedge1" in proc.stdout

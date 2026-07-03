@@ -162,7 +162,12 @@ on:
       - 'tests/test_cascade_convergence.py'
       - 'tests/test_invariant_registry_meta.py'
       - 'tests/test_provenance_ref_lint.py'
+      - 'tests/test_prompt_autoresearch.py'
+      - 'tests/test_prompt_autoresearch_calibration.py'
+      - 'tests/test_prompt_autoresearch_docs.py'
       - 'tests/test_prompt_autoresearch_readiness.py'
+      - 'tests/test_prompt_autoresearch_verdict.py'
+      - 'tests/test_autoresearch_wedge1_probe.py'
       - 'tests/test_antiek_read_activation_cli.py'
       - 'tests/test_read_activation_dogfood.py'
       - '.github/workflows/agent_execution_gates.yml'
@@ -324,7 +329,12 @@ on:
       - 'tests/test_cascade_convergence.py'
       - 'tests/test_invariant_registry_meta.py'
       - 'tests/test_provenance_ref_lint.py'
+      - 'tests/test_prompt_autoresearch.py'
+      - 'tests/test_prompt_autoresearch_calibration.py'
+      - 'tests/test_prompt_autoresearch_docs.py'
       - 'tests/test_prompt_autoresearch_readiness.py'
+      - 'tests/test_prompt_autoresearch_verdict.py'
+      - 'tests/test_autoresearch_wedge1_probe.py'
       - 'tests/test_antiek_read_activation_cli.py'
       - 'tests/test_read_activation_dogfood.py'
       - '.github/workflows/agent_execution_gates.yml'
@@ -378,6 +388,9 @@ jobs:
 
       - name: Canonical verify — research bridge dogfood
         run: ./scripts/canonical_verify.sh research-bridge-dogfood
+
+      - name: Canonical verify — Prompt Autoresearch Wedge 1
+        run: ./scripts/canonical_verify.sh prompt-autoresearch-wedge1
 
       - name: Canonical verify — read foundation
         run: ./scripts/canonical_verify.sh read-foundation
@@ -490,8 +503,8 @@ jobs:
       - name: Handoff fixture — pass path
         run: ./scripts/canonical_verify.sh handoff tests/fixtures/agent_execution/handoff_pass.md
 
-      - name: Canonical verify — deep-research (P-53..P-59)
+      - name: Canonical verify — deep-research (P-54..P-60)
         run: ./scripts/canonical_verify.sh deep-research
 
-      - name: Canonical verify — html-transport (P-60)
+      - name: Canonical verify — html-transport (P-61)
         run: ./scripts/canonical_verify.sh html-transport

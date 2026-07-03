@@ -42,6 +42,7 @@
 #   unified-cost-consent-surface — Unified SPR-07 cost + consent surface
 #   unified-flywheel-conformance — Unified SPR-08 flywheel + conformance gate
 #   research-bridge-dogfood — Deep Research Bridge dogfood/report/verdict gates
+#   prompt-autoresearch-wedge1 — Prompt Autoresearch Wedge 1 CLI/readiness/verdict gates
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #   deep-research        — ANT-DRL P-52..P-58 hermetic harness (SPR-DRL-02, SPR-DRL-08, SPR-DRL-09)
 #   html-transport       — ANT-AHT P-59 ResearchArtifact transport gates
@@ -76,7 +77,7 @@ require_tsx() {
 }
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|speak-economics-matrix|speak-biography-authoring|speak-publishing-physical|drw-reading-surface-transfer|unified-substrate-contract-lock|unified-remote-exec-fanout|unified-seams-and-collisions|unified-navigation-ia-taxonomy|unified-coordination-gate-ledger|unified-thread-navigation|unified-cost-consent-surface|unified-flywheel-conformance|research-bridge-dogfood|handoff <md>|agent-gates|deep-research|html-transport}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|speak-economics-matrix|speak-biography-authoring|speak-publishing-physical|drw-reading-surface-transfer|unified-substrate-contract-lock|unified-remote-exec-fanout|unified-seams-and-collisions|unified-navigation-ia-taxonomy|unified-coordination-gate-ledger|unified-thread-navigation|unified-cost-consent-surface|unified-flywheel-conformance|research-bridge-dogfood|prompt-autoresearch-wedge1|handoff <md>|agent-gates|deep-research|html-transport}" >&2
   exit 2
 }
 
@@ -653,6 +654,19 @@ cmd_research_bridge_dogfood() {
   echo "CANONICAL_VERIFY_OK: research-bridge-dogfood"
 }
 
+cmd_prompt_autoresearch_wedge1() {
+  echo "== prompt-autoresearch-wedge1: CLI, readiness, calibration, verdict, and probe =="
+  "${PY}" -m pytest \
+    tests/test_prompt_autoresearch.py \
+    tests/test_prompt_autoresearch_calibration.py \
+    tests/test_prompt_autoresearch_readiness.py \
+    tests/test_prompt_autoresearch_verdict.py \
+    tests/test_autoresearch_wedge1_probe.py \
+    tests/test_prompt_autoresearch_docs.py \
+    -q --tb=no
+  echo "CANONICAL_VERIFY_OK: prompt-autoresearch-wedge1"
+}
+
 cmd_handoff() {
   local f="${1:?handoff markdown path required}"
   echo "== handoff: schema linter =="
@@ -704,7 +718,7 @@ cmd_agent_gates() {
 }
 
 cmd_html_transport() {
-  echo "== html-transport: P-59 ANT-AHT bundle =="
+  echo "== html-transport: P-61 ANT-AHT bundle =="
   "${PY}" -m pytest \
     tests/test_research_artifact_template.py \
     tests/test_research_artifact_export.py \
@@ -721,19 +735,19 @@ cmd_html_transport() {
 }
 
 cmd_deep_research() {
-  echo "== deep-research: P-52 Loop 1 E2E =="
+  echo "== deep-research: P-54 Loop 1 E2E =="
   "${PY}" -m pytest tests/test_loop_one_orchestrator.py::test_loop_one_happy_path_emits_completed -q --tb=no
-  echo "== deep-research: P-53 invariant negative =="
+  echo "== deep-research: P-55 invariant negative =="
   "${PY}" -m pytest tests/test_deep_research_complete.py::test_drw_only_trajectory_fails_without_synthesis -q --tb=no
-  echo "== deep-research: P-54 session reconstruct =="
+  echo "== deep-research: P-56 session reconstruct =="
   "${PY}" -m pytest tests/test_cascade_session.py -q --tb=no
-  echo "== deep-research: P-55 PromotionFunnel serialize =="
+  echo "== deep-research: P-57 PromotionFunnel serialize =="
   "${PY}" -m pytest tests/test_research_runner.py::test_promotion_funnel_serialized_no_lock_timeout -q --tb=no
-  echo "== deep-research: P-56 knowledge.reused (two-run) =="
+  echo "== deep-research: P-58 knowledge.reused (two-run) =="
   "${PY}" -m pytest tests/test_flywheel_reuse.py::test_two_run_contract_gather_emits_knowledge_reused_on_second_start -q --tb=no
-  echo "== deep-research: P-57 Exa gather mock E2E =="
+  echo "== deep-research: P-59 Exa gather mock E2E =="
   "${PY}" -m pytest tests/test_exa_gather_loop.py -q --tb=short
-  echo "== deep-research: P-58 parent-terminal observability =="
+  echo "== deep-research: P-60 parent-terminal observability =="
   "${PY}" -m pytest tests/test_drw_parent_terminal.py -q --tb=short
   echo "CANONICAL_VERIFY_OK: deep-research"
 }
@@ -781,6 +795,7 @@ main() {
     unified-cost-consent-surface) cmd_unified_cost_consent_surface ;;
     unified-flywheel-conformance) cmd_unified_flywheel_conformance ;;
     research-bridge-dogfood) cmd_research_bridge_dogfood ;;
+    prompt-autoresearch-wedge1) cmd_prompt_autoresearch_wedge1 ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     deep-research) cmd_deep_research ;;
