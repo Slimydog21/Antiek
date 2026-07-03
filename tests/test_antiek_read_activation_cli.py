@@ -213,3 +213,112 @@ def test_antiek_read_activation_append_template_json_reports_post_append_status(
     assert view["valid_sessions"] == 0
     assert view["closure_ready"] is False
     assert any("template result_url" in failure for failure in view["failures"])
+
+
+def test_antiek_read_activation_next_session_recommends_citation_for_missing_log(
+    tmp_path: Path,
+    capsys,
+) -> None:  # type: ignore[no-untyped-def]
+    log_path = tmp_path / "missing-read-dogfood.jsonl"
+
+    rc = main(["read", "activation", "next-session", "--log", str(log_path)])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert f"source: {log_path}" in out
+    assert "state: not_started" in out
+    assert "next action: collect_session" in out
+    assert "recommended template: live-citation" in out
+    assert "append command: antiek read activation append-template --kind live-citation" in out
+    assert f"remaining: valid_sessions={REQUIRED_VALID_SESSIONS}" in out
+
+
+def test_antiek_read_activation_next_session_json_prioritizes_live_gap(
+    tmp_path: Path,
+    capsys,
+) -> None:  # type: ignore[no-untyped-def]
+    log_path = tmp_path / "read-dogfood.jsonl"
+    records = [
+        _session(i, live=True, citation=i <= 3, entry_door="library") for i in range(1, 5)
+    ]
+    records[0]["entry_door"] = "command_palette"
+    _write_jsonl(log_path, records)
+
+    rc = main(["read", "activation", "next-session", "--log", str(log_path), "--json"])
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == 1
+    assert payload["state"] == "incomplete"
+    assert payload["recommended_template"] == "live"
+    assert payload["append_command"] == "antiek read activation append-template --kind live"
+    assert payload["remaining_requirements"]["live_provider_sessions"] == 1
+    assert payload["remaining_requirements"]["citation_trace_sessions"] == 0
+    assert payload["remaining_requirements"]["non_library_sessions"] == 0
+    assert payload["view"]["source_path"] == str(log_path)
+
+
+def test_antiek_read_activation_next_session_stops_when_only_verdict_missing(
+    tmp_path: Path,
+    capsys,
+) -> None:  # type: ignore[no-untyped-def]
+    log_path = tmp_path / "read-dogfood.jsonl"
+    records = [
+        _session(i, live=i <= 5, citation=i <= 3, entry_door="library") for i in range(1, 11)
+    ]
+    records[-1]["entry_door"] = "command_palette"
+    _write_jsonl(log_path, records)
+
+    rc = main(["read", "activation", "next-session", "--log", str(log_path), "--json"])
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["next_action"] == "fix_log"
+    assert payload["recommended_template"] is None
+    assert payload["append_command"] is None
+    assert payload["remaining_requirements"] == {
+        "valid_sessions": 0,
+        "live_provider_sessions": 0,
+        "citation_trace_sessions": 0,
+        "non_library_sessions": 0,
+    }
+    assert "final verdict" in payload["rationale"]
+
+
+def test_antiek_read_activation_next_session_ready_has_no_recommendation(
+    tmp_path: Path,
+    capsys,
+) -> None:  # type: ignore[no-untyped-def]
+    log_path = tmp_path / "read-dogfood.jsonl"
+    records = [
+        _session(i, live=i <= 5, citation=i <= 3, entry_door="library") for i in range(1, 11)
+    ]
+    records[-1]["entry_door"] = "command_palette"
+    records[-1]["verdict"] = "ACTIVATE"
+    _write_jsonl(log_path, records)
+
+    rc = main(["read", "activation", "next-session", "--log", str(log_path), "--json"])
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["state"] == "ready"
+    assert payload["next_action"] == "none"
+    assert payload["recommended_template"] is None
+    assert payload["view"]["closure_ready"] is True
+
+
+def test_antiek_read_activation_next_session_rejects_malformed_log(
+    tmp_path: Path,
+    capsys,
+) -> None:  # type: ignore[no-untyped-def]
+    log_path = tmp_path / "read-dogfood.jsonl"
+    log_path.write_text("{bad json\n", encoding="utf-8")
+
+    rc = main(["read", "activation", "next-session", "--log", str(log_path), "--json"])
+
+    assert rc == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["state"] == "invalid_log"
+    assert payload["next_action"] == "fix_log"
+    assert payload["recommended_template"] is None
+    assert "malformed JSONL" in payload["rationale"]
