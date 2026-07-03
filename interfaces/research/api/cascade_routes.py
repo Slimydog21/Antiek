@@ -133,46 +133,6 @@ def _translate() -> Iterator[None]:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
 
-def _reuse_substrate() -> object | None:
-    """SPR-02 flywheel nerve: the read-only §9.0-gated substrate the runner's
-    reuse hook (``HostLocalRunner._maybe_reuse_prior_knowledge``) queries for
-    prior knowledge, so a launched research emits ``knowledge.reused`` and the
-    compounding flywheel actually turns instead of no-op'ing on a ``None``.
-
-    Two deliberate, load-bearing choices (verified 2026-07-02 against main):
-
-    * Kind is ``brute_force``, NOT the ``vss`` default. ``vss``'s ``open()``
-      copies the entire graph DB to a temp dir to build an HNSW index (its own
-      docstring calls that a spike and defers a production index build to
-      "SPR-06+", inside the single-writer's transaction). A per-launch full-DB
-      copy is not production-appropriate; ``brute_force`` opens a read-only
-      ``connect_read`` connection (no copy) and its ``query`` applies the §9.0
-      ``policy_tag`` deny-by-default gate — the same convention the existing
-      ``tests/test_flywheel_reuse.py`` uses.
-    * Model is ``_embedding_provider()`` — the SAME embedder the funnel/graph
-      already use (``default_embedding_provider`` → a hash stub when
-      sentence-transformers is absent). Hardcoding ``SentenceTransformerEmbedding``
-      would return ``None`` on a box without that dependency (the operator's,
-      per the gap audit), leaving the flywheel dead. The hash stub satisfies the
-      ``EmbeddingModel`` protocol (``.encode``/``.dimension``); reuse is
-      structural until SPR-06 installs a real model, which is honest and enough
-      to make ``knowledge.reused`` fire.
-
-    Best-effort: any construction failure (e.g. a read-only connection that
-    cannot coexist with the funnel's concurrent writer) returns ``None``. The
-    runner's reuse path is a no-op on ``None`` and is itself wrapped so reuse
-    never breaks a launch — this wire degrades to today's behaviour rather than
-    risking the research path. Lifecycle note: the returned substrate holds a
-    read-only connection for the runner's lifetime; SPR-06's production index
-    wiring is the place to add pooling/close discipline if contention shows."""
-    try:
-        from substrate.graph.retrieval_substrate import make_substrate
-
-        return make_substrate("brute_force", _db(), model=_embedding_provider())
-    except Exception:  # pragma: no cover — reuse is best-effort, never fatal
-        return None
-
-
 def _embedding_provider() -> EmbeddingProvider:
     from processing.embedding import default_embedding_provider
     return default_embedding_provider()
@@ -449,9 +409,18 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
     ]
     budget = BudgetManager(aggregate_cap_usd=req.aggregate_budget_usd)
     funnel = PromotionFunnel(db_path=_db(), embedding_provider=_embedding_provider())
+    # SPR-02 flywheel nerve — DELIBERATELY NOT wired here. The reuse hook only
+    # fires knowledge.reused when the runner is given a retrieval_substrate, but
+    # a second (read-only) DuckDB connection to the graph cannot coexist in-
+    # process with the funnel's connect_write below: CI proved it breaks the
+    # cascade launch path (tests/test_cascade_api.py — "Can't open a connection
+    # to same database file with a different configuration"). The correct wiring
+    # is SPR-06's single-writer read path — route reuse retrieval through the
+    # funnel's OWN writer connection so there is exactly one connection to the
+    # graph. Until then the flywheel stays reachable-but-off here, on purpose.
+    # See PR #140 / antiek-nerves SPR-02 spec for the full DuckDB characterization.
     runner = HostLocalRunner(_research_loop_factory(), budget=budget,
-                             on_emit=funnel.submit, seal_on_complete=False,
-                             retrieval_substrate=_reuse_substrate())
+                             on_emit=funnel.submit, seal_on_complete=False)
     session = CascadeSession(session_id, runner=runner, funnel=funnel, db_path=_db())
     await session.launch(root_id, leaves)
     _SESSIONS[session_id] = session
