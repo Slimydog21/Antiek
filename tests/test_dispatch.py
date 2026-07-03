@@ -423,9 +423,24 @@ def test_config_role_tiers_covers_every_dispatching_role():
         "connector", "synthesizer", "user_agent", "note_taker",
         "challenger", "grounder", "tier_assigner", "constraint_checker",
         "verifier", "knowledge_extractor",
+        # AGH SPR-01: thought_partner dispatches at the thought-partner
+        # endpoint (app.py) but was never added here — the test's name claims
+        # "every dispatching role" yet omitted it (codex review surfaced this).
+        # It is already registered (config.yaml role_tiers), so this is a pure
+        # completeness guard, no config change.
+        "thought_partner",
+        # WV: substrate/write/draft_generation.default_dispatch_fn dispatches
+        # role="creative_writer"; without the role_tiers entry the router
+        # raises KeyError and POST /write/sections/{id}/generate 503s (the
+        # whole writing-generate path was dead). See the config.yaml comment.
+        "creative_writer",
     }
     missing = required_roles - set(config.role_tiers)
     assert not missing, (
         f"role_tiers missing entries for {missing}. Any role the code "
         f"dispatches must be present here or the router raises KeyError."
     )
+    # WV: creative_writer must resolve to a real tier (pro) — this is the
+    # registration that un-deadens the writing-generate path. Asserting the
+    # tier (not just presence) guards against a future empty-string entry.
+    assert config.role_tiers["creative_writer"] == "pro"
