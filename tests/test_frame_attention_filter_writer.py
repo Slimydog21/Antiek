@@ -107,3 +107,42 @@ def test_partial_filter_return_carries_exclusion_counts(con):
     reloaded = accrue_window(con, batch)
     assert reloaded.excluded_second_counts == ((REASON_DUPLICATE_INDEX, 1),)
     assert reloaded.reconciles()
+
+
+# Pre-M5 schema (house_seconds WITHOUT the AFA-S2 audit columns) — what a DB
+# created by M5a would have. The migration must ADD the columns on DuckDB.
+_PRE_M5_HOUSE_DDL = """
+CREATE TABLE IF NOT EXISTS house_seconds (
+    house_id           TEXT PRIMARY KEY,
+    batch_ref          TEXT NOT NULL,
+    window_id          TEXT NOT NULL,
+    n_seconds          INTEGER NOT NULL DEFAULT 0,
+    amount_cents       INTEGER NOT NULL DEFAULT 0,
+    reason             TEXT NOT NULL,
+    telemetry_version  TEXT NOT NULL,
+    weighting_version  TEXT NOT NULL,
+    inputs_json        TEXT NOT NULL,
+    accrued_at         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+
+def test_pre_m5_db_migrates_and_accrues(con):
+    """Regression (fresh-verifier MAJOR): a house_seconds created before the M5
+    audit columns must be MIGRATED by ensure_tables (via nullable ADD COLUMN —
+    DuckDB rejects ADD COLUMN with NOT NULL/DEFAULT constraints), so accrue_window
+    does not raise BinderException on its INSERT. Pre-fix this failed silently
+    (the constrained ALTER raised and was swallowed → missing column → Binder
+    error)."""
+    con.execute(_PRE_M5_HOUSE_DDL)  # old schema exists BEFORE accrue_window
+    result = accrue_window(con, _batch([_sec(0), _sec(1)]))  # ensure_tables migrates
+    assert result.reconciles()
+    assert result.fraud_verdict == "pass"
+    # The columns are now present and populated on the fresh row.
+    row = con.execute(
+        "SELECT fraud_verdict, excluded_counts_json FROM house_seconds "
+        "WHERE batch_ref = ?",
+        [result.batch_ref],
+    ).fetchone()
+    assert row[0] == "pass"
+    assert row[1] == "[]"

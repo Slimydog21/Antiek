@@ -130,15 +130,18 @@ def ensure_tables(con: Any) -> None:
             """
         )
         # AFA-S2 M5: forward-compat for a house_seconds table created before the
-        # anti-gaming audit columns existed (a pre-M5 DB). ADD COLUMN IF NOT
-        # EXISTS is a no-op on a fresh table that already has them.
+        # anti-gaming audit columns existed (a pre-M5 DB). No-op on a fresh table
+        # that already has them. NOTE: DuckDB's ALTER ... ADD COLUMN does NOT
+        # support column CONSTRAINTS ("Adding columns with constraints not yet
+        # supported"), so these are added NULLABLE (unlike the CREATE above, which
+        # can carry NOT NULL DEFAULT). Pre-existing rows therefore read NULL for
+        # these columns; _load_window_accrual coalesces NULL -> "pass"/[]. New
+        # rows always INSERT a concrete value, so the live path is never NULL.
         con.execute(
-            "ALTER TABLE house_seconds ADD COLUMN IF NOT EXISTS "
-            "fraud_verdict TEXT NOT NULL DEFAULT 'pass'"
+            "ALTER TABLE house_seconds ADD COLUMN IF NOT EXISTS fraud_verdict TEXT"
         )
         con.execute(
-            "ALTER TABLE house_seconds ADD COLUMN IF NOT EXISTS "
-            "excluded_counts_json TEXT NOT NULL DEFAULT '[]'"
+            "ALTER TABLE house_seconds ADD COLUMN IF NOT EXISTS excluded_counts_json TEXT"
         )
         con.execute(
             "CREATE INDEX IF NOT EXISTS idx_house_seconds_window "
@@ -578,9 +581,12 @@ def _load_window_accrual(con: Any, batch_ref: str) -> WindowAccrual:
     weighting_version = arows[0][8] if arows else hrow[5]
     # AFA-S2 M5 audit fields — reconstruct from the persisted house row so the
     # idempotent-reload path reports the SAME verdict/exclusions as the fresh
-    # accrual (a BLOCK window reloads as "block", not the "pass" default).
+    # accrual (a BLOCK window reloads as "block", not the "pass" default). A row
+    # from a pre-M5 DB (columns added later via nullable ALTER) reads NULL here;
+    # coalesce to the innocent defaults ("pass"/[]) rather than crash on
+    # json.loads(None) or stamp the literal string "None".
     excluded_second_counts = tuple(
-        (str(r), int(c)) for r, c in json.loads(hrow[7])
+        (str(r), int(c)) for r, c in json.loads(hrow[7] or "[]")
     )
     return WindowAccrual(
         batch_ref=batch_ref,
@@ -591,7 +597,7 @@ def _load_window_accrual(con: Any, batch_ref: str) -> WindowAccrual:
         telemetry_version=telemetry_version,
         weighting_version=weighting_version,
         excluded_second_counts=excluded_second_counts,
-        fraud_verdict=str(hrow[6]),
+        fraud_verdict=str(hrow[6]) if hrow[6] is not None else "pass",
     )
 
 
