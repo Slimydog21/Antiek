@@ -136,6 +136,20 @@ def _bucket_counts(paths: Sequence[str]) -> tuple[PathBucket, ...]:
     )
 
 
+def _bucketed_listed_files(
+    listed_files: Sequence[str],
+    buckets: Sequence[PathBucket],
+) -> tuple[tuple[PathBucket, tuple[str, ...]], ...]:
+    files_by_bucket: dict[str, list[str]] = {bucket.name: [] for bucket in buckets}
+    for path in listed_files:
+        bucket = _path_bucket(path)
+        files_by_bucket.setdefault(bucket, []).append(path)
+    return tuple(
+        (bucket, tuple(sorted(files_by_bucket.get(bucket.name, ()))))
+        for bucket in buckets
+    )
+
+
 def run_preflight(repo: Path = ROOT) -> RebasePreflight:
     """Build a read-only integration-risk snapshot against ``origin/main``."""
 
@@ -175,10 +189,10 @@ def run_preflight(repo: Path = ROOT) -> RebasePreflight:
         local_changed_file_count=len(local_files),
         origin_changed_file_count=len(origin_files),
         overlapping_file_count=len(overlapping_files),
-        overlapping_files=overlapping_files[:50],
+        overlapping_files=overlapping_files,
         overlapping_buckets=_bucket_counts(overlapping_files),
         merge_tree_conflict_count=len(conflict_files),
-        merge_tree_conflict_files=conflict_files[:50],
+        merge_tree_conflict_files=conflict_files,
         merge_tree_conflict_buckets=_bucket_counts(conflict_files),
         remediation=remediation,
     )
@@ -236,17 +250,120 @@ def format_text(preflight: RebasePreflight) -> str:
     return "\n".join(lines)
 
 
+def _render_bucket_line(bucket: PathBucket, listed_files: Sequence[str]) -> str:
+    if not listed_files:
+        return f"- {bucket.name}: {bucket.count} files (none in listed sample)"
+    sample_count = len(listed_files)
+    hidden_count = bucket.count - sample_count
+    if hidden_count > 0:
+        suffix = f"; showing {sample_count}, {hidden_count} not listed"
+    else:
+        suffix = f"; showing all {sample_count}"
+    return f"- {bucket.name}: {bucket.count} files{suffix}"
+
+
+def _render_file_list(paths: Sequence[str]) -> list[str]:
+    if not paths:
+        return ["  - none in listed sample"]
+    return [f"  - {path}" for path in paths]
+
+
+def format_markdown_plan(preflight: RebasePreflight) -> str:
+    """Render a read-only, bucketed execution plan for an integration pass."""
+
+    lines = [
+        "# Rebase preflight plan",
+        "",
+        "## Snapshot",
+        "",
+        f"- status: {preflight.status}",
+        f"- branch: {preflight.branch}",
+        f"- head: {preflight.head_sha}",
+        f"- origin_main: {preflight.origin_main_sha}",
+        f"- merge_base: {preflight.merge_base_sha}",
+        (
+            "- distance: "
+            f"{preflight.commits_behind_origin_main}/{preflight.max_behind} "
+            "commits behind origin/main"
+        ),
+        f"- local_commits: {preflight.local_commit_count}",
+        f"- origin_commits: {preflight.origin_commit_count}",
+        f"- overlapping_files: {preflight.overlapping_file_count}",
+        f"- merge_tree_conflict_files: {preflight.merge_tree_conflict_count}",
+        "- does_not_rebase: yes",
+        "",
+        "## Operator Commands",
+        "",
+        "```bash",
+        ".venv/bin/python -m tools.ops.rebase_preflight --plan-markdown",
+        "git worktree add ../antiek-rebase-preflight HEAD",
+        "cd ../antiek-rebase-preflight",
+        "git fetch origin",
+        "git rebase origin/main",
+        "```",
+        "",
+        "Run the rebase only inside the disposable worktree. Resolve one lane at a time,",
+        "starting with the largest conflict buckets below, then rerun the project gates.",
+        "",
+        "## Conflict Lanes",
+        "",
+    ]
+
+    if preflight.merge_tree_conflict_buckets:
+        for bucket, paths in _bucketed_listed_files(
+            preflight.merge_tree_conflict_files,
+            preflight.merge_tree_conflict_buckets,
+        ):
+            lines.append(_render_bucket_line(bucket, paths))
+            lines.extend(_render_file_list(paths))
+    else:
+        lines.append("- none")
+
+    lines.extend(["", "## Overlap Lanes", ""])
+    if preflight.overlapping_buckets:
+        for bucket, paths in _bucketed_listed_files(
+            preflight.overlapping_files,
+            preflight.overlapping_buckets,
+        ):
+            lines.append(_render_bucket_line(bucket, paths))
+            lines.extend(_render_file_list(paths))
+    else:
+        lines.append("- none")
+
+    lines.extend(
+        [
+            "",
+            "## Acceptance Gates",
+            "",
+            "- Rebase is performed in a disposable worktree, not the active branch.",
+            "- Conflicts are resolved by bucket with no unrelated refactors.",
+            "- `git diff --check` is clean.",
+            "- `./scripts/canonical_verify.sh agent-gates` passes on the rebased tree.",
+            "- `tools/lint/merge_age_gate.py` is green or the remaining distance is recorded.",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Read-only preflight before rebasing a stale branch."
     )
     parser.add_argument("--repo", type=Path, default=ROOT)
-    parser.add_argument("--json", action="store_true")
+    output = parser.add_mutually_exclusive_group()
+    output.add_argument("--json", action="store_true")
+    output.add_argument("--plan-markdown", action="store_true")
+    output.add_argument("--write-plan", type=Path)
     args = parser.parse_args(argv)
 
     preflight = run_preflight(args.repo)
     if args.json:
         print(json.dumps(asdict(preflight), indent=2, sort_keys=True))
+    elif args.plan_markdown:
+        print(format_markdown_plan(preflight))
+    elif args.write_plan:
+        args.write_plan.write_text(format_markdown_plan(preflight) + "\n")
+        print(str(args.write_plan))
     else:
         print(format_text(preflight))
     return 0

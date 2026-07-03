@@ -110,3 +110,56 @@ def test_rebase_preflight_json_cli(tmp_path: Path, capsys) -> None:
     assert payload["commits_behind_origin_main"] == 0
     assert payload["overlapping_buckets"] == []
     assert payload["merge_tree_conflict_buckets"] == []
+
+
+def test_rebase_preflight_markdown_plan_is_bucketed_and_read_only(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    repo = _build_repo(tmp_path)
+    base = _git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    assert _git(repo, "checkout", "-q", "-b", "advance").returncode == 0
+    (repo / "shared.txt").write_text("origin change\n")
+    (repo / "tests").mkdir()
+    (repo / "tests" / "test_shared.py").write_text("origin test\n")
+    _commit(repo, "origin conflict files")
+    assert _git(repo, "push", "-q", "origin", "advance:main").returncode == 0
+
+    assert _git(repo, "checkout", "-q", "-b", "feature", base).returncode == 0
+    (repo / "shared.txt").write_text("local change\n")
+    (repo / "tests").mkdir(exist_ok=True)
+    (repo / "tests" / "test_shared.py").write_text("local test\n")
+    _commit(repo, "local conflict files")
+    assert _git(repo, "fetch", "-q", "origin").returncode == 0
+    before = _git(repo, "status", "--short").stdout
+
+    result = rebase_preflight.run_preflight(repo)
+    plan = rebase_preflight.format_markdown_plan(result)
+
+    assert plan.startswith("# Rebase preflight plan")
+    assert "- does_not_rebase: yes" in plan
+    assert "git worktree add ../antiek-rebase-preflight HEAD" in plan
+    assert "- other: 1 files; showing all 1" in plan
+    assert "- tests: 1 files; showing all 1" in plan
+    assert "  - shared.txt" in plan
+    assert "  - tests/test_shared.py" in plan
+    assert _git(repo, "status", "--short").stdout == before
+
+    assert rebase_preflight.main(["--repo", str(repo), "--plan-markdown"]) == 0
+    captured = capsys.readouterr()
+    assert "# Rebase preflight plan" in captured.out
+    assert "## Conflict Lanes" in captured.out
+
+
+def test_rebase_preflight_write_plan_cli(tmp_path: Path, capsys) -> None:
+    repo = _build_repo(tmp_path)
+    plan_path = tmp_path / "plan.md"
+
+    assert rebase_preflight.main(
+        ["--repo", str(repo), "--write-plan", str(plan_path)]
+    ) == 0
+
+    captured = capsys.readouterr()
+    assert captured.out.strip() == str(plan_path)
+    assert plan_path.read_text().startswith("# Rebase preflight plan\n")
