@@ -53,17 +53,36 @@ export type ReadActivationEvidenceDraft = {
     "6": string;
     "7": string;
   };
+  record_draft_argv_template: string[];
+  record_draft_command_template: string;
   record_session_argv_template: string[];
   record_session_command_template: string;
 };
 
+const DRAFT_PATH = "<path_to_read_activation_record_session_draft.json>" as const;
 const PENDING_MINUTES = "<minutes_reading_at_least_20>" as const;
 const PENDING_OPERATOR_NOTE = "<operator_20_minute_reading_note>" as const;
 
 export function buildReadActivationEvidenceDraft(
   input: ReadActivationEvidenceDraftInput,
 ): ReadActivationEvidenceDraft {
-  const argv = [
+  const recordDraftArgv = [
+    "antiek",
+    "read",
+    "activation",
+    "record-draft",
+    "--draft",
+    DRAFT_PATH,
+    "--minutes-reading",
+    PENDING_MINUTES,
+    "--operator-note",
+    PENDING_OPERATOR_NOTE,
+    "--operator",
+    input.operator,
+    "--session-id",
+    input.sessionId,
+  ];
+  const recordSessionArgv = [
     "antiek",
     "read",
     "activation",
@@ -144,8 +163,10 @@ export function buildReadActivationEvidenceDraft(
       "6": input.returnContextNote,
       "7": "pending operator 20-minute dogfood note",
     },
-    record_session_argv_template: argv,
-    record_session_command_template: argv.map(shellQuote).join(" "),
+    record_draft_argv_template: recordDraftArgv,
+    record_draft_command_template: recordDraftArgv.map(shellQuote).join(" "),
+    record_session_argv_template: recordSessionArgv,
+    record_session_command_template: recordSessionArgv.map(shellQuote).join(" "),
   };
 }
 
