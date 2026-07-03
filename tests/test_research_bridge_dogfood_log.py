@@ -9,6 +9,7 @@ from substrate.research_bridge.dogfood_log import (
     WAVE4_CANDIDATES_TEMPLATE,
     main,
     validate_dogfood_log,
+    validate_wave4_candidates,
     write_dogfood_scaffold,
 )
 
@@ -209,3 +210,78 @@ def test_dogfood_log_cli_validate(tmp_path: Path, capsys) -> None:
     out = capsys.readouterr().out
     assert "planned projects: 0/5" in out
     assert "filled project entries: 0/5" in out
+
+
+def test_wave4_candidates_validate_allows_empty_scaffold(tmp_path: Path) -> None:
+    write_dogfood_scaffold(tmp_path)
+
+    result = validate_wave4_candidates(tmp_path)
+
+    assert result.ok is True
+    assert result.candidates == ()
+
+
+def test_wave4_candidates_validate_rejects_partial_candidate(tmp_path: Path) -> None:
+    write_dogfood_scaffold(tmp_path)
+    (tmp_path / "wave4_candidates.md").write_text(
+        """# ADRB Wave 4 Candidates
+
+## Candidates
+
+### Prompt provenance view
+
+- Observed during project: Sell-side AI infra memo
+- Mode: B
+- Severity: paper-cut
+- Evidence from operator log:
+- One-paragraph proposal: Show which dogfood prompt came from which gap.
+- Kill criteria / what would prove this is not worth building:
+""",
+        encoding="utf-8",
+    )
+
+    result = validate_wave4_candidates(tmp_path)
+
+    assert result.ok is False
+    assert result.candidates == ()
+    assert result.missing_requirements == (
+        "Prompt provenance view: missing Evidence from operator log, Kill criteria",
+    )
+
+
+def test_wave4_candidates_validate_accepts_complete_candidate(tmp_path: Path) -> None:
+    write_dogfood_scaffold(tmp_path)
+    (tmp_path / "wave4_candidates.md").write_text(
+        """# ADRB Wave 4 Candidates
+
+## Candidates
+
+### Prompt provenance view
+
+- Observed during project: Sell-side AI infra memo
+- Mode: B
+- Severity: paper-cut
+- Evidence from operator log: Project 1 prompt A was rerun manually.
+- One-paragraph proposal: Show which dogfood prompt came from which gap.
+- Kill criteria / what would prove this is not worth building: Operator never opens it.
+""",
+        encoding="utf-8",
+    )
+
+    result = validate_wave4_candidates(tmp_path)
+
+    assert result.ok is True
+    assert len(result.candidates) == 1
+    assert result.candidates[0].title == "Prompt provenance view"
+    assert result.candidates[0].mode == "B"
+
+
+def test_wave4_candidates_cli_validate(tmp_path: Path, capsys) -> None:
+    write_dogfood_scaffold(tmp_path)
+
+    rc = main(["wave4-validate", "--root", str(tmp_path)])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "valid candidates: 0" in out
+    assert "WAVE4_CANDIDATES_OK" in out

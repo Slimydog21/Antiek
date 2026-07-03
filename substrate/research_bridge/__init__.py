@@ -9,8 +9,11 @@ from .db_path import (
 from .dogfood_log import (
     DogfoodLogValidation,
     DogfoodScaffoldResult,
+    Wave4Candidate,
+    Wave4CandidatesValidation,
     default_dogfood_dir,
     validate_dogfood_log,
+    validate_wave4_candidates,
     write_dogfood_scaffold,
 )
 from .dogfood_report import (
@@ -93,6 +96,8 @@ __all__ = [
     "ensure_research_bridge_initialized",
     "DogfoodMetrics",
     "DogfoodLogValidation",
+    "Wave4Candidate",
+    "Wave4CandidatesValidation",
     "SessionBlockMetrics",
     "SessionDraftExportMetrics",
     "SessionSignalMetrics",
@@ -107,6 +112,7 @@ __all__ = [
     "validate_verdict_doc",
     "write_verdict_scaffold",
     "validate_dogfood_log",
+    "validate_wave4_candidates",
     "write_dogfood_scaffold",
     "DraftExportRecord",
     "list_draft_exports",

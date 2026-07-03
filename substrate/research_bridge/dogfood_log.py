@@ -117,6 +117,28 @@ class DogfoodLogValidation:
         return not self.missing_requirements
 
 
+@dataclass(frozen=True)
+class Wave4Candidate:
+    title: str
+    mode: str
+    severity: str
+    observed_during_project: str
+    evidence_from_operator_log: str
+    proposal: str
+    kill_criteria: str
+
+
+@dataclass(frozen=True)
+class Wave4CandidatesValidation:
+    wave4_candidates_path: Path
+    candidates: tuple[Wave4Candidate, ...]
+    missing_requirements: tuple[str, ...]
+
+    @property
+    def ok(self) -> bool:
+        return not self.missing_requirements
+
+
 def default_dogfood_dir() -> Path:
     return Path.home() / "Desktop" / "Antiek" / "runs" / "adrb"
 
@@ -204,6 +226,98 @@ def _filled_project_entries(text: str) -> tuple[str, ...]:
     return tuple(entries)
 
 
+def _candidate_sections(text: str) -> list[tuple[str, str]]:
+    sections: list[tuple[str, str]] = []
+    current_title: str | None = None
+    current_lines: list[str] = []
+    for raw in text.splitlines():
+        if raw.startswith("### "):
+            if current_title is not None:
+                sections.append((current_title, "\n".join(current_lines)))
+            current_title = raw.removeprefix("### ").strip()
+            current_lines = []
+            continue
+        if current_title is not None:
+            current_lines.append(raw)
+    if current_title is not None:
+        sections.append((current_title, "\n".join(current_lines)))
+    return sections
+
+
+def _candidate_field(body: str, label: str) -> str:
+    prefix = f"- {label}:"
+    for raw in body.splitlines():
+        stripped = raw.strip()
+        if stripped.startswith(prefix):
+            return stripped.removeprefix(prefix).strip()
+    return ""
+
+
+def _is_placeholder(value: str) -> bool:
+    return not value or value.lower() in {"candidate title", "todo"}
+
+
+def validate_wave4_candidates(root: str | Path | None = None) -> Wave4CandidatesValidation:
+    dogfood_root = Path(root).expanduser() if root is not None else default_dogfood_dir()
+    wave4_path = dogfood_root / "wave4_candidates.md"
+    if not wave4_path.exists():
+        return Wave4CandidatesValidation(
+            wave4_candidates_path=wave4_path,
+            candidates=(),
+            missing_requirements=("wave4_candidates.md is missing",),
+        )
+
+    text = wave4_path.read_text(encoding="utf-8")
+    candidates: list[Wave4Candidate] = []
+    missing: list[str] = []
+    for title, body in _candidate_sections(text):
+        if _is_placeholder(title):
+            continue
+        mode = _candidate_field(body, "Mode")
+        severity = _candidate_field(body, "Severity")
+        observed = _candidate_field(body, "Observed during project")
+        evidence = _candidate_field(body, "Evidence from operator log")
+        proposal = _candidate_field(body, "One-paragraph proposal")
+        kill_criteria = _candidate_field(
+            body,
+            "Kill criteria / what would prove this is not worth building",
+        )
+        candidate_missing: list[str] = []
+        if _is_placeholder(observed):
+            candidate_missing.append("Observed during project")
+        if mode not in {"A", "B", "both", "substrate"}:
+            candidate_missing.append("Mode must be A, B, both, or substrate")
+        if severity not in {"paper-cut", "blocker", "existential"}:
+            candidate_missing.append(
+                "Severity must be paper-cut, blocker, or existential"
+            )
+        if _is_placeholder(evidence):
+            candidate_missing.append("Evidence from operator log")
+        if _is_placeholder(proposal):
+            candidate_missing.append("One-paragraph proposal")
+        if _is_placeholder(kill_criteria):
+            candidate_missing.append("Kill criteria")
+        if candidate_missing:
+            missing.append(f"{title}: missing {', '.join(candidate_missing)}")
+            continue
+        candidates.append(
+            Wave4Candidate(
+                title=title,
+                mode=mode,
+                severity=severity,
+                observed_during_project=observed,
+                evidence_from_operator_log=evidence,
+                proposal=proposal,
+                kill_criteria=kill_criteria,
+            )
+        )
+    return Wave4CandidatesValidation(
+        wave4_candidates_path=wave4_path,
+        candidates=tuple(candidates),
+        missing_requirements=tuple(missing),
+    )
+
+
 def validate_dogfood_log(root: str | Path | None = None) -> DogfoodLogValidation:
     dogfood_root = Path(root).expanduser() if root is not None else default_dogfood_dir()
     operator_log_path = dogfood_root / "operator-log.md"
@@ -257,8 +371,28 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Dogfood directory. Defaults to ~/Desktop/Antiek/runs/adrb.",
     )
+    wave4_validate_parser = subparsers.add_parser(
+        "wave4-validate",
+        help="Validate operator-owned Wave 4 candidate notes.",
+    )
+    wave4_validate_parser.add_argument(
+        "--root",
+        default=None,
+        help="Dogfood directory. Defaults to ~/Desktop/Antiek/runs/adrb.",
+    )
 
     args = parser.parse_args(argv)
+    if args.command == "wave4-validate":
+        result = validate_wave4_candidates(args.root)
+        print(f"wave4-candidates: {result.wave4_candidates_path}")
+        print(f"valid candidates: {len(result.candidates)}")
+        if result.ok:
+            print("WAVE4_CANDIDATES_OK")
+            return 0
+        for missing in result.missing_requirements:
+            print(f"missing: {missing}")
+        return 1
+
     if args.command == "validate":
         result = validate_dogfood_log(args.root)
         print(f"operator-log: {result.operator_log_path}")
