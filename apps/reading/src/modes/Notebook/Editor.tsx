@@ -2,10 +2,12 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { useEffect, useRef, useState } from "react";
+import type { MutableRefObject } from "react";
 import type { Editor as TipTapEditor } from "@tiptap/react";
+import type { JSONContent } from "@tiptap/core";
 
 import { toast } from "../../components/lemon/LemonToast";
-import { API_BASE, apiFetch } from "../../lib/api";
+import { API_BASE, apiFetch, getNotebookContent } from "../../lib/api";
 import { ChatExchangeBlock } from "./blocks/ChatExchangeBlock";
 import { ClaimCardBlock } from "./blocks/ClaimCardBlock";
 import { CrossDocLinkBlock } from "./blocks/CrossDocLinkBlock";
@@ -34,6 +36,12 @@ type Props = {
   initialContent?: string;
   placeholder?: string;
   className?: string;
+  /** Optional handle to the underlying TipTap editor (for a parent toolbar
+   * or tests). Populated once the editor mounts, cleared on unmount. */
+  editorRef?: MutableRefObject<TipTapEditor | null>;
+  /** Idle delay before an edit autosaves. Defaults to 1500 ms; overridable
+   * so tests don't depend on wall-clock timing. */
+  autosaveDelayMs?: number;
 };
 
 const LS_PREFIX = "antiek.notebook.";
@@ -93,11 +101,43 @@ function writeStored(
   }
 }
 
+/**
+ * Whether a ProseMirror/TipTap doc carries real, operator-authored content.
+ * Mirrors the server's ``tiptap_codec.is_effectively_empty`` (inverted): a
+ * doc of only empty/whitespace paragraphs is what a fresh/unhydrated editor
+ * emits and is NOT real content. Used to decide (a) whether to seed the
+ * editor from the substrate on mount, and (b) never to overwrite content the
+ * operator already typed.
+ */
+function nodeHasRealContent(node: unknown): boolean {
+  if (typeof node !== "object" || node === null) return false;
+  const n = node as { type?: unknown; text?: unknown; content?: unknown };
+  if (n.type === "text") {
+    return typeof n.text === "string" && n.text.trim().length > 0;
+  }
+  if (typeof n.type === "string" && n.type !== "paragraph" && n.type !== "doc") {
+    return true;
+  }
+  if (Array.isArray(n.content)) {
+    return n.content.some(nodeHasRealContent);
+  }
+  return false;
+}
+
+function docHasRealContent(doc: unknown): boolean {
+  if (typeof doc !== "object" || doc === null) return false;
+  const content = (doc as { content?: unknown }).content;
+  if (!Array.isArray(content)) return false;
+  return content.some(nodeHasRealContent);
+}
+
 export function NotebookEditor({
   notebookId,
   initialContent,
   placeholder,
   className = "",
+  editorRef,
+  autosaveDelayMs = 1500,
 }: Props) {
   const [slash, setSlash] = useState<{ open: boolean; query: string }>({
     open: false,
@@ -111,6 +151,14 @@ export function NotebookEditor({
   // successful save. If another tab writes between our reads, the
   // store's etag will be ahead of ours and we'll detect the conflict.
   const etagRef = useRef<number>(0);
+  // SPR-01: the autosave timer is GATED on this flag so it can never fire
+  // before the editor has hydrated from the substrate. Without the gate, a
+  // fresh browser's first edit would PUT the near-empty seed doc and the
+  // server's atomic-replace would destroy the persisted blocks (the data-loss
+  // bug). ``hydratedRef`` is read synchronously inside ``onUpdate``; the
+  // ``hydrated`` state exists only to surface the status + reflect a DOM flag.
+  const hydratedRef = useRef<boolean>(false);
+  const [hydrated, setHydrated] = useState<boolean>(false);
 
   // Seed the initial etag from the existing stored snapshot (if any).
   const initialStored = readStored(notebookId);
@@ -151,6 +199,17 @@ export function NotebookEditor({
         setSlash({ open: true, query: blockText.slice(1) });
       } else if (slash.open) {
         if (!before || before === " ") setSlash({ open: false, query: "" });
+      }
+
+      // SPR-01 gate: never schedule an autosave before the editor has
+      // hydrated from the substrate. If the operator (or an AI append)
+      // changes the doc during the hydration window, we hold the save —
+      // otherwise the first PUT could carry the pre-hydration empty seed
+      // and the server's atomic-replace would destroy persisted blocks.
+      // The server-side empty-doc floor is the backstop; this is the
+      // belt (the common fresh-browser case never even reaches it).
+      if (!hydratedRef.current) {
+        return;
       }
 
       // autosave: PUT /notebooks/{id}/content (substrate decomposes
@@ -206,7 +265,7 @@ export function NotebookEditor({
             }
           }
         }
-      }, 1500);
+      }, autosaveDelayMs);
     },
   });
 
@@ -215,6 +274,56 @@ export function NotebookEditor({
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
   }, []);
+
+  // Expose the editor instance to a parent/toolbar (and tests) while mounted.
+  useEffect(() => {
+    if (!editorRef) return;
+    editorRef.current = editor ?? null;
+    return () => {
+      editorRef.current = null;
+    };
+  }, [editor, editorRef]);
+
+  // SPR-01 hydration — the second defense against the data-loss bug.
+  // On mount, fetch the composed TipTap doc from the substrate
+  // (GET /notebooks/{id}/content) and seed the editor from it so a fresh
+  // browser never starts empty over persisted blocks. localStorage is only
+  // a cache/offline mirror now: we only overwrite the editor from the
+  // substrate when it is still effectively empty (a fresh mount), so we
+  // never clobber cached content or an in-flight local edit. If the fetch
+  // fails (offline), we keep whatever we have and still mark hydrated so
+  // autosave can resume — the offline localStorage path is preserved.
+  useEffect(() => {
+    if (!editor) return;
+    let cancelled = false;
+    hydratedRef.current = false;
+    setHydrated(false);
+    (async () => {
+      try {
+        const { doc } = await getNotebookContent(notebookId);
+        if (cancelled || editor.isDestroyed) return;
+        if (docHasRealContent(doc) && !docHasRealContent(editor.getJSON())) {
+          // emitUpdate:false — hydration must not itself trigger an autosave.
+          editor.commands.setContent(doc as JSONContent, {
+            emitUpdate: false,
+          });
+          setSaved("saved");
+        }
+      } catch {
+        // Offline / no substrate doc: keep the cached (localStorage) or
+        // empty content. Hydration still "completes" so the operator can
+        // keep editing offline; the draft survives in localStorage.
+      } finally {
+        if (!cancelled) {
+          hydratedRef.current = true;
+          setHydrated(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [editor, notebookId]);
 
   // S8 WP-8.4 follow-through — when the AI tool-call protocol's
   // `add_to_notebook` action writes to our localStorage key, it
@@ -259,7 +368,11 @@ export function NotebookEditor({
   }
 
   return (
-    <div className={"relative " + className}>
+    <div
+      className={"relative " + className}
+      data-notebook-editor
+      data-hydrated={hydrated ? "true" : "false"}
+    >
       <EditorContent editor={editor} className="px-6 py-6 max-w-3xl mx-auto" />
       {slash.open && (
         <div className="absolute left-6 bottom-6">
