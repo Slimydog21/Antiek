@@ -764,6 +764,10 @@ def test_agent_gates_matrix_row_names_current_scope() -> None:
             "test_prompt_autoresearch_readiness.py"
         ),
         "test_read_activation_dogfood.py": "read activation",
+        "tests/test_operator_actions_probe_contracts.py": (
+            "test_operator_actions_probe_contracts.py"
+        ),
+        "tests/test_g2_counsel_packet_probe.py": "operator support probes",
     }
     missing = sorted(
         marker

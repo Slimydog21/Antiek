@@ -757,7 +757,7 @@ activate:
    The probe exercises `KMSStubKeyProvider.generate_data_key()` and
    `decrypt_data_key()` against the configured KMS client. It reports key
    alias and byte lengths only; it never prints wrapped or plaintext key
-   material.
+   material. It is support evidence only and does not close OA-011 by itself.
 
 #### Once closed
 
@@ -807,6 +807,9 @@ wires Postgres. To activate:
    ANTIEK_DUCKLAKE_POSTGRES_DSN="$PRODUCTION_DSN" \
      ./.venv/bin/python -m tools.ops.ducklake_postgres_probe --json
    ```
+
+   The probe is support evidence only and does not close OA-012 by itself;
+   closure still requires the production Postgres round-trip evidence below.
 
 #### Once closed
 
