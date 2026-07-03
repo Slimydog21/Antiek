@@ -57,6 +57,8 @@ Candidates:
 
 _VERDICT_RE = re.compile(r"^Verdict:\s*(SHIP|KILL|ITERATE)\b", re.MULTILINE)
 _TODO_RE = re.compile(r"\bTODO\b", re.IGNORECASE)
+_DECLINE_WAVE4_RE = re.compile(r"\b(decline|no wave 4)\b", re.IGNORECASE)
+_PROPOSE_WAVE4_RE = re.compile(r"\b(propose|conditional|candidate)\b", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -123,7 +125,11 @@ def _has_required_citations(section: str) -> bool:
 
 def _next_questions(text: str) -> tuple[str, ...]:
     section = _section_after_heading(text, "Next 3 Sharp Questions")
-    questions: list[str] = []
+    return _numbered_non_todo_items(section)
+
+
+def _numbered_non_todo_items(section: str) -> tuple[str, ...]:
+    items: list[str] = []
     for raw in section.splitlines():
         stripped = raw.strip()
         if "." not in stripped:
@@ -131,10 +137,10 @@ def _next_questions(text: str) -> tuple[str, ...]:
         prefix, value = stripped.split(".", 1)
         if not prefix.isdigit():
             continue
-        question = value.strip()
-        if question and not _TODO_RE.search(question):
-            questions.append(question)
-    return tuple(questions)
+        item = value.strip()
+        if item and not _TODO_RE.search(item):
+            items.append(item)
+    return tuple(items)
 
 
 def validate_verdict_doc(path: str | Path | None = None) -> DogfoodVerdictValidation:
@@ -155,6 +161,7 @@ def validate_verdict_doc(path: str | Path | None = None) -> DogfoodVerdictValida
     mode_b = _section_verdict(text, "Mode B Verdict")
     questions = _next_questions(text)
     wave4 = _section_after_heading(text, "Wave 4")
+    wave4_candidates = _numbered_non_todo_items(wave4)
 
     missing: list[str] = []
     if _TODO_RE.search(text):
@@ -179,8 +186,10 @@ def validate_verdict_doc(path: str | Path | None = None) -> DogfoodVerdictValida
         missing.append(f"expected exactly 3 next sharp questions, found {len(questions)}")
     if not wave4.strip():
         missing.append("Wave 4 section is missing")
-    elif not re.search(r"\b(propose|decline|conditional|candidate|no wave 4)\b", wave4, re.I):
+    elif not (_DECLINE_WAVE4_RE.search(wave4) or _PROPOSE_WAVE4_RE.search(wave4)):
         missing.append("Wave 4 section must propose, decline, or make candidates conditional")
+    elif _PROPOSE_WAVE4_RE.search(wave4) and not wave4_candidates:
+        missing.append("Wave 4 proposal must name at least one candidate")
 
     return DogfoodVerdictValidation(
         path=verdict_path,

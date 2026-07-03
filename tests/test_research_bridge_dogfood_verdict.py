@@ -124,6 +124,93 @@ Decision: decline Wave 4 until the next dogfood cohort.
     )
 
 
+def test_validate_verdict_doc_requires_wave4_candidate_when_proposed(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "adrb_post_dogfood_verdict.md"
+    path.write_text(
+        """# Antiek Deep Research Bridge Post-Dogfood Verdict
+
+## Mode A Verdict
+
+Verdict: ITERATE
+
+Evidence:
+- `operator-log.md` shows three publishable drafts and two heavy edits.
+- `dogfood_metrics.md` records 3 Mode A draft exports.
+
+## Mode B Verdict
+
+Verdict: SHIP
+
+Evidence:
+- `operator-log.md` says four projects ran at least one generated prompt.
+- `dogfood_metrics.md` shows 80.0% would-run signals.
+
+## Next 3 Sharp Questions
+
+1. What makes Mode A drafts publishable without manual rewrite?
+2. Which prompt classes drive repeat Mode B usage?
+3. Does session timing predict bridge abandonment?
+
+## Wave 4
+
+Decision: propose Wave 4 for Mode A outline sharpening.
+""",
+        encoding="utf-8",
+    )
+
+    result = validate_verdict_doc(path)
+
+    assert result.ok is False
+    assert "Wave 4 proposal must name at least one candidate" in (
+        result.missing_requirements
+    )
+
+
+def test_validate_verdict_doc_allows_wave4_decline_without_candidates(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "adrb_post_dogfood_verdict.md"
+    path.write_text(
+        """# Antiek Deep Research Bridge Post-Dogfood Verdict
+
+## Mode A Verdict
+
+Verdict: KILL
+
+Evidence:
+- `operator-log.md` records zero drafts the operator would send.
+- `dogfood_metrics.md` records 0 Mode A draft exports.
+
+## Mode B Verdict
+
+Verdict: KILL
+
+Evidence:
+- `operator-log.md` records no generated prompt follow-through.
+- `dogfood_metrics.md` shows 0.0% would-run signals.
+
+## Next 3 Sharp Questions
+
+1. What non-bridge workflow should absorb the useful parts?
+2. Which substrate metrics should be retired?
+3. What evidence would justify reopening the bridge?
+
+## Wave 4
+
+Decision: decline Wave 4; no Wave 4 until a new operator pull appears.
+""",
+        encoding="utf-8",
+    )
+
+    result = validate_verdict_doc(path)
+
+    assert result.ok is True
+    assert result.mode_a_verdict == "KILL"
+    assert result.mode_b_verdict == "KILL"
+
+
 def test_validate_verdict_doc_accepts_evidence_backed_verdict(tmp_path: Path) -> None:
     path = tmp_path / "adrb_post_dogfood_verdict.md"
     path.write_text(
