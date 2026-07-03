@@ -1,9 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProviderKeysState } from "../../hooks/useProviderKeys";
 
-const { providerKeysRef, refreshMock } = vi.hoisted(() => ({
+const { apiFetchMock, providerKeysRef, refreshMock } = vi.hoisted(() => ({
+  apiFetchMock: vi.fn(),
   providerKeysRef: {
     current: {
       status: "ready",
@@ -18,15 +19,67 @@ vi.mock("../../hooks/useProviderKeys", () => ({
   useProviderKeys: () => providerKeysRef.current,
 }));
 
+vi.mock("../../lib/api", () => ({
+  apiFetch: apiFetchMock,
+}));
+
 vi.mock("../../workspace/useViewportTier", () => ({
   useViewportTier: () => "desktop",
 }));
 
 import Settings from "./index";
 
+function roadmapResponse(
+  read_activation: Record<string, unknown> | null = {
+    source_path: "reports/read-dogfood.jsonl",
+    state: "incomplete",
+    total_sessions: 2,
+    valid_sessions: 1,
+    invalid_session_count: 1,
+    live_provider_sessions: 0,
+    citation_trace_sessions: 1,
+    non_library_sessions: 0,
+    final_verdict: null,
+    closure_ready: false,
+    required_counts: {
+      valid_sessions: 10,
+      live_provider_sessions: 5,
+      citation_trace_sessions: 3,
+      non_library_sessions: 1,
+    },
+    remaining_requirements: {
+      valid_sessions: 9,
+      live_provider_sessions: 5,
+      citation_trace_sessions: 2,
+      non_library_sessions: 1,
+    },
+    failures: ["session-1: minutes_reading must be at least 20"],
+    next_session: {
+      next_action: "collect_session",
+      recommended_template: "live-citation",
+      append_command: "antiek read activation append-template --kind live-citation",
+      rationale: "A real live-citation session advances coverage.",
+      remaining_requirements: {
+        valid_sessions: 9,
+        live_provider_sessions: 5,
+        citation_trace_sessions: 2,
+        non_library_sessions: 1,
+      },
+    },
+  },
+) {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({ read_activation }),
+  } as Response;
+}
+
 describe("Settings", () => {
   beforeEach(() => {
     refreshMock.mockReset();
+    apiFetchMock.mockReset();
+    apiFetchMock.mockResolvedValue(roadmapResponse());
     providerKeysRef.current = {
       status: "ready",
       providers: ["deepseek", "anthropic"],
@@ -59,6 +112,56 @@ describe("Settings", () => {
     expect(screen.getByText(/specs\/activation\/golden-path\.md/i)).toBeTruthy();
     expect(screen.queryByText(/Settings surface stub/i)).toBeNull();
     expect(screen.getByText("/coordination/cost-consent")).toBeTruthy();
+  });
+
+  it("surfaces Read activation dogfood counters from the coordination roadmap", async () => {
+    render(<Settings />);
+
+    expect(await screen.findByText("Read dogfood evidence")).toBeTruthy();
+    expect(screen.getByText("Read activation dogfood")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "1/10 required valid (2 total) · 0 live-provider · 1 citation-traced · 0 non-library · verdict=missing",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Remaining: 9 valid, 5 live-provider, 2 citation-traced, 1 non-library/i),
+    ).toBeTruthy();
+    expect(screen.getByText(/reports\/read-dogfood\.jsonl/i)).toBeTruthy();
+    expect(screen.getByText("1 invalid session need repair.")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Next: live-citation · antiek read activation append-template --kind live-citation",
+      ),
+    ).toBeTruthy();
+    expect(apiFetchMock).toHaveBeenCalledWith("/coordination/roadmap");
+  });
+
+  it("handles missing Read activation status without inventing evidence", async () => {
+    apiFetchMock.mockResolvedValue(roadmapResponse(null));
+
+    render(<Settings />);
+
+    expect(await screen.findByText("unavailable")).toBeTruthy();
+    expect(
+      screen.getByText(/Coordination did not return Read activation evidence status/i),
+    ).toBeTruthy();
+  });
+
+  it("reports roadmap fetch failures on the activation readout", async () => {
+    apiFetchMock.mockResolvedValue({
+      ok: false,
+      status: 503,
+      json: async () => ({}),
+    } as Response);
+
+    render(<Settings />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("GET /coordination/roadmap failed: HTTP 503"),
+      ).toBeTruthy();
+    });
   });
 
   it("links to trust and privacy controls with plain copy", () => {
