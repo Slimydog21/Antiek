@@ -789,3 +789,47 @@ def test_reading_substrate_pytest_row_names_throughput_contract() -> None:
     assert "`tests/test_ci_pytest_timeout_docs.py`" in body
     assert "CI on `main` (full suite)" in body
     assert "Local hardware parity" in body
+
+
+def test_operator_closure_rows_name_canonical_bundle_scope() -> None:
+    """P-52/P-53 must name the canonical dogfood/autoresearch closure bundles."""
+    script = CANONICAL_VERIFY.read_text(encoding="utf-8")
+    matrix = MATRIX.read_text(encoding="utf-8")
+
+    p52 = re.search(r"^\| P-52 \|(?P<body>.*)\|$", matrix, re.MULTILINE)
+    assert p52 is not None
+    p52_body = p52.group("body")
+
+    assert "`substrate/research_bridge/`" in p52_body
+    assert "`antiek/cli.py`" in p52_body
+    assert "`./scripts/canonical_verify.sh research-bridge-dogfood`" in p52_body
+    assert "Operator ADRB log under runs/adrb plus verdict document" in p52_body
+    assert "Five real operator projects" in p52_body
+    for marker in (
+        "tests/test_antiek_research_bridge_cli.py",
+        "tests/test_research_bridge_dogfood_log.py",
+        "tests/test_research_bridge_dogfood_readiness.py",
+        "tests/test_research_bridge_dogfood_verdict.py",
+        "tests/test_research_bridge_draft_export.py",
+    ):
+        assert marker in script
+
+    p53 = re.search(r"^\| P-53 \|(?P<body>.*)\|$", matrix, re.MULTILINE)
+    assert p53 is not None
+    p53_body = p53.group("body")
+
+    assert "`tools/prompt_autoresearch/`" in p53_body
+    assert "`tests/test_prompt_autoresearch.py`" in p53_body
+    assert "`tests/test_autoresearch_wedge1_probe.py`" in p53_body
+    assert "`./scripts/canonical_verify.sh prompt-autoresearch-wedge1`" in p53_body
+    assert "Operator outcomes/calibration artifacts" in p53_body
+    assert "Real >=20 mutation dogfood" in p53_body
+    for marker in (
+        "tests/test_prompt_autoresearch.py",
+        "tests/test_prompt_autoresearch_calibration.py",
+        "tests/test_prompt_autoresearch_readiness.py",
+        "tests/test_prompt_autoresearch_verdict.py",
+        "tests/test_autoresearch_wedge1_probe.py",
+        "tests/test_prompt_autoresearch_docs.py",
+    ):
+        assert marker in script
