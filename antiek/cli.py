@@ -18,6 +18,10 @@ from substrate.research_bridge.dogfood_log import (
     validate_wave4_candidates,
     write_dogfood_scaffold,
 )
+from substrate.research_bridge.dogfood_readiness import (
+    audit_dogfood_readiness,
+    render_readiness_summary,
+)
 from substrate.research_bridge.dogfood_reconcile import (
     reconcile_dogfood_sessions,
 )
@@ -45,6 +49,18 @@ def _cmd_research_bridge_dogfood_report(args: argparse.Namespace) -> int:
     output_path.write_text(report, encoding="utf-8")
     print(f"wrote {output_path}")
     return 0
+
+
+def _cmd_research_bridge_readiness(args: argparse.Namespace) -> int:
+    db_path = ensure_research_bridge_initialized(args.db)
+    readiness = audit_dogfood_readiness(
+        db_path,
+        dogfood_root=args.dogfood_root,
+        metrics_path=args.metrics_path,
+        verdict_path=args.verdict_path,
+    )
+    sys.stdout.write(render_readiness_summary(readiness))
+    return 0 if readiness.ok else 1
 
 
 def _cmd_research_bridge_dogfood_log_init(args: argparse.Namespace) -> int:
@@ -204,6 +220,35 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Dogfood directory. Defaults to ~/Desktop/Antiek/runs/adrb.",
     )
     dogfood_report.set_defaults(func=_cmd_research_bridge_dogfood_report)
+
+    readiness = bridge_subparsers.add_parser(
+        "readiness",
+        help="Check whether dogfood evidence is ready for verdict closure.",
+    )
+    readiness.add_argument(
+        "--db",
+        default=None,
+        help="DuckDB path. Defaults to ANTIEK_DUCKDB_PATH / substrate default.",
+    )
+    readiness.add_argument(
+        "--dogfood-root",
+        default=None,
+        help="Dogfood directory. Defaults to ~/Desktop/Antiek/runs/adrb.",
+    )
+    readiness.add_argument(
+        "--metrics-path",
+        default=None,
+        help="Metrics report path. Defaults to <dogfood-root>/dogfood_metrics.md.",
+    )
+    readiness.add_argument(
+        "--verdict-path",
+        default=None,
+        help=(
+            "Verdict path. Defaults to "
+            "~/Desktop/Antiek/docs/adrb_post_dogfood_verdict.md."
+        ),
+    )
+    readiness.set_defaults(func=_cmd_research_bridge_readiness)
 
     dogfood_log = bridge_subparsers.add_parser(
         "dogfood-log",
