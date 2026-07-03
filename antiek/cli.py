@@ -8,10 +8,17 @@ The historical ``tools.antiek_cli`` module remains the implementation of
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from collections.abc import Sequence
+from dataclasses import asdict
+from pathlib import Path
 
 from runtime.db_lock import connect_read, connect_write
+from substrate.coordination.activation_view import (
+    ReadActivationView,
+    build_read_activation_view,
+)
 from substrate.research_bridge.db_path import ensure_research_bridge_initialized
 from substrate.research_bridge.dogfood_log import (
     DOGFOOD_PROJECT_COUNT,
@@ -37,6 +44,55 @@ from substrate.research_bridge.dogfood_verdict import (
 )
 from substrate.research_bridge.draft_export import record_draft_export
 from substrate.research_bridge.gap import would_run_percentage
+
+READ_ACTIVATION_STATUS_JSON_SCHEMA_VERSION = 1
+
+
+def _read_activation_status_payload(view: ReadActivationView) -> dict[str, object]:
+    return {
+        "schema_version": READ_ACTIVATION_STATUS_JSON_SCHEMA_VERSION,
+        "view": asdict(view),
+    }
+
+
+def _render_read_activation_status_json(view: ReadActivationView) -> str:
+    return json.dumps(_read_activation_status_payload(view), indent=2, sort_keys=True) + "\n"
+
+
+def _cmd_read_activation_status(args: argparse.Namespace) -> int:
+    view = build_read_activation_view(Path(args.log) if args.log is not None else None)
+    if args.json:
+        sys.stdout.write(_render_read_activation_status_json(view))
+    else:
+        print(f"source: {view.source_path}")
+        print(f"state: {view.state}")
+        print(f"closure_ready: {str(view.closure_ready).lower()}")
+        print(
+            "valid sessions: "
+            f"{view.valid_sessions}/{view.required_counts['valid_sessions']} "
+            f"({view.total_sessions} total, {view.invalid_session_count} invalid)"
+        )
+        print(
+            "live provider sessions: "
+            f"{view.live_provider_sessions}/"
+            f"{view.required_counts['live_provider_sessions']}"
+        )
+        print(
+            "citation trace sessions: "
+            f"{view.citation_trace_sessions}/"
+            f"{view.required_counts['citation_trace_sessions']}"
+        )
+        print(
+            "non-library sessions: "
+            f"{view.non_library_sessions}/"
+            f"{view.required_counts['non_library_sessions']}"
+        )
+        print(f"final verdict: {view.final_verdict or 'missing'}")
+        for key, remaining in view.remaining_requirements.items():
+            print(f"remaining: {key}={remaining}")
+        for failure in view.failures:
+            print(f"failure: {failure}")
+    return 0 if view.closure_ready else 1
 
 
 def _cmd_research_bridge_dogfood_report(args: argparse.Namespace) -> int:
@@ -198,6 +254,32 @@ def _cmd_research_bridge_signals(args: argparse.Namespace) -> int:
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="antiek")
     subparsers = parser.add_subparsers(dest="command")
+
+    read = subparsers.add_parser("read", help="Read product commands.")
+    read_subparsers = read.add_subparsers(dest="read_command")
+    activation = read_subparsers.add_parser(
+        "activation",
+        help="Read activation gate commands.",
+    )
+    activation_subparsers = activation.add_subparsers(dest="activation_command")
+    activation_status = activation_subparsers.add_parser(
+        "status",
+        help="Check Read activation dogfood evidence status.",
+    )
+    activation_status.add_argument(
+        "--log",
+        default=None,
+        help=(
+            "Read dogfood JSONL log. Defaults to "
+            "reports/read-dogfood.jsonl in the repository."
+        ),
+    )
+    activation_status.add_argument(
+        "--json",
+        action="store_true",
+        help="Write a stable machine-readable activation status payload.",
+    )
+    activation_status.set_defaults(func=_cmd_read_activation_status)
 
     research = subparsers.add_parser("research", help="Research product commands.")
     research_subparsers = research.add_subparsers(dest="research_command")
