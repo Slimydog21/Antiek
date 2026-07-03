@@ -6,6 +6,7 @@ from pathlib import Path
 
 from substrate.research_bridge.dogfood_log import (
     DOGFOOD_TEMPLATE,
+    WAVE4_CANDIDATES_TEMPLATE,
     main,
     validate_dogfood_log,
     write_dogfood_scaffold,
@@ -18,8 +19,10 @@ def test_dogfood_scaffold_creates_template_and_operator_log(tmp_path: Path) -> N
     assert result.root == tmp_path
     assert result.template_path == tmp_path / "_template.md"
     assert result.operator_log_path == tmp_path / "operator-log.md"
+    assert result.wave4_candidates_path == tmp_path / "wave4_candidates.md"
     assert result.template_written is True
     assert result.operator_log_written is True
+    assert result.wave4_candidates_written is True
 
     template = result.template_path.read_text(encoding="utf-8")
     for label in (
@@ -42,34 +45,56 @@ def test_dogfood_scaffold_creates_template_and_operator_log(tmp_path: Path) -> N
     assert "## Five projects chosen up front" in log
     assert "## Project entries" in log
 
+    wave4 = result.wave4_candidates_path.read_text(encoding="utf-8")
+    assert "# ADRB Wave 4 Candidates" in wave4
+    assert "Log the impulse here instead of fixing code mid-dogfood." in wave4
+
 
 def test_dogfood_scaffold_preserves_operator_owned_log(tmp_path: Path) -> None:
     first = write_dogfood_scaffold(tmp_path)
     first.operator_log_path.write_text("operator-owned content\n", encoding="utf-8")
     first.template_path.write_text("local template edits\n", encoding="utf-8")
+    first.wave4_candidates_path.write_text("wave 4 notes\n", encoding="utf-8")
 
     second = write_dogfood_scaffold(tmp_path)
 
     assert second.operator_log_written is False
     assert second.template_written is False
+    assert second.wave4_candidates_written is False
     assert second.operator_log_path.read_text(encoding="utf-8") == (
         "operator-owned content\n"
     )
     assert second.template_path.read_text(encoding="utf-8") == "local template edits\n"
+    assert second.wave4_candidates_path.read_text(encoding="utf-8") == "wave 4 notes\n"
 
 
 def test_dogfood_scaffold_can_refresh_template_only(tmp_path: Path) -> None:
     result = write_dogfood_scaffold(tmp_path)
     result.operator_log_path.write_text("operator-owned content\n", encoding="utf-8")
     result.template_path.write_text("stale template\n", encoding="utf-8")
+    result.wave4_candidates_path.write_text("wave 4 notes\n", encoding="utf-8")
 
     refreshed = write_dogfood_scaffold(tmp_path, overwrite_template=True)
 
     assert refreshed.template_written is True
     assert refreshed.operator_log_written is False
+    assert refreshed.wave4_candidates_written is False
     assert refreshed.template_path.read_text(encoding="utf-8") == DOGFOOD_TEMPLATE
     assert refreshed.operator_log_path.read_text(encoding="utf-8") == (
         "operator-owned content\n"
+    )
+    assert refreshed.wave4_candidates_path.read_text(encoding="utf-8") == (
+        "wave 4 notes\n"
+    )
+
+
+def test_dogfood_scaffold_wave4_template_matches_spec_parking_lot(
+    tmp_path: Path,
+) -> None:
+    result = write_dogfood_scaffold(tmp_path)
+
+    assert result.wave4_candidates_path.read_text(encoding="utf-8") == (
+        WAVE4_CANDIDATES_TEMPLATE
     )
 
 
@@ -79,6 +104,7 @@ def test_dogfood_scaffold_cli_init(tmp_path: Path) -> None:
     assert rc == 0
     assert (tmp_path / "_template.md").exists()
     assert (tmp_path / "operator-log.md").exists()
+    assert (tmp_path / "wave4_candidates.md").exists()
 
 
 def test_dogfood_log_validate_reports_missing_log(tmp_path: Path) -> None:
