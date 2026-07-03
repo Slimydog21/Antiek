@@ -714,6 +714,21 @@ cmd_agent_gates() {
     tests/test_ci_informational_gates.py \
     tests/test_ci_pytest_timeout_docs.py \
     tests/test_auth_diagnostic_verification.py \
+    tests/test_operator_actions_probe_contracts.py \
+    tests/test_g2_counsel_packet_probe.py \
+    tests/test_autoresearch_wedge1_probe.py \
+    tests/test_auth_vendor_decision_probe.py \
+    tests/test_red_team_external_report_probe.py \
+    tests/test_phase1_deploy_probe.py \
+    tests/test_kms_key_probe.py \
+    tests/test_ducklake_postgres_probe.py \
+    tests/test_trust_center_probe.py \
+    tests/test_escrow_account_decision_probe.py \
+    tests/test_first_cohort_notification_probe.py \
+    tests/test_advertiser_run_rate_probe.py \
+    tests/test_kyc_1099_signoff_probe.py \
+    tests/test_federation_exchange_probe.py \
+    tests/test_soc2_decision_probe.py \
     tests/test_retrieval_gate_probe.py \
     tests/test_memory_mcp_verification_docs.py \
     tests/test_rlm_deferral_docs.py \
