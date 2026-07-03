@@ -26,7 +26,12 @@ _PROVENANCE_INVARIANT_TRIGGER_PATHS = {
     "tests/test_provenance_ref_lint.py",
 }
 _READ_ACTIVATION_TRIGGER_PATHS = {
+    "antiek/cli.py",
+    "apps/reading/e2e/_ams/read_activation_evidence.test.ts",
+    "apps/reading/e2e/_ams/read_activation_evidence.ts",
+    "apps/reading/e2e/read-golden-path.spec.ts",
     "specs/activation/**",
+    "tests/test_antiek_read_activation_cli.py",
     "tools/activation/read_dogfood.py",
     "tests/test_read_activation_dogfood.py",
 }
