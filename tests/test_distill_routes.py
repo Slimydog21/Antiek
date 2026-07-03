@@ -204,6 +204,7 @@ def test_challenge_unknown_note_404(env):
     assert r.status_code == 404
 
 
+@pytest.mark.store_isolation_contract
 def test_graph_db_path_honors_env_override(monkeypatch, tmp_path):
     """The graph writer (promotion + living-note) and all readers must converge
     on one file: graph_db_path() follows ANTIEK_DUCKDB_PATH (the SPR-03

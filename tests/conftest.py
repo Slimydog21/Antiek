@@ -30,6 +30,7 @@ import pytest
 from runtime.test_store_guard import real_operator_graph_db_path
 from substrate.dispatch.breaker import default_breaker
 from substrate.graph import default_db_path
+from substrate.graph.insight_question import graph_db_path
 
 
 def _real_store_path() -> str:
@@ -83,11 +84,12 @@ def _isolate_antiek_store(request, monkeypatch, tmp_path):
     ``connect_write`` enforcement flag — the test author owns a read-only,
     no-write posture (honest escape hatch, not a write license).
 
-    Tests that intentionally ``delenv('ANTIEK_DUCKDB_PATH')`` mid-body to
-    probe fallback must restore a tmp override before returning so teardown
-    does not false-positive (see ``test_graph_db_path_honors_env_override``).
+    Opt out with ``@pytest.mark.store_isolation_contract`` for tests that
+    intentionally ``delenv('ANTIEK_DUCKDB_PATH')`` to probe env fallback.
     """
     if request.node.get_closest_marker("real_store_read"):
+        return
+    if request.node.get_closest_marker("store_isolation_contract"):
         return
     real = _real_store_path()
     tmp_db = tmp_path / "graph.duckdb"
@@ -95,5 +97,7 @@ def _isolate_antiek_store(request, monkeypatch, tmp_path):
     monkeypatch.setenv("ANTIEK_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(tmp_db))
     _check_store_isolated(default_db_path(), real, node_id=request.node.nodeid)
+    _check_store_isolated(graph_db_path(), real, node_id=request.node.nodeid)
     yield
     _check_store_isolated(default_db_path(), real, node_id=request.node.nodeid)
+    _check_store_isolated(graph_db_path(), real, node_id=request.node.nodeid)

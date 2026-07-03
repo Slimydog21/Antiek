@@ -77,7 +77,7 @@ def test_connect_write_to_real_store_blocked_when_enforcement_on(monkeypatch):
     only ``default_db_path()`` at fixture boundaries."""
     monkeypatch.setenv("ANTIEK_ENFORCE_TEST_STORE_ISOLATION", "1")
     real = _real_store_path()
-    with pytest.raises(AssertionError, match="REAL store"):
+    with pytest.raises(RuntimeError, match="REAL store"):
         connect_write(real, purpose="spr04-leaky-proof")
 
 

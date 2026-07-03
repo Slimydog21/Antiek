@@ -75,8 +75,41 @@ def _identify_residue(con) -> ResidueReport:
     rep.entity_nodes_total = con.execute(
         "SELECT count(*) FROM nodes WHERE node_type = 'entity'"
     ).fetchone()[0]
+    # inv-1 alone is ambiguous (client-supplied ids in prod). Require the lone
+    # test edge signature: inv-1 AND both endpoints are non-entity placeholder
+    # nodes orphaned to a non-existent document id.
     rep.candidate_edges = con.execute(
-        "SELECT count(*) FROM edges WHERE investigation_id = ?",
+        """
+        SELECT count(*)
+        FROM edges e
+        WHERE e.investigation_id = ?
+          AND EXISTS (
+            SELECT 1 FROM nodes n
+            WHERE n.node_id = e.source_node_id
+              AND n.node_type IN ('insight', 'question', 'claim')
+              AND COALESCE(
+                    n.metadata::JSON->>'source_document_id',
+                    n.metadata::JSON->>'document_id'
+                  ) IS NOT NULL
+              AND COALESCE(
+                    n.metadata::JSON->>'source_document_id',
+                    n.metadata::JSON->>'document_id'
+                  ) NOT IN (SELECT document_id FROM documents)
+          )
+          AND EXISTS (
+            SELECT 1 FROM nodes n
+            WHERE n.node_id = e.target_node_id
+              AND n.node_type IN ('insight', 'question', 'claim')
+              AND COALESCE(
+                    n.metadata::JSON->>'source_document_id',
+                    n.metadata::JSON->>'document_id'
+                  ) IS NOT NULL
+              AND COALESCE(
+                    n.metadata::JSON->>'source_document_id',
+                    n.metadata::JSON->>'document_id'
+                  ) NOT IN (SELECT document_id FROM documents)
+          )
+        """,
         [_TEST_INVESTIGATION_ID],
     ).fetchone()[0]
     # Non-entity nodes orphaned to a source doc that is NOT a real document.
@@ -138,14 +171,43 @@ def _apply(con, reason: str, rep: ResidueReport) -> tuple[int, int]:
     """MOVE candidate residue into the archive (insert + delete). Returns
     (edges_moved, nodes_moved)."""
     _ensure_quarantine_tables(con)
+    edge_where = """
+        investigation_id = ?
+          AND EXISTS (
+            SELECT 1 FROM nodes n
+            WHERE n.node_id = edges.source_node_id
+              AND n.node_type IN ('insight', 'question', 'claim')
+              AND COALESCE(
+                    n.metadata::JSON->>'source_document_id',
+                    n.metadata::JSON->>'document_id'
+                  ) IS NOT NULL
+              AND COALESCE(
+                    n.metadata::JSON->>'source_document_id',
+                    n.metadata::JSON->>'document_id'
+                  ) NOT IN (SELECT document_id FROM documents)
+          )
+          AND EXISTS (
+            SELECT 1 FROM nodes n
+            WHERE n.node_id = edges.target_node_id
+              AND n.node_type IN ('insight', 'question', 'claim')
+              AND COALESCE(
+                    n.metadata::JSON->>'source_document_id',
+                    n.metadata::JSON->>'document_id'
+                  ) IS NOT NULL
+              AND COALESCE(
+                    n.metadata::JSON->>'source_document_id',
+                    n.metadata::JSON->>'document_id'
+                  ) NOT IN (SELECT document_id FROM documents)
+          )
+    """
     con.execute(
-        "INSERT INTO _quarantine_edges "
-        "SELECT *, CURRENT_TIMESTAMP, ? FROM edges "
-        "WHERE investigation_id = ?",
+        f"INSERT INTO _quarantine_edges "
+        f"SELECT *, CURRENT_TIMESTAMP, ? FROM edges WHERE {edge_where}",
         [reason, _TEST_INVESTIGATION_ID],
     )
     con.execute(
-        "DELETE FROM edges WHERE investigation_id = ?", [_TEST_INVESTIGATION_ID]
+        f"DELETE FROM edges WHERE {edge_where}",
+        [_TEST_INVESTIGATION_ID],
     )
     con.execute(
         """
