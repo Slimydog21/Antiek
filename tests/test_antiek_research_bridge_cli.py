@@ -89,6 +89,8 @@ def test_antiek_research_bridge_dogfood_report_accepts_output_override(
         "dogfood-report",
         "--db",
         db,
+        "--dogfood-root",
+        str(tmp_path / "adrb"),
         "--output",
         str(out),
     ])

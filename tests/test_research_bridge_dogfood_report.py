@@ -10,6 +10,7 @@ import pytest
 
 from runtime.db_lock import connect_read, connect_write
 from substrate.graph.schema import init_database_at_path
+from substrate.research_bridge.dogfood_reconcile import reconcile_dogfood_sessions
 from substrate.research_bridge.dogfood_report import (
     build_dogfood_metrics,
     main,
@@ -163,7 +164,14 @@ def test_dogfood_report_cli_writes_markdown(db: str, tmp_path: Path) -> None:
     _seed_report_rows(db)
     out = tmp_path / "dogfood_metrics.md"
 
-    rc = main(["--db", db, "--output", str(out)])
+    rc = main([
+        "--db",
+        db,
+        "--dogfood-root",
+        str(tmp_path / "missing-adrb"),
+        "--output",
+        str(out),
+    ])
 
     assert rc == 0
     text = out.read_text(encoding="utf-8")
@@ -178,3 +186,91 @@ def test_dogfood_report_cli_writes_markdown(db: str, tmp_path: Path) -> None:
     ) in text
     assert "## Mode A Draft Exports By Session" in text
     assert "- sess-a: 1 draft export(s)" in text
+    assert "## Dogfood Session Reconciliation" in text
+    assert "- Status: FAIL" in text
+    assert "operator-log.md is missing" in text
+
+
+def test_dogfood_report_renders_session_reconciliation(
+    db: str,
+    tmp_path: Path,
+) -> None:
+    _seed_report_rows(db)
+    root = tmp_path / "adrb"
+    root.mkdir()
+    (root / "operator-log.md").write_text(
+        """# Antiek Deep Research Bridge Operator Log
+
+## Five projects chosen up front
+
+1. Sell-side AI infra memo
+2. Anthropic market scan
+3. AlphaSense earnings read
+4. Mixed-provider author brief
+5. Operator status-quo replacement
+
+## Project entries
+
+## Project name
+
+Sell-side AI infra memo
+
+## Goal
+
+Produce dogfood project 1.
+
+## Session ID
+
+sess-a
+
+## Provider mix
+
+Grok and Claude.
+
+## Block count at start / end
+
+- Start: 1
+- End: 2
+
+## Mode(s) used
+
+A and B.
+
+## Draft produced
+
+runs/adrb/drafts/project-1.md
+
+## Did mode A produce something I'd send / publish?
+
+with-edits. It needed a pass but preserved the outline.
+
+## Did mode B's prompts cause me to actually run prompts?
+
+Yes. Prompt 1 was run manually.
+
+## What failed?
+
+The first outline was too broad.
+
+## What surprised me?
+
+The gap prompts found a missing comparison.
+
+## Would I open this again tomorrow?
+
+Yes.
+""",
+        encoding="utf-8",
+    )
+
+    con = connect_read(db)
+    try:
+        report = render_dogfood_report(
+            build_dogfood_metrics(con),
+            reconciliation=reconcile_dogfood_sessions(con, root=root),
+        )
+    finally:
+        con.close()
+
+    assert "## Dogfood Session Reconciliation" in report
+    assert "- Sell-side AI infra memo [sess-a]: 2 block(s), 1 gap run(s)" in report
