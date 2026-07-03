@@ -73,6 +73,7 @@ def _cmd_research_bridge_dogfood_log_validate(args: argparse.Namespace) -> int:
     print(f"operator-log: {result.operator_log_path}")
     print(f"planned projects: {len(result.planned_projects)}/5")
     print(f"filled project entries: {len(result.filled_project_entries)}/5")
+    print(f"complete project entries: {len(result.complete_project_entries)}/5")
     if result.ok:
         print("DOGFOOD_LOG_OK")
         return 0

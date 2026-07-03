@@ -110,6 +110,7 @@ class DogfoodLogValidation:
     operator_log_path: Path
     planned_projects: tuple[str, ...]
     filled_project_entries: tuple[str, ...]
+    complete_project_entries: tuple[str, ...]
     missing_requirements: tuple[str, ...]
 
     @property
@@ -193,6 +194,18 @@ def _section_after_heading(text: str, heading: str) -> str:
     return text[start:next_heading]
 
 
+def _project_section_after_heading(text: str, heading: str) -> str:
+    needle = f"## {heading}"
+    start = text.find(needle)
+    if start < 0:
+        return ""
+    start += len(needle)
+    next_heading = text.find("\n## ", start)
+    if next_heading < 0:
+        return text[start:]
+    return text[start:next_heading]
+
+
 def _planned_project_names(text: str) -> tuple[str, ...]:
     section = _section_after_heading(text, "Five projects chosen up front")
     names: list[str] = []
@@ -224,6 +237,73 @@ def _filled_project_entries(text: str) -> tuple[str, ...]:
             continue
         entries.append(name)
     return tuple(entries)
+
+
+_REQUIRED_PROJECT_FIELDS = (
+    "Goal",
+    "Provider mix",
+    "Block count at start / end",
+    "Mode(s) used",
+    "Draft produced",
+    "Did mode A produce something I'd send / publish?",
+    "Did mode B's prompts cause me to actually run prompts?",
+    "What failed?",
+    "What surprised me?",
+    "Would I open this again tomorrow?",
+)
+
+
+def _non_placeholder_section(section: str) -> bool:
+    lines = [line.strip() for line in section.splitlines() if line.strip()]
+    if not lines:
+        return False
+    placeholders = {
+        "one line.",
+        "one sentence.",
+        "free text.",
+        "yes or no.",
+        "a, b, or both.",
+    }
+    for line in lines:
+        lowered = line.lower()
+        if lowered in placeholders:
+            continue
+        if lowered.startswith("which external llms"):
+            continue
+        if lowered.startswith("link to exported"):
+            continue
+        if lowered.startswith("yes, no, or with-edits"):
+            continue
+        if lowered.startswith("- start:") or lowered.startswith("- end:"):
+            value = line.split(":", 1)[1].strip() if ":" in line else ""
+            if not value:
+                continue
+        return True
+    return False
+
+
+def _complete_project_entries(text: str) -> tuple[str, ...]:
+    complete: list[str] = []
+    parts = text.split("\n## Project name")
+    for part in parts[1:]:
+        body = part.strip()
+        if not body:
+            continue
+        first_lines = [line.strip() for line in body.splitlines() if line.strip()]
+        if not first_lines:
+            continue
+        name = first_lines[0]
+        if name.lower() in {"one line.", "one line"}:
+            continue
+        missing_field = False
+        for field in _REQUIRED_PROJECT_FIELDS:
+            field_section = _project_section_after_heading(body, field)
+            if not _non_placeholder_section(field_section):
+                missing_field = True
+                break
+        if not missing_field:
+            complete.append(name)
+    return tuple(complete)
 
 
 def _candidate_sections(text: str) -> list[tuple[str, str]]:
@@ -326,21 +406,28 @@ def validate_dogfood_log(root: str | Path | None = None) -> DogfoodLogValidation
             operator_log_path=operator_log_path,
             planned_projects=(),
             filled_project_entries=(),
+            complete_project_entries=(),
             missing_requirements=("operator-log.md is missing",),
         )
 
     text = operator_log_path.read_text(encoding="utf-8")
     planned = _planned_project_names(text)
     entries = _filled_project_entries(text)
+    complete_entries = _complete_project_entries(text)
     missing: list[str] = []
     if len(planned) < 5:
         missing.append(f"expected 5 planned projects, found {len(planned)}")
     if len(entries) < 5:
         missing.append(f"expected 5 filled project entries, found {len(entries)}")
+    if len(complete_entries) < 5:
+        missing.append(
+            f"expected 5 complete project entries, found {len(complete_entries)}"
+        )
     return DogfoodLogValidation(
         operator_log_path=operator_log_path,
         planned_projects=planned,
         filled_project_entries=entries,
+        complete_project_entries=complete_entries,
         missing_requirements=tuple(missing),
     )
 
@@ -398,6 +485,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"operator-log: {result.operator_log_path}")
         print(f"planned projects: {len(result.planned_projects)}/5")
         print(f"filled project entries: {len(result.filled_project_entries)}/5")
+        print(f"complete project entries: {len(result.complete_project_entries)}/5")
         if result.ok:
             print("DOGFOOD_LOG_OK")
             return 0
