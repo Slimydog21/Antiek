@@ -138,6 +138,44 @@ def _embedding_provider() -> EmbeddingProvider:
     return default_embedding_provider()
 
 
+def _reuse_substrate() -> object | None:
+    """SPR-02 flywheel nerve — a FACTORY (called by the runner's reuse hook,
+    ``HostLocalRunner._maybe_reuse_prior_knowledge``) that builds the read-only
+    §9.0-gated substrate a launched research queries for prior knowledge, so it
+    emits ``knowledge.reused`` and the compounding flywheel turns instead of
+    no-op'ing on ``None``.
+
+    Passed as ``retrieval_substrate_factory=_reuse_substrate`` (NOT called
+    eagerly). The runner materialises it, runs the single reuse query, and closes
+    it inside one synchronous hook — so its read-only connection never overlaps
+    the promotion funnel's in-process writer (DuckDB forbids a read-only and a
+    read-write handle to one file in a process; the eager
+    ``retrieval_substrate=_reuse_substrate()`` wiring clashed there and reddened
+    the cascade-API suite — see tests/test_cascade_reuse_substrate_wire.py).
+
+    Two deliberate, load-bearing choices:
+
+    * Kind is ``brute_force``, NOT the ``vss`` default. ``vss``'s ``open()``
+      copies the entire graph DB to a temp dir to build an HNSW index (its own
+      docstring calls that a spike and defers a production index build to
+      "SPR-06+"). A per-launch full-DB copy is not production-appropriate;
+      ``brute_force`` opens a read-only ``connect_read`` connection (no copy) and
+      its ``query`` applies the §9.0 ``policy_tag`` deny-by-default gate.
+    * Model is ``_embedding_provider()`` — the SAME embedder the funnel/graph
+      already use (a hash stub when sentence-transformers is absent), so reuse is
+      structural-but-live on a box without that dependency until SPR-06 installs
+      a real model.
+
+    Best-effort: any construction failure returns ``None`` (the runner's reuse
+    path is a no-op on ``None`` and never lets reuse break a launch)."""
+    try:
+        from substrate.graph.retrieval_substrate import make_substrate
+
+        return make_substrate("brute_force", _db(), model=_embedding_provider())
+    except Exception:  # pragma: no cover — reuse is best-effort, never fatal
+        return None
+
+
 def _decompose(problem: str, max_depth: int) -> PlanReport:
     """The decomposer the plan endpoint uses when the caller does not supply
     sub-questions. A module attribute so tests can monkeypatch it to a
@@ -410,7 +448,15 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
     budget = BudgetManager(aggregate_cap_usd=req.aggregate_budget_usd)
     funnel = PromotionFunnel(db_path=_db(), embedding_provider=_embedding_provider())
     runner = HostLocalRunner(_research_loop_factory(), budget=budget,
-                             on_emit=funnel.submit, seal_on_complete=False)
+                             on_emit=funnel.submit, seal_on_complete=False,
+                             # SPR-02 flywheel nerve: pass the factory, not a live
+                             # substrate, so the runner builds + closes the
+                             # read-only reuse connection inside its one
+                             # synchronous reuse hook and it never overlaps the
+                             # promotion funnel's writer in-process (the DuckDB
+                             # mixed read-only/read-write conflict that reddened
+                             # the cascade-API suite).
+                             retrieval_substrate_factory=_reuse_substrate)
     session = CascadeSession(session_id, runner=runner, funnel=funnel, db_path=_db())
     await session.launch(root_id, leaves)
     _SESSIONS[session_id] = session
