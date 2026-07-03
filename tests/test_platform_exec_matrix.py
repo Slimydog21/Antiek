@@ -241,6 +241,63 @@ def test_cascade_adapter_row_names_canonical_bundle() -> None:
     assert "pytest tests/test_cascade_planner.py::test_dispatch_decomposer_maps_stub_response -q" not in body
 
 
+def test_cascade_profile_rows_name_current_scope() -> None:
+    """P-03..P-09 must track the concrete tests bundled by cascade."""
+    script = CANONICAL_VERIFY.read_text(encoding="utf-8")
+    matrix = MATRIX.read_text(encoding="utf-8")
+
+    expected = {
+        "03": {
+            "body": ("`tests/test_cascade_create_plan_light.py`",),
+            "script": ("tests/test_cascade_create_plan_light.py",),
+        },
+        "04": {
+            "body": ("`scripts/audit_decomposer_call_sites.sh`",),
+            "script": ("bash scripts/audit_decomposer_call_sites.sh",),
+        },
+        "05": {
+            "body": ("`PlanTree`", "`/research/plans/{root_id}/edit`"),
+            "script": (
+                "test_invalid_edits_do_not_mutate_or_reopen_gate",
+                "test_invalid_question_edits_are_refused_without_mutating_plan",
+            ),
+        },
+        "06": {
+            "body": ("`CascadeSession`", "`/research/sessions/{id}`"),
+            "script": (
+                "tests/test_parallel_orchestration.py::test_steer_routes_to_one_research",
+                "tests/test_cascade_api.py::test_session_reconstructs_after_eviction",
+            ),
+        },
+        "07": {
+            "body": ("`substrate/gap_detection/`", "Speak `DRWGapSource`"),
+            "script": ("tests/test_gap_detection.py", "tests/test_speak_drw_gap_source.py"),
+        },
+        "08": {
+            "body": ("`substrate/research_bridge/ingest_file.py`",),
+            "script": ("tests/test_universal_ingest.py",),
+        },
+        "09": {
+            "body": ("`apps/reading/src/modes/DeepResearchWorkspace/`",),
+            "script": ("src/modes/DeepResearchWorkspace/DeepResearchWorkspace.test.tsx",),
+        },
+    }
+
+    for row_id, markers in expected.items():
+        row = re.search(rf"^\| P-{row_id} \|(?P<body>.*)\|$", matrix, re.MULTILINE)
+        assert row is not None, f"P-{row_id} row missing"
+        body = row.group("body")
+
+        assert "included in `canonical_verify.sh cascade`" in body
+        missing_body = [marker for marker in markers["body"] if marker not in body]
+        missing_script = [marker for marker in markers["script"] if marker not in script]
+
+        assert not missing_body, f"P-{row_id} row missing marker(s): {missing_body}"
+        assert not missing_script, (
+            f"canonical cascade missing P-{row_id} marker(s): {missing_script}"
+        )
+
+
 def test_agent_gates_trigger_on_provenance_invariant_inputs() -> None:
     """P-38 now runs the invariant registry, including parser provenance checks."""
     for event_name in ("push", "pull_request"):
