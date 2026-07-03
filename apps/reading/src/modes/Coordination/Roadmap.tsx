@@ -90,6 +90,24 @@ export interface ReadActivationStatusView {
   } | null;
 }
 
+export interface AdrbDogfoodStatusView {
+  state: "not_checked" | "incomplete" | "ready" | "error" | string;
+  closure_ready: boolean;
+  dogfood_root: string;
+  operator_log_path: string;
+  metrics_path: string;
+  verdict_path: string;
+  expected_project_count: number;
+  complete_project_entries: number;
+  reconciled_sessions: number;
+  valid_wave4_candidates: number;
+  metrics_current: boolean;
+  mode_a_verdict: string | null;
+  mode_b_verdict: string | null;
+  missing_requirements: string[];
+  error: string | null;
+}
+
 export interface OperatorActionView {
   action_id: string;
   title: string;
@@ -206,6 +224,7 @@ export interface RoadmapView {
   execution_focus: ExecutionFocusView | null;
   operator_gate_focus: OperatorGateFocusView | null;
   read_activation: ReadActivationStatusView | null;
+  adrb_dogfood?: AdrbDogfoodStatusView | null;
   operator_actions?: OperatorActionsSummaryView | null;
   phase2_audit?: Phase2AuditView | null;
   engineering_deferrals?: EngineeringDeferralsSummaryView | null;
@@ -401,6 +420,9 @@ export function Roadmap({ roadmap }: { roadmap: RoadmapView }) {
           ) : null}
           {roadmap.read_activation ? (
             <ActivationStatus activation={roadmap.read_activation} />
+          ) : null}
+          {roadmap.adrb_dogfood ? (
+            <AdrbDogfoodStatus dogfood={roadmap.adrb_dogfood} />
           ) : null}
           {roadmap.operator_actions ? (
             <OperatorActionsStatus operatorActions={roadmap.operator_actions} />
@@ -621,6 +643,63 @@ function Phase2AuditStatus({ audit }: { audit: Phase2AuditView }) {
         </p>
       ) : null}
     </div>
+  );
+}
+
+function AdrbDogfoodStatus({
+  dogfood,
+}: {
+  dogfood: AdrbDogfoodStatusView;
+}) {
+  const missing = dogfood.missing_requirements ?? [];
+  const missingText =
+    missing.length > 0
+      ? missing.slice(0, 3).join("; ") + (missing.length > 3 ? "..." : "")
+      : "";
+
+  return (
+    <LemonCard title="Deep Research Bridge dogfood" elevation="z1">
+      <div className="p-4 space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-ink dark:text-bright">
+            ADRB operator evidence
+          </p>
+          <LemonTag
+            colour={
+              dogfood.closure_ready
+                ? "aurora"
+                : dogfood.state === "error"
+                  ? "danger"
+                  : "sun"
+            }
+          >
+            {dogfood.closure_ready ? "ready" : dogfood.state}
+          </LemonTag>
+        </div>
+        <p className="text-xs font-mono text-ink dark:text-bright">
+          {dogfood.complete_project_entries}/{dogfood.expected_project_count}{" "}
+          projects · {dogfood.reconciled_sessions} reconciled · metrics=
+          {dogfood.metrics_current ? "current" : "stale/missing"} · verdict A=
+          {dogfood.mode_a_verdict || "missing"} B=
+          {dogfood.mode_b_verdict || "missing"}
+        </p>
+        <p className="text-sm text-shadow-1 dark:text-moonlight">
+          {dogfood.closure_ready
+            ? "Bridge dogfood evidence is mechanically ready; the operator verdict remains the product bar."
+            : dogfood.error
+              ? `Readiness check failed: ${dogfood.error}`
+              : missingText
+                ? `Remaining: ${missingText}.`
+                : "No bridge dogfood closure evidence is ready yet."}{" "}
+          Source: {dogfood.dogfood_root || "runs/adrb"}.
+        </p>
+        {dogfood.verdict_path && (
+          <p className="text-xs font-mono text-ink-soft dark:text-starlight">
+            Verdict: {dogfood.verdict_path}
+          </p>
+        )}
+      </div>
+    </LemonCard>
   );
 }
 

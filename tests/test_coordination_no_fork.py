@@ -902,6 +902,46 @@ def test_roadmap_response_serializes_read_activation_status(tmp_path: Path) -> N
     )
 
 
+def test_roadmap_response_serializes_adrb_dogfood_status() -> None:
+    from interfaces.research.api.coordination import (
+        AdrbDogfoodStatusResponse,
+        RoadmapResponse,
+    )
+
+    adrb = AdrbDogfoodStatusResponse(
+        state="incomplete",
+        closure_ready=False,
+        dogfood_root="/tmp/adrb",
+        operator_log_path="/tmp/adrb/operator-log.md",
+        metrics_path="/tmp/adrb/dogfood_metrics.md",
+        verdict_path="/tmp/adrb_post_dogfood_verdict.md",
+        expected_project_count=5,
+        complete_project_entries=2,
+        reconciled_sessions=1,
+        valid_wave4_candidates=0,
+        metrics_current=False,
+        mode_a_verdict=None,
+        mode_b_verdict="ITERATE",
+        missing_requirements=("dogfood_metrics.md is missing",),
+        error=None,
+    )
+
+    response = RoadmapResponse.from_roadmap(
+        build_roadmap(),
+        load_gate_ledger(),
+        adrb_dogfood=adrb,
+    )
+
+    assert response.adrb_dogfood.state == "incomplete"
+    assert response.adrb_dogfood.expected_project_count == 5
+    assert response.adrb_dogfood.complete_project_entries == 2
+    assert response.adrb_dogfood.reconciled_sessions == 1
+    assert response.adrb_dogfood.mode_b_verdict == "ITERATE"
+    assert response.adrb_dogfood.missing_requirements == [
+        "dogfood_metrics.md is missing"
+    ]
+
+
 def test_roadmap_response_serializes_operator_actions_and_phase2_audit() -> None:
     from interfaces.research.api.coordination import RoadmapResponse
 
