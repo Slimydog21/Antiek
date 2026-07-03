@@ -71,6 +71,20 @@ function discoverModeIds(): Set<ModeId> {
     if (m) ids.add(m[1]);
   }
 
+  // Speak SPR-08 ONE DOOR: the Interview surface folds into Speak — its
+  // route is retired (/interviews -> /speak) but its capture components
+  // stay on disk, so it is a real mode with no top-level index.tsx, exactly
+  // like the Write modes above. Glob its entry components so the staleness
+  // check stays honest (the whole surface retiring breaks here loudly).
+  const interviewModules = import.meta.glob([
+    "../modes/Interview/InterviewTranscript.tsx",
+    "../modes/Interview/InterviewNotes.tsx",
+  ]);
+  for (const path of Object.keys(interviewModules)) {
+    const m = path.match(/\.\.\/modes\/([^/]+)\//);
+    if (m) ids.add(m[1]);
+  }
+
   return ids;
 }
 

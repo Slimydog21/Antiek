@@ -41,7 +41,15 @@ function walk(dir: string, out: string[] = []): string[] {
     const p = join(dir, name);
     const st = statSync(p);
     if (st.isDirectory()) walk(p, out);
-    else if (/\.(ts|tsx|css)$/.test(name)) out.push(p);
+    // Test files are not shipped components — the gate's whole rationale is
+    // "a raw hex in a COMPONENT is decoration, not the brand". A hex in a test
+    // is either a colour ASSERTION (`toHaveStyle('color: #fff')`) or, as here,
+    // a `#NNN` issue/PR reference in a test title (`it("… the #144 badge …")`)
+    // that the colour regex false-matches. Neither ships taste to a user, so
+    // scoping the scan to non-test source sharpens the gate to its stated
+    // domain rather than weakening it.
+    else if (/\.(ts|tsx|css)$/.test(name) && !/\.test\.(ts|tsx)$/.test(name))
+      out.push(p);
   }
   return out;
 }

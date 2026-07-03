@@ -451,7 +451,13 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
     funnel = PromotionFunnel(db_path=_db(), embedding_provider=_embedding_provider())
     runner = HostLocalRunner(_research_loop_factory(), budget=budget,
                              on_emit=funnel.submit, seal_on_complete=False,
-                             retrieval_substrate=_reuse_substrate())
+                             # Pass the factory, not a live substrate: the runner
+                             # builds + closes the read-only reuse connection inside
+                             # its one synchronous reuse hook, so it never overlaps
+                             # the promotion funnel's writer in-process (DuckDB
+                             # rejects mixed read-only/read-write handles to one
+                             # file — the cascade-API test conflict).
+                             retrieval_substrate_factory=_reuse_substrate)
     session = CascadeSession(session_id, runner=runner, funnel=funnel, db_path=_db())
     await session.launch(root_id, leaves)
     _SESSIONS[session_id] = session

@@ -192,6 +192,7 @@ class HostLocalRunner:
         seal_on_complete: bool = True,
         on_emit: Callable[[StepEvent], Awaitable[None]] | None = None,
         retrieval_substrate: object | None = None,
+        retrieval_substrate_factory: Callable[[], object | None] | None = None,
         reuse_role: str = "user_agent",
     ):
         self._loop_fn = loop_fn
@@ -213,6 +214,14 @@ class HostLocalRunner:
         # protocol method and NOT a forked runner (§16): it is an in-place
         # extension of the existing ``start`` lifecycle stage.
         self._retrieval_substrate = retrieval_substrate
+        # The cascade server path injects a FACTORY instead of a live substrate,
+        # so the read-only reuse connection is built + closed inside the single
+        # synchronous reuse hook (``_maybe_reuse_prior_knowledge``) rather than
+        # held open for the runner's lifetime — where it would clash in-process
+        # with the promotion funnel's writer (DuckDB forbids mixed read-only /
+        # read-write handles to one file). A live ``retrieval_substrate`` stays
+        # caller-owned and is released at ``join()`` as before.
+        self._retrieval_substrate_factory = retrieval_substrate_factory
         self._reuse_role = reuse_role
         self._states: dict[str, _ResearchState] = {}
 
@@ -265,29 +274,58 @@ class HostLocalRunner:
         token-bounded top-k, inject a single reuse layer into a context pack, and
         emit one ``knowledge.reused`` event on this investigation's JSONL. Lives
         on the existing ``start`` path; adds no ResearchRunner protocol method."""
-        if self._retrieval_substrate is None:
+        # Resolve the substrate for this one-shot reuse query. Two wirings:
+        #  * a live substrate injected at construction (test/legacy path) — the
+        #    CALLER owns it, so join() closes it and we must NOT close it here.
+        #  * a factory (the cascade server path) — the runner owns the transient
+        #    it builds, so it MUST close it the instant this single query is done.
+        # The distinction is load-bearing. The substrate holds a read-only DuckDB
+        # connection, and DuckDB forbids a read-only and a read-write handle to
+        # the same file within one process. Built EAGERLY and held (the old
+        # ``retrieval_substrate=_reuse_substrate()`` wiring), that read-only
+        # handle clashed with the very next connect_write — ensure_initialized,
+        # the promotion funnel, a read endpoint — and the 6 cascade-API tests
+        # failed on exactly that ("Can't open a connection to same database file
+        # with a different configuration than existing connections"). Building
+        # AND closing it inside this single synchronous hook keeps the read-only
+        # handle from ever overlapping a writer. Every teardown is best-effort:
+        # reuse must never turn a research into a failure.
+        runner_owned = False
+        sub = self._retrieval_substrate
+        if sub is None and self._retrieval_substrate_factory is not None:
+            runner_owned = True
+            try:
+                sub = self._retrieval_substrate_factory()
+            except Exception:  # pragma: no cover — reuse never breaks a research
+                sub = None
+        if sub is None:
             return
         try:
-            from substrate.context_pack.knowledge_reuse import (
-                assemble_context_pack_with_reuse,
-                retrieve_prior_units,
-            )
-        except ImportError:  # pragma: no cover — defensive
-            return
-        try:
-            units = retrieve_prior_units(
-                self._retrieval_substrate,
-                question_text=plan.sub_question,
-            )
-            assemble_context_pack_with_reuse(
-                role=self._reuse_role,
-                investigation_id=investigation_id,
-                layers=[],
-                units=units,
-                events_dir=self._events_dir,
-            )
-        except Exception:  # pragma: no cover — reuse never breaks a research
-            return
+            try:
+                from substrate.context_pack.knowledge_reuse import (
+                    assemble_context_pack_with_reuse,
+                    retrieve_prior_units,
+                )
+            except ImportError:  # pragma: no cover — defensive
+                return
+            try:
+                units = retrieve_prior_units(
+                    sub,
+                    question_text=plan.sub_question,
+                )
+                assemble_context_pack_with_reuse(
+                    role=self._reuse_role,
+                    investigation_id=investigation_id,
+                    layers=[],
+                    units=units,
+                    events_dir=self._events_dir,
+                )
+            except Exception:  # pragma: no cover — reuse never breaks a research
+                return
+        finally:
+            if runner_owned and sub is not None and hasattr(sub, "close"):
+                with contextlib.suppress(Exception):
+                    sub.close()
 
     # -- the per-research coroutine ------------------------------------
 
