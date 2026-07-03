@@ -16,6 +16,7 @@ from .dogfood_log import (
 from .dogfood_report import (
     DogfoodMetrics,
     SessionBlockMetrics,
+    SessionDraftExportMetrics,
     SessionSignalMetrics,
     build_dogfood_metrics,
     default_dogfood_metrics_path,
@@ -93,6 +94,7 @@ __all__ = [
     "DogfoodMetrics",
     "DogfoodLogValidation",
     "SessionBlockMetrics",
+    "SessionDraftExportMetrics",
     "SessionSignalMetrics",
     "build_dogfood_metrics",
     "DogfoodScaffoldResult",
