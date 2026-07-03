@@ -46,6 +46,15 @@ _PROMPT_AUTORESEARCH_TRIGGER_PATHS = {
     "tests/test_prompt_autoresearch_readiness.py",
     "tests/test_prompt_autoresearch_verdict.py",
 }
+_AMS_REF_LINT_TRIGGER_PATHS = {
+    "docs/agent-execution/**",
+    "docs/htmlspec/antiek-hard-to-vary-execution/sprint-05-ams-bridge.html",
+    "scripts/agent_ams_ref_lint.sh",
+    "tests/fixtures/agent_execution/**",
+    "tests/test_agent_ams_ref_lint.py",
+    "tools/ams-v2/ref-lint.sh",
+    "tools/specs/verify_spec_refs.ts",
+}
 _READING_COPY_LINT_TRIGGER_PATHS = {
     "apps/reading/src/components/**",
     "apps/reading/src/modes/**",
@@ -241,6 +250,17 @@ def test_agent_gates_trigger_on_prompt_autoresearch_inputs() -> None:
         assert not missing, (
             f"agent_execution_gates.yml {event_name} does not trigger on "
             f"Prompt Autoresearch input(s): {missing}"
+        )
+
+
+def test_agent_gates_trigger_on_ams_ref_lint_inputs() -> None:
+    """P-48 runs the canonical AMS spec reference anti-fiction gate."""
+    for event_name in ("push", "pull_request"):
+        paths = _workflow_event_paths(event_name)
+        missing = sorted(_AMS_REF_LINT_TRIGGER_PATHS - paths)
+        assert not missing, (
+            f"agent_execution_gates.yml {event_name} does not trigger on "
+            f"AMS ref-lint input(s): {missing}"
         )
 
 
