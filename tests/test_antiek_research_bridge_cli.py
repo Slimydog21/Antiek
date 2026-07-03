@@ -122,6 +122,18 @@ def test_antiek_research_bridge_dogfood_log_validate(tmp_path: Path, capsys) -> 
     assert "filled project entries: 0/5" in out
 
 
+def test_antiek_research_bridge_wave4_validate(tmp_path: Path, capsys) -> None:
+    root = tmp_path / "adrb"
+    assert main(["research", "bridge", "dogfood-log", "init", "--root", str(root)]) == 0
+
+    rc = main(["research", "bridge", "dogfood-log", "wave4-validate", "--root", str(root)])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "valid candidates: 0" in out
+    assert "WAVE4_CANDIDATES_OK" in out
+
+
 def test_antiek_research_bridge_verdict_scaffold_and_validate(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

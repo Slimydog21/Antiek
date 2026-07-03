@@ -15,6 +15,7 @@ from runtime.db_lock import connect_read, connect_write
 from substrate.research_bridge.db_path import ensure_research_bridge_initialized
 from substrate.research_bridge.dogfood_log import (
     validate_dogfood_log,
+    validate_wave4_candidates,
     write_dogfood_scaffold,
 )
 from substrate.research_bridge.dogfood_report import (
@@ -74,6 +75,18 @@ def _cmd_research_bridge_dogfood_log_validate(args: argparse.Namespace) -> int:
     print(f"filled project entries: {len(result.filled_project_entries)}/5")
     if result.ok:
         print("DOGFOOD_LOG_OK")
+        return 0
+    for missing in result.missing_requirements:
+        print(f"missing: {missing}")
+    return 1
+
+
+def _cmd_research_bridge_wave4_validate(args: argparse.Namespace) -> int:
+    result = validate_wave4_candidates(args.root)
+    print(f"wave4-candidates: {result.wave4_candidates_path}")
+    print(f"valid candidates: {len(result.candidates)}")
+    if result.ok:
+        print("WAVE4_CANDIDATES_OK")
         return 0
     for missing in result.missing_requirements:
         print(f"missing: {missing}")
@@ -188,6 +201,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Dogfood directory. Defaults to ~/Desktop/Antiek/runs/adrb.",
     )
     dogfood_log_validate.set_defaults(func=_cmd_research_bridge_dogfood_log_validate)
+    wave4_validate = dogfood_log_subparsers.add_parser(
+        "wave4-validate",
+        help="Validate operator-owned Wave 4 candidate notes.",
+    )
+    wave4_validate.add_argument(
+        "--root",
+        default=None,
+        help="Dogfood directory. Defaults to ~/Desktop/Antiek/runs/adrb.",
+    )
+    wave4_validate.set_defaults(func=_cmd_research_bridge_wave4_validate)
 
     verdict = bridge_subparsers.add_parser(
         "verdict",
