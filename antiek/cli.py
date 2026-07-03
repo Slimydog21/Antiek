@@ -53,6 +53,7 @@ from tools.activation.read_dogfood import (
 
 READ_ACTIVATION_STATUS_JSON_SCHEMA_VERSION = 1
 READ_ACTIVATION_APPEND_TEMPLATE_JSON_SCHEMA_VERSION = 1
+READ_ACTIVATION_NEXT_SESSION_JSON_SCHEMA_VERSION = 1
 
 
 def _read_activation_log_path(raw_path: str | None) -> Path:
@@ -104,6 +105,82 @@ def _cmd_read_activation_status(args: argparse.Namespace) -> int:
         for failure in view.failures:
             print(f"failure: {failure}")
     return 0 if view.closure_ready else 1
+
+
+def _read_activation_next_session_payload(view: ReadActivationView) -> dict[str, object]:
+    remaining = view.remaining_requirements
+    recommended_template: str | None = None
+    next_action = "collect_session"
+    rationale = (
+        "Append the recommended template, then replace every placeholder with "
+        "real operator evidence before counting it toward activation."
+    )
+
+    if view.state == "invalid_log":
+        next_action = "fix_log"
+        rationale = "Fix the malformed JSONL log before collecting another session."
+    elif view.closure_ready:
+        next_action = "none"
+        rationale = "Read activation evidence is closure-ready."
+    elif remaining["citation_trace_sessions"] > 0:
+        recommended_template = "live-citation"
+        rationale = (
+            "A real live-citation session advances valid, live-provider, "
+            "citation-trace, and non-Library coverage."
+        )
+    elif remaining["live_provider_sessions"] > 0:
+        recommended_template = "live"
+        rationale = "A real live session advances valid and live-provider coverage."
+    elif remaining["non_library_sessions"] > 0:
+        recommended_template = "live-citation"
+        rationale = (
+            "A real live-citation session uses a non-Library entry door while "
+            "also preserving provider and citation evidence."
+        )
+    elif remaining["valid_sessions"] > 0:
+        recommended_template = "inert"
+        rationale = "Only valid-session count remains; an inert session can advance it."
+    else:
+        next_action = "fix_log"
+        rationale = (
+            "The numeric counters are met, but activation still needs the final "
+            "verdict or failure repairs shown in the status output."
+        )
+
+    append_command = (
+        f"antiek read activation append-template --kind {recommended_template}"
+        if recommended_template is not None
+        else None
+    )
+    return {
+        "schema_version": READ_ACTIVATION_NEXT_SESSION_JSON_SCHEMA_VERSION,
+        "source_path": view.source_path,
+        "state": view.state,
+        "next_action": next_action,
+        "recommended_template": recommended_template,
+        "append_command": append_command,
+        "rationale": rationale,
+        "remaining_requirements": dict(remaining),
+        "view": asdict(view),
+    }
+
+
+def _cmd_read_activation_next_session(args: argparse.Namespace) -> int:
+    view = build_read_activation_view(_read_activation_log_path(args.log))
+    payload = _read_activation_next_session_payload(view)
+    if args.json:
+        sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    else:
+        print(f"source: {payload['source_path']}")
+        print(f"state: {payload['state']}")
+        print(f"next action: {payload['next_action']}")
+        print(f"recommended template: {payload['recommended_template'] or 'none'}")
+        if payload["append_command"] is not None:
+            print(f"append command: {payload['append_command']}")
+        print(f"rationale: {payload['rationale']}")
+        for key, remaining in payload["remaining_requirements"].items():
+            print(f"remaining: {key}={remaining}")
+    return 1 if view.state == "invalid_log" else 0
 
 
 def _read_activation_append_template_payload(
@@ -331,6 +408,24 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Write a stable machine-readable activation status payload.",
     )
     activation_status.set_defaults(func=_cmd_read_activation_status)
+    activation_next_session = activation_subparsers.add_parser(
+        "next-session",
+        help="Recommend the next Read activation dogfood session kind.",
+    )
+    activation_next_session.add_argument(
+        "--log",
+        default=None,
+        help=(
+            "Read dogfood JSONL log. Defaults to "
+            "reports/read-dogfood.jsonl in the repository."
+        ),
+    )
+    activation_next_session.add_argument(
+        "--json",
+        action="store_true",
+        help="Write a stable machine-readable recommendation payload.",
+    )
+    activation_next_session.set_defaults(func=_cmd_read_activation_next_session)
     activation_append_template = activation_subparsers.add_parser(
         "append-template",
         help="Append a Read activation dogfood scaffold session.",

@@ -99,6 +99,8 @@ The product CLI exposes the same validator status without reaching into
 ```bash
 antiek read activation status
 antiek read activation status --log reports/read-dogfood.jsonl --json
+antiek read activation next-session
+antiek read activation next-session --json
 ```
 
 To seed a new operator-authored row without hand-copying the schema, print a
