@@ -43,6 +43,7 @@ import duckdb
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from roles.creative_writer.prompt import AdjacentSection
 from roles.interviewer.drivers import DriverSet
 from runtime.db_lock import connect_write
 from substrate.graph import default_db_path, ensure_initialized
@@ -105,7 +106,7 @@ def _translate() -> Iterator[None]:
     try:
         yield
     except (OutlineBlockError, OutlineError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # ---------------------------------------------------------------------------
@@ -430,6 +431,38 @@ def generate_section_draft(section_id: str) -> dict:
         deliverable_id, dtitle, dkind, stitle = row
         blocks = list_section_blocks(con, section_id)
 
+        # Multi-section coherence (§10.6): give the role the deliverable's
+        # other sections in outline order so it can keep a multi-section
+        # deliverable coherent — prior sections carry their prose (so the
+        # model does not repeat them), upcoming sections carry only a title
+        # (so it can hand off). section_index/section_count come from the
+        # real outline position, not a single-section placeholder.
+        # Order by (section_index, section_id) — the SAME total order the
+        # canonical outline reader uses (substrate/write/outline.py), because
+        # section_index is sibling-scoped and carries no UNIQUE constraint, so
+        # ordering by it alone is nondeterministic once nesting introduces
+        # duplicate indices. The section_id tiebreaker makes this path agree
+        # with every other reader of the outline.
+        section_rows = con.execute(
+            "SELECT section_id, title, prose_text "
+            "FROM deliverable_sections WHERE deliverable_id = ? "
+            "ORDER BY section_index, section_id",
+            [deliverable_id],
+        ).fetchall()
+        section_count = len(section_rows)
+        this_index = next(
+            (i for i, r in enumerate(section_rows) if r[0] == section_id), 0
+        )
+        adjacent_sections = [
+            AdjacentSection(
+                section_index=i,
+                title=r[1] or "",
+                prose_text=(r[2] if i < this_index else None),
+            )
+            for i, r in enumerate(section_rows)
+            if r[0] != section_id
+        ]
+
         def _resolve_label(node_id: str) -> str:
             r = con.execute(
                 "SELECT canonical_label FROM nodes WHERE node_id = ?", [node_id]
@@ -438,8 +471,10 @@ def generate_section_draft(section_id: str) -> dict:
 
         ctx = build_creative_writer_context(
             deliverable_title=dtitle, deliverable_kind=dkind,
-            section_title=stitle or "", section_index=0, section_count=1,
-            blocks=blocks, node_label_resolver=_resolve_label,
+            section_title=stitle or "", section_index=this_index,
+            section_count=section_count, blocks=blocks,
+            adjacent_sections=adjacent_sections,
+            node_label_resolver=_resolve_label,
         )
 
     if not ctx.blocks:
@@ -453,14 +488,14 @@ def generate_section_draft(section_id: str) -> dict:
             ctx=ctx, dispatch_fn=default_dispatch_fn(investigation_id=deliverable_id),
             section_id=section_id,
         )
-    except KeyError:
+    except KeyError as e:
         # creative_writer not wired into the dispatch config.
         raise HTTPException(
             status_code=503,
             detail="generation unavailable: creative_writer is not in the dispatch config",
-        )
+        ) from e
     except Exception as e:  # provider/credential failure
-        raise HTTPException(status_code=503, detail=f"generation unavailable: {e}")
+        raise HTTPException(status_code=503, detail=f"generation unavailable: {e}") from e
 
     report = result.citation_report
     # M3: persist prose_provenance so the X-ray can read paragraph→blocks back.

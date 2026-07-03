@@ -49,6 +49,7 @@ from roles.creative_writer.parser import (
     parse_creative_writer_response,
 )
 from roles.creative_writer.prompt import (
+    AdjacentSection,
     CreativeWriterBlock,
     CreativeWriterContext,
     render_full_prompt,
@@ -95,11 +96,18 @@ def build_creative_writer_context(
     section_count: int,
     blocks: Sequence[OutlineBlock],
     style_guide: str = "",
+    adjacent_sections: Sequence[AdjacentSection] = (),
     node_label_resolver: Callable[[str], str] | None = None,
 ) -> CreativeWriterContext:
     """Build the creative_writer context from OutlineBlocks. The block_id
     carried into the prompt is the OutlineBlock's node_id (graph-node) or
-    outline_block_id (user-originated) — the id the citation must name."""
+    outline_block_id (user-originated) — the id the citation must name.
+
+    ``adjacent_sections`` carries the deliverable's other sections so the
+    role can keep a multi-section deliverable coherent — prior sections
+    supply their prose (so the model does not repeat them), upcoming
+    sections supply only a title (so the model can hand off to them).
+    Empty for a single-section deliverable."""
     cw_blocks: list[CreativeWriterBlock] = []
     for b in blocks:
         cite_id = b.node_id if b.provenance_kind == "graph_node" else b.outline_block_id
@@ -112,6 +120,7 @@ def build_creative_writer_context(
         deliverable_title=deliverable_title, deliverable_kind=deliverable_kind,
         section_title=section_title, section_index=section_index,
         section_count=section_count, blocks=cw_blocks, style_guide=style_guide,
+        adjacent_sections=list(adjacent_sections),
     )
 
 

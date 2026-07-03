@@ -44,7 +44,9 @@ def test_render_user_template_includes_deliverable_and_section():
     assert "Test Memo" in txt
     assert "research_memo" in txt
     assert "Intro" in txt
-    assert "section 0 of 3" in txt
+    # 1-based human display: the first section of three reads "section 1 of 3",
+    # agreeing with the "§N" neighbour labels (not the old 0-based "section 0").
+    assert "section 1 of 3" in txt
 
 
 def test_render_user_template_no_blocks_message():
