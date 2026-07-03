@@ -197,6 +197,7 @@ CHECK_THIRD_PARTY_SERVABLE = "third_party_servable"
 #       THAT sprint must source its selection through this check (see handoff).
 CHECK_PERSONAL_NONATTRIB = "personal_reading_nonattributable"
 CHECK_PERSONAL_NOT_TRAINING = "personal_reading_not_in_training"
+CHECK_DANGLING_IP_HOLDER = "dangling_ip_holder"
 
 ALL_CHECK_NAMES = (
     CHECK_SERVABLE_BASIS,
@@ -208,6 +209,7 @@ ALL_CHECK_NAMES = (
     CHECK_THIRD_PARTY_SERVABLE,
     CHECK_PERSONAL_NONATTRIB,
     CHECK_PERSONAL_NOT_TRAINING,
+    CHECK_DANGLING_IP_HOLDER,
 )
 
 # The training/RL export tables/views this corpus exports documents through. EMPTY
@@ -1154,6 +1156,47 @@ def _display_path(py_file: Path, base: Path) -> str:
         return str(py_file)
 
 
+def _check_dangling_ip_holder(con: Any) -> CheckResult:
+    """The attribution terminal link is FK-backed by an AUDIT, not the schema.
+
+    Every link of the §9 attribution chain is FK-backed EXCEPT the last:
+    ``documents.ip_holder_id`` is added via ``ALTER TABLE … ADD COLUMN`` (DuckDB
+    cannot ALTER-add a REFERENCES constraint), so nothing at the DB level stops
+    a ``documents.ip_holder_id`` that resolves to NO ``ip_holders`` row. That
+    matters because ``attribution.compute`` looks the holder's status up with a
+    ``.get(h, "pre_onboarded")`` default — a DANGLING id silently frames as
+    ``pre_onboarded`` (escrow-framework-eligible), fabricating an owner the
+    substrate cannot back. This check is the standing substitute for the FK the
+    schema cannot enforce: every NON-NULL ``ip_holder_id`` must resolve to a
+    real ``ip_holders`` row. A NULL ip_holder_id (public-domain / unknown owner)
+    is legitimate and NOT flagged — only dangling (present-but-unresolvable) ids
+    are the defect."""
+    dangling: list[str] = [
+        str(doc_id)
+        for (doc_id,) in con.execute(
+            "SELECT document_id FROM documents "
+            "WHERE ip_holder_id IS NOT NULL "
+            "AND ip_holder_id NOT IN (SELECT ip_holder_id FROM ip_holders)"
+        ).fetchall()
+    ]
+    ok = not dangling
+    return CheckResult(
+        name=CHECK_DANGLING_IP_HOLDER,
+        ok=ok,
+        count=len(dangling),
+        offending=_bounded(dangling),
+        detail=(
+            "all non-null documents.ip_holder_id resolve to an ip_holders row"
+            if ok
+            else (
+                f"{len(dangling)} document(s) carry an ip_holder_id with NO "
+                "ip_holders row — attribution would frame a fabricated owner as "
+                "escrow-eligible (the terminal-link FK the schema cannot enforce)"
+            )
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # The one entrypoint — run_audit(db_path) -> AuditResult.
 # ---------------------------------------------------------------------------
@@ -1186,6 +1229,7 @@ def run_audit(
             _check_third_party_servable(con),
             _check_personal_nonattributable(con),
             _check_personal_not_in_training(con),
+            _check_dangling_ip_holder(con),
         ]
     finally:
         con.close()

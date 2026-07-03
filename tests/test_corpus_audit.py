@@ -1209,3 +1209,68 @@ def test_pass_public_probe_mints_pass_public_with_no_checks():
     assert result.verdict is QualityGateVerdict.PASS_PUBLIC
     assert result.checks == ()
 
+
+
+# ---------------------------------------------------------------------------
+# Terminal-link check (SPR-06): documents.ip_holder_id must resolve to an
+# ip_holders row. NULL is legitimate (public-domain); a resolvable holder is
+# legitimate; only a DANGLING id (present but unresolvable) is the defect —
+# the FK the DuckDB schema cannot ALTER-add, enforced by this standing audit.
+# ---------------------------------------------------------------------------
+
+
+def _seed_holder_docs(con):
+    """Standalone documents (NO chunks, so DuckDB's FK-referenced-row limit
+    does not block a later UPDATE of ip_holder_id) covering the three holder
+    states: resolvable, dangling, and NULL."""
+    for did in ("doc-holder-real", "doc-holder-ghost", "doc-holder-null"):
+        _insert_document(
+            con,
+            document_id=did,
+            content_class="public_domain",
+            raw_text=_BODY_A,
+            title="A Work",
+        )
+    con.execute(
+        "INSERT INTO ip_holders (ip_holder_id, display_name, status) "
+        "VALUES ('h_real', 'Real Holder', 'pre_onboarded')"
+    )
+    con.execute("UPDATE documents SET ip_holder_id = 'h_real' WHERE document_id = 'doc-holder-real'")
+    con.execute("UPDATE documents SET ip_holder_id = 'h_ghost' WHERE document_id = 'doc-holder-ghost'")
+    # doc-holder-null keeps ip_holder_id NULL (public-domain / unknown — legitimate).
+
+
+def test_dangling_ip_holder_fails_check(db_path):
+    from substrate.corpus_audit import CHECK_DANGLING_IP_HOLDER
+
+    with connect_write(db_path, purpose="test-seed") as con:
+        _seed_holder_docs(con)
+
+    result = run_audit(db_path, include_binding=False)
+    check = result.check(CHECK_DANGLING_IP_HOLDER)
+    assert check.ok is False
+    assert check.count == 1  # ONLY the dangling id — not the resolvable, not the NULL
+    assert "doc-holder-ghost" in check.offending
+    joined = " ".join(check.offending)
+    assert "doc-holder-real" not in joined  # resolvable holder is fine
+    assert "doc-holder-null" not in joined  # NULL holder is legitimate
+
+
+def test_resolvable_and_null_ip_holder_pass_check(db_path):
+    from substrate.corpus_audit import CHECK_DANGLING_IP_HOLDER
+
+    with connect_write(db_path, purpose="test-seed") as con:
+        # Resolvable + NULL only (drop the dangling one) — must pass clean.
+        _insert_document(con, document_id="doc-r", content_class="public_domain", raw_text=_BODY_A)
+        _insert_document(con, document_id="doc-n", content_class="public_domain", raw_text=_BODY_B)
+        con.execute(
+            "INSERT INTO ip_holders (ip_holder_id, display_name, status) "
+            "VALUES ('h_real', 'Real Holder', 'pre_onboarded')"
+        )
+        con.execute("UPDATE documents SET ip_holder_id = 'h_real' WHERE document_id = 'doc-r'")
+        # doc-n keeps ip_holder_id NULL.
+
+    result = run_audit(db_path, include_binding=False)
+    check = result.check(CHECK_DANGLING_IP_HOLDER)
+    assert check.ok is True
+    assert check.count == 0
