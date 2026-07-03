@@ -298,6 +298,86 @@ def test_cascade_profile_rows_name_current_scope() -> None:
         )
 
 
+def test_read_profile_rows_name_current_scope() -> None:
+    """P-10..P-18 must track the concrete tests bundled by Read profiles."""
+    script = CANONICAL_VERIFY.read_text(encoding="utf-8")
+    matrix = MATRIX.read_text(encoding="utf-8")
+
+    expected = {
+        "10": {
+            "command": "read-foundation",
+            "body": ("`substrate/books/`", "`interfaces/research/api/books.py`"),
+            "script": ("tests/test_book_corpus_gate.py", "tests/test_contracts_read_lock.py"),
+        },
+        "11": {
+            "command": "read-library",
+            "body": ("`/library`", "`apps/reading/src/modes/Library/`"),
+            "script": (
+                "tests/test_library_api.py",
+                "tests/test_servability_drift_guard.py",
+                "src/components/library/LibraryView.test.tsx",
+            ),
+        },
+        "12": {
+            "command": "read-reader",
+            "body": ("`/read/:documentId`", "`apps/reading/src/modes/Reading/`"),
+            "script": (
+                "tests/test_serve_structured_blocks.py",
+                "tests/test_read_activation_dogfood.py",
+                "src/modes/Reading/TalkToBook.test.tsx",
+            ),
+        },
+        "13": {
+            "command": "read-curate",
+            "body": ("`substrate/books/curate.py`", "`/books/curate`"),
+            "script": ("tests/test_book_curate.py", "src/modes/Library/Library.test.tsx"),
+        },
+        "14": {
+            "command": "read-ad-border",
+            "body": ("`substrate/ad_inventory/`", "reader ad rails/impressions"),
+            "script": ("tests/test_reader_ad_slots.py", "src/modes/Reading/HouseSlot.test.tsx"),
+        },
+        "15": {
+            "command": "read-voice-notes",
+            "body": ("`interfaces/research/api/read_voice.py`", "reader voice-note UI"),
+            "script": ("tests/test_voice_notes.py", "src/modes/Reading/VoiceNote.test.tsx"),
+        },
+        "16": {
+            "command": "read-rabbit-hole",
+            "body": ("`AISidecar`", "`TalkToBook` book Q&A"),
+            "script": (
+                "tests/test_tts_voice_reply.py",
+                "test_talk_to_book_answer_cites_pages",
+                "src/components/AISidecar.test.tsx",
+            ),
+        },
+        "17": {
+            "command": "read-passage-research",
+            "body": ("`substrate/books/passage_research.py`", "`ResearchThis` handoff"),
+            "script": ("tests/test_passage_research.py", "src/modes/Reading/ResearchThis.test.tsx"),
+        },
+        "18": {
+            "command": "read-ad-escrow",
+            "body": ("`substrate/marketplace_metrics/book_escrow.py`", "reader impression flush"),
+            "script": ("tests/test_read_ad_escrow.py", "src/api/books.test.ts"),
+        },
+    }
+
+    for row_id, markers in expected.items():
+        row = re.search(rf"^\| P-{row_id} \|(?P<body>.*)\|$", matrix, re.MULTILINE)
+        assert row is not None, f"P-{row_id} row missing"
+        body = row.group("body")
+
+        assert f"`./scripts/canonical_verify.sh {markers['command']}`" in body
+        missing_body = [marker for marker in markers["body"] if marker not in body]
+        missing_script = [marker for marker in markers["script"] if marker not in script]
+
+        assert not missing_body, f"P-{row_id} row missing marker(s): {missing_body}"
+        assert not missing_script, (
+            f"canonical Read profile missing P-{row_id} marker(s): {missing_script}"
+        )
+
+
 def test_agent_gates_trigger_on_provenance_invariant_inputs() -> None:
     """P-38 now runs the invariant registry, including parser provenance checks."""
     for event_name in ("push", "pull_request"):
