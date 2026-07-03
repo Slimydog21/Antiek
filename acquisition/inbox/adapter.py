@@ -14,6 +14,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time
 from pathlib import Path
+from typing import Literal
 
 # Repo root on path for direct invocation (mirrors podcasts/urls/substack).
 _PKG_ROOT = os.path.dirname(
@@ -81,10 +82,11 @@ class InboxIngestSummary:
         return counts
 
 
-def _media_type(path: Path) -> str:
-    # DocumentLoadedPayload's schema does not currently admit "text/plain".
-    # "pasted_text" is the existing plain-text event lane; raw source extension
-    # remains in document metadata.
+def _media_type(path: Path) -> Literal["markdown", "pasted_text"]:
+    # DocumentLoadedPayload.media_type is a Literal[...] (schema does not admit
+    # "text/plain"). Return the exact Literal so mypy --strict accepts it as the
+    # payload arg. "pasted_text" is the existing plain-text event lane; the raw
+    # source extension is preserved in document metadata.
     return "markdown" if path.suffix.lower() == ".md" else "pasted_text"
 
 
