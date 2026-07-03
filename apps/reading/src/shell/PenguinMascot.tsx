@@ -7,6 +7,7 @@ import { useWorkspace } from "../workspace/WorkspaceStore";
 import {
   createWernerStage,
   EmoteView,
+  getDefaultActivity,
   installChoreography,
   installTargetChoreography,
   useMouseFollow,
@@ -113,6 +114,14 @@ function initialMascotPos(): { x: number; y: number } {
 export function PenguinMascot() {
   const navigate = useNavigate();
   const reduceMotion = usePrefersReducedMotion();
+
+  // The active (default) station activity. With one registered activity
+  // (ice-fishing) this is always it; SPR-03 will make "active" switchable. The
+  // mascot renders THIS activity's ambient class instead of a hard-coded string
+  // — an activity can toggle CSS + mount a cursor-instrument, but has no access
+  // to Werner's position (see src/werner/activities/types.ts). Stable identity
+  // (the frozen registry singleton), so it is safe in effect deps.
+  const activeActivity = getDefaultActivity();
 
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   // The bob wrapper (the span carrying the idle wander + the walk animation
@@ -287,11 +296,17 @@ export function PenguinMascot() {
     if (reduceMotion || !wernerIceFishingCursor || typeof window === "undefined")
       return;
 
+    // The idle-gag class comes from the active activity (ice-fishing's
+    // idleClass is the `werner-fishing` gag), not a hard-coded literal — so an
+    // activity owns its own ambient, and adding one is a registration, not a
+    // mascot edit.
+    const idleClass = activeActivity.ambient.idleClass;
+
     let fishing = false;
     const setFishingLoop = (on: boolean) => {
       if (on === fishing) return;
       fishing = on;
-      bobRef.current?.classList.toggle("werner-fishing", on);
+      bobRef.current?.classList.toggle(idleClass, on);
     };
 
     const tick = () => {
@@ -315,9 +330,9 @@ export function PenguinMascot() {
       // Drop the gag class on teardown so a no-rAF state (unmount, or a flip
       // into reduced motion where this effect early-returns) never strands
       // Werner mid-cast with the loop class on.
-      bobRef.current?.classList.remove("werner-fishing");
+      bobRef.current?.classList.remove(idleClass);
     };
-  }, [reduceMotion, follow]);
+  }, [reduceMotion, follow, activeActivity]);
 
   // ── SPR-05/10: the WernerStage controller + SPR-10 choreography listener. ──
   // Created ONCE (empty deps). Its StageHost reuses this component's stroll /
