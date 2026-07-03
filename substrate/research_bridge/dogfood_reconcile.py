@@ -104,6 +104,10 @@ def reconcile_dogfood_sessions(
     missing = list(log_validation.missing_requirements)
     sessions = tuple(_session_evidence(con, entry) for entry in log_validation.project_entries)
     for row in sessions:
+        if row.blocks_pasted == 0:
+            missing.append(
+                f"{row.project_name}: session {row.session_id} has no pasted research block"
+            )
         if not row.has_substrate_evidence:
             missing.append(
                 f"{row.project_name}: session {row.session_id} has no substrate evidence"

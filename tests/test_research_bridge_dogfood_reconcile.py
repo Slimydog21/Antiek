@@ -195,3 +195,49 @@ def test_reconcile_dogfood_sessions_accepts_sessions_with_substrate_evidence(
     assert result.sessions[0].gap_runs == 1
     assert result.sessions[0].prompt_signals == 1
     assert result.sessions[1].draft_exports == 1
+
+
+def test_reconcile_dogfood_sessions_requires_pasted_block_per_project(
+    db: str,
+    tmp_path: Path,
+) -> None:
+    write_dogfood_scaffold(tmp_path)
+    _write_complete_log(tmp_path)
+    con = connect_write(db, purpose="seed dogfood reconciliation without one paste")
+    try:
+        for idx in range(1, 5):
+            con.execute(
+                "INSERT INTO documents "
+                "(document_id, source_tier, document_type) VALUES (?, 3, ?)",
+                [f"doc-{idx}", "external_deep_research"],
+            )
+            con.execute(
+                "INSERT INTO research_pastes "
+                "(document_id, source, source_confidence, raw_sha256, "
+                " paste_byte_length, parser_version, session_id) VALUES "
+                "(?, 'grok', 1.0, ?, 10, 1, ?)",
+                [f"doc-{idx}", f"sha-{idx}", f"sess-{idx}"],
+            )
+        con.execute(
+            "INSERT INTO research_draft_exports "
+            "(export_id, session_id, deliverable_id, output_path) VALUES "
+            "('export-5', 'sess-5', 'dlv-a', '/tmp/draft-5.md')"
+        )
+    finally:
+        con.close()
+
+    con = connect_read(db)
+    try:
+        result = reconcile_dogfood_sessions(con, root=tmp_path)
+    finally:
+        con.close()
+
+    assert result.ok is False
+    assert (
+        "Operator status-quo replacement: session sess-5 has no pasted research block"
+        in result.missing_requirements
+    )
+    assert (
+        "Operator status-quo replacement: session sess-5 has no substrate evidence"
+        not in result.missing_requirements
+    )
