@@ -14,7 +14,6 @@ from typing import Literal
 
 from tools.activation.read_dogfood import DogfoodReport, load_jsonl, validate_sessions
 
-
 ActivationEvidenceState = Literal["not_started", "incomplete", "invalid_log", "ready"]
 
 
@@ -39,6 +38,7 @@ class ReadActivationView:
     non_library_sessions: int
     final_verdict: str | None
     closure_ready: bool
+    required_counts: dict[str, int]
     remaining_requirements: dict[str, int]
     failures: tuple[str, ...]
 
@@ -83,6 +83,7 @@ def build_read_activation_view(path: Path | None = None) -> ReadActivationView:
         non_library_sessions=report.non_library_sessions,
         final_verdict=report.final_verdict,
         closure_ready=report.closure_ready and state == "ready",
+        required_counts=report.required_counts(),
         remaining_requirements=report.remaining_requirements(),
         failures=failures,
     )
