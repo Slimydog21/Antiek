@@ -123,10 +123,10 @@ function safeClaims(value: unknown): Claim[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   return value.flatMap((item) => {
-    const claim = safeClaim(item);
-    if (!claim || seen.has(claim.claim_id)) return [];
-    seen.add(claim.claim_id);
-    return [claim];
+    const point = safeClaim(item);
+    if (!point || seen.has(point.claim_id)) return [];
+    seen.add(point.claim_id);
+    return [point];
   });
 }
 
