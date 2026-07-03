@@ -76,13 +76,33 @@ Duplicate `_template.md` below this heading for each real project.
 """
 
 
+WAVE4_CANDIDATES_TEMPLATE = """# ADRB Wave 4 Candidates
+
+Operator-owned parking lot for bugs, feature ideas, and product pain observed
+during SPR-06 dogfood. Log the impulse here instead of fixing code mid-dogfood.
+
+## Candidates
+
+### Candidate title
+
+- Observed during project:
+- Mode: A | B | both | substrate
+- Severity: paper-cut | blocker | existential
+- Evidence from operator log:
+- One-paragraph proposal:
+- Kill criteria / what would prove this is not worth building:
+"""
+
+
 @dataclass(frozen=True)
 class DogfoodScaffoldResult:
     root: Path
     template_path: Path
     operator_log_path: Path
+    wave4_candidates_path: Path
     template_written: bool
     operator_log_written: bool
+    wave4_candidates_written: bool
 
 
 @dataclass(frozen=True)
@@ -111,6 +131,7 @@ def write_dogfood_scaffold(
 
     template_path = dogfood_root / "_template.md"
     operator_log_path = dogfood_root / "operator-log.md"
+    wave4_candidates_path = dogfood_root / "wave4_candidates.md"
 
     template_written = False
     if overwrite_template or not template_path.exists():
@@ -122,12 +143,19 @@ def write_dogfood_scaffold(
         operator_log_path.write_text(OPERATOR_LOG_HEADER, encoding="utf-8")
         operator_log_written = True
 
+    wave4_candidates_written = False
+    if not wave4_candidates_path.exists():
+        wave4_candidates_path.write_text(WAVE4_CANDIDATES_TEMPLATE, encoding="utf-8")
+        wave4_candidates_written = True
+
     return DogfoodScaffoldResult(
         root=dogfood_root,
         template_path=template_path,
         operator_log_path=operator_log_path,
+        wave4_candidates_path=wave4_candidates_path,
         template_written=template_written,
         operator_log_written=operator_log_written,
+        wave4_candidates_written=wave4_candidates_written,
     )
 
 
@@ -261,6 +289,11 @@ def main(argv: list[str] | None = None) -> int:
         "operator-log: "
         f"{result.operator_log_path} "
         f"({'written' if result.operator_log_written else 'kept'})"
+    )
+    print(
+        "wave4-candidates: "
+        f"{result.wave4_candidates_path} "
+        f"({'written' if result.wave4_candidates_written else 'kept'})"
     )
     return 0
 

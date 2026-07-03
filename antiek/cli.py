@@ -55,6 +55,11 @@ def _cmd_research_bridge_dogfood_log_init(args: argparse.Namespace) -> int:
         f"{result.operator_log_path} "
         f"({'written' if result.operator_log_written else 'kept'})"
     )
+    print(
+        "wave4-candidates: "
+        f"{result.wave4_candidates_path} "
+        f"({'written' if result.wave4_candidates_written else 'kept'})"
+    )
     return 0
 
 
