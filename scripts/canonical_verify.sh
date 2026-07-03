@@ -42,6 +42,7 @@
 #   unified-cost-consent-surface — Unified SPR-07 cost + consent surface
 #   unified-flywheel-conformance — Unified SPR-08 flywheel + conformance gate
 #   research-bridge-dogfood — Deep Research Bridge dogfood/report/verdict gates
+#   prompt-autoresearch-wedge1 — Prompt Autoresearch Wedge 1 CLI/readiness/verdict gates
 #   agent-gates          — SPR-03/04/08 unit gates (fast; CI-friendly)
 #
 # USAGE (from repo root):
@@ -74,7 +75,7 @@ require_tsx() {
 }
 
 usage() {
-  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|speak-economics-matrix|speak-biography-authoring|speak-publishing-physical|drw-reading-surface-transfer|unified-substrate-contract-lock|unified-remote-exec-fanout|unified-seams-and-collisions|unified-navigation-ia-taxonomy|unified-coordination-gate-ledger|unified-thread-navigation|unified-cost-consent-surface|unified-flywheel-conformance|research-bridge-dogfood|handoff <md>|agent-gates}" >&2
+  echo "Usage: canonical_verify.sh {profile|cascade|read-foundation|read-library|read-reader|read-curate|read-ad-border|read-voice-notes|read-rabbit-hole|read-passage-research|read-ad-escrow|write-outline-block|write-edit-capture|write-block-repository|write-structured-editor|write-brainstorm-interview|write-draft-generation-style|write-trace-to-source|write-pre-outline-freeform|write-style-conditioning|speak-consent-rights-gate|speak-async-voice-interview|speak-project-invitations|speak-compounding-interviewer|speak-cross-interviewee-verification|speak-contributor-economics|speak-economics-matrix|speak-biography-authoring|speak-publishing-physical|drw-reading-surface-transfer|unified-substrate-contract-lock|unified-remote-exec-fanout|unified-seams-and-collisions|unified-navigation-ia-taxonomy|unified-coordination-gate-ledger|unified-thread-navigation|unified-cost-consent-surface|unified-flywheel-conformance|research-bridge-dogfood|prompt-autoresearch-wedge1|handoff <md>|agent-gates}" >&2
   exit 2
 }
 
@@ -651,6 +652,19 @@ cmd_research_bridge_dogfood() {
   echo "CANONICAL_VERIFY_OK: research-bridge-dogfood"
 }
 
+cmd_prompt_autoresearch_wedge1() {
+  echo "== prompt-autoresearch-wedge1: CLI, readiness, calibration, verdict, and probe =="
+  "${PY}" -m pytest \
+    tests/test_prompt_autoresearch.py \
+    tests/test_prompt_autoresearch_calibration.py \
+    tests/test_prompt_autoresearch_readiness.py \
+    tests/test_prompt_autoresearch_verdict.py \
+    tests/test_autoresearch_wedge1_probe.py \
+    tests/test_prompt_autoresearch_docs.py \
+    -q --tb=no
+  echo "CANONICAL_VERIFY_OK: prompt-autoresearch-wedge1"
+}
+
 cmd_handoff() {
   local f="${1:?handoff markdown path required}"
   echo "== handoff: schema linter =="
@@ -744,6 +758,7 @@ main() {
     unified-cost-consent-surface) cmd_unified_cost_consent_surface ;;
     unified-flywheel-conformance) cmd_unified_flywheel_conformance ;;
     research-bridge-dogfood) cmd_research_bridge_dogfood ;;
+    prompt-autoresearch-wedge1) cmd_prompt_autoresearch_wedge1 ;;
     handoff) cmd_handoff "$@" ;;
     agent-gates) cmd_agent_gates ;;
     *) usage ;;

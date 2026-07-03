@@ -151,7 +151,12 @@ on:
       - 'tests/test_agent_ams_ref_lint.py'
       - 'tests/test_invariant_registry_meta.py'
       - 'tests/test_provenance_ref_lint.py'
+      - 'tests/test_prompt_autoresearch.py'
+      - 'tests/test_prompt_autoresearch_calibration.py'
+      - 'tests/test_prompt_autoresearch_docs.py'
       - 'tests/test_prompt_autoresearch_readiness.py'
+      - 'tests/test_prompt_autoresearch_verdict.py'
+      - 'tests/test_autoresearch_wedge1_probe.py'
       - 'tests/test_antiek_read_activation_cli.py'
       - 'tests/test_read_activation_dogfood.py'
       - '.github/workflows/agent_execution_gates.yml'
@@ -302,7 +307,12 @@ on:
       - 'tests/test_agent_ams_ref_lint.py'
       - 'tests/test_invariant_registry_meta.py'
       - 'tests/test_provenance_ref_lint.py'
+      - 'tests/test_prompt_autoresearch.py'
+      - 'tests/test_prompt_autoresearch_calibration.py'
+      - 'tests/test_prompt_autoresearch_docs.py'
       - 'tests/test_prompt_autoresearch_readiness.py'
+      - 'tests/test_prompt_autoresearch_verdict.py'
+      - 'tests/test_autoresearch_wedge1_probe.py'
       - 'tests/test_antiek_read_activation_cli.py'
       - 'tests/test_read_activation_dogfood.py'
       - '.github/workflows/agent_execution_gates.yml'
@@ -355,6 +365,9 @@ jobs:
 
       - name: Canonical verify — research bridge dogfood
         run: ./scripts/canonical_verify.sh research-bridge-dogfood
+
+      - name: Canonical verify — Prompt Autoresearch Wedge 1
+        run: ./scripts/canonical_verify.sh prompt-autoresearch-wedge1
 
       - name: Canonical verify — read foundation
         run: ./scripts/canonical_verify.sh read-foundation

@@ -58,6 +58,7 @@
 | P-50 | Agent execution gates | `tools/agent/verify_handoff.ts` + `scripts/audit_agent_session.sh` + `apps/reading/src/modes/Settings/Settings.test.tsx` + `apps/reading/src/shared/copyLint.test.ts` + `tests/test_provenance_ref_lint.py` + `tests/test_prompt_autoresearch_readiness.py` + read activation + Werner paths | `canonical_verify.sh agent-gates` + case study §5 | Werner operator card (htmlspec) | Live Werner p95/fps and operator UX without artifact |
 | P-51 | Serve / rights / legal | `docs/OPERATOR_ACTIONS.md` + `infrastructure/runbooks/first-deploy.md` | **No** informational CI job alone (F7) | Operator deploy checklist + production probe evidence | Jurisdiction-specific legal review |
 | P-52 | Deep Research Bridge dogfood closure | `substrate/research_bridge/` + `antiek/cli.py` research bridge commands | `./scripts/canonical_verify.sh research-bridge-dogfood` | Operator ADRB log under runs/adrb plus verdict document | Five real operator projects, live pasted research, and ship/kill verdict |
+| P-53 | Prompt Autoresearch Wedge 1 closure | `tools/prompt_autoresearch/` + `tests/test_prompt_autoresearch.py` + `tests/test_autoresearch_wedge1_probe.py` | `./scripts/canonical_verify.sh prompt-autoresearch-wedge1` | Operator outcomes/calibration artifacts per `docs/OPERATOR_ACTIONS.md` G6 | Real >=20 mutation dogfood, budget variance evidence, and ship/kill verdict |
 
 ## How to use
 
