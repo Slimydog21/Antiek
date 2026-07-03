@@ -11,6 +11,7 @@ from typing import Any
 
 from .db_path import ensure_research_bridge_initialized
 from .dogfood_log import (
+    DOGFOOD_PROJECT_COUNT,
     DogfoodLogValidation,
     Wave4CandidatesValidation,
     default_dogfood_dir,
@@ -150,13 +151,15 @@ def render_readiness_summary(readiness: DogfoodReadiness) -> str:
         f"dogfood root: {readiness.dogfood_root}",
         "dogfood log: "
         f"{_status(readiness.log_validation.ok)} "
-        f"({len(readiness.log_validation.complete_project_entries)}/5 complete projects)",
+        f"({len(readiness.log_validation.complete_project_entries)}/"
+        f"{DOGFOOD_PROJECT_COUNT} complete projects)",
         "wave4 candidates: "
         f"{_status(readiness.wave4_validation.ok)} "
         f"({len(readiness.wave4_validation.candidates)} candidate(s))",
         "session reconciliation: "
         f"{_status(readiness.reconciliation.ok)} "
-        f"({len(readiness.reconciliation.sessions)}/5 reconciled sessions)",
+        f"({len(readiness.reconciliation.sessions)}/"
+        f"{DOGFOOD_PROJECT_COUNT} reconciled sessions)",
         "metrics artifact: "
         f"{_status(readiness.metrics_artifact.ok)} "
         f"({readiness.metrics_path})",
@@ -179,11 +182,13 @@ def readiness_to_json_payload(readiness: DogfoodReadiness) -> dict[str, Any]:
         "dogfood_root": str(readiness.dogfood_root),
         "metrics_path": str(readiness.metrics_path),
         "verdict_path": str(readiness.verdict_path),
+        "expected_project_count": DOGFOOD_PROJECT_COUNT,
         "missing_requirements": list(readiness.missing_requirements),
         "checks": {
             "dogfood_log": {
                 "ok": readiness.log_validation.ok,
                 "operator_log_path": str(readiness.log_validation.operator_log_path),
+                "expected_projects": DOGFOOD_PROJECT_COUNT,
                 "planned_projects": len(readiness.log_validation.planned_projects),
                 "filled_project_entries": len(
                     readiness.log_validation.filled_project_entries
@@ -209,6 +214,7 @@ def readiness_to_json_payload(readiness: DogfoodReadiness) -> dict[str, Any]:
             "session_reconciliation": {
                 "ok": readiness.reconciliation.ok,
                 "operator_log_path": str(readiness.reconciliation.operator_log_path),
+                "expected_sessions": DOGFOOD_PROJECT_COUNT,
                 "reconciled_sessions": len(readiness.reconciliation.sessions),
                 "sessions": [
                     {

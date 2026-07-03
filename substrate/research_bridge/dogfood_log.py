@@ -6,6 +6,8 @@ import argparse
 from dataclasses import dataclass
 from pathlib import Path
 
+DOGFOOD_PROJECT_COUNT = 5
+
 DOGFOOD_TEMPLATE = """# ADRB Dogfood Project Entry Template
 
 Copy this template once per real dogfood project into `operator-log.md`.
@@ -436,15 +438,24 @@ def validate_dogfood_log(root: str | Path | None = None) -> DogfoodLogValidation
     project_entries = _complete_project_entry_records(text)
     complete_entries = tuple(entry.project_name for entry in project_entries)
     missing: list[str] = []
-    if len(planned) < 5:
-        missing.append(f"expected 5 planned projects, found {len(planned)}")
-    if len(entries) < 5:
-        missing.append(f"expected 5 filled project entries, found {len(entries)}")
-    if len(complete_entries) < 5:
+    if len(planned) < DOGFOOD_PROJECT_COUNT:
         missing.append(
-            f"expected 5 complete project entries, found {len(complete_entries)}"
+            f"expected {DOGFOOD_PROJECT_COUNT} planned projects, found {len(planned)}"
         )
-    if len(planned) >= 5 and len(complete_entries) >= 5:
+    if len(entries) < DOGFOOD_PROJECT_COUNT:
+        missing.append(
+            f"expected {DOGFOOD_PROJECT_COUNT} filled project entries, found {len(entries)}"
+        )
+    if len(complete_entries) < DOGFOOD_PROJECT_COUNT:
+        missing.append(
+            "expected "
+            f"{DOGFOOD_PROJECT_COUNT} complete project entries, "
+            f"found {len(complete_entries)}"
+        )
+    if (
+        len(planned) >= DOGFOOD_PROJECT_COUNT
+        and len(complete_entries) >= DOGFOOD_PROJECT_COUNT
+    ):
         planned_set = set(planned)
         complete_set = set(complete_entries)
         missing_projects = tuple(sorted(planned_set.difference(complete_set)))
@@ -529,10 +540,20 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "validate":
         result = validate_dogfood_log(args.root)
         print(f"operator-log: {result.operator_log_path}")
-        print(f"planned projects: {len(result.planned_projects)}/5")
-        print(f"filled project entries: {len(result.filled_project_entries)}/5")
-        print(f"complete project entries: {len(result.complete_project_entries)}/5")
-        print(f"project session ids: {len(result.project_entries)}/5")
+        print(
+            f"planned projects: {len(result.planned_projects)}/{DOGFOOD_PROJECT_COUNT}"
+        )
+        print(
+            "filled project entries: "
+            f"{len(result.filled_project_entries)}/{DOGFOOD_PROJECT_COUNT}"
+        )
+        print(
+            "complete project entries: "
+            f"{len(result.complete_project_entries)}/{DOGFOOD_PROJECT_COUNT}"
+        )
+        print(
+            f"project session ids: {len(result.project_entries)}/{DOGFOOD_PROJECT_COUNT}"
+        )
         if result.ok:
             print("DOGFOOD_LOG_OK")
             return 0

@@ -14,6 +14,7 @@ from collections.abc import Sequence
 from runtime.db_lock import connect_read, connect_write
 from substrate.research_bridge.db_path import ensure_research_bridge_initialized
 from substrate.research_bridge.dogfood_log import (
+    DOGFOOD_PROJECT_COUNT,
     validate_dogfood_log,
     validate_wave4_candidates,
     write_dogfood_scaffold,
@@ -94,10 +95,16 @@ def _cmd_research_bridge_dogfood_log_init(args: argparse.Namespace) -> int:
 def _cmd_research_bridge_dogfood_log_validate(args: argparse.Namespace) -> int:
     result = validate_dogfood_log(args.root)
     print(f"operator-log: {result.operator_log_path}")
-    print(f"planned projects: {len(result.planned_projects)}/5")
-    print(f"filled project entries: {len(result.filled_project_entries)}/5")
-    print(f"complete project entries: {len(result.complete_project_entries)}/5")
-    print(f"project session ids: {len(result.project_entries)}/5")
+    print(f"planned projects: {len(result.planned_projects)}/{DOGFOOD_PROJECT_COUNT}")
+    print(
+        "filled project entries: "
+        f"{len(result.filled_project_entries)}/{DOGFOOD_PROJECT_COUNT}"
+    )
+    print(
+        "complete project entries: "
+        f"{len(result.complete_project_entries)}/{DOGFOOD_PROJECT_COUNT}"
+    )
+    print(f"project session ids: {len(result.project_entries)}/{DOGFOOD_PROJECT_COUNT}")
     if result.ok:
         print("DOGFOOD_LOG_OK")
         return 0
@@ -127,7 +134,7 @@ def _cmd_research_bridge_dogfood_log_reconcile(args: argparse.Namespace) -> int:
         con.close()
 
     print(f"operator-log: {result.operator_log_path}")
-    print(f"reconciled sessions: {len(result.sessions)}/5")
+    print(f"reconciled sessions: {len(result.sessions)}/{DOGFOOD_PROJECT_COUNT}")
     for row in result.sessions:
         print(
             f"- {row.project_name} [{row.session_id}]: "
