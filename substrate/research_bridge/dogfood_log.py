@@ -85,6 +85,18 @@ class DogfoodScaffoldResult:
     operator_log_written: bool
 
 
+@dataclass(frozen=True)
+class DogfoodLogValidation:
+    operator_log_path: Path
+    planned_projects: tuple[str, ...]
+    filled_project_entries: tuple[str, ...]
+    missing_requirements: tuple[str, ...]
+
+    @property
+    def ok(self) -> bool:
+        return not self.missing_requirements
+
+
 def default_dogfood_dir() -> Path:
     return Path.home() / "Desktop" / "Antiek" / "runs" / "adrb"
 
@@ -119,6 +131,78 @@ def write_dogfood_scaffold(
     )
 
 
+def _section_after_heading(text: str, heading: str) -> str:
+    needle = f"## {heading}"
+    start = text.find(needle)
+    if start < 0:
+        return ""
+    start += len(needle)
+    next_heading = text.find("\n## ", start)
+    if next_heading < 0:
+        return text[start:]
+    return text[start:next_heading]
+
+
+def _planned_project_names(text: str) -> tuple[str, ...]:
+    section = _section_after_heading(text, "Five projects chosen up front")
+    names: list[str] = []
+    for raw in section.splitlines():
+        stripped = raw.strip()
+        if not stripped or "." not in stripped:
+            continue
+        prefix, value = stripped.split(".", 1)
+        if not prefix.isdigit():
+            continue
+        cleaned = value.strip()
+        if cleaned:
+            names.append(cleaned)
+    return tuple(names)
+
+
+def _filled_project_entries(text: str) -> tuple[str, ...]:
+    entries: list[str] = []
+    parts = text.split("\n## Project name")
+    for part in parts[1:]:
+        body = part.strip()
+        if not body:
+            continue
+        first_lines = [line.strip() for line in body.splitlines() if line.strip()]
+        if not first_lines:
+            continue
+        name = first_lines[0]
+        if name.lower() in {"one line.", "one line"}:
+            continue
+        entries.append(name)
+    return tuple(entries)
+
+
+def validate_dogfood_log(root: str | Path | None = None) -> DogfoodLogValidation:
+    dogfood_root = Path(root).expanduser() if root is not None else default_dogfood_dir()
+    operator_log_path = dogfood_root / "operator-log.md"
+    if not operator_log_path.exists():
+        return DogfoodLogValidation(
+            operator_log_path=operator_log_path,
+            planned_projects=(),
+            filled_project_entries=(),
+            missing_requirements=("operator-log.md is missing",),
+        )
+
+    text = operator_log_path.read_text(encoding="utf-8")
+    planned = _planned_project_names(text)
+    entries = _filled_project_entries(text)
+    missing: list[str] = []
+    if len(planned) < 5:
+        missing.append(f"expected 5 planned projects, found {len(planned)}")
+    if len(entries) < 5:
+        missing.append(f"expected 5 filled project entries, found {len(entries)}")
+    return DogfoodLogValidation(
+        operator_log_path=operator_log_path,
+        planned_projects=planned,
+        filled_project_entries=entries,
+        missing_requirements=tuple(missing),
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Create Deep Research Bridge dogfood operator-log scaffolding.",
@@ -136,8 +220,29 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Rewrite _template.md. operator-log.md is never overwritten.",
     )
+    validate_parser = subparsers.add_parser(
+        "validate",
+        help="Validate operator-owned dogfood log readiness.",
+    )
+    validate_parser.add_argument(
+        "--root",
+        default=None,
+        help="Dogfood directory. Defaults to ~/Desktop/Antiek/runs/adrb.",
+    )
 
     args = parser.parse_args(argv)
+    if args.command == "validate":
+        result = validate_dogfood_log(args.root)
+        print(f"operator-log: {result.operator_log_path}")
+        print(f"planned projects: {len(result.planned_projects)}/5")
+        print(f"filled project entries: {len(result.filled_project_entries)}/5")
+        if result.ok:
+            print("DOGFOOD_LOG_OK")
+            return 0
+        for missing in result.missing_requirements:
+            print(f"missing: {missing}")
+        return 1
+
     if args.command != "init":
         parser.print_help()
         return 2

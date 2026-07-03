@@ -110,6 +110,18 @@ def test_antiek_research_bridge_dogfood_log_init_preserves_operator_log(
     assert operator_log.read_text(encoding="utf-8") == "operator notes\n"
 
 
+def test_antiek_research_bridge_dogfood_log_validate(tmp_path: Path, capsys) -> None:
+    root = tmp_path / "adrb"
+    assert main(["research", "bridge", "dogfood-log", "init", "--root", str(root)]) == 0
+
+    rc = main(["research", "bridge", "dogfood-log", "validate", "--root", str(root)])
+
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "planned projects: 0/5" in out
+    assert "filled project entries: 0/5" in out
+
+
 def test_antiek_research_bridge_draft_export_record(db: str, tmp_path: Path) -> None:
     out = tmp_path / "draft-a.md"
 

@@ -7,6 +7,7 @@ from pathlib import Path
 from substrate.research_bridge.dogfood_log import (
     DOGFOOD_TEMPLATE,
     main,
+    validate_dogfood_log,
     write_dogfood_scaffold,
 )
 
@@ -78,3 +79,107 @@ def test_dogfood_scaffold_cli_init(tmp_path: Path) -> None:
     assert rc == 0
     assert (tmp_path / "_template.md").exists()
     assert (tmp_path / "operator-log.md").exists()
+
+
+def test_dogfood_log_validate_reports_missing_log(tmp_path: Path) -> None:
+    result = validate_dogfood_log(tmp_path)
+
+    assert result.ok is False
+    assert result.operator_log_path == tmp_path / "operator-log.md"
+    assert result.missing_requirements == ("operator-log.md is missing",)
+
+
+def test_dogfood_log_validate_rejects_unfilled_scaffold(tmp_path: Path) -> None:
+    write_dogfood_scaffold(tmp_path)
+
+    result = validate_dogfood_log(tmp_path)
+
+    assert result.ok is False
+    assert result.planned_projects == ()
+    assert result.filled_project_entries == ()
+    assert result.missing_requirements == (
+        "expected 5 planned projects, found 0",
+        "expected 5 filled project entries, found 0",
+    )
+
+
+def test_dogfood_log_validate_accepts_five_project_log(tmp_path: Path) -> None:
+    write_dogfood_scaffold(tmp_path)
+    (tmp_path / "operator-log.md").write_text(
+        """# Antiek Deep Research Bridge Operator Log
+
+## Five projects chosen up front
+
+1. Sell-side AI infra memo
+2. Anthropic market scan
+3. AlphaSense earnings read
+4. Mixed-provider author brief
+5. Operator status-quo replacement
+
+## Project entries
+
+## Project name
+
+Sell-side AI infra memo
+
+## Goal
+
+Write a memo.
+
+## Project name
+
+Anthropic market scan
+
+## Goal
+
+Compare vendors.
+
+## Project name
+
+AlphaSense earnings read
+
+## Goal
+
+Extract risks.
+
+## Project name
+
+Mixed-provider author brief
+
+## Goal
+
+Combine sources.
+
+## Project name
+
+Operator status-quo replacement
+
+## Goal
+
+Replace the old workflow.
+""",
+        encoding="utf-8",
+    )
+
+    result = validate_dogfood_log(tmp_path)
+
+    assert result.ok is True
+    assert result.planned_projects == (
+        "Sell-side AI infra memo",
+        "Anthropic market scan",
+        "AlphaSense earnings read",
+        "Mixed-provider author brief",
+        "Operator status-quo replacement",
+    )
+    assert result.filled_project_entries == result.planned_projects
+
+
+def test_dogfood_log_cli_validate(tmp_path: Path, capsys) -> None:
+    write_dogfood_scaffold(tmp_path)
+
+    rc = main(["validate", "--root", str(tmp_path)])
+
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "planned projects: 0/5" in out
+    assert "filled project entries: 0/5" in out

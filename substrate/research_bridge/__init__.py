@@ -7,8 +7,10 @@ from .db_path import (
     ensure_research_bridge_initialized,
 )
 from .dogfood_log import (
+    DogfoodLogValidation,
     DogfoodScaffoldResult,
     default_dogfood_dir,
+    validate_dogfood_log,
     write_dogfood_scaffold,
 )
 from .dogfood_report import (
@@ -82,6 +84,7 @@ __all__ = [
     "default_db_path",
     "ensure_research_bridge_initialized",
     "DogfoodMetrics",
+    "DogfoodLogValidation",
     "SessionBlockMetrics",
     "SessionSignalMetrics",
     "build_dogfood_metrics",
@@ -89,6 +92,7 @@ __all__ = [
     "default_dogfood_dir",
     "default_dogfood_metrics_path",
     "render_dogfood_report",
+    "validate_dogfood_log",
     "write_dogfood_scaffold",
     "DraftExportRecord",
     "list_draft_exports",
