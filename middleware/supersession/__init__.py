@@ -3,8 +3,9 @@
 Architecture_notes §4: contradictions become TASKS, not actions. This
 module never auto-applies supersession — it captures candidates and
 fires audit events when a human reviewer decides. The DB-touching
-detector and apply_review path are deferred until ``substrate/init_db.py``
-migrates; emit helpers + pure validators ship now.
+detector and ``apply_review`` path are being built in SPR-02 of the
+Contradiction & Supersession spec; emit helpers + pure validators
+ship now.
 """
 
 from .supersession import (

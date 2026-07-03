@@ -13,8 +13,8 @@ effective tier 3 — the level at which it has redundant support — not 1.
 
 Pure function — no DB, no LLM. The DB-touching helpers
 (``_tiers_for_chunks``, ``_tiers_for_edges`` in the Researchmaxx source)
-are deferred until ``substrate/init_db.py`` migrates and the
-``chunks_effective_tier`` view is available in Antiek.
+are deferred: the ``chunks_effective_tier`` view has no inline consumer
+yet (documented YAGNI hold in ``substrate/graph/schema.py``).
 """
 
 from __future__ import annotations

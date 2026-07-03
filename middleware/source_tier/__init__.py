@@ -8,10 +8,12 @@ Three concerns:
 - ``aggregate.py`` — the multi-source aggregation rule (spec §C.4):
   effective tier requires ``k`` independent sources at that tier or better.
 
-All functions are pure. DB-touching helpers (bulk update of the
-``documents.source_tier`` column, joined queries against the
-``chunks_effective_tier`` view) are deferred until ``substrate/init_db.py``
-migrates.
+All functions are pure. The ``documents`` table and
+``chunk_tier_overrides`` table landed in ``substrate/graph/schema.py``
+(Sprint 10 day 4-5). The ``chunks_effective_tier`` view and a bulk
+``documents.source_tier`` sweep are genuinely deferred: the view has no
+inline consumer yet, and the bulk sweep needs numeric-vs-named tier
+vocabulary reconciliation first.
 """
 
 from .aggregate import effective_tier

@@ -17,9 +17,10 @@ What shipped:
 What's deferred:
 
 - Shadow DuckDB writer (the ``phase_log`` DB-table mirror in upstream
-  ``phase_runner_shadow.py``). Wires in when ``substrate/init_db.py``
-  extends to the ``phase_log`` table — until then the typed events
-  ARE the queryable trajectory.
+  ``phase_runner_shadow.py``). Documented YAGNI hold — the typed
+  events ARE the queryable trajectory until a query pattern forces a
+  DB mirror. The schema home for any future table is
+  ``substrate/graph/schema.py``.
 - CLI (status / enter / exit / verify / assert subcommands). Library
   API is enough for module + bridge integration; CLI wires in
   alongside the shadow writer.

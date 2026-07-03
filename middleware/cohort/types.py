@@ -1,9 +1,9 @@
 """Cohort-analysis input dataclasses.
 
 These shapes are what ``analyze()`` consumes. They are deliberately
-DB-agnostic — a thin loader (deferred to the slice that wires
-``substrate/init_db.py`` to the syntheses/outcomes tables) is the only
-place that touches DuckDB. The pure analysis function takes
+DB-agnostic — a thin loader (the ``syntheses`` and ``outcomes``
+tables landed in ``substrate/graph/schema.py`` at Sprint 10 day 4-5)
+is the only place that touches DuckDB. The pure analysis function takes
 pre-loaded data so it can be unit-tested with fixtures and reused
 inside the substrate's middleware without a DB dependency.
 """

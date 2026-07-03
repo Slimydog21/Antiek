@@ -1,11 +1,10 @@
 """Backtest input/output dataclasses.
 
-Mirrors Researchmaxx ``scripts/backtest.py`` shapes. As with cohort,
-the DB-touching pieces (``graph_at_time.diff_between`` +
-``archive.load_synthesis``) are deferred to the slice that wires
-``substrate/init_db.py`` to the syntheses/edges/chunk_tier_overrides
-tables. The pure pieces ship now so the schema and the bridge can
-proceed in parallel.
+Mirrors Researchmaxx ``scripts/backtest.py`` shapes. The DB-touching
+pieces (``graph_at_time.diff_between`` + ``archive.load_synthesis``)
+landed in Sprint 10 day 4-5 — ``backtest()`` in ``analysis.py`` is
+fully wired. The tables (``syntheses``, ``edges``,
+``chunk_tier_overrides``) live in ``substrate/graph/schema.py``.
 """
 
 from __future__ import annotations

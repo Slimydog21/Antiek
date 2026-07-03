@@ -18,8 +18,9 @@ Public API:
     log.assert_ready_for_completion()
     log.snapshot()                   # for archival
 
-The shadow DuckDB writer in upstream phase_log.py is deferred — Antiek's
-``substrate/init_db.py`` hasn't migrated the ``phase_log`` table yet.
+The shadow DuckDB writer in upstream phase_log.py is deferred — the
+``phase_log`` DB table is a documented YAGNI hold (no consumer yet;
+``substrate/graph/schema.py`` is the schema home when it lands).
 The typed event mirror is the substitute trajectory the audit tools
 read until that lands.
 """

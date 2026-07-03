@@ -2,9 +2,9 @@
 
 This module is the SOLE writer to the ``syntheses`` table. The
 discipline is preserved from Researchmaxx — every synthesis MUST flow
-through ``archive_synthesis`` so the substrate manifest, the typed
-events, and the constraint-check result land together as one atomic
-unit.
+through ``archive_synthesis_via_db`` so the substrate manifest, the
+typed events, and the constraint-check result land together as one
+atomic unit.
 
 What landed in Sprint 2 Day 3-4 (this migration):
 
@@ -13,23 +13,21 @@ What landed in Sprint 2 Day 3-4 (this migration):
 - The emit helpers: ``emit_synthesis_archived``,
   ``emit_substrate_manifest_written``.
 - The ``ArchiveInputs`` dataclass that captures the
-  ``archive_synthesis`` argument shape so the eventual DB-writing
+  ``archive_synthesis_via_db`` argument shape so the DB-writing
   function has a stable signature.
 
-What is DEFERRED (lands when ``substrate/init_db.py`` migrates the
-``syntheses`` and ``synthesis_substrate_manifest`` tables):
+What landed in Sprint 10 day 4-5 (backtest DB closure):
 
-- The actual ``archive_synthesis(con, inputs) -> str`` function that
-  writes the row + manifest in a transaction. Today's stub
-  ``archive_synthesis_via_db`` raises ``NotImplementedError`` with a
-  clear message — failing loudly is correct until the schema exists.
-- The ``load_synthesis`` reader.
-- The ``manifest_at_time`` GraphAtTime fallback path.
+- ``archive_synthesis_via_db`` — writes the syntheses row + manifest
+  in a transaction, then emits the typed events.
+- ``load_synthesis`` — reads one archived synthesis with its manifest.
+- Tables: ``syntheses``, ``synthesis_substrate_manifest`` landed in
+  ``substrate/graph/schema.py`` (the real schema home, not
+  ``substrate/init_db.py`` which was never created).
 
-The emit helpers DON'T require the DB — they only need
-``substrate/event_log/``. Roles can call them today to log
-``SYNTHESIS_ARCHIVED`` events even though the DB write isn't wired up;
-that means RL trajectory capture works ahead of the DB migration.
+What remains genuinely deferred:
+
+- The ``manifest_at_time`` GraphAtTime fallback path (no consumer yet).
 """
 
 from __future__ import annotations
@@ -135,7 +133,7 @@ def compute_manifest_counts(
 
 @dataclass(frozen=True)
 class ArchiveInputs:
-    """The argument shape ``archive_synthesis`` accepts. Frozen so a
+    """The argument shape ``archive_synthesis_via_db`` accepts. Frozen so a
     caller can't mutate it between validation and write."""
 
     target_question: str

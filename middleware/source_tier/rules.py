@@ -18,9 +18,9 @@ Tier ranks (lower number = higher trust):
 
 Migrated from ``~/.hermes/skills/research/graph-research-substrate/scripts/tier_rules.py``
 (2026-05-16). The pure functions land here; the DB-touching
-``update_all`` sweep is deferred to a separate turn once
-``substrate/init_db.py`` migrates and the ``documents`` table is
-available in Antiek.
+``update_all`` bulk sweep is deferred — the ``documents`` table
+landed in ``substrate/graph/schema.py`` (Sprint 10), but the sweep
+needs numeric-vs-named tier vocabulary reconciliation first.
 
 The LLM-path of ``adjust_tier_after_extraction`` is preserved as a
 TODO; the regex fallback path is fully migrated. When ``substrate/dispatch/``

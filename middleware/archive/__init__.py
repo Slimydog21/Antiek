@@ -2,10 +2,11 @@
 
 Architecture_notes §4: archive is the SOLE writer to the syntheses
 table. This module preserves that invariant from the Researchmaxx
-migration. See ``archive.py`` for the migration scope split — pure
-helpers + emit helpers landed in Sprint 2 Day 3-4; the DB writer
-``archive_synthesis_via_db`` is deferred until ``substrate/init_db.py``
-migrates.
+migration. The pure helpers + emit helpers landed in Sprint 2 Day 3-4;
+the DB writer ``archive_synthesis_via_db`` and the ``load_synthesis``
+reader landed in Sprint 10 day 4-5, once the ``syntheses`` and
+``synthesis_substrate_manifest`` tables were created in
+``substrate/graph/schema.py``. Both are implemented today.
 """
 
 from .archive import (

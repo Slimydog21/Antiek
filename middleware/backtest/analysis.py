@@ -1,12 +1,11 @@
-"""Backtest pure helpers + ``backtest()`` scaffold.
+"""Backtest pure helpers + ``backtest()`` entry point.
 
 Researchmaxx ``scripts/backtest.py`` is structurally a sequence of
 DB queries + small projections. The projections are pure and ship
 here. The DB queries (``graph_at_time.diff_between``,
 ``load_synthesis``, the ``edges`` / ``chunk_tier_overrides`` selects)
-are deferred until ``substrate/init_db.py`` extends to those tables
-in a later slice; ``backtest()`` raises ``NotImplementedError`` until
-then.
+landed in Sprint 10 day 4-5 — ``backtest()`` is fully wired and
+called in production at ``interfaces/research/api/app.py:5364``.
 
 The shape and contract are settled now so the schema, the cohort
 module, and the operator CLI can all be written against the same
@@ -75,7 +74,7 @@ def build_report(
 ) -> BacktestReport:
     """Assemble the report once the DB-loader has produced its parts.
 
-    Pure projection — exists so the loader (deferred) can hand pieces
+    Pure projection — the loader (``backtest()``) hands pieces
     to a single constructor rather than wiring 8 keyword arguments at
     every call site."""
     return BacktestReport(

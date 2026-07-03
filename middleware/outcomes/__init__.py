@@ -14,11 +14,13 @@ What shipped:
   emitters (events.py). ``synthesis_id`` flows through the event
   envelope, not the payload.
 
-What's deferred:
+What's genuinely deferred:
 
 - DB writer (the upstream Researchmaxx ``record()`` writes to the
-  DuckDB ``outcomes`` table). ``substrate/init_db.py`` hasn't been
-  extended to that table yet; persistence wires in next slice.
+  DuckDB ``outcomes`` table). The table landed in
+  ``substrate/graph/schema.py`` (Sprint 10 day 4-5); the writer
+  wires in when a consumer needs direct-DDB reads over the event
+  stream.
 - The rubric scorer itself — only its emit helper ships now so the
   substrate is round-trippable end-to-end as soon as the scorer
   lands.
