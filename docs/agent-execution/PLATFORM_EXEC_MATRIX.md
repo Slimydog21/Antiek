@@ -55,7 +55,7 @@
 | P-47 | Session theater grep | `scripts/audit_agent_session.sh` | paired with handoff subcommand | — | Claims outside markdown packet |
 | P-48 | AMS spec ref-lint | `scripts/agent_ams_ref_lint.sh` | `bash scripts/agent_ams_ref_lint.sh <sprint.html>` | — | Playwright mountain shell |
 | P-49 | Reading substrate pytest | `.github/workflows/ci.yml` `pytest` job | CI on `main` (full suite) | — | Local hardware parity |
-| P-50 | Werner mascot / hop | `apps/reading` Werner paths per Werner htmlspec | `canonical_verify.sh agent-gates` + case study §5 | Werner operator card (htmlspec) | Measured p95 / fps without artifact |
+| P-50 | Agent execution gates | `tools/agent/verify_handoff.ts` + `scripts/audit_agent_session.sh` + `apps/reading/src/modes/Settings/Settings.test.tsx` + `apps/reading/src/shared/copyLint.test.ts` + read activation + Werner paths | `canonical_verify.sh agent-gates` + case study §5 | Werner operator card (htmlspec) | Live Werner p95/fps and operator UX without artifact |
 | P-51 | Serve / rights / legal | `docs/OPERATOR_ACTIONS.md` + `infrastructure/runbooks/first-deploy.md` | **No** informational CI job alone (F7) | Operator deploy checklist + production probe evidence | Jurisdiction-specific legal review |
 | P-52 | Loop 1 E2E (DeepResearchComplete) | `orchestration/loop_one/orchestrator.py` | `pytest tests/test_loop_one_orchestrator.py::test_loop_one_happy_path_emits_completed -q` | — | Live LLM on all 5 roles |
 | P-53 | DeepResearchComplete negative | `orchestration/invariants/deep_research_complete.py` | `pytest tests/test_deep_research_complete.py::test_drw_only_trajectory_fails_without_synthesis -q` | — | Production DRW with Exa adapter |

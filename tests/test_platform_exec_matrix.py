@@ -299,6 +299,34 @@ def test_werner_adapter_names_agent_gate_and_measured_live_boundary() -> None:
     assert "not proved by agent-gates" in text
 
 
+def test_agent_gates_matrix_row_names_current_scope() -> None:
+    """P-50 must track the bundled agent-gates checks, not only Werner."""
+    script = CANONICAL_VERIFY.read_text(encoding="utf-8")
+    matrix = MATRIX.read_text(encoding="utf-8")
+
+    row = re.search(r"^\| P-50 \|(?P<body>.*)\|$", matrix, re.MULTILINE)
+    assert row is not None
+    body = row.group("body")
+
+    expected_scope_markers = {
+        "tools/agent/verify_handoff.ts": "verify_handoff.ts",
+        "scripts/audit_agent_session.sh": "audit_agent_session.sh",
+        "src/modes/Settings/Settings.test.tsx": "Settings.test.tsx",
+        "src/shared/copyLint.test.ts": "copyLint.test.ts",
+        "test_read_activation_dogfood.py": "read activation",
+    }
+    missing = sorted(
+        marker
+        for script_marker, marker in expected_scope_markers.items()
+        if script_marker in script and marker not in body
+    )
+
+    assert not missing, (
+        "P-50 agent-gates row does not name current gate scope marker(s): "
+        f"{missing}"
+    )
+
+
 def test_serve_rights_legal_row_names_operator_proof_artifacts() -> None:
     """P-51 must stay operator-proof-bound, not a fake informational CI closure."""
     matrix = MATRIX.read_text(encoding="utf-8")
