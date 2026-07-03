@@ -295,16 +295,25 @@ describe("Speak one-door consolidation (Speak SPR-08)", () => {
   });
 
   it("the Interview surfaces fold into Speak (capability preserved, no second door)", () => {
-    for (const id of ["Interview", "InterviewIndex"]) {
-      const m = modeById(id);
-      expect(m, `${id} must still exist (capability preserved)`).toBeDefined();
-      expect(m?.workflow).toBe("speak"); // still Speak — it IS Speak
-      expect(m?.built).toBe(true); // reachable…
-      expect(m?.route).toBe("/speak"); // …because it folds into the one door
-      // The old standalone doors are no longer the route for these surfaces.
-      expect(m?.route).not.toBe("/interviews");
-      expect(m?.route).not.toBe("/interview/:interviewId");
-    }
+    // InterviewIndex is the one surviving Interview MODE — folded into Speak.
+    const m = modeById("InterviewIndex");
+    expect(m, "InterviewIndex must still exist (capability preserved)").toBeDefined();
+    expect(m?.workflow).toBe("speak"); // still Speak — it IS Speak
+    expect(m?.built).toBe(true); // reachable…
+    expect(m?.route).toBe("/speak"); // …because it folds into the one door
+    // The old standalone doors are no longer the route for it.
+    expect(m?.route).not.toBe("/interviews");
+    expect(m?.route).not.toBe("/interview/:interviewId");
+    // The standalone Interview RECORDING surface was retired (AGH SPR-02 M6):
+    // its index.tsx is gone, so it has NO separate taxonomy entry. That absence
+    // IS "no second door" in its strongest form — the capability lives entirely
+    // inside Speak (SpeakIndex + the /interview→/speak redirect), never as a
+    // parallel Interview mode. A phantom entry here would be a stale entry the
+    // SPR-04-rigor completeness gate rejects.
+    expect(
+      modeById("Interview"),
+      "Interview must have NO separate taxonomy entry — fully folded into Speak",
+    ).toBeUndefined();
   });
 
   it("the Speak landing resolves to the home, and /speak resolves to speak", () => {
