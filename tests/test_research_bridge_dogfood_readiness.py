@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from pathlib import Path
@@ -13,6 +14,7 @@ from substrate.graph.schema import init_database_at_path
 from substrate.research_bridge.dogfood_log import write_dogfood_scaffold
 from substrate.research_bridge.dogfood_readiness import (
     audit_dogfood_readiness,
+    render_readiness_json,
     render_readiness_summary,
     validate_metrics_artifact,
 )
@@ -278,3 +280,31 @@ def test_audit_dogfood_readiness_accepts_complete_current_evidence(
     assert readiness.verdict_validation.mode_a_verdict == "ITERATE"
     assert readiness.verdict_validation.mode_b_verdict == "SHIP"
     assert "DOGFOOD_READINESS_OK" in render_readiness_summary(readiness)
+
+
+def test_render_readiness_json_exposes_stable_machine_contract(
+    db: str,
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "adrb"
+    verdict = tmp_path / "adrb_post_dogfood_verdict.md"
+    write_dogfood_scaffold(root)
+
+    readiness = audit_dogfood_readiness(
+        db,
+        dogfood_root=root,
+        verdict_path=verdict,
+    )
+
+    payload = json.loads(render_readiness_json(readiness))
+
+    assert payload["ok"] is False
+    assert payload["dogfood_root"] == str(root)
+    assert payload["metrics_path"] == str(root / "dogfood_metrics.md")
+    assert payload["verdict_path"] == str(verdict)
+    assert "dogfood_metrics.md is missing" in payload["missing_requirements"]
+    assert payload["checks"]["dogfood_log"]["complete_project_entries"] == 0
+    assert payload["checks"]["wave4_candidates"]["ok"] is True
+    assert payload["checks"]["session_reconciliation"]["reconciled_sessions"] == 0
+    assert payload["checks"]["metrics_artifact"]["current"] is False
+    assert payload["checks"]["verdict_document"]["mode_a_verdict"] is None
