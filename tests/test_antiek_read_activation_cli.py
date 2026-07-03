@@ -215,6 +215,133 @@ def test_antiek_read_activation_append_template_json_reports_post_append_status(
     assert any("template result_url" in failure for failure in view["failures"])
 
 
+def test_antiek_read_activation_record_session_json_appends_valid_evidence(
+    tmp_path: Path,
+    capsys,
+) -> None:  # type: ignore[no-untyped-def]
+    log_path = tmp_path / "read-dogfood.jsonl"
+
+    rc = main(
+        [
+            "read",
+            "activation",
+            "record-session",
+            "--log",
+            str(log_path),
+            "--session-id",
+            "session-1",
+            "--date",
+            "2026-07-03",
+            "--build-sha",
+            "0123456789abcdef",
+            "--url",
+            "https://app.example/read/doc-1",
+            "--operator",
+            "operator",
+            "--document-id",
+            "doc-1",
+            "--entry-door",
+            "command_palette",
+            "--minutes-reading",
+            "24",
+            "--visible-content-note",
+            "Structured heading and table were visible.",
+            "--selected-text",
+            "The exact highlighted passage.",
+            "--return-context-note",
+            "Back returned to the same passage.",
+            "--operator-note",
+            "Read for 24 minutes without blocking friction.",
+            "--live-provider-ai",
+            "--first-answer",
+            "A useful live answer grounded in the selected passage.",
+            "--investigation-id",
+            "investigation-1",
+            "--citation-traced",
+            "--source-document-id",
+            "source-doc-1",
+            "--chunk-id",
+            "chunk-1",
+            "--result-url",
+            "https://app.example/read/source-doc-1?chunk=chunk-1&from=doc-1",
+            "--json",
+        ]
+    )
+
+    assert rc == 0
+    records = load_jsonl(log_path)
+    assert len(records) == 1
+    assert records[0]["session_id"] == "session-1"
+    assert records[0]["live_provider_ai"] is True
+    assert records[0]["citation_traced"] is True
+    assert records[0]["steps"]["2"]["menu_labels"] == [
+        "Note",
+        "Dialogue",
+        "Search",
+        "Deep-research",
+    ]
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == 1
+    assert payload["recorded_session_id"] == "session-1"
+    assert payload["log_path"] == str(log_path)
+    view = payload["view"]
+    assert view["state"] == "incomplete"
+    assert view["total_sessions"] == 1
+    assert view["valid_sessions"] == 1
+    assert view["invalid_session_count"] == 0
+    assert view["live_provider_sessions"] == 1
+    assert view["citation_trace_sessions"] == 1
+    assert view["non_library_sessions"] == 1
+
+
+def test_antiek_read_activation_record_session_rejects_incomplete_live_evidence(
+    tmp_path: Path,
+    capsys,
+) -> None:  # type: ignore[no-untyped-def]
+    log_path = tmp_path / "read-dogfood.jsonl"
+
+    rc = main(
+        [
+            "read",
+            "activation",
+            "record-session",
+            "--log",
+            str(log_path),
+            "--session-id",
+            "session-1",
+            "--date",
+            "2026-07-03",
+            "--build-sha",
+            "0123456789abcdef",
+            "--url",
+            "https://app.example/read/doc-1",
+            "--operator",
+            "operator",
+            "--document-id",
+            "doc-1",
+            "--entry-door",
+            "command_palette",
+            "--minutes-reading",
+            "24",
+            "--visible-content-note",
+            "Structured heading and table were visible.",
+            "--selected-text",
+            "The exact highlighted passage.",
+            "--return-context-note",
+            "Back returned to the same passage.",
+            "--operator-note",
+            "Read for 24 minutes without blocking friction.",
+            "--live-provider-ai",
+        ]
+    )
+
+    assert rc == 2
+    assert not log_path.exists()
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "record-session: first_answer is required" in captured.err
+
+
 def test_antiek_read_activation_next_session_recommends_citation_for_missing_log(
     tmp_path: Path,
     capsys,

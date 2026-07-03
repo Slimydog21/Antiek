@@ -429,6 +429,136 @@ def session_template(kind: str) -> dict[str, Any]:
     }
 
 
+def build_session_record(
+    *,
+    session_id: str,
+    date: str,
+    build_sha: str,
+    url: str,
+    operator: str,
+    document_id: str,
+    entry_door: str,
+    minutes_reading: int,
+    visible_content_note: str,
+    selected_text: str,
+    return_context_note: str,
+    operator_note: str,
+    live_provider_ai: bool,
+    citation_traced: bool,
+    provider_status: str | None = None,
+    first_answer: str | None = None,
+    investigation_id: str | None = None,
+    dialogue_no_key_copy: str | None = None,
+    research_no_key_copy: str | None = None,
+    source_document_id: str | None = None,
+    chunk_id: str | None = None,
+    anchor: str | None = None,
+    result_url: str | None = None,
+    verdict: str | None = None,
+    blocking_issue_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    """Build one operator-authored Read activation dogfood session record.
+
+    This helper records evidence that the validator already understands. It
+    does not loosen the activation gate: callers still need ten distinct valid
+    sessions plus a final ACTIVATE verdict before closure.
+    """
+    record = {
+        "session_id": _require_record_text("session_id", session_id),
+        "date": _require_record_text("date", date),
+        "build_sha": _require_record_text("build_sha", build_sha),
+        "url": _require_record_text("url", url),
+        "operator": _require_record_text("operator", operator),
+        "document_id": _require_record_text("document_id", document_id),
+        "entry_door": _require_record_text("entry_door", entry_door),
+        "provider_status": (
+            _require_record_text("provider_status", provider_status)
+            if provider_status is not None
+            else ("ready" if live_provider_ai else "absent")
+        ),
+        "live_provider_ai": live_provider_ai,
+        "citation_traced": citation_traced,
+        "minutes_reading": minutes_reading,
+        "steps": {
+            "1": {
+                "status": "pass",
+                "visible_content_note": _require_record_text(
+                    "visible_content_note",
+                    visible_content_note,
+                ),
+            },
+            "2": {
+                "status": "pass",
+                "selected_text": _require_record_text("selected_text", selected_text),
+                "menu_labels": list(REQUIRED_FLOAT_MENU_LABELS),
+            },
+            "3": {"status": "pass" if live_provider_ai else "inert"},
+            "4": {"status": "pass" if live_provider_ai else "inert"},
+            "5": {"status": "pass"},
+            "6": {
+                "status": "pass",
+                "return_context_note": _require_record_text(
+                    "return_context_note",
+                    return_context_note,
+                ),
+            },
+            "7": {
+                "status": "pass",
+                "operator_note": _require_record_text("operator_note", operator_note),
+            },
+        },
+    }
+
+    if live_provider_ai:
+        record["steps"]["3"]["first_answer"] = _require_record_text(
+            "first_answer",
+            first_answer,
+        )
+        record["steps"]["4"]["investigation_id"] = _require_record_text(
+            "investigation_id",
+            investigation_id,
+        )
+    else:
+        record["steps"]["3"]["exact_no_key_copy"] = _require_record_text(
+            "dialogue_no_key_copy",
+            dialogue_no_key_copy,
+        )
+        record["steps"]["4"]["exact_no_key_copy"] = _require_record_text(
+            "research_no_key_copy",
+            research_no_key_copy,
+        )
+
+    if citation_traced:
+        citation_step = record["steps"]["5"]
+        citation_step["source_document_id"] = _require_record_text(
+            "source_document_id",
+            source_document_id,
+        )
+        if _required_text(chunk_id):
+            citation_step["chunk_id"] = _required_text(chunk_id)
+        elif _required_text(anchor):
+            citation_step["anchor"] = _required_text(anchor)
+        else:
+            raise ValueError("chunk_id or anchor is required when citation_traced=true")
+        citation_step["result_url"] = _require_record_text("result_url", result_url)
+
+    if verdict is not None:
+        record["verdict"] = _final_verdict([{"verdict": verdict}]) or verdict
+    if blocking_issue_ids:
+        record["blocking_issue_ids"] = [
+            issue_id.strip() for issue_id in blocking_issue_ids if issue_id.strip()
+        ]
+
+    return record
+
+
+def _require_record_text(field: str, value: Any) -> str:
+    text = _required_text(value)
+    if not text:
+        raise ValueError(f"{field} is required")
+    return text
+
+
 def _step_followup_failures(prefix: str, steps: dict[Any, Any]) -> list[str]:
     failures: list[str] = []
     for step_id, raw_step in sorted(steps.items(), key=lambda item: str(item[0])):
