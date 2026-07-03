@@ -39,6 +39,12 @@ class SessionBlockMetrics:
 
 
 @dataclass(frozen=True)
+class SessionDraftExportMetrics:
+    session_id: str
+    draft_exports: int
+
+
+@dataclass(frozen=True)
 class DogfoodMetrics:
     total_blocks_pasted: int
     total_extractions: int
@@ -53,6 +59,7 @@ class DogfoodMetrics:
     sessions_with_gap_runs: int
     sessions_with_blocks_no_gap_runs: tuple[str, ...]
     block_sessions: tuple[SessionBlockMetrics, ...]
+    draft_export_sessions: tuple[SessionDraftExportMetrics, ...]
     by_session: tuple[SessionSignalMetrics, ...]
 
     @property
@@ -131,6 +138,22 @@ def build_dogfood_metrics(con: Any) -> DogfoodMetrics:
         )
         for r in session_rows
     )
+    draft_export_rows = con.execute(
+        """
+        SELECT session_id, COUNT(*) AS n
+        FROM research_draft_exports
+        WHERE session_id IS NOT NULL AND TRIM(session_id) != ''
+        GROUP BY session_id
+        ORDER BY session_id
+        """
+    ).fetchall()
+    draft_export_sessions = tuple(
+        SessionDraftExportMetrics(
+            session_id=str(r[0]),
+            draft_exports=int(r[1]),
+        )
+        for r in draft_export_rows
+    )
 
     gap_session_rows = con.execute(
         """
@@ -185,6 +208,7 @@ def build_dogfood_metrics(con: Any) -> DogfoodMetrics:
         sessions_with_gap_runs=len(gap_sessions),
         sessions_with_blocks_no_gap_runs=sessions_with_blocks_no_gap_runs,
         block_sessions=block_session_metrics,
+        draft_export_sessions=draft_export_sessions,
         by_session=tuple(by_session),
     )
 
@@ -233,6 +257,16 @@ def render_dogfood_report(metrics: DogfoodMetrics) -> str:
                 f"- {row.session_id}: {row.blocks_pasted} block(s), "
                 f"first block at {row.first_block_at}, latest block at {row.latest_block_at}"
             )
+    lines.extend([
+        "",
+        "## Mode A Draft Exports By Session",
+        "",
+    ])
+    if not metrics.draft_export_sessions:
+        lines.append("- No Mode A draft exports recorded yet.")
+    else:
+        for row in metrics.draft_export_sessions:
+            lines.append(f"- {row.session_id}: {row.draft_exports} draft export(s)")
     lines.extend([
         "",
         "## Would-Run Breakdown",

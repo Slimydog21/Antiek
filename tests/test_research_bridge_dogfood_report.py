@@ -123,6 +123,8 @@ def test_dogfood_metrics_reconcile_with_bridge_substrate(db: str) -> None:
     assert metrics.block_sessions[0].latest_block_at == "2026-07-01 09:03:00"
     assert metrics.block_sessions[1].session_id == "sess-b"
     assert metrics.block_sessions[1].blocks_pasted == 1
+    assert metrics.draft_export_sessions[0].session_id == "sess-a"
+    assert metrics.draft_export_sessions[0].draft_exports == 1
     assert metrics.by_session[0].session_id == "sess-a"
     assert metrics.by_session[0].would_run_pct == pytest.approx(2 / 3)
 
@@ -174,3 +176,5 @@ def test_dogfood_report_cli_writes_markdown(db: str, tmp_path: Path) -> None:
         "- sess-a: 2 block(s), first block at 2026-07-01 09:00:00, "
         "latest block at 2026-07-01 09:03:00"
     ) in text
+    assert "## Mode A Draft Exports By Session" in text
+    assert "- sess-a: 1 draft export(s)" in text
