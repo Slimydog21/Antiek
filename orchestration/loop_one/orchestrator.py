@@ -1175,6 +1175,7 @@ async def run_synthesis_tail_from_pack(
         role="orchestrator",
         policy_id="orchestrator-cascade-tail",
     )
+    _deposit_synthesis_to_substrate(ctx)
     _maybe_export_research_artifact_after_complete(ctx.investigation_id)
     return ctx
 
@@ -1269,7 +1270,95 @@ async def _run_investigation(
         role="orchestrator",
         policy_id="orchestrator-deterministic",
     )
+    _deposit_synthesis_to_substrate(ctx)
     _maybe_export_research_artifact_after_complete(ctx.investigation_id)
+
+
+def _deposit_synthesis_to_substrate(ctx: InvestigationContext) -> str | None:
+    """Deposit the completed synthesis into the ``syntheses`` table — the
+    flywheel's research→substrate deposit (DOGFOOD SPR-03).
+
+    The SOLE production call site of
+    ``middleware.archive.archive_synthesis_via_db``. Before SPR-03 the loop
+    emitted ``INVESTIGATION_COMPLETED`` (and wrote MASTER.md) but never
+    deposited the row, so ``syntheses`` was 0 by construction regardless of
+    how many investigations completed. Now a completed synthesis lands as a
+    queryable, manifest-traced row.
+
+    Best-effort + non-fatal: a deposit failure is logged on stderr but never
+    breaks investigation completion (mirrors
+    ``_maybe_export_research_artifact_after_complete``). The synthesis was
+    produced regardless; archiving is a separate persistence concern.
+
+    Returns the deposited ``synthesis_id`` or ``None`` on skip/failure.
+    """
+    import sys
+    from datetime import UTC, datetime
+
+    from middleware.archive import ArchiveInputs, archive_synthesis_via_db
+    from runtime.db_lock import connect_write
+    from substrate.graph import default_db_path
+    from substrate.schemas import SynthesisStatus
+
+    synth = ctx.synthesis
+    if synth is None:
+        return None
+
+    # Map the constraint-loop terminal verdict to the syntheses-row status.
+    # (ConstraintLoopStatus carries two preflight states with no
+    # SynthesisStatus equivalent; they default to 'draft'.)
+    loop_to_status: dict[str, SynthesisStatus] = {
+        "single_pass": "passed",
+        "passed": "passed",
+        "regressed": "regressed",
+        "max_iterations_reached": "max_iterations_reached",
+        "escalated": "escalated",
+    }
+    status: SynthesisStatus = loop_to_status.get(
+        synth.constraint_loop_status, "draft"
+    )
+
+    # Manifest pins: the chunks/edges the evidence retriever actually cited.
+    chunk_ids: list[str] = []
+    edge_ids: list[str] = []
+    for ev in ctx.evidence:
+        for claim in getattr(ev, "supporting_claims", None) or []:
+            chunk_ids.extend(getattr(claim, "chunk_ids", None) or [])
+            edge_ids.extend(getattr(claim, "edge_ids", None) or [])
+    chunk_ids = list(dict.fromkeys(chunk_ids))
+    edge_ids = list(dict.fromkeys(edge_ids))
+
+    def _dump(obj: object) -> object:
+        if hasattr(obj, "model_dump"):
+            return obj.model_dump(mode="json")
+        return obj
+
+    inputs = ArchiveInputs(
+        target_question=ctx.question,
+        synthesis_timestamp=datetime.now(UTC),
+        status=status,
+        implicit_recommendation=synth.implicit_recommendation,
+        thesis_text=synth.thesis_summary,
+        thesis=_dump(synth),
+        evidence=[_dump(e) for e in ctx.evidence],
+        decomposition=_dump(ctx.decomposition) if ctx.decomposition is not None else None,
+        parameters=_dump(ctx.parameters) if ctx.parameters is not None else None,
+        chunk_ids=tuple(chunk_ids),
+        edge_ids=tuple(edge_ids),
+    )
+    try:
+        db_path = default_db_path()
+        with connect_write(db_path, purpose="archive-synthesis") as con:
+            return archive_synthesis_via_db(
+                con, inputs, investigation_id=ctx.investigation_id
+            )
+    except Exception as exc:  # best-effort: never break completion
+        print(
+            "orchestrator: synthesis deposit failed (best-effort, non-fatal): "
+            f"{type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        return None
 
 
 def _maybe_export_research_artifact_after_complete(investigation_id: str) -> None:
