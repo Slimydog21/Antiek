@@ -39,7 +39,13 @@ def apply_review(
     Marks the candidate ``reviewed`` and emits the matching audit event. Returns
     the emitted event id (or None). Raises ``ValueError`` on an unknown or
     already-reviewed candidate, or an invalid decision; ``TypeError`` without a
-    ``LockedConnection``."""
+    ``LockedConnection``.
+
+    Transaction ownership: ``apply_review`` manages its own ``BEGIN``/``COMMIT``
+    (matching ``archive_synthesis_via_db``) — do not call it inside an outer
+    transaction on the same connection, or the inner ``COMMIT`` would close the
+    caller's transaction early. The audit event is emitted only after the commit
+    so it never advertises a write that did not land."""
     _require_locked(con)
     validate_decision(decision)
     row = con.execute(
