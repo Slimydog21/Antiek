@@ -16,9 +16,11 @@ from pathlib import Path
 
 from runtime.db_lock import connect_read, connect_write
 from substrate.coordination.activation_view import (
+    ReadActivationNextSession,
     ReadActivationView,
     build_read_activation_view,
     default_read_dogfood_log_path,
+    recommend_read_activation_next_session,
 )
 from substrate.research_bridge.db_path import ensure_research_bridge_initialized
 from substrate.research_bridge.dogfood_log import (
@@ -107,67 +109,27 @@ def _cmd_read_activation_status(args: argparse.Namespace) -> int:
     return 0 if view.closure_ready else 1
 
 
-def _read_activation_next_session_payload(view: ReadActivationView) -> dict[str, object]:
-    remaining = view.remaining_requirements
-    recommended_template: str | None = None
-    next_action = "collect_session"
-    rationale = (
-        "Append the recommended template, then replace every placeholder with "
-        "real operator evidence before counting it toward activation."
-    )
-
-    if view.state == "invalid_log":
-        next_action = "fix_log"
-        rationale = "Fix the malformed JSONL log before collecting another session."
-    elif view.closure_ready:
-        next_action = "none"
-        rationale = "Read activation evidence is closure-ready."
-    elif remaining["citation_trace_sessions"] > 0:
-        recommended_template = "live-citation"
-        rationale = (
-            "A real live-citation session advances valid, live-provider, "
-            "citation-trace, and non-Library coverage."
-        )
-    elif remaining["live_provider_sessions"] > 0:
-        recommended_template = "live"
-        rationale = "A real live session advances valid and live-provider coverage."
-    elif remaining["non_library_sessions"] > 0:
-        recommended_template = "live-citation"
-        rationale = (
-            "A real live-citation session uses a non-Library entry door while "
-            "also preserving provider and citation evidence."
-        )
-    elif remaining["valid_sessions"] > 0:
-        recommended_template = "inert"
-        rationale = "Only valid-session count remains; an inert session can advance it."
-    else:
-        next_action = "fix_log"
-        rationale = (
-            "The numeric counters are met, but activation still needs the final "
-            "verdict or failure repairs shown in the status output."
-        )
-
-    append_command = (
-        f"antiek read activation append-template --kind {recommended_template}"
-        if recommended_template is not None
-        else None
-    )
+def _read_activation_next_session_payload(
+    view: ReadActivationView,
+    recommendation: ReadActivationNextSession,
+) -> dict[str, object]:
     return {
         "schema_version": READ_ACTIVATION_NEXT_SESSION_JSON_SCHEMA_VERSION,
-        "source_path": view.source_path,
-        "state": view.state,
-        "next_action": next_action,
-        "recommended_template": recommended_template,
-        "append_command": append_command,
-        "rationale": rationale,
-        "remaining_requirements": dict(remaining),
+        "source_path": recommendation.source_path,
+        "state": recommendation.state,
+        "next_action": recommendation.next_action,
+        "recommended_template": recommendation.recommended_template,
+        "append_command": recommendation.append_command,
+        "rationale": recommendation.rationale,
+        "remaining_requirements": dict(recommendation.remaining_requirements),
         "view": asdict(view),
     }
 
 
 def _cmd_read_activation_next_session(args: argparse.Namespace) -> int:
     view = build_read_activation_view(_read_activation_log_path(args.log))
-    payload = _read_activation_next_session_payload(view)
+    recommendation = recommend_read_activation_next_session(view)
+    payload = _read_activation_next_session_payload(view, recommendation)
     if args.json:
         sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     else:

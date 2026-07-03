@@ -153,6 +153,19 @@ describe("Coordination", () => {
               citation_trace_sessions: "2",
               non_library_sessions: "1",
             },
+            next_session: {
+              next_action: " collect_session ",
+              recommended_template: " live-citation ",
+              append_command:
+                " antiek read activation append-template --kind live-citation ",
+              rationale: " collect a real live-citation session ",
+              remaining_requirements: {
+                valid_sessions: "9",
+                live_provider_sessions: "5",
+                citation_trace_sessions: "2",
+                non_library_sessions: "1",
+              },
+            },
             failures: [" bad row ", " "],
           },
           operator_actions: {
@@ -326,6 +339,11 @@ describe("Coordination", () => {
       ),
     ).toBeTruthy();
     expect(screen.getByText("1 invalid session need repair.")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Next: live-citation · antiek read activation append-template --kind live-citation",
+      ),
+    ).toBeTruthy();
     expect(screen.getByText("Operator actions")).toBeTruthy();
     expect(
       screen.getByText(
@@ -443,6 +461,19 @@ describe("Coordination", () => {
               live_provider_sessions: 5,
               citation_trace_sessions: 3,
               non_library_sessions: 1,
+            },
+            next_session: {
+              next_action: "collect_session",
+              recommended_template: "live-citation",
+              append_command:
+                "antiek read activation append-template --kind live-citation",
+              rationale: "Collect a session.",
+              remaining_requirements: {
+                valid_sessions: 10,
+                live_provider_sessions: 5,
+                citation_trace_sessions: 3,
+                non_library_sessions: 1,
+              },
             },
             failures: [],
           },

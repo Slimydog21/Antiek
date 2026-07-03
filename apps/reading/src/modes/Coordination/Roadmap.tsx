@@ -81,6 +81,13 @@ export interface ReadActivationStatusView {
   required_counts: Record<string, number>;
   remaining_requirements: Record<string, number>;
   failures: string[];
+  next_session: {
+    next_action: string;
+    recommended_template: string | null;
+    append_command: string | null;
+    rationale: string;
+    remaining_requirements: Record<string, number>;
+  } | null;
 }
 
 export interface OperatorActionView {
@@ -446,6 +453,7 @@ function ActivationStatus({
 }) {
   const required = activation.required_counts ?? {};
   const remaining = activation.remaining_requirements ?? {};
+  const nextSession = activation.next_session ?? null;
   const requiredValid = required.valid_sessions ?? activation.total_sessions;
   const remainingText = [
     ["valid", remaining.valid_sessions],
@@ -483,6 +491,12 @@ function ActivationStatus({
         <p className="text-xs font-mono text-emperor">
           {activation.invalid_session_count} invalid session
           {activation.invalid_session_count === 1 ? "" : "s"} need repair.
+        </p>
+      )}
+      {nextSession && nextSession.next_action !== "none" && (
+        <p className="text-xs font-mono text-ink-soft dark:text-starlight">
+          Next: {nextSession.recommended_template || nextSession.next_action}
+          {nextSession.append_command ? ` · ${nextSession.append_command}` : ""}
         </p>
       )}
     </div>

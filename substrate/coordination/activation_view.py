@@ -15,6 +15,7 @@ from typing import Literal
 from tools.activation.read_dogfood import DogfoodReport, load_jsonl, validate_sessions
 
 ActivationEvidenceState = Literal["not_started", "incomplete", "invalid_log", "ready"]
+ActivationNextAction = Literal["collect_session", "fix_log", "none"]
 
 
 def _repo_root() -> Path:
@@ -41,6 +42,17 @@ class ReadActivationView:
     required_counts: dict[str, int]
     remaining_requirements: dict[str, int]
     failures: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ReadActivationNextSession:
+    source_path: str
+    state: ActivationEvidenceState
+    next_action: ActivationNextAction
+    recommended_template: str | None
+    append_command: str | None
+    rationale: str
+    remaining_requirements: dict[str, int]
 
 
 def _empty_report() -> DogfoodReport:
@@ -86,4 +98,63 @@ def build_read_activation_view(path: Path | None = None) -> ReadActivationView:
         required_counts=report.required_counts(),
         remaining_requirements=report.remaining_requirements(),
         failures=failures,
+    )
+
+
+def recommend_read_activation_next_session(
+    view: ReadActivationView,
+) -> ReadActivationNextSession:
+    """Recommend the next operator dogfood move from the canonical counters."""
+    remaining = view.remaining_requirements
+    recommended_template: str | None = None
+    next_action: ActivationNextAction = "collect_session"
+    rationale = (
+        "Append the recommended template, then replace every placeholder with "
+        "real operator evidence before counting it toward activation."
+    )
+
+    if view.state == "invalid_log":
+        next_action = "fix_log"
+        rationale = "Fix the malformed JSONL log before collecting another session."
+    elif view.closure_ready:
+        next_action = "none"
+        rationale = "Read activation evidence is closure-ready."
+    elif remaining["citation_trace_sessions"] > 0:
+        recommended_template = "live-citation"
+        rationale = (
+            "A real live-citation session advances valid, live-provider, "
+            "citation-trace, and non-Library coverage."
+        )
+    elif remaining["live_provider_sessions"] > 0:
+        recommended_template = "live"
+        rationale = "A real live session advances valid and live-provider coverage."
+    elif remaining["non_library_sessions"] > 0:
+        recommended_template = "live-citation"
+        rationale = (
+            "A real live-citation session uses a non-Library entry door while "
+            "also preserving provider and citation evidence."
+        )
+    elif remaining["valid_sessions"] > 0:
+        recommended_template = "inert"
+        rationale = "Only valid-session count remains; an inert session can advance it."
+    else:
+        next_action = "fix_log"
+        rationale = (
+            "The numeric counters are met, but activation still needs the final "
+            "verdict or failure repairs shown in the status output."
+        )
+
+    append_command = (
+        f"antiek read activation append-template --kind {recommended_template}"
+        if recommended_template is not None
+        else None
+    )
+    return ReadActivationNextSession(
+        source_path=view.source_path,
+        state=view.state,
+        next_action=next_action,
+        recommended_template=recommended_template,
+        append_command=append_command,
+        rationale=rationale,
+        remaining_requirements=dict(remaining),
     )

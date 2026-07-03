@@ -246,6 +246,7 @@ function numberRecord(value: unknown): Record<string, number> {
 function safeReadActivationStatus(value: unknown): ReadActivationStatusView | null {
   const activation = record(value);
   if (!activation) return null;
+  const nextSession = record(activation.next_session);
   return {
     source_path: nonEmptyString(activation.source_path) ?? "",
     state: nonEmptyString(activation.state) ?? "not_started",
@@ -260,6 +261,15 @@ function safeReadActivationStatus(value: unknown): ReadActivationStatusView | nu
     required_counts: numberRecord(activation.required_counts),
     remaining_requirements: numberRecord(activation.remaining_requirements),
     failures: stringList(activation.failures),
+    next_session: nextSession
+      ? {
+          next_action: nonEmptyString(nextSession.next_action) ?? "collect_session",
+          recommended_template: nullableString(nextSession.recommended_template),
+          append_command: nullableString(nextSession.append_command),
+          rationale: nonEmptyString(nextSession.rationale) ?? "",
+          remaining_requirements: numberRecord(nextSession.remaining_requirements),
+        }
+      : null,
   };
 }
 

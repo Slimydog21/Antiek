@@ -54,9 +54,11 @@ edits the gate file or a roster changes, the dashboard reflects it on next read.
 from __future__ import annotations
 
 from .activation_view import (
+    ReadActivationNextSession,
     ReadActivationView,
     build_read_activation_view,
     default_read_dogfood_log_path,
+    recommend_read_activation_next_session,
 )
 from .consent_view import (
     ConsentView,
@@ -95,8 +97,8 @@ from .loop3_status import (
 )
 from .operator_actions import (
     OperatorAction,
-    OperatorActionsView,
     OperatorActionStatus,
+    OperatorActionsView,
     load_operator_actions,
     parse_operator_actions,
 )
@@ -124,9 +126,11 @@ from .source_gate_status import (
 
 __all__ = [
     # activation view
+    "ReadActivationNextSession",
     "ReadActivationView",
     "build_read_activation_view",
     "default_read_dogfood_log_path",
+    "recommend_read_activation_next_session",
     # gate ledger
     "Gate",
     "GateImpact",

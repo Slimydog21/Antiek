@@ -35,8 +35,10 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 from substrate.coordination.activation_view import (
+    ReadActivationNextSession,
     ReadActivationView,
     build_read_activation_view,
+    recommend_read_activation_next_session,
 )
 from substrate.coordination.consent_view import (
     ConsentView,
@@ -219,6 +221,31 @@ class OperatorGateFocusResponse(BaseModel):
         )
 
 
+class ReadActivationNextSessionResponse(BaseModel):
+    source_path: str
+    state: str
+    next_action: str
+    recommended_template: str | None
+    append_command: str | None
+    rationale: str
+    remaining_requirements: dict[str, int]
+
+    @classmethod
+    def from_recommendation(
+        cls,
+        recommendation: ReadActivationNextSession,
+    ) -> ReadActivationNextSessionResponse:
+        return cls(
+            source_path=recommendation.source_path,
+            state=recommendation.state,
+            next_action=recommendation.next_action,
+            recommended_template=recommendation.recommended_template,
+            append_command=recommendation.append_command,
+            rationale=recommendation.rationale,
+            remaining_requirements=dict(recommendation.remaining_requirements),
+        )
+
+
 class ReadActivationStatusResponse(BaseModel):
     source_path: str
     state: str
@@ -233,6 +260,7 @@ class ReadActivationStatusResponse(BaseModel):
     required_counts: dict[str, int]
     remaining_requirements: dict[str, int]
     failures: list[str]
+    next_session: ReadActivationNextSessionResponse
 
     @classmethod
     def from_view(cls, view: ReadActivationView) -> ReadActivationStatusResponse:
@@ -250,6 +278,9 @@ class ReadActivationStatusResponse(BaseModel):
             required_counts=dict(view.required_counts),
             remaining_requirements=dict(view.remaining_requirements),
             failures=list(view.failures),
+            next_session=ReadActivationNextSessionResponse.from_recommendation(
+                recommend_read_activation_next_session(view),
+            ),
         )
 
 

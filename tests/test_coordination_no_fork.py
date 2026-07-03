@@ -33,7 +33,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from substrate.coordination.activation_view import build_read_activation_view
+from substrate.coordination.activation_view import (
+    build_read_activation_view,
+    recommend_read_activation_next_session,
+)
 from substrate.coordination.engineering_deferrals import (
     DeferralStatus,
     load_engineering_deferrals,
@@ -835,6 +838,29 @@ def test_read_activation_view_uses_dogfood_validator(tmp_path: Path) -> None:
     assert all(failure.startswith("closure requires ") for failure in view.failures)
 
 
+def test_read_activation_next_session_recommendation_uses_view_counters(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "read-dogfood.jsonl"
+    record = session_template("inert")
+    record["build_sha"] = "0123456789abcdef"
+    append_session_template(path, record)
+
+    recommendation = recommend_read_activation_next_session(
+        build_read_activation_view(path)
+    )
+
+    assert recommendation.source_path == str(path)
+    assert recommendation.state == "incomplete"
+    assert recommendation.next_action == "collect_session"
+    assert recommendation.recommended_template == "live-citation"
+    assert (
+        recommendation.append_command
+        == "antiek read activation append-template --kind live-citation"
+    )
+    assert recommendation.remaining_requirements["citation_trace_sessions"] == 3
+
+
 def test_roadmap_response_serializes_read_activation_status(tmp_path: Path) -> None:
     from interfaces.research.api.coordination import RoadmapResponse
 
@@ -867,6 +893,11 @@ def test_roadmap_response_serializes_read_activation_status(tmp_path: Path) -> N
         "citation_trace_sessions": REQUIRED_CITATION_TRACE_SESSIONS,
         "non_library_sessions": REQUIRED_NON_LIBRARY_SESSIONS,
     }
+    assert response.read_activation.next_session.next_action == "collect_session"
+    assert response.read_activation.next_session.recommended_template == "live-citation"
+    assert response.read_activation.next_session.append_command == (
+        "antiek read activation append-template --kind live-citation"
+    )
 
 
 def test_roadmap_response_serializes_operator_actions_and_phase2_audit() -> None:

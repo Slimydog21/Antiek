@@ -184,6 +184,13 @@ interface CoordinationSummary {
     closure_ready: boolean;
     required_counts: Record<string, number>;
     remaining_requirements: Record<string, number>;
+    next_session: {
+      next_action: string;
+      recommended_template: string | null;
+      append_command: string | null;
+      rationale: string;
+      remaining_requirements: Record<string, number>;
+    } | null;
     invalid_session_count: number;
   } | null;
 }
@@ -554,6 +561,7 @@ function safeCoordinationSummary(value: unknown): CoordinationSummary {
   const loop3 = record(body?.loop3);
   const sourceGate = record(body?.source_gate);
   const readActivation = record(body?.read_activation);
+  const readActivationNextSession = record(readActivation?.next_session);
   const gateId = nonEmptyString(operatorGate?.gate_id);
   const safeAction = (value: unknown) => {
     const action = record(value);
@@ -665,6 +673,23 @@ function safeCoordinationSummary(value: unknown): CoordinationSummary {
           closure_ready: readActivation.closure_ready === true,
           required_counts: numberRecord(readActivation.required_counts),
           remaining_requirements: numberRecord(readActivation.remaining_requirements),
+          next_session: readActivationNextSession
+            ? {
+                next_action:
+                  nonEmptyString(readActivationNextSession.next_action) ??
+                  "collect_session",
+                recommended_template: nullableString(
+                  readActivationNextSession.recommended_template,
+                ),
+                append_command: nullableString(
+                  readActivationNextSession.append_command,
+                ),
+                rationale: nonEmptyString(readActivationNextSession.rationale) ?? "",
+                remaining_requirements: numberRecord(
+                  readActivationNextSession.remaining_requirements,
+                ),
+              }
+            : null,
           invalid_session_count: safeCount(readActivation.invalid_session_count),
         }
       : null,
@@ -1432,6 +1457,7 @@ function CoordinationTile({
     operatorActions?.closeable_action ?? operatorActions?.next_action ?? null;
   const required = activation?.required_counts ?? {};
   const remaining = activation?.remaining_requirements ?? {};
+  const nextSession = activation?.next_session ?? null;
   const requiredValid = required.valid_sessions ?? activation?.total_sessions ?? 0;
   const remainingText = [
     ["valid", remaining.valid_sessions],
@@ -1493,6 +1519,12 @@ function CoordinationTile({
               ? ` ${activation.invalid_session_count} invalid session${activation.invalid_session_count === 1 ? "" : "s"} need repair.`
               : ""}
           </p>
+          {nextSession && nextSession.next_action !== "none" ? (
+            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
+              Next: {nextSession.recommended_template || nextSession.next_action}
+              {nextSession.append_command ? ` · ${nextSession.append_command}` : ""}
+            </p>
+          ) : null}
           <Link
             to="/coordination/cost-consent"
             className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
