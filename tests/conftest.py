@@ -24,6 +24,7 @@ fixture only guarantees the shared default starts every test CLOSED.
 """
 
 import os
+import shutil
 
 import pytest
 
@@ -65,8 +66,19 @@ def _isolate_default_breaker():
     default_breaker.reset()
 
 
+@pytest.fixture(scope="session")
+def _antiek_schema_template(tmp_path_factory):
+    """An empty-schema DuckDB built once per session. Each test copies it
+    (~ms) instead of re-running ``init_database_at_path`` (~72ms) per test,
+    which pushed the full pytest suite past its CI job timeout. pytest-xdist
+    scopes this per worker, so the build cost is paid a handful of times."""
+    template = tmp_path_factory.mktemp("schema-template") / "template.duckdb"
+    init_database_at_path(str(template))
+    return template
+
+
 @pytest.fixture(autouse=True)
-def _isolate_antiek_store(request, monkeypatch, tmp_path):
+def _isolate_antiek_store(request, monkeypatch, tmp_path, _antiek_schema_template):
     """DOGFOOD SPR-04 — hermetic store isolation (test/prod firewall).
 
     Every substrate-touching test runs against a TMP store, never the real
@@ -100,9 +112,12 @@ def _isolate_antiek_store(request, monkeypatch, tmp_path):
     monkeypatch.setenv("ANTIEK_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(tmp_db))
 
-    # Bootstrap the schema on the temp DB so substrate tables exist for
-    # tests. Mirrors the real store initialization (substrate/graph/schema.py).
-    init_database_at_path(str(tmp_db))
+    # Copy the session-bootstrapped schema template (~ms) so substrate
+    # tables exist for the test. Re-running init_database_at_path per test
+    # (72ms each) pushed the full pytest suite past the CI job timeout, so
+    # the empty schema is built once per session (per xdist worker) and
+    # copied per test.
+    shutil.copyfile(str(_antiek_schema_template), str(tmp_db))
 
     _check_store_isolated(default_db_path(), real, node_id=request.node.nodeid)
     _check_store_isolated(graph_db_path(), real, node_id=request.node.nodeid)
