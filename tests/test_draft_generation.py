@@ -76,6 +76,46 @@ def test_user_authored_block_cites_outline_block_id():
     assert ctx.blocks[0].body == "my thought"
 
 
+def test_adjacent_sections_reach_the_context_and_the_prompt():
+    """WV-SPR-01 (§10.6 coherence): adjacent sections handed to the builder
+    must land on the CreativeWriterContext AND be rendered into the prompt the
+    model actually sees — prior sections carrying their prose (so the model
+    does not repeat them), the real position instead of the 0-of-1 placeholder.
+    Without the render, threading them through the context would be inert."""
+    from roles.creative_writer.prompt import AdjacentSection, render_full_prompt
+
+    ctx = build_creative_writer_context(
+        deliverable_title="Memo", deliverable_kind="research_memo",
+        section_title="Consequences", section_index=2, section_count=3,
+        blocks=[_oblock("oblk-1", node_id="node-abc")],
+        adjacent_sections=[
+            AdjacentSection(section_index=0, title="Origins", prose_text="Origins prose."),
+            AdjacentSection(section_index=1, title="The turn", prose_text="The turn prose."),
+        ],
+        node_label_resolver=lambda nid: "resolved",
+    )
+    assert [a.title for a in ctx.adjacent_sections] == ["Origins", "The turn"]
+    assert ctx.section_index == 2 and ctx.section_count == 3
+
+    _system, user = render_full_prompt(ctx)
+    assert "Origins prose." in user  # prior prose is visible → avoid repetition
+    assert "The turn prose." in user
+    # 1-based, human-facing position — the 3rd of 3, agreeing with the "§N"
+    # neighbour labels; NOT the old "section 0 of 1" placeholder.
+    assert "section 3 of 3" in user
+
+
+def test_context_without_adjacent_sections_defaults_empty():
+    """A single-section deliverable passes no neighbours; the builder must
+    default to an empty list (not crash, not fabricate one)."""
+    ctx = build_creative_writer_context(
+        deliverable_title="T", deliverable_kind="general_essay",
+        section_title="Only", section_index=0, section_count=1,
+        blocks=[_oblock("oblk-3", node_id="n")],
+    )
+    assert ctx.adjacent_sections == []
+
+
 # ── M4 — citation validation (the moat) ────────────────────────────
 
 
