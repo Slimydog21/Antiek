@@ -49,6 +49,7 @@ from substrate.eval.groundedness.provenance import (
 )
 from substrate.eval.groundedness.scorer import (
     DEFAULT_SUPPORTED_THRESHOLD,
+    EntailmentBackend,
     lexical_entailment_score,
 )
 
@@ -144,9 +145,14 @@ def score_labeled_set(
     cases: list[LabeledCase],
     *,
     threshold: float = DEFAULT_SUPPORTED_THRESHOLD,
+    backend: EntailmentBackend = lexical_entailment_score,
 ) -> tuple[SeparationReport, list[tuple[LabeledCase, float, bool]]]:
     """Score every labeled case and compute the separation statistic.
 
+    ``backend`` defaults to the lexical proxy (the historical behavior —
+    no caller changes). Pass an alternative ``EntailmentBackend`` (e.g. the
+    NLI cross-encoder from ``substrate.eval.groundedness.nli_backend``) to
+    evaluate it on the same labeled set with the same separation statistic.
     Errors if the set has no hallucinations (non-vacuity)."""
     if not cases:
         raise LabeledSetError("labeled set is empty")
@@ -168,7 +174,7 @@ def score_labeled_set(
     for case in cases:
         resolver = mapping_chunk_text_resolver(case.chunk_texts)
         chunk_texts = [t for cid in case.cited_chunk_ids if (t := resolver(cid))]
-        score, _rationale = lexical_entailment_score(case.claim, chunk_texts)
+        score, _rationale = backend(case.claim, chunk_texts)
         supported = score >= threshold
         rows.append((case, score, supported))
         if case.label == FAITHFUL:
@@ -328,17 +334,38 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Emit machine-readable JSON instead of the human report.",
     )
+    parser.add_argument(
+        "--backend",
+        default="lexical",
+        choices=["lexical", "nli"],
+        help="Entailment backend to score with (default: lexical, the "
+        "deterministic token-overlap proxy). 'nli' uses the offline "
+        "DeBERTa-v3 cross-encoder (Groundedness Gate SPR-02) — needs the "
+        "`embedding` extra + a cached model.",
+    )
     args = parser.parse_args(argv)
 
     if not args.labeled and not args.traces:
         parser.error("provide --labeled and/or --traces")
 
+    # Resolve the backend. The default lexical path is dependency-free; the
+    # NLI path lazy-imports its deps (raises NLIModelUnavailable if absent).
+    backend: EntailmentBackend = lexical_entailment_score
+    backend_name = "lexical"
+    if args.backend == "nli":
+        from substrate.eval.groundedness.nli_backend import make_nli_backend
+        backend = make_nli_backend()
+        backend_name = "nli"
+
     out: dict[str, Any] = {}
 
     if args.labeled:
         cases = load_labeled(args.labeled)
-        report, rows = score_labeled_set(cases, threshold=args.threshold)
+        report, rows = score_labeled_set(
+            cases, threshold=args.threshold, backend=backend
+        )
         out["labeled"] = report.as_dict()
+        out["labeled"]["backend"] = backend_name
         out["labeled"]["faithful_distribution"] = _format_distribution(
             [s for c, s, _ in rows if c.label == FAITHFUL]
         )

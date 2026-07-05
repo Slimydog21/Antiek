@@ -100,7 +100,7 @@ backend (post-adversarial-review numbers):
 
 The lexical backend clears the *separation* statistics (auc, mean_gap) but
 **fails the classification bar** once the densely-cited class is included:
-**9 of 12 densely-cited hallucinations score above threshold (0.55–0.80)**,
+**11 of 12 `hallu-dch-*` hallucinations score above threshold (0.57–0.80)**,
 slipping past the gate as false positives. This is the precise blind spot
 the criterion-3 class was designed to expose — a hallucination that keeps
 the same polarity and asserts only numbers present in the evidence yet is
@@ -127,3 +127,69 @@ met — no single or small-cluster mislabel can manufacture the gap.
 
 Criterion 4 (2 weeks of live `groundedness.failed` < 1%) remains unmet and
 is unchanged by this sprint. The signal stays NON-blocking.
+
+## SPR-02 standing note (2026-07-05) — the NLI backend CLEARS the bar lexical failed
+
+A deterministic, CI-safe entailment backend landed:
+`substrate/eval/groundedness/nli_backend.py::nli_entailment_score` — a
+DeBERTa-v3-base NLI cross-encoder (`MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli`,
+pinned) wrapped to match `EntailmentBackend`. It is selectable via
+`backend=` / `--backend nli` and is exercised by the bar check.
+
+Head-to-head on the SPR-01 hard set (N=43; 13 densely-cited-tagged cases:
+the 12 `hallu-dch-*` expansion cases + the original `hallu-densely-cited-lie`):
+
+| metric | lexical | NLI |
+|---|---|---|
+| auc | 0.907 | 0.905 |
+| mean_gap | 0.351 | **0.754** |
+| threshold_accuracy | 0.674 (FAIL) | **0.884 (PASS)** |
+| densely-cited caught — `hallu-dch-*` subset (n=12) | 1/12 | **9/12** |
+| densely-cited caught — all dense-tagged (n=13) | 2/13 | **10/13** |
+
+(Catch counts reported under both subset definitions — an earlier "10/12"
+framing conflated them; the advantage is real and large under either honest
+recount.)
+
+NLI **clears criterion 2** on the hard set (criterion 1 + 3 were already met
+by SPR-01). The densely-cited blind spot — the class lexical is structurally
+blind to — is closed for 9 of 12 `hallu-dch-*` cases. **Honest residual**:
+NLI still misses 3 "true-but-misleading" cases (correlation→causation,
+temporal-shift, conditional-flatten) whose surface claim is mostly entailed;
+their falsehood is the dropped qualifier, not the surface tokens. Pinned by
+`test_nli_backend_residual_misses_are_documented_not_hidden` so a change is
+forced to acknowledge it.
+
+**Determinism** is a tested property, not a hope: `test_nli_backend_deterministic`
+asserts byte-identical `(score, rationale)` across two runs (fixed weights,
+eval/no-grad, no sampling).
+
+**CI-safety**: inference makes no outbound call (the model is a local HF
+cache). The dependency (torch/transformers/sentence-transformers) is already
+an Antiek optional extra (`embedding`), so no new heavyweight dep. The
+NLI tests skip LOUDLY (named, not silent) when the model isn't cached, so
+the default CI path stays green without the ML extra.
+
+**Default-promotion decision (NOT promoted to the live scoring default).**
+NLI clears the labeled-set bar but `DEFAULT_SCORER_ID` and the `backend=`
+defaults in `score_claim`/`score_synthesis_groundedness` are KEPT on lexical.
+Two reasons, both load-bearing:
+
+1. **Criterion 4 is still unmet.** Flipping the production default would
+   change live Phase-6 behavior (every synthesis would load a ~440MB model)
+   before 2 weeks of live `groundedness.failed < 1%` evidence exists. That
+   is the exact fake-green this document forbids. The live-default flip is
+   SPR-03 territory, behind the activation flag + criterion 4.
+2. **Two backends, two roles, nothing swappable-without-loss.** Lexical is
+   the cheap, dependency-free, instant *observability* scorer (its job);
+   NLI is the deterministic *gate-grade* scorer (its job). Promoting NLI to
+   the default would couple the observability path to the ML stack for no
+   gain until the gate actually flips.
+
+The bar check now runs against BOTH backends:
+`test_promote_bar_lexical_finds_the_gap` (lexical fails — the documented
+gap) and `test_promote_bar_nli_clears_criterion2_threshold_accuracy` (NLI
+clears). The relationship is locked in CI.
+
+Criterion 4 (live-trace stability) remains the only unmet criterion. The
+signal stays NON-blocking until it + the SPR-03 activation flag land.

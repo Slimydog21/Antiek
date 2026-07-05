@@ -31,6 +31,7 @@ from substrate.eval.groundedness.harness import (
     score_labeled_set,
 )
 from substrate.eval.groundedness.harness import main as harness_main
+from substrate.eval.groundedness.scorer import lexical_entailment_score
 
 # --- The promote-to-gate bar (PROMOTE_TO_GATE.md, criterion 1 + 2) ------------
 # Criterion 1: minimum labeled-set size.
@@ -182,8 +183,8 @@ def test_promote_bar_harness_json_exposes_all_four_metrics():
     with tempfile.NamedTemporaryFile(mode="r", suffix=".out", delete=False) as tf:
         capture_path = tf.name
     try:
-        import io
         import contextlib
+        import io
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -205,3 +206,96 @@ def test_promote_bar_harness_json_exposes_all_four_metrics():
             )
     finally:
         Path(capture_path).unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------------------
+# SPR-02: the NLI backend clears the bar lexical failed. (Groundedness Gate
+# SPR-02.) These tests are skipped honestly when the NLI model isn't cached —
+# the default CI path stays green without the optional ML extra, but the skip
+# is loud (names what wasn't run), never silent.
+# ---------------------------------------------------------------------------
+
+
+def _nli_available() -> bool:
+    try:
+        from substrate.eval.groundedness.nli_backend import (  # noqa: F401
+            NLIModelUnavailable,
+            nli_entailment_score,
+        )
+    except ImportError:
+        return False
+    try:
+        from substrate.eval.groundedness.nli_backend import nli_entailment_score
+        nli_entailment_score("probe claim", ["probe evidence text"])
+        return True
+    except Exception:
+        return False
+
+
+_NLI_OK = _nli_available()
+_NLI_SKIP = pytest.mark.skipif(
+    not _NLI_OK,
+    reason=(
+        "NLI backend unavailable (deps missing or model "
+        "MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli not cached). Install "
+        "the `embedding` extra and `huggingface-cli download` the model."
+    ),
+)
+
+
+@_NLI_SKIP
+def test_promote_bar_nli_clears_criterion2_threshold_accuracy():
+    """SPR-02 closes the SPR-01 gap. The NLI backend clears the
+    threshold_accuracy leg of criterion 2 on the hard set — the exact bar the
+    lexical backend fails (see test_promote_bar_lexical_finds_the_gap). This
+    is the positive assertion that the deterministic entailment backend
+    earns its place; if it regresses below 0.85, the densely-cited blind spot
+    is back and the gate must NOT flip to NLI."""
+    from substrate.eval.groundedness.nli_backend import nli_entailment_score
+
+    cases = load_labeled(str(_LABELED_FIXTURE))
+    report, _ = score_labeled_set(cases, backend=nli_entailment_score)
+    assert report.threshold_accuracy >= MIN_THRESHOLD_ACCURACY, (
+        f"SPR-02 regression: NLI threshold_accuracy {report.threshold_accuracy:.4f} "
+        f"< {MIN_THRESHOLD_ACCURACY}. The deterministic entailment backend no "
+        "longer clears the bar — either the model changed or the hard set grew."
+    )
+    # And the full bar holds under NLI.
+    assert report.auc >= MIN_AUC
+    assert report.mean_gap >= MIN_MEAN_GAP
+
+
+@_NLI_SKIP
+def test_promote_bar_nli_beats_lexical_on_densely_cited_subset():
+    """The whole justification for the NLI backend's existence: on the
+    densely-cited-hallucination subset (where lexical is blind), NLI scores
+    the hallucinations BELOW threshold where lexical scored them above. A
+    head-to-head delta — if NLI stops beating lexical on this subset, the
+    added ML dependency no longer earns its place."""
+    from substrate.eval.groundedness.nli_backend import nli_entailment_score
+
+    cases = load_labeled(str(_LABELED_FIXTURE))
+    # Score both backends on the densely-cited subset only.
+    dense = [c for c in cases if DENSELY_CITED_MARKER in c.note.upper()]
+    assert len(dense) >= MIN_DENSELY_CITED
+    lex_caught = nli_caught = 0
+    for c in dense:
+        chunks = [c.chunk_texts[cid] for cid in c.cited_chunk_ids if cid in c.chunk_texts]
+        lex_s, _ = lexical_entailment_score(c.claim, chunks)
+        nli_s, _ = nli_entailment_score(c.claim, chunks)
+        if lex_s < report_threshold():
+            lex_caught += 1
+        if nli_s < report_threshold():
+            nli_caught += 1
+    assert nli_caught > lex_caught, (
+        f"NLI no longer beats lexical on the densely-cited subset "
+        f"(nli={nli_caught}/{len(dense)} vs lex={lex_caught}/{len(dense)}). "
+        "The entailment backend's catch-rate advantage has vanished — its "
+        "added ML dependency is no longer justified."
+    )
+
+
+def report_threshold() -> float:
+    """The supported threshold the bar is measured at (0.50). Exposed as a
+    helper so the head-to-head test reads one constant, not a magic number."""
+    return 0.50
