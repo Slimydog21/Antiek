@@ -35,6 +35,44 @@ strict on over 559 files on day one would have been pure flag-day pain
 for no regression caught. The baseline keeps that same caution — zero
 retroactive block — while still closing the declared-vs-enforced gap.)
 
+## Content-keyed matching (line-shift robustness)
+
+A baseline entry is the *same grandfathered offense* if it matches on
+`(path, line, col, kind)` OR — when both sides carry a normalized source
+**`snippet`** — on `(path, kind, snippet)`. The snippet fallback exists
+because of one mechanical fact: **any mid-file insertion shifts every
+baselined violation downstream of it to a new line number**, and a pure
+`(path, line, col, kind)` key would then report that *unchanged* offense
+as NEW. That is a phantom red — the same debt, moved — not a regression.
+
+This is **not** a widening of the allow-list and **not** a re-mint:
+
+- The grandfathered `(path, line, col, kind)` set is untouched. Snippets
+  are an *additive* field; entries without one (the substrate-lint
+  baselines, and any v1 entry) match on exact line exactly as before.
+- A shifted offense matches by snippet because its source line is
+  byte-identical to the baselined one — it is the same debt, recognized
+  correctly instead of re-reported.
+- The burn-down rule still holds absolutely: a NEW offense on a source
+  line the baseline has never seen is still NEW. The only thing snippet
+  matching can suppress is an offense whose normalized source line
+  already exists in the baseline under the same `(path, kind)` — i.e. the
+  same debt. (The kind constraint bounds the collision risk to a
+  verbatim-duplicate of an existing offending line of the same type,
+  which is itself the same debt.)
+
+`capture` and `enforce` both read the current source line for each
+violation and stamp its `snippet` automatically. To enrich an **existing**
+baseline in place without re-running the tool (the set-preserving
+one-time migration), use the `enrich` subcommand — it adds snippets and
+leaves `(path, line, col, kind)`, `lint`, `schema_version` and
+`generated_at` byte-identical, then expects `enforce` to stay green on an
+unmodified tree::
+
+    python -m tools.lints.declared_bar enrich mypy \
+        --baseline-file tools/lints/baselines/declared_mypy.json
+
+
 ## The dated baselines (snapshot: foundation-v2 rebase base `f9c8b50` + 2026-06-02 initial-floor re-baseline)
 
 These two baselines are consumed by `tools/lints/declared_bar.py` and the

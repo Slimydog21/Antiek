@@ -177,3 +177,169 @@ def test_find_stale_entries_empty_when_nothing_fixed() -> None:
         schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[a],
     )
     assert find_stale_baseline_entries(current=[a], baseline=baseline) == []
+
+
+# ----- content-keyed matching (line-shift defect fix) -------------------
+
+def test_filter_content_fallback_recognizes_shifted_offense() -> None:
+    """A baselined offense that shifted line (mid-file insertion above it)
+    is the SAME grandfathered debt — not NEW — when its source snippet
+    matches a baseline entry of the same (path, kind)."""
+    base = ViolationKey(path="a.py", line=10, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    shifted = ViolationKey(path="a.py", line=20, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[base]
+    )
+    assert filter_to_new_only([shifted], baseline) == []
+
+
+def test_filter_does_not_mask_genuine_new_violation() -> None:
+    """A genuinely new offense on a different source line is still NEW even
+    when snippet matching is active (the no-mask safety property)."""
+    base = ViolationKey(path="a.py", line=10, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    genuine = ViolationKey(path="a.py", line=20, col=0, kind="mypy:arg-type", snippet="y = worse()")
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[base]
+    )
+    assert filter_to_new_only([genuine], baseline) == [genuine]
+
+
+def test_filter_content_fallback_requires_kind_match() -> None:
+    """Identical source text but a DIFFERENT violation kind is NOT the same
+    offense → still NEW. The kind constraint bounds the content-keying
+    collision risk."""
+    base = ViolationKey(path="a.py", line=10, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    other = ViolationKey(path="a.py", line=20, col=0, kind="mypy:no-untyped-def", snippet="x = bad()")
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[base]
+    )
+    assert filter_to_new_only([other], baseline) == [other]
+
+
+def test_filter_no_snippet_is_exact_line_only_v1_compat() -> None:
+    """Substrate-lint / v1 baselines carry no snippet → matching is exact-line
+    only, byte-identical to the pre-content-keying behavior (a shifted offense
+    with no snippet is still reported NEW)."""
+    base = ViolationKey(path="a.py", line=10, col=0, kind="mypy:arg-type")
+    shifted = ViolationKey(path="a.py", line=20, col=0, kind="mypy:arg-type")
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[base]
+    )
+    assert filter_to_new_only([shifted], baseline) == [shifted]
+
+
+def test_find_stale_shifted_offense_is_not_stale() -> None:
+    """A shifted offense still reproduces (lower in the file) → not stale, so
+    the burn-down loop won't drop still-live debt."""
+    base = ViolationKey(path="a.py", line=10, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    shifted = ViolationKey(path="a.py", line=20, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[base]
+    )
+    assert find_stale_baseline_entries(current=[shifted], baseline=baseline) == []
+
+
+def test_snippet_round_trips_through_json(tmp_path: Path) -> None:
+    v = ViolationKey(path="a.py", line=3, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    out = tmp_path / "b.json"
+    write_baseline(out, lint="t", violations=[v])
+    data = json.loads(out.read_text())
+    assert data["violations"][0]["snippet"] == "x = bad()"
+    assert load_baseline(out).violations == [v]
+
+
+def test_snippetless_entries_serialize_without_snippet_field(tmp_path: Path) -> None:
+    """Snippet-free entries (substrate baselines) stay byte-identical: no
+    empty 'snippet' key is written."""
+    v = ViolationKey(path="a.py", line=3, col=0, kind="raise:Foo")
+    out = tmp_path / "b.json"
+    write_baseline(out, lint="t", violations=[v])
+    assert "snippet" not in json.loads(out.read_text())["violations"][0]
+
+# ----- one-to-one matching: grok (Composer 2.5) adversarial finding (cycle 26) -----
+
+def test_filter_one_to_one_new_duplicate_beyond_count_is_new() -> None:
+    """A NEW duplicate of a baselined boilerplate line (e.g. a second
+    ``r.raise_for_status()`` in new code) is NOT masked once the single
+    grandfathered slot is consumed. This is the case a set-based snippet
+    fallback would mask and that one-to-one matching closes."""
+    base = ViolationKey(path="a.py", line=40, col=0, kind="mypy:no-untyped-def",
+                        snippet="def _send() -> httpx.Response:")
+    shifted = ViolationKey(path="a.py", line=45, col=0, kind="mypy:no-untyped-def",
+                           snippet="def _send() -> httpx.Response:")
+    duplicate = ViolationKey(path="a.py", line=200, col=0, kind="mypy:no-untyped-def",
+                             snippet="def _send() -> httpx.Response:")
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[base]
+    )
+    # The shifted occurrence consumes the one slot; the duplicate is NEW.
+    result = filter_to_new_only([shifted, duplicate], baseline)
+    assert result == [duplicate]
+
+
+def test_filter_grandfathered_duplicates_cover_up_to_count() -> None:
+    """If the baseline grandfathers N copies of a snippet, up to N current
+    occurrences are covered (honest debt), the (N+1)th is NEW."""
+    b1 = ViolationKey(path="a.py", line=40, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    b2 = ViolationKey(path="a.py", line=60, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    c1 = ViolationKey(path="a.py", line=140, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    c2 = ViolationKey(path="a.py", line=160, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    c3 = ViolationKey(path="a.py", line=180, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[b1, b2]
+    )
+    assert filter_to_new_only([c1, c2, c3], baseline) == [c3]
+
+
+def test_find_stale_one_to_one_mirror() -> None:
+    """A baseline slot whose twin is still-live (consumed) is NOT stale."""
+    base = ViolationKey(path="a.py", line=40, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    live_shifted = ViolationKey(path="a.py", line=140, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[base]
+    )
+    assert find_stale_baseline_entries(current=[live_shifted], baseline=baseline) == []
+
+
+def test_filter_exact_match_consumes_slot_so_new_duplicate_is_new() -> None:
+    """The grandfathered offense STAYS at its exact baseline line AND a NEW
+    verbatim duplicate appears elsewhere. The exact match must release the
+    snippet slot, else the duplicate hides behind a slot the exact match
+    never consumed. This is the exact-match variant of the verbatim-
+    duplicate masking vector (the line-shift variant is covered above)."""
+    snippet = "def _send() -> httpx.Response:"
+    base = ViolationKey(
+        path="a.py", line=40, col=0, kind="mypy:no-untyped-def", snippet=snippet
+    )
+    original = ViolationKey(
+        path="a.py", line=40, col=0, kind="mypy:no-untyped-def", snippet=snippet
+    )
+    duplicate = ViolationKey(
+        path="a.py", line=200, col=0, kind="mypy:no-untyped-def", snippet=snippet
+    )
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[base]
+    )
+    assert filter_to_new_only([original, duplicate], baseline) == [duplicate]
+
+
+def test_find_stale_exact_match_consumes_slot_so_extra_entry_is_stale() -> None:
+    """Mirror: the baseline grandfathers two copies of a snippet but only one
+    is still live at its exact line; the second was removed. The exact match
+    must consume the live finding's slot, else the removed entry hides behind
+    it and is wrongly reported not-stale (blocking honest burn-down)."""
+    snippet = "x = bad()"
+    b1 = ViolationKey(
+        path="a.py", line=40, col=0, kind="mypy:arg-type", snippet=snippet
+    )
+    b2 = ViolationKey(
+        path="a.py", line=60, col=0, kind="mypy:arg-type", snippet=snippet
+    )
+    live = ViolationKey(
+        path="a.py", line=40, col=0, kind="mypy:arg-type", snippet=snippet
+    )
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[b1, b2]
+    )
+    assert find_stale_baseline_entries(current=[live], baseline=baseline) == [b2]
+
