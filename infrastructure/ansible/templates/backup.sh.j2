@@ -64,6 +64,33 @@ con.execute("EXPORT DATABASE '${STAGING}/duckdb' (FORMAT PARQUET);")
 con.close()
 PY
 
+# ── 1b. Normalize EXPORT schema.sql (DuckDB self-ref-FK stray-comma bug) ──
+# DuckDB EXPORT drops a self-referential FK but leaves a stray comma in
+# schema.sql, which makes the inverse IMPORT DATABASE raise
+# "syntax error at or near ','" on the real schema (edges.superseded_by,
+# deliverable_sections.parent_section_id). The documented DR restore
+# (runbooks/disaster-recovery.md) IS IMPORT DATABASE, so without this step
+# the nightly backup is non-restorable. The normalizer is depth/string-
+# aware and only removes commas that are never valid inside CREATE TABLE
+# (see specs/antiek-data-durability + tests/test_backup_normalize_schema.py).
+# Loaded by file path so the backup does not depend on the tools/ package
+# layout or import-time side effects.
+echo "${LOG_PREFIX} normalizing EXPORT schema.sql (self-ref-FK stray-comma fix)"
+sudo -u {{ antiek_user }} {{ antiek_install_dir }}/.venv/bin/python3 - <<PY
+import importlib.util
+_p = "{{ antiek_install_dir }}/tools/backup_normalize_schema.py"
+_spec = importlib.util.spec_from_file_location("backup_normalize_schema", _p)
+_mod = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_mod)
+_s = "${STAGING}/duckdb/schema.sql"
+with open(_s) as _f: _raw = _f.read()
+_fixed = _mod.normalize_exported_schema_sql(_raw)
+if _fixed != _raw:
+    with open(_s, "w") as _f: _f.write(_fixed)
+    print("  schema.sql normalized (stray commas removed)")
+else:
+    print("  schema.sql already clean (no-op)")
+PY
+
 # ── 2. Event log (append-only, safe to rsync live) ────────────────────────
 if [[ -d "${STATE_DIR}/research_events" ]]; then
     echo "${LOG_PREFIX} rsync event log"
