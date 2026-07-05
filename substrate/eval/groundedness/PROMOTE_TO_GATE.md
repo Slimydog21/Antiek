@@ -86,3 +86,44 @@ and **criterion 4 (live-trace stability) is unmet** — so the signal
 correctly remains NON-blocking. Expanding the labeled set to N = 40 with
 N_hallucinated ≥ 15 and accruing 2 weeks of live `groundedness.scored`
 traces is the work that earns the gate.
+
+## SPR-01 standing note (2026-07-05) — the lexical backend FAILS the bar on the hard set
+
+The labeled set was expanded to **N = 43** (16 faithful / 27 hallucinated,
+**12 of the densely-cited-hallucination class**) — criterions 1 and 3 are
+now MET. The criterion-2 verdict, measured honestly on the default lexical
+backend (post-adversarial-review numbers):
+
+- `auc = 0.907` — **CLEARS** `0.85`
+- `mean_gap = 0.351` — **CLEARS** `0.30`
+- `threshold_accuracy = 0.674` — **FAILS** `0.85`
+
+The lexical backend clears the *separation* statistics (auc, mean_gap) but
+**fails the classification bar** once the densely-cited class is included:
+**9 of 12 densely-cited hallucinations score above threshold (0.55–0.80)**,
+slipping past the gate as false positives. This is the precise blind spot
+the criterion-3 class was designed to expose — a hallucination that keeps
+the same polarity and asserts only numbers present in the evidence yet is
+false via a subject-swap (mRNA/siRNA), causal lift (correlation→causation,
+measurement-method→cause), unsupported superlative, unit-class confusion
+(milli/micro), aggregation error (per-turbine vs combined), dropped
+precondition/qualifier, or composition fallacy (cell→pack). Token-overlap
+cannot see any of those; all are documented LLM synthesis failure modes.
+
+**This is the load-bearing justification for SPR-02** (a CI-safe entailment
+backend). The cheap lexical proxy is observability-grade, not gate-grade;
+promoting it to merge-blocking on these numbers would be the exact fake-green
+this document forbids. The bar-check test
+(`tests/test_groundedness_promote_bar.py`) encodes this finding as a strict
+`xfail` on the threshold_accuracy leg plus a regression guard that fails if
+the gap closes without a real entailment backend landing.
+
+The finding survived a heterogeneous adversarial review (separate judging
+lineage, default-to-refuted, 8 claims checked against the machine):
+**7 SOUND / 0 REFUTED / 1 UNCERTAIN (generalization strength, since
+addressed)**. The reviewer's load-bearing observation: the threshold_accuracy
+finding is robust to **7 simultaneous label-flips** before the bar would be
+met — no single or small-cluster mislabel can manufacture the gap.
+
+Criterion 4 (2 weeks of live `groundedness.failed` < 1%) remains unmet and
+is unchanged by this sprint. The signal stays NON-blocking.
