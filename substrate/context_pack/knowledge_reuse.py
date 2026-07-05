@@ -202,24 +202,51 @@ class RetrievedUnit:
 
     unit: Any                 # KnowledgeUnitContract (imported lazily; see below)
     similarity: float         # cosine vs the question text; the REAL score
+    # D2 (owner-private reuse): the DOCUMENT-SIDE content_class + taken_down of
+    # the unit's source, stamped at retrieval from the documents/book_assets
+    # join. These are the OWNER-READ track inputs — distinct from the serve-side
+    # ServabilityTag, which collapses personal_reading→None. NULL here ⇒ the
+    # owner cannot lawfully reuse the unit (deny-by-default, same as public).
+    content_class: str | None = None
+    taken_down: bool = False
 
     @property
     def unit_id(self) -> str:
-        return self.unit.node_id
+        return str(self.unit.node_id)
 
     @property
     def source_investigation_id(self) -> str:
-        return self.unit.investigation_id
+        return str(self.unit.investigation_id)
 
     @property
     def text(self) -> str:
-        return self.unit.text
+        return str(self.unit.text)
 
     @property
     def serves_full_text(self) -> bool:
-        """The §9.0 deny-by-default answer recorded on the unit at deposit.
-        Read, never re-derived (the classifier is the single owner)."""
+        """The §9.0 PUBLIC deny-by-default answer recorded on the unit at
+        deposit. Read, never re-derived (the classifier is the single owner).
+        This is the PUBLIC-audience bar; the owner-private audience uses
+        ``owner_readable`` instead (D2)."""
         return bool(self.unit.servability.serves_full_text)
+
+    @property
+    def owner_readable(self) -> bool:
+        """The OWNER-READ track (D2): True iff the unit's SOURCE document
+        content_class is in PERSONAL_READABLE_CONTENT_CLASSES (servable ∪
+        personal_reading) AND the source is NOT taken_down. The owner reads
+        personal_reading in full on the privileged path (the ``owner`` switch
+        in books/serve.py), so reusing an insight derived from it in a PRIVATE
+        investigation is consistent with the rights the owner already holds.
+        This widens nothing publicly — it is consumed ONLY on the gate's
+        ``owner=True`` branch. NULL/restricted/taken-down ⇒ False: the owner
+        cannot lawfully reuse what they cannot read (deny-by-default)."""
+        from substrate.constants import PERSONAL_READABLE_CONTENT_CLASSES
+
+        return (
+            not self.taken_down
+            and self.content_class in PERSONAL_READABLE_CONTENT_CLASSES
+        )
 
 
 @dataclass(frozen=True)
@@ -254,7 +281,7 @@ class ReuseCoverage:
     dropped_not_servable: int
     dropped_over_budget: int
     dropped_low_relevance: int
-    dropped_by_trust_gate: int = 0   # SPR-08: removed by the groundedness/§9.0 gate before the partition
+    dropped_by_trust_gate: int = 0  # SPR-08: removed by the trust gate pre-partition
 
     @property
     def fully_covered(self) -> bool:
@@ -354,15 +381,18 @@ def retrieve_prior_units(
 
     try:
         rows = con.execute(
-            f"SELECT node_id, content_class_of_unit.content_class, similarity FROM ("
+            f"SELECT node_id, content_class_of_unit.content_class, "
+            f"       content_class_of_unit.taken_down, similarity FROM ("
             f"  SELECT node_id, {sim_expr} AS similarity "
             f"  FROM nodes "
             f"  WHERE node_type IN ('insight', 'question') AND embedding IS NOT NULL "
             f"  ORDER BY similarity DESC, node_id ASC LIMIT ?"
             f") AS ranked "
             f"LEFT JOIN ("
-            f"  SELECT e.source_node_id AS nid, d.content_class AS content_class "
+            f"  SELECT e.source_node_id AS nid, d.content_class AS content_class, "
+            f"         COALESCE(b.taken_down, FALSE) AS taken_down "
             f"  FROM edges e JOIN documents d ON e.source_document_id = d.document_id "
+            f"  LEFT JOIN book_assets b ON d.document_id = b.document_id "
             f"  WHERE e.relation = 'supported_by' AND e.source_document_id IS NOT NULL"
             f") AS content_class_of_unit ON ranked.node_id = content_class_of_unit.nid",
             [int(limit)],
@@ -372,7 +402,7 @@ def retrieve_prior_units(
         # edge; fall back to a plain node-similarity scan (content_class then
         # resolves via knowledge_unit_of's metadata fallback / None).
         rows = [
-            (r[0], None, r[1])
+            (r[0], None, False, r[1])
             for r in con.execute(
                 f"SELECT node_id, {sim_expr} AS similarity FROM nodes "
                 f"WHERE node_type IN ('insight', 'question') AND embedding IS NOT NULL "
@@ -382,7 +412,7 @@ def retrieve_prior_units(
         ]
 
     out: list[RetrievedUnit] = []
-    for node_id, content_class, similarity in rows:
+    for node_id, content_class, taken_down, similarity in rows:
         try:
             # SPR-08: fill the groundedness slot at projection time (Decision B),
             # scoring the unit against its cited chunk text over THIS same read
@@ -397,7 +427,15 @@ def retrieve_prior_units(
             # knowledge unit (knowledge_unit_of raises). Skip it honestly rather
             # than inject an ungrounded fragment.
             continue
-        out.append(RetrievedUnit(unit=unit, similarity=float(similarity or 0.0)))
+        # D2: stamp the DOCUMENT-SIDE content_class + taken_down so the trust
+        # gate's owner-private branch (owner_readable) can admit a personal_reading-
+        # derived unit on the owner path without touching the public bar.
+        out.append(RetrievedUnit(
+            unit=unit,
+            similarity=float(similarity or 0.0),
+            content_class=content_class,
+            taken_down=bool(taken_down),
+        ))
 
     # Stable order: similarity desc, then unit id asc (deterministic ties).
     out.sort(key=lambda ru: (-ru.similarity, ru.unit_id))
@@ -620,6 +658,7 @@ def assemble_context_pack_with_reuse(
     apply_trust_gate: bool = True,
     reuse_threshold: float | None = None,
     chunk_text_for: Any | None = None,
+    owner: bool = False,
 ) -> PackWithReuse:
     """Assemble a context pack with prior knowledge units injected as a single
     reuse layer, then emit ONE ``knowledge.reused`` event recording the decision.
@@ -683,6 +722,7 @@ def assemble_context_pack_with_reuse(
             threshold=threshold,
             chunk_text_for=chunk_text_for,
             emit=False,  # deferred — emitted post-assembly with the pack id
+            owner=owner,
         )
 
     coverage = ReuseCoverage(

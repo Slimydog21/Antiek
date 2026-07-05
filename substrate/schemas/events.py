@@ -942,7 +942,7 @@ class KnowledgeReusedPayload(_PayloadBase):
 # single excluded unit may carry BOTH (a non-servable unit that is also below
 # threshold). The two are INDEPENDENT conditions; the event lists every reason
 # that applied so a reader can tell a trust failure from a §9.0 refusal.
-ReuseGateReason = Literal["below-threshold", "non-servable"]
+ReuseGateReason = Literal["below-threshold", "non-servable", "non-owner-readable"]
 
 
 class ReuseGatedPayload(_PayloadBase):
