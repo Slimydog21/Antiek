@@ -1202,7 +1202,7 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
                 "patched" if result.any_patched
                 else ("no_match" if not result.domains_matched else "failed")
             )
-            with contextlib.suppress(Exception):  # pragma: no cover — diagnostic only
+            try:
                 _emit(
                     ctx.investigation_id,
                     AutoPatchAppliedPayload(
@@ -1217,6 +1217,18 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
                     role="auto_patch",
                     policy_id="orchestrator-deterministic",
                 )
+            except Exception:  # diagnostic emit is best-effort — never fail the phase
+                # A swallowed AUTO_PATCH_APPLIED emit lets phase_audit later
+                # mint a FALSE `no_auto_patch` critical finding, so this loss
+                # must not be silent. The trace is itself guarded so a broken
+                # log channel cannot turn a best-effort emit into a phase fail.
+                with contextlib.suppress(Exception):
+                    _log.exception(
+                        "phase-8 auto_patch AUTO_PATCH_APPLIED emit failed for "
+                        "%s (status=%s); phase_audit may later report a false "
+                        "no_auto_patch finding",
+                        ctx.investigation_id, status,
+                    )
     return await _drive_phase(ctx, phase=8, work=work())
 
 
@@ -1334,8 +1346,15 @@ async def run_synthesis_tail_from_pack(
                 role="orchestrator",
                 policy_id="orchestrator-cascade-tail",
             )
-            with contextlib.suppress(Exception):  # pragma: no cover
+            try:
                 audit_phase_log(ctx.investigation_id, emit=True)
+            except Exception:  # audit diagnostics are best-effort
+                with contextlib.suppress(Exception):
+                    _log.exception(
+                        "audit_phase_log diagnostics failed for %s on the "
+                        "cascade-tail path (audit is best-effort; run continues)",
+                        ctx.investigation_id,
+                    )
             return ctx
 
     try:
@@ -1428,8 +1447,19 @@ async def _run_investigation(
                 policy_id="orchestrator-deterministic",
             )
             # Audit the failure path so dashboards surface the gap.
-            with contextlib.suppress(Exception):  # pragma: no cover — diagnostic
+            try:
                 audit_phase_log(ctx.investigation_id, emit=True)
+            except Exception:  # audit diagnostics are best-effort
+                # The comment above promises dashboards surface the gap; a
+                # silently-swallowed audit call would break exactly that. The
+                # trace is guarded so a broken log channel can't break the path.
+                with contextlib.suppress(Exception):
+                    _log.exception(
+                        "audit_phase_log diagnostics failed for %s on the "
+                        "investigation-failed path (audit is best-effort; "
+                        "run continues)",
+                        ctx.investigation_id,
+                    )
             return
 
     # Phase 9: assert completion-ready + DeepResearchComplete contract.

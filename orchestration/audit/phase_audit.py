@@ -29,6 +29,7 @@ phase transitions to surface gaps before they compound.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 from dataclasses import dataclass
@@ -169,7 +170,17 @@ def _check_auto_patch_for_phase_8(
             continue
         try:
             e = Event.model_validate(row)
-        except Exception:
+        except Exception as exc:
+            # A skipped AUTO_PATCH_APPLIED row can flip this check to a false
+            # `no_auto_patch` critical (the patched row it needed was dropped),
+            # so surface it (matching the module's stderr idiom below). Guarded
+            # so a broken stderr can't turn a skipped row into a raise.
+            with contextlib.suppress(Exception):
+                print(
+                    f"audit_phase_log: malformed AUTO_PATCH_APPLIED row "
+                    f"skipped for {investigation_id}: {exc!r}",
+                    file=sys.stderr,
+                )
             continue
         if isinstance(e.payload, AutoPatchAppliedPayload) and e.payload.patched:
             return []  # at least one patched domain — gate satisfied
