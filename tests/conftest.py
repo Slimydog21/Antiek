@@ -31,6 +31,7 @@ from runtime.test_store_guard import real_operator_graph_db_path
 from substrate.dispatch.breaker import default_breaker
 from substrate.graph import default_db_path
 from substrate.graph.insight_question import graph_db_path
+from substrate.graph.schema import init_database_at_path
 
 
 def _real_store_path() -> str:
@@ -88,14 +89,21 @@ def _isolate_antiek_store(request, monkeypatch, tmp_path):
     intentionally ``delenv('ANTIEK_DUCKDB_PATH')`` to probe env fallback.
     """
     if request.node.get_closest_marker("real_store_read"):
+        yield
         return
     if request.node.get_closest_marker("store_isolation_contract"):
+        yield
         return
     real = _real_store_path()
     tmp_db = tmp_path / "graph.duckdb"
     monkeypatch.setenv("ANTIEK_ENFORCE_TEST_STORE_ISOLATION", "1")
     monkeypatch.setenv("ANTIEK_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(tmp_db))
+
+    # Bootstrap the schema on the temp DB so substrate tables exist for
+    # tests. Mirrors the real store initialization (substrate/graph/schema.py).
+    init_database_at_path(str(tmp_db))
+
     _check_store_isolated(default_db_path(), real, node_id=request.node.nodeid)
     _check_store_isolated(graph_db_path(), real, node_id=request.node.nodeid)
     yield

@@ -162,6 +162,17 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
         # write files"; it never returns a body to a caller. Same internal-auditor
         # category as substrate/corpus_audit.py above.
         "tools/source_census.py",
+        # The test-residue quarantine tool (DOGFOOD SPR-04) opens the DB
+        # READ-ONLY and reads only nodes/edges. Its `documents` references are
+        # existence-check subqueries (SELECT document_id FROM documents), never
+        # a raw_text body read, and the tool has no serve surface. The scanner's
+        # STAR_FROM_DOCUMENTS_RE false-positives here: with re.DOTALL, `.*?`
+        # stretches from `SELECT * FROM nodes` across the WHERE clause to match
+        # the subquery's `FROM documents`, flagging a star body-read that does
+        # not exist. TODO(scanner): tighten the regex to a same-level FROM
+        # documents (no WHERE in between) so subqueries do not trip it; tracked
+        # separately from this PR.
+        "tools/quarantine_test_residue.py",
     }
 )
 
