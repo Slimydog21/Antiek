@@ -102,7 +102,8 @@ def test_real_schema_normalized_export_imports_with_data_and_constraints(tmp_pat
     exp = str(tmp_path / "export")
     _export(src, exp)
     schema_path = os.path.join(exp, "schema.sql")
-    raw = open(schema_path).read()
+    with open(schema_path) as f:
+        raw = f.read()
 
     # negative control: the UN-normalized EXPORT does NOT import (the bug)
     with pytest.raises(duckdb.Error):
@@ -111,7 +112,8 @@ def test_real_schema_normalized_export_imports_with_data_and_constraints(tmp_pat
         )
 
     # normalize + import
-    open(schema_path, "w").write(normalize_exported_schema_sql(raw))
+    with open(schema_path, "w") as f:
+        f.write(normalize_exported_schema_sql(raw))
     restored = str(tmp_path / "restored.duckdb")
     r = duckdb.connect(restored)
     try:
