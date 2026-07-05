@@ -32,6 +32,8 @@ from middleware.supersession.supersession import (  # noqa: E402
 from runtime.db_lock import connect_write  # noqa: E402
 from substrate.graph.schema import (  # noqa: E402
     ANTIEK_GRAPH_SCHEMA_V14_SUPERSESSION_CANDIDATES_SQL as _V14_SQL,
+)
+from substrate.graph.schema import (  # noqa: E402
     SCHEMA_TABLES,
     init_database_at_path,
     list_tables,
@@ -100,9 +102,8 @@ def test_valid_row_inserts(db_path):
     ],
 )
 def test_check_rejects_bad_value(db_path, field, bad):
-    with connect_write(db_path, purpose="test") as con:
-        with pytest.raises(duckdb.ConstraintException):
-            _insert(con, **{field: bad})
+    with connect_write(db_path, purpose="test") as con, pytest.raises(duckdb.ConstraintException):
+        _insert(con, **{field: bad})
 
 
 def test_check_sets_match_python_frozensets():

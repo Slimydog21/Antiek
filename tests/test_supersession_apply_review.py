@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
-from datetime import UTC, datetime
+from datetime import datetime
 
 import duckdb
 import pytest
@@ -142,12 +142,10 @@ def test_reapply_raises_and_does_not_double_mutate(db_path):
 
 def test_invalid_decision_raises(db_path):
     cid = _seed_and_detect(db_path)
-    with connect_write(db_path, purpose="test") as con:
-        with pytest.raises(ValueError):
-            apply_review(con, cid, "NOT_A_DECISION", "op")
+    with connect_write(db_path, purpose="test") as con, pytest.raises(ValueError):
+        apply_review(con, cid, "NOT_A_DECISION", "op")
 
 
 def test_unknown_candidate_raises(db_path):
-    with connect_write(db_path, purpose="test") as con:
-        with pytest.raises(ValueError):
-            apply_review(con, "no-such-candidate", "coexist", "op")
+    with connect_write(db_path, purpose="test") as con, pytest.raises(ValueError):
+        apply_review(con, "no-such-candidate", "coexist", "op")
