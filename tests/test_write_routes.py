@@ -387,3 +387,66 @@ def test_xray_reads_persisted_provenance_via_get_deliverable(client, seed):
     prov = client.get(f"/write/blocks/{blk}/provenance").json()
     assert prov["status"] == "resolved"
     assert prov["document_id"] == seed["document"]
+
+
+# ── GPW SPR-04 — the deliverable export carries its provenance (JSON floor) ──
+
+
+def test_export_json_carries_prose_provenance(client, seed):
+    """The /deliverables/{id}/export?format=json bundle must include each
+    section's prose_provenance (the paragraph→blocks map the substrate stores),
+    instead of stripping all attribution from the sellable artifact. NULL
+    provenance surfaces as None, never fabricated."""
+    import json
+
+    from substrate.graph.ops import update_section_prose
+
+    sec, node, did = seed["section_id"], seed["node"], seed["deliverable_id"]
+    with connect_write(default_db_path(), purpose="test/seed-prov") as con:
+        update_section_prose(
+            con, section_id=sec, prose_text="the finding",
+            prose_provenance={0: [node]},
+        )
+
+    r = client.get(f"/deliverables/{did}/export", params={"format": "json"})
+    assert r.status_code == 200, r.text
+    bundle = json.loads(r.json()["content"])
+    section = next(s for s in bundle["sections"] if s["title"] == "S1")
+    assert section["prose_provenance"] == {"0": [node]}  # carried, not stripped
+
+
+def test_export_json_null_provenance_is_none_not_fabricated(client, seed):
+    """A section with no stored provenance exports prose_provenance: null —
+    honest absence, never an invented source."""
+    import json
+
+    did = seed["deliverable_id"]
+    r = client.get(f"/deliverables/{did}/export", params={"format": "json"})
+    assert r.status_code == 200, r.text
+    bundle = json.loads(r.json()["content"])
+    section = next(s for s in bundle["sections"] if s["title"] == "S1")
+    assert section["prose_provenance"] is None
+
+
+def test_export_json_no_misattribution_across_colliding_section_index(client, seed):
+    """section_index is NOT unique per deliverable (only section_id is; several
+    callers hardcode index 0). Two sections sharing an index must each carry
+    THEIR OWN provenance in the JSON export — the provenanced one keeps its map,
+    the NULL one stays None (no fabrication, no cross-section bleed)."""
+    import json
+
+    from substrate.graph.ops import insert_section, update_section_prose
+
+    node, did = seed["node"], seed["deliverable_id"]
+    with connect_write(default_db_path(), purpose="test/collide") as con:
+        # A SECOND section at the SAME section_index (0) as the seed's "S1".
+        sec2 = insert_section(con, deliverable_id=did, section_index=0, title="S2")
+        update_section_prose(con, section_id=sec2, prose_text="p2", prose_provenance={0: [node]})
+        # seed's "S1" section keeps NULL provenance.
+
+    r = client.get(f"/deliverables/{did}/export", params={"format": "json"})
+    assert r.status_code == 200, r.text
+    bundle = json.loads(r.json()["content"])
+    by_title = {s["title"]: s for s in bundle["sections"]}
+    assert by_title["S2"]["prose_provenance"] == {"0": [node]}  # keeps its own
+    assert by_title["S1"]["prose_provenance"] is None            # NOT fabricated from S2
