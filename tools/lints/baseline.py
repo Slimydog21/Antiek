@@ -166,21 +166,32 @@ def filter_to_new_only(
        line-shift detector uses and it provably does NOT mask a genuine
        NEW violation — a real new offense sits on a source line the new
        code introduced, whose normalized text is not in the baseline
-       (unless the new code verbatim-duplicates an existing offending line
-       of the same kind, which is both rare and arguably the same debt).
+       Matching is ONE-TO-ONE (a baseline snippet slot absorbs at most one
+       current finding), so a NEW duplicate beyond the grandfathered count
+       is still NEW — content-keying is non-masking by construction.
     """
     exact: set[tuple[str, int, int, str]] = {
         (k.path, k.line, k.col, k.kind) for k in baseline.violations
     }
-    by_content: dict[tuple[str, str], set[str]] = {}
+    # ONE-TO-ONE content matching: each baseline snippet slot absorbs at most
+    # ONE current finding. A baseline that grandfathers N copies of a snippet
+    # (e.g. repeated ``r.raise_for_status()``) covers up to N current
+    # occurrences; the (N+1)th — a genuinely NEW duplicate — is reported NEW.
+    # This is what makes content-keying provably non-masking: a real new
+    # offense beyond the grandfathered count can never hide behind a slot.
+    slots: dict[tuple[str, str, str], int] = {}
     for k in baseline.violations:
         if k.snippet:
-            by_content.setdefault((k.path, k.kind), set()).add(k.snippet)
+            slots[(k.path, k.kind, k.snippet)] = (
+                slots.get((k.path, k.kind, k.snippet), 0) + 1
+            )
     new_only: list[ViolationKey] = []
     for k in current:
         if (k.path, k.line, k.col, k.kind) in exact:
             continue
-        if k.snippet and k.snippet in by_content.get((k.path, k.kind), ()):
+        key = (k.path, k.kind, k.snippet) if k.snippet else None
+        if key is not None and slots.get(key, 0) > 0:
+            slots[key] -= 1
             continue
         new_only.append(k)
     return sorted(new_only)
@@ -201,15 +212,22 @@ def find_stale_baseline_entries(
     cur_exact: set[tuple[str, int, int, str]] = {
         (k.path, k.line, k.col, k.kind) for k in current
     }
-    cur_by_content: dict[tuple[str, str], set[str]] = {}
+    # ONE-TO-ONE mirror of filter_to_new_only: each current snippet absorbs
+    # at most one baseline slot, so a baseline entry whose twin was consumed
+    # by another still-live occurrence is NOT reported stale.
+    cur_slots: dict[tuple[str, str, str], int] = {}
     for k in current:
         if k.snippet:
-            cur_by_content.setdefault((k.path, k.kind), set()).add(k.snippet)
+            cur_slots[(k.path, k.kind, k.snippet)] = (
+                cur_slots.get((k.path, k.kind, k.snippet), 0) + 1
+            )
     stale: list[ViolationKey] = []
     for k in baseline.violations:
         if (k.path, k.line, k.col, k.kind) in cur_exact:
             continue
-        if k.snippet and k.snippet in cur_by_content.get((k.path, k.kind), ()):
+        key = (k.path, k.kind, k.snippet) if k.snippet else None
+        if key is not None and cur_slots.get(key, 0) > 0:
+            cur_slots[key] -= 1
             continue
         stale.append(k)
     return sorted(stale)

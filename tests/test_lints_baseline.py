@@ -255,3 +255,48 @@ def test_snippetless_entries_serialize_without_snippet_field(tmp_path: Path) -> 
     out = tmp_path / "b.json"
     write_baseline(out, lint="t", violations=[v])
     assert "snippet" not in json.loads(out.read_text())["violations"][0]
+
+# ----- one-to-one matching: grok (Composer 2.5) adversarial finding (cycle 26) -----
+
+def test_filter_one_to_one_new_duplicate_beyond_count_is_new() -> None:
+    """A NEW duplicate of a baselined boilerplate line (e.g. a second
+    ``r.raise_for_status()`` in new code) is NOT masked once the single
+    grandfathered slot is consumed. This is the case a set-based snippet
+    fallback would mask and that one-to-one matching closes."""
+    base = ViolationKey(path="a.py", line=40, col=0, kind="mypy:no-untyped-def",
+                        snippet="def _send() -> httpx.Response:")
+    shifted = ViolationKey(path="a.py", line=45, col=0, kind="mypy:no-untyped-def",
+                           snippet="def _send() -> httpx.Response:")
+    duplicate = ViolationKey(path="a.py", line=200, col=0, kind="mypy:no-untyped-def",
+                             snippet="def _send() -> httpx.Response:")
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[base]
+    )
+    # The shifted occurrence consumes the one slot; the duplicate is NEW.
+    result = filter_to_new_only([shifted, duplicate], baseline)
+    assert result == [duplicate]
+
+
+def test_filter_grandfathered_duplicates_cover_up_to_count() -> None:
+    """If the baseline grandfathers N copies of a snippet, up to N current
+    occurrences are covered (honest debt), the (N+1)th is NEW."""
+    b1 = ViolationKey(path="a.py", line=40, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    b2 = ViolationKey(path="a.py", line=60, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    c1 = ViolationKey(path="a.py", line=140, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    c2 = ViolationKey(path="a.py", line=160, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    c3 = ViolationKey(path="a.py", line=180, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[b1, b2]
+    )
+    assert filter_to_new_only([c1, c2, c3], baseline) == [c3]
+
+
+def test_find_stale_one_to_one_mirror() -> None:
+    """A baseline slot whose twin is still-live (consumed) is NOT stale."""
+    base = ViolationKey(path="a.py", line=40, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    live_shifted = ViolationKey(path="a.py", line=140, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[base]
+    )
+    assert find_stale_baseline_entries(current=[live_shifted], baseline=baseline) == []
+
