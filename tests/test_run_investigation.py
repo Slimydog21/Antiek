@@ -29,6 +29,7 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -240,6 +241,145 @@ def test_loop_result_summarize_round_trips_fields() -> None:
     assert "units_retrieved=5 reuse_injected=True" in summary
     assert "applied=True" in summary
     assert "['ins-1', 'ins-2']" in summary
+
+
+
+# --------------------------------------------------------------------------- #
+# Parser: stray-brace-in-prose (the greedy-regex mis-span this replaces)
+# --------------------------------------------------------------------------- #
+def test_parse_ignores_stray_brace_in_leading_prose() -> None:
+    """A stray ``{`` in prose before the real JSON must not hijack the span.
+    The greedy first-brace-to-last-brace regex this used to rely on would grab
+    the whole preamble + object, fail to decode, and silently drop every note.
+    Reusing extract_json_object scans from each ``{`` for the first span that
+    actually decodes."""
+    notes = _parse_document_notes(
+        'Here {is} my answer: {"notes": [{"text": "real insight", "confidence": "high"}]}'
+    )
+    assert len(notes) == 1
+    assert notes[0].text == "real insight"
+
+
+def test_parse_picks_first_decodable_object_with_two_blobs() -> None:
+    notes = _parse_document_notes(
+        '{"notes": [{"text": "first", "confidence": "high"}]} '
+        '{"notes": [{"text": "second", "confidence": "high"}]}'
+    )
+    assert len(notes) == 1
+    assert notes[0].text == "first"
+
+
+# --------------------------------------------------------------------------- #
+# Safety: dry-run acquires NO write lock
+# Regression guard for the BLOCKING defect the grok review of #212 caught:
+# licensing was UNCONDITIONAL, so `--db-path <real>` without `--apply` still
+# mutated the store (flipped the source doc's content_class gate). Licensing +
+# deposit must both be gated behind --apply.
+# --------------------------------------------------------------------------- #
+class _RecordingLock:
+    """A ``connect_write`` double that records every acquisition and behaves as
+    a no-op context manager returning a dummy con."""
+
+    def __init__(self) -> None:
+        self.purposes: list[str] = []
+
+    def __call__(self, db_path: str, **kwargs: Any) -> _RecordingLock:
+        self.purposes.append(kwargs.get("purpose", ""))
+        return self
+
+    def __enter__(self) -> Any:
+        return object()
+
+    def __exit__(self, *_: Any) -> None:
+        return None
+
+
+def _seed_minimal_store(path: str, document_id: str = "doc-1") -> None:
+    import duckdb
+
+    con = duckdb.connect(path)
+    con.execute(
+        "CREATE TABLE chunks (chunk_id TEXT PRIMARY KEY, document_id TEXT, "
+        "chunk_index INTEGER, section_path TEXT, text TEXT)"
+    )
+    con.execute("CREATE TABLE nodes (node_id TEXT PRIMARY KEY, node_type TEXT)")
+    con.execute(
+        "INSERT INTO chunks (chunk_id, document_id, chunk_index, text) "
+        "VALUES (?, ?, ?, ?)",
+        ["c-1", document_id, 0, "radar resolution depends on aperture " * 40],
+    )
+    con.close()
+
+
+def _one_note() -> Any:
+    from roles.note_taker.parser import ExtractedNote
+
+    return ExtractedNote(
+        note_id="n-test",
+        text="an insight",
+        confidence="high",
+        source_event_ids=(),
+    )
+
+
+def _stub_loop_seams(
+    monkeypatch: pytest.MonkeyPatch, module: Any, *, notes: list[Any]
+) -> _RecordingLock:
+    """Stub the network/expensive seams of run_loop; return the write-lock recorder."""
+    lock = _RecordingLock()
+    monkeypatch.setattr("runtime.db_lock.connect_write", lock)
+    monkeypatch.setattr(module, "_bootstrap_dispatch", lambda: (object(), ["stub"]))
+    monkeypatch.setattr(module, "_distill", lambda *a, **k: notes)
+    monkeypatch.setattr("processing.embedding.default_embedding_provider", lambda: object())
+    monkeypatch.setattr(module, "_reuse_step", lambda *a, **k: (0, False, []))
+    monkeypatch.setattr(module, "_license_source", lambda *a, **k: None)
+    monkeypatch.setattr(module, "_deposit_insights", lambda *a, **k: ["ins-stub"])
+    return lock
+
+
+def test_run_loop_dry_run_acquires_no_write_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tools.run_investigation as mod
+
+    db = str(tmp_path / "store.duckdb")
+    _seed_minimal_store(db)
+    lock = _stub_loop_seams(monkeypatch, mod, notes=[_one_note()])
+
+    result = mod.run_loop(
+        db,
+        source_doc="doc-1",
+        question="q?",
+        investigation_id="inv",
+        source_tier=2,
+        apply=False,
+    )
+
+    assert lock.purposes == []  # dry-run writes NOTHING — no license, no deposit
+    assert result.applied is False
+
+
+def test_run_loop_apply_acquires_write_lock_for_license_and_deposit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tools.run_investigation as mod
+
+    db = str(tmp_path / "store.duckdb")
+    _seed_minimal_store(db)
+    lock = _stub_loop_seams(monkeypatch, mod, notes=[_one_note()])
+
+    result = mod.run_loop(
+        db,
+        source_doc="doc-1",
+        question="q?",
+        investigation_id="inv",
+        source_tier=2,
+        apply=True,
+    )
+
+    assert "d4:license_source" in lock.purposes
+    assert "d4:deposit_insights" in lock.purposes
+    assert result.applied is True
 
 
 if __name__ == "__main__":

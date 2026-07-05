@@ -23,9 +23,11 @@ The loop, faithful to the proven substrate:
 
 Safety posture (mirrors ``tools/license_library``)
 --------------------------------------------------
-- ``--dry-run`` is the DEFAULT and writes NOTHING: it runs the dispatch +
-  retrieval against a SCRATCH copy of the corpus, leaving the operator's real
-  store untouched. ``--apply`` runs against the store named by ``--db-path``.
+- ``--dry-run`` is the DEFAULT and writes NOTHING — not even the source-doc
+  gate flip: every write (licensing + deposit) is gated behind ``--apply``.
+  It runs dispatch + retrieval against a SCRATCH copy of the corpus, leaving
+  the operator's real store untouched. ``--apply`` runs against the store
+  named by ``--db-path``.
 - The default ``--db-path`` is a fresh scratch copy under /tmp; the real store
   is touched only with an explicit ``--db-path ~/.antiek/research_graph.duckdb --apply``.
 - Single-writer: every mutation rides ``connect_write(purpose=...)``.
@@ -123,36 +125,14 @@ def _parse_document_notes(text: str) -> list[Any]:
     The wrestling parser's rule-4 attribution defense is wrong here: it would
     drop every document-distilled note as "unattributed."
     """
-    import json
-    import re
-
+    # Reuse the shared, battle-tested extractor (also used by the note_taker /
+    # grounder parsers) instead of a greedy first-'{'-to-last-'}' regex: a stray
+    # '{' in leading prose or a trailing '}' used to mis-span and silently drop
+    # every note. extract_json_object finds the first balanced span that decodes.
+    from roles._json_decode import extract_json_object
     from roles.note_taker.parser import ExtractedNote, _new_note_id, _normalize_confidence
 
-    stripped = text.strip()
-    # tolerate markdown fences + leading prose
-    fence = re.search(r"\{.*\}", stripped, re.DOTALL)
-    candidate = fence.group(0) if fence else stripped
-    try:
-        obj = json.loads(candidate)
-    except json.JSONDecodeError:
-        # try the first balanced {...}
-        depth = 0
-        start = stripped.find("{")
-        if start < 0:
-            return []
-        for i in range(start, len(stripped)):
-            if stripped[i] == "{":
-                depth += 1
-            elif stripped[i] == "}":
-                depth -= 1
-                if depth == 0:
-                    try:
-                        obj = json.loads(stripped[start : i + 1])
-                    except json.JSONDecodeError:
-                        return []
-                    break
-        else:
-            return []
+    obj = extract_json_object(text)
     raw_notes = obj.get("notes") if isinstance(obj, dict) else None
     if not isinstance(raw_notes, list):
         return []
@@ -336,9 +316,13 @@ def run_loop(
             "OPENROUTER_API_KEY / XIAOMI_API_KEY"
         )
 
-    # License the source book + pick a chunk + find a target node.
-    with connect_write(db_path, purpose="d4:license_source") as con:
-        _license_source(con, source_doc)
+    # License the source book ONLY when applying. Dry-run writes NOTHING — not
+    # even the gate flip — so `--db-path <real>` without `--apply` leaves the
+    # operator's store untouched. (On a scratch copy + --apply this is what makes
+    # the source's chunks servable for the reuse step.)
+    if apply:
+        with connect_write(db_path, purpose="d4:license_source") as con:
+            _license_source(con, source_doc)
 
     read = duckdb.connect(db_path, read_only=True)
     try:
