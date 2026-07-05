@@ -300,6 +300,119 @@ def _render_chunks_block_for_sub_question(
     return "\n---\n".join(blocks)
 
 
+# §9.0 guard: node_types whose ``canonical_label`` is a distilled free-text
+# SENTENCE (the DRW "atomic units of distilled truth" + a claim assertion),
+# which may reproduce personal_reading / restricted source text. The subgraph
+# read has no rights gate and nodes carry no rights provenance, so these labels
+# are withheld from the rendered block. Canonical entity labels (short names)
+# are not in this set and still surface.
+_FREE_TEXT_NODE_TYPES = frozenset({"insight", "question", "claim"})
+
+
+def _render_subgraph_block_for_sub_question(
+    sub_question: str,
+    *,
+    top_k: int = 5,
+    policy_tag: str = "attribution_eligible",
+) -> str:
+    """The evidence-retriever role's "Context package — subgraph" (its prompt
+    §b: *a subgraph of knowledge-graph edges and nodes ... each with a stable
+    ``edge_id``*). Renders the graph neighborhood of the sub-question's
+    retrieved chunks — edges (source --[relation]--> target, with the citable
+    ``edge_id``) plus the connected nodes — so a claim can be grounded on a
+    graph relationship, not only flat chunk text.
+
+    Mirrors ``_render_chunks_block_for_sub_question`` exactly on the substrate
+    contract: the SAME read-only connection, the SAME embedder, the SAME §9.0
+    ``policy_tag`` gate — but requests ``with_edges=True`` (the capability
+    ``substrate.graph.search.search`` already exposes and the RLM path already
+    uses) and renders edges instead of chunk bodies. This REPLACES the historic
+    ``"(subgraph search not yet wired)"`` placeholder: before this, every live
+    investigation's evidence retriever was structurally blind to the graph.
+
+    Read-only + best-effort: any failure degrades to a labelled note (never a
+    dead investigation), exactly as the chunks path does — the subgraph is
+    additive evidence, the chunks_block remains the floor.
+    """
+    try:
+        import duckdb
+
+        from processing.embedding.embed import default_embedding_provider
+        from substrate.graph import default_db_path
+        from substrate.graph.search import search as graph_search
+
+        db_path = default_db_path()
+        embedder = default_embedding_provider()
+        con = duckdb.connect(db_path, read_only=True)
+        try:
+            res = graph_search(
+                con, sub_question, model=embedder, top_k=top_k,
+                policy_tag=policy_tag, with_edges=True,
+            )
+        finally:
+            con.close()
+    except Exception as exc:
+        return f"(subgraph search unavailable: {type(exc).__name__}: {exc})"
+
+    # Collect edges (deduped) + all endpoint nodes in one pass, THEN render —
+    # rendering needs the full node-type map to apply the §9.0 label guard.
+    edges: list[dict[str, Any]] = []
+    seen_edges: set[str] = set()
+    node_by_id: dict[str, dict[str, Any]] = {}
+    for r in res.get("results", []):
+        for e in r.get("edges", []) or []:
+            eid = e.get("edge_id")
+            if not eid or eid in seen_edges:
+                continue
+            seen_edges.add(eid)
+            edges.append(e)
+        for n in r.get("nodes", []) or []:
+            nid = n.get("node_id")
+            if nid and nid not in node_by_id:
+                node_by_id[nid] = n
+
+    if not edges:
+        return "(no knowledge-graph edges for this sub-question)"
+
+    node_type_by_id = {nid: n.get("node_type") for nid, n in node_by_id.items()}
+
+    def _safe_label(node_id: Any, label: Any) -> str:
+        """§9.0 guard on the graph read. ``_fetch_edges_and_nodes`` applies NO
+        rights gate to the edges/nodes it surfaces, and nodes carry no rights
+        provenance — so a free-text label (an ``insight`` / ``question`` /
+        ``claim`` node's ``canonical_label`` IS a distilled sentence that may be
+        derived from a personal_reading / restricted source, reachable here via
+        a cross-rights ``duplicate_of`` edge). We therefore WITHHOLD free-text
+        labels (and any unknown-type label — deny by default) and reference the
+        node by id instead; canonical entity labels (short names, not servable
+        body) still surface so the role keeps the relational structure. Over-
+        redacts clean distilled units too — the conservative §9.0 posture until
+        the substrate gives the edge/node read a real rights gate."""
+        ntype = node_type_by_id.get(node_id)
+        if ntype in _FREE_TEXT_NODE_TYPES or ntype is None:
+            return f"[{node_id}: {ntype or 'unresolved'} — text withheld (§9.0)]"
+        return str(label) if label else "?"
+
+    edge_lines = [
+        f"- edge_id: {e.get('edge_id')} | "
+        f"{_safe_label((e.get('source') or {}).get('id'), (e.get('source') or {}).get('label'))} "
+        f"--[{e.get('relation', 'related_to')}]--> "
+        f"{_safe_label((e.get('target') or {}).get('id'), (e.get('target') or {}).get('label'))} "
+        f"(confidence {e.get('confidence', '?')}, source tier {e.get('source_tier', '?')})"
+        for e in edges
+    ]
+    node_lines = [
+        f"- {nid}: {_safe_label(nid, n.get('label'))} ({n.get('node_type', '?')})"
+        for nid, n in node_by_id.items()
+    ]
+    return (
+        "## Edges (cite the relevant edge_id when a claim rests on a relation)\n"
+        + "\n".join(edge_lines)
+        + "\n\n## Nodes\n"
+        + "\n".join(node_lines)
+    )
+
+
 def _prior_graph_knowledge_section(question: str) -> str:
     """Phase 1 orientation cites seeded graph chunks when provenance
     exists; falls back to structural seed markers for empty graphs."""
@@ -551,6 +664,9 @@ async def _run_phase_2(
                 chunks_block = _render_chunks_block_for_sub_question(
                     sq.sub_question, top_k=5, policy_tag=research_policy_tag,
                 )
+                subgraph_block = _render_subgraph_block_for_sub_question(
+                    sq.sub_question, top_k=5, policy_tag=research_policy_tag,
+                )
                 await broadcast_emit(
                     broadcaster,
                     ctx.investigation_id,
@@ -560,7 +676,7 @@ async def _run_phase_2(
                         evidence_type_required=sq.evidence_type_required,
                         top_k=5,
                         chunks_block=chunks_block,
-                        subgraph_block="(subgraph search not yet wired)",
+                        subgraph_block=subgraph_block,
                     ),
                     role="orchestrator",
                     policy_id="orchestrator-deterministic",
