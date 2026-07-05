@@ -130,6 +130,48 @@ def compose(blocks: list[dict[str, Any]]) -> dict[str, Any]:
     return {"type": "doc", "content": content}
 
 
+def is_effectively_empty(tiptap_doc: Any) -> bool:
+    """True when a TipTap doc carries no real, operator-authored content.
+
+    "Effectively empty" means the doc is missing/empty, or every top-level
+    node is an empty or whitespace-only paragraph — which is *exactly* the
+    shape a fresh/unhydrated editor emits (``<p></p>`` → a single empty
+    paragraph, ``getJSON`` → ``{"type":"doc","content":[{"type":"paragraph"}]}``).
+
+    The PUT guard (``interfaces/research/api/app.py``) uses this to refuse
+    to let such a doc replace ≥1 persisted blocks — the DELETE-then-insert
+    atomic replace would otherwise destroy them. Any doc carrying real text,
+    a substrate-citation block, or any non-paragraph structural node (heading,
+    list, code block, image, table, …) is NOT empty and replaces normally, so
+    the legitimate full-doc replace path is untouched.
+    """
+    if not isinstance(tiptap_doc, dict):
+        return True
+    content = tiptap_doc.get("content")
+    if not content or not isinstance(content, list):
+        return True
+    return not any(_node_has_content(node) for node in content)
+
+
+def _node_has_content(node: Any) -> bool:
+    """Recursively decide whether a ProseMirror node carries real content."""
+    if not isinstance(node, dict):
+        return False
+    node_type = node.get("type", "")
+    if node_type == "text":
+        text = node.get("text", "")
+        return isinstance(text, str) and bool(text.strip())
+    # Any substrate-citation block or non-paragraph structural node is
+    # content the operator deliberately created — treat as real. (The
+    # only "empty" case a fresh editor produces is a bare paragraph.)
+    if node_type and node_type not in ("paragraph", "doc"):
+        return True
+    children = node.get("content")
+    if isinstance(children, list):
+        return any(_node_has_content(child) for child in children)
+    return False
+
+
 def _extract_ref_id(block_type: str, attrs: dict[str, Any]) -> str | None:
     """Pull the substrate reference id out of a node's attrs.
 

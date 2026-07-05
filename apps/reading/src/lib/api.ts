@@ -406,6 +406,33 @@ export async function getNotebook(notebookId: string): Promise<NotebookShape> {
   return resp.json();
 }
 
+/** The composed TipTap document for a notebook (SPR-01 hydration).
+ * Mirrors interfaces/research/api/app.py:NotebookContentResponse. */
+export interface NotebookContentShape {
+  notebook_id: string;
+  /** ProseMirror/TipTap document JSON: {type:"doc", content:[...]}. */
+  doc: Record<string, unknown>;
+}
+
+/** GET /notebooks/{id}/content — the composed TipTap doc the editor hydrates
+ * from on mount (localStorage is only a cache/offline mirror). Inverse of the
+ * autosave PUT that decomposes the doc into notebook_blocks rows. */
+export async function getNotebookContent(
+  notebookId: string,
+): Promise<NotebookContentShape> {
+  const resp = await apiFetch(
+    `${API_BASE}/notebooks/${encodeURIComponent(notebookId)}/content`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /notebooks/${notebookId}/content failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
 /** POST /notebooks/{id}/blocks — append a block. */
 export async function appendNotebookBlock(
   notebookId: string,

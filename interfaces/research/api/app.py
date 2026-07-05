@@ -933,6 +933,19 @@ class NotebookPutContentRequest(BaseModel):
     doc: dict[str, Any]
 
 
+class NotebookContentResponse(BaseModel):
+    """SPR-01 hydration response for ``GET /notebooks/{id}/content``.
+
+    The editor loads this on mount to seed its document from the
+    substrate (rather than from localStorage only) so a fresh browser
+    never starts empty over persisted blocks. ``doc`` is the composed
+    TipTap ProseMirror document, the exact inverse of the ``PUT`` that
+    decomposes it into ``notebook_blocks`` rows."""
+
+    notebook_id: str
+    doc: dict[str, Any]
+
+
 class AIUndoRequest(BaseModel):
     """``POST /ai/undo`` body (§5.5 Wedge 4). The AI sidecar records
     both ids when it emits ``ai.action.applied`` so the undo button
@@ -4278,12 +4291,20 @@ def create_app(
             append_block,
             get_notebook,
         )
-        from substrate.notebooks.tiptap_codec import decompose
+        from substrate.notebooks.tiptap_codec import (
+            decompose,
+            is_effectively_empty,
+        )
 
         try:
             decomposed = decompose(req.doc)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        # Empty-doc floor (SPR-01 data-loss guard). Computed up front so the
+        # decision is cheap; enforced INSIDE the write lock below against the
+        # live persisted-block count so it can't be raced.
+        incoming_is_empty = is_effectively_empty(req.doc)
 
         db_path = default_db_path()
         with connect_write(
@@ -4293,6 +4314,33 @@ def create_app(
             if existing is None:
                 raise HTTPException(
                     status_code=404, detail="notebook not found",
+                )
+            # ── SPR-01 empty-doc floor ──────────────────────────────────
+            # A fresh/unhydrated editor seeds ``<p></p>`` and its first
+            # autosave PUTs that near-empty doc; the atomic replace below
+            # would DELETE every persisted block and destroy the operator's
+            # notes. Refuse to replace ≥1 persisted blocks with a doc that
+            # carries no real content. This check reads ``existing.blocks``,
+            # loaded on the same ``con`` inside the same write lock, so it is
+            # inside the replace's transaction boundary and cannot race a
+            # concurrent writer (DuckDB single-writer, --workers 1). A
+            # legitimate full-doc replace (any doc with real content) is
+            # unaffected — see ``is_effectively_empty``.
+            existing_block_count = len(existing.blocks)
+            if incoming_is_empty and existing_block_count >= 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "empty_doc_would_destroy_blocks",
+                        "message": (
+                            "Refusing to replace "
+                            f"{existing_block_count} persisted block(s) with "
+                            "an empty document. This usually means the editor "
+                            "autosaved before it hydrated from the substrate. "
+                            "Reload the notebook, then edit."
+                        ),
+                        "existing_block_count": existing_block_count,
+                    },
                 )
             # Atomic replace: drop all existing blocks, then re-insert
             # in order. Both operations sit inside the single
@@ -4319,6 +4367,37 @@ def create_app(
         if nb is None:
             raise HTTPException(status_code=404, detail="notebook not found")
         return _notebook_to_response(nb)
+
+    @app.get(
+        "/notebooks/{notebook_id}/content",
+        response_model=NotebookContentResponse,
+    )
+    async def get_notebook_content(
+        notebook_id: str,
+    ) -> NotebookContentResponse:
+        """SPR-01 hydration GET — return the composed TipTap document for a
+        notebook so the editor seeds from the substrate, not localStorage.
+
+        This is the exact inverse of ``PUT /notebooks/{id}/content``: the PUT
+        ``decompose``s a TipTap doc into ``notebook_blocks`` rows; this GET
+        ``compose``s those rows back into a TipTap doc using the already-built
+        ``tiptap_codec.compose`` (the same function the export route uses).
+        Access gating is identical to ``GET /notebooks/{id}`` — 404 for a
+        missing notebook, no widened exposure."""
+        from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.notebooks import get_notebook
+        from substrate.notebooks.tiptap_codec import compose
+
+        db_path = default_db_path()
+        with connect_write(db_path, purpose="api:get_notebook_content") as con:
+            nb = get_notebook(con, notebook_id)
+        if nb is None:
+            raise HTTPException(status_code=404, detail="notebook not found")
+        doc = compose(
+            [{"content_json": b.content_json} for b in nb.blocks]
+        )
+        return NotebookContentResponse(notebook_id=notebook_id, doc=doc)
 
     @app.post(
         "/notebooks/{notebook_id}/promote-public",
