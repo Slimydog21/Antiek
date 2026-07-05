@@ -8,7 +8,7 @@
 // of truth. See docs/architecture_notes.md §11.1 (polyglot seam) for the
 // discipline rule that keeps this file in sync.
 
-export const ANTIEK_PARAM_VERSION = "0.1.0";
+export const ANTIEK_PARAM_VERSION = "0.2.0";
 export const EVENT_SCHEMA_VERSION = 29;
 
 // Stable action vocabulary. Values are persisted to the trajectory
