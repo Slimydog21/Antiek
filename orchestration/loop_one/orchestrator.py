@@ -69,6 +69,7 @@ if TYPE_CHECKING:
     import duckdb
 
     from substrate.dispatch.research_tier import ResearchTier
+    from substrate.eval.groundedness.scorer import GroundednessResult
 
 # Direct import — orchestration depends on substrate.
 _PKG_ROOT = os.path.dirname(
@@ -703,12 +704,22 @@ async def _run_phase_5(ctx: InvestigationContext) -> bool:
     return await _drive_phase(ctx, phase=5, work=work())
 
 
-def _score_phase_6_synthesis(ctx: InvestigationContext) -> None:
+def _score_phase_6_synthesis(ctx: InvestigationContext) -> GroundednessResult | None:
     """Emit the Phase-6 quality signals for the synthesis on ``ctx`` —
     NON-blocking, but the signal NEVER silently vanishes (Foundation v2
     SPR-02 M1 + M4).
 
-    Two axes, both observability-only this sprint (nothing gates):
+    Returns the PRIMARY truth-axis ``GroundednessResult`` (or ``None`` if
+    there is no synthesis to score / the groundedness scorer crashed).
+    SPR-03: the caller (``_run_phase_6``) reads the returned score to
+    decide whether the ``ANTIEK_GROUNDEDNESS_ENFORCE`` posture (off/flag/
+    block — default ``off``) flags or blocks a below-threshold synthesis.
+    This function itself only scores + emits; it does NOT gate. Keeping
+    the gate decision in the caller makes ``off == no-op`` provable: when
+    the posture is ``off`` (the default), the caller does nothing with
+    the returned score and behavior is byte-for-byte today's.
+
+    Two axes, scored and emitted (enforcement is the caller's job):
 
     - ``rubric.scored`` — the SECONDARY, form-axis style rubric (voice,
       conviction, citation *density*, constraint compliance). Kept, now
@@ -724,8 +735,11 @@ def _score_phase_6_synthesis(ctx: InvestigationContext) -> None:
     stage. "Non-blocking" means the loop continues; it does NOT mean the
     signal disappears."""
     if ctx.synthesis is None:
-        return
+        return None
     synthesis_id = f"syn-{ctx.investigation_id}"
+    # SPR-03: captured so the caller can enforce (off/flag/block). ``None``
+    # unless the groundedness scorer produced a result (no synthesis / crash).
+    groundedness_result = None
 
     from middleware.outcomes import (
         emit_groundedness_failed,
@@ -791,6 +805,7 @@ def _score_phase_6_synthesis(ctx: InvestigationContext) -> None:
             resolver = lambda _cid: None  # noqa: E731
         claim_chunks = resolve_synthesis_claims(ctx.synthesis, resolver)
         result = score_synthesis_groundedness(claim_chunks)
+        groundedness_result = result  # captured for the caller's enforcement decision
         emit_groundedness_scored(
             investigation_id=ctx.investigation_id,
             synthesis_id=synthesis_id,
@@ -819,6 +834,7 @@ def _score_phase_6_synthesis(ctx: InvestigationContext) -> None:
             error_type=type(exc).__name__,
             error=str(exc),
         )
+    return groundedness_result
 
 
 async def _run_phase_6(
@@ -879,8 +895,83 @@ async def _run_phase_6(
             # event) instead of the old except-pass swallow that
             # dropped the signal. See substrate/eval/groundedness/ and
             # substrate/synthesis_rubric/.
-            _score_phase_6_synthesis(ctx)
+            groundedness_result = _score_phase_6_synthesis(ctx)
+            # SPR-03: enforce the truth-axis behind ANTIEK_GROUNDEDNESS_ENFORCE
+            # (off/flag/block; default off). When OFF this whole block is a
+            # no-op — behavior is byte-for-byte today's (proven by
+            # test_enforce_off_is_noop). FLAG emits groundedness.failed + marks
+            # the synthesis but still deposits. BLOCK nulls ctx.synthesis so
+            # the below-threshold synthesis never reaches Phase 7 / the graph.
+            _enforce_groundedness(ctx, groundedness_result)
     return await _drive_phase(ctx, phase=6, work=work())
+
+
+def _enforce_groundedness(
+    ctx: InvestigationContext, result: GroundednessResult | None
+) -> None:
+    """Apply the ANTIEK_GROUNDEDNESS_ENFORCE posture to a Phase-6 score.
+
+    Pure-of-side-effect EXCEPT for the deliberate enforcement actions
+    (emit groundedness.failed; null ctx.synthesis on block). When the
+    posture is ``off`` (the default) this is a no-op: no event fires, no
+    state mutates — today's behavior, byte-for-byte. ``result is None``
+    (no synthesis / scorer crashed) is also a no-op: there is nothing to
+    enforce AND the crash already surfaced via groundedness.failed in
+    the scorer's own except block.
+
+    Scope of BLOCK (verified by adversarial review): nulling
+    ``ctx.synthesis`` prevents the synthesis from being USED downstream —
+    Phase 7 (delivery/render) checks ``ctx.synthesis is None`` and
+    returns, and the graph node-projection has nothing to write. It does
+    NOT un-emit the raw ``synthesize.delivered`` event (the synthesizer
+    bridge emits that before ``coordinator.wait_for`` returns it to the
+    orchestrator), so the synthesis payload remains in the raw event
+    stream. The gate is a real deposit-prevention for the load-bearing
+    artifacts (rendered MASTER.md, graph nodes), not an event-log
+    retract. Documenting this honestly so a future reader knows exactly
+    what BLOCK stops and what it doesn't."""
+    if result is None:
+        return
+    from substrate.eval.groundedness.enforce import (
+        EnforcePosture,
+        current_posture,
+        is_below_threshold,
+    )
+
+    posture = current_posture()
+    if posture is EnforcePosture.OFF:
+        return  # OFF is a true no-op — proven by test_enforce_off_is_noop.
+    if not is_below_threshold(result.score, result.supported_threshold):
+        return  # the synthesis is grounded; nothing to flag or block.
+
+    # Below threshold + flag-on: surface + mark, but still deposit.
+    synthesis_id = f"syn-{ctx.investigation_id}"
+    from middleware.outcomes import emit_groundedness_failed
+    emit_groundedness_failed(
+        investigation_id=ctx.investigation_id,
+        synthesis_id=synthesis_id,
+        scorer_id="groundedness-lexical-v1",
+        stage="groundedness",
+        error_type="BelowThresholdSynthesis",
+        error=(
+            f"synthesis groundedness {result.score:.4f} < threshold "
+            f"{result.supported_threshold:.4f} "
+            f"(posture={posture.value}; {result.scored_claims} claims scored)"
+        ),
+    )
+    if posture is EnforcePosture.FLAG:
+        return  # flagged + deposited — the alert surfaces; the loop continues.
+
+    # Below threshold + block: PREVENT the synthesis from being used downstream.
+    # Nulling ctx.synthesis means Phase 7 (delivery/render) sees no synthesis
+    # and the graph-write path has nothing to write — a real deposit-prevention,
+    # not a post-hoc annotation. Logged + typed, never a silent drop.
+    _log.warning(
+        "groundedness BLOCK: synthesis %s below threshold (%.4f < %.4f); "
+        "ctx.synthesis nulled, will not be deposited (posture=block)",
+        synthesis_id, result.score, result.supported_threshold,
+    )
+    ctx.synthesis = None
 
 
 async def _run_phase_7(ctx: InvestigationContext) -> bool:
