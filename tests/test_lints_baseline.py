@@ -300,3 +300,46 @@ def test_find_stale_one_to_one_mirror() -> None:
     )
     assert find_stale_baseline_entries(current=[live_shifted], baseline=baseline) == []
 
+
+def test_filter_exact_match_consumes_slot_so_new_duplicate_is_new() -> None:
+    """The grandfathered offense STAYS at its exact baseline line AND a NEW
+    verbatim duplicate appears elsewhere. The exact match must release the
+    snippet slot, else the duplicate hides behind a slot the exact match
+    never consumed. This is the exact-match variant of the verbatim-
+    duplicate masking vector (the line-shift variant is covered above)."""
+    snippet = "def _send() -> httpx.Response:"
+    base = ViolationKey(
+        path="a.py", line=40, col=0, kind="mypy:no-untyped-def", snippet=snippet
+    )
+    original = ViolationKey(
+        path="a.py", line=40, col=0, kind="mypy:no-untyped-def", snippet=snippet
+    )
+    duplicate = ViolationKey(
+        path="a.py", line=200, col=0, kind="mypy:no-untyped-def", snippet=snippet
+    )
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[base]
+    )
+    assert filter_to_new_only([original, duplicate], baseline) == [duplicate]
+
+
+def test_find_stale_exact_match_consumes_slot_so_extra_entry_is_stale() -> None:
+    """Mirror: the baseline grandfathers two copies of a snippet but only one
+    is still live at its exact line; the second was removed. The exact match
+    must consume the live finding's slot, else the removed entry hides behind
+    it and is wrongly reported not-stale (blocking honest burn-down)."""
+    snippet = "x = bad()"
+    b1 = ViolationKey(
+        path="a.py", line=40, col=0, kind="mypy:arg-type", snippet=snippet
+    )
+    b2 = ViolationKey(
+        path="a.py", line=60, col=0, kind="mypy:arg-type", snippet=snippet
+    )
+    live = ViolationKey(
+        path="a.py", line=40, col=0, kind="mypy:arg-type", snippet=snippet
+    )
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[b1, b2]
+    )
+    assert find_stale_baseline_entries(current=[live], baseline=baseline) == [b2]
+

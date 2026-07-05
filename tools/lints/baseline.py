@@ -188,6 +188,16 @@ def filter_to_new_only(
     new_only: list[ViolationKey] = []
     for k in current:
         if (k.path, k.line, k.col, k.kind) in exact:
+            # An exact match consumes this baseline entry's content capacity
+            # too: release its snippet slot so a NEW verbatim duplicate added
+            # elsewhere can't hide behind it. Without this, one baselined
+            # entry absorbs one finding via exact AND a second via the content
+            # fallback, the exact-match variant of the verbatim-duplicate mask
+            # the one-to-one design exists to prevent.
+            if k.snippet:
+                sk = (k.path, k.kind, k.snippet)
+                if slots.get(sk, 0) > 0:
+                    slots[sk] -= 1
             continue
         key = (k.path, k.kind, k.snippet) if k.snippet else None
         if key is not None and slots.get(key, 0) > 0:
@@ -224,6 +234,15 @@ def find_stale_baseline_entries(
     stale: list[ViolationKey] = []
     for k in baseline.violations:
         if (k.path, k.line, k.col, k.kind) in cur_exact:
+            # Mirror of the filter fix: this baseline entry is still live at
+            # its exact line, so the matching current finding's content
+            # capacity is consumed here. Release its slot so a different
+            # baseline entry beyond the live count is reported stale instead
+            # of hiding behind a slot the exact match never freed.
+            if k.snippet:
+                sk = (k.path, k.kind, k.snippet)
+                if cur_slots.get(sk, 0) > 0:
+                    cur_slots[sk] -= 1
             continue
         key = (k.path, k.kind, k.snippet) if k.snippet else None
         if key is not None and cur_slots.get(key, 0) > 0:
