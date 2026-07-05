@@ -157,7 +157,7 @@ class BruteForceSubstrate:
         source_tier_max: int | None = None,
         document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
-    ) -> dict:
+    ) -> dict[str, Any]:
         return search(
             self._con,
             text,
