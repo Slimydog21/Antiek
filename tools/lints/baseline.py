@@ -58,6 +58,13 @@ class ViolationKey:
     line: int
     col: int
     kind: str
+    # Normalized source line at capture time (``current_source[line].strip()``).
+    # Empty when unknown (substrate-lint baselines never set it). When present
+    # on BOTH a current finding and a baseline entry, ``filter_to_new_only``
+    # treats a ``(path, kind, snippet)`` match as the SAME grandfathered
+    # offense — robust to the line-shift a mid-file insertion causes. See
+    # "Content-keyed matching" in tools/lints/README.md.
+    snippet: str = ""
 
 
 @dataclass
@@ -85,6 +92,7 @@ class BaselineSchema:
                     line=int(v["line"]),
                     col=int(v["col"]),
                     kind=str(v["kind"]),
+                    snippet=str(v.get("snippet", "")),
                 )
                 for v in data.get("violations", [])
             ],
@@ -96,7 +104,13 @@ class BaselineSchema:
             "lint": self.lint,
             "generated_at": self.generated_at,
             "violations": [
-                {"path": v.path, "line": v.line, "col": v.col, "kind": v.kind}
+                {
+                    "path": v.path,
+                    "line": v.line,
+                    "col": v.col,
+                    "kind": v.kind,
+                    **({"snippet": v.snippet} if v.snippet else {}),
+                }
                 for v in sorted(self.violations)
             ],
         }
@@ -137,15 +151,65 @@ def filter_to_new_only(
     current: list[ViolationKey],
     baseline: BaselineSchema,
 ) -> list[ViolationKey]:
-    """Return current keys NOT in the baseline (new since capture)."""
-    grandfathered: set[ViolationKey] = set(baseline.violations)
-    return sorted(k for k in current if k not in grandfathered)
+    """Return current keys NOT in the baseline (new since capture).
+
+    Matching is two-stage so a baselined offense that merely SHIFTED line
+    (because a PR inserted code above it) is still recognized as the same
+    grandfathered debt, not reported as NEW:
+
+    1. Exact ``(path, line, col, kind)`` membership (the common case, and
+       the only stage when no snippet is present — so substrate-lint
+       baselines and v1 baselines behave byte-identically to before).
+    2. Content fallback: a current finding with a non-empty ``snippet``
+       matches a baseline entry of the same ``(path, kind)`` whose
+       ``snippet`` is byte-identical. This is the same comparison the
+       line-shift detector uses and it provably does NOT mask a genuine
+       NEW violation — a real new offense sits on a source line the new
+       code introduced, whose normalized text is not in the baseline
+       (unless the new code verbatim-duplicates an existing offending line
+       of the same kind, which is both rare and arguably the same debt).
+    """
+    exact: set[tuple[str, int, int, str]] = {
+        (k.path, k.line, k.col, k.kind) for k in baseline.violations
+    }
+    by_content: dict[tuple[str, str], set[str]] = {}
+    for k in baseline.violations:
+        if k.snippet:
+            by_content.setdefault((k.path, k.kind), set()).add(k.snippet)
+    new_only: list[ViolationKey] = []
+    for k in current:
+        if (k.path, k.line, k.col, k.kind) in exact:
+            continue
+        if k.snippet and k.snippet in by_content.get((k.path, k.kind), ()):
+            continue
+        new_only.append(k)
+    return sorted(new_only)
 
 
 def find_stale_baseline_entries(
     current: list[ViolationKey],
     baseline: BaselineSchema,
 ) -> list[ViolationKey]:
-    """Return baseline entries NOT in current (got fixed)."""
-    current_set: set[ViolationKey] = set(current)
-    return sorted(k for k in baseline.violations if k not in current_set)
+    """Return baseline entries NOT in current (got fixed).
+
+    Mirrors ``filter_to_new_only``: a baselined offense that shifted line
+    is NOT stale — it still reproduces, just lower in the file — so it must
+    not be reported as fixed (which would invite a shrink that drops still-
+    live debt). Exact match first, then the ``(path, kind, snippet)`` content
+    fallback for snippet-bearing entries.
+    """
+    cur_exact: set[tuple[str, int, int, str]] = {
+        (k.path, k.line, k.col, k.kind) for k in current
+    }
+    cur_by_content: dict[tuple[str, str], set[str]] = {}
+    for k in current:
+        if k.snippet:
+            cur_by_content.setdefault((k.path, k.kind), set()).add(k.snippet)
+    stale: list[ViolationKey] = []
+    for k in baseline.violations:
+        if (k.path, k.line, k.col, k.kind) in cur_exact:
+            continue
+        if k.snippet and k.snippet in cur_by_content.get((k.path, k.kind), ()):
+            continue
+        stale.append(k)
+    return sorted(stale)

@@ -66,6 +66,7 @@ import json
 import subprocess
 import sys
 from collections.abc import Iterable
+from dataclasses import replace
 from pathlib import Path
 
 from tools.lints.baseline import (
@@ -256,6 +257,39 @@ def _dedupe(keys: list[ViolationKey]) -> list[ViolationKey]:
     return sorted(set(keys))
 
 
+def _read_source_lines(repo_root: Path, path: str, cache: dict[str, list[str]]) -> list[str]:
+    """Read a source file once (cached per path) and return its split lines.
+
+    Used to capture the normalized source ``snippet`` for content-keyed
+    baseline matching (see tools/lints/baseline.py). Returns an empty list
+    on any read error so the caller falls back to exact-line matching."""
+    cached = cache.get(path)
+    if cached is not None:
+        return cached
+    try:
+        lines = (repo_root / path).read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        lines = []
+    cache[path] = lines
+    return lines
+
+
+def enrich_keys_with_snippets(
+    keys: list[ViolationKey], repo_root: Path
+) -> list[ViolationKey]:
+    """Return a copy of ``keys`` with each ``snippet`` set to the normalized
+    source line at ``(path, line)`` (``""`` when unavailable). Deterministic:
+    snippet = ``current_source[line].strip()``. This is the capture/enforce
+    companion to the content-keyed fallback in ``filter_to_new_only``."""
+    cache: dict[str, list[str]] = {}
+    out: list[ViolationKey] = []
+    for k in keys:
+        lines = _read_source_lines(repo_root, k.path, cache)
+        snippet = lines[k.line - 1].strip() if 1 <= k.line <= len(lines) else ""
+        out.append(replace(k, snippet=snippet))
+    return out
+
+
 def _cmd_capture(tool: str, baseline_file: Path) -> int:
     runner_attr, key_fn, label = _TOOLS[tool]
     runner = _resolve_runner(runner_attr)
@@ -265,6 +299,7 @@ def _cmd_capture(tool: str, baseline_file: Path) -> int:
         print(f"{tool} invocation failed: {exc}", file=sys.stderr)
         return 2
     keys = _dedupe(compute_keys(violations, key_fn))  # type: ignore[arg-type]
+    keys = enrich_keys_with_snippets(keys, Path.cwd())
     write_baseline(baseline_file, lint=label, violations=keys)
     print(f"wrote {len(keys)} {tool} violation(s) to {baseline_file}")
     return 0
@@ -284,7 +319,10 @@ def _cmd_enforce(tool: str, baseline_file: Path, check_stale: bool) -> int:
         print(f"{tool} invocation failed: {exc}", file=sys.stderr)
         return 2
 
-    current = compute_keys(violations, key_fn)  # type: ignore[arg-type]
+    current = enrich_keys_with_snippets(
+        compute_keys(violations, key_fn),  # type: ignore[arg-type]
+        Path.cwd(),
+    )
     new_only = filter_to_new_only(current, baseline)
     for k in new_only:
         print(f"{k.path}:{k.line}:{k.col}: NEW {k.kind}")
@@ -326,6 +364,49 @@ def _cmd_enforce(tool: str, baseline_file: Path, check_stale: bool) -> int:
     return rc
 
 
+def _cmd_enrich(tool: str, baseline_file: Path) -> int:
+    """Add ``snippet`` fields to an EXISTING baseline without re-running the
+    lint tool — the set-preserving one-time migration to content-keyed
+    matching.
+
+    Each violation's ``(path, line, col, kind)`` is left untouched; only a
+    ``snippet`` (normalized current source line) is added. ``schema_version``,
+    ``lint`` and ``generated_at`` are preserved verbatim, so this is provably
+    NOT a re-mint: the grandfathered set is byte-identical before and after,
+    just enriched for the content fallback. Run ``enforce`` afterwards to
+    confirm zero NEW on an unmodified tree (the migration contract)."""
+    try:
+        baseline = load_baseline(baseline_file)
+    except FileNotFoundError:
+        print(f"baseline not found: {baseline_file}", file=sys.stderr)
+        return 2
+    enriched = enrich_keys_with_snippets(baseline.violations, Path.cwd())
+    with baseline_file.open("r", encoding="utf-8") as fh:
+        raw = json.load(fh)
+    raw["violations"] = [
+        {
+            "path": v.path,
+            "line": v.line,
+            "col": v.col,
+            "kind": v.kind,
+            **({"snippet": v.snippet} if v.snippet else {}),
+        }
+        for v in sorted(enriched)
+    ]
+    with baseline_file.open("w", encoding="utf-8") as fh:
+        json.dump(raw, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+    with_snippet = sum(1 for v in enriched if v.snippet)
+    print(
+        f"enriched {len(enriched)} {tool} baseline entr"
+        f"{'y' if len(enriched) == 1 else 'ies'} at {baseline_file} "
+        f"({with_snippet} with a source snippet, "
+        f"{len(enriched) - with_snippet} with no resolvable line). "
+        f"Grandfathered (path,line,col,kind) set unchanged."
+    )
+    return 0
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="declared_bar",
@@ -333,7 +414,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "contract over the full declared scope, against a dated baseline.",
     )
     sub = parser.add_subparsers(dest="mode", required=True)
-    for mode in ("capture", "enforce"):
+    for mode in ("capture", "enforce", "enrich"):
         sp = sub.add_parser(mode, help=f"{mode} mode against a baseline file")
         sp.add_argument(
             "tool", choices=sorted(_TOOLS.keys()),
@@ -365,6 +446,8 @@ def main(argv: list[str] | None = None) -> int:
             baseline_file=args.baseline_file,
             check_stale=args.check_stale,
         )
+    if args.mode == "enrich":
+        return _cmd_enrich(tool=args.tool, baseline_file=args.baseline_file)
     parser.print_usage(sys.stderr)
     return 2
 

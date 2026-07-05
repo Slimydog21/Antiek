@@ -177,3 +177,81 @@ def test_find_stale_entries_empty_when_nothing_fixed() -> None:
         schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[a],
     )
     assert find_stale_baseline_entries(current=[a], baseline=baseline) == []
+
+
+# ----- content-keyed matching (line-shift defect fix) -------------------
+
+def test_filter_content_fallback_recognizes_shifted_offense() -> None:
+    """A baselined offense that shifted line (mid-file insertion above it)
+    is the SAME grandfathered debt — not NEW — when its source snippet
+    matches a baseline entry of the same (path, kind)."""
+    base = ViolationKey(path="a.py", line=10, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    shifted = ViolationKey(path="a.py", line=20, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[base]
+    )
+    assert filter_to_new_only([shifted], baseline) == []
+
+
+def test_filter_does_not_mask_genuine_new_violation() -> None:
+    """A genuinely new offense on a different source line is still NEW even
+    when snippet matching is active (the no-mask safety property)."""
+    base = ViolationKey(path="a.py", line=10, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    genuine = ViolationKey(path="a.py", line=20, col=0, kind="mypy:arg-type", snippet="y = worse()")
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[base]
+    )
+    assert filter_to_new_only([genuine], baseline) == [genuine]
+
+
+def test_filter_content_fallback_requires_kind_match() -> None:
+    """Identical source text but a DIFFERENT violation kind is NOT the same
+    offense → still NEW. The kind constraint bounds the content-keying
+    collision risk."""
+    base = ViolationKey(path="a.py", line=10, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    other = ViolationKey(path="a.py", line=20, col=0, kind="mypy:no-untyped-def", snippet="x = bad()")
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[base]
+    )
+    assert filter_to_new_only([other], baseline) == [other]
+
+
+def test_filter_no_snippet_is_exact_line_only_v1_compat() -> None:
+    """Substrate-lint / v1 baselines carry no snippet → matching is exact-line
+    only, byte-identical to the pre-content-keying behavior (a shifted offense
+    with no snippet is still reported NEW)."""
+    base = ViolationKey(path="a.py", line=10, col=0, kind="mypy:arg-type")
+    shifted = ViolationKey(path="a.py", line=20, col=0, kind="mypy:arg-type")
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[base]
+    )
+    assert filter_to_new_only([shifted], baseline) == [shifted]
+
+
+def test_find_stale_shifted_offense_is_not_stale() -> None:
+    """A shifted offense still reproduces (lower in the file) → not stale, so
+    the burn-down loop won't drop still-live debt."""
+    base = ViolationKey(path="a.py", line=10, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    shifted = ViolationKey(path="a.py", line=20, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    baseline = BaselineSchema(
+        schema_version=SCHEMA_VERSION, lint="t", generated_at="", violations=[base]
+    )
+    assert find_stale_baseline_entries(current=[shifted], baseline=baseline) == []
+
+
+def test_snippet_round_trips_through_json(tmp_path: Path) -> None:
+    v = ViolationKey(path="a.py", line=3, col=0, kind="mypy:arg-type", snippet="x = bad()")
+    out = tmp_path / "b.json"
+    write_baseline(out, lint="t", violations=[v])
+    data = json.loads(out.read_text())
+    assert data["violations"][0]["snippet"] == "x = bad()"
+    assert load_baseline(out).violations == [v]
+
+
+def test_snippetless_entries_serialize_without_snippet_field(tmp_path: Path) -> None:
+    """Snippet-free entries (substrate baselines) stay byte-identical: no
+    empty 'snippet' key is written."""
+    v = ViolationKey(path="a.py", line=3, col=0, kind="raise:Foo")
+    out = tmp_path / "b.json"
+    write_baseline(out, lint="t", violations=[v])
+    assert "snippet" not in json.loads(out.read_text())["violations"][0]
