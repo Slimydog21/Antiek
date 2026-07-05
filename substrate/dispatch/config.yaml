@@ -19,28 +19,39 @@ version: 0.1.0
 # Tier definitions.
 # ---------------------------------------------------------------------------
 tiers:
-  # ── ARCHITECTURAL POSTURE (operator decision 2026-05-18): ──
-  # All tiers route through Hermes/Grok primary with OpenRouter
-  # (DeepSeek + Claude) as fallback. The thesis: substrate quality
-  # emerges from VOLUME of dispatches (recursive note-taking +
-  # compounding graph), not from per-call model quality. SuperGrok's
-  # Hermes Agent OAuth bridge sanctions third-party API usage against
-  # the operator's subscription quota — using it for non-synthesis
-  # roles captures already-paid-for inference at zero marginal cost.
-  # Fallback to OpenRouter preserves substrate liveness when Hermes
-  # quota runs out or the agent is unreachable.
+  # ── ARCHITECTURAL POSTURE (operator decision 2026-07-06): ──
+  # flash/pro/verify route through GLM-5.2 (zai, thinking=disabled)
+  # primary with a DIFFERENT MODEL FAMILY (DeepSeek via OpenRouter) as
+  # fallback. synthesis stays Opus 4.7 primary (measurement window) with
+  # GLM-5.2 fallback. Thesis unchanged from 2026-05-18: substrate quality
+  # emerges from VOLUME of dispatches (recursive note-taking + compounding
+  # graph), not per-call model quality; GLM-5.2's direct-content mode
+  # (thinking disabled) serves that volume thesis.
   #
-  # If the operator's Hermes-served Grok model id is different from
-  # 'grok-4.3' (e.g. 'grok-4', 'grok-4.3-heavy'), update the model
-  # values below — no code change needed.
+  # CROSS-FAMILY MODEL INVARIANT (load-bearing): every tier's fallback is
+  # a DIFFERENT MODEL FAMILY from its primary — never the same model
+  # behind a second provider door. Provider-name diversity (zai <->
+  # openrouter) is necessary but NOT sufficient: rate-limits, model
+  # deprecations, and provider-side outages are MODEL-scoped, so a
+  # glm-5.2 -> glm-5.2 chain is a single point of failure dressed as
+  # resilience. Enforced by test_fallback_is_a_different_model_family.
+  #
+  # If the operator's z.ai-served model id changes (e.g. glm-5.5), update
+  # the model values below — no code change needed.
 
   flash:
     # Bulk, cost-optimized. Note-taking, page-level ingestion,
     # extraction, grounder, constraint_checker.
-    provider: hermes
-    model: grok-4.3
+    #
+    # PRIMARY = GLM-5.2 (operator decision 2026-07-06: GLM-5.2 is the
+    # platform's AI driver). The zai provider runs it with
+    # thinking=disabled (see bootstrap.py:_maybe_zai) so high-volume
+    # note-taking gets direct crystallized answers, not reasoning traces.
+    # This replaced the prior deepseek-v4-flash primary, which bailed
+    # with {"notes": []} on distillable prose.
+    provider: zai
+    model: glm-5.2
     pricing:
-      # Subscription-attributed cost; per-call billed = $0.0.
       input_per_mtok: 0.0
       output_per_mtok: 0.0
       cached_input_per_mtok: 0.0
@@ -50,9 +61,11 @@ tiers:
 
   pro:
     # Reasoning-heavy primary work (decomposer, connector, user_agent,
-    # challenger).
-    provider: hermes
-    model: grok-4.3
+    # challenger). GLM-5.2 (zai, thinking-disabled for direct answers).
+    # Enabling thinking for genuinely reasoning-heavy roles is a
+    # one-line extra_body change in bootstrap.py:_maybe_zai.
+    provider: zai
+    model: glm-5.2
     pricing:
       input_per_mtok: 0.0
       output_per_mtok: 0.0
@@ -85,13 +98,13 @@ tiers:
       output_per_mtok: 25.0
       cached_input_per_mtok: 0.50  # 90% Anthropic prompt-caching discount
     fallback:
-      provider: hermes
-      model: grok-4.3
+      provider: zai
+      model: glm-5.2
 
   verify:
-    # Cross-family verification. Same Hermes/Grok path.
-    provider: hermes
-    model: grok-4.3
+    # Cross-family verification. GLM-5.2 (zai, thinking-disabled).
+    provider: zai
+    model: glm-5.2
     pricing:
       input_per_mtok: 0.0
       output_per_mtok: 0.0

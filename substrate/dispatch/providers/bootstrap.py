@@ -141,8 +141,46 @@ def _maybe_hermes() -> OpenAICompatProvider | None:
     )
 
 
+def _maybe_zai() -> OpenAICompatProvider | None:
+    # Zhipu z.ai — GLM-5.2, the platform's primary AI driver (operator
+    # decision 2026-07-06). z.ai's API speaks the OpenAI chat-completions
+    # shape, so it reuses OpenAICompatProvider exactly like DeepSeek/xiaomi.
+    # The concrete model id (``glm-5.2``) is supplied per-call by the tier in
+    # config.yaml, NOT pinned here — one provider endpoint serves the whole
+    # GLM family; the provider is the endpoint, the model is the per-call arg.
+    #
+    # GLM-5.2 is a REASONING model: by default it spends the token budget on a
+    # chain-of-thought ``reasoning_content`` field and emits ``content`` only
+    # after reasoning completes. The substrate's whole thesis is that quality
+    # emerges from VOLUME of dispatches that yield crystallized ANSWERS
+    # (notes, extractions, syntheses) — NOT reasoning traces. So the driver
+    # runs with ``thinking: {"type": "disabled"}`` (verified live against
+    # https://api.z.ai/api/paas/v4): GLM-5.2 returns direct content answers
+    # with no reasoning overhead, at high volume and low latency/cost. This
+    # also fixes the prior flash-tier defect where deepseek-v4-flash bailed
+    # with ``{"notes": []}`` on distillable prose. Enabling thinking for a
+    # specific reasoning-heavy role is a one-line extra_body change here.
+    #
+    # KEY READ FROM ENV ``Z_AI_API_KEY`` — never hardcoded; registers ONLY
+    # when present (degraded-posture, not an error, per this module's
+    # docstring). ANTIEK_ZAI_BASE_URL overrides the default endpoint (e.g. to
+    # the bigmodel.cn host).
+    if not os.environ.get("Z_AI_API_KEY"):
+        return None
+    return OpenAICompatProvider(
+        name="zai",
+        base_url=os.environ.get(
+            "ANTIEK_ZAI_BASE_URL", "https://api.z.ai/api/paas/v4",
+        ),
+        api_key_env="Z_AI_API_KEY",
+        chat_completions_path="/chat/completions",
+        extra_body={"thinking": {"type": "disabled"}},
+    )
+
+
 # Order doesn't matter — register_provider is name-keyed.
 _DEFAULT_PROVIDERS = [
+    ("zai", _maybe_zai),
     ("deepseek", _maybe_deepseek),
     ("anthropic", _maybe_anthropic),
     ("openrouter", _maybe_openrouter),

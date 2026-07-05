@@ -1,4 +1,4 @@
-"""Chaos test for the Hermes-primary → OpenRouter-fallback chain.
+"""Chaos test for the zai-primary (GLM-5.2) → OpenRouter-fallback chain.
 
 Loads the **production** ``substrate/dispatch/config.yaml`` (not a
 synthetic test config) and proves that when the Hermes bridge is
@@ -53,9 +53,9 @@ from substrate.schemas import Event
 # primary (the chaos-test invariant is "always a fallback," not "always
 # fall to OpenRouter").
 ALL_TIERS_WITH_FALLBACK = ("flash", "pro", "synthesis", "verify")
-HERMES_PRIMARY_TIERS = ("flash", "pro", "verify")  # synthesis exempted during measurement
+ZAI_PRIMARY_TIERS = ("flash", "pro", "verify")  # GLM-5.2 driver; synthesis is opus-primary
 OPENROUTER_PRIMARY_TIERS = ("synthesis",)  # Sprint 17-20 measurement window only
-ROLES_ROUTED_TO_HERMES_PRIMARY = (
+ROLES_ROUTED_TO_ZAI_PRIMARY = (
     "decomposer",          # pro
     "evidence_retriever",  # flash
     "verifier",            # verify
@@ -96,12 +96,12 @@ def production_config() -> DispatchConfig:
 # ─────────────────────────────────────────────────────────────────────
 
 
-class _FailingHermesProvider:
-    """Simulates the bridge being down. Every call raises
+class _FailingZaiProvider:
+    """Simulates the GLM-5.2 driver being down. Every call raises
     ProviderError, which is what Antiek's router needs to see in
     order to walk to ``tier.fallback``."""
 
-    name = "hermes"
+    name = "zai"
 
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
@@ -109,7 +109,7 @@ class _FailingHermesProvider:
     def call(self, *, model, prompt, max_tokens, temperature) -> RawProviderResponse:
         self.calls.append({"model": model})
         raise ProviderError(
-            "simulated bridge outage",
+            "simulated zai outage",
             provider=self.name,
             model=model,
             latency_ms=12,
@@ -154,10 +154,10 @@ class _WorkingOpenRouterProvider:
 
 
 class _FailingOpenRouterProvider:
-    """Mirror of _FailingHermesProvider for the inverted case: when
+    """Mirror of _FailingZaiProvider for the inverted case: when
     the synthesis tier (OpenRouter-primary during the Sprint 17-20
     measurement window) sees its primary die, the router walks to
-    the Hermes fallback."""
+    the zai (GLM-5.2) fallback."""
 
     name = "openrouter"
 
@@ -177,13 +177,13 @@ class _FailingOpenRouterProvider:
         return NormalizedUsage(input_tokens=0, output_tokens=0, cached_input_tokens=0)
 
 
-class _WorkingHermesProvider:
+class _WorkingZaiProvider:
     """Mirror of _WorkingOpenRouterProvider for the inverted case.
-    Returns a realistic xAI-shape response (Grok via Hermes) so the
+    Returns a realistic GLM-5.2 response (zai driver) so the
     router's usage normalization + dispatch.call emission paths
     exercise correctly under the synthesis-fallback case."""
 
-    name = "hermes"
+    name = "zai"
 
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
@@ -191,7 +191,7 @@ class _WorkingHermesProvider:
     def call(self, *, model, prompt, max_tokens, temperature) -> RawProviderResponse:
         self.calls.append({"model": model})
         return RawProviderResponse(
-            text="hermes fallback — openrouter was down, grok handled it",
+            text="zai fallback — openrouter was down, glm-5.2 handled it",
             raw_usage={
                 "prompt_tokens": 100,
                 "completion_tokens": 30,
@@ -233,31 +233,50 @@ def test_every_primary_tier_has_a_fallback(production_config):
     )
 
 
-def test_fallbacks_route_to_the_other_family(production_config):
-    """Architectural posture during the Sprint 17-20 dispatch tier
-    measurement (master-spec §14.4): every primary tier falls to the
-    OTHER family, never to itself. Hermes-primary tiers fall to
-    OpenRouter; the OpenRouter-primary synthesis tier falls to Hermes.
-    Mixing within a family breaks the cross-family verification
-    invariant — a Hermes outage that also takes down Hermes-fallback
-    would be a single point of failure."""
+def test_fallback_is_a_different_model_family(production_config):
+    """CROSS-FAMILY MODEL INVARIANT — the load-bearing resilience test.
+
+    Every tier's fallback must be a DIFFERENT MODEL FAMILY from its
+    primary, never the same model served through a second provider door.
+    A glm-5.2 -> glm-5.2 chain (even via different providers) is a single
+    point of failure: a z.ai/GLM rate-limit, model deprecation, or
+    provider-side outage takes down BOTH layers at once, so the
+    "fallback" provides zero real resilience.
+
+    Hardened 2026-07-06: the earlier ``test_fallbacks_route_to_the_other_family``
+    checked only PROVIDER-NAME diversity (zai <-> openrouter), which passed
+    against a glm-5.2 -> glm-5.2 monoculture because provider diversity
+    happened to coincide with model diversity under the old Hermes/Grok <->
+    OpenRouter/DeepSeek chain. Provider diversity is necessary but NOT
+    sufficient: model outages are model-scoped, so the MODEL ITSELF must
+    differ.
+    """
     for tier_name in ALL_TIERS_WITH_FALLBACK:
         tier = production_config.tiers[tier_name]
         if tier.fallback is None:
             continue
-        if tier.provider == "hermes":
-            assert tier.fallback.provider == "openrouter", (
-                f"tier {tier_name!r} is Hermes-primary but falls back to "
-                f"{tier.fallback.provider!r}; expected openrouter"
-            )
-        elif tier.provider == "openrouter":
-            assert tier.fallback.provider == "hermes", (
-                f"tier {tier_name!r} is OpenRouter-primary but falls back to "
-                f"{tier.fallback.provider!r}; expected hermes (cross-family)"
-            )
+        # Provider diversity: a single provider billing/key/ban event
+        # must not take down both layers.
+        assert tier.provider != tier.fallback.provider, (
+            f"tier {tier_name!r} primary and fallback share provider "
+            f"{tier.provider!r}; a single provider outage takes down "
+            f"both layers — not cross-provider resilience."
+        )
+        # Model-family diversity (the real invariant): compare the base
+        # model id after the last '/', so 'zai/glm-5.2' vs
+        # 'openrouter/z-ai/glm-5.2' are correctly detected as the SAME
+        # model (the monoculture this test was written to forbid).
+        primary_model = tier.model.rsplit("/", 1)[-1]
+        fallback_model = tier.fallback.model.rsplit("/", 1)[-1]
+        assert primary_model != fallback_model, (
+            f"tier {tier_name!r} falls back to the SAME model "
+            f"({tier.model!r} -> {tier.fallback.model!r}); a single "
+            f"model outage takes down both layers — not cross-family "
+            f"resilience (see the posture comment in config.yaml)."
+        )
 
 
-def test_role_tier_mapping_routes_every_primary_role_to_hermes_tier(
+def test_role_tier_mapping_routes_every_primary_role_to_a_defined_tier(
     production_config,
 ):
     """Roles in ``role_tiers`` must route to a tier that exists.
@@ -273,8 +292,8 @@ def test_role_tier_mapping_routes_every_primary_role_to_hermes_tier(
 # ─────────────────────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("role", ROLES_ROUTED_TO_HERMES_PRIMARY)
-def test_dispatch_falls_through_to_openrouter_when_hermes_dies(
+@pytest.mark.parametrize("role", ROLES_ROUTED_TO_ZAI_PRIMARY)
+def test_dispatch_falls_through_to_openrouter_when_zai_dies(
     role, production_config, _events_dir,
 ):
     """For every role that routes to a Hermes-primary tier (flash, pro,
@@ -282,7 +301,7 @@ def test_dispatch_falls_through_to_openrouter_when_hermes_dies(
     via the OpenRouter fallback. The successful event must have
     ``fallback_chain_index >= 1``. Synthesis is exempted during the
     Sprint 17-20 measurement window — see the companion test below."""
-    failing = _FailingHermesProvider()
+    failing = _FailingZaiProvider()
     working = _WorkingOpenRouterProvider()
     register_provider(failing)
     register_provider(working)
@@ -304,7 +323,7 @@ def test_dispatch_falls_through_to_openrouter_when_hermes_dies(
 
 
 @pytest.mark.parametrize("role", ROLES_ROUTED_TO_OPENROUTER_PRIMARY)
-def test_synthesis_falls_through_to_hermes_when_openrouter_dies(
+def test_synthesis_falls_through_to_zai_when_openrouter_dies(
     role, production_config, _events_dir,
 ):
     """Sprint 17-20 measurement-window companion to the Hermes-primary
@@ -315,7 +334,7 @@ def test_synthesis_falls_through_to_hermes_when_openrouter_dies(
     dispatch and there would be no synthesis trajectory for the
     Sprint 20 verdict measurement."""
     failing = _FailingOpenRouterProvider()
-    working = _WorkingHermesProvider()
+    working = _WorkingZaiProvider()
     register_provider(failing)
     register_provider(working)
 
@@ -325,8 +344,8 @@ def test_synthesis_falls_through_to_hermes_when_openrouter_dies(
         config=production_config,
     )
 
-    assert result.provider == "hermes", (
-        f"role {role!r} did not fall through to hermes; got provider="
+    assert result.provider == "zai", (
+        f"role {role!r} did not fall through to zai; got provider="
         f"{result.provider!r}. OpenRouter-primary fallback chain broken."
     )
     assert result.fallback_chain_index >= 1
@@ -337,10 +356,10 @@ def test_synthesis_falls_through_to_hermes_when_openrouter_dies(
 def test_chaos_event_log_has_two_events_per_dispatch(production_config, _events_dir):
     """Failure + fallback both emit ``dispatch.call`` events. Without
     both events landing, post-hoc analytics can't tell the operator
-    that the primary provider was the cause. Uses a Hermes-primary
+    that the primary provider was the cause. Uses a zai-primary
     role (decomposer/pro) since synthesizer is OpenRouter-primary
-    during the Sprint 17-20 measurement window."""
-    register_provider(_FailingHermesProvider())
+    (opus, Sprint 17-20 measurement window)."""
+    register_provider(_FailingZaiProvider())
     register_provider(_WorkingOpenRouterProvider())
 
     dispatch(
@@ -353,7 +372,7 @@ def test_chaos_event_log_has_two_events_per_dispatch(production_config, _events_
     )
     primary = Event.model_validate(rows[0])
     fb = Event.model_validate(rows[1])
-    assert primary.payload.provider == "hermes"
+    assert primary.payload.provider == "zai"
     assert primary.payload.finish_reason == "error"
     assert primary.payload.fallback_chain_index == 0
     assert fb.payload.provider == "openrouter"
@@ -383,7 +402,7 @@ def test_chaos_dispatch_raises_when_both_layers_fail(
         def normalize_usage(self, raw_usage):
             return NormalizedUsage(input_tokens=0, output_tokens=0, cached_input_tokens=0)
 
-    register_provider(_FailingHermesProvider())
+    register_provider(_FailingZaiProvider())
     register_provider(_FailingOpenRouter())
     with pytest.raises(ProviderError):
         dispatch(
@@ -407,7 +426,7 @@ def test_verifier_role_falls_through_to_openrouter(production_config, _events_di
     directly responsible for catching substrate quality regressions —
     losing it during a bridge outage would silently degrade output
     quality without any external signal. Lock the fix in."""
-    register_provider(_FailingHermesProvider())
+    register_provider(_FailingZaiProvider())
     register_provider(_WorkingOpenRouterProvider())
 
     result = dispatch(
