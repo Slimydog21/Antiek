@@ -450,3 +450,64 @@ def test_export_json_no_misattribution_across_colliding_section_index(client, se
     by_title = {s["title"]: s for s in bundle["sections"]}
     assert by_title["S2"]["prose_provenance"] == {"0": [node]}  # keeps its own
     assert by_title["S1"]["prose_provenance"] is None            # NOT fabricated from S2
+
+# ── GPW SPR-05 — a prose EDIT preserves provenance instead of NULLing it ──
+
+
+def test_prose_edit_preserves_provenance(seed):
+    """update_section_prose is preserve-unless-supplied: an edit that passes
+    ONLY prose_text (as patch_section_prose does) must leave the section's
+    prose_provenance intact — a one-paragraph typo fix no longer wipes the
+    whole section's X-ray/citation map. Passing provenance explicitly still
+    replaces it (the generation/regeneration path)."""
+    import json
+
+    from substrate.graph.ops import update_section_prose
+
+    sec, node = seed["section_id"], seed["node"]
+
+    # 1) Generation sets provenance.
+    with connect_write(default_db_path(), purpose="test/seed-prov") as con:
+        update_section_prose(
+            con, section_id=sec, prose_text="original prose",
+            prose_provenance={0: [node], 1: [node]},
+        )
+    row = _section_prose_row(seed["deliverable_id"])
+    assert json.loads(row[1]) == {"0": [node], "1": [node]}
+
+    # 2) EDIT path — prose_text only, NO prose_provenance. Provenance PRESERVED.
+    with connect_write(default_db_path(), purpose="test/edit") as con:
+        update_section_prose(con, section_id=sec, prose_text="fixed a typo in the prose")
+    row = _section_prose_row(seed["deliverable_id"])
+    assert row[0] == "fixed a typo in the prose"           # text updated
+    assert json.loads(row[1]) == {"0": [node], "1": [node]}  # provenance INTACT (was NULLed before)
+
+    # 3) Explicit provenance still REPLACES (regeneration path).
+    with connect_write(default_db_path(), purpose="test/regen") as con:
+        update_section_prose(
+            con, section_id=sec, prose_text="regenerated", prose_provenance={0: [node]},
+        )
+    row = _section_prose_row(seed["deliverable_id"])
+    assert json.loads(row[1]) == {"0": [node]}             # replaced
+
+
+def test_patch_section_prose_endpoint_preserves_provenance(client, seed):
+    """End-to-end through the real PATCH endpoint: editing a section's prose
+    via the API must not wipe its provenance (the bug this sprint closes)."""
+    import json
+
+    from substrate.graph.ops import update_section_prose
+
+    sec, node = seed["section_id"], seed["node"]
+    with connect_write(default_db_path(), purpose="test/seed-prov") as con:
+        update_section_prose(
+            con, section_id=sec, prose_text="original", prose_provenance={0: [node]},
+        )
+
+    r = client.patch(f"/sections/{sec}/prose",
+                     json={"prose_text": "operator fixed a typo"})
+    assert r.status_code == 202, r.text
+
+    row = _section_prose_row(seed["deliverable_id"])
+    assert row[0] == "operator fixed a typo"
+    assert json.loads(row[1]) == {"0": [node]}  # provenance survived the edit
