@@ -206,7 +206,7 @@ def score_labeled_set(
 # ---------------------------------------------------------------------------
 
 
-def _iter_synthesis_payloads(events_dir: str) -> Iterable[tuple[str, dict]]:
+def _iter_synthesis_payloads(events_dir: str) -> Iterable[tuple[str, dict[str, Any]]]:
     """Yield (investigation_id, synthesize.delivered payload dict) from the
     on-disk event store. Read-only over JSONL/Parquet via the event_log
     trajectory reader."""
@@ -265,11 +265,11 @@ def score_traces(
 
     for iid, payload in all_payloads:
         # inline chunk_texts on the payload (some fixtures carry them)
-        inline = payload.get("chunk_texts") or {}
+        inline: dict[str, str] = dict(payload.get("chunk_texts") or {})
 
-        def _resolve(chunk_id: str, _inline=inline) -> str | None:
+        def _resolve(chunk_id: str, _inline: dict[str, str] = inline) -> str | None:
             if chunk_id in _inline:
-                return _inline[chunk_id]
+                return str(_inline[chunk_id])
             return db_resolver(chunk_id) if db_resolver else None
 
         claim_chunks: list[tuple[str, list[str], list[str]]] = []
