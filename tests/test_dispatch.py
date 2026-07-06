@@ -398,11 +398,14 @@ def test_config_loads_from_yaml_file():
     # and verify tiers stay Hermes primary — only synthesis is under
     # measurement.
     syn = config.tiers["synthesis"]
-    assert syn.provider == "openrouter"
-    assert syn.model == "anthropic/claude-opus-4.7"
+    # Claude-less verdict (2026-07-06): synthesis is GLM-5.2 via zai_reasoning
+    # (thinking-enabled) primary, DeepSeek first-link fallback, MiMo second.
+    # The operator's model footprint is claude-less; GLM-5.2 drives every tier.
+    assert syn.provider == "zai_reasoning"
+    assert syn.model == "glm-5.2"
     assert syn.fallback is not None
-    assert syn.fallback.provider == "hermes"
-    assert syn.fallback.model == "grok-4.3"
+    assert syn.fallback.provider == "deepseek"
+    assert syn.fallback.model == "deepseek-v4-pro"
 
 
 def test_config_role_tiers_covers_every_dispatching_role():

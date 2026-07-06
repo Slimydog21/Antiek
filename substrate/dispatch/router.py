@@ -84,6 +84,48 @@ class TierConfig:
     fallback: TierConfig | None = None
 
 
+def _fallback_tier_config(
+    tier_name: str,
+    fb: Mapping[str, Any],
+    base: TierConfig,
+    *,
+    depth: int = 1,
+) -> TierConfig:
+    """Build a (possibly multi-layer) fallback TierConfig from an inline
+    YAML ``fallback`` dict. Recurses when the dict carries its own nested
+    ``fallback`` key, so a tier may declare a chain of any depth:
+
+        fallback:
+          provider: deepseek
+          model: deepseek-v4-pro
+          fallback:
+            provider: xiaomi
+            model: mimo-v2.5-pro
+
+    The router's dispatch walker already follows ``tier.fallback`` to None,
+    so this helper is the only place that needed to learn recursion. All
+    layers inherit the base tier's pricing / token / temperature defaults —
+    a fallback is a liveness mechanism, not a separate pricing tier. depth=1
+    reproduces the legacy single-fallback name ``<tier>__fallback`` exactly.
+    """
+    nested = (
+        _fallback_tier_config(tier_name, fb["fallback"], base, depth=depth + 1)
+        if isinstance(fb.get("fallback"), dict)
+        else None
+    )
+    suffix = "" if depth == 1 else str(depth)
+    return TierConfig(
+        name=f"{tier_name}__fallback{suffix}",
+        provider=fb.get("provider"),
+        model=fb.get("model"),
+        max_tokens=base.max_tokens,
+        temperature=base.temperature,
+        context_budget_tokens=base.context_budget_tokens,
+        pricing=base.pricing,
+        fallback=nested,
+    )
+
+
 @dataclass(frozen=True)
 class DispatchConfig:
     """Loaded ``config.yaml``. Use ``DispatchConfig.from_yaml(path)`` or
@@ -133,16 +175,10 @@ class DispatchConfig:
             fallback_obj: TierConfig | None = None
             fb = tier_data.get("fallback")
             if isinstance(fb, dict):
-                fallback_obj = TierConfig(
-                    name=f"{tier_name}__fallback",
-                    provider=fb.get("provider"),
-                    model=fb.get("model"),
-                    max_tokens=base.max_tokens,
-                    temperature=base.temperature,
-                    context_budget_tokens=base.context_budget_tokens,
-                    pricing=base.pricing,  # same pricing — providers usually align within a tier
-                    fallback=None,
-                )
+                # Recursive: a nested ``fallback`` key declares a deeper
+                # link (GLM → DeepSeek → MiMo). Single-layer tiers (no
+                # nested key) behave exactly as before.
+                fallback_obj = _fallback_tier_config(tier_name, fb, base)
             resolved[tier_name] = TierConfig(
                 name=tier_name,
                 provider=base.provider,

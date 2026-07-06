@@ -2,19 +2,19 @@
 id = "section-14-4-synthesis-pin"
 status = "guarded"
 statement = """
-§14.4 synthesis pin. While the §14.4 measurement window is open
-(2026-05-19 → Sprint-20), the human-read synthesis artifact MUST be produced by
-the pinned Opus synthesizer; NO recorded research tier (fast/deep/default) may
-displace it. COST IF VIOLATED: the exact defect this whole registry exists to
-catch — a research-tier override silently routed synthesis to DeepSeek/MiMo, so
-the Sprint-20 cost/quality verdict would measure the WRONG model's voice, and a
-fake-green seam test (asserted against a synthetic config, never loaded the real
-config.yaml) hid it for weeks. A money + provenance + measurement bug.
+Claude-less synthesis pin (the §14.4 verdict landed 2026-07-06: the
+operator's model footprint is claude-less). The human-read synthesis artifact
+MUST be produced by the pinned claude-less GLM synthesizer (zai_reasoning /
+glm-5.2); NO recorded research tier (fast/deep/default) may displace it onto a
+backup model. COST IF VIOLATED: a research-tier override silently routes
+synthesis onto DeepSeek/MiMo, so the operator-read artifact is no longer driven
+by GLM-5.2 — the explicit claude-less directive is voided, and the synthesis
+voice drifts off the platform's primary AI driver.
 """
-guard = "tests/test_dispatch_synthesis_pin.py::test_default_deep_synthesizer_stays_pinned_to_opus_with_deepseek_live"
+guard = "tests/test_dispatch_synthesis_pin.py::test_default_deep_synthesizer_stays_pinned_to_glm_with_deepseek_live"
 guard_kind = "pytest"
-assertion = "Loads the REAL config.yaml and proves no research tier displaces the pinned Opus synthesizer while the §14.4 window is open."
-sunset = "Sprint-20 §14.4 verdict recorded (or window closes); see interfaces/research/api/synthesizer.py SUNSET note"
+assertion = "Loads the REAL config.yaml and proves no research tier displaces the pinned claude-less GLM synthesizer primary."
+sunset = "Operator reverses the claude-less directive (re-introduces Anthropic/synthesis); see interfaces/research/api/synthesizer.py + config.yaml synthesis tier"
 
 [non_vacuity]
 method = "fail_before_pass_after"
