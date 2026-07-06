@@ -358,6 +358,7 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "book_assets",
     "outline_blocks",
     "monitors",
+    "supersession_candidates",
 )
 
 
@@ -1093,6 +1094,38 @@ CREATE INDEX IF NOT EXISTS idx_monitors_investigation
 """
 
 
+# Contradiction & Supersession — supersession_candidates: the review
+# queue that makes contradictions TASKS, not actions. The detector writes
+# candidate rows; only apply_review mutates edges. Pure idempotent
+# CREATE IF NOT EXISTS. old/new_edge_id are SOFT references to
+# edges(edge_id) — plain TEXT, NO foreign key — because a hard FK would make
+# a candidate row BLOCK apply_review from closing the edge it points at
+# (DuckDB refuses UPDATE/DELETE on a FK-referenced row), which is exactly
+# backwards. Same soft-ref choice as outline_blocks.node_id; the detector
+# only ever stores ids it just read from edges, so they are valid by
+# construction. The contradiction_type / status / decision CHECK sets mirror
+# the Python CONTRADICTION_TYPES / {'open','reviewed'} / REVIEW_DECISIONS
+# frozensets in middleware/supersession/supersession.py (parity is drift-tested).
+ANTIEK_GRAPH_SCHEMA_V14_SUPERSESSION_CANDIDATES_SQL = """
+CREATE TABLE IF NOT EXISTS supersession_candidates (
+    candidate_id       TEXT PRIMARY KEY,
+    investigation_id   TEXT,
+    old_edge_id        TEXT,   -- soft ref to edges(edge_id); no FK (see note above)
+    new_edge_id        TEXT,   -- soft ref to edges(edge_id); no FK (see note above)
+    contradiction_type TEXT CHECK (contradiction_type IN ('supersession', 'uncertainty', 'error')),
+    reasoning          TEXT,
+    status             TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'reviewed')),
+    decision           TEXT CHECK (decision IN ('apply_supersession', 'dismiss_new', 'dismiss_old', 'coexist')),
+    reviewer           TEXT,
+    review_notes       TEXT DEFAULT '',
+    created_at         TIMESTAMP,
+    reviewed_at        TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_supersession_candidates_status
+    ON supersession_candidates(status);
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -1160,6 +1193,12 @@ def init_database(con: LockedConnection) -> None:
     # box-bounded resumable refresh advances). Pure idempotent CREATE IF NOT
     # EXISTS; FK-references nothing.
     con.execute(ANTIEK_GRAPH_SCHEMA_V13_MONITORS_SQL)
+    # Contradiction & Supersession — supersession_candidates review queue.
+    # Soft-refs edges(edge_id) (no FK, so it never blocks apply_review from
+    # mutating an edge); order-independent, kept last for tidiness. Pure
+    # idempotent CREATE IF NOT EXISTS. The review path (detector +
+    # apply_review) lives in middleware/supersession/.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V14_SUPERSESSION_CANDIDATES_SQL)
 
 
 def init_database_at_path(db_path: str) -> None:
