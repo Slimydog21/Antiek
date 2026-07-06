@@ -1025,6 +1025,50 @@ class Loop3ChecklistUpdateRequest(BaseModel):
     note: str = ""
 
 
+def _compose_autocomplete_prompt(*, prefix: str, document_context: str | None) -> str:
+    """Compose the flash-tier inline-autocomplete prompt (CK-3). The model
+    returns ONLY the continuation of ``prefix`` — no preamble, matching the
+    voice/vocabulary of the surrounding text. ``document_context`` is the
+    client-sent open-doc context (the cursor's neighborhood); retrieval-
+    augmented completion (CK-1-style grounding) is a follow-up."""
+    context_block = (
+        f"DOCUMENT CONTEXT:\n{document_context}\n\n" if document_context else ""
+    )
+    return (
+        "You are an inline autocomplete for Antiek's writing surface. "
+        "Complete the text after the cursor. Return ONLY the continuation "
+        "— no preamble, no quotation marks, no explanation. Match the voice "
+        "and vocabulary of the surrounding text.\n\n"
+        f"{context_block}"
+        f"TEXT BEFORE CURSOR:\n{prefix}\n\n"
+        "CONTINUATION:"
+    )
+
+
+class CompleteRequest(BaseModel):
+    """Inline autocomplete request (CK-3 — the signature Cursor
+    writing-flow affordance). The client sends the text around the cursor;
+    the substrate dispatches the ``autocomplete`` role on the flash tier
+    (GLM-5.2, thinking disabled — fast, direct completions) and returns
+    the continuation. Module-level (not nested in create_app) so FastAPI
+    can resolve the ``Body(...)`` annotation under PEP 563 string
+    annotations — same placement as ``ThoughtPartnerRequest``.
+
+    All client-controlled fields are BOUNDED (the operator-auth gate is
+    global, but defense-in-depth caps the cost/latency blast radius of any
+    single call): ``max_tokens`` to the inline-completion budget and
+    ``document_context`` to a generous cursor-neighborhood cap, so a caller
+    cannot amplify cost via an unbounded generation or a multi-MB prompt."""
+
+    prefix: str = Field(..., min_length=1)
+    document_context: str | None = Field(default=None, max_length=8000)
+    max_tokens: int = Field(default=128, ge=1, le=512)
+
+
+class CompleteResponse(BaseModel):
+    text: str
+
+
 class ThoughtPartnerRequest(BaseModel):
     """One-shot thought-partner invocation (master-spec §4.5 + §11.7).
 
@@ -5283,6 +5327,35 @@ def create_app(
             shape=parsed.shape,
             text=result.text,
         )
+
+    # ── CK-3 inline autocomplete endpoint (cursor-for-knowledge) ──
+    @app.post("/complete", response_model=CompleteResponse)
+    async def post_complete(
+        req: CompleteRequest = Body(...),
+    ) -> CompleteResponse:
+        """Inline autocomplete. Returns ONLY the continuation of
+        ``req.prefix``, matching the surrounding voice. The flash tier
+        keeps it fast and cost-bounded. v1 completes over the client-sent
+        ``document_context``; retrieval-augmented completion is a follow-up."""
+        if not req.prefix.strip():
+            raise HTTPException(
+                status_code=400, detail="prefix must not be empty",
+            )
+        prompt = _compose_autocomplete_prompt(
+            prefix=req.prefix, document_context=req.document_context,
+        )
+        try:
+            result = dispatch(
+                prompt,
+                "autocomplete",
+                investigation_id="__complete__",
+                max_tokens=req.max_tokens,
+            )
+        except (ProviderError, KeyError) as exc:
+            raise HTTPException(
+                status_code=503, detail=f"complete_unavailable: {exc}",
+            ) from exc
+        return CompleteResponse(text=result.text or "")
 
     # ── Sprint 22 multi-user auth-probe endpoint ──
     class AuthProbeResponse(BaseModel):
