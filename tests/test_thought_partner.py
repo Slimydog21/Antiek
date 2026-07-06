@@ -17,8 +17,8 @@ from substrate.dispatch import (
 )
 
 
-class _MockHermesProvider:
-    name = "hermes"
+class _MockZaiProvider:
+    name = "zai"
 
     def __init__(self, reply_text: str):
         self.reply_text = reply_text
@@ -102,7 +102,7 @@ def test_thought_partner_keyed_returns_model_reply_verbatim(client):
         '[{"kind":"toast","level":"info","message":"distinctive marker"}]\n'
         "@@end"
     )
-    provider = _MockHermesProvider(reply)
+    provider = _MockZaiProvider(reply)
     register_provider(provider)
 
     response = client.post(
@@ -121,7 +121,7 @@ def test_thought_partner_keyed_returns_model_reply_verbatim(client):
 
 
 def test_thought_partner_response_schema_pin(client):
-    register_provider(_MockHermesProvider('{"shape":"synthesis","synthesis_text":"ok"}'))
+    register_provider(_MockZaiProvider('{"shape":"synthesis","synthesis_text":"ok"}'))
 
     response = client.post(
         "/thought-partner",
