@@ -39,20 +39,23 @@ from pydantic import BaseModel, Field
 
 from middleware.supersession.apply import apply_review
 from runtime.db_lock import connect_write
-from substrate.graph import default_db_path, ensure_initialized
+from substrate.graph import default_db_path
 
 supersession_router = APIRouter()
 
 
-def _db() -> str:
-    path = default_db_path()
-    ensure_initialized(path)
-    return path
-
-
 @contextmanager
 def _read() -> Iterator[duckdb.DuckDBPyConnection]:
-    con = duckdb.connect(_db(), read_only=True)
+    # Open read-only DIRECTLY off default_db_path() — do NOT route through
+    # ensure_initialized: that calls init_database_at_path -> connect_write,
+    # acquiring the EXCLUSIVE single-writer flock, which would serialize this
+    # read behind every graph writer (notably the continuous-research cycle)
+    # and block until the lock frees. A read-only DuckDB connection coexists
+    # with the active writer (verified in prod: returns concurrently). The
+    # schema is initialized at deploy/startup; on a never-initialized DB the
+    # query 500s, which is the correct failure for a review endpoint hitting a
+    # graph that doesn't yet exist.
+    con = duckdb.connect(default_db_path(), read_only=True)
     try:
         yield con
     finally:
@@ -175,7 +178,7 @@ def review_candidate(
     event only after commit. ``apply_supersession``/``dismiss_*`` close an edge
     (``valid_until = now``); ``coexist`` leaves both valid. Re-reviewing an
     already-reviewed candidate is refused (409) to prevent a double mutation."""
-    con = connect_write(_db(), purpose="supersession.review")
+    con = connect_write(default_db_path(), purpose="supersession.review")
     try:
         event_id = apply_review(
             con, candidate_id, req.decision, req.reviewer, req.review_notes
