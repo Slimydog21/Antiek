@@ -72,6 +72,7 @@ def client(monkeypatch):
         "HERMES_API_KEY",
         "OPENROUTER_API_KEY",
         "XIAOMI_API_KEY",
+        "Z_AI_API_KEY",
     ):
         monkeypatch.delenv(key_env, raising=False)
     from interfaces.research.api.app import create_app
@@ -138,3 +139,93 @@ def test_thought_partner_response_schema_pin(client):
     assert isinstance(body["shape"], str)
     assert isinstance(body["text"], str)
     assert body["shape"] in {"challenge", "synthesis", "extension"}
+
+
+def test_thought_partner_retrieves_library_context_into_the_prompt(client, monkeypatch):
+    """CK-1 non-vacuity: the endpoint retrieves relevant passages from the
+    operator's library and feeds them into the thought-partner prompt — the
+    "ask your library" grounding (Cursor's auto-context analog). Proves the
+    retrieved context actually REACHES the model, not merely that the model
+    replied. Falsifiable: stub the helper to return [] and the distinctive
+    passage vanishes from the dispatched prompt."""
+    distinctive_passage = "GROUNDING MARKER PASSAGE FROM THE LIBRARY"
+    canned_notes = [{
+        "note_id": "chunk-42",
+        "note_text": distinctive_passage,
+        "source_event_ids": ["doc-7"],
+        "confidence": 0.91,
+    }]
+    monkeypatch.setattr(
+        "interfaces.research.api.app._retrieve_thought_partner_context",
+        lambda prompt, policy_tag, **kw: canned_notes,
+    )
+    reply = (
+        '{"shape":"synthesis","synthesis_text":"grounded reply",'
+        '"challenges":[],"extensions":[]}'
+    )
+    provider = _MockZaiProvider(reply)
+    register_provider(provider)
+
+    response = client.post(
+        "/thought-partner",
+        json={"investigation_id": "__sidecar__", "prompt": "synthesize this"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["text"] == reply
+    # The retrieved passage reached the model's prompt — grounding is real.
+    assert provider.calls, "the thought_partner role was never dispatched"
+    dispatched_prompt = provider.calls[0]["prompt"]
+    assert distinctive_passage in dispatched_prompt
+
+
+def test_thought_partner_policy_tag_threads_the_section_9_gate(client, monkeypatch):
+    """CK-1 §9.0: the request's ``policy_tag`` reaches ``search()`` — the
+    gate that excludes personal_reading on the default
+    attribution_eligible path and includes it on private_research. Proves
+    the operator's own chat can opt into their full library while a
+    public-scope query stays gated. Stubs the retrieval primitives so no
+    real DB / embedding model is touched."""
+    import contextlib
+
+    captured: dict[str, str] = {}
+
+    class _StubEmbedding:
+        dimension = 4
+
+        def encode(self, _text: str) -> list[float]:
+            return [0.0, 0.0, 0.0, 0.0]
+
+    def _fake_search(con, text, *, model, top_k, policy_tag, **_kw):
+        captured["policy_tag"] = policy_tag
+        return {"results": []}
+
+    @contextlib.contextmanager
+    def _fake_connect_read(_path):
+        yield object()
+
+    # Monkeypatch the MODULE object directly: substrate.graph.search is also
+    # re-exported as a function from the package __init__, so a dotted-string
+    # setattr would target the function, not the module the helper imports.
+    # importlib.import_module always resolves the module (an ``import ... as``
+    # here binds the re-exported function, not the module).
+    import importlib
+
+    search_mod = importlib.import_module("substrate.graph.search")
+
+    monkeypatch.setattr(search_mod, "SentenceTransformerEmbedding", _StubEmbedding)
+    monkeypatch.setattr(search_mod, "search", _fake_search)
+    monkeypatch.setattr("runtime.db_lock.connect_read", _fake_connect_read)
+    monkeypatch.setattr("substrate.graph.default_db_path", lambda: "/dummy")
+    register_provider(_MockZaiProvider('{"shape":"synthesis","synthesis_text":"ok"}'))
+
+    # Default (no policy_tag) → attribution_eligible (personal_reading gated out).
+    resp = client.post("/thought-partner", json={"prompt": "q"})
+    assert resp.status_code == 200, resp.text
+    assert captured.get("policy_tag") == "attribution_eligible"
+
+    # Explicit private_research → forwarded verbatim (owner full-read path).
+    resp = client.post(
+        "/thought-partner", json={"prompt": "q", "policy_tag": "private_research"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert captured.get("policy_tag") == "private_research"
