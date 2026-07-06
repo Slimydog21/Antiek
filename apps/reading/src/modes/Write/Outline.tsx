@@ -398,6 +398,20 @@ function SectionCard({
     [handleRegenerate],
   );
 
+  // CK-5: apply the model's edited span. Splice it into the section prose,
+  // replacing the first occurrence of the current selection's text; the
+  // existing prose-autosave then persists it (the same path a manual
+  // keystroke takes), so provenance + single-writer discipline are unchanged.
+  const handleApplyEdit = useCallback(
+    (editedText: string) => {
+      const sel = selection;
+      if (!sel || !sel.text) return;
+      setProseText((prev) => (prev == null ? prev : prev.replace(sel.text, editedText)));
+      window.getSelection()?.removeAllRanges();
+    },
+    [selection],
+  );
+
   const canGenerate = blocks.length > 0 && !generating;
 
   return (
@@ -595,6 +609,8 @@ function SectionCard({
               setProposal({ text: safeText });
             }}
             rewriteActions={{ onRewrite }}
+            editContext={{ deliverableId, sectionId: section.section_id }}
+            onApplyEdit={handleApplyEdit}
           />
           {/* Honest save indicator (SPR-02). The "saved as you write" promise
               is now backed by real persistence state: it never reads "saved"

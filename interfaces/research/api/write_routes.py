@@ -618,3 +618,80 @@ def promote_investigation(req: FromInvestigationRequest) -> FromInvestigationRes
         synthesis_status=result.synthesis_status,
         synthesis_recommendation=result.synthesis_recommendation,
     )
+
+
+# ---------------------------------------------------------------------------
+# Cmd+K selection edit (CK-5) — the Cursor writing-flow affordance
+# ---------------------------------------------------------------------------
+# Appended at end-of-file for the same declared-bar reason as the investigation
+# block above: the baseline keys this file's mypy violations by exact line
+# number, so a mid-file insertion would orphan those keys and flag them NEW.
+# An append shifts nothing above -> the committed baseline stays exact.
+
+
+class EditSelectionRequest(BaseModel):
+    """A highlighted span of deliverable prose + the writer's edit instruction.
+
+    The span is deliverable prose (the model's own already-generated,
+    citation-bearing output), not restricted source, so a stylistic edit
+    introduces no source-redistribution concern and no new factual claims;
+    the section's prose_provenance (paragraph -> blocks) stays valid."""
+
+    deliverable_id: str
+    section_id: str
+    selection_text: str = Field(..., min_length=1, max_length=8000)
+    instruction: str = Field(..., min_length=1, max_length=1000)
+
+
+@write_router.post("/edit-selection", status_code=200)
+def edit_selection(req: EditSelectionRequest) -> dict[str, Any]:
+    """Rewrite a highlighted span of deliverable prose per a natural-language
+    instruction — the Cursor Cmd+K writing-flow affordance.
+
+    The selection is deliverable prose (the model's §9.0-cleared output, not
+    restricted source), so a stylistic edit (stronger / more concise / rephrase)
+    adds no source-redistribution concern and no new claims: the section's
+    prose_provenance (paragraph -> OutlineBlocks) stays valid. Returns ONLY the
+    edited span; the client replaces the selection in place and funnels the
+    result through the existing patch_section_prose path, so provenance and the
+    single-writer discipline are unchanged. This endpoint never persists on its
+    own.
+
+    Dispatches role=creative_writer (pro tier, GLM-5.2). Absent config or
+    credentials it surfaces a clear 503 rather than fabricating prose. Cost is
+    bounded by a selection-derived max_tokens cap."""
+    # Cost bound: the edited span is at most ~2x the selection. tokens ~= chars/4,
+    # so give 2x headroom over the selection with a 128-token floor, capped at 2048.
+    max_tokens = min(2048, max(128, (len(req.selection_text) // 4) * 2 + 128))
+    prompt = (
+        "You are editing ONE highlighted span inside a longer document. Apply "
+        "the writer's instruction to the span exactly. Return ONLY the edited "
+        "span text with no preamble, no surrounding quotes, no explanation, and "
+        "nothing beyond the span. This is a stylistic edit: do NOT add new "
+        "factual claims, citations, or content that was not in the original "
+        "span.\n\n"
+        f"Instruction: {req.instruction}\n\n"
+        f"Span to edit:\n{req.selection_text}"
+    )
+    try:
+        from substrate.dispatch import dispatch
+
+        result = dispatch(
+            prompt=prompt,
+            role="creative_writer",
+            investigation_id=req.deliverable_id,
+            max_tokens=max_tokens,
+        )
+    except KeyError as exc:
+        # creative_writer not wired into the dispatch config.
+        raise HTTPException(
+            status_code=503,
+            detail="edit unavailable: creative_writer is not in the dispatch config",
+        ) from exc
+    except Exception as exc:  # provider/credential failure
+        raise HTTPException(status_code=503, detail=f"edit unavailable: {exc}") from exc
+    return {
+        "edited_text": result.text,
+        "deliverable_id": req.deliverable_id,
+        "section_id": req.section_id,
+    }
