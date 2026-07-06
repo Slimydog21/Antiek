@@ -6331,6 +6331,14 @@ def create_app(
     from interfaces.research.api.artifact_routes import artifact_router
     app.include_router(artifact_router)
 
+    # Supersession review surface (GF-5/GF-6 activation). Turns detected
+    # contradictions into a review queue — the other half of the detection
+    # wired in processing/extraction/extract.py. Same one-line inclusion
+    # discipline; carries no per-handler auth (global middleware gates the
+    # operator workstation, matching write_routes).
+    from interfaces.research.api.supersession_routes import supersession_router
+    app.include_router(supersession_router)
+
     return app
 
 
