@@ -130,8 +130,13 @@ def test_hermes_provider_url_does_not_double_v1(monkeypatch):
 # ---------------------------------------------------------------------------
 # zai provider — GLM-5.2, the platform's AI driver (operator 2026-07-06)
 # ---------------------------------------------------------------------------
-def test_zai_key_registers_zai(monkeypatch) -> None:
-    """Z_AI_API_KEY set -> the zai (GLM-5.2) provider registers."""
+def test_zai_key_registers_both_glm_policies(monkeypatch) -> None:
+    """Z_AI_API_KEY set -> BOTH GLM-5.2 providers register on the one
+    z.ai endpoint: `zai` (thinking disabled, the high-volume tiers) and
+    `zai_reasoning` (thinking enabled, the synthesis tier). They share the
+    key + endpoint and differ ONLY in thinking policy, so synthesis keeps
+    GLM-5.2's native chain-of-thought while the bulk tiers get direct
+    crystallized answers."""
     for k in (
         "DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
         "XIAOMI_API_KEY", "HERMES_API_KEY",
@@ -139,13 +144,18 @@ def test_zai_key_registers_zai(monkeypatch) -> None:
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("Z_AI_API_KEY", "zai-fake-1")
     registered = register_default_providers(quiet=True)
-    assert registered == {"zai"}
-    provider = get_provider("zai")
-    assert provider.name == "zai"
-    assert provider.base_url == "https://api.z.ai/api/paas/v4"
-    # GLM-5.2 is a reasoning model; the driver runs thinking-disabled so the
-    # substrate gets crystallized ANSWERS (notes/synthesis), not traces.
-    assert provider._extra_body == {"thinking": {"type": "disabled"}}
+    assert registered == {"zai", "zai_reasoning"}, registered
+    # zai: thinking DISABLED (the volume-thesis tiers).
+    zai = get_provider("zai")
+    assert zai.name == "zai"
+    assert zai.base_url == "https://api.z.ai/api/paas/v4"
+    assert zai._extra_body == {"thinking": {"type": "disabled"}}
+    # zai_reasoning: thinking ENABLED (synthesis) — same endpoint + key,
+    # distinguished by the ABSENCE of the thinking-disabled extra_body.
+    zai_r = get_provider("zai_reasoning")
+    assert zai_r.name == "zai_reasoning"
+    assert zai_r.base_url == "https://api.z.ai/api/paas/v4"
+    assert zai_r._extra_body == {}
 
 
 def test_zai_missing_key_registers_nothing(monkeypatch) -> None:
@@ -157,6 +167,7 @@ def test_zai_missing_key_registers_nothing(monkeypatch) -> None:
         monkeypatch.delenv(k, raising=False)
     registered = register_default_providers(quiet=True)
     assert "zai" not in registered
+    assert "zai_reasoning" not in registered
 
 
 def test_zai_base_url_override(monkeypatch) -> None:
