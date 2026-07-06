@@ -4,6 +4,7 @@ import { apiFetch } from "../lib/api";
 import { WernerThinking } from "../brand/werner/animated";
 import { useReplyMode } from "../hooks/useReplyMode";
 import SpokenReply from "./SpokenReply";
+import ContextPicker from "./ai/ContextPicker";
 import {
   dispatchAiAction,
   parseAssistantReply,
@@ -66,6 +67,10 @@ export default function AISidecar() {
   const [recentCalls, setRecentCalls] = useState<DispatchEvent[]>([]);
   const [contextError, setContextError] = useState<string | null>(null);
   const [draft, setDraft] = useState<string>("");
+  // CK-4: the operator's composed §9.0-aware context (from the @-context
+  // picker). When non-empty it OVERRIDES the opaque workspaceContextPrompt()
+  // so /thought-partner grounds on exactly what the operator @-selected.
+  const [composedContext, setComposedContext] = useState<string>("");
   const [reply, setReply] = useState<ThoughtPartnerReply | null>(null);
   const [pending, setPending] = useState<boolean>(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -179,7 +184,9 @@ export default function AISidecar() {
         body: JSON.stringify({
           investigation_id: "__sidecar__",
           prompt: draft,
-          system_context: workspaceContextPrompt(),
+          system_context: composedContext.trim()
+            ? composedContext
+            : workspaceContextPrompt(),
         }),
       });
       if (!resp.ok) {
@@ -282,6 +289,15 @@ export default function AISidecar() {
             <p className="text-xs font-mono text-shadow-1 dark:text-moonlight uppercase">
               Thought partner
             </p>
+            {/*
+              CK-4 — the @-context picker. The operator composes a §9.0-aware
+              system_context here (@doc @insight); on success onContextChange
+              stores it, and sendThoughtPartner uses it INSTEAD of the opaque
+              workspaceContextPrompt() so the model chats WITH the picked
+              library context. personal_reading is withheld server-side on the
+              non-owner path (the picker renders what reached the model).
+            */}
+            <ContextPicker onContextChange={setComposedContext} />
             <textarea
               ref={inputRef}
               value={draft}
