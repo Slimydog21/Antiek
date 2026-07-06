@@ -35,7 +35,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
     sys.path.insert(
         0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     )
-    from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
+    from runtime.db_lock import LockedConnection
 
 
 def classify_contradiction(old_edge_id: str, new_edge_id: str) -> SupersessionVerdict:
@@ -76,12 +76,14 @@ _INSERT_SQL = (
 )
 
 
-def _order_pair(a_id, a_vf, b_id, b_vf):
+def _order_pair(a_id: str, a_vf: datetime, b_id: str, b_vf: datetime) -> tuple[str, str]:
     """old = earlier valid_from (tiebreak edge_id); new = the other."""
     return (a_id, b_id) if (a_vf, a_id) <= (b_vf, b_id) else (b_id, a_id)
 
 
-def _write_candidate(con, old_id, new_id, investigation_id) -> str | None:
+def _write_candidate(
+    con: LockedConnection, old_id: str, new_id: str, investigation_id: str
+) -> str | None:
     """Write one open candidate for (old, new) unless an open candidate for that
     pair already exists (either orientation). Returns candidate_id or None.
     NEVER touches the edges table."""
@@ -104,7 +106,7 @@ def _write_candidate(con, old_id, new_id, investigation_id) -> str | None:
     return cid
 
 
-def detect_recent(con, since: datetime | None = None) -> list[str]:
+def detect_recent(con: LockedConnection, since: datetime | None = None) -> list[str]:
     """Batch sweep (the primary, safe wiring): find every pair of currently-valid
     contradicting edges and write an open candidate for each new pair. Returns the
     candidate_ids written. Does NOT mutate edges."""
@@ -119,7 +121,7 @@ def detect_recent(con, since: datetime | None = None) -> list[str]:
         " AND e1.valid_until IS NULL AND e2.valid_until IS NULL "
         " AND e1.edge_id < e2.edge_id"
     )
-    params: list = []
+    params: list[datetime] = []
     if since is not None:
         sql += " AND (e1.extracted_at >= ? OR e2.extracted_at >= ?)"
         params = [since, since]
@@ -132,7 +134,7 @@ def detect_recent(con, since: datetime | None = None) -> list[str]:
     return written
 
 
-def detect_for_edge(con, new_edge_id: str) -> str | None:
+def detect_for_edge(con: LockedConnection, new_edge_id: str) -> str | None:
     """Detect contradictions involving a single (just-added) edge. Same rule as
     ``detect_recent``, scoped to ``new_edge_id``. Returns the first candidate_id
     written, or None. Does NOT mutate edges."""

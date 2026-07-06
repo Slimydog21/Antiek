@@ -16,12 +16,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from .db import _require_locked
+from .db import LockedConnection, _require_locked
 from .supersession import emit_for_decision, validate_decision
 
 
 def apply_review(
-    con,
+    con: LockedConnection,
     candidate_id: str,
     decision: str,
     reviewer: str,
