@@ -1105,7 +1105,14 @@ def _compose_context(
     """Compose a §9.0-aware system_context from @-selected items (CK-4).
 
     For each item the content is fetched read-only:
-      - ``doc`` → ``serve_full_text(con, id, owner=owner)``: the SAME gate
+      - ``doc`` → ``serve_full_text_guarded(con, id, owner=owner)``: the
+        serving-boundary guard (content_class gate AND the independent
+        arXiv license-tier cross-check). ``full_text`` is populated only for
+        servable docs, or (owner path) personal_reading docs; a personal_reading
+        / gated doc on the non-owner path has ``full_text=None`` → WITHHELD.
+        A T3 rights-drift @doc raises → WITHHELD (a non-T1 body never enters
+        the model context). personal_reading is withholdable: it reaches the
+        context ONLY on the owner branch (the rigor gate).
         the book-serve path uses. ``full_text`` is populated only for
         servable docs, or (owner path) personal_reading docs; a
         personal_reading / gated doc on the non-owner path has
@@ -1115,11 +1122,13 @@ def _compose_context(
         not §9.0-gated third-party content).
 
     Degraded posture, never raises: connect_read on a fresh/absent graph
-    yields all-missing so the caller still gets a well-formed response.
+    yields all-missing; a §9.0 T3 rights-drift @doc is caught → withheld. The
+    caller always gets a well-formed response.
     Read-only (connect_read) — the corpus is never mutated (§16 single-writer)."""
     from runtime.db_lock import connect_read
-    from substrate.books.serve import serve_full_text
+    from substrate.books.serve_guard import serve_full_text_guarded
     from substrate.graph import default_db_path
+    from substrate.rights import T3BodyServeError
 
     blocks: list[str] = []
     withheld: list[str] = []
@@ -1128,7 +1137,19 @@ def _compose_context(
         with connect_read(default_db_path()) as con:
             for item in items:
                 if item.kind == "doc":
-                    result = serve_full_text(con, item.id, owner=owner)
+                    # Route through the serving-boundary guard (never the
+                    # raw gate) so the license-tier cross-check fires too —
+                    # a non-T1 arXiv body never enters the model's
+                    # system_context, even on the owner path. A T3 drift
+                    # raises T3BodyServeError → the doc is withheld
+                    # (degraded posture; never propagates to the caller).
+                    try:
+                        result = serve_full_text_guarded(
+                            con, item.id, owner=owner,
+                        )
+                    except T3BodyServeError:
+                        withheld.append(item.id)
+                        continue
                     if result.full_text:
                         head = f"@doc {result.title or item.id}"
                         blocks.append(f"{head}\n{result.full_text}")
