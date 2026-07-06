@@ -1031,11 +1031,14 @@ class ThoughtPartnerRequest(BaseModel):
     context, and returns the model text unchanged alongside the parser-
     derived response shape.
 
-    ``policy_tag`` drives the §9.0 retrieval-time gate. The default
-    ``attribution_eligible`` excludes restricted + personal_reading content
-    (the public/ad-safe path); ``private_research``/``operator_only`` (the
-    privileged set) include everything, so the operator's OWN chat can see
-    their full private library while a public-scope query stays gated.
+    The §9.0 retrieval-time gate is SERVER-DERIVED and fail-closed
+    (CWE-862): the effective ``policy_tag`` is NEVER read from the request
+    body — a caller must not be able to select a privileged policy. It is
+    resolved by ``_owner_read_policy_tag`` (the same hardened gate the
+    owner-read book endpoints use), which grants ``operator_only`` (the
+    owner's full private library) only on a positively authenticated,
+    single-operator request and fails closed to ``attribution_eligible``
+    (excludes restricted + personal_reading content) otherwise.
 
     `system_context` (UI-redesign S8 WP-8.4) is the serialised workspace
     state the operator's client ships so the model can reference what panels
@@ -1046,7 +1049,6 @@ class ThoughtPartnerRequest(BaseModel):
 
     prompt: str
     investigation_id: str | None = None
-    policy_tag: str = "attribution_eligible"
     system_context: str | None = None
 
 
@@ -5205,21 +5207,38 @@ def create_app(
         response_model=ThoughtPartnerResponseBody,
     )
     async def post_thought_partner(
+        request: Request,
         req: ThoughtPartnerRequest = Body(...),
     ) -> ThoughtPartnerResponseBody:
         """Run a single thought-partner turn through dispatch.
 
         ``req.system_context`` is model context for the role. The model
         response text is returned verbatim; AISidecar parses any
-        ``@@actions`` block client-side."""
+        ``@@actions`` block client-side.
+
+        The §9.0 retrieval gate is SERVER-DERIVED and fail-closed
+        (CWE-862): ``effective_policy_tag`` is NEVER read from the request
+        body. It is resolved by ``_owner_read_policy_tag`` (the same
+        hardened gate the owner-read book endpoints use), which grants the
+        privileged ``operator_only`` tag only on a positively authenticated
+        single-operator request and fails closed to ``attribution_eligible``
+        otherwise — so a caller can never select a privileged policy to
+        pull restricted / personal_reading passages into the model context."""
         if not req.prompt.strip():
             raise HTTPException(
                 status_code=400, detail="prompt must not be empty",
             )
+        # §9.0 gate is SERVER-DERIVED, never client-controlled (CWE-862).
+        # Reuse the one reviewed owner-read resolver so the gate cannot
+        # drift: operator_only only on a proven single-operator auth, else
+        # attribution_eligible.
+        from interfaces.research.api.books import _owner_read_policy_tag
+
+        effective_policy_tag = _owner_read_policy_tag(request)
         role_prompt = compose_thought_partner_prompt(
             user_prompt=req.prompt,
             selected_notes=_retrieve_thought_partner_context(
-                req.prompt, req.policy_tag,
+                req.prompt, effective_policy_tag,
             ),
         )
         assembled_prompt = THOUGHT_PARTNER_SYSTEM_PROMPT

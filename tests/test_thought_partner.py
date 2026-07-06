@@ -179,12 +179,14 @@ def test_thought_partner_retrieves_library_context_into_the_prompt(client, monke
 
 
 def test_thought_partner_policy_tag_threads_the_section_9_gate(client, monkeypatch):
-    """CK-1 §9.0: the request's ``policy_tag`` reaches ``search()`` — the
-    gate that excludes personal_reading on the default
-    attribution_eligible path and includes it on private_research. Proves
-    the operator's own chat can opt into their full library while a
-    public-scope query stays gated. Stubs the retrieval primitives so no
-    real DB / embedding model is touched."""
+    """CWE-862 (Strix PR #215): the §9.0 retrieval ``policy_tag`` is
+    SERVER-DERIVED and fail-closed — a caller MUST NOT be able to select a
+    privileged policy (private_research / operator_only) to pull
+    personal_reading / restricted passages into the model context. The
+    unauthenticated test client resolves to attribution_eligible regardless
+    of what it posts in the body. Stubs the retrieval primitives so no real
+    DB / embedding model is touched and the tag reaching search() is
+    captured."""
     import contextlib
 
     captured: dict[str, str] = {}
@@ -218,14 +220,30 @@ def test_thought_partner_policy_tag_threads_the_section_9_gate(client, monkeypat
     monkeypatch.setattr("substrate.graph.default_db_path", lambda: "/dummy")
     register_provider(_MockZaiProvider('{"shape":"synthesis","synthesis_text":"ok"}'))
 
-    # Default (no policy_tag) → attribution_eligible (personal_reading gated out).
+    # No policy_tag in the body → server-derived attribution_eligible.
     resp = client.post("/thought-partner", json={"prompt": "q"})
     assert resp.status_code == 200, resp.text
     assert captured.get("policy_tag") == "attribution_eligible"
 
-    # Explicit private_research → forwarded verbatim (owner full-read path).
-    resp = client.post(
-        "/thought-partner", json={"prompt": "q", "policy_tag": "private_research"},
-    )
-    assert resp.status_code == 200, resp.text
-    assert captured.get("policy_tag") == "private_research"
+    # A caller CANNOT escalate by posting a privileged policy_tag (CWE-862):
+    # the field is ignored; the server still derives attribution_eligible for
+    # the unauthenticated test client — never the privileged value.
+    for privileged in ("private_research", "operator_only"):
+        captured.clear()
+        resp = client.post(
+            "/thought-partner", json={"prompt": "q", "policy_tag": privileged},
+        )
+        assert resp.status_code == 200, resp.text
+        assert captured.get("policy_tag") == "attribution_eligible", (
+            f"client-supplied policy_tag={privileged!r} leaked into the "
+            f"retrieval gate (CWE-862)"
+        )
+
+
+def test_thought_partner_request_exposes_no_client_policy_tag_field():
+    """CWE-862 regression guard: ThoughtPartnerRequest must NOT expose a
+    caller-controllable ``policy_tag`` — the §9.0 gate is server-derived.
+    Locks the field's removal so it cannot be silently re-added."""
+    from interfaces.research.api.app import ThoughtPartnerRequest
+
+    assert "policy_tag" not in ThoughtPartnerRequest.model_fields
