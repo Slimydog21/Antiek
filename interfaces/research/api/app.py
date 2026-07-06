@@ -1069,6 +1069,113 @@ class CompleteResponse(BaseModel):
     text: str
 
 
+class ContextItem(BaseModel):
+    """One @-mention item for the context picker (CK-4). ``kind`` is the
+    closed enum of pickable types; ``id`` is the graph / stable id."""
+
+    kind: Literal["doc", "insight"]
+    id: str = Field(..., min_length=1)
+
+
+class ComposeContextRequest(BaseModel):
+    """Context-picker composition request (CK-4 — @doc @insight @investigation
+    @note). The client ships the operator's @-selected items; the substrate
+    composes a §9.0-aware ``system_context`` string. The retrieval gate is
+    SERVER-DERIVED (CWE-862): the effective policy is resolved from
+    authenticated request state in the endpoint, NEVER trusted from this body.
+    ``max_length`` caps the item count (cost/latency blast radius)."""
+
+    items: list[ContextItem] = Field(..., min_length=1, max_length=20)
+
+
+class ComposeContextResponse(BaseModel):
+    """Composed context: ``system_context`` is the model-facing string;
+    ``withheld`` lists item ids whose content the §9.0 gate withheld
+    (personal_reading / restricted on the non-owner path); ``missing`` lists
+    ids that resolved to no record."""
+
+    system_context: str
+    withheld: list[str]
+    missing: list[str]
+
+
+def _compose_context(
+    items: list[ContextItem], *, owner: bool,
+) -> ComposeContextResponse:
+    """Compose a §9.0-aware system_context from @-selected items (CK-4).
+
+    For each item the content is fetched read-only:
+      - ``doc`` → ``serve_full_text_guarded(con, id, owner=owner)``: the
+        serving-boundary guard (content_class gate AND the independent
+        arXiv license-tier cross-check). ``full_text`` is populated only for
+        servable docs, or (owner path) personal_reading docs; a personal_reading
+        / gated doc on the non-owner path has ``full_text=None`` → WITHHELD.
+        A T3 rights-drift @doc raises → WITHHELD (a non-T1 body never enters
+        the model context). personal_reading is withholdable: it reaches the
+        context ONLY on the owner branch (the rigor gate).
+        the book-serve path uses. ``full_text`` is populated only for
+        servable docs, or (owner path) personal_reading docs; a
+        personal_reading / gated doc on the non-owner path has
+        ``full_text=None`` → WITHHELD. personal_reading is withholdable: it
+        reaches the context ONLY on the owner branch (the rigor gate).
+      - ``insight`` → the node's ``canonical_label`` (operator-authored,
+        not §9.0-gated third-party content).
+
+    Degraded posture, never raises: connect_read on a fresh/absent graph
+    yields all-missing; a §9.0 T3 rights-drift @doc is caught → withheld. The
+    caller always gets a well-formed response.
+    Read-only (connect_read) — the corpus is never mutated (§16 single-writer)."""
+    from runtime.db_lock import connect_read
+    from substrate.books.serve_guard import serve_full_text_guarded
+    from substrate.graph import default_db_path
+    from substrate.rights import T3BodyServeError
+
+    blocks: list[str] = []
+    withheld: list[str] = []
+    missing: list[str] = []
+    try:
+        with connect_read(default_db_path()) as con:
+            for item in items:
+                if item.kind == "doc":
+                    # Route through the serving-boundary guard (never the
+                    # raw gate) so the license-tier cross-check fires too —
+                    # a non-T1 arXiv body never enters the model's
+                    # system_context, even on the owner path. A T3 drift
+                    # raises T3BodyServeError → the doc is withheld
+                    # (degraded posture; never propagates to the caller).
+                    try:
+                        result = serve_full_text_guarded(
+                            con, item.id, owner=owner,
+                        )
+                    except T3BodyServeError:
+                        withheld.append(item.id)
+                        continue
+                    if result.full_text:
+                        head = f"@doc {result.title or item.id}"
+                        blocks.append(f"{head}\n{result.full_text}")
+                    elif result.found:
+                        withheld.append(item.id)
+                    else:
+                        missing.append(item.id)
+                else:  # insight — operator-authored node text
+                    row = con.execute(
+                        "SELECT canonical_label FROM nodes WHERE node_id = ?",
+                        [item.id],
+                    ).fetchone()
+                    if row and row[0]:
+                        blocks.append(f"@insight {item.id}\n{row[0]}")
+                    else:
+                        missing.append(item.id)
+    except Exception:
+        # Absent graph: every item is missing — honest, well-formed response.
+        missing = [item.id for item in items]
+    return ComposeContextResponse(
+        system_context="\n\n".join(blocks),
+        withheld=withheld,
+        missing=missing,
+    )
+
+
 class ThoughtPartnerRequest(BaseModel):
     """One-shot thought-partner invocation (master-spec §4.5 + §11.7).
 
@@ -5356,6 +5463,27 @@ def create_app(
                 status_code=503, detail=f"complete_unavailable: {exc}",
             ) from exc
         return CompleteResponse(text=result.text or "")
+
+    # ── CK-4 context picker (cursor-for-knowledge) ──
+    @app.post("/compose-context", response_model=ComposeContextResponse)
+    async def post_compose_context(
+        request: Request,
+        req: ComposeContextRequest = Body(...),
+    ) -> ComposeContextResponse:
+        """Compose a §9.0-aware system_context from the operator's
+        @-selected items (CK-4 — the context picker). The retrieval gate is
+        SERVER-DERIVED and fail-closed (CWE-862): effective_policy_tag is
+        resolved via _owner_read_policy_tag (the same hardened gate the
+        owner-read book endpoints + /thought-partner use), NEVER read from the
+        request body. A personal_reading / restricted doc is WITHHELD on the
+        non-owner path and included only on the authenticated single-operator
+        path — the §9.0 'personal_reading is withholdable' guarantee."""
+        from interfaces.research.api.books import _owner_read_policy_tag
+        from substrate.graph.retrieval_gate import PRIVILEGED_POLICY_TAGS
+
+        effective_policy_tag = _owner_read_policy_tag(request)
+        owner = effective_policy_tag in PRIVILEGED_POLICY_TAGS
+        return _compose_context(req.items, owner=owner)
 
     # ── Sprint 22 multi-user auth-probe endpoint ──
     class AuthProbeResponse(BaseModel):
