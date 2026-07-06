@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import LemonButton from "../../../components/lemon/LemonButton";
 import AIActionFailure from "../../../shared/AIActionFailure";
-import { ApiError } from "../../../lib/api";
+import { ApiError, editSelection } from "../../../lib/api";
 import { useVoiceCapture } from "../../../hooks/useVoiceCapture";
 import {
   dialogueOverSelection,
@@ -48,7 +48,8 @@ type FloatMenuView =
   | { kind: "menu" }
   | { kind: "note" }
   | { kind: "dialogue" }
-  | { kind: "search" };
+  | { kind: "search" }
+  | { kind: "edit" };
 
 export interface FloatMenuProps {
   /** The live selection (text + raw rect + provenance) the host resolved, or
@@ -73,6 +74,12 @@ export interface FloatMenuProps {
    * omit it and the menu is byte-for-byte unchanged (D-3 — mode-gated, not a
    * fork). The host owns the SHIPPED generate/spawn paths the intents map to. */
   rewriteActions?: RewriteActions;
+  /** CK-5: deliverable/section context a Write host passes so the Edit
+   *  panel can call POST /write/edit-selection. Omitted by non-Write hosts. */
+  editContext?: { deliverableId: string; sectionId: string };
+  /** CK-5: apply the model's edited span. The host splices it into the
+   *  section prose (its own selection state identifies the span to replace). */
+  onApplyEdit?: (editedText: string) => void;
 }
 
 /** Clamp the menu on-screen at a viewport edge (rigor #3). The menu sits above
@@ -119,6 +126,8 @@ export default function FloatMenu({
   onDeepResearch,
   hybridEnabled = false,
   rewriteActions,
+  editContext,
+  onApplyEdit,
 }: FloatMenuProps) {
   const [view, setView] = useState<FloatMenuView>({ kind: "menu" });
   const rootRef = useRef<HTMLDivElement>(null);
@@ -222,6 +231,9 @@ export default function FloatMenu({
                   rewriteActions.onRewrite({ kind: "sub_agent", safeText: outboundText(selection) }, selection)
                 }
               />
+              {editContext && onApplyEdit && (
+                <MenuButton label="Edit…" onClick={() => setView({ kind: "edit" })} />
+              )}
             </div>
           )}
         </div>
@@ -243,6 +255,14 @@ export default function FloatMenu({
       )}
       {view.kind === "search" && (
         <SearchPanel selection={selection} onClose={() => setView({ kind: "menu" })} />
+      )}
+      {view.kind === "edit" && editContext && onApplyEdit && (
+        <EditPanel
+          selection={selection}
+          editContext={editContext}
+          onApplyEdit={onApplyEdit}
+          onClose={() => setView({ kind: "menu" })}
+        />
       )}
 
       {/* M4 Hybrid affordance — flagged, OFF by default. With the flag on, the
@@ -598,3 +618,82 @@ function Panel({
     </div>
   );
 }
+
+// ─── EDIT panel (CK-5 — Cmd+K selection edit) ──────────────────────────────
+
+function EditPanel({
+  selection,
+  editContext,
+  onApplyEdit,
+  onClose,
+}: {
+  selection: FloatMenuSelection;
+  editContext: { deliverableId: string; sectionId: string };
+  onApplyEdit: (editedText: string) => void;
+  onClose: () => void;
+}) {
+  const [instruction, setInstruction] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const safeText = outboundText(selection);
+
+  async function runEdit() {
+    if (safeText === null) {
+      setError(WITHHELD_OUTBOUND_REASON);
+      return;
+    }
+    if (instruction.trim().length === 0) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await editSelection({
+        deliverable_id: editContext.deliverableId,
+        section_id: editContext.sectionId,
+        selection_text: safeText,
+        instruction: instruction.trim(),
+      });
+      onApplyEdit(res.edited_text);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "edit failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Panel title="Edit selection" onClose={onClose}>
+      <div data-floatmenu-edit className="flex flex-col gap-1.5">
+        {safeText === null ? (
+          <p className="text-sun-deep" role="alert">
+            {WITHHELD_OUTBOUND_REASON}
+          </p>
+        ) : null}
+        {error ? (
+          <p className="text-emperor" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <textarea
+          value={instruction}
+          onChange={(e) => setInstruction(e.target.value)}
+          placeholder="e.g. make it more concise"
+          rows={2}
+          className="w-full rounded border border-charcoal-2 bg-shadow-2 p-1.5 text-bright"
+          disabled={busy}
+        />
+        <div className="flex gap-1.5">
+          <LemonButton
+            variant="primary"
+            size="sm"
+            disabled={busy || safeText === null || instruction.trim().length === 0}
+            onClick={() => void runEdit()}
+          >
+            {busy ? "Editing…" : "Edit"}
+          </LemonButton>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+

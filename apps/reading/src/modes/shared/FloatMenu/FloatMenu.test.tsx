@@ -149,6 +149,8 @@ function Host({
   testId = "scope",
   provenance,
   onRewrite,
+  editContext,
+  onApplyEdit,
 }: {
   onDeepResearch?: (t: string | null, s: FloatMenuSelection) => void;
   hybridEnabled?: boolean;
@@ -157,6 +159,9 @@ function Host({
   provenance?: { servable?: boolean; chunkId?: string | null; documentId?: string | null };
   /** SPR-09 M4: when given, the Write rewrite actions are passed (mode-gated). */
   onRewrite?: (intent: { kind: string; safeText: string | null }, s: FloatMenuSelection) => void;
+  /** CK-5: the Write edit-context + apply callback (mode-gated). */
+  editContext?: { deliverableId: string; sectionId: string };
+  onApplyEdit?: (editedText: string) => void;
 }) {
   const scopeRef = useRef<HTMLDivElement>(null);
   const selection = useFloatMenuSelection({
@@ -174,6 +179,8 @@ function Host({
         onDeepResearch={onDeepResearch}
         hybridEnabled={hybridEnabled}
         rewriteActions={onRewrite ? { onRewrite } : undefined}
+        editContext={editContext}
+        onApplyEdit={onApplyEdit}
       />
     </div>
   );
@@ -287,6 +294,31 @@ describe("FloatMenu — open on selection (M1)", () => {
     render(<Host testId="scope-b" investigationId="inv-B" />);
     selectTextIn(screen.getByTestId("scope-b"), "host B passage");
     expect(screen.getByRole("menu")).toBeTruthy(); // identical FloatMenu, second host
+  });
+
+  // ── CK-5 — the Cmd+K Edit affordance is Write-mode-gated ──────────────
+
+  it("shows the Edit affordance + opens the Edit panel for a wired Write host", () => {
+    render(
+        <Host
+          onRewrite={vi.fn()}
+          editContext={{ deliverableId: "d1", sectionId: "s1" }}
+          onApplyEdit={vi.fn()}
+          provenance={{ servable: true }}
+        />,
+    );
+    selectTextIn(screen.getByTestId("scope"), "the selected passage");
+    expect(screen.getByRole("menuitem", { name: "Edit…" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit…" }));
+    // The Edit panel renders with an instruction box.
+    expect(document.querySelector("[data-floatmenu-edit]")).toBeTruthy();
+    expect(screen.getByPlaceholderText(/more concise/)).toBeTruthy();
+  });
+
+  it("does NOT show the Edit affordance when editContext/onApplyEdit are absent", () => {
+    render(<Host onRewrite={vi.fn()} />);
+    selectTextIn(screen.getByTestId("scope"), "the selected passage");
+    expect(screen.queryByRole("menuitem", { name: "Edit…" })).toBeNull();
   });
 });
 

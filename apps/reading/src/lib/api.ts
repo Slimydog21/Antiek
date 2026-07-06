@@ -860,6 +860,46 @@ export async function composeContext(
   return resp.json();
 }
 
+// Mirrors interfaces/research/api/write_routes.py:EditSelectionRequest /
+// EditSelectionResponse. The Cmd+K selection-edit client (CK-5).
+export interface EditSelectionRequest {
+  deliverable_id: string;
+  section_id: string;
+  /** The highlighted span of deliverable prose (1–8000 chars). */
+  selection_text: string;
+  /** The writer's natural-language edit instruction (1–1000 chars). */
+  instruction: string;
+}
+
+export interface EditSelectionResponse {
+  edited_text: string;
+  deliverable_id: string;
+  section_id: string;
+}
+
+/** POST /write/edit-selection — the Cursor Cmd+K writing-flow affordance:
+ *  rewrite a highlighted span of deliverable prose per a natural-language
+ *  instruction (creative_writer / GLM-5.2). The selection is deliverable
+ *  prose, so a stylistic edit adds no new claims and prose_provenance stays
+ *  valid. Throws ``ApiError`` on a transport/validation/provider failure. */
+export async function editSelection(
+  req: EditSelectionRequest,
+): Promise<EditSelectionResponse> {
+  const resp = await apiFetch(`${API_BASE}/write/edit-selection`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /write/edit-selection failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
 export async function reorderBlock(req: {
   section_id: string;
   block_kind: BlockKind;
