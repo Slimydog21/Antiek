@@ -38,6 +38,7 @@ Storage discipline: every write must go through
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 
@@ -1201,10 +1202,54 @@ def init_database(con: LockedConnection) -> None:
     con.execute(ANTIEK_GRAPH_SCHEMA_V14_SUPERSESSION_CANDIDATES_SQL)
 
 
+def _schema_is_present(db_path: str) -> bool:
+    """Cheap read-only probe: is the Antiek schema already initialized at
+    ``db_path``? Returns True if the ``nodes`` sentinel table exists.
+
+    Opens a PLAIN read-only DuckDB connection (NOT connect_write — no
+    application-level write flock), so it NEVER blocks on the single-writer
+    lock. This is the fast-path guard that lets ``init_database_at_path``
+    skip the write lock entirely when the schema is already present, which is
+    the warm-path case for every per-request ``ensure_initialized`` call.
+
+    Any failure (file absent, read-only open refused, table missing) returns
+    False so the caller falls through to the write-lock init path — the fast
+    path is a pure optimization that must never change cold-start behavior."""
+    try:
+        con = duckdb.connect(db_path, read_only=True)
+    except Exception:
+        return False
+    try:
+        row = con.execute(
+            "SELECT count(*) FROM information_schema.tables "
+            "WHERE table_schema = 'main' AND table_name = 'nodes'"
+        ).fetchone()
+    except Exception:
+        return False
+    finally:
+        with contextlib.suppress(Exception):
+            con.close()
+    return bool(row and row[0] > 0)
+
+
 def init_database_at_path(db_path: str) -> None:
-    """Convenience: acquire a write lock on ``db_path`` and run
-    ``init_database``. Used by tests + the CLI; production callers
-    should manage their own lock lifecycles."""
+    """Make sure the schema is present at ``db_path``. Idempotent.
+
+    Fast path: if ``_schema_is_present`` confirms the schema is already
+    initialized (a read-only probe — no write flock), return WITHOUT acquiring
+    the single-writer lock. This matters because ~15 API read paths call
+    ``ensure_initialized`` (which routes here) on EVERY request; without the
+    fast path each of those acquires the exclusive write flock and blocks
+    behind every graph writer — the proven prod hang that broke
+    GET /supersession/candidates (PR #224). With it, a warm read pays only the
+    bounded read-only open, never the indefinite write-lock wait.
+
+    Cold path: the read-only probe failed or the schema is absent, so acquire
+    the write lock (creating the file if needed) and run ``init_database`` —
+    the ``CREATE IF NOT EXISTS`` workhorse. Behavior-identical to before on the
+    cold-start path; used by tests + the CLI + first deploy/startup."""
+    if _schema_is_present(db_path):
+        return
     parent = os.path.dirname(db_path)
     if parent:
         os.makedirs(parent, exist_ok=True)
