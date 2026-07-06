@@ -417,8 +417,9 @@
 
     - name: assert providers registered
       # Fail the playbook hard if the secrets file isn't populated or
-      # OpenRouter isn't loadable. Surfaces a broken deploy NOW rather
-      # than later when an investigation fails.
+      # no dispatch provider bootstraps (claude-less: z.ai/deepseek/
+      # xiaomi). Surfaces a broken deploy NOW rather than later when an
+      # investigation fails.
       ansible.builtin.assert:
         that:
           - health.json.status == "ok"
