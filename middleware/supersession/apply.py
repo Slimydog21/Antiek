@@ -15,9 +15,13 @@ edge a second time.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
-from .db import LockedConnection, _require_locked
+from .db import _require_locked
 from .supersession import emit_for_decision, validate_decision
+
+if TYPE_CHECKING:
+    from runtime.db_lock import LockedConnection
 
 
 def apply_review(
