@@ -35,8 +35,9 @@ and `SKILL.md` for agent-level operability.
   ```bash
   ssh-keygen -t ed25519 -f ~/.ssh/antiek_ed25519 -C "antiek-operator@$(hostname)"
   ```
-- **OpenRouter API key** — populated into `/etc/antiek/secrets.env` on
-  the VM after first deploy.
+- **Dispatch API keys** — z.ai (`Z_AI_API_KEY`, GLM-5.2 primary), plus
+  DeepSeek + Xiaomi MiMo fallbacks; populated into
+  `/etc/antiek/secrets.env` on the VM after first deploy.
 
 ## First-time setup
 
@@ -53,10 +54,12 @@ Follow `runbooks/first-deploy.md` line-by-line. Summary of the path:
    with the new VM's IP.
 8. `ansible-playbook -i inventory.ini playbooks/setup.yml -e @r2-creds.yml`
    — configures the VM, ~5 minutes.
-9. `sudoedit /etc/antiek/secrets.env` on the VM — paste OpenRouter key.
+9. `sudoedit /etc/antiek/secrets.env` on the VM — paste `Z_AI_API_KEY`
+   (required — the primary for every tier) plus `DEEPSEEK_API_KEY` and
+   `XIAOMI_API_KEY` (cross-family fallbacks).
 10. `systemctl start antiek` on the VM.
 11. `curl https://api.antiek.ai/health` from your Mac — expect a JSON
-    response with `registered_providers: ["openrouter"]`.
+    response with `registered_providers` including `zai`/`zai_reasoning`.
 
 End-to-end first time: ~45 minutes. Subsequent deploys (code changes
 only) are ~2 minutes via `ansible-playbook playbooks/deploy.yml`.
@@ -88,8 +91,9 @@ agent six months from now can understand what's actually running.
 
 LLM API costs are **separate** and per-investigation. Reference: the
 photonic-interconnects validation run (Sprint 10) cost $0.162 — a
-substantive cited-thesis run via OpenRouter routing DeepSeek (flash +
-pro tiers) + Claude Opus 4.7 (synthesis tier).
+substantive cited-thesis run; the claude-less config routes flash/pro
+via GLM-5.2 and synthesis via GLM-5.2 (thinking on), with DeepSeek +
+MiMo as cross-family fallbacks.
 
 ## Directory layout
 
@@ -136,7 +140,7 @@ terraform init && terraform apply
 # (then populate ansible/inventory.ini with the new IP)
 cd ../ansible
 ansible-playbook -i inventory.ini playbooks/setup.yml -e @r2-creds.yml
-# (then ssh in, sudoedit /etc/antiek/secrets.env, paste OpenRouter key)
+# (then ssh in, sudoedit /etc/antiek/secrets.env, paste Z_AI_API_KEY + fallbacks)
 # (then ssh in, systemctl start antiek)
 
 # Deploy a code change
