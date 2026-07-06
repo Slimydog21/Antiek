@@ -223,6 +223,11 @@ role_tiers:
   # The route is operator-auth-gated (global middleware), so this
   # enables the operator-only generate path, not a public endpoint.
   creative_writer: pro
+  # CK-3 (cursor-for-knowledge): inline autocomplete — the signature
+  # Cursor writing-flow affordance. Flash tier (GLM-5.2, thinking disabled)
+  # for fast, direct completions at high volume. Same one-line-routing
+  # precedent as knowledge_extractor / thought_partner / creative_writer.
+  autocomplete: flash
 
 # ---------------------------------------------------------------------------
 # Per-tier defaults. Roles can override at call time, but these are
