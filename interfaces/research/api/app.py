@@ -1028,20 +1028,71 @@ class Loop3ChecklistUpdateRequest(BaseModel):
 class ThoughtPartnerRequest(BaseModel):
     """One-shot thought-partner invocation (master-spec §4.5 + §11.7).
 
-    AISidecar posts a free-form prompt; the substrate runs the
-    ``thought_partner`` role through the dispatch tier and returns the
-    model text unchanged alongside the parser-derived response shape.
+    AISidecar posts a free-form prompt; the substrate retrieves the most
+    relevant passages from the operator's knowledge graph (CK-1 grounding),
+    runs the ``thought_partner`` role through the dispatch tier with that
+    context, and returns the model text unchanged alongside the parser-
+    derived response shape.
 
-    `system_context` (UI-redesign S8 WP-8.4) is the serialised
-    workspace state the operator's client ships so the model can
-    reference what panels are currently visible. The substrate threads
-    this verbatim into the model context. Any ``@@actions`` block in the
-    model response is parsed and dispatched client-side by AISidecar,
-    never extracted on the substrate."""
+    The §9.0 retrieval-time gate is SERVER-DERIVED and fail-closed
+    (CWE-862): the effective ``policy_tag`` is NEVER read from the request
+    body — a caller must not be able to select a privileged policy. It is
+    resolved by ``_owner_read_policy_tag`` (the same hardened gate the
+    owner-read book endpoints use), which grants ``operator_only`` (the
+    owner's full private library) only on a positively authenticated,
+    single-operator request and fails closed to ``attribution_eligible``
+    (excludes restricted + personal_reading content) otherwise.
+
+    `system_context` (UI-redesign S8 WP-8.4) is the serialised workspace
+    state the operator's client ships so the model can reference what panels
+    are currently visible. The substrate threads this verbatim into the
+    model context. Any ``@@actions`` block in the model response is parsed
+    and dispatched client-side by AISidecar, never extracted on the
+    substrate."""
 
     prompt: str
     investigation_id: str | None = None
     system_context: str | None = None
+
+
+def _retrieve_thought_partner_context(
+    prompt: str, policy_tag: str, *, top_k: int = 8,
+) -> list[dict[str, Any]]:
+    """Retrieve the most semantically-relevant passages from the operator's
+    knowledge graph for ``prompt`` and map them to the thought-partner
+    role's ``selected_notes`` shape (CK-1: the "ask your library" grounding
+    — Cursor's auto-context analog).
+
+    §9.0-gated by ``policy_tag`` (see ThoughtPartnerRequest). Read-only
+    (connect_read) — the corpus is never mutated (§16 single-writer).
+    Degraded posture, never raises: connect_read on a fresh/absent graph
+    raises (read-only cannot create), which yields an honest empty list so
+    the model still answers, just without library grounding. The embedding
+    model is constructed INSIDE the connect_read block so an absent graph
+    short-circuits before paying the sentence-transformers load (keeps the
+    endpoint fast on a cold box and keeps tests hermetic)."""
+    from runtime.db_lock import connect_read
+    from substrate.graph import default_db_path
+    from substrate.graph.search import SentenceTransformerEmbedding, search
+
+    try:
+        with connect_read(default_db_path()) as con:
+            model = SentenceTransformerEmbedding()
+            retrieved = search(
+                con, prompt, model=model, top_k=top_k, policy_tag=policy_tag,
+            )
+    except Exception:
+        return []
+    notes: list[dict[str, Any]] = []
+    for hit in retrieved.get("results", []):
+        doc_id = hit.get("document_id")
+        notes.append({
+            "note_id": hit.get("chunk_id"),
+            "note_text": hit.get("text", ""),
+            "source_event_ids": [doc_id] if doc_id else [],
+            "confidence": float(hit.get("similarity") or 0.0),
+        })
+    return notes
 
 
 class CrossGraphCitationRequest(BaseModel):
@@ -5177,20 +5228,39 @@ def create_app(
         response_model=ThoughtPartnerResponseBody,
     )
     async def post_thought_partner(
+        request: Request,
         req: ThoughtPartnerRequest = Body(...),
     ) -> ThoughtPartnerResponseBody:
         """Run a single thought-partner turn through dispatch.
 
         ``req.system_context`` is model context for the role. The model
         response text is returned verbatim; AISidecar parses any
-        ``@@actions`` block client-side."""
+        ``@@actions`` block client-side.
+
+        The §9.0 retrieval gate is SERVER-DERIVED and fail-closed
+        (CWE-862): ``effective_policy_tag`` is NEVER read from the request
+        body. It is resolved by ``_owner_read_policy_tag`` (the same
+        hardened gate the owner-read book endpoints use), which grants the
+        privileged ``operator_only`` tag only on a positively authenticated
+        single-operator request and fails closed to ``attribution_eligible``
+        otherwise — so a caller can never select a privileged policy to
+        pull restricted / personal_reading passages into the model context."""
         if not req.prompt.strip():
             raise HTTPException(
                 status_code=400, detail="prompt must not be empty",
             )
+        # §9.0 gate is SERVER-DERIVED, never client-controlled (CWE-862).
+        # Reuse the one reviewed owner-read resolver so the gate cannot
+        # drift: operator_only only on a proven single-operator auth, else
+        # attribution_eligible.
+        from interfaces.research.api.books import _owner_read_policy_tag
+
+        effective_policy_tag = _owner_read_policy_tag(request)
         role_prompt = compose_thought_partner_prompt(
             user_prompt=req.prompt,
-            selected_notes=[],
+            selected_notes=_retrieve_thought_partner_context(
+                req.prompt, effective_policy_tag,
+            ),
         )
         assembled_prompt = THOUGHT_PARTNER_SYSTEM_PROMPT
         if req.system_context:
