@@ -135,10 +135,12 @@ class HealthResponse(BaseModel):
     # deployed-but-DEAD flywheel reds the deploy assert, not just a stale
     # SHA or an empty provider registry. ``knowledge_reuse_count`` is the
     # raw count behind the boolean (0 when the flywheel is not yet live).
-    # Resolved once at startup by ``_probe_flywheel`` (which NEVER raises —
-    # any failure resolves to False/0, mirroring ``_resolve_build_sha``'s
-    # swallow-to-"unknown"). Default False so /health is honest on a box
-    # that has never compounded.
+    # Resolved by ``_probe_flywheel`` on the FIRST /health request and then
+    # memoized (deferred from construction so importing this module doesn't
+    # scan the event log — see create_app). NEVER raises: any failure
+    # resolves to False/0, mirroring ``_resolve_build_sha``'s swallow-to-
+    # "unknown". Default False so /health is honest on a box that has never
+    # compounded (and before the first probe).
     flywheel_ready: bool = False
     knowledge_reuse_count: int = 0
 
@@ -202,8 +204,9 @@ def _probe_flywheel() -> tuple[bool, int]:
     an unreadable events dir, or any other failure resolves to
     ``(False, 0)``. A read-only ``connect_read`` cannot create the file,
     so a fresh box (no graph yet) yields ``(False, 0)`` rather than
-    crashing /health. Resolved once at startup (the count is a snapshot,
-    not a live counter) so the probe cost is paid at most once per boot.
+    crashing /health. Resolved on the first /health request and memoized (the
+    count is a snapshot, not a live counter), so the event-log scan is paid at
+    most once — and never merely by importing this module.
     """
     try:
         from runtime.db_lock import connect_read
@@ -1468,10 +1471,19 @@ def create_app(
     # tools/prod_parity/check.py and tools/prod_parity/README.md.
     app.state.build_sha = _resolve_build_sha()
 
-    # SPR-11: probe flywheel liveness once at startup (read-only, never
-    # raises). /health reports it so the prod-parity check can red a
-    # deployed-but-dead flywheel. Snapshot at boot, like build_sha.
-    app.state.flywheel_ready, app.state.knowledge_reuse_count = _probe_flywheel()
+    # SPR-11: flywheel-liveness snapshot (read-only, never raises), reported on
+    # /health so prod-parity can red a deployed-but-dead flywheel. DEFERRED to
+    # the first /health request (memoized via app.state._flywheel_probed) rather
+    # than run here at construction: _probe_flywheel scans every event file in
+    # the default events dir, so probing at construction made *importing* this
+    # module pay a full event-log scan — and this module builds `app` at module
+    # scope (`app = create_app()`), which every API test imports, so a populated
+    # ~/.antiek turned a bare import into a ~6-minute hang. The cost is still
+    # paid at most once; /health is hit immediately in prod, so the snapshot
+    # lands just as promptly there. build_sha stays eager (it is cheap).
+    app.state._flywheel_probed = False
+    app.state.flywheel_ready = False
+    app.state.knowledge_reuse_count = 0
 
     if register_wrestling:
         # Imported lazily so tests that don't touch wrestling don't pay
@@ -1576,6 +1588,15 @@ def create_app(
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
+        # Deferred flywheel probe (see create_app): scan the event log at most
+        # once, on the first /health request, then reuse the snapshot — so
+        # importing this module never pays the scan.
+        if not getattr(app.state, "_flywheel_probed", False):
+            (
+                app.state.flywheel_ready,
+                app.state.knowledge_reuse_count,
+            ) = _probe_flywheel()
+            app.state._flywheel_probed = True
         return HealthResponse(
             status="ok",
             param_version=ANTIEK_PARAM_VERSION,
