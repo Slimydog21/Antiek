@@ -43,6 +43,8 @@ from substrate.multimedia.video import (
 )
 
 PlanMode = Literal["video", "audio", "hybrid"]
+JobKind = Literal["render", "steering", "hardening", "provider_execution"]
+JobStatus = Literal["queued", "running", "succeeded", "failed", "canceled", "partial"]
 
 
 class _ReadModelBase(BaseModel):
@@ -67,6 +69,19 @@ class SteeringRequest(_ReadModelBase):
     corrected_voice_transcript: str | None = None
 
 
+class MultimediaJobRecord(_ReadModelBase):
+    job_id: str
+    asset_id: str
+    revision_id: str
+    sequence: int = Field(ge=1)
+    kind: JobKind
+    status: JobStatus
+    progress_percent: int = Field(ge=0, le=100)
+    message: str
+    error_code: str | None = None
+    retryable: bool | None = None
+
+
 class MultimediaAssetSummary(_ReadModelBase):
     asset_id: str
     revision_id: str
@@ -77,6 +92,8 @@ class MultimediaAssetSummary(_ReadModelBase):
     route_policy: RoutePolicy
     estimated_cost_usd: float
     hardening_status: str | None = None
+    latest_job_status: JobStatus | None = None
+    latest_job_kind: JobKind | None = None
 
 
 class MultimediaAssetRecord(_ReadModelBase):
@@ -86,8 +103,10 @@ class MultimediaAssetRecord(_ReadModelBase):
     style: str | None = None
     hardening_report: MultimediaHardeningReport | None = None
     latest_steering_intent: SteeringIntent | None = None
+    jobs: tuple[MultimediaJobRecord, ...] = Field(default_factory=tuple)
 
     def summary(self) -> MultimediaAssetSummary:
+        latest_job = self.jobs[-1] if self.jobs else None
         return MultimediaAssetSummary(
             asset_id=self.asset.asset_id,
             revision_id=self.asset.revision_id,
@@ -98,11 +117,18 @@ class MultimediaAssetRecord(_ReadModelBase):
             route_policy=self.asset.route_policy,
             estimated_cost_usd=round(sum(row.cost_usd for row in self.asset.manifest.cost_rows), 4),
             hardening_status=self.hardening_report.ship_status if self.hardening_report else None,
+            latest_job_status=latest_job.status if latest_job else None,
+            latest_job_kind=latest_job.kind if latest_job else None,
         )
 
 
 class MultimediaAssetList(_ReadModelBase):
     assets: tuple[MultimediaAssetSummary, ...]
+    count: int
+
+
+class MultimediaJobList(_ReadModelBase):
+    jobs: tuple[MultimediaJobRecord, ...]
     count: int
 
 
@@ -185,7 +211,13 @@ class MultimediaAssetStore:
                 }
             )
         approved = asset.model_copy(update={"status": MultimediaStatus.READY, "manifest": manifest})
-        updated = record.model_copy(update={"asset": approved})
+        updated = self._with_job(
+            record.model_copy(update={"asset": approved}),
+            kind="render",
+            status="succeeded",
+            progress_percent=100,
+            message="Dry-run render manifest assembled without live provider spend.",
+        )
         self.save(updated)
         return updated
 
@@ -201,12 +233,18 @@ class MultimediaAssetStore:
         intent = parse_steering_prompt(request.prompt, record.asset.manifest, transcript=transcript)
         revision = plan_revision(record.asset, intent)
         child = build_revision_asset(record.asset, revision)
-        updated = record.model_copy(
-            update={
-                "asset": child,
-                "latest_steering_intent": intent,
-                "hardening_report": None,
-            }
+        updated = self._with_job(
+            record.model_copy(
+                update={
+                    "asset": child,
+                    "latest_steering_intent": intent,
+                    "hardening_report": None,
+                }
+            ),
+            kind="steering",
+            status="succeeded",
+            progress_percent=100,
+            message="Steering prompt planned as a child revision.",
         )
         self.save(updated)
         return updated
@@ -218,9 +256,44 @@ class MultimediaAssetStore:
             audio = assemble_audio_experience(record.plan, asset_id=record.asset.asset_id, revision_id=f"{record.asset.revision_id}-audio")
             scenes = build_video_scenes(record.plan, audio)
         report = evaluate_multimedia_asset(record.asset, scenes=scenes)
-        updated = record.model_copy(update={"hardening_report": report})
+        updated = self._with_job(
+            record.model_copy(update={"hardening_report": report}),
+            kind="hardening",
+            status="succeeded",
+            progress_percent=100,
+            message=f"Hardening completed with ship status {report.ship_status}.",
+        )
         self.save(updated)
         return updated
+
+    def record_job(
+        self,
+        asset_id: str,
+        *,
+        kind: JobKind,
+        status: JobStatus,
+        progress_percent: int,
+        message: str,
+        error_code: str | None = None,
+        retryable: bool | None = None,
+    ) -> MultimediaAssetRecord:
+        record = self.get(asset_id)
+        updated = self._with_job(
+            record,
+            kind=kind,
+            status=status,
+            progress_percent=progress_percent,
+            message=message,
+            error_code=error_code,
+            retryable=retryable,
+        )
+        self.save(updated)
+        return updated
+
+    def list_jobs(self, asset_id: str) -> MultimediaJobList:
+        record = self.get(asset_id)
+        jobs = tuple(sorted(record.jobs, key=lambda job: job.sequence))
+        return MultimediaJobList(jobs=jobs, count=len(jobs))
 
     def save(self, record: MultimediaAssetRecord) -> None:
         path = self._path(record.asset.asset_id)
@@ -235,6 +308,32 @@ class MultimediaAssetStore:
         if "/" in asset_id or "\\" in asset_id:
             raise KeyError(asset_id)
         return self.root / f"{asset_id}.json"
+
+    def _with_job(
+        self,
+        record: MultimediaAssetRecord,
+        *,
+        kind: JobKind,
+        status: JobStatus,
+        progress_percent: int,
+        message: str,
+        error_code: str | None = None,
+        retryable: bool | None = None,
+    ) -> MultimediaAssetRecord:
+        sequence = len(record.jobs) + 1
+        job = MultimediaJobRecord(
+            job_id=f"job-{record.asset.asset_id}-{sequence:04d}",
+            asset_id=record.asset.asset_id,
+            revision_id=record.asset.revision_id,
+            sequence=sequence,
+            kind=kind,
+            status=status,
+            progress_percent=progress_percent,
+            message=message,
+            error_code=error_code,
+            retryable=retryable,
+        )
+        return record.model_copy(update={"jobs": record.jobs + (job,)})
 
 
 def _evidence_from_request(request: CreateMultimediaDraftRequest) -> tuple[EvidenceChunk, ...]:
@@ -263,5 +362,7 @@ __all__ = [
     "MultimediaAssetRecord",
     "MultimediaAssetStore",
     "MultimediaAssetSummary",
+    "MultimediaJobList",
+    "MultimediaJobRecord",
     "SteeringRequest",
 ]

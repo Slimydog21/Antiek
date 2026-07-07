@@ -58,6 +58,8 @@ from .read_model import (
     MultimediaAssetRecord,
     MultimediaAssetStore,
     MultimediaAssetSummary,
+    MultimediaJobList,
+    MultimediaJobRecord,
     SteeringRequest,
 )
 from .steering import (
@@ -102,6 +104,8 @@ __all__ = [
     "MultimediaAssetRecord",
     "MultimediaAssetStore",
     "MultimediaAssetSummary",
+    "MultimediaJobList",
+    "MultimediaJobRecord",
     "MultimediaPlanRequest",
     "NarrationParagraph",
     "StoryboardScene",

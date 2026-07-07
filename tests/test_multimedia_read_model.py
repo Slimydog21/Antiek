@@ -36,6 +36,8 @@ def test_store_create_approve_reopen_steer_and_harden(tmp_path):
     assert approved.asset.status == "ready"
     assert approved.asset.manifest.files
     assert approved.asset.manifest.transcript_file_id is not None
+    assert approved.jobs[-1].kind == "render"
+    assert approved.jobs[-1].status == "succeeded"
 
     steered = store.apply_steering(
         draft.asset.asset_id,
@@ -44,15 +46,36 @@ def test_store_create_approve_reopen_steer_and_harden(tmp_path):
     assert steered.asset.parent_revision_id == "rev-1"
     assert steered.asset.steering_event_id
     assert steered.latest_steering_intent is not None
+    assert steered.jobs[-1].kind == "steering"
 
     hardened = store.run_hardening(draft.asset.asset_id)
     assert hardened.hardening_report is not None
     assert hardened.hardening_report.manual_gate_ids == ("rights_and_publication",)
+    assert hardened.jobs[-1].kind == "hardening"
+    assert hardened.jobs[-1].progress_percent == 100
+
+    failed = store.record_job(
+        draft.asset.asset_id,
+        kind="provider_execution",
+        status="failed",
+        progress_percent=42,
+        message="Krea render timed out before completion.",
+        error_code="provider_timeout",
+        retryable=True,
+    )
+    assert failed.jobs[-1].status == "failed"
+    assert failed.jobs[-1].retryable is True
+
+    reloaded_jobs = store.list_jobs(draft.asset.asset_id)
+    assert [job.sequence for job in reloaded_jobs.jobs] == [1, 2, 3, 4]
+    assert reloaded_jobs.jobs[-1].error_code == "provider_timeout"
 
     listed = store.list_assets()
     assert listed.count == 1
     assert listed.assets[0].asset_id == draft.asset.asset_id
     assert listed.assets[0].hardening_status == hardened.hardening_report.ship_status
+    assert listed.assets[0].latest_job_kind == "provider_execution"
+    assert listed.assets[0].latest_job_status == "failed"
 
 
 def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeypatch):
@@ -77,6 +100,7 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
     approved = client.post(f"/multimedia/assets/{asset_id}/approve-dry-run")
     assert approved.status_code == 200
     assert approved.json()["asset"]["status"] == "ready"
+    assert approved.json()["jobs"][-1]["kind"] == "render"
 
     steered = client.post(
         f"/multimedia/assets/{asset_id}/steer",
@@ -91,9 +115,16 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
     assert report["ship_status"] in {"manual_review", "blocked"}
     assert "rights_and_publication" in report["manual_gate_ids"]
 
+    jobs = client.get(f"/multimedia/assets/{asset_id}/jobs")
+    assert jobs.status_code == 200
+    assert [job["kind"] for job in jobs.json()["jobs"]] == ["render", "steering", "hardening"]
+
     listed = client.get("/multimedia/assets")
     assert listed.status_code == 200
     assert listed.json()["count"] == 1
+    assert listed.json()["assets"][0]["latest_job_status"] == "succeeded"
 
     missing = client.get("/multimedia/assets/mm-missing")
     assert missing.status_code == 404
+    missing_jobs = client.get("/multimedia/assets/mm-missing/jobs")
+    assert missing_jobs.status_code == 404

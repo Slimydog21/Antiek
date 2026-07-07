@@ -4,6 +4,7 @@ import {
   approveMultimediaDryRun,
   createMultimediaDraft,
   getMultimediaAsset,
+  listMultimediaJobs,
   listMultimediaAssets,
   runMultimediaHardening,
   steerMultimediaAsset,
@@ -41,6 +42,25 @@ const record = {
   style: null,
   hardening_report: null,
   latest_steering_intent: null,
+  jobs: [],
+};
+
+const jobs = {
+  jobs: [
+    {
+      job_id: "job-mm-1-0001",
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      sequence: 1,
+      kind: "render",
+      status: "succeeded",
+      progress_percent: 100,
+      message: "Dry-run render manifest assembled without live provider spend.",
+      error_code: null,
+      retryable: null,
+    },
+  ],
+  count: 1,
 };
 
 afterEach(() => {
@@ -80,6 +100,10 @@ describe("multimedia API client", () => {
     mockFetch.mockResolvedValueOnce(jsonResponse(record));
     await getMultimediaAsset("mm 1");
     expect(mockFetch).toHaveBeenLastCalledWith("/api/multimedia/assets/mm%201");
+
+    mockFetch.mockResolvedValueOnce(jsonResponse(jobs));
+    await listMultimediaJobs("mm-1");
+    expect(mockFetch).toHaveBeenLastCalledWith("/api/multimedia/assets/mm-1/jobs");
 
     mockFetch.mockResolvedValueOnce(jsonResponse(record));
     await approveMultimediaDryRun("mm-1");
