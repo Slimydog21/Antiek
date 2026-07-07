@@ -63,6 +63,7 @@ import sys
 from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
@@ -120,6 +121,10 @@ _log = logging.getLogger(__name__)
 PHASE8_CALIBRATION_INVESTIGATION_IDS_ENV = (
     "ANTIEK_PHASE8_CALIBRATION_INVESTIGATION_IDS"
 )
+PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV = (
+    "ANTIEK_PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS"
+)
+PHASE8_REPLAY_OVERLAY_PARENT_ENV = "ANTIEK_PHASE8_REPLAY_OVERLAY_PARENT"
 
 
 # ---------------------------------------------------------------------------
@@ -1292,7 +1297,27 @@ def _phase8_candidate_replay_evaluation(
     ``CandidateReplayEvaluation`` objects.
     """
 
-    return None
+    heldout_ids = _phase8_calibration_investigation_ids(
+        os.environ.get(PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV, "")
+    )
+    if not heldout_ids:
+        return None
+
+    from compounding.skill_growth import unavailable_candidate_replay_evaluation
+    from skills.domain.patch import default_skills_root
+
+    overlay_parent_raw = os.environ.get(PHASE8_REPLAY_OVERLAY_PARENT_ENV, "").strip()
+    overlay_parent = Path(overlay_parent_raw) if overlay_parent_raw else None
+    return unavailable_candidate_replay_evaluation(
+        dict(synthesis_row),
+        heldout_synthesis_ids=heldout_ids,
+        baseline_skills_root=default_skills_root(),
+        overlay_parent=overlay_parent,
+        reason=(
+            "production candidate replay runner is not wired; "
+            f"configured by {PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV}"
+        ),
+    )
 
 
 def _phase8_gate_decide_from_replay_evaluation(

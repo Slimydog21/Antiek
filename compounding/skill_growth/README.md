@@ -19,6 +19,11 @@ Replay outputs can be evaluated against baseline reports through the
 existing backtest cohort comparator. The production investigation rerun
 implementation remains a later slice.
 
+Runtime Phase-8 can discover configured held-out replay IDs through
+`ANTIEK_PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS`. Until the production rerunner
+exists, that path returns explicit `runner_unavailable` gate evidence instead
+of silently pretending candidate replay succeeded.
+
 ## Process skill codification (deferred)
 
 Also hosts the system-proposed process-skill codification

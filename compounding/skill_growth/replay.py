@@ -190,11 +190,14 @@ def evaluate_candidate_replay_for_gate(
     )
     ready_for_gate = candidate_replay.complete and comparison.ready_for_gate
     if not candidate_replay.complete:
-        failed_ids = ", ".join(error.synthesis_id for error in candidate_replay.errors)
-        if failed_ids:
+        failed_details = ", ".join(
+            f"{error.synthesis_id}: {error.error}"
+            for error in candidate_replay.errors
+        )
+        if failed_details:
             notes = (
                 f"candidate replay not complete: status={candidate_replay.status}; "
-                f"failed={failed_ids}; {comparison.notes}"
+                f"failed={failed_details}; {comparison.notes}"
             )
         else:
             notes = (
@@ -211,4 +214,44 @@ def evaluate_candidate_replay_for_gate(
         comparison=comparison,
         ready_for_gate=ready_for_gate,
         notes=notes,
+    )
+
+
+def unavailable_candidate_replay_evaluation(
+    synthesis_row: dict[str, Any],
+    *,
+    heldout_synthesis_ids: Sequence[str],
+    baseline_skills_root: Path,
+    reason: str,
+    baseline_reports: Sequence[BacktestReport] = (),
+    overlay_parent: Path | None = None,
+    minimum_graded_outcomes: int = DEFAULT_MIN_GRADED_OUTCOMES,
+) -> CandidateReplayEvaluation:
+    """Materialize the overlay and return a fail-closed replay evaluation.
+
+    This is the production contract while the real held-out investigation
+    rerunner is absent: configured replay requests become visible gate evidence
+    instead of silently collapsing back to anonymous zero scores.
+    """
+
+    overlay = materialize_candidate_skill_overlay(
+        synthesis_row,
+        baseline_skills_root=baseline_skills_root,
+        overlay_parent=overlay_parent,
+    )
+    heldout_ids = tuple(heldout_synthesis_ids)
+    replay = CandidateBacktestReplay(
+        overlay=overlay,
+        heldout_synthesis_ids=heldout_ids,
+        reports=(),
+        errors=tuple(
+            CandidateReplayError(synthesis_id=synthesis_id, error=reason)
+            for synthesis_id in heldout_ids
+        ),
+        status="runner_unavailable" if heldout_ids else "no_heldout",
+    )
+    return evaluate_candidate_replay_for_gate(
+        baseline_reports=baseline_reports,
+        candidate_replay=replay,
+        minimum_graded_outcomes=minimum_graded_outcomes,
     )

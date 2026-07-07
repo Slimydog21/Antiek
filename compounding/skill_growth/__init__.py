@@ -49,6 +49,7 @@ from .replay import (
     evaluate_candidate_replay_for_gate,
     materialize_candidate_skill_overlay,
     replay_candidate_backtest_cohort,
+    unavailable_candidate_replay_evaluation,
 )
 
 __all__ = [
@@ -81,4 +82,5 @@ __all__ = [
     "phase8_gate_from_env",
     "propose_skill_patch",
     "replay_candidate_backtest_cohort",
+    "unavailable_candidate_replay_evaluation",
 ]
