@@ -1239,7 +1239,7 @@ def _retrieve_thought_partner_context(
         doc_id = hit.get("document_id")
         notes.append({
             "note_id": hit.get("chunk_id"),
-            "note_text": hit.get("text", ""),
+            "note_text": hit.get("chunk_text", ""),  # search() emits "chunk_text" (graph/search.py:260); the prior "text" key never existed, so every retrieved note mapped to empty string and starved the model of library grounding.
             "source_event_ids": [doc_id] if doc_id else [],
             "confidence": float(hit.get("similarity") or 0.0),
         })
