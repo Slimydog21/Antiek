@@ -16,7 +16,7 @@ What shipped:
 What's deferred:
 
 - The CLI + markdown renderer.
-- Candidate-patch replay against a temporary skill overlay.
+- Full candidate-patch replay against the temporary skill overlay.
 
 The shape is fixed now so the cohort module + downstream consumers
 can be wired against the same dataclasses without churn later.
