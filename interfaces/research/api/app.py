@@ -80,6 +80,7 @@ from substrate.schemas import (  # noqa: E402
     WRESTLING_ACTION_TYPES,
     DispatchCallPayload,
     Event,
+    StaleReuseRefreshPromotionCandidatePayload,
     TypedPayload,
 )
 
@@ -988,6 +989,33 @@ class AIUndoRequest(BaseModel):
 
     event_id: str
     investigation_id: str
+
+
+class StaleRefreshPromotionRequest(BaseModel):
+    """``POST /stale-refresh/promotions/process`` body.
+
+    The client passes a durable parent-trajectory event id instead of an inline
+    candidate so the graph write is tied to exactly what was recorded.
+    """
+
+    investigation_id: str = Field(..., min_length=1)
+    candidate_event_id: str = Field(..., min_length=1)
+
+
+class StaleRefreshPromotionResponse(BaseModel):
+    event_id: str
+    action_type: str
+    status: Literal["deposited", "not_depositable"]
+    reason: Literal[
+        "ready",
+        "missing_supporting_chunks",
+        "unresolved_supporting_chunks",
+    ]
+    deposited_node_id: str | None = None
+    primary_chunk_id: str | None = None
+    primary_source_document_id: str | None = None
+    supporting_chunk_ids: list[str] = Field(default_factory=list)
+    unresolved_chunk_ids: list[str] = Field(default_factory=list)
 
 
 class NotebookUpdateBlockRequest(BaseModel):
@@ -2061,6 +2089,101 @@ def create_app(
         return EmittedEventResponse(
             event_id=undone_event_id,
             action_type="ai.action.undone",
+        )
+
+    @app.post(
+        "/stale-refresh/promotions/process",
+        response_model=StaleRefreshPromotionResponse,
+    )
+    async def post_stale_refresh_promotion(
+        req: StaleRefreshPromotionRequest = Body(...),
+    ) -> StaleRefreshPromotionResponse:
+        """Process one recorded stale-refresh promotion candidate.
+
+        The UI already records an operator-approved candidate event. This route
+        is the explicit graph-mutation boundary: it reloads that durable event,
+        validates the cited chunks through the backend promotion helper, and
+        emits a result event whether or not a node can be deposited.
+        """
+        rows = trajectory(req.investigation_id)
+        candidate_event = next(
+            (r for r in rows if r.get("event_id") == req.candidate_event_id),
+            None,
+        )
+        if candidate_event is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "candidate_event_not_found",
+                    "message": (
+                        f"no stale-refresh promotion candidate event found with id "
+                        f"{req.candidate_event_id!r} in investigation "
+                        f"{req.investigation_id!r}"
+                    ),
+                },
+            )
+
+        payload = candidate_event.get("payload") or {}
+        if payload.get("action_type") != "stale_reuse.refresh.promotion_candidate":
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "code": "wrong_action_type",
+                    "message": (
+                        f"event {req.candidate_event_id} is action_type "
+                        f"{payload.get('action_type')!r}; only "
+                        "stale_reuse.refresh.promotion_candidate events can be processed."
+                    ),
+                },
+            )
+
+        try:
+            candidate = StaleReuseRefreshPromotionCandidatePayload.model_validate(
+                payload
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "invalid_candidate_payload", "message": str(exc)},
+            ) from exc
+
+        from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.stale_refresh import promote_refresh_candidate
+
+        try:
+            with connect_write(
+                default_db_path(),
+                purpose="api:stale_refresh_promotion",
+            ) as con:
+                attempt = promote_refresh_candidate(
+                    con,
+                    investigation_id=req.investigation_id,
+                    candidate=candidate,
+                    candidate_event_id=req.candidate_event_id,
+                )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "code": "promotion_write_failed",
+                    "message": str(exc),
+                },
+            ) from exc
+
+        validation = attempt.validation
+        return StaleRefreshPromotionResponse(
+            event_id=attempt.result_event_id,
+            action_type="stale_reuse.refresh.promotion_result",
+            status="deposited" if attempt.deposited_node_id else "not_depositable",
+            reason=validation.reason,
+            deposited_node_id=attempt.deposited_node_id,
+            primary_chunk_id=validation.primary_chunk_id,
+            primary_source_document_id=validation.primary_source_document_id,
+            supporting_chunk_ids=[c.chunk_id for c in validation.resolved_chunks],
+            unresolved_chunk_ids=list(validation.unresolved_chunk_ids),
         )
 
     @app.get("/.well-known/mcp-tools.json", tags=["mcp"])
