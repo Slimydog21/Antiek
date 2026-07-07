@@ -4,11 +4,17 @@ Point-in-time queries, staleness, supersession.
 
 ## TTL per claim class
 
-`substrate/constants.py:CLAIM_TTL_DAYS` defines time-to-live per
+`substrate/constants.py:STALENESS_TTL_DAYS` defines time-to-live per
 claim class. Market data ages in days; biographical facts age in
 decades; fundamental constants effectively don't age. When a claim's
 TTL expires, the temporal layer marks it stale and the synthesizer
 hedges accordingly.
+
+`scan_graph_edge_staleness(...)` scans the graph's active edges read-only,
+preferring the source document's `published_at` timestamp, then an explicit
+edge `valid_from`, then `extracted_at`. It emits existing
+`graph.staleness.flagged` typed events only; it does not mutate graph rows or
+auto-invalidate claims.
 
 ## Point-in-time queries
 
@@ -20,5 +26,6 @@ up to its creation timestamp.
 
 ## Events emitted
 
-- `mark_stale` — when a claim crosses its TTL
+- `graph.staleness.flagged` — when an active edge crosses its TTL
+- `graph.staleness.resolve` — when a stale flag is resolved
 - `supersede` — when a newer claim supersedes an older one
