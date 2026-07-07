@@ -30,6 +30,7 @@ const {
   apiFetchMock,
   getTrajectoryMock,
   postTypedEventMock,
+  processStaleRefreshPromotionMock,
   startInvestigationMock,
   recordSpawnRelationshipMock,
 } = vi.hoisted(() => ({
@@ -37,6 +38,7 @@ const {
   apiFetchMock: vi.fn(),
   getTrajectoryMock: vi.fn(),
   postTypedEventMock: vi.fn(),
+  processStaleRefreshPromotionMock: vi.fn(),
   startInvestigationMock: vi.fn(),
   recordSpawnRelationshipMock: vi.fn(),
 }));
@@ -49,6 +51,7 @@ vi.mock("../../lib/api", async (orig) => {
     apiFetch: apiFetchMock,
     getTrajectory: getTrajectoryMock,
     postTypedEvent: postTypedEventMock,
+    processStaleRefreshPromotion: processStaleRefreshPromotionMock,
     startInvestigation: startInvestigationMock,
   };
 });
@@ -108,6 +111,7 @@ afterEach(() => {
   getChunkMock.mockReset();
   getTrajectoryMock.mockReset();
   postTypedEventMock.mockReset();
+  processStaleRefreshPromotionMock.mockReset();
   startInvestigationMock.mockReset();
   recordSpawnRelationshipMock.mockReset();
   if (PRIOR_RESIZE_OBSERVER === undefined) {
@@ -1287,6 +1291,17 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
       event_id: "evt-promotion-candidate",
       action_type: "stale_reuse.refresh.promotion_candidate",
     });
+    processStaleRefreshPromotionMock.mockResolvedValue({
+      event_id: "evt-promotion-result",
+      action_type: "stale_reuse.refresh.promotion_result",
+      status: "deposited",
+      reason: "ready",
+      deposited_node_id: "node-refreshed",
+      primary_chunk_id: "chunk-refresh-1",
+      primary_source_document_id: "doc-refresh",
+      supporting_chunk_ids: ["chunk-refresh-1", "chunk-refresh-2"],
+      unresolved_chunk_ids: [],
+    });
     getTrajectoryMock.mockResolvedValue({
       events: [
         {
@@ -1365,7 +1380,13 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
         },
       }),
     );
-    expect(screen.getByText("promotion candidate recorded")).toBeTruthy();
+    await waitFor(() =>
+      expect(processStaleRefreshPromotionMock).toHaveBeenCalledWith(
+        "inv-parent",
+        "evt-promotion-candidate",
+      ),
+    );
+    expect(screen.getByText("promotion deposited")).toBeTruthy();
   });
 
   it("replays promotion-candidate state without a backend child summary", async () => {
@@ -1400,6 +1421,48 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
 
     expect(screen.getByText("promotion candidate recorded")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /prepare refreshed/i })).toBeNull();
+  });
+
+  it("replays backend promotion-result state without a backend child summary", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          investigationId: "inv-parent",
+          reuseProvenance: [
+            {
+              unitId: "unit-stale",
+              sourceInvestigationId: "inv-source",
+              score: 0.81,
+              staleRefreshAdvisory: true,
+              acceptedRefresh: {
+                refreshInvestigationId: "inv-refresh-from-event",
+                status: "refreshed",
+                summary: "Operator accepted this refresh result.",
+              },
+              refreshPromotionCandidate: {
+                refreshInvestigationId: "inv-refresh-from-event",
+                summary: "Operator accepted this refresh result.",
+                supportingChunkIds: ["chunk-refresh-1"],
+              },
+              refreshPromotionResult: {
+                refreshInvestigationId: "inv-refresh-from-event",
+                status: "not_depositable",
+                reason: "unresolved_supporting_chunks",
+                depositedNodeId: null,
+                unresolvedChunkIds: ["missing-chunk"],
+              },
+            },
+          ],
+          compoundingStat: null,
+        })}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("reuse-provenance")).toBeTruthy());
+
+    expect(screen.getByText("promotion not depositable")).toBeTruthy();
+    expect(screen.queryByText("promotion candidate recorded")).toBeNull();
+    expect(getTrajectoryMock).not.toHaveBeenCalled();
   });
 
   it("renders the three exact numbers when a measurement is present (M4 seed-and-catch)", async () => {

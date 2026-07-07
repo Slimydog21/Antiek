@@ -6,6 +6,7 @@ import {
   getChunk,
   getTrajectory,
   postTypedEvent,
+  processStaleRefreshPromotion,
   startInvestigation,
 } from "../../lib/api";
 import type { ChunkResponse, InvestigationSummary } from "../../lib/api";
@@ -1339,11 +1340,20 @@ function ReusedInsightLink({
           {refreshAcceptanceLabel(insight.acceptedRefresh.status)}
         </span>
       )}
-      {!backendChild && insight.refreshPromotionCandidate && (
+      {!backendChild && insight.refreshPromotionResult && (
         <span className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight">
-          promotion candidate recorded
+          {insight.refreshPromotionResult.status === "deposited"
+            ? "promotion deposited"
+            : "promotion not depositable"}
         </span>
       )}
+      {!backendChild &&
+        !insight.refreshPromotionResult &&
+        insight.refreshPromotionCandidate && (
+          <span className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight">
+            promotion candidate recorded
+          </span>
+        )}
       {error && (
         <span className="ml-2 font-mono text-[11px] text-emperor">
           {error}
@@ -1391,6 +1401,9 @@ function RefreshChildResult({
   const [promotionRecorded, setPromotionRecorded] = useState(
     Boolean(insight.refreshPromotionCandidate),
   );
+  const [promotionResult, setPromotionResult] = useState(
+    insight.refreshPromotionResult ?? null,
+  );
   const [accepting, setAccepting] = useState(false);
   const [promoting, setPromoting] = useState(false);
   const [acceptError, setAcceptError] = useState<string | null>(null);
@@ -1402,6 +1415,9 @@ function RefreshChildResult({
   useEffect(() => {
     setPromotionRecorded(Boolean(insight.refreshPromotionCandidate));
   }, [insight.refreshPromotionCandidate]);
+  useEffect(() => {
+    setPromotionResult(insight.refreshPromotionResult ?? null);
+  }, [insight.refreshPromotionResult]);
 
   useEffect(() => {
     if (child.status !== "completed") {
@@ -1475,7 +1491,7 @@ function RefreshChildResult({
     setPromoting(true);
     setPromoteError(null);
     try {
-      await postTypedEvent({
+      const candidateEvent = await postTypedEvent({
         investigation_id: parentInvestigationId,
         role: "operator",
         policy_id: "operator-ui",
@@ -1489,6 +1505,17 @@ function RefreshChildResult({
         },
       });
       setPromotionRecorded(true);
+      const result = await processStaleRefreshPromotion(
+        parentInvestigationId,
+        candidateEvent.event_id,
+      );
+      setPromotionResult({
+        refreshInvestigationId: child.investigation_id,
+        status: result.status,
+        reason: result.reason,
+        depositedNodeId: result.deposited_node_id ?? null,
+        unresolvedChunkIds: result.unresolved_chunk_ids,
+      });
     } catch (e) {
       setPromoteError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1540,7 +1567,13 @@ function RefreshChildResult({
         </>
       )}
       {acceptedStatus === "refreshed" && (
-        promotionRecorded ? (
+        promotionResult ? (
+          <span className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight">
+            {promotionResult.status === "deposited"
+              ? "promotion deposited"
+              : "promotion not depositable"}
+          </span>
+        ) : promotionRecorded ? (
           <span className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight">
             promotion candidate recorded
           </span>

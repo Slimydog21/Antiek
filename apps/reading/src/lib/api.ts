@@ -15,6 +15,21 @@ export interface EmittedEventResponse {
   action_type: string;
 }
 
+export interface StaleRefreshPromotionResponse {
+  event_id: string;
+  action_type: "stale_reuse.refresh.promotion_result";
+  status: "deposited" | "not_depositable";
+  reason:
+    | "ready"
+    | "missing_supporting_chunks"
+    | "unresolved_supporting_chunks";
+  deposited_node_id?: string | null;
+  primary_chunk_id?: string | null;
+  primary_source_document_id?: string | null;
+  supporting_chunk_ids: string[];
+  unresolved_chunk_ids: string[];
+}
+
 // In development, vite.config.ts proxies /events, /trajectory, /ws,
 // /health, /investigations, /chunks to localhost:8000. In production
 // the app at app.antiek.ai needs to hit api.antiek.ai explicitly.
@@ -187,6 +202,29 @@ export async function postTypedEvent(
     const body = await resp.text();
     throw new ApiError(
       `POST /events/typed failed: HTTP ${resp.status}`,
+      resp.status,
+      body,
+    );
+  }
+  return resp.json();
+}
+
+export async function processStaleRefreshPromotion(
+  investigationId: string,
+  candidateEventId: string,
+): Promise<StaleRefreshPromotionResponse> {
+  const resp = await apiFetch(`${API_BASE}/stale-refresh/promotions/process`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      investigation_id: investigationId,
+      candidate_event_id: candidateEventId,
+    }),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new ApiError(
+      `POST /stale-refresh/promotions/process failed: HTTP ${resp.status}`,
       resp.status,
       body,
     );

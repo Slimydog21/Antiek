@@ -125,6 +125,8 @@ export interface ReusedInsight {
   /** Present only when the parent trajectory recorded an accepted refresh
    *  result as a candidate for later graph deposit. */
   refreshPromotionCandidate?: StaleReuseRefreshPromotionCandidate;
+  /** Present only when the backend has processed the promotion candidate. */
+  refreshPromotionResult?: StaleReuseRefreshPromotionResult;
 }
 
 export interface StaleReuseRefreshAcceptance {
@@ -137,6 +139,17 @@ export interface StaleReuseRefreshPromotionCandidate {
   refreshInvestigationId: string;
   summary: string;
   supportingChunkIds: string[];
+}
+
+export interface StaleReuseRefreshPromotionResult {
+  refreshInvestigationId: string;
+  status: "deposited" | "not_depositable";
+  reason:
+    | "ready"
+    | "missing_supporting_chunks"
+    | "unresolved_supporting_chunks";
+  depositedNodeId: string | null;
+  unresolvedChunkIds: string[];
 }
 
 /**
@@ -285,6 +298,19 @@ interface StaleReuseRefreshPromotionCandidatePayloadShape {
   supporting_chunk_ids?: unknown;
 }
 
+interface StaleReuseRefreshPromotionResultPayloadShape {
+  unit_id?: string;
+  source_investigation_id?: string | null;
+  refresh_investigation_id?: string;
+  status?: "deposited" | "not_depositable";
+  reason?:
+    | "ready"
+    | "missing_supporting_chunks"
+    | "unresolved_supporting_chunks";
+  deposited_node_id?: string | null;
+  unresolved_chunk_ids?: unknown;
+}
+
 function staleRefreshAcceptanceKey(
   unitId: string,
   sourceInvestigationId: string | null,
@@ -337,6 +363,10 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
   const refreshPromotionCandidates = new Map<
     string,
     StaleReuseRefreshPromotionCandidate
+  >();
+  const refreshPromotionResults = new Map<
+    string,
+    StaleReuseRefreshPromotionResult
   >();
   // SPR-10 M4: the per-run compounding measurement, READ from a persisted
   // per-run measurement event. None exists on the substrate today (see
@@ -431,6 +461,39 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
             summary: candidate.summary,
             supportingChunkIds: Array.isArray(candidate.supporting_chunk_ids)
               ? candidate.supporting_chunk_ids.filter(
+                  (chunkId): chunkId is string => typeof chunkId === "string",
+                )
+              : [],
+          },
+        );
+      }
+    } else if (at === "stale_reuse.refresh.promotion_result") {
+      const result =
+        p as StaleReuseRefreshPromotionResultPayloadShape | undefined;
+      if (
+        typeof result?.unit_id === "string" &&
+        typeof result.refresh_investigation_id === "string" &&
+        (result.status === "deposited" ||
+          result.status === "not_depositable") &&
+        (result.reason === "ready" ||
+          result.reason === "missing_supporting_chunks" ||
+          result.reason === "unresolved_supporting_chunks")
+      ) {
+        refreshPromotionResults.set(
+          staleRefreshAcceptanceKey(
+            result.unit_id,
+            result.source_investigation_id ?? null,
+          ),
+          {
+            refreshInvestigationId: result.refresh_investigation_id,
+            status: result.status,
+            reason: result.reason,
+            depositedNodeId:
+              typeof result.deposited_node_id === "string"
+                ? result.deposited_node_id
+                : null,
+            unresolvedChunkIds: Array.isArray(result.unresolved_chunk_ids)
+              ? result.unresolved_chunk_ids.filter(
                   (chunkId): chunkId is string => typeof chunkId === "string",
                 )
               : [],
@@ -532,10 +595,12 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
     );
     const acceptedRefresh = acceptedRefreshes.get(key);
     const refreshPromotionCandidate = refreshPromotionCandidates.get(key);
+    const refreshPromotionResult = refreshPromotionResults.get(key);
     return {
       ...insight,
       ...(acceptedRefresh ? { acceptedRefresh } : {}),
       ...(refreshPromotionCandidate ? { refreshPromotionCandidate } : {}),
+      ...(refreshPromotionResult ? { refreshPromotionResult } : {}),
     };
   });
 
