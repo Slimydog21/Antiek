@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from datetime import datetime
 
 import pytest
 
@@ -9,7 +10,7 @@ from processing.embedding import _reset_default_provider, set_default_embedding_
 from runtime.db_lock import connect_write
 from substrate.event_log import trajectory
 from substrate.graph.insight_question import knowledge_unit_of
-from substrate.graph.ops import insert_chunk, insert_document
+from substrate.graph.ops import insert_chunk, insert_document, insert_edge, insert_node
 from substrate.graph.schema import init_database_at_path
 from substrate.schemas import StaleReuseRefreshPromotionCandidatePayload
 from substrate.stale_refresh import (
@@ -53,6 +54,39 @@ def _seed_refresh_chunk(con):
         chunk_id="chunk-refresh-1",
         chunk_index=0,
         text="Refresh evidence one.",
+    )
+
+
+def _seed_stale_edge(con):
+    source = insert_node(
+        con,
+        canonical_label="operator",
+        node_type="person",
+        graph_scope="depth",
+        investigation_id="inv-source",
+        on_conflict="ignore",
+    )
+    target = insert_node(
+        con,
+        canonical_label="old employer",
+        node_type="organization",
+        graph_scope="depth",
+        investigation_id="inv-source",
+        on_conflict="ignore",
+    )
+    insert_edge(
+        con,
+        edge_id="edge-stale-personnel",
+        source_node_id=source,
+        target_node_id=target,
+        relation="led_by",
+        source_tier=1,
+        extraction_confidence=0.9,
+        graph_scope="depth",
+        investigation_id="inv-source",
+        source_document_id="doc-refresh",
+        valid_from=datetime(2025, 1, 1),
+        on_conflict="ignore",
     )
 
 
@@ -133,6 +167,7 @@ def test_promote_refresh_candidate_deposits_grounded_insight_and_result_event(
     con = _graph(tmp_path)
     try:
         _seed_refresh_chunk(con)
+        _seed_stale_edge(con)
         attempt = promote_refresh_candidate(
             con,
             investigation_id="inv-parent",
@@ -142,6 +177,7 @@ def test_promote_refresh_candidate_deposits_grounded_insight_and_result_event(
                 refresh_investigation_id="inv-refresh",
                 summary="Source claim remains current after refresh.",
                 supporting_chunk_ids=["chunk-refresh-1"],
+                stale_advisory_edge_ids=["edge-stale-personnel"],
             ),
             candidate_event_id="evt-candidate",
             events_dir=events_dir,
@@ -174,7 +210,18 @@ def test_promote_refresh_candidate_deposits_grounded_insight_and_result_event(
     assert payload["reason"] == "ready"
     assert payload["deposited_node_id"] == attempt.deposited_node_id
     assert payload["primary_chunk_id"] == "chunk-refresh-1"
+    assert payload["resolved_stale_edge_ids"] == ["edge-stale-personnel"]
     assert payload["candidate_event_id"] == "evt-candidate"
+    resolve_events = [
+        e for e in trajectory("inv-parent", events_dir=events_dir)
+        if e["action_type"] == "graph.staleness.resolve"
+    ]
+    assert len(resolve_events) == 1
+    resolve_payload = resolve_events[0]["payload"]
+    assert resolve_payload["flag_id"] == "stale-edge-stale-personnel-personnel"
+    assert resolve_payload["entity_kind"] == "edge"
+    assert resolve_payload["entity_id"] == "edge-stale-personnel"
+    assert resolve_payload["status"] == "refreshed"
 
 
 def test_promote_refresh_candidate_records_non_depositability_without_node(

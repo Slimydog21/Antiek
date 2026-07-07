@@ -1016,6 +1016,7 @@ class StaleRefreshPromotionResponse(BaseModel):
     primary_source_document_id: str | None = None
     supporting_chunk_ids: list[str] = Field(default_factory=list)
     unresolved_chunk_ids: list[str] = Field(default_factory=list)
+    resolved_stale_edge_ids: list[str] = Field(default_factory=list)
 
 
 class NotebookUpdateBlockRequest(BaseModel):
@@ -2184,6 +2185,7 @@ def create_app(
             primary_source_document_id=validation.primary_source_document_id,
             supporting_chunk_ids=[c.chunk_id for c in validation.resolved_chunks],
             unresolved_chunk_ids=list(validation.unresolved_chunk_ids),
+            resolved_stale_edge_ids=list(attempt.resolved_stale_edge_ids),
         )
 
     @app.get("/.well-known/mcp-tools.json", tags=["mcp"])

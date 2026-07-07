@@ -224,6 +224,9 @@ describe("parseSynthesis — reuse provenance (SPR-10 M2)", () => {
         scores: [0.92, 0.81],
         source_investigation_ids: ["inv-current", "inv-stale"],
         stale_advisory_unit_ids: ["unit-stale"],
+        stale_advisory_edge_ids_by_unit: {
+          "unit-stale": ["edge-stale-personnel", 7],
+        },
         context_pack_event_id: "evt-1",
       }),
     ]);
@@ -231,6 +234,7 @@ describe("parseSynthesis — reuse provenance (SPR-10 M2)", () => {
     expect(synth!.reuseProvenance[1]).toMatchObject({
       unitId: "unit-stale",
       staleRefreshAdvisory: true,
+      staleAdvisoryEdgeIds: ["edge-stale-personnel"],
     });
   });
 
@@ -241,6 +245,9 @@ describe("parseSynthesis — reuse provenance (SPR-10 M2)", () => {
         scores: [0.81, 0.75],
         source_investigation_ids: ["inv-source", "inv-other"],
         stale_advisory_unit_ids: ["unit-stale"],
+        stale_advisory_edge_ids_by_unit: {
+          "unit-stale": ["edge-stale-personnel"],
+        },
         context_pack_event_id: "evt-1",
       }),
       ev("stale_reuse.refresh.accepted", {
@@ -258,6 +265,7 @@ describe("parseSynthesis — reuse provenance (SPR-10 M2)", () => {
         refresh_investigation_id: "inv-refresh",
         summary: "Source claim remains current after refresh.",
         supporting_chunk_ids: ["chunk-a", "chunk-b", 7],
+        stale_advisory_edge_ids: ["edge-stale-personnel", 9],
       }),
       ev("stale_reuse.refresh.promotion_result", {
         action_type: "stale_reuse.refresh.promotion_result",
@@ -269,6 +277,7 @@ describe("parseSynthesis — reuse provenance (SPR-10 M2)", () => {
         deposited_node_id: "node-refreshed",
         primary_chunk_id: "chunk-a",
         primary_source_document_id: "doc-refresh",
+        resolved_stale_edge_ids: ["edge-stale-personnel", 9],
         unresolved_chunk_ids: [9],
       }),
     ]);
@@ -282,6 +291,7 @@ describe("parseSynthesis — reuse provenance (SPR-10 M2)", () => {
       refreshInvestigationId: "inv-refresh",
       summary: "Source claim remains current after refresh.",
       supportingChunkIds: ["chunk-a", "chunk-b"],
+      staleAdvisoryEdgeIds: ["edge-stale-personnel"],
     });
     expect(synth!.reuseProvenance[0].refreshPromotionResult).toEqual({
       refreshInvestigationId: "inv-refresh",
@@ -290,6 +300,7 @@ describe("parseSynthesis — reuse provenance (SPR-10 M2)", () => {
       depositedNodeId: "node-refreshed",
       primaryChunkId: "chunk-a",
       primarySourceDocumentId: "doc-refresh",
+      resolvedStaleEdgeIds: ["edge-stale-personnel"],
       unresolvedChunkIds: [],
     });
     expect(synth!.reuseProvenance[1].acceptedRefresh).toBeUndefined();

@@ -302,6 +302,7 @@ def emit_staleness_resolve(
     status: StalenessResolution,
     notes: str = "",
     parent_event_id: str | None = None,
+    events_dir: str | None = None,
 ) -> str | None:
     """Emit a STALENESS_RESOLVE event when a flag is resolved.
 
@@ -321,4 +322,5 @@ def emit_staleness_resolve(
         ),
         parent_event_id=parent_event_id,
         role="tier_assigner",
+        events_dir=events_dir,
     )

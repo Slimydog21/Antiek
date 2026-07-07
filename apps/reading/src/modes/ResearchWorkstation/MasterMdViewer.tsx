@@ -1505,6 +1505,7 @@ function RefreshChildResult({
           refresh_investigation_id: child.investigation_id,
           summary: currentChildSynthesis.summary,
           supporting_chunk_ids: currentChildSynthesis.supportingChunkIds,
+          stale_advisory_edge_ids: insight.staleAdvisoryEdgeIds ?? [],
         },
       });
       setPromotionRecorded(true);
@@ -1519,6 +1520,7 @@ function RefreshChildResult({
         depositedNodeId: result.deposited_node_id ?? null,
         primaryChunkId: result.primary_chunk_id ?? null,
         primarySourceDocumentId: result.primary_source_document_id ?? null,
+        resolvedStaleEdgeIds: result.resolved_stale_edge_ids ?? [],
         unresolvedChunkIds: result.unresolved_chunk_ids,
       });
     } catch (e) {

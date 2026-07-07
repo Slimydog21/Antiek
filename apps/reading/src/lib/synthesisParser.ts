@@ -119,6 +119,7 @@ export interface ReusedInsight {
    *  edges, so the user should refresh/confirm it before treating it as current.
    *  Absence means no stale advisory was recorded, not that freshness was proven. */
   staleRefreshAdvisory?: boolean;
+  staleAdvisoryEdgeIds?: string[];
   /** Present only when the parent trajectory contains an explicit operator
    *  acceptance of a refresh child result for this stale reused unit. */
   acceptedRefresh?: StaleReuseRefreshAcceptance;
@@ -139,6 +140,7 @@ export interface StaleReuseRefreshPromotionCandidate {
   refreshInvestigationId: string;
   summary: string;
   supportingChunkIds: string[];
+  staleAdvisoryEdgeIds?: string[];
 }
 
 export interface StaleReuseRefreshPromotionResult {
@@ -151,6 +153,7 @@ export interface StaleReuseRefreshPromotionResult {
   depositedNodeId: string | null;
   primaryChunkId: string | null;
   primarySourceDocumentId: string | null;
+  resolvedStaleEdgeIds: string[];
   unresolvedChunkIds: string[];
 }
 
@@ -282,6 +285,7 @@ interface KnowledgeReusedPayloadShape {
   scores?: number[];
   source_investigation_ids?: string[];
   stale_advisory_unit_ids?: string[];
+  stale_advisory_edge_ids_by_unit?: Record<string, unknown>;
 }
 
 interface StaleReuseRefreshAcceptedPayloadShape {
@@ -298,6 +302,7 @@ interface StaleReuseRefreshPromotionCandidatePayloadShape {
   refresh_investigation_id?: string;
   summary?: string;
   supporting_chunk_ids?: unknown;
+  stale_advisory_edge_ids?: unknown;
 }
 
 interface StaleReuseRefreshPromotionResultPayloadShape {
@@ -313,6 +318,7 @@ interface StaleReuseRefreshPromotionResultPayloadShape {
   primary_chunk_id?: string | null;
   primary_source_document_id?: string | null;
   unresolved_chunk_ids?: unknown;
+  resolved_stale_edge_ids?: unknown;
 }
 
 function staleRefreshAcceptanceKey(
@@ -418,14 +424,22 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
       const scores = kr?.scores ?? [];
       const sources = kr?.source_investigation_ids ?? [];
       const staleAdvisoryUnitIds = new Set(kr?.stale_advisory_unit_ids ?? []);
+      const staleAdvisoryEdgeIdsByUnit =
+        kr?.stale_advisory_edge_ids_by_unit ?? {};
       unitIds.forEach((unitId, i) => {
+        const staleAdvisoryEdgeIds =
+          Array.isArray(staleAdvisoryEdgeIdsByUnit[unitId])
+            ? staleAdvisoryEdgeIdsByUnit[unitId].filter(
+                (edgeId): edgeId is string => typeof edgeId === "string",
+              )
+            : [];
         reuseProvenance.push({
           unitId,
           sourceInvestigationId:
             typeof sources[i] === "string" ? sources[i] : null,
           score: typeof scores[i] === "number" ? scores[i] : null,
           ...(staleAdvisoryUnitIds.has(unitId)
-            ? { staleRefreshAdvisory: true }
+            ? { staleRefreshAdvisory: true, staleAdvisoryEdgeIds }
             : {}),
         });
       });
@@ -468,6 +482,13 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
                   (chunkId): chunkId is string => typeof chunkId === "string",
                 )
               : [],
+            staleAdvisoryEdgeIds: Array.isArray(
+              candidate.stale_advisory_edge_ids,
+            )
+              ? candidate.stale_advisory_edge_ids.filter(
+                  (edgeId): edgeId is string => typeof edgeId === "string",
+                )
+              : [],
           },
         );
       }
@@ -504,6 +525,11 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
               typeof result.primary_source_document_id === "string"
                 ? result.primary_source_document_id
                 : null,
+            resolvedStaleEdgeIds: Array.isArray(result.resolved_stale_edge_ids)
+              ? result.resolved_stale_edge_ids.filter(
+                  (edgeId): edgeId is string => typeof edgeId === "string",
+                )
+              : [],
             unresolvedChunkIds: Array.isArray(result.unresolved_chunk_ids)
               ? result.unresolved_chunk_ids.filter(
                   (chunkId): chunkId is string => typeof chunkId === "string",

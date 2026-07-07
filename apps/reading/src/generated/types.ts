@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 34;
+export const EVENT_SCHEMA_VERSION = 35;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -710,6 +710,7 @@ export interface StaleReuseRefreshPromotionCandidatePayload {
   refresh_investigation_id: string;
   summary: string;
   supporting_chunk_ids?: string[];
+  stale_advisory_edge_ids?: string[];
   accepted_event_id?: string | null;
   notes?: string;
 }
@@ -733,6 +734,7 @@ export interface StaleReuseRefreshPromotionResultPayload {
   primary_source_document_id?: string | null;
   supporting_chunk_ids?: string[];
   unresolved_chunk_ids?: string[];
+  resolved_stale_edge_ids?: string[];
   candidate_event_id?: string | null;
 }
 

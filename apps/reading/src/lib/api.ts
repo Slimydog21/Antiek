@@ -28,6 +28,7 @@ export interface StaleRefreshPromotionResponse {
   primary_source_document_id?: string | null;
   supporting_chunk_ids: string[];
   unresolved_chunk_ids: string[];
+  resolved_stale_edge_ids: string[];
 }
 
 // In development, vite.config.ts proxies /events, /trajectory, /ws,

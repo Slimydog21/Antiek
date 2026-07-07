@@ -1301,6 +1301,7 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
       primary_source_document_id: "doc-refresh",
       supporting_chunk_ids: ["chunk-refresh-1", "chunk-refresh-2"],
       unresolved_chunk_ids: [],
+      resolved_stale_edge_ids: ["edge-stale-personnel"],
     });
     getTrajectoryMock.mockResolvedValue({
       events: [
@@ -1339,6 +1340,7 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
               sourceInvestigationId: "inv-source",
               score: 0.81,
               staleRefreshAdvisory: true,
+              staleAdvisoryEdgeIds: ["edge-stale-personnel"],
               acceptedRefresh: {
                 refreshInvestigationId: "inv-refresh-from-api",
                 status: "refreshed",
@@ -1377,6 +1379,7 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
           refresh_investigation_id: "inv-refresh-from-api",
           summary: "Source claim remains current after checking the newer corpus.",
           supporting_chunk_ids: ["chunk-refresh-1", "chunk-refresh-2"],
+          stale_advisory_edge_ids: ["edge-stale-personnel"],
         },
       }),
     );
@@ -1454,6 +1457,7 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
                 depositedNodeId: null,
                 primaryChunkId: null,
                 primarySourceDocumentId: null,
+                resolvedStaleEdgeIds: [],
                 unresolvedChunkIds: ["missing-chunk"],
               },
             },

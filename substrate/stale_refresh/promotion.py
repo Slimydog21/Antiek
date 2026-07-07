@@ -48,6 +48,7 @@ class PromotionAttempt:
     validation: PromotionCandidateValidation
     result_event_id: str
     deposited_node_id: str | None
+    resolved_stale_edge_ids: tuple[str, ...]
 
 
 def promote_refresh_candidate(
@@ -88,6 +89,16 @@ def promote_refresh_candidate(
             dedup=True,
         )
 
+    resolved_stale_edge_ids: list[str] = []
+    if deposited_node_id:
+        resolved_stale_edge_ids = _resolve_stale_edges(
+            con,
+            investigation_id=investigation_id,
+            edge_ids=candidate.stale_advisory_edge_ids,
+            parent_event_id=candidate_event_id,
+            events_dir=events_dir,
+        )
+
     result_event_id = emit_typed(
         investigation_id,
         StaleReuseRefreshPromotionResultPayload(
@@ -102,6 +113,7 @@ def promote_refresh_candidate(
             primary_source_document_id=validation.primary_source_document_id,
             supporting_chunk_ids=list(candidate.supporting_chunk_ids),
             unresolved_chunk_ids=list(validation.unresolved_chunk_ids),
+            resolved_stale_edge_ids=resolved_stale_edge_ids,
             candidate_event_id=candidate_event_id,
         ),
         parent_event_id=candidate_event_id,
@@ -112,7 +124,54 @@ def promote_refresh_candidate(
         validation=validation,
         result_event_id=result_event_id,
         deposited_node_id=deposited_node_id,
+        resolved_stale_edge_ids=tuple(resolved_stale_edge_ids),
     )
+
+
+def _resolve_stale_edges(
+    con: Any,
+    *,
+    investigation_id: str,
+    edge_ids: Sequence[str],
+    parent_event_id: str | None,
+    events_dir: str | None,
+) -> list[str]:
+    """Emit staleness-resolution events for classified stale advisory edges."""
+    deduped = _dedupe_nonempty(edge_ids)
+    if not deduped:
+        return []
+
+    try:
+        from middleware.temporal import classify_relation, emit_staleness_resolve
+    except ImportError:  # pragma: no cover — direct-script fallback
+        from temporal import (  # type: ignore[import-not-found,no-redef]
+            classify_relation,
+            emit_staleness_resolve,
+        )
+
+    resolved: list[str] = []
+    for edge_id in deduped:
+        row = con.execute(
+            "SELECT relation FROM edges WHERE edge_id = ? AND valid_until IS NULL",
+            [edge_id],
+        ).fetchone()
+        if row is None:
+            continue
+        claim_class = classify_relation(str(row[0]))
+        if claim_class is None:
+            continue
+        emit_staleness_resolve(
+            investigation_id=investigation_id,
+            flag_id=f"stale-{edge_id}-{claim_class}",
+            entity_kind="edge",
+            entity_id=edge_id,
+            status="refreshed",
+            notes="resolved by stale refresh promotion",
+            parent_event_id=parent_event_id,
+            events_dir=events_dir,
+        )
+        resolved.append(edge_id)
+    return resolved
 
 
 def validate_promotion_candidate(

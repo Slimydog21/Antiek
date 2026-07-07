@@ -766,7 +766,12 @@ class ActionType(str, Enum):
 #     edge-id map makes later graph.staleness.resolve/supersession flows
 #     reconstructable from the event stream. Backward-compatible default.
 #     2026-07-07.
-EVENT_SCHEMA_VERSION: int = 34
+# v35: GF-4v — StaleReuseRefreshPromotionCandidatePayload carries stale
+#     advisory edge ids, and StaleReuseRefreshPromotionResultPayload records
+#     which of those edge ids were resolved after a successful graph deposit.
+#     This connects reuse-level refresh to graph.staleness.resolve without
+#     guessing stale entities from unit ids later. 2026-07-07.
+EVENT_SCHEMA_VERSION: int = 35
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -1011,6 +1016,7 @@ class StaleReuseRefreshPromotionCandidatePayload(_PayloadBase):
     refresh_investigation_id: str
     summary: str
     supporting_chunk_ids: list[str] = Field(default_factory=list)
+    stale_advisory_edge_ids: list[str] = Field(default_factory=list)
     accepted_event_id: str | None = None
     notes: str = ""
 
@@ -1039,6 +1045,7 @@ class StaleReuseRefreshPromotionResultPayload(_PayloadBase):
     primary_source_document_id: str | None = None
     supporting_chunk_ids: list[str] = Field(default_factory=list)
     unresolved_chunk_ids: list[str] = Field(default_factory=list)
+    resolved_stale_edge_ids: list[str] = Field(default_factory=list)
     candidate_event_id: str | None = None
 
 
