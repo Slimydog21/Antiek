@@ -163,6 +163,10 @@ def test_archive_round_trip(db_path):
 
 
 def test_archive_manifest_counts(db_path):
+    # Seed the chunks so the manifest pins resolve to real graph rows
+    # (#199: only chunks that exist are pinned — fabricated ids are skipped).
+    for cid in ("c-1", "c-2", "c-3"):
+        _seed_chunk(db_path, cid)
     inp = _inputs(
         document_ids=("d-1",), chunk_ids=("c-1", "c-2", "c-3"),
         node_ids=(), edge_ids=("e-1", "e-2"),
