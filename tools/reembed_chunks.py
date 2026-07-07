@@ -32,7 +32,7 @@ import json
 import math
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 
@@ -46,6 +46,8 @@ from processing.embedding.embed import (  # noqa: E402
 )
 from runtime.db_lock import connect_write  # noqa: E402
 from substrate.graph import default_db_path  # noqa: E402
+from substrate.graph.embedding_meta import record_chunk_embedding_meta  # noqa: E402
+from substrate.graph.schema import init_database  # noqa: E402
 
 
 @dataclass(frozen=True)
@@ -77,8 +79,10 @@ def _is_prod_db(db_path: str) -> bool:
 def _vector_dim(vec: object) -> int | None:
     if vec is None:
         return None
+    if not isinstance(vec, Iterable):
+        return None
     try:
-        return len(list(vec))  # type: ignore[arg-type]
+        return len(list(vec))
     except TypeError:
         return None
 
@@ -108,10 +112,14 @@ def run(
 
     con_ro = duckdb.connect(db_path, read_only=True)
     try:
-        total = con_ro.execute("SELECT count(*) FROM chunks").fetchone()[0]
-        embedded = con_ro.execute(
+        total_row = con_ro.execute("SELECT count(*) FROM chunks").fetchone()
+        embedded_row = con_ro.execute(
             "SELECT count(*) FROM chunks WHERE embedding IS NOT NULL"
-        ).fetchone()[0]
+        ).fetchone()
+        if total_row is None or embedded_row is None:
+            raise RuntimeError("DuckDB count query unexpectedly returned no rows")
+        total = int(total_row[0])
+        embedded = int(embedded_row[0])
         sample = con_ro.execute(
             "SELECT embedding FROM chunks WHERE embedding IS NOT NULL LIMIT 1"
         ).fetchone()
@@ -124,7 +132,7 @@ def run(
             "Refusing to --apply: the resolved provider is HashEmbedding, so "
             "re-embedding is a silent no-op (the very failure mode SPR-02 "
             "kills). Install sentence-transformers (pip install -e '.[embedding]') "
-            "and/or set ANTIK_EMBEDDING_PROVIDER=sentence-transformers, then "
+            "and/or set ANTIEK_EMBEDDING_PROVIDER=sentence-transformers, then "
             "re-run. Pass --force-hash only for testing."
         )
 
@@ -151,12 +159,14 @@ def run(
 
     vectors_rewritten = 0
     with connect_write(db_path, purpose="reembed_chunks") as con:
+        init_database(con)
         for chunk_id, text in rows:
             vec = provider.encode(text or "")
             con.execute(
                 "UPDATE chunks SET embedding = ? WHERE chunk_id = ?",
                 [list(vec), chunk_id],
             )
+            record_chunk_embedding_meta(con, chunk_id=chunk_id, provider=provider)
             vectors_rewritten += 1
         after_total = con.execute("SELECT count(*) FROM chunks").fetchone()[0]
         sample_after = con.execute(

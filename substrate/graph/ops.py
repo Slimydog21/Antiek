@@ -45,10 +45,9 @@ try:
     from ...schemas import (
         GraphEdgeInsertedPayload,
         GraphNodeInsertedPayload,
-        GraphScope,
-        NodeType,
     )
     from ...schemas.events import DocumentContentClassDefaultedPayload
+    from .embedding_meta import record_chunk_embedding_meta
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
@@ -58,6 +57,9 @@ except ImportError:  # pragma: no cover — direct-script fallback
         THIRD_PARTY_DOCUMENT_TYPES,
     )
     from substrate.event_log import emit_typed  # type: ignore[no-redef]
+    from substrate.graph.embedding_meta import (  # type: ignore[no-redef]
+        record_chunk_embedding_meta,
+    )
     from substrate.schemas import (  # type: ignore[no-redef]
         GraphEdgeInsertedPayload,
         GraphNodeInsertedPayload,
@@ -307,7 +309,7 @@ def update_document_gate_columns(
     finally:
         # Recreate even if the UPDATE raised, so a failed mutation never
         # leaves the table without its gate indexes.
-        for col, idx in zip(touched_indexed, indexes):
+        for col, idx in zip(touched_indexed, indexes, strict=True):
             con.execute(
                 f"CREATE INDEX IF NOT EXISTS {idx} ON documents({col})"
             )
@@ -326,6 +328,7 @@ def insert_chunk(
     text: str,
     section_path: str | None = None,
     embedding: Sequence[float] | None = None,
+    embedding_provider: Any | None = None,
     token_count: int = 0,
     chunk_id: str | None = None,
 ) -> str:
@@ -353,6 +356,8 @@ def insert_chunk(
             int(token_count),
         ],
     )
+    if embedding is not None and embedding_provider is not None:
+        record_chunk_embedding_meta(con, chunk_id=cid, provider=embedding_provider)
     return cid
 
 

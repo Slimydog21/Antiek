@@ -36,6 +36,7 @@ from collections.abc import Sequence
 from typing import Any, Protocol
 
 from substrate.graph import retrieval_gate as _retrieval_gate
+from substrate.graph.embedding_meta import assert_embedding_compatible
 from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
 
 # Back-compat re-exports (tests / attribution import these from search).
@@ -212,6 +213,7 @@ def search(
             f"EmbeddingModel.encode returned {len(query_vec)} dims; "
             f"model.dimension is {dim}. Match them."
         )
+    assert_embedding_compatible(con, model)
 
     sim_expr = cosine_similarity_sql("c.embedding", query_vec, dim)
 
