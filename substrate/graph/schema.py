@@ -1202,19 +1202,32 @@ def init_database(con: LockedConnection) -> None:
     con.execute(ANTIEK_GRAPH_SCHEMA_V14_SUPERSESSION_CANDIDATES_SQL)
 
 
+# Per-process memo of db_paths known to already have the Antiek schema.
+# The schema is created once (deploy/startup/tests) and NEVER uninitialized at
+# runtime, so once a read-only probe confirms the sentinel table the path can be
+# short-circuited forever — turning the per-request warm path from a ~4s
+# read-only open (on a large prod DB) into O(1). A ``set`` (not a bool) because
+# the process may touch more than one db_path (e.g. tests with temp DBs).
+_INITIALIZED_PATHS: set[str] = set()
+
+
 def _schema_is_present(db_path: str) -> bool:
     """Cheap read-only probe: is the Antiek schema already initialized at
     ``db_path``? Returns True if the ``nodes`` sentinel table exists.
 
-    Opens a PLAIN read-only DuckDB connection (NOT connect_write — no
-    application-level write flock), so it NEVER blocks on the single-writer
-    lock. This is the fast-path guard that lets ``init_database_at_path``
-    skip the write lock entirely when the schema is already present, which is
-    the warm-path case for every per-request ``ensure_initialized`` call.
+    Two layers: (1) a per-process memo (``_INITIALIZED_PATHS``) that short-
+    circuits paths already confirmed initialized — O(1), no connection; (2) a
+    PLAIN read-only DuckDB connection (NOT connect_write — no application-level
+    write flock) for the first probe, which NEVER blocks on the single-writer
+    lock. This is the fast-path guard that lets ``init_database_at_path`` skip
+    the write lock entirely when the schema is already present, which is the
+    warm-path case for every per-request ``ensure_initialized`` call.
 
     Any failure (file absent, read-only open refused, table missing) returns
     False so the caller falls through to the write-lock init path — the fast
     path is a pure optimization that must never change cold-start behavior."""
+    if db_path in _INITIALIZED_PATHS:
+        return True
     try:
         con = duckdb.connect(db_path, read_only=True)
     except Exception:
@@ -1229,7 +1242,10 @@ def _schema_is_present(db_path: str) -> bool:
     finally:
         with contextlib.suppress(Exception):
             con.close()
-    return bool(row and row[0] > 0)
+    present = bool(row and row[0] > 0)
+    if present:
+        _INITIALIZED_PATHS.add(db_path)
+    return present
 
 
 def init_database_at_path(db_path: str) -> None:
@@ -1258,6 +1274,11 @@ def init_database_at_path(db_path: str) -> None:
         init_database(con)
     finally:
         con.close()
+    # The cold path just created the schema, so memoize the path for every
+    # subsequent probe — mirrors the memo update inside the warm probe, so a
+    # freshly-initialized DB is O(1) on the next call too (no second read-only
+    # open).
+    _INITIALIZED_PATHS.add(db_path)
 
 
 def list_tables(con: duckdb.DuckDBPyConnection) -> list[str]:
