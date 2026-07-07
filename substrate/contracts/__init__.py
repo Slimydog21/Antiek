@@ -29,11 +29,6 @@ cross-cutting tech-stack commitments this sprint closes.
 
 from __future__ import annotations
 
-# Bump on ANY change to a committed contract's field shape; mirrors
-# ``EVENT_SCHEMA_VERSION``. The codegen staleness check ties the generated TS
-# (``apps/reading/src/generated/contracts.ts``) to this version.
-CONTRACT_SCHEMA_VERSION: int = 2
-
 from .accrual import AccrualContract, AccrualSource
 from .conformance import (
     ConformanceError,
@@ -56,6 +51,21 @@ from .interviewer import (
     EconomicsCellContract,
     InterviewerResultContract,
 )
+from .multimedia import (
+    ALLOWED_STATUS_TRANSITIONS,
+    ClaimToChunk,
+    CostRow,
+    GeneratedFile,
+    MediaSegment,
+    MultimediaAssetContract,
+    MultimediaManifest,
+    MultimediaStatus,
+    PromptRecord,
+    ProviderCall,
+    ScriptLine,
+    SourceCitation,
+    can_transition,
+)
 from .nodes import (
     InsightNodeContract,
     KnowledgeUnitContract,
@@ -74,6 +84,11 @@ from .voice_pipeline import (
     VOICE_PIPELINE_OWNER,
     VoicePipelineContract,
 )
+
+# Bump on ANY change to a committed contract's field shape; mirrors
+# ``EVENT_SCHEMA_VERSION``. The codegen staleness check ties the generated TS
+# (``apps/reading/src/generated/contracts.ts``) to this version.
+CONTRACT_SCHEMA_VERSION: int = 2
 
 # Pydantic contract models that go through TS codegen (provisional Protocols —
 # ReaderSurfaceContract, VoicePipelineContract — are excluded; they carry
@@ -97,6 +112,20 @@ __all__ = [
     # node contracts
     "InsightNodeContract",
     "QuestionNodeContract",
+    # multimedia category contract (Python-first until workstation codegen)
+    "ALLOWED_STATUS_TRANSITIONS",
+    "ClaimToChunk",
+    "CostRow",
+    "GeneratedFile",
+    "MediaSegment",
+    "MultimediaAssetContract",
+    "MultimediaManifest",
+    "MultimediaStatus",
+    "PromptRecord",
+    "ProviderCall",
+    "ScriptLine",
+    "SourceCitation",
+    "can_transition",
     # AFF SPR-04 — knowledge-unit deposit contract (extension of the node
     # contracts above). Python-only for now: NOT added to CODEGEN_CONTRACTS /
     # CONTRACT_MODELS because the first TS consumer is SPR-06 (retrieval);
