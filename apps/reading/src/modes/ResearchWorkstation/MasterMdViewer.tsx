@@ -1182,6 +1182,7 @@ function ReuseProvenance({
     stat && (stat.reused > 0 || stat.avoided !== null || stat.fewerSources !== null)
       ? stat
       : null;
+  const staleResolutionSummary = staleResolutionSummaryLine(insights);
   // Present-only: nothing reused AND no meaningful stat ⇒ render nothing at all
   // (byte-identical to today; the qualityScore === null discipline).
   if (insights.length === 0 && !meaningfulStat) return null;
@@ -1205,6 +1206,11 @@ function ReuseProvenance({
             <h3 className="text-xs font-mono uppercase text-ink-soft dark:text-starlight mb-2">
               Reused prior insights
             </h3>
+            {staleResolutionSummary && (
+              <p className="mb-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight">
+                {staleResolutionSummary}
+              </p>
+            )}
             <ul className="list-disc list-inside space-y-2 text-ink dark:text-bright">
               {insights.map((ins, i) => (
                 <li key={`${ins.unitId}-${i}`}>
@@ -1221,6 +1227,36 @@ function ReuseProvenance({
       </div>
     </details>
   );
+}
+
+function staleResolutionSummaryLine(insights: ReusedInsight[]): string | null {
+  const staleInsights = insights.filter((insight) => insight.staleRefreshAdvisory);
+  if (staleInsights.length === 0) return null;
+  let resolvedEdges = 0;
+  let unresolvedEdges = 0;
+  for (const insight of staleInsights) {
+    const advisoryEdges = insight.staleAdvisoryEdgeIds ?? [];
+    const resolvedIds = new Set(
+      (insight.staleAdvisoryResolutions ?? []).map(
+        (resolution) => resolution.entityId,
+      ),
+    );
+    for (const edgeId of advisoryEdges) {
+      if (resolvedIds.has(edgeId)) resolvedEdges += 1;
+      else unresolvedEdges += 1;
+    }
+  }
+  if (resolvedEdges === 0 && unresolvedEdges === 0) {
+    return `${staleInsights.length} stale ${pluralize("advisory", staleInsights.length)}`;
+  }
+  return `${resolvedEdges} resolved stale ${pluralize(
+    "edge",
+    resolvedEdges,
+  )} · ${unresolvedEdges} unresolved`;
+}
+
+function pluralize(noun: string, count: number): string {
+  return count === 1 ? noun : `${noun}s`;
 }
 
 /** One reused prior insight, rendered as the real identifier we have (the unit
