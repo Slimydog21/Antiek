@@ -192,4 +192,3 @@ def test_owner_readable_property_reflects_track():
     assert _retrieved(None, groundedness=0.9).owner_readable is False
     assert _retrieved("restricted_pending_opt_in", groundedness=0.9).owner_readable is False
     assert _retrieved("personal_reading", groundedness=0.9, taken_down=True).owner_readable is False
-
