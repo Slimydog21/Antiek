@@ -1841,7 +1841,8 @@ def _deposit_synthesis_to_substrate(ctx: InvestigationContext) -> str | None:
         db_path = default_db_path()
         with connect_write(db_path, purpose="archive-synthesis") as con:
             return archive_synthesis_via_db(
-                con, inputs, investigation_id=ctx.investigation_id
+                con, inputs, investigation_id=ctx.investigation_id,
+                synthesis_id=f"syn-{ctx.investigation_id}",
             )
     except Exception as exc:  # best-effort: never break completion
         print(

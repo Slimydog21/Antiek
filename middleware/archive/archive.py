@@ -291,7 +291,7 @@ def archive_synthesis_via_db(
     con.execute("BEGIN TRANSACTION")
     try:
         con.execute(
-            "INSERT INTO syntheses ("
+            "INSERT OR REPLACE INTO syntheses ("
             " synthesis_id, investigation_id, target_question, "
             " synthesis_timestamp, status, implicit_recommendation,"
             " thesis_text, thesis_token_count, has_constraint_check_result,"
@@ -317,6 +317,23 @@ def archive_synthesis_via_db(
                 serialize_json_field(inputs.constraint_check_result),
             ],
         )
+        # Validate chunk entity_ids against the real chunks table before
+        # pinning. The DRW-tail/session-evidence-pack path fabricates chunk_ids
+        # for nodes lacking one (f"chunk-{node_id}", f"doc-gather-...") — those
+        # join to no chunks row, so pinning them creates dangling provenance
+        # (#199 vector 2). Only pin chunk_ids that actually exist; fabricated
+        # ids are skipped (the evidence they represent is still in the thesis;
+        # only the manifest provenance pin is withheld). Read-only existence
+        # check on this same write connection (§16-safe).
+        real_chunk_ids: set[str] = set()
+        if inputs.chunk_ids:
+            ph = ",".join("?" for _ in inputs.chunk_ids)
+            rows = con.execute(
+                f"SELECT chunk_id FROM chunks WHERE chunk_id IN ({ph})",
+                list(inputs.chunk_ids),
+            ).fetchall()
+            real_chunk_ids = {r[0] for r in rows}
+
         for kind, ids in (
             ("document", inputs.document_ids),
             ("chunk", inputs.chunk_ids),
@@ -324,6 +341,8 @@ def archive_synthesis_via_db(
             ("edge", inputs.edge_ids),
         ):
             for eid in ids:
+                if kind == "chunk" and eid not in real_chunk_ids:
+                    continue
                 con.execute(
                     "INSERT OR IGNORE INTO synthesis_substrate_manifest "
                     "(synthesis_id, entity_kind, entity_id) VALUES (?, ?, ?)",
