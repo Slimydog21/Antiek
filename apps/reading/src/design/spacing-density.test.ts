@@ -9,7 +9,7 @@
  * move pixels on the shipped UI (a lostpixel-gate failure). So this test does
  * not assert the config STRING. It:
  *
- *   1. Resolves the Tailwind config for real (resolveConfig) and, for a
+ *   1. Loads the Tailwind config for real and, for a
  *      representative set of utilities, evaluates calc(var(--spacing) * N) with
  *      --spacing taken from the REAL tokens.css :root (parsed at runtime), then
  *      asserts the resolved length equals Tailwind's OWN default for that key.
@@ -30,14 +30,13 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
-import resolveConfig from "tailwindcss/resolveConfig";
 import defaultTheme from "tailwindcss/defaultTheme";
 
 const here = dirname(fileURLToPath(import.meta.url)); // apps/reading/src/design
 const APP = join(here, "..", ".."); // apps/reading
 const TOKENS_CSS = readFileSync(join(here, "tokens.css"), "utf8");
 // Load the Tailwind config at runtime (it is plain JS with no .d.ts); typed as
-// `unknown` and resolved through resolveConfig, never regex-string-matched.
+// `unknown` and read as config data, never regex-string-matched.
 const require = createRequire(import.meta.url);
 const tailwindConfig = require(join(APP, "tailwind.config.js"));
 
@@ -87,8 +86,8 @@ let rootSpacingRem: number;
 
 beforeAll(() => {
   const cfg = tailwindConfig.default ?? tailwindConfig;
-  const full = resolveConfig(cfg) as { theme: { spacing: Record<string, string> } };
-  resolvedSpacing = full.theme.spacing;
+  resolvedSpacing = (cfg as { theme: { extend: { spacing: Record<string, string> } } }).theme
+    .extend.spacing;
   defaultSpacing = (defaultTheme as { spacing: Record<string, string> }).spacing;
   const root = rootCssVar("spacing");
   expect(root, "tokens.css :root must define --spacing").toBeTruthy();

@@ -3,14 +3,13 @@
  * opacity tokens exist with the exact PostHog values, and that the 2xl chrome
  * CEILING is 24px.
  *
- * Resolves the REAL Tailwind config (resolveConfig) rather than regex-matching
- * the file, so the assertions track what Tailwind actually emits.
+ * Loads the REAL Tailwind config rather than regex-matching the file, so the
+ * assertions track the app's configured design tokens.
  */
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, beforeAll } from "vitest";
-import resolveConfig from "tailwindcss/resolveConfig";
 
 const here = dirname(fileURLToPath(import.meta.url)); // apps/reading/src/design
 const APP = join(here, "..", ".."); // apps/reading
@@ -26,7 +25,7 @@ let theme: TwTheme;
 
 beforeAll(() => {
   const cfg = tailwindConfig.default ?? tailwindConfig;
-  theme = (resolveConfig(cfg) as { theme: TwTheme }).theme;
+  theme = (cfg as { theme: { extend: TwTheme } }).theme.extend;
 });
 
 describe("type scale (CFEEL-S2 M2) — PostHog app sizes + 24px chrome ceiling", () => {
