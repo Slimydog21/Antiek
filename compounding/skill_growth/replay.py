@@ -15,6 +15,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from middleware.backtest.score import (
+    DEFAULT_MIN_GRADED_OUTCOMES,
+    BacktestComparison,
+    compare_backtest_cohorts,
+)
 from middleware.backtest.types import BacktestReport
 from skills.domain.auto_patch import patch_from_synthesis
 
@@ -55,6 +60,16 @@ class CandidateBacktestReplay:
     @property
     def complete(self) -> bool:
         return self.status == "replayed"
+
+
+@dataclass(frozen=True)
+class CandidateReplayEvaluation:
+    """Gate-facing evaluation of candidate replay output."""
+
+    replay: CandidateBacktestReplay
+    comparison: BacktestComparison
+    ready_for_gate: bool
+    notes: str
 
 
 def materialize_candidate_skill_overlay(
@@ -157,4 +172,43 @@ def replay_candidate_backtest_cohort(
         reports=tuple(reports),
         errors=tuple(errors),
         status=status,
+    )
+
+
+def evaluate_candidate_replay_for_gate(
+    *,
+    baseline_reports: Sequence[BacktestReport],
+    candidate_replay: CandidateBacktestReplay,
+    minimum_graded_outcomes: int = DEFAULT_MIN_GRADED_OUTCOMES,
+) -> CandidateReplayEvaluation:
+    """Compare baseline reports against candidate replay reports for the gate."""
+
+    comparison = compare_backtest_cohorts(
+        baseline_reports=baseline_reports,
+        candidate_reports=candidate_replay.reports,
+        minimum_graded_outcomes=minimum_graded_outcomes,
+    )
+    ready_for_gate = candidate_replay.complete and comparison.ready_for_gate
+    if not candidate_replay.complete:
+        failed_ids = ", ".join(error.synthesis_id for error in candidate_replay.errors)
+        if failed_ids:
+            notes = (
+                f"candidate replay not complete: status={candidate_replay.status}; "
+                f"failed={failed_ids}; {comparison.notes}"
+            )
+        else:
+            notes = (
+                f"candidate replay not complete: status={candidate_replay.status}; "
+                f"{comparison.notes}"
+            )
+    elif not comparison.ready_for_gate:
+        notes = comparison.notes
+    else:
+        notes = f"candidate replay ready: {comparison.notes}"
+
+    return CandidateReplayEvaluation(
+        replay=candidate_replay,
+        comparison=comparison,
+        ready_for_gate=ready_for_gate,
+        notes=notes,
     )
