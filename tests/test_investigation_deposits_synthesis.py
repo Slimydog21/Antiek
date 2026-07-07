@@ -24,12 +24,22 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
 
 from interfaces.research.api import EventBroadcaster, create_app  # noqa: E402
+from orchestration.loop_one.orchestrator import (  # noqa: E402
+    InvestigationContext,
+    _deposit_synthesis_to_substrate,
+)
 from processing.embedding import _reset_default_provider  # noqa: E402
 from substrate.dispatch import (  # noqa: E402
     register_provider,
     reset_provider_registry,
 )
 from substrate.schemas import ActionType  # noqa: E402
+from substrate.schemas.events import (  # noqa: E402
+    ConstraintCompliance,
+    EvidenceRetrieveDeliveredPayload,
+    SupportingClaim,
+    SynthesizeDeliveredPayload,
+)
 from tests.test_loop_one_orchestrator import (  # noqa: E402
     _CONNECTOR_RESPONSE,
     _DECOMPOSER_RESPONSE,
@@ -193,3 +203,68 @@ async def test_investigation_deposits_synthesis_with_manifest(
     assert recommendation == "proceed", recommendation
     pinned_chunks = {e for k, e in manifest if k == "chunk"}
     assert "chunk-1" in pinned_chunks, pinned_chunks
+
+
+def test_deposit_is_idempotent_and_filters_unbacked_chunk_ids():
+    """A replayed deposit for one investigation must not duplicate rows, and
+    fabricated pack chunk ids must not enter the manifest as chunk-backed
+    provenance."""
+    ctx = InvestigationContext(
+        investigation_id="inv-spr03-idempotent",
+        question="Is the deposit path idempotent?",
+    )
+    ctx.synthesis = SynthesizeDeliveredPayload(
+        thesis_summary="PsiQuantum evidence supports the claim.",
+        implicit_recommendation="proceed",
+        thesis_components=[],
+        constraint_compliance=ConstraintCompliance(hard_constraints_satisfied=True),
+        conviction_level=0.8,
+    )
+    ctx.evidence = [
+        EvidenceRetrieveDeliveredPayload(
+            sub_question="What supports the claim?",
+            answer="chunk-1 supports it; chunk-fabricated does not exist.",
+            supporting_claims=[
+                SupportingClaim(
+                    claim="PsiQuantum evidence supports the claim.",
+                    evidence_type="direct",
+                    chunk_ids=["chunk-1", "chunk-fabricated"],
+                    edge_ids=[],
+                    source_tier_min=1,
+                    confidence="high",
+                    confidence_basis="fixture",
+                )
+            ],
+            evidentiary_gaps=[],
+            insufficient_evidence=False,
+        )
+    ]
+
+    first_id = _deposit_synthesis_to_substrate(ctx)
+    second_id = _deposit_synthesis_to_substrate(ctx)
+
+    import duckdb
+
+    from substrate.graph import default_db_path
+
+    con = duckdb.connect(default_db_path(), read_only=True)
+    try:
+        rows = con.execute(
+            "SELECT synthesis_id FROM syntheses WHERE investigation_id = ?",
+            [ctx.investigation_id],
+        ).fetchall()
+        manifest_chunks = con.execute(
+            "SELECT m.entity_id "
+            "FROM synthesis_substrate_manifest m "
+            "JOIN syntheses s ON m.synthesis_id = s.synthesis_id "
+            "WHERE s.investigation_id = ? AND m.entity_kind = 'chunk' "
+            "ORDER BY m.entity_id",
+            [ctx.investigation_id],
+        ).fetchall()
+    finally:
+        con.close()
+
+    assert first_id == "syn-inv-spr03-idempotent"
+    assert second_id == first_id
+    assert rows == [(first_id,)]
+    assert manifest_chunks == [("chunk-1",)]

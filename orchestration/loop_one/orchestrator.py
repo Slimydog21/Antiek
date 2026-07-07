@@ -1840,8 +1840,19 @@ def _deposit_synthesis_to_substrate(ctx: InvestigationContext) -> str | None:
     try:
         db_path = default_db_path()
         with connect_write(db_path, purpose="archive-synthesis") as con:
+            existing = con.execute(
+                "SELECT synthesis_id FROM syntheses WHERE investigation_id = ? "
+                "ORDER BY archived_at DESC, synthesis_id DESC LIMIT 1",
+                [ctx.investigation_id],
+            ).fetchone()
+            if existing:
+                return str(existing[0])
+
             return archive_synthesis_via_db(
-                con, inputs, investigation_id=ctx.investigation_id
+                con,
+                inputs,
+                investigation_id=ctx.investigation_id,
+                synthesis_id=f"syn-{ctx.investigation_id}",
             )
     except Exception as exc:  # best-effort: never break completion
         print(

@@ -163,6 +163,8 @@ def test_archive_round_trip(db_path):
 
 
 def test_archive_manifest_counts(db_path):
+    for cid in ("c-1", "c-2", "c-3"):
+        _seed_chunk(db_path, cid)
     inp = _inputs(
         document_ids=("d-1",), chunk_ids=("c-1", "c-2", "c-3"),
         node_ids=(), edge_ids=("e-1", "e-2"),

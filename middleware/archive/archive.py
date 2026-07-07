@@ -317,6 +317,15 @@ def archive_synthesis_via_db(
                 serialize_json_field(inputs.constraint_check_result),
             ],
         )
+        real_chunk_ids: set[str] = set()
+        if inputs.chunk_ids:
+            placeholders = ", ".join("?" for _ in inputs.chunk_ids)
+            rows = con.execute(
+                f"SELECT chunk_id FROM chunks WHERE chunk_id IN ({placeholders})",
+                list(inputs.chunk_ids),
+            ).fetchall()
+            real_chunk_ids = {str(row[0]) for row in rows}
+
         for kind, ids in (
             ("document", inputs.document_ids),
             ("chunk", inputs.chunk_ids),
@@ -324,6 +333,8 @@ def archive_synthesis_via_db(
             ("edge", inputs.edge_ids),
         ):
             for eid in ids:
+                if kind == "chunk" and eid not in real_chunk_ids:
+                    continue
                 con.execute(
                     "INSERT OR IGNORE INTO synthesis_substrate_manifest "
                     "(synthesis_id, entity_kind, entity_id) VALUES (?, ?, ?)",
