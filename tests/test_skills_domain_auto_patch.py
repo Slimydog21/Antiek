@@ -273,6 +273,19 @@ def test_patch_from_synthesis_no_match_status(events_dir, skills_root):
     assert e.payload.status == "no_match"
 
 
+def test_patch_from_synthesis_can_skip_event_emission(events_dir, skills_root):
+    syn = _synthesis()
+
+    result = patch_from_synthesis(
+        syn,
+        skills_root=skills_root,
+        emit_events=False,
+    )
+
+    assert result["status"] == "patched"
+    assert trajectory("inv-ap") == []
+
+
 def test_patch_from_synthesis_happy_path(events_dir, skills_root):
     syn = _synthesis()
     result = patch_from_synthesis(syn, skills_root=skills_root)

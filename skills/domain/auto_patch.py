@@ -46,16 +46,16 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from ...event_log import emit_typed
-    from ...schemas import (
+    from substrate.event_log import emit_typed
+    from substrate.schemas import (
         AutoPatchAppliedPayload,
         AutoPatchSkippedPayload,
     )
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
-    from substrate.schemas import (  # type: ignore[no-redef]
+    from substrate.event_log import emit_typed
+    from substrate.schemas import (
         AutoPatchAppliedPayload,
         AutoPatchSkippedPayload,
     )
@@ -341,6 +341,7 @@ def patch_from_synthesis(
     syn: dict[str, Any],
     *,
     skills_root: Path | None = None,
+    emit_events: bool = True,
 ) -> dict[str, Any]:
     """Core entry point. ``syn`` is a dict with keys::
 
@@ -360,6 +361,11 @@ def patch_from_synthesis(
           "status": "patched" | "already_patched" | "failed" |
                     "partial" | "no_match",
         }
+
+    When ``emit_events`` is false, the filesystem behavior and returned
+    result are identical, but no AUTO_PATCH_* event-log records are emitted.
+    Candidate replay uses that mode to materialize temporary skill overlays
+    without pretending a production patch path ran.
 
     Never raises on a single skill's failure — individual errors land
     in the ``errors`` list and the overall status is set accordingly
@@ -383,9 +389,10 @@ def patch_from_synthesis(
 
     if not domains:
         result["status"] = "no_match"
-        _safe_emit_applied(
-            investigation_id=syn.get("investigation_id"), result=result,
-        )
+        if emit_events:
+            _safe_emit_applied(
+                investigation_id=syn.get("investigation_id"), result=result,
+            )
         return result
 
     patch_md = render_patch(syn)
@@ -396,11 +403,12 @@ def patch_from_synthesis(
             skill_path.parent.mkdir(parents=True, exist_ok=True)
             if already_patched(skill_path, syn_id):
                 result["skipped"].append(domain)
-                _safe_emit_skipped(
-                    investigation_id=syn.get("investigation_id"),
-                    synthesis_id=syn_id, domain=domain,
-                    skill_path=str(skill_path),
-                )
+                if emit_events:
+                    _safe_emit_skipped(
+                        investigation_id=syn.get("investigation_id"),
+                        synthesis_id=syn_id, domain=domain,
+                        skill_path=str(skill_path),
+                    )
                 continue
             patch_skill_file(skill_path, patch_md)
             result["patched"].append(domain)
@@ -416,7 +424,8 @@ def patch_from_synthesis(
     else:
         result["status"] = "partial"
 
-    _safe_emit_applied(
-        investigation_id=syn.get("investigation_id"), result=result,
-    )
+    if emit_events:
+        _safe_emit_applied(
+            investigation_id=syn.get("investigation_id"), result=result,
+        )
     return result

@@ -40,6 +40,10 @@ from .prompt_applier import (
     apply_prompt_variant,
     load_active_variant,
 )
+from .replay import (
+    CandidateSkillOverlay,
+    materialize_candidate_skill_overlay,
+)
 
 __all__ = [
     "AppliedPromptRecord",
@@ -48,6 +52,7 @@ __all__ = [
     "DEFAULT_PHASE8_EPSILON",
     "DEFAULT_PHASE8_MINIMUM_COHORT_SIZE",
     "GepaToPhase8Bridge",
+    "CandidateSkillOverlay",
     "PHASE8_EPSILON_ENV",
     "PHASE8_MINIMUM_COHORT_SIZE_ENV",
     "PHASE8_MODE_ENFORCING",
@@ -61,6 +66,7 @@ __all__ = [
     "apply_prompt_variant",
     "bridge_gepa_result_to_phase8",
     "load_active_variant",
+    "materialize_candidate_skill_overlay",
     "phase8_gate_from_env",
     "propose_skill_patch",
 ]
