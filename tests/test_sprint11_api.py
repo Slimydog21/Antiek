@@ -21,7 +21,7 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from substrate.schemas import (
+from substrate.schemas import (  # noqa: E402
     TYPED_PAYLOAD_ACTION_TYPES,
     ActionType,
     InvestigationSpawnedFromPayload,
@@ -411,7 +411,9 @@ def test_list_investigations_carries_parent_lineage(temp_substrate):
     resp = client.get("/investigations").json()
     by_id = {s["investigation_id"]: s for s in resp["investigations"]}
     assert by_id[child["investigation_id"]]["parent_investigation_id"] == parent["investigation_id"]
+    assert by_id[child["investigation_id"]]["spawn_context"] == "from parent"
     assert by_id[parent["investigation_id"]]["parent_investigation_id"] is None
+    assert by_id[parent["investigation_id"]]["spawn_context"] is None
 
 
 def test_list_investigations_limit(temp_substrate):

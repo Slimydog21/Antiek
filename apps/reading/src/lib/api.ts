@@ -287,6 +287,7 @@ export interface InvestigationSummary {
   completed_at: string | null;
   cost_usd_total: number;
   parent_investigation_id: string | null;
+  spawn_context?: string | null;
   /** SPR-09: true when the §7 continuous daemon spawned this research (its
    * start event carried the daemon's policy_id, translated to this boolean
    * server-side). The surface badges it "found by the loop"; the raw

@@ -373,6 +373,7 @@ class InvestigationSummary(BaseModel):
     completed_at: str | None = None  # ISO8601, terminal events only
     cost_usd_total: float = 0.0
     parent_investigation_id: str | None = None
+    spawn_context: str | None = None
     # SPR-09 (the compounding flywheel): True when this research was spawned by
     # the §7 continuous daemon (its start event carried the daemon's
     # ``spawn_policy_id``), False for an operator-launched one. The surface
@@ -2415,6 +2416,7 @@ def create_app(
             cost_total = 0.0
             terminal_status = "in_progress"
             parent_inv_id: str | None = None
+            spawn_context: str | None = None
             # A pure session container has cascade.launched but never starts or
             # terminates a research of its own.
             saw_launched = False
@@ -2443,11 +2445,14 @@ def create_app(
                     started_at = r.get("emitted_at")
                     if payload.get("parent_investigation_id"):
                         parent_inv_id = payload.get("parent_investigation_id")
+                    if payload.get("spawn_context"):
+                        spawn_context = payload.get("spawn_context")
                 elif at == spawned_action:
                     # The cascade/chase parent link (cascade leaves record it
                     # here, not in the start payload). Also seeds the question
                     # + a start time for a leaf whose start_requested lacked one.
                     parent_inv_id = payload.get("parent_investigation_id") or parent_inv_id
+                    spawn_context = payload.get("spawn_context") or spawn_context
                     if question is None:
                         question = payload.get("sub_question")
                     if started_at is None:
@@ -2488,6 +2493,7 @@ def create_app(
                 completed_at=completed_at,
                 cost_usd_total=round(cost_total, 6),
                 parent_investigation_id=parent_inv_id,
+                spawn_context=spawn_context,
                 spawned_by_daemon=spawned_by_daemon,
             ))
 
