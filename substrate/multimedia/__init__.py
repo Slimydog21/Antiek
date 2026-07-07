@@ -16,6 +16,12 @@ from .audio_assembly import (
     ChapterAudio,
     assemble_audio_experience,
 )
+from .hardening import (
+    GateFinding,
+    GateResult,
+    MultimediaHardeningReport,
+    evaluate_multimedia_asset,
+)
 from .narration import (
     NarrationParagraph,
     normalize_line,
@@ -78,7 +84,11 @@ __all__ = [
     "EvidenceChunk",
     "AudioExperienceAsset",
     "AudioPlaybackModel",
+    "FakeTTSProvider",
+    "GateFinding",
+    "GateResult",
     "MultimediaPlan",
+    "MultimediaHardeningReport",
     "MultimediaPlanRequest",
     "NarrationParagraph",
     "StoryboardScene",
@@ -101,6 +111,7 @@ __all__ = [
     "build_video_scenes",
     "build_revision_asset",
     "compile_ken_burns_timeline",
+    "evaluate_multimedia_asset",
     "parse_steering_prompt",
     "plan_revision",
     "route_media_request",
