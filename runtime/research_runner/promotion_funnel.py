@@ -72,6 +72,47 @@ def _promotion_metadata(ev: StepEvent) -> dict[str, Any]:
     return meta
 
 
+
+def _resolve_chunk_id(con: Any, document_id: str | None) -> str | None:
+    """Resolve the most substantive non-boilerplate ``chunk_id`` for a document.
+
+    The funnel's promote path grounds each promoted insight/question on a real
+    chunk so ``knowledge_unit_of`` (the flywheel's reuse half) can recover its
+    claim→chunk→doc grounding and the deposited unit becomes reusable. Without
+    this, every funnel-promoted node lands with ``chunk_id=None`` (and no
+    ``supported_by`` edge) — reuse finds candidates by similarity but
+    ``knowledge_unit_of`` rejects them all, so the flywheel's reuse half is
+    structurally starved (``knowledge_reuse_count`` stays 0 even though the
+    event emits). This mirrors the proven
+    ``tools.run_investigation._pick_substantive_chunk`` heuristic so the two
+    deposit paths agree on what "grounded" means.
+
+    Read-only (a SELECT on the write connection, before the INSERT); it never
+    creates a row on read (§16). Returns ``None`` when the document has no
+    qualifying chunk (e.g. a placeholder gather doc) — promotion still
+    proceeds, just without chunk-level grounding, preserving prior behaviour
+    for un-groundable notes."""
+    if not document_id:
+        return None
+    row = con.execute(
+        """SELECT chunk_id FROM chunks
+           WHERE document_id = ?
+             AND length(text) BETWEEN 400 AND 4000
+             AND text NOT ILIKE '%bibliography%'
+             AND text NOT ILIKE '%references%'
+             AND text NOT ILIKE '%index%'
+             AND text NOT ILIKE '## Page%'
+             AND text NOT ILIKE 'chapter %'
+             AND text NOT ILIKE 'contents%'
+           ORDER BY length(text) DESC
+           LIMIT 1""",
+        [document_id],
+    ).fetchone()
+    if not row or row[0] is None:
+        return None
+    return str(row[0])
+
+
 class PromotionFunnel:
     """Serialized drain of research notes/questions into graph nodes."""
 
@@ -132,10 +173,21 @@ class PromotionFunnel:
         try:
             con.execute("BEGIN")
             try:
+                # Ground the promoted node on a real chunk so the flywheel's
+                # reuse half (knowledge_unit_of) can recover its
+                # claim→chunk→doc grounding and the unit becomes reusable.
+                # Prefer a chunk_id the producer already carried; otherwise
+                # resolve the most substantive chunk of the source document
+                # (read-only SELECT, §16-safe). Stays None for un-groundable
+                # notes, preserving prior behaviour.
+                chunk_id = meta.get("chunk_id")
+                if chunk_id is None and source_document_id:
+                    chunk_id = _resolve_chunk_id(con, source_document_id)
                 if ev.kind == "note":
                     nid = promote_insight(
                         text=ev.text, investigation_id=ev.investigation_id,
                         source_document_id=source_document_id,
+                        chunk_id=chunk_id,
                         metadata=meta,
                         embedding_provider=self._embedding_provider, con=con,
                     )
@@ -145,6 +197,7 @@ class PromotionFunnel:
                     nid = promote_question(
                         text=ev.text, investigation_id=ev.investigation_id,
                         source_document_id=source_document_id,
+                        chunk_id=chunk_id,
                         metadata=meta,
                         embedding_provider=self._embedding_provider, con=con,
                     )
