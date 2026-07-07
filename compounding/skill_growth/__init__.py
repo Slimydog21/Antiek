@@ -14,10 +14,18 @@ Per master-spec §14.1 Sprint 20+ shadow-mode → Sprint 21+ enforcing,
 """
 
 from .gate import (
+    DEFAULT_PHASE8_EPSILON,
+    DEFAULT_PHASE8_MINIMUM_COHORT_SIZE,
+    PHASE8_EPSILON_ENV,
+    PHASE8_MINIMUM_COHORT_SIZE_ENV,
+    PHASE8_MODE_ENFORCING,
+    PHASE8_MODE_ENV,
+    PHASE8_MODE_SHADOW,
     PatchDecision,
     PatchOutcome,
     SkillPatchGate,
     apply_patch_with_gate,
+    phase8_gate_from_env,
     propose_skill_patch,
 )
 from .gepa_bridge import (
@@ -32,12 +40,35 @@ from .prompt_applier import (
     apply_prompt_variant,
     load_active_variant,
 )
+from .replay import (
+    CandidateBacktestReplay,
+    CandidateBacktestRunner,
+    CandidateReplayError,
+    CandidateReplayEvaluation,
+    CandidateSkillOverlay,
+    evaluate_candidate_replay_for_gate,
+    materialize_candidate_skill_overlay,
+    replay_candidate_backtest_cohort,
+    unavailable_candidate_replay_evaluation,
+)
 
 __all__ = [
     "AppliedPromptRecord",
     "BridgeOutcome",
     "CompositeKeyFn",
+    "DEFAULT_PHASE8_EPSILON",
+    "DEFAULT_PHASE8_MINIMUM_COHORT_SIZE",
     "GepaToPhase8Bridge",
+    "CandidateSkillOverlay",
+    "CandidateBacktestReplay",
+    "CandidateBacktestRunner",
+    "CandidateReplayEvaluation",
+    "CandidateReplayError",
+    "PHASE8_EPSILON_ENV",
+    "PHASE8_MINIMUM_COHORT_SIZE_ENV",
+    "PHASE8_MODE_ENFORCING",
+    "PHASE8_MODE_ENV",
+    "PHASE8_MODE_SHADOW",
     "PatchDecision",
     "PatchOutcome",
     "PromptApplyError",
@@ -46,5 +77,10 @@ __all__ = [
     "apply_prompt_variant",
     "bridge_gepa_result_to_phase8",
     "load_active_variant",
+    "evaluate_candidate_replay_for_gate",
+    "materialize_candidate_skill_overlay",
+    "phase8_gate_from_env",
     "propose_skill_patch",
+    "replay_candidate_backtest_cohort",
+    "unavailable_candidate_replay_evaluation",
 ]

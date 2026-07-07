@@ -136,6 +136,19 @@ class BruteForceSubstrate:
     def open(cls, db_path: str, *, model: EmbeddingModel) -> BruteForceSubstrate:
         return cls(connect_read(db_path), model=model)
 
+    @classmethod
+    def from_con(cls, con: Any, *, model: EmbeddingModel) -> BruteForceSubstrate:
+        """Construct from an ALREADY-OPEN connection, sharing its DuckDB
+        instance via ``con.cursor()`` instead of opening a fresh
+        ``connect_read`` (which DuckDB forbids alongside a read-write handle to
+        the same file in the same process — see
+        ``docs/decisions/flywheel-reuse-single-writer.md``). The cursor is a
+        logical read handle on ``con``'s instance, so there is NO second
+        connection and the single-writer invariant is preserved. Reads are
+        live: the cursor sees writes committed on ``con`` after the cursor was
+        created."""
+        return cls(con.cursor(), model=model)
+
     def query(
         self,
         text: str,
@@ -144,7 +157,7 @@ class BruteForceSubstrate:
         source_tier_max: int | None = None,
         document_ids: Sequence[str] | None = None,
         policy_tag: str = "attribution_eligible",
-    ) -> dict:
+    ) -> dict[str, Any]:
         return search(
             self._con,
             text,
@@ -382,6 +395,26 @@ class DuckDbVssSubstrate:
             return cls(connect_read(db_path), model=model, vss_active=False)
         return cls(con, model=model, vss_active=True)
 
+    @classmethod
+    def from_con(cls, con: Any, *, model: EmbeddingModel) -> DuckDbVssSubstrate:
+        """Construct from an ALREADY-OPEN connection, sharing its DuckDB
+        instance via ``con.cursor()`` — no second connection (single-writer
+        preserved; see ``docs/decisions/flywheel-reuse-single-writer.md``).
+
+        M6 caveat (verified): the HNSW path is NOT taken on a shared connection.
+        Building the index materialises a sized column + ``CREATE INDEX`` — those
+        are WRITES to the graph, which is forbidden on the single-writer's shared
+        handle (§16) and would need the write flock the funnel already holds.
+        ``.open()`` builds the index on a private temp COPY precisely to avoid
+        writing the real graph; there is no such copy here. So the shared-cursor
+        substrate always runs ``vss_active=False`` — the brute-force query path
+        over the SAME cursor (never a 2nd connection). The vss extension may well
+        LOAD on the cursor; loading is not the same as being able to build a
+        persistent index on the live graph. A future cursor-native index (built
+        inside the single writer's own transaction) is the SPR-06+ follow-up the
+        ``.open()`` docstring flags."""
+        return cls(con.cursor(), model=model, vss_active=False)
+
     def query(
         self,
         text: str,
@@ -480,7 +513,9 @@ class DuckDbVssSubstrate:
             "query": text,
             "top_k": top_k,
             "results": results,
-            "node_matches": search_nodes_by_label(self._con, text, limit=10),
+            "node_matches": search_nodes_by_label(
+                self._con, text, limit=10, policy_tag=policy_tag,
+            ),
         }
 
     def close(self) -> None:
@@ -533,4 +568,39 @@ def make_substrate(
     raise ValueError(
         f"unknown substrate kind {kind!r}; "
         f"expected one of vss|brute_force|turbopuffer|ducklake"
+    )
+
+
+def make_substrate_from_con(
+    kind: str,
+    con: Any,
+    *,
+    model: EmbeddingModel,
+) -> RetrievalSubstrate:
+    """Construct a ``RetrievalSubstrate`` that SHARES an already-open DuckDB
+    connection via ``con.cursor()`` instead of opening its own connection.
+
+    This is the single-writer-safe construction path for the knowledge-reuse
+    flywheel (``docs/decisions/flywheel-reuse-single-writer.md``). ``make_substrate``
+    (above) opens a fresh ``connect_read`` — which DuckDB refuses when a
+    read-write handle to the same file is already open in the process
+    (``ConnectionException``), the bug that broke every cascade launch in #140.
+    ``make_substrate_from_con`` never calls ``connect_read``: it hands each impl
+    a ``con.cursor()`` — a logical read handle on the caller's DuckDB instance,
+    so exactly ONE connection/instance exists and the reads are live.
+
+    ``kind`` ∈ {"brute_force" (the reuse default — no whole-DB copy),
+    "vss"}. On this shared-connection path ``vss`` degrades to the brute-force
+    query over the SAME cursor (``DuckDbVssSubstrate.from_con`` documents why the
+    HNSW index cannot be built on a shared single-writer handle). The vendor
+    adapters (turbopuffer/ducklake) are open-only and have no shared-connection
+    constructor, so they are not reachable here."""
+    kind = (kind or "brute_force").lower()
+    if kind in ("brute_force", "bruteforce", "reference"):
+        return BruteForceSubstrate.from_con(con, model=model)
+    if kind in ("vss", "duckdb-vss", "duckdb_vss", "default"):
+        return DuckDbVssSubstrate.from_con(con, model=model)
+    raise ValueError(
+        f"unknown shared-connection substrate kind {kind!r}; "
+        f"expected one of brute_force|vss"
     )

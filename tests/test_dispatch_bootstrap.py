@@ -39,7 +39,7 @@ def test_no_keys_registers_nothing(monkeypatch):
     not an error."""
     for k in (
         "DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
-        "XIAOMI_API_KEY", "HERMES_API_KEY",
+        "XIAOMI_API_KEY", "HERMES_API_KEY", "Z_AI_API_KEY", "Z_AI_API_KEY",
     ):
         monkeypatch.delenv(k, raising=False)
     registered = register_default_providers(quiet=True)
@@ -50,7 +50,7 @@ def test_no_keys_registers_nothing(monkeypatch):
 def test_deepseek_key_registers_deepseek_only(monkeypatch):
     for k in (
         "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
-        "XIAOMI_API_KEY", "HERMES_API_KEY",
+        "XIAOMI_API_KEY", "HERMES_API_KEY", "Z_AI_API_KEY",
     ):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-fake-1")
@@ -60,7 +60,7 @@ def test_deepseek_key_registers_deepseek_only(monkeypatch):
 
 
 def test_both_keys_registers_both(monkeypatch):
-    for k in ("OPENROUTER_API_KEY", "XIAOMI_API_KEY", "HERMES_API_KEY"):
+    for k in ("OPENROUTER_API_KEY", "XIAOMI_API_KEY", "HERMES_API_KEY", "Z_AI_API_KEY"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-fake-1")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake-1")
@@ -124,6 +124,63 @@ def test_hermes_provider_url_does_not_double_v1(monkeypatch):
         "default of /v1/chat/completions is unsafe for Hermes deployments "
         "whose base URL already includes /v1."
     )
+
+
+
+# ---------------------------------------------------------------------------
+# zai provider — GLM-5.2, the platform's AI driver (operator 2026-07-06)
+# ---------------------------------------------------------------------------
+def test_zai_key_registers_both_glm_policies(monkeypatch) -> None:
+    """Z_AI_API_KEY set -> BOTH GLM-5.2 providers register on the one
+    z.ai endpoint: `zai` (thinking disabled, the high-volume tiers) and
+    `zai_reasoning` (thinking enabled, the synthesis tier). They share the
+    key + endpoint and differ ONLY in thinking policy, so synthesis keeps
+    GLM-5.2's native chain-of-thought while the bulk tiers get direct
+    crystallized answers."""
+    for k in (
+        "DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
+        "XIAOMI_API_KEY", "HERMES_API_KEY",
+    ):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("Z_AI_API_KEY", "zai-fake-1")
+    registered = register_default_providers(quiet=True)
+    assert registered == {"zai", "zai_reasoning"}, registered
+    # zai: thinking DISABLED (the volume-thesis tiers).
+    zai = get_provider("zai")
+    assert zai.name == "zai"
+    assert zai.base_url == "https://api.z.ai/api/paas/v4"
+    assert zai._extra_body == {"thinking": {"type": "disabled"}}
+    # zai_reasoning: thinking ENABLED (synthesis) — same endpoint + key,
+    # distinguished by the ABSENCE of the thinking-disabled extra_body.
+    zai_r = get_provider("zai_reasoning")
+    assert zai_r.name == "zai_reasoning"
+    assert zai_r.base_url == "https://api.z.ai/api/paas/v4"
+    assert zai_r._extra_body == {}
+
+
+def test_zai_missing_key_registers_nothing(monkeypatch) -> None:
+    """No Z_AI_API_KEY -> zai does not register (degraded posture, not error)."""
+    for k in (
+        "DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
+        "XIAOMI_API_KEY", "HERMES_API_KEY", "Z_AI_API_KEY",
+    ):
+        monkeypatch.delenv(k, raising=False)
+    registered = register_default_providers(quiet=True)
+    assert "zai" not in registered
+    assert "zai_reasoning" not in registered
+
+
+def test_zai_base_url_override(monkeypatch) -> None:
+    """ANTIEK_ZAI_BASE_URL overrides the default endpoint."""
+    for k in (
+        "DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
+        "XIAOMI_API_KEY", "HERMES_API_KEY",
+    ):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("Z_AI_API_KEY", "zai-fake-1")
+    monkeypatch.setenv("ANTIEK_ZAI_BASE_URL", "https://open.bigmodel.cn/api/paas/v4")
+    register_default_providers(quiet=True)
+    assert get_provider("zai").base_url == "https://open.bigmodel.cn/api/paas/v4"
 
 
 def test_create_app_auto_registers_in_default_mode(monkeypatch):

@@ -1,4 +1,5 @@
 import type { KreaStatusSnapshot } from "../api/krea";
+import { zIndex } from "../design/zIndex";
 
 export interface SceneStatusBadgeProps {
   status: KreaStatusSnapshot | null;
@@ -43,7 +44,7 @@ export function SceneStatusBadge({ status, error = null }: SceneStatusBadgeProps
         position: "absolute",
         left: "12px",
         bottom: "12px",
-        zIndex: 5,
+        zIndex: zIndex.sceneBadge,
         padding: "3px 8px",
         borderRadius: "var(--radius-sm)",
         background: "rgba(15, 23, 42, 0.84)",

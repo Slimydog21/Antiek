@@ -38,11 +38,16 @@ def test_registry_covers_all_classes() -> None:
         assert cls in DEFAULT_REGISTRY, f"missing default for {cls}"
 
 
-def test_llm_primary_is_hermes() -> None:
+def test_llm_primary_is_hermes_and_no_openrouter_secondary() -> None:
+    """CLAUDE-LESS posture (#213): LLM failover is config.yaml's per-tier
+    GLM→DeepSeek→MiMo DIRECT-API chain — no OpenRouter hop, no Anthropic. The
+    vendor registry must not advertise an OpenRouter secondary (the old
+    2026-05-24 entry did; it contradicted the claude-less/no-OpenRouter
+    directive). This test now GUARDS that posture."""
     cfg = DEFAULT_REGISTRY[VendorClass.LLM]
     assert cfg.primary == "hermes"
-    assert cfg.secondary == "openrouter"
-    assert "OAuth-refresh" in cfg.reason or "I-DISPATCH-4" in cfg.reason
+    assert cfg.secondary is None
+    assert "CLAUDE-LESS" in cfg.reason or "GLM" in cfg.reason
 
 
 def test_browser_secondary_is_anchor() -> None:
@@ -146,7 +151,7 @@ def test_resolve_returns_default_when_no_override(
     monkeypatch.setenv("ANTIEK_HOME", "/nonexistent")
     cfg = resolve(VendorClass.LLM)
     assert cfg.primary == "hermes"
-    assert cfg.secondary == "openrouter"
+    assert cfg.secondary is None  # claude-less (#213): no OpenRouter secondary
 
 
 def test_resolve_honors_toml_override(
@@ -214,12 +219,15 @@ def test_failover_on_when_enabled_and_failed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("ANTIEK_HOME", "/nonexistent")
-    monkeypatch.setenv("ANTIEK_MULTI_CLOUD_LLM", "1")
+    # LLM has no secondary under the claude-less posture (#213), so this
+    # demonstrates the failover-when-enabled logic with BROWSER (anchor_browser
+    # secondary) — the contract is class-agnostic.
+    monkeypatch.setenv("ANTIEK_MULTI_CLOUD_BROWSER", "1")
     should, secondary = should_failover_to_secondary(
-        VendorClass.LLM, primary_failed=True
+        VendorClass.BROWSER, primary_failed=True
     )
     assert should is True
-    assert secondary == "openrouter"
+    assert secondary == "anchor_browser"
 
 
 def test_failover_off_when_enabled_but_primary_not_failed(

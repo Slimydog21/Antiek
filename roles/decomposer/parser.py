@@ -172,9 +172,13 @@ def parse_decomposer_response(
 ) -> DecompositionResult:
     """Parse + validate a Decomposer's raw text response.
 
-    ``expected_investigation_id`` is an optional cross-check: when the
-    bridge knows which investigation it dispatched for, a model that
-    echoes back a different id (hallucinated session) is rejected.
+    ``expected_investigation_id`` is an optional cross-check that pins the
+    authoritative investigation. A model that echoes back a *different* id
+    (hallucinated session) is rejected, while a model that *omits* the id
+    falls back to the authoritative id rather than failing the cascade — the
+    bridge's id is the source of truth when present. Without an
+    authoritative id an omitted field still raises (we cannot guess the
+    investigation).
     """
     obj = _extract_json_object(text)
     if not isinstance(obj, dict):
@@ -182,12 +186,25 @@ def parse_decomposer_response(
             "response did not contain a parseable JSON object"
         )
 
-    # Top-level keys
-    iid = _require_str(obj.get("investigation_id"), "investigation_id", "top")
-    if expected_investigation_id and iid != expected_investigation_id:
+    # Top-level: investigation_id. A model that echoes a *different* id is a
+    # hallucinated-session signal we reject; a model that *omits* the id is a
+    # common intermittent compliance lapse we recover from when the bridge
+    # knows the authoritative id. The bridge's id is the source of truth when
+    # present, so absence falls back to it rather than failing the cascade.
+    model_iid = obj.get("investigation_id")
+    if isinstance(model_iid, str) and model_iid.strip():
+        iid = model_iid
+        if expected_investigation_id and iid != expected_investigation_id:
+            raise DecomposerValidationError(
+                f"investigation_id mismatch: model returned {iid!r}, "
+                f"expected {expected_investigation_id!r}"
+            )
+    elif expected_investigation_id:
+        iid = expected_investigation_id
+    else:
         raise DecomposerValidationError(
-            f"investigation_id mismatch: model returned {iid!r}, "
-            f"expected {expected_investigation_id!r}"
+            "top: field 'investigation_id' must be a non-empty string "
+            f"(got {type(model_iid).__name__})"
         )
 
     decomp_raw = obj.get("decomposition")

@@ -744,6 +744,30 @@ UNATTRIBUTED_RIGHTS_BUCKET: Final[str] = "__unattributed__"
 
 
 # ============================================================
+# Section K — Eval ablation thresholds (Eval-discipline SPR-01)
+# ============================================================
+# The pure ablation primitive (substrate/eval/ablation.py) turns one varied
+# factor + a noise estimate into one of three verdicts. These are the ONLY
+# knobs — every other number in a report is computed from the inputs.
+
+# The verdict multiplier: |Δ| must exceed σ·noise for "factor_related". 2σ
+# ≈ 2.5% one-sided false-positive under a Gaussian — defensible without
+# being a vibes-confirmer. Surface this choice in any handoff that relies on
+# a verdict; do not silently relax it.
+ABLATION_VERDICT_SIGMA: Final[float] = 2.0
+
+# Minimum replicate-sample count (baseline + treatment combined) before the
+# pooled-stdev noise estimate is trusted. Below this, fall back to an
+# operator override, else the verdict is inconclusive.
+ABLATION_MIN_SAMPLES_FOR_NOISE: Final[int] = 2
+
+# A noise estimate at or below this floor is treated as inconclusive: an
+# identically-zero stdev (identical replicates) would manufacture false
+# certainty (|Δ| > 0 ⇒ "factor_related" at infinite σ). Refuse to verdict.
+ABLATION_INCONCLUSIVE_NOISE_FLOOR: Final[float] = 1e-9
+
+
+# ============================================================
 # Bookkeeping
 # ============================================================
 
@@ -756,4 +780,9 @@ UNATTRIBUTED_RIGHTS_BUCKET: Final[str] = "__unattributed__"
 #                         adds Section H Antiek-specific values; folds
 #                         DeepBlu-lineage claim classes into Section D.
 
-ANTIEK_PARAM_VERSION: Final[str] = "0.1.0"
+# 0.1.0 → 0.2.0: eval-discipline SPR-01 — adds Section K ablation thresholds
+#                (ABLATION_VERDICT_SIGMA, ABLATION_MIN_SAMPLES_FOR_NOISE,
+#                ABLATION_INCONCLUSIVE_NOISE_FLOOR). No existing constant
+#                changed; the ablation primitive stamps this into every report.
+
+ANTIEK_PARAM_VERSION: Final[str] = "0.2.0"

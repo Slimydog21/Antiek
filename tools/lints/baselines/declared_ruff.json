@@ -7,271 +7,316 @@
       "col": 1,
       "kind": "ruff:E402",
       "line": 87,
-      "path": "acquisition/arxiv/adapter.py"
+      "path": "acquisition/arxiv/adapter.py",
+      "snippet": "insert_node,"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 88,
-      "path": "acquisition/arxiv/adapter.py"
+      "path": "acquisition/arxiv/adapter.py",
+      "snippet": ")"
     },
     {
       "col": 9,
       "kind": "ruff:SIM105",
       "line": 163,
-      "path": "acquisition/arxiv/oai_pmh.py"
+      "path": "acquisition/arxiv/oai_pmh.py",
+      "snippet": "def _write_state(self, state: HarvestState) -> None:"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 60,
-      "path": "acquisition/arxiv/pdf_fetch.py"
+      "path": "acquisition/arxiv/pdf_fetch.py",
+      "snippet": "from acquisition.arxiv.client import DEFAULT_TIMEOUT_S, DEFAULT_USER_AGENT"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 61,
-      "path": "acquisition/arxiv/pdf_fetch.py"
+      "path": "acquisition/arxiv/pdf_fetch.py",
+      "snippet": "from acquisition.arxiv.throttle import (  # noqa: F401  (re-export for callers)"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 65,
-      "path": "acquisition/arxiv/pdf_fetch.py"
+      "path": "acquisition/arxiv/pdf_fetch.py",
+      "snippet": "from acquisition.openaccess.unpaywall import NotAPdf, _looks_like_pdf"
     },
     {
       "col": 17,
       "kind": "ruff:SIM105",
       "line": 205,
-      "path": "acquisition/arxiv/throttle.py"
+      "path": "acquisition/arxiv/throttle.py",
+      "snippet": "self._sleep(self._min_spacing - elapsed)"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 52,
-      "path": "acquisition/books/adapter.py"
+      "path": "acquisition/books/adapter.py",
+      "snippet": "from .reader import ReadResult, TocEntry, read_pdf  # noqa: E402"
     },
     {
       "col": 13,
       "kind": "ruff:UP007",
       "line": 58,
-      "path": "acquisition/books/adapter.py"
+      "path": "acquisition/books/adapter.py",
+      "snippet": "PdfSource = bytes | str"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 65,
-      "path": "acquisition/corpus_quality.py"
+      "path": "acquisition/corpus_quality.py",
+      "snippet": "class CheckResultKind(str, enum.Enum):"
     },
     {
       "col": 9,
       "kind": "ruff:SIM108",
       "line": 70,
-      "path": "acquisition/papers/core.py"
+      "path": "acquisition/papers/core.py",
+      "snippet": "if isinstance(a, dict):"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 47,
-      "path": "acquisition/podcasts/adapter.py"
+      "path": "acquisition/podcasts/adapter.py",
+      "snippet": "SourceKind,"
     },
     {
       "col": 37,
       "kind": "ruff:F401",
       "line": 32,
-      "path": "acquisition/search/__init__.py"
+      "path": "acquisition/search/__init__.py",
+      "snippet": "from datetime import UTC, datetime, timezone"
     },
     {
       "col": 20,
       "kind": "ruff:F401",
       "line": 34,
-      "path": "acquisition/search/__init__.py"
+      "path": "acquisition/search/__init__.py",
+      "snippet": "from typing import Optional"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 52,
-      "path": "acquisition/search/exa/adapter.py"
+      "path": "acquisition/search/exa/adapter.py",
+      "snippet": "from substrate.constants import ("
     },
     {
       "col": 5,
       "kind": "ruff:SIM108",
       "line": 37,
-      "path": "acquisition/search/exa/budget.py"
+      "path": "acquisition/search/exa/budget.py",
+      "snippet": "if base:"
     },
     {
       "col": 17,
       "kind": "ruff:SIM105",
       "line": 181,
-      "path": "acquisition/search/retention.py"
+      "path": "acquisition/search/retention.py",
+      "snippet": "try:"
     },
     {
       "col": 17,
       "kind": "ruff:SIM105",
       "line": 197,
-      "path": "acquisition/search/retention.py"
+      "path": "acquisition/search/retention.py",
+      "snippet": "try:"
     },
     {
       "col": 18,
       "kind": "ruff:B905",
       "line": 320,
-      "path": "acquisition/search/retention.py"
+      "path": "acquisition/search/retention.py",
+      "snippet": "return [dict(zip(cols, row)) for row in rows]"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 65,
-      "path": "acquisition/substack/adapter.py"
+      "path": "acquisition/substack/adapter.py",
+      "snippet": "insert_document,"
     },
     {
       "col": 12,
       "kind": "ruff:RET504",
       "line": 98,
-      "path": "acquisition/textbooks/doab.py"
+      "path": "acquisition/textbooks/doab.py",
+      "snippet": "return val"
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 112,
-      "path": "acquisition/textbooks/doab.py"
+      "path": "acquisition/textbooks/doab.py",
+      "snippet": "isbn = _field(meta, \"dc.identifier.isbn\") or record.get(\"isbn\")"
     },
     {
       "col": 41,
       "kind": "ruff:B905",
       "line": 270,
-      "path": "acquisition/twitter/adapter.py"
+      "path": "acquisition/twitter/adapter.py",
+      "snippet": "\"tweet_count\": len(thread.tweets),"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 60,
-      "path": "acquisition/urls/adapter.py"
+      "path": "acquisition/urls/adapter.py",
+      "snippet": "from substrate.schemas.events import (  # noqa: E402"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 61,
-      "path": "acquisition/urls/adapter.py"
+      "path": "acquisition/urls/adapter.py",
+      "snippet": "FetchFallbackEscalatedPayload,"
     },
     {
       "col": 5,
       "kind": "ruff:SIM108",
       "line": 49,
-      "path": "acquisition/urls/budget_browserbase.py"
+      "path": "acquisition/urls/budget_browserbase.py",
+      "snippet": "if base:"
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 244,
-      "path": "acquisition/urls/client_browserbase.py"
+      "path": "acquisition/urls/client_browserbase.py",
+      "snippet": "state = check_and_reserve("
     },
     {
       "col": 13,
       "kind": "ruff:SIM105",
       "line": 290,
-      "path": "acquisition/urls/client_browserbase.py"
+      "path": "acquisition/urls/client_browserbase.py",
+      "snippet": "try:"
     },
     {
       "col": 13,
       "kind": "ruff:SIM105",
       "line": 343,
-      "path": "acquisition/urls/client_browserbase.py"
+      "path": "acquisition/urls/client_browserbase.py",
+      "snippet": "try:"
     },
     {
       "col": 13,
       "kind": "ruff:SIM105",
       "line": 347,
-      "path": "acquisition/urls/client_browserbase.py"
+      "path": "acquisition/urls/client_browserbase.py",
+      "snippet": "try:"
     },
     {
       "col": 5,
       "kind": "ruff:SIM103",
       "line": 136,
-      "path": "acquisition/urls/paulgraham.py"
+      "path": "acquisition/urls/paulgraham.py",
+      "snippet": "if slug in _NON_ESSAY_SLUGS:"
     },
     {
       "col": 8,
       "kind": "ruff:F401",
       "line": 32,
-      "path": "acquisition/video/__init__.py"
+      "path": "acquisition/video/__init__.py",
+      "snippet": "import uuid"
     },
     {
       "col": 20,
       "kind": "ruff:F401",
       "line": 34,
-      "path": "acquisition/video/__init__.py"
+      "path": "acquisition/video/__init__.py",
+      "snippet": "from typing import Optional, Protocol"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 50,
-      "path": "acquisition/voice/adapter.py"
+      "path": "acquisition/voice/adapter.py",
+      "snippet": "register_source_document,"
     },
     {
       "col": 5,
       "kind": "ruff:SIM103",
       "line": 45,
-      "path": "apps/reading/src/brand/werner/color_correct.py"
+      "path": "apps/reading/src/brand/werner/color_correct.py",
+      "snippet": "if v < 0.40:"
     },
     {
       "col": 12,
       "kind": "ruff:RET504",
       "line": 117,
-      "path": "benchmarks/fixtures.py"
+      "path": "benchmarks/fixtures.py",
+      "snippet": "return payload"
     },
     {
       "col": 9,
       "kind": "ruff:SIM105",
       "line": 375,
-      "path": "benchmarks/retrieval_bench.py"
+      "path": "benchmarks/retrieval_bench.py",
+      "snippet": "build_t0 = time.perf_counter()"
     },
     {
       "col": 5,
       "kind": "ruff:SIM105",
       "line": 457,
-      "path": "benchmarks/retrieval_bench.py"
+      "path": "benchmarks/retrieval_bench.py",
+      "snippet": "for q in timed:"
     },
     {
       "col": 5,
       "kind": "ruff:SIM108",
       "line": 141,
-      "path": "compounding/benchmark/aggregate.py"
+      "path": "compounding/benchmark/aggregate.py",
+      "snippet": "if prop <= 0.0 or prop >= 1.0:"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 18,
-      "path": "compounding/quality_gate/gate.py"
+      "path": "compounding/quality_gate/gate.py",
+      "snippet": "class QualityGateReason(str, enum.Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 12,
-      "path": "compounding/skill_growth/gate.py"
+      "path": "compounding/skill_growth/gate.py",
+      "snippet": "class PatchDecision(str, enum.Enum):"
     },
     {
       "col": 17,
       "kind": "ruff:B904",
       "line": 188,
-      "path": "interfaces/research/api/ad_impressions.py"
+      "path": "interfaces/research/api/ad_impressions.py",
+      "snippet": "raise _refuse("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 53,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "HTTPException,"
     },
     {
       "col": 68,
       "kind": "ruff:B023",
       "line": 826,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "(see the orchestrator's emit call); we parse them back out when"
     },
     {
       "col": 25,
       "kind": "ruff:F821",
       "line": 1058,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "Per master-spec \u00a713.8: outcomes are first-class signals that feed"
     },
     {
       "col": 49,
@@ -295,55 +340,64 @@
       "col": 21,
       "kind": "ruff:SIM105",
       "line": 2081,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "``*.jsonl`` whose trajectory is an investigation (carries a"
     },
     {
       "col": 13,
       "kind": "ruff:E731",
       "line": 2807,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "skipped_reason=r.skipped_reason,"
     },
     {
       "col": 13,
       "kind": "ruff:E731",
       "line": 2849,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "label = label[:159] + \"\u2026\""
     },
     {
       "col": 13,
       "kind": "ruff:E731",
       "line": 2909,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "status_code=422,"
     },
     {
       "col": 17,
       "kind": "ruff:SIM105",
       "line": 2950,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "con.close()"
     },
     {
       "col": 13,
       "kind": "ruff:B904",
       "line": 3130,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "book.spine = [\"nav\", *chapters]"
     },
     {
       "col": 13,
       "kind": "ruff:SIM105",
       "line": 3333,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "document_titles=dict(result.document_titles),"
     },
     {
       "col": 17,
       "kind": "ruff:B904",
       "line": 3377,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "\"strftime(created_at, '%Y-%m-%dT%H:%M:%S') \""
     },
     {
       "col": 9,
       "kind": "ruff:SIM105",
       "line": 3648,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": ")"
     },
     {
       "col": 39,
@@ -355,85 +409,99 @@
       "col": 38,
       "kind": "ruff:B008",
       "line": 3884,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "notification_sent_at: str | None"
     },
     {
       "col": 43,
       "kind": "ruff:B008",
       "line": 3950,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "async def get_publisher(ip_holder_id: str) -> PublisherResponse:"
     },
     {
       "col": 43,
       "kind": "ruff:B008",
       "line": 3979,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "return _holder_to_response(h)"
     },
     {
       "col": 45,
       "kind": "ruff:B008",
       "line": 4045,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "class NotebookListResponse(BaseModel):"
     },
     {
       "col": 42,
       "kind": "ruff:B008",
       "line": 4084,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "try:"
     },
     {
       "col": 45,
       "kind": "ruff:B008",
       "line": 4279,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "\"\"\"Atomic-replace a notebook's content from a TipTap document."
     },
     {
       "col": 34,
       "kind": "ruff:B008",
       "line": 4418,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "publishing \u2014 the override path is recorded in the typed event"
     },
     {
       "col": 42,
       "kind": "ruff:B008",
       "line": 4466,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "target_kind=\"notebook\","
     },
     {
       "col": 37,
       "kind": "ruff:B008",
       "line": 4521,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "class QualityGateEvaluationResponse(BaseModel):"
     },
     {
       "col": 25,
       "kind": "ruff:SIM105",
       "line": 4595,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "return QualityGateEvaluationResponse("
     },
     {
       "col": 25,
       "kind": "ruff:SIM105",
       "line": 4605,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "reasons=[r.value for r in verdict.reasons],"
     },
     {
       "col": 25,
       "kind": "ruff:SIM105",
       "line": 4615,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "paid_public_margin_usd: str"
     },
     {
       "col": 42,
       "kind": "ruff:B008",
       "line": 4748,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "req: AskExpertsRequest = Body(...),"
     },
     {
       "col": 38,
       "kind": "ruff:B008",
       "line": 4825,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "chunk_to_claim_id=req.chunk_to_claim_id,"
     },
     {
       "col": 44,
@@ -445,55 +513,64 @@
       "col": 13,
       "kind": "ruff:B904",
       "line": 5012,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "observer: str | None = Query(default=None),"
     },
     {
       "col": 46,
       "kind": "ruff:B008",
       "line": 5141,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "referencing_user_id=ref.referencing_user_id,"
     },
     {
       "col": 13,
       "kind": "ruff:B904",
       "line": 5232,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "env_unlocked: bool"
     },
     {
       "col": 13,
       "kind": "ruff:B904",
       "line": 5241,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "from substrate.graph import default_db_path"
     },
     {
       "col": 13,
       "kind": "ruff:B904",
       "line": 5247,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "criteria=snap.criteria,"
     },
     {
       "col": 36,
       "kind": "ruff:B008",
       "line": 5310,
-      "path": "interfaces/research/api/app.py"
+      "path": "interfaces/research/api/app.py",
+      "snippet": "@app.get("
     },
     {
       "col": 13,
       "kind": "ruff:SIM105",
       "line": 87,
-      "path": "interfaces/research/api/broadcast.py"
+      "path": "interfaces/research/api/broadcast.py",
+      "snippet": "try:"
     },
     {
       "col": 13,
       "kind": "ruff:SIM105",
       "line": 92,
-      "path": "interfaces/research/api/broadcast.py"
+      "path": "interfaces/research/api/broadcast.py",
+      "snippet": "try:"
     },
     {
       "col": 9,
       "kind": "ruff:B904",
       "line": 107,
-      "path": "interfaces/research/api/cascade_routes.py"
+      "path": "interfaces/research/api/cascade_routes.py",
+      "snippet": "# ---------------------------------------------------------------------------"
     },
     {
       "col": 9,
@@ -523,61 +600,71 @@
       "col": 21,
       "kind": "ruff:E741",
       "line": 165,
-      "path": "interfaces/research/api/coordination.py"
+      "path": "interfaces/research/api/coordination.py",
+      "snippet": "for l in rm.substrate_layers"
     },
     {
       "col": 1,
       "kind": "ruff:I001",
       "line": 12,
-      "path": "interfaces/research/api/creator_payouts.py"
+      "path": "interfaces/research/api/creator_payouts.py",
+      "snippet": "from __future__ import annotations"
     },
     {
       "col": 25,
       "kind": "ruff:UP045",
       "line": 27,
-      "path": "interfaces/research/api/creator_payouts.py"
+      "path": "interfaces/research/api/creator_payouts.py",
+      "snippet": "stripe_transfer_id: Optional[str]"
     },
     {
       "col": 16,
       "kind": "ruff:UP045",
       "line": 36,
-      "path": "interfaces/research/api/creator_payouts.py"
+      "path": "interfaces/research/api/creator_payouts.py",
+      "snippet": "kyc_state: Optional[str]"
     },
     {
       "col": 49,
       "kind": "ruff:UP045",
       "line": 60,
-      "path": "interfaces/research/api/creator_payouts.py"
+      "path": "interfaces/research/api/creator_payouts.py",
+      "snippet": "def _load_kyc_state(con, recipient_ref: str) -> Optional[str]:"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 67,
-      "path": "interfaces/research/api/cross_doc.py"
+      "path": "interfaces/research/api/cross_doc.py",
+      "snippet": "from .broadcast import EventBroadcaster"
     },
     {
       "col": 33,
       "kind": "ruff:B905",
       "line": 94,
-      "path": "interfaces/research/api/cross_doc.py"
+      "path": "interfaces/research/api/cross_doc.py",
+      "snippet": "num = sum(x * y for x, y in zip(a, b))"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 73,
-      "path": "interfaces/research/api/decomposer.py"
+      "path": "interfaces/research/api/decomposer.py",
+      "snippet": "from .broadcast import EventBroadcaster"
     },
     {
       "col": 9,
       "kind": "ruff:B904",
       "line": 139,
-      "path": "interfaces/research/api/distill_routes.py"
+      "path": "interfaces/research/api/distill_routes.py",
+      "snippet": "raise HTTPException("
     },
     {
       "col": 9,
       "kind": "ruff:B904",
       "line": 150,
-      "path": "interfaces/research/api/distill_routes.py"
+      "path": "interfaces/research/api/distill_routes.py",
+      "snippet": "raise HTTPException("
     },
     {
       "col": 1,
@@ -589,133 +676,155 @@
       "col": 1,
       "kind": "ruff:E402",
       "line": 64,
-      "path": "interfaces/research/api/grounding.py"
+      "path": "interfaces/research/api/grounding.py",
+      "snippet": ")"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 56,
-      "path": "interfaces/research/api/note_taking.py"
+      "path": "interfaces/research/api/note_taking.py",
+      "snippet": "from .broadcast import EventBroadcaster"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 60,
-      "path": "interfaces/research/api/parameter_extractor.py"
+      "path": "interfaces/research/api/parameter_extractor.py",
+      "snippet": "ParameterExtractRequestedPayload,"
     },
     {
       "col": 9,
       "kind": "ruff:B904",
       "line": 123,
-      "path": "interfaces/research/api/speak_routes.py"
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "raise HTTPException(status_code=403, detail=str(e))"
     },
     {
       "col": 9,
       "kind": "ruff:B904",
       "line": 125,
-      "path": "interfaces/research/api/speak_routes.py"
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "raise HTTPException(status_code=409, detail=str(e))"
     },
     {
       "col": 9,
       "kind": "ruff:B904",
       "line": 131,
-      "path": "interfaces/research/api/speak_routes.py"
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "raise HTTPException(status_code=503, detail=str(e))"
     },
     {
       "col": 9,
       "kind": "ruff:B904",
       "line": 133,
-      "path": "interfaces/research/api/speak_routes.py"
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "raise HTTPException(status_code=404, detail=str(e))"
     },
     {
       "col": 9,
       "kind": "ruff:B904",
       "line": 140,
-      "path": "interfaces/research/api/speak_routes.py"
+      "path": "interfaces/research/api/speak_routes.py",
+      "snippet": "raise HTTPException(status_code=400, detail=f\"{field} must be a decimal string\")"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 76,
-      "path": "interfaces/research/api/synthesizer.py"
+      "path": "interfaces/research/api/synthesizer.py",
+      "snippet": "ThesisComponent,"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 38,
-      "path": "interfaces/research/api/wrestling.py"
+      "path": "interfaces/research/api/wrestling.py",
+      "snippet": "from datetime import UTC"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 67,
-      "path": "interfaces/research/api/wrestling.py"
+      "path": "interfaces/research/api/wrestling.py",
+      "snippet": "from .broadcast import EventBroadcaster"
     },
     {
       "col": 9,
       "kind": "ruff:B904",
       "line": 108,
-      "path": "interfaces/research/api/write_routes.py"
+      "path": "interfaces/research/api/write_routes.py",
+      "snippet": "except (OutlineBlockError, OutlineError) as e:"
     },
     {
       "col": 9,
       "kind": "ruff:B904",
       "line": 458,
-      "path": "interfaces/research/api/write_routes.py"
+      "path": "interfaces/research/api/write_routes.py",
+      "snippet": "section_index=i,"
     },
     {
       "col": 9,
       "kind": "ruff:B904",
       "line": 463,
-      "path": "interfaces/research/api/write_routes.py"
+      "path": "interfaces/research/api/write_routes.py",
+      "snippet": "if r[0] != section_id"
     },
     {
       "col": 9,
       "kind": "ruff:B904",
       "line": 210,
-      "path": "interfaces/research/rlm_dag.py"
+      "path": "interfaces/research/rlm_dag.py",
+      "snippet": "raise ValueError("
     },
     {
       "col": 32,
       "kind": "ruff:B905",
       "line": 339,
-      "path": "interfaces/research/rlm_dag.py"
+      "path": "interfaces/research/rlm_dag.py",
+      "snippet": "for nid, result in zip(node_ids_this_layer, batch_results)"
     },
     {
       "col": 9,
       "kind": "ruff:SIM103",
       "line": 374,
-      "path": "interfaces/research/rlm_repl.py"
+      "path": "interfaces/research/rlm_repl.py",
+      "snippet": "if self.iteration >= self.max_iterations:"
     },
     {
       "col": 17,
       "kind": "ruff:SIM105",
       "line": 117,
-      "path": "middleware/constraint_check/loop.py"
+      "path": "middleware/constraint_check/loop.py",
+      "snippet": "try:"
     },
     {
       "col": 25,
       "kind": "ruff:F401",
       "line": 31,
-      "path": "middleware/ip_holder_resolver/__init__.py"
+      "path": "middleware/ip_holder_resolver/__init__.py",
+      "snippet": "from typing import Any, Optional"
     },
     {
       "col": 1,
       "kind": "ruff:SIM105",
       "line": 40,
-      "path": "middleware/source_tier/rules.py"
+      "path": "middleware/source_tier/rules.py",
+      "snippet": "try:"
     },
     {
       "col": 9,
       "kind": "ruff:F401",
       "line": 47,
-      "path": "middleware/supersession/supersession.py"
+      "path": "middleware/supersession/supersession.py",
+      "snippet": "SupersessionTarget,"
     },
     {
       "col": 9,
       "kind": "ruff:F401",
       "line": 42,
-      "path": "orchestration/audit/phase_audit.py"
+      "path": "orchestration/audit/phase_audit.py",
+      "snippet": "AuditSeverity,"
     },
     {
       "col": 13,
@@ -727,925 +836,1079 @@
       "col": 1,
       "kind": "ruff:I001",
       "line": 22,
-      "path": "orchestration/continuous/budget.py"
+      "path": "orchestration/continuous/budget.py",
+      "snippet": "from __future__ import annotations"
     },
     {
       "col": 26,
       "kind": "ruff:UP045",
       "line": 46,
-      "path": "orchestration/continuous/budget.py"
+      "path": "orchestration/continuous/budget.py",
+      "snippet": "def _utc_date_stamp(now: Optional[datetime] = None) -> str:"
     },
     {
       "col": 31,
       "kind": "ruff:UP017",
       "line": 47,
-      "path": "orchestration/continuous/budget.py"
+      "path": "orchestration/continuous/budget.py",
+      "snippet": "ref = now or datetime.now(timezone.utc)"
     },
     {
       "col": 34,
       "kind": "ruff:UP017",
       "line": 49,
-      "path": "orchestration/continuous/budget.py"
+      "path": "orchestration/continuous/budget.py",
+      "snippet": "ref = ref.replace(tzinfo=timezone.utc)"
     },
     {
       "col": 5,
       "kind": "ruff:SIM108",
       "line": 55,
-      "path": "orchestration/continuous/budget.py"
+      "path": "orchestration/continuous/budget.py",
+      "snippet": "if base:"
     },
     {
       "col": 30,
       "kind": "ruff:UP045",
       "line": 63,
-      "path": "orchestration/continuous/budget.py"
+      "path": "orchestration/continuous/budget.py",
+      "snippet": "def _budget_path(date_stamp: Optional[str] = None) -> Path:"
     },
     {
       "col": 34,
       "kind": "ruff:UP045",
       "line": 67,
-      "path": "orchestration/continuous/budget.py"
+      "path": "orchestration/continuous/budget.py",
+      "snippet": "def _resolve_daily_cap(override: Optional[float] = None) -> float:"
     },
     {
       "col": 26,
       "kind": "ruff:UP037",
       "line": 135,
-      "path": "orchestration/continuous/budget.py"
+      "path": "orchestration/continuous/budget.py",
+      "snippet": "def from_env(cls) -> \"DaemonBudget\":"
     },
     {
       "col": 39,
       "kind": "ruff:UP045",
       "line": 140,
-      "path": "orchestration/continuous/budget.py"
+      "path": "orchestration/continuous/budget.py",
+      "snippet": "def remaining_today(self, *, now: Optional[datetime] = None) -> float:"
     },
     {
       "col": 14,
       "kind": "ruff:UP045",
       "line": 148,
-      "path": "orchestration/continuous/budget.py"
+      "path": "orchestration/continuous/budget.py",
+      "snippet": "now: Optional[datetime] = None,"
     },
     {
       "col": 14,
       "kind": "ruff:UP045",
       "line": 184,
-      "path": "orchestration/continuous/budget.py"
+      "path": "orchestration/continuous/budget.py",
+      "snippet": "now: Optional[datetime] = None,"
     },
     {
       "col": 1,
       "kind": "ruff:I001",
       "line": 23,
-      "path": "orchestration/continuous/daemon.py"
+      "path": "orchestration/continuous/daemon.py",
+      "snippet": "from __future__ import annotations"
     },
     {
       "col": 21,
       "kind": "ruff:F401",
       "line": 31,
-      "path": "orchestration/continuous/daemon.py"
+      "path": "orchestration/continuous/daemon.py",
+      "snippet": "from pathlib import Path"
     },
     {
       "col": 1,
       "kind": "ruff:UP035",
       "line": 32,
-      "path": "orchestration/continuous/daemon.py"
+      "path": "orchestration/continuous/daemon.py",
+      "snippet": "from typing import Any, Callable, Optional"
     },
     {
       "col": 33,
       "kind": "ruff:UP045",
       "line": 49,
-      "path": "orchestration/continuous/daemon.py"
+      "path": "orchestration/continuous/daemon.py",
+      "snippet": "SpawnFn = Callable[[str, dict], Optional[str]]"
     },
     {
       "col": 50,
       "kind": "ruff:UP045",
       "line": 52,
-      "path": "orchestration/continuous/daemon.py"
+      "path": "orchestration/continuous/daemon.py",
+      "snippet": "def no_op_spawn(question: str, context: dict) -> Optional[str]:  # noqa: ARG001"
     },
     {
       "col": 17,
       "kind": "ruff:UP045",
       "line": 62,
-      "path": "orchestration/continuous/daemon.py"
+      "path": "orchestration/continuous/daemon.py",
+      "snippet": "events_dir: Optional[str] = None"
     },
     {
       "col": 33,
       "kind": "ruff:UP017",
       "line": 113,
-      "path": "orchestration/continuous/daemon.py"
+      "path": "orchestration/continuous/daemon.py",
+      "snippet": "return datetime.now(timezone.utc)"
     },
     {
       "col": 25,
       "kind": "ruff:UP017",
       "line": 114,
-      "path": "orchestration/continuous/daemon.py"
+      "path": "orchestration/continuous/daemon.py",
+      "snippet": "return datetime.now(timezone.utc)"
     },
     {
       "col": 17,
       "kind": "ruff:UP045",
       "line": 118,
-      "path": "orchestration/continuous/daemon.py"
+      "path": "orchestration/continuous/daemon.py",
+      "snippet": "events_dir: Optional[str] = None,"
     },
     {
       "col": 27,
       "kind": "ruff:UP045",
       "line": 120,
-      "path": "orchestration/continuous/daemon.py"
+      "path": "orchestration/continuous/daemon.py",
+      "snippet": "investigation_filter: Optional[set[str]] = None,"
     },
     {
       "col": 10,
       "kind": "ruff:UP045",
       "line": 187,
-      "path": "orchestration/continuous/daemon.py"
+      "path": "orchestration/continuous/daemon.py",
+      "snippet": "now: Optional[datetime] = None,"
     },
     {
       "col": 13,
       "kind": "ruff:UP045",
       "line": 281,
-      "path": "orchestration/continuous/daemon.py"
+      "path": "orchestration/continuous/daemon.py",
+      "snippet": "config: Optional[DaemonConfig] = None,"
     },
     {
       "col": 13,
       "kind": "ruff:UP045",
       "line": 282,
-      "path": "orchestration/continuous/daemon.py"
+      "path": "orchestration/continuous/daemon.py",
+      "snippet": "budget: Optional[DaemonBudget] = None,"
     },
     {
       "col": 17,
       "kind": "ruff:UP045",
       "line": 284,
-      "path": "orchestration/continuous/daemon.py"
+      "path": "orchestration/continuous/daemon.py",
+      "snippet": "iterations: Optional[int] = None,"
     },
     {
       "col": 1,
       "kind": "ruff:I001",
       "line": 22,
-      "path": "orchestration/continuous/research_topic.py"
+      "path": "orchestration/continuous/research_topic.py",
+      "snippet": "from __future__ import annotations"
     },
     {
       "col": 20,
       "kind": "ruff:F401",
       "line": 26,
-      "path": "orchestration/continuous/research_topic.py"
+      "path": "orchestration/continuous/research_topic.py",
+      "snippet": "from typing import Optional"
     },
     {
       "col": 1,
       "kind": "ruff:I001",
       "line": 22,
-      "path": "orchestration/continuous/scoring.py"
+      "path": "orchestration/continuous/scoring.py",
+      "snippet": "from __future__ import annotations"
     },
     {
       "col": 1,
       "kind": "ruff:UP035",
       "line": 28,
-      "path": "orchestration/continuous/scoring.py"
+      "path": "orchestration/continuous/scoring.py",
+      "snippet": "from typing import Iterable, Optional"
     },
     {
       "col": 37,
       "kind": "ruff:UP045",
       "line": 70,
-      "path": "orchestration/continuous/scoring.py"
+      "path": "orchestration/continuous/scoring.py",
+      "snippet": "additional_retrieval_suggested: Optional[str]"
     },
     {
       "col": 41,
       "kind": "ruff:UP045",
       "line": 94,
-      "path": "orchestration/continuous/scoring.py"
+      "path": "orchestration/continuous/scoring.py",
+      "snippet": "additional_retrieval_suggested: Optional[str],"
     },
     {
       "col": 50,
       "kind": "ruff:UP045",
       "line": 172,
-      "path": "orchestration/continuous/scoring.py"
+      "path": "orchestration/continuous/scoring.py",
+      "snippet": "def _recency_score(emitted_at: datetime, *, now: Optional[datetime] = None) -> float:"
     },
     {
       "col": 31,
       "kind": "ruff:UP017",
       "line": 174,
-      "path": "orchestration/continuous/scoring.py"
+      "path": "orchestration/continuous/scoring.py",
+      "snippet": "ref = now or datetime.now(timezone.utc)"
     },
     {
       "col": 48,
       "kind": "ruff:UP017",
       "line": 177,
-      "path": "orchestration/continuous/scoring.py"
+      "path": "orchestration/continuous/scoring.py",
+      "snippet": "emitted_at = emitted_at.replace(tzinfo=timezone.utc)"
     },
     {
       "col": 34,
       "kind": "ruff:UP017",
       "line": 179,
-      "path": "orchestration/continuous/scoring.py"
+      "path": "orchestration/continuous/scoring.py",
+      "snippet": "ref = ref.replace(tzinfo=timezone.utc)"
     },
     {
       "col": 40,
       "kind": "ruff:UP045",
       "line": 198,
-      "path": "orchestration/continuous/scoring.py"
+      "path": "orchestration/continuous/scoring.py",
+      "snippet": "def score_gap(entry: GapEntry, *, now: Optional[datetime] = None) -> float:"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 71,
-      "path": "orchestration/loop_one/orchestrator.py"
+      "path": "orchestration/loop_one/orchestrator.py",
+      "snippet": "from substrate.dispatch.research_tier import ResearchTier"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 104,
-      "path": "orchestration/loop_one/orchestrator.py"
+      "path": "orchestration/loop_one/orchestrator.py",
+      "snippet": "InvestigationFailedPayload,"
     },
     {
       "col": 18,
       "kind": "ruff:B905",
       "line": 178,
-      "path": "orchestration/loop_one/orchestrator.py"
+      "path": "orchestration/loop_one/orchestrator.py",
+      "snippet": "\"\"\""
     },
     {
       "col": 9,
       "kind": "ruff:SIM105",
       "line": 883,
-      "path": "orchestration/loop_one/orchestrator.py"
+      "path": "orchestration/loop_one/orchestrator.py",
+      "snippet": ")"
     },
     {
       "col": 13,
       "kind": "ruff:SIM105",
       "line": 944,
-      "path": "orchestration/loop_one/orchestrator.py"
+      "path": "orchestration/loop_one/orchestrator.py",
+      "snippet": ")"
     },
     {
       "col": 17,
       "kind": "ruff:SIM105",
       "line": 1089,
-      "path": "orchestration/loop_one/orchestrator.py"
+      "path": "orchestration/loop_one/orchestrator.py",
+      "snippet": ")"
     },
     {
       "col": 16,
       "kind": "ruff:SIM115",
       "line": 163,
-      "path": "orchestration/phase_runner/postconditions.py"
+      "path": "orchestration/phase_runner/postconditions.py",
+      "snippet": "text = open(path, encoding=\"utf-8\").read()"
     },
     {
       "col": 16,
       "kind": "ruff:SIM115",
       "line": 238,
-      "path": "orchestration/phase_runner/postconditions.py"
+      "path": "orchestration/phase_runner/postconditions.py",
+      "snippet": "text = open(path, encoding=\"utf-8\").read().lower()"
     },
     {
       "col": 9,
       "kind": "ruff:SIM102",
       "line": 506,
-      "path": "orchestration/phase_runner/postconditions.py"
+      "path": "orchestration/phase_runner/postconditions.py",
+      "snippet": "if isinstance(e.payload, AutoPatchAppliedPayload):"
     },
     {
       "col": 40,
       "kind": "ruff:F401",
       "line": 52,
-      "path": "processing/extraction/extract.py"
+      "path": "processing/extraction/extract.py",
+      "snippet": "from ...substrate.event_log import emit_typed"
     },
     {
       "col": 32,
       "kind": "ruff:F401",
       "line": 30,
-      "path": "roles/cascade_planner/approval.py"
+      "path": "roles/cascade_planner/approval.py",
+      "snippet": "from .tree_contract import PlanTree"
     },
     {
       "col": 38,
       "kind": "ruff:F401",
       "line": 25,
-      "path": "roles/cascade_planner/planner.py"
+      "path": "roles/cascade_planner/planner.py",
+      "snippet": "from .focus import MAX_BRANCHES, is_over_broad"
     },
     {
       "col": 12,
       "kind": "ruff:RET504",
       "line": 189,
-      "path": "roles/connector/prompt.py"
+      "path": "roles/connector/prompt.py",
+      "snippet": "return out"
     },
     {
       "col": 13,
       "kind": "ruff:B904",
       "line": 53,
-      "path": "roles/creative_writer/parser.py"
+      "path": "roles/creative_writer/parser.py",
+      "snippet": "raise CreativeWriterValidationError("
     },
     {
       "col": 33,
       "kind": "ruff:B905",
       "line": 53,
-      "path": "roles/decomposer/paraphrase.py"
+      "path": "roles/decomposer/paraphrase.py",
+      "snippet": "dot = sum(x * y for x, y in zip(a, b))"
     },
     {
       "col": 12,
       "kind": "ruff:RET504",
       "line": 120,
-      "path": "roles/decomposer/prompt.py"
+      "path": "roles/decomposer/prompt.py",
+      "snippet": "return out"
     },
     {
       "col": 12,
       "kind": "ruff:RET504",
       "line": 153,
-      "path": "roles/evidence_retriever/prompt.py"
+      "path": "roles/evidence_retriever/prompt.py",
+      "snippet": "return out"
     },
     {
       "col": 32,
       "kind": "ruff:F401",
       "line": 29,
-      "path": "roles/note_taker/scheduler.py"
+      "path": "roles/note_taker/scheduler.py",
+      "snippet": "from .document_pass import PassResult, run_document_pass"
     },
     {
       "col": 21,
       "kind": "ruff:SIM105",
       "line": 119,
-      "path": "roles/note_taker/scheduler.py"
+      "path": "roles/note_taker/scheduler.py",
+      "snippet": "try:"
     },
     {
       "col": 12,
       "kind": "ruff:RET504",
       "line": 117,
-      "path": "roles/style_extractor/prompt.py"
+      "path": "roles/style_extractor/prompt.py",
+      "snippet": "return out"
     },
     {
       "col": 12,
       "kind": "ruff:RET504",
       "line": 201,
-      "path": "roles/synthesizer/prompt.py"
+      "path": "roles/synthesizer/prompt.py",
+      "snippet": "return out"
     },
     {
       "col": 9,
       "kind": "ruff:SIM105",
       "line": 91,
-      "path": "runtime/db_lock.py"
+      "path": "runtime/db_lock.py",
+      "snippet": "try:"
     },
     {
       "col": 17,
       "kind": "ruff:SIM105",
       "line": 165,
-      "path": "runtime/db_lock.py"
+      "path": "runtime/db_lock.py",
+      "snippet": "try:"
     },
     {
       "col": 13,
       "kind": "ruff:SIM105",
       "line": 169,
-      "path": "runtime/db_lock.py"
+      "path": "runtime/db_lock.py",
+      "snippet": "try:"
     },
     {
       "col": 17,
       "kind": "ruff:SIM105",
       "line": 238,
-      "path": "runtime/db_lock.py"
+      "path": "runtime/db_lock.py",
+      "snippet": "try:"
     },
     {
       "col": 21,
       "kind": "ruff:B904",
       "line": 304,
-      "path": "runtime/db_lock.py"
+      "path": "runtime/db_lock.py",
+      "snippet": "raise WriteLockTimeout("
     },
     {
       "col": 9,
       "kind": "ruff:SIM105",
       "line": 312,
-      "path": "runtime/db_lock.py"
+      "path": "runtime/db_lock.py",
+      "snippet": "try:"
     },
     {
       "col": 25,
       "kind": "ruff:B904",
       "line": 522,
-      "path": "runtime/db_lock.py"
+      "path": "runtime/db_lock.py",
+      "snippet": "raise WriteLockTimeout("
     },
     {
       "col": 13,
       "kind": "ruff:SIM105",
       "line": 527,
-      "path": "runtime/db_lock.py"
+      "path": "runtime/db_lock.py",
+      "snippet": "try:"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 94,
-      "path": "runtime/remote_exec/provider.py"
+      "path": "runtime/remote_exec/provider.py",
+      "snippet": "class RemoteSignal(str, enum.Enum):"
     },
     {
       "col": 13,
       "kind": "ruff:SIM105",
       "line": 268,
-      "path": "runtime/remote_exec/runner.py"
+      "path": "runtime/remote_exec/runner.py",
+      "snippet": "try:"
     },
     {
       "col": 9,
       "kind": "ruff:SIM105",
       "line": 282,
-      "path": "runtime/remote_exec/runner.py"
+      "path": "runtime/remote_exec/runner.py",
+      "snippet": "try:"
     },
     {
       "col": 17,
       "kind": "ruff:SIM105",
       "line": 325,
-      "path": "runtime/remote_exec/runner.py"
+      "path": "runtime/remote_exec/runner.py",
+      "snippet": "try:"
     },
     {
       "col": 13,
       "kind": "ruff:SIM105",
       "line": 367,
-      "path": "runtime/remote_exec/runner.py"
+      "path": "runtime/remote_exec/runner.py",
+      "snippet": "try:"
     },
     {
       "col": 13,
       "kind": "ruff:F841",
       "line": 129,
-      "path": "runtime/research_runner/budget.py"
+      "path": "runtime/research_runner/budget.py",
+      "snippet": "led = self._ledgers.setdefault("
     },
     {
       "col": 13,
       "kind": "ruff:SIM105",
       "line": 358,
-      "path": "runtime/research_runner/host_local.py"
+      "path": "runtime/research_runner/host_local.py",
+      "snippet": "if self._on_emit is not None and ev.kind in (\"note\", \"question\"):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 41,
-      "path": "runtime/research_runner/protocol.py"
+      "path": "runtime/research_runner/protocol.py",
+      "snippet": "class RunState(str, enum.Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 59,
-      "path": "runtime/research_runner/protocol.py"
+      "path": "runtime/research_runner/protocol.py",
+      "snippet": "class CommandKind(str, enum.Enum):"
     },
     {
       "col": 9,
       "kind": "ruff:SIM102",
       "line": 323,
-      "path": "runtime/weekly_report.py"
+      "path": "runtime/weekly_report.py",
+      "snippet": "# ---------------------------------------------------------------------------"
     },
     {
       "col": 5,
       "kind": "ruff:SIM103",
       "line": 57,
-      "path": "skills/domain/extract.py"
+      "path": "skills/domain/extract.py",
+      "snippet": "if val in (\"0\", \"false\", \"no\", \"off\"):"
     },
     {
       "col": 27,
       "kind": "ruff:B905",
       "line": 220,
-      "path": "skills/verification/rlm.py"
+      "path": "skills/verification/rlm.py",
+      "snippet": "for orig, norm in zip(responses, norms):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 21,
-      "path": "substrate/ad_inventory/ad_bidding.py"
+      "path": "substrate/ad_inventory/ad_bidding.py",
+      "snippet": "class BiddingPolicy(str, enum.Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 45,
-      "path": "substrate/ad_inventory/advertiser_onboarding.py"
+      "path": "substrate/ad_inventory/advertiser_onboarding.py",
+      "snippet": "class AdvertiserStatus(str, enum.Enum):"
     },
     {
       "col": 5,
       "kind": "ruff:SIM105",
       "line": 362,
-      "path": "substrate/ad_inventory/advertiser_onboarding.py"
+      "path": "substrate/ad_inventory/advertiser_onboarding.py",
+      "snippet": "try:"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 42,
-      "path": "substrate/ad_inventory/attribution.py"
+      "path": "substrate/ad_inventory/attribution.py",
+      "snippet": "class AttributionAlgorithm(str, enum.Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 28,
-      "path": "substrate/ad_inventory/decisions_log.py"
+      "path": "substrate/ad_inventory/decisions_log.py",
+      "snippet": "class DecisionGate(str, enum.Enum):"
     },
     {
       "col": 5,
       "kind": "ruff:SIM105",
       "line": 75,
-      "path": "substrate/ad_inventory/decisions_log.py"
+      "path": "substrate/ad_inventory/decisions_log.py",
+      "snippet": "try:"
     },
     {
       "col": 5,
       "kind": "ruff:SIM102",
       "line": 130,
-      "path": "substrate/ad_inventory/intent_targeting.py"
+      "path": "substrate/ad_inventory/intent_targeting.py",
+      "snippet": "if targeting.target_sectors and context.sector is not None:"
     },
     {
       "col": 5,
       "kind": "ruff:SIM102",
       "line": 133,
-      "path": "substrate/ad_inventory/intent_targeting.py"
+      "path": "substrate/ad_inventory/intent_targeting.py",
+      "snippet": "if targeting.target_sub_sectors and context.sub_sector is not None:"
     },
     {
       "col": 5,
       "kind": "ruff:SIM102",
       "line": 136,
-      "path": "substrate/ad_inventory/intent_targeting.py"
+      "path": "substrate/ad_inventory/intent_targeting.py",
+      "snippet": "if targeting.target_audience_intents and context.audience_intents:"
     },
     {
       "col": 5,
       "kind": "ruff:SIM105",
       "line": 84,
-      "path": "substrate/ad_inventory/inventory_persistence.py"
+      "path": "substrate/ad_inventory/inventory_persistence.py",
+      "snippet": "try:"
     },
     {
       "col": 25,
       "kind": "ruff:UP017",
       "line": 26,
-      "path": "substrate/ad_inventory/payout.py"
+      "path": "substrate/ad_inventory/payout.py",
+      "snippet": "return datetime.now(timezone.utc).isoformat().replace(\"+00:00\", \"Z\")"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 34,
-      "path": "substrate/ad_inventory/payout.py"
+      "path": "substrate/ad_inventory/payout.py",
+      "snippet": "class RevShareKind(str, enum.Enum):"
     },
     {
       "col": 18,
       "kind": "ruff:UP045",
       "line": 49,
-      "path": "substrate/ad_inventory/payout.py"
+      "path": "substrate/ad_inventory/payout.py",
+      "snippet": "document_id: Optional[str]"
     },
     {
       "col": 44,
       "kind": "ruff:UP037",
       "line": 162,
-      "path": "substrate/ad_inventory/payout.py"
+      "path": "substrate/ad_inventory/payout.py",
+      "snippet": "document_to_recipient: dict[str, tuple[\"RevShareKind\", str, bool]],"
     },
     {
       "col": 5,
       "kind": "ruff:I001",
       "line": 188,
-      "path": "substrate/ad_inventory/payout.py"
+      "path": "substrate/ad_inventory/payout.py",
+      "snippet": "from substrate.billing.kyc import ("
     },
     {
       "col": 37,
       "kind": "ruff:F401",
       "line": 189,
-      "path": "substrate/ad_inventory/payout.py"
+      "path": "substrate/ad_inventory/payout.py",
+      "snippet": "KYC_PAYOUT_FLOOR_USD_CENTS, KycState, can_settle,"
     },
     {
       "col": 9,
       "kind": "ruff:SIM102",
       "line": 219,
-      "path": "substrate/ad_inventory/payout.py"
+      "path": "substrate/ad_inventory/payout.py",
+      "snippet": "if kyc_registry is not None:"
     },
     {
       "col": 5,
       "kind": "ruff:SIM105",
       "line": 70,
-      "path": "substrate/ad_inventory/transfer_initiator.py"
+      "path": "substrate/ad_inventory/transfer_initiator.py",
+      "snippet": "try:"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 19,
-      "path": "substrate/advertisers/store.py"
+      "path": "substrate/advertisers/store.py",
+      "snippet": "class CampaignStatus(str, enum.Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 36,
-      "path": "substrate/anti_gaming/red_team.py"
+      "path": "substrate/anti_gaming/red_team.py",
+      "snippet": "class AttackClass(str, enum.Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 15,
-      "path": "substrate/anti_gaming/verdict.py"
+      "path": "substrate/anti_gaming/verdict.py",
+      "snippet": "class FraudVerdictKind(str, enum.Enum):"
     },
     {
       "col": 1,
       "kind": "ruff:UP035",
       "line": 16,
-      "path": "substrate/attribution/compute.py"
+      "path": "substrate/attribution/compute.py",
+      "snippet": "from typing import Mapping, Optional"
     },
     {
       "col": 39,
       "kind": "ruff:UP045",
       "line": 54,
-      "path": "substrate/attribution/compute.py"
+      "path": "substrate/attribution/compute.py",
+      "snippet": "document_ip_holders: Mapping[str, Optional[str]] = field(default_factory=dict)"
     },
     {
       "col": 14,
       "kind": "ruff:UP045",
       "line": 97,
-      "path": "substrate/attribution/compute.py"
+      "path": "substrate/attribution/compute.py",
+      "snippet": "db_path: Optional[str] = None,"
     },
     {
       "col": 23,
       "kind": "ruff:UP045",
       "line": 99,
-      "path": "substrate/attribution/compute.py"
+      "path": "substrate/attribution/compute.py",
+      "snippet": "investigation_id: Optional[str] = None,"
     },
     {
       "col": 41,
       "kind": "ruff:UP045",
       "line": 157,
-      "path": "substrate/attribution/compute.py"
+      "path": "substrate/attribution/compute.py",
+      "snippet": "doc_to_content_class: dict[str, Optional[str]] = {r[0]: r[3] for r in doc_rows}"
     },
     {
       "col": 37,
       "kind": "ruff:UP045",
       "line": 158,
-      "path": "substrate/attribution/compute.py"
+      "path": "substrate/attribution/compute.py",
+      "snippet": "doc_to_ip_holder: dict[str, Optional[str]] = {r[0]: r[4] for r in doc_rows}"
     },
     {
       "col": 50,
       "kind": "ruff:SIM118",
       "line": 221,
-      "path": "substrate/attribution/compute.py"
+      "path": "substrate/attribution/compute.py",
+      "snippet": "owners = {k: doc_to_ip_holder.get(k) for k in shares.keys()}"
     },
     {
       "col": 61,
       "kind": "ruff:SIM118",
       "line": 225,
-      "path": "substrate/attribution/compute.py"
+      "path": "substrate/attribution/compute.py",
+      "snippet": "document_titles={k: doc_to_title.get(k, \"\") for k in shares.keys()},"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 66,
-      "path": "substrate/autoresearch/proposal.py"
+      "path": "substrate/autoresearch/proposal.py",
+      "snippet": "class OperatorVerdictKind(str, enum.Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 57,
-      "path": "substrate/billing/kyc.py"
+      "path": "substrate/billing/kyc.py",
+      "snippet": "class KycState(str, enum.Enum):"
     },
     {
       "col": 5,
       "kind": "ruff:SIM105",
       "line": 288,
-      "path": "substrate/billing/kyc.py"
+      "path": "substrate/billing/kyc.py",
+      "snippet": "try:"
     },
     {
       "col": 5,
       "kind": "ruff:SIM105",
       "line": 177,
-      "path": "substrate/billing/tax_reports.py"
+      "path": "substrate/billing/tax_reports.py",
+      "snippet": "try:"
     },
     {
       "col": 5,
       "kind": "ruff:SIM108",
       "line": 107,
-      "path": "substrate/books/passage_research.py"
+      "path": "substrate/books/passage_research.py",
+      "snippet": "if served.servable:"
     },
     {
       "col": 33,
       "kind": "ruff:B905",
       "line": 279,
-      "path": "substrate/books/personal_space.py"
+      "path": "substrate/books/personal_space.py",
+      "snippet": "dot = sum(x * y for x, y in zip(a, b))"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 46,
-      "path": "substrate/books/servability.py"
+      "path": "substrate/books/servability.py",
+      "snippet": "class ServabilityStatus(str, Enum):"
     },
     {
       "col": 13,
       "kind": "ruff:E741",
       "line": 460,
-      "path": "substrate/context_pack/assembler.py"
+      "path": "substrate/context_pack/assembler.py",
+      "snippet": "for l, r, t in kept_canonical"
     },
     {
       "col": 33,
       "kind": "ruff:F401",
       "line": 35,
-      "path": "substrate/context_pack/note_injection.py"
+      "path": "substrate/context_pack/note_injection.py",
+      "snippet": "from .note_retrieval import RetrievedNote, retrieve_project_notes"
     },
     {
       "col": 9,
       "kind": "ruff:SIM105",
       "line": 101,
-      "path": "substrate/context_pack/note_retrieval.py"
+      "path": "substrate/context_pack/note_retrieval.py",
+      "snippet": "try:"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 37,
-      "path": "substrate/contracts/__init__.py"
+      "path": "substrate/contracts/__init__.py",
+      "snippet": "from .accrual import AccrualContract, AccrualSource"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 38,
-      "path": "substrate/contracts/__init__.py"
+      "path": "substrate/contracts/__init__.py",
+      "snippet": "from .conformance import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 44,
-      "path": "substrate/contracts/__init__.py"
+      "path": "substrate/contracts/__init__.py",
+      "snippet": "from .context_pack import AssembledLayerContract, ContextPackContract"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 45,
-      "path": "substrate/contracts/__init__.py"
+      "path": "substrate/contracts/__init__.py",
+      "snippet": "from .drw_sprint_lock import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 54,
-      "path": "substrate/contracts/__init__.py"
+      "path": "substrate/contracts/__init__.py",
+      "snippet": "from .interviewer import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 59,
-      "path": "substrate/contracts/__init__.py"
+      "path": "substrate/contracts/__init__.py",
+      "snippet": "from .nodes import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 66,
-      "path": "substrate/contracts/__init__.py"
+      "path": "substrate/contracts/__init__.py",
+      "snippet": "from .note_taker import NoteTakerOutputContract"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 67,
-      "path": "substrate/contracts/__init__.py"
+      "path": "substrate/contracts/__init__.py",
+      "snippet": "from .outline_block import OutlineBlockContract"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 68,
-      "path": "substrate/contracts/__init__.py"
+      "path": "substrate/contracts/__init__.py",
+      "snippet": "from .reading_surface import ReaderSurfaceContract"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 69,
-      "path": "substrate/contracts/__init__.py"
+      "path": "substrate/contracts/__init__.py",
+      "snippet": "from .research_runner import ResearchRunner, StepEvent"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 70,
-      "path": "substrate/contracts/__init__.py"
+      "path": "substrate/contracts/__init__.py",
+      "snippet": "from .servable import ServableEntryContract"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 71,
-      "path": "substrate/contracts/__init__.py"
+      "path": "substrate/contracts/__init__.py",
+      "snippet": "from .voice_pipeline import ("
     },
     {
       "col": 12,
       "kind": "ruff:RET504",
       "line": 190,
-      "path": "substrate/contracts/dependency_map.py"
+      "path": "substrate/contracts/dependency_map.py",
+      "snippet": "return overall"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 72,
-      "path": "substrate/coordination/cost_view.py"
+      "path": "substrate/coordination/cost_view.py",
+      "snippet": "class Workflow(str, Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 141,
-      "path": "substrate/coordination/cost_view.py"
+      "path": "substrate/coordination/cost_view.py",
+      "snippet": "class MarginStatus(str, Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 59,
-      "path": "substrate/coordination/gate_ledger.py"
+      "path": "substrate/coordination/gate_ledger.py",
+      "snippet": "class GateStatus(str, Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 86,
-      "path": "substrate/coordination/gate_ledger.py"
+      "path": "substrate/coordination/gate_ledger.py",
+      "snippet": "class Product(str, Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 71,
-      "path": "substrate/coordination/roadmap.py"
+      "path": "substrate/coordination/roadmap.py",
+      "snippet": "class SprintStatus(str, Enum):"
     },
     {
       "col": 29,
       "kind": "ruff:F821",
       "line": 522,
-      "path": "substrate/corpus_audit.py"
+      "path": "substrate/corpus_audit.py",
+      "snippet": ")"
     },
     {
       "col": 21,
       "kind": "ruff:UP031",
       "line": 984,
-      "path": "substrate/corpus_audit.py"
+      "path": "substrate/corpus_audit.py",
+      "snippet": "count=1 if over else 0,"
     },
     {
       "col": 5,
       "kind": "ruff:SIM105",
       "line": 31,
-      "path": "substrate/cross_graph/federation_config_store.py"
+      "path": "substrate/cross_graph/federation_config_store.py",
+      "snippet": "try:"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 68,
-      "path": "substrate/cross_graph/inbound.py"
+      "path": "substrate/cross_graph/inbound.py",
+      "snippet": "class InboundRejection(str, enum.Enum):"
     },
     {
       "col": 5,
       "kind": "ruff:SIM105",
       "line": 287,
-      "path": "substrate/cross_graph/inbound.py"
+      "path": "substrate/cross_graph/inbound.py",
+      "snippet": "try:"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 84,
-      "path": "substrate/cross_graph/partner_identity.py"
+      "path": "substrate/cross_graph/partner_identity.py",
+      "snippet": "class PartnerTrustState(str, enum.Enum):"
     },
     {
       "col": 9,
       "kind": "ruff:B904",
       "line": 350,
-      "path": "substrate/cross_graph/partner_identity.py"
+      "path": "substrate/cross_graph/partner_identity.py",
+      "snippet": "raise PartnerIdentityError(\"shared_secret_hex is not valid hex\")"
     },
     {
       "col": 5,
       "kind": "ruff:SIM105",
       "line": 390,
-      "path": "substrate/cross_graph/partner_identity.py"
+      "path": "substrate/cross_graph/partner_identity.py",
+      "snippet": "try:"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 85,
-      "path": "substrate/cross_graph_writer/queue.py"
+      "path": "substrate/cross_graph_writer/queue.py",
+      "snippet": "class RulePropagationEventKind(str, enum.Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 91,
-      "path": "substrate/dedup.py"
+      "path": "substrate/dedup.py",
+      "snippet": "class KeyType(str, enum.Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 124,
-      "path": "substrate/dedup.py"
+      "path": "substrate/dedup.py",
+      "snippet": "class Confidence(str, enum.Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 35,
-      "path": "substrate/deletion_worker/worker.py"
+      "path": "substrate/deletion_worker/worker.py",
+      "snippet": "class DeletionRequestStatus(str, enum.Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 55,
-      "path": "substrate/deletion_worker/worker.py"
+      "path": "substrate/deletion_worker/worker.py",
+      "snippet": "class DeletionResultKind(str, enum.Enum):"
     },
     {
       "col": 5,
       "kind": "ruff:SIM102",
       "line": 122,
-      "path": "substrate/deletion_worker/worker.py"
+      "path": "substrate/deletion_worker/worker.py",
+      "snippet": "if req.status == DeletionRequestStatus.PENDING:"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 43,
-      "path": "substrate/dispatch/multi_cloud.py"
+      "path": "substrate/dispatch/multi_cloud.py",
+      "snippet": "class VendorClass(str, enum.Enum):"
     },
     {
       "col": 5,
       "kind": "ruff:SIM102",
       "line": 178,
-      "path": "substrate/dispatch/multi_cloud.py"
+      "path": "substrate/dispatch/multi_cloud.py",
+      "snippet": "if env_val in (\"0\", \"false\", \"no\", \"off\", \"\"):"
     },
     {
       "col": 9,
       "kind": "ruff:F401",
       "line": 39,
-      "path": "substrate/dispatch/router.py"
+      "path": "substrate/dispatch/router.py",
+      "snippet": "RawProviderResponse,"
     },
     {
       "col": 39,
       "kind": "ruff:B008",
       "line": 44,
-      "path": "substrate/ducklake/migration.py"
+      "path": "substrate/ducklake/migration.py",
+      "snippet": "from_strategy: ShardingStrategy = NoSharding(),"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 8,
-      "path": "substrate/ducklake/stage.py"
+      "path": "substrate/ducklake/stage.py",
+      "snippet": "class SubstrateStage(str, enum.Enum):"
     },
     {
       "col": 9,
       "kind": "ruff:F401",
       "line": 99,
-      "path": "substrate/event_log/events.py"
+      "path": "substrate/event_log/events.py",
+      "snippet": "ActionType,"
     },
     {
       "col": 13,
@@ -1657,433 +1920,505 @@
       "col": 7,
       "kind": "ruff:UP042",
       "line": 41,
-      "path": "substrate/federation/protocol.py"
+      "path": "substrate/federation/protocol.py",
+      "snippet": "class QualityGateResult(str, enum.Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 100,
-      "path": "substrate/federation/slice.py"
+      "path": "substrate/federation/slice.py",
+      "snippet": "class NegotiationStatus(str, enum.Enum):"
     },
     {
       "col": 1,
       "kind": "ruff:UP035",
       "line": 19,
-      "path": "substrate/gap_detection/__init__.py"
+      "path": "substrate/gap_detection/__init__.py",
+      "snippet": "from typing import Any, List, Optional"
     },
     {
       "col": 25,
       "kind": "ruff:F401",
       "line": 19,
-      "path": "substrate/gap_detection/__init__.py"
+      "path": "substrate/gap_detection/__init__.py",
+      "snippet": "from typing import Any, List, Optional"
     },
     {
       "col": 31,
       "kind": "ruff:F401",
       "line": 19,
-      "path": "substrate/gap_detection/__init__.py"
+      "path": "substrate/gap_detection/__init__.py",
+      "snippet": "from typing import Any, List, Optional"
     },
     {
       "col": 33,
       "kind": "ruff:B905",
       "line": 63,
-      "path": "substrate/gap_detection/contradiction.py"
+      "path": "substrate/gap_detection/contradiction.py",
+      "snippet": "dot = sum(x * y for x, y in zip(u, v))"
     },
     {
       "col": 32,
       "kind": "ruff:F401",
       "line": 20,
-      "path": "substrate/graph/__init__.py"
+      "path": "substrate/graph/__init__.py",
+      "snippet": "from typing import Optional as _Optional"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 51,
-      "path": "substrate/graph/__init__.py"
+      "path": "substrate/graph/__init__.py",
+      "snippet": "from .ops import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 67,
-      "path": "substrate/graph/__init__.py"
+      "path": "substrate/graph/__init__.py",
+      "snippet": "from .rlm_tools import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 82,
-      "path": "substrate/graph/__init__.py"
+      "path": "substrate/graph/__init__.py",
+      "snippet": "from .schema import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 89,
-      "path": "substrate/graph/__init__.py"
+      "path": "substrate/graph/__init__.py",
+      "snippet": "from .search import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 97,
-      "path": "substrate/graph/__init__.py"
+      "path": "substrate/graph/__init__.py",
+      "snippet": "from .traverse import ("
     },
     {
       "col": 13,
       "kind": "ruff:SIM105",
       "line": 200,
-      "path": "substrate/graph/insight_question.py"
+      "path": "substrate/graph/insight_question.py",
+      "snippet": "try:"
     },
     {
       "col": 9,
       "kind": "ruff:SIM105",
       "line": 262,
-      "path": "substrate/graph/migrate_v9_insight_question.py"
+      "path": "substrate/graph/migrate_v9_insight_question.py",
+      "snippet": "try:"
     },
     {
       "col": 9,
       "kind": "ruff:F401",
       "line": 48,
-      "path": "substrate/graph/ops.py"
+      "path": "substrate/graph/ops.py",
+      "snippet": "GraphScope,"
     },
     {
       "col": 9,
       "kind": "ruff:F401",
       "line": 49,
-      "path": "substrate/graph/ops.py"
+      "path": "substrate/graph/ops.py",
+      "snippet": "NodeType,"
     },
     {
       "col": 25,
       "kind": "ruff:B905",
       "line": 310,
-      "path": "substrate/graph/ops.py"
+      "path": "substrate/graph/ops.py",
+      "snippet": "for col, idx in zip(touched_indexed, indexes):"
     },
     {
       "col": 9,
       "kind": "ruff:SIM105",
       "line": 118,
-      "path": "substrate/graph/retrieval_adapters/ducklake.py"
+      "path": "substrate/graph/retrieval_adapters/ducklake.py",
+      "snippet": "try:"
     },
     {
       "col": 9,
       "kind": "ruff:SIM105",
       "line": 117,
-      "path": "substrate/graph/retrieval_adapters/turbopuffer.py"
+      "path": "substrate/graph/retrieval_adapters/turbopuffer.py",
+      "snippet": "try:"
     },
     {
       "col": 9,
       "kind": "ruff:SIM105",
       "line": 159,
-      "path": "substrate/graph/retrieval_substrate.py"
+      "path": "substrate/graph/retrieval_substrate.py",
+      "snippet": "with contextlib.suppress(Exception):  # pragma: no cover"
     },
     {
       "col": 9,
       "kind": "ruff:SIM105",
       "line": 476,
-      "path": "substrate/graph/retrieval_substrate.py"
+      "path": "substrate/graph/retrieval_substrate.py",
+      "snippet": "\"document_type\": dtype,"
     },
     {
       "col": 9,
       "kind": "ruff:B904",
       "line": 185,
-      "path": "substrate/graph/rlm_tools.py"
+      "path": "substrate/graph/rlm_tools.py",
+      "snippet": "raise ValueError("
     },
     {
       "col": 9,
       "kind": "ruff:SIM105",
       "line": 473,
-      "path": "substrate/graph/rlm_tools.py"
+      "path": "substrate/graph/rlm_tools.py",
+      "snippet": "try:"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 49,
-      "path": "substrate/graph_per_user/lifecycle.py"
+      "path": "substrate/graph_per_user/lifecycle.py",
+      "snippet": "class PerUserStorageEventKind(str, enum.Enum):"
     },
     {
       "col": 5,
       "kind": "ruff:SIM105",
       "line": 217,
-      "path": "substrate/graph_per_user/lifecycle.py"
+      "path": "substrate/graph_per_user/lifecycle.py",
+      "snippet": "try:"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 108,
-      "path": "substrate/ingest_budget.py"
+      "path": "substrate/ingest_budget.py",
+      "snippet": "class BudgetState(str, enum.Enum):"
     },
     {
       "col": 37,
       "kind": "ruff:F401",
       "line": 21,
-      "path": "substrate/ip_holders/__init__.py"
+      "path": "substrate/ip_holders/__init__.py",
+      "snippet": "from datetime import UTC, datetime, timezone"
     },
     {
       "col": 25,
       "kind": "ruff:F401",
       "line": 23,
-      "path": "substrate/ip_holders/__init__.py"
+      "path": "substrate/ip_holders/__init__.py",
+      "snippet": "from typing import Any, Optional"
     },
     {
       "col": 33,
       "kind": "ruff:F401",
       "line": 25,
-      "path": "substrate/ip_holders/__init__.py"
+      "path": "substrate/ip_holders/__init__.py",
+      "snippet": "from substrate.event_log import emit_typed"
     },
     {
       "col": 29,
       "kind": "ruff:F401",
       "line": 44,
-      "path": "substrate/legal_gate/__init__.py"
+      "path": "substrate/legal_gate/__init__.py",
+      "snippet": "from typing import Literal, Optional, Protocol"
     },
     {
       "col": 5,
       "kind": "ruff:SIM105",
       "line": 46,
-      "path": "substrate/loop_3/checklist_store.py"
+      "path": "substrate/loop_3/checklist_store.py",
+      "snippet": "try:"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 10,
-      "path": "substrate/loop_3/unlock_gate.py"
+      "path": "substrate/loop_3/unlock_gate.py",
+      "snippet": "class Loop3UnlockCriterion(str, enum.Enum):"
     },
     {
       "col": 9,
       "kind": "ruff:SIM102",
       "line": 255,
-      "path": "substrate/marketplace_metrics/book_escrow.py"
+      "path": "substrate/marketplace_metrics/book_escrow.py",
+      "snippet": "if d.kind is RevShareKind.PUBLISHER and d.recipient_ref == holder_id:"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 25,
-      "path": "substrate/marketplace_metrics/dashboard.py"
+      "path": "substrate/marketplace_metrics/dashboard.py",
+      "snippet": "class MarketplaceHealth(str, enum.Enum):"
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 66,
-      "path": "substrate/marketplace_metrics/dashboard.py"
+      "path": "substrate/marketplace_metrics/dashboard.py",
+      "snippet": "paid_creators = sum(1 for b in creators.buckets if b.lower_cents >= 1_000 for _ in range(b.creator_count))"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 53,
-      "path": "substrate/multi_user/crdt_scaffold/access_control.py"
+      "path": "substrate/multi_user/crdt_scaffold/access_control.py",
+      "snippet": "class EditOutcome(str, enum.Enum):"
     },
     {
       "col": 9,
       "kind": "ruff:F841",
       "line": 192,
-      "path": "substrate/multi_user/crdt_scaffold/interfaces.py"
+      "path": "substrate/multi_user/crdt_scaffold/interfaces.py",
+      "snippet": "labels = list(self.replica_snapshots)"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 23,
-      "path": "substrate/multi_user/partition.py"
+      "path": "substrate/multi_user/partition.py",
+      "snippet": "class PartitionKind(str, enum.Enum):"
     },
     {
       "col": 5,
       "kind": "ruff:SIM102",
       "line": 115,
-      "path": "substrate/multi_user/partition.py"
+      "path": "substrate/multi_user/partition.py",
+      "snippet": "if partition == PartitionKind.PRIVATE:"
     },
     {
       "col": 13,
       "kind": "ruff:SIM118",
       "line": 226,
-      "path": "substrate/multi_user/skill_accumulator.py"
+      "path": "substrate/multi_user/skill_accumulator.py",
+      "snippet": "for rule_id in self._digests_by_rule.keys():"
     },
     {
       "col": 13,
       "kind": "ruff:SIM105",
       "line": 165,
-      "path": "substrate/multi_user/skill_writer.py"
+      "path": "substrate/multi_user/skill_writer.py",
+      "snippet": "try:"
     },
     {
       "col": 37,
       "kind": "ruff:F401",
       "line": 35,
-      "path": "substrate/notebooks/__init__.py"
+      "path": "substrate/notebooks/__init__.py",
+      "snippet": "from datetime import UTC, datetime, timezone"
     },
     {
       "col": 25,
       "kind": "ruff:F401",
       "line": 36,
-      "path": "substrate/notebooks/__init__.py"
+      "path": "substrate/notebooks/__init__.py",
+      "snippet": "from typing import Any, Optional"
     },
     {
       "col": 9,
       "kind": "ruff:SIM105",
       "line": 345,
-      "path": "substrate/notebooks/__init__.py"
+      "path": "substrate/notebooks/__init__.py",
+      "snippet": "try:"
     },
     {
       "col": 23,
       "kind": "ruff:UP046",
       "line": 64,
-      "path": "substrate/ownership.py"
+      "path": "substrate/ownership.py",
+      "snippet": "class OwnershipHandle(Generic[T]):"
     },
     {
       "col": 13,
       "kind": "ruff:UP045",
       "line": 70,
-      "path": "substrate/payouts/contact_guard.py"
+      "path": "substrate/payouts/contact_guard.py",
+      "snippet": "record: Optional[EmailRecord] = None"
     },
     {
       "col": 33,
       "kind": "ruff:F401",
       "line": 67,
-      "path": "substrate/payouts/ledger.py"
+      "path": "substrate/payouts/ledger.py",
+      "snippet": "from substrate.constants import UNATTRIBUTED_RIGHTS_BUCKET"
     },
     {
       "col": 12,
       "kind": "ruff:UP045",
       "line": 154,
-      "path": "substrate/payouts/ledger.py"
+      "path": "substrate/payouts/ledger.py",
+      "snippet": "orcid: Optional[str]"
     },
     {
       "col": 15,
       "kind": "ruff:UP045",
       "line": 171,
-      "path": "substrate/payouts/ledger.py"
+      "path": "substrate/payouts/ledger.py",
+      "snippet": "arxiv_id: Optional[str]"
     },
     {
       "col": 51,
       "kind": "ruff:UP045",
       "line": 205,
-      "path": "substrate/payouts/ledger.py"
+      "path": "substrate/payouts/ledger.py",
+      "snippet": "def _load_metadata(con: Any, document_id: str) -> Optional[dict]:"
     },
     {
       "col": 12,
       "kind": "ruff:RET504",
       "line": 338,
-      "path": "substrate/payouts/ledger.py"
+      "path": "substrate/payouts/ledger.py",
+      "snippet": "return lines"
     },
     {
       "col": 21,
       "kind": "ruff:UP045",
       "line": 352,
-      "path": "substrate/payouts/ledger.py"
+      "path": "substrate/payouts/ledger.py",
+      "snippet": "impression_ids: Optional[Sequence[str]] = None,"
     },
     {
       "col": 51,
       "kind": "ruff:UP045",
       "line": 503,
-      "path": "substrate/payouts/ledger.py"
+      "path": "substrate/payouts/ledger.py",
+      "snippet": "ad_event_id: str, document_id: str, arxiv_id: Optional[str], reason: str"
     },
     {
       "col": 35,
       "kind": "ruff:UP045",
       "line": 565,
-      "path": "substrate/payouts/ledger.py"
+      "path": "substrate/payouts/ledger.py",
+      "snippet": "def reconcile(con: Any, arxiv_id: Optional[str] = None) -> dict[str, int]:"
     },
     {
       "col": 8,
       "kind": "ruff:F401",
       "line": 44,
-      "path": "substrate/public_graph/__init__.py"
+      "path": "substrate/public_graph/__init__.py",
+      "snippet": "import re"
     },
     {
       "col": 36,
       "kind": "ruff:F401",
       "line": 45,
-      "path": "substrate/public_graph/__init__.py"
+      "path": "substrate/public_graph/__init__.py",
+      "snippet": "from dataclasses import dataclass, field"
     },
     {
       "col": 25,
       "kind": "ruff:F401",
       "line": 46,
-      "path": "substrate/public_graph/__init__.py"
+      "path": "substrate/public_graph/__init__.py",
+      "snippet": "from typing import Any, Optional"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 77,
-      "path": "substrate/public_graph/__init__.py"
+      "path": "substrate/public_graph/__init__.py",
+      "snippet": "class QualityGateOutcome(str, enum.Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 86,
-      "path": "substrate/public_graph/__init__.py"
+      "path": "substrate/public_graph/__init__.py",
+      "snippet": "class QualityFailureReason(str, enum.Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 26,
-      "path": "substrate/public_notes_ingest/pipeline.py"
+      "path": "substrate/public_notes_ingest/pipeline.py",
+      "snippet": "class IngestEventKind(str, enum.Enum):"
     },
     {
       "col": 32,
       "kind": "ruff:B008",
       "line": 67,
-      "path": "substrate/quality_gate/checks.py"
+      "path": "substrate/quality_gate/checks.py",
+      "snippet": "bounds: SourceTierBounds = SourceTierBounds(),"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 29,
-      "path": "substrate/quality_gate/gate.py"
+      "path": "substrate/quality_gate/gate.py",
+      "snippet": "class CheckResultKind(str, enum.Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 45,
-      "path": "substrate/quality_gate/gate.py"
+      "path": "substrate/quality_gate/gate.py",
+      "snippet": "class QualityGateVerdict(str, enum.Enum):"
     },
     {
       "col": 29,
       "kind": "ruff:F401",
       "line": 26,
-      "path": "substrate/research_bridge/extractor.py"
+      "path": "substrate/research_bridge/extractor.py",
+      "snippet": "from ..graph.ops import content_addressed_id, insert_node, new_random_id"
     },
     {
       "col": 54,
       "kind": "ruff:F401",
       "line": 24,
-      "path": "substrate/research_bridge/versioning.py"
+      "path": "substrate/research_bridge/versioning.py",
+      "snippet": "from ...runtime.db_lock import LockedConnection, connect_read, connect_write"
     },
     {
       "col": 68,
       "kind": "ruff:F401",
       "line": 24,
-      "path": "substrate/research_bridge/versioning.py"
+      "path": "substrate/research_bridge/versioning.py",
+      "snippet": "from ...runtime.db_lock import LockedConnection, connect_read, connect_write"
     },
     {
       "col": 42,
       "kind": "ruff:F401",
       "line": 25,
-      "path": "substrate/research_bridge/versioning.py"
+      "path": "substrate/research_bridge/versioning.py",
+      "snippet": "from ..graph.insight_question import graph_db_path"
     },
     {
       "col": 5,
       "kind": "ruff:UP047",
       "line": 99,
-      "path": "substrate/result_helpers.py"
+      "path": "substrate/result_helpers.py",
+      "snippet": "def try_parse_model("
     },
     {
       "col": 5,
       "kind": "ruff:UP047",
       "line": 160,
-      "path": "substrate/result_helpers.py"
+      "path": "substrate/result_helpers.py",
+      "snippet": "def try_call("
     },
     {
       "col": 21,
       "kind": "ruff:UP046",
       "line": 103,
-      "path": "substrate/results.py"
+      "path": "substrate/results.py",
+      "snippet": "# ruff UP046/UP047 (PEP 695 type parameters) are intentionally suppressed on"
     },
     {
       "col": 22,
       "kind": "ruff:UP046",
       "line": 156,
-      "path": "substrate/results.py"
+      "path": "substrate/results.py",
+      "snippet": "\"\"\"Monadic bind \u2014 chain a fallible operation onto a successful result."
     },
     {
       "col": 5,
       "kind": "ruff:UP047",
       "line": 223,
-      "path": "substrate/results.py"
+      "path": "substrate/results.py",
+      "snippet": "#                                                                        #"
     },
     {
       "col": 5,
@@ -2095,313 +2430,365 @@
       "col": 7,
       "kind": "ruff:UP042",
       "line": 25,
-      "path": "substrate/rev_share/rollover.py"
+      "path": "substrate/rev_share/rollover.py",
+      "snippet": "class RolloverState(str, enum.Enum):"
     },
     {
       "col": 5,
       "kind": "ruff:SIM105",
       "line": 31,
-      "path": "substrate/rev_share/rollover_persistence.py"
+      "path": "substrate/rev_share/rollover_persistence.py",
+      "snippet": "try:"
     },
     {
       "col": 9,
       "kind": "ruff:B007",
       "line": 84,
-      "path": "substrate/rev_share/rollover_persistence.py"
+      "path": "substrate/rev_share/rollover_persistence.py",
+      "snippet": "for recipient_ref, entry in ledger.entries.items():"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 47,
-      "path": "substrate/schemas/documents.py"
+      "path": "substrate/schemas/documents.py",
+      "snippet": "class RightsTier(str, Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 57,
-      "path": "substrate/schemas/events.py"
+      "path": "substrate/schemas/events.py",
+      "snippet": "class ActionType(str, Enum):"
     },
     {
       "col": 17,
       "kind": "ruff:SIM105",
       "line": 277,
-      "path": "substrate/source_throttle.py"
+      "path": "substrate/source_throttle.py",
+      "snippet": "try:"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 46,
-      "path": "substrate/speak/consent.py"
+      "path": "substrate/speak/consent.py",
+      "snippet": "class ConsentScope(str, enum.Enum):"
     },
     {
       "col": 33,
       "kind": "ruff:B905",
       "line": 84,
-      "path": "substrate/speak/corroboration.py"
+      "path": "substrate/speak/corroboration.py",
+      "snippet": "dot = sum(x * y for x, y in zip(a, b))"
     },
     {
       "col": 13,
       "kind": "ruff:SIM102",
       "line": 135,
-      "path": "substrate/speak/corroboration.py"
+      "path": "substrate/speak/corroboration.py",
+      "snippet": "if embeddings is not None:"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 45,
-      "path": "substrate/speak/economics_mode.py"
+      "path": "substrate/speak/economics_mode.py",
+      "snippet": "class InvitationMode(str, enum.Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 50,
-      "path": "substrate/speak/economics_mode.py"
+      "path": "substrate/speak/economics_mode.py",
+      "snippet": "class PublishingMode(str, enum.Enum):"
     },
     {
       "col": 1,
       "kind": "ruff:I001",
       "line": 64,
-      "path": "substrate/speak/payout_verifier.py"
+      "path": "substrate/speak/payout_verifier.py",
+      "snippet": "from __future__ import annotations"
     },
     {
       "col": 1,
       "kind": "ruff:UP035",
       "line": 70,
-      "path": "substrate/speak/payout_verifier.py"
+      "path": "substrate/speak/payout_verifier.py",
+      "snippet": "from typing import Any, Callable, Optional"
     },
     {
       "col": 23,
       "kind": "ruff:UP045",
       "line": 244,
-      "path": "substrate/speak/payout_verifier.py"
+      "path": "substrate/speak/payout_verifier.py",
+      "snippet": "transcript_turns: Optional[list[dict]] = None,"
     },
     {
       "col": 18,
       "kind": "ruff:UP045",
       "line": 245,
-      "path": "substrate/speak/payout_verifier.py"
+      "path": "substrate/speak/payout_verifier.py",
+      "snippet": "dispatch_fn: Optional[Callable[..., Any]] = None,"
     },
     {
       "col": 47,
       "kind": "ruff:UP045",
       "line": 342,
-      "path": "substrate/speak/payout_verifier.py"
+      "path": "substrate/speak/payout_verifier.py",
+      "snippet": "def get_grade(con: Any, interview_id: str) -> Optional[InterviewGrade]:"
     },
     {
       "col": 21,
       "kind": "ruff:UP045",
       "line": 387,
-      "path": "substrate/speak/payout_verifier.py"
+      "path": "substrate/speak/payout_verifier.py",
+      "snippet": "publication_id: Optional[str] = None,"
     },
     {
       "col": 21,
       "kind": "ruff:UP045",
       "line": 388,
-      "path": "substrate/speak/payout_verifier.py"
+      "path": "substrate/speak/payout_verifier.py",
+      "snippet": "impression_ref: Optional[str] = None,"
     },
     {
       "col": 35,
       "kind": "ruff:E741",
       "line": 442,
-      "path": "substrate/speak/payout_verifier.py"
+      "path": "substrate/speak/payout_verifier.py",
+      "snippet": "spent = sum((l.amount_usd for l in lines if not l.slop_gated), Decimal(\"0\"))"
     },
     {
       "col": 34,
       "kind": "ruff:E741",
       "line": 443,
-      "path": "substrate/speak/payout_verifier.py"
+      "path": "substrate/speak/payout_verifier.py",
+      "snippet": "capped = [l.interview_id for l in lines if l.capped]"
     },
     {
       "col": 42,
       "kind": "ruff:E741",
       "line": 444,
-      "path": "substrate/speak/payout_verifier.py"
+      "path": "substrate/speak/payout_verifier.py",
+      "snippet": "exhausted = any(l.budget_clamped for l in lines)"
     },
     {
       "col": 5,
       "kind": "ruff:SIM103",
       "line": 94,
-      "path": "substrate/speak/publish_gate.py"
+      "path": "substrate/speak/publish_gate.py",
+      "snippet": "if claim.subject_ref and takedown_mod.is_taken_down("
     },
     {
       "col": 5,
       "kind": "ruff:SIM103",
       "line": 201,
-      "path": "substrate/unit_dedup.py"
+      "path": "substrate/unit_dedup.py",
+      "snippet": "if ("
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 52,
-      "path": "substrate/voice_style/ab_runner.py"
+      "path": "substrate/voice_style/ab_runner.py",
+      "snippet": "class AuditVerdictKind(str, enum.Enum):"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 25,
-      "path": "substrate/voice_style/rubric.py"
+      "path": "substrate/voice_style/rubric.py",
+      "snippet": "class ViolationKind(str, enum.Enum):"
     },
     {
       "col": 20,
       "kind": "ruff:E741",
       "line": 82,
-      "path": "substrate/voice_style/rubric.py"
+      "path": "substrate/voice_style/rubric.py",
+      "snippet": "lines = [l for l in text.splitlines() if l.strip()]"
     },
     {
       "col": 15,
       "kind": "ruff:E741",
       "line": 87,
-      "path": "substrate/voice_style/rubric.py"
+      "path": "substrate/voice_style/rubric.py",
+      "snippet": "1 for l in lines"
     },
     {
       "col": 28,
       "kind": "ruff:E741",
       "line": 143,
-      "path": "substrate/voice_style/rubric.py"
+      "path": "substrate/voice_style/rubric.py",
+      "snippet": "lines = [l.strip() for l in text.splitlines() if l.strip()]"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 30,
-      "path": "substrate/voice_style/suppression.py"
+      "path": "substrate/voice_style/suppression.py",
+      "snippet": "class SuppressionVerdictKind(str, enum.Enum):"
     },
     {
       "col": 33,
       "kind": "ruff:B905",
       "line": 70,
-      "path": "substrate/write/block_search.py"
+      "path": "substrate/write/block_search.py",
+      "snippet": "dot = sum(x * y for x, y in zip(a, b))"
     },
     {
       "col": 33,
       "kind": "ruff:B905",
       "line": 35,
-      "path": "substrate/write/clustering.py"
+      "path": "substrate/write/clustering.py",
+      "snippet": "dot = sum(x * y for x, y in zip(a, b))"
     },
     {
       "col": 5,
       "kind": "ruff:SIM102",
       "line": 381,
-      "path": "substrate/write/outline_block.py"
+      "path": "substrate/write/outline_block.py",
+      "snippet": "if to_section_id != from_section_id:"
     },
     {
       "col": 51,
       "kind": "ruff:F401",
       "line": 40,
-      "path": "substrate/write/style_profile.py"
+      "path": "substrate/write/style_profile.py",
+      "snippet": "from ..graph.ops import content_addressed_id, new_random_id"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 26,
-      "path": "tests/_textbook_fixtures.py"
+      "path": "tests/_textbook_fixtures.py",
+      "snippet": "from acquisition.textbooks import SourceError"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 23,
-      "path": "tests/books/conftest.py"
+      "path": "tests/books/conftest.py",
+      "snippet": "from acquisition.books.pd_connector_base import FetchError"
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 38,
-      "path": "tests/books/test_pd_dedup_cross_source.py"
+      "path": "tests/books/test_pd_dedup_cross_source.py",
+      "snippet": "pd = classify("
     },
     {
       "col": 16,
       "kind": "ruff:B011",
       "line": 131,
-      "path": "tests/books/test_standard_ebooks.py"
+      "path": "tests/books/test_standard_ebooks.py",
+      "snippet": "assert False, \"expected SourceBanned (no live network)\""
     },
     {
       "col": 11,
       "kind": "ruff:F821",
       "line": 7,
-      "path": "tests/fixtures/lints/bypass_sample.py"
+      "path": "tests/fixtures/lints/bypass_sample.py",
+      "snippet": "con = duckdb.connect(\"path.db\")  # type: ignore[name-defined]"
     },
     {
       "col": 16,
       "kind": "ruff:F821",
       "line": 12,
-      "path": "tests/fixtures/lints/bypass_sample.py"
+      "path": "tests/fixtures/lints/bypass_sample.py",
+      "snippet": "response = requests.get(\"https://example.com\")  # type: ignore[name-defined]"
     },
     {
       "col": 10,
       "kind": "ruff:F821",
       "line": 17,
-      "path": "tests/fixtures/lints/bypass_sample.py"
+      "path": "tests/fixtures/lints/bypass_sample.py",
+      "snippet": "with escape_hatch(reason=\"benchmark-needs-raw-duckdb\"):  # type: ignore[name-defined]"
     },
     {
       "col": 15,
       "kind": "ruff:F821",
       "line": 18,
-      "path": "tests/fixtures/lints/bypass_sample.py"
+      "path": "tests/fixtures/lints/bypass_sample.py",
+      "snippet": "con = duckdb.connect(\"path.db\")  # type: ignore[name-defined]"
     },
     {
       "col": 2,
       "kind": "ruff:F821",
       "line": 22,
-      "path": "tests/fixtures/lints/bypass_sample.py"
+      "path": "tests/fixtures/lints/bypass_sample.py",
+      "snippet": "@escape_hatch(reason=\"weekly-compaction-script\")  # type: ignore[name-defined]"
     },
     {
       "col": 11,
       "kind": "ruff:F821",
       "line": 24,
-      "path": "tests/fixtures/lints/bypass_sample.py"
+      "path": "tests/fixtures/lints/bypass_sample.py",
+      "snippet": "con = duckdb.connect(\"path.db\")  # type: ignore[name-defined]"
     },
     {
       "col": 10,
       "kind": "ruff:F821",
       "line": 29,
-      "path": "tests/fixtures/lints/bypass_sample.py"
+      "path": "tests/fixtures/lints/bypass_sample.py",
+      "snippet": "with escape_hatch(reason=\"benchmark\"):  # type: ignore[name-defined]"
     },
     {
       "col": 24,
       "kind": "ruff:F821",
       "line": 31,
-      "path": "tests/fixtures/lints/bypass_sample.py"
+      "path": "tests/fixtures/lints/bypass_sample.py",
+      "snippet": "response = requests.get(\"https://example.com\")  # type: ignore[name-defined]"
     },
     {
       "col": 10,
       "kind": "ruff:F821",
       "line": 36,
-      "path": "tests/fixtures/lints/bypass_sample.py"
+      "path": "tests/fixtures/lints/bypass_sample.py",
+      "snippet": "with escape_hatch(reason=\"ok-fine\"):  # type: ignore[name-defined]"
     },
     {
       "col": 15,
       "kind": "ruff:F821",
       "line": 37,
-      "path": "tests/fixtures/lints/bypass_sample.py"
+      "path": "tests/fixtures/lints/bypass_sample.py",
+      "snippet": "con = duckdb.connect(\"p1.db\")  # type: ignore[name-defined]"
     },
     {
       "col": 18,
       "kind": "ruff:F821",
       "line": 39,
-      "path": "tests/fixtures/lints/bypass_sample.py"
+      "path": "tests/fixtures/lints/bypass_sample.py",
+      "snippet": "second_con = duckdb.connect(\"p2.db\")  # type: ignore[name-defined]"
     },
     {
       "col": 13,
       "kind": "ruff:SIM113",
       "line": 129,
-      "path": "tests/remote_exec_fakes.py"
+      "path": "tests/remote_exec_fakes.py",
+      "snippet": "seq += 1"
     },
     {
       "col": 28,
       "kind": "ruff:E741",
       "line": 100,
-      "path": "tests/test_accrual_ledger.py"
+      "path": "tests/test_accrual_ledger.py",
+      "snippet": "l.amount_cents for l in r.lines if l.attribution_kind == \"author\""
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 55,
-      "path": "tests/test_acquisition_arxiv.py"
+      "path": "tests/test_acquisition_arxiv.py",
+      "snippet": "from acquisition.arxiv import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 62,
-      "path": "tests/test_acquisition_arxiv.py"
+      "path": "tests/test_acquisition_arxiv.py",
+      "snippet": "from acquisition.arxiv.client import _build_search_url, _parse_response"
     },
     {
       "col": 1,
@@ -2413,73 +2800,85 @@
       "col": 1,
       "kind": "ruff:E402",
       "line": 62,
-      "path": "tests/test_acquisition_books.py"
+      "path": "tests/test_acquisition_books.py",
+      "snippet": ")"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 25,
-      "path": "tests/test_acquisition_paulgraham.py"
+      "path": "tests/test_acquisition_paulgraham.py",
+      "snippet": "from acquisition.urls import paulgraham as pg"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 26,
-      "path": "tests/test_acquisition_paulgraham.py"
+      "path": "tests/test_acquisition_paulgraham.py",
+      "snippet": "from acquisition.urls.adapter import url_doc_id"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 27,
-      "path": "tests/test_acquisition_paulgraham.py"
+      "path": "tests/test_acquisition_paulgraham.py",
+      "snippet": "from acquisition.urls.client import FetchedHtml"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 28,
-      "path": "tests/test_acquisition_paulgraham.py"
+      "path": "tests/test_acquisition_paulgraham.py",
+      "snippet": "from substrate.constants import ("
     },
     {
       "col": 5,
       "kind": "ruff:F811",
       "line": 231,
-      "path": "tests/test_acquisition_paulgraham.py"
+      "path": "tests/test_acquisition_paulgraham.py",
+      "snippet": "def test_robots_fetch_failure_records_fail_open_warning():"
     },
     {
       "col": 5,
       "kind": "ruff:F811",
       "line": 248,
-      "path": "tests/test_acquisition_paulgraham.py"
+      "path": "tests/test_acquisition_paulgraham.py",
+      "snippet": "def test_robots_applied_records_no_fail_open():"
     },
     {
       "col": 5,
       "kind": "ruff:F811",
       "line": 253,
-      "path": "tests/test_acquisition_paulgraham.py"
+      "path": "tests/test_acquisition_paulgraham.py",
+      "snippet": "def test_run_surfaces_robots_fail_open_warning(temp_substrate):"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 22,
-      "path": "tests/test_acquisition_podcasts.py"
+      "path": "tests/test_acquisition_podcasts.py",
+      "snippet": "from acquisition.podcasts import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 29,
-      "path": "tests/test_acquisition_podcasts.py"
+      "path": "tests/test_acquisition_podcasts.py",
+      "snippet": "from acquisition.podcasts.client import ("
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 190,
-      "path": "tests/test_acquisition_search_exa_cache.py"
+      "path": "tests/test_acquisition_search_exa_cache.py",
+      "snippet": "past = datetime.now(UTC) - timedelta(hours=25)"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 16,
-      "path": "tests/test_acquisition_twitter.py"
+      "path": "tests/test_acquisition_twitter.py",
+      "snippet": "from acquisition.twitter import ("
     },
     {
       "col": 1,
@@ -2491,613 +2890,715 @@
       "col": 1,
       "kind": "ruff:E402",
       "line": 51,
-      "path": "tests/test_acquisition_urls.py"
+      "path": "tests/test_acquisition_urls.py",
+      "snippet": ")"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 21,
-      "path": "tests/test_acquisition_voice.py"
+      "path": "tests/test_acquisition_voice.py",
+      "snippet": "from acquisition.voice import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 22,
-      "path": "tests/test_acquisition_youtube.py"
+      "path": "tests/test_acquisition_youtube.py",
+      "snippet": "from acquisition.youtube import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 29,
-      "path": "tests/test_acquisition_youtube.py"
+      "path": "tests/test_acquisition_youtube.py",
+      "snippet": "from acquisition.youtube.adapter import ("
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 48,
-      "path": "tests/test_ad_inventory_persistence.py"
+      "path": "tests/test_ad_inventory_persistence.py",
+      "snippet": "iid = upsert_inventory("
     },
     {
       "col": 10,
       "kind": "ruff:B017",
       "line": 118,
-      "path": "tests/test_ad_inventory_persistence.py"
+      "path": "tests/test_ad_inventory_persistence.py",
+      "snippet": "with pytest.raises(Exception):"
     },
     {
       "col": 10,
       "kind": "ruff:B017",
       "line": 169,
-      "path": "tests/test_advertiser_onboarding_persistence.py"
+      "path": "tests/test_advertiser_onboarding_persistence.py",
+      "snippet": "with pytest.raises(Exception):"
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 83,
-      "path": "tests/test_advertisers_store.py"
+      "path": "tests/test_advertisers_store.py",
+      "snippet": "c2 = create_campaign(store, advertiser_id=a.advertiser_id,"
     },
     {
       "col": 5,
       "kind": "ruff:SIM117",
       "line": 180,
-      "path": "tests/test_agentmail_provider.py"
+      "path": "tests/test_agentmail_provider.py",
+      "snippet": "with _mock_urlopen(monkeypatch, status_code=422, body={\"error\": {\"message\": \"to invalid\"}}):"
     },
     {
       "col": 5,
       "kind": "ruff:SIM117",
       "line": 189,
-      "path": "tests/test_agentmail_provider.py"
+      "path": "tests/test_agentmail_provider.py",
+      "snippet": "with _mock_urlopen(monkeypatch, status_code=429, body={\"error\": {\"message\": \"rate limited\"}}):"
     },
     {
       "col": 5,
       "kind": "ruff:SIM117",
       "line": 196,
-      "path": "tests/test_agentmail_provider.py"
+      "path": "tests/test_agentmail_provider.py",
+      "snippet": "with _mock_urlopen(monkeypatch, status_code=500, body={\"error\": {\"message\": \"internal\"}}):"
     },
     {
       "col": 10,
       "kind": "ruff:B017",
       "line": 51,
-      "path": "tests/test_ai_actions.py"
+      "path": "tests/test_ai_actions.py",
+      "snippet": "with pytest.raises(Exception):"
     },
     {
       "col": 9,
       "kind": "ruff:B007",
       "line": 174,
-      "path": "tests/test_api_sprint18_19_endpoints.py"
+      "path": "tests/test_api_sprint18_19_endpoints.py",
+      "snippet": "for criterion, met in body[\"loop_3_unlock_status\"].items():"
     },
     {
       "col": 28,
       "kind": "ruff:SIM115",
       "line": 387,
-      "path": "tests/test_arxiv_ingest.py"
+      "path": "tests/test_arxiv_ingest.py",
+      "snippet": "persisted = json.loads(open(state_path, encoding=\"utf-8\").read())"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 28,
-      "path": "tests/test_arxiv_oai_pmh.py"
+      "path": "tests/test_arxiv_oai_pmh.py",
+      "snippet": "from datetime import UTC"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 17,
-      "path": "tests/test_attribution.py"
+      "path": "tests/test_attribution.py",
+      "snippet": "from substrate.attribution import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 24,
-      "path": "tests/test_attribution.py"
+      "path": "tests/test_attribution.py",
+      "snippet": "from substrate.schemas import TYPED_PAYLOAD_ACTION_TYPES, ActionType"
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 230,
-      "path": "tests/test_attribution.py"
+      "path": "tests/test_attribution.py",
+      "snippet": "r = compute_attribution_for_synthesis("
     },
     {
       "col": 9,
       "kind": "ruff:B007",
       "line": 33,
-      "path": "tests/test_attribution_ab_report.py"
+      "path": "tests/test_attribution_ab_report.py",
+      "snippet": "for doc, cols in cmp.per_asset.items():"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 50,
-      "path": "tests/test_backtest_db.py"
+      "path": "tests/test_backtest_db.py",
+      "snippet": "from middleware.archive.archive import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 55,
-      "path": "tests/test_backtest_db.py"
+      "path": "tests/test_backtest_db.py",
+      "snippet": "from middleware.backtest import backtest"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 56,
-      "path": "tests/test_backtest_db.py"
+      "path": "tests/test_backtest_db.py",
+      "snippet": "from middleware.backtest.db import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 60,
-      "path": "tests/test_backtest_db.py"
+      "path": "tests/test_backtest_db.py",
+      "snippet": "from middleware.outcomes.recorder import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 64,
-      "path": "tests/test_backtest_db.py"
+      "path": "tests/test_backtest_db.py",
+      "snippet": "from middleware.source_tier import record_chunk_tier_override"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 65,
-      "path": "tests/test_backtest_db.py"
+      "path": "tests/test_backtest_db.py",
+      "snippet": "from runtime.db_lock import connect_write"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 66,
-      "path": "tests/test_backtest_db.py"
+      "path": "tests/test_backtest_db.py",
+      "snippet": "from substrate.graph.ops import insert_document, insert_edge, insert_node"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 67,
-      "path": "tests/test_backtest_db.py"
+      "path": "tests/test_backtest_db.py",
+      "snippet": "from substrate.graph.schema import SCHEMA_TABLES, init_database_at_path, list_tables"
     },
     {
       "col": 5,
       "kind": "ruff:SIM117",
       "line": 128,
-      "path": "tests/test_backtest_db.py"
+      "path": "tests/test_backtest_db.py",
+      "snippet": "with connect_write(db_path, purpose=\"test\") as con:"
     },
     {
       "col": 56,
       "kind": "ruff:F811",
       "line": 196,
-      "path": "tests/test_bernays_public_domain.py"
+      "path": "tests/test_bernays_public_domain.py",
+      "snippet": "def test_crystallizing_ingested_servable_public_domain(temp_substrate):"
     },
     {
       "col": 69,
       "kind": "ruff:F811",
       "line": 248,
-      "path": "tests/test_bernays_public_domain.py"
+      "path": "tests/test_bernays_public_domain.py",
+      "snippet": "def test_propaganda_ingested_servable_public_domain_via_archive_pdm(temp_substrate):"
     },
     {
       "col": 46,
       "kind": "ruff:F811",
       "line": 299,
-      "path": "tests/test_bernays_public_domain.py"
+      "path": "tests/test_bernays_public_domain.py",
+      "snippet": "def test_serve_full_text_both_bernays_titles(temp_substrate):"
     },
     {
       "col": 40,
       "kind": "ruff:F811",
       "line": 329,
-      "path": "tests/test_bernays_public_domain.py"
+      "path": "tests/test_bernays_public_domain.py",
+      "snippet": "def test_reingest_is_noop_sha256_dedup(temp_substrate):"
     },
     {
       "col": 39,
       "kind": "ruff:F811",
       "line": 383,
-      "path": "tests/test_bernays_public_domain.py"
+      "path": "tests/test_bernays_public_domain.py",
+      "snippet": "def test_corpus_audit_ok_after_ingest(temp_substrate):"
     },
     {
       "col": 54,
       "kind": "ruff:F811",
       "line": 418,
-      "path": "tests/test_bernays_public_domain.py"
+      "path": "tests/test_bernays_public_domain.py",
+      "snippet": "def test_no_in_copyright_bernays_title_present_as_pd(temp_substrate):"
     },
     {
       "col": 12,
       "kind": "ruff:SIM115",
       "line": 465,
-      "path": "tests/test_bernays_public_domain.py"
+      "path": "tests/test_bernays_public_domain.py",
+      "snippet": "text = open(note, encoding=\"utf-8\").read()"
     },
     {
       "col": 61,
       "kind": "ruff:F811",
       "line": 484,
-      "path": "tests/test_bernays_public_domain.py"
+      "path": "tests/test_bernays_public_domain.py",
+      "snippet": "def test_gutenberg_61364_with_null_basis_skips_never_serves(temp_substrate):"
     },
     {
       "col": 60,
       "kind": "ruff:F811",
       "line": 497,
-      "path": "tests/test_bernays_public_domain.py"
+      "path": "tests/test_bernays_public_domain.py",
+      "snippet": "def test_archive_propaganda_copyright_asserting_item_skips(temp_substrate):"
     },
     {
       "col": 11,
       "kind": "ruff:SIM115",
       "line": 614,
-      "path": "tests/test_bernays_public_domain.py"
+      "path": "tests/test_bernays_public_domain.py",
+      "snippet": "src = open("
     },
     {
       "col": 12,
       "kind": "ruff:SIM115",
       "line": 627,
-      "path": "tests/test_bernays_public_domain.py"
+      "path": "tests/test_bernays_public_domain.py",
+      "snippet": "note = open("
     },
     {
       "col": 10,
       "kind": "ruff:B017",
       "line": 208,
-      "path": "tests/test_billing_kyc.py"
+      "path": "tests/test_billing_kyc.py",
+      "snippet": "with pytest.raises(Exception):"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 28,
-      "path": "tests/test_block_repository.py"
+      "path": "tests/test_block_repository.py",
+      "snippet": "from runtime.db_lock import connect_write"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 29,
-      "path": "tests/test_block_repository.py"
+      "path": "tests/test_block_repository.py",
+      "snippet": "from substrate.graph.ops import insert_chunk, insert_document, insert_node"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 30,
-      "path": "tests/test_block_repository.py"
+      "path": "tests/test_block_repository.py",
+      "snippet": "from substrate.graph.schema import init_database_at_path"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 31,
-      "path": "tests/test_block_repository.py"
+      "path": "tests/test_block_repository.py",
+      "snippet": "from substrate.write.block_search import search_blocks"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 32,
-      "path": "tests/test_block_repository.py"
+      "path": "tests/test_block_repository.py",
+      "snippet": "from substrate.write.folders import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 41,
-      "path": "tests/test_block_repository.py"
+      "path": "tests/test_block_repository.py",
+      "snippet": "from substrate.write.provenance import resolve_provenance"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 27,
-      "path": "tests/test_brainstorm_interview.py"
+      "path": "tests/test_brainstorm_interview.py",
+      "snippet": "from roles.interviewer.drivers import DriverSet, DriverValidationError, parse_drivers"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 28,
-      "path": "tests/test_brainstorm_interview.py"
+      "path": "tests/test_brainstorm_interview.py",
+      "snippet": "from runtime.db_lock import connect_write"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 29,
-      "path": "tests/test_brainstorm_interview.py"
+      "path": "tests/test_brainstorm_interview.py",
+      "snippet": "from substrate.graph.ops import insert_deliverable, insert_section"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 30,
-      "path": "tests/test_brainstorm_interview.py"
+      "path": "tests/test_brainstorm_interview.py",
+      "snippet": "from substrate.graph.schema import init_database_at_path"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 31,
-      "path": "tests/test_brainstorm_interview.py"
+      "path": "tests/test_brainstorm_interview.py",
+      "snippet": "from substrate.write.brainstorm_blocks import drivers_to_blocks"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 32,
-      "path": "tests/test_brainstorm_interview.py"
+      "path": "tests/test_brainstorm_interview.py",
+      "snippet": "from substrate.write.outline_block import list_section_blocks"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 33,
-      "path": "tests/test_brainstorm_interview.py"
+      "path": "tests/test_brainstorm_interview.py",
+      "snippet": "from substrate.write.provenance import resolve_provenance"
     },
     {
       "col": 20,
       "kind": "ruff:B011",
       "line": 101,
-      "path": "tests/test_byok_store.py"
+      "path": "tests/test_byok_store.py",
+      "snippet": "assert False, \"expected KeyError\""
     },
     {
       "col": 27,
       "kind": "ruff:E741",
       "line": 56,
-      "path": "tests/test_caddy_allowlist_coverage.py"
+      "path": "tests/test_caddy_allowlist_coverage.py",
+      "snippet": "line = next(l for l in fh if \"@api_routes path\" in l)"
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 286,
-      "path": "tests/test_clis_exa_and_legal_gate.py"
+      "path": "tests/test_clis_exa_and_legal_gate.py",
+      "snippet": "rc = _cmd_retention_rollup(args, out=buf)"
     },
     {
       "col": 5,
       "kind": "ruff:SIM117",
       "line": 61,
-      "path": "tests/test_contact_guard.py"
+      "path": "tests/test_contact_guard.py",
+      "snippet": "with caplog.at_level(logging.WARNING, logger=\"antiek.payouts.contact_guard\"):"
     },
     {
       "col": 24,
       "kind": "ruff:E741",
       "line": 301,
-      "path": "tests/test_context_pack.py"
+      "path": "tests/test_context_pack.py",
+      "snippet": "assert {l.kind for l in p.layers} == {\"param_version_stamp\", \"session\"}"
     },
     {
       "col": 41,
       "kind": "ruff:E741",
       "line": 321,
-      "path": "tests/test_context_pack.py"
+      "path": "tests/test_context_pack.py",
+      "snippet": "total_from_event = sum(l.tokens for l in event.payload.layers)"
     },
     {
       "col": 21,
       "kind": "ruff:SIM108",
       "line": 392,
-      "path": "tests/test_context_pack.py"
+      "path": "tests/test_context_pack.py",
+      "snippet": "if up <= len(base):"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 96,
-      "path": "tests/test_contracts_conformance.py"
+      "path": "tests/test_contracts_conformance.py",
+      "snippet": "import hashlib"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 97,
-      "path": "tests/test_contracts_conformance.py"
+      "path": "tests/test_contracts_conformance.py",
+      "snippet": "import os"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 98,
-      "path": "tests/test_contracts_conformance.py"
+      "path": "tests/test_contracts_conformance.py",
+      "snippet": "import tempfile"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 99,
-      "path": "tests/test_contracts_conformance.py"
+      "path": "tests/test_contracts_conformance.py",
+      "snippet": "from dataclasses import dataclass as _dataclass"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 101,
-      "path": "tests/test_contracts_conformance.py"
+      "path": "tests/test_contracts_conformance.py",
+      "snippet": "from substrate.contracts.nodes import ("
     },
     {
       "col": 9,
       "kind": "ruff:F841",
       "line": 114,
-      "path": "tests/test_contributor_economics.py"
+      "path": "tests/test_contributor_economics.py",
+      "snippet": "lines = contributor.accrue_contributions(con, project_id=p.project_id,"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 33,
-      "path": "tests/test_corpus_audit.py"
+      "path": "tests/test_corpus_audit.py",
+      "snippet": "from runtime.db_lock import connect_write"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 34,
-      "path": "tests/test_corpus_audit.py"
+      "path": "tests/test_corpus_audit.py",
+      "snippet": "from substrate.corpus_audit import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 48,
-      "path": "tests/test_corpus_audit.py"
+      "path": "tests/test_corpus_audit.py",
+      "snippet": "from substrate.corpus_audit import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 51,
-      "path": "tests/test_corpus_audit.py"
+      "path": "tests/test_corpus_audit.py",
+      "snippet": "from substrate.graph.schema import init_database_at_path"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 52,
-      "path": "tests/test_corpus_audit.py"
+      "path": "tests/test_corpus_audit.py",
+      "snippet": "from substrate.ingest_budget import BudgetGovernor"
     },
     {
       "col": 26,
       "kind": "ruff:UP031",
       "line": 434,
-      "path": "tests/test_corpus_audit.py"
+      "path": "tests/test_corpus_audit.py",
+      "snippet": "metadata='{\"doi\": \"%s\"}' % doi,  # distinct DOIs"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 36,
-      "path": "tests/test_corpus_ingest_resilience.py"
+      "path": "tests/test_corpus_ingest_resilience.py",
+      "snippet": "from tools import ("
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 145,
-      "path": "tests/test_crdt_grant_revoke_race.py"
+      "path": "tests/test_crdt_grant_revoke_race.py",
+      "snippet": "revoke = admin_replica.make_revoke(\"admin\", \"u1\", \"doc1\")"
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 149,
-      "path": "tests/test_crdt_grant_revoke_race.py"
+      "path": "tests/test_crdt_grant_revoke_race.py",
+      "snippet": "edit = u1_replica.make_edit(\"u1\", \"doc1\", \"u1-content\")"
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 182,
-      "path": "tests/test_crdt_grant_revoke_race.py"
+      "path": "tests/test_crdt_grant_revoke_race.py",
+      "snippet": "revoke = admin.make_revoke(\"admin\", \"u1\", \"doc1\")"
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 249,
-      "path": "tests/test_crdt_grant_revoke_race.py"
+      "path": "tests/test_crdt_grant_revoke_race.py",
+      "snippet": "edit = u1.make_edit(\"u1\", \"doc1\", \"re-granted-edit\")"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 51,
-      "path": "tests/test_decomposer_env.py"
+      "path": "tests/test_decomposer_env.py",
+      "snippet": "from interfaces.research.environments import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 55,
-      "path": "tests/test_decomposer_env.py"
+      "path": "tests/test_decomposer_env.py",
+      "snippet": "from skills.verification.rubric import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 61,
-      "path": "tests/test_decomposer_env.py"
+      "path": "tests/test_decomposer_env.py",
+      "snippet": "from substrate.constants import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 21,
-      "path": "tests/test_dispatch_bootstrap.py"
+      "path": "tests/test_dispatch_bootstrap.py",
+      "snippet": "from substrate.dispatch.providers import register_default_providers"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 22,
-      "path": "tests/test_dispatch_bootstrap.py"
+      "path": "tests/test_dispatch_bootstrap.py",
+      "snippet": "from substrate.dispatch.router import ("
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 74,
-      "path": "tests/test_dispatch_bootstrap.py"
+      "path": "tests/test_dispatch_bootstrap.py",
+      "snippet": "first_instance = get_provider(\"deepseek\")"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 40,
-      "path": "tests/test_dispatch_fallback_chain.py"
+      "path": "tests/test_dispatch_fallback_chain.py",
+      "snippet": "from substrate.dispatch.base import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 45,
-      "path": "tests/test_dispatch_fallback_chain.py"
+      "path": "tests/test_dispatch_fallback_chain.py",
+      "snippet": "from substrate.dispatch.router import DispatchConfig, dispatch"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 46,
-      "path": "tests/test_dispatch_fallback_chain.py"
+      "path": "tests/test_dispatch_fallback_chain.py",
+      "snippet": "from substrate.event_log import trajectory"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 47,
-      "path": "tests/test_dispatch_fallback_chain.py"
+      "path": "tests/test_dispatch_fallback_chain.py",
+      "snippet": "from substrate.schemas import Event"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 29,
-      "path": "tests/test_draft_generation.py"
+      "path": "tests/test_draft_generation.py",
+      "snippet": "from roles.creative_writer.prompt import CreativeWriterContext"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 30,
-      "path": "tests/test_draft_generation.py"
+      "path": "tests/test_draft_generation.py",
+      "snippet": "from substrate.write.draft_generation import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 38,
-      "path": "tests/test_draft_generation.py"
+      "path": "tests/test_draft_generation.py",
+      "snippet": "from substrate.write.outline_block import OutlineBlock"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 30,
-      "path": "tests/test_edit_capture.py"
+      "path": "tests/test_edit_capture.py",
+      "snippet": "from substrate.edit import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 40,
-      "path": "tests/test_edit_capture.py"
+      "path": "tests/test_edit_capture.py",
+      "snippet": "from substrate.loop_3.trajectory_harvest import HarvestedTrajectory"
     },
     {
       "col": 26,
       "kind": "ruff:SIM115",
       "line": 216,
-      "path": "tests/test_edit_capture.py"
+      "path": "tests/test_edit_capture.py",
+      "snippet": "tree = ast.parse(open(mod.__file__).read())"
     },
     {
       "col": 5,
       "kind": "ruff:SIM117",
       "line": 166,
-      "path": "tests/test_escape_hatch.py"
+      "path": "tests/test_escape_hatch.py",
+      "snippet": "with pytest.raises(RuntimeError, match=\"from inside\"):"
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 416,
-      "path": "tests/test_events_schema.py"
+      "path": "tests/test_events_schema.py",
+      "snippet": "c = Claim(claim_id=\"c\", text=\"t\", confidence=\"moderate\", attribution_region_ids=[])"
     },
     {
       "col": 10,
       "kind": "ruff:B017",
       "line": 332,
-      "path": "tests/test_federation_event_emit.py"
+      "path": "tests/test_federation_event_emit.py",
+      "snippet": "with pytest.raises(Exception):"
     },
     {
       "col": 14,
       "kind": "ruff:B017",
       "line": 101,
-      "path": "tests/test_graph_insight_question.py"
+      "path": "tests/test_graph_insight_question.py",
+      "snippet": "with pytest.raises(Exception):"
     },
     {
       "col": 14,
       "kind": "ruff:B017",
       "line": 204,
-      "path": "tests/test_graph_insight_question.py"
+      "path": "tests/test_graph_insight_question.py",
+      "snippet": "with pytest.raises(Exception):"
     },
     {
       "col": 14,
       "kind": "ruff:B017",
       "line": 208,
-      "path": "tests/test_graph_insight_question.py"
+      "path": "tests/test_graph_insight_question.py",
+      "snippet": "with pytest.raises(Exception):"
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 320,
-      "path": "tests/test_knowledge_reuse_spr06.py"
+      "path": "tests/test_knowledge_reuse_spr06.py",
+      "snippet": "node_ids = _seed_graph("
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 436,
-      "path": "tests/test_knowledge_reuse_spr06.py"
+      "path": "tests/test_knowledge_reuse_spr06.py",
+      "snippet": "db = os.path.join(tmp_path, \"budget.duckdb\")  # unused dir for events only"
     },
     {
       "col": 10,
       "kind": "ruff:B017",
       "line": 320,
-      "path": "tests/test_legal_gate.py"
+      "path": "tests/test_legal_gate.py",
+      "snippet": "with pytest.raises(Exception):"
     },
     {
       "col": 33,
@@ -3109,7 +3610,8 @@
       "col": 33,
       "kind": "ruff:B905",
       "line": 435,
-      "path": "tests/test_loop_one_concurrent.py"
+      "path": "tests/test_loop_one_concurrent.py",
+      "snippet": "monkeypatch, app_and_bus, async_client, tmp_path,"
     },
     {
       "col": 42,
@@ -3121,373 +3623,435 @@
       "col": 5,
       "kind": "ruff:F841",
       "line": 137,
-      "path": "tests/test_max_context_pack.py"
+      "path": "tests/test_max_context_pack.py",
+      "snippet": "top = max(notes, key=lambda n: (score_note(n, 1.0), n.node_id))"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 45,
-      "path": "tests/test_merge_staging.py"
+      "path": "tests/test_merge_staging.py",
+      "snippet": "from types import SimpleNamespace"
     },
     {
       "col": 26,
       "kind": "ruff:SIM115",
       "line": 321,
-      "path": "tests/test_orchestration_phase_log.py"
+      "path": "tests/test_orchestration_phase_log.py",
+      "snippet": "on_disk = json.loads(open(log.path).read())"
     },
     {
       "col": 26,
       "kind": "ruff:SIM115",
       "line": 324,
-      "path": "tests/test_orchestration_phase_log.py"
+      "path": "tests/test_orchestration_phase_log.py",
+      "snippet": "on_disk = json.loads(open(log.path).read())"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 22,
-      "path": "tests/test_orchestrator_chase.py"
+      "path": "tests/test_orchestrator_chase.py",
+      "snippet": "from substrate.schemas import ("
     },
     {
       "col": 10,
       "kind": "ruff:B017",
       "line": 60,
-      "path": "tests/test_orchestrator_chase.py"
+      "path": "tests/test_orchestrator_chase.py",
+      "snippet": "with pytest.raises(Exception):"
     },
     {
       "col": 10,
       "kind": "ruff:B017",
       "line": 84,
-      "path": "tests/test_orchestrator_chase.py"
+      "path": "tests/test_orchestrator_chase.py",
+      "snippet": "with pytest.raises(Exception):"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 32,
-      "path": "tests/test_outline_block.py"
+      "path": "tests/test_outline_block.py",
+      "snippet": "from runtime.db_lock import connect_write"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 33,
-      "path": "tests/test_outline_block.py"
+      "path": "tests/test_outline_block.py",
+      "snippet": "from substrate.graph.ops import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 41,
-      "path": "tests/test_outline_block.py"
+      "path": "tests/test_outline_block.py",
+      "snippet": "from substrate.graph.schema import init_database_at_path"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 42,
-      "path": "tests/test_outline_block.py"
+      "path": "tests/test_outline_block.py",
+      "snippet": "from substrate.schemas.events import TYPED_PAYLOAD_ACTION_TYPES"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 43,
-      "path": "tests/test_outline_block.py"
+      "path": "tests/test_outline_block.py",
+      "snippet": "from substrate.write import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 52,
-      "path": "tests/test_outline_block.py"
+      "path": "tests/test_outline_block.py",
+      "snippet": "from substrate.write.clustering import cluster_blocks"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 53,
-      "path": "tests/test_outline_block.py"
+      "path": "tests/test_outline_block.py",
+      "snippet": "from substrate.write.migrate_outline_block import migrate"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 54,
-      "path": "tests/test_outline_block.py"
+      "path": "tests/test_outline_block.py",
+      "snippet": "from substrate.write.outline import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 60,
-      "path": "tests/test_outline_block.py"
+      "path": "tests/test_outline_block.py",
+      "snippet": "from substrate.write.provenance import resolve_provenance"
     },
     {
       "col": 5,
       "kind": "ruff:SIM117",
       "line": 139,
-      "path": "tests/test_outline_block.py"
+      "path": "tests/test_outline_block.py",
+      "snippet": "with connect_write(db[\"path\"], purpose=\"t\") as con:"
     },
     {
       "col": 5,
       "kind": "ruff:SIM117",
       "line": 149,
-      "path": "tests/test_outline_block.py"
+      "path": "tests/test_outline_block.py",
+      "snippet": "with connect_write(db[\"path\"], purpose=\"t\") as con:"
     },
     {
       "col": 5,
       "kind": "ruff:SIM117",
       "line": 159,
-      "path": "tests/test_outline_block.py"
+      "path": "tests/test_outline_block.py",
+      "snippet": "with connect_write(db[\"path\"], purpose=\"t\") as con:"
     },
     {
       "col": 5,
       "kind": "ruff:SIM117",
       "line": 168,
-      "path": "tests/test_outline_block.py"
+      "path": "tests/test_outline_block.py",
+      "snippet": "with connect_write(db[\"path\"], purpose=\"t\") as con:"
     },
     {
       "col": 5,
       "kind": "ruff:SIM117",
       "line": 180,
-      "path": "tests/test_outline_block.py"
+      "path": "tests/test_outline_block.py",
+      "snippet": "with connect_write(db[\"path\"], purpose=\"t\") as con:"
     },
     {
       "col": 5,
       "kind": "ruff:SIM117",
       "line": 210,
-      "path": "tests/test_outline_block.py"
+      "path": "tests/test_outline_block.py",
+      "snippet": "with connect_write(db[\"path\"], purpose=\"t\") as con:"
     },
     {
       "col": 5,
       "kind": "ruff:SIM117",
       "line": 231,
-      "path": "tests/test_outline_block.py"
+      "path": "tests/test_outline_block.py",
+      "snippet": "with connect_write(db[\"path\"], purpose=\"t\") as con:"
     },
     {
       "col": 60,
       "kind": "ruff:SIM115",
       "line": 349,
-      "path": "tests/test_outline_block.py"
+      "path": "tests/test_outline_block.py",
+      "snippet": "actions = [json.loads(line)[\"action_type\"] for line in open(jsonl)]"
     },
     {
       "col": 11,
       "kind": "ruff:SIM115",
       "line": 148,
-      "path": "tests/test_papers_arxiv_bulk.py"
+      "path": "tests/test_papers_arxiv_bulk.py",
+      "snippet": "src = open(mod.__file__, encoding=\"utf-8\").read()"
     },
     {
       "col": 10,
       "kind": "ruff:B017",
       "line": 142,
-      "path": "tests/test_partner_identity_persistence.py"
+      "path": "tests/test_partner_identity_persistence.py",
+      "snippet": "with pytest.raises(Exception):"
     },
     {
       "col": 1,
       "kind": "ruff:I001",
       "line": 3,
-      "path": "tests/test_payout_decisions_log.py"
+      "path": "tests/test_payout_decisions_log.py",
+      "snippet": "from __future__ import annotations"
     },
     {
       "col": 5,
       "kind": "ruff:F401",
       "line": 22,
-      "path": "tests/test_payout_decisions_log.py"
+      "path": "tests/test_payout_decisions_log.py",
+      "snippet": "distribute_session_ad_revenue,"
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 121,
-      "path": "tests/test_payout_event_emit.py"
+      "path": "tests/test_payout_event_emit.py",
+      "snippet": "router = PayoutRouter()"
     },
     {
       "col": 13,
       "kind": "ruff:SIM108",
       "line": 190,
-      "path": "tests/test_payout_pipeline_integration.py"
+      "path": "tests/test_payout_pipeline_integration.py",
+      "snippet": "if d.kind == RevShareKind.PLATFORM:"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 41,
-      "path": "tests/test_personal_lane_read_side.py"
+      "path": "tests/test_personal_lane_read_side.py",
+      "snippet": "from runtime.db_lock import connect_write"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 42,
-      "path": "tests/test_personal_lane_read_side.py"
+      "path": "tests/test_personal_lane_read_side.py",
+      "snippet": "from substrate.books.serve import serve_full_text"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 43,
-      "path": "tests/test_personal_lane_read_side.py"
+      "path": "tests/test_personal_lane_read_side.py",
+      "snippet": "from substrate.constants import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 47,
-      "path": "tests/test_personal_lane_read_side.py"
+      "path": "tests/test_personal_lane_read_side.py",
+      "snippet": "from substrate.corpus_audit import CHECK_THIRD_PARTY_SERVABLE, run_audit"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 48,
-      "path": "tests/test_personal_lane_read_side.py"
+      "path": "tests/test_personal_lane_read_side.py",
+      "snippet": "from substrate.graph.schema import init_database_at_path"
     },
     {
       "col": 5,
       "kind": "ruff:E731",
       "line": 210,
-      "path": "tests/test_personal_space.py"
+      "path": "tests/test_personal_space.py",
+      "snippet": "serial = lambda s: [(c.label, tuple(c.asset_ids)) for c in s.categories]"
     },
     {
       "col": 35,
       "kind": "ruff:E741",
       "line": 44,
-      "path": "tests/test_prime_intellect_compat.py"
+      "path": "tests/test_prime_intellect_compat.py",
+      "snippet": "rows = [json.loads(l) for l in f if l.strip()]"
     },
     {
       "col": 10,
       "kind": "ruff:B017",
       "line": 94,
-      "path": "tests/test_processing.py"
+      "path": "tests/test_processing.py",
+      "snippet": "with pytest.raises(Exception):"
     },
     {
       "col": 33,
       "kind": "ruff:B905",
       "line": 139,
-      "path": "tests/test_processing.py"
+      "path": "tests/test_processing.py",
+      "snippet": "num = sum(x * y for x, y in zip(a, b))"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 26,
-      "path": "tests/test_promote_context.py"
+      "path": "tests/test_promote_context.py",
+      "snippet": "from runtime.db_lock import connect_write"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 27,
-      "path": "tests/test_promote_context.py"
+      "path": "tests/test_promote_context.py",
+      "snippet": "from substrate.graph.ops import insert_chunk, insert_document, insert_node"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 28,
-      "path": "tests/test_promote_context.py"
+      "path": "tests/test_promote_context.py",
+      "snippet": "from substrate.graph.schema import init_database_at_path"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 29,
-      "path": "tests/test_promote_context.py"
+      "path": "tests/test_promote_context.py",
+      "snippet": "from substrate.write.outline_block import list_section_blocks"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 30,
-      "path": "tests/test_promote_context.py"
+      "path": "tests/test_promote_context.py",
+      "snippet": "from substrate.write.promote_context import ContextBlockSpec, promote_to_outline"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 31,
-      "path": "tests/test_promote_context.py"
+      "path": "tests/test_promote_context.py",
+      "snippet": "from substrate.write.provenance import resolve_provenance"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 51,
-      "path": "tests/test_public_domain_ingest.py"
+      "path": "tests/test_public_domain_ingest.py",
+      "snippet": "from acquisition.books.public_domain import ("
     },
     {
       "col": 9,
       "kind": "ruff:B007",
       "line": 292,
-      "path": "tests/test_reclassify_personal_reading.py"
+      "path": "tests/test_reclassify_personal_reading.py",
+      "snippet": "for doc_id, (_cc, meta) in post.items():"
     },
     {
       "col": 13,
       "kind": "ruff:B007",
       "line": 225,
-      "path": "tests/test_research_runner.py"
+      "path": "tests/test_research_runner.py",
+      "snippet": "paused_steps = r.cost(h).steps"
     },
     {
       "col": 10,
       "kind": "ruff:B017",
       "line": 257,
-      "path": "tests/test_results.py"
+      "path": "tests/test_results.py",
+      "snippet": "with pytest.raises(Exception):  # pydantic raises ValidationError on frozen"
     },
     {
       "col": 10,
       "kind": "ruff:B017",
       "line": 263,
-      "path": "tests/test_results.py"
+      "path": "tests/test_results.py",
+      "snippet": "with pytest.raises(Exception):"
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 146,
-      "path": "tests/test_retrieval_bench.py"
+      "path": "tests/test_retrieval_bench.py",
+      "snippet": "artifact = rb.run_benchmark("
     },
     {
       "col": 14,
       "kind": "ruff:B017",
       "line": 233,
-      "path": "tests/test_retrieval_substrate_interface.py"
+      "path": "tests/test_retrieval_substrate_interface.py",
+      "snippet": "try:"
     },
     {
       "col": 60,
       "kind": "ruff:E741",
       "line": 64,
-      "path": "tests/test_rev_share.py"
+      "path": "tests/test_rev_share.py",
+      "snippet": "lines = {(l.kind, l.recipient_ref): l.amount_cents for l in result.lines}"
     },
     {
       "col": 35,
       "kind": "ruff:E741",
       "line": 68,
-      "path": "tests/test_rev_share.py"
+      "path": "tests/test_rev_share.py",
+      "snippet": "assert sum(l.amount_cents for l in result.lines) + result.unallocated_cents == 7000"
     },
     {
       "col": 24,
       "kind": "ruff:E741",
       "line": 84,
-      "path": "tests/test_rev_share.py"
+      "path": "tests/test_rev_share.py",
+      "snippet": "pub_lines = [l for l in result.lines if l.kind == \"publisher\"]"
     },
     {
       "col": 42,
       "kind": "ruff:E741",
       "line": 99,
-      "path": "tests/test_rev_share.py"
+      "path": "tests/test_rev_share.py",
+      "snippet": "total_lines = sum(l.amount_cents for l in result.lines)"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 61,
-      "path": "tests/test_rlm_dag.py"
+      "path": "tests/test_rlm_dag.py",
+      "snippet": "from interfaces.research.rlm_dag import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 69,
-      "path": "tests/test_rlm_dag.py"
+      "path": "tests/test_rlm_dag.py",
+      "snippet": "from skills.verification.types import VerificationResult"
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 332,
-      "path": "tests/test_rlm_repl.py"
+      "path": "tests/test_rlm_repl.py",
+      "snippet": "answer = rlm_loop(repl, gen)"
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 283,
-      "path": "tests/test_rlm_tools.py"
+      "path": "tests/test_rlm_tools.py",
+      "snippet": "counter = {\"i\": 0}"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 14,
-      "path": "tests/test_role_creative_writer.py"
+      "path": "tests/test_role_creative_writer.py",
+      "snippet": "from roles.creative_writer import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 14,
-      "path": "tests/test_role_voice_note_followup.py"
+      "path": "tests/test_role_voice_note_followup.py",
+      "snippet": "from roles.voice_note_followup import ("
     },
     {
       "col": 10,
@@ -3499,775 +4063,904 @@
       "col": 10,
       "kind": "ruff:B017",
       "line": 64,
-      "path": "tests/test_rollover_persistence.py"
+      "path": "tests/test_rollover_persistence.py",
+      "snippet": "with pytest.raises(Exception):"
     },
     {
       "col": 17,
       "kind": "ruff:B905",
       "line": 44,
-      "path": "tests/test_rubric_benchmark.py"
+      "path": "tests/test_rubric_benchmark.py",
+      "snippet": "for x, y in zip(a, b):"
     },
     {
       "col": 23,
       "kind": "ruff:B905",
       "line": 48,
-      "path": "tests/test_rubric_benchmark.py"
+      "path": "tests/test_rubric_benchmark.py",
+      "snippet": "for cx, cy in zip(x.thesis_components, y.thesis_components):"
     },
     {
       "col": 9,
       "kind": "ruff:B007",
       "line": 115,
-      "path": "tests/test_seam_conformance.py"
+      "path": "tests/test_seam_conformance.py",
+      "snippet": "for seam, payload in payload_map.items():"
     },
     {
       "col": 16,
       "kind": "ruff:B011",
       "line": 204,
-      "path": "tests/test_seam_single_escrow_writer.py"
+      "path": "tests/test_seam_single_escrow_writer.py",
+      "snippet": "assert False, \"disbursable=True must be rejected (accrual \u2260 disbursement)\""
     },
     {
       "col": 9,
       "kind": "ruff:F841",
       "line": 515,
-      "path": "tests/test_skills_domain.py"
+      "path": "tests/test_skills_domain.py",
+      "snippet": "i = state[\"i\"]"
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 679,
-      "path": "tests/test_skills_verification.py"
+      "path": "tests/test_skills_verification.py",
+      "snippet": "eid = emit_score(\"inv-emit-j\", result)"
     },
     {
       "col": 19,
       "kind": "ruff:B905",
       "line": 193,
-      "path": "tests/test_source_throttle.py"
+      "path": "tests/test_source_throttle.py",
+      "snippet": "for lo, hi in zip(delays_min, delays_max):"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 22,
-      "path": "tests/test_sources_ingest.py"
+      "path": "tests/test_sources_ingest.py",
+      "snippet": "from interfaces.research.api.app import ("
     },
     {
       "col": 54,
       "kind": "ruff:E741",
       "line": 414,
-      "path": "tests/test_speak_api.py"
+      "path": "tests/test_speak_api.py",
+      "snippet": "assert any(l[\"interview_id\"] == interview_id for l in body[\"accrual_lines\"])"
     },
     {
       "col": 1,
       "kind": "ruff:I001",
       "line": 10,
-      "path": "tests/test_speak_payout_verifier.py"
+      "path": "tests/test_speak_payout_verifier.py",
+      "snippet": "from __future__ import annotations"
     },
     {
       "col": 49,
       "kind": "ruff:E741",
       "line": 280,
-      "path": "tests/test_speak_payout_verifier.py"
+      "path": "tests/test_speak_payout_verifier.py",
+      "snippet": "earning_before = {l.interview_id: l for l in release_before.accrual_lines"
     },
     {
       "col": 48,
       "kind": "ruff:E741",
       "line": 295,
-      "path": "tests/test_speak_payout_verifier.py"
+      "path": "tests/test_speak_payout_verifier.py",
+      "snippet": "earning_after = {l.interview_id: l for l in release_after.accrual_lines"
     },
     {
       "col": 42,
       "kind": "ruff:E741",
       "line": 347,
-      "path": "tests/test_speak_payout_verifier.py"
+      "path": "tests/test_speak_payout_verifier.py",
+      "snippet": "earning = {l.interview_id: l for l in release.accrual_lines if not l.slop_gated}"
     },
     {
       "col": 9,
       "kind": "ruff:F841",
       "line": 458,
-      "path": "tests/test_spec_gaps.py"
+      "path": "tests/test_spec_gaps.py",
+      "snippet": "r2 = rollup_expired(retention_days=30, db_path=isolated[\"db\"],"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 24,
-      "path": "tests/test_sprint11_api.py"
+      "path": "tests/test_sprint11_api.py",
+      "snippet": "from substrate.schemas import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 17,
-      "path": "tests/test_sprint14_api.py"
+      "path": "tests/test_sprint14_api.py",
+      "snippet": "from interfaces.research.api.app import _detect_source_kind"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 17,
-      "path": "tests/test_sprint15_api.py"
+      "path": "tests/test_sprint15_api.py",
+      "snippet": "from substrate.schemas import TYPED_PAYLOAD_ACTION_TYPES, ActionType"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 20,
-      "path": "tests/test_sprint16_interviews.py"
+      "path": "tests/test_sprint16_interviews.py",
+      "snippet": "from roles.interviewer import ("
     },
     {
       "col": 5,
       "kind": "ruff:SIM117",
       "line": 106,
-      "path": "tests/test_sprint16_interviews.py"
+      "path": "tests/test_sprint16_interviews.py",
+      "snippet": "with connect_write(temp_substrate[\"db_path\"], purpose=\"test\") as con:"
     },
     {
       "col": 1,
       "kind": "ruff:I001",
       "line": 3,
-      "path": "tests/test_stripe_connect.py"
+      "path": "tests/test_stripe_connect.py",
+      "snippet": "from __future__ import annotations"
     },
     {
       "col": 8,
       "kind": "ruff:F401",
       "line": 7,
-      "path": "tests/test_stripe_connect.py"
+      "path": "tests/test_stripe_connect.py",
+      "snippet": "import pytest"
     },
     {
       "col": 5,
       "kind": "ruff:F401",
       "line": 10,
-      "path": "tests/test_stripe_connect.py"
+      "path": "tests/test_stripe_connect.py",
+      "snippet": "BillingEvent,"
     },
     {
       "col": 5,
       "kind": "ruff:F401",
       "line": 14,
-      "path": "tests/test_stripe_connect.py"
+      "path": "tests/test_stripe_connect.py",
+      "snippet": "StripeConnectAccount,"
     },
     {
       "col": 5,
       "kind": "ruff:F401",
       "line": 16,
-      "path": "tests/test_stripe_connect.py"
+      "path": "tests/test_stripe_connect.py",
+      "snippet": "TokenUsageRecord,"
     },
     {
       "col": 12,
       "kind": "ruff:SIM300",
       "line": 56,
-      "path": "tests/test_stripe_connect.py"
+      "path": "tests/test_stripe_connect.py",
+      "snippet": "assert CREATOR_AD_REV_SHARE == Decimal(\"0.70\")"
     },
     {
       "col": 12,
       "kind": "ruff:SIM300",
       "line": 57,
-      "path": "tests/test_stripe_connect.py"
+      "path": "tests/test_stripe_connect.py",
+      "snippet": "assert PUBLISHER_AD_REV_SHARE == Decimal(\"0.70\")"
     },
     {
       "col": 1,
       "kind": "ruff:I001",
       "line": 6,
-      "path": "tests/test_stripe_payouts.py"
+      "path": "tests/test_stripe_payouts.py",
+      "snippet": "from __future__ import annotations"
     },
     {
       "col": 8,
       "kind": "ruff:F401",
       "line": 8,
-      "path": "tests/test_stripe_payouts.py"
+      "path": "tests/test_stripe_payouts.py",
+      "snippet": "import pytest"
     },
     {
       "col": 25,
       "kind": "ruff:UP017",
       "line": 259,
-      "path": "tests/test_stripe_payouts.py"
+      "path": "tests/test_stripe_payouts.py",
+      "snippet": "year = datetime.now(timezone.utc).year"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 27,
-      "path": "tests/test_style_conditioning.py"
+      "path": "tests/test_style_conditioning.py",
+      "snippet": "from roles.creative_writer.prompt import CreativeWriterBlock, CreativeWriterContext"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 28,
-      "path": "tests/test_style_conditioning.py"
+      "path": "tests/test_style_conditioning.py",
+      "snippet": "from substrate.edit.authoring_trajectory import reconstruct_from_events"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 29,
-      "path": "tests/test_style_conditioning.py"
+      "path": "tests/test_style_conditioning.py",
+      "snippet": "from substrate.write.style_profile import ("
     },
     {
       "col": 22,
       "kind": "ruff:SIM115",
       "line": 160,
-      "path": "tests/test_style_conditioning.py"
+      "path": "tests/test_style_conditioning.py",
+      "snippet": "tree = ast.parse(open(sp.__file__).read())"
     },
     {
       "col": 24,
       "kind": "ruff:E741",
       "line": 427,
-      "path": "tests/test_style_extractor.py"
+      "path": "tests/test_style_extractor.py",
+      "snippet": "assert [l.kind for l in wired.layers] == [l.kind for l in baseline.layers]"
     },
     {
       "col": 58,
       "kind": "ruff:E741",
       "line": 427,
-      "path": "tests/test_style_extractor.py"
+      "path": "tests/test_style_extractor.py",
+      "snippet": "assert [l.kind for l in wired.layers] == [l.kind for l in baseline.layers]"
     },
     {
       "col": 45,
       "kind": "ruff:E741",
       "line": 428,
-      "path": "tests/test_style_extractor.py"
+      "path": "tests/test_style_extractor.py",
+      "snippet": "assert \"style_guide\" not in {l.kind for l in wired.layers}"
     },
     {
       "col": 25,
       "kind": "ruff:E741",
       "line": 442,
-      "path": "tests/test_style_extractor.py"
+      "path": "tests/test_style_extractor.py",
+      "snippet": "kinds = [l.kind for l in pack.layers]"
     },
     {
       "col": 45,
       "kind": "ruff:E741",
       "line": 459,
-      "path": "tests/test_style_extractor.py"
+      "path": "tests/test_style_extractor.py",
+      "snippet": "assert \"style_guide\" not in {l.kind for l in pack.layers}"
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 188,
-      "path": "tests/test_substrate_end_to_end.py"
+      "path": "tests/test_substrate_end_to_end.py",
+      "snippet": "apply_result_v2 = apply_harness("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 21,
-      "path": "tests/test_textbooks_doab.py"
+      "path": "tests/test_textbooks_doab.py",
+      "snippet": "from acquisition.licenses_core import classify"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 22,
-      "path": "tests/test_textbooks_doab.py"
+      "path": "tests/test_textbooks_doab.py",
+      "snippet": "from acquisition.textbooks import doab"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 23,
-      "path": "tests/test_textbooks_doab.py"
+      "path": "tests/test_textbooks_doab.py",
+      "snippet": "from acquisition.textbooks._common import ingest_textbook"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 24,
-      "path": "tests/test_textbooks_doab.py"
+      "path": "tests/test_textbooks_doab.py",
+      "snippet": "from substrate.constants import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 28,
-      "path": "tests/test_textbooks_doab.py"
+      "path": "tests/test_textbooks_doab.py",
+      "snippet": "from tests._textbook_fixtures import (  # noqa: F401  (temp_substrate fixture)"
     },
     {
       "col": 40,
       "kind": "ruff:F811",
       "line": 93,
-      "path": "tests/test_textbooks_doab.py"
+      "path": "tests/test_textbooks_doab.py",
+      "snippet": "def test_ccby_book_servable_with_basis(temp_substrate):"
     },
     {
       "col": 56,
       "kind": "ruff:F811",
       "line": 114,
-      "path": "tests/test_textbooks_doab.py"
+      "path": "tests/test_textbooks_doab.py",
+      "snippet": "def test_html_landing_page_rejected_by_extraction_gate(temp_substrate):"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 22,
-      "path": "tests/test_textbooks_libretexts.py"
+      "path": "tests/test_textbooks_libretexts.py",
+      "snippet": "from acquisition.licenses_core import classify"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 23,
-      "path": "tests/test_textbooks_libretexts.py"
+      "path": "tests/test_textbooks_libretexts.py",
+      "snippet": "from acquisition.textbooks import libretexts"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 24,
-      "path": "tests/test_textbooks_libretexts.py"
+      "path": "tests/test_textbooks_libretexts.py",
+      "snippet": "from acquisition.textbooks._common import ingest_textbook"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 25,
-      "path": "tests/test_textbooks_libretexts.py"
+      "path": "tests/test_textbooks_libretexts.py",
+      "snippet": "from substrate.constants import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 29,
-      "path": "tests/test_textbooks_libretexts.py"
+      "path": "tests/test_textbooks_libretexts.py",
+      "snippet": "from tests._textbook_fixtures import (  # noqa: F401  (temp_substrate fixture)"
     },
     {
       "col": 34,
       "kind": "ruff:F811",
       "line": 90,
-      "path": "tests/test_textbooks_libretexts.py"
+      "path": "tests/test_textbooks_libretexts.py",
+      "snippet": "def test_ccbysa_ingests_servable(temp_substrate):"
     },
     {
       "col": 45,
       "kind": "ruff:F811",
       "line": 149,
-      "path": "tests/test_textbooks_libretexts.py"
+      "path": "tests/test_textbooks_libretexts.py",
+      "snippet": "def test_ccbync_ingests_gated_body_withheld(temp_substrate):"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 22,
-      "path": "tests/test_textbooks_mit_ocw.py"
+      "path": "tests/test_textbooks_mit_ocw.py",
+      "snippet": "from acquisition.licenses_core import classify"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 23,
-      "path": "tests/test_textbooks_mit_ocw.py"
+      "path": "tests/test_textbooks_mit_ocw.py",
+      "snippet": "from acquisition.textbooks import mit_ocw"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 24,
-      "path": "tests/test_textbooks_mit_ocw.py"
+      "path": "tests/test_textbooks_mit_ocw.py",
+      "snippet": "from acquisition.textbooks._common import ingest_textbook"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 25,
-      "path": "tests/test_textbooks_mit_ocw.py"
+      "path": "tests/test_textbooks_mit_ocw.py",
+      "snippet": "from substrate.books.servability import is_servable_full_text, servability_of"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 26,
-      "path": "tests/test_textbooks_mit_ocw.py"
+      "path": "tests/test_textbooks_mit_ocw.py",
+      "snippet": "from substrate.constants import SERVABLE_CONTENT_CLASSES"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 27,
-      "path": "tests/test_textbooks_mit_ocw.py"
+      "path": "tests/test_textbooks_mit_ocw.py",
+      "snippet": "from tests._textbook_fixtures import (  # noqa: F401  (temp_substrate fixture)"
     },
     {
       "col": 45,
       "kind": "ruff:F811",
       "line": 82,
-      "path": "tests/test_textbooks_mit_ocw.py"
+      "path": "tests/test_textbooks_mit_ocw.py",
+      "snippet": "def test_ncsa_servable_iff_classify_says_so(temp_substrate):"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 19,
-      "path": "tests/test_textbooks_openstax.py"
+      "path": "tests/test_textbooks_openstax.py",
+      "snippet": "from acquisition.licenses_core import classify"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 20,
-      "path": "tests/test_textbooks_openstax.py"
+      "path": "tests/test_textbooks_openstax.py",
+      "snippet": "from acquisition.textbooks import openstax"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 21,
-      "path": "tests/test_textbooks_openstax.py"
+      "path": "tests/test_textbooks_openstax.py",
+      "snippet": "from acquisition.textbooks._common import ingest_textbook"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 22,
-      "path": "tests/test_textbooks_openstax.py"
+      "path": "tests/test_textbooks_openstax.py",
+      "snippet": "from substrate.constants import SERVABLE_CONTENT_CLASSES"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 23,
-      "path": "tests/test_textbooks_openstax.py"
+      "path": "tests/test_textbooks_openstax.py",
+      "snippet": "from tests._textbook_fixtures import (  # noqa: F401  (temp_substrate fixture)"
     },
     {
       "col": 56,
       "kind": "ruff:F811",
       "line": 89,
-      "path": "tests/test_textbooks_openstax.py"
+      "path": "tests/test_textbooks_openstax.py",
+      "snippet": "def test_ccby_ingests_servable_with_source_named_basis(temp_substrate):"
     },
     {
       "col": 52,
       "kind": "ruff:F811",
       "line": 123,
-      "path": "tests/test_textbooks_openstax.py"
+      "path": "tests/test_textbooks_openstax.py",
+      "snippet": "def test_missing_license_routes_gated_not_servable(temp_substrate):"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 26,
-      "path": "tests/test_trace_to_source.py"
+      "path": "tests/test_trace_to_source.py",
+      "snippet": "from runtime.db_lock import connect_write"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 27,
-      "path": "tests/test_trace_to_source.py"
+      "path": "tests/test_trace_to_source.py",
+      "snippet": "from substrate.graph.ops import insert_chunk, insert_document, insert_node"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 28,
-      "path": "tests/test_trace_to_source.py"
+      "path": "tests/test_trace_to_source.py",
+      "snippet": "from substrate.graph.schema import init_database_at_path"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 29,
-      "path": "tests/test_trace_to_source.py"
+      "path": "tests/test_trace_to_source.py",
+      "snippet": "from substrate.write.outline_block import OutlineBlock, place_block, place_user_authored_block"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 30,
-      "path": "tests/test_trace_to_source.py"
+      "path": "tests/test_trace_to_source.py",
+      "snippet": "from substrate.write.trace import resolve_trace_target"
     },
     {
       "col": 5,
       "kind": "ruff:SIM117",
       "line": 161,
-      "path": "tests/test_transfer_initiator.py"
+      "path": "tests/test_transfer_initiator.py",
+      "snippet": "with connect_write(isolated_db, purpose=\"test:xfer\") as con:"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 20,
-      "path": "tests/test_voice_style_prompts.py"
+      "path": "tests/test_voice_style_prompts.py",
+      "snippet": "from roles.evidence_retriever.prompt import EVIDENCE_RETRIEVER_SYSTEM_PROMPT"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 21,
-      "path": "tests/test_voice_style_prompts.py"
+      "path": "tests/test_voice_style_prompts.py",
+      "snippet": "from roles.synthesizer.prompt import SYNTHESIZER_SYSTEM_PROMPT"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 28,
-      "path": "tests/test_write_routes.py"
+      "path": "tests/test_write_routes.py",
+      "snippet": "from interfaces.research.api import create_app"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 29,
-      "path": "tests/test_write_routes.py"
+      "path": "tests/test_write_routes.py",
+      "snippet": "from runtime.db_lock import connect_write"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 30,
-      "path": "tests/test_write_routes.py"
+      "path": "tests/test_write_routes.py",
+      "snippet": "from substrate.graph import default_db_path, ensure_initialized"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 31,
-      "path": "tests/test_write_routes.py"
+      "path": "tests/test_write_routes.py",
+      "snippet": "from substrate.graph.ops import ("
     },
     {
       "col": 5,
       "kind": "ruff:SIM117",
       "line": 341,
-      "path": "tests/test_write_routes.py"
+      "path": "tests/test_write_routes.py",
+      "snippet": "with connect_write(default_db_path(), purpose=\"test/persist_bad\") as con:"
     },
     {
       "col": 20,
       "kind": "ruff:B011",
       "line": 206,
-      "path": "tests/test_x_byok_ingest.py"
+      "path": "tests/test_x_byok_ingest.py",
+      "snippet": "assert False, \"expected XApiError on a 429\""
     },
     {
       "col": 5,
       "kind": "ruff:F841",
       "line": 107,
-      "path": "tests/tools/test_boundary_task.py"
+      "path": "tests/tools/test_boundary_task.py",
+      "snippet": "t1 = store.queue(\"a\", 30)"
     },
     {
       "col": 13,
       "kind": "ruff:SIM105",
       "line": 413,
-      "path": "tools/arxiv_census.py"
+      "path": "tools/arxiv_census.py",
+      "snippet": "try:"
     },
     {
       "col": 9,
       "kind": "ruff:SIM108",
       "line": 271,
-      "path": "tools/dispatch_tier_verdict/analyzer.py"
+      "path": "tools/dispatch_tier_verdict/analyzer.py",
+      "snippet": "if rubric_outcomes:"
     },
     {
       "col": 16,
       "kind": "ruff:RET504",
       "line": 41,
-      "path": "tools/gepa/pareto_front.py"
+      "path": "tools/gepa/pareto_front.py",
+      "snippet": "return gt_any"
     },
     {
       "col": 13,
       "kind": "ruff:SIM102",
       "line": 81,
-      "path": "tools/lint/boundary_check.py"
+      "path": "tools/lint/boundary_check.py",
+      "snippet": "elif isinstance(node, ast.ImportFrom):"
     },
     {
       "col": 5,
       "kind": "ruff:SIM110",
       "line": 190,
-      "path": "tools/lint/contact_guard_check.py"
+      "path": "tools/lint/contact_guard_check.py",
+      "snippet": "for arg in node.args:"
     },
     {
       "col": 9,
       "kind": "ruff:SIM102",
       "line": 157,
-      "path": "tools/lint/rate_governor_check.py"
+      "path": "tools/lint/rate_governor_check.py",
+      "snippet": "if isinstance(node, ast.Attribute) and node.attr in _HTTP_CLIENT_ANNOTATIONS:"
     },
     {
       "col": 5,
       "kind": "ruff:SIM103",
       "line": 183,
-      "path": "tools/lint/reachability_gate.py"
+      "path": "tools/lint/reachability_gate.py",
+      "snippet": "if \".test.\" in name or \".compose.\" in name:"
     },
     {
       "col": 12,
       "kind": "ruff:SIM109",
       "line": 240,
-      "path": "tools/lint/reachability_gate.py"
+      "path": "tools/lint/reachability_gate.py",
+      "snippet": "if resolved == target_resolved or resolved == target_noext:"
     },
     {
       "col": 5,
       "kind": "ruff:SIM108",
       "line": 495,
-      "path": "tools/lint/reachability_gate.py"
+      "path": "tools/lint/reachability_gate.py",
+      "snippet": "if baseline is None:"
     },
     {
       "col": 5,
       "kind": "ruff:SIM103",
       "line": 161,
-      "path": "tools/lint/serve_invariants_check.py"
+      "path": "tools/lint/serve_invariants_check.py",
+      "snippet": "# Its docstring is explicit \u2014 \"does not create the DB, call the network, or"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 43,
-      "path": "tools/marketplace/programmatic_gate.py"
+      "path": "tools/marketplace/programmatic_gate.py",
+      "snippet": "class ProgrammaticVerdictKind(str, enum.Enum):"
     },
     {
       "col": 9,
       "kind": "ruff:SIM103",
       "line": 30,
-      "path": "tools/prompt_autoresearch/budget.py"
+      "path": "tools/prompt_autoresearch/budget.py",
+      "snippet": "if self.spent_total_usd + projected_iteration_cost_usd > self.total_cap_usd:"
     },
     {
       "col": 25,
       "kind": "ruff:UP017",
       "line": 14,
-      "path": "tools/stripe_connect/accounts.py"
+      "path": "tools/stripe_connect/accounts.py",
+      "snippet": "return datetime.now(timezone.utc).isoformat().replace(\"+00:00\", \"Z\")"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 17,
-      "path": "tools/stripe_connect/accounts.py"
+      "path": "tools/stripe_connect/accounts.py",
+      "snippet": "class StripeAccountStatus(str, Enum):"
     },
     {
       "col": 33,
       "kind": "ruff:UP045",
       "line": 67,
-      "path": "tools/stripe_connect/accounts.py"
+      "path": "tools/stripe_connect/accounts.py",
+      "snippet": "segregated_account_ref: Optional[str] = None,"
     },
     {
       "col": 19,
       "kind": "ruff:UP045",
       "line": 68,
-      "path": "tools/stripe_connect/accounts.py"
+      "path": "tools/stripe_connect/accounts.py",
+      "snippet": "metadata: Optional[dict] = None,"
     },
     {
       "col": 42,
       "kind": "ruff:UP045",
       "line": 106,
-      "path": "tools/stripe_connect/accounts.py"
+      "path": "tools/stripe_connect/accounts.py",
+      "snippet": "def _find_by_idem(self, key: str) -> Optional[dict]:"
     },
     {
       "col": 26,
       "kind": "ruff:UP045",
       "line": 122,
-      "path": "tools/stripe_connect/accounts.py"
+      "path": "tools/stripe_connect/accounts.py",
+      "snippet": "legal_contact_email: Optional[str],"
     },
     {
       "col": 26,
       "kind": "ruff:UP045",
       "line": 146,
-      "path": "tools/stripe_connect/accounts.py"
+      "path": "tools/stripe_connect/accounts.py",
+      "snippet": "legal_contact_email: Optional[str] = None,"
     },
     {
       "col": 19,
       "kind": "ruff:UP045",
       "line": 147,
-      "path": "tools/stripe_connect/accounts.py"
+      "path": "tools/stripe_connect/accounts.py",
+      "snippet": "display_name: Optional[str] = None,"
     },
     {
       "col": 1,
       "kind": "ruff:UP035",
       "line": 24,
-      "path": "tools/stripe_connect/payouts.py"
+      "path": "tools/stripe_connect/payouts.py",
+      "snippet": "from typing import Iterable, Optional"
     },
     {
       "col": 20,
       "kind": "ruff:F401",
       "line": 24,
-      "path": "tools/stripe_connect/payouts.py"
+      "path": "tools/stripe_connect/payouts.py",
+      "snippet": "from typing import Iterable, Optional"
     },
     {
       "col": 11,
       "kind": "ruff:UP012",
       "line": 55,
-      "path": "tools/stripe_connect/payouts.py"
+      "path": "tools/stripe_connect/payouts.py",
+      "snippet": "raw = f\"{impression_id}|{recipient_ref}\".encode(\"utf-8\")"
     },
     {
       "col": 19,
       "kind": "ruff:UP045",
       "line": 67,
-      "path": "tools/stripe_connect/payouts.py"
+      "path": "tools/stripe_connect/payouts.py",
+      "snippet": "provider_ref: Optional[str] = None"
     },
     {
       "col": 23,
       "kind": "ruff:F541",
       "line": 158,
-      "path": "tools/stripe_connect/payouts.py"
+      "path": "tools/stripe_connect/payouts.py",
+      "snippet": "notes=f\"verdict=REVIEW awaiting operator decision\","
     },
     {
       "col": 13,
       "kind": "ruff:F841",
       "line": 187,
-      "path": "tools/stripe_connect/payouts.py"
+      "path": "tools/stripe_connect/payouts.py",
+      "snippet": "entry = router.operations_log.append_intent("
     },
     {
       "col": 25,
       "kind": "ruff:UP017",
       "line": 42,
-      "path": "tools/stripe_connect/pricing.py"
+      "path": "tools/stripe_connect/pricing.py",
+      "snippet": "return datetime.now(timezone.utc).isoformat().replace(\"+00:00\", \"Z\")"
     },
     {
       "col": 7,
       "kind": "ruff:UP042",
       "line": 45,
-      "path": "tools/stripe_connect/pricing.py"
+      "path": "tools/stripe_connect/pricing.py",
+      "snippet": "class PricingTier(str, Enum):"
     },
     {
       "col": 23,
       "kind": "ruff:UP045",
       "line": 91,
-      "path": "tools/stripe_connect/pricing.py"
+      "path": "tools/stripe_connect/pricing.py",
+      "snippet": "investigation_id: Optional[str]"
     },
     {
       "col": 18,
       "kind": "ruff:UP045",
       "line": 92,
-      "path": "tools/stripe_connect/pricing.py"
+      "path": "tools/stripe_connect/pricing.py",
+      "snippet": "notebook_id: Optional[str]"
     },
     {
       "col": 15,
       "kind": "ruff:UP045",
       "line": 93,
-      "path": "tools/stripe_connect/pricing.py"
+      "path": "tools/stripe_connect/pricing.py",
+      "snippet": "chunk_id: Optional[str]       # for attribution flow"
     },
     {
       "col": 23,
       "kind": "ruff:UP045",
       "line": 132,
-      "path": "tools/stripe_connect/pricing.py"
+      "path": "tools/stripe_connect/pricing.py",
+      "snippet": "investigation_id: Optional[str] = None,"
     },
     {
       "col": 18,
       "kind": "ruff:UP045",
       "line": 133,
-      "path": "tools/stripe_connect/pricing.py"
+      "path": "tools/stripe_connect/pricing.py",
+      "snippet": "notebook_id: Optional[str] = None,"
     },
     {
       "col": 15,
       "kind": "ruff:UP045",
       "line": 134,
-      "path": "tools/stripe_connect/pricing.py"
+      "path": "tools/stripe_connect/pricing.py",
+      "snippet": "chunk_id: Optional[str] = None,"
     },
     {
       "col": 25,
       "kind": "ruff:UP017",
       "line": 31,
-      "path": "tools/stripe_connect/providers.py"
+      "path": "tools/stripe_connect/providers.py",
+      "snippet": "return datetime.now(timezone.utc).isoformat().replace(\"+00:00\", \"Z\")"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 46,
-      "path": "tools/verify_ad_economics.py"
+      "path": "tools/verify_ad_economics.py",
+      "snippet": "from runtime.db_lock import connect_write"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 47,
-      "path": "tools/verify_ad_economics.py"
+      "path": "tools/verify_ad_economics.py",
+      "snippet": "from substrate import ip_holders"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 48,
-      "path": "tools/verify_ad_economics.py"
+      "path": "tools/verify_ad_economics.py",
+      "snippet": "from substrate.ad_inventory.ad_bidding import AdInventoryItem"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 49,
-      "path": "tools/verify_ad_economics.py"
+      "path": "tools/verify_ad_economics.py",
+      "snippet": "from substrate.ad_inventory.attribution import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 54,
-      "path": "tools/verify_ad_economics.py"
+      "path": "tools/verify_ad_economics.py",
+      "snippet": "AlgorithmComparison,"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 58,
-      "path": "tools/verify_ad_economics.py"
+      "path": "tools/verify_ad_economics.py",
+      "snippet": "from substrate.ad_inventory.auction_ranker import select_ad"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 59,
-      "path": "tools/verify_ad_economics.py"
+      "path": "tools/verify_ad_economics.py",
+      "snippet": "from substrate.ad_inventory.frame_attention import ("
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 60,
-      "path": "tools/verify_ad_economics.py"
+      "path": "tools/verify_ad_economics.py",
+      "snippet": "FrameAttentionSample,"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 65,
-      "path": "tools/verify_ad_economics.py"
+      "path": "tools/verify_ad_economics.py",
+      "snippet": "WindowAccrual,"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 71,
-      "path": "tools/verify_ad_economics.py"
+      "path": "tools/verify_ad_economics.py",
+      "snippet": "InventoryTargeting,"
     },
     {
       "col": 1,
       "kind": "ruff:E402",
       "line": 76,
-      "path": "tools/verify_ad_economics.py"
+      "path": "tools/verify_ad_economics.py",
+      "snippet": "from substrate.speak import contributor, gate_status"
     },
     {
       "col": 1,
@@ -4279,7 +4972,8 @@
       "col": 13,
       "kind": "ruff:F841",
       "line": 718,
-      "path": "tools/verify_ad_economics.py"
+      "path": "tools/verify_ad_economics.py",
+      "snippet": "lines.append(f\"  {a.asset_id:22} content_class={a.content_class!r:30} \""
     }
   ]
 }

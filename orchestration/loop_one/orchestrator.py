@@ -60,15 +60,18 @@ import logging
 import os
 import re
 import sys
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     import duckdb
 
+    from compounding.skill_growth import PatchOutcome, SkillPatchGate
     from substrate.dispatch.research_tier import ResearchTier
+    from substrate.eval.groundedness.scorer import GroundednessResult
 
 # Direct import — orchestration depends on substrate.
 _PKG_ROOT = os.path.dirname(
@@ -114,6 +117,14 @@ from substrate.schemas import (  # noqa: E402
 from .coordinator import InvestigationCoordinator, broadcast_emit  # noqa: E402
 
 _log = logging.getLogger(__name__)
+
+PHASE8_CALIBRATION_INVESTIGATION_IDS_ENV = (
+    "ANTIEK_PHASE8_CALIBRATION_INVESTIGATION_IDS"
+)
+PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV = (
+    "ANTIEK_PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS"
+)
+PHASE8_REPLAY_OVERLAY_PARENT_ENV = "ANTIEK_PHASE8_REPLAY_OVERLAY_PARENT"
 
 
 # ---------------------------------------------------------------------------
@@ -297,6 +308,119 @@ def _render_chunks_block_for_sub_question(
         )
         blocks.append(header + "\n" + text + "\n")
     return "\n---\n".join(blocks)
+
+
+# §9.0 guard: node_types whose ``canonical_label`` is a distilled free-text
+# SENTENCE (the DRW "atomic units of distilled truth" + a claim assertion),
+# which may reproduce personal_reading / restricted source text. The subgraph
+# read has no rights gate and nodes carry no rights provenance, so these labels
+# are withheld from the rendered block. Canonical entity labels (short names)
+# are not in this set and still surface.
+_FREE_TEXT_NODE_TYPES = frozenset({"insight", "question", "claim"})
+
+
+def _render_subgraph_block_for_sub_question(
+    sub_question: str,
+    *,
+    top_k: int = 5,
+    policy_tag: str = "attribution_eligible",
+) -> str:
+    """The evidence-retriever role's "Context package — subgraph" (its prompt
+    §b: *a subgraph of knowledge-graph edges and nodes ... each with a stable
+    ``edge_id``*). Renders the graph neighborhood of the sub-question's
+    retrieved chunks — edges (source --[relation]--> target, with the citable
+    ``edge_id``) plus the connected nodes — so a claim can be grounded on a
+    graph relationship, not only flat chunk text.
+
+    Mirrors ``_render_chunks_block_for_sub_question`` exactly on the substrate
+    contract: the SAME read-only connection, the SAME embedder, the SAME §9.0
+    ``policy_tag`` gate — but requests ``with_edges=True`` (the capability
+    ``substrate.graph.search.search`` already exposes and the RLM path already
+    uses) and renders edges instead of chunk bodies. This REPLACES the historic
+    ``"(subgraph search not yet wired)"`` placeholder: before this, every live
+    investigation's evidence retriever was structurally blind to the graph.
+
+    Read-only + best-effort: any failure degrades to a labelled note (never a
+    dead investigation), exactly as the chunks path does — the subgraph is
+    additive evidence, the chunks_block remains the floor.
+    """
+    try:
+        import duckdb
+
+        from processing.embedding.embed import default_embedding_provider
+        from substrate.graph import default_db_path
+        from substrate.graph.search import search as graph_search
+
+        db_path = default_db_path()
+        embedder = default_embedding_provider()
+        con = duckdb.connect(db_path, read_only=True)
+        try:
+            res = graph_search(
+                con, sub_question, model=embedder, top_k=top_k,
+                policy_tag=policy_tag, with_edges=True,
+            )
+        finally:
+            con.close()
+    except Exception as exc:
+        return f"(subgraph search unavailable: {type(exc).__name__}: {exc})"
+
+    # Collect edges (deduped) + all endpoint nodes in one pass, THEN render —
+    # rendering needs the full node-type map to apply the §9.0 label guard.
+    edges: list[dict[str, Any]] = []
+    seen_edges: set[str] = set()
+    node_by_id: dict[str, dict[str, Any]] = {}
+    for r in res.get("results", []):
+        for e in r.get("edges", []) or []:
+            eid = e.get("edge_id")
+            if not eid or eid in seen_edges:
+                continue
+            seen_edges.add(eid)
+            edges.append(e)
+        for n in r.get("nodes", []) or []:
+            nid = n.get("node_id")
+            if nid and nid not in node_by_id:
+                node_by_id[nid] = n
+
+    if not edges:
+        return "(no knowledge-graph edges for this sub-question)"
+
+    node_type_by_id = {nid: n.get("node_type") for nid, n in node_by_id.items()}
+
+    def _safe_label(node_id: Any, label: Any) -> str:
+        """§9.0 guard on the graph read. ``_fetch_edges_and_nodes`` applies NO
+        rights gate to the edges/nodes it surfaces, and nodes carry no rights
+        provenance — so a free-text label (an ``insight`` / ``question`` /
+        ``claim`` node's ``canonical_label`` IS a distilled sentence that may be
+        derived from a personal_reading / restricted source, reachable here via
+        a cross-rights ``duplicate_of`` edge). We therefore WITHHOLD free-text
+        labels (and any unknown-type label — deny by default) and reference the
+        node by id instead; canonical entity labels (short names, not servable
+        body) still surface so the role keeps the relational structure. Over-
+        redacts clean distilled units too — the conservative §9.0 posture until
+        the substrate gives the edge/node read a real rights gate."""
+        ntype = node_type_by_id.get(node_id)
+        if ntype in _FREE_TEXT_NODE_TYPES or ntype is None:
+            return f"[{node_id}: {ntype or 'unresolved'} — text withheld (§9.0)]"
+        return str(label) if label else "?"
+
+    edge_lines = [
+        f"- edge_id: {e.get('edge_id')} | "
+        f"{_safe_label((e.get('source') or {}).get('id'), (e.get('source') or {}).get('label'))} "
+        f"--[{e.get('relation', 'related_to')}]--> "
+        f"{_safe_label((e.get('target') or {}).get('id'), (e.get('target') or {}).get('label'))} "
+        f"(confidence {e.get('confidence', '?')}, source tier {e.get('source_tier', '?')})"
+        for e in edges
+    ]
+    node_lines = [
+        f"- {nid}: {_safe_label(nid, n.get('label'))} ({n.get('node_type', '?')})"
+        for nid, n in node_by_id.items()
+    ]
+    return (
+        "## Edges (cite the relevant edge_id when a claim rests on a relation)\n"
+        + "\n".join(edge_lines)
+        + "\n\n## Nodes\n"
+        + "\n".join(node_lines)
+    )
 
 
 def _prior_graph_knowledge_section(question: str) -> str:
@@ -550,6 +674,9 @@ async def _run_phase_2(
                 chunks_block = _render_chunks_block_for_sub_question(
                     sq.sub_question, top_k=5, policy_tag=research_policy_tag,
                 )
+                subgraph_block = _render_subgraph_block_for_sub_question(
+                    sq.sub_question, top_k=5, policy_tag=research_policy_tag,
+                )
                 await broadcast_emit(
                     broadcaster,
                     ctx.investigation_id,
@@ -559,7 +686,7 @@ async def _run_phase_2(
                         evidence_type_required=sq.evidence_type_required,
                         top_k=5,
                         chunks_block=chunks_block,
-                        subgraph_block="(subgraph search not yet wired)",
+                        subgraph_block=subgraph_block,
                     ),
                     role="orchestrator",
                     policy_id="orchestrator-deterministic",
@@ -703,12 +830,43 @@ async def _run_phase_5(ctx: InvestigationContext) -> bool:
     return await _drive_phase(ctx, phase=5, work=work())
 
 
-def _score_phase_6_synthesis(ctx: InvestigationContext) -> None:
+def _phase_6_groundedness_backend() -> tuple[
+    Callable[[str, Sequence[str]], tuple[float, str]], str, str
+]:
+    """Return the live Phase-6 groundedness backend tuple.
+
+    Default is lexical for byte-for-byte existing behavior. SPR-04 wires the
+    validated NLI backend into the live emit path only when explicitly opted
+    in via ``ANTIEK_GROUNDEDNESS_BACKEND=nli``. Unknown values fail safe to
+    lexical so a typo never flips production onto a heavier scorer.
+    """
+    from substrate.eval.groundedness import DEFAULT_SCORER_ID, lexical_entailment_score
+
+    raw = os.environ.get("ANTIEK_GROUNDEDNESS_BACKEND", "").strip().lower()
+    if raw != "nli":
+        return lexical_entailment_score, "lexical", DEFAULT_SCORER_ID
+
+    from substrate.eval.groundedness.nli_backend import NLI_SCORER_ID, make_nli_backend
+
+    return make_nli_backend(), "nli", NLI_SCORER_ID
+
+
+def _score_phase_6_synthesis(ctx: InvestigationContext) -> GroundednessResult | None:
     """Emit the Phase-6 quality signals for the synthesis on ``ctx`` —
     NON-blocking, but the signal NEVER silently vanishes (Foundation v2
     SPR-02 M1 + M4).
 
-    Two axes, both observability-only this sprint (nothing gates):
+    Returns the PRIMARY truth-axis ``GroundednessResult`` (or ``None`` if
+    there is no synthesis to score / the groundedness scorer crashed).
+    SPR-03: the caller (``_run_phase_6``) reads the returned score to
+    decide whether the ``ANTIEK_GROUNDEDNESS_ENFORCE`` posture (off/flag/
+    block — default ``off``) flags or blocks a below-threshold synthesis.
+    This function itself only scores + emits; it does NOT gate. Keeping
+    the gate decision in the caller makes ``off == no-op`` provable: when
+    the posture is ``off`` (the default), the caller does nothing with
+    the returned score and behavior is byte-for-byte today's.
+
+    Two axes, scored and emitted (enforcement is the caller's job):
 
     - ``rubric.scored`` — the SECONDARY, form-axis style rubric (voice,
       conviction, citation *density*, constraint compliance). Kept, now
@@ -724,8 +882,12 @@ def _score_phase_6_synthesis(ctx: InvestigationContext) -> None:
     stage. "Non-blocking" means the loop continues; it does NOT mean the
     signal disappears."""
     if ctx.synthesis is None:
-        return
+        return None
     synthesis_id = f"syn-{ctx.investigation_id}"
+    # SPR-03: captured so the caller can enforce (off/flag/block). ``None``
+    # unless the groundedness scorer produced a result (no synthesis / crash).
+    groundedness_result = None
+    live_groundedness_scorer_id = "groundedness-lexical-v1"
 
     from middleware.outcomes import (
         emit_groundedness_failed,
@@ -769,7 +931,6 @@ def _score_phase_6_synthesis(ctx: InvestigationContext) -> None:
     # --- PRIMARY truth-axis: groundedness (claim-entailment) ---------------
     try:
         from substrate.eval.groundedness import (
-            DEFAULT_SCORER_ID,
             duckdb_chunk_text_resolver,
             resolve_synthesis_claims,
             score_synthesis_groundedness,
@@ -790,11 +951,19 @@ def _score_phase_6_synthesis(ctx: InvestigationContext) -> None:
         except Exception:  # noqa: BLE001 — DB-absent path stays honest
             resolver = lambda _cid: None  # noqa: E731
         claim_chunks = resolve_synthesis_claims(ctx.synthesis, resolver)
-        result = score_synthesis_groundedness(claim_chunks)
+        backend, backend_name, scorer_id = _phase_6_groundedness_backend()
+        live_groundedness_scorer_id = scorer_id
+        result = score_synthesis_groundedness(
+            claim_chunks,
+            backend=backend,
+            backend_name=backend_name,
+            scorer_id=scorer_id,
+        )
+        groundedness_result = result  # captured for the caller's enforcement decision
         emit_groundedness_scored(
             investigation_id=ctx.investigation_id,
             synthesis_id=synthesis_id,
-            scorer_id=DEFAULT_SCORER_ID,
+            scorer_id=scorer_id,
             backend=result.backend,
             groundedness_score=result.score,
             scored_claims=result.scored_claims,
@@ -814,11 +983,12 @@ def _score_phase_6_synthesis(ctx: InvestigationContext) -> None:
         emit_groundedness_failed(
             investigation_id=ctx.investigation_id,
             synthesis_id=synthesis_id,
-            scorer_id="groundedness-lexical-v1",
+            scorer_id=live_groundedness_scorer_id,
             stage="groundedness",
             error_type=type(exc).__name__,
             error=str(exc),
         )
+    return groundedness_result
 
 
 async def _run_phase_6(
@@ -879,8 +1049,83 @@ async def _run_phase_6(
             # event) instead of the old except-pass swallow that
             # dropped the signal. See substrate/eval/groundedness/ and
             # substrate/synthesis_rubric/.
-            _score_phase_6_synthesis(ctx)
+            groundedness_result = _score_phase_6_synthesis(ctx)
+            # SPR-03: enforce the truth-axis behind ANTIEK_GROUNDEDNESS_ENFORCE
+            # (off/flag/block; default off). When OFF this whole block is a
+            # no-op — behavior is byte-for-byte today's (proven by
+            # test_enforce_off_is_noop). FLAG emits groundedness.failed + marks
+            # the synthesis but still deposits. BLOCK nulls ctx.synthesis so
+            # the below-threshold synthesis never reaches Phase 7 / the graph.
+            _enforce_groundedness(ctx, groundedness_result)
     return await _drive_phase(ctx, phase=6, work=work())
+
+
+def _enforce_groundedness(
+    ctx: InvestigationContext, result: GroundednessResult | None
+) -> None:
+    """Apply the ANTIEK_GROUNDEDNESS_ENFORCE posture to a Phase-6 score.
+
+    Pure-of-side-effect EXCEPT for the deliberate enforcement actions
+    (emit groundedness.failed; null ctx.synthesis on block). When the
+    posture is ``off`` (the default) this is a no-op: no event fires, no
+    state mutates — today's behavior, byte-for-byte. ``result is None``
+    (no synthesis / scorer crashed) is also a no-op: there is nothing to
+    enforce AND the crash already surfaced via groundedness.failed in
+    the scorer's own except block.
+
+    Scope of BLOCK (verified by adversarial review): nulling
+    ``ctx.synthesis`` prevents the synthesis from being USED downstream —
+    Phase 7 (delivery/render) checks ``ctx.synthesis is None`` and
+    returns, and the graph node-projection has nothing to write. It does
+    NOT un-emit the raw ``synthesize.delivered`` event (the synthesizer
+    bridge emits that before ``coordinator.wait_for`` returns it to the
+    orchestrator), so the synthesis payload remains in the raw event
+    stream. The gate is a real deposit-prevention for the load-bearing
+    artifacts (rendered MASTER.md, graph nodes), not an event-log
+    retract. Documenting this honestly so a future reader knows exactly
+    what BLOCK stops and what it doesn't."""
+    if result is None:
+        return
+    from substrate.eval.groundedness.enforce import (
+        EnforcePosture,
+        current_posture,
+        is_below_threshold,
+    )
+
+    posture = current_posture()
+    if posture is EnforcePosture.OFF:
+        return  # OFF is a true no-op — proven by test_enforce_off_is_noop.
+    if not is_below_threshold(result.score, result.supported_threshold):
+        return  # the synthesis is grounded; nothing to flag or block.
+
+    # Below threshold + flag-on: surface + mark, but still deposit.
+    synthesis_id = f"syn-{ctx.investigation_id}"
+    from middleware.outcomes import emit_groundedness_failed
+    emit_groundedness_failed(
+        investigation_id=ctx.investigation_id,
+        synthesis_id=synthesis_id,
+        scorer_id="groundedness-lexical-v1",
+        stage="groundedness",
+        error_type="BelowThresholdSynthesis",
+        error=(
+            f"synthesis groundedness {result.score:.4f} < threshold "
+            f"{result.supported_threshold:.4f} "
+            f"(posture={posture.value}; {result.scored_claims} claims scored)"
+        ),
+    )
+    if posture is EnforcePosture.FLAG:
+        return  # flagged + deposited — the alert surfaces; the loop continues.
+
+    # Below threshold + block: PREVENT the synthesis from being used downstream.
+    # Nulling ctx.synthesis means Phase 7 (delivery/render) sees no synthesis
+    # and the graph-write path has nothing to write — a real deposit-prevention,
+    # not a post-hoc annotation. Logged + typed, never a silent drop.
+    _log.warning(
+        "groundedness BLOCK: synthesis %s below threshold (%.4f < %.4f); "
+        "ctx.synthesis nulled, will not be deposited (posture=block)",
+        synthesis_id, result.score, result.supported_threshold,
+    )
+    ctx.synthesis = None
 
 
 async def _run_phase_7(ctx: InvestigationContext) -> bool:
@@ -925,6 +1170,177 @@ async def _run_phase_7(ctx: InvestigationContext) -> bool:
     return await _drive_phase(ctx, phase=7, work=work())
 
 
+def _emit_phase8_auto_patch_applied(
+    *,
+    investigation_id: str,
+    synthesis_id: str,
+    matched_domains: Sequence[str],
+    patched: Sequence[str],
+    skipped: Sequence[str],
+    errors: Sequence[dict[str, str]],
+    status: str,
+) -> None:
+    """Emit the typed Phase-8 auto-patch result event.
+
+    The Phase-8 postcondition already keys on this event. Reuse it for
+    gate rejection instead of inventing a parallel signal that audits
+    would miss.
+    """
+    from substrate.event_log import emit_typed as _emit
+    from substrate.schemas import AutoPatchAppliedPayload
+
+    _emit(
+        investigation_id,
+        AutoPatchAppliedPayload(
+            synthesis_id=synthesis_id,
+            matched_domains=list(matched_domains),
+            patched=list(patched),
+            skipped=list(skipped),
+            errors=list(errors),
+            status=status,
+        ),
+        synthesis_id=synthesis_id,
+        role="auto_patch",
+        policy_id="orchestrator-deterministic",
+    )
+
+
+def _emit_phase8_gate_decided(
+    *,
+    investigation_id: str,
+    synthesis_id: str,
+    mode: str,
+    minimum_cohort_size: int,
+    matched_domains: Sequence[str],
+    outcome: Any,
+) -> None:
+    """Emit the typed Phase-8 gate decision used for shadow calibration."""
+    from substrate.event_log import emit_typed as _emit
+    from substrate.schemas import SkillPatchGateDecidedPayload
+
+    would_accept = (
+        outcome.delta > outcome.epsilon_required
+        and outcome.cohort_size >= minimum_cohort_size
+    )
+    _emit(
+        investigation_id,
+        SkillPatchGateDecidedPayload(
+            synthesis_id=synthesis_id,
+            patch_id=outcome.patch_id,
+            mode=mode,
+            decision=outcome.decision.value,
+            would_accept=would_accept,
+            baseline_backtest_score=outcome.baseline_backtest_score,
+            candidate_backtest_score=outcome.candidate_backtest_score,
+            delta=outcome.delta,
+            epsilon_required=outcome.epsilon_required,
+            cohort_size=outcome.cohort_size,
+            minimum_cohort_size=minimum_cohort_size,
+            matched_domains=list(matched_domains),
+            notes=outcome.notes,
+        ),
+        synthesis_id=synthesis_id,
+        role="phase8_gate",
+        policy_id="orchestrator-deterministic",
+    )
+
+
+def _phase8_calibration_investigation_ids(raw: str) -> list[str]:
+    return [
+        part.strip()
+        for part in raw.replace("\n", ",").split(",")
+        if part.strip()
+    ]
+
+
+def _phase8_gate_from_runtime_env() -> SkillPatchGate:
+    from compounding.skill_growth import (
+        PHASE8_MODE_ENFORCING,
+        PHASE8_MODE_ENV,
+        phase8_gate_from_env,
+    )
+
+    mode = os.environ.get(PHASE8_MODE_ENV, "").strip().lower()
+    if mode != PHASE8_MODE_ENFORCING:
+        return phase8_gate_from_env()
+
+    raw_ids = os.environ.get(PHASE8_CALIBRATION_INVESTIGATION_IDS_ENV, "")
+    investigation_ids = _phase8_calibration_investigation_ids(raw_ids)
+    if not investigation_ids:
+        return phase8_gate_from_env(
+            calibration_ready=False,
+            calibration_notes=(
+                f"{PHASE8_CALIBRATION_INVESTIGATION_IDS_ENV} is required "
+                "before Phase-8 enforcing can accept patches"
+            ),
+        )
+
+    from orchestration.audit import phase8_calibration_status
+
+    status = phase8_calibration_status(investigation_ids)
+    return phase8_gate_from_env(
+        calibration_ready=status.ready_for_enforcing,
+        calibration_notes=status.summary,
+    )
+
+
+def _phase8_candidate_replay_evaluation(
+    *,
+    ctx: InvestigationContext,
+    synthesis_row: Mapping[str, Any],
+    matched_domains: list[str],
+) -> Any | None:
+    """Return candidate replay evidence when a production runner is wired.
+
+    The default is intentionally empty. Phase-8 must keep failing closed rather
+    than fabricating candidate backtest scores until a real rerunner can produce
+    ``CandidateReplayEvaluation`` objects.
+    """
+
+    heldout_ids = _phase8_calibration_investigation_ids(
+        os.environ.get(PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV, "")
+    )
+    if not heldout_ids:
+        return None
+
+    from compounding.skill_growth import unavailable_candidate_replay_evaluation
+    from skills.domain.patch import default_skills_root
+
+    overlay_parent_raw = os.environ.get(PHASE8_REPLAY_OVERLAY_PARENT_ENV, "").strip()
+    overlay_parent = Path(overlay_parent_raw) if overlay_parent_raw else None
+    return unavailable_candidate_replay_evaluation(
+        dict(synthesis_row),
+        heldout_synthesis_ids=heldout_ids,
+        baseline_skills_root=default_skills_root(),
+        overlay_parent=overlay_parent,
+        reason=(
+            "production candidate replay runner is not wired; "
+            f"configured by {PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV}"
+        ),
+    )
+
+
+def _phase8_gate_decide_from_replay_evaluation(
+    gate: SkillPatchGate,
+    replay_evaluation: Any | None,
+) -> PatchOutcome:
+    if replay_evaluation is None:
+        return gate.decide(
+            baseline_backtest_score=0.0,
+            candidate_backtest_score=0.0,
+            cohort_size=0,
+        )
+
+    comparison = replay_evaluation.comparison
+    return gate.decide(
+        baseline_backtest_score=comparison.baseline_score,
+        candidate_backtest_score=comparison.candidate_score,
+        cohort_size=comparison.cohort_size,
+        candidate_evidence_ready=bool(replay_evaluation.ready_for_gate),
+        candidate_evidence_notes=str(replay_evaluation.notes),
+    )
+
+
 async def _run_phase_8(ctx: InvestigationContext) -> bool:
     """Phase 8 (Compound) — Phase 8 is the keystone. Call
     ``skills.domain.extract_and_patch`` inline; the typed
@@ -937,6 +1353,7 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
 
     async def work() -> None:
         assert ctx.synthesis is not None
+        synthesis_id = f"syn-{ctx.investigation_id}"
         thesis = {
             "thesis_summary": ctx.synthesis.thesis_summary,
             "thesis_components": [
@@ -949,6 +1366,66 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
                 r.model_dump() for r in ctx.synthesis.execution_risks
             ],
         }
+        synthesis_row = {
+            "synthesis_id": synthesis_id,
+            "investigation_id": ctx.investigation_id,
+            "target_question": ctx.question,
+            "implicit_recommendation": ctx.synthesis.implicit_recommendation,
+            "thesis": thesis,
+        }
+
+        # GF-3b: enforce the Phase-8 gate before any writer runs. The
+        # current auto-patch path has no calibrated backtest score yet,
+        # so enforcing mode cannot honestly accept it; it rejects with
+        # cohort_size=0 instead of fabricating a quality signal. Shadow
+        # mode remains the default and preserves current behaviour.
+        dry_run_result = extract_and_patch(
+            question=ctx.question,
+            thesis=thesis,
+            investigation_id=ctx.investigation_id,
+            dry_run=True,
+        )
+        from compounding.skill_growth import PatchDecision
+        from skills.domain.auto_patch import route_domains as _route_mechanical_domains
+
+        candidate_domains = sorted({
+            *dry_run_result.domains_matched,
+            *_route_mechanical_domains(ctx.question, ctx.synthesis.thesis_summary),
+        })
+        if candidate_domains:
+            gate = _phase8_gate_from_runtime_env()
+            replay_evaluation = _phase8_candidate_replay_evaluation(
+                ctx=ctx,
+                synthesis_row=synthesis_row,
+                matched_domains=candidate_domains,
+            )
+            gate_outcome = _phase8_gate_decide_from_replay_evaluation(
+                gate,
+                replay_evaluation,
+            )
+            _emit_phase8_gate_decided(
+                investigation_id=ctx.investigation_id,
+                synthesis_id=synthesis_id,
+                mode=gate.mode,
+                minimum_cohort_size=gate.minimum_cohort_size,
+                matched_domains=candidate_domains,
+                outcome=gate_outcome,
+            )
+            if gate_outcome.decision == PatchDecision.REJECT:
+                _emit_phase8_auto_patch_applied(
+                    investigation_id=ctx.investigation_id,
+                    synthesis_id=synthesis_id,
+                    matched_domains=candidate_domains,
+                    patched=[],
+                    skipped=[],
+                    errors=[{
+                        "domain": "phase8-gate",
+                        "error": gate_outcome.notes,
+                    }],
+                    status="rejected_by_phase8_gate",
+                )
+                return
+
         # extract_and_patch with no llm_call (defaults to dispatch)
         # would issue real LLM calls. For Day 3 the operator-driven
         # orchestrator runs against a stub provider in tests; the
@@ -969,15 +1446,7 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
         if not result.any_patched and ctx.synthesis is not None:
             from skills.domain.auto_patch import patch_from_synthesis
 
-            fb = patch_from_synthesis(
-                {
-                    "synthesis_id": f"syn-{ctx.investigation_id}",
-                    "investigation_id": ctx.investigation_id,
-                    "target_question": ctx.question,
-                    "implicit_recommendation": ctx.synthesis.implicit_recommendation,
-                    "thesis": thesis,
-                },
-            )
+            fb = patch_from_synthesis(synthesis_row)
             if fb.get("patched"):
                 ctx.patched_domains = list(fb["patched"])
                 emitted_by_fallback = True
@@ -988,28 +1457,32 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
             # mutates files on disk but doesn't emit the typed event
             # itself; patch_from_synthesis is the alternate entry point
             # that does (handled above when it patches).
-            from substrate.event_log import emit_typed as _emit
-            from substrate.schemas import AutoPatchAppliedPayload
-
             status = (
                 "patched" if result.any_patched
                 else ("no_match" if not result.domains_matched else "failed")
             )
-            with contextlib.suppress(Exception):  # pragma: no cover — diagnostic only
-                _emit(
-                    ctx.investigation_id,
-                    AutoPatchAppliedPayload(
-                        synthesis_id=f"syn-{ctx.investigation_id}",
-                        matched_domains=list(result.domains_matched),
-                        patched=ctx.patched_domains,
-                        skipped=[],
-                        errors=[],
-                        status=status,
-                    ),
-                    synthesis_id=f"syn-{ctx.investigation_id}",
-                    role="auto_patch",
-                    policy_id="orchestrator-deterministic",
+            try:
+                _emit_phase8_auto_patch_applied(
+                    investigation_id=ctx.investigation_id,
+                    synthesis_id=synthesis_id,
+                    matched_domains=list(result.domains_matched),
+                    patched=ctx.patched_domains,
+                    skipped=[],
+                    errors=[],
+                    status=status,
                 )
+            except Exception:  # diagnostic emit is best-effort — never fail the phase
+                # A swallowed AUTO_PATCH_APPLIED emit lets phase_audit later
+                # mint a FALSE `no_auto_patch` critical finding, so this loss
+                # must not be silent. The trace is itself guarded so a broken
+                # log channel cannot turn a best-effort emit into a phase fail.
+                with contextlib.suppress(Exception):
+                    _log.exception(
+                        "phase-8 auto_patch AUTO_PATCH_APPLIED emit failed for "
+                        "%s (status=%s); phase_audit may later report a false "
+                        "no_auto_patch finding",
+                        ctx.investigation_id, status,
+                    )
     return await _drive_phase(ctx, phase=8, work=work())
 
 
@@ -1127,8 +1600,15 @@ async def run_synthesis_tail_from_pack(
                 role="orchestrator",
                 policy_id="orchestrator-cascade-tail",
             )
-            with contextlib.suppress(Exception):  # pragma: no cover
+            try:
                 audit_phase_log(ctx.investigation_id, emit=True)
+            except Exception:  # audit diagnostics are best-effort
+                with contextlib.suppress(Exception):
+                    _log.exception(
+                        "audit_phase_log diagnostics failed for %s on the "
+                        "cascade-tail path (audit is best-effort; run continues)",
+                        ctx.investigation_id,
+                    )
             return ctx
 
     try:
@@ -1175,6 +1655,7 @@ async def run_synthesis_tail_from_pack(
         role="orchestrator",
         policy_id="orchestrator-cascade-tail",
     )
+    _deposit_synthesis_to_substrate(ctx)
     _maybe_export_research_artifact_after_complete(ctx.investigation_id)
     return ctx
 
@@ -1220,8 +1701,19 @@ async def _run_investigation(
                 policy_id="orchestrator-deterministic",
             )
             # Audit the failure path so dashboards surface the gap.
-            with contextlib.suppress(Exception):  # pragma: no cover — diagnostic
+            try:
                 audit_phase_log(ctx.investigation_id, emit=True)
+            except Exception:  # audit diagnostics are best-effort
+                # The comment above promises dashboards surface the gap; a
+                # silently-swallowed audit call would break exactly that. The
+                # trace is guarded so a broken log channel can't break the path.
+                with contextlib.suppress(Exception):
+                    _log.exception(
+                        "audit_phase_log diagnostics failed for %s on the "
+                        "investigation-failed path (audit is best-effort; "
+                        "run continues)",
+                        ctx.investigation_id,
+                    )
             return
 
     # Phase 9: assert completion-ready + DeepResearchComplete contract.
@@ -1269,7 +1761,95 @@ async def _run_investigation(
         role="orchestrator",
         policy_id="orchestrator-deterministic",
     )
+    _deposit_synthesis_to_substrate(ctx)
     _maybe_export_research_artifact_after_complete(ctx.investigation_id)
+
+
+def _deposit_synthesis_to_substrate(ctx: InvestigationContext) -> str | None:
+    """Deposit the completed synthesis into the ``syntheses`` table — the
+    flywheel's research→substrate deposit (DOGFOOD SPR-03).
+
+    The SOLE production call site of
+    ``middleware.archive.archive_synthesis_via_db``. Before SPR-03 the loop
+    emitted ``INVESTIGATION_COMPLETED`` (and wrote MASTER.md) but never
+    deposited the row, so ``syntheses`` was 0 by construction regardless of
+    how many investigations completed. Now a completed synthesis lands as a
+    queryable, manifest-traced row.
+
+    Best-effort + non-fatal: a deposit failure is logged on stderr but never
+    breaks investigation completion (mirrors
+    ``_maybe_export_research_artifact_after_complete``). The synthesis was
+    produced regardless; archiving is a separate persistence concern.
+
+    Returns the deposited ``synthesis_id`` or ``None`` on skip/failure.
+    """
+    import sys
+    from datetime import UTC, datetime
+
+    from middleware.archive import ArchiveInputs, archive_synthesis_via_db
+    from runtime.db_lock import connect_write
+    from substrate.graph import default_db_path
+    from substrate.schemas import SynthesisStatus
+
+    synth = ctx.synthesis
+    if synth is None:
+        return None
+
+    # Map the constraint-loop terminal verdict to the syntheses-row status.
+    # (ConstraintLoopStatus carries two preflight states with no
+    # SynthesisStatus equivalent; they default to 'draft'.)
+    loop_to_status: dict[str, SynthesisStatus] = {
+        "single_pass": "passed",
+        "passed": "passed",
+        "regressed": "regressed",
+        "max_iterations_reached": "max_iterations_reached",
+        "escalated": "escalated",
+    }
+    status: SynthesisStatus = loop_to_status.get(
+        synth.constraint_loop_status, "draft"
+    )
+
+    # Manifest pins: the chunks/edges the evidence retriever actually cited.
+    chunk_ids: list[str] = []
+    edge_ids: list[str] = []
+    for ev in ctx.evidence:
+        for claim in getattr(ev, "supporting_claims", None) or []:
+            chunk_ids.extend(getattr(claim, "chunk_ids", None) or [])
+            edge_ids.extend(getattr(claim, "edge_ids", None) or [])
+    chunk_ids = list(dict.fromkeys(chunk_ids))
+    edge_ids = list(dict.fromkeys(edge_ids))
+
+    def _dump(obj: object) -> object:
+        if hasattr(obj, "model_dump"):
+            return obj.model_dump(mode="json")
+        return obj
+
+    inputs = ArchiveInputs(
+        target_question=ctx.question,
+        synthesis_timestamp=datetime.now(UTC),
+        status=status,
+        implicit_recommendation=synth.implicit_recommendation,
+        thesis_text=synth.thesis_summary,
+        thesis=_dump(synth),
+        evidence=[_dump(e) for e in ctx.evidence],
+        decomposition=_dump(ctx.decomposition) if ctx.decomposition is not None else None,
+        parameters=_dump(ctx.parameters) if ctx.parameters is not None else None,
+        chunk_ids=tuple(chunk_ids),
+        edge_ids=tuple(edge_ids),
+    )
+    try:
+        db_path = default_db_path()
+        with connect_write(db_path, purpose="archive-synthesis") as con:
+            return archive_synthesis_via_db(
+                con, inputs, investigation_id=ctx.investigation_id
+            )
+    except Exception as exc:  # best-effort: never break completion
+        print(
+            "orchestrator: synthesis deposit failed (best-effort, non-fatal): "
+            f"{type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        return None
 
 
 def _maybe_export_research_artifact_after_complete(investigation_id: str) -> None:

@@ -210,7 +210,11 @@ def render_user_template(ctx: CreativeWriterContext) -> str:
         deliverable_title=ctx.deliverable_title,
         deliverable_kind=ctx.deliverable_kind,
         section_title=ctx.section_title or "(untitled section)",
-        section_index=ctx.section_index,
+        # 1-based for the human-facing "section N of M" line, so it agrees with
+        # the 1-based ``§{index+1}`` labels _render_adjacent gives the neighbours
+        # — a 0-based position here would make the model read itself as the same
+        # ordinal as a prior neighbour and infer a section that isn't there.
+        section_index=ctx.section_index + 1,
         section_count=ctx.section_count,
         style_guide=style_guide,
         blocks_block=blocks_block,

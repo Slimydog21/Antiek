@@ -141,8 +141,73 @@ def _maybe_hermes() -> OpenAICompatProvider | None:
     )
 
 
+def _maybe_zai() -> OpenAICompatProvider | None:
+    # Zhipu z.ai — GLM-5.2, the platform's primary AI driver (operator
+    # decision 2026-07-06). z.ai's API speaks the OpenAI chat-completions
+    # shape, so it reuses OpenAICompatProvider exactly like DeepSeek/xiaomi.
+    # The concrete model id (``glm-5.2``) is supplied per-call by the tier in
+    # config.yaml, NOT pinned here — one provider endpoint serves the whole
+    # GLM family; the provider is the endpoint, the model is the per-call arg.
+    #
+    # GLM-5.2 is a REASONING model: by default it spends the token budget on a
+    # chain-of-thought ``reasoning_content`` field and emits ``content`` only
+    # after reasoning completes. The substrate's whole thesis is that quality
+    # emerges from VOLUME of dispatches that yield crystallized ANSWERS
+    # (notes, extractions, syntheses) — NOT reasoning traces. So the driver
+    # runs with ``thinking: {"type": "disabled"}`` (verified live against
+    # https://api.z.ai/api/paas/v4): GLM-5.2 returns direct content answers
+    # with no reasoning overhead, at high volume and low latency/cost. This
+    # also fixes the prior flash-tier defect where deepseek-v4-flash bailed
+    # with ``{"notes": []}`` on distillable prose. Enabling thinking for a
+    # specific reasoning-heavy role is a one-line extra_body change here.
+    #
+    # KEY READ FROM ENV ``Z_AI_API_KEY`` — never hardcoded; registers ONLY
+    # when present (degraded-posture, not an error, per this module's
+    # docstring). ANTIEK_ZAI_BASE_URL overrides the default endpoint (e.g. to
+    # the bigmodel.cn host).
+    if not os.environ.get("Z_AI_API_KEY"):
+        return None
+    return OpenAICompatProvider(
+        name="zai",
+        base_url=os.environ.get(
+            "ANTIEK_ZAI_BASE_URL", "https://api.z.ai/api/paas/v4",
+        ),
+        api_key_env="Z_AI_API_KEY",
+        chat_completions_path="/chat/completions",
+        extra_body={"thinking": {"type": "disabled"}},
+    )
+
+
+def _maybe_zai_reasoning() -> OpenAICompatProvider | None:
+    # Zhipu z.ai — GLM-5.2 with thinking ENABLED. The `zai` provider
+    # (above) disables thinking for the high-volume volume-thesis tiers;
+    # this is the reasoning-enabled twin on the SAME direct endpoint,
+    # registered under a distinct name so the synthesis tier can opt into
+    # GLM-5.2's native chain-of-thought. The ONLY difference from `zai` is
+    # the absence of the thinking-disabled extra_body — GLM-5.2 reasons by
+    # default, so omitting the toggle leaves reasoning ON (it emits a
+    # `reasoning_content` trace AND the final `content` answer; the adapter
+    # reads `content`, so the content path is unchanged). One provider
+    # endpoint, two policies, zero extra code in the dispatch hot path.
+    #
+    # KEY READ FROM ENV ``Z_AI_API_KEY`` (shared with `zai`) — never
+    # hardcoded; registers ONLY when present.
+    if not os.environ.get("Z_AI_API_KEY"):
+        return None
+    return OpenAICompatProvider(
+        name="zai_reasoning",
+        base_url=os.environ.get(
+            "ANTIEK_ZAI_BASE_URL", "https://api.z.ai/api/paas/v4",
+        ),
+        api_key_env="Z_AI_API_KEY",
+        chat_completions_path="/chat/completions",
+    )
+
+
 # Order doesn't matter — register_provider is name-keyed.
 _DEFAULT_PROVIDERS = [
+    ("zai", _maybe_zai),
+    ("zai_reasoning", _maybe_zai_reasoning),
     ("deepseek", _maybe_deepseek),
     ("anthropic", _maybe_anthropic),
     ("openrouter", _maybe_openrouter),

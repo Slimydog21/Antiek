@@ -1336,6 +1336,10 @@ def build_parser() -> argparse.ArgumentParser:
             # the existing flag style. ``--source textbooks`` is the family
             # sub-selector that expands to all four.
             "textbooks", "openstax", "libretexts", "doab", "mit_ocw",
+            # DOGFOOD SPR-01: local-file reading inbox. ``*.txt`` article dumps
+            # under a day-directory; ingested via acquisition.inbox.ingest (NOT
+            # the remote discover->plan->execute pipeline).
+            "inbox",
         ),
         help=(
             "source to include (repeatable); default: all selected sources. "
@@ -1416,6 +1420,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, default=25, help="per-source max")
     p.add_argument("--investigation-id", default="inv-corpus", help="investigation id stamped on docs")
     p.add_argument("--db-path", help="target DuckDB (required for a real run)")
+    p.add_argument(
+        "--inbox-path",
+        help="inbox: day-directory of *.txt article dumps (required with --source inbox)",
+    )
     p.add_argument(
         "--staging-db",
         help=(
@@ -2259,6 +2267,76 @@ def status_snapshot(
     }
 
 
+def _run_inbox(args) -> int:
+    """Drive the local-file inbox source.
+
+    Short-circuits the remote discover->plan->execute pipeline: inbox reads
+    ``*.txt`` article dumps from a day-directory (``--inbox-path``) and funnels
+    them through ``ingest_inbox_day``. Honors the same write-target + prod-write
+    discipline as the remote pipeline (staging / prod-guard / dry-run).
+    """
+    from acquisition.inbox.ingest import ingest_inbox_day
+
+    if not args.inbox_path:
+        print(
+            "error: --source inbox requires --inbox-path <day-dir> "
+            "(a directory of *.txt article dumps)",
+            file=sys.stderr,
+        )
+        return 2
+    day_path = args.inbox_path
+    if not os.path.isdir(day_path):
+        print(f"error: --inbox-path is not a directory: {day_path}", file=sys.stderr)
+        return 2
+
+    write_target = args.db_path
+    if args.staging_db and not args.dry_run:
+        from runtime.staging_db import resolve_ingest_target
+        write_target = resolve_ingest_target(
+            db_path=args.db_path, staging_db=args.staging_db
+        )
+    if not args.dry_run and not args.staging_db:
+        if not args.db_path:
+            print("error: --db-path is required for a real run", file=sys.stderr)
+            return 2
+        if _is_prod_db(args.db_path):
+            if not args.allow_prod_write:
+                print(
+                    "error: --db-path resolves to the prod substrate default. "
+                    "Re-run with --allow-prod-write after a backup + stopping "
+                    "the writer (see infrastructure/runbooks/corpus-ingest.md).",
+                    file=sys.stderr,
+                )
+                return 2
+            _assert_lock_free(args.db_path)
+
+    txt_files = [
+        n for n in os.listdir(day_path)
+        if n.lower().endswith(".txt") and os.path.isfile(os.path.join(day_path, n))
+    ]
+    if args.dry_run:
+        print(f"DRY RUN -- {len(txt_files)} *.txt would be ingested from {day_path}")
+        return 0
+
+    result = ingest_inbox_day(
+        day_path, investigation_id=args.investigation_id, db_path=write_target
+    )
+    print(_json.dumps({
+        "day_path": result.day_path,
+        "files_seen": result.files_seen,
+        "documents_added": result.documents_added,
+        "chunks_added": result.chunks_added,
+        "skipped_dup": result.skipped_dup,
+        "errors": result.errors,
+    }, indent=2, default=str))
+    print(
+        f"\ningested {result.documents_added} doc(s), {result.chunks_added} chunk(s) "
+        f"from {result.files_seen} file(s); {result.skipped_dup} skipped (dup); "
+        f"{len(result.errors)} error(s)"
+    )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = build_parser().parse_args(argv)
@@ -2290,6 +2368,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
         runner = ContinuousRunner(args)
         return runner.run()
+
+    # --source inbox: local-file ingestion (the reading flywheel's front door).
+    # Short-circuits the remote discover->plan->execute pipeline -- inbox reads
+    # *.txt article dumps from a day-directory (--inbox-path), not remote APIs.
+    if args.sources and "inbox" in args.sources:
+        return _run_inbox(args)
 
     # Staging mode (SPR-01 keystone): the ingest writes to a separate staging
     # DuckDB off the live hot path. The live API keeps serving the live DB

@@ -335,6 +335,29 @@ def test_parser_accepts_when_investigation_id_matches():
     assert out.investigation_id == "inv-test"
 
 
+def test_parser_tolerates_absent_investigation_id_when_expected_supplied():
+    # GLM-5.2 intermittently omits the echoed investigation_id even though the
+    # prompt asks for it. The bridge's id is authoritative, so absence must
+    # fall back to it rather than crashing the cascade. (Fails on the bug:
+    # _require_str raised before the fallback existed.)
+    d = _well_formed_decomp()
+    del d["investigation_id"]
+    out = parse_decomposer_response(
+        json.dumps(d), expected_investigation_id="inv-test"
+    )
+    assert out.investigation_id == "inv-test"
+
+
+def test_parser_rejects_absent_investigation_id_when_no_expected_supplied():
+    # Without an authoritative id, an omitted field is unrecoverable: we
+    # cannot guess the investigation. Guards against over-loosening the
+    # fallback to "always tolerate absence".
+    d = _well_formed_decomp()
+    del d["investigation_id"]
+    with pytest.raises(DecomposerValidationError, match="investigation_id"):
+        parse_decomposer_response(json.dumps(d))
+
+
 # ---------------------------------------------------------------------------
 # 5. Drift detection
 # ---------------------------------------------------------------------------

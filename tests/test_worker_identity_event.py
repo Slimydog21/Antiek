@@ -56,8 +56,10 @@ def test_event_schema_version_bumped():
 
     Pinned strict so a union change without a conscious bump reds here.
     Tracks the current value: 28 (worker.identity, yegge SPR-01) -> 29
-    (DiscoveryProvider Literal += "parallel", restore #134)."""
-    assert EVENT_SCHEMA_VERSION == 29
+    (DiscoveryProvider Literal += "parallel", restore #134) -> 30/31
+    (SkillPatchGateDecided + SkillPatchGateReviewed, GF-3c/d Phase-8
+    gate calibration audit events)."""
+    assert EVENT_SCHEMA_VERSION == 31
 
 
 # ── validation (rigor #3: rejects bad input at emit time) ───────────────────

@@ -22,7 +22,7 @@ What's deferred from the Researchmaxx schema (and why):
   pattern forces it.
 - ``chunks_effective_tier`` view — DEFERRED until a downstream
   consumer needs the override+document tier join inline.
-- ``embeddings_meta`` — diagnostic; add when needed.
+- ``embeddings_meta`` — chunk-vector provider/model/dimension pinning.
 
 VARIANT vs TEXT: Researchmaxx uses ``VARIANT`` (DuckDB v1.5.0+ storage)
 for metadata columns to enable JSON SQL queries. Antiek uses ``TEXT``
@@ -38,6 +38,7 @@ Storage discipline: every write must go through
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 
@@ -358,6 +359,8 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "book_assets",
     "outline_blocks",
     "monitors",
+    "supersession_candidates",
+    "embeddings_meta",
 )
 
 
@@ -1093,6 +1096,55 @@ CREATE INDEX IF NOT EXISTS idx_monitors_investigation
 """
 
 
+# Contradiction & Supersession — supersession_candidates: the review
+# queue that makes contradictions TASKS, not actions. The detector writes
+# candidate rows; only apply_review mutates edges. Pure idempotent
+# CREATE IF NOT EXISTS. old/new_edge_id are SOFT references to
+# edges(edge_id) — plain TEXT, NO foreign key — because a hard FK would make
+# a candidate row BLOCK apply_review from closing the edge it points at
+# (DuckDB refuses UPDATE/DELETE on a FK-referenced row), which is exactly
+# backwards. Same soft-ref choice as outline_blocks.node_id; the detector
+# only ever stores ids it just read from edges, so they are valid by
+# construction. The contradiction_type / status / decision CHECK sets mirror
+# the Python CONTRADICTION_TYPES / {'open','reviewed'} / REVIEW_DECISIONS
+# frozensets in middleware/supersession/supersession.py (parity is drift-tested).
+ANTIEK_GRAPH_SCHEMA_V14_SUPERSESSION_CANDIDATES_SQL = """
+CREATE TABLE IF NOT EXISTS supersession_candidates (
+    candidate_id       TEXT PRIMARY KEY,
+    investigation_id   TEXT,
+    old_edge_id        TEXT,   -- soft ref to edges(edge_id); no FK (see note above)
+    new_edge_id        TEXT,   -- soft ref to edges(edge_id); no FK (see note above)
+    contradiction_type TEXT CHECK (contradiction_type IN ('supersession', 'uncertainty', 'error')),
+    reasoning          TEXT,
+    status             TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'reviewed')),
+    decision           TEXT CHECK (decision IN ('apply_supersession', 'dismiss_new', 'dismiss_old', 'coexist')),
+    reviewer           TEXT,
+    review_notes       TEXT DEFAULT '',
+    created_at         TIMESTAMP,
+    reviewed_at        TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_supersession_candidates_status
+    ON supersession_candidates(status);
+"""
+
+
+# GF-7 — embedding provider/model pinning for chunk vectors. This is a soft-ref
+# table rather than columns on chunks so legacy positional INSERT fixtures keep
+# working and DuckDB FK mutation traps cannot block chunk rewrites.
+ANTIEK_GRAPH_SCHEMA_V15_EMBEDDINGS_META_SQL = """
+CREATE TABLE IF NOT EXISTS embeddings_meta (
+    chunk_id     TEXT PRIMARY KEY,
+    provider     TEXT NOT NULL,
+    model_name   TEXT NOT NULL,
+    dimension    INTEGER NOT NULL CHECK (dimension > 0),
+    fingerprint  TEXT NOT NULL,
+    embedded_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_embeddings_meta_fingerprint
+    ON embeddings_meta(fingerprint);
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -1160,12 +1212,81 @@ def init_database(con: LockedConnection) -> None:
     # box-bounded resumable refresh advances). Pure idempotent CREATE IF NOT
     # EXISTS; FK-references nothing.
     con.execute(ANTIEK_GRAPH_SCHEMA_V13_MONITORS_SQL)
+    # Contradiction & Supersession — supersession_candidates review queue.
+    # Soft-refs edges(edge_id) (no FK, so it never blocks apply_review from
+    # mutating an edge); order-independent, kept last for tidiness. Pure
+    # idempotent CREATE IF NOT EXISTS. The review path (detector +
+    # apply_review) lives in middleware/supersession/.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V14_SUPERSESSION_CANDIDATES_SQL)
+    # GF-7 — chunk embedding provider/model/dimension pinning. Soft chunk_id
+    # reference; pure idempotent CREATE IF NOT EXISTS.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V15_EMBEDDINGS_META_SQL)
+
+
+# Per-process memo of db_paths known to already have the Antiek schema.
+# The schema is created once (deploy/startup/tests) and NEVER uninitialized at
+# runtime, so once a read-only probe confirms the sentinel table the path can be
+# short-circuited forever — turning the per-request warm path from a ~4s
+# read-only open (on a large prod DB) into O(1). A ``set`` (not a bool) because
+# the process may touch more than one db_path (e.g. tests with temp DBs).
+_INITIALIZED_PATHS: set[str] = set()
+
+
+def _schema_is_present(db_path: str) -> bool:
+    """Cheap read-only probe: is the Antiek schema already initialized at
+    ``db_path``? Returns True if the ``nodes`` sentinel table exists.
+
+    Two layers: (1) a per-process memo (``_INITIALIZED_PATHS``) that short-
+    circuits paths already confirmed initialized — O(1), no connection; (2) a
+    PLAIN read-only DuckDB connection (NOT connect_write — no application-level
+    write flock) for the first probe, which NEVER blocks on the single-writer
+    lock. This is the fast-path guard that lets ``init_database_at_path`` skip
+    the write lock entirely when the schema is already present, which is the
+    warm-path case for every per-request ``ensure_initialized`` call.
+
+    Any failure (file absent, read-only open refused, table missing) returns
+    False so the caller falls through to the write-lock init path — the fast
+    path is a pure optimization that must never change cold-start behavior."""
+    if db_path in _INITIALIZED_PATHS:
+        return True
+    try:
+        con = duckdb.connect(db_path, read_only=True)
+    except Exception:
+        return False
+    try:
+        row = con.execute(
+            "SELECT count(*) FROM information_schema.tables "
+            "WHERE table_schema = 'main' AND table_name = 'nodes'"
+        ).fetchone()
+    except Exception:
+        return False
+    finally:
+        with contextlib.suppress(Exception):
+            con.close()
+    present = bool(row and row[0] > 0)
+    if present:
+        _INITIALIZED_PATHS.add(db_path)
+    return present
 
 
 def init_database_at_path(db_path: str) -> None:
-    """Convenience: acquire a write lock on ``db_path`` and run
-    ``init_database``. Used by tests + the CLI; production callers
-    should manage their own lock lifecycles."""
+    """Make sure the schema is present at ``db_path``. Idempotent.
+
+    Fast path: if ``_schema_is_present`` confirms the schema is already
+    initialized (a read-only probe — no write flock), return WITHOUT acquiring
+    the single-writer lock. This matters because ~15 API read paths call
+    ``ensure_initialized`` (which routes here) on EVERY request; without the
+    fast path each of those acquires the exclusive write flock and blocks
+    behind every graph writer — the proven prod hang that broke
+    GET /supersession/candidates (PR #224). With it, a warm read pays only the
+    bounded read-only open, never the indefinite write-lock wait.
+
+    Cold path: the read-only probe failed or the schema is absent, so acquire
+    the write lock (creating the file if needed) and run ``init_database`` —
+    the ``CREATE IF NOT EXISTS`` workhorse. Behavior-identical to before on the
+    cold-start path; used by tests + the CLI + first deploy/startup."""
+    if _schema_is_present(db_path):
+        return
     parent = os.path.dirname(db_path)
     if parent:
         os.makedirs(parent, exist_ok=True)
@@ -1174,6 +1295,11 @@ def init_database_at_path(db_path: str) -> None:
         init_database(con)
     finally:
         con.close()
+    # The cold path just created the schema, so memoize the path for every
+    # subsequent probe — mirrors the memo update inside the warm probe, so a
+    # freshly-initialized DB is O(1) on the next call too (no second read-only
+    # open).
+    _INITIALIZED_PATHS.add(db_path)
 
 
 def list_tables(con: duckdb.DuckDBPyConnection) -> list[str]:

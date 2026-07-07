@@ -38,6 +38,7 @@ def _isolate_events(tmp_path, monkeypatch):
     # offline-safe behaviour we want under test.
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(tmp_path / "absent.duckdb"))
     monkeypatch.delenv("ANTIEK_EVENTS_DISABLED", raising=False)
+    monkeypatch.delenv("ANTIEK_GROUNDEDNESS_BACKEND", raising=False)
 
 
 def _ctx() -> InvestigationContext:
@@ -142,3 +143,114 @@ def test_groundedness_scored_payload_shape():
     ]
     assert rubric_rows
     assert "SECONDARY" in rubric_rows[0]["payload"]["notes"]
+
+
+def test_groundedness_default_backend_stays_lexical():
+    """SPR-04 guardrail: wiring NLI into the live path is opt-in. A fresh
+    environment must preserve the lexical backend/scorer id exactly."""
+    ctx = _ctx()
+    result = _score_phase_6_synthesis(ctx)
+    assert result is not None
+    assert result.backend == "lexical"
+    assert result.scorer_id == "groundedness-lexical-v1"
+
+    rows = [
+        r for r in trajectory(ctx.investigation_id)
+        if r.get("action_type") == ActionType.GROUNDEDNESS_SCORED.value
+    ]
+    assert rows
+    payload = rows[0]["payload"]
+    assert payload["backend"] == "lexical"
+    assert payload["scorer_id"] == "groundedness-lexical-v1"
+
+
+def test_groundedness_unknown_backend_env_fails_safe_to_lexical(monkeypatch):
+    """A typo in ANTIEK_GROUNDEDNESS_BACKEND must not disable scoring or
+    accidentally select NLI. Unknown values fail safe to lexical."""
+    monkeypatch.setenv("ANTIEK_GROUNDEDNESS_BACKEND", "nl1")
+    ctx = _ctx()
+    result = _score_phase_6_synthesis(ctx)
+    assert result is not None
+    assert result.backend == "lexical"
+    assert result.scorer_id == "groundedness-lexical-v1"
+
+    rows = [
+        r for r in trajectory(ctx.investigation_id)
+        if r.get("action_type") == ActionType.GROUNDEDNESS_SCORED.value
+    ]
+    assert rows
+    payload = rows[0]["payload"]
+    assert payload["backend"] == "lexical"
+    assert payload["scorer_id"] == "groundedness-lexical-v1"
+
+
+def test_groundedness_nli_backend_opt_in(monkeypatch):
+    """ANTIEK_GROUNDEDNESS_BACKEND=nli routes Phase 6 through the NLI scorer
+    id/backend. The backend is patched so this test proves wiring without
+    requiring the heavyweight model cache."""
+    import substrate.eval.groundedness.nli_backend as nli_mod
+
+    def _fake_make_nli_backend():
+        def _backend(_claim, _chunk_texts):
+            return 0.91, "fake nli entailment"
+
+        return _backend
+
+    monkeypatch.setenv("ANTIEK_GROUNDEDNESS_BACKEND", "nli")
+    monkeypatch.setattr(nli_mod, "make_nli_backend", _fake_make_nli_backend)
+
+    ctx = _ctx()
+    result = _score_phase_6_synthesis(ctx)
+    assert result is not None
+    assert result.backend == "nli"
+    assert result.scorer_id == "groundedness-nli-v1"
+    assert result.score == 0.91
+
+    rows = [
+        r for r in trajectory(ctx.investigation_id)
+        if r.get("action_type") == ActionType.GROUNDEDNESS_SCORED.value
+    ]
+    assert rows
+    payload = rows[0]["payload"]
+    assert payload["backend"] == "nli"
+    assert payload["scorer_id"] == "groundedness-nli-v1"
+    assert payload["groundedness_score"] == 0.91
+
+
+def test_groundedness_nli_backend_failure_surfaces_without_lexical_fallback(
+    monkeypatch,
+):
+    """If the opted-in NLI backend cannot score, Phase 6 emits
+    groundedness.failed with the NLI scorer id. It must not silently fall
+    back to lexical, because that would enforce on the known-weaker signal."""
+    import substrate.eval.groundedness.nli_backend as nli_mod
+
+    def _fake_make_nli_backend():
+        def _backend(_claim, _chunk_texts):
+            raise nli_mod.NLIModelUnavailable("model cache missing")
+
+        return _backend
+
+    monkeypatch.setenv("ANTIEK_GROUNDEDNESS_BACKEND", "nli")
+    monkeypatch.setattr(nli_mod, "make_nli_backend", _fake_make_nli_backend)
+
+    ctx = _ctx()
+    result = _score_phase_6_synthesis(ctx)
+    assert result is None
+
+    rows = [
+        r for r in trajectory(ctx.investigation_id)
+        if r.get("action_type") == ActionType.GROUNDEDNESS_FAILED.value
+    ]
+    assert rows
+    payload = rows[-1]["payload"]
+    assert payload["stage"] == "groundedness"
+    assert payload["scorer_id"] == "groundedness-nli-v1"
+    assert payload["error_type"] == "NLIModelUnavailable"
+    assert "model cache missing" in payload["error"]
+
+    scored_rows = [
+        r for r in trajectory(ctx.investigation_id)
+        if r.get("action_type") == ActionType.GROUNDEDNESS_SCORED.value
+    ]
+    assert not scored_rows

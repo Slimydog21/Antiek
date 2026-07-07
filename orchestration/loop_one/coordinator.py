@@ -27,10 +27,14 @@ one at app startup that all investigations share.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import logging
 import os
 import sys
 from collections.abc import Iterable
 from typing import Any
+
+_log = logging.getLogger(__name__)
 
 # Direct import — orchestration depends on substrate.
 _PKG_ROOT = os.path.dirname(
@@ -97,8 +101,18 @@ async def broadcast_emit(
             try:
                 event = Event.model_validate(row)
                 await broadcaster.broadcast(event)
-            except Exception:  # pragma: no cover — never block on broadcast
-                pass
+            except Exception as e:  # never block on broadcast — log and continue
+                # The event is already durably emitted; a broadcast failure
+                # only means live SSE consumers miss THIS update. The trace is
+                # guarded so a broken log channel cannot make broadcast_emit
+                # raise — that would violate the never-block contract.
+                with contextlib.suppress(Exception):
+                    _log.warning(
+                        "SSE broadcast failed for investigation_id=%s "
+                        "(event_id=%s); event is durable, live consumers may "
+                        "miss this update: %r",
+                        investigation_id, eid, e,
+                    )
             break
     return eid
 

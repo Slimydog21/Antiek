@@ -53,7 +53,9 @@ External constants:
 - **Domain registrar**: Porkbun (mostly static, holds the WHOIS).
 - **DNS**: Cloudflare (nameservers `drew.ns.cloudflare.com` +
   `maeve.ns.cloudflare.com`).
-- **LLM dispatch**: OpenRouter (single key serves DeepSeek + Anthropic).
+- **LLM dispatch**: claude-less — GLM-5.2 (z.ai direct) primary on every
+  tier, DeepSeek V4 Pro + Xiaomi MiMo V2.5 Pro cross-family fallbacks
+  (each its own direct API).
 
 ## Where state lives — ranked
 
@@ -65,8 +67,8 @@ External constants:
    - `/opt/antiek/` — substrate code (git working tree).
    - `/home/antiek/.antiek/` — runtime state (DuckDB, event log,
      knowledge skills, per-investigation research dirs).
-   - `/etc/antiek/secrets.env` — runtime secrets (`OPENROUTER_API_KEY`
-     etc), root:antiek 0640.
+   - `/etc/antiek/secrets.env` — runtime secrets (`Z_AI_API_KEY`,
+     `DEEPSEEK_API_KEY`, `XIAOMI_API_KEY`, ...), root:antiek 0640.
    - `/etc/systemd/system/antiek.service` — rendered from
      `ansible/templates/antiek.service.j2`. Do not edit on the VM.
    - `/etc/caddy/Caddyfile` — rendered from `ansible/templates/Caddyfile.j2`.
@@ -84,7 +86,7 @@ External constants:
 | Task | Command summary | Runbook |
 |---|---|---|
 | Ship a code change | `cd ansible && ansible-playbook -i inventory.ini playbooks/deploy.yml` | `runbooks/code-update.md` |
-| Rotate the OpenRouter key | `sudoedit /etc/antiek/secrets.env && systemctl restart antiek` | `runbooks/secret-rotation.md` |
+| Rotate a dispatch key (z.ai/DeepSeek/MiMo) | `sudoedit /etc/antiek/secrets.env && systemctl restart antiek` | `runbooks/secret-rotation.md` |
 | Trigger a backup manually | `cd ansible && ansible-playbook -i inventory.ini playbooks/backup.yml` | (in `runbooks/disaster-recovery.md`) |
 | Restore from backup | (multi-step — see runbook) | `runbooks/disaster-recovery.md` |
 | Check service health | `curl https://api.antiek.ai/health` | (in `runbooks/debugging.md`) |
@@ -121,7 +123,7 @@ operational burden. We use it.
 
 The Caddyfile sets `read_timeout 900s` and `write_timeout 900s`
 explicitly anyway — partly for documentation, partly because
-synthesizer calls to Claude Opus via OpenRouter routinely take 20-30s
+synthesizer calls to GLM-5.2 (thinking on) routinely take 20-30s
 end-to-end and sometimes longer. The 900s ceiling matches the
 orchestrator's `SYNTHESIZER_TIMEOUT`.
 

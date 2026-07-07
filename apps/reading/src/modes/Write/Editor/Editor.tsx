@@ -10,6 +10,7 @@ import { LegoBlock } from "./BlockNode";
 import { diffBlocks, toEditCapturedPayload } from "./editCapture";
 import type { EditorBlock } from "./locator";
 import { newBlockId } from "./locator";
+import { InlineComplete } from "./InlineComplete";
 import { BlockId, docToBlocks } from "./tiptapAdapter";
 
 /**
@@ -101,6 +102,7 @@ export function WriteEditor({
       Citation,
       LegoBlock,
       Placeholder.configure({ placeholder }),
+      InlineComplete,
     ],
     content: initialContent ?? "",
     onCreate: ({ editor: ed }) => {

@@ -8,8 +8,8 @@
 // of truth. See docs/architecture_notes.md §11.1 (polyglot seam) for the
 // discipline rule that keeps this file in sync.
 
-export const ANTIEK_PARAM_VERSION = "0.1.0";
-export const EVENT_SCHEMA_VERSION = 29;
+export const ANTIEK_PARAM_VERSION = "0.2.0";
+export const EVENT_SCHEMA_VERSION = 31;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -65,6 +65,8 @@ export const ActionType = {
   SUBSTRATE_MANIFEST_WRITTEN: "synthesis.substrate_manifest.written",
   MASTER_MD_WRITTEN: "synthesis.master_md_written",
   MASTER_MD_SKIPPED: "synthesis.master_md_skipped",
+  SKILL_PATCH_GATE_DECIDED: "skill.patch_gate_decided",
+  SKILL_PATCH_GATE_REVIEWED: "skill.patch_gate_reviewed",
   AUTO_PATCH_APPLIED: "skill.auto_patch_applied",
   AUTO_PATCH_SKIPPED: "skill.auto_patch_skipped",
   OUTCOME_RECORDED: "outcome.recorded",
@@ -1155,10 +1157,11 @@ export interface RubricScoredPayload {
  * mean per-claim score over claims that carry chunk citations;
  * ``per_claim`` rides along for inspection. ``backend`` records which
  * entailment backend produced the verdicts (``lexical`` deterministic
- * default, or ``llm_judge``) so a reader knows whether the number is
- * reproducible. ``scored_claims`` / ``total_claims`` make the coverage
- * explicit (analogy-only claims with no chunk citation are excluded
- * from the mean but counted in ``total_claims``).
+ * default, ``nli`` deterministic gate-grade backend, or ``llm_judge``)
+ * so a reader knows whether the number is reproducible.
+ * ``scored_claims`` / ``total_claims`` make the coverage explicit
+ * (analogy-only claims with no chunk citation are excluded from the
+ * mean but counted in ``total_claims``).
  * 
  * Observability-only this sprint — it gates nothing until M5's
  * promote-to-gate criterion is met in a later sprint.
@@ -1166,7 +1169,7 @@ export interface RubricScoredPayload {
 export interface GroundednessScoredPayload {
   action_type: "groundedness.scored";
   scorer_id: string;
-  backend: "lexical" | "llm_judge";
+  backend: "lexical" | "nli" | "llm_judge";
   groundedness_score: number;
   scored_claims: number;
   total_claims: number;
@@ -1316,6 +1319,48 @@ export interface MasterMdSkippedPayload {
   byte_count: number;
   topic_slug?: string | null;
   reason?: string;
+}
+
+/**
+ * Emitted when the Phase-8 skill-patch gate evaluates a candidate.
+ * Shadow mode records whether the same candidate would have been accepted
+ * under enforcing mode, but still allows the write path to proceed. Enforcing
+ * mode records the actual accept/reject decision before any skill writer
+ * mutates files.
+ */
+export interface SkillPatchGateDecidedPayload {
+  action_type: "skill.patch_gate_decided";
+  synthesis_id: string;
+  patch_id: string;
+  mode: string;
+  decision: string;
+  would_accept: boolean;
+  baseline_backtest_score: number;
+  candidate_backtest_score: number;
+  delta: number;
+  epsilon_required: number;
+  cohort_size: number;
+  minimum_cohort_size: number;
+  matched_domains?: string[];
+  notes?: string;
+  operator_reviewed?: boolean;
+  operator_agreed?: boolean | null;
+}
+
+/**
+ * Operator review of a prior Phase-8 gate decision.
+ * The review states whether the operator believes the candidate patch should
+ * have been accepted. Agreement is derived by comparing ``operator_accept``
+ * with the linked decision's ``would_accept`` value.
+ */
+export interface SkillPatchGateReviewedPayload {
+  action_type: "skill.patch_gate_reviewed";
+  synthesis_id: string;
+  patch_id: string;
+  decision_event_id: string;
+  reviewer: string;
+  operator_accept: boolean;
+  review_notes?: string;
 }
 
 /**
@@ -2636,6 +2681,8 @@ export type TypedPayload =
   | DecomposerRegeneratedPayload
   | MasterMdWrittenPayload
   | MasterMdSkippedPayload
+  | SkillPatchGateDecidedPayload
+  | SkillPatchGateReviewedPayload
   | AutoPatchAppliedPayload
   | AutoPatchSkippedPayload
   | EvidenceRetrieveRequestedPayload
@@ -2818,6 +2865,8 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "section.draft_generated",
   "skill.auto_patch_applied",
   "skill.auto_patch_skipped",
+  "skill.patch_gate_decided",
+  "skill.patch_gate_reviewed",
   "skill_rule.promoted",
   "source.read",
   "synthesis.archived",

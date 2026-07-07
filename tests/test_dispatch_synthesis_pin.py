@@ -1,25 +1,32 @@
-"""SPR-01 (Foundation) M3 — the §14.4 synthesis-pin regression guard.
+"""The claude-less synthesis-pin regression guard (formerly §14.4 Opus pin).
 
 THE non-vacuous regression test. Unlike the seam tests in
-``test_research_tier_dispatch.py`` (which monkeypatch a synthetic
-hermes-primary config), this one loads the REAL
-``substrate/dispatch/config.yaml`` — the same file production routes
-through — sets ``DEEPSEEK_API_KEY`` (the literal "turn the AI on"
-deploy), drives the DEFAULT-deep synthesizer dispatch path, and asserts
-the resolved synthesis primary stays ``openrouter / anthropic/
-claude-opus-4.7``.
+``test_research_tier_dispatch.py`` (which monkeypatch a synthetic config),
+this one loads the REAL ``substrate/dispatch/config.yaml`` — the same file
+production routes through — sets ``DEEPSEEK_API_KEY`` (the literal "turn the
+AI on" deploy), drives the synthesizer dispatch path, and asserts the
+resolved synthesis primary stays ``zai_reasoning / glm-5.2``.
+
+HISTORY: this guard began as the §14.4 measurement-window Opus pin (2026-05-
+19 → Sprint-20). The Sprint-20 verdict landed 2026-07-06: the operator's
+model footprint is now CLAUDE-LESS — GLM-5.2 is the AI driver for every tier
+including synthesis. The measurement window is CLOSED; the guard's MECHANISM
+is unchanged (the research-tier override is suppressed so the synthesizer
+keeps its config primary), only the PIN TARGET moved from Opus to GLM-5.2.
+The invariant is now PERMANENT claude-less enforcement, not a time-boxed
+window: no recorded research tier (fast/deep/default) may displace the
+claude-less GLM synthesizer primary.
 
 WHY a separate file from the synthetic-config seam tests: the defect that
-hid here for a whole sprint was a FAKE-GREEN test that asserted DeepSeek
-as *desired* against a synthetic ``'hermes'`` config and never loaded the
-real ``config.yaml``. A guard that does not load the real pin cannot
-catch a regression of the real pin. This test is proved non-vacuous in
-the SPR-01 handoff: it FAILS on the pre-fix code (schema-default "deep"
-displaces Opus once DeepSeek is registered) and PASSES on the fix.
+hid here for a whole sprint was a FAKE-GREEN test that asserted DeepSeek as
+*desired* against a synthetic config and never loaded the real
+``config.yaml``. A guard that does not load the real pin cannot catch a
+regression of the real pin. This test is non-vacuous: it FAILS if a research-
+tier override ever displaces the config-pinned GLM synthesizer once a backup
+provider is registered.
 
-The test asserts on RESOLUTION, never a live API call: every provider in
-the chain is a recording stub, so no network traffic leaves the process
-even though DEEPSEEK_API_KEY is set.
+The test asserts on RESOLUTION, never a live API call: every provider in the
+chain is a recording stub, so no network traffic leaves the process.
 """
 
 from __future__ import annotations
@@ -48,7 +55,7 @@ _REAL_CONFIG_PATH = Path(_REPO) / "substrate" / "dispatch" / "config.yaml"
 
 _ALL_KEYS = (
     "DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
-    "XIAOMI_API_KEY", "HERMES_API_KEY", "OPENAI_API_KEY",
+    "XIAOMI_API_KEY", "HERMES_API_KEY", "OPENAI_API_KEY", "Z_AI_API_KEY",
 )
 
 
@@ -94,24 +101,22 @@ def _events_dir(tmp_path, monkeypatch):
 
 
 def _register_real_synthesis_chain_as_stubs():
-    """Register recording stubs for every provider the REAL synthesis tier
-    references — ``openrouter`` (primary) and ``hermes`` (fallback) — plus
-    ``deepseek`` (the 'deep' research-tier provider). All three are LIVE in
-    the registry, so the test exercises the keys-PRESENT case: the §14.4
-    guard must hold even though deepseek is fully registered."""
-    openrouter = _RecordingStubProvider("openrouter")
-    hermes = _RecordingStubProvider("hermes")
+    """Register recording stubs for every provider the REAL claude-less
+    synthesis tier references — ``zai_reasoning`` (primary, GLM-5.2) — plus
+    ``deepseek`` (the first-link fallback / 'deep' research-tier provider).
+    Both are LIVE in the registry, so the test exercises the keys-PRESENT
+    case: the guard must hold even though deepseek is fully registered (a
+    live deepseek must NOT displace the GLM synthesizer primary)."""
+    zai_reasoning = _RecordingStubProvider("zai_reasoning")
     deepseek = _RecordingStubProvider("deepseek")
-    register_provider(openrouter)
-    register_provider(hermes)
+    register_provider(zai_reasoning)
     register_provider(deepseek)
-    return openrouter, hermes, deepseek
+    return zai_reasoning, deepseek
 
 
 def _emit_start(investigation_id: str, **kwargs) -> None:
     """Emit a real INVESTIGATION_START_REQUESTED event through the same
-    schema the POST /investigations path uses. ``kwargs`` lets a caller set
-    (or omit) ``research_tier`` to exercise the default / explicit cases."""
+    schema the POST /investigations path uses."""
     from substrate.event_log import emit_typed
     from substrate.schemas import InvestigationStartRequestedPayload
 
@@ -128,25 +133,22 @@ def _emit_start(investigation_id: str, **kwargs) -> None:
 # ── THE regression guard ────────────────────────────────────────────────
 
 
-def test_default_deep_synthesizer_stays_pinned_to_opus_with_deepseek_live(
+def test_default_deep_synthesizer_stays_pinned_to_glm_with_deepseek_live(
     monkeypatch, _events_dir,
 ):
-    """§14.4 — the load-bearing assertion.
+    """The load-bearing assertion (claude-less verdict, 2026-07-06).
 
     A DEFAULT investigation (no explicit research tier) + DEEPSEEK_API_KEY
     set + the REAL config.yaml loaded → the synthesizer dispatch resolves to
-    the config-pinned ``openrouter / anthropic/claude-opus-4.7``, NOT to
-    deepseek. This is exactly the "turn the AI on" deploy that voided §14.4
-    before the fix.
-    """
+    the config-pinned ``zai_reasoning / glm-5.2``, NOT to deepseek. This is
+    the same "turn the AI on" deploy that voided the original §14.4 pin; the
+    guard now pins to GLM (claude-less) instead of Opus."""
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds-dummy")  # keys-PRESENT
     from interfaces.research.api import synthesizer as synth_mod
 
-    openrouter, hermes, deepseek = _register_real_synthesis_chain_as_stubs()
-    # Sanity: the keys-present condition is genuinely true.
+    zai_reasoning, deepseek = _register_real_synthesis_chain_as_stubs()
     assert "deepseek" in _PROVIDER_REGISTRY
 
-    # A DEFAULT investigation: research_tier omitted ⇒ schema default (None).
     _emit_start("inv-default-deep")
 
     class _Evt:
@@ -157,24 +159,23 @@ def test_default_deep_synthesizer_stays_pinned_to_opus_with_deepseek_live(
     prov, model = synth_mod._research_tier_override("inv-default-deep")
     assert (prov, model) == (None, None)
 
-    # And the dispatch — through the REAL config — lands on the Opus pin.
+    # And the dispatch — through the REAL config — lands on the GLM pin.
     text, policy_id = synth_mod._dispatch_once("synthesize this", _Evt())
-    assert policy_id == "openrouter/anthropic/claude-opus-4.7", policy_id
-    assert openrouter.calls == ["anthropic/claude-opus-4.7"]
-    assert not deepseek.calls  # the live deepseek key did NOT displace Opus
-    assert not hermes.calls    # fallback not reached; primary succeeded
-    assert text == "openrouter:anthropic/claude-opus-4.7"
+    assert policy_id == "zai_reasoning/glm-5.2", policy_id
+    assert zai_reasoning.calls == ["glm-5.2"]
+    assert not deepseek.calls  # the live deepseek key did NOT displace GLM
+    assert text == "zai_reasoning:glm-5.2"
 
 
-def test_explicit_deep_also_stays_pinned_to_opus(monkeypatch, _events_dir):
-    """§14.4 covers operator-EXPLICIT "deep" too: during the window the pin
-    does not yield to a per-role deep override. (The research lane still gets
-    deepseek — that is asserted in test_research_tier_dispatch.py; here we
-    only guard the synthesis voice.)"""
+def test_explicit_deep_also_stays_pinned_to_glm(monkeypatch, _events_dir):
+    """The guard covers operator-EXPLICIT "deep" too: the pin does not yield
+    to a per-role deep override. (The research lane still gets deepseek —
+    that is asserted in test_research_tier_dispatch.py; here we only guard
+    the synthesis voice.)"""
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds-dummy")
     from interfaces.research.api import synthesizer as synth_mod
 
-    openrouter, hermes, deepseek = _register_real_synthesis_chain_as_stubs()
+    zai_reasoning, deepseek = _register_real_synthesis_chain_as_stubs()
     _emit_start("inv-explicit-deep", research_tier="deep")
 
     class _Evt:
@@ -185,23 +186,22 @@ def test_explicit_deep_also_stays_pinned_to_opus(monkeypatch, _events_dir):
     assert (prov, model) == (None, None)
 
     text, policy_id = synth_mod._dispatch_once("synthesize this", _Evt())
-    assert policy_id == "openrouter/anthropic/claude-opus-4.7", policy_id
+    assert policy_id == "zai_reasoning/glm-5.2", policy_id
     assert not deepseek.calls
 
 
-def test_explicit_fast_also_stays_pinned_to_opus(monkeypatch, _events_dir):
-    """§14.4 — the sharpen-round completion. An operator who explicitly
-    chose "fast" still gets Opus for the synthesis VOICE during the window;
-    the fast lane only routes the RESEARCH-RUNNER to MiMo (asserted in
-    test_research_tier_dispatch.py::test_explicit_fast_keeps_research_lane_
-    but_not_synthesizer). Both the fast PROVIDER (xiaomi) and deepseek are
-    live here, so the test fails if the guard ever lets a non-default tier
-    displace synthesis."""
+def test_explicit_fast_also_stays_pinned_to_glm(monkeypatch, _events_dir):
+    """The sharpen-round completion. An operator who explicitly chose "fast"
+    still gets the claude-less GLM synthesizer VOICE; the fast lane only
+    routes the RESEARCH-RUNNER to MiMo (asserted in test_research_tier_
+    dispatch). Both the fast PROVIDER (xiaomi) and deepseek are live here, so
+    the test fails if the guard ever lets a non-default tier displace
+    synthesis off the GLM pin."""
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds-dummy")
     monkeypatch.setenv("XIAOMI_API_KEY", "sk-mimo-dummy")
     from interfaces.research.api import synthesizer as synth_mod
 
-    openrouter, hermes, deepseek = _register_real_synthesis_chain_as_stubs()
+    zai_reasoning, deepseek = _register_real_synthesis_chain_as_stubs()
     xiaomi = _RecordingStubProvider("xiaomi")
     register_provider(xiaomi)  # the 'fast' tier provider IS live
     _emit_start("inv-explicit-fast", research_tier="fast")
@@ -214,23 +214,22 @@ def test_explicit_fast_also_stays_pinned_to_opus(monkeypatch, _events_dir):
     assert (prov, model) == (None, None)
 
     text, policy_id = synth_mod._dispatch_once("synthesize this", _Evt())
-    assert policy_id == "openrouter/anthropic/claude-opus-4.7", policy_id
-    assert openrouter.calls == ["anthropic/claude-opus-4.7"]
-    assert not xiaomi.calls   # the live MiMo key did NOT displace Opus
+    assert policy_id == "zai_reasoning/glm-5.2", policy_id
+    assert zai_reasoning.calls == ["glm-5.2"]
+    assert not xiaomi.calls   # the live MiMo key did NOT displace GLM
     assert not deepseek.calls
 
 
 def test_legacy_run_no_tier_recorded_stays_pinned(monkeypatch, _events_dir):
     """Edge case — a legacy start event written before the field existed
     (no research_tier key at all): the override returns (None, None) and the
-    synthesizer keeps the Opus pin. Honest-absent, never fabricated."""
+    synthesizer keeps the GLM pin. Honest-absent, never fabricated."""
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds-dummy")
     from interfaces.research.api import synthesizer as synth_mod
     from substrate.event_log import log_event
     from substrate.schemas import ActionType
 
-    openrouter, hermes, deepseek = _register_real_synthesis_chain_as_stubs()
-    # Raw pre-field row — no research_tier key on the payload.
+    zai_reasoning, deepseek = _register_real_synthesis_chain_as_stubs()
     log_event(
         "inv-legacy-pin",
         ActionType.INVESTIGATION_START_REQUESTED.value,
@@ -250,21 +249,19 @@ def test_legacy_run_no_tier_recorded_stays_pinned(monkeypatch, _events_dir):
         event_id = "evt-inv-legacy-pin"
 
     _text, policy_id = synth_mod._dispatch_once("synthesize this", _Evt())
-    assert policy_id == "openrouter/anthropic/claude-opus-4.7", policy_id
+    assert policy_id == "zai_reasoning/glm-5.2", policy_id
 
 
 def test_deepseek_key_absent_stays_pinned(monkeypatch, _events_dir):
     """Edge case — DeepSeek key ABSENT (the pre-deploy common case): the
-    synthesizer is on the Opus pin for the obvious reason (deepseek not
+    synthesizer is on the GLM pin for the obvious reason (deepseek not
     registered) too. This is the case the OLD guard already handled; we keep
     it so the fix is proven to not REGRESS the previously-covered path."""
     # DEEPSEEK_API_KEY intentionally NOT set.
     from interfaces.research.api import synthesizer as synth_mod
 
-    openrouter = _RecordingStubProvider("openrouter")
-    hermes = _RecordingStubProvider("hermes")
-    register_provider(openrouter)
-    register_provider(hermes)
+    zai_reasoning = _RecordingStubProvider("zai_reasoning")
+    register_provider(zai_reasoning)
     assert "deepseek" not in _PROVIDER_REGISTRY
 
     _emit_start("inv-key-absent")  # default tier
@@ -274,4 +271,4 @@ def test_deepseek_key_absent_stays_pinned(monkeypatch, _events_dir):
         event_id = "evt-inv-key-absent"
 
     _text, policy_id = synth_mod._dispatch_once("synthesize this", _Evt())
-    assert policy_id == "openrouter/anthropic/claude-opus-4.7", policy_id
+    assert policy_id == "zai_reasoning/glm-5.2", policy_id

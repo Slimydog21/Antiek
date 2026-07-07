@@ -19,90 +19,125 @@ version: 0.1.0
 # Tier definitions.
 # ---------------------------------------------------------------------------
 tiers:
-  # ── ARCHITECTURAL POSTURE (operator decision 2026-05-18): ──
-  # All tiers route through Hermes/Grok primary with OpenRouter
-  # (DeepSeek + Claude) as fallback. The thesis: substrate quality
-  # emerges from VOLUME of dispatches (recursive note-taking +
-  # compounding graph), not from per-call model quality. SuperGrok's
-  # Hermes Agent OAuth bridge sanctions third-party API usage against
-  # the operator's subscription quota — using it for non-synthesis
-  # roles captures already-paid-for inference at zero marginal cost.
-  # Fallback to OpenRouter preserves substrate liveness when Hermes
-  # quota runs out or the agent is unreachable.
+  # ── ARCHITECTURAL POSTURE (operator decision 2026-07-06): ──
+  # CLAUDE-LESS FOOTPRINT. Every tier's primary is GLM-5.2 (Zhipu z.ai,
+  # DIRECT API). The two cross-family backups are DeepSeek V4 Pro and
+  # Xiaomi MiMo V2.5 Pro — both via their DIRECT APIs, no OpenRouter hop —
+  # chained three-deep as GLM → DeepSeek → MiMo so a single provider or
+  # model outage never bricks a tier. OpenRouter and Anthropic are removed
+  # from the routing entirely; all inference runs through three direct
+  # endpoints (z.ai / api.deepseek.com / api.mimo.xiaomi.com).
   #
-  # If the operator's Hermes-served Grok model id is different from
-  # 'grok-4.3' (e.g. 'grok-4', 'grok-4.3-heavy'), update the model
-  # values below — no code change needed.
+  # THINKING POLICY (per-tier): flash/pro/verify run GLM-5.2 with
+  # thinking=disabled (the `zai` provider) — the volume thesis, direct
+  # crystallized answers at high throughput. synthesis runs GLM-5.2 with
+  # thinking ENABLED (the `zai_reasoning` provider) — synthesis is the
+  # human-facing long-form artifact where reasoning demonstrably matters,
+  # so it keeps GLM-5.2's native chain-of-thought. This preserves the
+  # quality rationale the old Opus-primary config existed for WITHOUT the
+  # Claude dependency. (GLM-5.2 reasons by default; #213 disabled it for
+  # the high-volume tiers.)
+  #
+  # CROSS-FAMILY MODEL INVARIANT (load-bearing): every ADJACENT link in a
+  # tier's fallback chain is a DIFFERENT MODEL FAMILY. GLM → DeepSeek →
+  # MiMo has no two adjacent same-family links, so a single model-scoped
+  # event (rate-limit / deprecation / outage) never takes two layers at
+  # once. Enforced by test_fallback_is_a_different_model_family, which now
+  # walks the whole chain, not just one link.
+  #
+  # Model ids are per-call args (one endpoint serves several models):
+  # glm-5.2, deepseek-v4-pro, mimo-v2.5-pro. If the operator's z.ai-served
+  # model id changes (e.g. glm-5.5), update the model values below — no
+  # code change needed.
 
   flash:
     # Bulk, cost-optimized. Note-taking, page-level ingestion,
     # extraction, grounder, constraint_checker.
-    provider: hermes
-    model: grok-4.3
+    #
+    # PRIMARY = GLM-5.2 (operator decision 2026-07-06: GLM-5.2 is the
+    # platform's AI driver). The zai provider runs it with
+    # thinking=disabled (see bootstrap.py:_maybe_zai) so high-volume
+    # note-taking gets direct crystallized answers, not reasoning traces.
+    # This replaced the prior deepseek-v4-flash primary, which bailed
+    # with {"notes": []} on distillable prose.
+    provider: zai
+    model: glm-5.2
     pricing:
-      # Subscription-attributed cost; per-call billed = $0.0.
       input_per_mtok: 0.0
       output_per_mtok: 0.0
       cached_input_per_mtok: 0.0
     fallback:
-      provider: openrouter
-      model: deepseek/deepseek-v4-flash
+      provider: deepseek
+      model: deepseek-v4-pro
+      fallback:
+        provider: xiaomi
+        model: mimo-v2.5-pro
 
   pro:
     # Reasoning-heavy primary work (decomposer, connector, user_agent,
-    # challenger).
-    provider: hermes
-    model: grok-4.3
+    # challenger). GLM-5.2 (zai, thinking-disabled for direct answers).
+    # Enabling thinking for genuinely reasoning-heavy roles is a
+    # one-line extra_body change in bootstrap.py:_maybe_zai.
+    provider: zai
+    model: glm-5.2
     pricing:
       input_per_mtok: 0.0
       output_per_mtok: 0.0
       cached_input_per_mtok: 0.0
     fallback:
-      provider: openrouter
-      model: deepseek/deepseek-v4-pro
+      provider: deepseek
+      model: deepseek-v4-pro
+      fallback:
+        provider: xiaomi
+        model: mimo-v2.5-pro
 
   synthesis:
     # Synthesizer role — the human-facing artifact.
     #
-    # MEASUREMENT WINDOW OPEN 2026-05-19 (Sprint 17 → Sprint 20).
-    # Per master-spec §14.4 + sprint17 spec §1.2: synthesizer is pinned
-    # to Opus 4.7 via OpenRouter primary, Hermes/Grok fallback, for
-    # 2 weeks of normal investigation traffic. At Sprint 20 verdict:
-    #   - if Grok-on-synthesis verifier-pass-rate within 5pp of Opus →
-    #     flip primary back to hermes/grok-4.3 on cost grounds
-    #   - if gap > 5pp → keep Opus primary; the cost savings on Grok
-    #     are illusory because they convert to additional verifier and
-    #     re-synthesizer dispatch
-    # Synthesis is the operator-facing artifact and voice/style
-    # discipline (master §5) is synthesizer-level; Grok 4.3 has not
-    # been benchmarked on long-form English research writing the way
-    # Opus 4.7 has. The right denominator is cost-per-acceptable-
-    # synthesis, not cost-per-call.
-    provider: openrouter
-    model: anthropic/claude-opus-4.7
+    # CLAUDE-LESS (operator directive 2026-07-06): synthesis primary is
+    # GLM-5.2 via the `zai_reasoning` provider (thinking ENABLED — GLM's
+    # native chain-of-thought), NOT Opus. The old Opus-4.7 primary + the
+    # Sprint 17→20 measurement window are retired: the operator's model
+    # footprint is now claude-less. GLM-5.2-with-thinking is the reasoned
+    # replacement for the reasoning model synthesis used to run on, so the
+    # "right denominator is cost-per-acceptable-synthesis" rationale is
+    # preserved without the Anthropic dependency. (If GLM-thinking synthesis
+    # quality underperforms Opus in a future measurement, the revert is one
+    # config line back to an Anthropic tier — not a code change. The
+    # claude-less directive is the operator's explicit call as of this date.)
+    provider: zai_reasoning
+    model: glm-5.2
     pricing:
-      input_per_mtok: 5.0
-      output_per_mtok: 25.0
-      cached_input_per_mtok: 0.50  # 90% Anthropic prompt-caching discount
+      # GLM-5.2 direct (z.ai). Operator-owns-these-values per the header:
+      # set 0.0 until z.ai per-token pricing is verified for cost reports.
+      input_per_mtok: 0.0
+      output_per_mtok: 0.0
+      cached_input_per_mtok: 0.0
     fallback:
-      provider: hermes
-      model: grok-4.3
+      provider: deepseek
+      model: deepseek-v4-pro
+      fallback:
+        provider: xiaomi
+        model: mimo-v2.5-pro
 
   verify:
-    # Cross-family verification. Same Hermes/Grok path.
-    provider: hermes
-    model: grok-4.3
+    # Cross-family verification. GLM-5.2 (zai, thinking-disabled).
+    provider: zai
+    model: glm-5.2
     pricing:
       input_per_mtok: 0.0
       output_per_mtok: 0.0
       cached_input_per_mtok: 0.0
-    # Verifier MUST have a fallback. Without one, a bridge outage
-    # bricks every verifier call (the role most directly responsible
-    # for catching substrate quality regressions). Architectural
-    # invariant — see tests/test_dispatch_fallback_chain.py.
+    # Verifier MUST have a multi-layer fallback. Without one, a provider
+    # outage bricks every verifier call (the role most directly responsible
+    # for catching substrate quality regressions). Architectural invariant
+    # — see tests/test_dispatch_fallback_chain.py.
     fallback:
-      provider: openrouter
-      model: deepseek/deepseek-v4-pro
+      provider: deepseek
+      model: deepseek-v4-pro
+      fallback:
+        provider: xiaomi
+        model: mimo-v2.5-pro
 
   transcription:
     # Sprint 13 — voice note ingestion. Whisper-grade audio→text.
@@ -173,6 +208,26 @@ role_tiers:
   # precedent above. The endpoint dispatches role="thought_partner"; the role
   # tier entry alone is the established fix, with no constants.py change.
   thought_partner: pro
+  # WV (writing vertical): same production-only routing gap as the
+  # knowledge_extractor / thought_partner precedents above.
+  # substrate/write/draft_generation.default_dispatch_fn dispatches
+  # role="creative_writer"; without this entry the router raised
+  # KeyError("Role 'creative_writer' not in config.role_tiers") and
+  # POST /write/sections/{id}/generate 503'd on every call — the whole
+  # writing-generate path was dead (GAP-ANALYSIS.md §1's "creative_writer
+  # WIRED" was stale on origin/main, true only on the closed-unmerged
+  # reader/integration). The role tier entry alone is the established
+  # fix, no constants.py change (per the thought_partner precedent).
+  # Tier=pro (grok-4.3, precedent-matched + cost-bounded); the operator
+  # can bump to 'synthesis' if deliverable prose quality demands it.
+  # The route is operator-auth-gated (global middleware), so this
+  # enables the operator-only generate path, not a public endpoint.
+  creative_writer: pro
+  # CK-3 (cursor-for-knowledge): inline autocomplete — the signature
+  # Cursor writing-flow affordance. Flash tier (GLM-5.2, thinking disabled)
+  # for fast, direct completions at high volume. Same one-line-routing
+  # precedent as knowledge_extractor / thought_partner / creative_writer.
+  autocomplete: flash
 
 # ---------------------------------------------------------------------------
 # Per-tier defaults. Roles can override at call time, but these are

@@ -85,11 +85,14 @@ class VendorClassConfig:
 DEFAULT_REGISTRY: dict[VendorClass, VendorClassConfig] = {
     VendorClass.LLM: VendorClassConfig(
         primary="hermes",
-        secondary="openrouter",
+        secondary=None,
         reason=(
-            "Hermes-bridge primary per Sprint-17 measurement window "
-            "(master-spec §14.4). OpenRouter secondary catches the "
-            "OAuth-refresh→503 case + bridge outages (I-DISPATCH-4)."
+            "Hermes-bridge primary. CLAUDE-LESS POSTURE (#213): LLM "
+            "failover is now config.yaml's per-tier GLM→DeepSeek→MiMo "
+            "DIRECT-API chain (z.ai / api.deepseek.com / api.mimo.xiaomi.com) "
+            "— no OpenRouter hop, no Anthropic. The old OpenRouter secondary "
+            "(OAuth-refresh→503 + bridge outages, I-DISPATCH-4) is retired; "
+            "cross-family direct APIs are the new resilience layer."
         ),
     ),
     VendorClass.BROWSER: VendorClassConfig(
