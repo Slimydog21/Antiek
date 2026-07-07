@@ -1160,6 +1160,41 @@ async def _run_phase_7(ctx: InvestigationContext) -> bool:
     return await _drive_phase(ctx, phase=7, work=work())
 
 
+def _emit_phase8_auto_patch_applied(
+    *,
+    investigation_id: str,
+    synthesis_id: str,
+    matched_domains: Sequence[str],
+    patched: Sequence[str],
+    skipped: Sequence[str],
+    errors: Sequence[dict[str, str]],
+    status: str,
+) -> None:
+    """Emit the typed Phase-8 auto-patch result event.
+
+    The Phase-8 postcondition already keys on this event. Reuse it for
+    gate rejection instead of inventing a parallel signal that audits
+    would miss.
+    """
+    from substrate.event_log import emit_typed as _emit
+    from substrate.schemas import AutoPatchAppliedPayload
+
+    _emit(
+        investigation_id,
+        AutoPatchAppliedPayload(
+            synthesis_id=synthesis_id,
+            matched_domains=list(matched_domains),
+            patched=list(patched),
+            skipped=list(skipped),
+            errors=list(errors),
+            status=status,
+        ),
+        synthesis_id=synthesis_id,
+        role="auto_patch",
+        policy_id="orchestrator-deterministic",
+    )
+
+
 async def _run_phase_8(ctx: InvestigationContext) -> bool:
     """Phase 8 (Compound) — Phase 8 is the keystone. Call
     ``skills.domain.extract_and_patch`` inline; the typed
@@ -1172,6 +1207,7 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
 
     async def work() -> None:
         assert ctx.synthesis is not None
+        synthesis_id = f"syn-{ctx.investigation_id}"
         thesis = {
             "thesis_summary": ctx.synthesis.thesis_summary,
             "thesis_components": [
@@ -1184,6 +1220,54 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
                 r.model_dump() for r in ctx.synthesis.execution_risks
             ],
         }
+        synthesis_row = {
+            "synthesis_id": synthesis_id,
+            "investigation_id": ctx.investigation_id,
+            "target_question": ctx.question,
+            "implicit_recommendation": ctx.synthesis.implicit_recommendation,
+            "thesis": thesis,
+        }
+
+        # GF-3b: enforce the Phase-8 gate before any writer runs. The
+        # current auto-patch path has no calibrated backtest score yet,
+        # so enforcing mode cannot honestly accept it; it rejects with
+        # cohort_size=0 instead of fabricating a quality signal. Shadow
+        # mode remains the default and preserves current behaviour.
+        dry_run_result = extract_and_patch(
+            question=ctx.question,
+            thesis=thesis,
+            investigation_id=ctx.investigation_id,
+            dry_run=True,
+        )
+        from compounding.skill_growth import PatchDecision, phase8_gate_from_env
+        from skills.domain.auto_patch import route_domains as _route_mechanical_domains
+
+        candidate_domains = sorted({
+            *dry_run_result.domains_matched,
+            *_route_mechanical_domains(ctx.question, ctx.synthesis.thesis_summary),
+        })
+        if candidate_domains:
+            gate = phase8_gate_from_env()
+            gate_outcome = gate.decide(
+                baseline_backtest_score=0.0,
+                candidate_backtest_score=0.0,
+                cohort_size=0,
+            )
+            if gate_outcome.decision == PatchDecision.REJECT:
+                _emit_phase8_auto_patch_applied(
+                    investigation_id=ctx.investigation_id,
+                    synthesis_id=synthesis_id,
+                    matched_domains=candidate_domains,
+                    patched=[],
+                    skipped=[],
+                    errors=[{
+                        "domain": "phase8-gate",
+                        "error": gate_outcome.notes,
+                    }],
+                    status="rejected_by_phase8_gate",
+                )
+                return
+
         # extract_and_patch with no llm_call (defaults to dispatch)
         # would issue real LLM calls. For Day 3 the operator-driven
         # orchestrator runs against a stub provider in tests; the
@@ -1204,15 +1288,7 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
         if not result.any_patched and ctx.synthesis is not None:
             from skills.domain.auto_patch import patch_from_synthesis
 
-            fb = patch_from_synthesis(
-                {
-                    "synthesis_id": f"syn-{ctx.investigation_id}",
-                    "investigation_id": ctx.investigation_id,
-                    "target_question": ctx.question,
-                    "implicit_recommendation": ctx.synthesis.implicit_recommendation,
-                    "thesis": thesis,
-                },
-            )
+            fb = patch_from_synthesis(synthesis_row)
             if fb.get("patched"):
                 ctx.patched_domains = list(fb["patched"])
                 emitted_by_fallback = True
@@ -1223,27 +1299,19 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
             # mutates files on disk but doesn't emit the typed event
             # itself; patch_from_synthesis is the alternate entry point
             # that does (handled above when it patches).
-            from substrate.event_log import emit_typed as _emit
-            from substrate.schemas import AutoPatchAppliedPayload
-
             status = (
                 "patched" if result.any_patched
                 else ("no_match" if not result.domains_matched else "failed")
             )
             try:
-                _emit(
-                    ctx.investigation_id,
-                    AutoPatchAppliedPayload(
-                        synthesis_id=f"syn-{ctx.investigation_id}",
-                        matched_domains=list(result.domains_matched),
-                        patched=ctx.patched_domains,
-                        skipped=[],
-                        errors=[],
-                        status=status,
-                    ),
-                    synthesis_id=f"syn-{ctx.investigation_id}",
-                    role="auto_patch",
-                    policy_id="orchestrator-deterministic",
+                _emit_phase8_auto_patch_applied(
+                    investigation_id=ctx.investigation_id,
+                    synthesis_id=synthesis_id,
+                    matched_domains=list(result.domains_matched),
+                    patched=ctx.patched_domains,
+                    skipped=[],
+                    errors=[],
+                    status=status,
                 )
             except Exception:  # diagnostic emit is best-effort — never fail the phase
                 # A swallowed AUTO_PATCH_APPLIED emit lets phase_audit later
