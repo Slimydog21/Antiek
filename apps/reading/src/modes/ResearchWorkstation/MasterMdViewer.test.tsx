@@ -1032,6 +1032,7 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
 
     const link = screen.getByText("Open refresh research");
     expect(link.getAttribute("href")).toBe("/inv/inv-refresh-from-api");
+    expect(screen.getByText("refresh research completed")).toBeTruthy();
     expect(startInvestigationMock).not.toHaveBeenCalled();
   });
 

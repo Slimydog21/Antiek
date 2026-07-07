@@ -71,19 +71,38 @@ function staleReuseRefreshSpawnContext(insight: ReusedInsight): string {
   ].filter(Boolean).join(" ");
 }
 
-function staleReuseRefreshChildId(
+function staleReuseRefreshChild(
   children: readonly InvestigationSummary[],
   parentInvestigationId: string,
   insight: ReusedInsight,
-): string | null {
+): InvestigationSummary | null {
   const expectedContext = staleReuseRefreshSpawnContext(insight);
   return (
     children.find(
       (child) =>
         child.parent_investigation_id === parentInvestigationId &&
         child.spawn_context === expectedContext,
-    )?.investigation_id ?? null
+    ) ?? null
   );
+}
+
+function refreshChildStatusLabel(
+  status: InvestigationSummary["status"],
+): string | null {
+  switch (status) {
+    case "in_progress":
+      return "refresh research running";
+    case "completed":
+      return "refresh research completed";
+    case "failed":
+      return "refresh research failed";
+    case "stopped":
+      return "refresh research stopped";
+    case "not_found":
+      return "refresh research unavailable";
+    default:
+      return null;
+  }
 }
 
 function readStaleReuseRefreshes(): StaleReuseRefreshMap {
@@ -1206,10 +1225,14 @@ function ReusedInsightLink({
   staleRefreshChildren: InvestigationSummary[];
 }) {
   const canRefresh = Boolean(insight.staleRefreshAdvisory && parentInvestigationId);
-  const backendSpawnedId =
+  const backendChild =
     canRefresh && parentInvestigationId
-      ? staleReuseRefreshChildId(staleRefreshChildren, parentInvestigationId, insight)
+      ? staleReuseRefreshChild(staleRefreshChildren, parentInvestigationId, insight)
       : null;
+  const backendSpawnedId = backendChild?.investigation_id ?? null;
+  const backendStatusLabel = backendChild
+    ? refreshChildStatusLabel(backendChild.status)
+    : null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [spawnedId, setSpawnedId] = useState<string | null>(() =>
@@ -1280,6 +1303,11 @@ function ReusedInsightLink({
         >
           Open refresh research
         </a>
+      )}
+      {backendStatusLabel && (
+        <span className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight">
+          {backendStatusLabel}
+        </span>
       )}
       {error && (
         <span className="ml-2 font-mono text-[11px] text-emperor">
