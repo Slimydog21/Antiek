@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 30;
+export const EVENT_SCHEMA_VERSION = 31;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -66,6 +66,7 @@ export const ActionType = {
   MASTER_MD_WRITTEN: "synthesis.master_md_written",
   MASTER_MD_SKIPPED: "synthesis.master_md_skipped",
   SKILL_PATCH_GATE_DECIDED: "skill.patch_gate_decided",
+  SKILL_PATCH_GATE_REVIEWED: "skill.patch_gate_reviewed",
   AUTO_PATCH_APPLIED: "skill.auto_patch_applied",
   AUTO_PATCH_SKIPPED: "skill.auto_patch_skipped",
   OUTCOME_RECORDED: "outcome.recorded",
@@ -1344,6 +1345,22 @@ export interface SkillPatchGateDecidedPayload {
   notes?: string;
   operator_reviewed?: boolean;
   operator_agreed?: boolean | null;
+}
+
+/**
+ * Operator review of a prior Phase-8 gate decision.
+ * The review states whether the operator believes the candidate patch should
+ * have been accepted. Agreement is derived by comparing ``operator_accept``
+ * with the linked decision's ``would_accept`` value.
+ */
+export interface SkillPatchGateReviewedPayload {
+  action_type: "skill.patch_gate_reviewed";
+  synthesis_id: string;
+  patch_id: string;
+  decision_event_id: string;
+  reviewer: string;
+  operator_accept: boolean;
+  review_notes?: string;
 }
 
 /**
@@ -2665,6 +2682,7 @@ export type TypedPayload =
   | MasterMdWrittenPayload
   | MasterMdSkippedPayload
   | SkillPatchGateDecidedPayload
+  | SkillPatchGateReviewedPayload
   | AutoPatchAppliedPayload
   | AutoPatchSkippedPayload
   | EvidenceRetrieveRequestedPayload
@@ -2848,6 +2866,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "skill.auto_patch_applied",
   "skill.auto_patch_skipped",
   "skill.patch_gate_decided",
+  "skill.patch_gate_reviewed",
   "skill_rule.promoted",
   "source.read",
   "synthesis.archived",
