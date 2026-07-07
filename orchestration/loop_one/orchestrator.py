@@ -1195,6 +1195,46 @@ def _emit_phase8_auto_patch_applied(
     )
 
 
+def _emit_phase8_gate_decided(
+    *,
+    investigation_id: str,
+    synthesis_id: str,
+    mode: str,
+    minimum_cohort_size: int,
+    matched_domains: Sequence[str],
+    outcome: Any,
+) -> None:
+    """Emit the typed Phase-8 gate decision used for shadow calibration."""
+    from substrate.event_log import emit_typed as _emit
+    from substrate.schemas import SkillPatchGateDecidedPayload
+
+    would_accept = (
+        outcome.delta > outcome.epsilon_required
+        and outcome.cohort_size >= minimum_cohort_size
+    )
+    _emit(
+        investigation_id,
+        SkillPatchGateDecidedPayload(
+            synthesis_id=synthesis_id,
+            patch_id=outcome.patch_id,
+            mode=mode,
+            decision=outcome.decision.value,
+            would_accept=would_accept,
+            baseline_backtest_score=outcome.baseline_backtest_score,
+            candidate_backtest_score=outcome.candidate_backtest_score,
+            delta=outcome.delta,
+            epsilon_required=outcome.epsilon_required,
+            cohort_size=outcome.cohort_size,
+            minimum_cohort_size=minimum_cohort_size,
+            matched_domains=list(matched_domains),
+            notes=outcome.notes,
+        ),
+        synthesis_id=synthesis_id,
+        role="phase8_gate",
+        policy_id="orchestrator-deterministic",
+    )
+
+
 async def _run_phase_8(ctx: InvestigationContext) -> bool:
     """Phase 8 (Compound) — Phase 8 is the keystone. Call
     ``skills.domain.extract_and_patch`` inline; the typed
@@ -1252,6 +1292,14 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
                 baseline_backtest_score=0.0,
                 candidate_backtest_score=0.0,
                 cohort_size=0,
+            )
+            _emit_phase8_gate_decided(
+                investigation_id=ctx.investigation_id,
+                synthesis_id=synthesis_id,
+                mode=gate.mode,
+                minimum_cohort_size=gate.minimum_cohort_size,
+                matched_domains=candidate_domains,
+                outcome=gate_outcome,
             )
             if gate_outcome.decision == PatchDecision.REJECT:
                 _emit_phase8_auto_patch_applied(

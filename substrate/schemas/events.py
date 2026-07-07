@@ -54,7 +54,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, model_valid
 # ---------------------------------------------------------------------------
 
 
-class ActionType(str, Enum):
+class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum API.
     """Typed enum of every action emitted as an event. Values stored in
     Parquet — must remain stable across refactors. Add new variants at the
     end of the relevant section; never repurpose."""
@@ -150,6 +150,7 @@ class ActionType(str, Enum):
     MASTER_MD_SKIPPED = "synthesis.master_md_skipped"
 
     # ── Phase-7→8 mechanical skill patcher (skills/domain/auto_patch) ──
+    SKILL_PATCH_GATE_DECIDED = "skill.patch_gate_decided"
     AUTO_PATCH_APPLIED = "skill.auto_patch_applied"
     AUTO_PATCH_SKIPPED = "skill.auto_patch_skipped"
 
@@ -736,7 +737,11 @@ class ActionType(str, Enum):
 #     is inert until a Parallel key is configured). Widening is backward-
 #     compatible: all stored events remain valid. Caught by mypy --strict
 #     (declared-bar) during the 2026-07-02 restore merge. 2026-07-02.
-EVENT_SCHEMA_VERSION: int = 29
+# v30: Phase-8 gate decisions become first-class calibration evidence. The
+#     auto-patch path now emits skill.patch_gate_decided before writer effects
+#     so shadow-mode would-accept/reject decisions and enforcing rejections can
+#     be counted without inferring from skill.auto_patch_applied.
+EVENT_SCHEMA_VERSION: int = 30
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -2581,6 +2586,34 @@ class AutoPatchAppliedPayload(_PayloadBase):
     status: str  # patched | already_patched | failed | partial | no_match
 
 
+class SkillPatchGateDecidedPayload(_PayloadBase):
+    """Emitted when the Phase-8 skill-patch gate evaluates a candidate.
+    Shadow mode records whether the same candidate would have been accepted
+    under enforcing mode, but still allows the write path to proceed. Enforcing
+    mode records the actual accept/reject decision before any skill writer
+    mutates files.
+    """
+
+    action_type: Literal[ActionType.SKILL_PATCH_GATE_DECIDED] = (
+        ActionType.SKILL_PATCH_GATE_DECIDED
+    )
+    synthesis_id: str
+    patch_id: str
+    mode: str
+    decision: str
+    would_accept: bool
+    baseline_backtest_score: float
+    candidate_backtest_score: float
+    delta: float
+    epsilon_required: float
+    cohort_size: int = Field(ge=0)
+    minimum_cohort_size: int = Field(ge=1)
+    matched_domains: list[str] = Field(default_factory=list)
+    notes: str = ""
+    operator_reviewed: bool = False
+    operator_agreed: bool | None = None
+
+
 class AutoPatchSkippedPayload(_PayloadBase):
     """Emitted when a synthesis matched a domain but its skill file
     already carries the synthesis_id marker. Distinct from
@@ -3833,7 +3866,7 @@ class DocumentFiledIntoInvestigationPayload(_PayloadBase):
 
 
 TypedPayload = Annotated[
-    DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
+    DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | SkillPatchGateDecidedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
     Field(discriminator="action_type"),
 ]
 
@@ -3898,6 +3931,7 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.DECOMPOSER_REGENERATED.value,
     ActionType.MASTER_MD_WRITTEN.value,
     ActionType.MASTER_MD_SKIPPED.value,
+    ActionType.SKILL_PATCH_GATE_DECIDED.value,
     ActionType.AUTO_PATCH_APPLIED.value,
     ActionType.AUTO_PATCH_SKIPPED.value,
     ActionType.EVIDENCE_RETRIEVE_REQUESTED.value,
@@ -4175,6 +4209,7 @@ __all__ = [
     # Skills: domain (MASTER.md + auto-patch)
     "MasterMdWrittenPayload",
     "MasterMdSkippedPayload",
+    "SkillPatchGateDecidedPayload",
     "AutoPatchAppliedPayload",
     "AutoPatchSkippedPayload",
     # Roles: evidence_retriever

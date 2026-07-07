@@ -17,6 +17,7 @@ from substrate.schemas.events import (  # noqa: E402
     AutoPatchAppliedPayload,
     ConstraintCompliance,
     Event,
+    SkillPatchGateDecidedPayload,
     SynthesizeDeliveredPayload,
     ThesisComponent,
 )
@@ -67,6 +68,19 @@ def _last_auto_patch(investigation_id: str) -> AutoPatchAppliedPayload:
     return payload
 
 
+def _last_gate_decision(investigation_id: str) -> SkillPatchGateDecidedPayload:
+    rows = trajectory(investigation_id)
+    events = [
+        Event.model_validate(row)
+        for row in rows
+        if row["action_type"] == ActionType.SKILL_PATCH_GATE_DECIDED.value
+    ]
+    assert events
+    payload = events[-1].payload
+    assert isinstance(payload, SkillPatchGateDecidedPayload)
+    return payload
+
+
 @pytest.mark.asyncio
 async def test_phase8_enforcing_rejects_before_any_skill_write(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTIEK_PHASE8_MODE", "enforcing")
@@ -78,6 +92,14 @@ async def test_phase8_enforcing_rejects_before_any_skill_write(tmp_path, monkeyp
     assert ok is False
     assert ctx.failed_phase == 8
     assert not (skills_root / "quantum-computing-knowledge" / "SKILL.md").exists()
+
+    gate_decision = _last_gate_decision(ctx.investigation_id)
+    assert gate_decision.mode == "enforcing"
+    assert gate_decision.decision == "reject"
+    assert gate_decision.would_accept is False
+    assert gate_decision.cohort_size == 0
+    assert gate_decision.minimum_cohort_size == 50
+    assert "quantum-computing-knowledge" in gate_decision.matched_domains
 
     payload = _last_auto_patch(ctx.investigation_id)
     assert payload.status == "rejected_by_phase8_gate"
@@ -106,6 +128,14 @@ async def test_phase8_shadow_mode_preserves_mechanical_fallback(tmp_path, monkey
     assert skill_path.exists()
     assert "<!-- synthesis_id: syn-inv-phase8-shadow -->" in skill_path.read_text()
     assert ctx.patched_domains == ["quantum-computing-knowledge"]
+
+    gate_decision = _last_gate_decision(ctx.investigation_id)
+    assert gate_decision.mode == "shadow"
+    assert gate_decision.decision == "shadow"
+    assert gate_decision.would_accept is False
+    assert gate_decision.operator_reviewed is False
+    assert gate_decision.operator_agreed is None
+    assert gate_decision.matched_domains == ["quantum-computing-knowledge"]
 
     payload = _last_auto_patch(ctx.investigation_id)
     assert payload.status == "patched"
