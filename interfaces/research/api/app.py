@@ -1648,6 +1648,11 @@ def create_app(
     # placeholder on that signal. Touches no DuckDB / db_lock.
     from .krea_routes import register_krea_routes
     register_krea_routes(app)
+    # Multimedia SPR-09 — dry-run asset persistence/read-model API. No live
+    # provider spend; routes call deterministic planner/audio/video/steering/
+    # hardening seams and persist JSON-backed asset records.
+    from .multimedia_routes import register_multimedia_routes
+    register_multimedia_routes(app)
     # Read SPR-09 — library catalog (paginated/filtered/searched view over the
     # SAME servable-corpus read path; §9.0 keeps gated bodies out of payloads).
     from .library import register_library_routes
