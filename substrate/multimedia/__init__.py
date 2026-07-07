@@ -6,6 +6,11 @@ that spend money stay operator-gated; importing this package must not require pa
 media credentials (CI runs against the deterministic fake TTS).
 """
 
+from .audio import (
+    AudioExperienceAsset,
+    AudioPlaybackModel,
+    normalize_script_for_audio,
+)
 from .audio_assembly import (
     AudioExperience,
     ChapterAudio,
@@ -54,8 +59,11 @@ __all__ = [
     "ChapterPlan",
     "CoverageSuggestion",
     "EvidenceChunk",
+    "AudioExperienceAsset",
+    "AudioPlaybackModel",
     "MultimediaPlan",
     "MultimediaPlanRequest",
+    "NarrationParagraph",
     "StoryboardScene",
     "build_multimedia_plan",
     # SPR-03 provider router
@@ -70,6 +78,7 @@ __all__ = [
     "NarrationParagraph",
     "normalize_line",
     "normalize_script",
+    "normalize_script_for_audio",
     "FakeTTSProvider",
     "TTSProvider",
     "TTSRequest",
