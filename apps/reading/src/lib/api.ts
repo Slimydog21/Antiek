@@ -900,6 +900,41 @@ export async function editSelection(
   return resp.json();
 }
 
+// Mirrors interfaces/research/api write complete route. Tab autocomplete client (CK-3).
+export interface CompleteRequest {
+  /** Text before the cursor (min length 1). */
+  prefix: string;
+  /** Optional cursor-neighborhood context (max 8000 chars). */
+  document_context?: string;
+  /** Continuation length bound (1..512, default 128). */
+  max_tokens?: number;
+}
+
+export interface CompleteResponse {
+  text: string;
+}
+
+/** POST /complete — inline Tab autocomplete: fetch a continuation for the
+ * prefix at the cursor. Returns only the new text to append (not a rewrite).
+ * Throws ``ApiError`` on a transport/validation failure. */
+export async function completeInline(
+  req: CompleteRequest,
+): Promise<CompleteResponse> {
+  const resp = await apiFetch(`${API_BASE}/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /complete failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
 export async function reorderBlock(req: {
   section_id: string;
   block_kind: BlockKind;
