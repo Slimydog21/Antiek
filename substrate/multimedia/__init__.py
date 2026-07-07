@@ -46,6 +46,16 @@ from .provider_router import (
     ProviderUnavailable,
     route_media_request,
 )
+from .steering import (
+    RevisionPlan,
+    SegmentReuse,
+    SteeringIntent,
+    SteeringOperation,
+    SteeringTranscript,
+    build_revision_asset,
+    parse_steering_prompt,
+    plan_revision,
+)
 from .tts import (
     FakeTTSProvider,
     TTSProvider,
@@ -80,11 +90,19 @@ __all__ = [
     "ProviderExecutionRecord",
     "ProviderRoute",
     "ProviderUnavailable",
+    "RevisionPlan",
+    "SegmentReuse",
+    "SteeringIntent",
+    "SteeringOperation",
+    "SteeringTranscript",
     "VideoDocumentaryAsset",
     "VideoScene",
     "assemble_video_documentary",
     "build_video_scenes",
+    "build_revision_asset",
     "compile_ken_burns_timeline",
+    "parse_steering_prompt",
+    "plan_revision",
     "route_media_request",
     # SPR-04 narration + TTS + assembly + playback
     "NarrationParagraph",
