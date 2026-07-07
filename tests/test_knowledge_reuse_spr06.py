@@ -345,6 +345,12 @@ def test_m2_stale_source_edges_are_advisory_not_a_drop(seeded_quantum_db):
     assert set(payload["stale_advisory_unit_ids"]) == {
         u.unit_id for u in advisory_units
     }
+    advisory_edges = payload["stale_advisory_edge_ids_by_unit"]
+    assert advisory_edges
+    assert any(
+        "edge-stale-personnel" in advisory_edges.get(u.unit_id, [])
+        for u in advisory_units
+    )
 
 
 # ---------------------------------------------------------------------------

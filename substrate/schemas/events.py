@@ -760,7 +760,13 @@ class ActionType(str, Enum):
 #     candidate for a later real graph deposit. 2026-07-07.
 # v33: GF-4q — StaleReuseRefreshPromotionResultPayload records whether a
 #     candidate was deposited or why it was not depositable. 2026-07-07.
-EVENT_SCHEMA_VERSION: int = 33
+# v34: GF-4u — KnowledgeReusedPayload now persists the stale advisory edge ids
+#     already computed by the reuse layer, keyed by reused unit id. The existing
+#     stale_advisory_unit_ids field only said which units needed refresh; the
+#     edge-id map makes later graph.staleness.resolve/supersession flows
+#     reconstructable from the event stream. Backward-compatible default.
+#     2026-07-07.
+EVENT_SCHEMA_VERSION: int = 34
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -950,6 +956,10 @@ class KnowledgeReusedPayload(_PayloadBase):
     * ``stale_advisory_unit_ids`` lists injected units whose grounding source
       document also has stale classified graph edges. Advisory means "refresh
       when touched", not "drop from reuse".
+    * ``stale_advisory_edge_ids_by_unit`` gives the exact stale edge ids behind
+      each advisory unit. This is intentionally separate from the unit list so
+      old consumers that only need a boolean stay simple, while graph-resolution
+      flows can address the stale entities later.
     * ``context_pack_event_id`` is the assembled pack's event id, so a reuse
       decision is joinable to exactly what the model saw.
 
@@ -963,6 +973,9 @@ class KnowledgeReusedPayload(_PayloadBase):
     decisions: list[str]
     source_investigation_ids: list[str]
     stale_advisory_unit_ids: list[str] = Field(default_factory=list)
+    stale_advisory_edge_ids_by_unit: dict[str, list[str]] = Field(
+        default_factory=dict
+    )
     context_pack_event_id: str
 
 

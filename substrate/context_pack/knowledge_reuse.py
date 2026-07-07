@@ -889,6 +889,11 @@ def _emit_knowledge_reused(
         stale_advisory_unit_ids=[
             ru.unit_id for ru in injected if ru.staleness_advisories
         ],
+        stale_advisory_edge_ids_by_unit={
+            ru.unit_id: [advisory.edge_id for advisory in ru.staleness_advisories]
+            for ru in injected
+            if ru.staleness_advisories
+        },
         context_pack_event_id=context_pack_event_id or "",
     )
     return emit_typed(

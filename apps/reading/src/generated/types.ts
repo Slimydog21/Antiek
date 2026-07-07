@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 33;
+export const EVENT_SCHEMA_VERSION = 34;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -658,6 +658,10 @@ export interface ContextPackAssembledPayload {
  * * ``stale_advisory_unit_ids`` lists injected units whose grounding source
  *   document also has stale classified graph edges. Advisory means "refresh
  *   when touched", not "drop from reuse".
+ * * ``stale_advisory_edge_ids_by_unit`` gives the exact stale edge ids behind
+ *   each advisory unit. This is intentionally separate from the unit list so
+ *   old consumers that only need a boolean stay simple, while graph-resolution
+ *   flows can address the stale entities later.
  * * ``context_pack_event_id`` is the assembled pack's event id, so a reuse
  *   decision is joinable to exactly what the model saw.
  * 
@@ -672,6 +676,7 @@ export interface KnowledgeReusedPayload {
   decisions: string[];
   source_investigation_ids: string[];
   stale_advisory_unit_ids?: string[];
+  stale_advisory_edge_ids_by_unit?: Record<string, string[]>;
   context_pack_event_id: string;
 }
 
