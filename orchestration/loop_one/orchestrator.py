@@ -68,6 +68,7 @@ from typing import TYPE_CHECKING, Any, Literal
 if TYPE_CHECKING:
     import duckdb
 
+    from compounding.skill_growth import SkillPatchGate
     from substrate.dispatch.research_tier import ResearchTier
     from substrate.eval.groundedness.scorer import GroundednessResult
 
@@ -115,6 +116,10 @@ from substrate.schemas import (  # noqa: E402
 from .coordinator import InvestigationCoordinator, broadcast_emit  # noqa: E402
 
 _log = logging.getLogger(__name__)
+
+PHASE8_CALIBRATION_INVESTIGATION_IDS_ENV = (
+    "ANTIEK_PHASE8_CALIBRATION_INVESTIGATION_IDS"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1235,6 +1240,45 @@ def _emit_phase8_gate_decided(
     )
 
 
+def _phase8_calibration_investigation_ids(raw: str) -> list[str]:
+    return [
+        part.strip()
+        for part in raw.replace("\n", ",").split(",")
+        if part.strip()
+    ]
+
+
+def _phase8_gate_from_runtime_env() -> SkillPatchGate:
+    from compounding.skill_growth import (
+        PHASE8_MODE_ENFORCING,
+        PHASE8_MODE_ENV,
+        phase8_gate_from_env,
+    )
+
+    mode = os.environ.get(PHASE8_MODE_ENV, "").strip().lower()
+    if mode != PHASE8_MODE_ENFORCING:
+        return phase8_gate_from_env()
+
+    raw_ids = os.environ.get(PHASE8_CALIBRATION_INVESTIGATION_IDS_ENV, "")
+    investigation_ids = _phase8_calibration_investigation_ids(raw_ids)
+    if not investigation_ids:
+        return phase8_gate_from_env(
+            calibration_ready=False,
+            calibration_notes=(
+                f"{PHASE8_CALIBRATION_INVESTIGATION_IDS_ENV} is required "
+                "before Phase-8 enforcing can accept patches"
+            ),
+        )
+
+    from orchestration.audit import phase8_calibration_status
+
+    status = phase8_calibration_status(investigation_ids)
+    return phase8_gate_from_env(
+        calibration_ready=status.ready_for_enforcing,
+        calibration_notes=status.summary,
+    )
+
+
 async def _run_phase_8(ctx: InvestigationContext) -> bool:
     """Phase 8 (Compound) — Phase 8 is the keystone. Call
     ``skills.domain.extract_and_patch`` inline; the typed
@@ -1279,7 +1323,7 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
             investigation_id=ctx.investigation_id,
             dry_run=True,
         )
-        from compounding.skill_growth import PatchDecision, phase8_gate_from_env
+        from compounding.skill_growth import PatchDecision
         from skills.domain.auto_patch import route_domains as _route_mechanical_domains
 
         candidate_domains = sorted({
@@ -1287,7 +1331,7 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
             *_route_mechanical_domains(ctx.question, ctx.synthesis.thesis_summary),
         })
         if candidate_domains:
-            gate = phase8_gate_from_env()
+            gate = _phase8_gate_from_runtime_env()
             gate_outcome = gate.decide(
                 baseline_backtest_score=0.0,
                 candidate_backtest_score=0.0,

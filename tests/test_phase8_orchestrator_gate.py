@@ -6,12 +6,15 @@ import pytest
 
 import interfaces.research.api  # noqa: F401,E402
 import orchestration.loop_one.orchestrator as orch  # noqa: E402
+from orchestration.audit import record_phase8_gate_review  # noqa: E402
 from orchestration.loop_one.orchestrator import (  # noqa: E402
+    PHASE8_CALIBRATION_INVESTIGATION_IDS_ENV,
     InvestigationContext,
+    _phase8_gate_from_runtime_env,
     _run_phase_8,
 )
 from skills.domain.extract import ExtractionResult  # noqa: E402
-from substrate.event_log import trajectory  # noqa: E402
+from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.schemas.events import (  # noqa: E402
     ActionType,
     AutoPatchAppliedPayload,
@@ -33,6 +36,7 @@ def _isolate_phase8(tmp_path, monkeypatch):
     monkeypatch.delenv("ANTIEK_PHASE8_MODE", raising=False)
     monkeypatch.delenv("ANTIEK_PHASE8_EPSILON", raising=False)
     monkeypatch.delenv("ANTIEK_PHASE8_MINIMUM_COHORT_SIZE", raising=False)
+    monkeypatch.delenv(PHASE8_CALIBRATION_INVESTIGATION_IDS_ENV, raising=False)
 
 
 def _ctx(investigation_id: str = "inv-phase8-gate") -> InvestigationContext:
@@ -79,6 +83,64 @@ def _last_gate_decision(investigation_id: str) -> SkillPatchGateDecidedPayload:
     payload = events[-1].payload
     assert isinstance(payload, SkillPatchGateDecidedPayload)
     return payload
+
+
+def _calibration_decision(patch_id: str) -> SkillPatchGateDecidedPayload:
+    return SkillPatchGateDecidedPayload(
+        synthesis_id="syn-calibration",
+        patch_id=patch_id,
+        mode="shadow",
+        decision="shadow",
+        would_accept=False,
+        baseline_backtest_score=0.0,
+        candidate_backtest_score=0.0,
+        delta=0.0,
+        epsilon_required=0.02,
+        cohort_size=50,
+        minimum_cohort_size=50,
+        matched_domains=["quantum-computing-knowledge"],
+        notes="shadow-mode: patch applied regardless",
+    )
+
+
+def test_phase8_runtime_gate_requires_calibration_ids_for_enforcing(monkeypatch):
+    monkeypatch.setenv("ANTIEK_PHASE8_MODE", "enforcing")
+
+    gate = _phase8_gate_from_runtime_env()
+
+    assert gate.mode == "enforcing"
+    assert gate.calibration_ready is False
+    assert PHASE8_CALIBRATION_INVESTIGATION_IDS_ENV in gate.calibration_notes
+
+
+def test_phase8_runtime_gate_loads_ready_calibration_status(monkeypatch):
+    monkeypatch.setenv("ANTIEK_PHASE8_MODE", "enforcing")
+    monkeypatch.setenv(PHASE8_CALIBRATION_INVESTIGATION_IDS_ENV, "inv-calibration")
+
+    for index in range(10):
+        patch_id = f"patch-cal-{index}"
+        decision_id = emit_typed(
+            "inv-calibration",
+            _calibration_decision(patch_id),
+            synthesis_id="syn-calibration",
+            role="phase8_gate",
+        )
+        assert decision_id is not None
+        review_id = record_phase8_gate_review(
+            investigation_id="inv-calibration",
+            synthesis_id="syn-calibration",
+            patch_id=patch_id,
+            decision_event_id=decision_id,
+            reviewer="operator",
+            operator_accept=False,
+        )
+        assert review_id is not None
+
+    gate = _phase8_gate_from_runtime_env()
+
+    assert gate.mode == "enforcing"
+    assert gate.calibration_ready is True
+    assert gate.calibration_notes.endswith("current epsilon agreement = 100%")
 
 
 @pytest.mark.asyncio
