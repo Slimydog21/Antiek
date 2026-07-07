@@ -149,6 +149,8 @@ export interface StaleReuseRefreshPromotionResult {
     | "missing_supporting_chunks"
     | "unresolved_supporting_chunks";
   depositedNodeId: string | null;
+  primaryChunkId: string | null;
+  primarySourceDocumentId: string | null;
   unresolvedChunkIds: string[];
 }
 
@@ -308,6 +310,8 @@ interface StaleReuseRefreshPromotionResultPayloadShape {
     | "missing_supporting_chunks"
     | "unresolved_supporting_chunks";
   deposited_node_id?: string | null;
+  primary_chunk_id?: string | null;
+  primary_source_document_id?: string | null;
   unresolved_chunk_ids?: unknown;
 }
 
@@ -491,6 +495,14 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
             depositedNodeId:
               typeof result.deposited_node_id === "string"
                 ? result.deposited_node_id
+                : null,
+            primaryChunkId:
+              typeof result.primary_chunk_id === "string"
+                ? result.primary_chunk_id
+                : null,
+            primarySourceDocumentId:
+              typeof result.primary_source_document_id === "string"
+                ? result.primary_source_document_id
                 : null,
             unresolvedChunkIds: Array.isArray(result.unresolved_chunk_ids)
               ? result.unresolved_chunk_ids.filter(

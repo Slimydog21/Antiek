@@ -267,6 +267,8 @@ describe("parseSynthesis — reuse provenance (SPR-10 M2)", () => {
         status: "deposited",
         reason: "ready",
         deposited_node_id: "node-refreshed",
+        primary_chunk_id: "chunk-a",
+        primary_source_document_id: "doc-refresh",
         unresolved_chunk_ids: [9],
       }),
     ]);
@@ -286,6 +288,8 @@ describe("parseSynthesis — reuse provenance (SPR-10 M2)", () => {
       status: "deposited",
       reason: "ready",
       depositedNodeId: "node-refreshed",
+      primaryChunkId: "chunk-a",
+      primarySourceDocumentId: "doc-refresh",
       unresolvedChunkIds: [],
     });
     expect(synth!.reuseProvenance[1].acceptedRefresh).toBeUndefined();

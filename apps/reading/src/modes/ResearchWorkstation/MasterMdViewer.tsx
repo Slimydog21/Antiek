@@ -1341,7 +1341,10 @@ function ReusedInsightLink({
         </span>
       )}
       {!backendChild && insight.refreshPromotionResult && (
-        <span className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight">
+        <span
+          className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight"
+          title={promotionResultTitle(insight.refreshPromotionResult)}
+        >
           {insight.refreshPromotionResult.status === "deposited"
             ? "promotion deposited"
             : "promotion not depositable"}
@@ -1514,6 +1517,8 @@ function RefreshChildResult({
         status: result.status,
         reason: result.reason,
         depositedNodeId: result.deposited_node_id ?? null,
+        primaryChunkId: result.primary_chunk_id ?? null,
+        primarySourceDocumentId: result.primary_source_document_id ?? null,
         unresolvedChunkIds: result.unresolved_chunk_ids,
       });
     } catch (e) {
@@ -1568,7 +1573,10 @@ function RefreshChildResult({
       )}
       {acceptedStatus === "refreshed" && (
         promotionResult ? (
-          <span className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight">
+          <span
+            className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight"
+            title={promotionResultTitle(promotionResult)}
+          >
             {promotionResult.status === "deposited"
               ? "promotion deposited"
               : "promotion not depositable"}
@@ -1606,6 +1614,25 @@ function RefreshChildResult({
 interface RefreshChildSynthesis {
   summary: string;
   supportingChunkIds: string[];
+}
+
+function promotionResultTitle(
+  result: NonNullable<ReusedInsight["refreshPromotionResult"]>,
+): string {
+  if (result.status === "deposited") {
+    return [
+      result.depositedNodeId ? `node ${result.depositedNodeId}` : null,
+      result.primaryChunkId ? `chunk ${result.primaryChunkId}` : null,
+      result.primarySourceDocumentId
+        ? `document ${result.primarySourceDocumentId}`
+        : null,
+    ]
+      .filter((part): part is string => Boolean(part))
+      .join(" · ");
+  }
+  return result.unresolvedChunkIds.length > 0
+    ? `unresolved chunks ${result.unresolvedChunkIds.join(", ")}`
+    : result.reason;
 }
 
 function refreshAcceptanceLabel(

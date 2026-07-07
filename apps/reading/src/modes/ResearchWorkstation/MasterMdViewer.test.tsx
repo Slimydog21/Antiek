@@ -1386,7 +1386,9 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
         "evt-promotion-candidate",
       ),
     );
-    expect(screen.getByText("promotion deposited")).toBeTruthy();
+    expect(screen.getByText("promotion deposited").getAttribute("title")).toBe(
+      "node node-refreshed · chunk chunk-refresh-1 · document doc-refresh",
+    );
   });
 
   it("replays promotion-candidate state without a backend child summary", async () => {
@@ -1450,6 +1452,8 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
                 status: "not_depositable",
                 reason: "unresolved_supporting_chunks",
                 depositedNodeId: null,
+                primaryChunkId: null,
+                primarySourceDocumentId: null,
                 unresolvedChunkIds: ["missing-chunk"],
               },
             },
@@ -1460,7 +1464,9 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
     );
     await waitFor(() => expect(screen.getByTestId("reuse-provenance")).toBeTruthy());
 
-    expect(screen.getByText("promotion not depositable")).toBeTruthy();
+    expect(
+      screen.getByText("promotion not depositable").getAttribute("title"),
+    ).toBe("unresolved chunks missing-chunk");
     expect(screen.queryByText("promotion candidate recorded")).toBeNull();
     expect(getTrajectoryMock).not.toHaveBeenCalled();
   });
