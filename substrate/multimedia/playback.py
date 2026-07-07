@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ..contracts.multimedia import ClaimToChunk
 from .audio_assembly import AudioExperience, ChapterAudio
 
 
@@ -111,6 +112,8 @@ class PlaybackReadModel:
             )
         if not instruction.strip():
             raise ValueError("steering instruction must be non-empty")
+        if speed <= 0:
+            raise ValueError(f"steering speed must be > 0, got {speed}")
         return RegenerationTarget(
             chapter_id=chapter_id,
             instruction=instruction,
@@ -119,16 +122,27 @@ class PlaybackReadModel:
         )
 
 
-def _source_cards_for(chapter: ChapterAudio) -> tuple[SourceCard, ...]:
-    """Build per-chunk source cards for a chapter.
+def _source_cards_for(
+    chapter: ChapterAudio,
+    claim_to_chunk: tuple[ClaimToChunk, ...],
+) -> tuple[SourceCard, ...]:
+    """Build per-chunk source cards with accurate line attribution.
 
-    The exact line->chunk mapping lives in the manifest's ``claim_to_chunk``; the
-    player only needs chapter-scoped provenance (which chunks back this chapter's
-    narration), so each source chunk is attributed to the chapter's spoken lines
-    as a group. Order follows the chapter's source_chunk_ids (stable)."""
+    Each chunk is attributed to the SPECIFIC spoken lines that cite it (from the
+    manifest's ``claim_to_chunk``), not to every chapter line — so the player
+    never shows a chunk as backing a line that never cited it. Chapter-level
+    chunks (in ``source_chunk_ids`` but cited by no line) surface with empty
+    ``line_ids``: honest chapter provenance without a per-line claim."""
+    chapter_line_set = set(chapter.script_line_ids)
+    chunk_to_lines: dict[str, list[str]] = {cid: [] for cid in chapter.source_chunk_ids}
+    for claim in claim_to_chunk:
+        if claim.script_line_id in chapter_line_set:
+            for cid in claim.chunk_ids:
+                if cid in chunk_to_lines:
+                    chunk_to_lines[cid].append(claim.script_line_id)
     return tuple(
-        SourceCard(chunk_id=chunk_id, line_ids=chapter.script_line_ids)
-        for chunk_id in chapter.source_chunk_ids
+        SourceCard(chunk_id=cid, line_ids=tuple(dict.fromkeys(lines)))
+        for cid, lines in chunk_to_lines.items()
     )
 
 
@@ -137,6 +151,7 @@ def build_playback_read_model(experience: AudioExperience) -> PlaybackReadModel:
 
     Pure: no synthesis, no IO. The read-model is what a player renders; the
     experience/manifest remain the source of truth."""
+    claims = experience.manifest.claim_to_chunk
     chapters = tuple(
         PlaybackChapter(
             chapter_id=ch.chapter_id,
@@ -147,7 +162,7 @@ def build_playback_read_model(experience: AudioExperience) -> PlaybackReadModel:
             end_offset_seconds=ch.end_offset_seconds,
             duration_seconds=ch.duration_seconds,
             script_line_ids=ch.script_line_ids,
-            source_cards=_source_cards_for(ch),
+            source_cards=_source_cards_for(ch, claims),
             recap_prompt=ch.recap_prompt,
         )
         for ch in experience.chapters

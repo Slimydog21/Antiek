@@ -271,13 +271,21 @@ def test_playback_resolves_current_chapter_by_offset(experience):
     assert model.chapter_at_offset(-1) is None
 
 
-def test_playback_source_cards_surface_chapter_provenance(experience):
+def test_playback_source_cards_cite_only_the_lines_that_back_them(experience):
+    # BUG 2 regression: a source card must attribute a chunk to the SPECIFIC
+    # spoken lines that cite it, not overclaim every chapter line for every chunk.
     model = build_playback_read_model(experience)
+    claim_by_line = {c.script_line_id: set(c.chunk_ids) for c in experience.manifest.claim_to_chunk}
     for chapter in model.chapters:
-        # Every source card carries the chunk id and the chapter's spoken lines.
+        chapter_lines = set(chapter.script_line_ids)
         for card in chapter.source_cards:
             assert card.chunk_id
-            assert card.line_ids == chapter.script_line_ids
+            # every attributed line must actually cite this chunk
+            for line_id in card.line_ids:
+                assert line_id in chapter_lines
+                assert card.chunk_id in claim_by_line.get(line_id, set()), (
+                    f"line {line_id} does not cite chunk {card.chunk_id}"
+                )
 
 
 def test_steering_targets_one_chapter_for_regeneration(experience):
@@ -293,13 +301,50 @@ def test_steering_targets_one_chapter_for_regeneration(experience):
     assert target.instruction.startswith("make the opening")
 
 
-def test_steering_rejects_unknown_chapter_and_empty_instruction(experience):
+def test_steering_rejects_unknown_chapter_empty_instruction_and_bad_speed(experience):
     model = build_playback_read_model(experience)
     with pytest.raises(KeyError):
         model.steering_target("no-such-chapter", instruction="x", voice="n", speed=1.0)
     real = experience.chapters[0].chapter_id
     with pytest.raises(ValueError):
         model.steering_target(real, instruction="   ", voice="n", speed=1.0)
+    # BUG 3 regression: non-positive speed must be rejected at steering time,
+    # not deferred to a later TTS synthesis that would fail.
+    with pytest.raises(ValueError):
+        model.steering_target(real, instruction="ok", voice="n", speed=0)
+    with pytest.raises(ValueError):
+        model.steering_target(real, instruction="ok", voice="n", speed=-1.0)
+
+
+def test_assembly_excludes_orphan_non_chapter_lines_from_transcript():
+    # BUG 1 regression: a planner disclosure line (chapter prefix "disclosure",
+    # not a real chapter) must NOT appear in the transcript or manifest script
+    # lines — it is never spoken, so transcript == audio content.
+    plan = build_multimedia_plan(
+        MultimediaPlanRequest(
+            topic="disclosable topic",
+            target_minutes=15,
+            disclosure_preferences=("ai-generated",),
+        ),
+        evidence=EVIDENCE,
+    )
+    assert any(ln.line_id == "disclosure-line-0" for ln in plan.script_lines)
+    experience = assemble_audio_experience(
+        plan, FakeTTSProvider(), asset_id="a", revision_id="r"
+    )
+    spoken_ids = {ln.line_id for ln in experience.manifest.script_lines}
+    assert "disclosure-line-0" not in spoken_ids
+    # no segment references the orphan line either
+    for seg in experience.manifest.segments:
+        assert "disclosure-line-0" not in seg.script_line_ids
+
+
+def test_assembly_segment_sequences_are_contiguous(experience):
+    # BUG 4 regression: segment.sequence must be a contiguous 0..N-1 index over
+    # ASSEMBLED chapters, with no gaps from skipped planner chapters.
+    sequences = [seg.sequence for seg in experience.manifest.segments]
+    assert sequences == list(range(len(sequences)))
+    assert [c.sequence for c in experience.chapters] == sequences
 
 
 def test_playback_total_and_transcript_match_experience(experience):

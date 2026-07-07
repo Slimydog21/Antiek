@@ -112,9 +112,18 @@ def assemble_audio_experience(
     concatenated into one audio file; a transcript file covers the full asset.
     The returned manifest satisfies SPR-01 referential integrity by construction.
     Raises ``ValueError`` if no chapter carries any narration."""
-    paragraphs = normalize_script(
-        plan.script_lines, pronunciation_notes=pronunciation_notes
+    chapter_ids = {chapter.chapter_id for chapter in plan.chapters}
+    # Only narrate lines that belong to a real plan chapter. The planner can emit
+    # non-chapter script lines (e.g. ``disclosure-line-0``, an instruction for the
+    # render gate, not narration); speaking those would put text in the transcript
+    # + manifest.script_lines that no chapter's audio ever covers (transcript/audio
+    # divergence). Filter at the source so transcript == audio == segment lines.
+    spoken_lines = tuple(
+        line
+        for line in plan.script_lines
+        if _chapter_of(line.line_id) in chapter_ids
     )
+    paragraphs = normalize_script(spoken_lines, pronunciation_notes=pronunciation_notes)
     by_chapter: dict[str, list[NarrationParagraph]] = {}
     for para in paragraphs:
         by_chapter.setdefault(_chapter_of(para.line_id), []).append(para)
@@ -128,7 +137,8 @@ def assemble_audio_experience(
     chapter_audios: list[ChapterAudio] = []
     offset = 0.0
 
-    for sequence, chapter in enumerate(plan.chapters):
+    assembled_sequence = 0
+    for chapter in plan.chapters:
         paras = by_chapter.get(chapter.chapter_id, ())
         if not paras:
             # A chapter the planner emitted with no narration has nothing to
@@ -212,7 +222,7 @@ def assemble_audio_experience(
         segments.append(
             MediaSegment(
                 segment_id=f"seg-{chapter.chapter_id}",
-                sequence=sequence,
+                sequence=assembled_sequence,
                 title=chapter.title,
                 media_kind="chapter",
                 script_line_ids=line_ids,
@@ -225,7 +235,7 @@ def assemble_audio_experience(
             ChapterAudio(
                 chapter_id=chapter.chapter_id,
                 title=chapter.title,
-                sequence=sequence,
+                sequence=assembled_sequence,
                 audio_file_id=audio_file_id,
                 duration_seconds=chapter_duration,
                 start_offset_seconds=round(offset, 3),
@@ -239,6 +249,7 @@ def assemble_audio_experience(
             )
         )
         offset += chapter_duration
+        assembled_sequence += 1
 
     if not chapter_audios:
         raise ValueError(
@@ -292,7 +303,7 @@ def assemble_audio_experience(
         revision_id=revision_id,
         route_policy=plan.request.route_policy,
         prompts=tuple(prompts),
-        script_lines=plan.script_lines,
+        script_lines=spoken_lines,
         segments=tuple(segments),
         files=tuple(files),
         provider_calls=tuple(calls),
