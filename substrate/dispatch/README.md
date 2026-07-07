@@ -13,21 +13,30 @@ changes never require code changes.
 
 ## Configured backends
 
-- DeepSeek V4 Pro / Xiaomi MiMo V2.5 Pro (primary work, reasoning-heavy)
-- DeepSeek V4 Flash / Xiaomi MiMo V2.5 Flash (bulk, cost-optimized)
-- Claude via API (high-stakes synthesis)
-- Grok 4.3 via Hermes (cross-family verification)
-- Prime Inference (additional capacity)
+Claude-less (operator decision 2026-07-06): every tier's primary is
+GLM-5.2 via Zhipu z.ai DIRECT API, with a three-deep cross-family
+fallback GLM-5.2 → DeepSeek V4 Pro → MiMo V2.5 Pro, all direct
+endpoints (no OpenRouter hop, no Anthropic).
+
+- GLM-5.2 via z.ai, thinking OFF — flash + pro + verify tiers
+- GLM-5.2 via z.ai, thinking ON — synthesis tier (reasoning opt-in)
+- DeepSeek V4 Pro via api.deepseek.com — cross-family backup layer
+- MiMo V2.5 Pro via api.mimo.xiaomi.com — second cross-family backup
+- OpenAI whisper-1 / gpt-4o-mini-tts — transcription + TTS (voice I/O)
 - Local inference (deferred; abstraction in place for later)
+
+`hermes` (the operator's local subscription gateway) registers as an
+opt-in provider when `HERMES_API_KEY` is set but is in no tier route —
+a dormant gateway, not an active path. `config.yaml` is authoritative.
 
 ## Tracked metrics
 
 Per-role token consumption, per-investigation cost, latency by phase.
 These feed the hardware-decision criteria — see architecture_notes §6.
 
-## The Pro/Flash split
+## The flash/pro split (thinking policy, not model variants)
 
-Not interchangeable cost tiers. Flash variants for bulk processing
-where volume is the binding constraint; Pro variants for synthesis
-where reasoning depth and multi-hop coherence dominate. See
-architecture_notes §2.5.
+All four tiers run the same GLM-5.2; the split is whether it reasons.
+flash/pro/verify run thinking OFF for volume (crystallized answers at
+throughput); synthesis runs thinking ON for the human-facing artifact.
+Reasoning stays opt-in per role. See architecture_notes §2.5.
