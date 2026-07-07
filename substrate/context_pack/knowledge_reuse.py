@@ -63,7 +63,7 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -81,7 +81,7 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from context_pack.assembler import (  # type: ignore[no-redef]
+    from context_pack.assembler import (  # type: ignore[import-not-found,no-redef]
         ContextPack,
         DefaultTokenCounter,
         LayerSource,
@@ -90,7 +90,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
         assemble_context_pack,
         default_budget_for,
     )
-    from graph.search import cosine_similarity_sql  # type: ignore[no-redef]
+    from graph.search import cosine_similarity_sql  # type: ignore[import-not-found,no-redef]
 
 
 # ---------------------------------------------------------------------------
@@ -357,7 +357,9 @@ def retrieve_prior_units(
     try:
         from ..graph.insight_question import knowledge_unit_of
     except ImportError:  # pragma: no cover — direct-script fallback
-        from graph.insight_question import knowledge_unit_of  # type: ignore[no-redef]
+        from graph.insight_question import (
+            knowledge_unit_of,  # type: ignore[import-not-found,no-redef]
+        )
 
     if not question_text or not question_text.strip():
         return []
@@ -609,7 +611,7 @@ def build_reuse_layer(
         return None, injected, decisions, coverage
     body = _REUSE_HEADER + "\n".join(render_unit(ru) for ru in injected)
     layer = LayerSource(
-        kind=REUSE_LAYER_KIND,  # type: ignore[arg-type]  — added to LayerKind in assembler
+        kind=REUSE_LAYER_KIND,  # type: ignore[arg-type]  # added to LayerKind in assembler
         source=REUSE_LAYER_SOURCE,
         content=body,
         priority=REUSE_LAYER_PRIORITY,
@@ -645,7 +647,7 @@ def assemble_context_pack_with_reuse(
     *,
     role: str,
     investigation_id: str,
-    layers,
+    layers: Iterable[LayerSource],
     units: Sequence[RetrievedUnit],
     include_reuse: bool = True,
     target_tokens: int | None = None,
@@ -765,13 +767,15 @@ def assemble_context_pack_with_reuse(
         # exists. Admitted units emit nothing (absence == cleared the gate).
         from substrate.flywheel.reuse_gate import _emit_reuse_gated
 
+        assert threshold is not None
+        context_pack_event_id = pack.event_id or ""
         for decision in gate_decisions:
             if not decision.reusable:
                 _emit_reuse_gated(
                     decision,
                     investigation_id=investigation_id,
                     threshold=threshold,
-                    context_pack_event_id=pack.event_id,
+                    context_pack_event_id=context_pack_event_id,
                     role=role,
                     events_dir=events_dir,
                     policy_id=policy_id,
@@ -820,8 +824,8 @@ def _emit_knowledge_reused(
         from ..event_log import emit_typed
         from ..schemas.events import KnowledgeReusedPayload
     except ImportError:  # pragma: no cover — direct-script fallback
-        from event_log import emit_typed  # type: ignore[no-redef]
-        from schemas.events import KnowledgeReusedPayload  # type: ignore[no-redef]
+        from event_log import emit_typed  # type: ignore[import-not-found,no-redef]
+        from schemas.events import KnowledgeReusedPayload  # type: ignore[import-not-found,no-redef]
 
     payload = KnowledgeReusedPayload(
         reused_unit_ids=[ru.unit_id for ru in injected],
