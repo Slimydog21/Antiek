@@ -11,9 +11,12 @@ from compounding.skill_growth import (  # noqa: E402
     CandidateSkillOverlay,
     SkillPatchGate,
     evaluate_candidate_replay_for_gate,
+    prepare_candidate_replay_workspace,
 )
+from interfaces.research.api.broadcast import EventBroadcaster  # noqa: E402
 from middleware.backtest import BacktestReport  # noqa: E402
 from orchestration.audit import record_phase8_gate_review  # noqa: E402
+from orchestration.loop_one.coordinator import InvestigationCoordinator  # noqa: E402
 from orchestration.loop_one.orchestrator import (  # noqa: E402
     PHASE8_CALIBRATION_INVESTIGATION_IDS_ENV,
     PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV,
@@ -22,6 +25,7 @@ from orchestration.loop_one.orchestrator import (  # noqa: E402
     _phase8_candidate_replay_evaluation,
     _phase8_gate_decide_from_replay_evaluation,
     _phase8_gate_from_runtime_env,
+    _phase8_run_candidate_heldout_backtest,
     _run_phase_8,
 )
 from skills.domain.extract import ExtractionResult  # noqa: E402
@@ -128,6 +132,45 @@ def _report(synthesis_id: str, *, outcome: str = "confirmed") -> BacktestReport:
         chunks_retired_downward=(),
         outcomes=({"thesis_outcomes": [{"outcome": outcome}]},),
     )
+
+
+def _archive_test_synthesis(
+    db_path,
+    *,
+    synthesis_id: str,
+    investigation_id: str,
+    question: str = "Will X work?",
+) -> None:
+    from datetime import UTC, datetime
+
+    from middleware.archive.archive import ArchiveInputs, archive_synthesis_via_db
+    from middleware.outcomes.recorder import build_outcome_record, record_outcome_via_db
+    from runtime.db_lock import connect_write
+    from substrate.graph.schema import init_database_at_path
+
+    init_database_at_path(str(db_path))
+    with connect_write(str(db_path), purpose="test:phase8_candidate_replay") as con:
+        archive_synthesis_via_db(
+            con,
+            ArchiveInputs(
+                target_question=question,
+                synthesis_timestamp=datetime.now(UTC),
+                status="passed",
+                implicit_recommendation="proceed",
+                thesis_text="X works because candidate evidence supports it.",
+                model_versions={"test": "1"},
+            ),
+            investigation_id=investigation_id,
+            synthesis_id=synthesis_id,
+        )
+        record_outcome_via_db(
+            con,
+            build_outcome_record(
+                synthesis_id=synthesis_id,
+                observer="test",
+                payload={"thesis_outcomes": [{"outcome": "confirmed"}]},
+            ),
+        )
 
 
 def _ready_replay_evaluation(tmp_path):
@@ -285,6 +328,102 @@ def test_phase8_replay_provider_loads_baseline_reports_when_db_configured(
     assert evaluation.replay.overlay.overlay_skills_root.is_relative_to(
         tmp_path / "overlays"
     )
+
+
+@pytest.mark.asyncio
+async def test_phase8_candidate_heldout_runner_uses_workspace_and_backtests_candidate(
+    tmp_path,
+    monkeypatch,
+):
+    import os
+
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(tmp_path / "prod.duckdb"))
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "prod-events"))
+    monkeypatch.setenv("ANTIEK_KNOWLEDGE_SKILLS_DIR", str(tmp_path / "prod-skills"))
+    monkeypatch.setenv(PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV, "outer-heldout")
+    baseline_db = tmp_path / "baseline.duckdb"
+    _archive_test_synthesis(
+        baseline_db,
+        synthesis_id="heldout-ok",
+        investigation_id="inv-heldout",
+        question="Will the held-out premise survive replay?",
+    )
+    workspace = prepare_candidate_replay_workspace(
+        baseline_db_path=baseline_db,
+        workspace_parent=tmp_path / "workspaces",
+    )
+    overlay_root = tmp_path / "overlay-skills"
+    overlay_root.mkdir()
+    seen: dict[str, str | None] = {}
+
+    async def _runner(ctx, _broadcaster, _coordinator):
+        seen["question"] = ctx.question
+        seen["db"] = os.environ.get("ANTIEK_DUCKDB_PATH")
+        seen["events"] = os.environ.get("ANTIEK_RESEARCH_EVENTS_DIR")
+        seen["skills"] = os.environ.get("ANTIEK_KNOWLEDGE_SKILLS_DIR")
+        seen["heldout_replay"] = os.environ.get(PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV)
+        _archive_test_synthesis(
+            workspace.db_path,
+            synthesis_id="candidate-syn",
+            investigation_id=ctx.investigation_id,
+            question=ctx.question,
+        )
+
+    broadcaster = EventBroadcaster()
+    coordinator = InvestigationCoordinator(broadcaster)
+
+    report = await _phase8_run_candidate_heldout_backtest(
+        heldout_synthesis_id="heldout-ok",
+        overlay_skills_root=overlay_root,
+        workspace=workspace,
+        broadcaster=broadcaster,
+        coordinator=coordinator,
+        investigation_runner=_runner,
+    )
+
+    assert report.synthesis_id == "candidate-syn"
+    assert report.outcomes_recorded == 1
+    assert seen == {
+        "question": "Will the held-out premise survive replay?",
+        "db": str(workspace.db_path),
+        "events": str(workspace.events_dir),
+        "skills": str(overlay_root),
+        "heldout_replay": None,
+    }
+    assert os.environ["ANTIEK_DUCKDB_PATH"] == str(tmp_path / "prod.duckdb")
+    assert os.environ["ANTIEK_RESEARCH_EVENTS_DIR"] == str(tmp_path / "prod-events")
+    assert os.environ["ANTIEK_KNOWLEDGE_SKILLS_DIR"] == str(tmp_path / "prod-skills")
+    assert os.environ[PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV] == "outer-heldout"
+
+
+@pytest.mark.asyncio
+async def test_phase8_candidate_heldout_runner_requires_candidate_archive(tmp_path):
+    baseline_db = tmp_path / "baseline.duckdb"
+    _archive_test_synthesis(
+        baseline_db,
+        synthesis_id="heldout-ok",
+        investigation_id="inv-heldout",
+    )
+    workspace = prepare_candidate_replay_workspace(
+        baseline_db_path=baseline_db,
+        workspace_parent=tmp_path / "workspaces",
+    )
+
+    async def _runner(_ctx, _broadcaster, _coordinator):
+        return None
+
+    broadcaster = EventBroadcaster()
+    coordinator = InvestigationCoordinator(broadcaster)
+
+    with pytest.raises(RuntimeError, match="produced no archived synthesis"):
+        await _phase8_run_candidate_heldout_backtest(
+            heldout_synthesis_id="heldout-ok",
+            overlay_skills_root=tmp_path / "overlay-skills",
+            workspace=workspace,
+            broadcaster=broadcaster,
+            coordinator=coordinator,
+            investigation_runner=_runner,
+        )
 
 
 @pytest.mark.asyncio

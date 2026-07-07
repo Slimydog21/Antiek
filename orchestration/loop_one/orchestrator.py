@@ -69,7 +69,11 @@ from typing import TYPE_CHECKING, Any, Literal
 if TYPE_CHECKING:
     import duckdb
 
-    from compounding.skill_growth import PatchOutcome, SkillPatchGate
+    from compounding.skill_growth import (
+        CandidateReplayWorkspace,
+        PatchOutcome,
+        SkillPatchGate,
+    )
     from middleware.backtest import BacktestReport
     from substrate.dispatch.research_tier import ResearchTier
     from substrate.eval.groundedness.scorer import GroundednessResult
@@ -1791,6 +1795,88 @@ async def _run_investigation(
     )
     _deposit_synthesis_to_substrate(ctx)
     _maybe_export_research_artifact_after_complete(ctx.investigation_id)
+
+
+def _phase8_replay_investigation_id(heldout_synthesis_id: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", heldout_synthesis_id).strip("-")
+    return f"phase8-replay-{safe or 'heldout'}"[:96]
+
+
+async def _phase8_run_candidate_heldout_backtest(
+    *,
+    heldout_synthesis_id: str,
+    overlay_skills_root: Path,
+    workspace: CandidateReplayWorkspace,
+    broadcaster: EventBroadcaster,
+    coordinator: InvestigationCoordinator,
+    investigation_runner: Callable[
+        [InvestigationContext, EventBroadcaster, InvestigationCoordinator],
+        Awaitable[None],
+    ] | None = None,
+) -> BacktestReport:
+    """Run one held-out synthesis through Loop 1 inside a replay workspace.
+
+    This is the production runner adapter, but it is not wired into the
+    provider by default yet. Callers must opt in explicitly because it executes
+    Loop 1 and may perform model dispatch through the normal role bridges.
+    """
+
+    import duckdb
+
+    from compounding.skill_growth import isolated_candidate_replay_environment
+    from middleware.archive.archive import load_synthesis
+    from middleware.backtest import backtest
+
+    con = duckdb.connect(str(workspace.db_path), read_only=True)
+    try:
+        heldout = load_synthesis(con, heldout_synthesis_id)
+    finally:
+        con.close()
+    if heldout is None:
+        raise KeyError(f"held-out synthesis not found: {heldout_synthesis_id!r}")
+
+    ctx = InvestigationContext(
+        investigation_id=_phase8_replay_investigation_id(heldout_synthesis_id),
+        question=heldout.target_question,
+        context=f"Candidate replay for held-out synthesis {heldout_synthesis_id}",
+    )
+    runner = investigation_runner or _run_investigation
+    with isolated_candidate_replay_environment(
+        workspace,
+        overlay_skills_root=overlay_skills_root,
+    ):
+        previous_replay_ids = os.environ.pop(
+            PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV,
+            None,
+        )
+        try:
+            await runner(ctx, broadcaster, coordinator)
+        finally:
+            if previous_replay_ids is not None:
+                os.environ[PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV] = (
+                    previous_replay_ids
+                )
+    if ctx.failed_phase is not None:
+        raise RuntimeError(
+            "candidate replay investigation failed: "
+            f"phase={ctx.failed_phase}; reason={ctx.fail_reason}"
+        )
+
+    con = duckdb.connect(str(workspace.db_path), read_only=True)
+    try:
+        row = con.execute(
+            "SELECT synthesis_id FROM syntheses WHERE investigation_id = ? "
+            "ORDER BY synthesis_timestamp DESC, synthesis_id DESC LIMIT 1",
+            [ctx.investigation_id],
+        ).fetchone()
+        if row is None:
+            raise RuntimeError(
+                "candidate replay investigation produced no archived synthesis: "
+                f"{ctx.investigation_id}"
+            )
+        return backtest(con, str(row[0]))
+    finally:
+        con.close()
 
 
 def _deposit_synthesis_to_substrate(ctx: InvestigationContext) -> str | None:
