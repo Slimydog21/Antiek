@@ -1,9 +1,7 @@
-"""Backtest middleware (Sprint 5 day 2-3 scaffolding).
+"""Backtest middleware.
 
-Direct migration of Researchmaxx ``scripts/backtest.py`` (243 LOC),
-scaffold only — the load-bearing query path depends on a graph-loader
-analogue of ``graph_at_time.diff_between`` plus an
-``archive.load_synthesis`` extraction, neither of which has migrated.
+Direct migration of Researchmaxx ``scripts/backtest.py`` with Antiek
+loaders and deterministic scoring layered on top.
 
 What shipped:
 
@@ -11,15 +9,14 @@ What shipped:
   ``BacktestReport`` dataclasses (types.py).
 - ``project_superseded_edges`` / ``project_chunk_tier_changes`` /
   ``build_report`` pure projections (analysis.py).
-- ``backtest()`` scaffold function that raises
-  ``NotImplementedError`` until the DB layer migrates.
+- Read-only DB loaders plus ``backtest()`` for archived syntheses.
+- ``score_backtest_report`` / ``score_backtest_cohort`` for the
+  Phase-8 gate's bounded backtest signal.
 
 What's deferred:
 
-- ``graph_at_time`` migration → enables the ``added/superseded``
-  counts since synthesis_timestamp.
-- ``middleware/archive/load_synthesis`` extraction.
 - The CLI + markdown renderer.
+- Candidate-patch replay against a temporary skill overlay.
 
 The shape is fixed now so the cohort module + downstream consumers
 can be wired against the same dataclasses without churn later.
@@ -38,6 +35,13 @@ from .db import (
     load_chunk_tier_changes_since,
     load_outcomes_for_synthesis,
     load_superseded_cited_edges,
+)
+from .score import (
+    DEFAULT_MIN_GRADED_OUTCOMES,
+    BacktestCohortScore,
+    BacktestScore,
+    score_backtest_cohort,
+    score_backtest_report,
 )
 from .types import (
     ArchivedSynthesis,
@@ -61,4 +65,9 @@ __all__ = [
     "load_chunk_tier_changes_since",
     "load_outcomes_for_synthesis",
     "load_superseded_cited_edges",
+    "DEFAULT_MIN_GRADED_OUTCOMES",
+    "BacktestCohortScore",
+    "BacktestScore",
+    "score_backtest_cohort",
+    "score_backtest_report",
 ]

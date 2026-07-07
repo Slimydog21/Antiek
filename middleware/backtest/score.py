@@ -1,0 +1,161 @@
+"""Deterministic scoring for Phase-8 backtest reports.
+
+The gate compares candidate patches against a baseline using a numeric
+score. This module turns already-loaded ``BacktestReport`` objects into
+that score without mutating the graph, skills, or event log.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable
+from dataclasses import dataclass
+from typing import Any
+
+from .types import BacktestReport
+
+DEFAULT_MIN_GRADED_OUTCOMES = 50
+
+_THESIS_OUTCOME_SCORE = {
+    "confirmed": 1.0,
+    "partially_confirmed": 0.5,
+    "unresolved": 0.5,
+    "disconfirmed": 0.0,
+}
+
+_PROCEED_OUTCOME_SCORE = {
+    "confirmed": 1.0,
+    "partially_confirmed": 0.5,
+    "not_observed": 0.5,
+    "disconfirmed": 0.0,
+}
+
+
+@dataclass(frozen=True)
+class BacktestScore:
+    """One report converted into a bounded gate score."""
+
+    synthesis_id: str
+    score: float
+    graded_outcomes: int
+    thesis_score: float | None
+    decision_score: float | None
+    structural_penalty: float
+
+
+@dataclass(frozen=True)
+class BacktestCohortScore:
+    """Aggregate score used by Phase-8 gate calibration."""
+
+    score: float
+    reports_scored: int
+    graded_outcomes: int
+    minimum_graded_outcomes: int = DEFAULT_MIN_GRADED_OUTCOMES
+
+    @property
+    def ready_for_gate(self) -> bool:
+        return self.graded_outcomes >= self.minimum_graded_outcomes
+
+
+def _clamp01(value: float) -> float:
+    return min(1.0, max(0.0, value))
+
+
+def _mean(values: Iterable[float]) -> float | None:
+    items = list(values)
+    if not items:
+        return None
+    return sum(items) / len(items)
+
+
+def _thesis_scores(outcome: dict[str, Any]) -> list[float]:
+    rows = outcome.get("thesis_outcomes")
+    if not isinstance(rows, list):
+        return []
+    scores: list[float] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        status = row.get("outcome")
+        if isinstance(status, str) and status in _THESIS_OUTCOME_SCORE:
+            scores.append(_THESIS_OUTCOME_SCORE[status])
+    return scores
+
+
+def _decision_score(outcome: dict[str, Any]) -> float | None:
+    row = outcome.get("decision_alignment")
+    if not isinstance(row, dict):
+        return None
+    actual = row.get("actual_decision")
+    expected = row.get("agent_implicit_recommendation")
+    if not isinstance(actual, str) or not isinstance(expected, str):
+        return None
+    if actual == "not_observed":
+        proceeded = row.get("thesis_outcome_when_proceeded")
+        if isinstance(proceeded, str) and proceeded in _PROCEED_OUTCOME_SCORE:
+            return _PROCEED_OUTCOME_SCORE[proceeded]
+        return None
+    return 1.0 if actual == expected else 0.0
+
+
+def _structural_penalty(report: BacktestReport) -> float:
+    edge_penalty = 0.15 * report.load_bearing_edges_invalidated
+    chunk_penalty = 0.05 * report.cited_chunks_demoted
+    return min(0.5, edge_penalty + chunk_penalty)
+
+
+def score_backtest_report(report: BacktestReport) -> BacktestScore:
+    """Convert one ``BacktestReport`` to a bounded score.
+
+    Outcome rows carry the main signal. Invalidated cited edges and
+    demoted cited chunks are bounded penalties because they indicate
+    the original synthesis depended on substrate that later degraded.
+    """
+    thesis_values: list[float] = []
+    decision_values: list[float] = []
+    for outcome in report.outcomes:
+        thesis_values.extend(_thesis_scores(outcome))
+        decision = _decision_score(outcome)
+        if decision is not None:
+            decision_values.append(decision)
+
+    thesis_score = _mean(thesis_values)
+    decision_score = _mean(decision_values)
+    components = [
+        score for score in (thesis_score, decision_score) if score is not None
+    ]
+    evidence_score = 0.5 if not components else sum(components) / len(components)
+    penalty = _structural_penalty(report)
+    return BacktestScore(
+        synthesis_id=report.synthesis_id,
+        score=_clamp01(evidence_score - penalty),
+        graded_outcomes=report.outcomes_recorded,
+        thesis_score=thesis_score,
+        decision_score=decision_score,
+        structural_penalty=penalty,
+    )
+
+
+def score_backtest_cohort(
+    reports: Iterable[BacktestReport],
+    *,
+    minimum_graded_outcomes: int = DEFAULT_MIN_GRADED_OUTCOMES,
+) -> BacktestCohortScore:
+    """Aggregate report scores into the Phase-8 gate cohort signal."""
+    scored = [score_backtest_report(report) for report in reports]
+    graded = sum(item.graded_outcomes for item in scored)
+    score = 0.0 if not scored else sum(item.score for item in scored) / len(scored)
+    return BacktestCohortScore(
+        score=score,
+        reports_scored=len(scored),
+        graded_outcomes=graded,
+        minimum_graded_outcomes=minimum_graded_outcomes,
+    )
+
+
+__all__ = [
+    "DEFAULT_MIN_GRADED_OUTCOMES",
+    "BacktestCohortScore",
+    "BacktestScore",
+    "score_backtest_cohort",
+    "score_backtest_report",
+]
