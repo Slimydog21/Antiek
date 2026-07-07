@@ -10,10 +10,11 @@ import pytest
 
 # The pi-execution substrate primitives (substrate.conversation / harness /
 # the unified CLI subcommands built on them) are an experimental branch NOT
-# merged into the four-workflow product. Skip cleanly when absent rather than
-# erroring collection (CI runs the full suite). Runs in full once pi-execution
-# merges.
-pytest.importorskip("substrate.conversation")
+# merged into the four-workflow product. Skip cleanly when any required
+# submodule is absent rather than erroring collection (CI runs the full suite).
+# Runs in full once pi-execution merges.
+pytest.importorskip("substrate.conversation.compaction")
+pytest.importorskip("substrate.harness.fork")
 
 from substrate.harness.fork import create_fork
 

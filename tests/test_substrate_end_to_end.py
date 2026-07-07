@@ -17,10 +17,11 @@ import pytest
 # The pi-execution substrate primitives (substrate.conversation / edit /
 # harness / harness_diff) are an experimental branch NOT merged into the
 # four-workflow product consolidation. Skip this end-to-end suite cleanly when
-# they're absent rather than erroring collection — CI runs the full suite, so a
-# bare import error would show red. The suite runs in full once pi-execution
-# merges.
-pytest.importorskip("substrate.conversation")
+# any required submodule is absent rather than erroring collection — CI runs the
+# full suite, so a bare import error would show red. The suite runs in full once
+# pi-execution merges.
+pytest.importorskip("substrate.conversation.compaction")
+pytest.importorskip("substrate.harness.fork")
 
 from substrate.conversation.compaction import compact as compact_fn
 from substrate.conversation.event import Event
@@ -29,17 +30,17 @@ from substrate.conversation.policy import CompactionConfig, CompactionPolicy
 from substrate.conversation.token_counter import count_tokens
 from substrate.harness.apply import apply_harness
 from substrate.harness.fork import create_fork
-from substrate.harness_diff import diff_snapshots, load_snapshot
 from substrate.observability.burn import BurnRecorder
 from substrate.observability.burn_context import (
     BurnContext,
     reset_burn_context,
     set_burn_context,
 )
-from substrate.queue import BoundedQueue, QueueFull
-from substrate.queue import get_registry as get_queue_registry
 
 from substrate.edit import EditTransaction
+from substrate.harness_diff import diff_snapshots, load_snapshot
+from substrate.queue import BoundedQueue, QueueFull
+from substrate.queue import get_registry as get_queue_registry
 
 
 @pytest.fixture(autouse=True)
@@ -185,9 +186,7 @@ def test_end_to_end_every_primitive_in_one_session(tmp_path: Path) -> None:
     assert by_tool.get("queue.watermark", 0) >= 1
 
     # 9. HARNESS DIFF — capture again; diff is non-empty
-    apply_result_v2 = apply_harness(
-        project_root=project_root, fork_name="e2e_fork", capture_tag="e2e-final",
-    )
+    apply_harness(project_root=project_root, fork_name="e2e_fork", capture_tag="e2e-final")
     a_snap = load_snapshot("e2e-initial", project_root)
     b_snap = load_snapshot("e2e-final", project_root)
     d = diff_snapshots(a_snap, b_snap)
