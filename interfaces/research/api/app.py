@@ -1019,6 +1019,23 @@ class StaleRefreshPromotionResponse(BaseModel):
     resolved_stale_edge_ids: list[str] = Field(default_factory=list)
 
 
+class StaleRefreshResolutionRecord(BaseModel):
+    event_id: str
+    investigation_id: str
+    emitted_at: str | None = None
+    parent_event_id: str | None = None
+    flag_id: str
+    entity_kind: Literal["edge", "node"]
+    entity_id: str
+    status: Literal["refreshed", "confirmed_stale", "dismissed"]
+    notes: str = ""
+
+
+class StaleRefreshResolutionListResponse(BaseModel):
+    count: int
+    resolutions: list[StaleRefreshResolutionRecord]
+
+
 class NotebookUpdateBlockRequest(BaseModel):
     """Edit one block in place. ``block_type`` is intentionally
     immutable here; the UI re-creates blocks rather than re-typing.
@@ -2248,6 +2265,84 @@ def create_app(
         if ts.tzinfo is None:
             return ts.replace(tzinfo=UTC)
         return ts.astimezone(UTC)
+
+    @app.get(
+        "/stale-refresh/resolutions",
+        response_model=StaleRefreshResolutionListResponse,
+    )
+    async def list_stale_refresh_resolutions(
+        limit: Annotated[int, Query(ge=1, le=1_000)] = 100,
+        entity_id: Annotated[str | None, Query(min_length=1)] = None,
+    ) -> StaleRefreshResolutionListResponse:
+        """List latest graph staleness resolutions from the typed event log.
+
+        This is a read-only view over ``graph.staleness.resolve`` events. The
+        graph table is not mutated by stale-refresh promotion; the event stream
+        remains the canonical resolved-state source.
+        """
+
+        latest_by_entity: dict[
+            str,
+            tuple[tuple[datetime, str], StaleRefreshResolutionRecord],
+        ] = {}
+        for investigation_id in _iter_event_log_investigation_ids():
+            for row in trajectory(investigation_id):
+                if row.get("action_type") != "graph.staleness.resolve":
+                    continue
+                payload = row.get("payload")
+                if not isinstance(payload, dict):
+                    continue
+                entity_kind = payload.get("entity_kind")
+                status = payload.get("status")
+                resolved_entity_id = payload.get("entity_id")
+                flag_id = payload.get("flag_id")
+                if (
+                    entity_kind not in {"edge", "node"}
+                    or status
+                    not in {"refreshed", "confirmed_stale", "dismissed"}
+                    or not isinstance(resolved_entity_id, str)
+                    or not isinstance(flag_id, str)
+                ):
+                    continue
+                if entity_id is not None and resolved_entity_id != entity_id:
+                    continue
+                emitted_at = row.get("emitted_at")
+                event_id = str(row.get("event_id") or "")
+                record = StaleRefreshResolutionRecord(
+                    event_id=event_id,
+                    investigation_id=str(
+                        row.get("investigation_id") or investigation_id,
+                    ),
+                    emitted_at=emitted_at if isinstance(emitted_at, str) else None,
+                    parent_event_id=(
+                        row.get("parent_event_id")
+                        if isinstance(row.get("parent_event_id"), str)
+                        else None
+                    ),
+                    flag_id=flag_id,
+                    entity_kind=entity_kind,
+                    entity_id=resolved_entity_id,
+                    status=status,
+                    notes=payload.get("notes") if isinstance(payload.get("notes"), str) else "",
+                )
+                ts = _parse_event_emitted_at(row) or datetime.min.replace(tzinfo=UTC)
+                sort_key = (ts, event_id)
+                previous = latest_by_entity.get(resolved_entity_id)
+                if previous is None or sort_key > previous[0]:
+                    latest_by_entity[resolved_entity_id] = (sort_key, record)
+        records = [record for _, record in latest_by_entity.values()]
+        records.sort(
+            key=lambda record: (
+                _parse_event_emitted_at(record.model_dump()) or datetime.min.replace(tzinfo=UTC),
+                record.event_id,
+            ),
+            reverse=True,
+        )
+        records = records[:limit]
+        return StaleRefreshResolutionListResponse(
+            count=len(records),
+            resolutions=records,
+        )
 
     @app.get("/trajectory")
     async def get_trajectory_collection(

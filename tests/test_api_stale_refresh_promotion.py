@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import json
+import os
 
 import pytest
 from fastapi.testclient import TestClient
@@ -74,6 +76,14 @@ def _post_candidate(client: TestClient) -> str:
     )
     assert response.status_code == 201, response.text
     return response.json()["event_id"]
+
+
+def _write_event(investigation_id: str, row: dict) -> None:
+    events_dir = os.environ["ANTIEK_RESEARCH_EVENTS_DIR"]
+    os.makedirs(events_dir, exist_ok=True)
+    path = os.path.join(events_dir, f"{investigation_id}.jsonl")
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(row) + "\n")
 
 
 def test_stale_refresh_promotion_endpoint_deposits_recorded_candidate(
@@ -168,3 +178,98 @@ def test_stale_refresh_promotion_endpoint_rejects_wrong_event_type(
 
     assert response.status_code == 422
     assert response.json()["detail"]["code"] == "wrong_action_type"
+
+
+def test_stale_refresh_resolutions_endpoint_lists_latest_resolution_per_entity(
+    client: TestClient,
+):
+    _write_event(
+        "inv-old",
+        {
+            "event_id": "evt-old",
+            "investigation_id": "inv-old",
+            "action_type": "graph.staleness.resolve",
+            "emitted_at": "2026-07-07T15:00:00Z",
+            "payload": {
+                "action_type": "graph.staleness.resolve",
+                "flag_id": "stale-edge-one-personnel",
+                "entity_kind": "edge",
+                "entity_id": "edge-one",
+                "status": "refreshed",
+                "notes": "older resolution",
+            },
+        },
+    )
+    _write_event(
+        "inv-new",
+        {
+            "event_id": "evt-new",
+            "investigation_id": "inv-new",
+            "action_type": "graph.staleness.resolve",
+            "parent_event_id": "evt-candidate",
+            "emitted_at": "2026-07-07T15:05:00Z",
+            "payload": {
+                "action_type": "graph.staleness.resolve",
+                "flag_id": "stale-edge-one-personnel",
+                "entity_kind": "edge",
+                "entity_id": "edge-one",
+                "status": "confirmed_stale",
+                "notes": "newer resolution",
+            },
+        },
+    )
+    _write_event(
+        "inv-other",
+        {
+            "event_id": "evt-other",
+            "investigation_id": "inv-other",
+            "action_type": "graph.staleness.resolve",
+            "emitted_at": "2026-07-07T15:02:00Z",
+            "payload": {
+                "action_type": "graph.staleness.resolve",
+                "flag_id": "stale-edge-two-market",
+                "entity_kind": "edge",
+                "entity_id": "edge-two",
+                "status": "dismissed",
+                "notes": "",
+            },
+        },
+    )
+    _write_event(
+        "inv-malformed",
+        {
+            "event_id": "evt-malformed",
+            "investigation_id": "inv-malformed",
+            "action_type": "graph.staleness.resolve",
+            "emitted_at": "2026-07-07T15:06:00Z",
+            "payload": {
+                "action_type": "graph.staleness.resolve",
+                "entity_kind": "edge",
+                "entity_id": "edge-bad",
+                "status": "invented",
+            },
+        },
+    )
+
+    response = client.get("/stale-refresh/resolutions")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["count"] == 2
+    assert body["resolutions"][0] == {
+        "event_id": "evt-new",
+        "investigation_id": "inv-new",
+        "emitted_at": "2026-07-07T15:05:00Z",
+        "parent_event_id": "evt-candidate",
+        "flag_id": "stale-edge-one-personnel",
+        "entity_kind": "edge",
+        "entity_id": "edge-one",
+        "status": "confirmed_stale",
+        "notes": "newer resolution",
+    }
+    assert body["resolutions"][1]["entity_id"] == "edge-two"
+
+    filtered = client.get("/stale-refresh/resolutions", params={"entity_id": "edge-two"})
+    assert filtered.status_code == 200, filtered.text
+    assert filtered.json()["count"] == 1
+    assert filtered.json()["resolutions"][0]["event_id"] == "evt-other"
