@@ -464,3 +464,18 @@ def test_load_baseline_backtest_reports_loads_reports_and_errors(tmp_path: Path)
     assert len(loaded.errors) == 1
     assert loaded.errors[0].synthesis_id == "syn-missing"
     assert "synthesis_id not found" in loaded.errors[0].error
+
+
+def test_load_baseline_backtest_reports_reports_unopenable_db(tmp_path: Path) -> None:
+    loaded = load_baseline_backtest_reports(
+        db_path=tmp_path / "missing.duckdb",
+        synthesis_ids=("heldout-1", "heldout-2"),
+    )
+
+    assert loaded.synthesis_ids == ("heldout-1", "heldout-2")
+    assert loaded.reports == ()
+    assert tuple(error.synthesis_id for error in loaded.errors) == (
+        "heldout-1",
+        "heldout-2",
+    )
+    assert all("missing.duckdb" in error.error for error in loaded.errors)

@@ -364,7 +364,20 @@ def load_baseline_backtest_reports(
     ids = tuple(synthesis_ids)
     reports: list[BacktestReport] = []
     errors: list[CandidateReplayError] = []
-    con = duckdb.connect(str(db_path), read_only=True)
+    try:
+        con = duckdb.connect(str(db_path), read_only=True)
+    except Exception as exc:
+        return BaselineBacktestLoad(
+            synthesis_ids=ids,
+            reports=(),
+            errors=tuple(
+                CandidateReplayError(
+                    synthesis_id=synthesis_id,
+                    error=repr(exc),
+                )
+                for synthesis_id in ids
+            ),
+        )
     try:
         for synthesis_id in ids:
             try:

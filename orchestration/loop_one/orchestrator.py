@@ -1306,18 +1306,24 @@ def _phase8_candidate_replay_evaluation(
 
     from compounding.skill_growth import (
         load_baseline_backtest_reports,
+        prepare_candidate_replay_workspace,
         unavailable_candidate_replay_evaluation,
     )
     from skills.domain.patch import default_skills_root
 
     overlay_parent_raw = os.environ.get(PHASE8_REPLAY_OVERLAY_PARENT_ENV, "").strip()
-    overlay_parent = Path(overlay_parent_raw) if overlay_parent_raw else None
+    workspace_parent = Path(overlay_parent_raw) if overlay_parent_raw else None
     baseline_reports: tuple[BacktestReport, ...] = ()
     baseline_note = ""
     db_path_raw = os.environ.get("ANTIEK_DUCKDB_PATH", "").strip()
-    if db_path_raw:
+    baseline_db_path = Path(db_path_raw) if db_path_raw else None
+    replay_workspace = prepare_candidate_replay_workspace(
+        baseline_db_path=baseline_db_path,
+        workspace_parent=workspace_parent,
+    )
+    if baseline_db_path is not None:
         baseline = load_baseline_backtest_reports(
-            db_path=Path(db_path_raw),
+            db_path=replay_workspace.db_path,
             synthesis_ids=heldout_ids,
         )
         baseline_reports = baseline.reports
@@ -1332,10 +1338,11 @@ def _phase8_candidate_replay_evaluation(
         heldout_synthesis_ids=heldout_ids,
         baseline_skills_root=default_skills_root(),
         baseline_reports=baseline_reports,
-        overlay_parent=overlay_parent,
+        overlay_parent=replay_workspace.overlay_parent,
         reason=(
             "production candidate replay runner is not wired; "
             f"configured by {PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV}"
+            f"; replay workspace: {replay_workspace.root}"
             f"{baseline_note}"
         ),
     )

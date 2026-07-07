@@ -242,6 +242,10 @@ def test_phase8_replay_provider_reports_unavailable_runner_when_configured(
     assert evaluation.replay.status == "runner_unavailable"
     assert evaluation.replay.heldout_synthesis_ids == ("heldout-1", "heldout-2")
     assert "production candidate replay runner is not wired" in evaluation.notes
+    assert "replay workspace:" in evaluation.notes
+    assert evaluation.replay.overlay.overlay_skills_root.is_relative_to(
+        tmp_path / "overlays"
+    )
 
 
 def test_phase8_replay_provider_loads_baseline_reports_when_db_configured(
@@ -278,6 +282,9 @@ def test_phase8_replay_provider_loads_baseline_reports_when_db_configured(
     assert "baseline_graded=1" in evaluation.notes
     assert "heldout-missing" in evaluation.notes
     assert "baseline load errors" in evaluation.notes
+    assert evaluation.replay.overlay.overlay_skills_root.is_relative_to(
+        tmp_path / "overlays"
+    )
 
 
 @pytest.mark.asyncio
