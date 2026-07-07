@@ -80,6 +80,72 @@ def test_enforcing_mode_rejects_below_minimum_cohort():
     assert "cohort_size" in outcome.notes
 
 
+def test_enforcing_mode_rejects_when_calibration_not_ready():
+    gate = SkillPatchGate(
+        mode="enforcing",
+        epsilon=0.01,
+        minimum_cohort_size=50,
+        calibration_ready=False,
+        calibration_notes=(
+            "8 shadow decisions collected; 8 operator-reviewed; "
+            "current epsilon agreement = 75%"
+        ),
+    )
+    applied = []
+
+    outcome = apply_patch_with_gate(
+        gate=gate,
+        baseline_backtest_score=0.70,
+        candidate_backtest_score=0.75,
+        cohort_size=50,
+        apply_fn=lambda: applied.append(True),
+    )
+
+    assert outcome.decision == PatchDecision.REJECT
+    assert applied == []
+    assert "calibration evidence not ready" in outcome.notes
+    assert "75%" in outcome.notes
+    assert outcome.delta > outcome.epsilon_required
+
+
+def test_enforcing_mode_rejects_when_candidate_evidence_not_ready():
+    gate = SkillPatchGate(mode="enforcing", epsilon=0.01, minimum_cohort_size=2)
+    applied = []
+
+    outcome = apply_patch_with_gate(
+        gate=gate,
+        baseline_backtest_score=0.50,
+        candidate_backtest_score=0.90,
+        cohort_size=2,
+        candidate_evidence_ready=False,
+        candidate_evidence_notes="candidate replay not complete: failed=heldout-7",
+        apply_fn=lambda: applied.append(True),
+    )
+
+    assert outcome.decision == PatchDecision.REJECT
+    assert applied == []
+    assert "candidate replay evidence not ready" in outcome.notes
+    assert "heldout-7" in outcome.notes
+    assert outcome.delta > outcome.epsilon_required
+
+
+def test_candidate_evidence_unavailable_preempts_cohort_size_note():
+    gate = SkillPatchGate(mode="enforcing", epsilon=0.01, minimum_cohort_size=50)
+
+    outcome = gate.decide(
+        baseline_backtest_score=0.0,
+        candidate_backtest_score=0.0,
+        cohort_size=0,
+        candidate_evidence_ready=False,
+        candidate_evidence_notes="status=runner_unavailable",
+    )
+
+    assert outcome.decision == PatchDecision.REJECT
+    assert "candidate replay evidence not ready" in outcome.notes
+    assert "runner_unavailable" in outcome.notes
+    assert "cohort_size" not in outcome.notes
+
+
 def test_propose_skill_patch_returns_envelope():
     envelope = propose_skill_patch(
         domain="quantum",
@@ -123,6 +189,23 @@ def test_phase8_gate_from_env_enables_enforcing_with_tuned_thresholds():
     assert gate.mode == PHASE8_MODE_ENFORCING
     assert gate.epsilon == 0.075
     assert gate.minimum_cohort_size == 12
+
+
+def test_phase8_gate_from_env_threads_calibration_readiness():
+    gate = phase8_gate_from_env(
+        {PHASE8_MODE_ENV: PHASE8_MODE_ENFORCING},
+        calibration_ready=False,
+        calibration_notes="current epsilon agreement = 70%",
+    )
+
+    outcome = gate.decide(
+        baseline_backtest_score=0.70,
+        candidate_backtest_score=0.75,
+        cohort_size=DEFAULT_PHASE8_MINIMUM_COHORT_SIZE,
+    )
+
+    assert outcome.decision == PatchDecision.REJECT
+    assert "70%" in outcome.notes
 
 
 def test_phase8_gate_from_env_rejects_invalid_mode():

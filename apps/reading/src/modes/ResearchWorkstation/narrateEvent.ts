@@ -164,6 +164,8 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   [ActionType.QUESTION_ESCALATED_TO_RESEARCH]: { line: "Spinning up a deeper look at an open question", tone: "milestone" },
 
   // ── Phase 8 self-improvement — a quiet milestone ──
+  [ActionType.SKILL_PATCH_GATE_DECIDED]: null,
+  [ActionType.SKILL_PATCH_GATE_REVIEWED]: null,
   [ActionType.AUTO_PATCH_APPLIED]: { line: "Updated what it learned for next time", tone: "step" },
 
   // ── A self-repair attempt on a flaky role call — show the recovery, not the mechanism ──

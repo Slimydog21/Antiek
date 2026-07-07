@@ -68,6 +68,8 @@ class SkillPatchGate:
     mode: str = PHASE8_MODE_SHADOW
     epsilon: float = DEFAULT_PHASE8_EPSILON
     minimum_cohort_size: int = DEFAULT_PHASE8_MINIMUM_COHORT_SIZE
+    calibration_ready: bool = True
+    calibration_notes: str = ""
 
     def __post_init__(self) -> None:
         if self.mode not in VALID_PHASE8_MODES:
@@ -86,6 +88,8 @@ class SkillPatchGate:
         baseline_backtest_score: float,
         candidate_backtest_score: float,
         cohort_size: int,
+        candidate_evidence_ready: bool = True,
+        candidate_evidence_notes: str = "",
     ) -> PatchOutcome:
         """Run the gate. Returns a PatchOutcome including the
         decision + score breakdown. The CALLER decides whether to
@@ -102,7 +106,17 @@ class SkillPatchGate:
                 f"patch applied regardless"
             )
         else:
-            if cohort_size < self.minimum_cohort_size:
+            if not self.calibration_ready:
+                decision = PatchDecision.REJECT
+                note = "phase8 calibration evidence not ready for enforcing"
+                if self.calibration_notes:
+                    note = f"{note}: {self.calibration_notes}"
+            elif not candidate_evidence_ready:
+                decision = PatchDecision.REJECT
+                note = "phase8 candidate replay evidence not ready"
+                if candidate_evidence_notes:
+                    note = f"{note}: {candidate_evidence_notes}"
+            elif cohort_size < self.minimum_cohort_size:
                 decision = PatchDecision.REJECT
                 note = (
                     f"cohort_size={cohort_size} < minimum "
@@ -157,6 +171,8 @@ def apply_patch_with_gate(
     candidate_backtest_score: float,
     cohort_size: int,
     apply_fn: Callable[[], None],
+    candidate_evidence_ready: bool = True,
+    candidate_evidence_notes: str = "",
 ) -> PatchOutcome:
     """Canonical Phase-8-with-gate flow. Runs the gate; in shadow
     mode applies the patch regardless; in enforcing mode applies
@@ -165,6 +181,8 @@ def apply_patch_with_gate(
         baseline_backtest_score=baseline_backtest_score,
         candidate_backtest_score=candidate_backtest_score,
         cohort_size=cohort_size,
+        candidate_evidence_ready=candidate_evidence_ready,
+        candidate_evidence_notes=candidate_evidence_notes,
     )
     if outcome.decision == PatchDecision.SHADOW or outcome.decision == PatchDecision.ACCEPT:
         apply_fn()
@@ -202,12 +220,17 @@ def _parse_int_env(
 
 def phase8_gate_from_env(
     env: Mapping[str, str] | None = None,
+    *,
+    calibration_ready: bool = True,
+    calibration_notes: str = "",
 ) -> SkillPatchGate:
     """Build the Phase-8 gate from runtime config.
 
     The default remains shadow mode. Invalid config raises rather than
     silently degrading to shadow, because an operator-requested
-    enforcing posture must either be real or fail visibly.
+    enforcing posture must either be real or fail visibly. Callers that
+    have loaded shadow/operator-review evidence pass its readiness here;
+    the gate refuses enforcing accepts when that evidence is not ready.
     """
     source = os.environ if env is None else env
     mode = source.get(PHASE8_MODE_ENV, PHASE8_MODE_SHADOW).strip().lower()
@@ -221,4 +244,6 @@ def phase8_gate_from_env(
             PHASE8_MINIMUM_COHORT_SIZE_ENV,
             DEFAULT_PHASE8_MINIMUM_COHORT_SIZE,
         ),
+        calibration_ready=calibration_ready,
+        calibration_notes=calibration_notes,
     )

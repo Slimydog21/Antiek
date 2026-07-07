@@ -60,14 +60,16 @@ import logging
 import os
 import re
 import sys
-from collections.abc import Awaitable, Callable, Coroutine, Sequence
+from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     import duckdb
 
+    from compounding.skill_growth import PatchOutcome, SkillPatchGate
     from substrate.dispatch.research_tier import ResearchTier
     from substrate.eval.groundedness.scorer import GroundednessResult
 
@@ -115,6 +117,14 @@ from substrate.schemas import (  # noqa: E402
 from .coordinator import InvestigationCoordinator, broadcast_emit  # noqa: E402
 
 _log = logging.getLogger(__name__)
+
+PHASE8_CALIBRATION_INVESTIGATION_IDS_ENV = (
+    "ANTIEK_PHASE8_CALIBRATION_INVESTIGATION_IDS"
+)
+PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV = (
+    "ANTIEK_PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS"
+)
+PHASE8_REPLAY_OVERLAY_PARENT_ENV = "ANTIEK_PHASE8_REPLAY_OVERLAY_PARENT"
 
 
 # ---------------------------------------------------------------------------
@@ -1195,6 +1205,142 @@ def _emit_phase8_auto_patch_applied(
     )
 
 
+def _emit_phase8_gate_decided(
+    *,
+    investigation_id: str,
+    synthesis_id: str,
+    mode: str,
+    minimum_cohort_size: int,
+    matched_domains: Sequence[str],
+    outcome: Any,
+) -> None:
+    """Emit the typed Phase-8 gate decision used for shadow calibration."""
+    from substrate.event_log import emit_typed as _emit
+    from substrate.schemas import SkillPatchGateDecidedPayload
+
+    would_accept = (
+        outcome.delta > outcome.epsilon_required
+        and outcome.cohort_size >= minimum_cohort_size
+    )
+    _emit(
+        investigation_id,
+        SkillPatchGateDecidedPayload(
+            synthesis_id=synthesis_id,
+            patch_id=outcome.patch_id,
+            mode=mode,
+            decision=outcome.decision.value,
+            would_accept=would_accept,
+            baseline_backtest_score=outcome.baseline_backtest_score,
+            candidate_backtest_score=outcome.candidate_backtest_score,
+            delta=outcome.delta,
+            epsilon_required=outcome.epsilon_required,
+            cohort_size=outcome.cohort_size,
+            minimum_cohort_size=minimum_cohort_size,
+            matched_domains=list(matched_domains),
+            notes=outcome.notes,
+        ),
+        synthesis_id=synthesis_id,
+        role="phase8_gate",
+        policy_id="orchestrator-deterministic",
+    )
+
+
+def _phase8_calibration_investigation_ids(raw: str) -> list[str]:
+    return [
+        part.strip()
+        for part in raw.replace("\n", ",").split(",")
+        if part.strip()
+    ]
+
+
+def _phase8_gate_from_runtime_env() -> SkillPatchGate:
+    from compounding.skill_growth import (
+        PHASE8_MODE_ENFORCING,
+        PHASE8_MODE_ENV,
+        phase8_gate_from_env,
+    )
+
+    mode = os.environ.get(PHASE8_MODE_ENV, "").strip().lower()
+    if mode != PHASE8_MODE_ENFORCING:
+        return phase8_gate_from_env()
+
+    raw_ids = os.environ.get(PHASE8_CALIBRATION_INVESTIGATION_IDS_ENV, "")
+    investigation_ids = _phase8_calibration_investigation_ids(raw_ids)
+    if not investigation_ids:
+        return phase8_gate_from_env(
+            calibration_ready=False,
+            calibration_notes=(
+                f"{PHASE8_CALIBRATION_INVESTIGATION_IDS_ENV} is required "
+                "before Phase-8 enforcing can accept patches"
+            ),
+        )
+
+    from orchestration.audit import phase8_calibration_status
+
+    status = phase8_calibration_status(investigation_ids)
+    return phase8_gate_from_env(
+        calibration_ready=status.ready_for_enforcing,
+        calibration_notes=status.summary,
+    )
+
+
+def _phase8_candidate_replay_evaluation(
+    *,
+    ctx: InvestigationContext,
+    synthesis_row: Mapping[str, Any],
+    matched_domains: list[str],
+) -> Any | None:
+    """Return candidate replay evidence when a production runner is wired.
+
+    The default is intentionally empty. Phase-8 must keep failing closed rather
+    than fabricating candidate backtest scores until a real rerunner can produce
+    ``CandidateReplayEvaluation`` objects.
+    """
+
+    heldout_ids = _phase8_calibration_investigation_ids(
+        os.environ.get(PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV, "")
+    )
+    if not heldout_ids:
+        return None
+
+    from compounding.skill_growth import unavailable_candidate_replay_evaluation
+    from skills.domain.patch import default_skills_root
+
+    overlay_parent_raw = os.environ.get(PHASE8_REPLAY_OVERLAY_PARENT_ENV, "").strip()
+    overlay_parent = Path(overlay_parent_raw) if overlay_parent_raw else None
+    return unavailable_candidate_replay_evaluation(
+        dict(synthesis_row),
+        heldout_synthesis_ids=heldout_ids,
+        baseline_skills_root=default_skills_root(),
+        overlay_parent=overlay_parent,
+        reason=(
+            "production candidate replay runner is not wired; "
+            f"configured by {PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV}"
+        ),
+    )
+
+
+def _phase8_gate_decide_from_replay_evaluation(
+    gate: SkillPatchGate,
+    replay_evaluation: Any | None,
+) -> PatchOutcome:
+    if replay_evaluation is None:
+        return gate.decide(
+            baseline_backtest_score=0.0,
+            candidate_backtest_score=0.0,
+            cohort_size=0,
+        )
+
+    comparison = replay_evaluation.comparison
+    return gate.decide(
+        baseline_backtest_score=comparison.baseline_score,
+        candidate_backtest_score=comparison.candidate_score,
+        cohort_size=comparison.cohort_size,
+        candidate_evidence_ready=bool(replay_evaluation.ready_for_gate),
+        candidate_evidence_notes=str(replay_evaluation.notes),
+    )
+
+
 async def _run_phase_8(ctx: InvestigationContext) -> bool:
     """Phase 8 (Compound) — Phase 8 is the keystone. Call
     ``skills.domain.extract_and_patch`` inline; the typed
@@ -1239,7 +1385,7 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
             investigation_id=ctx.investigation_id,
             dry_run=True,
         )
-        from compounding.skill_growth import PatchDecision, phase8_gate_from_env
+        from compounding.skill_growth import PatchDecision
         from skills.domain.auto_patch import route_domains as _route_mechanical_domains
 
         candidate_domains = sorted({
@@ -1247,11 +1393,23 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
             *_route_mechanical_domains(ctx.question, ctx.synthesis.thesis_summary),
         })
         if candidate_domains:
-            gate = phase8_gate_from_env()
-            gate_outcome = gate.decide(
-                baseline_backtest_score=0.0,
-                candidate_backtest_score=0.0,
-                cohort_size=0,
+            gate = _phase8_gate_from_runtime_env()
+            replay_evaluation = _phase8_candidate_replay_evaluation(
+                ctx=ctx,
+                synthesis_row=synthesis_row,
+                matched_domains=candidate_domains,
+            )
+            gate_outcome = _phase8_gate_decide_from_replay_evaluation(
+                gate,
+                replay_evaluation,
+            )
+            _emit_phase8_gate_decided(
+                investigation_id=ctx.investigation_id,
+                synthesis_id=synthesis_id,
+                mode=gate.mode,
+                minimum_cohort_size=gate.minimum_cohort_size,
+                matched_domains=candidate_domains,
+                outcome=gate_outcome,
             )
             if gate_outcome.decision == PatchDecision.REJECT:
                 _emit_phase8_auto_patch_applied(
