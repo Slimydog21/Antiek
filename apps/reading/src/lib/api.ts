@@ -31,6 +31,23 @@ export interface StaleRefreshPromotionResponse {
   resolved_stale_edge_ids: string[];
 }
 
+export interface StaleRefreshResolutionRecord {
+  event_id: string;
+  investigation_id: string;
+  emitted_at?: string | null;
+  parent_event_id?: string | null;
+  flag_id: string;
+  entity_kind: "edge" | "node";
+  entity_id: string;
+  status: "refreshed" | "confirmed_stale" | "dismissed";
+  notes: string;
+}
+
+export interface StaleRefreshResolutionListResponse {
+  count: number;
+  resolutions: StaleRefreshResolutionRecord[];
+}
+
 // In development, vite.config.ts proxies /events, /trajectory, /ws,
 // /health, /investigations, /chunks to localhost:8000. In production
 // the app at app.antiek.ai needs to hit api.antiek.ai explicitly.
@@ -226,6 +243,32 @@ export async function processStaleRefreshPromotion(
     const body = await resp.text();
     throw new ApiError(
       `POST /stale-refresh/promotions/process failed: HTTP ${resp.status}`,
+      resp.status,
+      body,
+    );
+  }
+  return resp.json();
+}
+
+export async function listStaleRefreshResolutions(opts?: {
+  limit?: number;
+  entityId?: string;
+}): Promise<StaleRefreshResolutionListResponse> {
+  const url = new URL(
+    `${API_BASE}/stale-refresh/resolutions`,
+    window.location.origin,
+  );
+  if (opts?.limit !== undefined) {
+    url.searchParams.set("limit", String(opts.limit));
+  }
+  if (opts?.entityId) {
+    url.searchParams.set("entity_id", opts.entityId);
+  }
+  const resp = await apiFetch(url.toString());
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new ApiError(
+      `GET /stale-refresh/resolutions failed: HTTP ${resp.status}`,
       resp.status,
       body,
     );

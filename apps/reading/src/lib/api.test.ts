@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApiError,
   FAILURE_HEADLINES,
   classifyClientError,
+  listStaleRefreshResolutions,
 } from "./api";
 
 describe("classifyClientError", () => {
@@ -50,5 +51,65 @@ describe("classifyClientError", () => {
     const c = classifyClientError(new ApiError("fail", 503, body));
     expect(c.code).toBe("provider_unconfigured");
     expect(FAILURE_HEADLINES[c.code]).toMatch(/No model provider is configured/);
+  });
+});
+
+describe("listStaleRefreshResolutions", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("fetches the graph-wide stale resolution list with bounded filters", async () => {
+    const response = {
+      count: 1,
+      resolutions: [
+        {
+          event_id: "evt-resolution",
+          investigation_id: "inv-refresh",
+          emitted_at: "2026-07-07T15:05:00Z",
+          parent_event_id: "evt-candidate",
+          flag_id: "stale-edge-one-personnel",
+          entity_kind: "edge",
+          entity_id: "edge-one",
+          status: "refreshed",
+          notes: "resolved by stale refresh promotion",
+        },
+      ],
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => response,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await listStaleRefreshResolutions({
+      limit: 25,
+      entityId: "edge-one",
+    });
+
+    expect(result).toEqual(response);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toContain("/stale-refresh/resolutions");
+    expect(String(url)).toContain("limit=25");
+    expect(String(url)).toContain("entity_id=edge-one");
+    expect(init).toMatchObject({ credentials: "include" });
+  });
+
+  it("throws ApiError when the stale resolution list fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        text: async () => "down",
+      }),
+    );
+
+    await expect(listStaleRefreshResolutions()).rejects.toMatchObject({
+      status: 503,
+      body: "down",
+    });
   });
 });
