@@ -46,6 +46,7 @@ function question(
 
 function synthesisWith(thesis: string): ParsedSynthesis {
   return {
+    investigationId: "inv-1",
     synthesisId: null,
     thesisSummary: thesis,
     components: [],

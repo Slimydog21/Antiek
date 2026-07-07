@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { ArtifactExport } from "../../components/ArtifactExport";
 import { toast } from "../../components/lemon/LemonToast";
-import { getChunk } from "../../lib/api";
+import { getChunk, startInvestigation } from "../../lib/api";
 import type { ChunkResponse } from "../../lib/api";
 import type {
   CompoundingStat,
@@ -40,6 +40,7 @@ import {
 import { collectAnchoredWidgets, collectDecorations } from "../../reading-physics/registry";
 import type { ClaimId, ChunkId, LayoutMap, ReadingContext, RenderContext } from "../../reading-physics/types";
 import { openPdfPanel } from "../../workspace/actions";
+import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
 import ChunkModal from "./ChunkModal";
 import { buildLayoutMap } from "./readingGeometryPass";
 
@@ -396,6 +397,7 @@ export default function MasterMdViewer({
         <ReuseProvenance
           insights={synthesis.reuseProvenance}
           stat={synthesis.compoundingStat}
+          parentInvestigationId={synthesis.investigationId}
         />
       </article>
 
@@ -1046,9 +1048,11 @@ function compoundingStatLine(stat: CompoundingStat): string {
 function ReuseProvenance({
   insights,
   stat,
+  parentInvestigationId,
 }: {
   insights: ReusedInsight[];
   stat: CompoundingStat | null;
+  parentInvestigationId: string | null;
 }) {
   // A stat line shows ONLY when a per-run measurement carried a real number. A
   // {reused:0} measurement with no avoided/fewer is NOT a "0 insights reused"
@@ -1084,7 +1088,10 @@ function ReuseProvenance({
             <ul className="list-disc list-inside space-y-2 text-ink dark:text-bright">
               {insights.map((ins, i) => (
                 <li key={`${ins.unitId}-${i}`}>
-                  <ReusedInsightLink insight={ins} />
+                  <ReusedInsightLink
+                    insight={ins}
+                    parentInvestigationId={parentInvestigationId}
+                  />
                 </li>
               ))}
             </ul>
@@ -1100,7 +1107,16 @@ function ReuseProvenance({
  *  source investigation is known, the whole entry is a link to that prior
  *  investigation's EXISTING `/inv/:id` surface (M6 reachability); when it is
  *  not, it is plain text (honest "unknown origin", no dead link). */
-function ReusedInsightLink({ insight }: { insight: ReusedInsight }) {
+function ReusedInsightLink({
+  insight,
+  parentInvestigationId,
+}: {
+  insight: ReusedInsight;
+  parentInvestigationId: string | null;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [spawnedId, setSpawnedId] = useState<string | null>(null);
   const label = `prior insight ${insight.unitId}`;
   const refreshCue = insight.staleRefreshAdvisory ? (
     <span
@@ -1109,6 +1125,61 @@ function ReusedInsightLink({ insight }: { insight: ReusedInsight }) {
     >
       refresh before current use
     </span>
+  ) : null;
+  const canRefresh = insight.staleRefreshAdvisory && parentInvestigationId;
+
+  async function launchRefresh() {
+    if (!canRefresh || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const spawnContext = [
+        "stale-reuse-refresh",
+        `unit_id=${insight.unitId}`,
+        insight.sourceInvestigationId
+          ? `source_investigation_id=${insight.sourceInvestigationId}`
+          : null,
+      ].filter(Boolean).join(" ");
+      const resp = await startInvestigation({
+        question:
+          `Refresh prior insight ${insight.unitId}: verify whether its source-document claim remains current before reusing it.`,
+        parent_investigation_id: parentInvestigationId,
+        spawn_context: spawnContext,
+      });
+      recordSpawnRelationship(resp.investigation_id, parentInvestigationId);
+      setSpawnedId(resp.investigation_id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const refreshAction = canRefresh ? (
+    <>
+      <button
+        type="button"
+        className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight underline underline-offset-2 hover:text-ink dark:hover:text-bright disabled:opacity-60"
+        onClick={() => void launchRefresh()}
+        disabled={busy}
+        aria-label={`Refresh prior insight ${insight.unitId}`}
+      >
+        {busy ? "Launching..." : "Refresh"}
+      </button>
+      {spawnedId && (
+        <a
+          href={`/inv/${encodeURIComponent(spawnedId)}`}
+          className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight underline underline-offset-2 hover:text-ink dark:hover:text-bright"
+        >
+          Open refresh research
+        </a>
+      )}
+      {error && (
+        <span className="ml-2 font-mono text-[11px] text-emperor">
+          {error}
+        </span>
+      )}
+    </>
   ) : null;
   if (insight.sourceInvestigationId) {
     return (
@@ -1120,6 +1191,7 @@ function ReusedInsightLink({ insight }: { insight: ReusedInsight }) {
           {label}
         </a>
         {refreshCue}
+        {refreshAction}
       </>
     );
   }
@@ -1127,6 +1199,7 @@ function ReusedInsightLink({ insight }: { insight: ReusedInsight }) {
     <>
       <span className="text-ink-soft dark:text-starlight">{label}</span>
       {refreshCue}
+      {refreshAction}
     </>
   );
 }

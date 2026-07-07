@@ -25,15 +25,25 @@ import {
 import type { ChunkResponse } from "../../lib/api";
 import type { ParsedSynthesis } from "../../lib/synthesisParser";
 
-const { getChunkMock, apiFetchMock } = vi.hoisted(() => ({
+const { getChunkMock, apiFetchMock, startInvestigationMock, recordSpawnRelationshipMock } = vi.hoisted(() => ({
   getChunkMock: vi.fn(),
   apiFetchMock: vi.fn(),
+  startInvestigationMock: vi.fn(),
+  recordSpawnRelationshipMock: vi.fn(),
 }));
 
 vi.mock("../../lib/api", async (orig) => {
   const actual = await orig<typeof import("../../lib/api")>();
-  return { ...actual, getChunk: getChunkMock, apiFetch: apiFetchMock };
+  return {
+    ...actual,
+    getChunk: getChunkMock,
+    apiFetch: apiFetchMock,
+    startInvestigation: startInvestigationMock,
+  };
 });
+vi.mock("../../hooks/useInvestigationTree", () => ({
+  recordSpawnRelationship: recordSpawnRelationshipMock,
+}));
 // Workspace actions + toast are side-effectful; stub them so the render is
 // pure. We assert on what the reader SEES, not on panel side effects.
 vi.mock("../../workspace/actions", () => ({
@@ -70,6 +80,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   getChunkMock.mockReset();
+  startInvestigationMock.mockReset();
+  recordSpawnRelationshipMock.mockReset();
   if (PRIOR_RESIZE_OBSERVER === undefined) {
     delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
   } else {
@@ -95,6 +107,7 @@ function chunk(over: Partial<ChunkResponse>): ChunkResponse {
 
 function synth(over: Partial<ParsedSynthesis> = {}): ParsedSynthesis {
   return {
+    investigationId: "inv-parent",
     synthesisId: null,
     thesisSummary: "A thesis.",
     components: [
@@ -874,6 +887,51 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
     expect(screen.getByText("prior insight unit-current")).toBeTruthy();
     expect(screen.getByText("prior insight unit-stale")).toBeTruthy();
     expect(screen.getByText("refresh before current use")).toBeTruthy();
+  });
+
+  it("launches a child refresh research from a stale-advisory reused insight", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    startInvestigationMock.mockResolvedValue({
+      investigation_id: "inv-refresh-child",
+      status: "in_progress",
+      start_event_id: "evt-start",
+    });
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          investigationId: "inv-parent",
+          reuseProvenance: [
+            {
+              unitId: "unit-stale",
+              sourceInvestigationId: "inv-source",
+              score: 0.81,
+              staleRefreshAdvisory: true,
+            },
+          ],
+          compoundingStat: null,
+        })}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("reuse-provenance")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh prior insight unit-stale" }));
+
+    await waitFor(() =>
+      expect(startInvestigationMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          parent_investigation_id: "inv-parent",
+          spawn_context:
+            "stale-reuse-refresh unit_id=unit-stale source_investigation_id=inv-source",
+        }),
+      ),
+    );
+    expect(startInvestigationMock.mock.calls[0][0].question).toContain("unit-stale");
+    expect(recordSpawnRelationshipMock).toHaveBeenCalledWith(
+      "inv-refresh-child",
+      "inv-parent",
+    );
+    const link = await screen.findByText("Open refresh research");
+    expect(link.getAttribute("href")).toBe("/inv/inv-refresh-child");
   });
 
   it("renders the three exact numbers when a measurement is present (M4 seed-and-catch)", async () => {

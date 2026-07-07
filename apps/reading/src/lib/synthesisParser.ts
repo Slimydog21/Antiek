@@ -143,6 +143,9 @@ export interface CompoundingStat {
 }
 
 export interface ParsedSynthesis {
+  /** The investigation this synthesis belongs to, read from the event envelope
+   *  when present. Null for legacy/synthetic fixtures that omit it. */
+  investigationId: string | null;
   /** The archived synthesis id (from the event envelope's `synthesis_id`),
    *  null when no event in the stream carried one. Drives the artifact-export
    *  affordance (GET /api/syntheses/{id}/artifact.html). */
@@ -179,6 +182,7 @@ export interface ParsedSynthesis {
 }
 
 const EMPTY_SYNTHESIS: ParsedSynthesis = {
+  investigationId: null,
   synthesisId: null,
   thesisSummary: "",
   components: [],
@@ -279,6 +283,7 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
   let synthDelivered: SynthesizeDeliveredPayload | null = null;
   let completed: CompletedPayload | null = null;
   let question: string | null = null;
+  let investigationId: string | null = null;
   let synthesisId: string | null = null;
   let totalCost = 0;
   // SPR-11 M3: the inline-rubric verdict, READ from the last rubric.scored
@@ -303,6 +308,9 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
   for (const e of events) {
     const at: string = e.action_type;
     const p = e.payload as unknown as Record<string, unknown> | undefined;
+    if (!investigationId && typeof e.investigation_id === "string") {
+      investigationId = e.investigation_id;
+    }
     // The synthesis id rides on the event ENVELOPE (Event.synthesis_id), not
     // the synthesize.delivered / investigation.completed payloads. Capture the
     // first event that carries one — it links this view to the syntheses table.
@@ -356,6 +364,7 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
 
   const result: ParsedSynthesis = {
     ...EMPTY_SYNTHESIS,
+    investigationId,
     synthesisId,
     question,
     totalCostUsd: totalCost,
