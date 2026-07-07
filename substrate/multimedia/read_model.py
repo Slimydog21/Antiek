@@ -69,6 +69,14 @@ class SteeringRequest(_ReadModelBase):
     corrected_voice_transcript: str | None = None
 
 
+class LiveProviderExecutionRequest(_ReadModelBase):
+    max_budget_usd: float = Field(gt=0, le=500)
+    route_policy: RoutePolicy
+    operator_acknowledged_spend: bool = False
+    provider_families: tuple[str, ...] = ("krea",)
+    dry_run_revision_id: str | None = None
+
+
 class MultimediaJobRecord(_ReadModelBase):
     job_id: str
     asset_id: str
@@ -266,6 +274,67 @@ class MultimediaAssetStore:
         self.save(updated)
         return updated
 
+    def prepare_live_execution(
+        self,
+        asset_id: str,
+        request: LiveProviderExecutionRequest,
+    ) -> MultimediaAssetRecord:
+        record = self.get(asset_id)
+        if request.dry_run_revision_id and request.dry_run_revision_id != record.asset.revision_id:
+            return self.record_job(
+                asset_id,
+                kind="provider_execution",
+                status="failed",
+                progress_percent=0,
+                message="Requested dry-run revision does not match the current asset revision.",
+                error_code="revision_mismatch",
+                retryable=False,
+            )
+        if not request.operator_acknowledged_spend:
+            return self.record_job(
+                asset_id,
+                kind="provider_execution",
+                status="failed",
+                progress_percent=0,
+                message="Live provider execution requires explicit operator spend acknowledgement.",
+                error_code="spend_not_acknowledged",
+                retryable=False,
+            )
+        estimated = _estimated_live_budget_floor(record)
+        if request.max_budget_usd < estimated:
+            return self.record_job(
+                asset_id,
+                kind="provider_execution",
+                status="failed",
+                progress_percent=0,
+                message=f"Live provider budget ${request.max_budget_usd:.2f} is below estimated floor ${estimated:.2f}.",
+                error_code="budget_below_estimate",
+                retryable=True,
+            )
+        missing = _missing_provider_families(request.provider_families)
+        if missing:
+            return self.record_job(
+                asset_id,
+                kind="provider_execution",
+                status="failed",
+                progress_percent=0,
+                message=f"Provider families not configured: {', '.join(missing)}.",
+                error_code="provider_unconfigured",
+                retryable=False,
+            )
+        families = ", ".join(request.provider_families or ("none",))
+        return self.record_job(
+            asset_id,
+            kind="provider_execution",
+            status="queued",
+            progress_percent=0,
+            message=(
+                f"Live execution queued for {families} with route {request.route_policy} "
+                f"and max budget ${request.max_budget_usd:.2f}."
+            ),
+            retryable=True,
+        )
+
     def record_job(
         self,
         asset_id: str,
@@ -356,8 +425,26 @@ def _title(topic: str) -> str:
     return trimmed[:80] + ("..." if len(trimmed) > 80 else "")
 
 
+def _estimated_live_budget_floor(record: MultimediaAssetRecord) -> float:
+    ledger_total = round(sum(row.cost_usd for row in record.asset.manifest.cost_rows), 4)
+    if ledger_total > 0:
+        return ledger_total
+    mode_floor = 0.2 if record.mode == "audio" else 1.0
+    return round(max(0.01, record.asset.requested_duration_minutes * mode_floor), 2)
+
+
+def _missing_provider_families(provider_families: tuple[str, ...]) -> tuple[str, ...]:
+    missing: list[str] = []
+    for family in provider_families:
+        normalized = family.strip().lower()
+        if normalized == "krea" and not os.environ.get("KREA_API_KEY"):
+            missing.append("krea")
+    return tuple(missing)
+
+
 __all__ = [
     "CreateMultimediaDraftRequest",
+    "LiveProviderExecutionRequest",
     "MultimediaAssetList",
     "MultimediaAssetRecord",
     "MultimediaAssetStore",

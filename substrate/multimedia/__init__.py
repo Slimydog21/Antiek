@@ -54,6 +54,7 @@ from .provider_router import (
 )
 from .read_model import (
     CreateMultimediaDraftRequest,
+    LiveProviderExecutionRequest,
     MultimediaAssetList,
     MultimediaAssetRecord,
     MultimediaAssetStore,
@@ -98,6 +99,7 @@ __all__ = [
     "FakeTTSProvider",
     "GateFinding",
     "GateResult",
+    "LiveProviderExecutionRequest",
     "MultimediaPlan",
     "MultimediaHardeningReport",
     "MultimediaAssetList",
