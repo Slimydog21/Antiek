@@ -2,8 +2,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { ArtifactExport } from "../../components/ArtifactExport";
 import { toast } from "../../components/lemon/LemonToast";
-import { getChunk, startInvestigation } from "../../lib/api";
+import { getChunk, getTrajectory, startInvestigation } from "../../lib/api";
 import type { ChunkResponse, InvestigationSummary } from "../../lib/api";
+import { parseSynthesis } from "../../lib/synthesisParser";
 import type {
   CompoundingStat,
   ParsedClaim,
@@ -103,6 +104,12 @@ function refreshChildStatusLabel(
     default:
       return null;
   }
+}
+
+function truncateRefreshSummary(summary: string): string {
+  const compact = summary.replace(/\s+/g, " ").trim();
+  if (compact.length <= 96) return compact;
+  return `${compact.slice(0, 93).trimEnd()}...`;
 }
 
 function readStaleReuseRefreshes(): StaleReuseRefreshMap {
@@ -1309,6 +1316,7 @@ function ReusedInsightLink({
           {backendStatusLabel}
         </span>
       )}
+      {backendChild && <RefreshChildResult child={backendChild} />}
       {error && (
         <span className="ml-2 font-mono text-[11px] text-emperor">
           {error}
@@ -1336,5 +1344,44 @@ function ReusedInsightLink({
       {refreshCue}
       {refreshAction}
     </>
+  );
+}
+
+function RefreshChildResult({ child }: { child: InvestigationSummary }) {
+  const [summary, setSummary] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (child.status !== "completed") {
+      setSummary(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const trajectory = await getTrajectory(child.investigation_id);
+        if (cancelled) return;
+        const parsed = parseSynthesis(trajectory.events ?? []);
+        setSummary(
+          parsed?.thesisSummary
+            ? truncateRefreshSummary(parsed.thesisSummary)
+            : null,
+        );
+      } catch {
+        if (!cancelled) setSummary(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [child.investigation_id, child.status]);
+
+  if (!summary) return null;
+  return (
+    <span
+      className="ml-2 font-mono text-[11px] text-ink-soft dark:text-starlight"
+      title="Read-only excerpt from the refresh child synthesis; it does not resolve the stale advisory by itself."
+    >
+      refresh result: {summary}
+    </span>
   );
 }

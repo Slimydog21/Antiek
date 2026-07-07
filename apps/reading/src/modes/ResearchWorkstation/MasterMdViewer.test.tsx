@@ -28,11 +28,13 @@ import type { ParsedSynthesis } from "../../lib/synthesisParser";
 const {
   getChunkMock,
   apiFetchMock,
+  getTrajectoryMock,
   startInvestigationMock,
   recordSpawnRelationshipMock,
 } = vi.hoisted(() => ({
   getChunkMock: vi.fn(),
   apiFetchMock: vi.fn(),
+  getTrajectoryMock: vi.fn(),
   startInvestigationMock: vi.fn(),
   recordSpawnRelationshipMock: vi.fn(),
 }));
@@ -43,6 +45,7 @@ vi.mock("../../lib/api", async (orig) => {
     ...actual,
     getChunk: getChunkMock,
     apiFetch: apiFetchMock,
+    getTrajectory: getTrajectoryMock,
     startInvestigation: startInvestigationMock,
   };
 });
@@ -100,6 +103,7 @@ afterEach(() => {
   cleanup();
   window.localStorage.removeItem(STALE_REUSE_REFRESH_STORAGE_KEY);
   getChunkMock.mockReset();
+  getTrajectoryMock.mockReset();
   startInvestigationMock.mockReset();
   recordSpawnRelationshipMock.mockReset();
   if (PRIOR_RESIZE_OBSERVER === undefined) {
@@ -1004,6 +1008,7 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
 
   it("restores the refresh child link from investigation summaries before localStorage", async () => {
     getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    getTrajectoryMock.mockResolvedValue({ events: [] });
     render(
       <MasterMdViewer
         synthesis={synth({
@@ -1033,6 +1038,66 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
     const link = screen.getByText("Open refresh research");
     expect(link.getAttribute("href")).toBe("/inv/inv-refresh-from-api");
     expect(screen.getByText("refresh research completed")).toBeTruthy();
+    expect(startInvestigationMock).not.toHaveBeenCalled();
+  });
+
+  it("shows a read-only refresh result excerpt from a completed child synthesis", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    getTrajectoryMock.mockResolvedValue({
+      events: [
+        {
+          event_id: "evt-start",
+          investigation_id: "inv-refresh-from-api",
+          action_type: "investigation.start_requested",
+          payload: { question: "Refresh?" },
+          emitted_at: "2026-07-07T13:00:00Z",
+        },
+        {
+          event_id: "evt-synth",
+          investigation_id: "inv-refresh-from-api",
+          action_type: "synthesize.delivered",
+          payload: {
+            thesis_summary: "Source claim remains current after checking the newer corpus.",
+            thesis_components: [],
+            implicit_recommendation: "proceed",
+          },
+          emitted_at: "2026-07-07T13:01:00Z",
+        },
+      ],
+    });
+
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          investigationId: "inv-parent",
+          reuseProvenance: [
+            {
+              unitId: "unit-stale",
+              sourceInvestigationId: "inv-source",
+              score: 0.81,
+              staleRefreshAdvisory: true,
+            },
+          ],
+          compoundingStat: null,
+        })}
+        staleRefreshChildren={[
+          investigationSummary({
+            investigation_id: "inv-refresh-from-api",
+            parent_investigation_id: "inv-parent",
+            spawn_context:
+              "stale-reuse-refresh unit_id=unit-stale source_investigation_id=inv-source",
+          }),
+        ]}
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "refresh result: Source claim remains current after checking the newer corpus.",
+        ),
+      ).toBeTruthy(),
+    );
+    expect(getTrajectoryMock).toHaveBeenCalledWith("inv-refresh-from-api");
     expect(startInvestigationMock).not.toHaveBeenCalled();
   });
 
