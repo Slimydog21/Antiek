@@ -60,7 +60,7 @@ import logging
 import os
 import re
 import sys
-from collections.abc import Awaitable, Callable, Coroutine, Sequence
+from collections.abc import Awaitable, Callable, Coroutine, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC
 from typing import TYPE_CHECKING, Any, Literal
@@ -68,7 +68,7 @@ from typing import TYPE_CHECKING, Any, Literal
 if TYPE_CHECKING:
     import duckdb
 
-    from compounding.skill_growth import SkillPatchGate
+    from compounding.skill_growth import PatchOutcome, SkillPatchGate
     from substrate.dispatch.research_tier import ResearchTier
     from substrate.eval.groundedness.scorer import GroundednessResult
 
@@ -1279,6 +1279,43 @@ def _phase8_gate_from_runtime_env() -> SkillPatchGate:
     )
 
 
+def _phase8_candidate_replay_evaluation(
+    *,
+    ctx: InvestigationContext,
+    synthesis_row: Mapping[str, Any],
+    matched_domains: list[str],
+) -> Any | None:
+    """Return candidate replay evidence when a production runner is wired.
+
+    The default is intentionally empty. Phase-8 must keep failing closed rather
+    than fabricating candidate backtest scores until a real rerunner can produce
+    ``CandidateReplayEvaluation`` objects.
+    """
+
+    return None
+
+
+def _phase8_gate_decide_from_replay_evaluation(
+    gate: SkillPatchGate,
+    replay_evaluation: Any | None,
+) -> PatchOutcome:
+    if replay_evaluation is None:
+        return gate.decide(
+            baseline_backtest_score=0.0,
+            candidate_backtest_score=0.0,
+            cohort_size=0,
+        )
+
+    comparison = replay_evaluation.comparison
+    return gate.decide(
+        baseline_backtest_score=comparison.baseline_score,
+        candidate_backtest_score=comparison.candidate_score,
+        cohort_size=comparison.cohort_size,
+        candidate_evidence_ready=bool(replay_evaluation.ready_for_gate),
+        candidate_evidence_notes=str(replay_evaluation.notes),
+    )
+
+
 async def _run_phase_8(ctx: InvestigationContext) -> bool:
     """Phase 8 (Compound) — Phase 8 is the keystone. Call
     ``skills.domain.extract_and_patch`` inline; the typed
@@ -1332,10 +1369,14 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
         })
         if candidate_domains:
             gate = _phase8_gate_from_runtime_env()
-            gate_outcome = gate.decide(
-                baseline_backtest_score=0.0,
-                candidate_backtest_score=0.0,
-                cohort_size=0,
+            replay_evaluation = _phase8_candidate_replay_evaluation(
+                ctx=ctx,
+                synthesis_row=synthesis_row,
+                matched_domains=candidate_domains,
+            )
+            gate_outcome = _phase8_gate_decide_from_replay_evaluation(
+                gate,
+                replay_evaluation,
             )
             _emit_phase8_gate_decided(
                 investigation_id=ctx.investigation_id,

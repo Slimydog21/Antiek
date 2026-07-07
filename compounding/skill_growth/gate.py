@@ -88,6 +88,8 @@ class SkillPatchGate:
         baseline_backtest_score: float,
         candidate_backtest_score: float,
         cohort_size: int,
+        candidate_evidence_ready: bool = True,
+        candidate_evidence_notes: str = "",
     ) -> PatchOutcome:
         """Run the gate. Returns a PatchOutcome including the
         decision + score breakdown. The CALLER decides whether to
@@ -116,6 +118,11 @@ class SkillPatchGate:
                 note = "phase8 calibration evidence not ready for enforcing"
                 if self.calibration_notes:
                     note = f"{note}: {self.calibration_notes}"
+            elif not candidate_evidence_ready:
+                decision = PatchDecision.REJECT
+                note = "phase8 candidate replay evidence not ready"
+                if candidate_evidence_notes:
+                    note = f"{note}: {candidate_evidence_notes}"
             elif delta > self.epsilon:
                 decision = PatchDecision.ACCEPT
                 note = f"delta={delta:.4f} exceeds epsilon={self.epsilon}"
@@ -164,6 +171,8 @@ def apply_patch_with_gate(
     candidate_backtest_score: float,
     cohort_size: int,
     apply_fn: Callable[[], None],
+    candidate_evidence_ready: bool = True,
+    candidate_evidence_notes: str = "",
 ) -> PatchOutcome:
     """Canonical Phase-8-with-gate flow. Runs the gate; in shadow
     mode applies the patch regardless; in enforcing mode applies
@@ -172,6 +181,8 @@ def apply_patch_with_gate(
         baseline_backtest_score=baseline_backtest_score,
         candidate_backtest_score=candidate_backtest_score,
         cohort_size=cohort_size,
+        candidate_evidence_ready=candidate_evidence_ready,
+        candidate_evidence_notes=candidate_evidence_notes,
     )
     if outcome.decision == PatchDecision.SHADOW or outcome.decision == PatchDecision.ACCEPT:
         apply_fn()
