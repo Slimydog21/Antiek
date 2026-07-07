@@ -73,6 +73,8 @@ from roles.thought_partner import (  # noqa: E402
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
+from substrate.graph import default_db_path  # noqa: E402
+from substrate.graph.health import DuckDBHealth, probe_duckdb_health  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     EVENT_SCHEMA_VERSION,
     WRESTLING_ACTION_TYPES,
@@ -143,6 +145,17 @@ class HealthResponse(BaseModel):
     # compounded (and before the first probe).
     flywheel_ready: bool = False
     knowledge_reuse_count: int = 0
+    # GF-7: startup read-only health snapshot for the graph DuckDB file.
+    # This is intentionally separate from ``status`` so /health can keep
+    # responding while surfacing DB corruption/missing-schema/missing-file states.
+    duckdb_ready: bool = False
+    duckdb_status: str = "unknown"
+    duckdb_schema_present: bool = False
+    duckdb_database_size_ok: bool = False
+    duckdb_integrity_check: str = "not_run"
+    duckdb_wal_present: bool = False
+    duckdb_wal_bytes: int = 0
+    duckdb_error: str | None = None
 
 
 def _resolve_build_sha() -> str:
@@ -235,6 +248,24 @@ def _probe_flywheel() -> tuple[bool, int]:
         # (False, 0) rather than failing the whole /health over a probe,
         # mirroring _resolve_build_sha's swallow-to-"unknown".
         return (False, 0)
+
+
+def _probe_graph_duckdb() -> DuckDBHealth:
+    """Startup graph DB health probe.
+
+    Unlike the flywheel event-log scan, this is bounded to a single read-only
+    DuckDB open plus metadata queries, so it is paid eagerly at app construction.
+    It never raises; failures are represented in the returned snapshot.
+    """
+    try:
+        return probe_duckdb_health(default_db_path())
+    except Exception as exc:
+        return DuckDBHealth(
+            ready=False,
+            status="probe_exception",
+            db_path=os.path.abspath(os.path.expanduser(default_db_path())),
+            error=f"{type(exc).__name__}: {exc}",
+        )
 
 
 class InvestigationStartRequest(BaseModel):
@@ -1673,6 +1704,11 @@ def create_app(
     # tools/prod_parity/check.py and tools/prod_parity/README.md.
     app.state.build_sha = _resolve_build_sha()
 
+    # GF-7: read-only graph DuckDB startup health snapshot. This does not
+    # initialize/create the DB; missing/corrupt/unreadable states are exposed
+    # in /health rather than crashing app construction.
+    app.state.duckdb_health = _probe_graph_duckdb()
+
     # SPR-11: flywheel-liveness snapshot (read-only, never raises), reported on
     # /health so prod-parity can red a deployed-but-dead flywheel. DEFERRED to
     # the first /health request (memoized via app.state._flywheel_probed) rather
@@ -1799,6 +1835,7 @@ def create_app(
                 app.state.knowledge_reuse_count,
             ) = _probe_flywheel()
             app.state._flywheel_probed = True
+        duckdb_health = app.state.duckdb_health
         return HealthResponse(
             status="ok",
             param_version=ANTIEK_PARAM_VERSION,
@@ -1813,6 +1850,14 @@ def create_app(
             build_sha=getattr(app.state, "build_sha", "unknown"),
             flywheel_ready=getattr(app.state, "flywheel_ready", False),
             knowledge_reuse_count=getattr(app.state, "knowledge_reuse_count", 0),
+            duckdb_ready=duckdb_health.ready,
+            duckdb_status=duckdb_health.status,
+            duckdb_schema_present=duckdb_health.schema_present,
+            duckdb_database_size_ok=duckdb_health.database_size_ok,
+            duckdb_integrity_check=duckdb_health.integrity_check,
+            duckdb_wal_present=duckdb_health.wal_present,
+            duckdb_wal_bytes=duckdb_health.wal_bytes,
+            duckdb_error=duckdb_health.error,
         )
 
     # ── POST typed event ────────────────────────────────────────
