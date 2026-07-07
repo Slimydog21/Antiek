@@ -12,9 +12,10 @@ Programmatic skill update on Phase 8 completion.
 5. On verified growth, marks `phase_log[8].verified = True`.
 
 `replay.py` hosts the candidate-side Phase-8 seam: copy the baseline
-skills tree into a temporary overlay and apply the candidate patch there
-without emitting production auto-patch events. Later replay slices run
-held-out investigations against that overlay before the gate can enforce.
+skills tree into a temporary overlay, apply the candidate patch there
+without emitting production auto-patch events, and run held-out candidate
+backtests through an injected runner that receives the overlay skill root.
+The production investigation rerun implementation remains a later slice.
 
 ## Process skill codification (deferred)
 
