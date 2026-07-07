@@ -45,7 +45,15 @@ jobs:
         run: npm ci
 
       - name: Install Playwright chromium (Lost-Pixel uses it)
-        run: node node_modules/playwright-core/cli.js install chromium --with-deps
+        # Lost-Pixel carries its own nested playwright-core version. Installing
+        # the app's top-level playwright-core browser can leave Lost-Pixel
+        # looking for a different cached Chromium revision.
+        run: |
+          if [ -f node_modules/lost-pixel/node_modules/playwright-core/cli.js ]; then
+            node node_modules/lost-pixel/node_modules/playwright-core/cli.js install chromium --with-deps
+          else
+            node node_modules/playwright-core/cli.js install chromium --with-deps
+          fi
 
       - name: Build Storybook
         run: npm run build-storybook
