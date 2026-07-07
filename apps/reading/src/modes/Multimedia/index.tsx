@@ -1,12 +1,26 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
+import {
+  approveMultimediaDryRun,
+  createMultimediaDraft,
+  getMultimediaAsset,
+  listMultimediaAssets,
+  runMultimediaHardening,
+  steerMultimediaAsset,
+} from "../../api/multimedia";
+import type {
+  CreateMultimediaDraftRequest,
+  MultimediaAssetRecord,
+  MultimediaAssetSummary,
+} from "../../api/multimedia";
 import { LemonButton, LemonInput, LemonTag, LemonTextarea } from "../../components/lemon";
 
 type Mode = "video" | "audio" | "hybrid";
 type RouteTier = "cheapest" | "balanced" | "highest_quality";
 type RenderState = "pending" | "rendering" | "partial" | "failed" | "over_budget" | "provider_unavailable";
 type PlayerView = "video" | "audio";
+type PendingCommand = "list" | "create" | "approve" | "steer" | "harden" | "open" | null;
 
 type Chapter = {
   id: string;
@@ -108,6 +122,29 @@ function estimateCost(minutes: number, mode: Mode, tier: RouteTier): string {
   return `$${total.toFixed(2)}`;
 }
 
+function splitOperatorList(value: string): string[] {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function formatRecordCost(record: MultimediaAssetRecord | null, tier: RouteTier, fallback: string): string {
+  if (!record) return fallback;
+  if (record.asset.route_policy !== tier) return fallback;
+  const costRows = (record.asset.manifest as { cost_rows?: Array<{ cost_usd?: number }> }).cost_rows ?? [];
+  if (!costRows.length) return fallback;
+  const total = costRows.reduce((sum, row) => sum + (typeof row.cost_usd === "number" ? row.cost_usd : 0), 0);
+  return `$${total.toFixed(2)}`;
+}
+
+function statusToRenderState(record: MultimediaAssetRecord | null): RenderState {
+  if (!record) return "pending";
+  if (record.asset.status === "ready") return "partial";
+  if (record.asset.status === "failed") return "failed";
+  return "pending";
+}
+
 function distributeMinutes(total: number): number[] {
   const weights = [0.32, 0.41, 0.27];
   return weights.map((w, i) => {
@@ -135,6 +172,31 @@ export default function Multimedia() {
   const [activeChapterId, setActiveChapterId] = useState(CHAPTERS[0].id);
   const [selectedSourceId, setSelectedSourceId] = useState(SOURCES[0].id);
   const [steer, setSteer] = useState("Make chapter 2 more concrete and add a voice note about turbofan reliability.");
+  const [assets, setAssets] = useState<MultimediaAssetSummary[]>([]);
+  const [selectedRecord, setSelectedRecord] = useState<MultimediaAssetRecord | null>(null);
+  const [pendingCommand, setPendingCommand] = useState<PendingCommand>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPendingCommand("list");
+    listMultimediaAssets()
+      .then((result) => {
+        if (cancelled) return;
+        setAssets(result.assets);
+        setApiError(null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setApiError("Multimedia API is unavailable. Fixture preview remains available, but assets will not persist.");
+      })
+      .finally(() => {
+        if (!cancelled) setPendingCommand(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const planChapters = useMemo(() => {
     const minutes = distributeMinutes(duration);
@@ -143,8 +205,9 @@ export default function Multimedia() {
 
   const activeChapter = planChapters.find((chapter) => chapter.id === activeChapterId) ?? planChapters[0];
   const selectedSource = SOURCES.find((source) => source.id === selectedSourceId) ?? SOURCES[0];
-  const estimatedCost = estimateCost(duration, mode, tier);
+  const estimatedCost = formatRecordCost(selectedRecord, tier, estimateCost(duration, mode, tier));
   const canApprove = planReady && topic.trim().length > 0 && duration >= 15 && duration <= 45;
+  const canRunAssetCommand = Boolean(selectedRecord) && pendingCommand === null;
 
   function setPreset(next: number) {
     setDuration(next);
@@ -159,15 +222,111 @@ export default function Multimedia() {
     }
   }
 
-  function generatePlan() {
-    setPlanReady(true);
-    setApproved(false);
-    setRenderState("pending");
+  async function refreshAssetList() {
+    const result = await listMultimediaAssets();
+    setAssets(result.assets);
   }
 
-  function approvePlan() {
-    setApproved(true);
-    setRenderState("rendering");
+  async function generatePlan() {
+    const request: CreateMultimediaDraftRequest = {
+      topic,
+      target_minutes: duration,
+      mode,
+      route_policy: tier,
+      sources: [sourceScope].filter((item) => item.trim().length > 0),
+      must_cover: splitOperatorList(mustCover),
+      audience: "curious generalist",
+      style,
+    };
+    setPendingCommand("create");
+    try {
+      const record = await createMultimediaDraft(request);
+      setSelectedRecord(record);
+      setPlanReady(true);
+      setApproved(false);
+      setRenderState(statusToRenderState(record));
+      setApiError(null);
+      await refreshAssetList();
+    } catch {
+      setApiError("Could not create a persisted multimedia draft. Check the API process and retry.");
+      setPlanReady(true);
+      setApproved(false);
+      setRenderState("pending");
+    } finally {
+      setPendingCommand(null);
+    }
+  }
+
+  async function reopenAsset(assetId: string) {
+    setPendingCommand("open");
+    try {
+      const record = await getMultimediaAsset(assetId);
+      setSelectedRecord(record);
+      setTopic(record.asset.title);
+      setDuration(record.asset.requested_duration_minutes);
+      setCustomDuration(String(record.asset.requested_duration_minutes));
+      setMode(record.mode);
+      setTier(record.asset.route_policy);
+      setPlanReady(true);
+      setApproved(record.asset.status === "ready");
+      setRenderState(statusToRenderState(record));
+      setApiError(null);
+    } catch {
+      setApiError("Could not reopen that multimedia asset.");
+    } finally {
+      setPendingCommand(null);
+    }
+  }
+
+  async function approvePlan() {
+    if (!selectedRecord) return;
+    setPendingCommand("approve");
+    try {
+      const record = await approveMultimediaDryRun(selectedRecord.asset.asset_id);
+      setSelectedRecord(record);
+      setApproved(true);
+      setRenderState(statusToRenderState(record));
+      setApiError(null);
+      await refreshAssetList();
+    } catch {
+      setApiError("Could not approve the dry-run render.");
+      setRenderState("failed");
+    } finally {
+      setPendingCommand(null);
+    }
+  }
+
+  async function applySteeringPrompt() {
+    if (!selectedRecord || !steer.trim()) return;
+    setPendingCommand("steer");
+    try {
+      const record = await steerMultimediaAsset(selectedRecord.asset.asset_id, { prompt: steer });
+      setSelectedRecord(record);
+      setPlanReady(true);
+      setApproved(record.asset.status === "ready");
+      setRenderState(statusToRenderState(record));
+      setApiError(null);
+      await refreshAssetList();
+    } catch {
+      setApiError("Could not apply that steering prompt.");
+    } finally {
+      setPendingCommand(null);
+    }
+  }
+
+  async function runHardening() {
+    if (!selectedRecord) return;
+    setPendingCommand("harden");
+    try {
+      const record = await runMultimediaHardening(selectedRecord.asset.asset_id);
+      setSelectedRecord(record);
+      setApiError(null);
+      await refreshAssetList();
+    } catch {
+      setApiError("Could not run multimedia hardening.");
+    } finally {
+      setPendingCommand(null);
+    }
   }
 
   return (
@@ -305,8 +464,8 @@ export default function Multimedia() {
                   {estimatedCost}
                 </p>
               </div>
-              <LemonButton type="button" variant="primary" onClick={generatePlan}>
-                Review plan
+              <LemonButton type="button" variant="primary" onClick={generatePlan} disabled={pendingCommand !== null}>
+                {pendingCommand === "create" ? "Creating..." : "Review plan"}
               </LemonButton>
             </div>
           </section>
@@ -316,8 +475,13 @@ export default function Multimedia() {
               <div>
                 <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Plan review</p>
                 <h2 className="font-serif text-xl text-ink dark:text-bright">
-                  {planReady ? topic : "No plan reviewed yet"}
+                  {planReady ? selectedRecord?.asset.title ?? topic : "No plan reviewed yet"}
                 </h2>
+                {selectedRecord && (
+                  <p className="mt-1 font-mono text-[11px] text-shadow-2 dark:text-moonlight">
+                    {selectedRecord.asset.asset_id} / {selectedRecord.asset.revision_id}
+                  </p>
+                )}
               </div>
               <div className="flex flex-wrap gap-2">
                 <LemonTag colour="sun">{duration} minutes</LemonTag>
@@ -327,6 +491,41 @@ export default function Multimedia() {
                 </LemonTag>
               </div>
             </div>
+
+            {apiError && (
+              <div className="rounded-md border border-danger bg-danger/10 p-3 text-[13px] text-ink dark:text-bright" role="alert">
+                {apiError}
+              </div>
+            )}
+
+            {assets.length > 0 && (
+              <section className="rounded-md border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">Persisted assets</p>
+                  <LemonTag>{assets.length}</LemonTag>
+                </div>
+                <div className="mt-2 grid gap-2 md:grid-cols-2">
+                  {assets.map((asset) => (
+                    <button
+                      key={`${asset.asset_id}-${asset.revision_id}`}
+                      type="button"
+                      onClick={() => reopenAsset(asset.asset_id)}
+                      className={
+                        "rounded-md border px-3 py-2 text-left " +
+                        (selectedRecord?.asset.asset_id === asset.asset_id
+                          ? "border-sun bg-sun/20"
+                          : "border-rule bg-ice-1 dark:border-charcoal-1 dark:bg-charcoal-2")
+                      }
+                    >
+                      <span className="block font-mono text-[12px] text-ink dark:text-bright">{asset.status}</span>
+                      <span className="mt-1 block text-[13px] leading-snug text-shadow-1 dark:text-moonlight">
+                        {asset.title}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
 
             {!planReady ? (
               <div className="rounded-md border border-dashed border-rule px-4 py-10 text-center text-[13px] text-shadow-1 dark:border-charcoal-1 dark:text-moonlight">
@@ -380,8 +579,13 @@ export default function Multimedia() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                  <LemonButton type="button" variant="primary" disabled={!canApprove} onClick={approvePlan}>
-                    Approve render
+                  <LemonButton
+                    type="button"
+                    variant="primary"
+                    disabled={!canApprove || !selectedRecord || pendingCommand !== null}
+                    onClick={approvePlan}
+                  >
+                    {pendingCommand === "approve" ? "Approving..." : "Approve render"}
                   </LemonButton>
                   <LemonButton
                     type="button"
@@ -389,7 +593,7 @@ export default function Multimedia() {
                     onClick={() => {
                       setPlanReady(false);
                       setApproved(false);
-                      setRenderState("pending");
+                      setRenderState(selectedRecord ? statusToRenderState(selectedRecord) : "pending");
                     }}
                   >
                     Edit brief
@@ -422,13 +626,32 @@ export default function Multimedia() {
                 className="mt-2"
               />
               <div className="mt-2 flex gap-2">
-                <LemonButton type="button" size="sm" variant="secondary">
-                  Apply steer
+                <LemonButton
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={!canRunAssetCommand}
+                  onClick={applySteeringPrompt}
+                >
+                  {pendingCommand === "steer" ? "Applying..." : "Apply steer"}
                 </LemonButton>
-                <LemonButton type="button" size="sm" variant="tertiary">
-                  Voice
+                <LemonButton
+                  type="button"
+                  size="sm"
+                  variant="tertiary"
+                  disabled={!canRunAssetCommand}
+                  onClick={runHardening}
+                >
+                  {pendingCommand === "harden" ? "Checking..." : "Run hardening"}
                 </LemonButton>
               </div>
+              {selectedRecord?.hardening_report && (
+                <div className="mt-3 rounded-md border border-rule bg-ice-0 p-2 text-[12px] text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright">
+                  <p className="font-mono">Hardening: {selectedRecord.hardening_report.ship_status}</p>
+                  <p>Manual: {selectedRecord.hardening_report.manual_gate_ids.join(", ") || "none"}</p>
+                  <p>Failed: {selectedRecord.hardening_report.failed_gate_ids.join(", ") || "none"}</p>
+                </div>
+              )}
             </section>
           </aside>
 
@@ -552,6 +775,9 @@ export default function Multimedia() {
                     <p className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">Revision history</p>
                     <ol className="mt-2 space-y-1 text-[13px] text-shadow-1 dark:text-moonlight">
                       <li>Plan v1 generated from topic and source scope.</li>
+                      {selectedRecord?.asset.parent_revision_id && (
+                        <li>Child revision from {selectedRecord.asset.parent_revision_id}.</li>
+                      )}
                       <li>Unsourced claim marked before render approval.</li>
                       <li>Current steer queued: {steer}</li>
                     </ol>

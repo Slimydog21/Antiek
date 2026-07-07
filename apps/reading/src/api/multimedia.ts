@@ -42,6 +42,8 @@ export interface MultimediaAssetRecord {
     title: string;
     route_policy: MultimediaRoutePolicy;
     requested_duration_minutes: number;
+    parent_revision_id?: string | null;
+    steering_event_id?: string | null;
     manifest: unknown;
   };
   plan: unknown;
