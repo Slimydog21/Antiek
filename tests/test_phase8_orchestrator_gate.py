@@ -21,6 +21,7 @@ from orchestration.loop_one.orchestrator import (  # noqa: E402
     PHASE8_CALIBRATION_INVESTIGATION_IDS_ENV,
     PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV,
     PHASE8_REPLAY_OVERLAY_PARENT_ENV,
+    PHASE8_REPLAY_RUNNER_ENV,
     InvestigationContext,
     _phase8_candidate_replay_evaluation,
     _phase8_gate_decide_from_replay_evaluation,
@@ -52,6 +53,7 @@ def _isolate_phase8(tmp_path, monkeypatch):
     monkeypatch.delenv("ANTIEK_PHASE8_EPSILON", raising=False)
     monkeypatch.delenv("ANTIEK_PHASE8_MINIMUM_COHORT_SIZE", raising=False)
     monkeypatch.delenv(PHASE8_CALIBRATION_INVESTIGATION_IDS_ENV, raising=False)
+    monkeypatch.delenv(PHASE8_REPLAY_RUNNER_ENV, raising=False)
 
 
 def _ctx(investigation_id: str = "inv-phase8-gate") -> InvestigationContext:
@@ -328,6 +330,98 @@ def test_phase8_replay_provider_loads_baseline_reports_when_db_configured(
     assert evaluation.replay.overlay.overlay_skills_root.is_relative_to(
         tmp_path / "overlays"
     )
+
+
+def test_phase8_replay_provider_reports_unsupported_runner(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV,
+        "heldout-1",
+    )
+    monkeypatch.setenv(PHASE8_REPLAY_RUNNER_ENV, "mystery")
+    monkeypatch.setenv(PHASE8_REPLAY_OVERLAY_PARENT_ENV, str(tmp_path / "overlays"))
+    ctx = _ctx("inv-phase8-unsupported-runner")
+    assert ctx.synthesis is not None
+
+    evaluation = _phase8_candidate_replay_evaluation(
+        ctx=ctx,
+        synthesis_row={
+            "synthesis_id": "syn-inv-phase8-unsupported-runner",
+            "investigation_id": ctx.investigation_id,
+            "target_question": ctx.question,
+            "implicit_recommendation": ctx.synthesis.implicit_recommendation,
+            "thesis": {"thesis_summary": ctx.synthesis.thesis_summary},
+        },
+        matched_domains=["quantum-computing-knowledge"],
+    )
+
+    assert evaluation is not None
+    assert evaluation.ready_for_gate is False
+    assert "unsupported replay runner: mystery" in evaluation.notes
+
+
+@pytest.mark.asyncio
+async def test_phase8_opt_in_replay_runner_feeds_candidate_scores(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv(PHASE8_REPLAY_RUNNER_ENV, "loop1")
+    monkeypatch.setenv(
+        PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV,
+        "heldout-1, heldout-2",
+    )
+    db_path = tmp_path / "graph.duckdb"
+    _archive_test_synthesis(
+        db_path,
+        synthesis_id="heldout-1",
+        investigation_id="inv-heldout-1",
+    )
+    _archive_test_synthesis(
+        db_path,
+        synthesis_id="heldout-2",
+        investigation_id="inv-heldout-2",
+    )
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(db_path))
+    monkeypatch.setenv(PHASE8_REPLAY_OVERLAY_PARENT_ENV, str(tmp_path / "workspaces"))
+
+    def _no_primary_patch(**_kwargs):
+        return ExtractionResult(
+            domains_matched=["quantum-computing-knowledge"],
+            patched_skills={},
+        )
+
+    calls: list[tuple[str, str]] = []
+
+    async def _candidate_runner(**kwargs):
+        calls.append(
+            (
+                kwargs["heldout_synthesis_id"],
+                str(kwargs["overlay_skills_root"]),
+            )
+        )
+        return _report(kwargs["heldout_synthesis_id"], outcome="confirmed")
+
+    monkeypatch.setattr(orch, "extract_and_patch", _no_primary_patch)
+    monkeypatch.setattr(
+        orch,
+        "_phase8_run_candidate_heldout_backtest",
+        _candidate_runner,
+    )
+    broadcaster = EventBroadcaster()
+    coordinator = InvestigationCoordinator(broadcaster)
+    ctx = _ctx("inv-phase8-opt-in-replay")
+
+    ok = await _run_phase_8(ctx, broadcaster, coordinator)
+
+    assert ok is True
+    assert [call[0] for call in calls] == ["heldout-1", "heldout-2"]
+    assert all(str(tmp_path / "workspaces") in call[1] for call in calls)
+    gate_decision = _last_gate_decision(ctx.investigation_id)
+    assert gate_decision.baseline_backtest_score == 1.0
+    assert gate_decision.candidate_backtest_score == 1.0
+    assert gate_decision.cohort_size == 2
 
 
 @pytest.mark.asyncio

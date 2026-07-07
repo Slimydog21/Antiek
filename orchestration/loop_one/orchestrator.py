@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import inspect
 import json
 import logging
 import os
@@ -130,6 +131,7 @@ PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV = (
     "ANTIEK_PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS"
 )
 PHASE8_REPLAY_OVERLAY_PARENT_ENV = "ANTIEK_PHASE8_REPLAY_OVERLAY_PARENT"
+PHASE8_REPLAY_RUNNER_ENV = "ANTIEK_PHASE8_REPLAY_RUNNER"
 
 
 # ---------------------------------------------------------------------------
@@ -1294,6 +1296,8 @@ def _phase8_candidate_replay_evaluation(
     ctx: InvestigationContext,
     synthesis_row: Mapping[str, Any],
     matched_domains: list[str],
+    broadcaster: EventBroadcaster | None = None,
+    coordinator: InvestigationCoordinator | None = None,
 ) -> Any | None:
     """Return candidate replay evidence when a production runner is wired.
 
@@ -1337,6 +1341,22 @@ def _phase8_candidate_replay_evaluation(
             )
             baseline_note = f"; baseline load errors: {errors}"
 
+    runner_mode = os.environ.get(PHASE8_REPLAY_RUNNER_ENV, "").strip().lower()
+    if runner_mode in ("loop1", "loop_one"):
+        if broadcaster is not None and coordinator is not None:
+            return _phase8_candidate_replay_evaluation_with_runner(
+                synthesis_row=dict(synthesis_row),
+                heldout_synthesis_ids=heldout_ids,
+                baseline_skills_root=default_skills_root(),
+                baseline_reports=baseline_reports,
+                replay_workspace=replay_workspace,
+                broadcaster=broadcaster,
+                coordinator=coordinator,
+            )
+        baseline_note += "; runner opt-in requested but broadcaster/coordinator unavailable"
+    elif runner_mode:
+        baseline_note += f"; unsupported replay runner: {runner_mode}"
+
     return unavailable_candidate_replay_evaluation(
         dict(synthesis_row),
         heldout_synthesis_ids=heldout_ids,
@@ -1349,6 +1369,69 @@ def _phase8_candidate_replay_evaluation(
             f"; replay workspace: {replay_workspace.root}"
             f"{baseline_note}"
         ),
+    )
+
+
+async def _phase8_candidate_replay_evaluation_with_runner(
+    *,
+    synthesis_row: dict[str, Any],
+    heldout_synthesis_ids: Sequence[str],
+    baseline_skills_root: Path,
+    baseline_reports: Sequence[BacktestReport],
+    replay_workspace: CandidateReplayWorkspace,
+    broadcaster: EventBroadcaster,
+    coordinator: InvestigationCoordinator,
+) -> Any:
+    from compounding.skill_growth import (
+        CandidateBacktestReplay,
+        CandidateReplayError,
+        evaluate_candidate_replay_for_gate,
+        materialize_candidate_skill_overlay,
+    )
+
+    overlay = materialize_candidate_skill_overlay(
+        synthesis_row,
+        baseline_skills_root=baseline_skills_root,
+        overlay_parent=replay_workspace.overlay_parent,
+    )
+    reports: list[BacktestReport] = []
+    errors: list[CandidateReplayError] = []
+    for synthesis_id in heldout_synthesis_ids:
+        try:
+            reports.append(
+                await _phase8_run_candidate_heldout_backtest(
+                    heldout_synthesis_id=synthesis_id,
+                    overlay_skills_root=overlay.overlay_skills_root,
+                    workspace=replay_workspace,
+                    broadcaster=broadcaster,
+                    coordinator=coordinator,
+                )
+            )
+        except Exception as exc:
+            errors.append(
+                CandidateReplayError(
+                    synthesis_id=synthesis_id,
+                    error=repr(exc),
+                )
+            )
+
+    if reports and not errors:
+        status = "replayed"
+    elif reports:
+        status = "partial"
+    else:
+        status = "failed"
+
+    replay = CandidateBacktestReplay(
+        overlay=overlay,
+        heldout_synthesis_ids=tuple(heldout_synthesis_ids),
+        reports=tuple(reports),
+        errors=tuple(errors),
+        status=status,
+    )
+    return evaluate_candidate_replay_for_gate(
+        baseline_reports=baseline_reports,
+        candidate_replay=replay,
     )
 
 
@@ -1373,7 +1456,11 @@ def _phase8_gate_decide_from_replay_evaluation(
     )
 
 
-async def _run_phase_8(ctx: InvestigationContext) -> bool:
+async def _run_phase_8(
+    ctx: InvestigationContext,
+    broadcaster: EventBroadcaster | None = None,
+    coordinator: InvestigationCoordinator | None = None,
+) -> bool:
     """Phase 8 (Compound) — Phase 8 is the keystone. Call
     ``skills.domain.extract_and_patch`` inline; the typed
     ``auto_patch_applied`` event satisfies the postcondition gate
@@ -1430,7 +1517,11 @@ async def _run_phase_8(ctx: InvestigationContext) -> bool:
                 ctx=ctx,
                 synthesis_row=synthesis_row,
                 matched_domains=candidate_domains,
+                broadcaster=broadcaster,
+                coordinator=coordinator,
             )
+            if inspect.isawaitable(replay_evaluation):
+                replay_evaluation = await replay_evaluation
             gate_outcome = _phase8_gate_decide_from_replay_evaluation(
                 gate,
                 replay_evaluation,
@@ -1613,7 +1704,7 @@ async def run_synthesis_tail_from_pack(
     phases: list[Callable[[], Coroutine[Any, Any, bool]]] = [
         lambda: _run_phase_6(ctx, broadcaster, coordinator),
         lambda: _run_phase_7(ctx),
-        lambda: _run_phase_8(ctx),
+        lambda: _run_phase_8(ctx, broadcaster, coordinator),
     ]
     for run in phases:
         ok = await run()
@@ -1713,7 +1804,7 @@ async def _run_investigation(
         lambda: _run_phase_5(ctx),
         lambda: _run_phase_6(ctx, broadcaster, coordinator),
         lambda: _run_phase_7(ctx),
-        lambda: _run_phase_8(ctx),
+        lambda: _run_phase_8(ctx, broadcaster, coordinator),
     ]
     for run in phases:
         ok = await run()
