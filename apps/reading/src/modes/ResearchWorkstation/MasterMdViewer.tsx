@@ -1336,7 +1336,7 @@ function ReusedInsightLink({
       )}
       {!backendChild && insight.acceptedRefresh && (
         <span className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight">
-          refresh accepted
+          {refreshAcceptanceLabel(insight.acceptedRefresh.status)}
         </span>
       )}
       {error && (
@@ -1379,12 +1379,14 @@ function RefreshChildResult({
   parentInvestigationId: string | null;
 }) {
   const [summary, setSummary] = useState<string | null>(null);
-  const [accepted, setAccepted] = useState(Boolean(insight.acceptedRefresh));
+  const [acceptedStatus, setAcceptedStatus] = useState<
+    NonNullable<ReusedInsight["acceptedRefresh"]>["status"] | null
+  >(insight.acceptedRefresh?.status ?? null);
   const [accepting, setAccepting] = useState(false);
   const [acceptError, setAcceptError] = useState<string | null>(null);
 
   useEffect(() => {
-    setAccepted(Boolean(insight.acceptedRefresh));
+    setAcceptedStatus(insight.acceptedRefresh?.status ?? null);
   }, [insight.acceptedRefresh]);
 
   useEffect(() => {
@@ -1414,8 +1416,10 @@ function RefreshChildResult({
 
   if (!summary) return null;
   const acceptedSummary = summary;
-  async function acceptRefresh() {
-    if (!parentInvestigationId || accepting || accepted) return;
+  async function acceptRefresh(
+    status: NonNullable<ReusedInsight["acceptedRefresh"]>["status"],
+  ) {
+    if (!parentInvestigationId || accepting || acceptedStatus) return;
     setAccepting(true);
     setAcceptError(null);
     try {
@@ -1428,11 +1432,11 @@ function RefreshChildResult({
           unit_id: insight.unitId,
           source_investigation_id: insight.sourceInvestigationId,
           refresh_investigation_id: child.investigation_id,
-          status: "refreshed",
+          status,
           summary: acceptedSummary,
         },
       });
-      setAccepted(true);
+      setAcceptedStatus(status);
     } catch (e) {
       setAcceptError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1448,20 +1452,40 @@ function RefreshChildResult({
       >
         refresh result: {summary}
       </span>
-      {accepted ? (
+      {acceptedStatus ? (
         <span className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight">
-          refresh accepted
+          {refreshAcceptanceLabel(acceptedStatus)}
         </span>
       ) : (
-        <button
-          type="button"
-          className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight underline underline-offset-2 hover:text-ink dark:hover:text-bright disabled:opacity-60"
-          onClick={() => void acceptRefresh()}
-          disabled={!parentInvestigationId || accepting}
-          aria-label={`Accept refresh result for prior insight ${insight.unitId}`}
-        >
-          {accepting ? "Accepting..." : "Accept refresh"}
-        </button>
+        <>
+          <button
+            type="button"
+            className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight underline underline-offset-2 hover:text-ink dark:hover:text-bright disabled:opacity-60"
+            onClick={() => void acceptRefresh("refreshed")}
+            disabled={!parentInvestigationId || accepting}
+            aria-label={`Accept refresh result for prior insight ${insight.unitId}`}
+          >
+            {accepting ? "Accepting..." : "Accept refresh"}
+          </button>
+          <button
+            type="button"
+            className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight underline underline-offset-2 hover:text-ink dark:hover:text-bright disabled:opacity-60"
+            onClick={() => void acceptRefresh("confirmed_stale")}
+            disabled={!parentInvestigationId || accepting}
+            aria-label={`Confirm stale result for prior insight ${insight.unitId}`}
+          >
+            Confirm stale
+          </button>
+          <button
+            type="button"
+            className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight underline underline-offset-2 hover:text-ink dark:hover:text-bright disabled:opacity-60"
+            onClick={() => void acceptRefresh("dismissed")}
+            disabled={!parentInvestigationId || accepting}
+            aria-label={`Dismiss refresh result for prior insight ${insight.unitId}`}
+          >
+            Dismiss
+          </button>
+        </>
       )}
       {acceptError && (
         <span className="ml-2 font-mono text-[11px] text-emperor">
@@ -1470,4 +1494,12 @@ function RefreshChildResult({
       )}
     </>
   );
+}
+
+function refreshAcceptanceLabel(
+  status: NonNullable<ReusedInsight["acceptedRefresh"]>["status"],
+): string {
+  if (status === "confirmed_stale") return "stale confirmed";
+  if (status === "dismissed") return "refresh dismissed";
+  return "refresh accepted";
 }

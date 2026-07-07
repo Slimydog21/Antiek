@@ -1183,6 +1183,104 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
     expect(screen.getByText("refresh accepted")).toBeTruthy();
   });
 
+  it("can confirm that a completed refresh child still leaves the prior insight stale", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    postTypedEventMock.mockResolvedValue({
+      event_id: "evt-confirm-stale",
+      action_type: "stale_reuse.refresh.accepted",
+    });
+    getTrajectoryMock.mockResolvedValue({
+      events: [
+        {
+          event_id: "evt-synth",
+          investigation_id: "inv-refresh-from-api",
+          action_type: "synthesize.delivered",
+          payload: {
+            thesis_summary: "The refresh found newer evidence that contradicts the reused unit.",
+            thesis_components: [],
+            implicit_recommendation: "revise",
+          },
+          emitted_at: "2026-07-07T13:01:00Z",
+        },
+      ],
+    });
+
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          investigationId: "inv-parent",
+          reuseProvenance: [
+            {
+              unitId: "unit-stale",
+              sourceInvestigationId: "inv-source",
+              score: 0.81,
+              staleRefreshAdvisory: true,
+            },
+          ],
+          compoundingStat: null,
+        })}
+        staleRefreshChildren={[
+          investigationSummary({
+            investigation_id: "inv-refresh-from-api",
+            parent_investigation_id: "inv-parent",
+            spawn_context:
+              "stale-reuse-refresh unit_id=unit-stale source_investigation_id=inv-source",
+          }),
+        ]}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Confirm stale result for prior insight unit-stale",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(postTypedEventMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          payload: expect.objectContaining({
+            action_type: "stale_reuse.refresh.accepted",
+            status: "confirmed_stale",
+            summary: "The refresh found newer evidence that contradicts the reused unit.",
+          }),
+        }),
+      ),
+    );
+    expect(screen.getByText("stale confirmed")).toBeTruthy();
+  });
+
+  it("replays accepted refresh status labels when no backend child summary is present", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          investigationId: "inv-parent",
+          reuseProvenance: [
+            {
+              unitId: "unit-stale",
+              sourceInvestigationId: "inv-source",
+              score: 0.81,
+              staleRefreshAdvisory: true,
+              acceptedRefresh: {
+                refreshInvestigationId: "inv-refresh-from-event",
+                status: "dismissed",
+                summary: "Operator dismissed this refresh result.",
+              },
+            },
+          ],
+          compoundingStat: null,
+        })}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("reuse-provenance")).toBeTruthy());
+
+    const link = screen.getByText("Open refresh research");
+    expect(link.getAttribute("href")).toBe("/inv/inv-refresh-from-event");
+    expect(screen.getByText("refresh dismissed")).toBeTruthy();
+    expect(getTrajectoryMock).not.toHaveBeenCalled();
+  });
+
   it("renders the three exact numbers when a measurement is present (M4 seed-and-catch)", async () => {
     getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
     render(
