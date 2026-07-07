@@ -195,6 +195,7 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.DecomposerRegeneratedPayload,
     schema_module.MasterMdWrittenPayload,
     schema_module.MasterMdSkippedPayload,
+    schema_module.SkillPatchGateDecidedPayload,
     schema_module.AutoPatchAppliedPayload,
     schema_module.AutoPatchSkippedPayload,
     schema_module.EvidenceRetrieveRequestedPayload,

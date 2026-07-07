@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 29;
+export const EVENT_SCHEMA_VERSION = 30;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -65,6 +65,7 @@ export const ActionType = {
   SUBSTRATE_MANIFEST_WRITTEN: "synthesis.substrate_manifest.written",
   MASTER_MD_WRITTEN: "synthesis.master_md_written",
   MASTER_MD_SKIPPED: "synthesis.master_md_skipped",
+  SKILL_PATCH_GATE_DECIDED: "skill.patch_gate_decided",
   AUTO_PATCH_APPLIED: "skill.auto_patch_applied",
   AUTO_PATCH_SKIPPED: "skill.auto_patch_skipped",
   OUTCOME_RECORDED: "outcome.recorded",
@@ -1317,6 +1318,32 @@ export interface MasterMdSkippedPayload {
   byte_count: number;
   topic_slug?: string | null;
   reason?: string;
+}
+
+/**
+ * Emitted when the Phase-8 skill-patch gate evaluates a candidate.
+ * Shadow mode records whether the same candidate would have been accepted
+ * under enforcing mode, but still allows the write path to proceed. Enforcing
+ * mode records the actual accept/reject decision before any skill writer
+ * mutates files.
+ */
+export interface SkillPatchGateDecidedPayload {
+  action_type: "skill.patch_gate_decided";
+  synthesis_id: string;
+  patch_id: string;
+  mode: string;
+  decision: string;
+  would_accept: boolean;
+  baseline_backtest_score: number;
+  candidate_backtest_score: number;
+  delta: number;
+  epsilon_required: number;
+  cohort_size: number;
+  minimum_cohort_size: number;
+  matched_domains?: string[];
+  notes?: string;
+  operator_reviewed?: boolean;
+  operator_agreed?: boolean | null;
 }
 
 /**
@@ -2637,6 +2664,7 @@ export type TypedPayload =
   | DecomposerRegeneratedPayload
   | MasterMdWrittenPayload
   | MasterMdSkippedPayload
+  | SkillPatchGateDecidedPayload
   | AutoPatchAppliedPayload
   | AutoPatchSkippedPayload
   | EvidenceRetrieveRequestedPayload
@@ -2819,6 +2847,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "section.draft_generated",
   "skill.auto_patch_applied",
   "skill.auto_patch_skipped",
+  "skill.patch_gate_decided",
   "skill_rule.promoted",
   "source.read",
   "synthesis.archived",
