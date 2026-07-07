@@ -244,6 +244,42 @@ def test_phase8_replay_provider_reports_unavailable_runner_when_configured(
     assert "production candidate replay runner is not wired" in evaluation.notes
 
 
+def test_phase8_replay_provider_loads_baseline_reports_when_db_configured(
+    tmp_path,
+    monkeypatch,
+):
+    from tests.test_skill_growth_replay import _seed_archived_synthesis
+
+    db_path = tmp_path / "graph.duckdb"
+    _seed_archived_synthesis(db_path, "heldout-ok")
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(db_path))
+    monkeypatch.setenv(
+        PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV,
+        "heldout-ok, heldout-missing",
+    )
+    monkeypatch.setenv(PHASE8_REPLAY_OVERLAY_PARENT_ENV, str(tmp_path / "overlays"))
+    ctx = _ctx("inv-phase8-replay-db")
+    synthesis_row = {
+        "synthesis_id": "syn-inv-phase8-replay-db",
+        "investigation_id": ctx.investigation_id,
+        "target_question": ctx.question,
+        "implicit_recommendation": ctx.synthesis.implicit_recommendation,
+        "thesis": {"thesis_summary": ctx.synthesis.thesis_summary},
+    }
+
+    evaluation = _phase8_candidate_replay_evaluation(
+        ctx=ctx,
+        synthesis_row=synthesis_row,
+        matched_domains=["quantum-computing-knowledge"],
+    )
+
+    assert evaluation is not None
+    assert evaluation.comparison.baseline_score == 1.0
+    assert "baseline_graded=1" in evaluation.notes
+    assert "heldout-missing" in evaluation.notes
+    assert "baseline load errors" in evaluation.notes
+
+
 @pytest.mark.asyncio
 async def test_phase8_enforcing_rejects_before_any_skill_write(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTIEK_PHASE8_MODE", "enforcing")

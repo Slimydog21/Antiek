@@ -72,6 +72,19 @@ class CandidateReplayEvaluation:
     notes: str
 
 
+@dataclass(frozen=True)
+class BaselineBacktestLoad:
+    """Baseline held-out backtest reports loaded from the archive DB."""
+
+    synthesis_ids: tuple[str, ...]
+    reports: tuple[BacktestReport, ...]
+    errors: tuple[CandidateReplayError, ...]
+
+    @property
+    def complete(self) -> bool:
+        return not self.errors
+
+
 def materialize_candidate_skill_overlay(
     synthesis_row: dict[str, Any],
     *,
@@ -214,6 +227,42 @@ def evaluate_candidate_replay_for_gate(
         comparison=comparison,
         ready_for_gate=ready_for_gate,
         notes=notes,
+    )
+
+
+def load_baseline_backtest_reports(
+    *,
+    db_path: Path,
+    synthesis_ids: Sequence[str],
+) -> BaselineBacktestLoad:
+    """Load archived baseline backtest reports for held-out synthesis ids."""
+
+    import duckdb
+
+    from middleware.backtest import backtest
+
+    ids = tuple(synthesis_ids)
+    reports: list[BacktestReport] = []
+    errors: list[CandidateReplayError] = []
+    con = duckdb.connect(str(db_path), read_only=True)
+    try:
+        for synthesis_id in ids:
+            try:
+                reports.append(backtest(con, synthesis_id))
+            except Exception as exc:
+                errors.append(
+                    CandidateReplayError(
+                        synthesis_id=synthesis_id,
+                        error=repr(exc),
+                    )
+                )
+    finally:
+        con.close()
+
+    return BaselineBacktestLoad(
+        synthesis_ids=ids,
+        reports=tuple(reports),
+        errors=tuple(errors),
     )
 
 

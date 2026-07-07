@@ -41,12 +41,14 @@ from .prompt_applier import (
     load_active_variant,
 )
 from .replay import (
+    BaselineBacktestLoad,
     CandidateBacktestReplay,
     CandidateBacktestRunner,
     CandidateReplayError,
     CandidateReplayEvaluation,
     CandidateSkillOverlay,
     evaluate_candidate_replay_for_gate,
+    load_baseline_backtest_reports,
     materialize_candidate_skill_overlay,
     replay_candidate_backtest_cohort,
     unavailable_candidate_replay_evaluation,
@@ -55,6 +57,7 @@ from .replay import (
 __all__ = [
     "AppliedPromptRecord",
     "BridgeOutcome",
+    "BaselineBacktestLoad",
     "CompositeKeyFn",
     "DEFAULT_PHASE8_EPSILON",
     "DEFAULT_PHASE8_MINIMUM_COHORT_SIZE",
@@ -78,6 +81,7 @@ __all__ = [
     "bridge_gepa_result_to_phase8",
     "load_active_variant",
     "evaluate_candidate_replay_for_gate",
+    "load_baseline_backtest_reports",
     "materialize_candidate_skill_overlay",
     "phase8_gate_from_env",
     "propose_skill_patch",

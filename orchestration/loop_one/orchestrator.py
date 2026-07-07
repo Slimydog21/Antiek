@@ -70,6 +70,7 @@ if TYPE_CHECKING:
     import duckdb
 
     from compounding.skill_growth import PatchOutcome, SkillPatchGate
+    from middleware.backtest import BacktestReport
     from substrate.dispatch.research_tier import ResearchTier
     from substrate.eval.groundedness.scorer import GroundednessResult
 
@@ -1303,19 +1304,39 @@ def _phase8_candidate_replay_evaluation(
     if not heldout_ids:
         return None
 
-    from compounding.skill_growth import unavailable_candidate_replay_evaluation
+    from compounding.skill_growth import (
+        load_baseline_backtest_reports,
+        unavailable_candidate_replay_evaluation,
+    )
     from skills.domain.patch import default_skills_root
 
     overlay_parent_raw = os.environ.get(PHASE8_REPLAY_OVERLAY_PARENT_ENV, "").strip()
     overlay_parent = Path(overlay_parent_raw) if overlay_parent_raw else None
+    baseline_reports: tuple[BacktestReport, ...] = ()
+    baseline_note = ""
+    db_path_raw = os.environ.get("ANTIEK_DUCKDB_PATH", "").strip()
+    if db_path_raw:
+        baseline = load_baseline_backtest_reports(
+            db_path=Path(db_path_raw),
+            synthesis_ids=heldout_ids,
+        )
+        baseline_reports = baseline.reports
+        if baseline.errors:
+            errors = ", ".join(
+                f"{error.synthesis_id}: {error.error}" for error in baseline.errors
+            )
+            baseline_note = f"; baseline load errors: {errors}"
+
     return unavailable_candidate_replay_evaluation(
         dict(synthesis_row),
         heldout_synthesis_ids=heldout_ids,
         baseline_skills_root=default_skills_root(),
+        baseline_reports=baseline_reports,
         overlay_parent=overlay_parent,
         reason=(
             "production candidate replay runner is not wired; "
             f"configured by {PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV}"
+            f"{baseline_note}"
         ),
     )
 

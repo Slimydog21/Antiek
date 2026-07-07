@@ -4,6 +4,7 @@ from pathlib import Path
 
 from compounding.skill_growth import (
     evaluate_candidate_replay_for_gate,
+    load_baseline_backtest_reports,
     materialize_candidate_skill_overlay,
     replay_candidate_backtest_cohort,
     unavailable_candidate_replay_evaluation,
@@ -46,6 +47,43 @@ def _report(
         chunks_retired_downward=(),
         outcomes=({"thesis_outcomes": [{"outcome": outcome}]},),
     )
+
+
+def _seed_archived_synthesis(db_path: Path, synthesis_id: str) -> None:
+    from datetime import UTC, datetime
+
+    from middleware.archive.archive import ArchiveInputs, archive_synthesis_via_db
+    from middleware.outcomes.recorder import (
+        build_outcome_record,
+        record_outcome_via_db,
+    )
+    from runtime.db_lock import connect_write
+    from substrate.graph.schema import init_database_at_path
+
+    init_database_at_path(str(db_path))
+    inputs = ArchiveInputs(
+        target_question="Will X work?",
+        synthesis_timestamp=datetime.now(UTC),
+        status="passed",
+        implicit_recommendation="proceed",
+        thesis_text="X works because evidence supports it.",
+        model_versions={"test": "1"},
+    )
+    with connect_write(str(db_path), purpose="test:seed_baseline") as con:
+        archive_synthesis_via_db(
+            con,
+            inputs,
+            investigation_id=f"inv-{synthesis_id}",
+            synthesis_id=synthesis_id,
+        )
+        record_outcome_via_db(
+            con,
+            build_outcome_record(
+                synthesis_id=synthesis_id,
+                observer="test",
+                payload={"thesis_outcomes": [{"outcome": "confirmed"}]},
+            ),
+        )
 
 
 def test_materialize_candidate_skill_overlay_patches_copy_only(
@@ -311,3 +349,23 @@ def test_unavailable_candidate_replay_evaluation_materializes_overlay_and_fails_
         / "SKILL.md"
     ).exists()
     assert trajectory("inv-overlay") == []
+
+
+def test_load_baseline_backtest_reports_loads_reports_and_errors(tmp_path: Path) -> None:
+    db_path = tmp_path / "graph.duckdb"
+    _seed_archived_synthesis(db_path, "syn-heldout-ok")
+
+    loaded = load_baseline_backtest_reports(
+        db_path=db_path,
+        synthesis_ids=("syn-heldout-ok", "syn-missing"),
+    )
+
+    assert loaded.synthesis_ids == ("syn-heldout-ok", "syn-missing")
+    assert loaded.complete is False
+    assert tuple(report.synthesis_id for report in loaded.reports) == (
+        "syn-heldout-ok",
+    )
+    assert loaded.reports[0].outcomes_recorded == 1
+    assert len(loaded.errors) == 1
+    assert loaded.errors[0].synthesis_id == "syn-missing"
+    assert "synthesis_id not found" in loaded.errors[0].error
