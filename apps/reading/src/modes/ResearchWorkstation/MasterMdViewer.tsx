@@ -1339,6 +1339,11 @@ function ReusedInsightLink({
           {refreshAcceptanceLabel(insight.acceptedRefresh.status)}
         </span>
       )}
+      {!backendChild && insight.refreshPromotionCandidate && (
+        <span className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight">
+          promotion candidate recorded
+        </span>
+      )}
       {error && (
         <span className="ml-2 font-mono text-[11px] text-emperor">
           {error}
@@ -1378,20 +1383,29 @@ function RefreshChildResult({
   insight: ReusedInsight;
   parentInvestigationId: string | null;
 }) {
-  const [summary, setSummary] = useState<string | null>(null);
+  const [childSynthesis, setChildSynthesis] =
+    useState<RefreshChildSynthesis | null>(null);
   const [acceptedStatus, setAcceptedStatus] = useState<
     NonNullable<ReusedInsight["acceptedRefresh"]>["status"] | null
   >(insight.acceptedRefresh?.status ?? null);
+  const [promotionRecorded, setPromotionRecorded] = useState(
+    Boolean(insight.refreshPromotionCandidate),
+  );
   const [accepting, setAccepting] = useState(false);
+  const [promoting, setPromoting] = useState(false);
   const [acceptError, setAcceptError] = useState<string | null>(null);
+  const [promoteError, setPromoteError] = useState<string | null>(null);
 
   useEffect(() => {
     setAcceptedStatus(insight.acceptedRefresh?.status ?? null);
   }, [insight.acceptedRefresh]);
+  useEffect(() => {
+    setPromotionRecorded(Boolean(insight.refreshPromotionCandidate));
+  }, [insight.refreshPromotionCandidate]);
 
   useEffect(() => {
     if (child.status !== "completed") {
-      setSummary(null);
+      setChildSynthesis(null);
       return;
     }
     let cancelled = false;
@@ -1400,13 +1414,18 @@ function RefreshChildResult({
         const trajectory = await getTrajectory(child.investigation_id);
         if (cancelled) return;
         const parsed = parseSynthesis(trajectory.events ?? []);
-        setSummary(
+        setChildSynthesis(
           parsed?.thesisSummary
-            ? truncateRefreshSummary(parsed.thesisSummary)
+            ? {
+                summary: truncateRefreshSummary(parsed.thesisSummary),
+                supportingChunkIds: Array.from(
+                  new Set(parsed.components.flatMap((c) => c.chunkIds)),
+                ),
+              }
             : null,
         );
       } catch {
-        if (!cancelled) setSummary(null);
+        if (!cancelled) setChildSynthesis(null);
       }
     })();
     return () => {
@@ -1414,8 +1433,9 @@ function RefreshChildResult({
     };
   }, [child.investigation_id, child.status]);
 
-  if (!summary) return null;
-  const acceptedSummary = summary;
+  if (!childSynthesis) return null;
+  const currentChildSynthesis = childSynthesis;
+  const acceptedSummary = currentChildSynthesis.summary;
   async function acceptRefresh(
     status: NonNullable<ReusedInsight["acceptedRefresh"]>["status"],
   ) {
@@ -1443,6 +1463,38 @@ function RefreshChildResult({
       setAccepting(false);
     }
   }
+  async function recordPromotionCandidate() {
+    if (
+      !parentInvestigationId ||
+      promoting ||
+      promotionRecorded ||
+      acceptedStatus !== "refreshed"
+    ) {
+      return;
+    }
+    setPromoting(true);
+    setPromoteError(null);
+    try {
+      await postTypedEvent({
+        investigation_id: parentInvestigationId,
+        role: "operator",
+        policy_id: "operator-ui",
+        payload: {
+          action_type: "stale_reuse.refresh.promotion_candidate",
+          unit_id: insight.unitId,
+          source_investigation_id: insight.sourceInvestigationId,
+          refresh_investigation_id: child.investigation_id,
+          summary: currentChildSynthesis.summary,
+          supporting_chunk_ids: currentChildSynthesis.supportingChunkIds,
+        },
+      });
+      setPromotionRecorded(true);
+    } catch (e) {
+      setPromoteError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPromoting(false);
+    }
+  }
 
   return (
     <>
@@ -1450,7 +1502,7 @@ function RefreshChildResult({
         className="ml-2 font-mono text-[11px] text-ink-soft dark:text-starlight"
         title="Read-only excerpt from the refresh child synthesis; it does not resolve the stale advisory by itself."
       >
-        refresh result: {summary}
+        refresh result: {currentChildSynthesis.summary}
       </span>
       {acceptedStatus ? (
         <span className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight">
@@ -1487,13 +1539,40 @@ function RefreshChildResult({
           </button>
         </>
       )}
+      {acceptedStatus === "refreshed" && (
+        promotionRecorded ? (
+          <span className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight">
+            promotion candidate recorded
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight underline underline-offset-2 hover:text-ink dark:hover:text-bright disabled:opacity-60"
+            onClick={() => void recordPromotionCandidate()}
+            disabled={!parentInvestigationId || promoting}
+            aria-label={`Prepare refreshed knowledge candidate for prior insight ${insight.unitId}`}
+          >
+            {promoting ? "Preparing..." : "Prepare promotion"}
+          </button>
+        )
+      )}
       {acceptError && (
         <span className="ml-2 font-mono text-[11px] text-emperor">
           {acceptError}
         </span>
       )}
+      {promoteError && (
+        <span className="ml-2 font-mono text-[11px] text-emperor">
+          {promoteError}
+        </span>
+      )}
     </>
   );
+}
+
+interface RefreshChildSynthesis {
+  summary: string;
+  supportingChunkIds: string[];
 }
 
 function refreshAcceptanceLabel(

@@ -251,6 +251,14 @@ describe("parseSynthesis — reuse provenance (SPR-10 M2)", () => {
         status: "refreshed",
         summary: "Source claim remains current after refresh.",
       }),
+      ev("stale_reuse.refresh.promotion_candidate", {
+        action_type: "stale_reuse.refresh.promotion_candidate",
+        unit_id: "unit-stale",
+        source_investigation_id: "inv-source",
+        refresh_investigation_id: "inv-refresh",
+        summary: "Source claim remains current after refresh.",
+        supporting_chunk_ids: ["chunk-a", "chunk-b", 7],
+      }),
     ]);
 
     expect(synth!.reuseProvenance[0].acceptedRefresh).toEqual({
@@ -258,7 +266,13 @@ describe("parseSynthesis — reuse provenance (SPR-10 M2)", () => {
       status: "refreshed",
       summary: "Source claim remains current after refresh.",
     });
+    expect(synth!.reuseProvenance[0].refreshPromotionCandidate).toEqual({
+      refreshInvestigationId: "inv-refresh",
+      summary: "Source claim remains current after refresh.",
+      supportingChunkIds: ["chunk-a", "chunk-b"],
+    });
     expect(synth!.reuseProvenance[1].acceptedRefresh).toBeUndefined();
+    expect(synth!.reuseProvenance[1].refreshPromotionCandidate).toBeUndefined();
   });
 });
 

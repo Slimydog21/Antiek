@@ -1281,6 +1281,127 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
     expect(getTrajectoryMock).not.toHaveBeenCalled();
   });
 
+  it("records a refreshed child synthesis as a promotion candidate with supporting chunks", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    postTypedEventMock.mockResolvedValue({
+      event_id: "evt-promotion-candidate",
+      action_type: "stale_reuse.refresh.promotion_candidate",
+    });
+    getTrajectoryMock.mockResolvedValue({
+      events: [
+        {
+          event_id: "evt-synth",
+          investigation_id: "inv-refresh-from-api",
+          action_type: "synthesize.delivered",
+          payload: {
+            thesis_summary: "Source claim remains current after checking the newer corpus.",
+            thesis_components: [
+              {
+                claim: "The refreshed claim is supported.",
+                confidence: "high",
+                supporting_chunk_ids: ["chunk-refresh-1", "chunk-refresh-2"],
+              },
+              {
+                claim: "The duplicate chunk should be deduplicated.",
+                confidence: "medium",
+                supporting_chunk_ids: ["chunk-refresh-1"],
+              },
+            ],
+            implicit_recommendation: "proceed",
+          },
+          emitted_at: "2026-07-07T13:01:00Z",
+        },
+      ],
+    });
+
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          investigationId: "inv-parent",
+          reuseProvenance: [
+            {
+              unitId: "unit-stale",
+              sourceInvestigationId: "inv-source",
+              score: 0.81,
+              staleRefreshAdvisory: true,
+              acceptedRefresh: {
+                refreshInvestigationId: "inv-refresh-from-api",
+                status: "refreshed",
+                summary: "Source claim remains current after checking the newer corpus.",
+              },
+            },
+          ],
+          compoundingStat: null,
+        })}
+        staleRefreshChildren={[
+          investigationSummary({
+            investigation_id: "inv-refresh-from-api",
+            parent_investigation_id: "inv-parent",
+            spawn_context:
+              "stale-reuse-refresh unit_id=unit-stale source_investigation_id=inv-source",
+          }),
+        ]}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Prepare refreshed knowledge candidate for prior insight unit-stale",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(postTypedEventMock).toHaveBeenCalledWith({
+        investigation_id: "inv-parent",
+        role: "operator",
+        policy_id: "operator-ui",
+        payload: {
+          action_type: "stale_reuse.refresh.promotion_candidate",
+          unit_id: "unit-stale",
+          source_investigation_id: "inv-source",
+          refresh_investigation_id: "inv-refresh-from-api",
+          summary: "Source claim remains current after checking the newer corpus.",
+          supporting_chunk_ids: ["chunk-refresh-1", "chunk-refresh-2"],
+        },
+      }),
+    );
+    expect(screen.getByText("promotion candidate recorded")).toBeTruthy();
+  });
+
+  it("replays promotion-candidate state without a backend child summary", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          investigationId: "inv-parent",
+          reuseProvenance: [
+            {
+              unitId: "unit-stale",
+              sourceInvestigationId: "inv-source",
+              score: 0.81,
+              staleRefreshAdvisory: true,
+              acceptedRefresh: {
+                refreshInvestigationId: "inv-refresh-from-event",
+                status: "refreshed",
+                summary: "Operator accepted this refresh result.",
+              },
+              refreshPromotionCandidate: {
+                refreshInvestigationId: "inv-refresh-from-event",
+                summary: "Operator accepted this refresh result.",
+                supportingChunkIds: ["chunk-refresh-1"],
+              },
+            },
+          ],
+          compoundingStat: null,
+        })}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("reuse-provenance")).toBeTruthy());
+
+    expect(screen.getByText("promotion candidate recorded")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /prepare refreshed/i })).toBeNull();
+  });
+
   it("renders the three exact numbers when a measurement is present (M4 seed-and-catch)", async () => {
     getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
     render(

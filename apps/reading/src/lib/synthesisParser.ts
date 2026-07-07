@@ -122,12 +122,21 @@ export interface ReusedInsight {
   /** Present only when the parent trajectory contains an explicit operator
    *  acceptance of a refresh child result for this stale reused unit. */
   acceptedRefresh?: StaleReuseRefreshAcceptance;
+  /** Present only when the parent trajectory recorded an accepted refresh
+   *  result as a candidate for later graph deposit. */
+  refreshPromotionCandidate?: StaleReuseRefreshPromotionCandidate;
 }
 
 export interface StaleReuseRefreshAcceptance {
   refreshInvestigationId: string;
   status: "refreshed" | "confirmed_stale" | "dismissed";
   summary: string;
+}
+
+export interface StaleReuseRefreshPromotionCandidate {
+  refreshInvestigationId: string;
+  summary: string;
+  supportingChunkIds: string[];
 }
 
 /**
@@ -268,6 +277,14 @@ interface StaleReuseRefreshAcceptedPayloadShape {
   summary?: string;
 }
 
+interface StaleReuseRefreshPromotionCandidatePayloadShape {
+  unit_id?: string;
+  source_investigation_id?: string | null;
+  refresh_investigation_id?: string;
+  summary?: string;
+  supporting_chunk_ids?: unknown;
+}
+
 function staleRefreshAcceptanceKey(
   unitId: string,
   sourceInvestigationId: string | null,
@@ -317,6 +334,10 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
   // (an investigation may emit more than one — union them in encounter order).
   const reuseProvenance: ReusedInsight[] = [];
   const acceptedRefreshes = new Map<string, StaleReuseRefreshAcceptance>();
+  const refreshPromotionCandidates = new Map<
+    string,
+    StaleReuseRefreshPromotionCandidate
+  >();
   // SPR-10 M4: the per-run compounding measurement, READ from a persisted
   // per-run measurement event. None exists on the substrate today (see
   // CompoundingMeasuredPayloadShape); seen only when a synthetic/future event
@@ -389,6 +410,30 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
             refreshInvestigationId: accepted.refresh_investigation_id,
             status: accepted.status ?? "refreshed",
             summary: accepted.summary ?? "",
+          },
+        );
+      }
+    } else if (at === "stale_reuse.refresh.promotion_candidate") {
+      const candidate =
+        p as StaleReuseRefreshPromotionCandidatePayloadShape | undefined;
+      if (
+        typeof candidate?.unit_id === "string" &&
+        typeof candidate.refresh_investigation_id === "string" &&
+        typeof candidate.summary === "string"
+      ) {
+        refreshPromotionCandidates.set(
+          staleRefreshAcceptanceKey(
+            candidate.unit_id,
+            candidate.source_investigation_id ?? null,
+          ),
+          {
+            refreshInvestigationId: candidate.refresh_investigation_id,
+            summary: candidate.summary,
+            supportingChunkIds: Array.isArray(candidate.supporting_chunk_ids)
+              ? candidate.supporting_chunk_ids.filter(
+                  (chunkId): chunkId is string => typeof chunkId === "string",
+                )
+              : [],
           },
         );
       }
@@ -481,10 +526,17 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
   // SPR-10 M2: attach the reused prior insights (empty when nothing was reused —
   // the viewer then renders nothing, the present-only discipline).
   result.reuseProvenance = reuseProvenance.map((insight) => {
-    const acceptedRefresh = acceptedRefreshes.get(
-      staleRefreshAcceptanceKey(insight.unitId, insight.sourceInvestigationId),
+    const key = staleRefreshAcceptanceKey(
+      insight.unitId,
+      insight.sourceInvestigationId,
     );
-    return acceptedRefresh ? { ...insight, acceptedRefresh } : insight;
+    const acceptedRefresh = acceptedRefreshes.get(key);
+    const refreshPromotionCandidate = refreshPromotionCandidates.get(key);
+    return {
+      ...insight,
+      ...(acceptedRefresh ? { acceptedRefresh } : {}),
+      ...(refreshPromotionCandidate ? { refreshPromotionCandidate } : {}),
+    };
   });
 
   // SPR-10 M4: attach the per-run compounding stat — READ from a per-run
