@@ -11,6 +11,9 @@ from .embed import (
     SentenceTransformerEmbedding,
     _reset_default_provider,
     default_embedding_provider,
+    embedding_model_name,
+    embedding_provider_fingerprint,
+    embedding_provider_name,
     set_default_embedding_provider,
 )
 
@@ -20,6 +23,9 @@ __all__ = [
     "HashEmbedding",
     "SentenceTransformerEmbedding",
     "default_embedding_provider",
+    "embedding_model_name",
+    "embedding_provider_fingerprint",
+    "embedding_provider_name",
     "set_default_embedding_provider",
     "_reset_default_provider",
 ]

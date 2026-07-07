@@ -29,7 +29,7 @@ from __future__ import annotations
 import hashlib
 import math
 import os
-from typing import Protocol
+from typing import Protocol, cast
 
 # Default dimension when nothing else is configured. Matches MiniLM-L6-v2
 # (the Researchmaxx default in tier_rules + embeddings_meta).
@@ -45,6 +45,50 @@ class EmbeddingProvider(Protocol):
     dimension: int
 
     def encode(self, text: str) -> list[float]: ...
+
+
+def embedding_provider_name(provider: object) -> str:
+    """Canonical provider family used for persisted embedding metadata."""
+    if isinstance(provider, HashEmbedding):
+        return "hash"
+    if isinstance(provider, SentenceTransformerEmbedding):
+        return "sentence-transformers"
+    name = getattr(provider, "provider_name", None)
+    if isinstance(name, str) and name:
+        return name
+    return f"{provider.__class__.__module__}.{provider.__class__.__qualname__}"
+
+
+def embedding_model_name(provider: object) -> str:
+    """Canonical model/config name used for persisted embedding metadata."""
+    if isinstance(provider, HashEmbedding):
+        return f"hash-dim-{provider.dimension}"
+    model_name = getattr(provider, "_model_name", None)
+    if isinstance(model_name, str) and model_name:
+        return model_name
+    for attr in ("model_name", "name"):
+        value = getattr(provider, attr, None)
+        if isinstance(value, str) and value:
+            return value
+    dimension = getattr(provider, "dimension", "unknown")
+    return f"{provider.__class__.__name__}-dim-{dimension}"
+
+
+def embedding_provider_fingerprint(provider: object) -> str:
+    """Stable identity for vectors produced by ``provider``.
+
+    Vector compatibility is stricter than dimension equality: same length but
+    different providers/models can rank unrelated chunks. This fingerprint is
+    stored with chunk embeddings and checked before vector search.
+    """
+    typed_provider = cast(EmbeddingProvider, provider)
+    dimension = int(typed_provider.dimension)
+    return (
+        "embedding-provider-id-v1:"
+        f"{embedding_provider_name(provider)}:"
+        f"{embedding_model_name(provider)}:"
+        f"{dimension}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +159,7 @@ class SentenceTransformerEmbedding:
 
     def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
         try:
-            from sentence_transformers import SentenceTransformer  # type: ignore[import-not-found]
+            from sentence_transformers import SentenceTransformer
         except ImportError as exc:  # pragma: no cover
             raise RuntimeError(
                 "sentence-transformers not installed. Install via "

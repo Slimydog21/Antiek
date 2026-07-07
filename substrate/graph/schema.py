@@ -22,7 +22,7 @@ What's deferred from the Researchmaxx schema (and why):
   pattern forces it.
 - ``chunks_effective_tier`` view — DEFERRED until a downstream
   consumer needs the override+document tier join inline.
-- ``embeddings_meta`` — diagnostic; add when needed.
+- ``embeddings_meta`` — chunk-vector provider/model/dimension pinning.
 
 VARIANT vs TEXT: Researchmaxx uses ``VARIANT`` (DuckDB v1.5.0+ storage)
 for metadata columns to enable JSON SQL queries. Antiek uses ``TEXT``
@@ -360,6 +360,7 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "outline_blocks",
     "monitors",
     "supersession_candidates",
+    "embeddings_meta",
 )
 
 
@@ -1127,6 +1128,23 @@ CREATE INDEX IF NOT EXISTS idx_supersession_candidates_status
 """
 
 
+# GF-7 — embedding provider/model pinning for chunk vectors. This is a soft-ref
+# table rather than columns on chunks so legacy positional INSERT fixtures keep
+# working and DuckDB FK mutation traps cannot block chunk rewrites.
+ANTIEK_GRAPH_SCHEMA_V15_EMBEDDINGS_META_SQL = """
+CREATE TABLE IF NOT EXISTS embeddings_meta (
+    chunk_id     TEXT PRIMARY KEY,
+    provider     TEXT NOT NULL,
+    model_name   TEXT NOT NULL,
+    dimension    INTEGER NOT NULL CHECK (dimension > 0),
+    fingerprint  TEXT NOT NULL,
+    embedded_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_embeddings_meta_fingerprint
+    ON embeddings_meta(fingerprint);
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -1200,6 +1218,9 @@ def init_database(con: LockedConnection) -> None:
     # idempotent CREATE IF NOT EXISTS. The review path (detector +
     # apply_review) lives in middleware/supersession/.
     con.execute(ANTIEK_GRAPH_SCHEMA_V14_SUPERSESSION_CANDIDATES_SQL)
+    # GF-7 — chunk embedding provider/model/dimension pinning. Soft chunk_id
+    # reference; pure idempotent CREATE IF NOT EXISTS.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V15_EMBEDDINGS_META_SQL)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.

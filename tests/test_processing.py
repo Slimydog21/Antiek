@@ -16,6 +16,7 @@ from __future__ import annotations
 import math
 import os
 import sys
+from dataclasses import FrozenInstanceError
 
 import pytest
 
@@ -33,6 +34,9 @@ from processing.embedding import (  # noqa: E402
     HashEmbedding,
     _reset_default_provider,
     default_embedding_provider,
+    embedding_model_name,
+    embedding_provider_fingerprint,
+    embedding_provider_name,
     set_default_embedding_provider,
 )
 
@@ -91,7 +95,7 @@ def test_chunk_dataclass_is_frozen():
     """Chunk is frozen so callers can't mutate it after chunk_markdown
     returns."""
     c = Chunk(text="x", section="s", token_count=1)
-    with pytest.raises(Exception):
+    with pytest.raises(FrozenInstanceError):
         c.text = "y"  # type: ignore[misc]
 
 
@@ -136,7 +140,7 @@ def test_hash_embedding_handles_empty_text():
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
-    num = sum(x * y for x, y in zip(a, b))
+    num = sum(x * y for x, y in zip(a, b, strict=True))
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(x * x for x in b))
     return num / (na * nb) if na and nb else 0.0
@@ -155,6 +159,31 @@ def test_hash_embedding_word_overlap_ranks_above_disjoint():
     assert sim_overlap > sim_disjoint
     assert sim_overlap > 0.3  # sanity — shared vocab produces real similarity
     assert sim_disjoint < 0.2  # disjoint vocab is near-zero
+
+
+def test_hash_embedding_identity_includes_dimension():
+    e8 = HashEmbedding(dimension=8)
+    e16 = HashEmbedding(dimension=16)
+
+    assert embedding_provider_name(e8) == "hash"
+    assert embedding_model_name(e8) == "hash-dim-8"
+    assert embedding_provider_fingerprint(e8) != embedding_provider_fingerprint(e16)
+
+
+def test_custom_embedding_identity_is_stable():
+    class CustomEmbedding:
+        dimension = 8
+
+        def encode(self, text: str) -> list[float]:
+            return [0.0] * self.dimension
+
+    provider = CustomEmbedding()
+
+    assert embedding_provider_name(provider).endswith(".CustomEmbedding")
+    assert embedding_model_name(provider) == "CustomEmbedding-dim-8"
+    assert embedding_provider_fingerprint(provider).endswith(
+        ":CustomEmbedding-dim-8:8"
+    )
 
 
 # ---------------------------------------------------------------------------

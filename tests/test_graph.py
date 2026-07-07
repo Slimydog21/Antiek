@@ -28,6 +28,7 @@ import pytest
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
 
+from processing.embedding import embedding_provider_fingerprint  # noqa: E402
 from runtime.db_lock import connect_read, connect_write  # noqa: E402
 from substrate.event_log import trajectory  # noqa: E402
 from substrate.graph import (  # noqa: E402
@@ -89,6 +90,10 @@ class _StubEmbeddingModel:
         return vec
 
 
+class _OtherStubEmbeddingModel(_StubEmbeddingModel):
+    pass
+
+
 # ---------------------------------------------------------------------------
 # 1. Schema
 # ---------------------------------------------------------------------------
@@ -132,6 +137,41 @@ def test_source_tier_check_constraint_rejects_out_of_range(db_path):
             )
     finally:
         con.close()
+
+
+def test_insert_chunk_records_embedding_metadata_when_provider_supplied(db_path):
+    model = _StubEmbeddingModel()
+    con = connect_write(db_path, purpose="test")
+    try:
+        insert_document(
+            con,
+            document_id="d-embed-meta",
+            source_tier=1,
+            document_type="white_paper",
+        )
+        chunk_id = insert_chunk(
+            con,
+            document_id="d-embed-meta",
+            chunk_index=0,
+            text="metadata pinned vector",
+            embedding=model.encode("metadata pinned vector"),
+            embedding_provider=model,
+        )
+        row = con.execute(
+            "SELECT chunk_id, provider, model_name, dimension, fingerprint "
+            "FROM embeddings_meta WHERE chunk_id = ?",
+            [chunk_id],
+        ).fetchone()
+    finally:
+        con.close()
+
+    assert row == (
+        chunk_id,
+        "test_graph._StubEmbeddingModel",
+        "_StubEmbeddingModel-dim-8",
+        8,
+        embedding_provider_fingerprint(model),
+    )
 
 
 def test_node_type_check_constraint_rejects_unknown(db_path):
@@ -297,6 +337,7 @@ def _seed_three_chunks(db_path: str, model: _StubEmbeddingModel) -> tuple[str, s
             con, document_id="d1", chunk_index=0,
             text="PsiQuantum reports photonic qubits with high fidelity",
             embedding=model.encode("PsiQuantum reports photonic qubits with high fidelity"),
+            embedding_provider=model,
             token_count=12,
         )
         # tier 3, less query-relevant
@@ -308,6 +349,7 @@ def _seed_three_chunks(db_path: str, model: _StubEmbeddingModel) -> tuple[str, s
             con, document_id="d2", chunk_index=0,
             text="quantum computing has many approaches",
             embedding=model.encode("quantum computing has many approaches"),
+            embedding_provider=model,
             token_count=6,
         )
         # tier 5, off-topic
@@ -319,6 +361,7 @@ def _seed_three_chunks(db_path: str, model: _StubEmbeddingModel) -> tuple[str, s
             con, document_id="d3", chunk_index=0,
             text="weather is nice today",
             embedding=model.encode("weather is nice today"),
+            embedding_provider=model,
             token_count=5,
         )
     finally:
@@ -356,6 +399,18 @@ def test_search_source_tier_max_excludes_lower_trust(db_path):
     # Only tier 1 should survive (no tier-2 documents in the seed).
     assert all(r["source_tier"] <= 2 for r in result["results"])
     assert len(result["results"]) == 1
+
+
+def test_search_rejects_mismatched_embedding_metadata(db_path):
+    model = _StubEmbeddingModel()
+    _seed_three_chunks(db_path, model)
+
+    con = connect_read(db_path)
+    try:
+        with pytest.raises(ValueError, match="Stored chunk embeddings are pinned"):
+            search(con, "PsiQuantum photonic qubits", model=_OtherStubEmbeddingModel())
+    finally:
+        con.close()
 
 
 def test_search_with_edges_attaches_edges_and_nodes(db_path):
