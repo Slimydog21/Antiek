@@ -17,6 +17,7 @@ product-spec sprint pages (`specs/{deep-research-workspace,read,write,speak}/`)
 | `OutlineBlockContract` | Write SPR-01 | Write (+ Speak via Write authoring) | committed | `substrate/write/outline_block.py` (L76-93) |
 | `ServableEntryContract` | Read SPR-01 (+ `provenance_class` from this sprint) | Read, Speak | committed | `constants.BOOK_SERVABILITY_STATUSES` (L545-551); seam #4 |
 | `AccrualContract` | Read SPR-09 / Speak SPR-07 | Read, Speak | committed | `speak/contributor.py::AccrualLine`; single escrow-balance writer = `ip_holders.accrue_escrow` (NOT publisher_escrow.py — reporting only; corrected post-SPR-03); seam #3 |
+| `MultimediaAssetContract` / `MultimediaManifest` | Multimedia SPR-01 | Multimedia provider router, audio experience, video documentary, workstation UI | committed | `substrate/books/meta_reading.py` + `ReadMetaReadingGeneratedPayload` for saved Read assets; `substrate/contracts/voice_pipeline.py` for single voice owner; `services/antiek_format/SPEC.md` for sha256 media integrity; `DispatchCallPayload` / `cost_view.py` for canonical inference spend |
 | `InterviewerResultContract` | Speak interviewer | Speak, Write | provisional | (Speak interviewer shape not fully pinned) |
 | `ConsentContract` | Speak SPR-01 | Speak, Read (seam #4) | provisional | `substrate/speak/` consent + rights gate |
 | `EconomicsCellContract` | Speak SPR-07 | Speak, cost surface (SPR-07 unified) | committed | economics matrix (`CREATOR_REV_SHARE` 70% public) |
