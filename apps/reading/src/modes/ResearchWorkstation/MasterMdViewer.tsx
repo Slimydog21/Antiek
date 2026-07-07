@@ -1628,6 +1628,9 @@ function promotionResultTitle(
       result.primarySourceDocumentId
         ? `document ${result.primarySourceDocumentId}`
         : null,
+      result.resolvedStaleEdgeIds.length > 0
+        ? `resolved stale edges ${result.resolvedStaleEdgeIds.join(", ")}`
+        : null,
     ]
       .filter((part): part is string => Boolean(part))
       .join(" · ");

@@ -1390,7 +1390,7 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
       ),
     );
     expect(screen.getByText("promotion deposited").getAttribute("title")).toBe(
-      "node node-refreshed · chunk chunk-refresh-1 · document doc-refresh",
+      "node node-refreshed · chunk chunk-refresh-1 · document doc-refresh · resolved stale edges edge-stale-personnel",
     );
   });
 
