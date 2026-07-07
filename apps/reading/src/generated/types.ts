@@ -1155,10 +1155,11 @@ export interface RubricScoredPayload {
  * mean per-claim score over claims that carry chunk citations;
  * ``per_claim`` rides along for inspection. ``backend`` records which
  * entailment backend produced the verdicts (``lexical`` deterministic
- * default, or ``llm_judge``) so a reader knows whether the number is
- * reproducible. ``scored_claims`` / ``total_claims`` make the coverage
- * explicit (analogy-only claims with no chunk citation are excluded
- * from the mean but counted in ``total_claims``).
+ * default, ``nli`` deterministic gate-grade backend, or ``llm_judge``)
+ * so a reader knows whether the number is reproducible.
+ * ``scored_claims`` / ``total_claims`` make the coverage explicit
+ * (analogy-only claims with no chunk citation are excluded from the
+ * mean but counted in ``total_claims``).
  * 
  * Observability-only this sprint — it gates nothing until M5's
  * promote-to-gate criterion is met in a later sprint.
@@ -1166,7 +1167,7 @@ export interface RubricScoredPayload {
 export interface GroundednessScoredPayload {
   action_type: "groundedness.scored";
   scorer_id: string;
-  backend: "lexical" | "llm_judge";
+  backend: "lexical" | "nli" | "llm_judge";
   groundedness_score: number;
   scored_claims: number;
   total_claims: number;

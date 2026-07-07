@@ -1675,17 +1675,18 @@ class GroundednessScoredPayload(_PayloadBase):
     mean per-claim score over claims that carry chunk citations;
     ``per_claim`` rides along for inspection. ``backend`` records which
     entailment backend produced the verdicts (``lexical`` deterministic
-    default, or ``llm_judge``) so a reader knows whether the number is
-    reproducible. ``scored_claims`` / ``total_claims`` make the coverage
-    explicit (analogy-only claims with no chunk citation are excluded
-    from the mean but counted in ``total_claims``).
+    default, ``nli`` deterministic gate-grade backend, or ``llm_judge``)
+    so a reader knows whether the number is reproducible.
+    ``scored_claims`` / ``total_claims`` make the coverage explicit
+    (analogy-only claims with no chunk citation are excluded from the
+    mean but counted in ``total_claims``).
 
     Observability-only this sprint — it gates nothing until M5's
     promote-to-gate criterion is met in a later sprint."""
 
     action_type: Literal[ActionType.GROUNDEDNESS_SCORED] = ActionType.GROUNDEDNESS_SCORED
     scorer_id: str
-    backend: Literal["lexical", "llm_judge"]
+    backend: Literal["lexical", "nli", "llm_judge"]
     groundedness_score: float = Field(ge=0.0, le=1.0)
     scored_claims: int = Field(ge=0)
     total_claims: int = Field(ge=0)

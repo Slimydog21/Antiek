@@ -60,7 +60,7 @@ import logging
 import os
 import re
 import sys
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC
 from typing import TYPE_CHECKING, Any, Literal
@@ -820,6 +820,27 @@ async def _run_phase_5(ctx: InvestigationContext) -> bool:
     return await _drive_phase(ctx, phase=5, work=work())
 
 
+def _phase_6_groundedness_backend() -> tuple[
+    Callable[[str, Sequence[str]], tuple[float, str]], str, str
+]:
+    """Return the live Phase-6 groundedness backend tuple.
+
+    Default is lexical for byte-for-byte existing behavior. SPR-04 wires the
+    validated NLI backend into the live emit path only when explicitly opted
+    in via ``ANTIEK_GROUNDEDNESS_BACKEND=nli``. Unknown values fail safe to
+    lexical so a typo never flips production onto a heavier scorer.
+    """
+    from substrate.eval.groundedness import DEFAULT_SCORER_ID, lexical_entailment_score
+
+    raw = os.environ.get("ANTIEK_GROUNDEDNESS_BACKEND", "").strip().lower()
+    if raw != "nli":
+        return lexical_entailment_score, "lexical", DEFAULT_SCORER_ID
+
+    from substrate.eval.groundedness.nli_backend import NLI_SCORER_ID, make_nli_backend
+
+    return make_nli_backend(), "nli", NLI_SCORER_ID
+
+
 def _score_phase_6_synthesis(ctx: InvestigationContext) -> GroundednessResult | None:
     """Emit the Phase-6 quality signals for the synthesis on ``ctx`` —
     NON-blocking, but the signal NEVER silently vanishes (Foundation v2
@@ -856,6 +877,7 @@ def _score_phase_6_synthesis(ctx: InvestigationContext) -> GroundednessResult | 
     # SPR-03: captured so the caller can enforce (off/flag/block). ``None``
     # unless the groundedness scorer produced a result (no synthesis / crash).
     groundedness_result = None
+    live_groundedness_scorer_id = "groundedness-lexical-v1"
 
     from middleware.outcomes import (
         emit_groundedness_failed,
@@ -899,7 +921,6 @@ def _score_phase_6_synthesis(ctx: InvestigationContext) -> GroundednessResult | 
     # --- PRIMARY truth-axis: groundedness (claim-entailment) ---------------
     try:
         from substrate.eval.groundedness import (
-            DEFAULT_SCORER_ID,
             duckdb_chunk_text_resolver,
             resolve_synthesis_claims,
             score_synthesis_groundedness,
@@ -920,12 +941,19 @@ def _score_phase_6_synthesis(ctx: InvestigationContext) -> GroundednessResult | 
         except Exception:  # noqa: BLE001 — DB-absent path stays honest
             resolver = lambda _cid: None  # noqa: E731
         claim_chunks = resolve_synthesis_claims(ctx.synthesis, resolver)
-        result = score_synthesis_groundedness(claim_chunks)
+        backend, backend_name, scorer_id = _phase_6_groundedness_backend()
+        live_groundedness_scorer_id = scorer_id
+        result = score_synthesis_groundedness(
+            claim_chunks,
+            backend=backend,
+            backend_name=backend_name,
+            scorer_id=scorer_id,
+        )
         groundedness_result = result  # captured for the caller's enforcement decision
         emit_groundedness_scored(
             investigation_id=ctx.investigation_id,
             synthesis_id=synthesis_id,
-            scorer_id=DEFAULT_SCORER_ID,
+            scorer_id=scorer_id,
             backend=result.backend,
             groundedness_score=result.score,
             scored_claims=result.scored_claims,
@@ -945,7 +973,7 @@ def _score_phase_6_synthesis(ctx: InvestigationContext) -> GroundednessResult | 
         emit_groundedness_failed(
             investigation_id=ctx.investigation_id,
             synthesis_id=synthesis_id,
-            scorer_id="groundedness-lexical-v1",
+            scorer_id=live_groundedness_scorer_id,
             stage="groundedness",
             error_type=type(exc).__name__,
             error=str(exc),
