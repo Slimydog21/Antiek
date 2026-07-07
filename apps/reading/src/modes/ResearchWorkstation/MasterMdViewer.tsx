@@ -5,11 +5,16 @@ import { toast } from "../../components/lemon/LemonToast";
 import {
   getChunk,
   getTrajectory,
+  listStaleRefreshResolutions,
   postTypedEvent,
   processStaleRefreshPromotion,
   startInvestigation,
 } from "../../lib/api";
-import type { ChunkResponse, InvestigationSummary } from "../../lib/api";
+import type {
+  ChunkResponse,
+  InvestigationSummary,
+  StaleRefreshResolutionRecord,
+} from "../../lib/api";
 import { parseSynthesis } from "../../lib/synthesisParser";
 import type {
   CompoundingStat,
@@ -1183,9 +1188,28 @@ function ReuseProvenance({
       ? stat
       : null;
   const staleResolutionSummary = staleResolutionSummaryLine(insights);
+  const [graphResolutions, setGraphResolutions] = useState<
+    StaleRefreshResolutionRecord[]
+  >([]);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await listStaleRefreshResolutions({ limit: 25 });
+        if (!cancelled) setGraphResolutions(response.resolutions);
+      } catch {
+        if (!cancelled) setGraphResolutions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // Present-only: nothing reused AND no meaningful stat ⇒ render nothing at all
   // (byte-identical to today; the qualityScore === null discipline).
-  if (insights.length === 0 && !meaningfulStat) return null;
+  if (insights.length === 0 && !meaningfulStat && graphResolutions.length === 0) {
+    return null;
+  }
 
   return (
     <details
@@ -1200,6 +1224,28 @@ function ReuseProvenance({
           <p className="text-shadow-1 dark:text-moonlight font-mono text-xs">
             {compoundingStatLine(meaningfulStat)}
           </p>
+        )}
+        {graphResolutions.length > 0 && (
+          <section>
+            <h3 className="text-xs font-mono uppercase text-ink-soft dark:text-starlight mb-2">
+              Graph stale resolutions
+            </h3>
+            <ul className="list-disc list-inside space-y-2 text-ink dark:text-bright">
+              {graphResolutions.slice(0, 5).map((resolution) => (
+                <li key={resolution.event_id}>
+                  <span className="font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight">
+                    {resolution.entity_id}:{" "}
+                    {staleResolutionStatusLabel(resolution.status)}
+                  </span>
+                  {resolution.notes && (
+                    <span className="ml-2 text-sm text-shadow-1 dark:text-moonlight">
+                      {resolution.notes}
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
         {insights.length > 0 && (
           <section>

@@ -29,6 +29,7 @@ const {
   getChunkMock,
   apiFetchMock,
   getTrajectoryMock,
+  listStaleRefreshResolutionsMock,
   postTypedEventMock,
   processStaleRefreshPromotionMock,
   startInvestigationMock,
@@ -37,6 +38,7 @@ const {
   getChunkMock: vi.fn(),
   apiFetchMock: vi.fn(),
   getTrajectoryMock: vi.fn(),
+  listStaleRefreshResolutionsMock: vi.fn(),
   postTypedEventMock: vi.fn(),
   processStaleRefreshPromotionMock: vi.fn(),
   startInvestigationMock: vi.fn(),
@@ -50,6 +52,7 @@ vi.mock("../../lib/api", async (orig) => {
     getChunk: getChunkMock,
     apiFetch: apiFetchMock,
     getTrajectory: getTrajectoryMock,
+    listStaleRefreshResolutions: listStaleRefreshResolutionsMock,
     postTypedEvent: postTypedEventMock,
     processStaleRefreshPromotion: processStaleRefreshPromotionMock,
     startInvestigation: startInvestigationMock,
@@ -103,6 +106,7 @@ beforeEach(() => {
   });
   (globalThis as { ResizeObserver?: unknown }).ResizeObserver =
     NoopResizeObserver as unknown as typeof ResizeObserver;
+  listStaleRefreshResolutionsMock.mockResolvedValue({ count: 0, resolutions: [] });
 });
 
 afterEach(() => {
@@ -110,6 +114,7 @@ afterEach(() => {
   window.localStorage.removeItem(STALE_REUSE_REFRESH_STORAGE_KEY);
   getChunkMock.mockReset();
   getTrajectoryMock.mockReset();
+  listStaleRefreshResolutionsMock.mockReset();
   postTypedEventMock.mockReset();
   processStaleRefreshPromotionMock.mockReset();
   startInvestigationMock.mockReset();
@@ -1012,6 +1017,40 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
     expect(
       screen.getByRole("button", { name: "Refresh prior insight unit-partial" }),
     ).toBeTruthy();
+  });
+
+  it("renders graph-wide stale resolutions from the API helper", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    listStaleRefreshResolutionsMock.mockResolvedValue({
+      count: 1,
+      resolutions: [
+        {
+          event_id: "evt-resolution",
+          investigation_id: "inv-refresh",
+          emitted_at: "2026-07-07T15:05:00Z",
+          parent_event_id: "evt-candidate",
+          flag_id: "stale-edge-one-personnel",
+          entity_kind: "edge",
+          entity_id: "edge-one",
+          status: "confirmed_stale",
+          notes: "resolved by stale refresh promotion",
+        },
+      ],
+    });
+
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          reuseProvenance: [],
+          compoundingStat: null,
+        })}
+      />,
+    );
+
+    expect(await screen.findByText("Graph stale resolutions")).toBeTruthy();
+    expect(screen.getByText("edge-one: confirmed stale")).toBeTruthy();
+    expect(screen.getByText("resolved by stale refresh promotion")).toBeTruthy();
+    expect(listStaleRefreshResolutionsMock).toHaveBeenCalledWith({ limit: 25 });
   });
 
   it("launches a child refresh research from a stale-advisory reused insight", async () => {
