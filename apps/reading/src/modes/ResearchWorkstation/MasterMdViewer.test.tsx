@@ -851,6 +851,31 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
     expect(screen.queryByText(/fewer source/)).toBeNull();
   });
 
+  it("marks stale-advisory reused insights with a refresh cue", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          reuseProvenance: [
+            { unitId: "unit-current", sourceInvestigationId: "inv-current", score: 0.92 },
+            {
+              unitId: "unit-stale",
+              sourceInvestigationId: "inv-stale",
+              score: 0.81,
+              staleRefreshAdvisory: true,
+            },
+          ],
+          compoundingStat: null,
+        })}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("reuse-provenance")).toBeTruthy());
+
+    expect(screen.getByText("prior insight unit-current")).toBeTruthy();
+    expect(screen.getByText("prior insight unit-stale")).toBeTruthy();
+    expect(screen.getByText("refresh before current use")).toBeTruthy();
+  });
+
   it("renders the three exact numbers when a measurement is present (M4 seed-and-catch)", async () => {
     getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
     render(

@@ -114,6 +114,11 @@ export interface ReusedInsight {
    *  (`scores[i]`), or null when the parallel array didn't carry one. Read,
    *  never a floor (mirrors SPR-06's honesty contract). */
   score: number | null;
+  /** True only when the same `knowledge.reused` event listed this injected unit
+   *  in `stale_advisory_unit_ids`: the source-document graph has stale-classed
+   *  edges, so the user should refresh/confirm it before treating it as current.
+   *  Absence means no stale advisory was recorded, not that freshness was proven. */
+  staleRefreshAdvisory?: boolean;
 }
 
 /**
@@ -239,6 +244,7 @@ interface KnowledgeReusedPayloadShape {
   reused_unit_ids?: string[];
   scores?: number[];
   source_investigation_ids?: string[];
+  stale_advisory_unit_ids?: string[];
 }
 
 /** SPR-10 M4 — a SPECULATIVE per-run compounding measurement payload. NO event
@@ -323,12 +329,16 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
       const unitIds = kr?.reused_unit_ids ?? [];
       const scores = kr?.scores ?? [];
       const sources = kr?.source_investigation_ids ?? [];
+      const staleAdvisoryUnitIds = new Set(kr?.stale_advisory_unit_ids ?? []);
       unitIds.forEach((unitId, i) => {
         reuseProvenance.push({
           unitId,
           sourceInvestigationId:
             typeof sources[i] === "string" ? sources[i] : null,
           score: typeof scores[i] === "number" ? scores[i] : null,
+          ...(staleAdvisoryUnitIds.has(unitId)
+            ? { staleRefreshAdvisory: true }
+            : {}),
         });
       });
     } else if (at === COMPOUNDING_MEASURED_ACTION_TYPE) {

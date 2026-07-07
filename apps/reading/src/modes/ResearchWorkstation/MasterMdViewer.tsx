@@ -1102,16 +1102,31 @@ function ReuseProvenance({
  *  not, it is plain text (honest "unknown origin", no dead link). */
 function ReusedInsightLink({ insight }: { insight: ReusedInsight }) {
   const label = `prior insight ${insight.unitId}`;
+  const refreshCue = insight.staleRefreshAdvisory ? (
+    <span
+      className="ml-2 font-mono text-[11px] uppercase tracking-wide text-amber-700 dark:text-amber-300"
+      title="This reused unit's source document has stale graph edges; refresh or confirm it before treating it as current."
+    >
+      refresh before current use
+    </span>
+  ) : null;
   if (insight.sourceInvestigationId) {
     return (
-      <a
-        href={`/inv/${encodeURIComponent(insight.sourceInvestigationId)}`}
-        className="text-ink-soft dark:text-starlight hover:text-ink dark:text-bright underline underline-offset-2 transition-colors"
-      >
-        {label}
-      </a>
+      <>
+        <a
+          href={`/inv/${encodeURIComponent(insight.sourceInvestigationId)}`}
+          className="text-ink-soft dark:text-starlight hover:text-ink dark:text-bright underline underline-offset-2 transition-colors"
+        >
+          {label}
+        </a>
+        {refreshCue}
+      </>
     );
   }
-  return <span className="text-ink-soft dark:text-starlight">{label}</span>;
+  return (
+    <>
+      <span className="text-ink-soft dark:text-starlight">{label}</span>
+      {refreshCue}
+    </>
+  );
 }
-

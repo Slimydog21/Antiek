@@ -216,6 +216,23 @@ describe("parseSynthesis — reuse provenance (SPR-10 M2)", () => {
     ]);
     expect(synth!.reuseProvenance).toEqual([]);
   });
+
+  it("marks only reused units listed in stale_advisory_unit_ids for refresh", () => {
+    const synth = withReuse([
+      ev("knowledge.reused", {
+        reused_unit_ids: ["unit-current", "unit-stale"],
+        scores: [0.92, 0.81],
+        source_investigation_ids: ["inv-current", "inv-stale"],
+        stale_advisory_unit_ids: ["unit-stale"],
+        context_pack_event_id: "evt-1",
+      }),
+    ]);
+    expect(synth!.reuseProvenance[0].staleRefreshAdvisory).toBeUndefined();
+    expect(synth!.reuseProvenance[1]).toMatchObject({
+      unitId: "unit-stale",
+      staleRefreshAdvisory: true,
+    });
+  });
 });
 
 // ── SPR-10 M4 — the per-run compounding stat (real `reused`, honest nulls) ──
