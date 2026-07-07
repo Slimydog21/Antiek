@@ -974,6 +974,25 @@ def knowledge_unit_of(
     if score_groundedness:
         groundedness_score = _score_unit_groundedness(con, text, chunk_id)
 
+    # Resolve the content-rights class from the source document when the caller
+    # did not supply one. The funnel deposits notes with no supported_by claim
+    # node, so the reuse retrieve path's supported_by-join yields a NULL
+    # content_class; without this resolution every funnel-promoted unit is
+    # flattened to deny-by-default GATED at projection time — starving the
+    # flywheel's reuse half even though the unit is grounded on a servable
+    # chunk (e.g. a public_domain book's insight is servable, not gated). A
+    # read-only SELECT on this connection resolves it (§16-safe). content_class
+    # stays None for documents with no/NULL content_class (unknown rights
+    # remain deny-by-default — the correct posture).
+    if content_class is None and source_document_id:
+        doc_cc_row = con.execute(
+            "SELECT content_class FROM documents WHERE document_id = ? LIMIT 1",
+            [source_document_id],
+        ).fetchone()
+        if doc_cc_row is not None and doc_cc_row[0]:
+            content_class = str(doc_cc_row[0])
+
+
     return KnowledgeUnitContract(
         node_id=node_id,
         node_type=node_type,

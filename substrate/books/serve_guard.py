@@ -146,7 +146,9 @@ def _rights_context(con: Any, document_id: str) -> _RightsContext:
     )
 
 
-def serve_full_text_guarded(con: Any, document_id: str) -> ServeResult:
+def serve_full_text_guarded(
+    con: Any, document_id: str, *, owner: bool = False
+) -> ServeResult:
     """Serve a full body through BOTH the content_class gate and an independent
     license-tier cross-check, and stamp the arXiv RIGHTS context onto the result.
 
@@ -175,7 +177,12 @@ def serve_full_text_guarded(con: Any, document_id: str) -> ServeResult:
     ``resolve_tier`` (the single source of truth), never re-derived from
     license/content_class here.
     """
-    result = serve_full_text(con, document_id)
+    # ``owner`` threads to the binding content_class gate: True admits the
+    # operator's personal_reading content (the §9.0 owner-read privilege),
+    # False withholds it. The license-tier arm below fires EITHER way — a
+    # non-T1 arXiv body never leaves storage, even on the owner path (so it
+    # can never slip into a model's system_context via the context picker).
+    result = serve_full_text(con, document_id, owner=owner)
     ctx = _rights_context(con, document_id)
     canonical_url = (
         f"https://arxiv.org/abs/{ctx.arxiv_id}" if ctx.arxiv_id else None

@@ -22,8 +22,8 @@ from substrate.dispatch import (
 )
 
 
-class _MockHermesProvider:
-    name = "hermes"
+class _MockZaiProvider:
+    name = "zai"
 
     def __init__(self, reply_text: str):
         self.reply_text = reply_text
@@ -78,7 +78,7 @@ def _client():
 
 
 def test_thought_partner_returns_shape_and_text():
-    register_provider(_MockHermesProvider('{"shape":"synthesis","synthesis_text":"ok"}'))
+    register_provider(_MockZaiProvider('{"shape":"synthesis","synthesis_text":"ok"}'))
     client = _client()
     resp = client.post(
         "/thought-partner",

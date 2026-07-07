@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ApiError, createSection, type SectionResponse } from "../../lib/api";
+import {
+  ApiError,
+  createSection,
+  updateSectionProse,
+  type SectionResponse,
+} from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import Thinking from "../../shared/Thinking";
 import FloatMenu from "../shared/FloatMenu/FloatMenu";
@@ -48,6 +53,18 @@ import {
  * The data model is the shipped §10 one (deliverable → sections → outline
  * blocks); this surface composes it, it does not invent a parallel shape.
  */
+
+/** Debounce for autosaving a manual prose edit. Long enough to coalesce a
+ * burst of keystrokes into one PATCH, short enough that a pause persists. */
+const PROSE_SAVE_DEBOUNCE_MS = 800;
+
+/** Honest save state for a section's prose. The "saved as you write" promise is
+ * backed by this — it is never rendered "saved" while a save is pending/failed. */
+type ProseSaveState =
+  | { status: "idle" }
+  | { status: "pending" }
+  | { status: "saved" }
+  | { status: "error"; message: string };
 
 export interface OutlineProps {
   deliverableId: string;
@@ -168,6 +185,77 @@ function SectionCard({
   // M4: the spin-a-sub-agent proposal over a highlighted claim (null = closed).
   const [proposal, setProposal] = useState<{ text: string } | null>(null);
 
+  // SPR-02: manual prose edits persist to prose_text — the SAME column export
+  // (app.py:2890) and reload (app.py:2573) read. Mirrors CreationStudio's
+  // updateSectionProse call shape, but debounced (onContentChange fires per
+  // keystroke) and with an HONEST indicator: the persistence error is surfaced,
+  // never swallowed the way the edit.captured telemetry is (Editor.tsx ~86).
+  const [saveState, setSaveState] = useState<ProseSaveState>({ status: "idle" });
+  // The value we know the server holds (seed = the section's persisted prose;
+  // updated on generate, on a confirmed save, and on a parent re-fetch).
+  const savedProseRef = useRef<string | null>(section.prose_text);
+  // The most recent editor text, so a retry re-sends the current draft.
+  const latestProseRef = useRef<string>(section.prose_text ?? "");
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const persistProse = useCallback(
+    async (plainText: string) => {
+      const original = savedProseRef.current;
+      // Empty prose is rejected by the API (min_length=1) and would blank a
+      // draft — mirror CreationStudio's non-empty guard.
+      if (!plainText.trim()) return;
+      // Unchanged since the last confirmed save — nothing to persist.
+      if (plainText === original) {
+        setSaveState({ status: "saved" });
+        return;
+      }
+      setSaveState({ status: "pending" });
+      try {
+        await updateSectionProse(section.section_id, {
+          prose_text: plainText,
+          original_text: original ?? undefined,
+          promote_to_graph: false,
+        });
+        savedProseRef.current = plainText;
+        setProseText(plainText); // keep the X-ray / reload view in sync
+        setSaveState({ status: "saved" });
+      } catch (e) {
+        // Do NOT swallow (contrast Editor.tsx's edit.captured .catch(()=>{})):
+        // a lost save must be visible so the "saved" promise is never a lie.
+        const message =
+          e instanceof ApiError
+            ? `HTTP ${e.status}`
+            : e instanceof Error
+              ? e.message
+              : String(e);
+        setSaveState({ status: "error", message });
+      }
+    },
+    [section.section_id],
+  );
+
+  const handleContentChange = useCallback(
+    (plainText: string) => {
+      latestProseRef.current = plainText;
+      // A keystroke means unsaved work is in flight — reflect it at once so a
+      // stale "Saved" never sits over an edit mid-debounce.
+      setSaveState({ status: "pending" });
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      saveTimer.current = setTimeout(() => {
+        void persistProse(plainText);
+      }, PROSE_SAVE_DEBOUNCE_MS);
+    },
+    [persistProse],
+  );
+
+  // Clear a pending debounce on unmount (never fire a save after teardown).
+  useEffect(
+    () => () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    },
+    [],
+  );
+
   // M4: the FloatMenu host over the rendered editor. The page region is the
   // selection SCOPE; highlighting prose opens the SHARED FloatMenu with the
   // Write-only rewrite actions (imported, not re-implemented — D-3).
@@ -190,6 +278,9 @@ function SectionCard({
   useEffect(() => {
     setProseText(section.prose_text);
     setProseProvenance(section.prose_provenance ?? {});
+    // The re-fetched value is server truth — reset the autosave baseline so the
+    // next edit diffs against it (not a stale local snapshot).
+    savedProseRef.current = section.prose_text;
   }, [section.prose_text, section.prose_provenance]);
 
   async function handleDrop(e: React.DragEvent) {
@@ -249,6 +340,10 @@ function SectionCard({
         // exists in the graph, this is just the immediate echo).
         setProseText(r.prose_text);
         setProseProvenance(r.prose_provenance ?? {});
+        // The server persisted this prose (SECTION_DRAFT_GENERATED) — it is the
+        // autosave baseline the first manual edit diffs against.
+        savedProseRef.current = r.prose_text;
+        setSaveState({ status: "idle" });
       }
     } catch (e) {
       // Honest no-key / no-result: a 503 (provider not configured) or any
@@ -301,6 +396,20 @@ function SectionCard({
       void handleRegenerate();
     },
     [handleRegenerate],
+  );
+
+  // CK-5: apply the model's edited span. Splice it into the section prose,
+  // replacing the first occurrence of the current selection's text; the
+  // existing prose-autosave then persists it (the same path a manual
+  // keystroke takes), so provenance + single-writer discipline are unchanged.
+  const handleApplyEdit = useCallback(
+    (editedText: string) => {
+      const sel = selection;
+      if (!sel || !sel.text) return;
+      setProseText((prev) => (prev == null ? prev : prev.replace(sel.text, editedText)));
+      window.getSelection()?.removeAllRanges();
+    },
+    [selection],
   );
 
   const canGenerate = blocks.length > 0 && !generating;
@@ -482,6 +591,9 @@ function SectionCard({
               sectionId={section.section_id}
               initialContent={draftContent}
               investigationId={investigationId}
+              // SPR-02: persist coarse prose_text on edit (mirrors the shape
+              // CreationStudio uses), debounced, with an honest save indicator.
+              onContentChange={handleContentChange}
               className="font-serif text-[15px] leading-relaxed text-ink dark:text-bright"
             />
           </div>
@@ -497,15 +609,44 @@ function SectionCard({
               setProposal({ text: safeText });
             }}
             rewriteActions={{ onRewrite }}
+            editContext={{ deliverableId, sectionId: section.section_id }}
+            onApplyEdit={handleApplyEdit}
           />
-          {/* capture-not-train boundary (SPR-07 M4): the editor records edits
-              (EDIT_CAPTURE_POLICY.capture); it trains NO model — that is gated.
-              The assertion lives in EditCapture.ts; this footer is the visible
-              acknowledgement to the writer, not a training trigger. */}
+          {/* Honest save indicator (SPR-02). The "saved as you write" promise
+              is now backed by real persistence state: it never reads "saved"
+              while a save is pending or has failed. (Capture-not-train boundary
+              from SPR-07 M4 still holds — EDIT_CAPTURE_POLICY.capture records
+              edits and trains NO model; that is gated in EditCapture.ts.) */}
           {EDIT_CAPTURE_POLICY.capture && (
-            <p className="mt-2 text-[10px] text-ink-mute dark:text-moonlight">
-              Your edits are saved as you write.
-            </p>
+            <div
+              className="mt-2 flex items-center gap-2 text-[10px]"
+              role="status"
+              aria-live="polite"
+            >
+              {saveState.status === "idle" && (
+                <span className="text-ink-mute dark:text-moonlight">
+                  Your edits are saved as you write.
+                </span>
+              )}
+              {saveState.status === "pending" && (
+                <span className="text-ink-mute dark:text-moonlight">Saving…</span>
+              )}
+              {saveState.status === "saved" && (
+                <span className="text-ink-mute dark:text-moonlight">Saved.</span>
+              )}
+              {saveState.status === "error" && (
+                <span className="flex items-center gap-2 text-emperor">
+                  <span>Couldn&rsquo;t save your last edit ({saveState.message}).</span>
+                  <button
+                    type="button"
+                    onClick={() => void persistProse(latestProseRef.current)}
+                    className="underline"
+                  >
+                    Retry
+                  </button>
+                </span>
+              )}
+            </div>
           )}
         </div>
       )}

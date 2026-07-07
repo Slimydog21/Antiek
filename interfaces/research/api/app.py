@@ -73,6 +73,8 @@ from roles.thought_partner import (  # noqa: E402
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
 from substrate.event_log import emit_typed, trajectory  # noqa: E402
+from substrate.graph import default_db_path  # noqa: E402
+from substrate.graph.health import DuckDBHealth, probe_duckdb_health  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     EVENT_SCHEMA_VERSION,
     WRESTLING_ACTION_TYPES,
@@ -135,12 +137,25 @@ class HealthResponse(BaseModel):
     # deployed-but-DEAD flywheel reds the deploy assert, not just a stale
     # SHA or an empty provider registry. ``knowledge_reuse_count`` is the
     # raw count behind the boolean (0 when the flywheel is not yet live).
-    # Resolved once at startup by ``_probe_flywheel`` (which NEVER raises —
-    # any failure resolves to False/0, mirroring ``_resolve_build_sha``'s
-    # swallow-to-"unknown"). Default False so /health is honest on a box
-    # that has never compounded.
+    # Resolved by ``_probe_flywheel`` on the FIRST /health request and then
+    # memoized (deferred from construction so importing this module doesn't
+    # scan the event log — see create_app). NEVER raises: any failure
+    # resolves to False/0, mirroring ``_resolve_build_sha``'s swallow-to-
+    # "unknown". Default False so /health is honest on a box that has never
+    # compounded (and before the first probe).
     flywheel_ready: bool = False
     knowledge_reuse_count: int = 0
+    # GF-7: startup read-only health snapshot for the graph DuckDB file.
+    # This is intentionally separate from ``status`` so /health can keep
+    # responding while surfacing DB corruption/missing-schema/missing-file states.
+    duckdb_ready: bool = False
+    duckdb_status: str = "unknown"
+    duckdb_schema_present: bool = False
+    duckdb_database_size_ok: bool = False
+    duckdb_integrity_check: str = "not_run"
+    duckdb_wal_present: bool = False
+    duckdb_wal_bytes: int = 0
+    duckdb_error: str | None = None
 
 
 def _resolve_build_sha() -> str:
@@ -202,8 +217,9 @@ def _probe_flywheel() -> tuple[bool, int]:
     an unreadable events dir, or any other failure resolves to
     ``(False, 0)``. A read-only ``connect_read`` cannot create the file,
     so a fresh box (no graph yet) yields ``(False, 0)`` rather than
-    crashing /health. Resolved once at startup (the count is a snapshot,
-    not a live counter) so the probe cost is paid at most once per boot.
+    crashing /health. Resolved on the first /health request and memoized (the
+    count is a snapshot, not a live counter), so the event-log scan is paid at
+    most once — and never merely by importing this module.
     """
     try:
         from runtime.db_lock import connect_read
@@ -232,6 +248,24 @@ def _probe_flywheel() -> tuple[bool, int]:
         # (False, 0) rather than failing the whole /health over a probe,
         # mirroring _resolve_build_sha's swallow-to-"unknown".
         return (False, 0)
+
+
+def _probe_graph_duckdb() -> DuckDBHealth:
+    """Startup graph DB health probe.
+
+    Unlike the flywheel event-log scan, this is bounded to a single read-only
+    DuckDB open plus metadata queries, so it is paid eagerly at app construction.
+    It never raises; failures are represented in the returned snapshot.
+    """
+    try:
+        return probe_duckdb_health(default_db_path())
+    except Exception as exc:
+        return DuckDBHealth(
+            ready=False,
+            status="probe_exception",
+            db_path=os.path.abspath(os.path.expanduser(default_db_path())),
+            error=f"{type(exc).__name__}: {exc}",
+        )
 
 
 class InvestigationStartRequest(BaseModel):
@@ -363,7 +397,7 @@ class IngestSourceRequest(BaseModel):
     when adding evidence to a specific run."""
 
     url: str = Field(..., min_length=8)
-    kind: Literal["arxiv", "youtube", "podcast", "twitter", "url"] | None = None
+    kind: Literal["arxiv", "youtube", "podcast", "twitter", "url", "inbox"] | None = None
     investigation_id: str = Field(default="__operator__", min_length=1)
     source_tier: int | None = Field(default=None, ge=1, le=5)
     max_episodes: int = Field(default=10, ge=1, le=50)  # podcast feeds only
@@ -933,6 +967,19 @@ class NotebookPutContentRequest(BaseModel):
     doc: dict[str, Any]
 
 
+class NotebookContentResponse(BaseModel):
+    """SPR-01 hydration response for ``GET /notebooks/{id}/content``.
+
+    The editor loads this on mount to seed its document from the
+    substrate (rather than from localStorage only) so a fresh browser
+    never starts empty over persisted blocks. ``doc`` is the composed
+    TipTap ProseMirror document, the exact inverse of the ``PUT`` that
+    decomposes it into ``notebook_blocks`` rows."""
+
+    notebook_id: str
+    doc: dict[str, Any]
+
+
 class AIUndoRequest(BaseModel):
     """``POST /ai/undo`` body (§5.5 Wedge 4). The AI sidecar records
     both ids when it emits ``ai.action.applied`` so the undo button
@@ -1009,23 +1056,225 @@ class Loop3ChecklistUpdateRequest(BaseModel):
     note: str = ""
 
 
+def _compose_autocomplete_prompt(*, prefix: str, document_context: str | None) -> str:
+    """Compose the flash-tier inline-autocomplete prompt (CK-3). The model
+    returns ONLY the continuation of ``prefix`` — no preamble, matching the
+    voice/vocabulary of the surrounding text. ``document_context`` is the
+    client-sent open-doc context (the cursor's neighborhood); retrieval-
+    augmented completion (CK-1-style grounding) is a follow-up."""
+    context_block = (
+        f"DOCUMENT CONTEXT:\n{document_context}\n\n" if document_context else ""
+    )
+    return (
+        "You are an inline autocomplete for Antiek's writing surface. "
+        "Complete the text after the cursor. Return ONLY the continuation "
+        "— no preamble, no quotation marks, no explanation. Match the voice "
+        "and vocabulary of the surrounding text.\n\n"
+        f"{context_block}"
+        f"TEXT BEFORE CURSOR:\n{prefix}\n\n"
+        "CONTINUATION:"
+    )
+
+
+class CompleteRequest(BaseModel):
+    """Inline autocomplete request (CK-3 — the signature Cursor
+    writing-flow affordance). The client sends the text around the cursor;
+    the substrate dispatches the ``autocomplete`` role on the flash tier
+    (GLM-5.2, thinking disabled — fast, direct completions) and returns
+    the continuation. Module-level (not nested in create_app) so FastAPI
+    can resolve the ``Body(...)`` annotation under PEP 563 string
+    annotations — same placement as ``ThoughtPartnerRequest``.
+
+    All client-controlled fields are BOUNDED (the operator-auth gate is
+    global, but defense-in-depth caps the cost/latency blast radius of any
+    single call): ``max_tokens`` to the inline-completion budget and
+    ``document_context`` to a generous cursor-neighborhood cap, so a caller
+    cannot amplify cost via an unbounded generation or a multi-MB prompt."""
+
+    prefix: str = Field(..., min_length=1)
+    document_context: str | None = Field(default=None, max_length=8000)
+    max_tokens: int = Field(default=128, ge=1, le=512)
+
+
+class CompleteResponse(BaseModel):
+    text: str
+
+
+class ContextItem(BaseModel):
+    """One @-mention item for the context picker (CK-4). ``kind`` is the
+    closed enum of pickable types; ``id`` is the graph / stable id."""
+
+    kind: Literal["doc", "insight"]
+    id: str = Field(..., min_length=1)
+
+
+class ComposeContextRequest(BaseModel):
+    """Context-picker composition request (CK-4 — @doc @insight @investigation
+    @note). The client ships the operator's @-selected items; the substrate
+    composes a §9.0-aware ``system_context`` string. The retrieval gate is
+    SERVER-DERIVED (CWE-862): the effective policy is resolved from
+    authenticated request state in the endpoint, NEVER trusted from this body.
+    ``max_length`` caps the item count (cost/latency blast radius)."""
+
+    items: list[ContextItem] = Field(..., min_length=1, max_length=20)
+
+
+class ComposeContextResponse(BaseModel):
+    """Composed context: ``system_context`` is the model-facing string;
+    ``withheld`` lists item ids whose content the §9.0 gate withheld
+    (personal_reading / restricted on the non-owner path); ``missing`` lists
+    ids that resolved to no record."""
+
+    system_context: str
+    withheld: list[str]
+    missing: list[str]
+
+
+def _compose_context(
+    items: list[ContextItem], *, owner: bool,
+) -> ComposeContextResponse:
+    """Compose a §9.0-aware system_context from @-selected items (CK-4).
+
+    For each item the content is fetched read-only:
+      - ``doc`` → ``serve_full_text_guarded(con, id, owner=owner)``: the
+        serving-boundary guard (content_class gate AND the independent
+        arXiv license-tier cross-check). ``full_text`` is populated only for
+        servable docs, or (owner path) personal_reading docs; a personal_reading
+        / gated doc on the non-owner path has ``full_text=None`` → WITHHELD.
+        A T3 rights-drift @doc raises → WITHHELD (a non-T1 body never enters
+        the model context). personal_reading is withholdable: it reaches the
+        context ONLY on the owner branch (the rigor gate).
+        the book-serve path uses. ``full_text`` is populated only for
+        servable docs, or (owner path) personal_reading docs; a
+        personal_reading / gated doc on the non-owner path has
+        ``full_text=None`` → WITHHELD. personal_reading is withholdable: it
+        reaches the context ONLY on the owner branch (the rigor gate).
+      - ``insight`` → the node's ``canonical_label`` (operator-authored,
+        not §9.0-gated third-party content).
+
+    Degraded posture, never raises: connect_read on a fresh/absent graph
+    yields all-missing; a §9.0 T3 rights-drift @doc is caught → withheld. The
+    caller always gets a well-formed response.
+    Read-only (connect_read) — the corpus is never mutated (§16 single-writer)."""
+    from runtime.db_lock import connect_read
+    from substrate.books.serve_guard import serve_full_text_guarded
+    from substrate.graph import default_db_path
+    from substrate.rights import T3BodyServeError
+
+    blocks: list[str] = []
+    withheld: list[str] = []
+    missing: list[str] = []
+    try:
+        with connect_read(default_db_path()) as con:
+            for item in items:
+                if item.kind == "doc":
+                    # Route through the serving-boundary guard (never the
+                    # raw gate) so the license-tier cross-check fires too —
+                    # a non-T1 arXiv body never enters the model's
+                    # system_context, even on the owner path. A T3 drift
+                    # raises T3BodyServeError → the doc is withheld
+                    # (degraded posture; never propagates to the caller).
+                    try:
+                        result = serve_full_text_guarded(
+                            con, item.id, owner=owner,
+                        )
+                    except T3BodyServeError:
+                        withheld.append(item.id)
+                        continue
+                    if result.full_text:
+                        head = f"@doc {result.title or item.id}"
+                        blocks.append(f"{head}\n{result.full_text}")
+                    elif result.found:
+                        withheld.append(item.id)
+                    else:
+                        missing.append(item.id)
+                else:  # insight — operator-authored node text
+                    row = con.execute(
+                        "SELECT canonical_label FROM nodes WHERE node_id = ?",
+                        [item.id],
+                    ).fetchone()
+                    if row and row[0]:
+                        blocks.append(f"@insight {item.id}\n{row[0]}")
+                    else:
+                        missing.append(item.id)
+    except Exception:
+        # Absent graph: every item is missing — honest, well-formed response.
+        missing = [item.id for item in items]
+    return ComposeContextResponse(
+        system_context="\n\n".join(blocks),
+        withheld=withheld,
+        missing=missing,
+    )
+
+
 class ThoughtPartnerRequest(BaseModel):
     """One-shot thought-partner invocation (master-spec §4.5 + §11.7).
 
-    AISidecar posts a free-form prompt; the substrate runs the
-    ``thought_partner`` role through the dispatch tier and returns the
-    model text unchanged alongside the parser-derived response shape.
+    AISidecar posts a free-form prompt; the substrate retrieves the most
+    relevant passages from the operator's knowledge graph (CK-1 grounding),
+    runs the ``thought_partner`` role through the dispatch tier with that
+    context, and returns the model text unchanged alongside the parser-
+    derived response shape.
 
-    `system_context` (UI-redesign S8 WP-8.4) is the serialised
-    workspace state the operator's client ships so the model can
-    reference what panels are currently visible. The substrate threads
-    this verbatim into the model context. Any ``@@actions`` block in the
-    model response is parsed and dispatched client-side by AISidecar,
-    never extracted on the substrate."""
+    The §9.0 retrieval-time gate is SERVER-DERIVED and fail-closed
+    (CWE-862): the effective ``policy_tag`` is NEVER read from the request
+    body — a caller must not be able to select a privileged policy. It is
+    resolved by ``_owner_read_policy_tag`` (the same hardened gate the
+    owner-read book endpoints use), which grants ``operator_only`` (the
+    owner's full private library) only on a positively authenticated,
+    single-operator request and fails closed to ``attribution_eligible``
+    (excludes restricted + personal_reading content) otherwise.
+
+    `system_context` (UI-redesign S8 WP-8.4) is the serialised workspace
+    state the operator's client ships so the model can reference what panels
+    are currently visible. The substrate threads this verbatim into the
+    model context. Any ``@@actions`` block in the model response is parsed
+    and dispatched client-side by AISidecar, never extracted on the
+    substrate."""
 
     prompt: str
     investigation_id: str | None = None
     system_context: str | None = None
+
+
+def _retrieve_thought_partner_context(
+    prompt: str, policy_tag: str, *, top_k: int = 8,
+) -> list[dict[str, Any]]:
+    """Retrieve the most semantically-relevant passages from the operator's
+    knowledge graph for ``prompt`` and map them to the thought-partner
+    role's ``selected_notes`` shape (CK-1: the "ask your library" grounding
+    — Cursor's auto-context analog).
+
+    §9.0-gated by ``policy_tag`` (see ThoughtPartnerRequest). Read-only
+    (connect_read) — the corpus is never mutated (§16 single-writer).
+    Degraded posture, never raises: connect_read on a fresh/absent graph
+    raises (read-only cannot create), which yields an honest empty list so
+    the model still answers, just without library grounding. The embedding
+    model is constructed INSIDE the connect_read block so an absent graph
+    short-circuits before paying the sentence-transformers load (keeps the
+    endpoint fast on a cold box and keeps tests hermetic)."""
+    from runtime.db_lock import connect_read
+    from substrate.graph import default_db_path
+    from substrate.graph.search import SentenceTransformerEmbedding, search
+
+    try:
+        with connect_read(default_db_path()) as con:
+            model = SentenceTransformerEmbedding()
+            retrieved = search(
+                con, prompt, model=model, top_k=top_k, policy_tag=policy_tag,
+            )
+    except Exception:
+        return []
+    notes: list[dict[str, Any]] = []
+    for hit in retrieved.get("results", []):
+        doc_id = hit.get("document_id")
+        notes.append({
+            "note_id": hit.get("chunk_id"),
+            "note_text": hit.get("chunk_text", ""),  # search() emits "chunk_text" (graph/search.py:260); the prior "text" key never existed, so every retrieved note mapped to empty string and starved the model of library grounding.
+            "source_event_ids": [doc_id] if doc_id else [],
+            "confidence": float(hit.get("similarity") or 0.0),
+        })
+    return notes
 
 
 class CrossGraphCitationRequest(BaseModel):
@@ -1455,10 +1704,24 @@ def create_app(
     # tools/prod_parity/check.py and tools/prod_parity/README.md.
     app.state.build_sha = _resolve_build_sha()
 
-    # SPR-11: probe flywheel liveness once at startup (read-only, never
-    # raises). /health reports it so the prod-parity check can red a
-    # deployed-but-dead flywheel. Snapshot at boot, like build_sha.
-    app.state.flywheel_ready, app.state.knowledge_reuse_count = _probe_flywheel()
+    # GF-7: read-only graph DuckDB startup health snapshot. This does not
+    # initialize/create the DB; missing/corrupt/unreadable states are exposed
+    # in /health rather than crashing app construction.
+    app.state.duckdb_health = _probe_graph_duckdb()
+
+    # SPR-11: flywheel-liveness snapshot (read-only, never raises), reported on
+    # /health so prod-parity can red a deployed-but-dead flywheel. DEFERRED to
+    # the first /health request (memoized via app.state._flywheel_probed) rather
+    # than run here at construction: _probe_flywheel scans every event file in
+    # the default events dir, so probing at construction made *importing* this
+    # module pay a full event-log scan — and this module builds `app` at module
+    # scope (`app = create_app()`), which every API test imports, so a populated
+    # ~/.antiek turned a bare import into a ~6-minute hang. The cost is still
+    # paid at most once; /health is hit immediately in prod, so the snapshot
+    # lands just as promptly there. build_sha stays eager (it is cheap).
+    app.state._flywheel_probed = False
+    app.state.flywheel_ready = False
+    app.state.knowledge_reuse_count = 0
 
     if register_wrestling:
         # Imported lazily so tests that don't touch wrestling don't pay
@@ -1563,6 +1826,16 @@ def create_app(
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
+        # Deferred flywheel probe (see create_app): scan the event log at most
+        # once, on the first /health request, then reuse the snapshot — so
+        # importing this module never pays the scan.
+        if not getattr(app.state, "_flywheel_probed", False):
+            (
+                app.state.flywheel_ready,
+                app.state.knowledge_reuse_count,
+            ) = _probe_flywheel()
+            app.state._flywheel_probed = True
+        duckdb_health = app.state.duckdb_health
         return HealthResponse(
             status="ok",
             param_version=ANTIEK_PARAM_VERSION,
@@ -1577,6 +1850,14 @@ def create_app(
             build_sha=getattr(app.state, "build_sha", "unknown"),
             flywheel_ready=getattr(app.state, "flywheel_ready", False),
             knowledge_reuse_count=getattr(app.state, "knowledge_reuse_count", 0),
+            duckdb_ready=duckdb_health.ready,
+            duckdb_status=duckdb_health.status,
+            duckdb_schema_present=duckdb_health.schema_present,
+            duckdb_database_size_ok=duckdb_health.database_size_ok,
+            duckdb_integrity_check=duckdb_health.integrity_check,
+            duckdb_wal_present=duckdb_health.wal_present,
+            duckdb_wal_bytes=duckdb_health.wal_bytes,
+            duckdb_error=duckdb_health.error,
         )
 
     # ── POST typed event ────────────────────────────────────────
@@ -2462,6 +2743,33 @@ def create_app(
                         "/sources/twitter with the captured thread."
                     ),
                 )
+            if detected == "inbox":
+                # Local-file reading inbox (DOGFOOD SPR-01). ``req.url`` is a
+                # server-side absolute path to a *.txt article dump (the
+                # operator's ~/research/inbox/<date>/ stream). The operator
+                # declares ``kind=inbox`` explicitly -- there is no URL
+                # auto-detection for a local path (a heuristic would be fragile).
+                path = os.path.expanduser(req.url)
+                if not os.path.isfile(path):
+                    raise ValueError(
+                        f"inbox path is not a readable file: {req.url!r}"
+                    )
+                from acquisition.inbox.ingest import ingest_inbox_file
+                inbox_kwargs: dict[str, Any] = {
+                    "investigation_id": req.investigation_id,
+                }
+                if req.source_tier is not None:
+                    inbox_kwargs["source_tier"] = req.source_tier
+                inbox_r = ingest_inbox_file(path, **inbox_kwargs)
+                return IngestSourceResponse(
+                    # inbox_r.status is `str`; narrow to the response Literal so
+                    # the type stays exact (mirrors the arxiv/youtube branches).
+                    status=("ingested" if inbox_r.status == "ingested" else "skipped"),
+                    detected_kind="inbox",
+                    document_id=inbox_r.document_id,
+                    chunks_written=inbox_r.chunks_written,
+                    title=os.path.splitext(os.path.basename(path))[0],
+                )
             if detected == "url":
                 from acquisition.urls import ingest_url
                 url_kwargs: dict[str, Any] = {
@@ -2891,8 +3199,31 @@ def create_app(
                 "FROM deliverable_sections WHERE deliverable_id = ? "
                 "ORDER BY section_index ASC", [deliverable_id],
             ).fetchall()
+            # GPW SPR-04: the sellable artifact must carry its attribution. The
+            # substrate stores prose_provenance (paragraph_index → block_ids,
+            # what get_deliverable already returns for the X-ray), but the
+            # export stripped it. Fetch a SELF-CONTAINED per-section row for the
+            # JSON export — each row carries its OWN prose_provenance, so there
+            # is NO cross-section keying (``section_index`` is NOT unique per
+            # deliverable: only ``section_id`` is, and several callers hardcode
+            # index 0, so a map keyed by index would misattribute). The shared
+            # ``secs`` 3-tuple every other format branch unpacks is untouched.
+            # NULL provenance stays None (never fabricated).
+            json_secs = con.execute(
+                "SELECT section_index, title, prose_text, prose_provenance "
+                "FROM deliverable_sections WHERE deliverable_id = ? "
+                "ORDER BY section_index ASC", [deliverable_id],
+            ).fetchall()
         finally:
             con.close()
+
+        def _decode_provenance(raw: Any) -> Any:
+            if not raw:
+                return None
+            try:
+                return _json.loads(raw)
+            except (ValueError, TypeError):
+                return None
         title = head[0]
         kind = head[1]
         if format == "markdown":
@@ -3093,8 +3424,14 @@ def create_app(
                     "section_index": idx,
                     "title": sec_title,
                     "prose_text": prose,
+                    # Each section's OWN paragraph_index → block_ids map (None
+                    # when it has no stored provenance). Read off THIS row, not
+                    # a section_index-keyed lookup — index is not unique, so a
+                    # map would misattribute a sibling's provenance. The X-ray
+                    # the substrate keeps, now carried into the artifact.
+                    "prose_provenance": _decode_provenance(prov),
                 }
-                for idx, sec_title, prose in secs
+                for idx, sec_title, prose, prov in json_secs
             ],
         }
         return ExportFormat(
@@ -4222,12 +4559,20 @@ def create_app(
             append_block,
             get_notebook,
         )
-        from substrate.notebooks.tiptap_codec import decompose
+        from substrate.notebooks.tiptap_codec import (
+            decompose,
+            is_effectively_empty,
+        )
 
         try:
             decomposed = decompose(req.doc)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        # Empty-doc floor (SPR-01 data-loss guard). Computed up front so the
+        # decision is cheap; enforced INSIDE the write lock below against the
+        # live persisted-block count so it can't be raced.
+        incoming_is_empty = is_effectively_empty(req.doc)
 
         db_path = default_db_path()
         with connect_write(
@@ -4237,6 +4582,33 @@ def create_app(
             if existing is None:
                 raise HTTPException(
                     status_code=404, detail="notebook not found",
+                )
+            # ── SPR-01 empty-doc floor ──────────────────────────────────
+            # A fresh/unhydrated editor seeds ``<p></p>`` and its first
+            # autosave PUTs that near-empty doc; the atomic replace below
+            # would DELETE every persisted block and destroy the operator's
+            # notes. Refuse to replace ≥1 persisted blocks with a doc that
+            # carries no real content. This check reads ``existing.blocks``,
+            # loaded on the same ``con`` inside the same write lock, so it is
+            # inside the replace's transaction boundary and cannot race a
+            # concurrent writer (DuckDB single-writer, --workers 1). A
+            # legitimate full-doc replace (any doc with real content) is
+            # unaffected — see ``is_effectively_empty``.
+            existing_block_count = len(existing.blocks)
+            if incoming_is_empty and existing_block_count >= 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "empty_doc_would_destroy_blocks",
+                        "message": (
+                            "Refusing to replace "
+                            f"{existing_block_count} persisted block(s) with "
+                            "an empty document. This usually means the editor "
+                            "autosaved before it hydrated from the substrate. "
+                            "Reload the notebook, then edit."
+                        ),
+                        "existing_block_count": existing_block_count,
+                    },
                 )
             # Atomic replace: drop all existing blocks, then re-insert
             # in order. Both operations sit inside the single
@@ -4263,6 +4635,37 @@ def create_app(
         if nb is None:
             raise HTTPException(status_code=404, detail="notebook not found")
         return _notebook_to_response(nb)
+
+    @app.get(
+        "/notebooks/{notebook_id}/content",
+        response_model=NotebookContentResponse,
+    )
+    async def get_notebook_content(
+        notebook_id: str,
+    ) -> NotebookContentResponse:
+        """SPR-01 hydration GET — return the composed TipTap document for a
+        notebook so the editor seeds from the substrate, not localStorage.
+
+        This is the exact inverse of ``PUT /notebooks/{id}/content``: the PUT
+        ``decompose``s a TipTap doc into ``notebook_blocks`` rows; this GET
+        ``compose``s those rows back into a TipTap doc using the already-built
+        ``tiptap_codec.compose`` (the same function the export route uses).
+        Access gating is identical to ``GET /notebooks/{id}`` — 404 for a
+        missing notebook, no widened exposure."""
+        from runtime.db_lock import connect_write
+        from substrate.graph import default_db_path
+        from substrate.notebooks import get_notebook
+        from substrate.notebooks.tiptap_codec import compose
+
+        db_path = default_db_path()
+        with connect_write(db_path, purpose="api:get_notebook_content") as con:
+            nb = get_notebook(con, notebook_id)
+        if nb is None:
+            raise HTTPException(status_code=404, detail="notebook not found")
+        doc = compose(
+            [{"content_json": b.content_json} for b in nb.blocks]
+        )
+        return NotebookContentResponse(notebook_id=notebook_id, doc=doc)
 
     @app.post(
         "/notebooks/{notebook_id}/promote-public",
@@ -5021,20 +5424,39 @@ def create_app(
         response_model=ThoughtPartnerResponseBody,
     )
     async def post_thought_partner(
+        request: Request,
         req: ThoughtPartnerRequest = Body(...),
     ) -> ThoughtPartnerResponseBody:
         """Run a single thought-partner turn through dispatch.
 
         ``req.system_context`` is model context for the role. The model
         response text is returned verbatim; AISidecar parses any
-        ``@@actions`` block client-side."""
+        ``@@actions`` block client-side.
+
+        The §9.0 retrieval gate is SERVER-DERIVED and fail-closed
+        (CWE-862): ``effective_policy_tag`` is NEVER read from the request
+        body. It is resolved by ``_owner_read_policy_tag`` (the same
+        hardened gate the owner-read book endpoints use), which grants the
+        privileged ``operator_only`` tag only on a positively authenticated
+        single-operator request and fails closed to ``attribution_eligible``
+        otherwise — so a caller can never select a privileged policy to
+        pull restricted / personal_reading passages into the model context."""
         if not req.prompt.strip():
             raise HTTPException(
                 status_code=400, detail="prompt must not be empty",
             )
+        # §9.0 gate is SERVER-DERIVED, never client-controlled (CWE-862).
+        # Reuse the one reviewed owner-read resolver so the gate cannot
+        # drift: operator_only only on a proven single-operator auth, else
+        # attribution_eligible.
+        from interfaces.research.api.books import _owner_read_policy_tag
+
+        effective_policy_tag = _owner_read_policy_tag(request)
         role_prompt = compose_thought_partner_prompt(
             user_prompt=req.prompt,
-            selected_notes=[],
+            selected_notes=_retrieve_thought_partner_context(
+                req.prompt, effective_policy_tag,
+            ),
         )
         assembled_prompt = THOUGHT_PARTNER_SYSTEM_PROMPT
         if req.system_context:
@@ -5057,6 +5479,56 @@ def create_app(
             shape=parsed.shape,
             text=result.text,
         )
+
+    # ── CK-3 inline autocomplete endpoint (cursor-for-knowledge) ──
+    @app.post("/complete", response_model=CompleteResponse)
+    async def post_complete(
+        req: CompleteRequest = Body(...),
+    ) -> CompleteResponse:
+        """Inline autocomplete. Returns ONLY the continuation of
+        ``req.prefix``, matching the surrounding voice. The flash tier
+        keeps it fast and cost-bounded. v1 completes over the client-sent
+        ``document_context``; retrieval-augmented completion is a follow-up."""
+        if not req.prefix.strip():
+            raise HTTPException(
+                status_code=400, detail="prefix must not be empty",
+            )
+        prompt = _compose_autocomplete_prompt(
+            prefix=req.prefix, document_context=req.document_context,
+        )
+        try:
+            result = dispatch(
+                prompt,
+                "autocomplete",
+                investigation_id="__complete__",
+                max_tokens=req.max_tokens,
+            )
+        except (ProviderError, KeyError) as exc:
+            raise HTTPException(
+                status_code=503, detail=f"complete_unavailable: {exc}",
+            ) from exc
+        return CompleteResponse(text=result.text or "")
+
+    # ── CK-4 context picker (cursor-for-knowledge) ──
+    @app.post("/compose-context", response_model=ComposeContextResponse)
+    async def post_compose_context(
+        request: Request,
+        req: ComposeContextRequest = Body(...),
+    ) -> ComposeContextResponse:
+        """Compose a §9.0-aware system_context from the operator's
+        @-selected items (CK-4 — the context picker). The retrieval gate is
+        SERVER-DERIVED and fail-closed (CWE-862): effective_policy_tag is
+        resolved via _owner_read_policy_tag (the same hardened gate the
+        owner-read book endpoints + /thought-partner use), NEVER read from the
+        request body. A personal_reading / restricted doc is WITHHELD on the
+        non-owner path and included only on the authenticated single-operator
+        path — the §9.0 'personal_reading is withholdable' guarantee."""
+        from interfaces.research.api.books import _owner_read_policy_tag
+        from substrate.graph.retrieval_gate import PRIVILEGED_POLICY_TAGS
+
+        effective_policy_tag = _owner_read_policy_tag(request)
+        owner = effective_policy_tag in PRIVILEGED_POLICY_TAGS
+        return _compose_context(req.items, owner=owner)
 
     # ── Sprint 22 multi-user auth-probe endpoint ──
     class AuthProbeResponse(BaseModel):
@@ -5903,6 +6375,14 @@ def create_app(
     # blocks, and agent-note import — same one-line inclusion discipline.
     from interfaces.research.api.artifact_routes import artifact_router
     app.include_router(artifact_router)
+
+    # Supersession review surface (GF-5/GF-6 activation). Turns detected
+    # contradictions into a review queue — the other half of the detection
+    # wired in processing/extraction/extract.py. Same one-line inclusion
+    # discipline; carries no per-handler auth (global middleware gates the
+    # operator workstation, matching write_routes).
+    from interfaces.research.api.supersession_routes import supersession_router
+    app.include_router(supersession_router)
 
     return app
 

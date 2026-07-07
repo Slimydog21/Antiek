@@ -75,13 +75,15 @@ def deepseek_live(monkeypatch):
     reset_provider_registry()
 
 
-def test_real_config_pins_synthesizer_to_opus():
-    """The §14.4 invariant itself: the REAL config.yaml routes the synthesizer
-    to openrouter/anthropic/claude-opus-4.7. Catches config drift."""
+def test_real_config_pins_synthesizer_to_glm():
+    """The claude-less invariant: the REAL config.yaml routes the synthesizer
+    to zai_reasoning/glm-5.2 (the §14.4 Sprint-20 verdict landed 2026-07-06:
+    GLM-5.2 drives every tier including synthesis; the footprint is claude-less).
+    Catches config drift back to Anthropic/OpenRouter."""
     cfg = yaml.safe_load(_CONFIG.read_text())
     syn = cfg["tiers"]["synthesis"]
-    assert syn["provider"] == "openrouter"
-    assert syn["model"] == "anthropic/claude-opus-4.7"
+    assert syn["provider"] == "zai_reasoning"
+    assert syn["model"] == "glm-5.2"
 
 
 def test_default_investigation_does_not_displace_opus(events_dir, deepseek_live):

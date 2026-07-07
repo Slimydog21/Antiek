@@ -85,7 +85,7 @@ def _client_with_transport(app, handler) -> httpx.Client:
 # The submit path the live API serves (docs.krea.ai flux-1-dev reference,
 # 2026-06-12): the model is vendor-prefixed IN THE URL; no model body key.
 _SUBMIT_PATH = "/generate/image/bfl/flux-1-dev"
-_FAKE_TOKEN = "sk-PLANTEDLEAKMARKERabcdef0123456789"
+_FAKE_TOKEN = "PLANTEDLEAKMARKER_fake_openai_token_abcdef0123456789"
 _ALL_KREA_REASONS = (
     "no_key",
     "kill_switch",

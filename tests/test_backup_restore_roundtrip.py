@@ -105,6 +105,14 @@ def test_self_referential_fk_is_dropped_by_export_import(ddl_form: str, tmp_path
     try:
         c.execute(create_sql)
         c.execute("INSERT INTO t VALUES (1, NULL)")
+        # Baseline (codex review): the ORIGINAL db enforces the self-ref FK
+        # (DuckDB does this by default for both column- and table-level forms,
+        # verified as ConstraintException on a dangling parent). Without this
+        # assertion the post-restore "accepted" check below could pass vacuously
+        # if a future DuckDB relaxed enforcement — the contrast (rejected before
+        # export, accepted after restore) is what proves the FK was dropped.
+        with pytest.raises(duckdb.Error):
+            c.execute("INSERT INTO t VALUES (2, 99999)")
     finally:
         c.close()
     _export(src, exp)
@@ -177,7 +185,9 @@ def test_full_antiek_schema_roundtrip_preserves_everything(tmp_path) -> None:
         # failure would otherwise also xfail green). When the fix lands, IMPORT
         # succeeds, this except is skipped, the assertions below run and pass,
         # and strict-xfail flips the test to RED — forcing this marker's removal.
-        assert "syntax error" in str(exc), (
+        # Pin the failure to the comma Parser Error specifically (not just any
+        # syntax error), so this xfail can't mask an unrelated parse failure.
+        assert "syntax error" in str(exc) and "," in str(exc), (
             f"IMPORT failed for an unexpected reason (not the comma bug): {exc!r}"
         )
         raise

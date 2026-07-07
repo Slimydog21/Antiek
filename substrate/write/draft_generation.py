@@ -49,6 +49,7 @@ from roles.creative_writer.parser import (
     parse_creative_writer_response,
 )
 from roles.creative_writer.prompt import (
+    AdjacentSection,
     CreativeWriterBlock,
     CreativeWriterContext,
     render_full_prompt,
@@ -95,14 +96,21 @@ def build_creative_writer_context(
     section_count: int,
     blocks: Sequence[OutlineBlock],
     style_guide: str = "",
+    adjacent_sections: Sequence[AdjacentSection] = (),
     node_label_resolver: Callable[[str], str] | None = None,
 ) -> CreativeWriterContext:
     """Build the creative_writer context from OutlineBlocks. The block_id
     carried into the prompt is the OutlineBlock's node_id (graph-node) or
-    outline_block_id (user-originated) — the id the citation must name."""
+    outline_block_id (user-originated) — the id the citation must name.
+
+    ``adjacent_sections`` carries the deliverable's other sections so the
+    role can keep a multi-section deliverable coherent — prior sections
+    supply their prose (so the model does not repeat them), upcoming
+    sections supply only a title (so the model can hand off to them).
+    Empty for a single-section deliverable."""
     cw_blocks: list[CreativeWriterBlock] = []
     for b in blocks:
-        cite_id = b.node_id if b.provenance_kind == "graph_node" else b.outline_block_id
+        cite_id = b.node_id if (b.provenance_kind == "graph_node" and b.node_id) else b.outline_block_id  # noqa: E501
         body = _block_text(b, node_label_resolver=node_label_resolver)
         cw_blocks.append(CreativeWriterBlock(
             block_id=cite_id, block_kind=b.block_kind,
@@ -112,6 +120,7 @@ def build_creative_writer_context(
         deliverable_title=deliverable_title, deliverable_kind=deliverable_kind,
         section_title=section_title, section_index=section_index,
         section_count=section_count, blocks=cw_blocks, style_guide=style_guide,
+        adjacent_sections=list(adjacent_sections),
     )
 
 
@@ -225,7 +234,7 @@ class GenerationResult:
     # Empty for gap/invalid (nothing parsed). On a 'generated' result this is
     # the map the X-ray persists + reads back (Write SPR-09 M3). Kept here so
     # the caller does not need a second parse of the raw model output.
-    prose_provenance: dict = field(default_factory=dict)
+    prose_provenance: dict[int, list[str]] = field(default_factory=dict)
 
 
 def generate_section(
@@ -334,8 +343,8 @@ def persist_section_draft(
         from ..event_log import emit_typed
         from ..graph.ops import update_section_prose
     except ImportError:  # pragma: no cover — direct-script fallback
-        from substrate.event_log import emit_typed  # type: ignore[no-redef]
-        from substrate.graph.ops import update_section_prose  # type: ignore[no-redef]
+        from substrate.event_log import emit_typed
+        from substrate.graph.ops import update_section_prose
     from substrate.schemas.events import SectionDraftGeneratedPayload
 
     # JSON object keys are strings — store paragraph indices as string keys so

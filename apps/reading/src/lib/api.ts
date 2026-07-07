@@ -406,6 +406,33 @@ export async function getNotebook(notebookId: string): Promise<NotebookShape> {
   return resp.json();
 }
 
+/** The composed TipTap document for a notebook (SPR-01 hydration).
+ * Mirrors interfaces/research/api/app.py:NotebookContentResponse. */
+export interface NotebookContentShape {
+  notebook_id: string;
+  /** ProseMirror/TipTap document JSON: {type:"doc", content:[...]}. */
+  doc: Record<string, unknown>;
+}
+
+/** GET /notebooks/{id}/content — the composed TipTap doc the editor hydrates
+ * from on mount (localStorage is only a cache/offline mirror). Inverse of the
+ * autosave PUT that decomposes the doc into notebook_blocks rows. */
+export async function getNotebookContent(
+  notebookId: string,
+): Promise<NotebookContentShape> {
+  const resp = await apiFetch(
+    `${API_BASE}/notebooks/${encodeURIComponent(notebookId)}/content`,
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `GET /notebooks/${notebookId}/content failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
 /** POST /notebooks/{id}/blocks — append a block. */
 export async function appendNotebookBlock(
   notebookId: string,
@@ -758,6 +785,149 @@ export async function searchBlocks(
   if (!resp.ok) {
     throw new ApiError(
       `GET /blocks/search failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+// ── CK-4: context picker (cursor-for-knowledge) ─────────────────────
+//
+// Mirrors interfaces/research/api/app.py:ContextItem / ComposeContextRequest
+// / ComposeContextResponse. The client ships the operator's @-selected items
+// (@doc @insight) and the substrate composes a §9.0-aware ``system_context``
+// string for chat / agent / edit. This is what makes CK-1/CK-2 grounded
+// instead of opaque — the operator explicitly picks what reaches the model.
+//
+// §9.0 gate is SERVER-DERIVED and fail-closed (CWE-862): the effective policy
+// is resolved from authenticated request state in the endpoint, NEVER trusted
+// from this body. So a ``personal_reading`` / restricted doc is WITHHELD on the
+// non-owner path (listed in ``withheld``) and reaches the context only on the
+// authenticated single-operator path. The client never decides owner status.
+
+/** The closed enum of pickable @-mention kinds. ``investigation`` + ``note``
+ *  are a documented server-side follow-up; only ``doc`` (§9.0-gated third-party
+ *  content) + ``insight`` (operator-authored node text) ship today. */
+export type ContextItemKind = "doc" | "insight";
+
+/** One @-mention item. ``id`` is the graph handle — a ``document_id`` for
+ *  ``doc`` (resolved through the SAME ``serve_full_text`` §9.0 gate the
+ *  book-serve path uses) or a ``node_id`` for ``insight`` (the node's
+ *  ``canonical_label``). */
+export interface ContextItem {
+  kind: ContextItemKind;
+  id: string;
+}
+
+export interface ComposeContextRequest {
+  /** 1–20 items (the server enforces ``min_length=1, max_length=20`` — a
+   *  cost / latency blast-radius bound; the picker mirrors the cap). */
+  items: ContextItem[];
+}
+
+export interface ComposeContextResponse {
+  /** The model-facing composed context string (``@doc``/``@insight`` blocks
+   *  joined by blank lines; empty when every item was missing/withheld). */
+  system_context: string;
+  /** Item ids whose content the §9.0 gate withheld (personal_reading /
+   *  restricted on the non-owner path). The surface must show these by their
+   *  label, plainly — "transparent intelligence, not magic". */
+  withheld: string[];
+  /** Item ids that resolved to no record (absent graph, deleted doc/node). */
+  missing: string[];
+}
+
+/** POST /compose-context — compose a §9.0-aware system_context from the
+ *  operator's @-selected items. Never raises on absent content: a missing id
+ *  is reported in ``missing``, a gated doc in ``withheld``. Throws ``ApiError``
+ *  only on a transport/validation failure (e.g. 422 on an empty or >20 list). */
+export async function composeContext(
+  req: ComposeContextRequest,
+): Promise<ComposeContextResponse> {
+  const resp = await apiFetch(`${API_BASE}/compose-context`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /compose-context failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+// Mirrors interfaces/research/api/write_routes.py:EditSelectionRequest /
+// EditSelectionResponse. The Cmd+K selection-edit client (CK-5).
+export interface EditSelectionRequest {
+  deliverable_id: string;
+  section_id: string;
+  /** The highlighted span of deliverable prose (1–8000 chars). */
+  selection_text: string;
+  /** The writer's natural-language edit instruction (1–1000 chars). */
+  instruction: string;
+}
+
+export interface EditSelectionResponse {
+  edited_text: string;
+  deliverable_id: string;
+  section_id: string;
+}
+
+/** POST /write/edit-selection — the Cursor Cmd+K writing-flow affordance:
+ *  rewrite a highlighted span of deliverable prose per a natural-language
+ *  instruction (creative_writer / GLM-5.2). The selection is deliverable
+ *  prose, so a stylistic edit adds no new claims and prose_provenance stays
+ *  valid. Throws ``ApiError`` on a transport/validation/provider failure. */
+export async function editSelection(
+  req: EditSelectionRequest,
+): Promise<EditSelectionResponse> {
+  const resp = await apiFetch(`${API_BASE}/write/edit-selection`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /write/edit-selection failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+// Mirrors interfaces/research/api write complete route. Tab autocomplete client (CK-3).
+export interface CompleteRequest {
+  /** Text before the cursor (min length 1). */
+  prefix: string;
+  /** Optional cursor-neighborhood context (max 8000 chars). */
+  document_context?: string;
+  /** Continuation length bound (1..512, default 128). */
+  max_tokens?: number;
+}
+
+export interface CompleteResponse {
+  text: string;
+}
+
+/** POST /complete — inline Tab autocomplete: fetch a continuation for the
+ * prefix at the cursor. Returns only the new text to append (not a rewrite).
+ * Throws ``ApiError`` on a transport/validation failure. */
+export async function completeInline(
+  req: CompleteRequest,
+): Promise<CompleteResponse> {
+  const resp = await apiFetch(`${API_BASE}/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /complete failed: HTTP ${resp.status}`,
       resp.status,
       await resp.text(),
     );

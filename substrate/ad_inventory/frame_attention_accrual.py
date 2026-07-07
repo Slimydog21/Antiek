@@ -40,11 +40,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from typing import Any
 
 from substrate import ip_holders
+from substrate.anti_gaming.frame_ivt import classify_batch
+from substrate.anti_gaming.verdict import FraudVerdictKind
 
 from .frame_attention import (
     FRAME_WEIGHTING_VERSION,
@@ -112,18 +114,34 @@ def ensure_tables(con: Any) -> None:
         con.execute(
             """
             CREATE TABLE IF NOT EXISTS house_seconds (
-                house_id           TEXT PRIMARY KEY,
-                batch_ref          TEXT NOT NULL,
-                window_id          TEXT NOT NULL,
-                n_seconds          INTEGER NOT NULL DEFAULT 0,
-                amount_cents       INTEGER NOT NULL DEFAULT 0,
-                reason             TEXT NOT NULL,
-                telemetry_version  TEXT NOT NULL,
-                weighting_version  TEXT NOT NULL,
-                inputs_json        TEXT NOT NULL,
-                accrued_at         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                house_id             TEXT PRIMARY KEY,
+                batch_ref            TEXT NOT NULL,
+                window_id            TEXT NOT NULL,
+                n_seconds            INTEGER NOT NULL DEFAULT 0,
+                amount_cents         INTEGER NOT NULL DEFAULT 0,
+                reason               TEXT NOT NULL,
+                telemetry_version    TEXT NOT NULL,
+                weighting_version    TEXT NOT NULL,
+                inputs_json          TEXT NOT NULL,
+                fraud_verdict        TEXT NOT NULL DEFAULT 'pass',
+                excluded_counts_json TEXT NOT NULL DEFAULT '[]',
+                accrued_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
             )
             """
+        )
+        # AFA-S2 M5: forward-compat for a house_seconds table created before the
+        # anti-gaming audit columns existed (a pre-M5 DB). No-op on a fresh table
+        # that already has them. NOTE: DuckDB's ALTER ... ADD COLUMN does NOT
+        # support column CONSTRAINTS ("Adding columns with constraints not yet
+        # supported"), so these are added NULLABLE (unlike the CREATE above, which
+        # can carry NOT NULL DEFAULT). Pre-existing rows therefore read NULL for
+        # these columns; _load_window_accrual coalesces NULL -> "pass"/[]. New
+        # rows always INSERT a concrete value, so the live path is never NULL.
+        con.execute(
+            "ALTER TABLE house_seconds ADD COLUMN IF NOT EXISTS fraud_verdict TEXT"
+        )
+        con.execute(
+            "ALTER TABLE house_seconds ADD COLUMN IF NOT EXISTS excluded_counts_json TEXT"
         )
         con.execute(
             "CREATE INDEX IF NOT EXISTS idx_house_seconds_window "
@@ -175,6 +193,16 @@ class WindowAccrual:
     house: HouseLine
     telemetry_version: str
     weighting_version: str
+    # AFA-S2 M5: the anti-gaming filter's REPORTED exclusions for this window —
+    # (reason, count) pairs (GIVT/SIVT/oversized). Every second the filter
+    # removed is counted here, never silently dropped (honesty over coverage).
+    # Empty when nothing was filtered. Defaulted so pre-M5 callers/rows are
+    # unaffected; M5b persists these alongside the accrual rows.
+    excluded_second_counts: tuple[tuple[str, int], ...] = ()
+    # The window's composite fraud verdict kind ("pass"/"review"/"block"). A
+    # "review" window still accrues (to escrow, operator queue); a "block" window
+    # routes its whole value to house.
+    fraud_verdict: str = FraudVerdictKind.PASS.value
 
     def reconciles(self) -> bool:
         """Σ asset cents + house cents == total ad value cents (the invariant)."""
@@ -229,11 +257,38 @@ def aggregate_window(
             weighting_version=FRAME_WEIGHTING_VERSION,
         )
 
-    # Split the window's total ad value equally across its seconds, conserved
-    # to the cent (largest-remainder over equal weights — second 0..n-1).
-    per_second_cents = apportion_cents(
-        {str(i): 1.0 for i in range(n_seconds)}, total
-    )
+    # AFA-S2 M5 — filter-before-allocate. Classify the batch; invalid seconds are
+    # excluded from BOTH the numerator and the denominator of the split (they do
+    # not earn AND do not dilute the per-second value). A BLOCK verdict or a
+    # fully-filtered window routes the whole value to house — never invented
+    # attribution. Every excluded second is counted and reported, never dropped.
+    classification = classify_batch(batch)
+    excluded = tuple(sorted(classification.counts_by_reason().items()))
+    verdict_kind = classification.window_verdict.kind
+
+    if verdict_kind is FraudVerdictKind.BLOCK:
+        return _house_only_window(
+            batch, total, reason="antigaming_block",
+            excluded=excluded, verdict_kind=verdict_kind,
+        )
+
+    # Valid seconds keyed by POSITION (not second_index): position is unique and
+    # contiguous, so the split is robust to gaps/duplicates and invalid positions
+    # are simply absent from the denominator.
+    valid = [
+        (pos, sec)
+        for pos, sec in enumerate(batch.seconds)
+        if pos in classification.valid_positions
+    ]
+    if not valid:
+        return _house_only_window(
+            batch, total, reason="antigaming_all_seconds_filtered",
+            excluded=excluded, verdict_kind=verdict_kind,
+        )
+
+    # Split the window's total ad value equally across its VALID seconds,
+    # conserved to the cent (largest-remainder over equal weights).
+    per_second_cents = apportion_cents({str(pos): 1.0 for pos, _ in valid}, total)
 
     asset_cents: dict[str, int] = {}
     asset_weight: dict[str, float] = {}
@@ -243,8 +298,8 @@ def aggregate_window(
     house_nsec = 0
     house_reasons: set[str] = set()
 
-    for sec in batch.seconds:
-        sec_cents = per_second_cents[str(sec.second_index)]
+    for pos, sec in valid:
+        sec_cents = per_second_cents[str(pos)]
         w = weigh_second(sec)
         if w.is_house_second:
             house_cents += sec_cents
@@ -293,6 +348,39 @@ def aggregate_window(
         house=house,
         telemetry_version=batch.schema_version,
         weighting_version=FRAME_WEIGHTING_VERSION,
+        excluded_second_counts=excluded,
+        fraud_verdict=verdict_kind.value,
+    )
+
+
+def _house_only_window(
+    batch: WindowFrameBatch,
+    total: int,
+    *,
+    reason: str,
+    excluded: tuple[tuple[str, int], ...],
+    verdict_kind: FraudVerdictKind,
+) -> WindowAccrual:
+    """A window whose ENTIRE value routes to house — a BLOCK verdict or a
+    fully-filtered window. No contributor accrues (never invented attribution);
+    the whole ad value is the house tally, and the exclusion counts + verdict are
+    carried for the audit trail. Conservation is trivially exact (house == total,
+    no asset lines)."""
+    return WindowAccrual(
+        batch_ref="",
+        window_id=batch.window_id,
+        total_ad_value_cents=total,
+        asset_lines=(),
+        house=HouseLine(
+            window_id=batch.window_id,
+            n_seconds=len(batch.seconds),
+            amount_cents=total,
+            reason=reason,
+        ),
+        telemetry_version=batch.schema_version,
+        weighting_version=FRAME_WEIGHTING_VERSION,
+        excluded_second_counts=excluded,
+        fraud_verdict=verdict_kind.value,
     )
 
 
@@ -307,7 +395,19 @@ def _batch_inputs(
 ) -> dict[str, Any]:
     """The exact inputs the aggregation consumed, in a canonical-JSON-round-
     trippable shape. Persisted on each row so :func:`replay` re-derives the
-    accrual against the same inputs (mirrors attribution_audit's ``inputs``)."""
+    accrual against the same inputs (mirrors attribution_audit's ``inputs``).
+
+    ORDER IS LOAD-BEARING (AFA-S2 M5): the seconds are stored in their ORIGINAL
+    order, NOT sorted by second_index. The anti-gaming filter in
+    ``aggregate_window`` is order-sensitive (non-monotonic / duplicate detection
+    depends on the sequence), so sorting the snapshot would make replay reconstruct
+    a DIFFERENT (re-ordered, and thus differently-filtered) batch than the one that
+    was accrued — the accrual and its replay would disagree. Preserving order keeps
+    replay faithful AND keeps idempotency correct: the same batch in the same order
+    yields the same ref; a re-ordered batch is a genuinely different accrual (and is
+    itself caught by the filter as non-monotonic). Samples WITHIN a second are still
+    sorted by asset_id — their order does not affect the filter, and weigh_second
+    sorts them anyway."""
     return {
         "window_id": batch.window_id,
         "ad_value_usd_cents": batch.ad_value_usd_cents,
@@ -329,7 +429,7 @@ def _batch_inputs(
                     for sm in sorted(s.samples, key=lambda x: x.asset_id)
                 ],
             }
-            for s in sorted(batch.seconds, key=lambda x: x.second_index)
+            for s in batch.seconds  # ORIGINAL order — see docstring
         ],
     }
 
@@ -380,15 +480,11 @@ def accrue_window(
         return _load_window_accrual(con, batch_ref)
 
     result = aggregate_window(batch, asset_to_ip_holder=asset_to_ip_holder)
-    result = WindowAccrual(
-        batch_ref=batch_ref,
-        window_id=result.window_id,
-        total_ad_value_cents=result.total_ad_value_cents,
-        asset_lines=result.asset_lines,
-        house=result.house,
-        telemetry_version=result.telemetry_version,
-        weighting_version=result.weighting_version,
-    )
+    # Set the real batch_ref while PRESERVING every other field — including the
+    # AFA-S2 M5 audit fields (excluded_second_counts, fraud_verdict). Rebuilding
+    # the dataclass by hand silently dropped them (a BLOCK window returned
+    # "pass"/empty); replace() cannot.
+    result = replace(result, batch_ref=batch_ref)
 
     # Write per-asset accrual rows (one per window+asset — write amplification
     # is bounded by the asset count, never the second count).
@@ -428,13 +524,16 @@ def accrue_window(
         """
         INSERT INTO house_seconds (
             house_id, batch_ref, window_id, n_seconds, amount_cents,
-            reason, telemetry_version, weighting_version, inputs_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            reason, telemetry_version, weighting_version, inputs_json,
+            fraud_verdict, excluded_counts_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             house_id, batch_ref, result.window_id, result.house.n_seconds,
             result.house.amount_cents, result.house.reason,
             result.telemetry_version, result.weighting_version, inputs_json,
+            result.fraud_verdict,
+            _canonical_json([[r, c] for r, c in result.excluded_second_counts]),
         ],
     )
 
@@ -457,7 +556,8 @@ def _load_window_accrual(con: Any, batch_ref: str) -> WindowAccrual:
     hrow = con.execute(
         """
         SELECT window_id, n_seconds, amount_cents, reason,
-               telemetry_version, weighting_version
+               telemetry_version, weighting_version,
+               fraud_verdict, excluded_counts_json
         FROM house_seconds WHERE batch_ref = ?
         """,
         [batch_ref],
@@ -479,6 +579,15 @@ def _load_window_accrual(con: Any, batch_ref: str) -> WindowAccrual:
     total = sum(line.amount_cents for line in asset_lines) + house.amount_cents
     telemetry_version = arows[0][7] if arows else hrow[4]
     weighting_version = arows[0][8] if arows else hrow[5]
+    # AFA-S2 M5 audit fields — reconstruct from the persisted house row so the
+    # idempotent-reload path reports the SAME verdict/exclusions as the fresh
+    # accrual (a BLOCK window reloads as "block", not the "pass" default). A row
+    # from a pre-M5 DB (columns added later via nullable ALTER) reads NULL here;
+    # coalesce to the innocent defaults ("pass"/[]) rather than crash on
+    # json.loads(None) or stamp the literal string "None".
+    excluded_second_counts = tuple(
+        (str(r), int(c)) for r, c in json.loads(hrow[7] or "[]")
+    )
     return WindowAccrual(
         batch_ref=batch_ref,
         window_id=window_id,
@@ -487,6 +596,8 @@ def _load_window_accrual(con: Any, batch_ref: str) -> WindowAccrual:
         house=house,
         telemetry_version=telemetry_version,
         weighting_version=weighting_version,
+        excluded_second_counts=excluded_second_counts,
+        fraud_verdict=str(hrow[6]) if hrow[6] is not None else "pass",
     )
 
 

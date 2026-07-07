@@ -24,7 +24,7 @@ What landed in Sprint 2 Day 3-4 (this migration):
 - The 3 emit helpers: ``emit_supersession_apply``,
   ``emit_supersession_dismiss``, ``emit_supersession_coexist``.
 
-DEFERRED until init_db migrates: the DB-touching detector
+Genuinely deferred (being built in SPR-02): the DB-touching detector
 (``detect_for_edge``, ``detect_recent``), the LLM classifier (which
 will route through ``substrate/dispatch/`` instead of OpenRouter
 directly), and the ``apply_review`` write path.

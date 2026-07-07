@@ -10,19 +10,25 @@ investigation that touches it. The temporal layer never auto-invalidates.
 """
 
 from .staleness import (
+    StalenessFlag,
+    StalenessScanResult,
     StalenessVerdict,
     classify_relation,
     emit_staleness_flagged,
     emit_staleness_resolve,
     evaluate_staleness,
     new_flag_id,
+    scan_graph_edge_staleness,
 )
 
 __all__ = [
+    "StalenessFlag",
+    "StalenessScanResult",
     "StalenessVerdict",
     "classify_relation",
     "evaluate_staleness",
     "new_flag_id",
     "emit_staleness_flagged",
     "emit_staleness_resolve",
+    "scan_graph_edge_staleness",
 ]

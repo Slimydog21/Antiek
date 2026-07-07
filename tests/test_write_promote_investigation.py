@@ -216,6 +216,60 @@ def test_promote_empty_synthesis_is_insufficient_evidence():
     assert result.dangling_count == 0
 
 
+def test_promote_skips_draft_synthesis_as_not_depositable():
+    # A draft synthesis is in-flight / unevaluated — not a completed conclusion,
+    # so it is not promoted as a deliverable (codex review: don't treat a draft
+    # as "completed"). If a draft is all that exists → None (route 404).
+    _seed_synthesis(status="draft")
+    with connect_write(default_db_path(), purpose="test/promote") as con:
+        result = promote_investigation_to_deliverable(
+            con, "inv-1", deliverable_kind="research_memo",
+        )
+    assert result is None
+
+
+def test_promote_picks_most_recent_by_synthesis_timestamp_not_archive_time():
+    # Two syntheses for one investigation: an OLD one archived LATE (archived_at
+    # would wrongly win) and a NEW one archived EARLIER. promote must pick by
+    # synthesis_timestamp (when it was made), not archived_at (codex review:
+    # a late backfill/retry must not shadow a newer synthesis).
+    with connect_write(default_db_path(), purpose="test/seed-two") as con:
+        for sid, syn_ts, arch_ts in [
+            ("syn-old", "2026-07-01 00:00:00", "2026-07-03 11:00:00"),
+            ("syn-new", "2026-07-03 00:00:00", "2026-07-03 10:00:00"),
+        ]:
+            doc = insert_document(
+                con, document_id=f"doc-{sid}", source_tier=2,
+                document_type="paper", title=sid,
+            )
+            ch = insert_chunk(con, document_id=doc, chunk_index=0, text=sid)
+            nid = insert_node(
+                con, canonical_label=sid, node_type="insight",
+                graph_scope="cross_domain", investigation_id="inv-1",
+                metadata={"chunk_id": ch},
+            )
+            con.execute(
+                "INSERT INTO syntheses "
+                "(synthesis_id, investigation_id, target_question, "
+                " synthesis_timestamp, archived_at, status, "
+                " implicit_recommendation) "
+                "VALUES (?, ?, ?, ?, ?, 'passed', 'proceed')",
+                [sid, "inv-1", sid + " question", syn_ts, arch_ts],
+            )
+            con.execute(
+                "INSERT INTO synthesis_substrate_manifest "
+                "(synthesis_id, entity_kind, entity_id) VALUES (?, 'node', ?)",
+                [sid, nid],
+            )
+    with connect_write(default_db_path(), purpose="test/promote") as con:
+        result = promote_investigation_to_deliverable(
+            con, "inv-1", deliverable_kind="research_memo",
+        )
+    assert result is not None
+    assert result.synthesis_id == "syn-new"  # by synthesis_timestamp, not archived_at
+    assert result.synthesis_status == "passed"
+
+
 # ---------------------------------------------------------------------------
 # REST route
 # ---------------------------------------------------------------------------
@@ -274,3 +328,24 @@ def test_route_422_for_unknown_deliverable_kind(client):
         json={"investigation_id": "inv-1", "deliverable_kind": "not_a_kind"},
     )
     assert r.status_code == 422
+
+
+def test_route_404_when_only_a_draft_synthesis_exists(client):
+    # A draft is not depositable → 404, not a 201 with a half-baked deliverable.
+    _seed_synthesis(status="draft")
+    r = client.post(
+        "/write/deliverables/from-investigation",
+        json={"investigation_id": "inv-1"},
+    )
+    assert r.status_code == 404
+    assert r.json()["detail"]["error"] == "no_synthesis"
+
+
+def test_route_surfaces_synthesis_status(client):
+    _seed_synthesis(status="passed")  # the default
+    r = client.post(
+        "/write/deliverables/from-investigation",
+        json={"investigation_id": "inv-1"},
+    )
+    assert r.status_code == 201
+    assert r.json()["synthesis_status"] == "passed"

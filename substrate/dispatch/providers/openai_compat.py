@@ -111,6 +111,7 @@ class OpenAICompatProvider:
         timeout_s: float = _DEFAULT_TIMEOUT_S,
         client: httpx.Client | None = None,
         chat_completions_path: str = "/v1/chat/completions",
+        extra_body: dict[str, Any] | None = None,
     ):
         """
         Args:
@@ -127,6 +128,11 @@ class OpenAICompatProvider:
                 with ``httpx.MockTransport`` to avoid network I/O.
             chat_completions_path: Path appended to ``base_url``. Some
                 providers omit the ``/v1`` prefix; configure here.
+            extra_body: Extra fields merged into every request body
+                (e.g. ``{"thinking": {"type": "disabled"}}`` for z.ai's
+                GLM-5.2 reasoning-toggle). Lets a vendor-specific provider
+                pass non-standard params without a subclass. Defaults to
+                none (standard OpenAI body only).
         """
         self.name = name
         self.base_url = base_url.rstrip("/")
@@ -137,6 +143,7 @@ class OpenAICompatProvider:
         # Inject for tests; otherwise build on first call.
         self._client = client
         self._owns_client = client is None
+        self._extra_body = dict(extra_body) if extra_body else {}
 
     def _resolve_api_key(self) -> str:
         if self._api_key:
@@ -175,6 +182,10 @@ class OpenAICompatProvider:
             "temperature": temperature,
             "messages": [{"role": "user", "content": prompt}],
         }
+        # Vendor-specific fields (e.g. z.ai's reasoning toggle) merge on
+        # top, never overriding the core request shape.
+        if self._extra_body:
+            body.update(self._extra_body)
 
         client = self._ensure_client()
         t_start = time.monotonic()

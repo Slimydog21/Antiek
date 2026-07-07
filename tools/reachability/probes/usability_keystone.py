@@ -597,6 +597,7 @@ def _probe(base_url: str | None = None) -> ProbeResult:
                 _PROTECTED_ROUTE,
                 json={"problem": "keystone auth probe (no credential)",
                       "sub_questions": ["a"], "max_depth": 1},
+                timeout=30.0,
             )
             if r_unauth.status_code != 401:
                 return _blocked(
@@ -626,6 +627,7 @@ def _probe(base_url: str | None = None) -> ProbeResult:
                 json={"problem": f"keystone journey: {_KEYSTONE_TOPIC}",
                       "sub_questions": [_KEYSTONE_TOPIC], "max_depth": 1},
                 headers=auth_headers,
+                timeout=30.0,
             )
             if r_auth.status_code == 401:
                 return _blocked(
@@ -658,6 +660,7 @@ def _probe(base_url: str | None = None) -> ProbeResult:
                 f"/research/plans/{root_id}/approve",
                 json={"approver": "__keystone_probe__"},
                 headers=auth_headers,
+                timeout=30.0,
             )
             if r.status_code != 200:
                 return _blocked(
@@ -669,6 +672,7 @@ def _probe(base_url: str | None = None) -> ProbeResult:
                 f"/research/plans/{root_id}/launch",
                 json={"per_research_budget_usd": 1.0, "aggregate_budget_usd": 5.0},
                 headers=auth_headers,
+                timeout=30.0,
             )
             if r.status_code != 200:
                 return _blocked(
@@ -789,7 +793,7 @@ def _probe(base_url: str | None = None) -> ProbeResult:
                         failure_mode="error",
                     )
 
-            r = client.get(f"/chunks/{read_chunk_id}", headers=auth_headers)
+            r = client.get(f"/chunks/{read_chunk_id}", headers=auth_headers, timeout=30.0)
             if r.status_code == 404:
                 return _blocked(
                     "read",

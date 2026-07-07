@@ -140,7 +140,11 @@ class ParallelClient:
         }
 
         owns_client = self._client is None
-        client = self._client or httpx.Client()
+        # Client-level timeout (defense-in-depth): the per-request .post below
+        # already passes timeout=self._timeout_s, but the resilience lint (and
+        # good practice) wants the timeout bound at client construction too, so
+        # a future call that forgets the per-request arg still can't hang.
+        client = self._client or httpx.Client(timeout=self._timeout_s)
         try:
             attempt = 0
             while True:

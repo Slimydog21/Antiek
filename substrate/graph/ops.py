@@ -45,10 +45,9 @@ try:
     from ...schemas import (
         GraphEdgeInsertedPayload,
         GraphNodeInsertedPayload,
-        GraphScope,
-        NodeType,
     )
     from ...schemas.events import DocumentContentClassDefaultedPayload
+    from .embedding_meta import record_chunk_embedding_meta
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
@@ -58,6 +57,9 @@ except ImportError:  # pragma: no cover — direct-script fallback
         THIRD_PARTY_DOCUMENT_TYPES,
     )
     from substrate.event_log import emit_typed  # type: ignore[no-redef]
+    from substrate.graph.embedding_meta import (  # type: ignore[no-redef]
+        record_chunk_embedding_meta,
+    )
     from substrate.schemas import (  # type: ignore[no-redef]
         GraphEdgeInsertedPayload,
         GraphNodeInsertedPayload,
@@ -307,7 +309,7 @@ def update_document_gate_columns(
     finally:
         # Recreate even if the UPDATE raised, so a failed mutation never
         # leaves the table without its gate indexes.
-        for col, idx in zip(touched_indexed, indexes):
+        for col, idx in zip(touched_indexed, indexes, strict=True):
             con.execute(
                 f"CREATE INDEX IF NOT EXISTS {idx} ON documents({col})"
             )
@@ -326,6 +328,7 @@ def insert_chunk(
     text: str,
     section_path: str | None = None,
     embedding: Sequence[float] | None = None,
+    embedding_provider: Any | None = None,
     token_count: int = 0,
     chunk_id: str | None = None,
 ) -> str:
@@ -353,6 +356,8 @@ def insert_chunk(
             int(token_count),
         ],
     )
+    if embedding is not None and embedding_provider is not None:
+        record_chunk_embedding_meta(con, chunk_id=cid, provider=embedding_provider)
     return cid
 
 
@@ -571,23 +576,47 @@ def attach_block_to_section(
     )
 
 
+# Sentinel distinguishing "caller did not supply prose_provenance" (PRESERVE the
+# stored map — the prose-edit path) from "caller passed a value, including None"
+# (REPLACE it — the generation/regeneration path). See update_section_prose.
+_PRESERVE_PROVENANCE: Any = object()
+
+
 def update_section_prose(
     con: LockedConnection,
     *,
     section_id: str,
     prose_text: str,
-    prose_provenance: Any | None = None,
+    prose_provenance: Any = _PRESERVE_PROVENANCE,
 ) -> None:
-    """Persist generated/edited prose for a section. ``prose_provenance``
-    is a JSON map (paragraph_index → list of contributing block_ids)
-    or None."""
+    """Persist generated/edited prose for a section.
+
+    ``prose_provenance`` is a JSON map (paragraph_index → list of contributing
+    block_ids). It is PRESERVE-UNLESS-SUPPLIED: the generation path (which has
+    a fresh paragraph→blocks map) passes it and it is written; the prose-EDIT
+    path (``patch_section_prose``) does NOT supply it, and the existing
+    provenance is left intact rather than wiped. Passing ``prose_provenance``
+    explicitly (including ``None`` to clear it) REPLACES the stored map — the
+    inverse asymmetry: preserve by default, replace only when told to. This is
+    why a one-paragraph typo fix no longer destroys the whole section's
+    X-ray / citation map."""
     _assert_write_locked(con)
-    con.execute(
-        "UPDATE deliverable_sections "
-        "SET prose_text = ?, prose_provenance = ?, updated_at = CURRENT_TIMESTAMP "
-        "WHERE section_id = ?",
-        [prose_text, _maybe_json(prose_provenance), section_id],
-    )
+    if prose_provenance is _PRESERVE_PROVENANCE:
+        # Prose-only edit: touch prose_text, leave the provenance column intact.
+        con.execute(
+            "UPDATE deliverable_sections "
+            "SET prose_text = ?, updated_at = CURRENT_TIMESTAMP "
+            "WHERE section_id = ?",
+            [prose_text, section_id],
+        )
+    else:
+        # Explicit provenance supplied (generation / regeneration): replace it.
+        con.execute(
+            "UPDATE deliverable_sections "
+            "SET prose_text = ?, prose_provenance = ?, updated_at = CURRENT_TIMESTAMP "
+            "WHERE section_id = ?",
+            [prose_text, _maybe_json(prose_provenance), section_id],
+        )
 
 
 # ---------------------------------------------------------------------------

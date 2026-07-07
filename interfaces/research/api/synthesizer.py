@@ -294,14 +294,16 @@ def _research_tier_override(
     §14.4 GUARD (SPR-01 / Foundation — the load-bearing reason this is NOT
     "consume the recorded tier unconditionally"):
     ------------------------------------------------------------------
-    The ``synthesis`` tier is PINNED to ``openrouter / anthropic/
-    claude-opus-4.7`` in config.yaml for the §14.4 measurement window
-    (2026-05-19 → Sprint-20). During that window the human-read synthesis
-    artifact MUST be produced by Opus so the Sprint-20 cost/quality verdict
-    is measured on UNCORRUPTED traffic. The synthesizer is a DIFFERENT role
-    from the research-runner: the fast/deep research-tier choice governs the
-    RESEARCH lane (which provider does the reasoning-heavy retrieval/
-    decomposition work), NOT the synthesis voice.
+    The ``synthesis`` tier is PINNED to ``zai_reasoning / glm-5.2`` in
+    config.yaml — the claude-less posture (#213, 2026-07-06): every tier's
+    primary is GLM-5.2, synthesis with thinking ENABLED as the reasoned
+    replacement for the prior Opus synthesis. The §14.4 measurement window
+    (2026-05-19 → Sprint-20) has CLOSED; Opus is no longer in the footprint,
+    but this guard's RULE still holds — it now protects the GLM-5.2 synthesis
+    pin from being displaced by a research-tier choice. The synthesizer is a
+    DIFFERENT role from the research-runner: the fast/deep research-tier
+    choice governs the RESEARCH lane (which provider does the reasoning-heavy
+    retrieval/decomposition work), NOT the synthesis voice.
 
     The defect this guards: the start-event ``research_tier`` used to
     default to "deep" (== DEFAULT_RESEARCH_TIER). A schema-DEFAULT "deep"

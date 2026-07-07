@@ -64,18 +64,29 @@ def test_fetch_serve_accrue_trace_is_queryable_in_order(con):
     """A paper's three lifecycle legs, recorded out of order, reconstruct via
     trace() in fetch→serve→accrue order — the single ToS-compliance query."""
     # Record in a deliberately SCRAMBLED order to prove trace() orders them.
+    # All three legs share ONE recorded_at: they are a single paper's lifecycle
+    # at one instant, so trace() must order them by lifecycle stage
+    # (fetch→serve→accrue), NOT by insert time. The explicit shared timestamp
+    # makes that deterministic — without it the three inserts land on distinct
+    # sub-second ticks, and a burst straddling a wall-clock second scrambled the
+    # trace (trace() keys its tiebreak on the second-truncated recorded_at, so
+    # legs in different truncated seconds sort by time, never reaching
+    # _KIND_ORDER). That was the intermittent flake this locks out.
+    _INSTANT = "2026-01-01 00:00:00"
     record_event(
         con, arxiv_id=_ARXIV_ID, document_id=_DOC_ID, kind=ARXIV_ACCRUE,
         amount_cents=42, reason="t1_arxiv_accrued",
-        detail={"ad_event_id": "session:s1:" + _DOC_ID},
+        detail={"ad_event_id": "session:s1:" + _DOC_ID}, recorded_at=_INSTANT,
     )
     record_event(
         con, arxiv_id=_ARXIV_ID, document_id=_DOC_ID, kind=ARXIV_FETCH,
         detail={"source_url": "https://arxiv.org/pdf/2401.00001", "byte_size": 12345},
+        recorded_at=_INSTANT,
     )
     record_event(
         con, arxiv_id=_ARXIV_ID, document_id=_DOC_ID, kind=ARXIV_SERVE,
         tier="T1", reason="served", detail={"servable": True, "served_body": True},
+        recorded_at=_INSTANT,
     )
 
     events = trace(con, _ARXIV_ID)

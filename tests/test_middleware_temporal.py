@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import os
 import sys
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -34,9 +35,17 @@ from middleware.temporal import (  # noqa: E402
     emit_staleness_resolve,
     evaluate_staleness,
     new_flag_id,
+    scan_graph_edge_staleness,
 )
+from runtime.db_lock import connect_read, connect_write  # noqa: E402
 from substrate.constants import STALENESS_TTL_DAYS  # noqa: E402
 from substrate.event_log import trajectory  # noqa: E402
+from substrate.graph import (  # noqa: E402
+    init_database_at_path,
+    insert_document,
+    insert_edge,
+    insert_node,
+)
 from substrate.schemas import (  # noqa: E402
     ActionType,
     Event,
@@ -224,3 +233,119 @@ def test_staleness_flagged_payload_rejects_negative_ttl_or_age():
             flag_id="f", edge_id="e", relation="led_by",
             claim_class="personnel", ttl_days=90, age_days=-1,
         )
+
+
+def _seed_edge(
+    db_path,
+    *,
+    edge_id,
+    relation,
+    published_at=None,
+    valid_from=None,
+):
+    with connect_write(str(db_path), purpose="test:seed-staleness") as con:
+        doc_id = f"doc-{edge_id}"
+        insert_document(
+            con,
+            document_id=doc_id,
+            source_tier=2,
+            document_type="paper",
+            published_at=published_at,
+            on_conflict="ignore",
+        )
+        source_id = insert_node(
+            con,
+            canonical_label=f"source-{edge_id}",
+            node_type="entity",
+            graph_scope="depth",
+            investigation_id="seed",
+        )
+        target_id = insert_node(
+            con,
+            canonical_label=f"target-{edge_id}",
+            node_type="entity",
+            graph_scope="depth",
+            investigation_id="seed",
+        )
+        insert_edge(
+            con,
+            edge_id=edge_id,
+            source_node_id=source_id,
+            target_node_id=target_id,
+            relation=relation,
+            source_tier=2,
+            extraction_confidence=0.9,
+            graph_scope="depth",
+            investigation_id="seed",
+            source_document_id=doc_id,
+            valid_from=valid_from,
+        )
+
+
+def test_scan_graph_edge_staleness_emits_only_stale_classified_edges(tmp_path):
+    db_path = tmp_path / "graph.duckdb"
+    init_database_at_path(str(db_path))
+    as_of = datetime(2026, 7, 7, tzinfo=UTC)
+    _seed_edge(
+        db_path,
+        edge_id="edge-stale",
+        relation="led_by",
+        published_at=datetime(2026, 3, 1, tzinfo=UTC),
+    )
+    _seed_edge(
+        db_path,
+        edge_id="edge-fresh",
+        relation="led_by",
+        published_at=datetime(2026, 6, 15, tzinfo=UTC),
+    )
+    _seed_edge(
+        db_path,
+        edge_id="edge-unknown",
+        relation="competes_with",
+        published_at=datetime(2020, 1, 1, tzinfo=UTC),
+    )
+
+    with connect_read(str(db_path)) as con:
+        result = scan_graph_edge_staleness(
+            con,
+            investigation_id="inv-scan",
+            as_of=as_of,
+        )
+
+    assert result.scanned == 3
+    assert result.unclassified == 1
+    assert [flag.edge_id for flag in result.flagged] == ["edge-stale"]
+    flag = result.flagged[0]
+    assert flag.flag_id == "stale-edge-stale-personnel"
+    assert flag.claim_class == "personnel"
+    assert flag.ttl_days == 90
+    assert flag.age_days == 128
+
+    events = [Event.model_validate(row) for row in trajectory("inv-scan")]
+    assert len(events) == 1
+    assert events[0].action_type == ActionType.GRAPH_STALENESS_FLAGGED.value
+    assert isinstance(events[0].payload, StalenessFlaggedPayload)
+    assert events[0].payload.edge_id == "edge-stale"
+
+
+def test_scan_graph_edge_staleness_does_not_treat_default_valid_from_as_old(tmp_path):
+    db_path = tmp_path / "graph.duckdb"
+    init_database_at_path(str(db_path))
+    as_of = datetime(2026, 7, 7, tzinfo=UTC)
+    _seed_edge(
+        db_path,
+        edge_id="edge-default-valid-from",
+        relation="led_by",
+        published_at=None,
+    )
+
+    with connect_read(str(db_path)) as con:
+        result = scan_graph_edge_staleness(
+            con,
+            investigation_id="inv-default-valid-from",
+            as_of=as_of,
+        )
+
+    assert result.scanned == 1
+    assert result.flagged == ()
+    assert trajectory("inv-default-valid-from") == []

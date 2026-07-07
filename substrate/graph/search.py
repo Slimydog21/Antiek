@@ -36,6 +36,7 @@ from collections.abc import Sequence
 from typing import Any, Protocol
 
 from substrate.graph import retrieval_gate as _retrieval_gate
+from substrate.graph.embedding_meta import assert_embedding_compatible
 from substrate.graph.retrieval_gate import non_privileged_chunk_sql_clause
 
 # Back-compat re-exports (tests / attribution import these from search).
@@ -212,6 +213,7 @@ def search(
             f"EmbeddingModel.encode returned {len(query_vec)} dims; "
             f"model.dimension is {dim}. Match them."
         )
+    assert_embedding_compatible(con, model)
 
     sim_expr = cosine_similarity_sql("c.embedding", query_vec, dim)
 
@@ -278,7 +280,9 @@ def search(
         "query": query,
         "top_k": top_k,
         "results": results,
-        "node_matches": search_nodes_by_label(con, query, limit=10),
+        "node_matches": search_nodes_by_label(
+            con, query, limit=10, policy_tag=policy_tag,
+        ),
     }
 
 
@@ -336,19 +340,42 @@ def _fetch_edges_and_nodes(
 
 def search_nodes_by_label(
     con: Any, query: str, limit: int = 10,
+    *,
+    policy_tag: str = "attribution_eligible",
 ) -> list[dict[str, Any]]:
-    """ILIKE search over ``nodes.canonical_label``. Used as a companion
-    to vector search for label-direct hits — "PsiQuantum" as a query
-    should find the PsiQuantum node even if no chunk embedding is
-    closer than another."""
+    """ILIKE search over ``nodes.canonical_label``, §9.0-gated (SPR-01).
+
+    Companion to vector search for label-direct hits — "PsiQuantum" as a query
+    should find the PsiQuantum node even if no chunk embedding is closer than
+    another. This result is returned as ``node_matches`` on the serve payload
+    (``retrieval_substrate.py`` / ``search()``) and read by the LLM, so it is a
+    §9.0 serve surface: a ``personal_reading`` node label must NOT reach a
+    non-owner.
+
+    ``policy_tag`` **defaults to the non-privileged (safe) value**
+    ``"attribution_eligible"`` on purpose: a caller that forgets the argument
+    gets the *gated* result, never the leak (fail-safe, not fail-open — the
+    §9.0 legal invariant makes an accidental leak unacceptable). Only tags in
+    ``retrieval_gate.PRIVILEGED_POLICY_TAGS`` (owner ``private_research`` /
+    ``operator_only``) return every labeled node.
+
+    The gate — the exclusion set and privileged-tag logic, and the
+    node→document provenance join with most-restrictive-wins + fail-closed on
+    unresolved provenance — lives entirely in
+    ``retrieval_gate.non_privileged_node_provenance_clause`` (the single
+    canonical source, reused not reinvented)."""
+    gate_sql, gate_params = _retrieval_gate.non_privileged_node_provenance_clause(
+        node_alias="n",
+        policy_tag=policy_tag,
+    )
     rows = con.execute(
-        """
-        SELECT node_id, node_type, canonical_label
-        FROM nodes
-        WHERE canonical_label ILIKE ?
+        f"""
+        SELECT n.node_id, n.node_type, n.canonical_label
+        FROM nodes n
+        WHERE n.canonical_label ILIKE ?{gate_sql}
         LIMIT ?
         """,
-        [f"%{query}%", int(limit)],
+        [f"%{query}%", *gate_params, int(limit)],
     ).fetchall()
     return [
         {"node_id": r[0], "node_type": r[1], "label": r[2]}

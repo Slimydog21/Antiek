@@ -214,6 +214,39 @@ def test_export_markdown_includes_title_and_sections(temp_substrate):
     assert body["filename"].endswith(".md")
 
 
+def test_edit_round_trip_reload_and_export_agree(temp_substrate):
+    """SPR-02: a saved manual /write edit survives BOTH reads the operator
+    ships from — the reload re-fetch (GET /deliverables/{id}) AND the export
+    (GET /deliverables/{id}/export). Both read
+    ``deliverable_sections.prose_text`` (app.py:2573 and :2890), the same
+    column PATCH /sections/{id}/prose writes (:2801) — so there is no column
+    mismatch where one read sees the edit and the other doesn't. The /write
+    editor now reaches this PATCH via updateSectionProse (Outline SPR-02); this
+    proves the persisted edit is durable on both surfaces, not just one."""
+    client = _client(temp_substrate)
+    did, sid = _make_deliverable_with_section(client)
+
+    # The manual edit the /write editor persists (was silently dropped before
+    # the onContentChange wiring — the Outline mount had no handler).
+    edited = "The operator sharpened this thesis by hand — keep it."
+    resp = client.patch(f"/sections/{sid}/prose", json={"prose_text": edited})
+    assert resp.status_code == 202
+    assert resp.json()["status"] == "saved"
+
+    # Direction 1 — reload re-fetch (what a page reload calls).
+    detail = client.get(f"/deliverables/{did}")
+    assert detail.status_code == 200
+    section = next(
+        s for s in detail.json()["sections"] if s["section_id"] == sid
+    )
+    assert section["prose_text"] == edited
+
+    # Direction 2 — export path (what the operator ships from).
+    export = client.get(f"/deliverables/{did}/export?format=markdown")
+    assert export.status_code == 200
+    assert edited in export.json()["content"]
+
+
 def test_export_html_escapes_content(temp_substrate):
     client = _client(temp_substrate)
     did, sid = _make_deliverable_with_section(client)

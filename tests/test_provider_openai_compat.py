@@ -83,6 +83,55 @@ def test_openai_compat_basic_call_and_headers_and_body():
     assert body["messages"] == [{"role": "user", "content": "hello"}]
 
 
+def test_openai_compat_extra_body_merged_into_request():
+    """extra_body fields (e.g. z.ai's thinking toggle) merge into the request
+    body on top of the core shape — the mechanism that lets the zai provider
+    run GLM-5.2 with thinking=disabled without a subclass."""
+    import json
+
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = httpx.Request.read(req)
+        return httpx.Response(200, json=_ok_response_payload("ok"))
+
+    p = OpenAICompatProvider(
+        name="zai", base_url="https://api.z.ai/api/paas/v4",
+        api_key="zai-key", client=_make_client(handler),
+        chat_completions_path="/chat/completions",
+        extra_body={"thinking": {"type": "disabled"}},
+    )
+    p.call(model="glm-5.2", prompt="hi", max_tokens=64, temperature=0.2)
+
+    body = json.loads(captured["body"])
+    # core request shape intact
+    assert body["model"] == "glm-5.2"
+    assert body["messages"] == [{"role": "user", "content": "hi"}]
+    # vendor-specific field merged on top
+    assert body["thinking"] == {"type": "disabled"}
+
+
+def test_openai_compat_no_extra_body_leaves_standard_shape():
+    """No extra_body -> the request body is the standard OpenAI shape only
+    (no spurious vendor fields). Regression guard for the default path."""
+    import json
+
+    captured: dict[str, Any] = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        captured["body"] = httpx.Request.read(req)
+        return httpx.Response(200, json=_ok_response_payload("ok"))
+
+    p = OpenAICompatProvider(
+        name="deepseek", base_url="https://api.deepseek.com",
+        api_key="k", client=_make_client(handler),
+    )
+    p.call(model="m", prompt="x", max_tokens=10, temperature=0.0)
+    body = json.loads(captured["body"])
+    assert "thinking" not in body
+    assert set(body.keys()) == {"model", "max_tokens", "temperature", "messages"}
+
+
 def test_openai_compat_custom_chat_completions_path():
     """Some providers omit /v1; configure via ``chat_completions_path``."""
     captured: dict[str, Any] = {}

@@ -214,3 +214,100 @@ def test_committed_baselines_exist_and_are_dated() -> None:
         assert data["schema_version"] == 1
         assert data["generated_at"], f"{name} has no generation date"
         assert isinstance(data["violations"], list)
+
+
+# ----- content-keyed matching: line-shift defect fix --------------------
+
+
+def _write_src(path: Path, lines: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_enrich_preserves_grandfathered_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``enrich`` only ADDS snippet fields; (path,line,col,kind), lint,
+    schema_version and generated_at are byte-identical before/after. This is
+    the proof it is NOT a re-mint."""
+    _write_src(tmp_path / "substrate" / "a.py", ["import os", "x = 1"])
+    baseline = tmp_path / "mypy.json"
+    raw = {
+        "schema_version": 1,
+        "lint": "declared_bar_mypy",
+        "generated_at": "2026-06-02T00:00:00+00:00",
+        "violations": [
+            {"path": "substrate/a.py", "line": 2, "col": 0, "kind": "mypy:arg-type"}
+        ],
+    }
+    baseline.write_text(json.dumps(raw))
+    monkeypatch.chdir(tmp_path)
+    assert db.main(["enrich", "mypy", "--baseline-file", str(baseline)]) == 0
+    after = json.loads(baseline.read_text())
+    assert after["generated_at"] == raw["generated_at"]
+    assert after["lint"] == raw["lint"]
+    assert after["schema_version"] == 1
+    assert after["violations"][0]["snippet"] == "x = 1"
+    assert {
+        (v["path"], v["line"], v["col"], v["kind"]) for v in after["violations"]
+    } == {("substrate/a.py", 2, 0, "mypy:arg-type")}
+
+
+def test_enforce_mypy_line_shift_is_not_new(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End-to-end model of the defect + fix: capture an offense, then insert a
+    line above it so mypy reports it one line lower on identical source. With
+    content-keyed matching the shifted offense is NOT new (previously: RED)."""
+    src = tmp_path / "substrate" / "a.py"
+    _write_src(src, ["import os", "x = 1", "y = bad_call()"])
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        db,
+        "run_mypy",
+        lambda: [MypyError(path="substrate/a.py", line=3, col=0,
+                           code="arg-type", message="x")],
+    )
+    baseline = tmp_path / "mypy.json"
+    assert db.main(["capture", "mypy", "--baseline-file", str(baseline)]) == 0
+
+    # Mid-file insertion shifts the offense from line 3 to line 4 (identical text).
+    _write_src(src, ["import os", "x = 1", "# inserted", "y = bad_call()"])
+    monkeypatch.setattr(
+        db,
+        "run_mypy",
+        lambda: [MypyError(path="substrate/a.py", line=4, col=0,
+                           code="arg-type", message="x")],
+    )
+    assert db.main(["enforce", "mypy", "--baseline-file", str(baseline)]) == 0
+
+
+def test_enforce_mypy_genuine_new_still_reds_with_snippets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The no-mask guarantee, end-to-end: with snippets active, a NEW offense
+    on a source line the baseline has never seen still reds the gate."""
+    src = tmp_path / "substrate" / "a.py"
+    _write_src(src, ["import os", "x = 1", "y = bad_call()"])
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        db,
+        "run_mypy",
+        lambda: [MypyError(path="substrate/a.py", line=3, col=0,
+                           code="arg-type", message="x")],
+    )
+    baseline = tmp_path / "mypy.json"
+    db.main(["capture", "mypy", "--baseline-file", str(baseline)])
+
+    _write_src(src, ["import os", "x = 1", "y = bad_call()", "z = brand_new_bug()"])
+    monkeypatch.setattr(
+        db,
+        "run_mypy",
+        lambda: [
+            MypyError(path="substrate/a.py", line=3, col=0, code="arg-type", message="x"),
+            MypyError(path="substrate/a.py", line=4, col=0, code="arg-type", message="z"),
+        ],
+    )
+    assert db.main(["enforce", "mypy", "--baseline-file", str(baseline)]) == 1
+    assert "substrate/a.py:4:0: NEW mypy:arg-type" in capsys.readouterr().out

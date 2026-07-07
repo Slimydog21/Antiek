@@ -316,6 +316,43 @@ def _read_chunk(db_path: str, chunk_id: str) -> tuple[str, str | None, int] | No
     return str(row[0]), (row[1] if row[1] is not None else None), int(row[2])
 
 
+def _run_supersession_detection(db_path: str, edge_ids: list[str]) -> None:
+    """Best-effort supersession detection for a batch of just-written edges.
+
+    Opens its OWN write connection (re-acquiring the DuckDB single-writer lock)
+    AFTER the caller's extraction transaction has already committed, then runs
+    the per-edge contradiction scan (``middleware.supersession.db.detect_for_edge``)
+    which writes open CANDIDATE rows into ``supersession_candidates``. It never
+    mutates an edge — only ``apply_review`` (the review endpoint) does, on an
+    explicit reviewer decision.
+
+    Every failure path is swallowed: detection is a non-critical enrichment of
+    the review queue, and invariant #1 is that a detection problem must NEVER
+    break extraction. The ``detect_for_edge`` import is resolved lazily and
+    guarded so a supersession-layer import error degrades to "no detection"
+    rather than "no extraction" (the peer-layer import is clean — supersession
+    only depends on ``runtime.db_lock`` and its own submodule, no cycle)."""
+    if not edge_ids:
+        return
+    try:
+        from middleware.supersession.db import detect_for_edge
+    except Exception:  # pragma: no cover — supersession is optional; never fatal
+        return
+    try:
+        ensure_initialized(db_path)
+        con = connect_write(db_path, purpose="supersession.detect_for_edge")
+    except Exception:  # pragma: no cover — lock contention / io; never fatal
+        return
+    try:
+        for eid in edge_ids:
+            try:
+                detect_for_edge(con, eid)
+            except Exception:  # pragma: no cover — per-edge; never fatal
+                continue
+    finally:
+        con.close()
+
+
 def extract_from_chunk(
     *,
     chunk_id: str,
@@ -372,6 +409,7 @@ def extract_from_chunk(
     nodes_skipped = 0
     edges_written = 0
     edges_skipped = 0
+    written_edge_ids: list[str] = []
     try:
         for n in nodes:
             try:
@@ -405,7 +443,7 @@ def extract_from_chunk(
                 edges_skipped += 1
                 continue
             try:
-                insert_edge(
+                new_edge_id = insert_edge(
                     con,
                     source_node_id=src_global,
                     target_node_id=tgt_global,
@@ -420,10 +458,19 @@ def extract_from_chunk(
                     on_conflict="ignore",
                 )
                 edges_written += 1
+                written_edge_ids.append(new_edge_id)
             except Exception:  # pragma: no cover — defensive
                 edges_skipped += 1
     finally:
         con.close()
+
+    # Best-effort supersession detection (GF-5/GF-6 activation). Runs in its
+    # OWN write connection AFTER the extraction transaction has committed, so
+    # a detection failure can NEVER break extraction (invariant #1: extraction
+    # reliability). Detection writes CANDIDATE rows only (middleware/
+    # supersession/db.py); it never mutates an edge — only apply_review does,
+    # on an explicit reviewer decision via POST /supersession/{id}/review.
+    _run_supersession_detection(resolved_db, written_edge_ids)
 
     return ExtractionResult(
         chunk_id=chunk_id,

@@ -43,6 +43,7 @@ import duckdb
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from roles.creative_writer.prompt import AdjacentSection
 from roles.interviewer.drivers import DriverSet
 from runtime.db_lock import connect_write
 from substrate.graph import default_db_path, ensure_initialized
@@ -105,7 +106,7 @@ def _translate() -> Iterator[None]:
     try:
         yield
     except (OutlineBlockError, OutlineError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +114,7 @@ def _translate() -> Iterator[None]:
 # ---------------------------------------------------------------------------
 
 
-def _block_dict(b: OutlineBlock) -> dict:
+def _block_dict(b: OutlineBlock) -> dict[str, Any]:
     return {
         "outline_block_id": b.outline_block_id, "section_id": b.section_id,
         "block_kind": b.block_kind, "provenance_kind": b.provenance_kind,
@@ -122,7 +123,7 @@ def _block_dict(b: OutlineBlock) -> dict:
     }
 
 
-def _node_dict(n: OutlineNode) -> dict:
+def _node_dict(n: OutlineNode) -> dict[str, Any]:
     return {
         "section_id": n.section_id, "title": n.title, "depth": n.depth,
         "section_index": n.section_index,
@@ -186,7 +187,7 @@ class PromoteContextRequest(BaseModel):
 
 
 @write_router.post("/blocks", status_code=201)
-def place_outline_block(req: PlaceBlockRequest) -> dict:
+def place_outline_block(req: PlaceBlockRequest) -> dict[str, Any]:
     with _translate(), _write("write/place_block") as con:
         if con.execute(
             "SELECT 1 FROM deliverable_sections WHERE section_id = ?", [req.section_id]
@@ -201,7 +202,7 @@ def place_outline_block(req: PlaceBlockRequest) -> dict:
 
 
 @write_router.post("/blocks/{outline_block_id}/move", status_code=202)
-def move_outline_block(outline_block_id: str, req: MoveBlockRequest) -> dict:
+def move_outline_block(outline_block_id: str, req: MoveBlockRequest) -> dict[str, Any]:
     with _translate(), _write("write/move_block") as con:
         move_block(
             con, outline_block_id=outline_block_id,
@@ -211,7 +212,7 @@ def move_outline_block(outline_block_id: str, req: MoveBlockRequest) -> dict:
 
 
 @write_router.delete("/blocks/{outline_block_id}", status_code=200)
-def delete_outline_block(outline_block_id: str) -> dict:
+def delete_outline_block(outline_block_id: str) -> dict[str, Any]:
     with _write("write/remove_block") as con:
         removed = remove_block(con, outline_block_id=outline_block_id)
     if not removed:
@@ -220,7 +221,7 @@ def delete_outline_block(outline_block_id: str) -> dict:
 
 
 @write_router.get("/sections/{section_id}/blocks")
-def get_section_blocks(section_id: str) -> dict:
+def get_section_blocks(section_id: str) -> dict[str, Any]:
     with _read() as con:
         blocks = list_section_blocks(con, section_id)
         # The routed outline renders block TEXT, never an id (SPR-07 M2:
@@ -246,14 +247,14 @@ def get_section_blocks(section_id: str) -> dict:
 
 
 @write_router.get("/deliverables/{deliverable_id}/outline")
-def get_outline(deliverable_id: str) -> dict:
+def get_outline(deliverable_id: str) -> dict[str, Any]:
     with _read() as con:
         roots = build_outline_tree(con, deliverable_id)
     return {"deliverable_id": deliverable_id, "roots": [_node_dict(n) for n in roots]}
 
 
 @write_router.get("/blocks/{outline_block_id}/provenance")
-def get_provenance(outline_block_id: str) -> dict:
+def get_provenance(outline_block_id: str) -> dict[str, Any]:
     with _read() as con:
         if get_block(con, outline_block_id) is None:
             raise HTTPException(status_code=404, detail="outline block not found")
@@ -272,7 +273,7 @@ def get_provenance(outline_block_id: str) -> dict:
 
 
 @write_router.get("/blocks/{outline_block_id}/trace")
-def get_trace_target(outline_block_id: str) -> dict:
+def get_trace_target(outline_block_id: str) -> dict[str, Any]:
     with _read() as con:
         if get_block(con, outline_block_id) is None:
             raise HTTPException(status_code=404, detail="outline block not found")
@@ -292,14 +293,14 @@ def get_trace_target(outline_block_id: str) -> dict:
 
 
 @write_router.post("/folders", status_code=201)
-def create_folder(req: CreateFolderRequest) -> dict:
+def create_folder(req: CreateFolderRequest) -> dict[str, Any]:
     with _write("write/create_folder") as con:
         fid = folders_mod.create_folder(con, name=req.name)
     return {"folder_id": fid}
 
 
 @write_router.get("/folders")
-def list_folders() -> dict:
+def list_folders() -> dict[str, Any]:
     with _read() as con:
         items = folders_mod.list_folders(con)
     return {
@@ -312,14 +313,14 @@ def list_folders() -> dict:
 
 
 @write_router.post("/folders/{folder_id}/blocks", status_code=202)
-def add_folder_block(folder_id: str, req: FolderMemberRequest) -> dict:
+def add_folder_block(folder_id: str, req: FolderMemberRequest) -> dict[str, Any]:
     with _write("write/add_folder_block") as con:
         created = folders_mod.add_block_to_folder(con, folder_id=folder_id, node_id=req.node_id)
     return {"status": "added" if created else "already_member"}
 
 
 @write_router.delete("/folders/{folder_id}/blocks/{node_id}", status_code=200)
-def remove_folder_block(folder_id: str, node_id: str) -> dict:
+def remove_folder_block(folder_id: str, node_id: str) -> dict[str, Any]:
     with _write("write/remove_folder_block") as con:
         removed = folders_mod.remove_block_from_folder(con, folder_id=folder_id, node_id=node_id)
     return {"status": "removed" if removed else "not_member"}
@@ -331,7 +332,7 @@ def search_repository(
     folder_id: str | None = Query(default=None),
     source_document_id: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
-) -> dict:
+) -> dict[str, Any]:
     with _read() as con:
         hits = block_search.search_blocks(
             con, query=q, folder_id=folder_id,
@@ -356,7 +357,7 @@ def search_repository(
 
 
 @write_router.post("/brainstorm/emit-blocks", status_code=201)
-def emit_brainstorm_blocks(req: BrainstormBlocksRequest) -> dict:
+def emit_brainstorm_blocks(req: BrainstormBlocksRequest) -> dict[str, Any]:
     drivers = DriverSet(
         insights=req.insights, questions=req.questions, data_points=req.data_points,
     )
@@ -385,7 +386,7 @@ def emit_brainstorm_blocks(req: BrainstormBlocksRequest) -> dict:
 
 
 @write_router.post("/context/promote", status_code=201)
-def promote_context(req: PromoteContextRequest) -> dict:
+def promote_context(req: PromoteContextRequest) -> dict[str, Any]:
     specs = [
         ContextBlockSpec(
             block_kind=b.block_kind, provenance_kind=b.provenance_kind,
@@ -411,7 +412,7 @@ def promote_context(req: PromoteContextRequest) -> dict:
 
 
 @write_router.post("/sections/{section_id}/generate", status_code=200)
-def generate_section_draft(section_id: str) -> dict:
+def generate_section_draft(section_id: str) -> dict[str, Any]:
     """Generate a section's prose from its attached OutlineBlocks.
 
     The no-blocks→gap path needs no model. The live generation path routes
@@ -430,6 +431,38 @@ def generate_section_draft(section_id: str) -> dict:
         deliverable_id, dtitle, dkind, stitle = row
         blocks = list_section_blocks(con, section_id)
 
+        # Multi-section coherence (§10.6): give the role the deliverable's
+        # other sections in outline order so it can keep a multi-section
+        # deliverable coherent — prior sections carry their prose (so the
+        # model does not repeat them), upcoming sections carry only a title
+        # (so it can hand off). section_index/section_count come from the
+        # real outline position, not a single-section placeholder.
+        # Order by (section_index, section_id) — the SAME total order the
+        # canonical outline reader uses (substrate/write/outline.py), because
+        # section_index is sibling-scoped and carries no UNIQUE constraint, so
+        # ordering by it alone is nondeterministic once nesting introduces
+        # duplicate indices. The section_id tiebreaker makes this path agree
+        # with every other reader of the outline.
+        section_rows = con.execute(
+            "SELECT section_id, title, prose_text "
+            "FROM deliverable_sections WHERE deliverable_id = ? "
+            "ORDER BY section_index, section_id",
+            [deliverable_id],
+        ).fetchall()
+        section_count = len(section_rows)
+        this_index = next(
+            (i for i, r in enumerate(section_rows) if r[0] == section_id), 0
+        )
+        adjacent_sections = [
+            AdjacentSection(
+                section_index=i,
+                title=r[1] or "",
+                prose_text=(r[2] if i < this_index else None),
+            )
+            for i, r in enumerate(section_rows)
+            if r[0] != section_id
+        ]
+
         def _resolve_label(node_id: str) -> str:
             r = con.execute(
                 "SELECT canonical_label FROM nodes WHERE node_id = ?", [node_id]
@@ -438,8 +471,10 @@ def generate_section_draft(section_id: str) -> dict:
 
         ctx = build_creative_writer_context(
             deliverable_title=dtitle, deliverable_kind=dkind,
-            section_title=stitle or "", section_index=0, section_count=1,
-            blocks=blocks, node_label_resolver=_resolve_label,
+            section_title=stitle or "", section_index=this_index,
+            section_count=section_count, blocks=blocks,
+            adjacent_sections=adjacent_sections,
+            node_label_resolver=_resolve_label,
         )
 
     if not ctx.blocks:
@@ -453,14 +488,14 @@ def generate_section_draft(section_id: str) -> dict:
             ctx=ctx, dispatch_fn=default_dispatch_fn(investigation_id=deliverable_id),
             section_id=section_id,
         )
-    except KeyError:
+    except KeyError as e:
         # creative_writer not wired into the dispatch config.
         raise HTTPException(
             status_code=503,
             detail="generation unavailable: creative_writer is not in the dispatch config",
-        )
+        ) from e
     except Exception as e:  # provider/credential failure
-        raise HTTPException(status_code=503, detail=f"generation unavailable: {e}")
+        raise HTTPException(status_code=503, detail=f"generation unavailable: {e}") from e
 
     report = result.citation_report
     # M3: persist prose_provenance so the X-ray can read paragraph→blocks back.
@@ -527,6 +562,7 @@ class FromInvestigationResponse(BaseModel):
     source_node_count: int
     insufficient_evidence: bool
     synthesis_id: str | None = None
+    synthesis_status: str | None = None
     synthesis_recommendation: str | None = None
 
 
@@ -566,7 +602,7 @@ def promote_investigation(req: FromInvestigationRequest) -> FromInvestigationRes
                 "error": "no_synthesis",
                 "reason": (
                     f"investigation {req.investigation_id!r} has no depositable "
-                    "synthesis to promote"
+                    "(completed, non-draft) synthesis to promote"
                 ),
                 "investigation_id": req.investigation_id,
             },
@@ -579,5 +615,83 @@ def promote_investigation(req: FromInvestigationRequest) -> FromInvestigationRes
         source_node_count=result.source_node_count,
         insufficient_evidence=result.insufficient_evidence,
         synthesis_id=result.synthesis_id,
+        synthesis_status=result.synthesis_status,
         synthesis_recommendation=result.synthesis_recommendation,
     )
+
+
+# ---------------------------------------------------------------------------
+# Cmd+K selection edit (CK-5) — the Cursor writing-flow affordance
+# ---------------------------------------------------------------------------
+# Appended at end-of-file for the same declared-bar reason as the investigation
+# block above: the baseline keys this file's mypy violations by exact line
+# number, so a mid-file insertion would orphan those keys and flag them NEW.
+# An append shifts nothing above -> the committed baseline stays exact.
+
+
+class EditSelectionRequest(BaseModel):
+    """A highlighted span of deliverable prose + the writer's edit instruction.
+
+    The span is deliverable prose (the model's own already-generated,
+    citation-bearing output), not restricted source, so a stylistic edit
+    introduces no source-redistribution concern and no new factual claims;
+    the section's prose_provenance (paragraph -> blocks) stays valid."""
+
+    deliverable_id: str
+    section_id: str
+    selection_text: str = Field(..., min_length=1, max_length=8000)
+    instruction: str = Field(..., min_length=1, max_length=1000)
+
+
+@write_router.post("/edit-selection", status_code=200)
+def edit_selection(req: EditSelectionRequest) -> dict[str, Any]:
+    """Rewrite a highlighted span of deliverable prose per a natural-language
+    instruction — the Cursor Cmd+K writing-flow affordance.
+
+    The selection is deliverable prose (the model's §9.0-cleared output, not
+    restricted source), so a stylistic edit (stronger / more concise / rephrase)
+    adds no source-redistribution concern and no new claims: the section's
+    prose_provenance (paragraph -> OutlineBlocks) stays valid. Returns ONLY the
+    edited span; the client replaces the selection in place and funnels the
+    result through the existing patch_section_prose path, so provenance and the
+    single-writer discipline are unchanged. This endpoint never persists on its
+    own.
+
+    Dispatches role=creative_writer (pro tier, GLM-5.2). Absent config or
+    credentials it surfaces a clear 503 rather than fabricating prose. Cost is
+    bounded by a selection-derived max_tokens cap."""
+    # Cost bound: the edited span is at most ~2x the selection. tokens ~= chars/4,
+    # so give 2x headroom over the selection with a 128-token floor, capped at 2048.
+    max_tokens = min(2048, max(128, (len(req.selection_text) // 4) * 2 + 128))
+    prompt = (
+        "You are editing ONE highlighted span inside a longer document. Apply "
+        "the writer's instruction to the span exactly. Return ONLY the edited "
+        "span text with no preamble, no surrounding quotes, no explanation, and "
+        "nothing beyond the span. This is a stylistic edit: do NOT add new "
+        "factual claims, citations, or content that was not in the original "
+        "span.\n\n"
+        f"Instruction: {req.instruction}\n\n"
+        f"Span to edit:\n{req.selection_text}"
+    )
+    try:
+        from substrate.dispatch import dispatch
+
+        result = dispatch(
+            prompt=prompt,
+            role="creative_writer",
+            investigation_id=req.deliverable_id,
+            max_tokens=max_tokens,
+        )
+    except KeyError as exc:
+        # creative_writer not wired into the dispatch config.
+        raise HTTPException(
+            status_code=503,
+            detail="edit unavailable: creative_writer is not in the dispatch config",
+        ) from exc
+    except Exception as exc:  # provider/credential failure
+        raise HTTPException(status_code=503, detail=f"edit unavailable: {exc}") from exc
+    return {
+        "edited_text": result.text,
+        "deliverable_id": req.deliverable_id,
+        "section_id": req.section_id,
+    }

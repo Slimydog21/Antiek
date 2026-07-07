@@ -45,7 +45,7 @@ jobs:
         run: npm ci
 
       - name: Install Playwright chromium (Lost-Pixel uses it)
-        run: node node_modules/playwright-core/cli.js install chromium --with-deps
+        run: node node_modules/lost-pixel/node_modules/playwright-core/cli.js install chromium --with-deps
 
       - name: Build Storybook
         run: npm run build-storybook
@@ -68,7 +68,7 @@ jobs:
 
       - name: Upload diff artifacts on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lostpixel-diffs
           path: |
