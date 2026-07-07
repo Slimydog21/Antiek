@@ -34,10 +34,10 @@
   },
   "dependencies": {
     "@posthog/react": "^1.10.0",
-    "@tiptap/extension-link": "^3.23.6",
-    "@tiptap/extension-placeholder": "^3.23.6",
-    "@tiptap/react": "^3.23.6",
-    "@tiptap/starter-kit": "^3.23.6",
+    "@tiptap/extension-link": "^3.27.1",
+    "@tiptap/extension-placeholder": "^3.27.1",
+    "@tiptap/react": "^3.27.1",
+    "@tiptap/starter-kit": "^3.27.1",
     "framer-motion": "^12.40.0",
     "pdfjs-dist": "^4.7.76",
     "posthog-js": "^1.379.1",
@@ -49,7 +49,7 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.11.3",
+    "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "^1.60.0",
     "@storybook/addon-a11y": "^8.6.18",
     "@storybook/addon-essentials": "^8.4.7",
