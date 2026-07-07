@@ -15,7 +15,9 @@ Programmatic skill update on Phase 8 completion.
 skills tree into a temporary overlay, apply the candidate patch there
 without emitting production auto-patch events, and run held-out candidate
 backtests through an injected runner that receives the overlay skill root.
-The production investigation rerun implementation remains a later slice.
+Replay outputs can be evaluated against baseline reports through the
+existing backtest cohort comparator. The production investigation rerun
+implementation remains a later slice.
 
 ## Process skill codification (deferred)
 

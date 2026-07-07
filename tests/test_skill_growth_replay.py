@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from compounding.skill_growth import (
+    evaluate_candidate_replay_for_gate,
     materialize_candidate_skill_overlay,
     replay_candidate_backtest_cohort,
 )
@@ -26,7 +27,11 @@ def _synthesis(synthesis_id: str = "syn-overlay") -> dict:
     }
 
 
-def _report(synthesis_id: str) -> BacktestReport:
+def _report(
+    synthesis_id: str,
+    *,
+    outcome: str = "confirmed",
+) -> BacktestReport:
     return BacktestReport(
         synthesis_id=synthesis_id,
         synthesis_timestamp="2026-01-01T00:00:00Z",
@@ -38,7 +43,7 @@ def _report(synthesis_id: str) -> BacktestReport:
         superseded_edges_since=0,
         cited_edges_now_superseded=(),
         chunks_retired_downward=(),
-        outcomes=({"thesis_outcomes": [{"outcome": "confirmed"}]},),
+        outcomes=({"thesis_outcomes": [{"outcome": outcome}]},),
     )
 
 
@@ -209,3 +214,65 @@ def test_replay_candidate_backtest_cohort_requires_heldout_ids(
     assert replay.status == "no_heldout"
     assert replay.reports == ()
     assert replay.errors == ()
+
+
+def test_evaluate_candidate_replay_for_gate_reports_ready_delta(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+
+    def runner(synthesis_id: str, skills_root: Path) -> BacktestReport:
+        return _report(synthesis_id, outcome="confirmed")
+
+    replay = replay_candidate_backtest_cohort(
+        _synthesis(),
+        heldout_synthesis_ids=tuple(f"candidate-{i}" for i in range(3)),
+        baseline_skills_root=tmp_path / "baseline-skills",
+        overlay_parent=tmp_path,
+        backtest_runner=runner,
+    )
+    baseline = tuple(
+        _report(f"baseline-{i}", outcome="partially_confirmed")
+        for i in range(3)
+    )
+
+    evaluation = evaluate_candidate_replay_for_gate(
+        baseline_reports=baseline,
+        candidate_replay=replay,
+        minimum_graded_outcomes=3,
+    )
+
+    assert evaluation.ready_for_gate is True
+    assert evaluation.comparison.delta == 0.5
+    assert "candidate replay ready" in evaluation.notes
+
+
+def test_evaluate_candidate_replay_for_gate_refuses_partial_replay(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+
+    def runner(synthesis_id: str, skills_root: Path) -> BacktestReport:
+        if synthesis_id == "bad":
+            raise RuntimeError("candidate failed")
+        return _report(synthesis_id)
+
+    replay = replay_candidate_backtest_cohort(
+        _synthesis(),
+        heldout_synthesis_ids=("ok", "bad"),
+        baseline_skills_root=tmp_path / "baseline-skills",
+        overlay_parent=tmp_path,
+        backtest_runner=runner,
+    )
+
+    evaluation = evaluate_candidate_replay_for_gate(
+        baseline_reports=(_report("baseline-1"), _report("baseline-2")),
+        candidate_replay=replay,
+        minimum_graded_outcomes=1,
+    )
+
+    assert evaluation.ready_for_gate is False
+    assert "status=partial" in evaluation.notes
+    assert "failed=bad" in evaluation.notes
