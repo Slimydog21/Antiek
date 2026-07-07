@@ -2,7 +2,12 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { ArtifactExport } from "../../components/ArtifactExport";
 import { toast } from "../../components/lemon/LemonToast";
-import { getChunk, getTrajectory, startInvestigation } from "../../lib/api";
+import {
+  getChunk,
+  getTrajectory,
+  postTypedEvent,
+  startInvestigation,
+} from "../../lib/api";
 import type { ChunkResponse, InvestigationSummary } from "../../lib/api";
 import { parseSynthesis } from "../../lib/synthesisParser";
 import type {
@@ -1237,6 +1242,7 @@ function ReusedInsightLink({
       ? staleReuseRefreshChild(staleRefreshChildren, parentInvestigationId, insight)
       : null;
   const backendSpawnedId = backendChild?.investigation_id ?? null;
+  const acceptedSpawnedId = insight.acceptedRefresh?.refreshInvestigationId ?? null;
   const backendStatusLabel = backendChild
     ? refreshChildStatusLabel(backendChild.status)
     : null;
@@ -1244,16 +1250,21 @@ function ReusedInsightLink({
   const [error, setError] = useState<string | null>(null);
   const [spawnedId, setSpawnedId] = useState<string | null>(() =>
     canRefresh && parentInvestigationId
-      ? backendSpawnedId ?? readStaleReuseRefresh(parentInvestigationId, insight)
+      ? backendSpawnedId ??
+        acceptedSpawnedId ??
+        readStaleReuseRefresh(parentInvestigationId, insight)
       : null,
   );
   useEffect(() => {
     setSpawnedId(
       canRefresh && parentInvestigationId
-        ? backendSpawnedId ?? readStaleReuseRefresh(parentInvestigationId, insight)
+        ? backendSpawnedId ??
+          acceptedSpawnedId ??
+          readStaleReuseRefresh(parentInvestigationId, insight)
         : null,
     );
   }, [
+    acceptedSpawnedId,
     backendSpawnedId,
     canRefresh,
     parentInvestigationId,
@@ -1316,7 +1327,18 @@ function ReusedInsightLink({
           {backendStatusLabel}
         </span>
       )}
-      {backendChild && <RefreshChildResult child={backendChild} />}
+      {backendChild && (
+        <RefreshChildResult
+          child={backendChild}
+          insight={insight}
+          parentInvestigationId={parentInvestigationId}
+        />
+      )}
+      {!backendChild && insight.acceptedRefresh && (
+        <span className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight">
+          refresh accepted
+        </span>
+      )}
       {error && (
         <span className="ml-2 font-mono text-[11px] text-emperor">
           {error}
@@ -1347,8 +1369,23 @@ function ReusedInsightLink({
   );
 }
 
-function RefreshChildResult({ child }: { child: InvestigationSummary }) {
+function RefreshChildResult({
+  child,
+  insight,
+  parentInvestigationId,
+}: {
+  child: InvestigationSummary;
+  insight: ReusedInsight;
+  parentInvestigationId: string | null;
+}) {
   const [summary, setSummary] = useState<string | null>(null);
+  const [accepted, setAccepted] = useState(Boolean(insight.acceptedRefresh));
+  const [accepting, setAccepting] = useState(false);
+  const [acceptError, setAcceptError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setAccepted(Boolean(insight.acceptedRefresh));
+  }, [insight.acceptedRefresh]);
 
   useEffect(() => {
     if (child.status !== "completed") {
@@ -1376,12 +1413,61 @@ function RefreshChildResult({ child }: { child: InvestigationSummary }) {
   }, [child.investigation_id, child.status]);
 
   if (!summary) return null;
+  const acceptedSummary = summary;
+  async function acceptRefresh() {
+    if (!parentInvestigationId || accepting || accepted) return;
+    setAccepting(true);
+    setAcceptError(null);
+    try {
+      await postTypedEvent({
+        investigation_id: parentInvestigationId,
+        role: "operator",
+        policy_id: "operator-ui",
+        payload: {
+          action_type: "stale_reuse.refresh.accepted",
+          unit_id: insight.unitId,
+          source_investigation_id: insight.sourceInvestigationId,
+          refresh_investigation_id: child.investigation_id,
+          status: "refreshed",
+          summary: acceptedSummary,
+        },
+      });
+      setAccepted(true);
+    } catch (e) {
+      setAcceptError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAccepting(false);
+    }
+  }
+
   return (
-    <span
-      className="ml-2 font-mono text-[11px] text-ink-soft dark:text-starlight"
-      title="Read-only excerpt from the refresh child synthesis; it does not resolve the stale advisory by itself."
-    >
-      refresh result: {summary}
-    </span>
+    <>
+      <span
+        className="ml-2 font-mono text-[11px] text-ink-soft dark:text-starlight"
+        title="Read-only excerpt from the refresh child synthesis; it does not resolve the stale advisory by itself."
+      >
+        refresh result: {summary}
+      </span>
+      {accepted ? (
+        <span className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight">
+          refresh accepted
+        </span>
+      ) : (
+        <button
+          type="button"
+          className="ml-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight underline underline-offset-2 hover:text-ink dark:hover:text-bright disabled:opacity-60"
+          onClick={() => void acceptRefresh()}
+          disabled={!parentInvestigationId || accepting}
+          aria-label={`Accept refresh result for prior insight ${insight.unitId}`}
+        >
+          {accepting ? "Accepting..." : "Accept refresh"}
+        </button>
+      )}
+      {acceptError && (
+        <span className="ml-2 font-mono text-[11px] text-emperor">
+          {acceptError}
+        </span>
+      )}
+    </>
   );
 }

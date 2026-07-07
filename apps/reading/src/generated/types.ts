@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 30;
+export const EVENT_SCHEMA_VERSION = 31;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -78,6 +78,7 @@ export const ActionType = {
   CONTEXT_PACK_ASSEMBLED: "context_pack.assembled",
   KNOWLEDGE_REUSED: "knowledge.reused",
   REUSE_GATED: "reuse.gated",
+  STALE_REUSE_REFRESH_ACCEPTED: "stale_reuse.refresh.accepted",
   GRAPH_TIER_ASSIGNED: "graph.tier.assigned",
   DOCUMENT_LOADED: "document.loaded",
   DOCUMENT_REGION_SELECTED: "document.region_selected",
@@ -670,6 +671,23 @@ export interface KnowledgeReusedPayload {
   source_investigation_ids: string[];
   stale_advisory_unit_ids?: string[];
   context_pack_event_id: string;
+}
+
+/**
+ * GF-4m — explicit operator acceptance of a stale reused unit's refresh
+ * child result.
+ * This is advisory-resolution metadata for the reuse surface, not a graph
+ * mutation. The original stale provenance remains visible; this event records
+ * which refresh child and summary the operator accepted for that reused unit.
+ */
+export interface StaleReuseRefreshAcceptedPayload {
+  action_type: "stale_reuse.refresh.accepted";
+  unit_id: string;
+  source_investigation_id?: string | null;
+  refresh_investigation_id: string;
+  status?: "refreshed" | "confirmed_stale" | "dismissed";
+  summary?: string;
+  notes?: string;
 }
 
 /**
@@ -2596,6 +2614,7 @@ export type TypedPayload =
   | WorkerIdentityPayload
   | ContextPackAssembledPayload
   | KnowledgeReusedPayload
+  | StaleReuseRefreshAcceptedPayload
   | ReuseGatedPayload
   | DocumentLoadedPayload
   | DocumentRegionSelectedPayload
@@ -2722,7 +2741,7 @@ export interface Event {
   phase?: number | null;
   role?: string | null;
   action_type: ActionType;
-  payload: TypedPayload;
+  payload: DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | StaleReuseRefreshAcceptedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload;
   parent_event_id?: string | null;
   policy_id?: string;
   param_version: string;
@@ -2828,6 +2847,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "skill.auto_patch_skipped",
   "skill_rule.promoted",
   "source.read",
+  "stale_reuse.refresh.accepted",
   "synthesis.archived",
   "synthesis.master_md_skipped",
   "synthesis.master_md_written",

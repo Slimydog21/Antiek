@@ -119,6 +119,15 @@ export interface ReusedInsight {
    *  edges, so the user should refresh/confirm it before treating it as current.
    *  Absence means no stale advisory was recorded, not that freshness was proven. */
   staleRefreshAdvisory?: boolean;
+  /** Present only when the parent trajectory contains an explicit operator
+   *  acceptance of a refresh child result for this stale reused unit. */
+  acceptedRefresh?: StaleReuseRefreshAcceptance;
+}
+
+export interface StaleReuseRefreshAcceptance {
+  refreshInvestigationId: string;
+  status: "refreshed" | "confirmed_stale" | "dismissed";
+  summary: string;
 }
 
 /**
@@ -251,6 +260,21 @@ interface KnowledgeReusedPayloadShape {
   stale_advisory_unit_ids?: string[];
 }
 
+interface StaleReuseRefreshAcceptedPayloadShape {
+  unit_id?: string;
+  source_investigation_id?: string | null;
+  refresh_investigation_id?: string;
+  status?: "refreshed" | "confirmed_stale" | "dismissed";
+  summary?: string;
+}
+
+function staleRefreshAcceptanceKey(
+  unitId: string,
+  sourceInvestigationId: string | null,
+): string {
+  return `${unitId}\u0000${sourceInvestigationId ?? ""}`;
+}
+
 /** SPR-10 M4 — a SPECULATIVE per-run compounding measurement payload. NO event
  *  of this shape exists on the substrate today (there is no `compounding.measured`
  *  ActionType — SPR-09's `compounding/benchmark/` is a cross-arm benchmark, not a
@@ -292,6 +316,7 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
   // SPR-10 M2: the reused prior insights, READ from every knowledge.reused event
   // (an investigation may emit more than one — union them in encounter order).
   const reuseProvenance: ReusedInsight[] = [];
+  const acceptedRefreshes = new Map<string, StaleReuseRefreshAcceptance>();
   // SPR-10 M4: the per-run compounding measurement, READ from a persisted
   // per-run measurement event. None exists on the substrate today (see
   // CompoundingMeasuredPayloadShape); seen only when a synthetic/future event
@@ -349,6 +374,24 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
             : {}),
         });
       });
+    } else if (at === "stale_reuse.refresh.accepted") {
+      const accepted = p as StaleReuseRefreshAcceptedPayloadShape | undefined;
+      if (
+        typeof accepted?.unit_id === "string" &&
+        typeof accepted.refresh_investigation_id === "string"
+      ) {
+        acceptedRefreshes.set(
+          staleRefreshAcceptanceKey(
+            accepted.unit_id,
+            accepted.source_investigation_id ?? null,
+          ),
+          {
+            refreshInvestigationId: accepted.refresh_investigation_id,
+            status: accepted.status ?? "refreshed",
+            summary: accepted.summary ?? "",
+          },
+        );
+      }
     } else if (at === COMPOUNDING_MEASURED_ACTION_TYPE) {
       // SPR-10 M4: NO event of this action_type exists on the substrate today
       // (it is not in generated/types.ts ActionType). This branch is the future
@@ -437,7 +480,12 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
 
   // SPR-10 M2: attach the reused prior insights (empty when nothing was reused —
   // the viewer then renders nothing, the present-only discipline).
-  result.reuseProvenance = reuseProvenance;
+  result.reuseProvenance = reuseProvenance.map((insight) => {
+    const acceptedRefresh = acceptedRefreshes.get(
+      staleRefreshAcceptanceKey(insight.unitId, insight.sourceInvestigationId),
+    );
+    return acceptedRefresh ? { ...insight, acceptedRefresh } : insight;
+  });
 
   // SPR-10 M4: attach the per-run compounding stat — READ from a per-run
   // MEASUREMENT event ONLY. Per M4's acceptance criteria the field is "null when

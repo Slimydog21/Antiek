@@ -233,6 +233,33 @@ describe("parseSynthesis — reuse provenance (SPR-10 M2)", () => {
       staleRefreshAdvisory: true,
     });
   });
+
+  it("attaches accepted stale-refresh child results by unit and source investigation", () => {
+    const synth = withReuse([
+      ev("knowledge.reused", {
+        reused_unit_ids: ["unit-stale", "unit-other"],
+        scores: [0.81, 0.75],
+        source_investigation_ids: ["inv-source", "inv-other"],
+        stale_advisory_unit_ids: ["unit-stale"],
+        context_pack_event_id: "evt-1",
+      }),
+      ev("stale_reuse.refresh.accepted", {
+        action_type: "stale_reuse.refresh.accepted",
+        unit_id: "unit-stale",
+        source_investigation_id: "inv-source",
+        refresh_investigation_id: "inv-refresh",
+        status: "refreshed",
+        summary: "Source claim remains current after refresh.",
+      }),
+    ]);
+
+    expect(synth!.reuseProvenance[0].acceptedRefresh).toEqual({
+      refreshInvestigationId: "inv-refresh",
+      status: "refreshed",
+      summary: "Source claim remains current after refresh.",
+    });
+    expect(synth!.reuseProvenance[1].acceptedRefresh).toBeUndefined();
+  });
 });
 
 // ── SPR-10 M4 — the per-run compounding stat (real `reused`, honest nulls) ──

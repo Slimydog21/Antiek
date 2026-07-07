@@ -29,12 +29,14 @@ const {
   getChunkMock,
   apiFetchMock,
   getTrajectoryMock,
+  postTypedEventMock,
   startInvestigationMock,
   recordSpawnRelationshipMock,
 } = vi.hoisted(() => ({
   getChunkMock: vi.fn(),
   apiFetchMock: vi.fn(),
   getTrajectoryMock: vi.fn(),
+  postTypedEventMock: vi.fn(),
   startInvestigationMock: vi.fn(),
   recordSpawnRelationshipMock: vi.fn(),
 }));
@@ -46,6 +48,7 @@ vi.mock("../../lib/api", async (orig) => {
     getChunk: getChunkMock,
     apiFetch: apiFetchMock,
     getTrajectory: getTrajectoryMock,
+    postTypedEvent: postTypedEventMock,
     startInvestigation: startInvestigationMock,
   };
 });
@@ -104,6 +107,7 @@ afterEach(() => {
   window.localStorage.removeItem(STALE_REUSE_REFRESH_STORAGE_KEY);
   getChunkMock.mockReset();
   getTrajectoryMock.mockReset();
+  postTypedEventMock.mockReset();
   startInvestigationMock.mockReset();
   recordSpawnRelationshipMock.mockReset();
   if (PRIOR_RESIZE_OBSERVER === undefined) {
@@ -1099,6 +1103,84 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
     );
     expect(getTrajectoryMock).toHaveBeenCalledWith("inv-refresh-from-api");
     expect(startInvestigationMock).not.toHaveBeenCalled();
+  });
+
+  it("emits an acceptance event for a completed stale refresh child", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    postTypedEventMock.mockResolvedValue({
+      event_id: "evt-accept",
+      action_type: "stale_reuse.refresh.accepted",
+    });
+    getTrajectoryMock.mockResolvedValue({
+      events: [
+        {
+          event_id: "evt-start",
+          investigation_id: "inv-refresh-from-api",
+          action_type: "investigation.start_requested",
+          payload: { question: "Refresh?" },
+          emitted_at: "2026-07-07T13:00:00Z",
+        },
+        {
+          event_id: "evt-synth",
+          investigation_id: "inv-refresh-from-api",
+          action_type: "synthesize.delivered",
+          payload: {
+            thesis_summary: "Source claim remains current after checking the newer corpus.",
+            thesis_components: [],
+            implicit_recommendation: "proceed",
+          },
+          emitted_at: "2026-07-07T13:01:00Z",
+        },
+      ],
+    });
+
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          investigationId: "inv-parent",
+          reuseProvenance: [
+            {
+              unitId: "unit-stale",
+              sourceInvestigationId: "inv-source",
+              score: 0.81,
+              staleRefreshAdvisory: true,
+            },
+          ],
+          compoundingStat: null,
+        })}
+        staleRefreshChildren={[
+          investigationSummary({
+            investigation_id: "inv-refresh-from-api",
+            parent_investigation_id: "inv-parent",
+            spawn_context:
+              "stale-reuse-refresh unit_id=unit-stale source_investigation_id=inv-source",
+          }),
+        ]}
+      />,
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Accept refresh result for prior insight unit-stale",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(postTypedEventMock).toHaveBeenCalledWith({
+        investigation_id: "inv-parent",
+        role: "operator",
+        policy_id: "operator-ui",
+        payload: {
+          action_type: "stale_reuse.refresh.accepted",
+          unit_id: "unit-stale",
+          source_investigation_id: "inv-source",
+          refresh_investigation_id: "inv-refresh-from-api",
+          status: "refreshed",
+          summary: "Source claim remains current after checking the newer corpus.",
+        },
+      }),
+    );
+    expect(screen.getByText("refresh accepted")).toBeTruthy();
   });
 
   it("renders the three exact numbers when a measurement is present (M4 seed-and-catch)", async () => {

@@ -55,6 +55,7 @@ from substrate.schemas import (  # noqa: E402
     QuestionEscalatedToResearchPayload,
     QuestionIdentifiedPayload,
     QuestionResolvedByDocPayload,
+    StaleReuseRefreshAcceptedPayload,
     UserAcceptDistillationPayload,
     UserEditDistillationPayload,
     UserRejectDistillationPayload,
@@ -192,6 +193,14 @@ def _make_payload(at: ActionType):
         return ArtifactInteractedPayload(
             artifact_id="art-1", interaction_kind="opened",
         )
+    if at == ActionType.STALE_REUSE_REFRESH_ACCEPTED:
+        return StaleReuseRefreshAcceptedPayload(
+            unit_id="unit-stale",
+            source_investigation_id="inv-source",
+            refresh_investigation_id="inv-refresh",
+            status="refreshed",
+            summary="Source claim remains current after refresh.",
+        )
     raise ValueError(f"no factory registered for {at!r}")
 
 
@@ -217,6 +226,7 @@ TYPED_ACTION_TYPES_LIST = [
     ActionType.USER_EDIT_DISTILLATION,
     ActionType.ARTIFACT_GENERATED,
     ActionType.ARTIFACT_INTERACTED,
+    ActionType.STALE_REUSE_REFRESH_ACCEPTED,
 ]
 
 
@@ -413,7 +423,7 @@ def test_claim_confidence_levels_match_constants():
     """Claim.confidence must use the same vocabulary as
     ``substrate.constants.CONFIDENCE_LEVELS``. If one drifts from the
     other, downstream backtests stratify against an inconsistent set."""
-    c = Claim(claim_id="c", text="t", confidence="moderate", attribution_region_ids=[])
+    Claim(claim_id="c", text="t", confidence="moderate", attribution_region_ids=[])
     # The schema-side Literal accepts the constants-side tuple values.
     for level in CONFIDENCE_LEVELS:
         Claim(claim_id="c", text="t", confidence=level, attribution_region_ids=[])
