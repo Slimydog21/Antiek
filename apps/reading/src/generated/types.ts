@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 29;
+export const EVENT_SCHEMA_VERSION = 30;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -1462,7 +1462,9 @@ export interface ConnectorDeliveredPayload {
  * (decomposer, evidence_retriever, parameter_extractor, connector)
  * have all delivered. Carries the five pre-rendered prompt blocks
  * verbatim so the role's input is fully reconstructable from the
- * trajectory.
+ * trajectory. ``refresh_advisory_block`` is optional and carries
+ * stale-reuse refresh hints for the synthesizer; when omitted, the bridge
+ * derives it from same-investigation ``knowledge.reused`` telemetry.
  * 
  * Definition order note: this payload sits AFTER ``ConstraintSpec``
  * so its ``constraints: list[ConstraintSpec]`` field resolves at
@@ -1476,6 +1478,7 @@ export interface SynthesizeRequestedPayload {
   evidence_block: string;
   parameters_block: string;
   substrate_block: string;
+  refresh_advisory_block?: string;
   constraints?: ConstraintSpec[];
 }
 

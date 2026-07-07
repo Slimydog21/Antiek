@@ -736,7 +736,14 @@ class ActionType(str, Enum):
 #     is inert until a Parallel key is configured). Widening is backward-
 #     compatible: all stored events remain valid. Caught by mypy --strict
 #     (declared-bar) during the 2026-07-02 restore merge. 2026-07-02.
-EVENT_SCHEMA_VERSION: int = 29
+# v30: GF-4e — SynthesizeRequestedPayload gains optional
+#     refresh_advisory_block so callers can pass the synthesizer a compact,
+#     non-blocking list of reused knowledge units whose source-document graph
+#     edges were stale-advisory classified. The bridge also derives the same
+#     block from knowledge.reused telemetry when absent, so old callers stay
+#     valid and stale reuse is refreshed at synthesis time rather than dropped.
+#     2026-07-07.
+EVENT_SCHEMA_VERSION: int = 30
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -2395,7 +2402,9 @@ class SynthesizeRequestedPayload(_PayloadBase):
     (decomposer, evidence_retriever, parameter_extractor, connector)
     have all delivered. Carries the five pre-rendered prompt blocks
     verbatim so the role's input is fully reconstructable from the
-    trajectory.
+    trajectory. ``refresh_advisory_block`` is optional and carries
+    stale-reuse refresh hints for the synthesizer; when omitted, the bridge
+    derives it from same-investigation ``knowledge.reused`` telemetry.
 
     Definition order note: this payload sits AFTER ``ConstraintSpec``
     so its ``constraints: list[ConstraintSpec]`` field resolves at
@@ -2409,6 +2418,7 @@ class SynthesizeRequestedPayload(_PayloadBase):
     evidence_block: str
     parameters_block: str
     substrate_block: str
+    refresh_advisory_block: str = ""
     # Pre-derived ConstraintSpec list — the constraint loop reads
     # these directly to gate the synthesizer's output. Empty list ⇒
     # ``single_pass`` loop terminus.

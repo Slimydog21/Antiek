@@ -9,13 +9,14 @@ the loop with the synthesizer dispatch as the re-invoke callable —
 when hard constraints fail, the bridge re-dispatches the synthesizer
 with violation context prepended to the user prompt.
 
-The five placeholders the bridge fills:
+The six placeholders the bridge fills:
 
 - ``question`` — original investigation question
 - ``decomposition_block`` — JSON-stringified Decomposer output
 - ``evidence_block`` — JSON-stringified Evidence Retriever outputs
 - ``parameters_block`` — JSON-stringified Parameter Extractor output
 - ``substrate_block`` — JSON-stringified Connector substrate
+- ``refresh_advisory_block`` — optional stale-reuse advisories
 
 The tier-hedging policy (spec §C.3) lives in
 ``substrate.constants.TIER_HEDGING_POLICY`` and is enumerated verbatim
@@ -41,6 +42,7 @@ You are a senior investment analyst producing a defensible memo section. You wil
 3. The Evidence Retriever's evidence-grounded answers (one per sub-question)
 4. The Parameter Extractor's structured constraints, each tagged `hard | soft | target`
 5. The Cross-Domain Connector's analogical substrate (mapped nodes + structured paths + NL relationships)
+6. Optional refresh advisories for reused prior knowledge whose grounding sources have stale graph edges
 
 Your task is to synthesize a thesis under the following non-negotiable constraints:
 
@@ -113,6 +115,10 @@ SYNTHESIZER_USER_TEMPLATE = """
 ## Cross-Domain Connector substrate
 
 {{substrate_block}}
+
+## Refresh advisories
+
+{{refresh_advisory_block}}
 
 Produce a single JSON object conforming to the output schema. No prose outside the JSON.
 
@@ -189,8 +195,9 @@ def render_user_template(
     evidence_block: str,
     parameters_block: str,
     substrate_block: str,
+    refresh_advisory_block: str = "",
 ) -> str:
-    """Substitute the five placeholders. ``str.replace`` (not
+    """Substitute the six placeholders. ``str.replace`` (not
     ``.format``) so the JSON example block survives."""
     out = SYNTHESIZER_USER_TEMPLATE
     out = out.replace("{{question}}", question or "(no question)")
@@ -198,7 +205,10 @@ def render_user_template(
     out = out.replace("{{evidence_block}}", evidence_block or "(no evidence)")
     out = out.replace("{{parameters_block}}", parameters_block or "(no parameters)")
     out = out.replace("{{substrate_block}}", substrate_block or "(no substrate)")
-    return out
+    return out.replace(
+        "{{refresh_advisory_block}}",
+        refresh_advisory_block or "(none)",
+    )
 
 
 def render_full_prompt(
@@ -208,6 +218,7 @@ def render_full_prompt(
     evidence_block: str,
     parameters_block: str,
     substrate_block: str,
+    refresh_advisory_block: str = "",
     extra_user_prefix: str = "",
 ) -> str:
     """Concatenate system + user. ``extra_user_prefix`` is what the
@@ -220,6 +231,7 @@ def render_full_prompt(
         evidence_block=evidence_block,
         parameters_block=parameters_block,
         substrate_block=substrate_block,
+        refresh_advisory_block=refresh_advisory_block,
     )
     if extra_user_prefix:
         user = extra_user_prefix.strip() + "\n\n" + user

@@ -278,6 +278,47 @@ def _canonical_refs_for_request(req: SynthesizeRequestedPayload) -> tuple[
     return chunk_ids, node_ids, edge_ids
 
 
+def _refresh_advisory_block_for_request(
+    req: SynthesizeRequestedPayload,
+    investigation_id: str,
+) -> str:
+    explicit = req.refresh_advisory_block.strip()
+    if explicit:
+        return explicit
+
+    try:
+        rows = trajectory(investigation_id)
+    except Exception:  # pragma: no cover — advisory only; never block synthesis
+        return ""
+
+    unit_ids: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        if row.get("action_type") != ActionType.KNOWLEDGE_REUSED.value:
+            continue
+        payload = row.get("payload")
+        if not isinstance(payload, dict):
+            continue
+        for raw_unit_id in payload.get("stale_advisory_unit_ids") or []:
+            if not isinstance(raw_unit_id, str):
+                continue
+            unit_id = raw_unit_id.strip()
+            if unit_id and unit_id not in seen:
+                unit_ids.append(unit_id)
+                seen.add(unit_id)
+
+    if not unit_ids:
+        return ""
+    bullets = [
+        "Reused prior knowledge units with stale source-document graph edges:",
+    ]
+    bullets.extend(
+        f"- unit_id={unit_id}; action=refresh-or-confirm-before-treating-as-current"
+        for unit_id in unit_ids
+    )
+    return "\n".join(bullets)
+
+
 # ---------------------------------------------------------------------------
 # Dispatch + parse
 # ---------------------------------------------------------------------------
@@ -501,6 +542,10 @@ def make_synthesizer_handler(
         canonical_chunk_ids, canonical_node_ids, canonical_edge_ids = (
             _canonical_refs_for_request(req)
         )
+        refresh_advisory_block = _refresh_advisory_block_for_request(
+            req,
+            event.investigation_id,
+        )
 
         # ── 1. First dispatch ──
         first_prompt = render_full_prompt(
@@ -509,10 +554,20 @@ def make_synthesizer_handler(
             evidence_block=req.evidence_block,
             parameters_block=req.parameters_block,
             substrate_block=req.substrate_block,
+            refresh_advisory_block=refresh_advisory_block,
         )
         first_result, policy_id = _dispatch_and_parse(
             first_prompt,
             event,
+            rerender_with_prefix=lambda prefix: render_full_prompt(
+                question=req.question,
+                decomposition_block=req.decomposition_block,
+                evidence_block=req.evidence_block,
+                parameters_block=req.parameters_block,
+                substrate_block=req.substrate_block,
+                refresh_advisory_block=refresh_advisory_block,
+                extra_user_prefix=prefix,
+            ),
             canonical_chunk_ids=canonical_chunk_ids,
             canonical_node_ids=canonical_node_ids,
             canonical_edge_ids=canonical_edge_ids,
@@ -543,6 +598,7 @@ def make_synthesizer_handler(
                 evidence_block=req.evidence_block,
                 parameters_block=req.parameters_block,
                 substrate_block=req.substrate_block,
+                refresh_advisory_block=refresh_advisory_block,
                 extra_user_prefix=prefix,
             )
             revised_result, _revised_policy = _dispatch_and_parse(

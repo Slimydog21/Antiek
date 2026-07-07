@@ -44,10 +44,11 @@ from substrate.dispatch import (  # noqa: E402
     register_provider,
     reset_provider_registry,
 )
-from substrate.event_log import trajectory  # noqa: E402
+from substrate.event_log import emit_typed, trajectory  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     ActionType,
     Event,
+    KnowledgeReusedPayload,
     SynthesizeDeliveredPayload,
 )
 
@@ -77,12 +78,14 @@ class _StubSynthesizer:
         self._texts = texts
         self._raise = raise_on_call
         self.call_count = 0
+        self.prompts: list[str] = []
 
     def call(self, *, model, prompt, max_tokens, temperature) -> RawProviderResponse:
         if self._raise:
             raise ProviderError(
                 "stub failure", provider=self.name, model=model, latency_ms=0,
             )
+        self.prompts.append(prompt)
         idx = min(self.call_count, len(self._texts) - 1)
         text = self._texts[idx]
         self.call_count += 1
@@ -136,7 +139,7 @@ async def async_client(app_and_bus):
 
 
 async def _post_synthesize(
-    ac, *, investigation_id, constraints=None,
+    ac, *, investigation_id, constraints=None, refresh_advisory_block="",
 ):
     payload = {
         "action_type": "synthesize.requested",
@@ -163,6 +166,8 @@ async def _post_synthesize(
         }),
         "constraints": constraints or [],
     }
+    if refresh_advisory_block:
+        payload["refresh_advisory_block"] = refresh_advisory_block
     r = await ac.post(
         "/events/typed",
         json={
@@ -255,6 +260,46 @@ async def test_no_constraints_single_pass(
     assert len(p.thesis_components) == 1
     assert p.thesis_summary == "X is causally linked to Y."
     assert e.role == "synthesizer"
+
+
+@pytest.mark.asyncio
+async def test_stale_reuse_advisory_reaches_prompt(
+    monkeypatch, app_and_bus, async_client,
+):
+    _, bus = app_and_bus
+    inv = "inv-synth-stale-reuse"
+    provider = _StubSynthesizer([json.dumps(_good_thesis())])
+    register_provider(provider)
+    _patch_dispatch_config(monkeypatch, _synth_config("stub-synthesizer"))
+    emit_typed(
+        inv,
+        KnowledgeReusedPayload(
+            reused_unit_ids=["unit-stale"],
+            scores=[0.9],
+            decisions=["injected"],
+            source_investigation_ids=["inv-prior"],
+            stale_advisory_unit_ids=["unit-stale"],
+            context_pack_event_id="pack-1",
+        ),
+        role="context-pack",
+    )
+
+    await _post_synthesize(async_client, investigation_id=inv)
+    await bus.wait_for_handlers(timeout=5.0)
+
+    assert provider.prompts
+    assert "## Refresh advisories" in provider.prompts[0]
+    assert "unit_id=unit-stale" in provider.prompts[0]
+    assert "refresh-or-confirm-before-treating-as-current" in provider.prompts[0]
+
+    delivered = [
+        r for r in trajectory(inv)
+        if r["action_type"] == ActionType.SYNTHESIZE_DELIVERED.value
+    ]
+    assert len(delivered) == 1
+    p = Event.model_validate(delivered[0]).payload
+    assert isinstance(p, SynthesizeDeliveredPayload)
+    assert p.implicit_recommendation == "proceed"
 
 
 # ---------------------------------------------------------------------------
