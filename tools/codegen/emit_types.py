@@ -147,6 +147,7 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.KnowledgeReusedPayload,  # AFF SPR-06 — flywheel reuse half
     schema_module.StaleReuseRefreshAcceptedPayload,  # GF-4m — explicit refresh acceptance
     schema_module.StaleReuseRefreshPromotionCandidatePayload,  # GF-4o — deposit candidate
+    schema_module.StaleReuseRefreshPromotionResultPayload,  # GF-4q — promotion attempt result
     schema_module.ReuseGatedPayload,  # AFF SPR-08 — trust gate on reuse
     schema_module.DocumentLoadedPayload,
     schema_module.DocumentRegionSelectedPayload,

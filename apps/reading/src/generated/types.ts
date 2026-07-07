@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 32;
+export const EVENT_SCHEMA_VERSION = 33;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -80,6 +80,7 @@ export const ActionType = {
   REUSE_GATED: "reuse.gated",
   STALE_REUSE_REFRESH_ACCEPTED: "stale_reuse.refresh.accepted",
   STALE_REUSE_REFRESH_PROMOTION_CANDIDATE: "stale_reuse.refresh.promotion_candidate",
+  STALE_REUSE_REFRESH_PROMOTION_RESULT: "stale_reuse.refresh.promotion_result",
   GRAPH_TIER_ASSIGNED: "graph.tier.assigned",
   DOCUMENT_LOADED: "document.loaded",
   DOCUMENT_REGION_SELECTED: "document.region_selected",
@@ -706,6 +707,28 @@ export interface StaleReuseRefreshPromotionCandidatePayload {
   supporting_chunk_ids?: string[];
   accepted_event_id?: string | null;
   notes?: string;
+}
+
+/**
+ * GF-4q — backend result of a stale-refresh promotion attempt. Success
+ * carries the deposited node id; failure carries the exact validation reason
+ * and unresolved chunks. This records the outcome; graph node/edge writes
+ * remain the responsibility of the sanctioned graph writer.
+ */
+export interface StaleReuseRefreshPromotionResultPayload {
+  action_type: "stale_reuse.refresh.promotion_result";
+  unit_id: string;
+  source_investigation_id?: string | null;
+  refresh_investigation_id: string;
+  status: "deposited" | "not_depositable";
+  reason: "ready" | "missing_supporting_chunks" | "unresolved_supporting_chunks";
+  summary: string;
+  deposited_node_id?: string | null;
+  primary_chunk_id?: string | null;
+  primary_source_document_id?: string | null;
+  supporting_chunk_ids?: string[];
+  unresolved_chunk_ids?: string[];
+  candidate_event_id?: string | null;
 }
 
 /**
@@ -2634,6 +2657,7 @@ export type TypedPayload =
   | KnowledgeReusedPayload
   | StaleReuseRefreshAcceptedPayload
   | StaleReuseRefreshPromotionCandidatePayload
+  | StaleReuseRefreshPromotionResultPayload
   | ReuseGatedPayload
   | DocumentLoadedPayload
   | DocumentRegionSelectedPayload
@@ -2760,7 +2784,7 @@ export interface Event {
   phase?: number | null;
   role?: string | null;
   action_type: ActionType;
-  payload: DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | StaleReuseRefreshAcceptedPayload | StaleReuseRefreshPromotionCandidatePayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload;
+  payload: DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | StaleReuseRefreshAcceptedPayload | StaleReuseRefreshPromotionCandidatePayload | StaleReuseRefreshPromotionResultPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload;
   parent_event_id?: string | null;
   policy_id?: string;
   param_version: string;
@@ -2868,6 +2892,7 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "source.read",
   "stale_reuse.refresh.accepted",
   "stale_reuse.refresh.promotion_candidate",
+  "stale_reuse.refresh.promotion_result",
   "synthesis.archived",
   "synthesis.master_md_skipped",
   "synthesis.master_md_written",

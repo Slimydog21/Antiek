@@ -13,6 +13,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from substrate.event_log import emit_typed
+from substrate.graph.insight_question import promote_insight
+from substrate.schemas import (
+    StaleReuseRefreshPromotionCandidatePayload,
+    StaleReuseRefreshPromotionResultPayload,
+)
+
 ValidationReason = Literal[
     "ready",
     "missing_supporting_chunks",
@@ -34,6 +41,78 @@ class PromotionCandidateValidation:
     primary_source_document_id: str | None
     resolved_chunks: tuple[ResolvedPromotionChunk, ...]
     unresolved_chunk_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PromotionAttempt:
+    validation: PromotionCandidateValidation
+    result_event_id: str
+    deposited_node_id: str | None
+
+
+def promote_refresh_candidate(
+    con: Any,
+    *,
+    investigation_id: str,
+    candidate: StaleReuseRefreshPromotionCandidatePayload,
+    candidate_event_id: str | None = None,
+    events_dir: str | None = None,
+) -> PromotionAttempt:
+    """Validate and, when grounded, deposit a refreshed stale-reuse candidate.
+
+    The graph write goes through ``promote_insight`` only after validation
+    proves every cited supporting chunk resolves. Every attempt emits a typed
+    result event so non-depositability is visible in the parent trajectory.
+    """
+    validation = validate_promotion_candidate(
+        con,
+        supporting_chunk_ids=candidate.supporting_chunk_ids,
+    )
+    deposited_node_id: str | None = None
+    if validation.depositable:
+        deposited_node_id = promote_insight(
+            text=candidate.summary,
+            investigation_id=investigation_id,
+            confidence="unknown",
+            source_document_id=validation.primary_source_document_id,
+            chunk_id=validation.primary_chunk_id,
+            metadata={
+                "stale_refresh": {
+                    "source_unit_id": candidate.unit_id,
+                    "source_investigation_id": candidate.source_investigation_id,
+                    "refresh_investigation_id": candidate.refresh_investigation_id,
+                    "candidate_event_id": candidate_event_id,
+                }
+            },
+            con=con,
+            dedup=True,
+        )
+
+    result_event_id = emit_typed(
+        investigation_id,
+        StaleReuseRefreshPromotionResultPayload(
+            unit_id=candidate.unit_id,
+            source_investigation_id=candidate.source_investigation_id,
+            refresh_investigation_id=candidate.refresh_investigation_id,
+            status="deposited" if deposited_node_id else "not_depositable",
+            reason=validation.reason,
+            summary=candidate.summary,
+            deposited_node_id=deposited_node_id,
+            primary_chunk_id=validation.primary_chunk_id,
+            primary_source_document_id=validation.primary_source_document_id,
+            supporting_chunk_ids=list(candidate.supporting_chunk_ids),
+            unresolved_chunk_ids=list(validation.unresolved_chunk_ids),
+            candidate_event_id=candidate_event_id,
+        ),
+        parent_event_id=candidate_event_id,
+        role="connector",
+        events_dir=events_dir,
+    )
+    return PromotionAttempt(
+        validation=validation,
+        result_event_id=result_event_id,
+        deposited_node_id=deposited_node_id,
+    )
 
 
 def validate_promotion_candidate(

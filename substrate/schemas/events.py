@@ -191,6 +191,8 @@ class ActionType(str, Enum):
     # GF-4o — operator-approved candidate for later refreshed knowledge-unit
     # deposit. This records evidence for the writer; it is not the graph write.
     STALE_REUSE_REFRESH_PROMOTION_CANDIDATE = "stale_reuse.refresh.promotion_candidate"
+    # GF-4q — backend result of attempting to promote a stale refresh candidate.
+    STALE_REUSE_REFRESH_PROMOTION_RESULT = "stale_reuse.refresh.promotion_result"
 
     # ── Middleware: source_tier ──
     # GRAPH_TIER_ASSIGNED — rule-based assignment at ingestion (one per document).
@@ -756,7 +758,9 @@ class ActionType(str, Enum):
 # v32: GF-4o — StaleReuseRefreshPromotionCandidatePayload records an
 #     operator-approved child result plus child supporting chunks as a
 #     candidate for a later real graph deposit. 2026-07-07.
-EVENT_SCHEMA_VERSION: int = 32
+# v33: GF-4q — StaleReuseRefreshPromotionResultPayload records whether a
+#     candidate was deposited or why it was not depositable. 2026-07-07.
+EVENT_SCHEMA_VERSION: int = 33
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -996,6 +1000,33 @@ class StaleReuseRefreshPromotionCandidatePayload(_PayloadBase):
     supporting_chunk_ids: list[str] = Field(default_factory=list)
     accepted_event_id: str | None = None
     notes: str = ""
+
+
+class StaleReuseRefreshPromotionResultPayload(_PayloadBase):
+    """GF-4q — backend result of a stale-refresh promotion attempt. Success
+    carries the deposited node id; failure carries the exact validation reason
+    and unresolved chunks. This records the outcome; graph node/edge writes
+    remain the responsibility of the sanctioned graph writer."""
+
+    action_type: Literal[ActionType.STALE_REUSE_REFRESH_PROMOTION_RESULT] = (
+        ActionType.STALE_REUSE_REFRESH_PROMOTION_RESULT
+    )
+    unit_id: str
+    source_investigation_id: str | None = None
+    refresh_investigation_id: str
+    status: Literal["deposited", "not_depositable"]
+    reason: Literal[
+        "ready",
+        "missing_supporting_chunks",
+        "unresolved_supporting_chunks",
+    ]
+    summary: str
+    deposited_node_id: str | None = None
+    primary_chunk_id: str | None = None
+    primary_source_document_id: str | None = None
+    supporting_chunk_ids: list[str] = Field(default_factory=list)
+    unresolved_chunk_ids: list[str] = Field(default_factory=list)
+    candidate_event_id: str | None = None
 
 
 # The reasons a unit can be EXCLUDED from reuse by the SPR-08 trust gate. A
@@ -3896,7 +3927,7 @@ class DocumentFiledIntoInvestigationPayload(_PayloadBase):
 
 
 TypedPayload = Annotated[
-    DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | StaleReuseRefreshAcceptedPayload | StaleReuseRefreshPromotionCandidatePayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
+    DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | StaleReuseRefreshAcceptedPayload | StaleReuseRefreshPromotionCandidatePayload | StaleReuseRefreshPromotionResultPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
     Field(discriminator="action_type"),
 ]
 
@@ -3914,6 +3945,8 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.STALE_REUSE_REFRESH_ACCEPTED.value,
     # GF-4o — operator-approved candidate for later refreshed-unit deposit.
     ActionType.STALE_REUSE_REFRESH_PROMOTION_CANDIDATE.value,
+    # GF-4q — backend promotion attempt result.
+    ActionType.STALE_REUSE_REFRESH_PROMOTION_RESULT.value,
     # AFF SPR-08 — trust gate on reuse (one event per excluded unit).
     ActionType.REUSE_GATED.value,
     ActionType.DOCUMENT_LOADED.value,
@@ -4159,6 +4192,7 @@ __all__ = [
     "KnowledgeReusedPayload",
     "StaleReuseRefreshAcceptedPayload",
     "StaleReuseRefreshPromotionCandidatePayload",
+    "StaleReuseRefreshPromotionResultPayload",
     # AFF SPR-08 — trust gate on reuse
     "ReuseGatedPayload",
     "ReuseGateReason",

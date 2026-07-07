@@ -186,6 +186,7 @@ const NARRATION: Record<ActionTypeValue, NarrationRule> = {
   [ActionType.KNOWLEDGE_REUSED]: null, // SPR-06 emits it to the event log (for the SPR-09 benchmark); the reader-facing "reused N prior insights" surface is SPR-10's job, not a feed line here
   [ActionType.STALE_REUSE_REFRESH_ACCEPTED]: null, // GF-4m acceptance is shown on the stale-reuse row; duplicating it in the thinking stream would add noise.
   [ActionType.STALE_REUSE_REFRESH_PROMOTION_CANDIDATE]: null, // GF-4o promotion candidates are row-level provenance; the graph write remains separate.
+  [ActionType.STALE_REUSE_REFRESH_PROMOTION_RESULT]: null, // GF-4q result belongs on the stale-reuse row / graph provenance, not the thinking stream.
   [ActionType.REUSE_GATED]: null, // SPR-08 emits it per unit EXCLUDED from reuse (below-threshold / non-servable) for the audit trail + SPR-09 benchmark; not a reader-facing feed line
   [ActionType.DOCUMENT_CONTENT_CLASS_DEFAULTED]: null, // Personal-Reading Lane SPR-01: a write-side rights-classification default (a third-party ingest landing personal_reading). Substrate bookkeeping the reader never watches — the §9.0 audit trail lives in the event log, not the thinking stream.
   [ActionType.PARAMETER_EXTRACT_REQUESTED]: null, // folded into the synthesize beat

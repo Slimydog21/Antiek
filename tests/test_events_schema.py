@@ -57,6 +57,7 @@ from substrate.schemas import (  # noqa: E402
     QuestionResolvedByDocPayload,
     StaleReuseRefreshAcceptedPayload,
     StaleReuseRefreshPromotionCandidatePayload,
+    StaleReuseRefreshPromotionResultPayload,
     UserAcceptDistillationPayload,
     UserEditDistillationPayload,
     UserRejectDistillationPayload,
@@ -210,6 +211,19 @@ def _make_payload(at: ActionType):
             summary="Source claim remains current after refresh.",
             supporting_chunk_ids=["chunk-refresh-1"],
         )
+    if at == ActionType.STALE_REUSE_REFRESH_PROMOTION_RESULT:
+        return StaleReuseRefreshPromotionResultPayload(
+            unit_id="unit-stale",
+            source_investigation_id="inv-source",
+            refresh_investigation_id="inv-refresh",
+            status="deposited",
+            reason="ready",
+            summary="Source claim remains current after refresh.",
+            deposited_node_id="node-refresh",
+            primary_chunk_id="chunk-refresh-1",
+            primary_source_document_id="doc-refresh",
+            supporting_chunk_ids=["chunk-refresh-1"],
+        )
     raise ValueError(f"no factory registered for {at!r}")
 
 
@@ -237,6 +251,7 @@ TYPED_ACTION_TYPES_LIST = [
     ActionType.ARTIFACT_INTERACTED,
     ActionType.STALE_REUSE_REFRESH_ACCEPTED,
     ActionType.STALE_REUSE_REFRESH_PROMOTION_CANDIDATE,
+    ActionType.STALE_REUSE_REFRESH_PROMOTION_RESULT,
 ]
 
 
