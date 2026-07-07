@@ -20,6 +20,9 @@ Reported:
                                       provenance basis for "what the model saw").
 * **Edge temporal breakdown** (vs a passed-in ``now``): ``live`` /
   ``superseded`` / ``expired`` — the bitemporal population at a glance.
+* **Advisory stale-edge count**: classified active edges whose source age exceeds
+  the temporal TTL. This is observability only; the doctor emits no events and
+  never invalidates claims.
 
 By default the doctor always exits ``0`` (a report never fails a build). Pass
 ``--fail-on-orphans`` to make it a soft CI signal: exit ``1`` if ANY orphan
@@ -49,6 +52,8 @@ class GraphMetrics:
     edges_live: int = 0
     edges_superseded: int = 0
     edges_expired: int = 0
+    edges_stale_advisory: int = 0
+    edges_staleness_unclassified: int = 0
     # Surfaces the doctor could not read (renamed/dropped table or column). The
     # doctor is observability — it never crashes and never fails a build — so
     # schema drift is *reported*, not raised. The tools/lint/*_integrity GATES
@@ -138,6 +143,20 @@ def collect(graph_path: str, now: datetime) -> GraphMetrics:
         m.edges_live, m.edges_superseded, m.edges_expired = derive_edge_temporal(
             edge_rows, now
         )
+        try:
+            from middleware.temporal import scan_graph_edge_staleness
+            staleness = scan_graph_edge_staleness(
+                con,
+                investigation_id="graph-doctor",
+                as_of=now,
+                emit_events=False,
+            )
+            m.edges_stale_advisory = len(staleness.flagged)
+            m.edges_staleness_unclassified = staleness.unclassified
+        except (duckdb.Error, TypeError, ValueError) as exc:
+            m.schema_notes.append(
+                f"edge staleness advisory: unreadable ({type(exc).__name__})"
+            )
         return m
     finally:
         con.close()
@@ -160,6 +179,10 @@ def render(m: GraphMetrics) -> str:
         f"  live        {m.edges_live:>10,}",
         f"  superseded  {m.edges_superseded:>10,}",
         f"  expired     {m.edges_expired:>10,}",
+        "",
+        "edges (staleness advisory):",
+        f"  stale classified  {m.edges_stale_advisory:>10,}",
+        f"  unclassified      {m.edges_staleness_unclassified:>10,}",
         "",
         f"total orphan-shape rows: {m.total_orphans:,}",
     ]

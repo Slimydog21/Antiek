@@ -13,6 +13,8 @@ from datetime import datetime
 import duckdb
 import pytest
 
+from runtime.db_lock import connect_write
+from substrate.graph import init_database_at_path, insert_document, insert_edge, insert_node
 from tools.graph_doctor import GraphMetrics, collect, derive_edge_temporal, main, render
 
 NOW = datetime(2026, 7, 1)
@@ -76,6 +78,7 @@ def test_render_is_readable(seeded):
     text = render(collect(seeded, NOW))
     assert "knowledge-graph health report" in text
     assert "isolated_nodes" in text
+    assert "edges (staleness advisory)" in text
     assert "total orphan-shape rows: 3" in text
 
 
@@ -140,3 +143,81 @@ def test_corrupt_graph_file_is_noted_and_never_fails_build(tmp_path):
     m = collect(str(path), NOW)  # must not raise
     assert any("cannot open graph" in n for n in m.schema_notes)
     assert main(["--graph", str(path)]) == 0  # observability never fails a build
+
+
+def test_collect_reports_advisory_stale_edges_on_full_schema(tmp_path):
+    path = str(tmp_path / "full.duckdb")
+    init_database_at_path(path)
+    with connect_write(path, purpose="graph-doctor-staleness-seed") as con:
+        insert_document(
+            con,
+            document_id="doc-stale",
+            source_tier=2,
+            document_type="paper",
+            published_at=datetime(2026, 3, 1),
+        )
+        insert_document(
+            con,
+            document_id="doc-fresh",
+            source_tier=2,
+            document_type="paper",
+            published_at=datetime(2026, 6, 15),
+        )
+        stale_source = insert_node(
+            con,
+            canonical_label="stale-source",
+            node_type="entity",
+            graph_scope="depth",
+            investigation_id="seed",
+        )
+        stale_target = insert_node(
+            con,
+            canonical_label="stale-target",
+            node_type="entity",
+            graph_scope="depth",
+            investigation_id="seed",
+        )
+        fresh_source = insert_node(
+            con,
+            canonical_label="fresh-source",
+            node_type="entity",
+            graph_scope="depth",
+            investigation_id="seed",
+        )
+        fresh_target = insert_node(
+            con,
+            canonical_label="fresh-target",
+            node_type="entity",
+            graph_scope="depth",
+            investigation_id="seed",
+        )
+        insert_edge(
+            con,
+            edge_id="edge-stale",
+            source_node_id=stale_source,
+            target_node_id=stale_target,
+            relation="led_by",
+            source_tier=2,
+            extraction_confidence=0.9,
+            graph_scope="depth",
+            investigation_id="seed",
+            source_document_id="doc-stale",
+        )
+        insert_edge(
+            con,
+            edge_id="edge-fresh",
+            source_node_id=fresh_source,
+            target_node_id=fresh_target,
+            relation="led_by",
+            source_tier=2,
+            extraction_confidence=0.9,
+            graph_scope="depth",
+            investigation_id="seed",
+            source_document_id="doc-fresh",
+        )
+
+    m = collect(path, NOW)
+    assert m.edges_stale_advisory == 1
+    assert m.edges_staleness_unclassified == 0
+    rendered = render(m)
+    assert "stale classified" in rendered
