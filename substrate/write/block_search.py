@@ -35,6 +35,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from substrate.write.folders import _folders_schema_exists
+
 EMBED_WEIGHT = 1.0  # embedding contributes up to +1.0 atop text_score
 
 
@@ -114,6 +116,8 @@ def search_blocks(
     documented above and deterministic."""
     # Base candidate set, narrowed by folder membership if requested.
     if folder_id is not None:
+        if not _folders_schema_exists(con):
+            return []
         base_sql = (
             "SELECT n.node_id, n.canonical_label, n.node_type, n.metadata, n.embedding "
             "FROM nodes n JOIN write_folder_members m ON n.node_id = m.node_id "

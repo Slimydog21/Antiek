@@ -102,6 +102,16 @@ def _assert_write_locked(con: Any) -> None:
         )
 
 
+def _folders_schema_exists(con: Any) -> bool:
+    """Read-only probe: are the folder tables present yet? A fresh/warm graph
+    that has never had a folder created has NOT run ensure_folders_schema, so
+    the read paths must degrade to empty rather than raise OperationalError."""
+    row = con.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='write_folders'"
+    ).fetchone()
+    return row is not None
+
+
 def ensure_folders_schema(con: LockedConnection) -> None:
     """Idempotent: create the folder tables if absent. Safe to call on
     every folder write."""
@@ -188,6 +198,8 @@ def remove_block_from_folder(
 
 def list_folders(con: Any) -> list[Folder]:
     """All folders with their member counts. Read-only; deterministic."""
+    if not _folders_schema_exists(con):
+        return []
     rows = con.execute(
         "SELECT f.folder_id, f.name, f.owner_user_id, "
         "       COUNT(m.node_id) AS member_count "
@@ -201,6 +213,8 @@ def list_folders(con: Any) -> list[Folder]:
 
 def list_folder_node_ids(con: Any, folder_id: str) -> list[str]:
     """The node ids in a folder (deterministic order)."""
+    if not _folders_schema_exists(con):
+        return []
     rows = con.execute(
         "SELECT node_id FROM write_folder_members WHERE folder_id = ? ORDER BY node_id",
         [folder_id],
@@ -211,8 +225,23 @@ def list_folder_node_ids(con: Any, folder_id: str) -> list[str]:
 def folders_for_node(con: Any, node_id: str) -> list[str]:
     """Every folder a node belongs to — demonstrates multi-membership over
     ONE underlying node (not copies)."""
+    if not _folders_schema_exists(con):
+        return []
     rows = con.execute(
         "SELECT folder_id FROM write_folder_members WHERE node_id = ? ORDER BY folder_id",
         [node_id],
     ).fetchall()
     return [r[0] for r in rows]
+
+
+def is_block_in_folder(con: Any, *, folder_id: str, node_id: str) -> bool:
+    """Read-only: whether ``node_id`` is a member of ``folder_id``."""
+    if not _folders_schema_exists(con):
+        return False
+    return (
+        con.execute(
+            "SELECT 1 FROM write_folder_members WHERE folder_id = ? AND node_id = ?",
+            [folder_id, node_id],
+        ).fetchone()
+        is not None
+    )
