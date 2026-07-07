@@ -1035,6 +1035,17 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
           status: "confirmed_stale",
           notes: "resolved by stale refresh promotion",
         },
+        {
+          event_id: "evt-dismissed",
+          investigation_id: "inv-refresh",
+          emitted_at: "2026-07-07T15:04:00Z",
+          parent_event_id: null,
+          flag_id: "stale-edge-two-market",
+          entity_kind: "edge",
+          entity_id: "edge-two",
+          status: "dismissed",
+          notes: "",
+        },
       ],
     });
 
@@ -1048,6 +1059,7 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
     );
 
     expect(await screen.findByText("Graph stale resolutions")).toBeTruthy();
+    expect(screen.getByText("1 confirmed stale · 1 dismissed")).toBeTruthy();
     expect(screen.getByText("edge-one: confirmed stale")).toBeTruthy();
     expect(screen.getByText("resolved by stale refresh promotion")).toBeTruthy();
     expect(listStaleRefreshResolutionsMock).toHaveBeenCalledWith({ limit: 25 });

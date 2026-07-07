@@ -1230,6 +1230,9 @@ function ReuseProvenance({
             <h3 className="text-xs font-mono uppercase text-ink-soft dark:text-starlight mb-2">
               Graph stale resolutions
             </h3>
+            <p className="mb-2 font-mono text-[11px] uppercase tracking-wide text-ink-soft dark:text-starlight">
+              {graphResolutionStatusSummaryLine(graphResolutions)}
+            </p>
             <ul className="list-disc list-inside space-y-2 text-ink dark:text-bright">
               {graphResolutions.slice(0, 5).map((resolution) => (
                 <li key={resolution.event_id}>
@@ -1299,6 +1302,31 @@ function staleResolutionSummaryLine(insights: ReusedInsight[]): string | null {
     "edge",
     resolvedEdges,
   )} · ${unresolvedEdges} unresolved`;
+}
+
+function graphResolutionStatusSummaryLine(
+  resolutions: StaleRefreshResolutionRecord[],
+): string {
+  const counts = resolutions.reduce(
+    (acc, resolution) => {
+      acc[resolution.status] += 1;
+      return acc;
+    },
+    { refreshed: 0, confirmed_stale: 0, dismissed: 0 },
+  );
+  return [
+    counts.refreshed > 0
+      ? `${counts.refreshed} refreshed`
+      : null,
+    counts.confirmed_stale > 0
+      ? `${counts.confirmed_stale} confirmed stale`
+      : null,
+    counts.dismissed > 0
+      ? `${counts.dismissed} dismissed`
+      : null,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join(" · ");
 }
 
 function pluralize(noun: string, count: number): string {
