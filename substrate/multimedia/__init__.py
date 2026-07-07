@@ -13,6 +13,15 @@ from .planner import (
     StoryboardScene,
     build_multimedia_plan,
 )
+from .provider_router import (
+    BudgetExceeded,
+    KreaProviderAdapter,
+    MediaGenerationRequest,
+    ProviderExecutionRecord,
+    ProviderRoute,
+    ProviderUnavailable,
+    route_media_request,
+)
 
 __all__ = [
     "ChapterPlan",
@@ -21,5 +30,12 @@ __all__ = [
     "MultimediaPlan",
     "MultimediaPlanRequest",
     "StoryboardScene",
+    "BudgetExceeded",
+    "KreaProviderAdapter",
+    "MediaGenerationRequest",
+    "ProviderExecutionRecord",
+    "ProviderRoute",
+    "ProviderUnavailable",
     "build_multimedia_plan",
+    "route_media_request",
 ]
