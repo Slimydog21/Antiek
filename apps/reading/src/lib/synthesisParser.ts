@@ -128,6 +128,9 @@ export interface ReusedInsight {
   refreshPromotionCandidate?: StaleReuseRefreshPromotionCandidate;
   /** Present only when the backend has processed the promotion candidate. */
   refreshPromotionResult?: StaleReuseRefreshPromotionResult;
+  /** Present only when the trajectory contains graph.staleness.resolve events
+   *  for this reused insight's stale advisory edge ids. */
+  staleAdvisoryResolutions?: StaleResolution[];
 }
 
 export interface StaleReuseRefreshAcceptance {
@@ -155,6 +158,14 @@ export interface StaleReuseRefreshPromotionResult {
   primarySourceDocumentId: string | null;
   resolvedStaleEdgeIds: string[];
   unresolvedChunkIds: string[];
+}
+
+export interface StaleResolution {
+  flagId: string;
+  entityKind: "edge" | "node";
+  entityId: string;
+  status: "refreshed" | "confirmed_stale" | "dismissed";
+  notes: string | null;
 }
 
 /**
@@ -215,6 +226,9 @@ export interface ParsedSynthesis {
    *  `CompoundingStat`). The viewer renders the stat line only from real fields
    *  and shows nothing when this is null. */
   compoundingStat: CompoundingStat | null;
+  /** Canonical replay of graph.staleness.resolve events, keyed by entity id.
+   *  Latest event in trajectory order wins. */
+  staleResolutionsByEntityId: Record<string, StaleResolution>;
 }
 
 const EMPTY_SYNTHESIS: ParsedSynthesis = {
@@ -234,6 +248,7 @@ const EMPTY_SYNTHESIS: ParsedSynthesis = {
   qualityScore: null,
   reuseProvenance: [],
   compoundingStat: null,
+  staleResolutionsByEntityId: {},
 };
 
 interface SynthesizeDeliveredPayload {
@@ -321,6 +336,14 @@ interface StaleReuseRefreshPromotionResultPayloadShape {
   resolved_stale_edge_ids?: unknown;
 }
 
+interface StalenessResolvePayloadShape {
+  flag_id?: string;
+  entity_kind?: "edge" | "node";
+  entity_id?: string;
+  status?: "refreshed" | "confirmed_stale" | "dismissed";
+  notes?: string;
+}
+
 function staleRefreshAcceptanceKey(
   unitId: string,
   sourceInvestigationId: string | null,
@@ -378,6 +401,7 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
     string,
     StaleReuseRefreshPromotionResult
   >();
+  const staleResolutionsByEntityId = new Map<string, StaleResolution>();
   // SPR-10 M4: the per-run compounding measurement, READ from a persisted
   // per-run measurement event. None exists on the substrate today (see
   // CompoundingMeasuredPayloadShape); seen only when a synthetic/future event
@@ -538,6 +562,26 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
           },
         );
       }
+    } else if (at === "graph.staleness.resolve") {
+      const resolution = p as StalenessResolvePayloadShape | undefined;
+      if (
+        typeof resolution?.flag_id === "string" &&
+        (resolution.entity_kind === "edge" ||
+          resolution.entity_kind === "node") &&
+        typeof resolution.entity_id === "string" &&
+        (resolution.status === "refreshed" ||
+          resolution.status === "confirmed_stale" ||
+          resolution.status === "dismissed")
+      ) {
+        staleResolutionsByEntityId.set(resolution.entity_id, {
+          flagId: resolution.flag_id,
+          entityKind: resolution.entity_kind,
+          entityId: resolution.entity_id,
+          status: resolution.status,
+          notes:
+            typeof resolution.notes === "string" ? resolution.notes : null,
+        });
+      }
     } else if (at === COMPOUNDING_MEASURED_ACTION_TYPE) {
       // SPR-10 M4: NO event of this action_type exists on the substrate today
       // (it is not in generated/types.ts ActionType). This branch is the future
@@ -567,6 +611,7 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
       synthDelivered?.thesis_summary ??
       completed?.thesis_summary ??
       "",
+    staleResolutionsByEntityId: Object.fromEntries(staleResolutionsByEntityId),
   };
 
   if (synthDelivered?.thesis_components) {
@@ -634,11 +679,20 @@ export function parseSynthesis(events: Event[]): ParsedSynthesis | null {
     const acceptedRefresh = acceptedRefreshes.get(key);
     const refreshPromotionCandidate = refreshPromotionCandidates.get(key);
     const refreshPromotionResult = refreshPromotionResults.get(key);
+    const staleAdvisoryResolutions = (insight.staleAdvisoryEdgeIds ?? [])
+      .map((edgeId) => staleResolutionsByEntityId.get(edgeId))
+      .filter(
+        (resolution): resolution is StaleResolution =>
+          resolution !== undefined,
+      );
     return {
       ...insight,
       ...(acceptedRefresh ? { acceptedRefresh } : {}),
       ...(refreshPromotionCandidate ? { refreshPromotionCandidate } : {}),
       ...(refreshPromotionResult ? { refreshPromotionResult } : {}),
+      ...(staleAdvisoryResolutions.length > 0
+        ? { staleAdvisoryResolutions }
+        : {}),
     };
   });
 

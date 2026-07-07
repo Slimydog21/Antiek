@@ -180,6 +180,7 @@ function synth(over: Partial<ParsedSynthesis> = {}): ParsedSynthesis {
     qualityScore: null,
     reuseProvenance: [],
     compoundingStat: null,
+    staleResolutionsByEntityId: {},
     ...over,
   };
 }

@@ -62,6 +62,7 @@ function synthesisWith(thesis: string): ParsedSynthesis {
     qualityScore: null,
     reuseProvenance: [],
     compoundingStat: null,
+    staleResolutionsByEntityId: {},
   };
 }
 

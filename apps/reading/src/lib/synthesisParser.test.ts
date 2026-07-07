@@ -307,6 +307,49 @@ describe("parseSynthesis — reuse provenance (SPR-10 M2)", () => {
     expect(synth!.reuseProvenance[1].refreshPromotionCandidate).toBeUndefined();
     expect(synth!.reuseProvenance[1].refreshPromotionResult).toBeUndefined();
   });
+
+  it("replays graph staleness resolution events onto matching stale advisory edges", () => {
+    const synth = withReuse([
+      ev("knowledge.reused", {
+        reused_unit_ids: ["unit-stale", "unit-other"],
+        scores: [0.81, 0.75],
+        source_investigation_ids: ["inv-source", "inv-other"],
+        stale_advisory_unit_ids: ["unit-stale"],
+        stale_advisory_edge_ids_by_unit: {
+          "unit-stale": ["edge-stale-personnel", "edge-stale-market"],
+        },
+        context_pack_event_id: "evt-1",
+      }),
+      ev("graph.staleness.resolve", {
+        action_type: "graph.staleness.resolve",
+        flag_id: "stale-edge-stale-personnel-personnel",
+        entity_kind: "edge",
+        entity_id: "edge-stale-personnel",
+        status: "refreshed",
+        notes: "resolved by stale refresh promotion",
+      }),
+    ]);
+
+    expect(synth!.staleResolutionsByEntityId).toEqual({
+      "edge-stale-personnel": {
+        flagId: "stale-edge-stale-personnel-personnel",
+        entityKind: "edge",
+        entityId: "edge-stale-personnel",
+        status: "refreshed",
+        notes: "resolved by stale refresh promotion",
+      },
+    });
+    expect(synth!.reuseProvenance[0].staleAdvisoryResolutions).toEqual([
+      {
+        flagId: "stale-edge-stale-personnel-personnel",
+        entityKind: "edge",
+        entityId: "edge-stale-personnel",
+        status: "refreshed",
+        notes: "resolved by stale refresh promotion",
+      },
+    ]);
+    expect(synth!.reuseProvenance[1].staleAdvisoryResolutions).toBeUndefined();
+  });
 });
 
 // ── SPR-10 M4 — the per-run compounding stat (real `reused`, honest nulls) ──
