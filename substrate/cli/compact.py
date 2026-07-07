@@ -168,7 +168,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="antiek compact")
     p.add_argument("--project-root", type=Path, default=Path.cwd())
     p.add_argument("--session", help="Override active session id")
-    p.add_argument("--model", default="claude-opus-4-7")
+    # GLM-5.2 is the platform's AI driver (claude-less footprint, #213); this is the default label passed to the summarizer.
+    p.add_argument("--model", default="glm-5.2")
     p.add_argument("--context-window", type=int, default=1_000_000)
     sub = p.add_subparsers(dest="cmd", required=True)
     st = sub.add_parser("status")
