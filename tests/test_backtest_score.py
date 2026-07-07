@@ -6,6 +6,7 @@ from middleware.backtest import (
     BacktestReport,
     ChunkTierChange,
     SupersededEdge,
+    compare_backtest_cohorts,
     score_backtest_cohort,
     score_backtest_report,
 )
@@ -111,3 +112,52 @@ def test_score_backtest_cohort_requires_minimum_graded_outcomes():
     assert ready.graded_outcomes == 50
     assert ready.score == 1.0
     assert not_ready.ready_for_gate is False
+
+
+def test_compare_backtest_cohorts_reports_delta_when_ready():
+    baseline = tuple(
+        _report(
+            synthesis_id=f"base-{i}",
+            outcomes=({"thesis_outcomes": [{"outcome": "partially_confirmed"}]},),
+        )
+        for i in range(50)
+    )
+    candidate = tuple(
+        _report(
+            synthesis_id=f"candidate-{i}",
+            outcomes=({"thesis_outcomes": [{"outcome": "confirmed"}]},),
+        )
+        for i in range(50)
+    )
+
+    comparison = compare_backtest_cohorts(
+        baseline_reports=baseline,
+        candidate_reports=candidate,
+    )
+
+    assert comparison.ready_for_gate is True
+    assert comparison.baseline_score == 0.5
+    assert comparison.candidate_score == 1.0
+    assert comparison.delta == 0.5
+    assert comparison.cohort_size == 50
+    assert "candidate delta=0.5000" in comparison.notes
+
+
+def test_compare_backtest_cohorts_refuses_underpowered_candidate():
+    baseline = tuple(
+        _report(
+            synthesis_id=f"base-{i}",
+            outcomes=({"thesis_outcomes": [{"outcome": "confirmed"}]},),
+        )
+        for i in range(50)
+    )
+    candidate = baseline[:49]
+
+    comparison = compare_backtest_cohorts(
+        baseline_reports=baseline,
+        candidate_reports=candidate,
+    )
+
+    assert comparison.ready_for_gate is False
+    assert comparison.cohort_size == 49
+    assert "candidate_graded=49" in comparison.notes

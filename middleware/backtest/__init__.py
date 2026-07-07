@@ -39,7 +39,9 @@ from .db import (
 from .score import (
     DEFAULT_MIN_GRADED_OUTCOMES,
     BacktestCohortScore,
+    BacktestComparison,
     BacktestScore,
+    compare_backtest_cohorts,
     score_backtest_cohort,
     score_backtest_report,
 )
@@ -67,7 +69,9 @@ __all__ = [
     "load_superseded_cited_edges",
     "DEFAULT_MIN_GRADED_OUTCOMES",
     "BacktestCohortScore",
+    "BacktestComparison",
     "BacktestScore",
+    "compare_backtest_cohorts",
     "score_backtest_cohort",
     "score_backtest_report",
 ]

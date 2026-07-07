@@ -56,6 +56,18 @@ class BacktestCohortScore:
         return self.graded_outcomes >= self.minimum_graded_outcomes
 
 
+@dataclass(frozen=True)
+class BacktestComparison:
+    """Baseline-vs-candidate score pair for the Phase-8 gate."""
+
+    baseline_score: float
+    candidate_score: float
+    delta: float
+    cohort_size: int
+    ready_for_gate: bool
+    notes: str
+
+
 def _clamp01(value: float) -> float:
     return min(1.0, max(0.0, value))
 
@@ -152,10 +164,56 @@ def score_backtest_cohort(
     )
 
 
+def compare_backtest_cohorts(
+    *,
+    baseline_reports: Iterable[BacktestReport],
+    candidate_reports: Iterable[BacktestReport],
+    minimum_graded_outcomes: int = DEFAULT_MIN_GRADED_OUTCOMES,
+) -> BacktestComparison:
+    """Compare baseline and candidate cohorts for ``SkillPatchGate``.
+
+    Candidate replay is responsible for producing ``candidate_reports``.
+    This function only compares already-materialized reports and refuses
+    readiness until both sides meet the documented Wedge-2 outcome floor.
+    """
+    baseline = score_backtest_cohort(
+        baseline_reports,
+        minimum_graded_outcomes=minimum_graded_outcomes,
+    )
+    candidate = score_backtest_cohort(
+        candidate_reports,
+        minimum_graded_outcomes=minimum_graded_outcomes,
+    )
+    cohort_size = min(baseline.graded_outcomes, candidate.graded_outcomes)
+    ready = baseline.ready_for_gate and candidate.ready_for_gate
+    if ready:
+        notes = (
+            f"candidate delta={candidate.score - baseline.score:.4f} "
+            f"over {cohort_size} graded outcomes"
+        )
+    else:
+        notes = (
+            "backtest cohorts not ready: "
+            f"baseline_graded={baseline.graded_outcomes}, "
+            f"candidate_graded={candidate.graded_outcomes}, "
+            f"minimum={minimum_graded_outcomes}"
+        )
+    return BacktestComparison(
+        baseline_score=baseline.score,
+        candidate_score=candidate.score,
+        delta=candidate.score - baseline.score,
+        cohort_size=cohort_size,
+        ready_for_gate=ready,
+        notes=notes,
+    )
+
+
 __all__ = [
     "DEFAULT_MIN_GRADED_OUTCOMES",
     "BacktestCohortScore",
+    "BacktestComparison",
     "BacktestScore",
+    "compare_backtest_cohorts",
     "score_backtest_cohort",
     "score_backtest_report",
 ]
