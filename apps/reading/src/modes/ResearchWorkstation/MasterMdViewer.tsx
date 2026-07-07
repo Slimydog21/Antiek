@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArtifactExport } from "../../components/ArtifactExport";
 import { toast } from "../../components/lemon/LemonToast";
 import { getChunk, startInvestigation } from "../../lib/api";
-import type { ChunkResponse } from "../../lib/api";
+import type { ChunkResponse, InvestigationSummary } from "../../lib/api";
 import type {
   CompoundingStat,
   ParsedClaim,
@@ -59,6 +59,31 @@ function staleReuseRefreshKey(
     insight.unitId,
     insight.sourceInvestigationId ?? "",
   ].map(encodeURIComponent).join("|");
+}
+
+function staleReuseRefreshSpawnContext(insight: ReusedInsight): string {
+  return [
+    "stale-reuse-refresh",
+    `unit_id=${insight.unitId}`,
+    insight.sourceInvestigationId
+      ? `source_investigation_id=${insight.sourceInvestigationId}`
+      : null,
+  ].filter(Boolean).join(" ");
+}
+
+function staleReuseRefreshChildId(
+  children: readonly InvestigationSummary[],
+  parentInvestigationId: string,
+  insight: ReusedInsight,
+): string | null {
+  const expectedContext = staleReuseRefreshSpawnContext(insight);
+  return (
+    children.find(
+      (child) =>
+        child.parent_investigation_id === parentInvestigationId &&
+        child.spawn_context === expectedContext,
+    )?.investigation_id ?? null
+  );
 }
 
 function readStaleReuseRefreshes(): StaleReuseRefreshMap {
@@ -250,8 +275,10 @@ const GEOMETRY_RECOMPUTE_DEBOUNCE_MS = 100;
 
 export default function MasterMdViewer({
   synthesis,
+  staleRefreshChildren = [],
 }: {
   synthesis: ParsedSynthesis;
+  staleRefreshChildren?: InvestigationSummary[];
 }) {
   const [openChunkId, setOpenChunkId] = useState<string | null>(null);
 
@@ -456,6 +483,7 @@ export default function MasterMdViewer({
           insights={synthesis.reuseProvenance}
           stat={synthesis.compoundingStat}
           parentInvestigationId={synthesis.investigationId}
+          staleRefreshChildren={staleRefreshChildren}
         />
       </article>
 
@@ -1107,10 +1135,12 @@ function ReuseProvenance({
   insights,
   stat,
   parentInvestigationId,
+  staleRefreshChildren,
 }: {
   insights: ReusedInsight[];
   stat: CompoundingStat | null;
   parentInvestigationId: string | null;
+  staleRefreshChildren: InvestigationSummary[];
 }) {
   // A stat line shows ONLY when a per-run measurement carried a real number. A
   // {reused:0} measurement with no avoided/fewer is NOT a "0 insights reused"
@@ -1149,6 +1179,7 @@ function ReuseProvenance({
                   <ReusedInsightLink
                     insight={ins}
                     parentInvestigationId={parentInvestigationId}
+                    staleRefreshChildren={staleRefreshChildren}
                   />
                 </li>
               ))}
@@ -1168,25 +1199,32 @@ function ReuseProvenance({
 function ReusedInsightLink({
   insight,
   parentInvestigationId,
+  staleRefreshChildren,
 }: {
   insight: ReusedInsight;
   parentInvestigationId: string | null;
+  staleRefreshChildren: InvestigationSummary[];
 }) {
   const canRefresh = Boolean(insight.staleRefreshAdvisory && parentInvestigationId);
+  const backendSpawnedId =
+    canRefresh && parentInvestigationId
+      ? staleReuseRefreshChildId(staleRefreshChildren, parentInvestigationId, insight)
+      : null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [spawnedId, setSpawnedId] = useState<string | null>(() =>
     canRefresh && parentInvestigationId
-      ? readStaleReuseRefresh(parentInvestigationId, insight)
+      ? backendSpawnedId ?? readStaleReuseRefresh(parentInvestigationId, insight)
       : null,
   );
   useEffect(() => {
     setSpawnedId(
       canRefresh && parentInvestigationId
-        ? readStaleReuseRefresh(parentInvestigationId, insight)
+        ? backendSpawnedId ?? readStaleReuseRefresh(parentInvestigationId, insight)
         : null,
     );
   }, [
+    backendSpawnedId,
     canRefresh,
     parentInvestigationId,
     insight.unitId,
@@ -1207,13 +1245,7 @@ function ReusedInsightLink({
     setBusy(true);
     setError(null);
     try {
-      const spawnContext = [
-        "stale-reuse-refresh",
-        `unit_id=${insight.unitId}`,
-        insight.sourceInvestigationId
-          ? `source_investigation_id=${insight.sourceInvestigationId}`
-          : null,
-      ].filter(Boolean).join(" ");
+      const spawnContext = staleReuseRefreshSpawnContext(insight);
       const resp = await startInvestigation({
         question:
           `Refresh prior insight ${insight.unitId}: verify whether its source-document claim remains current before reusing it.`,

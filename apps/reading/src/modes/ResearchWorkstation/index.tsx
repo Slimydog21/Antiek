@@ -1,8 +1,10 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useParams } from "react-router-dom";
 
 import { useInvestigation } from "../../hooks/useInvestigation";
 import type { InvestigationState } from "../../hooks/useInvestigation";
+import { useInvestigationList } from "../../hooks/useInvestigationList";
+import type { InvestigationSummary } from "../../lib/api";
 import { parseSynthesis } from "../../lib/synthesisParser";
 import GlassSurface from "../../shell/GlassSurface";
 import { PanelHost } from "../../workspace/PanelHost";
@@ -100,8 +102,18 @@ export default function ResearchWorkstation() {
 
 function InvestigationCenter({ investigationId }: { investigationId: string }) {
   const investigation = useInvestigation(investigationId);
+  const investigationList = useInvestigationList({ limit: 200 });
   const centerRef = useRef<HTMLDivElement>(null);
   const openPanel = useWorkspace((s) => s.open);
+  const staleRefreshChildren = useMemo<InvestigationSummary[]>(
+    () =>
+      investigationList.investigations.filter(
+        (summary) =>
+          summary.parent_investigation_id === investigationId &&
+          summary.spawn_context?.startsWith("stale-reuse-refresh "),
+      ),
+    [investigationList.investigations, investigationId],
+  );
 
   // SPR-04 M2: highlight → follow this. A raw highlight has no reserved
   // escalation id, so we omit it and the substrate mints a fresh child.
@@ -177,7 +189,11 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
       ref={centerRef}
       className="h-full overflow-y-auto relative"
     >
-      <CenterContent investigation={investigation} onChaseQuestion={onChaseQuestion} />
+      <CenterContent
+        investigation={investigation}
+        onChaseQuestion={onChaseQuestion}
+        staleRefreshChildren={staleRefreshChildren}
+      />
       <HighlightToolbar
         scopeRef={centerRef}
         onChaseThis={onChaseThis}
@@ -190,12 +206,14 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
 function CenterContent({
   investigation,
   onChaseQuestion,
+  staleRefreshChildren,
 }: {
   investigation: InvestigationState;
   onChaseQuestion: (q: {
     text: string;
     reserved_child_investigation_id?: string | null;
   }) => void;
+  staleRefreshChildren: InvestigationSummary[];
 }) {
   if (
     investigation.status === "completed" ||
@@ -209,7 +227,12 @@ function CenterContent({
     // honest no-result state on its own.
     return (
       <div className="flex h-full min-h-0 flex-col overflow-y-auto">
-        {synth ? <MasterMdViewer synthesis={synth} /> : null}
+        {synth ? (
+          <MasterMdViewer
+            synthesis={synth}
+            staleRefreshChildren={staleRefreshChildren}
+          />
+        ) : null}
         <div className="border-t border-rule dark:border-charcoal-1">
           <DistillView
             investigationId={investigation.id}

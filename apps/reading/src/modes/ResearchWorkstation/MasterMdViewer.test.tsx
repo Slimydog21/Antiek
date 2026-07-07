@@ -22,7 +22,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 
-import type { ChunkResponse } from "../../lib/api";
+import type { ChunkResponse, InvestigationSummary } from "../../lib/api";
 import type { ParsedSynthesis } from "../../lib/synthesisParser";
 
 const {
@@ -121,6 +121,21 @@ function chunk(over: Partial<ChunkResponse>): ChunkResponse {
     source_tier: 2,
     servable: true,
     servability: null,
+    ...over,
+  };
+}
+
+function investigationSummary(
+  over: Partial<InvestigationSummary> & { investigation_id: string },
+): InvestigationSummary {
+  return {
+    question: "Refresh prior insight",
+    status: "completed",
+    started_at: null,
+    completed_at: null,
+    cost_usd_total: 0,
+    parent_investigation_id: null,
+    spawn_context: null,
     ...over,
   };
 }
@@ -985,6 +1000,39 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
     expect(link.getAttribute("href")).toBe("/inv/inv-refresh-existing");
     expect(startInvestigationMock).not.toHaveBeenCalled();
     expect(recordSpawnRelationshipMock).not.toHaveBeenCalled();
+  });
+
+  it("restores the refresh child link from investigation summaries before localStorage", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          investigationId: "inv-parent",
+          reuseProvenance: [
+            {
+              unitId: "unit-stale",
+              sourceInvestigationId: "inv-source",
+              score: 0.81,
+              staleRefreshAdvisory: true,
+            },
+          ],
+          compoundingStat: null,
+        })}
+        staleRefreshChildren={[
+          investigationSummary({
+            investigation_id: "inv-refresh-from-api",
+            parent_investigation_id: "inv-parent",
+            spawn_context:
+              "stale-reuse-refresh unit_id=unit-stale source_investigation_id=inv-source",
+          }),
+        ]}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("reuse-provenance")).toBeTruthy());
+
+    const link = screen.getByText("Open refresh research");
+    expect(link.getAttribute("href")).toBe("/inv/inv-refresh-from-api");
+    expect(startInvestigationMock).not.toHaveBeenCalled();
   });
 
   it("renders the three exact numbers when a measurement is present (M4 seed-and-catch)", async () => {
