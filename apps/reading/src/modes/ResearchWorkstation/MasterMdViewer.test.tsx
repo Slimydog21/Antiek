@@ -25,7 +25,12 @@ import {
 import type { ChunkResponse } from "../../lib/api";
 import type { ParsedSynthesis } from "../../lib/synthesisParser";
 
-const { getChunkMock, apiFetchMock, startInvestigationMock, recordSpawnRelationshipMock } = vi.hoisted(() => ({
+const {
+  getChunkMock,
+  apiFetchMock,
+  startInvestigationMock,
+  recordSpawnRelationshipMock,
+} = vi.hoisted(() => ({
   getChunkMock: vi.fn(),
   apiFetchMock: vi.fn(),
   startInvestigationMock: vi.fn(),
@@ -54,7 +59,11 @@ vi.mock("../../components/lemon/LemonToast", () => ({
   toast: { ok: vi.fn(), err: vi.fn() },
 }));
 
-import MasterMdViewer, { ClaimBlock, reviewDueDecorationsFor } from "./MasterMdViewer";
+import MasterMdViewer, {
+  ClaimBlock,
+  STALE_REUSE_REFRESH_STORAGE_KEY,
+  reviewDueDecorationsFor,
+} from "./MasterMdViewer";
 import { REVIEW_DUE_CLASS } from "../../reading-physics/augmentations/review-due";
 import { anchorKey } from "../../reading-physics/facets/decorations";
 import type { ClaimId } from "../../reading-physics/types";
@@ -73,12 +82,23 @@ class NoopResizeObserver {
   disconnect() {}
 }
 beforeEach(() => {
+  const storage = new Map<string, string>();
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+    },
+  });
   (globalThis as { ResizeObserver?: unknown }).ResizeObserver =
     NoopResizeObserver as unknown as typeof ResizeObserver;
 });
 
 afterEach(() => {
   cleanup();
+  window.localStorage.removeItem(STALE_REUSE_REFRESH_STORAGE_KEY);
   getChunkMock.mockReset();
   startInvestigationMock.mockReset();
   recordSpawnRelationshipMock.mockReset();
@@ -932,6 +952,39 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
     );
     const link = await screen.findByText("Open refresh research");
     expect(link.getAttribute("href")).toBe("/inv/inv-refresh-child");
+  });
+
+  it("keeps the refresh child link after remount without launching again", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    window.localStorage.setItem(
+      STALE_REUSE_REFRESH_STORAGE_KEY,
+      JSON.stringify({
+        "inv-parent|unit-stale|inv-source": "inv-refresh-existing",
+      }),
+    );
+
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          investigationId: "inv-parent",
+          reuseProvenance: [
+            {
+              unitId: "unit-stale",
+              sourceInvestigationId: "inv-source",
+              score: 0.81,
+              staleRefreshAdvisory: true,
+            },
+          ],
+          compoundingStat: null,
+        })}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("reuse-provenance")).toBeTruthy());
+
+    const link = screen.getByText("Open refresh research");
+    expect(link.getAttribute("href")).toBe("/inv/inv-refresh-existing");
+    expect(startInvestigationMock).not.toHaveBeenCalled();
+    expect(recordSpawnRelationshipMock).not.toHaveBeenCalled();
   });
 
   it("renders the three exact numbers when a measurement is present (M4 seed-and-catch)", async () => {

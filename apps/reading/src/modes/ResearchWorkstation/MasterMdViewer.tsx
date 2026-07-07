@@ -44,6 +44,64 @@ import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
 import ChunkModal from "./ChunkModal";
 import { buildLayoutMap } from "./readingGeometryPass";
 
+export const STALE_REUSE_REFRESH_STORAGE_KEY = "antiek:stale_reuse_refreshes";
+
+interface StaleReuseRefreshMap {
+  [reuseKey: string]: string;
+}
+
+function staleReuseRefreshKey(
+  parentInvestigationId: string,
+  insight: ReusedInsight,
+): string {
+  return [
+    parentInvestigationId,
+    insight.unitId,
+    insight.sourceInvestigationId ?? "",
+  ].map(encodeURIComponent).join("|");
+}
+
+function readStaleReuseRefreshes(): StaleReuseRefreshMap {
+  try {
+    const raw = window.localStorage.getItem(STALE_REUSE_REFRESH_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return {};
+    return parsed as StaleReuseRefreshMap;
+  } catch {
+    return {};
+  }
+}
+
+function readStaleReuseRefresh(
+  parentInvestigationId: string,
+  insight: ReusedInsight,
+): string | null {
+  return (
+    readStaleReuseRefreshes()[staleReuseRefreshKey(parentInvestigationId, insight)] ??
+    null
+  );
+}
+
+function recordStaleReuseRefresh(
+  parentInvestigationId: string,
+  insight: ReusedInsight,
+  childInvestigationId: string,
+): void {
+  const current = readStaleReuseRefreshes();
+  current[staleReuseRefreshKey(parentInvestigationId, insight)] =
+    childInvestigationId;
+  try {
+    window.localStorage.setItem(
+      STALE_REUSE_REFRESH_STORAGE_KEY,
+      JSON.stringify(current),
+    );
+  } catch {
+    // The substrate lineage event and investigation tree fallback still carry
+    // the relationship; this only preserves the unit-specific parent affordance.
+  }
+}
+
 /**
  * Renders a completed investigation's synthesis as a trustworthy
  * researcher's note: serif body, flowing prose, and — SPR-04 M1 — claim
@@ -1114,9 +1172,26 @@ function ReusedInsightLink({
   insight: ReusedInsight;
   parentInvestigationId: string | null;
 }) {
+  const canRefresh = Boolean(insight.staleRefreshAdvisory && parentInvestigationId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [spawnedId, setSpawnedId] = useState<string | null>(null);
+  const [spawnedId, setSpawnedId] = useState<string | null>(() =>
+    canRefresh && parentInvestigationId
+      ? readStaleReuseRefresh(parentInvestigationId, insight)
+      : null,
+  );
+  useEffect(() => {
+    setSpawnedId(
+      canRefresh && parentInvestigationId
+        ? readStaleReuseRefresh(parentInvestigationId, insight)
+        : null,
+    );
+  }, [
+    canRefresh,
+    parentInvestigationId,
+    insight.unitId,
+    insight.sourceInvestigationId,
+  ]);
   const label = `prior insight ${insight.unitId}`;
   const refreshCue = insight.staleRefreshAdvisory ? (
     <span
@@ -1126,10 +1201,9 @@ function ReusedInsightLink({
       refresh before current use
     </span>
   ) : null;
-  const canRefresh = insight.staleRefreshAdvisory && parentInvestigationId;
 
   async function launchRefresh() {
-    if (!canRefresh || busy) return;
+    if (!canRefresh || !parentInvestigationId || busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -1147,6 +1221,7 @@ function ReusedInsightLink({
         spawn_context: spawnContext,
       });
       recordSpawnRelationship(resp.investigation_id, parentInvestigationId);
+      recordStaleReuseRefresh(parentInvestigationId, insight, resp.investigation_id);
       setSpawnedId(resp.investigation_id);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
