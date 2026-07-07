@@ -53,6 +53,13 @@ from .tts import (
     TTSResult,
     make_tts_provider,
 )
+from .video import (
+    VideoDocumentaryAsset,
+    VideoScene,
+    assemble_video_documentary,
+    build_video_scenes,
+    compile_ken_burns_timeline,
+)
 
 __all__ = [
     # SPR-02 planner
@@ -73,6 +80,11 @@ __all__ = [
     "ProviderExecutionRecord",
     "ProviderRoute",
     "ProviderUnavailable",
+    "VideoDocumentaryAsset",
+    "VideoScene",
+    "assemble_video_documentary",
+    "build_video_scenes",
+    "compile_ken_burns_timeline",
     "route_media_request",
     # SPR-04 narration + TTS + assembly + playback
     "NarrationParagraph",
