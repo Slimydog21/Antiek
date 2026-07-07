@@ -68,6 +68,17 @@ run:
 4. Expect normal Loop-1 dispatch cost when the `loop1` runner is enabled. The
    default path exists specifically to avoid accidental spend.
 
+Before enabling the runner against real held-outs, run the no-dispatch smoke
+harness:
+
+```bash
+./.venv/bin/python tools/phase8_replay_smoke.py
+```
+
+The smoke harness seeds a temporary baseline DB, enables the `loop1` opt-in,
+stubs the held-out runner, and verifies that candidate replay reports reach the
+gate evaluation without touching the operator graph or dispatching models.
+
 ## Process skill codification (deferred)
 
 Also hosts the system-proposed process-skill codification
