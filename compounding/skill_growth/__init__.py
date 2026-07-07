@@ -41,8 +41,12 @@ from .prompt_applier import (
     load_active_variant,
 )
 from .replay import (
+    CandidateBacktestReplay,
+    CandidateBacktestRunner,
+    CandidateReplayError,
     CandidateSkillOverlay,
     materialize_candidate_skill_overlay,
+    replay_candidate_backtest_cohort,
 )
 
 __all__ = [
@@ -53,6 +57,9 @@ __all__ = [
     "DEFAULT_PHASE8_MINIMUM_COHORT_SIZE",
     "GepaToPhase8Bridge",
     "CandidateSkillOverlay",
+    "CandidateBacktestReplay",
+    "CandidateBacktestRunner",
+    "CandidateReplayError",
     "PHASE8_EPSILON_ENV",
     "PHASE8_MINIMUM_COHORT_SIZE_ENV",
     "PHASE8_MODE_ENFORCING",
@@ -69,4 +76,5 @@ __all__ = [
     "materialize_candidate_skill_overlay",
     "phase8_gate_from_env",
     "propose_skill_patch",
+    "replay_candidate_backtest_cohort",
 ]
