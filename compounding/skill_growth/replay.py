@@ -8,9 +8,11 @@ does not choose the production investigation runner yet.
 
 from __future__ import annotations
 
+import os
 import shutil
 import tempfile
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -85,6 +87,114 @@ class BaselineBacktestLoad:
         return not self.errors
 
 
+@dataclass(frozen=True)
+class CandidateReplayWorkspace:
+    """Filesystem isolation for a candidate held-out replay run."""
+
+    root: Path
+    db_path: Path
+    home_dir: Path
+    events_dir: Path
+    phase_log_dir: Path
+    research_dir: Path
+    research_artifacts_dir: Path
+    overlay_parent: Path
+    copied_baseline_db: bool
+
+    def environment(self, *, overlay_skills_root: Path | None = None) -> dict[str, str]:
+        """Return env vars that route mutable replay outputs into this workspace."""
+
+        env = {
+            "ANTIEK_HOME": str(self.home_dir),
+            "ANTIEK_DUCKDB_PATH": str(self.db_path),
+            "ANTIEK_RESEARCH_EVENTS_DIR": str(self.events_dir),
+            "ANTIEK_RESEARCH_PHASE_LOG_DIR": str(self.phase_log_dir),
+            "ANTIEK_RESEARCH_DIR": str(self.research_dir),
+            "ANTIEK_RESEARCH_ARTIFACTS_DIR": str(self.research_artifacts_dir),
+        }
+        if overlay_skills_root is not None:
+            env["ANTIEK_KNOWLEDGE_SKILLS_DIR"] = str(overlay_skills_root)
+        return env
+
+
+def prepare_candidate_replay_workspace(
+    *,
+    baseline_db_path: Path | None = None,
+    workspace_parent: Path | None = None,
+) -> CandidateReplayWorkspace:
+    """Create an isolated filesystem workspace for candidate replay.
+
+    When a baseline DB path is available, it is copied into the workspace so a
+    future held-out runner can mutate the replay DB without writing to the
+    operator's graph. Event logs, generated research artifacts, and skill
+    overlays receive separate directories for the same reason.
+    """
+
+    if workspace_parent is not None:
+        workspace_parent.mkdir(parents=True, exist_ok=True)
+    root = Path(
+        tempfile.mkdtemp(
+            prefix="candidate-replay-workspace-",
+            dir=str(workspace_parent) if workspace_parent is not None else None,
+        )
+    )
+    home_dir = root / "home"
+    events_dir = root / "events"
+    phase_log_dir = root / "phase_logs"
+    research_dir = root / "research"
+    research_artifacts_dir = root / "research_artifacts"
+    overlay_parent = root / "overlays"
+    for directory in (
+        home_dir,
+        events_dir,
+        phase_log_dir,
+        research_dir,
+        research_artifacts_dir,
+        overlay_parent,
+    ):
+        directory.mkdir(parents=True, exist_ok=True)
+
+    db_path = root / "graph.duckdb"
+    copied = False
+    if baseline_db_path is not None and baseline_db_path.exists():
+        shutil.copy2(baseline_db_path, db_path)
+        copied = True
+
+    return CandidateReplayWorkspace(
+        root=root,
+        db_path=db_path,
+        home_dir=home_dir,
+        events_dir=events_dir,
+        phase_log_dir=phase_log_dir,
+        research_dir=research_dir,
+        research_artifacts_dir=research_artifacts_dir,
+        overlay_parent=overlay_parent,
+        copied_baseline_db=copied,
+    )
+
+
+@contextmanager
+def isolated_candidate_replay_environment(
+    workspace: CandidateReplayWorkspace,
+    *,
+    overlay_skills_root: Path,
+) -> Iterator[None]:
+    """Temporarily route Antiek replay side effects into ``workspace``."""
+
+    overrides = workspace.environment(overlay_skills_root=overlay_skills_root)
+    previous = {key: os.environ.get(key) for key in overrides}
+    try:
+        for key, value in overrides.items():
+            os.environ[key] = value
+        yield
+    finally:
+        for key, old_value in previous.items():
+            if old_value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = old_value
+
+
 def materialize_candidate_skill_overlay(
     synthesis_row: dict[str, Any],
     *,
@@ -135,6 +245,7 @@ def replay_candidate_backtest_cohort(
     baseline_skills_root: Path,
     backtest_runner: CandidateBacktestRunner,
     overlay_parent: Path | None = None,
+    replay_workspace: CandidateReplayWorkspace | None = None,
 ) -> CandidateBacktestReplay:
     """Run held-out candidate backtests against a temporary skill overlay.
 
@@ -147,7 +258,8 @@ def replay_candidate_backtest_cohort(
     overlay = materialize_candidate_skill_overlay(
         synthesis_row,
         baseline_skills_root=baseline_skills_root,
-        overlay_parent=overlay_parent,
+        overlay_parent=overlay_parent
+        or (replay_workspace.overlay_parent if replay_workspace else None),
     )
     heldout_ids = tuple(heldout_synthesis_ids)
     if not heldout_ids:
@@ -163,7 +275,15 @@ def replay_candidate_backtest_cohort(
     errors: list[CandidateReplayError] = []
     for synthesis_id in heldout_ids:
         try:
-            reports.append(backtest_runner(synthesis_id, overlay.overlay_skills_root))
+            if replay_workspace is None:
+                report = backtest_runner(synthesis_id, overlay.overlay_skills_root)
+            else:
+                with isolated_candidate_replay_environment(
+                    replay_workspace,
+                    overlay_skills_root=overlay.overlay_skills_root,
+                ):
+                    report = backtest_runner(synthesis_id, overlay.overlay_skills_root)
+            reports.append(report)
         except Exception as exc:
             errors.append(
                 CandidateReplayError(

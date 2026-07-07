@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from compounding.skill_growth import (
     evaluate_candidate_replay_for_gate,
     load_baseline_backtest_reports,
     materialize_candidate_skill_overlay,
+    prepare_candidate_replay_workspace,
     replay_candidate_backtest_cohort,
     unavailable_candidate_replay_evaluation,
 )
@@ -231,6 +233,99 @@ def test_replay_candidate_backtest_cohort_surfaces_per_id_errors(
     assert len(replay.errors) == 1
     assert replay.errors[0].synthesis_id == "bad"
     assert "held-out replay failed" in replay.errors[0].error
+
+
+def test_prepare_candidate_replay_workspace_copies_baseline_db(tmp_path: Path) -> None:
+    db_path = tmp_path / "baseline.duckdb"
+    _seed_archived_synthesis(db_path, "syn-heldout-ok")
+
+    workspace = prepare_candidate_replay_workspace(
+        baseline_db_path=db_path,
+        workspace_parent=tmp_path / "workspaces",
+    )
+
+    assert workspace.root.parent == tmp_path / "workspaces"
+    assert workspace.copied_baseline_db is True
+    assert workspace.db_path.exists()
+    assert workspace.home_dir.is_dir()
+    assert workspace.events_dir.is_dir()
+    assert workspace.phase_log_dir.is_dir()
+    assert workspace.research_dir.is_dir()
+    assert workspace.research_artifacts_dir.is_dir()
+    assert workspace.overlay_parent.is_dir()
+
+    loaded = load_baseline_backtest_reports(
+        db_path=workspace.db_path,
+        synthesis_ids=("syn-heldout-ok",),
+    )
+    assert loaded.complete is True
+    assert loaded.reports[0].synthesis_id == "syn-heldout-ok"
+
+
+def test_replay_candidate_backtest_cohort_runs_runner_in_isolated_workspace(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(tmp_path / "prod.duckdb"))
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path / "prod-home"))
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "prod-events"))
+    monkeypatch.setenv("ANTIEK_RESEARCH_PHASE_LOG_DIR", str(tmp_path / "prod-phases"))
+    monkeypatch.setenv("ANTIEK_RESEARCH_DIR", str(tmp_path / "prod-research"))
+    monkeypatch.setenv("ANTIEK_RESEARCH_ARTIFACTS_DIR", str(tmp_path / "prod-artifacts"))
+    monkeypatch.setenv("ANTIEK_KNOWLEDGE_SKILLS_DIR", str(tmp_path / "prod-skills"))
+
+    workspace = prepare_candidate_replay_workspace(
+        workspace_parent=tmp_path / "workspaces",
+    )
+    seen_env: list[dict[str, str | None]] = []
+
+    def runner(synthesis_id: str, skills_root: Path) -> BacktestReport:
+        import os
+
+        seen_env.append(
+            {
+                "db": os.environ.get("ANTIEK_DUCKDB_PATH"),
+                "home": os.environ.get("ANTIEK_HOME"),
+                "events": os.environ.get("ANTIEK_RESEARCH_EVENTS_DIR"),
+                "phases": os.environ.get("ANTIEK_RESEARCH_PHASE_LOG_DIR"),
+                "research": os.environ.get("ANTIEK_RESEARCH_DIR"),
+                "artifacts": os.environ.get("ANTIEK_RESEARCH_ARTIFACTS_DIR"),
+                "skills": os.environ.get("ANTIEK_KNOWLEDGE_SKILLS_DIR"),
+            }
+        )
+        assert skills_root.is_relative_to(workspace.overlay_parent)
+        return _report(synthesis_id)
+
+    replay = replay_candidate_backtest_cohort(
+        _synthesis(),
+        heldout_synthesis_ids=("heldout-1",),
+        baseline_skills_root=tmp_path / "baseline-skills",
+        replay_workspace=workspace,
+        backtest_runner=runner,
+    )
+
+    assert replay.status == "replayed"
+    assert replay.overlay.overlay_skills_root.is_relative_to(workspace.overlay_parent)
+    assert seen_env == [
+        {
+            "db": str(workspace.db_path),
+            "home": str(workspace.home_dir),
+            "events": str(workspace.events_dir),
+            "phases": str(workspace.phase_log_dir),
+            "research": str(workspace.research_dir),
+            "artifacts": str(workspace.research_artifacts_dir),
+            "skills": str(replay.overlay.overlay_skills_root),
+        }
+    ]
+    assert os.environ["ANTIEK_DUCKDB_PATH"] == str(tmp_path / "prod.duckdb")
+    assert os.environ["ANTIEK_HOME"] == str(tmp_path / "prod-home")
+    assert os.environ["ANTIEK_RESEARCH_EVENTS_DIR"] == str(tmp_path / "prod-events")
+    assert os.environ["ANTIEK_RESEARCH_PHASE_LOG_DIR"] == str(tmp_path / "prod-phases")
+    assert os.environ["ANTIEK_RESEARCH_DIR"] == str(tmp_path / "prod-research")
+    assert os.environ["ANTIEK_RESEARCH_ARTIFACTS_DIR"] == str(
+        tmp_path / "prod-artifacts"
+    )
+    assert os.environ["ANTIEK_KNOWLEDGE_SKILLS_DIR"] == str(tmp_path / "prod-skills")
 
 
 def test_replay_candidate_backtest_cohort_requires_heldout_ids(
