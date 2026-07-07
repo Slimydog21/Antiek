@@ -63,7 +63,7 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -81,7 +81,7 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from context_pack.assembler import (  # type: ignore[no-redef]
+    from context_pack.assembler import (  # type: ignore[import-not-found,no-redef]
         ContextPack,
         DefaultTokenCounter,
         LayerSource,
@@ -90,7 +90,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
         assemble_context_pack,
         default_budget_for,
     )
-    from graph.search import cosine_similarity_sql  # type: ignore[no-redef]
+    from graph.search import cosine_similarity_sql  # type: ignore[import-not-found,no-redef]
 
 
 # ---------------------------------------------------------------------------
@@ -202,24 +202,51 @@ class RetrievedUnit:
 
     unit: Any                 # KnowledgeUnitContract (imported lazily; see below)
     similarity: float         # cosine vs the question text; the REAL score
+    # D2 (owner-private reuse): the DOCUMENT-SIDE content_class + taken_down of
+    # the unit's source, stamped at retrieval from the documents/book_assets
+    # join. These are the OWNER-READ track inputs — distinct from the serve-side
+    # ServabilityTag, which collapses personal_reading→None. NULL here ⇒ the
+    # owner cannot lawfully reuse the unit (deny-by-default, same as public).
+    content_class: str | None = None
+    taken_down: bool = False
 
     @property
     def unit_id(self) -> str:
-        return self.unit.node_id
+        return str(self.unit.node_id)
 
     @property
     def source_investigation_id(self) -> str:
-        return self.unit.investigation_id
+        return str(self.unit.investigation_id)
 
     @property
     def text(self) -> str:
-        return self.unit.text
+        return str(self.unit.text)
 
     @property
     def serves_full_text(self) -> bool:
-        """The §9.0 deny-by-default answer recorded on the unit at deposit.
-        Read, never re-derived (the classifier is the single owner)."""
+        """The §9.0 PUBLIC deny-by-default answer recorded on the unit at
+        deposit. Read, never re-derived (the classifier is the single owner).
+        This is the PUBLIC-audience bar; the owner-private audience uses
+        ``owner_readable`` instead (D2)."""
         return bool(self.unit.servability.serves_full_text)
+
+    @property
+    def owner_readable(self) -> bool:
+        """The OWNER-READ track (D2): True iff the unit's SOURCE document
+        content_class is in PERSONAL_READABLE_CONTENT_CLASSES (servable ∪
+        personal_reading) AND the source is NOT taken_down. The owner reads
+        personal_reading in full on the privileged path (the ``owner`` switch
+        in books/serve.py), so reusing an insight derived from it in a PRIVATE
+        investigation is consistent with the rights the owner already holds.
+        This widens nothing publicly — it is consumed ONLY on the gate's
+        ``owner=True`` branch. NULL/restricted/taken-down ⇒ False: the owner
+        cannot lawfully reuse what they cannot read (deny-by-default)."""
+        from substrate.constants import PERSONAL_READABLE_CONTENT_CLASSES
+
+        return (
+            not self.taken_down
+            and self.content_class in PERSONAL_READABLE_CONTENT_CLASSES
+        )
 
 
 @dataclass(frozen=True)
@@ -254,7 +281,7 @@ class ReuseCoverage:
     dropped_not_servable: int
     dropped_over_budget: int
     dropped_low_relevance: int
-    dropped_by_trust_gate: int = 0   # SPR-08: removed by the groundedness/§9.0 gate before the partition
+    dropped_by_trust_gate: int = 0  # SPR-08: removed by the trust gate pre-partition
 
     @property
     def fully_covered(self) -> bool:
@@ -330,7 +357,7 @@ def retrieve_prior_units(
     try:
         from ..graph.insight_question import knowledge_unit_of
     except ImportError:  # pragma: no cover — direct-script fallback
-        from graph.insight_question import knowledge_unit_of  # type: ignore[no-redef]
+        from graph.insight_question import knowledge_unit_of  # type: ignore[import-not-found,no-redef]  # noqa: I001
 
     if not question_text or not question_text.strip():
         return []
@@ -354,15 +381,18 @@ def retrieve_prior_units(
 
     try:
         rows = con.execute(
-            f"SELECT node_id, content_class_of_unit.content_class, similarity FROM ("
+            f"SELECT node_id, content_class_of_unit.content_class, "
+            f"       content_class_of_unit.taken_down, similarity FROM ("
             f"  SELECT node_id, {sim_expr} AS similarity "
             f"  FROM nodes "
             f"  WHERE node_type IN ('insight', 'question') AND embedding IS NOT NULL "
             f"  ORDER BY similarity DESC, node_id ASC LIMIT ?"
             f") AS ranked "
             f"LEFT JOIN ("
-            f"  SELECT e.source_node_id AS nid, d.content_class AS content_class "
+            f"  SELECT e.source_node_id AS nid, d.content_class AS content_class, "
+            f"         COALESCE(b.taken_down, FALSE) AS taken_down "
             f"  FROM edges e JOIN documents d ON e.source_document_id = d.document_id "
+            f"  LEFT JOIN book_assets b ON d.document_id = b.document_id "
             f"  WHERE e.relation = 'supported_by' AND e.source_document_id IS NOT NULL"
             f") AS content_class_of_unit ON ranked.node_id = content_class_of_unit.nid",
             [int(limit)],
@@ -372,7 +402,7 @@ def retrieve_prior_units(
         # edge; fall back to a plain node-similarity scan (content_class then
         # resolves via knowledge_unit_of's metadata fallback / None).
         rows = [
-            (r[0], None, r[1])
+            (r[0], None, False, r[1])
             for r in con.execute(
                 f"SELECT node_id, {sim_expr} AS similarity FROM nodes "
                 f"WHERE node_type IN ('insight', 'question') AND embedding IS NOT NULL "
@@ -382,7 +412,7 @@ def retrieve_prior_units(
         ]
 
     out: list[RetrievedUnit] = []
-    for node_id, content_class, similarity in rows:
+    for node_id, content_class, taken_down, similarity in rows:
         try:
             # SPR-08: fill the groundedness slot at projection time (Decision B),
             # scoring the unit against its cited chunk text over THIS same read
@@ -397,7 +427,31 @@ def retrieve_prior_units(
             # knowledge unit (knowledge_unit_of raises). Skip it honestly rather
             # than inject an ungrounded fragment.
             continue
-        out.append(RetrievedUnit(unit=unit, similarity=float(similarity or 0.0)))
+        # D2: the supported_by-edge join resolves content_class for nodes that
+        # carry their grounding as an edge. Funnel-promoted nodes carry
+        # source_document_id in METADATA (not as an edge — see PromotionFunnel),
+        # so the join yields None there. Resolve from the unit's provenance doc
+        # the same way knowledge_unit_of does (#274): read-only SELECT on THIS
+        # connection (§16-safe). Without this the owner-readable track sees None
+        # and wrongly denies the owner a personal_reading-derived unit.
+        if content_class is None:
+            src_doc = getattr(unit.provenance, "source_document_id", None)
+            if src_doc:
+                cc_row = con.execute(
+                    "SELECT content_class FROM documents WHERE document_id = ? LIMIT 1",
+                    [src_doc],
+                ).fetchone()
+                if cc_row and cc_row[0]:
+                    content_class = str(cc_row[0])
+        # D2: stamp the DOCUMENT-SIDE content_class + taken_down so the trust
+        # gate's owner-private branch (owner_readable) can admit a personal_reading-
+        # derived unit on the owner path without touching the public bar.
+        out.append(RetrievedUnit(
+            unit=unit,
+            similarity=float(similarity or 0.0),
+            content_class=content_class,
+            taken_down=bool(taken_down),
+        ))
 
     # Stable order: similarity desc, then unit id asc (deterministic ties).
     out.sort(key=lambda ru: (-ru.similarity, ru.unit_id))
@@ -495,6 +549,7 @@ def partition_units(
     counter: TokenCounter | None = None,
     header_text: str = "",
     relevance_floor: float = RELEVANCE_FLOOR,
+    owner: bool = False,
 ) -> tuple[list[RetrievedUnit], list[UnitDecision], ReuseCoverage]:
     """Apply the SPR-06 filters in order and produce the injected set + every
     unit's honest decision.
@@ -518,7 +573,13 @@ def partition_units(
     n_not_servable = 0
     n_low_rel = 0
     for ru in units:
-        if not ru.serves_full_text:
+        # D2: the readability bar is audience-aware. On the owner path the bar
+        # is the owner-readable track (servable ∪ personal_reading, not
+        # taken_down); on the public default it is the §9.0 serves_full_text
+        # tag. The SPR-08 trust gate already partitioned on the same axis, so
+        # this is defense-in-depth that stays on the same audience as the gate.
+        readable = ru.owner_readable if owner else ru.serves_full_text
+        if not readable:
             n_not_servable += 1
             decisions.append(UnitDecision(
                 unit_id=ru.unit_id, source_investigation_id=ru.source_investigation_id,
@@ -556,6 +617,7 @@ def build_reuse_layer(
     token_budget: int,
     counter: TokenCounter | None = None,
     relevance_floor: float = RELEVANCE_FLOOR,
+    owner: bool = False,
 ) -> tuple[LayerSource | None, list[RetrievedUnit], list[UnitDecision], ReuseCoverage]:
     """Filter (§9.0 + relevance + budget) and render the reuse ``LayerSource``.
 
@@ -565,13 +627,13 @@ def build_reuse_layer(
     counter = counter or DefaultTokenCounter()
     injected, decisions, coverage = partition_units(
         units, budget=token_budget, counter=counter,
-        header_text=_REUSE_HEADER, relevance_floor=relevance_floor,
+        header_text=_REUSE_HEADER, relevance_floor=relevance_floor, owner=owner,
     )
     if not injected:
         return None, injected, decisions, coverage
     body = _REUSE_HEADER + "\n".join(render_unit(ru) for ru in injected)
     layer = LayerSource(
-        kind=REUSE_LAYER_KIND,  # type: ignore[arg-type]  — added to LayerKind in assembler
+        kind=REUSE_LAYER_KIND,  # type: ignore[arg-type]  # added to LayerKind in assembler
         source=REUSE_LAYER_SOURCE,
         content=body,
         priority=REUSE_LAYER_PRIORITY,
@@ -607,7 +669,7 @@ def assemble_context_pack_with_reuse(
     *,
     role: str,
     investigation_id: str,
-    layers,
+    layers: Iterable[LayerSource],
     units: Sequence[RetrievedUnit],
     include_reuse: bool = True,
     target_tokens: int | None = None,
@@ -620,6 +682,7 @@ def assemble_context_pack_with_reuse(
     apply_trust_gate: bool = True,
     reuse_threshold: float | None = None,
     chunk_text_for: Any | None = None,
+    owner: bool = False,
 ) -> PackWithReuse:
     """Assemble a context pack with prior knowledge units injected as a single
     reuse layer, then emit ONE ``knowledge.reused`` event recording the decision.
@@ -633,7 +696,10 @@ def assemble_context_pack_with_reuse(
     units pass through ``substrate.flywheel.reuse_gate.filter_reusable`` BEFORE
     SPR-06's §9.0/relevance/budget partition. A unit is reusable only if its
     groundedness score ≥ the threshold (``reuse_threshold`` or, by default,
-    ``REUSE_GROUNDEDNESS_THRESHOLD``) AND it serves full text. Excluded units are
+    ``REUSE_GROUNDEDNESS_THRESHOLD``) AND it is readable by the audience: the
+    §9.0 ``serves_full_text`` tag on the public path (``owner=False``, the
+    default), or the owner-readable track (servable ∪ personal_reading, not
+    taken_down) on the owner path (``owner=True``). Excluded units are
     removed before ANY of their text reaches the pack, and each emits exactly one
     ``reuse.gated`` event (carrying the assembled pack id, so it is joinable to
     what the model did NOT see). Because the gate already removed non-servable
@@ -683,6 +749,7 @@ def assemble_context_pack_with_reuse(
             threshold=threshold,
             chunk_text_for=chunk_text_for,
             emit=False,  # deferred — emitted post-assembly with the pack id
+            owner=owner,
         )
 
     coverage = ReuseCoverage(
@@ -694,6 +761,7 @@ def assemble_context_pack_with_reuse(
         budget = reuse_token_budget(role, target_tokens)
         reuse_layer, injected, decisions, coverage = build_reuse_layer(
             candidate_units, token_budget=budget, counter=counter, relevance_floor=relevance_floor,
+            owner=owner,
         )
         if reuse_layer is not None:
             layer_list.append(reuse_layer)
@@ -725,13 +793,15 @@ def assemble_context_pack_with_reuse(
         # exists. Admitted units emit nothing (absence == cleared the gate).
         from substrate.flywheel.reuse_gate import _emit_reuse_gated
 
+        assert threshold is not None
+        context_pack_event_id = pack.event_id or ""
         for decision in gate_decisions:
             if not decision.reusable:
                 _emit_reuse_gated(
                     decision,
                     investigation_id=investigation_id,
                     threshold=threshold,
-                    context_pack_event_id=pack.event_id,
+                    context_pack_event_id=context_pack_event_id,
                     role=role,
                     events_dir=events_dir,
                     policy_id=policy_id,
@@ -780,8 +850,8 @@ def _emit_knowledge_reused(
         from ..event_log import emit_typed
         from ..schemas.events import KnowledgeReusedPayload
     except ImportError:  # pragma: no cover — direct-script fallback
-        from event_log import emit_typed  # type: ignore[no-redef]
-        from schemas.events import KnowledgeReusedPayload  # type: ignore[no-redef]
+        from event_log import emit_typed  # type: ignore[import-not-found,no-redef]
+        from schemas.events import KnowledgeReusedPayload  # type: ignore[import-not-found,no-redef]
 
     payload = KnowledgeReusedPayload(
         reused_unit_ids=[ru.unit_id for ru in injected],

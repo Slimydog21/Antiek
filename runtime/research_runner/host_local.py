@@ -261,10 +261,18 @@ class HostLocalRunner:
         """AFF SPR-06 reuse hook (called exactly once from ``start``).
 
         Composes ``substrate.context_pack.knowledge_reuse`` — retrieve prior
-        units relevant to ``plan.sub_question``, filter to §9.0-servable +
+        units relevant to ``plan.sub_question``, filter to audience-readable +
         token-bounded top-k, inject a single reuse layer into a context pack, and
         emit one ``knowledge.reused`` event on this investigation's JSONL. Lives
-        on the existing ``start`` path; adds no ResearchRunner protocol method."""
+        on the existing ``start`` path; adds no ResearchRunner protocol method.
+
+        Audience: this is the single-operator local runner, so every investigation
+        here is the owner's own private research — ``owner=True`` admits the
+        owner-readable track (servable ∪ personal_reading, not taken_down) on the
+        reuse gate. The owner already reads personal_reading in full on the
+        privileged serve path (books/serve.py), so reusing an insight derived from
+        it here widens nothing publicly (the public path stays byte-identical).
+        The multi-operator audience signal arrives with the hosted runner (D19)."""
         if self._retrieval_substrate is None:
             return
         try:
@@ -285,6 +293,7 @@ class HostLocalRunner:
                 layers=[],
                 units=units,
                 events_dir=self._events_dir,
+                owner=True,
             )
         except Exception:  # pragma: no cover — reuse never breaks a research
             return

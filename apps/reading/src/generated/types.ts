@@ -708,7 +708,7 @@ export interface ReuseGatedPayload {
   groundedness_score?: number | null;
   scorer_id: string;
   threshold: number;
-  reasons: ("below-threshold" | "non-servable")[];
+  reasons: ("below-threshold" | "non-servable" | "non-owner-readable")[];
   context_pack_event_id?: string;
 }
 
