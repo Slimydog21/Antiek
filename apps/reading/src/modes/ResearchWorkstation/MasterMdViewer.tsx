@@ -1237,7 +1237,16 @@ function ReusedInsightLink({
   parentInvestigationId: string | null;
   staleRefreshChildren: InvestigationSummary[];
 }) {
-  const canRefresh = Boolean(insight.staleRefreshAdvisory && parentInvestigationId);
+  const staleAdvisoryResolutions = insight.staleAdvisoryResolutions ?? [];
+  const staleAdvisoryEdgeCount = insight.staleAdvisoryEdgeIds?.length ?? 0;
+  const allStaleAdvisoriesResolved =
+    staleAdvisoryEdgeCount > 0 &&
+    staleAdvisoryResolutions.length >= staleAdvisoryEdgeCount;
+  const canRefresh = Boolean(
+    insight.staleRefreshAdvisory &&
+      parentInvestigationId &&
+      !allStaleAdvisoriesResolved,
+  );
   const backendChild =
     canRefresh && parentInvestigationId
       ? staleReuseRefreshChild(staleRefreshChildren, parentInvestigationId, insight)
@@ -1275,10 +1284,20 @@ function ReusedInsightLink({
   const label = `prior insight ${insight.unitId}`;
   const refreshCue = insight.staleRefreshAdvisory ? (
     <span
-      className="ml-2 font-mono text-[11px] uppercase tracking-wide text-amber-700 dark:text-amber-300"
-      title="This reused unit's source document has stale graph edges; refresh or confirm it before treating it as current."
+      className={
+        allStaleAdvisoriesResolved
+          ? "ml-2 font-mono text-[11px] uppercase tracking-wide text-emerald-700 dark:text-emerald-300"
+          : "ml-2 font-mono text-[11px] uppercase tracking-wide text-amber-700 dark:text-amber-300"
+      }
+      title={
+        allStaleAdvisoriesResolved
+          ? staleResolutionTitle(staleAdvisoryResolutions)
+          : "This reused unit's source document has stale graph edges; refresh or confirm it before treating it as current."
+      }
     >
-      refresh before current use
+      {allStaleAdvisoriesResolved
+        ? "stale advisory resolved"
+        : "refresh before current use"}
     </span>
   ) : null;
 
@@ -1646,4 +1665,28 @@ function refreshAcceptanceLabel(
   if (status === "confirmed_stale") return "stale confirmed";
   if (status === "dismissed") return "refresh dismissed";
   return "refresh accepted";
+}
+
+function staleResolutionTitle(
+  resolutions: NonNullable<ReusedInsight["staleAdvisoryResolutions"]>,
+): string {
+  return resolutions
+    .map((resolution) =>
+      [
+        `${resolution.entityId}: ${staleResolutionStatusLabel(resolution.status)}`,
+        resolution.notes,
+      ]
+        .filter((part): part is string => Boolean(part))
+        .join(" · "),
+    )
+    .join(" · ");
+}
+
+function staleResolutionStatusLabel(
+  status: NonNullable<
+    ReusedInsight["staleAdvisoryResolutions"]
+  >[number]["status"],
+): string {
+  if (status === "confirmed_stale") return "confirmed stale";
+  return status;
 }

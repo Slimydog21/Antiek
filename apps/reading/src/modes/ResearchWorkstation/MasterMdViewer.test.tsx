@@ -937,6 +937,46 @@ describe("MasterMdViewer — reuse provenance footnote (SPR-10 M3/M4/M6)", () =>
     expect(screen.getByText("refresh before current use")).toBeTruthy();
   });
 
+  it("shows resolved stale advisory state from graph staleness resolution replay", async () => {
+    getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
+    render(
+      <MasterMdViewer
+        synthesis={synth({
+          investigationId: "inv-parent",
+          reuseProvenance: [
+            {
+              unitId: "unit-stale",
+              sourceInvestigationId: "inv-source",
+              score: 0.81,
+              staleRefreshAdvisory: true,
+              staleAdvisoryEdgeIds: ["edge-stale-personnel"],
+              staleAdvisoryResolutions: [
+                {
+                  flagId: "stale-edge-stale-personnel-personnel",
+                  entityKind: "edge",
+                  entityId: "edge-stale-personnel",
+                  status: "refreshed",
+                  notes: "resolved by stale refresh promotion",
+                },
+              ],
+            },
+          ],
+          compoundingStat: null,
+        })}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("reuse-provenance")).toBeTruthy());
+
+    const cue = screen.getByText("stale advisory resolved");
+    expect(cue.getAttribute("title")).toBe(
+      "edge-stale-personnel: refreshed · resolved by stale refresh promotion",
+    );
+    expect(screen.queryByText("refresh before current use")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Refresh prior insight unit-stale" }),
+    ).toBeNull();
+  });
+
   it("launches a child refresh research from a stale-advisory reused insight", async () => {
     getChunkMock.mockResolvedValue(chunk({ chunk_id: "c1" }));
     startInvestigationMock.mockResolvedValue({
