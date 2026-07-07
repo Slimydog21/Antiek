@@ -65,6 +65,7 @@ import os
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from typing import Any
 
 try:
@@ -191,6 +192,19 @@ DECISION_LOW_RELEVANCE = "dropped-low-relevance"
 
 
 @dataclass(frozen=True)
+class ReuseStalenessAdvisory:
+    """Advisory stale-edge context attached to a retrieved unit's source doc.
+
+    This is deliberately not a trust-gate result. A stale edge means "refresh
+    this provenance when touched", not "drop the prior unit"."""
+
+    edge_id: str
+    claim_class: str
+    age_days: int
+    ttl_days: int
+
+
+@dataclass(frozen=True)
 class RetrievedUnit:
     """A prior knowledge unit retrieved for possible reuse.
 
@@ -202,6 +216,7 @@ class RetrievedUnit:
 
     unit: Any                 # KnowledgeUnitContract (imported lazily; see below)
     similarity: float         # cosine vs the question text; the REAL score
+    staleness_advisories: tuple[ReuseStalenessAdvisory, ...] = ()
 
     @property
     def unit_id(self) -> str:
@@ -302,6 +317,7 @@ def retrieve_prior_units(
     question_text: str,
     limit: int = DEFAULT_RETRIEVE_LIMIT,
     policy_tag: str = "attribution_eligible",
+    staleness_as_of: datetime | None = None,
 ) -> list[RetrievedUnit]:
     """Retrieve prior knowledge units ranked by similarity to ``question_text``.
 
@@ -397,11 +413,87 @@ def retrieve_prior_units(
             # knowledge unit (knowledge_unit_of raises). Skip it honestly rather
             # than inject an ungrounded fragment.
             continue
-        out.append(RetrievedUnit(unit=unit, similarity=float(similarity or 0.0)))
+        out.append(
+            RetrievedUnit(
+                unit=unit,
+                similarity=float(similarity or 0.0),
+                staleness_advisories=_source_staleness_advisories(
+                    con,
+                    source_document_id=unit.provenance.source_document_id,
+                    as_of=staleness_as_of,
+                ),
+            )
+        )
 
     # Stable order: similarity desc, then unit id asc (deterministic ties).
     out.sort(key=lambda ru: (-ru.similarity, ru.unit_id))
     return out
+
+
+def _source_staleness_advisories(
+    con: Any,
+    *,
+    source_document_id: str | None,
+    as_of: datetime | None = None,
+) -> tuple[ReuseStalenessAdvisory, ...]:
+    """Return stale classified edges grounded on the unit's source document.
+
+    Reuse units are grounded by doc/chunk provenance, while GF-4 stale flags are
+    edge-level. Joining through ``source_document_id`` gives the role an honest
+    "this source has stale graph facts" marker without claiming the specific
+    insight itself is invalid.
+    """
+    if not source_document_id:
+        return ()
+
+    try:
+        from middleware.temporal.staleness import (
+            _age_days,
+            _source_timestamp,
+            evaluate_staleness,
+        )
+    except ImportError:  # pragma: no cover — direct-script fallback
+        from temporal.staleness import (  # type: ignore[import-not-found,no-redef]
+            _age_days,
+            _source_timestamp,
+            evaluate_staleness,
+        )
+
+    now = as_of or datetime.now(UTC)
+    now = now.replace(tzinfo=UTC) if now.tzinfo is None else now.astimezone(UTC)
+    try:
+        rows = con.execute(
+            """
+            SELECT e.edge_id, e.relation, e.valid_from, e.extracted_at, d.published_at
+            FROM edges e
+            LEFT JOIN documents d ON d.document_id = e.source_document_id
+            WHERE e.source_document_id = ? AND e.valid_until IS NULL
+            ORDER BY e.edge_id ASC
+            """,
+            [source_document_id],
+        ).fetchall()
+    except Exception:
+        return ()
+
+    advisories: list[ReuseStalenessAdvisory] = []
+    for edge_id, relation, valid_from, extracted_at, published_at in rows:
+        source_time = _source_timestamp(
+            published_at=published_at,
+            valid_from=valid_from,
+            extracted_at=extracted_at,
+        )
+        verdict = evaluate_staleness(relation, _age_days(now, source_time))
+        if not verdict.is_stale or verdict.claim_class is None or verdict.ttl_days is None:
+            continue
+        advisories.append(
+            ReuseStalenessAdvisory(
+                edge_id=str(edge_id),
+                claim_class=verdict.claim_class,
+                age_days=verdict.age_days,
+                ttl_days=verdict.ttl_days,
+            )
+        )
+    return tuple(advisories)
 
 
 # ---------------------------------------------------------------------------
@@ -430,10 +522,16 @@ def render_unit(unit_ru: RetrievedUnit) -> str:
 
     Stable format so the regex + the token accounting are reproducible."""
     tag = "INSIGHT" if unit_ru.unit.node_type == "insight" else "QUESTION"
+    advisory = ""
+    if unit_ru.staleness_advisories:
+        classes = ",".join(
+            f"{a.edge_id}:{a.claim_class}" for a in unit_ru.staleness_advisories
+        )
+        advisory = f" staleness_advisory={classes}"
     return (
         f"- [{tag}] {unit_ru.text} "
         f"[reuse src_investigation={unit_ru.source_investigation_id} "
-        f"unit_id={unit_ru.unit_id} similarity={unit_ru.similarity:.4f}]"
+        f"unit_id={unit_ru.unit_id} similarity={unit_ru.similarity:.4f}{advisory}]"
     )
 
 
@@ -788,6 +886,9 @@ def _emit_knowledge_reused(
         scores=[round(float(ru.similarity), 6) for ru in injected],
         decisions=[d.decision for d in decisions],
         source_investigation_ids=[d.source_investigation_id for d in decisions],
+        stale_advisory_unit_ids=[
+            ru.unit_id for ru in injected if ru.staleness_advisories
+        ],
         context_pack_event_id=context_pack_event_id or "",
     )
     return emit_typed(

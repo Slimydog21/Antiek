@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import datetime
 
 import pytest
 
@@ -44,7 +45,7 @@ from substrate.context_pack.assembler import (
 )
 from substrate.event_log.events import trajectory
 from substrate.graph.insight_question import promote_insight
-from substrate.graph.ops import insert_node
+from substrate.graph.ops import insert_edge, insert_node
 from substrate.graph.retrieval_substrate import make_substrate
 from substrate.graph.schema import init_database
 
@@ -277,6 +278,75 @@ def test_m2_reuse_layer_kind_registered_in_assembler():
     assert order.index("long_term_skill") < order.index("reuse") < order.index("graph_evidence")
 
 
+def test_m2_stale_source_edges_are_advisory_not_a_drop(seeded_quantum_db):
+    db, emb, _ = seeded_quantum_db
+    with connect_write(db, purpose="spr06_staleness_seed") as con:
+        stale_source = insert_node(
+            con,
+            canonical_label="operator",
+            node_type="person",
+            graph_scope="depth",
+            investigation_id="inv-prior",
+            on_conflict="ignore",
+        )
+        stale_target = insert_node(
+            con,
+            canonical_label="old employer",
+            node_type="organization",
+            graph_scope="depth",
+            investigation_id="inv-prior",
+            on_conflict="ignore",
+        )
+        insert_edge(
+            con,
+            edge_id="edge-stale-personnel",
+            source_node_id=stale_source,
+            target_node_id=stale_target,
+            relation="led_by",
+            source_tier=1,
+            extraction_confidence=0.9,
+            graph_scope="depth",
+            investigation_id="inv-prior",
+            source_document_id="doc-public_domain",
+            valid_from=datetime(2025, 1, 1),
+            on_conflict="ignore",
+        )
+
+    sub = make_substrate("brute_force", db, model=emb)
+    try:
+        units = kr.retrieve_prior_units(
+            sub,
+            question_text="neutral atom qubit error rate suppression",
+            staleness_as_of=datetime(2026, 7, 1),
+        )
+        result = kr.assemble_context_pack_with_reuse(
+            role="user_agent",
+            investigation_id="inv-stale-advisory",
+            layers=[],
+            units=units,
+        )
+    finally:
+        sub.close()
+
+    advisory_units = [u for u in result.injected if u.staleness_advisories]
+    assert advisory_units, "stale source edges should mark injected reuse units"
+    assert any(
+        a.edge_id == "edge-stale-personnel" and a.claim_class == "personnel"
+        for unit in advisory_units
+        for a in unit.staleness_advisories
+    )
+    assert kr.DECISION_INJECTED in [d.decision for d in result.decisions]
+    assert "staleness_advisory=edge-stale-personnel:personnel" in result.pack.text
+
+    payload = next(
+        r for r in trajectory("inv-stale-advisory")
+        if r["action_type"] == "knowledge.reused"
+    )["payload"]
+    assert set(payload["stale_advisory_unit_ids"]) == {
+        u.unit_id for u in advisory_units
+    }
+
+
 # ---------------------------------------------------------------------------
 # M3 — the typed knowledge.reused event
 # ---------------------------------------------------------------------------
@@ -317,7 +387,7 @@ def test_m3_event_emitted_with_units_and_scores(seeded_quantum_db):
 
 def test_m3_event_decisions_distinguish_drop_reasons(emb, tmp_path):
     db = os.path.join(tmp_path, "reasons.duckdb")
-    node_ids = _seed_graph(
+    _seed_graph(
         db, emb,
         units=[
             ("neutral atom qubit error rate suppression servable", "public_domain"),
@@ -433,7 +503,6 @@ def test_m4_over_budget_layer_bounded_and_overflow_recorded(emb, tmp_path):
 
 
 def test_m4_over_budget_event_decisions_carry_overflow(emb, tmp_path):
-    db = os.path.join(tmp_path, "budget.duckdb")  # unused dir for events only
     # ~80 units × ~80 tokens ≈ 6400 tokens — exceeds the role's 4000-token reuse
     # budget cap, so the assemble path must drop some over-budget.
     units = _fake_units(80, sim_start=0.95)

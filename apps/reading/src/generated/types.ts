@@ -652,6 +652,9 @@ export interface ContextPackAssembledPayload {
  *   (injected + dropped), equal-length to each other. A ``decision`` is one of
  *   ``injected`` | ``dropped-not-servable`` | ``dropped-over-budget`` |
  *   ``dropped-low-relevance`` — the honest, distinct reason for the unit's fate.
+ * * ``stale_advisory_unit_ids`` lists injected units whose grounding source
+ *   document also has stale classified graph edges. Advisory means "refresh
+ *   when touched", not "drop from reuse".
  * * ``context_pack_event_id`` is the assembled pack's event id, so a reuse
  *   decision is joinable to exactly what the model saw.
  * 
@@ -665,6 +668,7 @@ export interface KnowledgeReusedPayload {
   scores: number[];
   decisions: string[];
   source_investigation_ids: string[];
+  stale_advisory_unit_ids?: string[];
   context_pack_event_id: string;
 }
 
