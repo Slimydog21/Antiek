@@ -86,6 +86,7 @@ REUSE_GROUNDEDNESS_THRESHOLD: float = _threshold_from_env(DEFAULT_SUPPORTED_THRE
 # ARE the ``ReuseGateReason`` Literal values (events.py is the type owner).
 REASON_BELOW_THRESHOLD: ReuseGateReason = "below-threshold"
 REASON_NON_SERVABLE: ReuseGateReason = "non-servable"
+REASON_NON_OWNER_READABLE: ReuseGateReason = "non-owner-readable"
 
 
 @dataclass(frozen=True)
@@ -136,18 +137,39 @@ def evaluate_unit(
     *,
     threshold: float = REUSE_GROUNDEDNESS_THRESHOLD,
     chunk_text_for: ChunkTextResolver | None = None,
+    owner: bool = False,
 ) -> GateDecision:
     """Apply the two INDEPENDENT trust conditions to one candidate unit.
 
     Returns a ``GateDecision`` whose ``reasons`` names every condition that
     failed. ``below-threshold`` fires when the score is ``None`` (unknown ⇒ not
-    grounded) or strictly below ``threshold``; ``non-servable`` fires when the
-    unit's §9.0 tag does not serve full text. A unit can fail BOTH."""
+    grounded) or strictly below ``threshold``.
+
+    The second condition is AUDIENCE-AWARE (D2 owner-private reuse):
+
+    * ``owner=False`` (the default, the PUBLIC path) ⇒ ``non-servable`` fires
+      when the unit's §9.0 tag does not serve full text. This branch is
+      byte-identical to pre-D2 — every existing caller stays on it.
+    * ``owner=True`` (the operator / private-investigation path, the only caller
+      that may pass it) ⇒ the bar is the OWNER-READ track instead: a unit whose
+      source the owner may read in full (servable ∪ personal_reading, not
+      taken_down) is reusable. ``non-owner-readable`` fires when the owner
+      cannot lawfully read the unit's source (NULL/restricted/taken_down). This
+      mirrors the ``owner`` switch in books/serve.py: the owner already reads
+      personal_reading in full on the privileged path, so reusing an insight
+      derived from it in a PRIVATE investigation is consistent with the rights
+      the owner already holds. It widens NOTHING on the public default and never
+      admits a unit the owner cannot lawfully read.
+
+    A unit can fail BOTH conditions regardless of audience."""
     score = groundedness_of(retrieved_unit, chunk_text_for=chunk_text_for)
     reasons: list[ReuseGateReason] = []
     if score is None or score < threshold:
         reasons.append(REASON_BELOW_THRESHOLD)
-    if not retrieved_unit.serves_full_text:
+    if owner:
+        if not retrieved_unit.owner_readable:
+            reasons.append(REASON_NON_OWNER_READABLE)
+    elif not retrieved_unit.serves_full_text:
         reasons.append(REASON_NON_SERVABLE)
     return GateDecision(
         unit=retrieved_unit,
@@ -168,6 +190,7 @@ def filter_reusable(
     events_dir: str | None = None,
     policy_id: str | None = None,
     emit: bool = True,
+    owner: bool = False,
 ) -> tuple[list[Any], list[GateDecision]]:
     """The gate. Partition candidate ``RetrievedUnit``s into the reusable set
     and emit one ``reuse.gated`` event per EXCLUDED unit.
@@ -185,7 +208,7 @@ def filter_reusable(
     decisions: list[GateDecision] = []
     for ru in units:
         decision = evaluate_unit(
-            ru, threshold=threshold, chunk_text_for=chunk_text_for
+            ru, threshold=threshold, chunk_text_for=chunk_text_for, owner=owner
         )
         decisions.append(decision)
         if decision.reusable:
