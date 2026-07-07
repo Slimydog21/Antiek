@@ -162,28 +162,39 @@ of `constants.py` per role.
 dispatch(prompt, role, max_tokens, verification_required, context_pack) -> response
 ```
 
-Internally it routes to:
+Internally it routes to (claude-less, operator decision 2026-07-06):
 
+- GLM-5.2 via Zhipu z.ai, thinking OFF — flash + pro + verify tiers
+  (the volume tiers: crystallized answers at high throughput)
+- GLM-5.2 via z.ai, thinking ON — synthesis tier, the human-facing
+  artifact where reasoning demonstrably matters
+- DeepSeek V4 Pro via api.deepseek.com — cross-family backup layer
+- MiMo V2.5 Pro via api.mimo.xiaomi.com — second cross-family backup
+- OpenAI whisper-1 / gpt-4o-mini-tts — transcription + TTS (voice I/O)
 - Local inference (deferred; no backend in this build)
-- DeepSeek V4 Pro / Xiaomi MiMo V2.5 Pro for primary work where
-  reasoning depth dominates
-- Grok 4.3 via Hermes for cross-family verification
-- Claude via API for high-stakes synthesis
-- Xiaomi MiMo V2.5 Flash / DeepSeek V4 Flash for bulk cost-optimized work
 
-Configuration lives in `substrate/dispatch/config.yaml`. Changing
-routing is a config change, never a code change. When local hardware
-eventually arrives, it's one new backend behind the same interface.
+Every tier's primary is GLM-5.2; the two backups are a different model
+family each, chained three-deep (GLM → DeepSeek → MiMo) so a single
+provider or model-scoped outage never takes two layers at once. All
+three are direct APIs — no OpenRouter hop, no Anthropic. The `hermes`
+local-subscription gateway registers as an opt-in provider when its
+key is set but is in no tier route. Configuration lives in
+`substrate/dispatch/config.yaml`; changing routing is a config change,
+never a code change.
 
-**The Pro/Flash split is deliberate.** The MoE flash variants (309B
-total / 15B active for MiMo V2.5 Flash; 284B / 13B for DeepSeek V4
-Flash) are the right tool for bulk processing — low per-token cost,
-manageable compute footprint. The Pro variants (DeepSeek V4 Pro at
-1.6T / 49B active; MiMo V2.5 Pro at >1T) earn their premium on
-synthesis where reasoning depth and multi-hop coherence matter more
-than throughput. Treating them as interchangeable cost tiers is the
-failure mode. The router makes the choice explicit at the role level
-rather than hiding it in a default.
+**The flash/pro split is a thinking-policy split, not a model split.**
+All four tiers run the same GLM-5.2; the difference is whether it
+spends the token budget on a chain-of-thought `reasoning_content`
+field (synthesis, thinking ON) or returns direct `content` answers
+(flash/pro/verify, thinking OFF). The substrate's thesis is that
+quality emerges from a VOLUME of grounded dispatches that yield
+crystallized answers — notes, extractions, syntheses — not from one
+expensive reasoning trace. Reasoning is opt-in per role (one
+`extra_body` line in bootstrap), kept for the synthesis tier where the
+human reads the long-form artifact. Treating the tiers as
+interchangeable is the failure mode; the router makes the
+thinking-policy choice explicit at the role level rather than hiding
+it in a default.
 
 **The context-pack argument is new and load-bearing.** The router
 accepts not just a prompt but a `context_pack` assembled by
