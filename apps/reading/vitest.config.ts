@@ -7,6 +7,7 @@ export default defineConfig({
     environment: "jsdom",
     globals: false,
     include: ["src/**/*.test.{ts,tsx}"],
+    setupFiles: ["src/test/setup.ts"],
     // Storybook stories aren't tests
     exclude: ["**/node_modules/**", "**/dist/**", "**/storybook-static/**"],
   },

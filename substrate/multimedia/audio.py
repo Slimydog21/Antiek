@@ -28,6 +28,7 @@ from substrate.multimedia.planner import MultimediaPlan
 NARRATION_WPM = 150
 DEFAULT_AUDIO_VOICE = "alloy"
 DEFAULT_AUDIO_SPEED = 1.0
+SourceStatus = Literal["sourced", "unsourced", "instruction"]
 
 _ABBREVIATIONS = {
     "AI": "A I",
@@ -49,7 +50,7 @@ class NarrationParagraph(_AudioBase):
     text: str = Field(min_length=1)
     script_line_ids: tuple[str, ...]
     source_chunk_ids: tuple[str, ...] = Field(default_factory=tuple)
-    source_status: Literal["sourced", "unsourced", "instruction"]
+    source_status: SourceStatus
     pronunciation_notes: tuple[str, ...] = Field(default_factory=tuple)
 
     @model_validator(mode="after")
@@ -164,7 +165,7 @@ def normalize_script_for_audio(plan: MultimediaPlan) -> tuple[NarrationParagraph
         chapter_id = chapter_for_line.get(line.line_id, "intro")
         text, notes = _speech_text(line.text)
         if line.kind == "instruction":
-            status = "instruction"
+            status: SourceStatus = "instruction"
         elif line.citations:
             status = "sourced"
         else:

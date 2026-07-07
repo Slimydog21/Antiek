@@ -35,7 +35,11 @@ from substrate.multimedia import (
 )
 from substrate.multimedia.audio import (
     TTSResult as CompatibilityTTSResult,
+)
+from substrate.multimedia.audio import (
     assemble_audio_experience as assemble_compatibility_audio_experience,
+)
+from substrate.multimedia.audio import (
     normalize_script_for_audio,
 )
 from substrate.multimedia.planner import EvidenceChunk, ScriptLine
