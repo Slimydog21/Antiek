@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
+import pytest
+
 from compounding.skill_growth import (
+    DEFAULT_PHASE8_EPSILON,
+    DEFAULT_PHASE8_MINIMUM_COHORT_SIZE,
+    PHASE8_EPSILON_ENV,
+    PHASE8_MINIMUM_COHORT_SIZE_ENV,
+    PHASE8_MODE_ENFORCING,
+    PHASE8_MODE_ENV,
+    PHASE8_MODE_SHADOW,
     PatchDecision,
     SkillPatchGate,
     apply_patch_with_gate,
+    phase8_gate_from_env,
     propose_skill_patch,
 )
 
@@ -95,3 +105,37 @@ def test_shadow_mode_carries_would_be_decision():
     )
     assert outcome.decision == PatchDecision.SHADOW
     assert "would-be-accept=True" in outcome.notes
+
+
+def test_phase8_gate_from_env_defaults_to_shadow():
+    gate = phase8_gate_from_env({})
+    assert gate.mode == PHASE8_MODE_SHADOW
+    assert gate.epsilon == DEFAULT_PHASE8_EPSILON
+    assert gate.minimum_cohort_size == DEFAULT_PHASE8_MINIMUM_COHORT_SIZE
+
+
+def test_phase8_gate_from_env_enables_enforcing_with_tuned_thresholds():
+    gate = phase8_gate_from_env({
+        PHASE8_MODE_ENV: PHASE8_MODE_ENFORCING,
+        PHASE8_EPSILON_ENV: "0.075",
+        PHASE8_MINIMUM_COHORT_SIZE_ENV: "12",
+    })
+    assert gate.mode == PHASE8_MODE_ENFORCING
+    assert gate.epsilon == 0.075
+    assert gate.minimum_cohort_size == 12
+
+
+def test_phase8_gate_from_env_rejects_invalid_mode():
+    with pytest.raises(ValueError, match="mode"):
+        phase8_gate_from_env({PHASE8_MODE_ENV: "observe"})
+
+
+def test_phase8_gate_from_env_rejects_invalid_numeric_values():
+    with pytest.raises(ValueError, match=PHASE8_EPSILON_ENV):
+        phase8_gate_from_env({PHASE8_EPSILON_ENV: "wide"})
+    with pytest.raises(ValueError, match="epsilon"):
+        phase8_gate_from_env({PHASE8_EPSILON_ENV: "-0.01"})
+    with pytest.raises(ValueError, match=PHASE8_MINIMUM_COHORT_SIZE_ENV):
+        phase8_gate_from_env({PHASE8_MINIMUM_COHORT_SIZE_ENV: "many"})
+    with pytest.raises(ValueError, match="minimum_cohort_size"):
+        phase8_gate_from_env({PHASE8_MINIMUM_COHORT_SIZE_ENV: "0"})
