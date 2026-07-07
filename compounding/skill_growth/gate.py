@@ -3,18 +3,30 @@
 from __future__ import annotations
 
 import enum
+import os
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 
-class PatchDecision(str, enum.Enum):
+class PatchDecision(enum.StrEnum):
     """Decision outcomes for a candidate skill patch."""
 
     ACCEPT = "accept"
     REJECT = "reject"
     SHADOW = "shadow"  # gate ran in shadow mode; outcome recorded but patch applied
+
+
+PHASE8_MODE_ENV = "ANTIEK_PHASE8_MODE"
+PHASE8_EPSILON_ENV = "ANTIEK_PHASE8_EPSILON"
+PHASE8_MINIMUM_COHORT_SIZE_ENV = "ANTIEK_PHASE8_MINIMUM_COHORT_SIZE"
+
+PHASE8_MODE_SHADOW = "shadow"
+PHASE8_MODE_ENFORCING = "enforcing"
+VALID_PHASE8_MODES = frozenset({PHASE8_MODE_SHADOW, PHASE8_MODE_ENFORCING})
+DEFAULT_PHASE8_EPSILON = 0.02
+DEFAULT_PHASE8_MINIMUM_COHORT_SIZE = 50
 
 
 def _now_iso() -> str:
@@ -53,9 +65,20 @@ class SkillPatchGate:
     THEN flip the gate to enforcing.'
     """
 
-    mode: str = "shadow"  # "shadow" | "enforcing"
-    epsilon: float = 0.02
-    minimum_cohort_size: int = 50  # per §6.3 architectural threshold
+    mode: str = PHASE8_MODE_SHADOW
+    epsilon: float = DEFAULT_PHASE8_EPSILON
+    minimum_cohort_size: int = DEFAULT_PHASE8_MINIMUM_COHORT_SIZE
+
+    def __post_init__(self) -> None:
+        if self.mode not in VALID_PHASE8_MODES:
+            raise ValueError(
+                f"Phase 8 gate mode must be one of "
+                f"{sorted(VALID_PHASE8_MODES)!r}; got {self.mode!r}"
+            )
+        if self.epsilon < 0:
+            raise ValueError("Phase 8 gate epsilon must be >= 0")
+        if self.minimum_cohort_size < 1:
+            raise ValueError("Phase 8 gate minimum_cohort_size must be >= 1")
 
     def decide(
         self,
@@ -71,7 +94,7 @@ class SkillPatchGate:
         patch_id = f"patch-{uuid.uuid4().hex[:12]}"
         delta = candidate_backtest_score - baseline_backtest_score
 
-        if self.mode == "shadow":
+        if self.mode == PHASE8_MODE_SHADOW:
             decision = PatchDecision.SHADOW
             note = (
                 f"shadow-mode: delta={delta:.4f}, "
@@ -113,7 +136,7 @@ def propose_skill_patch(
     domain: str,
     proposed_skill_text: str,
     investigation_id: str,
-) -> dict:
+) -> dict[str, str]:
     """Wrap a candidate skill-patch in a proposal envelope. Real
     patch application is operator-driven (or Sprint 20-21
     Phase-8-with-gate driven); this function only formats the
@@ -147,3 +170,55 @@ def apply_patch_with_gate(
         apply_fn()
     # On REJECT, patch is NOT applied; caller logs the rejection.
     return outcome
+
+
+def _parse_float_env(
+    env: Mapping[str, str],
+    name: str,
+    default: float,
+) -> float:
+    raw = env.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be a float; got {raw!r}") from exc
+
+
+def _parse_int_env(
+    env: Mapping[str, str],
+    name: str,
+    default: int,
+) -> int:
+    raw = env.get(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer; got {raw!r}") from exc
+
+
+def phase8_gate_from_env(
+    env: Mapping[str, str] | None = None,
+) -> SkillPatchGate:
+    """Build the Phase-8 gate from runtime config.
+
+    The default remains shadow mode. Invalid config raises rather than
+    silently degrading to shadow, because an operator-requested
+    enforcing posture must either be real or fail visibly.
+    """
+    source = os.environ if env is None else env
+    mode = source.get(PHASE8_MODE_ENV, PHASE8_MODE_SHADOW).strip().lower()
+    return SkillPatchGate(
+        mode=mode or PHASE8_MODE_SHADOW,
+        epsilon=_parse_float_env(
+            source, PHASE8_EPSILON_ENV, DEFAULT_PHASE8_EPSILON
+        ),
+        minimum_cohort_size=_parse_int_env(
+            source,
+            PHASE8_MINIMUM_COHORT_SIZE_ENV,
+            DEFAULT_PHASE8_MINIMUM_COHORT_SIZE,
+        ),
+    )
