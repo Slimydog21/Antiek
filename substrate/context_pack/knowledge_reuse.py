@@ -357,9 +357,7 @@ def retrieve_prior_units(
     try:
         from ..graph.insight_question import knowledge_unit_of
     except ImportError:  # pragma: no cover — direct-script fallback
-        from graph.insight_question import (
-            knowledge_unit_of,  # type: ignore[import-not-found,no-redef]
-        )
+        from graph.insight_question import knowledge_unit_of  # type: ignore[import-not-found,no-redef]  # noqa: I001
 
     if not question_text or not question_text.strip():
         return []
