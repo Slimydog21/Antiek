@@ -16,7 +16,10 @@ from middleware.backtest import BacktestReport  # noqa: E402
 from orchestration.audit import record_phase8_gate_review  # noqa: E402
 from orchestration.loop_one.orchestrator import (  # noqa: E402
     PHASE8_CALIBRATION_INVESTIGATION_IDS_ENV,
+    PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV,
+    PHASE8_REPLAY_OVERLAY_PARENT_ENV,
     InvestigationContext,
+    _phase8_candidate_replay_evaluation,
     _phase8_gate_decide_from_replay_evaluation,
     _phase8_gate_from_runtime_env,
     _run_phase_8,
@@ -208,6 +211,37 @@ def test_phase8_gate_decision_uses_replay_evaluation_scores(tmp_path):
     assert outcome.candidate_backtest_score == 1.0
     assert outcome.cohort_size == 2
     assert outcome.delta == 0.5
+
+
+def test_phase8_replay_provider_reports_unavailable_runner_when_configured(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv(
+        PHASE8_REPLAY_HELDOUT_SYNTHESIS_IDS_ENV,
+        "heldout-1, heldout-2",
+    )
+    monkeypatch.setenv(PHASE8_REPLAY_OVERLAY_PARENT_ENV, str(tmp_path / "overlays"))
+    ctx = _ctx("inv-phase8-replay-provider")
+    synthesis_row = {
+        "synthesis_id": "syn-inv-phase8-replay-provider",
+        "investigation_id": ctx.investigation_id,
+        "target_question": ctx.question,
+        "implicit_recommendation": ctx.synthesis.implicit_recommendation,
+        "thesis": {"thesis_summary": ctx.synthesis.thesis_summary},
+    }
+
+    evaluation = _phase8_candidate_replay_evaluation(
+        ctx=ctx,
+        synthesis_row=synthesis_row,
+        matched_domains=["quantum-computing-knowledge"],
+    )
+
+    assert evaluation is not None
+    assert evaluation.ready_for_gate is False
+    assert evaluation.replay.status == "runner_unavailable"
+    assert evaluation.replay.heldout_synthesis_ids == ("heldout-1", "heldout-2")
+    assert "production candidate replay runner is not wired" in evaluation.notes
 
 
 @pytest.mark.asyncio

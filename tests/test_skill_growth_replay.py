@@ -6,6 +6,7 @@ from compounding.skill_growth import (
     evaluate_candidate_replay_for_gate,
     materialize_candidate_skill_overlay,
     replay_candidate_backtest_cohort,
+    unavailable_candidate_replay_evaluation,
 )
 from middleware.backtest import BacktestReport
 from skills.domain.auto_patch import SECTION_MARKER
@@ -276,3 +277,37 @@ def test_evaluate_candidate_replay_for_gate_refuses_partial_replay(
     assert evaluation.ready_for_gate is False
     assert "status=partial" in evaluation.notes
     assert "failed=bad" in evaluation.notes
+
+
+def test_unavailable_candidate_replay_evaluation_materializes_overlay_and_fails_closed(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    baseline = tmp_path / "baseline-skills"
+    skill_path = baseline / "quantum-computing-knowledge" / "SKILL.md"
+    skill_path.parent.mkdir(parents=True)
+    skill_path.write_text("# Quantum\n")
+
+    evaluation = unavailable_candidate_replay_evaluation(
+        _synthesis(),
+        heldout_synthesis_ids=("heldout-1", "heldout-2"),
+        baseline_skills_root=baseline,
+        overlay_parent=tmp_path,
+        reason="production candidate replay runner is not wired",
+    )
+
+    assert evaluation.ready_for_gate is False
+    assert evaluation.replay.status == "runner_unavailable"
+    assert evaluation.replay.heldout_synthesis_ids == ("heldout-1", "heldout-2")
+    assert tuple(error.synthesis_id for error in evaluation.replay.errors) == (
+        "heldout-1",
+        "heldout-2",
+    )
+    assert "runner_unavailable" in evaluation.notes
+    assert (
+        evaluation.replay.overlay.overlay_skills_root
+        / "quantum-computing-knowledge"
+        / "SKILL.md"
+    ).exists()
+    assert trajectory("inv-overlay") == []

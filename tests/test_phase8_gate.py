@@ -129,6 +129,23 @@ def test_enforcing_mode_rejects_when_candidate_evidence_not_ready():
     assert outcome.delta > outcome.epsilon_required
 
 
+def test_candidate_evidence_unavailable_preempts_cohort_size_note():
+    gate = SkillPatchGate(mode="enforcing", epsilon=0.01, minimum_cohort_size=50)
+
+    outcome = gate.decide(
+        baseline_backtest_score=0.0,
+        candidate_backtest_score=0.0,
+        cohort_size=0,
+        candidate_evidence_ready=False,
+        candidate_evidence_notes="status=runner_unavailable",
+    )
+
+    assert outcome.decision == PatchDecision.REJECT
+    assert "candidate replay evidence not ready" in outcome.notes
+    assert "runner_unavailable" in outcome.notes
+    assert "cohort_size" not in outcome.notes
+
+
 def test_propose_skill_patch_returns_envelope():
     envelope = propose_skill_patch(
         domain="quantum",

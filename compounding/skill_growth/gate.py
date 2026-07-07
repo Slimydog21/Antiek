@@ -106,14 +106,7 @@ class SkillPatchGate:
                 f"patch applied regardless"
             )
         else:
-            if cohort_size < self.minimum_cohort_size:
-                decision = PatchDecision.REJECT
-                note = (
-                    f"cohort_size={cohort_size} < minimum "
-                    f"{self.minimum_cohort_size}; backtest score not "
-                    f"discriminating at this scale"
-                )
-            elif not self.calibration_ready:
+            if not self.calibration_ready:
                 decision = PatchDecision.REJECT
                 note = "phase8 calibration evidence not ready for enforcing"
                 if self.calibration_notes:
@@ -123,6 +116,13 @@ class SkillPatchGate:
                 note = "phase8 candidate replay evidence not ready"
                 if candidate_evidence_notes:
                     note = f"{note}: {candidate_evidence_notes}"
+            elif cohort_size < self.minimum_cohort_size:
+                decision = PatchDecision.REJECT
+                note = (
+                    f"cohort_size={cohort_size} < minimum "
+                    f"{self.minimum_cohort_size}; backtest score not "
+                    f"discriminating at this scale"
+                )
             elif delta > self.epsilon:
                 decision = PatchDecision.ACCEPT
                 note = f"delta={delta:.4f} exceeds epsilon={self.epsilon}"
