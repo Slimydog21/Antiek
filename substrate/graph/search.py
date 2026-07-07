@@ -273,7 +273,9 @@ def search(
             "similarity": round(float(sim), 4),
         }
         if with_edges:
-            item["edges"], item["nodes"] = _fetch_edges_and_nodes(con, chunk_id)
+            item["edges"], item["nodes"] = _fetch_edges_and_nodes(
+                con, chunk_id, policy_tag=policy_tag,
+            )
         results.append(item)
 
     return {
@@ -287,12 +289,32 @@ def search(
 
 
 def _fetch_edges_and_nodes(
-    con: Any, chunk_id: str,
+    con: Any, chunk_id: str, *, policy_tag: str = "attribution_eligible",
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Helper for ``with_edges=True``: returns the edges sourced from
-    a chunk and the nodes those edges connect."""
+    a chunk and the nodes those edges connect.
+
+    SPR-01/§9.0 (the fix for the residual node-label leak, #206): the edge
+    endpoints' ``canonical_label`` is a §9.0 serve surface — the same surface
+    ``search_nodes_by_label`` gates. A public-provenance edge can link to a
+    node whose provenance is ``personal_reading``/restricted (semantic dedup
+    lets a public insight attach to a surviving personal node), so serving
+    that endpoint label on a non-privileged path leaks the personal headline.
+    Both endpoint nodes (n1, n2) are gated with the canonical
+    ``non_privileged_node_provenance_clause`` (most-restrictive-wins +
+    fail-closed on unresolved provenance — identical contract to
+    ``search_nodes_by_label``); an edge is withheld if EITHER endpoint is
+    gated, since serving either label would leak. ``policy_tag`` defaults to
+    the non-privileged value (fail-safe): a caller that forgets it gets the
+    gated result, never the leak."""
+    g1_sql, g1_params = _retrieval_gate.non_privileged_node_provenance_clause(
+        node_alias="n1", policy_tag=policy_tag,
+    )
+    g2_sql, g2_params = _retrieval_gate.non_privileged_node_provenance_clause(
+        node_alias="n2", policy_tag=policy_tag,
+    )
     edge_rows = con.execute(
-        """
+        f"""
         SELECT e.edge_id, e.source_node_id, e.target_node_id, e.relation,
                e.extraction_confidence, e.source_tier,
                n1.canonical_label AS source_label,
@@ -300,10 +322,10 @@ def _fetch_edges_and_nodes(
         FROM edges e
         JOIN nodes n1 ON e.source_node_id = n1.node_id
         JOIN nodes n2 ON e.target_node_id = n2.node_id
-        WHERE e.chunk_id = ?
+        WHERE e.chunk_id = ?{g1_sql}{g2_sql}
         LIMIT 20
         """,
-        [chunk_id],
+        [chunk_id, *g1_params, *g2_params],
     ).fetchall()
 
     edges = [
@@ -322,14 +344,17 @@ def _fetch_edges_and_nodes(
     nodes: list[dict[str, Any]] = []
     if node_ids:
         placeholders = ",".join(["?"] * len(node_ids))
+        gn_sql, gn_params = _retrieval_gate.non_privileged_node_provenance_clause(
+            node_alias="n", policy_tag=policy_tag,
+        )
         node_rows = con.execute(
             f"""
-            SELECT node_id, node_type, canonical_label
-            FROM nodes
-            WHERE node_id IN ({placeholders})
+            SELECT n.node_id, n.node_type, n.canonical_label
+            FROM nodes n
+            WHERE n.node_id IN ({placeholders}){gn_sql}
             LIMIT 30
             """,
-            list(node_ids),
+            [*node_ids, *gn_params],
         ).fetchall()
         nodes = [
             {"node_id": n[0], "node_type": n[1], "label": n[2]}
