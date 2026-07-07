@@ -68,6 +68,8 @@ class SkillPatchGate:
     mode: str = PHASE8_MODE_SHADOW
     epsilon: float = DEFAULT_PHASE8_EPSILON
     minimum_cohort_size: int = DEFAULT_PHASE8_MINIMUM_COHORT_SIZE
+    calibration_ready: bool = True
+    calibration_notes: str = ""
 
     def __post_init__(self) -> None:
         if self.mode not in VALID_PHASE8_MODES:
@@ -109,6 +111,11 @@ class SkillPatchGate:
                     f"{self.minimum_cohort_size}; backtest score not "
                     f"discriminating at this scale"
                 )
+            elif not self.calibration_ready:
+                decision = PatchDecision.REJECT
+                note = "phase8 calibration evidence not ready for enforcing"
+                if self.calibration_notes:
+                    note = f"{note}: {self.calibration_notes}"
             elif delta > self.epsilon:
                 decision = PatchDecision.ACCEPT
                 note = f"delta={delta:.4f} exceeds epsilon={self.epsilon}"
@@ -202,12 +209,17 @@ def _parse_int_env(
 
 def phase8_gate_from_env(
     env: Mapping[str, str] | None = None,
+    *,
+    calibration_ready: bool = True,
+    calibration_notes: str = "",
 ) -> SkillPatchGate:
     """Build the Phase-8 gate from runtime config.
 
     The default remains shadow mode. Invalid config raises rather than
     silently degrading to shadow, because an operator-requested
-    enforcing posture must either be real or fail visibly.
+    enforcing posture must either be real or fail visibly. Callers that
+    have loaded shadow/operator-review evidence pass its readiness here;
+    the gate refuses enforcing accepts when that evidence is not ready.
     """
     source = os.environ if env is None else env
     mode = source.get(PHASE8_MODE_ENV, PHASE8_MODE_SHADOW).strip().lower()
@@ -221,4 +233,6 @@ def phase8_gate_from_env(
             PHASE8_MINIMUM_COHORT_SIZE_ENV,
             DEFAULT_PHASE8_MINIMUM_COHORT_SIZE,
         ),
+        calibration_ready=calibration_ready,
+        calibration_notes=calibration_notes,
     )
