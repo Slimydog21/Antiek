@@ -394,6 +394,18 @@ describe("Multimedia workstation", () => {
     expect(within(persistedAssets).getByText("Rejected artifact documentary")).toBeTruthy();
   });
 
+  it("prefills manual artifact attachment from a manual-ready asset row", async () => {
+    render(<Multimedia />);
+
+    expect(await screen.findByText(/Persisted assets/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Manual attach 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Attach" }));
+
+    await waitFor(() => expect(mockGet).toHaveBeenCalledWith("mm-1"));
+    expect((screen.getByLabelText("Artifact job id") as HTMLInputElement).value).toBe("job-mm-1-0004");
+    expect(mockAttachArtifact).not.toHaveBeenCalled();
+  });
+
   it("applies steering and runs hardening through the API client", async () => {
     await reviewPlan();
 
