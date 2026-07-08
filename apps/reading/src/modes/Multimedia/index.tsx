@@ -493,6 +493,14 @@ export default function Multimedia() {
         .join(";"),
     [assets],
   );
+  const persistedQueuedAuditKey = useMemo(
+    () =>
+      assets
+        .filter((asset) => asset.provider_readiness.status === "manual_attach_ready" && asset.provider_readiness.source_job_id)
+        .map((asset) => `${asset.asset_id}:${buildPersistedQueuedAuditItems(asset).map((item) => `${item.label}:${item.value}`).join("|")}`)
+        .join(";"),
+    [assets],
+  );
 
   useEffect(() => {
     if (artifactJobId || !selectedRecord) return;
@@ -521,6 +529,10 @@ export default function Multimedia() {
   useEffect(() => {
     setCopiedExportReviewAssetId(null);
   }, [attachedExportReviewKey]);
+
+  useEffect(() => {
+    setCopiedQueuedAuditAssetId(null);
+  }, [persistedQueuedAuditKey]);
 
   function setPreset(next: number) {
     setDuration(next);

@@ -555,6 +555,45 @@ describe("Multimedia workstation", () => {
         ].join("\n"),
       ),
     );
+    expect(screen.getByRole("button", { name: "Queue audit copied" })).toBeTruthy();
+
+    mockList.mockResolvedValueOnce({
+      assets: [
+        {
+          asset_id: "mm-4",
+          revision_id: "rev-2",
+          title: "Manual-ready live audio",
+          kind: "audio_experience",
+          status: "planned",
+          requested_duration_minutes: 15,
+          route_policy: "cheapest",
+          estimated_cost_usd: 6,
+          hardening_status: null,
+          latest_job_status: "queued",
+          latest_job_kind: "provider_execution",
+          provider_readiness: {
+            status: "manual_attach_ready",
+            label: "Manual attach ready",
+            source_job_id: "job-mm-4-0002",
+            execution_mode: "live",
+            provider_family: "krea",
+            live_request_max_budget_usd: 20,
+            live_request_route_policy: "balanced",
+            live_request_dry_run_revision_id: "rev-2",
+            error_code: null,
+            message: null,
+            artifact_uri: null,
+            artifact_checksum: null,
+            artifact_media_type: null,
+          },
+        },
+      ],
+      count: 1,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Review plan" }));
+    await waitFor(() => expect(within(persistedAssets).getByText("job-mm-4-0002 / Balanced / 15 min")).toBeTruthy());
+    expect(screen.getByRole("button", { name: "Copy queue audit" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Queue audit copied" })).toBeNull();
     expect(mockAttachArtifact).not.toHaveBeenCalled();
     expect(mockRunWorker).not.toHaveBeenCalled();
   });
