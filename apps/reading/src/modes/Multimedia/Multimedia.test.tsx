@@ -406,6 +406,20 @@ describe("Multimedia workstation", () => {
     expect(mockAttachArtifact).not.toHaveBeenCalled();
   });
 
+  it("reopens attached and rejected assets from persistent row actions", async () => {
+    render(<Multimedia />);
+
+    expect(await screen.findByText(/Persisted assets/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Attached 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
+    await waitFor(() => expect(mockGet).toHaveBeenCalledWith("mm-2"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Rejected 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(mockGet).toHaveBeenCalledWith("mm-3"));
+    expect(mockAttachArtifact).not.toHaveBeenCalled();
+  });
+
   it("applies steering and runs hardening through the API client", async () => {
     await reviewPlan();
 

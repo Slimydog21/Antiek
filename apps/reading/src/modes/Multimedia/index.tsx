@@ -805,6 +805,24 @@ export default function Multimedia() {
                             Attach
                           </button>
                         )}
+                        {asset.provider_readiness.status === "artifact_attached" && !attachedNow && (
+                          <button
+                            type="button"
+                            onClick={() => reopenAsset(asset.asset_id)}
+                            className="m-2 self-center rounded-md border border-rule bg-ice-0 px-3 py-1.5 font-mono text-[11px] font-semibold text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
+                          >
+                            View
+                          </button>
+                        )}
+                        {asset.provider_readiness.status === "artifact_rejected" && !attachedNow && (
+                          <button
+                            type="button"
+                            onClick={() => reopenAsset(asset.asset_id)}
+                            className="m-2 self-center rounded-md border border-danger bg-ice-0 px-3 py-1.5 font-mono text-[11px] font-semibold text-danger dark:bg-charcoal-1"
+                          >
+                            Retry
+                          </button>
+                        )}
                       </div>
                     );
                   })}
