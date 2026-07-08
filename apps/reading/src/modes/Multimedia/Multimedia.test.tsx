@@ -413,6 +413,11 @@ describe("Multimedia workstation", () => {
   });
 
   it("surfaces attached artifact previews and rejected retry actions in persisted rows", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
     render(<Multimedia />);
 
     expect(await screen.findByText(/Persisted assets/)).toBeTruthy();
@@ -423,6 +428,14 @@ describe("Multimedia workstation", () => {
     expect(screen.getByRole("link", { name: "Open" }).getAttribute("href")).toBe(
       "https://cdn.example.test/mm-2.mp4",
     );
+    expect(screen.getByRole("link", { name: "Download" }).getAttribute("href")).toBe(
+      "https://cdn.example.test/mm-2.mp4",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://cdn.example.test/mm-2.mp4"));
+    expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Rejected 1" }));
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -501,17 +514,17 @@ describe("Multimedia workstation", () => {
     expect(within(readiness).getByText("Attached")).toBeTruthy();
     expect(within(jobPanel).getByText("sha256:abcdef123456")).toBeTruthy();
     expect(within(jobPanel).getByText("https://cdn.example.test/mm-1.mp4")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Open artifact" }).getAttribute("href")).toBe(
+    expect(within(jobPanel).getByRole("link", { name: "Open artifact" }).getAttribute("href")).toBe(
       "https://cdn.example.test/mm-1.mp4",
     );
-    expect(screen.getByRole("link", { name: "Download" }).getAttribute("href")).toBe(
+    expect(within(jobPanel).getByRole("link", { name: "Download" }).getAttribute("href")).toBe(
       "https://cdn.example.test/mm-1.mp4",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
+    fireEvent.click(within(jobPanel).getByRole("button", { name: "Copy link" }));
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://cdn.example.test/mm-1.mp4"));
-    expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
+    expect(within(jobPanel).getByRole("button", { name: "Copied" })).toBeTruthy();
   });
 
   it("attaches a pasted provider artifact without running a paid provider worker", async () => {

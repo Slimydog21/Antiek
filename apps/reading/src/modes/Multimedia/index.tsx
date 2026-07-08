@@ -269,6 +269,7 @@ export default function Multimedia() {
   const [artifactChecksum, setArtifactChecksum] = useState("");
   const [artifactMediaType, setArtifactMediaType] = useState("video/mp4");
   const [attachmentFeedback, setAttachmentFeedback] = useState<AttachmentFeedback | null>(null);
+  const [copiedAssetId, setCopiedAssetId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -426,6 +427,13 @@ export default function Multimedia() {
     if (asset.provider_readiness.source_job_id) {
       setArtifactJobId(asset.provider_readiness.source_job_id);
     }
+  }
+
+  async function copyPersistedArtifactUri(asset: MultimediaAssetSummary) {
+    const artifactUri = asset.provider_readiness.artifact_uri;
+    if (!artifactUri || !navigator.clipboard) return;
+    await navigator.clipboard.writeText(artifactUri);
+    setCopiedAssetId(asset.asset_id);
   }
 
   async function approvePlan() {
@@ -817,14 +825,30 @@ export default function Multimedia() {
                         )}
                         {asset.provider_readiness.status === "artifact_attached" && !attachedNow && (
                           asset.provider_readiness.artifact_uri ? (
-                            <a
-                              href={asset.provider_readiness.artifact_uri}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="m-2 self-center rounded-md border border-rule bg-ice-0 px-3 py-1.5 font-mono text-[11px] font-semibold text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
-                            >
-                              Open
-                            </a>
+                            <div className="m-2 flex shrink-0 flex-col gap-1 self-center">
+                              <a
+                                href={asset.provider_readiness.artifact_uri}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="rounded-md border border-rule bg-ice-0 px-3 py-1.5 text-center font-mono text-[11px] font-semibold text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
+                              >
+                                Open
+                              </a>
+                              <a
+                                href={asset.provider_readiness.artifact_uri}
+                                download
+                                className="rounded-md border border-rule bg-ice-0 px-3 py-1.5 text-center font-mono text-[11px] font-semibold text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
+                              >
+                                Download
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => void copyPersistedArtifactUri(asset)}
+                                className="rounded-md border border-rule bg-ice-0 px-3 py-1.5 font-mono text-[11px] font-semibold text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
+                              >
+                                {copiedAssetId === asset.asset_id ? "Copied" : "Copy link"}
+                              </button>
+                            </div>
                           ) : (
                             <button
                               type="button"
