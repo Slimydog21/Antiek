@@ -751,6 +751,7 @@ describe("Multimedia workstation", () => {
 
     fireEvent.change(screen.getByLabelText("Budget"), { target: { value: "0" } });
     expect(within(liveSpendReview).getByText("Enter positive budget")).toBeTruthy();
+    await waitFor(() => expect(within(activationChecklist).getByRole("button", { name: "Copy checklist" })).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "Queue live job" }));
     expect(mockPrepare).not.toHaveBeenCalled();
     expect(screen.getByText("Enter a positive live provider budget before queueing.")).toBeTruthy();

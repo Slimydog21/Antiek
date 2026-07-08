@@ -1651,6 +1651,7 @@ function JobPanel({
     { label: "Provider route", value: liveReviewValue("Provider route") },
     { label: "Execution boundary", value: liveReviewValue("Worker state") },
   ];
+  const activationChecklistKey = activationChecklist.map((item) => `${item.label}:${item.value}`).join("|");
   const artifactJob = jobs.find((job) => job.job_id === artifactJobId);
   const validationHints =
     artifactJob?.error_code === "artifact_validation_failed" ? artifactValidationHints(artifactJob.message) : artifactValidationHints(artifactValidationMessage);
@@ -1687,6 +1688,10 @@ function JobPanel({
   useEffect(() => {
     setQueueAuditCopied(false);
   }, [queueAuditFeedback]);
+
+  useEffect(() => {
+    setActivationChecklistCopied(false);
+  }, [activationChecklistKey]);
 
   return (
     <section
