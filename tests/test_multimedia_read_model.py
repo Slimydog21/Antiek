@@ -89,7 +89,12 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
     assert hardened.status_code == 200
     report = hardened.json()["hardening_report"]
     assert report["ship_status"] in {"manual_review", "blocked"}
-    assert "rights_and_publication" in report["manual_gate_ids"]
+    # manual_gate_ids is a Python @property (not serialized); derive the manual
+    # gate from the serialized `gates` tuple, which is the JSON source of truth.
+    assert any(
+        gate["status"] == "manual" and gate["gate_id"] == "rights_and_publication"
+        for gate in report["gates"]
+    )
 
     listed = client.get("/multimedia/assets")
     assert listed.status_code == 200

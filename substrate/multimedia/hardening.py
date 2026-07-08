@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field
 
 from substrate.contracts.multimedia import MultimediaAssetContract, MultimediaStatus
 
@@ -43,12 +43,10 @@ class MultimediaHardeningReport(_HardeningBase):
     gates: tuple[GateResult, ...]
     residual_risks: tuple[str, ...] = Field(default_factory=tuple)
 
-    @computed_field
     @property
     def failed_gate_ids(self) -> tuple[str, ...]:
         return tuple(gate.gate_id for gate in self.gates if gate.status == "fail")
 
-    @computed_field
     @property
     def manual_gate_ids(self) -> tuple[str, ...]:
         return tuple(gate.gate_id for gate in self.gates if gate.status == "manual")
