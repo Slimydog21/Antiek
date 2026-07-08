@@ -485,6 +485,14 @@ export default function Multimedia() {
         : assets.filter((asset) => asset.provider_readiness.status === readinessFilter),
     [assets, readinessFilter],
   );
+  const attachedExportReviewKey = useMemo(
+    () =>
+      assets
+        .filter((asset) => asset.provider_readiness.status === "artifact_attached" && asset.provider_readiness.artifact_uri)
+        .map((asset) => `${asset.asset_id}:${buildAttachedArtifactExportReviewItems(asset).map((item) => `${item.label}:${item.value}`).join("|")}`)
+        .join(";"),
+    [assets],
+  );
 
   useEffect(() => {
     if (artifactJobId || !selectedRecord) return;
@@ -509,6 +517,10 @@ export default function Multimedia() {
     }, 4000);
     return () => window.clearInterval(interval);
   }, [selectedRecord?.asset.asset_id, shouldPollJobs]);
+
+  useEffect(() => {
+    setCopiedExportReviewAssetId(null);
+  }, [attachedExportReviewKey]);
 
   function setPreset(next: number) {
     setDuration(next);
