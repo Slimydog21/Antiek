@@ -1147,10 +1147,10 @@ describe("Multimedia workstation", () => {
     expect(within(activationHandoff).getByText("Review before worker activation")).toBeTruthy();
     expect(within(activationHandoff).getByText("Spend boundary")).toBeTruthy();
     expect(within(activationHandoff).getByText("Queue records intent only")).toBeTruthy();
-    expect(within(activationHandoff).getByText("Provider worker")).toBeTruthy();
-    expect(within(activationHandoff).getByText("Disabled in app")).toBeTruthy();
-    expect(within(activationHandoff).getByText("Activation authority")).toBeTruthy();
-    expect(within(activationHandoff).getByText("Separate worker required")).toBeTruthy();
+    expect(within(activationHandoff).getAllByText("Provider worker").length).toBeGreaterThan(0);
+    expect(within(activationHandoff).getAllByText("Disabled in app").length).toBeGreaterThan(0);
+    expect(within(activationHandoff).getAllByText("Activation authority").length).toBeGreaterThan(0);
+    expect(within(activationHandoff).getAllByText("Separate worker required").length).toBeGreaterThan(0);
     expect(within(activationHandoff).getAllByText("Public export").length).toBeGreaterThan(0);
     expect(within(activationHandoff).getAllByText("Not ready for public export").length).toBeGreaterThan(0);
     expect(within(activationHandoff).getAllByText("Required review").length).toBeGreaterThan(0);
@@ -1214,6 +1214,10 @@ describe("Multimedia workstation", () => {
     expect(within(activationPacket).getByText("Readiness + spend + queue")).toBeTruthy();
     expect(within(activationPacket).getByText("Worker state")).toBeTruthy();
     expect(within(activationPacket).getByText("Disabled")).toBeTruthy();
+    expect(within(activationPacket).getByText("Provider worker")).toBeTruthy();
+    expect(within(activationPacket).getByText("Disabled in app")).toBeTruthy();
+    expect(within(activationPacket).getByText("Activation authority")).toBeTruthy();
+    expect(within(activationPacket).getByText("Separate worker required")).toBeTruthy();
     expect(within(activationPacket).getByText("Public export")).toBeTruthy();
     expect(within(activationPacket).getByText("Not ready for public export")).toBeTruthy();
     expect(within(activationPacket).getByText("Required review")).toBeTruthy();
@@ -1261,6 +1265,9 @@ describe("Multimedia workstation", () => {
           "Public export: Not ready for public export",
           "Required review: Manual review + rights clearance",
           "Publish boundary: No public export or publish action has run",
+          "Worker runbook",
+          "Provider worker: Disabled in app",
+          "Activation authority: Separate worker required",
           "Operator next step: Review this packet before enabling a live provider worker.",
           "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
           "Queued request audit: No queued live request",
@@ -1482,6 +1489,9 @@ describe("Multimedia workstation", () => {
           "Public export: Not ready for public export",
           "Required review: Manual review + rights clearance",
           "Publish boundary: No public export or publish action has run",
+          "Worker runbook",
+          "Provider worker: Disabled in app",
+          "Activation authority: Separate worker required",
           "Operator next step: Review this packet before enabling a live provider worker.",
           "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
           "Queued request audit",
