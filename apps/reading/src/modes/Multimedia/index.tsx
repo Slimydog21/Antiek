@@ -271,6 +271,7 @@ export default function Multimedia() {
   const [attachmentFeedback, setAttachmentFeedback] = useState<AttachmentFeedback | null>(null);
   const [copiedAssetId, setCopiedAssetId] = useState<string | null>(null);
   const [copiedSourceJobAssetId, setCopiedSourceJobAssetId] = useState<string | null>(null);
+  const [copiedRejectedAuditAssetId, setCopiedRejectedAuditAssetId] = useState<string | null>(null);
   const [expandedArtifactAssetId, setExpandedArtifactAssetId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -443,6 +444,22 @@ export default function Multimedia() {
     if (!sourceJobId || !navigator.clipboard) return;
     await navigator.clipboard.writeText(sourceJobId);
     setCopiedSourceJobAssetId(asset.asset_id);
+  }
+
+  async function copyRejectedArtifactAudit(asset: MultimediaAssetSummary) {
+    if (!navigator.clipboard) return;
+    const readiness = asset.provider_readiness;
+    const auditLines = [
+      `asset_id: ${asset.asset_id}`,
+      `status: ${readiness.status}`,
+      readiness.error_code ? `error_code: ${readiness.error_code}` : null,
+      readiness.message ? `message: ${readiness.message}` : null,
+      readiness.provider_family ? `provider_family: ${readiness.provider_family}` : null,
+      readiness.execution_mode ? `execution_mode: ${readiness.execution_mode}` : null,
+      readiness.source_job_id ? `source_job_id: ${readiness.source_job_id}` : null,
+    ].filter((line): line is string => Boolean(line));
+    await navigator.clipboard.writeText(auditLines.join("\n"));
+    setCopiedRejectedAuditAssetId(asset.asset_id);
   }
 
   async function approvePlan() {
@@ -947,13 +964,22 @@ export default function Multimedia() {
                           )
                         )}
                         {asset.provider_readiness.status === "artifact_rejected" && !attachedNow && (
-                          <button
-                            type="button"
-                            onClick={() => reopenAsset(asset.asset_id)}
-                            className="m-2 self-center rounded-md border border-danger bg-ice-0 px-3 py-1.5 font-mono text-[11px] font-semibold text-danger dark:bg-charcoal-1"
-                          >
-                            Retry
-                          </button>
+                          <div className="m-2 flex shrink-0 flex-col gap-1 self-center">
+                            <button
+                              type="button"
+                              onClick={() => void copyRejectedArtifactAudit(asset)}
+                              className="rounded-md border border-rule bg-ice-0 px-3 py-1.5 font-mono text-[11px] font-semibold text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
+                            >
+                              {copiedRejectedAuditAssetId === asset.asset_id ? "Audit copied" : "Copy audit"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => reopenAsset(asset.asset_id)}
+                              className="rounded-md border border-danger bg-ice-0 px-3 py-1.5 font-mono text-[11px] font-semibold text-danger dark:bg-charcoal-1"
+                            >
+                              Retry
+                            </button>
+                          </div>
                         )}
                       </div>
                     );

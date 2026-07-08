@@ -470,6 +470,23 @@ describe("Multimedia workstation", () => {
     ).toBeTruthy();
     expect(within(persistedAssets).getByText("krea / live / job-mm-3-0005")).toBeTruthy();
 
+    fireEvent.click(screen.getByRole("button", { name: "Copy audit" }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        [
+          "asset_id: mm-3",
+          "status: artifact_rejected",
+          "error_code: artifact_validation_failed",
+          "message: Provider artifact validation failed: artifact_uri must be an http(s) URL with a host.",
+          "provider_family: krea",
+          "execution_mode: live",
+          "source_job_id: job-mm-3-0005",
+        ].join("\n"),
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Audit copied" })).toBeTruthy();
+
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(mockGet).toHaveBeenCalledWith("mm-3"));
     expect(mockAttachArtifact).not.toHaveBeenCalled();
