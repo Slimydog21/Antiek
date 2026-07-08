@@ -147,6 +147,8 @@ class ProviderReadinessSummary(_ReadModelBase):
     status: ProviderReadinessStatus
     label: str
     source_job_id: str | None = None
+    artifact_uri: str | None = None
+    artifact_checksum: str | None = None
     artifact_media_type: str | None = None
 
 
@@ -668,6 +670,8 @@ def _provider_readiness_summary(jobs: tuple[MultimediaJobRecord, ...]) -> Provid
                 status="artifact_attached",
                 label="Artifact attached",
                 source_job_id=job.job_id,
+                artifact_uri=job.artifact_uri,
+                artifact_checksum=job.artifact_checksum,
                 artifact_media_type=job.artifact_media_type,
             )
 

@@ -789,6 +789,16 @@ export default function Multimedia() {
                             <LemonTag colour={attachedNow ? "default" : providerReadinessTone(asset.provider_readiness.status)}>
                               {attachedNow ? "Attachment saved" : asset.provider_readiness.label}
                             </LemonTag>
+                            {asset.provider_readiness.artifact_media_type && (
+                              <span className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">
+                                {asset.provider_readiness.artifact_media_type}
+                              </span>
+                            )}
+                            {asset.provider_readiness.artifact_checksum && (
+                              <span className="max-w-full truncate font-mono text-[11px] text-shadow-2 dark:text-moonlight">
+                                {asset.provider_readiness.artifact_checksum}
+                              </span>
+                            )}
                             {asset.provider_readiness.source_job_id && (
                               <span className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">
                                 {asset.provider_readiness.source_job_id}
@@ -806,13 +816,24 @@ export default function Multimedia() {
                           </button>
                         )}
                         {asset.provider_readiness.status === "artifact_attached" && !attachedNow && (
-                          <button
-                            type="button"
-                            onClick={() => reopenAsset(asset.asset_id)}
-                            className="m-2 self-center rounded-md border border-rule bg-ice-0 px-3 py-1.5 font-mono text-[11px] font-semibold text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
-                          >
-                            View
-                          </button>
+                          asset.provider_readiness.artifact_uri ? (
+                            <a
+                              href={asset.provider_readiness.artifact_uri}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="m-2 self-center rounded-md border border-rule bg-ice-0 px-3 py-1.5 font-mono text-[11px] font-semibold text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
+                            >
+                              Open
+                            </a>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => reopenAsset(asset.asset_id)}
+                              className="m-2 self-center rounded-md border border-rule bg-ice-0 px-3 py-1.5 font-mono text-[11px] font-semibold text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
+                            >
+                              View
+                            </button>
+                          )
                         )}
                         {asset.provider_readiness.status === "artifact_rejected" && !attachedNow && (
                           <button

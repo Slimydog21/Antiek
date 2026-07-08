@@ -50,6 +50,8 @@ export interface MultimediaProviderReadinessSummary {
   status: MultimediaProviderReadinessStatus;
   label: string;
   source_job_id: string | null;
+  artifact_uri: string | null;
+  artifact_checksum: string | null;
   artifact_media_type: string | null;
 }
 

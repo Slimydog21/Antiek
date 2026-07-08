@@ -223,6 +223,8 @@ beforeEach(() => {
           status: "manual_attach_ready",
           label: "Manual attach ready",
           source_job_id: "job-mm-1-0004",
+          artifact_uri: null,
+          artifact_checksum: null,
           artifact_media_type: null,
         },
       },
@@ -242,6 +244,8 @@ beforeEach(() => {
           status: "artifact_attached",
           label: "Artifact attached",
           source_job_id: "job-mm-2-0004",
+          artifact_uri: "https://cdn.example.test/mm-2.mp4",
+          artifact_checksum: "sha256:2222abcd",
           artifact_media_type: "video/mp4",
         },
       },
@@ -261,6 +265,8 @@ beforeEach(() => {
           status: "artifact_rejected",
           label: "Artifact rejected",
           source_job_id: "job-mm-3-0005",
+          artifact_uri: null,
+          artifact_checksum: null,
           artifact_media_type: null,
         },
       },
@@ -406,13 +412,17 @@ describe("Multimedia workstation", () => {
     expect(mockAttachArtifact).not.toHaveBeenCalled();
   });
 
-  it("reopens attached and rejected assets from persistent row actions", async () => {
+  it("surfaces attached artifact previews and rejected retry actions in persisted rows", async () => {
     render(<Multimedia />);
 
     expect(await screen.findByText(/Persisted assets/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Attached 1" }));
-    fireEvent.click(screen.getByRole("button", { name: "View" }));
-    await waitFor(() => expect(mockGet).toHaveBeenCalledWith("mm-2"));
+    const persistedAssets = screen.getByTestId("multimedia-persisted-assets");
+    expect(within(persistedAssets).getByText("video/mp4")).toBeTruthy();
+    expect(within(persistedAssets).getByText("sha256:2222abcd")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Open" }).getAttribute("href")).toBe(
+      "https://cdn.example.test/mm-2.mp4",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Rejected 1" }));
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -484,12 +494,13 @@ describe("Multimedia workstation", () => {
 
     await reviewPlan();
 
-    expect(await screen.findByText("video/mp4")).toBeTruthy();
+    const jobPanel = await screen.findByTestId("multimedia-job-panel");
+    expect(within(jobPanel).getByText("video/mp4")).toBeTruthy();
     const readiness = screen.getByTestId("multimedia-provider-readiness");
     expect(within(readiness).getByText("Live worker disabled")).toBeTruthy();
     expect(within(readiness).getByText("Attached")).toBeTruthy();
-    expect(screen.getByText("sha256:abcdef123456")).toBeTruthy();
-    expect(screen.getByText("https://cdn.example.test/mm-1.mp4")).toBeTruthy();
+    expect(within(jobPanel).getByText("sha256:abcdef123456")).toBeTruthy();
+    expect(within(jobPanel).getByText("https://cdn.example.test/mm-1.mp4")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Open artifact" }).getAttribute("href")).toBe(
       "https://cdn.example.test/mm-1.mp4",
     );
