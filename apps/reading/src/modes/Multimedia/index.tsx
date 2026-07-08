@@ -45,6 +45,10 @@ type LiveSpendPreflight = {
 type QueueAuditFeedback = {
   items: LiveSpendReviewItem[];
 };
+type PersistedQueuedAuditItem = {
+  label: string;
+  value: string;
+};
 type PendingCommand =
   | "list"
   | "create"
@@ -243,6 +247,18 @@ function buildQueueAuditFeedback(job: MultimediaJobRecord, preflight: LiveSpendP
       { label: "Worker state", value: "No paid worker consumed this job", tone: "muted" },
     ],
   };
+}
+
+function buildPersistedQueuedAuditItems(asset: MultimediaAssetSummary): PersistedQueuedAuditItem[] {
+  const readiness = asset.provider_readiness;
+  return [
+    { label: "Asset", value: asset.asset_id },
+    { label: "Queued job", value: readiness.source_job_id ?? "unavailable" },
+    { label: "Status", value: readiness.status },
+    { label: "Provider", value: readiness.provider_family ?? "unavailable" },
+    { label: "Execution mode", value: readiness.execution_mode ?? "unavailable" },
+    { label: "Worker state", value: "No paid worker consumed this job" },
+  ];
 }
 
 function statusToRenderState(record: MultimediaAssetRecord | null): RenderState {
@@ -568,15 +584,7 @@ export default function Multimedia() {
 
   async function copyPersistedQueuedAudit(asset: MultimediaAssetSummary) {
     if (!navigator.clipboard) return;
-    const readiness = asset.provider_readiness;
-    const auditLines = [
-      `asset_id: ${asset.asset_id}`,
-      `queued_job: ${readiness.source_job_id ?? "unavailable"}`,
-      `status: ${readiness.status}`,
-      `provider_family: ${readiness.provider_family ?? "unavailable"}`,
-      `execution_mode: ${readiness.execution_mode ?? "unavailable"}`,
-      "worker_state: no paid worker consumed this job",
-    ];
+    const auditLines = buildPersistedQueuedAuditItems(asset).map((item) => `${item.label}: ${item.value}`);
     await navigator.clipboard.writeText(auditLines.join("\n"));
     setCopiedQueuedAuditAssetId(asset.asset_id);
   }
@@ -913,6 +921,10 @@ export default function Multimedia() {
                 <div className="mt-2 grid gap-2 md:grid-cols-2">
                   {visibleAssets.map((asset) => {
                     const attachedNow = attachmentFeedback?.assetId === asset.asset_id;
+                    const persistedQueuedAuditItems =
+                      asset.provider_readiness.status === "manual_attach_ready" && asset.provider_readiness.source_job_id
+                        ? buildPersistedQueuedAuditItems(asset)
+                        : [];
                     return (
                       <div
                         key={`${asset.asset_id}-${asset.revision_id}`}
@@ -1015,15 +1027,14 @@ export default function Multimedia() {
                           {asset.provider_readiness.status === "manual_attach_ready" && asset.provider_readiness.source_job_id && (
                             <div className="mx-3 mb-3 rounded-md border border-sun bg-sun/10 p-2 text-[11px] text-ink dark:border-sun/80 dark:bg-sun/10 dark:text-bright">
                               <p className="font-mono text-shadow-2 dark:text-moonlight">Queued live request</p>
-                              <p className="mt-1 truncate font-mono text-ink dark:text-bright">{asset.provider_readiness.source_job_id}</p>
-                              <p className="mt-1 leading-snug text-shadow-1 dark:text-moonlight">
-                                No paid worker consumed this job.
-                              </p>
-                              {(asset.provider_readiness.provider_family || asset.provider_readiness.execution_mode) && (
-                                <p className="mt-1 truncate font-mono text-shadow-2 dark:text-moonlight">
-                                  {[asset.provider_readiness.provider_family, asset.provider_readiness.execution_mode].filter(Boolean).join(" / ")}
-                                </p>
-                              )}
+                              <dl className="mt-1 grid gap-1">
+                                {persistedQueuedAuditItems.map((item) => (
+                                  <div key={item.label} className="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
+                                    <dt className="font-mono text-shadow-2 dark:text-moonlight">{item.label}</dt>
+                                    <dd className="truncate font-mono text-ink dark:text-bright">{item.value}</dd>
+                                  </div>
+                                ))}
+                              </dl>
                             </div>
                           )}
                         </div>

@@ -424,20 +424,23 @@ describe("Multimedia workstation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Manual attach 1" }));
     const persistedAssets = screen.getByTestId("multimedia-persisted-assets");
     expect(within(persistedAssets).getByText("Queued live request")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Queued job")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Provider")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Execution mode")).toBeTruthy();
     expect(within(persistedAssets).getAllByText("job-mm-1-0004").length).toBeGreaterThan(0);
-    expect(within(persistedAssets).getByText("No paid worker consumed this job.")).toBeTruthy();
+    expect(within(persistedAssets).getByText("No paid worker consumed this job")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Copy queue audit" }));
 
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith(
         [
-          "asset_id: mm-1",
-          "queued_job: job-mm-1-0004",
-          "status: manual_attach_ready",
-          "provider_family: unavailable",
-          "execution_mode: unavailable",
-          "worker_state: no paid worker consumed this job",
+          "Asset: mm-1",
+          "Queued job: job-mm-1-0004",
+          "Status: manual_attach_ready",
+          "Provider: unavailable",
+          "Execution mode: unavailable",
+          "Worker state: No paid worker consumed this job",
         ].join("\n"),
       ),
     );
