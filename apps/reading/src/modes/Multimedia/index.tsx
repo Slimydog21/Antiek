@@ -1861,8 +1861,22 @@ function JobPanel({
   const activationChecklistKey = activationChecklist.map((item) => `${item.label}:${item.value}`).join("|");
   const activationDecisionKey = activationDecision.map((item) => `${item.label}:${item.value}`).join("|");
   const activationBlockersKey = activationBlockers.map((item) => `${item.label}:${item.value}`).join("|");
-  const activationHandoffKey = [activationChecklistKey, activationDecisionKey, activationBlockersKey].join("||");
   const readinessKey = readiness.map((item) => `${item.label}:${item.value}`).join("|");
+  const queueAuditFeedbackKey = queueAuditFeedback?.items.map((item) => `${item.label}:${item.value}`).join("|") ?? "";
+  const activationHandoffItems = [
+    "Activation handoff",
+    ...activationChecklist.map((item) => `${item.label}: ${item.value}`),
+    "Activation decision",
+    ...activationDecision.map((item) => `${item.label}: ${item.value}`),
+    "Activation blockers",
+    ...activationBlockers.map((item) => `${item.label}: ${item.value}`),
+    queueAuditFeedback ? "Queued request audit" : "Queued request audit: No queued live request",
+    ...(queueAuditFeedback?.items.map((item) => `${item.label}: ${item.value}`) ?? []),
+    "Activation state: Evidence only; provider execution still requires a separate worker activation.",
+    "Operator next step: Review this bundle before enabling a live provider worker.",
+    "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
+  ];
+  const activationHandoffKey = [activationChecklistKey, activationDecisionKey, activationBlockersKey, queueAuditFeedbackKey].join("||");
   const activationPacketItems = [
     "Activation packet",
     "Provider readiness",
@@ -1909,7 +1923,6 @@ function JobPanel({
     .filter((job) => Boolean(job.artifact_uri))
     .map((job) => `${job.job_id}:${job.artifact_uri}`)
     .join(";");
-  const queueAuditFeedbackKey = queueAuditFeedback?.items.map((item) => `${item.label}:${item.value}`).join("|") ?? "";
 
   async function copyArtifactUri(job: MultimediaJobRecord) {
     if (!job.artifact_uri || !navigator.clipboard) return;
@@ -1936,19 +1949,7 @@ function JobPanel({
 
   async function copyActivationHandoff() {
     if (!navigator.clipboard) return;
-    await navigator.clipboard.writeText(
-      [
-        "Activation handoff",
-        ...activationChecklist.map((item) => `${item.label}: ${item.value}`),
-        "Activation decision",
-        ...activationDecision.map((item) => `${item.label}: ${item.value}`),
-        "Activation blockers",
-        ...activationBlockers.map((item) => `${item.label}: ${item.value}`),
-        "Activation state: Evidence only; provider execution still requires a separate worker activation.",
-        "Operator next step: Review this bundle before enabling a live provider worker.",
-        "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
-      ].join("\n"),
-    );
+    await navigator.clipboard.writeText(activationHandoffItems.join("\n"));
     setActivationHandoffCopied(true);
   }
 
