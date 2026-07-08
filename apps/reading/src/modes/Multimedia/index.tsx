@@ -1019,6 +1019,13 @@ function JobPanel({
                 <LemonTag>{job.execution_mode}</LemonTag>
                 {job.provider_family && <LemonTag colour="muted">{job.provider_family}</LemonTag>}
               </div>
+              <p className="mt-1 font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+                {job.artifact_uri
+                  ? `${job.artifact_media_type ?? "artifact"} ${job.artifact_checksum ?? ""}`.trim()
+                  : job.status === "queued" || job.status === "running"
+                    ? "Artifact pending"
+                    : "No artifact attached"}
+              </p>
               <p className="mt-1 text-[13px] leading-snug text-ink dark:text-bright">{job.message}</p>
               {job.error_code && (
                 <p className="mt-1 font-mono text-[11px] text-danger">{job.error_code}</p>

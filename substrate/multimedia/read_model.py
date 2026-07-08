@@ -92,6 +92,9 @@ class MultimediaJobRecord(_ReadModelBase):
     status: JobStatus
     execution_mode: ExecutionMode = "dry_run"
     provider_family: str | None = None
+    artifact_uri: str | None = None
+    artifact_checksum: str | None = None
+    artifact_media_type: str | None = None
     progress_percent: int = Field(ge=0, le=100)
     message: str
     error_code: str | None = None
@@ -362,6 +365,9 @@ class MultimediaAssetStore:
         message: str,
         execution_mode: ExecutionMode = "dry_run",
         provider_family: str | None = None,
+        artifact_uri: str | None = None,
+        artifact_checksum: str | None = None,
+        artifact_media_type: str | None = None,
         error_code: str | None = None,
         retryable: bool | None = None,
     ) -> MultimediaAssetRecord:
@@ -374,6 +380,9 @@ class MultimediaAssetStore:
             message=message,
             execution_mode=execution_mode,
             provider_family=provider_family,
+            artifact_uri=artifact_uri,
+            artifact_checksum=artifact_checksum,
+            artifact_media_type=artifact_media_type,
             error_code=error_code,
             retryable=retryable,
         )
@@ -470,6 +479,9 @@ class MultimediaAssetStore:
         message: str,
         execution_mode: ExecutionMode = "dry_run",
         provider_family: str | None = None,
+        artifact_uri: str | None = None,
+        artifact_checksum: str | None = None,
+        artifact_media_type: str | None = None,
         error_code: str | None = None,
         retryable: bool | None = None,
     ) -> MultimediaAssetRecord:
@@ -483,6 +495,9 @@ class MultimediaAssetStore:
             status=status,
             execution_mode=execution_mode,
             provider_family=provider_family,
+            artifact_uri=artifact_uri,
+            artifact_checksum=artifact_checksum,
+            artifact_media_type=artifact_media_type,
             progress_percent=progress_percent,
             message=message,
             error_code=error_code,

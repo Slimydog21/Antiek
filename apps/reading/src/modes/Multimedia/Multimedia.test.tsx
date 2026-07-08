@@ -101,6 +101,9 @@ const queuedProviderRecord: MultimediaAssetRecord = {
       status: "queued",
       execution_mode: "live_requested",
       provider_family: "krea",
+      artifact_uri: null,
+      artifact_checksum: null,
+      artifact_media_type: null,
       progress_percent: 0,
       message: "Live execution queued for krea.",
       error_code: null,
@@ -122,6 +125,9 @@ const completedProviderRecord: MultimediaAssetRecord = {
       status: "running",
       execution_mode: "dry_run",
       provider_family: "krea",
+      artifact_uri: null,
+      artifact_checksum: null,
+      artifact_media_type: null,
       progress_percent: 45,
       message: "Dry-run worker claimed job-mm-1-0001; no provider call has been made.",
       error_code: null,
@@ -136,6 +142,9 @@ const completedProviderRecord: MultimediaAssetRecord = {
       status: "succeeded",
       execution_mode: "dry_run",
       provider_family: "krea",
+      artifact_uri: null,
+      artifact_checksum: null,
+      artifact_media_type: null,
       progress_percent: 100,
       message: "Dry-run worker completed provider execution without Krea/TTS/video spend.",
       error_code: null,
@@ -291,6 +300,7 @@ describe("Multimedia workstation", () => {
     await waitFor(() => expect(mockRunWorker).toHaveBeenCalledWith("mm-1", { dry_run: true }));
     expect(await screen.findByText(/without Krea\/TTS\/video spend/)).toBeTruthy();
     expect(screen.getAllByText("dry_run").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("No artifact attached").length).toBeGreaterThan(0);
   });
 
   it("queues live provider execution only through explicit budget controls", async () => {
@@ -311,6 +321,7 @@ describe("Multimedia workstation", () => {
     );
     expect(await screen.findByText(/Live execution queued for krea/)).toBeTruthy();
     expect(screen.getByText("live_requested")).toBeTruthy();
+    expect(screen.getByText("Artifact pending")).toBeTruthy();
   });
 
   it("keeps the fixture preview visible when the API is unavailable", async () => {

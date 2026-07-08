@@ -85,6 +85,9 @@ export interface MultimediaJobRecord {
   status: MultimediaJobStatus;
   execution_mode: MultimediaExecutionMode;
   provider_family: string | null;
+  artifact_uri: string | null;
+  artifact_checksum: string | null;
+  artifact_media_type: string | null;
   progress_percent: number;
   message: string;
   error_code: string | null;
