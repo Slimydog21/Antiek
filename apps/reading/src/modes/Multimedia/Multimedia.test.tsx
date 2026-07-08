@@ -1140,11 +1140,51 @@ describe("Multimedia workstation", () => {
       ),
     );
     expect(within(activationHandoff).getByRole("button", { name: "Handoff copied" })).toBeTruthy();
+    const activationPacket = screen.getByTestId("multimedia-live-activation-packet");
+    expect(within(activationPacket).getByText("Evidence bundle")).toBeTruthy();
+    expect(within(activationPacket).getByText("Readiness + spend + queue")).toBeTruthy();
+    expect(within(activationPacket).getByText("Worker state")).toBeTruthy();
+    expect(within(activationPacket).getByText("Disabled")).toBeTruthy();
+    fireEvent.click(within(activationPacket).getByRole("button", { name: "Copy activation packet" }));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        [
+          "Activation packet",
+          "Provider readiness",
+          "Spend boundary: Live worker disabled",
+          "Activation boundary: Separate worker activation required",
+          "Dry-run worker: No job rows",
+          "Live queue: No active live job",
+          "Manual attach: Waiting for live job",
+          "Artifact state: Not attached",
+          "Live spend review",
+          "Spend boundary: No paid worker runs from Queue live job",
+          "Budget cap: $50.00 cap",
+          "Acknowledgement: Acknowledgement required",
+          "Dry-run revision: rev-1",
+          "Provider route: Balanced / krea",
+          "Requested media: 30 min video",
+          "Worker state: Live worker disabled",
+          "Activation checklist",
+          "Budget gate: $50.00 cap",
+          "Operator acknowledgement: Acknowledgement required",
+          "Dry-run revision: rev-1",
+          "Provider route: Balanced / krea",
+          "Execution boundary: Live worker disabled",
+          "Operator next step: Review this packet before enabling a live provider worker.",
+          "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
+          "Queued request audit: No queued live request",
+          "Activation state: Evidence only; provider execution still requires a separate worker activation.",
+        ].join("\n"),
+      ),
+    );
+    expect(within(activationPacket).getByRole("button", { name: "Packet copied" })).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Budget"), { target: { value: "0" } });
     expect(within(liveSpendReview).getByText("Enter positive budget")).toBeTruthy();
     await waitFor(() => expect(within(activationChecklist).getByRole("button", { name: "Copy checklist" })).toBeTruthy());
     expect(within(activationHandoff).getByRole("button", { name: "Copy handoff" })).toBeTruthy();
+    expect(within(activationPacket).getByRole("button", { name: "Copy activation packet" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Queue live job" }));
     expect(mockPrepare).not.toHaveBeenCalled();
     expect(screen.getByText("Enter a positive live provider budget before queueing.")).toBeTruthy();
@@ -1228,6 +1268,48 @@ describe("Multimedia workstation", () => {
       ),
     );
     expect(within(queueAudit).getByRole("button", { name: "Queued audit copied" })).toBeTruthy();
+    expect(within(activationPacket).getByRole("button", { name: "Copy activation packet" })).toBeTruthy();
+    fireEvent.click(within(activationPacket).getByRole("button", { name: "Copy activation packet" }));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        [
+          "Activation packet",
+          "Provider readiness",
+          "Spend boundary: Live worker disabled",
+          "Activation boundary: Separate worker activation required",
+          "Dry-run worker: Available",
+          "Live queue: Queued job-mm-1-0001",
+          "Manual attach: Ready for job-mm-1-0001",
+          "Artifact state: Pending",
+          "Live spend review",
+          "Spend boundary: No paid worker runs from Queue live job",
+          "Budget cap: $75.00 cap",
+          "Acknowledgement: Spend acknowledged",
+          "Dry-run revision: rev-1",
+          "Provider route: Balanced / krea",
+          "Requested media: 30 min video",
+          "Worker state: Live worker disabled",
+          "Activation checklist",
+          "Budget gate: $75.00 cap",
+          "Operator acknowledgement: Spend acknowledged",
+          "Dry-run revision: rev-1",
+          "Provider route: Balanced / krea",
+          "Execution boundary: Live worker disabled",
+          "Operator next step: Review this packet before enabling a live provider worker.",
+          "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
+          "Queued request audit",
+          "Queued job: job-mm-1-0001",
+          "Budget cap: $75.00 cap",
+          "Dry-run revision: rev-1",
+          "Provider route: Balanced / krea",
+          "Requested media: 30 min video",
+          "Worker state: No paid worker consumed this job",
+          "Activation boundary: Separate worker activation required",
+          "Activation state: Evidence only; provider execution still requires a separate worker activation.",
+        ].join("\n"),
+      ),
+    );
+    expect(within(activationPacket).getByRole("button", { name: "Packet copied" })).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Budget"), { target: { value: "76" } });
     fireEvent.click(screen.getByRole("button", { name: "Queue live job" }));
@@ -1243,6 +1325,8 @@ describe("Multimedia workstation", () => {
     expect(within(queueAudit).getByText("$76.00 cap")).toBeTruthy();
     await waitFor(() => expect(within(queueAudit).getByRole("button", { name: "Copy queued audit" })).toBeTruthy());
     expect(within(queueAudit).queryByRole("button", { name: "Queued audit copied" })).toBeNull();
+    expect(within(activationPacket).getByRole("button", { name: "Copy activation packet" })).toBeTruthy();
+    expect(within(activationPacket).queryByRole("button", { name: "Packet copied" })).toBeNull();
   });
 
   it("surfaces attached provider artifacts with open, download, and copy actions", async () => {

@@ -1768,6 +1768,7 @@ function JobPanel({
   const [liveReviewCopied, setLiveReviewCopied] = useState(false);
   const [activationChecklistCopied, setActivationChecklistCopied] = useState(false);
   const [activationHandoffCopied, setActivationHandoffCopied] = useState(false);
+  const [activationPacketCopied, setActivationPacketCopied] = useState(false);
   const [queueAuditCopied, setQueueAuditCopied] = useState(false);
   const [readinessCopied, setReadinessCopied] = useState(false);
   const [copiedJobExportReviewId, setCopiedJobExportReviewId] = useState<string | null>(null);
@@ -1785,6 +1786,21 @@ function JobPanel({
   const liveSpendReviewKey = liveSpendReview.map((item) => `${item.label}:${item.value}`).join("|");
   const activationChecklistKey = activationChecklist.map((item) => `${item.label}:${item.value}`).join("|");
   const readinessKey = readiness.map((item) => `${item.label}:${item.value}`).join("|");
+  const activationPacketItems = [
+    "Activation packet",
+    "Provider readiness",
+    ...readiness.map((item) => `${item.label}: ${item.value}`),
+    "Live spend review",
+    ...liveSpendReview.map((item) => `${item.label}: ${item.value}`),
+    "Activation checklist",
+    ...activationChecklist.map((item) => `${item.label}: ${item.value}`),
+    "Operator next step: Review this packet before enabling a live provider worker.",
+    "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
+    queueAuditFeedback ? "Queued request audit" : "Queued request audit: No queued live request",
+    ...(queueAuditFeedback?.items.map((item) => `${item.label}: ${item.value}`) ?? []),
+    "Activation state: Evidence only; provider execution still requires a separate worker activation.",
+  ];
+  const activationPacketKey = activationPacketItems.join("|");
   const artifactJob = jobs.find((job) => job.job_id === artifactJobId);
   const validationHints =
     artifactJob?.error_code === "artifact_validation_failed" ? artifactValidationHints(artifactJob.message) : artifactValidationHints(artifactValidationMessage);
@@ -1847,6 +1863,12 @@ function JobPanel({
     setActivationHandoffCopied(true);
   }
 
+  async function copyActivationPacket() {
+    if (!navigator.clipboard) return;
+    await navigator.clipboard.writeText(activationPacketItems.join("\n"));
+    setActivationPacketCopied(true);
+  }
+
   async function copyQueueAudit() {
     if (!queueAuditFeedback || !navigator.clipboard) return;
     await navigator.clipboard.writeText(queueAuditFeedback.items.map((item) => `${item.label}: ${item.value}`).join("\n"));
@@ -1881,6 +1903,10 @@ function JobPanel({
     setActivationChecklistCopied(false);
     setActivationHandoffCopied(false);
   }, [activationChecklistKey]);
+
+  useEffect(() => {
+    setActivationPacketCopied(false);
+  }, [activationPacketKey]);
 
   useEffect(() => {
     setCopiedJobExportReviewId(null);
@@ -1978,6 +2004,26 @@ function JobPanel({
           <LemonButton type="button" size="sm" variant="secondary" className="mt-2" onClick={copyActivationHandoff}>
             {activationHandoffCopied ? "Handoff copied" : "Copy handoff"}
           </LemonButton>
+          <div className="mt-3 border-t border-rule pt-2 dark:border-charcoal-2" data-testid="multimedia-live-activation-packet">
+            <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Activation packet</p>
+            <dl className="mt-2 grid grid-cols-1 gap-1.5">
+              <div className="flex items-center justify-between gap-2 text-[12px]">
+                <dt className="text-shadow-1 dark:text-moonlight">Evidence bundle</dt>
+                <dd className="text-right">
+                  <LemonTag colour="default">Readiness + spend + queue</LemonTag>
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-2 text-[12px]">
+                <dt className="text-shadow-1 dark:text-moonlight">Worker state</dt>
+                <dd className="text-right">
+                  <LemonTag colour="muted">Disabled</LemonTag>
+                </dd>
+              </div>
+            </dl>
+            <LemonButton type="button" size="sm" variant="secondary" className="mt-2" onClick={copyActivationPacket}>
+              {activationPacketCopied ? "Packet copied" : "Copy activation packet"}
+            </LemonButton>
+          </div>
         </div>
       </div>
       {queueAuditFeedback && (
