@@ -1899,6 +1899,10 @@ function JobPanel({
     { label: "Required review", value: "Manual review + rights clearance", tone: "sun" },
     { label: "Publish boundary", value: "No public export or publish action has run", tone: "default" },
   ];
+  const activationWorkerRunbookItems: LiveSpendReviewItem[] = [
+    { label: "Provider worker", value: "Disabled in app", tone: "muted" },
+    { label: "Activation authority", value: "Separate worker required", tone: "sun" },
+  ];
   const liveSpendReviewKey = liveSpendReview.map((item) => `${item.label}:${item.value}`).join("|");
   const activationChecklistKey = activationChecklist.map((item) => `${item.label}:${item.value}`).join("|");
   const activationDecisionKey = activationDecision.map((item) => `${item.label}:${item.value}`).join("|");
@@ -1914,6 +1918,8 @@ function JobPanel({
     ...activationBlockers.map((item) => `${item.label}: ${item.value}`),
     "Public export readiness",
     ...activationPublicExportItems.map((item) => `${item.label}: ${item.value}`),
+    "Worker runbook",
+    ...activationWorkerRunbookItems.map((item) => `${item.label}: ${item.value}`),
     queueAuditFeedback ? "Queued request audit" : "Queued request audit: No queued live request",
     ...(queueAuditFeedback?.items.map((item) => `${item.label}: ${item.value}`) ?? []),
     "Activation state: Evidence only; provider execution still requires a separate worker activation.",
@@ -1921,7 +1927,15 @@ function JobPanel({
     "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
   ];
   const activationPublicExportKey = activationPublicExportItems.map((item) => `${item.label}:${item.value}`).join("|");
-  const activationHandoffKey = [activationChecklistKey, activationDecisionKey, activationBlockersKey, activationPublicExportKey, queueAuditFeedbackKey].join("||");
+  const activationWorkerRunbookKey = activationWorkerRunbookItems.map((item) => `${item.label}:${item.value}`).join("|");
+  const activationHandoffKey = [
+    activationChecklistKey,
+    activationDecisionKey,
+    activationBlockersKey,
+    activationPublicExportKey,
+    activationWorkerRunbookKey,
+    queueAuditFeedbackKey,
+  ].join("||");
   const activationPacketItems = [
     "Activation packet",
     "Provider readiness",
@@ -2144,6 +2158,14 @@ function JobPanel({
                 <LemonTag colour="default">Queue records intent only</LemonTag>
               </dd>
             </div>
+            {activationWorkerRunbookItems.map((item) => (
+              <div key={item.label} className="flex items-center justify-between gap-2 text-[12px]">
+                <dt className="text-shadow-1 dark:text-moonlight">{item.label}</dt>
+                <dd className="text-right">
+                  <LemonTag colour={item.tone}>{item.value}</LemonTag>
+                </dd>
+              </div>
+            ))}
             {activationPublicExportItems.map((item) => (
               <div key={item.label} className="flex items-center justify-between gap-2 text-[12px]">
                 <dt className="text-shadow-1 dark:text-moonlight">{item.label}</dt>
