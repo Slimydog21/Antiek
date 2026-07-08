@@ -491,6 +491,10 @@ describe("Multimedia workstation", () => {
     await waitFor(() => expect(mockGet).toHaveBeenCalledWith("mm-3"));
     expect((screen.getByLabelText("Artifact job id") as HTMLInputElement).value).toBe("job-mm-3-0005");
     expect(screen.getByText("Artifact URL: http(s) URL with host")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Artifact URL"), { target: { value: "https://cdn.example.test/retry.mp4" } });
+
+    expect(screen.queryByText("Artifact URL: http(s) URL with host")).toBeNull();
     expect(mockAttachArtifact).not.toHaveBeenCalled();
   });
 

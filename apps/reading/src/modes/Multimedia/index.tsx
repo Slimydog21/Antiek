@@ -1117,10 +1117,22 @@ export default function Multimedia() {
               artifactValidationMessage={artifactValidationMessage}
               onBudgetChange={setMaxBudgetUsd}
               onAckChange={setOperatorAck}
-              onArtifactJobIdChange={setArtifactJobId}
-              onArtifactUriChange={setArtifactUri}
-              onArtifactChecksumChange={setArtifactChecksum}
-              onArtifactMediaTypeChange={setArtifactMediaType}
+              onArtifactJobIdChange={(value) => {
+                setArtifactJobId(value);
+                setArtifactValidationMessage(null);
+              }}
+              onArtifactUriChange={(value) => {
+                setArtifactUri(value);
+                setArtifactValidationMessage(null);
+              }}
+              onArtifactChecksumChange={(value) => {
+                setArtifactChecksum(value);
+                setArtifactValidationMessage(null);
+              }}
+              onArtifactMediaTypeChange={(value) => {
+                setArtifactMediaType(value);
+                setArtifactValidationMessage(null);
+              }}
               onRefresh={refreshJobs}
               onQueue={queueLiveProviderJob}
               onRunWorker={runProviderWorker}
