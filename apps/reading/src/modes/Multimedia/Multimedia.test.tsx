@@ -630,6 +630,9 @@ describe("Multimedia workstation", () => {
     expect(within(persistedAssets).getByText("Manual review required before publish/export")).toBeTruthy();
     expect(within(persistedAssets).getByText("Not ready for public export")).toBeTruthy();
     expect(within(persistedAssets).getByText("Manual review + rights clearance")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Activation audit")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Activation proof")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Worker logs + manual artifact attach")).toBeTruthy();
     expect(within(persistedAssets).getByText("Review audit")).toBeTruthy();
     expect(within(persistedAssets).getByText("Review proof")).toBeTruthy();
     expect(within(persistedAssets).getByText("Manual review notes + rights clearance")).toBeTruthy();
@@ -691,6 +694,8 @@ describe("Multimedia workstation", () => {
           "Review gate: Manual review required before publish/export",
           "Export decision: Not ready for public export",
           "Required evidence: Manual review + rights clearance",
+          "Activation audit: Not run in app",
+          "Activation proof: Worker logs + manual artifact attach",
           "Review audit: Not run in app",
           "Review proof: Manual review notes + rights clearance",
           "Artifact URI: https://cdn.example.test/mm-2.mp4",
@@ -1599,6 +1604,9 @@ describe("Multimedia workstation", () => {
     expect(within(jobPanel).getByText("Manual review required before publish/export")).toBeTruthy();
     expect(within(jobPanel).getAllByText("Not ready for public export").length).toBeGreaterThan(0);
     expect(within(jobPanel).getAllByText("Manual review + rights clearance").length).toBeGreaterThan(0);
+    expect(within(jobPanel).getAllByText("Activation audit").length).toBeGreaterThan(0);
+    expect(within(jobPanel).getAllByText("Activation proof").length).toBeGreaterThan(0);
+    expect(within(jobPanel).getAllByText("Worker logs + manual artifact attach").length).toBeGreaterThan(0);
     expect(within(jobPanel).getAllByText("Review audit").length).toBeGreaterThan(0);
     expect(within(jobPanel).getAllByText("Review proof").length).toBeGreaterThan(0);
     expect(within(jobPanel).getAllByText("Manual review notes + rights clearance").length).toBeGreaterThan(0);
@@ -1647,6 +1655,8 @@ describe("Multimedia workstation", () => {
           "Review gate: Manual review required before publish/export",
           "Export decision: Not ready for public export",
           "Required evidence: Manual review + rights clearance",
+          "Activation audit: Not run in app",
+          "Activation proof: Worker logs + manual artifact attach",
           "Review audit: Not run in app",
           "Review proof: Manual review notes + rights clearance",
           "Artifact URI: https://cdn.example.test/mm-1-v2.mp4",

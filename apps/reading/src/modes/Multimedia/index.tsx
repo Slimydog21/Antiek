@@ -306,6 +306,13 @@ function buildPublicReviewAuditItems(): PersistedQueuedAuditItem[] {
   ];
 }
 
+function buildProviderActivationAuditItems(): PersistedQueuedAuditItem[] {
+  return [
+    { label: "Activation audit", value: "Not run in app" },
+    { label: "Activation proof", value: "Worker logs + manual artifact attach" },
+  ];
+}
+
 function buildAttachedArtifactAuditItems(asset: MultimediaAssetSummary): PersistedQueuedAuditItem[] {
   const readiness = asset.provider_readiness;
   return [
@@ -345,6 +352,7 @@ function buildAttachedArtifactExportReviewItems(asset: MultimediaAssetSummary): 
     { label: "Execution mode", value: readiness.execution_mode ?? "unavailable" },
     { label: "Review gate", value: "Manual review required before publish/export" },
     ...buildExportDecisionItems(),
+    ...buildProviderActivationAuditItems(),
     ...buildPublicReviewAuditItems(),
     { label: "Artifact URI", value: readiness.artifact_uri ?? "unavailable" },
     { label: "Checksum", value: readiness.artifact_checksum ?? "unavailable" },
@@ -2001,6 +2009,7 @@ function JobPanel({
     { label: "Execution mode", value: job.execution_mode },
     { label: "Review gate", value: "Manual review required before publish/export" },
     ...buildExportDecisionItems(),
+    ...buildProviderActivationAuditItems(),
     ...buildPublicReviewAuditItems(),
     { label: "Artifact URI", value: job.artifact_uri ?? "unavailable" },
     { label: "Checksum", value: job.artifact_checksum ?? "unavailable" },
