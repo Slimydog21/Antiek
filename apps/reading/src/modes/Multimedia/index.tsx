@@ -523,6 +523,18 @@ export default function Multimedia() {
         .join(";"),
     [assets],
   );
+  const persistedSourceJobKey = useMemo(
+    () =>
+      assets
+        .filter(
+          (asset) =>
+            (asset.provider_readiness.status === "artifact_attached" || asset.provider_readiness.status === "artifact_rejected") &&
+            asset.provider_readiness.source_job_id,
+        )
+        .map((asset) => `${asset.asset_id}:${asset.provider_readiness.status}:${asset.provider_readiness.source_job_id}`)
+        .join(";"),
+    [assets],
+  );
   const persistedQueuedAuditKey = useMemo(
     () =>
       assets
@@ -567,6 +579,10 @@ export default function Multimedia() {
   useEffect(() => {
     setCopiedRejectedAuditAssetId(null);
   }, [rejectedArtifactAuditKey]);
+
+  useEffect(() => {
+    setCopiedSourceJobAssetId(null);
+  }, [persistedSourceJobKey]);
 
   useEffect(() => {
     setCopiedQueuedAuditAssetId(null);
