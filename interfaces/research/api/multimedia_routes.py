@@ -10,6 +10,7 @@ from fastapi import APIRouter, FastAPI, HTTPException
 
 from substrate.multimedia.read_model import (
     CreateMultimediaDraftRequest,
+    LiveProviderExecutionRequest,
     MultimediaAssetList,
     MultimediaAssetRecord,
     MultimediaAssetStore,
@@ -73,6 +74,17 @@ def steer_multimedia_asset(asset_id: str, request: SteeringRequest) -> Multimedi
 def run_multimedia_hardening(asset_id: str) -> MultimediaAssetRecord:
     try:
         return get_store().run_hardening(asset_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
+
+
+@multimedia_router.post("/assets/{asset_id}/prepare-live-execution", response_model=MultimediaAssetRecord)
+def prepare_multimedia_live_execution(
+    asset_id: str,
+    request: LiveProviderExecutionRequest,
+) -> MultimediaAssetRecord:
+    try:
+        return get_store().prepare_live_execution(asset_id, request)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
 

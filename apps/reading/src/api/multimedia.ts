@@ -18,6 +18,14 @@ export interface CreateMultimediaDraftRequest {
   style?: string | null;
 }
 
+export interface LiveProviderExecutionRequest {
+  max_budget_usd: number;
+  route_policy: MultimediaRoutePolicy;
+  operator_acknowledged_spend: boolean;
+  provider_families?: string[];
+  dry_run_revision_id?: string | null;
+}
+
 export interface MultimediaAssetSummary {
   asset_id: string;
   revision_id: string;
@@ -159,5 +167,19 @@ export async function runMultimediaHardening(assetId: string): Promise<Multimedi
     method: "POST",
   });
   if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/hardening: HTTP ${resp.status}`);
+  return (await resp.json()) as MultimediaAssetRecord;
+}
+
+export async function prepareMultimediaLiveExecution(
+  assetId: string,
+  request: LiveProviderExecutionRequest,
+): Promise<MultimediaAssetRecord> {
+  const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/prepare-live-execution`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 404) throw new Error("multimedia_asset_not_found");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/prepare-live-execution: HTTP ${resp.status}`);
   return (await resp.json()) as MultimediaAssetRecord;
 }

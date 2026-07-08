@@ -52,6 +52,7 @@ from .provider_router import (
 )
 from .read_model import (
     CreateMultimediaDraftRequest,
+    LiveProviderExecutionRequest,
     MultimediaAssetList,
     MultimediaAssetRecord,
     MultimediaAssetStore,
@@ -153,6 +154,7 @@ __all__ = [
     # SPR-08 evaluation + hardening
     "GateFinding",
     "GateResult",
+    "LiveProviderExecutionRequest",
     "GateStatus",
     "MultimediaHardeningReport",
     "ShipStatus",
