@@ -53,6 +53,7 @@ const draftRecord: MultimediaAssetRecord = {
   style: "Asianometry-style explainer with restrained Ken Burns motion",
   hardening_report: null,
   latest_steering_intent: null,
+  jobs: [],
 };
 
 const approvedRecord: MultimediaAssetRecord = {
@@ -101,6 +102,8 @@ beforeEach(() => {
         route_policy: "balanced",
         estimated_cost_usd: 40.5,
         hardening_status: null,
+        latest_job_status: null,
+        latest_job_kind: null,
       },
     ],
     count: 1,
