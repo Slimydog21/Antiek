@@ -38,7 +38,7 @@ from substrate.contracts.multimedia import (
     MultimediaManifest,
     RoutePolicy,
 )
-from substrate.multimedia.audio_assembly import AudioExperience
+from substrate.multimedia.audio_assembly import AudioExperience, ChapterAudio
 from substrate.multimedia.planner import MultimediaPlan
 from substrate.multimedia.provider_router import (
     MediaGenerationRequest,
@@ -348,7 +348,7 @@ def assemble_video_documentary(
     )
 
 
-def _caption_for_chapter(chapter, line_text_by_id: dict[str, str]) -> str:
+def _caption_for_chapter(chapter: ChapterAudio, line_text_by_id: dict[str, str]) -> str:
     """Derive a caption from the chapter's CITED script-line texts.
 
     The chapter carries ``script_line_ids`` (the planner's grounded lines). Join
