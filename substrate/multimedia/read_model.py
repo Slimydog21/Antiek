@@ -13,6 +13,7 @@ import tempfile
 import uuid
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -46,6 +47,7 @@ PlanMode = Literal["video", "audio", "hybrid"]
 JobKind = Literal["render", "steering", "hardening", "provider_execution"]
 JobStatus = Literal["queued", "running", "succeeded", "failed", "canceled", "partial"]
 ExecutionMode = Literal["dry_run", "live_requested", "live"]
+_ARTIFACT_MEDIA_TYPE_FAMILIES = frozenset({"audio", "image", "video", "application"})
 
 
 class _ReadModelBase(BaseModel):
@@ -88,6 +90,31 @@ class ProviderArtifactAttachmentRequest(_ReadModelBase):
     artifact_uri: str = Field(min_length=1)
     artifact_checksum: str = Field(min_length=8)
     artifact_media_type: str = Field(min_length=1)
+
+
+def _validate_provider_artifact(request: ProviderArtifactAttachmentRequest) -> tuple[str, ...]:
+    problems: list[str] = []
+    parsed = urlparse(request.artifact_uri)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        problems.append("artifact_uri must be an http(s) URL with a host")
+
+    checksum_prefix = "sha256:"
+    if not request.artifact_checksum.startswith(checksum_prefix):
+        problems.append("artifact_checksum must start with sha256:")
+    else:
+        digest = request.artifact_checksum[len(checksum_prefix) :]
+        if len(digest) < 8 or not all(char in "0123456789abcdefABCDEF" for char in digest):
+            problems.append("artifact_checksum must include a hex sha256 digest")
+
+    media_family, separator, media_subtype = request.artifact_media_type.partition("/")
+    if (
+        not separator
+        or media_family not in _ARTIFACT_MEDIA_TYPE_FAMILIES
+        or not media_subtype
+        or any(char.isspace() for char in request.artifact_media_type)
+    ):
+        problems.append("artifact_media_type must be a supported type/subtype media type")
+    return tuple(problems)
 
 
 class MultimediaJobRecord(_ReadModelBase):
@@ -489,12 +516,25 @@ class MultimediaAssetStore:
         source = matches[-1]
         if source.artifact_uri is not None:
             return record
+        validation_problems = _validate_provider_artifact(request)
+        if validation_problems:
+            return self.record_job(
+                asset_id,
+                kind="provider_execution",
+                status="failed",
+                progress_percent=0,
+                message=f"Provider artifact validation failed: {'; '.join(validation_problems)}.",
+                execution_mode="live",
+                provider_family=source.provider_family,
+                error_code="artifact_validation_failed",
+                retryable=False,
+            )
         completed = self._with_job(
             record,
             kind="provider_execution",
             status="succeeded",
             progress_percent=100,
-            message=f"Provider artifact attached for {source.job_id}.",
+            message=f"Provider artifact attached for {source.job_id} after validating {request.artifact_media_type}.",
             execution_mode="live",
             provider_family=source.provider_family,
             artifact_uri=request.artifact_uri,

@@ -252,6 +252,7 @@ def test_live_provider_budget_gates_without_paid_calls(tmp_path, monkeypatch):
     assert attached.jobs[-1].artifact_uri == "https://cdn.example.test/mm-asset.mp4"
     assert attached.jobs[-1].artifact_checksum == "sha256:abcdef123456"
     assert attached.jobs[-1].artifact_media_type == "video/mp4"
+    assert "validating video/mp4" in attached.jobs[-1].message
     assert "fake-test-key" not in attached.jobs[-1].message
 
     unchanged = store.run_provider_execution_worker(draft.asset.asset_id)
@@ -263,6 +264,50 @@ def test_live_provider_budget_gates_without_paid_calls(tmp_path, monkeypatch):
     )
     assert blocked.jobs[-1].status == "failed"
     assert blocked.jobs[-1].error_code == "live_worker_disabled"
+
+
+def test_provider_artifact_attachment_validates_shape_without_paid_calls(tmp_path, monkeypatch):
+    monkeypatch.setenv("KREA_API_KEY", "fake-validation-key")
+    store = MultimediaAssetStore(tmp_path)
+    draft = store.create_draft(
+        CreateMultimediaDraftRequest(
+            topic="aircraft certification documentary",
+            target_minutes=20,
+            mode="video",
+            route_policy="balanced",
+            sources=("Certification programs require traceable evidence.",),
+        ),
+    )
+    approved = store.approve_dry_run(draft.asset.asset_id)
+    queued = store.prepare_live_execution(
+        draft.asset.asset_id,
+        LiveProviderExecutionRequest(
+            max_budget_usd=50,
+            route_policy="balanced",
+            operator_acknowledged_spend=True,
+            dry_run_revision_id=approved.asset.revision_id,
+        ),
+    )
+
+    rejected = store.attach_provider_artifact(
+        draft.asset.asset_id,
+        ProviderArtifactAttachmentRequest(
+            job_id=queued.jobs[-1].job_id,
+            artifact_uri="file:///tmp/mm-asset.mp4",
+            artifact_checksum="md5:not-a-sha",
+            artifact_media_type="video",
+        ),
+    )
+
+    assert rejected.jobs[-1].status == "failed"
+    assert rejected.jobs[-1].execution_mode == "live"
+    assert rejected.jobs[-1].provider_family == "krea"
+    assert rejected.jobs[-1].error_code == "artifact_validation_failed"
+    assert rejected.jobs[-1].artifact_uri is None
+    assert "http(s) URL" in rejected.jobs[-1].message
+    assert "sha256" in rejected.jobs[-1].message
+    assert "type/subtype" in rejected.jobs[-1].message
+    assert "fake-validation-key" not in rejected.jobs[-1].message
 
 
 def test_live_provider_budget_route_without_provider_secrets(tmp_path, monkeypatch):
@@ -341,4 +386,24 @@ def test_live_provider_budget_route_without_provider_secrets(tmp_path, monkeypat
     assert artifact_job["execution_mode"] == "live"
     assert artifact_job["artifact_uri"] == "https://cdn.example.test/mm-route.mp4"
     assert artifact_job["artifact_checksum"] == "sha256:123456789abc"
+    assert "validating video/mp4" in artifact_job["message"]
     assert "fake-route-key" not in artifact_job["message"]
+
+    rejected = client.post(
+        f"/multimedia/assets/{asset_id}/attach-provider-artifact",
+        json={
+            "job_id": latest["job_id"],
+            "artifact_uri": "ftp://cdn.example.test/mm-route.mp4",
+            "artifact_checksum": "sha256:not-hex",
+            "artifact_media_type": "text/plain",
+        },
+    )
+    assert rejected.status_code == 200
+    rejected_job = rejected.json()["jobs"][-1]
+    assert rejected_job["status"] == "failed"
+    assert rejected_job["error_code"] == "artifact_validation_failed"
+    assert rejected_job["artifact_uri"] is None
+    assert "http(s) URL" in rejected_job["message"]
+    assert "hex sha256" in rejected_job["message"]
+    assert "type/subtype" in rejected_job["message"]
+    assert "fake-route-key" not in rejected_job["message"]
