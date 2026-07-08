@@ -1639,6 +1639,7 @@ function JobPanel({
   const [copiedJobId, setCopiedJobId] = useState<string | null>(null);
   const [liveReviewCopied, setLiveReviewCopied] = useState(false);
   const [activationChecklistCopied, setActivationChecklistCopied] = useState(false);
+  const [activationHandoffCopied, setActivationHandoffCopied] = useState(false);
   const [queueAuditCopied, setQueueAuditCopied] = useState(false);
   const canSubmitArtifact =
     canAttach && artifactJobId.trim().length > 0 && artifactUri.trim().length > 0 && artifactChecksum.trim().length > 0 && artifactMediaType.trim().length > 0;
@@ -1679,6 +1680,20 @@ function JobPanel({
     setActivationChecklistCopied(true);
   }
 
+  async function copyActivationHandoff() {
+    if (!navigator.clipboard) return;
+    await navigator.clipboard.writeText(
+      [
+        "Activation handoff",
+        ...activationChecklist.map((item) => `${item.label}: ${item.value}`),
+        "Activation state: Evidence only; provider execution still requires a separate worker activation.",
+        "Operator next step: Review this bundle before enabling a live provider worker.",
+        "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
+      ].join("\n"),
+    );
+    setActivationHandoffCopied(true);
+  }
+
   async function copyQueueAudit() {
     if (!queueAuditFeedback || !navigator.clipboard) return;
     await navigator.clipboard.writeText(queueAuditFeedback.items.map((item) => `${item.label}: ${item.value}`).join("\n"));
@@ -1691,6 +1706,7 @@ function JobPanel({
 
   useEffect(() => {
     setActivationChecklistCopied(false);
+    setActivationHandoffCopied(false);
   }, [activationChecklistKey]);
 
   return (
@@ -1759,6 +1775,26 @@ function JobPanel({
         <LemonButton type="button" size="sm" variant="secondary" className="mt-2" onClick={copyActivationChecklist}>
           {activationChecklistCopied ? "Checklist copied" : "Copy checklist"}
         </LemonButton>
+        <div className="mt-3 border-t border-rule pt-2 dark:border-charcoal-2" data-testid="multimedia-live-activation-handoff">
+          <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Activation handoff</p>
+          <dl className="mt-2 grid grid-cols-1 gap-1.5">
+            <div className="flex items-center justify-between gap-2 text-[12px]">
+              <dt className="text-shadow-1 dark:text-moonlight">Operator next step</dt>
+              <dd className="text-right">
+                <LemonTag colour="sun">Review before worker activation</LemonTag>
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-2 text-[12px]">
+              <dt className="text-shadow-1 dark:text-moonlight">Spend boundary</dt>
+              <dd className="text-right">
+                <LemonTag colour="default">Queue records intent only</LemonTag>
+              </dd>
+            </div>
+          </dl>
+          <LemonButton type="button" size="sm" variant="secondary" className="mt-2" onClick={copyActivationHandoff}>
+            {activationHandoffCopied ? "Handoff copied" : "Copy handoff"}
+          </LemonButton>
+        </div>
       </div>
       {queueAuditFeedback && (
         <div

@@ -748,10 +748,33 @@ describe("Multimedia workstation", () => {
       ),
     );
     expect(within(activationChecklist).getByRole("button", { name: "Checklist copied" })).toBeTruthy();
+    const activationHandoff = screen.getByTestId("multimedia-live-activation-handoff");
+    expect(within(activationHandoff).getByText("Operator next step")).toBeTruthy();
+    expect(within(activationHandoff).getByText("Review before worker activation")).toBeTruthy();
+    expect(within(activationHandoff).getByText("Spend boundary")).toBeTruthy();
+    expect(within(activationHandoff).getByText("Queue records intent only")).toBeTruthy();
+    fireEvent.click(within(activationHandoff).getByRole("button", { name: "Copy handoff" }));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        [
+          "Activation handoff",
+          "Budget gate: $50.00 cap",
+          "Operator acknowledgement: Acknowledgement required",
+          "Dry-run revision: rev-1",
+          "Provider route: Balanced / krea",
+          "Execution boundary: Live worker disabled",
+          "Activation state: Evidence only; provider execution still requires a separate worker activation.",
+          "Operator next step: Review this bundle before enabling a live provider worker.",
+          "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
+        ].join("\n"),
+      ),
+    );
+    expect(within(activationHandoff).getByRole("button", { name: "Handoff copied" })).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Budget"), { target: { value: "0" } });
     expect(within(liveSpendReview).getByText("Enter positive budget")).toBeTruthy();
     await waitFor(() => expect(within(activationChecklist).getByRole("button", { name: "Copy checklist" })).toBeTruthy());
+    expect(within(activationHandoff).getByRole("button", { name: "Copy handoff" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Queue live job" }));
     expect(mockPrepare).not.toHaveBeenCalled();
     expect(screen.getByText("Enter a positive live provider budget before queueing.")).toBeTruthy();
