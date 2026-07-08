@@ -42,6 +42,16 @@ from .provider_router import (
     ProviderUnavailable,
     route_media_request,
 )
+from .steering import (
+    RevisionPlan,
+    SegmentReuse,
+    SteeringIntent,
+    SteeringOperation,
+    SteeringTranscript,
+    build_revision_asset,
+    parse_steering_prompt,
+    plan_revision,
+)
 from .tts import (
     FakeTTSProvider,
     TTSProvider,
@@ -115,4 +125,13 @@ __all__ = [
     "compile_ken_burns_timeline",
     "plan_visual_generation",
     "simulate_documentary_render",
+    # SPR-07 steering + revisions
+    "RevisionPlan",
+    "SegmentReuse",
+    "SteeringIntent",
+    "SteeringOperation",
+    "SteeringTranscript",
+    "build_revision_asset",
+    "parse_steering_prompt",
+    "plan_revision",
 ]
