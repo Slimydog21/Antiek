@@ -1114,6 +1114,8 @@ describe("Multimedia workstation", () => {
     const activationChecklist = screen.getByTestId("multimedia-live-activation-checklist");
     expect(within(activationChecklist).getByText("Budget gate")).toBeTruthy();
     expect(within(activationChecklist).getAllByText("$50.00 cap").length).toBeGreaterThan(0);
+    expect(within(activationChecklist).getByText("Request source")).toBeTruthy();
+    expect(within(activationChecklist).getByText("Current controls")).toBeTruthy();
     expect(within(activationChecklist).getByText("Operator acknowledgement")).toBeTruthy();
     expect(within(activationChecklist).getByText("Acknowledgement required")).toBeTruthy();
     expect(within(activationChecklist).getByText("Dry-run revision")).toBeTruthy();
@@ -1130,6 +1132,7 @@ describe("Multimedia workstation", () => {
       expect(writeText).toHaveBeenCalledWith(
         [
           "Budget gate: $50.00 cap",
+          "Request source: Current controls",
           "Operator acknowledgement: Acknowledgement required",
           "Dry-run revision: rev-1",
           "Provider route: Balanced / krea",
@@ -1150,6 +1153,7 @@ describe("Multimedia workstation", () => {
         [
           "Activation handoff",
           "Budget gate: $50.00 cap",
+          "Request source: Current controls",
           "Operator acknowledgement: Acknowledgement required",
           "Dry-run revision: rev-1",
           "Provider route: Balanced / krea",
@@ -1215,6 +1219,7 @@ describe("Multimedia workstation", () => {
           "Worker state: Live worker disabled",
           "Activation checklist",
           "Budget gate: $50.00 cap",
+          "Request source: Current controls",
           "Operator acknowledgement: Acknowledgement required",
           "Dry-run revision: rev-1",
           "Provider route: Balanced / krea",
@@ -1312,6 +1317,8 @@ describe("Multimedia workstation", () => {
     fireEvent.change(screen.getByLabelText("Budget"), { target: { value: "76" } });
     expect(within(liveSpendReview).getByText("$76.00 cap")).toBeTruthy();
     expect(within(activationChecklist).getAllByText("$75.00 cap").length).toBeGreaterThan(0);
+    expect(within(activationChecklist).getByText("Request source")).toBeTruthy();
+    expect(within(activationChecklist).getByText("Active queued job")).toBeTruthy();
     expect(within(activationBlockers).getAllByText("$75.00 cap").length).toBeGreaterThan(0);
     await waitFor(() => expect(within(activationHandoff).getByRole("button", { name: "Copy handoff" })).toBeTruthy());
     expect(within(activationHandoff).queryByRole("button", { name: "Handoff copied" })).toBeNull();
@@ -1321,6 +1328,7 @@ describe("Multimedia workstation", () => {
         [
           "Activation handoff",
           "Budget gate: $75.00 cap",
+          "Request source: Active queued job",
           "Operator acknowledgement: Spend acknowledged",
           "Dry-run revision: rev-1",
           "Provider route: Balanced / krea",
@@ -1421,6 +1429,7 @@ describe("Multimedia workstation", () => {
           "Worker state: Live worker disabled",
           "Activation checklist",
           "Budget gate: $75.00 cap",
+          "Request source: Active queued job",
           "Operator acknowledgement: Spend acknowledged",
           "Dry-run revision: rev-1",
           "Provider route: Balanced / krea",

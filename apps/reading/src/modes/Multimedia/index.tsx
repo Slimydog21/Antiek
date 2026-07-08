@@ -1832,8 +1832,10 @@ function JobPanel({
       ? `${TIER_COPY[activeLiveJob.live_request_route_policy].label} / ${activeLiveJob.provider_family ?? "unavailable"}`
       : liveReviewValue("Provider route");
   const activeLiveRevisionValue = activeLiveJob?.live_request_dry_run_revision_id ?? liveReviewValue("Dry-run revision");
+  const activationRequestSourceValue = activeLiveJob ? "Active queued job" : "Current controls";
   const activationChecklist = [
     { label: "Budget gate", value: activeLiveBudgetValue },
+    { label: "Request source", value: activationRequestSourceValue },
     { label: "Operator acknowledgement", value: liveReviewValue("Acknowledgement") },
     { label: "Dry-run revision", value: activeLiveRevisionValue },
     { label: "Provider route", value: activeLiveRouteValue },
