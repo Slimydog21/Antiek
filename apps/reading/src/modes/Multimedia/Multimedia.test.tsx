@@ -1075,6 +1075,21 @@ describe("Multimedia workstation", () => {
     expect(within(liveSpendReview).getByText("Balanced / krea")).toBeTruthy();
     expect(within(liveSpendReview).getByText("30 min video")).toBeTruthy();
     expect(within(liveSpendReview).getByText("Live worker disabled")).toBeTruthy();
+    const readiness = screen.getByTestId("multimedia-provider-readiness");
+    fireEvent.click(screen.getByRole("button", { name: "Copy readiness" }));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        [
+          "Spend boundary: Live worker disabled",
+          "Activation boundary: Separate worker activation required",
+          "Dry-run worker: No job rows",
+          "Live queue: No active live job",
+          "Manual attach: Waiting for live job",
+          "Artifact state: Not attached",
+        ].join("\n"),
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Readiness copied" })).toBeTruthy();
     const activationChecklist = screen.getByTestId("multimedia-live-activation-checklist");
     expect(within(activationChecklist).getByText("Budget gate")).toBeTruthy();
     expect(within(activationChecklist).getByText("$50.00 cap")).toBeTruthy();
@@ -1179,13 +1194,14 @@ describe("Multimedia workstation", () => {
     expect(await screen.findByText(/Live execution queued for krea/)).toBeTruthy();
     expect(screen.getByText("live_requested")).toBeTruthy();
     expect(screen.getByText("Artifact pending")).toBeTruthy();
-    const readiness = screen.getByTestId("multimedia-provider-readiness");
     expect(within(readiness).getByText("Live worker disabled")).toBeTruthy();
     expect(within(readiness).getByText("Activation boundary")).toBeTruthy();
     expect(within(readiness).getByText("Separate worker activation required")).toBeTruthy();
     expect(within(readiness).getByText("Queued job-mm-1-0001")).toBeTruthy();
     expect(within(readiness).getByText("Ready for job-mm-1-0001")).toBeTruthy();
     expect(within(readiness).getByText("Pending")).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Copy readiness" })).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "Readiness copied" })).toBeNull();
     const queueAudit = screen.getByTestId("multimedia-live-queue-audit");
     expect(within(queueAudit).getByText("job-mm-1-0001")).toBeTruthy();
     expect(within(queueAudit).getByText("$75.00 cap")).toBeTruthy();

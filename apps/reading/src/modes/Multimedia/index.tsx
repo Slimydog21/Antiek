@@ -1769,6 +1769,7 @@ function JobPanel({
   const [activationChecklistCopied, setActivationChecklistCopied] = useState(false);
   const [activationHandoffCopied, setActivationHandoffCopied] = useState(false);
   const [queueAuditCopied, setQueueAuditCopied] = useState(false);
+  const [readinessCopied, setReadinessCopied] = useState(false);
   const [copiedJobExportReviewId, setCopiedJobExportReviewId] = useState<string | null>(null);
   const canSubmitArtifact =
     canAttach && artifactJobId.trim().length > 0 && artifactUri.trim().length > 0 && artifactChecksum.trim().length > 0 && artifactMediaType.trim().length > 0;
@@ -1783,6 +1784,7 @@ function JobPanel({
   ];
   const liveSpendReviewKey = liveSpendReview.map((item) => `${item.label}:${item.value}`).join("|");
   const activationChecklistKey = activationChecklist.map((item) => `${item.label}:${item.value}`).join("|");
+  const readinessKey = readiness.map((item) => `${item.label}:${item.value}`).join("|");
   const artifactJob = jobs.find((job) => job.job_id === artifactJobId);
   const validationHints =
     artifactJob?.error_code === "artifact_validation_failed" ? artifactValidationHints(artifactJob.message) : artifactValidationHints(artifactValidationMessage);
@@ -1851,6 +1853,12 @@ function JobPanel({
     setQueueAuditCopied(true);
   }
 
+  async function copyProviderReadiness() {
+    if (!navigator.clipboard) return;
+    await navigator.clipboard.writeText(readiness.map((item) => `${item.label}: ${item.value}`).join("\n"));
+    setReadinessCopied(true);
+  }
+
   async function copyJobExportReview(job: MultimediaJobRecord) {
     if (!navigator.clipboard) return;
     await navigator.clipboard.writeText(jobExportReviewItems(job).map((item) => `${item.label}: ${item.value}`).join("\n"));
@@ -1864,6 +1872,10 @@ function JobPanel({
   useEffect(() => {
     setLiveReviewCopied(false);
   }, [liveSpendReviewKey]);
+
+  useEffect(() => {
+    setReadinessCopied(false);
+  }, [readinessKey]);
 
   useEffect(() => {
     setActivationChecklistCopied(false);
@@ -1902,6 +1914,9 @@ function JobPanel({
           </div>
         ))}
       </dl>
+      <LemonButton type="button" size="sm" variant="secondary" className="mt-2" onClick={copyProviderReadiness}>
+        {readinessCopied ? "Readiness copied" : "Copy readiness"}
+      </LemonButton>
       <div
         className="mt-3 rounded-md border border-rule bg-ice-0 p-2 dark:border-charcoal-1 dark:bg-charcoal-1"
         data-testid="multimedia-live-spend-review"
