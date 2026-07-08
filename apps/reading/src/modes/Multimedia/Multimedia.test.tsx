@@ -219,6 +219,12 @@ beforeEach(() => {
         hardening_status: null,
         latest_job_status: null,
         latest_job_kind: null,
+        provider_readiness: {
+          status: "manual_attach_ready",
+          label: "Manual attach ready",
+          source_job_id: "job-mm-1-0004",
+          artifact_media_type: null,
+        },
       },
     ],
     count: 1,
@@ -321,6 +327,8 @@ describe("Multimedia workstation", () => {
     render(<Multimedia />);
 
     expect(await screen.findByText(/Persisted assets/)).toBeTruthy();
+    expect(screen.getByText("Manual attach ready")).toBeTruthy();
+    expect(screen.getByText("job-mm-1-0004")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /The aircraft program/ }));
 
     await waitFor(() => expect(mockGet).toHaveBeenCalledWith("mm-1"));

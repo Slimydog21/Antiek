@@ -18,6 +18,7 @@ import type {
   MultimediaAssetRecord,
   MultimediaAssetSummary,
   MultimediaJobRecord,
+  MultimediaProviderReadinessStatus,
 } from "../../api/multimedia";
 import { LemonButton, LemonInput, LemonTag, LemonTextarea } from "../../components/lemon";
 
@@ -178,6 +179,13 @@ function latestAttachableArtifactJobId(record: MultimediaAssetRecord): string {
       .filter((job) => job.kind === "provider_execution" && job.execution_mode === "live_requested")
       .at(-1)?.job_id ?? ""
   );
+}
+
+function providerReadinessTone(status: MultimediaProviderReadinessStatus): "default" | "muted" | "sun" | "danger" {
+  if (status === "manual_attach_ready") return "sun";
+  if (status === "artifact_rejected") return "danger";
+  if (status === "no_provider_jobs") return "muted";
+  return "default";
 }
 
 function providerReadinessSummary(jobs: MultimediaJobRecord[], artifactJobId: string): Array<{ label: string; value: string; tone: "default" | "muted" | "sun" | "danger" }> {
@@ -697,6 +705,16 @@ export default function Multimedia() {
                       <span className="block font-mono text-[12px] text-ink dark:text-bright">{asset.status}</span>
                       <span className="mt-1 block text-[13px] leading-snug text-shadow-1 dark:text-moonlight">
                         {asset.title}
+                      </span>
+                      <span className="mt-2 flex flex-wrap items-center gap-2">
+                        <LemonTag colour={providerReadinessTone(asset.provider_readiness.status)}>
+                          {asset.provider_readiness.label}
+                        </LemonTag>
+                        {asset.provider_readiness.source_job_id && (
+                          <span className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">
+                            {asset.provider_readiness.source_job_id}
+                          </span>
+                        )}
                       </span>
                     </button>
                   ))}

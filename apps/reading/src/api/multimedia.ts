@@ -6,6 +6,13 @@ export type MultimediaKind = "information_video" | "documentary_video" | "audio_
 export type MultimediaJobKind = "render" | "steering" | "hardening" | "provider_execution";
 export type MultimediaJobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "partial";
 export type MultimediaExecutionMode = "dry_run" | "live_requested" | "live";
+export type MultimediaProviderReadinessStatus =
+  | "no_provider_jobs"
+  | "dry_run_available"
+  | "dry_run_completed"
+  | "manual_attach_ready"
+  | "artifact_attached"
+  | "artifact_rejected";
 
 export interface CreateMultimediaDraftRequest {
   topic: string;
@@ -39,6 +46,13 @@ export interface ProviderArtifactAttachmentRequest {
   artifact_media_type: string;
 }
 
+export interface MultimediaProviderReadinessSummary {
+  status: MultimediaProviderReadinessStatus;
+  label: string;
+  source_job_id: string | null;
+  artifact_media_type: string | null;
+}
+
 export interface MultimediaAssetSummary {
   asset_id: string;
   revision_id: string;
@@ -51,6 +65,7 @@ export interface MultimediaAssetSummary {
   hardening_status: string | null;
   latest_job_status: MultimediaJobStatus | null;
   latest_job_kind: MultimediaJobKind | null;
+  provider_readiness: MultimediaProviderReadinessSummary;
 }
 
 export interface MultimediaAssetList {

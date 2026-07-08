@@ -47,6 +47,14 @@ PlanMode = Literal["video", "audio", "hybrid"]
 JobKind = Literal["render", "steering", "hardening", "provider_execution"]
 JobStatus = Literal["queued", "running", "succeeded", "failed", "canceled", "partial"]
 ExecutionMode = Literal["dry_run", "live_requested", "live"]
+ProviderReadinessStatus = Literal[
+    "no_provider_jobs",
+    "dry_run_available",
+    "dry_run_completed",
+    "manual_attach_ready",
+    "artifact_attached",
+    "artifact_rejected",
+]
 _ARTIFACT_MEDIA_TYPE_FAMILIES = frozenset({"audio", "image", "video", "application"})
 
 
@@ -135,6 +143,13 @@ class MultimediaJobRecord(_ReadModelBase):
     retryable: bool | None = None
 
 
+class ProviderReadinessSummary(_ReadModelBase):
+    status: ProviderReadinessStatus
+    label: str
+    source_job_id: str | None = None
+    artifact_media_type: str | None = None
+
+
 class MultimediaAssetSummary(_ReadModelBase):
     asset_id: str
     revision_id: str
@@ -147,6 +162,7 @@ class MultimediaAssetSummary(_ReadModelBase):
     hardening_status: str | None = None
     latest_job_status: JobStatus | None = None
     latest_job_kind: JobKind | None = None
+    provider_readiness: ProviderReadinessSummary
 
 
 class MultimediaAssetRecord(_ReadModelBase):
@@ -172,6 +188,7 @@ class MultimediaAssetRecord(_ReadModelBase):
             hardening_status=self.hardening_report.ship_status if self.hardening_report else None,
             latest_job_status=latest_job.status if latest_job else None,
             latest_job_kind=latest_job.kind if latest_job else None,
+            provider_readiness=_provider_readiness_summary(self.jobs),
         )
 
 
@@ -640,6 +657,52 @@ def _latest_provider_job(record: MultimediaAssetRecord) -> MultimediaJobRecord |
     return None
 
 
+def _provider_readiness_summary(jobs: tuple[MultimediaJobRecord, ...]) -> ProviderReadinessSummary:
+    provider_jobs = tuple(job for job in jobs if job.kind == "provider_execution")
+    if not provider_jobs:
+        return ProviderReadinessSummary(status="no_provider_jobs", label="No provider jobs")
+
+    for job in reversed(provider_jobs):
+        if job.artifact_uri:
+            return ProviderReadinessSummary(
+                status="artifact_attached",
+                label="Artifact attached",
+                source_job_id=job.job_id,
+                artifact_media_type=job.artifact_media_type,
+            )
+
+    for job in reversed(provider_jobs):
+        if job.error_code == "artifact_validation_failed":
+            return ProviderReadinessSummary(
+                status="artifact_rejected",
+                label="Artifact rejected",
+                source_job_id=job.job_id,
+            )
+
+    for job in reversed(provider_jobs):
+        if job.execution_mode == "live_requested" and job.status in {"queued", "running"}:
+            return ProviderReadinessSummary(
+                status="manual_attach_ready",
+                label="Manual attach ready",
+                source_job_id=job.job_id,
+            )
+
+    for job in reversed(provider_jobs):
+        if job.execution_mode == "dry_run" and job.status == "succeeded":
+            return ProviderReadinessSummary(
+                status="dry_run_completed",
+                label="Dry-run completed",
+                source_job_id=job.job_id,
+            )
+
+    latest = provider_jobs[-1]
+    return ProviderReadinessSummary(
+        status="dry_run_available",
+        label="Dry-run available",
+        source_job_id=latest.job_id,
+    )
+
+
 __all__ = [
     "CreateMultimediaDraftRequest",
     "ExecutionMode",
@@ -652,5 +715,7 @@ __all__ = [
     "MultimediaJobRecord",
     "ProviderExecutionWorkerRequest",
     "ProviderArtifactAttachmentRequest",
+    "ProviderReadinessStatus",
+    "ProviderReadinessSummary",
     "SteeringRequest",
 ]

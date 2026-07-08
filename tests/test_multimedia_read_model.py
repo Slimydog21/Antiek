@@ -90,6 +90,8 @@ def test_store_create_approve_reopen_steer_and_harden(tmp_path):
     assert listed.assets[0].hardening_status == hardened.hardening_report.ship_status
     assert listed.assets[0].latest_job_kind == "provider_execution"
     assert listed.assets[0].latest_job_status == "failed"
+    assert listed.assets[0].provider_readiness.status == "dry_run_available"
+    assert listed.assets[0].provider_readiness.label == "Dry-run available"
 
 
 def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeypatch):
@@ -138,6 +140,12 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
     assert listed.status_code == 200
     assert listed.json()["count"] == 1
     assert listed.json()["assets"][0]["latest_job_status"] == "succeeded"
+    assert listed.json()["assets"][0]["provider_readiness"] == {
+        "status": "no_provider_jobs",
+        "label": "No provider jobs",
+        "source_job_id": None,
+        "artifact_media_type": None,
+    }
 
     missing = client.get("/multimedia/assets/mm-missing")
     assert missing.status_code == 404
@@ -214,6 +222,10 @@ def test_live_provider_budget_gates_without_paid_calls(tmp_path, monkeypatch):
     assert queued.jobs[-1].artifact_media_type is None
     assert queued.jobs[-1].progress_percent == 0
     assert "fake-test-key" not in queued.jobs[-1].message
+    queued_summary = store.list_assets().assets[0].provider_readiness
+    assert queued_summary.status == "manual_attach_ready"
+    assert queued_summary.label == "Manual attach ready"
+    assert queued_summary.source_job_id == queued.jobs[-1].job_id
 
     duplicate = store.prepare_live_execution(
         draft.asset.asset_id,
@@ -237,6 +249,9 @@ def test_live_provider_budget_gates_without_paid_calls(tmp_path, monkeypatch):
     assert worked.jobs[-1].progress_percent == 100
     assert "fake-test-key" not in worked.jobs[-1].message
     assert worked.asset.status == "ready"
+    worked_summary = store.list_assets().assets[0].provider_readiness
+    assert worked_summary.status == "manual_attach_ready"
+    assert worked_summary.source_job_id == queued.jobs[-1].job_id
 
     attached = store.attach_provider_artifact(
         draft.asset.asset_id,
@@ -254,6 +269,11 @@ def test_live_provider_budget_gates_without_paid_calls(tmp_path, monkeypatch):
     assert attached.jobs[-1].artifact_media_type == "video/mp4"
     assert "validating video/mp4" in attached.jobs[-1].message
     assert "fake-test-key" not in attached.jobs[-1].message
+    attached_summary = store.list_assets().assets[0].provider_readiness
+    assert attached_summary.status == "artifact_attached"
+    assert attached_summary.label == "Artifact attached"
+    assert attached_summary.source_job_id == attached.jobs[-1].job_id
+    assert attached_summary.artifact_media_type == "video/mp4"
 
     unchanged = store.run_provider_execution_worker(draft.asset.asset_id)
     assert len(unchanged.jobs) == len(attached.jobs)
@@ -264,6 +284,44 @@ def test_live_provider_budget_gates_without_paid_calls(tmp_path, monkeypatch):
     )
     assert blocked.jobs[-1].status == "failed"
     assert blocked.jobs[-1].error_code == "live_worker_disabled"
+
+
+def test_provider_readiness_summary_reports_rejected_artifacts(tmp_path, monkeypatch):
+    monkeypatch.setenv("KREA_API_KEY", "fake-test-key")
+    store = MultimediaAssetStore(tmp_path)
+    draft = store.create_draft(
+        CreateMultimediaDraftRequest(
+            topic="airframe production bottlenecks",
+            target_minutes=20,
+            mode="video",
+            route_policy="balanced",
+        )
+    )
+    store.approve_dry_run(draft.asset.asset_id)
+    queued = store.prepare_live_execution(
+        draft.asset.asset_id,
+        LiveProviderExecutionRequest(
+            max_budget_usd=50,
+            route_policy="balanced",
+            operator_acknowledged_spend=True,
+            dry_run_revision_id=draft.asset.revision_id,
+        ),
+    )
+    rejected = store.attach_provider_artifact(
+        draft.asset.asset_id,
+        ProviderArtifactAttachmentRequest(
+            job_id=queued.jobs[-1].job_id,
+            artifact_uri="not-a-url",
+            artifact_checksum="sha256:abcdef123456",
+            artifact_media_type="video/mp4",
+        ),
+    )
+
+    assert rejected.jobs[-1].error_code == "artifact_validation_failed"
+    summary = store.list_assets().assets[0].provider_readiness
+    assert summary.status == "artifact_rejected"
+    assert summary.label == "Artifact rejected"
+    assert summary.source_job_id == rejected.jobs[-1].job_id
 
 
 def test_provider_artifact_attachment_validates_shape_without_paid_calls(tmp_path, monkeypatch):
