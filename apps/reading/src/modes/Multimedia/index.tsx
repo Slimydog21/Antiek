@@ -5,7 +5,9 @@ import {
   approveMultimediaDryRun,
   createMultimediaDraft,
   getMultimediaAsset,
+  listMultimediaJobs,
   listMultimediaAssets,
+  runMultimediaProviderWorker,
   runMultimediaHardening,
   steerMultimediaAsset,
 } from "../../api/multimedia";
@@ -13,6 +15,7 @@ import type {
   CreateMultimediaDraftRequest,
   MultimediaAssetRecord,
   MultimediaAssetSummary,
+  MultimediaJobRecord,
 } from "../../api/multimedia";
 import { LemonButton, LemonInput, LemonTag, LemonTextarea } from "../../components/lemon";
 
@@ -20,7 +23,7 @@ type Mode = "video" | "audio" | "hybrid";
 type RouteTier = "cheapest" | "balanced" | "highest_quality";
 type RenderState = "pending" | "rendering" | "partial" | "failed" | "over_budget" | "provider_unavailable";
 type PlayerView = "video" | "audio";
-type PendingCommand = "list" | "create" | "approve" | "steer" | "harden" | "open" | null;
+type PendingCommand = "list" | "create" | "approve" | "steer" | "harden" | "open" | "jobs" | "worker" | null;
 
 type Chapter = {
   id: string;
@@ -208,6 +211,24 @@ export default function Multimedia() {
   const estimatedCost = formatRecordCost(selectedRecord, tier, estimateCost(duration, mode, tier));
   const canApprove = planReady && topic.trim().length > 0 && duration >= 15 && duration <= 45;
   const canRunAssetCommand = Boolean(selectedRecord) && pendingCommand === null;
+  const latestJob = selectedRecord?.jobs.at(-1) ?? null;
+  const shouldPollJobs = latestJob?.kind === "provider_execution" && ["queued", "running"].includes(latestJob.status);
+
+  useEffect(() => {
+    if (!selectedRecord || !shouldPollJobs) return;
+    const assetId = selectedRecord.asset.asset_id;
+    const interval = window.setInterval(() => {
+      listMultimediaJobs(assetId)
+        .then((result) => {
+          setSelectedRecord((current) => {
+            if (!current || current.asset.asset_id !== assetId) return current;
+            return { ...current, jobs: result.jobs };
+          });
+        })
+        .catch(() => undefined);
+    }, 4000);
+    return () => window.clearInterval(interval);
+  }, [selectedRecord?.asset.asset_id, shouldPollJobs]);
 
   function setPreset(next: number) {
     setDuration(next);
@@ -225,6 +246,21 @@ export default function Multimedia() {
   async function refreshAssetList() {
     const result = await listMultimediaAssets();
     setAssets(result.assets);
+  }
+
+  async function refreshJobs() {
+    if (!selectedRecord) return;
+    setPendingCommand("jobs");
+    try {
+      const result = await listMultimediaJobs(selectedRecord.asset.asset_id);
+      setSelectedRecord({ ...selectedRecord, jobs: result.jobs });
+      setApiError(null);
+      await refreshAssetList();
+    } catch {
+      setApiError("Could not refresh provider job status.");
+    } finally {
+      setPendingCommand(null);
+    }
   }
 
   async function generatePlan() {
@@ -324,6 +360,22 @@ export default function Multimedia() {
       await refreshAssetList();
     } catch {
       setApiError("Could not run multimedia hardening.");
+    } finally {
+      setPendingCommand(null);
+    }
+  }
+
+  async function runProviderWorker() {
+    if (!selectedRecord) return;
+    setPendingCommand("worker");
+    try {
+      const record = await runMultimediaProviderWorker(selectedRecord.asset.asset_id, { dry_run: true });
+      setSelectedRecord(record);
+      setRenderState(statusToRenderState(record));
+      setApiError(null);
+      await refreshAssetList();
+    } catch {
+      setApiError("Could not run the dry-run provider worker.");
     } finally {
       setPendingCommand(null);
     }
@@ -615,6 +667,14 @@ export default function Multimedia() {
                 setRenderState("partial");
               }}
             />
+            <JobPanel
+              jobs={selectedRecord?.jobs ?? []}
+              latestJob={latestJob}
+              busy={pendingCommand === "jobs" || pendingCommand === "worker"}
+              canRunWorker={Boolean(selectedRecord) && pendingCommand === null}
+              onRefresh={refreshJobs}
+              onRunWorker={runProviderWorker}
+            />
             <section className="rounded-md border border-rule bg-ice-1 p-3 dark:border-charcoal-1 dark:bg-charcoal-2">
               <p className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">Text or voice steering</p>
               <LemonTextarea
@@ -823,6 +883,66 @@ function InfoPanel({ title, items, testId }: { title: string; items: string[]; t
           <li key={item}>{item}</li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+function JobPanel({
+  jobs,
+  latestJob,
+  busy,
+  canRunWorker,
+  onRefresh,
+  onRunWorker,
+}: {
+  jobs: MultimediaJobRecord[];
+  latestJob: MultimediaJobRecord | null;
+  busy: boolean;
+  canRunWorker: boolean;
+  onRefresh: () => void;
+  onRunWorker: () => void;
+}) {
+  const recentJobs = jobs.slice(-4).reverse();
+
+  return (
+    <section
+      className="rounded-md border border-rule bg-ice-1 p-3 dark:border-charcoal-1 dark:bg-charcoal-2"
+      data-testid="multimedia-job-panel"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">Provider jobs</p>
+        <LemonTag colour={latestJob?.status === "failed" ? "danger" : latestJob?.status === "queued" ? "sun" : "default"}>
+          {latestJob?.status ?? "none"}
+        </LemonTag>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <LemonButton type="button" size="sm" variant="secondary" disabled={!jobs.length || busy} onClick={onRefresh}>
+          {busy ? "Refreshing..." : "Refresh jobs"}
+        </LemonButton>
+        <LemonButton type="button" size="sm" variant="primary" disabled={!canRunWorker} onClick={onRunWorker}>
+          {busy ? "Working..." : "Run dry-run worker"}
+        </LemonButton>
+      </div>
+      {recentJobs.length === 0 ? (
+        <p className="mt-3 text-[13px] leading-relaxed text-shadow-1 dark:text-moonlight">
+          No provider job rows yet.
+        </p>
+      ) : (
+        <ol className="mt-3 space-y-2">
+          {recentJobs.map((job) => (
+            <li key={job.job_id} className="border-t border-rule pt-2 text-[12px] dark:border-charcoal-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-ink dark:text-bright">{job.kind}</span>
+                <span className="text-shadow-1 dark:text-moonlight">{job.progress_percent}%</span>
+              </div>
+              <p className="mt-1 text-[13px] leading-snug text-ink dark:text-bright">{job.message}</p>
+              {job.error_code && (
+                <p className="mt-1 font-mono text-[11px] text-danger">{job.error_code}</p>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
     </section>
   );
 }

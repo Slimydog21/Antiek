@@ -10,6 +10,7 @@ from substrate.multimedia.read_model import (
     CreateMultimediaDraftRequest,
     LiveProviderExecutionRequest,
     MultimediaAssetStore,
+    ProviderExecutionWorkerRequest,
     SteeringRequest,
 )
 
@@ -208,6 +209,23 @@ def test_live_provider_budget_gates_without_paid_calls(tmp_path, monkeypatch):
     assert queued.jobs[-1].progress_percent == 0
     assert "fake-test-key" not in queued.jobs[-1].message
 
+    worked = store.run_provider_execution_worker(draft.asset.asset_id)
+    assert [job.status for job in worked.jobs[-2:]] == ["running", "succeeded"]
+    assert worked.jobs[-2].kind == "provider_execution"
+    assert worked.jobs[-1].progress_percent == 100
+    assert "fake-test-key" not in worked.jobs[-1].message
+    assert worked.asset.status == "ready"
+
+    unchanged = store.run_provider_execution_worker(draft.asset.asset_id)
+    assert len(unchanged.jobs) == len(worked.jobs)
+
+    blocked = store.run_provider_execution_worker(
+        draft.asset.asset_id,
+        request=ProviderExecutionWorkerRequest(dry_run=False),
+    )
+    assert blocked.jobs[-1].status == "failed"
+    assert blocked.jobs[-1].error_code == "live_worker_disabled"
+
 
 def test_live_provider_budget_route_without_provider_secrets(tmp_path, monkeypatch):
     monkeypatch.delenv("KREA_API_KEY", raising=False)
@@ -258,3 +276,9 @@ def test_live_provider_budget_route_without_provider_secrets(tmp_path, monkeypat
     assert latest["status"] == "queued"
     assert latest["error_code"] is None
     assert "fake-route-key" not in latest["message"]
+
+    worked = client.post(f"/multimedia/assets/{asset_id}/run-provider-worker", json={"dry_run": True})
+    assert worked.status_code == 200
+    statuses = [job["status"] for job in worked.json()["jobs"][-2:]]
+    assert statuses == ["running", "succeeded"]
+    assert "fake-route-key" not in worked.json()["jobs"][-1]["message"]

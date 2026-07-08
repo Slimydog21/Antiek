@@ -77,6 +77,11 @@ class LiveProviderExecutionRequest(_ReadModelBase):
     dry_run_revision_id: str | None = None
 
 
+class ProviderExecutionWorkerRequest(_ReadModelBase):
+    dry_run: bool = True
+    job_id: str | None = None
+
+
 class MultimediaJobRecord(_ReadModelBase):
     job_id: str
     asset_id: str
@@ -364,6 +369,61 @@ class MultimediaAssetStore:
         jobs = tuple(sorted(record.jobs, key=lambda job: job.sequence))
         return MultimediaJobList(jobs=jobs, count=len(jobs))
 
+    def run_provider_execution_worker(
+        self,
+        asset_id: str,
+        request: ProviderExecutionWorkerRequest | None = None,
+    ) -> MultimediaAssetRecord:
+        request = request or ProviderExecutionWorkerRequest()
+        record = self.get(asset_id)
+        if not request.dry_run:
+            return self.record_job(
+                asset_id,
+                kind="provider_execution",
+                status="failed",
+                progress_percent=0,
+                message="Live provider worker is disabled; dry-run worker execution is the only supported mode.",
+                error_code="live_worker_disabled",
+                retryable=False,
+            )
+        provider_jobs = tuple(job for job in record.jobs if job.kind == "provider_execution")
+        if request.job_id is None:
+            target = provider_jobs[-1] if provider_jobs else None
+            if target is None or target.status != "queued":
+                return record
+        else:
+            matches = tuple(job for job in provider_jobs if job.job_id == request.job_id and job.status == "queued")
+            target = matches[-1] if matches else None
+        if request.job_id is not None and target is None:
+            return self.record_job(
+                asset_id,
+                kind="provider_execution",
+                status="failed",
+                progress_percent=0,
+                message=f"Queued provider execution job {request.job_id!r} was not found.",
+                error_code="queued_job_not_found",
+                retryable=False,
+            )
+        assert target is not None
+        running = self._with_job(
+            record,
+            kind="provider_execution",
+            status="running",
+            progress_percent=45,
+            message=f"Dry-run worker claimed {target.job_id}; no provider call has been made.",
+            retryable=True,
+        )
+        completed = self._with_job(
+            running,
+            kind="provider_execution",
+            status="succeeded",
+            progress_percent=100,
+            message="Dry-run worker completed provider execution without Krea/TTS/video spend.",
+            retryable=False,
+        )
+        self.save(completed)
+        return completed
+
     def save(self, record: MultimediaAssetRecord) -> None:
         path = self._path(record.asset.asset_id)
         tmp = path.with_suffix(".json.tmp")
@@ -451,5 +511,6 @@ __all__ = [
     "MultimediaAssetSummary",
     "MultimediaJobList",
     "MultimediaJobRecord",
+    "ProviderExecutionWorkerRequest",
     "SteeringRequest",
 ]

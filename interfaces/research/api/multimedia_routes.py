@@ -15,6 +15,7 @@ from substrate.multimedia.read_model import (
     MultimediaAssetRecord,
     MultimediaAssetStore,
     MultimediaJobList,
+    ProviderExecutionWorkerRequest,
     SteeringRequest,
 )
 
@@ -85,6 +86,17 @@ def prepare_multimedia_live_execution(
 ) -> MultimediaAssetRecord:
     try:
         return get_store().prepare_live_execution(asset_id, request)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
+
+
+@multimedia_router.post("/assets/{asset_id}/run-provider-worker", response_model=MultimediaAssetRecord)
+def run_multimedia_provider_worker(
+    asset_id: str,
+    request: ProviderExecutionWorkerRequest | None = None,
+) -> MultimediaAssetRecord:
+    try:
+        return get_store().run_provider_execution_worker(asset_id, request)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
 

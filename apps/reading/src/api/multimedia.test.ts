@@ -7,6 +7,7 @@ import {
   listMultimediaJobs,
   listMultimediaAssets,
   prepareMultimediaLiveExecution,
+  runMultimediaProviderWorker,
   runMultimediaHardening,
   steerMultimediaAsset,
 } from "./multimedia";
@@ -144,6 +145,14 @@ describe("multimedia API client", () => {
         provider_families: ["krea"],
         dry_run_revision_id: "rev-1",
       }),
+    });
+
+    mockFetch.mockResolvedValueOnce(jsonResponse(record));
+    await runMultimediaProviderWorker("mm-1", { dry_run: true, job_id: "job-mm-1-0001" });
+    expect(mockFetch).toHaveBeenLastCalledWith("/api/multimedia/assets/mm-1/run-provider-worker", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dry_run: true, job_id: "job-mm-1-0001" }),
     });
   });
 });

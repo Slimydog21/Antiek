@@ -6,7 +6,9 @@ import {
   approveMultimediaDryRun,
   createMultimediaDraft,
   getMultimediaAsset,
+  listMultimediaJobs,
   listMultimediaAssets,
+  runMultimediaProviderWorker,
   runMultimediaHardening,
   steerMultimediaAsset,
 } from "../../api/multimedia";
@@ -16,7 +18,9 @@ vi.mock("../../api/multimedia", () => ({
   approveMultimediaDryRun: vi.fn(),
   createMultimediaDraft: vi.fn(),
   getMultimediaAsset: vi.fn(),
+  listMultimediaJobs: vi.fn(),
   listMultimediaAssets: vi.fn(),
+  runMultimediaProviderWorker: vi.fn(),
   runMultimediaHardening: vi.fn(),
   steerMultimediaAsset: vi.fn(),
 }));
@@ -24,7 +28,9 @@ vi.mock("../../api/multimedia", () => ({
 const mockApprove = vi.mocked(approveMultimediaDryRun);
 const mockCreate = vi.mocked(createMultimediaDraft);
 const mockGet = vi.mocked(getMultimediaAsset);
+const mockListJobs = vi.mocked(listMultimediaJobs);
 const mockList = vi.mocked(listMultimediaAssets);
+const mockRunWorker = vi.mocked(runMultimediaProviderWorker);
 const mockHarden = vi.mocked(runMultimediaHardening);
 const mockSteer = vi.mocked(steerMultimediaAsset);
 
@@ -80,6 +86,55 @@ const hardenedRecord: MultimediaAssetRecord = {
   },
 };
 
+const queuedProviderRecord: MultimediaAssetRecord = {
+  ...approvedRecord,
+  jobs: [
+    {
+      job_id: "job-mm-1-0001",
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      sequence: 1,
+      kind: "provider_execution",
+      status: "queued",
+      progress_percent: 0,
+      message: "Live execution queued for krea.",
+      error_code: null,
+      retryable: true,
+    },
+  ],
+};
+
+const completedProviderRecord: MultimediaAssetRecord = {
+  ...approvedRecord,
+  jobs: [
+    ...queuedProviderRecord.jobs,
+    {
+      job_id: "job-mm-1-0002",
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      sequence: 2,
+      kind: "provider_execution",
+      status: "running",
+      progress_percent: 45,
+      message: "Dry-run worker claimed job-mm-1-0001; no provider call has been made.",
+      error_code: null,
+      retryable: true,
+    },
+    {
+      job_id: "job-mm-1-0003",
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      sequence: 3,
+      kind: "provider_execution",
+      status: "succeeded",
+      progress_percent: 100,
+      message: "Dry-run worker completed provider execution without Krea/TTS/video spend.",
+      error_code: null,
+      retryable: false,
+    },
+  ],
+};
+
 beforeEach(() => {
   mockList.mockResolvedValue({
     assets: [
@@ -101,7 +156,9 @@ beforeEach(() => {
   });
   mockCreate.mockResolvedValue(draftRecord);
   mockGet.mockResolvedValue(draftRecord);
+  mockListJobs.mockResolvedValue({ jobs: queuedProviderRecord.jobs, count: 1 });
   mockApprove.mockResolvedValue(approvedRecord);
+  mockRunWorker.mockResolvedValue(completedProviderRecord);
   mockSteer.mockResolvedValue(steeredRecord);
   mockHarden.mockResolvedValue(hardenedRecord);
 });
@@ -210,6 +267,19 @@ describe("Multimedia workstation", () => {
     await waitFor(() => expect(mockHarden).toHaveBeenCalledWith("mm-1"));
     expect(await screen.findByText(/Hardening: manual_review/)).toBeTruthy();
     expect(screen.getByText(/rights_and_publication/)).toBeTruthy();
+  });
+
+  it("refreshes provider jobs and runs the dry-run worker", async () => {
+    mockCreate.mockResolvedValueOnce(queuedProviderRecord);
+    await reviewPlan();
+
+    expect(await screen.findByTestId("multimedia-job-panel")).toBeTruthy();
+    expect(screen.getByText(/Live execution queued for krea/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Run dry-run worker" }));
+
+    await waitFor(() => expect(mockRunWorker).toHaveBeenCalledWith("mm-1", { dry_run: true }));
+    expect(await screen.findByText(/without Krea\/TTS\/video spend/)).toBeTruthy();
   });
 
   it("keeps the fixture preview visible when the API is unavailable", async () => {
