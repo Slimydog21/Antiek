@@ -720,6 +720,20 @@ describe("Multimedia workstation", () => {
     expect(within(liveSpendReview).getByText("Balanced / krea")).toBeTruthy();
     expect(within(liveSpendReview).getByText("30 min video")).toBeTruthy();
     expect(within(liveSpendReview).getByText("Live worker disabled")).toBeTruthy();
+    const activationChecklist = screen.getByTestId("multimedia-live-activation-checklist");
+    expect(within(activationChecklist).getByText("Budget gate")).toBeTruthy();
+    expect(within(activationChecklist).getByText("$50.00 cap")).toBeTruthy();
+    expect(within(activationChecklist).getByText("Operator acknowledgement")).toBeTruthy();
+    expect(within(activationChecklist).getByText("Acknowledgement required")).toBeTruthy();
+    expect(within(activationChecklist).getByText("Dry-run revision")).toBeTruthy();
+    expect(within(activationChecklist).getByText("rev-1")).toBeTruthy();
+    expect(within(activationChecklist).getByText("Provider route")).toBeTruthy();
+    expect(within(activationChecklist).getByText("Balanced / krea")).toBeTruthy();
+    expect(within(activationChecklist).getByText("Execution boundary")).toBeTruthy();
+    expect(within(activationChecklist).getByText("Live worker disabled")).toBeTruthy();
+    expect(
+      within(activationChecklist).getByText("This checklist is evidence only; provider execution still requires a separate worker activation."),
+    ).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Budget"), { target: { value: "0" } });
     expect(within(liveSpendReview).getByText("Enter positive budget")).toBeTruthy();

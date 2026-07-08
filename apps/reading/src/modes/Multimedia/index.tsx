@@ -1642,6 +1642,14 @@ function JobPanel({
   const canSubmitArtifact =
     canAttach && artifactJobId.trim().length > 0 && artifactUri.trim().length > 0 && artifactChecksum.trim().length > 0 && artifactMediaType.trim().length > 0;
   const readiness = providerReadinessSummary(jobs, artifactJobId);
+  const liveReviewValue = (label: string) => liveSpendReview.find((item) => item.label === label)?.value ?? "Unavailable";
+  const activationChecklist = [
+    { label: "Budget gate", value: liveReviewValue("Budget cap") },
+    { label: "Operator acknowledgement", value: liveReviewValue("Acknowledgement") },
+    { label: "Dry-run revision", value: liveReviewValue("Dry-run revision") },
+    { label: "Provider route", value: liveReviewValue("Provider route") },
+    { label: "Execution boundary", value: liveReviewValue("Worker state") },
+  ];
   const artifactJob = jobs.find((job) => job.job_id === artifactJobId);
   const validationHints =
     artifactJob?.error_code === "artifact_validation_failed" ? artifactValidationHints(artifactJob.message) : artifactValidationHints(artifactValidationMessage);
@@ -1710,6 +1718,27 @@ function JobPanel({
         <LemonButton type="button" size="sm" variant="secondary" className="mt-2" onClick={copyLiveSpendReview}>
           {liveReviewCopied ? "Review copied" : "Copy review"}
         </LemonButton>
+      </div>
+      <div
+        className="mt-3 rounded-md border border-rule bg-ice-0 p-2 dark:border-charcoal-1 dark:bg-charcoal-1"
+        data-testid="multimedia-live-activation-checklist"
+      >
+        <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Live activation checklist</p>
+        <dl className="mt-2 grid grid-cols-1 gap-1.5">
+          {activationChecklist.map((item) => (
+            <div key={item.label} className="flex items-center justify-between gap-2 text-[12px]">
+              <dt className="text-shadow-1 dark:text-moonlight">{item.label}</dt>
+              <dd className="text-right">
+                <LemonTag colour={item.value.includes("required") || item.value.includes("Unavailable") ? "danger" : "default"}>
+                  {item.value}
+                </LemonTag>
+              </dd>
+            </div>
+          ))}
+        </dl>
+        <p className="mt-2 text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
+          This checklist is evidence only; provider execution still requires a separate worker activation.
+        </p>
       </div>
       {queueAuditFeedback && (
         <div
