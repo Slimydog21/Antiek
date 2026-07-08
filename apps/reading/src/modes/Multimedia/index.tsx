@@ -1201,7 +1201,7 @@ export default function Multimedia() {
                               </p>
                               <div className="mt-2 border-t border-rule pt-2 dark:border-charcoal-1">
                                 <div className="flex items-center justify-between gap-2">
-                                  <p className="font-mono text-shadow-2 dark:text-moonlight">Export review ready</p>
+                                  <p className="font-mono text-shadow-2 dark:text-moonlight">Export review required</p>
                                   <button
                                     type="button"
                                     onClick={() => void copyAttachedExportReview(asset)}
@@ -2299,7 +2299,7 @@ function JobPanel({
                   </div>
                   <div className="mt-2 border-t border-rule pt-2 dark:border-charcoal-2" data-testid={`multimedia-job-export-review-${job.job_id}`}>
                     <div className="flex items-center justify-between gap-2">
-                      <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Export review ready</p>
+                      <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Export review required</p>
                       <LemonButton type="button" size="sm" variant="tertiary" onClick={() => void copyJobExportReview(job)}>
                         {copiedJobExportReviewId === job.job_id ? "Export review copied" : "Copy export review"}
                       </LemonButton>

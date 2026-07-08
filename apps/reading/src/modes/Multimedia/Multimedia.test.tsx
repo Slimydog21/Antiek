@@ -620,7 +620,7 @@ describe("Multimedia workstation", () => {
     expect(
       within(persistedAssets).getByText("Open, download, copy link, and copy audit are read-only actions; no provider worker is triggered."),
     ).toBeTruthy();
-    expect(within(persistedAssets).getByText("Export review ready")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Export review required")).toBeTruthy();
     expect(within(persistedAssets).getByText("Manual review required before publish/export")).toBeTruthy();
     expect(within(persistedAssets).getByText("Not ready for public export")).toBeTruthy();
     expect(within(persistedAssets).getByText("Manual review + rights clearance")).toBeTruthy();
@@ -1441,7 +1441,7 @@ describe("Multimedia workstation", () => {
     expect(within(readiness).getByText("Attached")).toBeTruthy();
     expect(within(jobPanel).getAllByText("sha256:abcdef123456").length).toBeGreaterThan(0);
     expect(within(jobPanel).getAllByText("https://cdn.example.test/mm-1.mp4").length).toBeGreaterThan(0);
-    expect(within(jobPanel).getByText("Export review ready")).toBeTruthy();
+    expect(within(jobPanel).getByText("Export review required")).toBeTruthy();
     expect(within(jobPanel).getByText("Manual review required before publish/export")).toBeTruthy();
     expect(within(jobPanel).getByText("Not ready for public export")).toBeTruthy();
     expect(within(jobPanel).getByText("Manual review + rights clearance")).toBeTruthy();
