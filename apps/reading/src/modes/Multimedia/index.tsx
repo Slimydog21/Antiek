@@ -250,6 +250,8 @@ function buildQueueAuditFeedback(job: MultimediaJobRecord, preflight: LiveSpendP
       { label: "Requested media", value: itemValue("Requested media") },
       { label: "Worker state", value: "No paid worker consumed this job", tone: "muted" },
       { label: "Activation boundary", value: "Separate worker activation required", tone: "sun" },
+      ...buildProviderActivationAuditItems(),
+      ...buildPublicReviewAuditItems(),
     ],
   };
 }
@@ -269,6 +271,8 @@ function buildPersistedQueuedAuditItems(asset: MultimediaAssetSummary): Persiste
     { label: "Dry-run revision", value: readiness.live_request_dry_run_revision_id ?? "unavailable" },
     { label: "Worker state", value: "No paid worker consumed this job" },
     { label: "Activation boundary", value: "Separate worker activation required" },
+    ...buildProviderActivationAuditItems(),
+    ...buildPublicReviewAuditItems(),
   ];
 }
 
