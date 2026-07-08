@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 
 import Multimedia from "./index";
 import {
+  attachMultimediaProviderArtifact,
   approveMultimediaDryRun,
   createMultimediaDraft,
   getMultimediaAsset,
@@ -16,6 +17,7 @@ import {
 import type { MultimediaAssetRecord } from "../../api/multimedia";
 
 vi.mock("../../api/multimedia", () => ({
+  attachMultimediaProviderArtifact: vi.fn(),
   approveMultimediaDryRun: vi.fn(),
   createMultimediaDraft: vi.fn(),
   getMultimediaAsset: vi.fn(),
@@ -27,6 +29,7 @@ vi.mock("../../api/multimedia", () => ({
   steerMultimediaAsset: vi.fn(),
 }));
 
+const mockAttachArtifact = vi.mocked(attachMultimediaProviderArtifact);
 const mockApprove = vi.mocked(approveMultimediaDryRun);
 const mockCreate = vi.mocked(createMultimediaDraft);
 const mockGet = vi.mocked(getMultimediaAsset);
@@ -226,6 +229,7 @@ beforeEach(() => {
   mockApprove.mockResolvedValue(approvedRecord);
   mockPrepare.mockResolvedValue(queuedProviderRecord);
   mockRunWorker.mockResolvedValue(completedProviderRecord);
+  mockAttachArtifact.mockResolvedValue(artifactProviderRecord);
   mockSteer.mockResolvedValue(steeredRecord);
   mockHarden.mockResolvedValue(hardenedRecord);
 });
@@ -396,6 +400,42 @@ describe("Multimedia workstation", () => {
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://cdn.example.test/mm-1.mp4"));
     expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
+  });
+
+  it("attaches a pasted provider artifact without running a paid provider worker", async () => {
+    mockCreate.mockResolvedValueOnce(queuedProviderRecord);
+    await reviewPlan();
+
+    fireEvent.change(screen.getByLabelText("Artifact URL"), { target: { value: "https://cdn.example.test/mm-1.mp4" } });
+    fireEvent.change(screen.getByLabelText("Checksum"), { target: { value: "sha256:abcdef123456" } });
+    fireEvent.change(screen.getByLabelText("Media type"), { target: { value: "video/mp4" } });
+    fireEvent.click(screen.getByRole("button", { name: "Attach artifact" }));
+
+    await waitFor(() =>
+      expect(mockAttachArtifact).toHaveBeenCalledWith("mm-1", {
+        job_id: "job-mm-1-0001",
+        artifact_uri: "https://cdn.example.test/mm-1.mp4",
+        artifact_checksum: "sha256:abcdef123456",
+        artifact_media_type: "video/mp4",
+      }),
+    );
+    expect(mockRunWorker).not.toHaveBeenCalled();
+    expect(await screen.findByText("https://cdn.example.test/mm-1.mp4")).toBeTruthy();
+  });
+
+  it("shows backend validation feedback for manually attached artifacts", async () => {
+    mockCreate.mockResolvedValueOnce(queuedProviderRecord);
+    mockAttachArtifact.mockResolvedValueOnce(rejectedArtifactRecord);
+    await reviewPlan();
+
+    fireEvent.change(screen.getByLabelText("Artifact URL"), { target: { value: "file:///tmp/mm-1.mp4" } });
+    fireEvent.change(screen.getByLabelText("Checksum"), { target: { value: "sha256:not-hex" } });
+    fireEvent.change(screen.getByLabelText("Media type"), { target: { value: "video/mp4" } });
+    fireEvent.click(screen.getByRole("button", { name: "Attach artifact" }));
+
+    await waitFor(() => expect(mockAttachArtifact).toHaveBeenCalled());
+    expect(await screen.findByText("Artifact rejected")).toBeTruthy();
+    expect(screen.getByText(/Check the artifact URL, sha256 checksum, and media type/)).toBeTruthy();
   });
 
   it("distinguishes artifact validation failures from missing artifacts", async () => {

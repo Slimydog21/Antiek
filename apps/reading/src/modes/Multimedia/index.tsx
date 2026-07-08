@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
 import {
+  attachMultimediaProviderArtifact,
   approveMultimediaDryRun,
   createMultimediaDraft,
   getMultimediaAsset,
@@ -34,6 +35,7 @@ type PendingCommand =
   | "jobs"
   | "queue"
   | "worker"
+  | "attach"
   | null;
 
 type Chapter = {
@@ -170,6 +172,14 @@ function distributeMinutes(total: number): number[] {
   });
 }
 
+function latestAttachableArtifactJobId(record: MultimediaAssetRecord): string {
+  return (
+    record.jobs
+      .filter((job) => job.kind === "provider_execution" && job.execution_mode === "live_requested")
+      .at(-1)?.job_id ?? ""
+  );
+}
+
 export default function Multimedia() {
   const [topic, setTopic] = useState("The aircraft program that made cheap long-haul travel possible");
   const [duration, setDuration] = useState(30);
@@ -192,6 +202,10 @@ export default function Multimedia() {
   const [apiError, setApiError] = useState<string | null>(null);
   const [maxBudgetUsd, setMaxBudgetUsd] = useState("50");
   const [operatorAck, setOperatorAck] = useState(false);
+  const [artifactJobId, setArtifactJobId] = useState("");
+  const [artifactUri, setArtifactUri] = useState("");
+  const [artifactChecksum, setArtifactChecksum] = useState("");
+  const [artifactMediaType, setArtifactMediaType] = useState("video/mp4");
 
   useEffect(() => {
     let cancelled = false;
@@ -226,6 +240,14 @@ export default function Multimedia() {
   const canRunAssetCommand = Boolean(selectedRecord) && pendingCommand === null;
   const latestJob = selectedRecord?.jobs.at(-1) ?? null;
   const shouldPollJobs = latestJob?.kind === "provider_execution" && ["queued", "running"].includes(latestJob.status);
+
+  useEffect(() => {
+    if (artifactJobId || !selectedRecord) return;
+    const attachableJob = selectedRecord.jobs
+      .filter((job) => job.kind === "provider_execution" && job.execution_mode === "live_requested")
+      .at(-1);
+    if (attachableJob) setArtifactJobId(attachableJob.job_id);
+  }, [artifactJobId, selectedRecord]);
 
   useEffect(() => {
     if (!selectedRecord || !shouldPollJobs) return;
@@ -291,6 +313,7 @@ export default function Multimedia() {
     try {
       const record = await createMultimediaDraft(request);
       setSelectedRecord(record);
+      setArtifactJobId(latestAttachableArtifactJobId(record));
       setPlanReady(true);
       setApproved(false);
       setRenderState(statusToRenderState(record));
@@ -311,6 +334,7 @@ export default function Multimedia() {
     try {
       const record = await getMultimediaAsset(assetId);
       setSelectedRecord(record);
+      setArtifactJobId(latestAttachableArtifactJobId(record));
       setTopic(record.asset.title);
       setDuration(record.asset.requested_duration_minutes);
       setCustomDuration(String(record.asset.requested_duration_minutes));
@@ -411,10 +435,32 @@ export default function Multimedia() {
         dry_run_revision_id: selectedRecord.asset.revision_id,
       });
       setSelectedRecord(record);
+      const queuedJob = record.jobs.at(-1);
+      if (queuedJob?.kind === "provider_execution") setArtifactJobId(queuedJob.job_id);
       setApiError(null);
       await refreshAssetList();
     } catch {
       setApiError("Could not queue live provider execution.");
+    } finally {
+      setPendingCommand(null);
+    }
+  }
+
+  async function attachProviderArtifact() {
+    if (!selectedRecord) return;
+    setPendingCommand("attach");
+    try {
+      const record = await attachMultimediaProviderArtifact(selectedRecord.asset.asset_id, {
+        job_id: artifactJobId.trim(),
+        artifact_uri: artifactUri.trim(),
+        artifact_checksum: artifactChecksum.trim(),
+        artifact_media_type: artifactMediaType.trim(),
+      });
+      setSelectedRecord(record);
+      setApiError(null);
+      await refreshAssetList();
+    } catch {
+      setApiError("Could not attach that provider artifact.");
     } finally {
       setPendingCommand(null);
     }
@@ -709,16 +755,26 @@ export default function Multimedia() {
             <JobPanel
               jobs={selectedRecord?.jobs ?? []}
               latestJob={latestJob}
-              busy={pendingCommand === "jobs" || pendingCommand === "queue" || pendingCommand === "worker"}
+              busy={pendingCommand === "jobs" || pendingCommand === "queue" || pendingCommand === "worker" || pendingCommand === "attach"}
               canRunWorker={Boolean(selectedRecord) && pendingCommand === null}
               canQueue={Boolean(selectedRecord) && pendingCommand === null}
+              canAttach={Boolean(selectedRecord) && pendingCommand === null}
               maxBudgetUsd={maxBudgetUsd}
               operatorAck={operatorAck}
+              artifactJobId={artifactJobId}
+              artifactUri={artifactUri}
+              artifactChecksum={artifactChecksum}
+              artifactMediaType={artifactMediaType}
               onBudgetChange={setMaxBudgetUsd}
               onAckChange={setOperatorAck}
+              onArtifactJobIdChange={setArtifactJobId}
+              onArtifactUriChange={setArtifactUri}
+              onArtifactChecksumChange={setArtifactChecksum}
+              onArtifactMediaTypeChange={setArtifactMediaType}
               onRefresh={refreshJobs}
               onQueue={queueLiveProviderJob}
               onRunWorker={runProviderWorker}
+              onAttachArtifact={attachProviderArtifact}
             />
             <section className="rounded-md border border-rule bg-ice-1 p-3 dark:border-charcoal-1 dark:bg-charcoal-2">
               <p className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">Text or voice steering</p>
@@ -938,29 +994,51 @@ function JobPanel({
   busy,
   canRunWorker,
   canQueue,
+  canAttach,
   maxBudgetUsd,
   operatorAck,
+  artifactJobId,
+  artifactUri,
+  artifactChecksum,
+  artifactMediaType,
   onBudgetChange,
   onAckChange,
+  onArtifactJobIdChange,
+  onArtifactUriChange,
+  onArtifactChecksumChange,
+  onArtifactMediaTypeChange,
   onRefresh,
   onQueue,
   onRunWorker,
+  onAttachArtifact,
 }: {
   jobs: MultimediaJobRecord[];
   latestJob: MultimediaJobRecord | null;
   busy: boolean;
   canRunWorker: boolean;
   canQueue: boolean;
+  canAttach: boolean;
   maxBudgetUsd: string;
   operatorAck: boolean;
+  artifactJobId: string;
+  artifactUri: string;
+  artifactChecksum: string;
+  artifactMediaType: string;
   onBudgetChange: (value: string) => void;
   onAckChange: (value: boolean) => void;
+  onArtifactJobIdChange: (value: string) => void;
+  onArtifactUriChange: (value: string) => void;
+  onArtifactChecksumChange: (value: string) => void;
+  onArtifactMediaTypeChange: (value: string) => void;
   onRefresh: () => void;
   onQueue: () => void;
   onRunWorker: () => void;
+  onAttachArtifact: () => void;
 }) {
   const recentJobs = jobs.slice(-4).reverse();
   const [copiedJobId, setCopiedJobId] = useState<string | null>(null);
+  const canSubmitArtifact =
+    canAttach && artifactJobId.trim().length > 0 && artifactUri.trim().length > 0 && artifactChecksum.trim().length > 0 && artifactMediaType.trim().length > 0;
 
   async function copyArtifactUri(job: MultimediaJobRecord) {
     if (!job.artifact_uri || !navigator.clipboard) return;
@@ -1008,6 +1086,57 @@ function JobPanel({
         </LemonButton>
         <LemonButton type="button" size="sm" variant="primary" disabled={!canRunWorker} onClick={onRunWorker}>
           {busy ? "Working..." : "Run dry-run worker"}
+        </LemonButton>
+      </div>
+      <div className="mt-3 rounded-md border border-rule bg-ice-0 p-2 dark:border-charcoal-1 dark:bg-charcoal-1">
+        <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Manual artifact attach</p>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <label className="col-span-2 text-[12px] text-shadow-1 dark:text-moonlight">
+            Artifact job id
+            <input
+              type="text"
+              value={artifactJobId}
+              onChange={(event) => onArtifactJobIdChange(event.target.value)}
+              className="mt-1 h-8 w-full rounded-md border border-rule bg-ice-1 px-2 font-mono text-[12px] text-ink outline-none dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
+            />
+          </label>
+          <label className="col-span-2 text-[12px] text-shadow-1 dark:text-moonlight">
+            Artifact URL
+            <input
+              type="url"
+              value={artifactUri}
+              onChange={(event) => onArtifactUriChange(event.target.value)}
+              className="mt-1 h-8 w-full rounded-md border border-rule bg-ice-1 px-2 font-mono text-[12px] text-ink outline-none dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
+            />
+          </label>
+          <label className="text-[12px] text-shadow-1 dark:text-moonlight">
+            Checksum
+            <input
+              type="text"
+              value={artifactChecksum}
+              onChange={(event) => onArtifactChecksumChange(event.target.value)}
+              className="mt-1 h-8 w-full rounded-md border border-rule bg-ice-1 px-2 font-mono text-[12px] text-ink outline-none dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
+            />
+          </label>
+          <label className="text-[12px] text-shadow-1 dark:text-moonlight">
+            Media type
+            <input
+              type="text"
+              value={artifactMediaType}
+              onChange={(event) => onArtifactMediaTypeChange(event.target.value)}
+              className="mt-1 h-8 w-full rounded-md border border-rule bg-ice-1 px-2 font-mono text-[12px] text-ink outline-none dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
+            />
+          </label>
+        </div>
+        <LemonButton
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="mt-2"
+          disabled={!canSubmitArtifact || busy}
+          onClick={onAttachArtifact}
+        >
+          {busy ? "Attaching..." : "Attach artifact"}
         </LemonButton>
       </div>
       {recentJobs.length === 0 ? (
