@@ -446,6 +446,8 @@ describe("Multimedia workstation", () => {
     expect(within(persistedAssets).getByText("Dry-run revision")).toBeTruthy();
     expect(within(persistedAssets).getAllByText("job-mm-1-0004").length).toBeGreaterThan(0);
     expect(within(persistedAssets).getByText("No paid worker consumed this job")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Activation boundary")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Separate worker activation required")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Hide details" }));
     expect(within(persistedAssets).queryByText("Queued job")).toBeNull();
@@ -465,6 +467,7 @@ describe("Multimedia workstation", () => {
           "Budget cap: unavailable",
           "Dry-run revision: unavailable",
           "Worker state: No paid worker consumed this job",
+          "Activation boundary: Separate worker activation required",
         ].join("\n"),
       ),
     );
@@ -530,6 +533,8 @@ describe("Multimedia workstation", () => {
     expect(within(persistedAssets).getByText("rev-1")).toBeTruthy();
     expect(within(persistedAssets).getAllByText("krea").length).toBeGreaterThan(0);
     expect(within(persistedAssets).getAllByText("live").length).toBeGreaterThan(0);
+    expect(within(persistedAssets).getByText("Activation boundary")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Separate worker activation required")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Copy queue audit" }));
 
@@ -546,6 +551,7 @@ describe("Multimedia workstation", () => {
           "Budget cap: $18.00 cap",
           "Dry-run revision: rev-1",
           "Worker state: No paid worker consumed this job",
+          "Activation boundary: Separate worker activation required",
         ].join("\n"),
       ),
     );

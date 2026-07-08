@@ -267,6 +267,7 @@ function buildPersistedQueuedAuditItems(asset: MultimediaAssetSummary): Persiste
     { label: "Budget cap", value: formatPersistedBudgetCap(readiness.live_request_max_budget_usd) },
     { label: "Dry-run revision", value: readiness.live_request_dry_run_revision_id ?? "unavailable" },
     { label: "Worker state", value: "No paid worker consumed this job" },
+    { label: "Activation boundary", value: "Separate worker activation required" },
   ];
 }
 
