@@ -283,6 +283,15 @@ function buildArtifactLineageItems(asset: MultimediaAssetSummary): PersistedQueu
   ];
 }
 
+function buildExportBlockerItems(): PersistedQueuedAuditItem[] {
+  return [
+    { label: "Manual review", value: "Required before export" },
+    { label: "Rights review", value: "Required before public use" },
+    { label: "Export action", value: "No export or publish action available" },
+    { label: "Copy action", value: "Read-only; no export or provider worker triggered" },
+  ];
+}
+
 function buildAttachedArtifactAuditItems(asset: MultimediaAssetSummary): PersistedQueuedAuditItem[] {
   const readiness = asset.provider_readiness;
   return [
@@ -322,6 +331,7 @@ function buildAttachedArtifactExportReviewItems(asset: MultimediaAssetSummary): 
     { label: "Artifact URI", value: readiness.artifact_uri ?? "unavailable" },
     { label: "Checksum", value: readiness.artifact_checksum ?? "unavailable" },
     ...buildArtifactLineageItems(asset),
+    ...buildExportBlockerItems(),
     { label: "Publish boundary", value: "No public export or publish action has run" },
   ];
 }
@@ -1875,6 +1885,7 @@ function JobPanel({
     { label: "Provider route", value: liveReviewValue("Provider route") },
     { label: "Dry-run revision", value: liveReviewValue("Dry-run revision") },
     { label: "Activation boundary", value: "Separate worker activation required" },
+    ...buildExportBlockerItems(),
     { label: "Publish boundary", value: "No public export or publish action has run" },
   ];
   const jobExportReviewKey = recentJobs
