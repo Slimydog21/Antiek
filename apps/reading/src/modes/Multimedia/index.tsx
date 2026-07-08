@@ -974,7 +974,7 @@ export default function Multimedia() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => reopenAsset(asset.asset_id)}
+                              onClick={() => reopenAssetForAttachment(asset)}
                               className="rounded-md border border-danger bg-ice-0 px-3 py-1.5 font-mono text-[11px] font-semibold text-danger dark:bg-charcoal-1"
                             >
                               Retry
