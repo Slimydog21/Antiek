@@ -104,6 +104,9 @@ const queuedProviderRecord: MultimediaAssetRecord = {
       status: "queued",
       execution_mode: "live_requested",
       provider_family: "krea",
+      live_request_max_budget_usd: 75,
+      live_request_route_policy: "balanced",
+      live_request_dry_run_revision_id: "rev-1",
       artifact_uri: null,
       artifact_checksum: null,
       artifact_media_type: null,
@@ -1293,6 +1296,12 @@ describe("Multimedia workstation", () => {
     expect(within(readiness).getByText("Activation boundary")).toBeTruthy();
     expect(within(readiness).getByText("Separate worker activation required")).toBeTruthy();
     expect(within(readiness).getByText("Queued job-mm-1-0001")).toBeTruthy();
+    expect(within(readiness).getByText("Request budget")).toBeTruthy();
+    expect(within(readiness).getByText("$75.00 cap")).toBeTruthy();
+    expect(within(readiness).getByText("Request route")).toBeTruthy();
+    expect(within(readiness).getByText("Balanced / krea")).toBeTruthy();
+    expect(within(readiness).getByText("Request revision")).toBeTruthy();
+    expect(within(readiness).getByText("rev-1")).toBeTruthy();
     expect(within(readiness).getByText("Ready for job-mm-1-0001")).toBeTruthy();
     expect(within(readiness).getByText("Pending")).toBeTruthy();
     expect(within(activationDecision).getByText("Ready for separate worker handoff")).toBeTruthy();
@@ -1339,6 +1348,23 @@ describe("Multimedia workstation", () => {
     expect(within(activationHandoff).getByRole("button", { name: "Handoff copied" })).toBeTruthy();
     await waitFor(() => expect(screen.getByRole("button", { name: "Copy readiness" })).toBeTruthy());
     expect(screen.queryByRole("button", { name: "Readiness copied" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Copy readiness" }));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        [
+          "Spend boundary: Live worker disabled",
+          "Activation boundary: Separate worker activation required",
+          "Dry-run worker: Available",
+          "Live queue: Queued job-mm-1-0001",
+          "Request budget: $75.00 cap",
+          "Request route: Balanced / krea",
+          "Request revision: rev-1",
+          "Manual attach: Ready for job-mm-1-0001",
+          "Artifact state: Pending",
+        ].join("\n"),
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Readiness copied" })).toBeTruthy();
     const queueAudit = screen.getByTestId("multimedia-live-queue-audit");
     expect(within(queueAudit).getByText("job-mm-1-0001")).toBeTruthy();
     expect(within(queueAudit).getByText("$75.00 cap")).toBeTruthy();
@@ -1376,6 +1402,9 @@ describe("Multimedia workstation", () => {
           "Activation boundary: Separate worker activation required",
           "Dry-run worker: Available",
           "Live queue: Queued job-mm-1-0001",
+          "Request budget: $75.00 cap",
+          "Request route: Balanced / krea",
+          "Request revision: rev-1",
           "Manual attach: Ready for job-mm-1-0001",
           "Artifact state: Pending",
           "Live spend review",

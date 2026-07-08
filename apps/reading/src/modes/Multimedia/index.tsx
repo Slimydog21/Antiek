@@ -389,6 +389,27 @@ function providerReadinessSummary(jobs: MultimediaJobRecord[], artifactJobId: st
   const attachedArtifact = latestMatchingJob((job) => Boolean(job.artifact_uri));
   const rejectedArtifact = latestMatchingJob((job) => job.error_code === "artifact_validation_failed");
   const dryRunCompletion = latestMatchingJob((job) => job.execution_mode === "dry_run" && job.status === "succeeded");
+  const activeLiveRequestItems = activeLiveJob
+    ? [
+        {
+          label: "Request budget",
+          value: formatPersistedBudgetCap(activeLiveJob.live_request_max_budget_usd),
+          tone: "default" as const,
+        },
+        {
+          label: "Request route",
+          value: activeLiveJob.live_request_route_policy
+            ? `${TIER_COPY[activeLiveJob.live_request_route_policy].label} / ${activeLiveJob.provider_family ?? "unavailable"}`
+            : "unavailable",
+          tone: "default" as const,
+        },
+        {
+          label: "Request revision",
+          value: activeLiveJob.live_request_dry_run_revision_id ?? "unavailable",
+          tone: "default" as const,
+        },
+      ]
+    : [];
 
   return [
     {
@@ -411,6 +432,7 @@ function providerReadinessSummary(jobs: MultimediaJobRecord[], artifactJobId: st
       value: activeLiveJob ? `Queued ${activeLiveJob.job_id}` : "No active live job",
       tone: activeLiveJob ? "sun" : "muted",
     },
+    ...activeLiveRequestItems,
     {
       label: "Manual attach",
       value: artifactJobId.trim() ? `Ready for ${artifactJobId.trim()}` : "Waiting for live job",
