@@ -445,6 +445,11 @@ describe("Multimedia workstation", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://cdn.example.test/mm-2.mp4"));
     expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
 
+    fireEvent.click(screen.getByRole("button", { name: "Copy job" }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("job-mm-2-0004"));
+    expect(screen.getByRole("button", { name: "Job copied" })).toBeTruthy();
+
     fireEvent.click(screen.getByRole("button", { name: "Rejected 1" }));
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(mockGet).toHaveBeenCalledWith("mm-3"));

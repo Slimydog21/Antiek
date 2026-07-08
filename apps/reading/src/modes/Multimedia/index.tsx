@@ -270,6 +270,7 @@ export default function Multimedia() {
   const [artifactMediaType, setArtifactMediaType] = useState("video/mp4");
   const [attachmentFeedback, setAttachmentFeedback] = useState<AttachmentFeedback | null>(null);
   const [copiedAssetId, setCopiedAssetId] = useState<string | null>(null);
+  const [copiedSourceJobAssetId, setCopiedSourceJobAssetId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -434,6 +435,13 @@ export default function Multimedia() {
     if (!artifactUri || !navigator.clipboard) return;
     await navigator.clipboard.writeText(artifactUri);
     setCopiedAssetId(asset.asset_id);
+  }
+
+  async function copyPersistedSourceJobId(asset: MultimediaAssetSummary) {
+    const sourceJobId = asset.provider_readiness.source_job_id;
+    if (!sourceJobId || !navigator.clipboard) return;
+    await navigator.clipboard.writeText(sourceJobId);
+    setCopiedSourceJobAssetId(asset.asset_id);
   }
 
   async function approvePlan() {
@@ -858,6 +866,15 @@ export default function Multimedia() {
                               >
                                 {copiedAssetId === asset.asset_id ? "Copied" : "Copy link"}
                               </button>
+                              {asset.provider_readiness.source_job_id && (
+                                <button
+                                  type="button"
+                                  onClick={() => void copyPersistedSourceJobId(asset)}
+                                  className="rounded-md border border-rule bg-ice-0 px-3 py-1.5 font-mono text-[11px] font-semibold text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
+                                >
+                                  {copiedSourceJobAssetId === asset.asset_id ? "Job copied" : "Copy job"}
+                                </button>
+                              )}
                             </div>
                           ) : (
                             <button
