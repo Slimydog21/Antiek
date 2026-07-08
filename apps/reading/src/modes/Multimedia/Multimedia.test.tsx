@@ -614,6 +614,7 @@ describe("Multimedia workstation", () => {
           "Request route: Highest quality",
           "Budget cap: $22.00 cap",
           "Dry-run revision: rev-1",
+          "Activation boundary: Separate worker activation required",
           "Copy action: Read-only; no provider worker triggered",
         ].join("\n"),
       ),
@@ -630,6 +631,8 @@ describe("Multimedia workstation", () => {
     expect(within(persistedAssets).getByText("Highest quality")).toBeTruthy();
     expect(within(persistedAssets).getByText("$22.00 cap")).toBeTruthy();
     expect(within(persistedAssets).getByText("rev-1")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Activation boundary")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Separate worker activation required")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Rejected 1" }));
     expect(within(persistedAssets).getAllByText("artifact_validation_failed")).toHaveLength(2);
@@ -637,7 +640,7 @@ describe("Multimedia workstation", () => {
       within(persistedAssets).getByText("Provider artifact validation failed: artifact_uri must be an http(s) URL with a host."),
     ).toBeTruthy();
     expect(within(persistedAssets).getByText("krea / live / job-mm-3-0005")).toBeTruthy();
-    expect(within(persistedAssets).getByText("Cheapest / $12.00 cap / rev-1")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Cheapest / $12.00 cap / rev-1 / Separate worker activation required")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Copy audit" }));
 
@@ -654,6 +657,7 @@ describe("Multimedia workstation", () => {
           "Request route: Cheapest",
           "Budget cap: $12.00 cap",
           "Dry-run revision: rev-1",
+          "Activation boundary: Separate worker activation required",
         ].join("\n"),
       ),
     );

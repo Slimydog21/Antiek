@@ -278,6 +278,7 @@ function buildArtifactLineageItems(asset: MultimediaAssetSummary): PersistedQueu
     { label: "Request route", value: TIER_COPY[routePolicy].label },
     { label: "Budget cap", value: formatPersistedBudgetCap(readiness.live_request_max_budget_usd) },
     { label: "Dry-run revision", value: readiness.live_request_dry_run_revision_id ?? "unavailable" },
+    { label: "Activation boundary", value: "Separate worker activation required" },
   ];
 }
 
