@@ -271,6 +271,7 @@ export default function Multimedia() {
   const [attachmentFeedback, setAttachmentFeedback] = useState<AttachmentFeedback | null>(null);
   const [copiedAssetId, setCopiedAssetId] = useState<string | null>(null);
   const [copiedSourceJobAssetId, setCopiedSourceJobAssetId] = useState<string | null>(null);
+  const [expandedArtifactAssetId, setExpandedArtifactAssetId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -792,46 +793,78 @@ export default function Multimedia() {
                             : "border-rule bg-ice-1 dark:border-charcoal-1 dark:bg-charcoal-2")
                         }
                       >
-                        <button
-                          type="button"
-                          onClick={() => reopenAsset(asset.asset_id)}
-                          className="min-w-0 flex-1 px-3 py-2 text-left"
-                        >
-                          <span className="block font-mono text-[12px] text-ink dark:text-bright">{asset.status}</span>
-                          <span className="mt-1 block text-[13px] leading-snug text-shadow-1 dark:text-moonlight">
-                            {asset.title}
-                          </span>
-                          <span className="mt-2 flex flex-wrap items-center gap-2">
-                            <LemonTag colour={attachedNow ? "default" : providerReadinessTone(asset.provider_readiness.status)}>
-                              {attachedNow ? "Attachment saved" : asset.provider_readiness.label}
-                            </LemonTag>
-                            {asset.provider_readiness.artifact_media_type && (
-                              <span className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">
-                                {asset.provider_readiness.artifact_media_type}
-                              </span>
-                            )}
-                            {asset.provider_readiness.execution_mode && (
-                              <span className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">
-                                {asset.provider_readiness.execution_mode}
-                              </span>
-                            )}
-                            {asset.provider_readiness.provider_family && (
-                              <span className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">
-                                {asset.provider_readiness.provider_family}
-                              </span>
-                            )}
-                            {asset.provider_readiness.artifact_checksum && (
-                              <span className="max-w-full truncate font-mono text-[11px] text-shadow-2 dark:text-moonlight">
-                                {asset.provider_readiness.artifact_checksum}
-                              </span>
-                            )}
-                            {asset.provider_readiness.source_job_id && (
-                              <span className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">
-                                {asset.provider_readiness.source_job_id}
-                              </span>
-                            )}
-                          </span>
-                        </button>
+                        <div className="min-w-0 flex-1">
+                          <button
+                            type="button"
+                            onClick={() => reopenAsset(asset.asset_id)}
+                            className="w-full px-3 py-2 text-left"
+                          >
+                            <span className="block font-mono text-[12px] text-ink dark:text-bright">{asset.status}</span>
+                            <span className="mt-1 block text-[13px] leading-snug text-shadow-1 dark:text-moonlight">
+                              {asset.title}
+                            </span>
+                            <span className="mt-2 flex flex-wrap items-center gap-2">
+                              <LemonTag colour={attachedNow ? "default" : providerReadinessTone(asset.provider_readiness.status)}>
+                                {attachedNow ? "Attachment saved" : asset.provider_readiness.label}
+                              </LemonTag>
+                              {asset.provider_readiness.artifact_media_type && (
+                                <span className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">
+                                  {asset.provider_readiness.artifact_media_type}
+                                </span>
+                              )}
+                              {asset.provider_readiness.execution_mode && (
+                                <span className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">
+                                  {asset.provider_readiness.execution_mode}
+                                </span>
+                              )}
+                              {asset.provider_readiness.provider_family && (
+                                <span className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">
+                                  {asset.provider_readiness.provider_family}
+                                </span>
+                              )}
+                              {asset.provider_readiness.artifact_checksum && (
+                                <span className="max-w-full truncate font-mono text-[11px] text-shadow-2 dark:text-moonlight">
+                                  {asset.provider_readiness.artifact_checksum}
+                                </span>
+                              )}
+                              {asset.provider_readiness.source_job_id && (
+                                <span className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">
+                                  {asset.provider_readiness.source_job_id}
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                          {expandedArtifactAssetId === asset.asset_id && asset.provider_readiness.artifact_uri && (
+                            <dl className="mx-3 mb-3 grid gap-1 rounded-md border border-rule bg-ice-0 p-2 text-[11px] dark:border-charcoal-1 dark:bg-charcoal-1">
+                              <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
+                                <dt className="font-mono text-shadow-2 dark:text-moonlight">Artifact URI</dt>
+                                <dd className="truncate font-mono text-ink dark:text-bright">{asset.provider_readiness.artifact_uri}</dd>
+                              </div>
+                              {asset.provider_readiness.artifact_checksum && (
+                                <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
+                                  <dt className="font-mono text-shadow-2 dark:text-moonlight">Checksum</dt>
+                                  <dd className="truncate font-mono text-ink dark:text-bright">{asset.provider_readiness.artifact_checksum}</dd>
+                                </div>
+                              )}
+                              {asset.provider_readiness.source_job_id && (
+                                <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
+                                  <dt className="font-mono text-shadow-2 dark:text-moonlight">Source job</dt>
+                                  <dd className="truncate font-mono text-ink dark:text-bright">{asset.provider_readiness.source_job_id}</dd>
+                                </div>
+                              )}
+                              {(asset.provider_readiness.provider_family || asset.provider_readiness.execution_mode || asset.provider_readiness.artifact_media_type) && (
+                                <div className="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
+                                  <dt className="font-mono text-shadow-2 dark:text-moonlight">Route</dt>
+                                  <dd className="truncate font-mono text-ink dark:text-bright">
+                                    {[asset.provider_readiness.provider_family, asset.provider_readiness.execution_mode, asset.provider_readiness.artifact_media_type]
+                                      .filter(Boolean)
+                                      .join(" / ")}
+                                  </dd>
+                                </div>
+                              )}
+                            </dl>
+                          )}
+                        </div>
                         {asset.provider_readiness.status === "manual_attach_ready" && !attachedNow && (
                           <button
                             type="button"
@@ -875,6 +908,15 @@ export default function Multimedia() {
                                   {copiedSourceJobAssetId === asset.asset_id ? "Job copied" : "Copy job"}
                                 </button>
                               )}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedArtifactAssetId((current) => (current === asset.asset_id ? null : asset.asset_id))
+                                }
+                                className="rounded-md border border-rule bg-ice-0 px-3 py-1.5 font-mono text-[11px] font-semibold text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
+                              >
+                                {expandedArtifactAssetId === asset.asset_id ? "Hide details" : "Details"}
+                              </button>
                             </div>
                           ) : (
                             <button

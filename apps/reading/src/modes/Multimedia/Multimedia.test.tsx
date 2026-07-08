@@ -450,6 +450,13 @@ describe("Multimedia workstation", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("job-mm-2-0004"));
     expect(screen.getByRole("button", { name: "Job copied" })).toBeTruthy();
 
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+
+    expect(within(persistedAssets).getByText("Artifact URI")).toBeTruthy();
+    expect(within(persistedAssets).getByText("https://cdn.example.test/mm-2.mp4")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Source job")).toBeTruthy();
+    expect(within(persistedAssets).getByText("krea / live / video/mp4")).toBeTruthy();
+
     fireEvent.click(screen.getByRole("button", { name: "Rejected 1" }));
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(mockGet).toHaveBeenCalledWith("mm-3"));
