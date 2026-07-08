@@ -368,6 +368,14 @@ export default function Multimedia() {
     }
   }
 
+  function resetManualArtifactFields(nextJobId = "", nextValidationMessage: string | null = null) {
+    setArtifactJobId(nextJobId);
+    setArtifactUri("");
+    setArtifactChecksum("");
+    setArtifactMediaType("video/mp4");
+    setArtifactValidationMessage(nextValidationMessage);
+  }
+
   async function refreshAssetList() {
     const result = await listMultimediaAssets();
     setAssets(result.assets);
@@ -403,8 +411,7 @@ export default function Multimedia() {
     try {
       const record = await createMultimediaDraft(request);
       setSelectedRecord(record);
-      setArtifactJobId(latestAttachableArtifactJobId(record));
-      setArtifactValidationMessage(null);
+      resetManualArtifactFields(latestAttachableArtifactJobId(record));
       setPlanReady(true);
       setApproved(false);
       setRenderState(statusToRenderState(record));
@@ -425,8 +432,7 @@ export default function Multimedia() {
     try {
       const record = await getMultimediaAsset(assetId);
       setSelectedRecord(record);
-      setArtifactJobId(latestAttachableArtifactJobId(record));
-      setArtifactValidationMessage(null);
+      resetManualArtifactFields(latestAttachableArtifactJobId(record));
       setTopic(record.asset.title);
       setDuration(record.asset.requested_duration_minutes);
       setCustomDuration(String(record.asset.requested_duration_minutes));
@@ -445,10 +451,7 @@ export default function Multimedia() {
 
   async function reopenAssetForAttachment(asset: MultimediaAssetSummary) {
     await reopenAsset(asset.asset_id);
-    if (asset.provider_readiness.source_job_id) {
-      setArtifactJobId(asset.provider_readiness.source_job_id);
-    }
-    setArtifactValidationMessage(asset.provider_readiness.message);
+    resetManualArtifactFields(asset.provider_readiness.source_job_id ?? "", asset.provider_readiness.message);
   }
 
   async function copyPersistedArtifactUri(asset: MultimediaAssetSummary) {
@@ -565,9 +568,8 @@ export default function Multimedia() {
         dry_run_revision_id: selectedRecord.asset.revision_id,
       });
       setSelectedRecord(record);
-      setArtifactValidationMessage(null);
       const queuedJob = record.jobs.at(-1);
-      if (queuedJob?.kind === "provider_execution") setArtifactJobId(queuedJob.job_id);
+      resetManualArtifactFields(queuedJob?.kind === "provider_execution" ? queuedJob.job_id : "");
       setApiError(null);
       await refreshAssetList();
     } catch {

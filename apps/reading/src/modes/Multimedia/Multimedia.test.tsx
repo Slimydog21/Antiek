@@ -487,9 +487,16 @@ describe("Multimedia workstation", () => {
     );
     expect(screen.getByRole("button", { name: "Audit copied" })).toBeTruthy();
 
+    fireEvent.change(screen.getByLabelText("Artifact URL"), { target: { value: "https://cdn.example.test/stale.mp4" } });
+    fireEvent.change(screen.getByLabelText("Checksum"), { target: { value: "sha256:stale" } });
+    fireEvent.change(screen.getByLabelText("Media type"), { target: { value: "audio/mpeg" } });
+
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(mockGet).toHaveBeenCalledWith("mm-3"));
     expect((screen.getByLabelText("Artifact job id") as HTMLInputElement).value).toBe("job-mm-3-0005");
+    expect((screen.getByLabelText("Artifact URL") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Checksum") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Media type") as HTMLInputElement).value).toBe("video/mp4");
     expect(screen.getByText("Artifact URL: http(s) URL with host")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Artifact URL"), { target: { value: "https://cdn.example.test/retry.mp4" } });
