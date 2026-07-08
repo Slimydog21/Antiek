@@ -507,6 +507,14 @@ export default function Multimedia() {
         .join(";"),
     [assets],
   );
+  const attachedArtifactLinkKey = useMemo(
+    () =>
+      assets
+        .filter((asset) => asset.provider_readiness.status === "artifact_attached" && asset.provider_readiness.artifact_uri)
+        .map((asset) => `${asset.asset_id}:${asset.provider_readiness.artifact_uri}`)
+        .join(";"),
+    [assets],
+  );
   const attachedArtifactAuditKey = useMemo(
     () =>
       assets
@@ -571,6 +579,10 @@ export default function Multimedia() {
   useEffect(() => {
     setCopiedExportReviewAssetId(null);
   }, [attachedExportReviewKey]);
+
+  useEffect(() => {
+    setCopiedAssetId(null);
+  }, [attachedArtifactLinkKey]);
 
   useEffect(() => {
     setCopiedAttachedAuditAssetId(null);
