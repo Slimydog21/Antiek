@@ -960,6 +960,13 @@ function JobPanel({
   onRunWorker: () => void;
 }) {
   const recentJobs = jobs.slice(-4).reverse();
+  const [copiedJobId, setCopiedJobId] = useState<string | null>(null);
+
+  async function copyArtifactUri(job: MultimediaJobRecord) {
+    if (!job.artifact_uri || !navigator.clipboard) return;
+    await navigator.clipboard.writeText(job.artifact_uri);
+    setCopiedJobId(job.job_id);
+  }
 
   return (
     <section
@@ -1019,13 +1026,43 @@ function JobPanel({
                 <LemonTag>{job.execution_mode}</LemonTag>
                 {job.provider_family && <LemonTag colour="muted">{job.provider_family}</LemonTag>}
               </div>
-              <p className="mt-1 font-mono text-[11px] text-shadow-1 dark:text-moonlight">
-                {job.artifact_uri
-                  ? `${job.artifact_media_type ?? "artifact"} ${job.artifact_checksum ?? ""}`.trim()
-                  : job.status === "queued" || job.status === "running"
-                    ? "Artifact pending"
-                    : "No artifact attached"}
-              </p>
+              {job.artifact_uri ? (
+                <div className="mt-2 rounded-md border border-rule bg-ice-0 p-2 dark:border-charcoal-1 dark:bg-charcoal-1">
+                  <div className="flex flex-wrap items-center gap-1">
+                    <LemonTag colour="muted">{job.artifact_media_type ?? "artifact"}</LemonTag>
+                    {job.artifact_checksum && (
+                      <span className="break-all font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+                        {job.artifact_checksum}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 break-all font-mono text-[11px] text-ink dark:text-bright">{job.artifact_uri}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <a
+                      className="inline-flex h-7 items-center rounded-hog border-edge border-sun bg-ice-0 px-2.5 font-mono text-[12px] font-semibold text-ink shadow-z1 dark:bg-charcoal-2 dark:text-bright dark:shadow-z1-night"
+                      href={job.artifact_uri}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open artifact
+                    </a>
+                    <a
+                      className="inline-flex h-7 items-center rounded-hog border-edge border-sun bg-ice-0 px-2.5 font-mono text-[12px] font-semibold text-ink shadow-z1 dark:bg-charcoal-2 dark:text-bright dark:shadow-z1-night"
+                      href={job.artifact_uri}
+                      download
+                    >
+                      Download
+                    </a>
+                    <LemonButton type="button" size="sm" variant="tertiary" onClick={() => void copyArtifactUri(job)}>
+                      {copiedJobId === job.job_id ? "Copied" : "Copy link"}
+                    </LemonButton>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-1 font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+                  {job.status === "queued" || job.status === "running" ? "Artifact pending" : "No artifact attached"}
+                </p>
+              )}
               <p className="mt-1 text-[13px] leading-snug text-ink dark:text-bright">{job.message}</p>
               {job.error_code && (
                 <p className="mt-1 font-mono text-[11px] text-danger">{job.error_code}</p>

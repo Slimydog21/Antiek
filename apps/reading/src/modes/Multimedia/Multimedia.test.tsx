@@ -153,6 +153,30 @@ const completedProviderRecord: MultimediaAssetRecord = {
   ],
 };
 
+const artifactProviderRecord: MultimediaAssetRecord = {
+  ...approvedRecord,
+  jobs: [
+    ...queuedProviderRecord.jobs,
+    {
+      job_id: "job-mm-1-0004",
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      sequence: 4,
+      kind: "provider_execution",
+      status: "succeeded",
+      execution_mode: "live",
+      provider_family: "krea",
+      artifact_uri: "https://cdn.example.test/mm-1.mp4",
+      artifact_checksum: "sha256:abcdef123456",
+      artifact_media_type: "video/mp4",
+      progress_percent: 100,
+      message: "Provider artifact attached for job-mm-1-0001.",
+      error_code: null,
+      retryable: false,
+    },
+  ],
+};
+
 beforeEach(() => {
   mockList.mockResolvedValue({
     assets: [
@@ -322,6 +346,32 @@ describe("Multimedia workstation", () => {
     expect(await screen.findByText(/Live execution queued for krea/)).toBeTruthy();
     expect(screen.getByText("live_requested")).toBeTruthy();
     expect(screen.getByText("Artifact pending")).toBeTruthy();
+  });
+
+  it("surfaces attached provider artifacts with open, download, and copy actions", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    mockCreate.mockResolvedValueOnce(artifactProviderRecord);
+
+    await reviewPlan();
+
+    expect(await screen.findByText("video/mp4")).toBeTruthy();
+    expect(screen.getByText("sha256:abcdef123456")).toBeTruthy();
+    expect(screen.getByText("https://cdn.example.test/mm-1.mp4")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Open artifact" }).getAttribute("href")).toBe(
+      "https://cdn.example.test/mm-1.mp4",
+    );
+    expect(screen.getByRole("link", { name: "Download" }).getAttribute("href")).toBe(
+      "https://cdn.example.test/mm-1.mp4",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy link" }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://cdn.example.test/mm-1.mp4"));
+    expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
   });
 
   it("keeps the fixture preview visible when the API is unavailable", async () => {
