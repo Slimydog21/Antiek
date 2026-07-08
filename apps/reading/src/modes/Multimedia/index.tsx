@@ -292,6 +292,13 @@ function buildExportBlockerItems(): PersistedQueuedAuditItem[] {
   ];
 }
 
+function buildExportDecisionItems(): PersistedQueuedAuditItem[] {
+  return [
+    { label: "Export decision", value: "Not ready for public export" },
+    { label: "Required evidence", value: "Manual review + rights clearance" },
+  ];
+}
+
 function buildAttachedArtifactAuditItems(asset: MultimediaAssetSummary): PersistedQueuedAuditItem[] {
   const readiness = asset.provider_readiness;
   return [
@@ -328,6 +335,7 @@ function buildAttachedArtifactExportReviewItems(asset: MultimediaAssetSummary): 
     { label: "Artifact", value: readiness.artifact_media_type ?? "provider artifact" },
     { label: "Source job", value: readiness.source_job_id ?? "unavailable" },
     { label: "Review gate", value: "Manual review required before publish/export" },
+    ...buildExportDecisionItems(),
     { label: "Artifact URI", value: readiness.artifact_uri ?? "unavailable" },
     { label: "Checksum", value: readiness.artifact_checksum ?? "unavailable" },
     ...buildArtifactLineageItems(asset),
@@ -1879,6 +1887,7 @@ function JobPanel({
     { label: "Artifact", value: job.artifact_media_type ?? "provider artifact" },
     { label: "Source job", value: job.job_id },
     { label: "Review gate", value: "Manual review required before publish/export" },
+    ...buildExportDecisionItems(),
     { label: "Artifact URI", value: job.artifact_uri ?? "unavailable" },
     { label: "Checksum", value: job.artifact_checksum ?? "unavailable" },
     { label: "Budget gate", value: liveReviewValue("Budget cap") },

@@ -622,6 +622,8 @@ describe("Multimedia workstation", () => {
     ).toBeTruthy();
     expect(within(persistedAssets).getByText("Export review ready")).toBeTruthy();
     expect(within(persistedAssets).getByText("Manual review required before publish/export")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Not ready for public export")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Manual review + rights clearance")).toBeTruthy();
     expect(within(persistedAssets).getByText("Required before export")).toBeTruthy();
     expect(within(persistedAssets).getByText("Required before public use")).toBeTruthy();
     expect(within(persistedAssets).getByText("No export or publish action available")).toBeTruthy();
@@ -674,6 +676,8 @@ describe("Multimedia workstation", () => {
           "Artifact: video/mp4",
           "Source job: job-mm-2-0004",
           "Review gate: Manual review required before publish/export",
+          "Export decision: Not ready for public export",
+          "Required evidence: Manual review + rights clearance",
           "Artifact URI: https://cdn.example.test/mm-2.mp4",
           "Checksum: sha256:2222abcd",
           "Request route: Highest quality",
@@ -1439,6 +1443,8 @@ describe("Multimedia workstation", () => {
     expect(within(jobPanel).getAllByText("https://cdn.example.test/mm-1.mp4").length).toBeGreaterThan(0);
     expect(within(jobPanel).getByText("Export review ready")).toBeTruthy();
     expect(within(jobPanel).getByText("Manual review required before publish/export")).toBeTruthy();
+    expect(within(jobPanel).getByText("Not ready for public export")).toBeTruthy();
+    expect(within(jobPanel).getByText("Manual review + rights clearance")).toBeTruthy();
     expect(within(jobPanel).getByText("Required before export")).toBeTruthy();
     expect(within(jobPanel).getByText("Required before public use")).toBeTruthy();
     expect(within(jobPanel).getByText("No export or publish action available")).toBeTruthy();
@@ -1480,6 +1486,8 @@ describe("Multimedia workstation", () => {
           "Artifact: video/mp4",
           "Source job: job-mm-1-0004",
           "Review gate: Manual review required before publish/export",
+          "Export decision: Not ready for public export",
+          "Required evidence: Manual review + rights clearance",
           "Artifact URI: https://cdn.example.test/mm-1-v2.mp4",
           "Checksum: sha256:fedcba654321",
           "Budget gate: $50.00 cap",
