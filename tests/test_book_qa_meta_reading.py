@@ -73,26 +73,32 @@ class _RecordingProvider:
 
 
 def register_fake(reply: str = "A synthesized answer.") -> _RecordingProvider:
-    """Register ONE fake provider under BOTH research-tier override names
-    ('deepseek' for the deep tier, 'xiaomi' for fast) so book_qa/meta_reading's
-    provider_override (which resolves from research_tier) lands on it whichever
-    tier the caller chose. The shared instance records every prompt."""
+    """Register ONE fake provider under ALL research-tier override names so
+    book_qa/meta_reading's provider_override (which resolves from research_tier)
+    lands on it whichever tier the caller chose. The shared instance records
+    every prompt.
+
+    The claude-less research-tier map (#309) resolves fast→zai / deep→
+    zai_reasoning (GLM-5.2, thinking off / on); 'deepseek' is the config
+    primary (no-override fallback). All override aliases share the SAME
+    prompt log so a test can assert "no model dispatch" regardless of tier."""
     from substrate.dispatch.router import register_provider
 
     deep = _RecordingProvider(reply, name="deepseek")
     register_provider(deep)
-    # 'xiaomi' is the 'fast' override target; share the SAME prompt log so a
-    # test can assert "no model dispatch" regardless of tier.
-    fast = _RecordingProvider(reply, name="xiaomi")
-    fast.prompts = deep.prompts
-    register_provider(fast)
+    # The claude-less override names (zai / zai_reasoning) + the legacy
+    # 'xiaomi' alias all share the SAME prompt log.
+    for override_name in ("zai", "zai_reasoning", "xiaomi"):
+        twin = _RecordingProvider(reply, name=override_name)
+        twin.prompts = deep.prompts
+        register_provider(twin)
     return deep
 
 
 def _config_for(role: str):
     """A minimal DispatchConfig routing ``role`` to a 'deepseek' primary, so a
     no-override call still has a registered backend and the research-tier
-    override (deepseek/xiaomi) is also registered. (book_qa/meta_reading pass
+    override (zai/zai_reasoning) is also registered. (book_qa/meta_reading pass
     provider_override; this config is the base the router starts from.)"""
     from substrate.dispatch import DispatchConfig, TierConfig
 

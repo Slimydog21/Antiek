@@ -45,6 +45,7 @@ from substrate.dispatch.router import (  # noqa: E402
 _ALL_KEYS = (
     "DEEPSEEK_API_KEY", "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY",
     "XIAOMI_API_KEY", "HERMES_API_KEY", "OPENAI_API_KEY",
+    "Z_AI_API_KEY",
 )
 
 
@@ -188,15 +189,15 @@ def test_default_tier_is_deep():
     assert DEFAULT_RESEARCH_TIER == "deep"
 
 
-def test_fast_maps_to_mimo_deep_maps_to_deepseek():
+def test_fast_maps_to_glm_thinking_off_deep_maps_to_glm_thinking_on():
     """Selecting a tier changes WHICH provider is targeted — the core M3
     behavior. The provider names must match the ones bootstrap registers."""
     fast = resolve_research_tier("fast")
     deep = resolve_research_tier("deep")
-    assert fast.provider == "xiaomi"  # MiMo
-    assert fast.model == "mimo-v2.5-pro"
-    assert deep.provider == "deepseek"  # DeepSeek V4 Pro
-    assert deep.model == "deepseek-v4-pro"
+    assert fast.provider == "zai"  # GLM-5.2 thinking off
+    assert fast.model == "glm-5.2"
+    assert deep.provider == "zai_reasoning"  # GLM-5.2 thinking on
+    assert deep.model == "glm-5.2"
     # Different tier ⇒ different provider (the selector actually selects).
     assert fast.provider != deep.provider
 
@@ -212,10 +213,9 @@ def test_every_tier_has_a_why_rationale():
 def test_resolved_provider_matches_a_bootstrap_registerable_name(monkeypatch):
     """The tier→provider map must point at providers bootstrap can
     actually register — a tier mapping to an unregistered provider name is
-    a named failure mode (see handoff). With both keys set, both tier
-    targets resolve to a registered provider."""
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-ds-fake")
-    monkeypatch.setenv("XIAOMI_API_KEY", "sk-mimo-fake")
+    a named failure mode (see handoff). With Z_AI set, both tier targets
+    (zai + zai_reasoning) resolve to a registered provider."""
+    monkeypatch.setenv("Z_AI_API_KEY", "sk-zai-fake")
     register_default_providers(quiet=True)
     for t in RESEARCH_TIERS:
         target = resolve_research_tier(t)
@@ -282,9 +282,9 @@ def test_route_override_changes_which_provider_is_called(monkeypatch):
     from substrate.dispatch import dispatch
 
     hermes = _NamedStubProvider("hermes")
-    deepseek = _NamedStubProvider("deepseek")
+    zai_reasoning = _NamedStubProvider("zai_reasoning")
     register_provider(hermes)
-    register_provider(deepseek)
+    register_provider(zai_reasoning)
     config = _tier_config_for_override()
 
     # No override → config primary (hermes).
@@ -292,7 +292,7 @@ def test_route_override_changes_which_provider_is_called(monkeypatch):
         "q", "synthesizer", investigation_id="inv-x", config=config,
     )
     assert r1.provider == "hermes"
-    assert hermes.calls and not deepseek.calls
+    assert hermes.calls and not zai_reasoning.calls
 
     # Override resolved from the 'deep' tier → DeepSeek V4 Pro.
     target = resolve_research_tier("deep")
@@ -300,9 +300,9 @@ def test_route_override_changes_which_provider_is_called(monkeypatch):
         "q", "synthesizer", investigation_id="inv-x", config=config,
         provider_override=target.provider, model_override=target.model,
     )
-    assert r2.provider == "deepseek"
-    assert r2.model == "deepseek-v4-pro"
-    assert deepseek.calls == ["deepseek-v4-pro"]
+    assert r2.provider == "zai_reasoning"
+    assert r2.model == "glm-5.2"
+    assert zai_reasoning.calls == ["glm-5.2"]
 
 
 def test_partial_override_is_ignored_not_guessed(monkeypatch):
@@ -543,15 +543,15 @@ def test_explicit_deep_keeps_research_lane_but_not_synthesizer(
         classmethod(lambda cls, path: _synthesizer_config_with_hermes_primary()),
     )
     hermes = _NamedStubProvider("hermes")
-    deepseek = _NamedStubProvider("deepseek")
+    zai_reasoning = _NamedStubProvider("zai_reasoning")
     register_provider(hermes)
-    register_provider(deepseek)
+    register_provider(zai_reasoning)
 
     # RESEARCH LANE: explicit-deep still routes the research-runner to
     # deepseek. (The research lane resolves the tier directly via the map;
     # the synthesizer override is a separate code path.)
-    assert resolve_research_tier("deep").provider == "deepseek"
-    assert resolve_research_tier("deep").model == "deepseek-v4-pro"
+    assert resolve_research_tier("deep").provider == "zai_reasoning"
+    assert resolve_research_tier("deep").model == "glm-5.2"
 
     # SYNTHESIZER: the §14.4 pin holds for "deep" (== default) even with
     # deepseek live — the synthesizer override declines.
@@ -560,8 +560,8 @@ def test_explicit_deep_keeps_research_lane_but_not_synthesizer(
     text, policy_id = synth_mod._dispatch_once(
         "synthesize this", _StartEventStub("inv-explicit-deep-sep"),
     )
-    assert policy_id == "hermes/grok-4.3"  # config primary, NOT deepseek
-    assert not deepseek.calls
+    assert policy_id == "hermes/grok-4.3"  # config primary, NOT zai_reasoning
+    assert not zai_reasoning.calls
 
 
 def test_explicit_fast_keeps_research_lane_but_not_synthesizer(
@@ -584,13 +584,13 @@ def test_explicit_fast_keeps_research_lane_but_not_synthesizer(
         classmethod(lambda cls, path: _synthesizer_config_with_hermes_primary()),
     )
     hermes = _NamedStubProvider("hermes")
-    mimo = _NamedStubProvider("xiaomi")
+    zai = _NamedStubProvider("zai")
     register_provider(hermes)
-    register_provider(mimo)
+    register_provider(zai)
 
     # RESEARCH LANE: explicit-fast still routes the research-runner to MiMo.
-    assert resolve_research_tier("fast").provider == "xiaomi"
-    assert resolve_research_tier("fast").model == "mimo-v2.5-pro"
+    assert resolve_research_tier("fast").provider == "zai"
+    assert resolve_research_tier("fast").model == "glm-5.2"
 
     # SYNTHESIZER: the §14.4 pin holds for "fast" too, even with MiMo live.
     _emit_start_with_tier("inv-explicit-fast-sep", "fast")
@@ -598,8 +598,8 @@ def test_explicit_fast_keeps_research_lane_but_not_synthesizer(
     text, policy_id = synth_mod._dispatch_once(
         "synthesize this", _StartEventStub("inv-explicit-fast-sep"),
     )
-    assert policy_id == "hermes/grok-4.3"  # config primary, NOT mimo
-    assert not mimo.calls
+    assert policy_id == "hermes/grok-4.3"  # config primary, NOT zai
+    assert not zai.calls
 
 
 def test_seam_recorded_tier_provider_unregistered_uses_config_primary(
