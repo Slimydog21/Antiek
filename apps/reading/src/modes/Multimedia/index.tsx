@@ -349,6 +349,11 @@ function providerReadinessSummary(jobs: MultimediaJobRecord[], artifactJobId: st
       tone: "muted",
     },
     {
+      label: "Activation boundary",
+      value: "Separate worker activation required",
+      tone: "sun",
+    },
+    {
       label: "Dry-run worker",
       value: dryRunCompletion ? "Completed" : providerJobs.length ? "Available" : "No job rows",
       tone: dryRunCompletion ? "default" : "muted",
