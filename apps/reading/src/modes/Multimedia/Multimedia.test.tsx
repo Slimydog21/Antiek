@@ -610,8 +610,8 @@ describe("Multimedia workstation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Attached 1" }));
     const persistedAssets = screen.getByTestId("multimedia-persisted-assets");
     expect(within(persistedAssets).getAllByText("video/mp4").length).toBeGreaterThan(0);
-    expect(within(persistedAssets).getByText("live")).toBeTruthy();
-    expect(within(persistedAssets).getByText("krea")).toBeTruthy();
+    expect(within(persistedAssets).getAllByText("live").length).toBeGreaterThan(0);
+    expect(within(persistedAssets).getAllByText("krea").length).toBeGreaterThan(0);
     expect(within(persistedAssets).getAllByText("sha256:2222abcd").length).toBeGreaterThan(0);
     expect(within(persistedAssets).getByText("Artifact attached and ready")).toBeTruthy();
     expect(
@@ -624,6 +624,8 @@ describe("Multimedia workstation", () => {
     expect(within(persistedAssets).getByText("Manual review required before publish/export")).toBeTruthy();
     expect(within(persistedAssets).getByText("Not ready for public export")).toBeTruthy();
     expect(within(persistedAssets).getByText("Manual review + rights clearance")).toBeTruthy();
+    expect(within(persistedAssets).getAllByText("Provider").length).toBeGreaterThan(0);
+    expect(within(persistedAssets).getAllByText("Execution mode").length).toBeGreaterThan(0);
     expect(within(persistedAssets).getByText("Required before export")).toBeTruthy();
     expect(within(persistedAssets).getByText("Required before public use")).toBeTruthy();
     expect(within(persistedAssets).getByText("No export or publish action available")).toBeTruthy();
@@ -675,6 +677,8 @@ describe("Multimedia workstation", () => {
         [
           "Artifact: video/mp4",
           "Source job: job-mm-2-0004",
+          "Provider: krea",
+          "Execution mode: live",
           "Review gate: Manual review required before publish/export",
           "Export decision: Not ready for public export",
           "Required evidence: Manual review + rights clearance",

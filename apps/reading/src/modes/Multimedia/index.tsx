@@ -334,6 +334,8 @@ function buildAttachedArtifactExportReviewItems(asset: MultimediaAssetSummary): 
   return [
     { label: "Artifact", value: readiness.artifact_media_type ?? "provider artifact" },
     { label: "Source job", value: readiness.source_job_id ?? "unavailable" },
+    { label: "Provider", value: readiness.provider_family ?? "unavailable" },
+    { label: "Execution mode", value: readiness.execution_mode ?? "unavailable" },
     { label: "Review gate", value: "Manual review required before publish/export" },
     ...buildExportDecisionItems(),
     { label: "Artifact URI", value: readiness.artifact_uri ?? "unavailable" },
