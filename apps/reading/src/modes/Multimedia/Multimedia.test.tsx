@@ -1133,6 +1133,16 @@ describe("Multimedia workstation", () => {
           "Dry-run revision: rev-1",
           "Provider route: Balanced / krea",
           "Execution boundary: Live worker disabled",
+          "Activation decision",
+          "Decision: Not ready for worker handoff",
+          "Required evidence: Queue live job first",
+          "No-spend boundary: No paid provider runs from this screen",
+          "Activation blockers",
+          "Queued live job: Missing",
+          "Budget: $50.00 cap",
+          "Spend acknowledgement: Required",
+          "Manual attach target: Select queued job",
+          "Worker activation: Separate step required",
           "Activation state: Evidence only; provider execution still requires a separate worker activation.",
           "Operator next step: Review this bundle before enabling a live provider worker.",
           "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
@@ -1271,6 +1281,35 @@ describe("Multimedia workstation", () => {
     expect(within(activationBlockers).getAllByText("job-mm-1-0001").length).toBeGreaterThanOrEqual(2);
     expect(within(activationBlockers).getAllByText("$75.00 cap").length).toBeGreaterThan(0);
     expect(within(activationBlockers).getByText("Acknowledged")).toBeTruthy();
+    await waitFor(() => expect(within(activationHandoff).getByRole("button", { name: "Copy handoff" })).toBeTruthy());
+    expect(within(activationHandoff).queryByRole("button", { name: "Handoff copied" })).toBeNull();
+    fireEvent.click(within(activationHandoff).getByRole("button", { name: "Copy handoff" }));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        [
+          "Activation handoff",
+          "Budget gate: $75.00 cap",
+          "Operator acknowledgement: Spend acknowledged",
+          "Dry-run revision: rev-1",
+          "Provider route: Balanced / krea",
+          "Execution boundary: Live worker disabled",
+          "Activation decision",
+          "Decision: Ready for separate worker handoff",
+          "Required evidence: Queued job + acknowledged budget",
+          "No-spend boundary: No paid provider runs from this screen",
+          "Activation blockers",
+          "Queued live job: job-mm-1-0001",
+          "Budget: $75.00 cap",
+          "Spend acknowledgement: Acknowledged",
+          "Manual attach target: job-mm-1-0001",
+          "Worker activation: Separate step required",
+          "Activation state: Evidence only; provider execution still requires a separate worker activation.",
+          "Operator next step: Review this bundle before enabling a live provider worker.",
+          "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
+        ].join("\n"),
+      ),
+    );
+    expect(within(activationHandoff).getByRole("button", { name: "Handoff copied" })).toBeTruthy();
     await waitFor(() => expect(screen.getByRole("button", { name: "Copy readiness" })).toBeTruthy());
     expect(screen.queryByRole("button", { name: "Readiness copied" })).toBeNull();
     const queueAudit = screen.getByTestId("multimedia-live-queue-audit");
@@ -1366,6 +1405,8 @@ describe("Multimedia workstation", () => {
     expect(within(queueAudit).getByText("$76.00 cap")).toBeTruthy();
     await waitFor(() => expect(within(queueAudit).getByRole("button", { name: "Copy queued audit" })).toBeTruthy());
     expect(within(queueAudit).queryByRole("button", { name: "Queued audit copied" })).toBeNull();
+    expect(within(activationHandoff).getByRole("button", { name: "Copy handoff" })).toBeTruthy();
+    expect(within(activationHandoff).queryByRole("button", { name: "Handoff copied" })).toBeNull();
     expect(within(activationPacket).getByRole("button", { name: "Copy activation packet" })).toBeTruthy();
     expect(within(activationPacket).queryByRole("button", { name: "Packet copied" })).toBeNull();
   });

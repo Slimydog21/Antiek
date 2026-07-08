@@ -1839,6 +1839,9 @@ function JobPanel({
   ];
   const liveSpendReviewKey = liveSpendReview.map((item) => `${item.label}:${item.value}`).join("|");
   const activationChecklistKey = activationChecklist.map((item) => `${item.label}:${item.value}`).join("|");
+  const activationDecisionKey = activationDecision.map((item) => `${item.label}:${item.value}`).join("|");
+  const activationBlockersKey = activationBlockers.map((item) => `${item.label}:${item.value}`).join("|");
+  const activationHandoffKey = [activationChecklistKey, activationDecisionKey, activationBlockersKey].join("||");
   const readinessKey = readiness.map((item) => `${item.label}:${item.value}`).join("|");
   const activationPacketItems = [
     "Activation packet",
@@ -1913,6 +1916,10 @@ function JobPanel({
       [
         "Activation handoff",
         ...activationChecklist.map((item) => `${item.label}: ${item.value}`),
+        "Activation decision",
+        ...activationDecision.map((item) => `${item.label}: ${item.value}`),
+        "Activation blockers",
+        ...activationBlockers.map((item) => `${item.label}: ${item.value}`),
         "Activation state: Evidence only; provider execution still requires a separate worker activation.",
         "Operator next step: Review this bundle before enabling a live provider worker.",
         "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
@@ -1959,8 +1966,11 @@ function JobPanel({
 
   useEffect(() => {
     setActivationChecklistCopied(false);
-    setActivationHandoffCopied(false);
   }, [activationChecklistKey]);
+
+  useEffect(() => {
+    setActivationHandoffCopied(false);
+  }, [activationHandoffKey]);
 
   useEffect(() => {
     setActivationPacketCopied(false);
