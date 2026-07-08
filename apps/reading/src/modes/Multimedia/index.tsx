@@ -341,6 +341,8 @@ function buildRejectedArtifactAuditItems(asset: MultimediaAssetSummary): Persist
     ...(readiness.execution_mode ? [{ label: "execution_mode", value: readiness.execution_mode }] : []),
     ...(readiness.source_job_id ? [{ label: "source_job_id", value: readiness.source_job_id }] : []),
     ...buildArtifactLineageItems(asset),
+    ...buildProviderActivationAuditItems(),
+    ...buildPublicReviewAuditItems(),
   ];
 }
 

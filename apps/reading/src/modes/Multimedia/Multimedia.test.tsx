@@ -848,6 +848,10 @@ describe("Multimedia workstation", () => {
           "Budget cap: $12.00 cap",
           "Dry-run revision: rev-1",
           "Activation boundary: Separate worker activation required",
+          "Activation audit: Not run in app",
+          "Activation proof: Worker logs + manual artifact attach",
+          "Review audit: Not run in app",
+          "Review proof: Manual review notes + rights clearance",
         ].join("\n"),
       ),
     );
