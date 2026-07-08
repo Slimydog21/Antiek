@@ -249,6 +249,7 @@ function buildQueueAuditFeedback(job: MultimediaJobRecord, preflight: LiveSpendP
       { label: "Provider route", value: itemValue("Provider route") },
       { label: "Requested media", value: itemValue("Requested media") },
       { label: "Worker state", value: "No paid worker consumed this job", tone: "muted" },
+      { label: "Activation boundary", value: "Separate worker activation required", tone: "sun" },
     ],
   };
 }

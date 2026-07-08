@@ -865,6 +865,8 @@ describe("Multimedia workstation", () => {
     expect(within(queueAudit).getByText("Balanced / krea")).toBeTruthy();
     expect(within(queueAudit).getByText("30 min video")).toBeTruthy();
     expect(within(queueAudit).getByText("No paid worker consumed this job")).toBeTruthy();
+    expect(within(queueAudit).getByText("Activation boundary")).toBeTruthy();
+    expect(within(queueAudit).getByText("Separate worker activation required")).toBeTruthy();
 
     fireEvent.click(within(queueAudit).getByRole("button", { name: "Copy queued audit" }));
 
@@ -877,6 +879,7 @@ describe("Multimedia workstation", () => {
           "Provider route: Balanced / krea",
           "Requested media: 30 min video",
           "Worker state: No paid worker consumed this job",
+          "Activation boundary: Separate worker activation required",
         ].join("\n"),
       ),
     );
