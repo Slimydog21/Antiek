@@ -270,6 +270,16 @@ function buildPersistedQueuedAuditItems(asset: MultimediaAssetSummary): Persiste
   ];
 }
 
+function buildArtifactLineageItems(asset: MultimediaAssetSummary): PersistedQueuedAuditItem[] {
+  const readiness = asset.provider_readiness;
+  const routePolicy = readiness.live_request_route_policy ?? asset.route_policy;
+  return [
+    { label: "Request route", value: TIER_COPY[routePolicy].label },
+    { label: "Budget cap", value: formatPersistedBudgetCap(readiness.live_request_max_budget_usd) },
+    { label: "Dry-run revision", value: readiness.live_request_dry_run_revision_id ?? "unavailable" },
+  ];
+}
+
 function statusToRenderState(record: MultimediaAssetRecord | null): RenderState {
   if (!record) return "pending";
   if (record.asset.status === "ready") return "partial";
@@ -579,6 +589,7 @@ export default function Multimedia() {
   async function copyRejectedArtifactAudit(asset: MultimediaAssetSummary) {
     if (!navigator.clipboard) return;
     const readiness = asset.provider_readiness;
+    const lineageLines = buildArtifactLineageItems(asset).map((item) => `${item.label}: ${item.value}`);
     const auditLines = [
       `asset_id: ${asset.asset_id}`,
       `status: ${readiness.status}`,
@@ -587,6 +598,7 @@ export default function Multimedia() {
       readiness.provider_family ? `provider_family: ${readiness.provider_family}` : null,
       readiness.execution_mode ? `execution_mode: ${readiness.execution_mode}` : null,
       readiness.source_job_id ? `source_job_id: ${readiness.source_job_id}` : null,
+      ...lineageLines,
     ].filter((line): line is string => Boolean(line));
     await navigator.clipboard.writeText(auditLines.join("\n"));
     setCopiedRejectedAuditAssetId(asset.asset_id);
@@ -1019,6 +1031,12 @@ export default function Multimedia() {
                                   </dd>
                                 </div>
                               )}
+                              {buildArtifactLineageItems(asset).map((item) => (
+                                <div key={item.label} className="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
+                                  <dt className="font-mono text-shadow-2 dark:text-moonlight">{item.label}</dt>
+                                  <dd className="truncate font-mono text-ink dark:text-bright">{item.value}</dd>
+                                </div>
+                              ))}
                             </dl>
                           )}
                           {asset.provider_readiness.status === "artifact_rejected" && asset.provider_readiness.message && (
@@ -1032,6 +1050,9 @@ export default function Multimedia() {
                                     .join(" / ")}
                                 </p>
                               )}
+                              <p className="mt-1 truncate font-mono text-shadow-2 dark:text-moonlight">
+                                {buildArtifactLineageItems(asset).map((item) => item.value).join(" / ")}
+                              </p>
                             </div>
                           )}
                           {asset.provider_readiness.status === "manual_attach_ready" && asset.provider_readiness.source_job_id && (

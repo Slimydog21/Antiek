@@ -301,6 +301,9 @@ def test_live_provider_budget_gates_without_paid_calls(tmp_path, monkeypatch):
     assert attached_summary.source_job_id == attached.jobs[-1].job_id
     assert attached_summary.execution_mode == "live"
     assert attached_summary.provider_family == "krea"
+    assert attached_summary.live_request_max_budget_usd == sufficient_budget
+    assert attached_summary.live_request_route_policy == "balanced"
+    assert attached_summary.live_request_dry_run_revision_id == approved.asset.revision_id
     assert attached_summary.artifact_uri == "https://cdn.example.test/mm-asset.mp4"
     assert attached_summary.artifact_checksum == "sha256:abcdef123456"
     assert attached_summary.artifact_media_type == "video/mp4"
@@ -352,6 +355,9 @@ def test_provider_readiness_summary_reports_rejected_artifacts(tmp_path, monkeyp
     assert summary.status == "artifact_rejected"
     assert summary.label == "Artifact rejected"
     assert summary.source_job_id == rejected.jobs[-1].job_id
+    assert summary.live_request_max_budget_usd == 50
+    assert summary.live_request_route_policy == "balanced"
+    assert summary.live_request_dry_run_revision_id == draft.asset.revision_id
 
 
 def test_provider_artifact_attachment_validates_shape_without_paid_calls(tmp_path, monkeypatch):

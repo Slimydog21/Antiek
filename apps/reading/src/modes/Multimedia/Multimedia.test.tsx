@@ -250,6 +250,9 @@ beforeEach(() => {
           source_job_id: "job-mm-2-0004",
           execution_mode: "live",
           provider_family: "krea",
+          live_request_max_budget_usd: 22,
+          live_request_route_policy: "highest_quality",
+          live_request_dry_run_revision_id: "rev-1",
           error_code: null,
           message: null,
           artifact_uri: "https://cdn.example.test/mm-2.mp4",
@@ -275,6 +278,9 @@ beforeEach(() => {
           source_job_id: "job-mm-3-0005",
           execution_mode: "live",
           provider_family: "krea",
+          live_request_max_budget_usd: 12,
+          live_request_route_policy: "cheapest",
+          live_request_dry_run_revision_id: "rev-1",
           error_code: "artifact_validation_failed",
           message: "Provider artifact validation failed: artifact_uri must be an http(s) URL with a host.",
           artifact_uri: null,
@@ -585,6 +591,10 @@ describe("Multimedia workstation", () => {
     expect(within(persistedAssets).getByText("https://cdn.example.test/mm-2.mp4")).toBeTruthy();
     expect(within(persistedAssets).getByText("Source job")).toBeTruthy();
     expect(within(persistedAssets).getByText("krea / live / video/mp4")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Request route")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Highest quality")).toBeTruthy();
+    expect(within(persistedAssets).getByText("$22.00 cap")).toBeTruthy();
+    expect(within(persistedAssets).getByText("rev-1")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Rejected 1" }));
     expect(within(persistedAssets).getAllByText("artifact_validation_failed")).toHaveLength(2);
@@ -592,6 +602,7 @@ describe("Multimedia workstation", () => {
       within(persistedAssets).getByText("Provider artifact validation failed: artifact_uri must be an http(s) URL with a host."),
     ).toBeTruthy();
     expect(within(persistedAssets).getByText("krea / live / job-mm-3-0005")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Cheapest / $12.00 cap / rev-1")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Copy audit" }));
 
@@ -605,6 +616,9 @@ describe("Multimedia workstation", () => {
           "provider_family: krea",
           "execution_mode: live",
           "source_job_id: job-mm-3-0005",
+          "Request route: Cheapest",
+          "Budget cap: $12.00 cap",
+          "Dry-run revision: rev-1",
         ].join("\n"),
       ),
     );
