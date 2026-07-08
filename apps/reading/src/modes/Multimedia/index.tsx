@@ -1485,6 +1485,7 @@ function JobPanel({
   const recentJobs = jobs.slice(-4).reverse();
   const [copiedJobId, setCopiedJobId] = useState<string | null>(null);
   const [liveReviewCopied, setLiveReviewCopied] = useState(false);
+  const [queueAuditCopied, setQueueAuditCopied] = useState(false);
   const canSubmitArtifact =
     canAttach && artifactJobId.trim().length > 0 && artifactUri.trim().length > 0 && artifactChecksum.trim().length > 0 && artifactMediaType.trim().length > 0;
   const readiness = providerReadinessSummary(jobs, artifactJobId);
@@ -1503,6 +1504,16 @@ function JobPanel({
     await navigator.clipboard.writeText(liveSpendReview.map((item) => `${item.label}: ${item.value}`).join("\n"));
     setLiveReviewCopied(true);
   }
+
+  async function copyQueueAudit() {
+    if (!queueAuditFeedback || !navigator.clipboard) return;
+    await navigator.clipboard.writeText(queueAuditFeedback.items.map((item) => `${item.label}: ${item.value}`).join("\n"));
+    setQueueAuditCopied(true);
+  }
+
+  useEffect(() => {
+    setQueueAuditCopied(false);
+  }, [queueAuditFeedback]);
 
   return (
     <section
@@ -1563,6 +1574,9 @@ function JobPanel({
               </div>
             ))}
           </dl>
+          <LemonButton type="button" size="sm" variant="secondary" className="mt-2" onClick={copyQueueAudit}>
+            {queueAuditCopied ? "Queued audit copied" : "Copy queued audit"}
+          </LemonButton>
         </div>
       )}
       <div className="mt-3 grid grid-cols-2 gap-2">

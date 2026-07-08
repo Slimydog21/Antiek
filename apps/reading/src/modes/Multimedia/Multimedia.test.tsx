@@ -606,6 +606,22 @@ describe("Multimedia workstation", () => {
     expect(within(queueAudit).getByText("Balanced / krea")).toBeTruthy();
     expect(within(queueAudit).getByText("30 min video")).toBeTruthy();
     expect(within(queueAudit).getByText("No paid worker consumed this job")).toBeTruthy();
+
+    fireEvent.click(within(queueAudit).getByRole("button", { name: "Copy queued audit" }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        [
+          "Queued job: job-mm-1-0001",
+          "Budget cap: $75.00 cap",
+          "Dry-run revision: rev-1",
+          "Provider route: Balanced / krea",
+          "Requested media: 30 min video",
+          "Worker state: No paid worker consumed this job",
+        ].join("\n"),
+      ),
+    );
+    expect(within(queueAudit).getByRole("button", { name: "Queued audit copied" })).toBeTruthy();
   });
 
   it("surfaces attached provider artifacts with open, download, and copy actions", async () => {
