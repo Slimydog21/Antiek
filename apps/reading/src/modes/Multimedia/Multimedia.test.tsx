@@ -1140,6 +1140,12 @@ describe("Multimedia workstation", () => {
       ),
     );
     expect(within(activationHandoff).getByRole("button", { name: "Handoff copied" })).toBeTruthy();
+    const activationDecision = screen.getByTestId("multimedia-live-activation-decision");
+    expect(within(activationDecision).getByText("Decision")).toBeTruthy();
+    expect(within(activationDecision).getByText("Not ready for worker handoff")).toBeTruthy();
+    expect(within(activationDecision).getByText("Required evidence")).toBeTruthy();
+    expect(within(activationDecision).getByText("Queue live job first")).toBeTruthy();
+    expect(within(activationDecision).getByText("No paid provider runs from this screen")).toBeTruthy();
     const activationPacket = screen.getByTestId("multimedia-live-activation-packet");
     expect(within(activationPacket).getByText("Evidence bundle")).toBeTruthy();
     expect(within(activationPacket).getByText("Readiness + spend + queue")).toBeTruthy();
@@ -1171,6 +1177,10 @@ describe("Multimedia workstation", () => {
           "Dry-run revision: rev-1",
           "Provider route: Balanced / krea",
           "Execution boundary: Live worker disabled",
+          "Activation decision",
+          "Decision: Not ready for worker handoff",
+          "Required evidence: Queue live job first",
+          "No-spend boundary: No paid provider runs from this screen",
           "Operator next step: Review this packet before enabling a live provider worker.",
           "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
           "Queued request audit: No queued live request",
@@ -1240,6 +1250,8 @@ describe("Multimedia workstation", () => {
     expect(within(readiness).getByText("Queued job-mm-1-0001")).toBeTruthy();
     expect(within(readiness).getByText("Ready for job-mm-1-0001")).toBeTruthy();
     expect(within(readiness).getByText("Pending")).toBeTruthy();
+    expect(within(activationDecision).getByText("Ready for separate worker handoff")).toBeTruthy();
+    expect(within(activationDecision).getByText("Queued job + acknowledged budget")).toBeTruthy();
     await waitFor(() => expect(screen.getByRole("button", { name: "Copy readiness" })).toBeTruthy());
     expect(screen.queryByRole("button", { name: "Readiness copied" })).toBeNull();
     const queueAudit = screen.getByTestId("multimedia-live-queue-audit");
@@ -1295,6 +1307,10 @@ describe("Multimedia workstation", () => {
           "Dry-run revision: rev-1",
           "Provider route: Balanced / krea",
           "Execution boundary: Live worker disabled",
+          "Activation decision",
+          "Decision: Ready for separate worker handoff",
+          "Required evidence: Queued job + acknowledged budget",
+          "No-spend boundary: No paid provider runs from this screen",
           "Operator next step: Review this packet before enabling a live provider worker.",
           "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
           "Queued request audit",

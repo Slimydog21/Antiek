@@ -1783,6 +1783,37 @@ function JobPanel({
     { label: "Provider route", value: liveReviewValue("Provider route") },
     { label: "Execution boundary", value: liveReviewValue("Worker state") },
   ];
+  const activeLiveJob = jobs
+    .filter((job) => job.kind === "provider_execution" && job.execution_mode === "live_requested")
+    .slice()
+    .reverse()
+    .find((job) => job.status === "queued" || job.status === "running");
+  const hasPositiveBudget = !liveReviewValue("Budget cap").includes("Enter positive budget");
+  const hasSpendAcknowledgement = liveReviewValue("Acknowledgement") === "Spend acknowledged";
+  const hasAttachTarget = artifactJobId.trim().length > 0;
+  const activationHandoffReady = Boolean(activeLiveJob && hasPositiveBudget && hasSpendAcknowledgement && hasAttachTarget);
+  const activationRequiredEvidence = !activeLiveJob
+    ? "Queue live job first"
+    : !hasPositiveBudget
+      ? "Enter positive budget before handoff"
+      : !hasSpendAcknowledgement
+        ? "Acknowledge spend before handoff"
+        : !hasAttachTarget
+          ? "Select queued job for manual attach"
+          : "Queued job + acknowledged budget";
+  const activationDecision: LiveSpendReviewItem[] = [
+    {
+      label: "Decision",
+      value: activationHandoffReady ? "Ready for separate worker handoff" : "Not ready for worker handoff",
+      tone: activationHandoffReady ? "sun" : "muted",
+    },
+    {
+      label: "Required evidence",
+      value: activationRequiredEvidence,
+      tone: activationHandoffReady ? "default" : "sun",
+    },
+    { label: "No-spend boundary", value: "No paid provider runs from this screen", tone: "default" },
+  ];
   const liveSpendReviewKey = liveSpendReview.map((item) => `${item.label}:${item.value}`).join("|");
   const activationChecklistKey = activationChecklist.map((item) => `${item.label}:${item.value}`).join("|");
   const readinessKey = readiness.map((item) => `${item.label}:${item.value}`).join("|");
@@ -1794,6 +1825,8 @@ function JobPanel({
     ...liveSpendReview.map((item) => `${item.label}: ${item.value}`),
     "Activation checklist",
     ...activationChecklist.map((item) => `${item.label}: ${item.value}`),
+    "Activation decision",
+    ...activationDecision.map((item) => `${item.label}: ${item.value}`),
     "Operator next step: Review this packet before enabling a live provider worker.",
     "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
     queueAuditFeedback ? "Queued request audit" : "Queued request audit: No queued live request",
@@ -2004,6 +2037,19 @@ function JobPanel({
           <LemonButton type="button" size="sm" variant="secondary" className="mt-2" onClick={copyActivationHandoff}>
             {activationHandoffCopied ? "Handoff copied" : "Copy handoff"}
           </LemonButton>
+          <div className="mt-3 border-t border-rule pt-2 dark:border-charcoal-2" data-testid="multimedia-live-activation-decision">
+            <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Activation decision</p>
+            <dl className="mt-2 grid grid-cols-1 gap-1.5">
+              {activationDecision.map((item) => (
+                <div key={item.label} className="flex items-center justify-between gap-2 text-[12px]">
+                  <dt className="text-shadow-1 dark:text-moonlight">{item.label}</dt>
+                  <dd className="text-right">
+                    <LemonTag colour={item.tone}>{item.value}</LemonTag>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
           <div className="mt-3 border-t border-rule pt-2 dark:border-charcoal-2" data-testid="multimedia-live-activation-packet">
             <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Activation packet</p>
             <dl className="mt-2 grid grid-cols-1 gap-1.5">
