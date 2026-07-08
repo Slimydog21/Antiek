@@ -7,6 +7,7 @@ import {
   getMultimediaAsset,
   listMultimediaJobs,
   listMultimediaAssets,
+  prepareMultimediaLiveExecution,
   runMultimediaProviderWorker,
   runMultimediaHardening,
   steerMultimediaAsset,
@@ -23,7 +24,17 @@ type Mode = "video" | "audio" | "hybrid";
 type RouteTier = "cheapest" | "balanced" | "highest_quality";
 type RenderState = "pending" | "rendering" | "partial" | "failed" | "over_budget" | "provider_unavailable";
 type PlayerView = "video" | "audio";
-type PendingCommand = "list" | "create" | "approve" | "steer" | "harden" | "open" | "jobs" | "worker" | null;
+type PendingCommand =
+  | "list"
+  | "create"
+  | "approve"
+  | "steer"
+  | "harden"
+  | "open"
+  | "jobs"
+  | "queue"
+  | "worker"
+  | null;
 
 type Chapter = {
   id: string;
@@ -179,6 +190,8 @@ export default function Multimedia() {
   const [selectedRecord, setSelectedRecord] = useState<MultimediaAssetRecord | null>(null);
   const [pendingCommand, setPendingCommand] = useState<PendingCommand>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [maxBudgetUsd, setMaxBudgetUsd] = useState("50");
+  const [operatorAck, setOperatorAck] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -376,6 +389,32 @@ export default function Multimedia() {
       await refreshAssetList();
     } catch {
       setApiError("Could not run the dry-run provider worker.");
+    } finally {
+      setPendingCommand(null);
+    }
+  }
+
+  async function queueLiveProviderJob() {
+    if (!selectedRecord) return;
+    const parsedBudget = Number.parseFloat(maxBudgetUsd);
+    if (!Number.isFinite(parsedBudget) || parsedBudget <= 0) {
+      setApiError("Enter a positive live provider budget before queueing.");
+      return;
+    }
+    setPendingCommand("queue");
+    try {
+      const record = await prepareMultimediaLiveExecution(selectedRecord.asset.asset_id, {
+        max_budget_usd: parsedBudget,
+        route_policy: tier,
+        operator_acknowledged_spend: operatorAck,
+        provider_families: ["krea"],
+        dry_run_revision_id: selectedRecord.asset.revision_id,
+      });
+      setSelectedRecord(record);
+      setApiError(null);
+      await refreshAssetList();
+    } catch {
+      setApiError("Could not queue live provider execution.");
     } finally {
       setPendingCommand(null);
     }
@@ -670,9 +709,15 @@ export default function Multimedia() {
             <JobPanel
               jobs={selectedRecord?.jobs ?? []}
               latestJob={latestJob}
-              busy={pendingCommand === "jobs" || pendingCommand === "worker"}
+              busy={pendingCommand === "jobs" || pendingCommand === "queue" || pendingCommand === "worker"}
               canRunWorker={Boolean(selectedRecord) && pendingCommand === null}
+              canQueue={Boolean(selectedRecord) && pendingCommand === null}
+              maxBudgetUsd={maxBudgetUsd}
+              operatorAck={operatorAck}
+              onBudgetChange={setMaxBudgetUsd}
+              onAckChange={setOperatorAck}
               onRefresh={refreshJobs}
+              onQueue={queueLiveProviderJob}
               onRunWorker={runProviderWorker}
             />
             <section className="rounded-md border border-rule bg-ice-1 p-3 dark:border-charcoal-1 dark:bg-charcoal-2">
@@ -892,14 +937,26 @@ function JobPanel({
   latestJob,
   busy,
   canRunWorker,
+  canQueue,
+  maxBudgetUsd,
+  operatorAck,
+  onBudgetChange,
+  onAckChange,
   onRefresh,
+  onQueue,
   onRunWorker,
 }: {
   jobs: MultimediaJobRecord[];
   latestJob: MultimediaJobRecord | null;
   busy: boolean;
   canRunWorker: boolean;
+  canQueue: boolean;
+  maxBudgetUsd: string;
+  operatorAck: boolean;
+  onBudgetChange: (value: string) => void;
+  onAckChange: (value: boolean) => void;
   onRefresh: () => void;
+  onQueue: () => void;
   onRunWorker: () => void;
 }) {
   const recentJobs = jobs.slice(-4).reverse();
@@ -916,6 +973,29 @@ function JobPanel({
         </LemonTag>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
+        <label className="col-span-1 text-[12px] text-shadow-1 dark:text-moonlight">
+          Budget
+          <input
+            type="number"
+            min={1}
+            step={1}
+            value={maxBudgetUsd}
+            onChange={(event) => onBudgetChange(event.target.value)}
+            className="mt-1 h-8 w-full rounded-md border border-rule bg-ice-0 px-2 text-[13px] text-ink outline-none dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
+          />
+        </label>
+        <label className="col-span-1 flex items-end gap-2 pb-1 text-[12px] text-shadow-1 dark:text-moonlight">
+          <input
+            type="checkbox"
+            checked={operatorAck}
+            onChange={(event) => onAckChange(event.target.checked)}
+            className="h-4 w-4"
+          />
+          Spend acknowledged
+        </label>
+        <LemonButton type="button" size="sm" variant="secondary" disabled={!canQueue || busy} onClick={onQueue}>
+          {busy ? "Queueing..." : "Queue live job"}
+        </LemonButton>
         <LemonButton type="button" size="sm" variant="secondary" disabled={!jobs.length || busy} onClick={onRefresh}>
           {busy ? "Refreshing..." : "Refresh jobs"}
         </LemonButton>

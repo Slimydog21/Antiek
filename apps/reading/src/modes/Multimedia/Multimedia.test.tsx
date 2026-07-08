@@ -8,6 +8,7 @@ import {
   getMultimediaAsset,
   listMultimediaJobs,
   listMultimediaAssets,
+  prepareMultimediaLiveExecution,
   runMultimediaProviderWorker,
   runMultimediaHardening,
   steerMultimediaAsset,
@@ -20,6 +21,7 @@ vi.mock("../../api/multimedia", () => ({
   getMultimediaAsset: vi.fn(),
   listMultimediaJobs: vi.fn(),
   listMultimediaAssets: vi.fn(),
+  prepareMultimediaLiveExecution: vi.fn(),
   runMultimediaProviderWorker: vi.fn(),
   runMultimediaHardening: vi.fn(),
   steerMultimediaAsset: vi.fn(),
@@ -30,6 +32,7 @@ const mockCreate = vi.mocked(createMultimediaDraft);
 const mockGet = vi.mocked(getMultimediaAsset);
 const mockListJobs = vi.mocked(listMultimediaJobs);
 const mockList = vi.mocked(listMultimediaAssets);
+const mockPrepare = vi.mocked(prepareMultimediaLiveExecution);
 const mockRunWorker = vi.mocked(runMultimediaProviderWorker);
 const mockHarden = vi.mocked(runMultimediaHardening);
 const mockSteer = vi.mocked(steerMultimediaAsset);
@@ -158,6 +161,7 @@ beforeEach(() => {
   mockGet.mockResolvedValue(draftRecord);
   mockListJobs.mockResolvedValue({ jobs: queuedProviderRecord.jobs, count: 1 });
   mockApprove.mockResolvedValue(approvedRecord);
+  mockPrepare.mockResolvedValue(queuedProviderRecord);
   mockRunWorker.mockResolvedValue(completedProviderRecord);
   mockSteer.mockResolvedValue(steeredRecord);
   mockHarden.mockResolvedValue(hardenedRecord);
@@ -280,6 +284,25 @@ describe("Multimedia workstation", () => {
 
     await waitFor(() => expect(mockRunWorker).toHaveBeenCalledWith("mm-1", { dry_run: true }));
     expect(await screen.findByText(/without Krea\/TTS\/video spend/)).toBeTruthy();
+  });
+
+  it("queues live provider execution only through explicit budget controls", async () => {
+    await reviewPlan();
+
+    fireEvent.click(screen.getByLabelText("Spend acknowledged"));
+    fireEvent.change(screen.getByLabelText("Budget"), { target: { value: "75" } });
+    fireEvent.click(screen.getByRole("button", { name: "Queue live job" }));
+
+    await waitFor(() =>
+      expect(mockPrepare).toHaveBeenCalledWith("mm-1", {
+        max_budget_usd: 75,
+        route_policy: "balanced",
+        operator_acknowledged_spend: true,
+        provider_families: ["krea"],
+        dry_run_revision_id: "rev-1",
+      }),
+    );
+    expect(await screen.findByText(/Live execution queued for krea/)).toBeTruthy();
   });
 
   it("keeps the fixture preview visible when the API is unavailable", async () => {

@@ -285,6 +285,9 @@ class MultimediaAssetStore:
         request: LiveProviderExecutionRequest,
     ) -> MultimediaAssetRecord:
         record = self.get(asset_id)
+        latest_provider_job = _latest_provider_job(record)
+        if latest_provider_job is not None and latest_provider_job.status in {"queued", "running"}:
+            return record
         if request.dry_run_revision_id and request.dry_run_revision_id != record.asset.revision_id:
             return self.record_job(
                 asset_id,
@@ -500,6 +503,13 @@ def _missing_provider_families(provider_families: tuple[str, ...]) -> tuple[str,
         if normalized == "krea" and not os.environ.get("KREA_API_KEY"):
             missing.append("krea")
     return tuple(missing)
+
+
+def _latest_provider_job(record: MultimediaAssetRecord) -> MultimediaJobRecord | None:
+    for job in reversed(record.jobs):
+        if job.kind == "provider_execution":
+            return job
+    return None
 
 
 __all__ = [

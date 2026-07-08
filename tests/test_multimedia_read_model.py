@@ -209,6 +209,18 @@ def test_live_provider_budget_gates_without_paid_calls(tmp_path, monkeypatch):
     assert queued.jobs[-1].progress_percent == 0
     assert "fake-test-key" not in queued.jobs[-1].message
 
+    duplicate = store.prepare_live_execution(
+        draft.asset.asset_id,
+        LiveProviderExecutionRequest(
+            max_budget_usd=sufficient_budget,
+            route_policy="balanced",
+            operator_acknowledged_spend=True,
+            dry_run_revision_id=approved.asset.revision_id,
+        ),
+    )
+    assert duplicate.jobs[-1].job_id == queued.jobs[-1].job_id
+    assert len(duplicate.jobs) == len(queued.jobs)
+
     worked = store.run_provider_execution_worker(draft.asset.asset_id)
     assert [job.status for job in worked.jobs[-2:]] == ["running", "succeeded"]
     assert worked.jobs[-2].kind == "provider_execution"
