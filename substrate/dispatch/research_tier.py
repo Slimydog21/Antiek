@@ -11,11 +11,12 @@ Scope discipline (§16 + master-spec §16.1 REJECT list):
     research entry (StartResearch). It is NOT a raw model dropdown, NOT
     a per-invocation picker on every surface, and NOT user-facing BYO-
     model / temperature optionality. Those are explicit OOS rejects.
-  - It does NOT introduce a second runtime. Both providers below are
+  - It does NOT introduce a second runtime. Both lanes below are
     OpenAI-compatible APIs the dispatch router already calls through the
-    one ``OpenAICompatProvider`` adapter (mirror of the xAI/Hermes
-    bridge). The selector chooses WHICH already-registered provider the
-    deep work prefers; it never spins up a parallel dispatcher.
+    one ``OpenAICompatProvider`` adapter (z.ai, same endpoint, two
+    thinking policies). The selector chooses WHICH already-registered
+    provider the deep work prefers; it never spins up a parallel
+    dispatcher.
   - The chosen tier is recorded on the investigation's start event
     (``InvestigationStartRequestedPayload.research_tier``) so it is
     queryable after the fact (M3 acceptance).
@@ -23,17 +24,22 @@ Scope discipline (§16 + master-spec §16.1 REJECT list):
 Why a two-value tier at all (and not one always-deep default)?
   Steelman of the rejected single-default: one provider for every
   investigation is simpler — no map to rot, no UI control, no
-  "which-tier-was-this" query. We reject it because the two providers
-  have a real, operator-felt cost/latency gap at the research entry:
-  MiMo V2.5 Pro (fast) is the cheap/low-latency lane for shallow or
-  exploratory questions; DeepSeek V4 Pro (deep) is the
-  reasoning-heavier lane for questions worth the spend. Collapsing them
-  would either overpay on every shallow ask or underpower every deep
-  one. The selector is the minimum optionality that buys a measurable
-  difference — and it is a CLOSED set, so the map cannot sprawl. If, in
-  practice, "fast" is never chosen / never matters, the right move is to
-  DELETE the selector and default to deep — not to widen it. (See
-  docs/decisions/dispatch-deepseek-mimo-wiring.md.)
+  "which-tier-was-this" query. We keep the two-value selector because
+  BOTH lanes now run the platform's AI driver — GLM-5.2 (operator
+  decision 2026-07-06: claude-less, GLM-5.2 for ALL parts) — and the
+  real, operator-felt gap at the research entry is THINKING POLICY, not
+  model family: ``fast`` runs GLM-5.2 with thinking DISABLED (the
+  ``zai`` provider) for crystallized, cheap, low-latency extraction;
+  ``deep`` runs GLM-5.2 with thinking ENABLED (the ``zai_reasoning``
+  provider) for reasoning-heavy questions worth the latency. Collapsing
+  them would either burn reasoning tokens on every shallow ask or
+  starve every deep one. The cross-family backups (DeepSeek V4 Pro →
+  MiMo V2.5 Pro) live in the config tier's fallback chain, NOT here —
+  so this map names the GLM primary only and a single z.ai outage still
+  falls through to a different family. The selector is the minimum
+  optionality that buys a measurable difference — and it is a CLOSED
+  set, so the map cannot sprawl. (See substrate/dispatch/config.yaml
+  CLAUDE-LESS POSTURE for the GLM-primary directive.)
 """
 
 from __future__ import annotations
@@ -72,34 +78,49 @@ class ResearchTierTarget:
 # ── THE MAP ────────────────────────────────────────────────────────────
 # tier → (provider, model). Each entry is commented WHY it maps where.
 # These provider names MUST match the ones registered in
-# providers/bootstrap.py (``xiaomi`` = MiMo, ``deepseek`` = DeepSeek).
-# The model ids are the per-call argument the OpenAICompatProvider sends;
-# they are NOT pinned in bootstrap (one endpoint serves several models).
+# providers/bootstrap.py: ``zai`` = GLM-5.2 thinking-DISABLED,
+# ``zai_reasoning`` = GLM-5.2 thinking-ENABLED (both z.ai DIRECT API).
+# The model id (``glm-5.2``) is the per-call argument the
+# OpenAICompatProvider sends; it is NOT pinned in bootstrap (one endpoint
+# serves the whole GLM family). DeepSeek V4 Pro + MiMo V2.5 Pro are the
+# CROSS-FAMILY BACKUPS — they live in the config tier fallback chain, not
+# here, so this map names the GLM primary only (operator directive: GLM-5.2
+# is the driver for ALL parts; DeepSeek/MiMo are secondary).
 _RESEARCH_TIER_MAP: dict[ResearchTier, ResearchTierTarget] = {
     "fast": ResearchTierTarget(
         tier="fast",
-        provider="xiaomi",  # MiMo endpoint registered in bootstrap.py
-        model="mimo-v2.5-pro",
-        # WHY: MiMo V2.5 Pro is the cheap, low-latency lane. Shallow or
-        # exploratory research questions don't need V4-Pro reasoning; the
-        # operator pays less and waits less. The substrate's quality moat
-        # comes from VOLUME of dispatches over a compounding graph
-        # (config.yaml architectural posture), so a faster cheaper model
-        # on exploratory asks is strictly aligned with that thesis.
-        why="MiMo V2.5 Pro — cheap/low-latency lane for shallow or "
-        "exploratory research questions.",
+        provider="zai",  # GLM-5.2 thinking-DISABLED (z.ai DIRECT API)
+        model="glm-5.2",
+        # WHY: GLM-5.2 with thinking DISABLED is the cheap, low-latency
+        # lane for shallow or exploratory research questions. Page-level
+        # extraction / crystallized answers are the volume-thesis use case
+        # the `zai` provider was built for (thinking off → direct content,
+        # no reasoning overhead). The cross-family backups (DeepSeek V4 Pro
+        # → MiMo V2.5 Pro) live in the config tier's fallback chain, NOT
+        # here, so a single z.ai outage still falls through to a different
+        # family. (Operator directive 2026-07-06: GLM-5.2 is the driver for
+        # ALL parts; DeepSeek/MiMo are secondary.)
+        why="GLM-5.2 (thinking disabled) — cheap/low-latency lane for "
+        "shallow or exploratory research questions.",
     ),
     "deep": ResearchTierTarget(
         tier="deep",
-        provider="deepseek",  # DeepSeek endpoint registered in bootstrap.py
-        model="deepseek-v4-pro",
-        # WHY: DeepSeek V4 Pro is the reasoning-heavier lane for questions
-        # worth the spend. It is the DEFAULT (DEFAULT_RESEARCH_TIER) because
-        # a cold research question is the high-value case. Both providers
-        # speak the OpenAI shape behind the one Hermes-routed dispatch
-        # path — choosing "deep" swaps the provider, not the runtime (§16).
-        why="DeepSeek V4 Pro — reasoning-heavier lane for questions worth "
-        "the deeper spend; the default for a cold research question.",
+        provider="zai_reasoning",  # GLM-5.2 thinking-ENABLED (z.ai DIRECT API)
+        model="glm-5.2",
+        # WHY: GLM-5.2 with thinking ENABLED is the reasoning-heavy lane for
+        # questions worth the latency. It is the DEFAULT
+        # (DEFAULT_RESEARCH_TIER) because a cold research question is the
+        # high-value case where GLM's native chain-of-thought earns its
+        # tokens. The only dispatch consumer of this map is the
+        # research-runner lane (e.g. substrate/books/meta_reading.py); the
+        # synthesizer keeps its own zai_reasoning config pin regardless
+        # (interfaces/research/api/synthesizer.py:_research_tier_override
+        # returns (None, None) for every tier — the §14.4 guard now enforcing
+        # the PERMANENT claude-less synthesis pin). Choosing "deep" swaps
+        # the thinking policy on the SAME model, not the runtime (§16).
+        why="GLM-5.2 (thinking enabled) — reasoning-heavy lane for "
+        "questions worth the deeper reasoning; the default for a cold "
+        "research question.",
     ),
 }
 
