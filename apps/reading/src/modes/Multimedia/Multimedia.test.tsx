@@ -568,6 +568,13 @@ describe("Multimedia workstation", () => {
     expect(within(persistedAssets).getByText("live")).toBeTruthy();
     expect(within(persistedAssets).getByText("krea")).toBeTruthy();
     expect(within(persistedAssets).getByText("sha256:2222abcd")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Artifact attached and ready")).toBeTruthy();
+    expect(
+      within(persistedAssets).getByText("Review the attached video/mp4 from job-mm-2-0004 before publishing or exporting."),
+    ).toBeTruthy();
+    expect(
+      within(persistedAssets).getByText("Open, download, copy link, and copy audit are read-only actions; no provider worker is triggered."),
+    ).toBeTruthy();
     expect(screen.getByRole("link", { name: "Open" }).getAttribute("href")).toBe(
       "https://cdn.example.test/mm-2.mp4",
     );

@@ -1063,6 +1063,18 @@ export default function Multimedia() {
                               ))}
                             </dl>
                           )}
+                          {asset.provider_readiness.status === "artifact_attached" && asset.provider_readiness.artifact_uri && !attachedNow && (
+                            <div className="mx-3 mb-3 rounded-md border border-rule bg-ice-0 p-2 text-[11px] text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright">
+                              <p className="font-mono text-ink dark:text-bright">Artifact attached and ready</p>
+                              <p className="mt-1 leading-snug text-shadow-1 dark:text-moonlight">
+                                Review the attached {asset.provider_readiness.artifact_media_type ?? "artifact"} from{" "}
+                                {asset.provider_readiness.source_job_id ?? "the provider job"} before publishing or exporting.
+                              </p>
+                              <p className="mt-1 truncate font-mono text-shadow-2 dark:text-moonlight">
+                                Open, download, copy link, and copy audit are read-only actions; no provider worker is triggered.
+                              </p>
+                            </div>
+                          )}
                           {asset.provider_readiness.status === "artifact_rejected" && asset.provider_readiness.message && (
                             <div className="mx-3 mb-3 rounded-md border border-danger bg-danger/10 p-2 text-[11px] text-ink dark:text-bright">
                               <p className="font-mono text-danger">{asset.provider_readiness.error_code ?? "artifact_rejected"}</p>
