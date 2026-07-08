@@ -1,7 +1,8 @@
 """Multimedia planning and generation substrate.
 
 SPR-02 starts with the plan-before-render layer; SPR-03 adds the provider router;
-SPR-04 adds chaptered audio assembly + a playback read-model. Provider adapters
+SPR-04 adds chaptered audio assembly + a playback read-model;
+SPR-05 adds the Ken Burns video documentary assembly (audio is timing truth). Provider adapters
 that spend money stay operator-gated; importing this package must not require paid
 media credentials (CI runs against the deterministic fake TTS).
 """
@@ -48,6 +49,22 @@ from .tts import (
     TTSResult,
     make_tts_provider,
 )
+from .video import (
+    CaptionCue,
+    MotionPreset,
+    TimelineEntry,
+    VideoDocumentaryAsset,
+    VideoRenderManifest,
+    VideoScene,
+    VisualGenerationPlan,
+    VisualLabel,
+    assemble_video_documentary,
+    build_video_scenes,
+    captions_from_timeline,
+    compile_ken_burns_timeline,
+    plan_visual_generation,
+    simulate_documentary_render,
+)
 
 __all__ = [
     # SPR-02 planner
@@ -83,4 +100,19 @@ __all__ = [
     "RegenerationTarget",
     "SourceCard",
     "build_playback_read_model",
+    # SPR-05 video documentary
+    "CaptionCue",
+    "MotionPreset",
+    "TimelineEntry",
+    "VideoDocumentaryAsset",
+    "VideoRenderManifest",
+    "VideoScene",
+    "VisualGenerationPlan",
+    "VisualLabel",
+    "assemble_video_documentary",
+    "build_video_scenes",
+    "captions_from_timeline",
+    "compile_ken_burns_timeline",
+    "plan_visual_generation",
+    "simulate_documentary_render",
 ]
