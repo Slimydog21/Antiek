@@ -27,6 +27,11 @@ type RouteTier = "cheapest" | "balanced" | "highest_quality";
 type RenderState = "pending" | "rendering" | "partial" | "failed" | "over_budget" | "provider_unavailable";
 type PlayerView = "video" | "audio";
 type ReadinessFilter = "all" | "manual_attach_ready" | "artifact_attached" | "artifact_rejected";
+type AttachmentFeedback = {
+  assetId: string;
+  jobId: string;
+  mediaType: string | null;
+};
 type PendingCommand =
   | "list"
   | "create"
@@ -263,6 +268,7 @@ export default function Multimedia() {
   const [artifactUri, setArtifactUri] = useState("");
   const [artifactChecksum, setArtifactChecksum] = useState("");
   const [artifactMediaType, setArtifactMediaType] = useState("video/mp4");
+  const [attachmentFeedback, setAttachmentFeedback] = useState<AttachmentFeedback | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -528,9 +534,20 @@ export default function Multimedia() {
         artifact_media_type: artifactMediaType.trim(),
       });
       setSelectedRecord(record);
+      const attachedJob = record.jobs.filter((job) => job.kind === "provider_execution" && Boolean(job.artifact_uri)).at(-1);
+      setAttachmentFeedback(
+        attachedJob
+          ? {
+              assetId: record.asset.asset_id,
+              jobId: attachedJob.job_id,
+              mediaType: attachedJob.artifact_media_type,
+            }
+          : null,
+      );
       setApiError(null);
       await refreshAssetList();
     } catch {
+      setAttachmentFeedback(null);
       setApiError("Could not attach that provider artifact.");
     } finally {
       setPendingCommand(null);
@@ -740,48 +757,57 @@ export default function Multimedia() {
                     );
                   })}
                 </div>
+                {attachmentFeedback && (
+                  <p className="mt-2 text-[12px] text-shadow-1 dark:text-moonlight" role="status">
+                    Attachment saved for {attachmentFeedback.jobId}
+                    {attachmentFeedback.mediaType ? ` (${attachmentFeedback.mediaType})` : ""}.
+                  </p>
+                )}
                 <div className="mt-2 grid gap-2 md:grid-cols-2">
-                  {visibleAssets.map((asset) => (
-                    <div
-                      key={`${asset.asset_id}-${asset.revision_id}`}
-                      className={
-                        "flex min-h-[96px] items-stretch rounded-md border " +
-                        (selectedRecord?.asset.asset_id === asset.asset_id
-                          ? "border-sun bg-sun/20"
-                          : "border-rule bg-ice-1 dark:border-charcoal-1 dark:bg-charcoal-2")
-                      }
-                    >
-                      <button
-                        type="button"
-                        onClick={() => reopenAsset(asset.asset_id)}
-                        className="min-w-0 flex-1 px-3 py-2 text-left"
+                  {visibleAssets.map((asset) => {
+                    const attachedNow = attachmentFeedback?.assetId === asset.asset_id;
+                    return (
+                      <div
+                        key={`${asset.asset_id}-${asset.revision_id}`}
+                        className={
+                          "flex min-h-[96px] items-stretch rounded-md border " +
+                          (selectedRecord?.asset.asset_id === asset.asset_id
+                            ? "border-sun bg-sun/20"
+                            : "border-rule bg-ice-1 dark:border-charcoal-1 dark:bg-charcoal-2")
+                        }
                       >
-                        <span className="block font-mono text-[12px] text-ink dark:text-bright">{asset.status}</span>
-                        <span className="mt-1 block text-[13px] leading-snug text-shadow-1 dark:text-moonlight">
-                          {asset.title}
-                        </span>
-                        <span className="mt-2 flex flex-wrap items-center gap-2">
-                          <LemonTag colour={providerReadinessTone(asset.provider_readiness.status)}>
-                            {asset.provider_readiness.label}
-                          </LemonTag>
-                          {asset.provider_readiness.source_job_id && (
-                            <span className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">
-                              {asset.provider_readiness.source_job_id}
-                            </span>
-                          )}
-                        </span>
-                      </button>
-                      {asset.provider_readiness.status === "manual_attach_ready" && (
                         <button
                           type="button"
-                          onClick={() => reopenAssetForAttachment(asset)}
-                          className="m-2 self-center rounded-md border border-sun bg-sun px-3 py-1.5 font-mono text-[11px] font-semibold text-ink"
+                          onClick={() => reopenAsset(asset.asset_id)}
+                          className="min-w-0 flex-1 px-3 py-2 text-left"
                         >
-                          Attach
+                          <span className="block font-mono text-[12px] text-ink dark:text-bright">{asset.status}</span>
+                          <span className="mt-1 block text-[13px] leading-snug text-shadow-1 dark:text-moonlight">
+                            {asset.title}
+                          </span>
+                          <span className="mt-2 flex flex-wrap items-center gap-2">
+                            <LemonTag colour={attachedNow ? "default" : providerReadinessTone(asset.provider_readiness.status)}>
+                              {attachedNow ? "Attachment saved" : asset.provider_readiness.label}
+                            </LemonTag>
+                            {asset.provider_readiness.source_job_id && (
+                              <span className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">
+                                {asset.provider_readiness.source_job_id}
+                              </span>
+                            )}
+                          </span>
                         </button>
-                      )}
-                    </div>
-                  ))}
+                        {asset.provider_readiness.status === "manual_attach_ready" && !attachedNow && (
+                          <button
+                            type="button"
+                            onClick={() => reopenAssetForAttachment(asset)}
+                            className="m-2 self-center rounded-md border border-sun bg-sun px-3 py-1.5 font-mono text-[11px] font-semibold text-ink"
+                          >
+                            Attach
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
                 {visibleAssets.length === 0 && (
                   <p className="mt-2 text-[12px] text-shadow-1 dark:text-moonlight" role="status">

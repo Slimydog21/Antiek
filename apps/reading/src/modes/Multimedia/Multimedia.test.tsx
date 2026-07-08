@@ -508,6 +508,9 @@ describe("Multimedia workstation", () => {
     );
     expect(mockRunWorker).not.toHaveBeenCalled();
     expect(await screen.findByText("https://cdn.example.test/mm-1.mp4")).toBeTruthy();
+    expect(screen.getByText("Attachment saved for job-mm-1-0004 (video/mp4).")).toBeTruthy();
+    expect(screen.getByText("Attachment saved")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Attach" })).toBeNull();
   });
 
   it("shows backend validation feedback for manually attached artifacts", async () => {
@@ -524,6 +527,7 @@ describe("Multimedia workstation", () => {
     await waitFor(() => expect(screen.getAllByText("Artifact rejected").length).toBeGreaterThan(0));
     expect(within(screen.getByTestId("multimedia-provider-readiness")).getByText("Rejected")).toBeTruthy();
     expect(screen.getByText(/Check the artifact URL, sha256 checksum, and media type/)).toBeTruthy();
+    expect(screen.queryByText(/Attachment saved for/)).toBeNull();
   });
 
   it("distinguishes artifact validation failures from missing artifacts", async () => {
