@@ -1161,6 +1161,9 @@ describe("Multimedia workstation", () => {
     expect(within(activationHandoff).getAllByText("Manual review + rights clearance").length).toBeGreaterThan(0);
     expect(within(activationHandoff).getAllByText("Publish boundary").length).toBeGreaterThan(0);
     expect(within(activationHandoff).getAllByText("No public export or publish action has run").length).toBeGreaterThan(0);
+    expect(within(activationHandoff).getAllByText("Review audit").length).toBeGreaterThan(0);
+    expect(within(activationHandoff).getAllByText("Review proof").length).toBeGreaterThan(0);
+    expect(within(activationHandoff).getAllByText("Manual review notes + rights clearance").length).toBeGreaterThan(0);
     fireEvent.click(within(activationHandoff).getByRole("button", { name: "Copy handoff" }));
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith(
@@ -1186,6 +1189,9 @@ describe("Multimedia workstation", () => {
           "Public export: Not ready for public export",
           "Required review: Manual review + rights clearance",
           "Publish boundary: No public export or publish action has run",
+          "Public review audit",
+          "Review audit: Not run in app",
+          "Review proof: Manual review notes + rights clearance",
           "Worker runbook",
           "Provider worker: Disabled in app",
           "Activation authority: Separate worker required",
@@ -1226,7 +1232,7 @@ describe("Multimedia workstation", () => {
     expect(within(activationPacket).getByText("Activation authority")).toBeTruthy();
     expect(within(activationPacket).getByText("Separate worker required")).toBeTruthy();
     expect(within(activationPacket).getByText("Activation audit")).toBeTruthy();
-    expect(within(activationPacket).getByText("Not run in app")).toBeTruthy();
+    expect(within(activationPacket).getAllByText("Not run in app").length).toBeGreaterThan(0);
     expect(within(activationPacket).getByText("Required proof")).toBeTruthy();
     expect(within(activationPacket).getByText("Worker logs + manual artifact attach")).toBeTruthy();
     expect(within(activationPacket).getByText("Public export")).toBeTruthy();
@@ -1235,6 +1241,9 @@ describe("Multimedia workstation", () => {
     expect(within(activationPacket).getByText("Manual review + rights clearance")).toBeTruthy();
     expect(within(activationPacket).getByText("Publish boundary")).toBeTruthy();
     expect(within(activationPacket).getByText("No public export or publish action has run")).toBeTruthy();
+    expect(within(activationPacket).getByText("Review audit")).toBeTruthy();
+    expect(within(activationPacket).getByText("Review proof")).toBeTruthy();
+    expect(within(activationPacket).getByText("Manual review notes + rights clearance")).toBeTruthy();
     fireEvent.click(within(activationPacket).getByRole("button", { name: "Copy activation packet" }));
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith(
@@ -1276,6 +1285,9 @@ describe("Multimedia workstation", () => {
           "Public export: Not ready for public export",
           "Required review: Manual review + rights clearance",
           "Publish boundary: No public export or publish action has run",
+          "Public review audit",
+          "Review audit: Not run in app",
+          "Review proof: Manual review notes + rights clearance",
           "Worker runbook",
           "Provider worker: Disabled in app",
           "Activation authority: Separate worker required",
@@ -1395,6 +1407,9 @@ describe("Multimedia workstation", () => {
           "Public export: Not ready for public export",
           "Required review: Manual review + rights clearance",
           "Publish boundary: No public export or publish action has run",
+          "Public review audit",
+          "Review audit: Not run in app",
+          "Review proof: Manual review notes + rights clearance",
           "Worker runbook",
           "Provider worker: Disabled in app",
           "Activation authority: Separate worker required",
@@ -1506,6 +1521,9 @@ describe("Multimedia workstation", () => {
           "Public export: Not ready for public export",
           "Required review: Manual review + rights clearance",
           "Publish boundary: No public export or publish action has run",
+          "Public review audit",
+          "Review audit: Not run in app",
+          "Review proof: Manual review notes + rights clearance",
           "Worker runbook",
           "Provider worker: Disabled in app",
           "Activation authority: Separate worker required",

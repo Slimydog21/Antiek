@@ -1899,6 +1899,10 @@ function JobPanel({
     { label: "Required review", value: "Manual review + rights clearance", tone: "sun" },
     { label: "Publish boundary", value: "No public export or publish action has run", tone: "default" },
   ];
+  const activationPublicReviewAuditItems: LiveSpendReviewItem[] = [
+    { label: "Review audit", value: "Not run in app", tone: "muted" },
+    { label: "Review proof", value: "Manual review notes + rights clearance", tone: "sun" },
+  ];
   const activationWorkerRunbookItems: LiveSpendReviewItem[] = [
     { label: "Provider worker", value: "Disabled in app", tone: "muted" },
     { label: "Activation authority", value: "Separate worker required", tone: "sun" },
@@ -1922,6 +1926,8 @@ function JobPanel({
     ...activationBlockers.map((item) => `${item.label}: ${item.value}`),
     "Public export readiness",
     ...activationPublicExportItems.map((item) => `${item.label}: ${item.value}`),
+    "Public review audit",
+    ...activationPublicReviewAuditItems.map((item) => `${item.label}: ${item.value}`),
     "Worker runbook",
     ...activationWorkerRunbookItems.map((item) => `${item.label}: ${item.value}`),
     "Provider activation audit",
@@ -1933,6 +1939,7 @@ function JobPanel({
     "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
   ];
   const activationPublicExportKey = activationPublicExportItems.map((item) => `${item.label}:${item.value}`).join("|");
+  const activationPublicReviewAuditKey = activationPublicReviewAuditItems.map((item) => `${item.label}:${item.value}`).join("|");
   const activationWorkerRunbookKey = activationWorkerRunbookItems.map((item) => `${item.label}:${item.value}`).join("|");
   const activationAuditKey = activationAuditItems.map((item) => `${item.label}:${item.value}`).join("|");
   const activationHandoffKey = [
@@ -1940,6 +1947,7 @@ function JobPanel({
     activationDecisionKey,
     activationBlockersKey,
     activationPublicExportKey,
+    activationPublicReviewAuditKey,
     activationWorkerRunbookKey,
     activationAuditKey,
     queueAuditFeedbackKey,
@@ -1958,6 +1966,8 @@ function JobPanel({
     ...activationBlockers.map((item) => `${item.label}: ${item.value}`),
     "Public export readiness",
     ...activationPublicExportItems.map((item) => `${item.label}: ${item.value}`),
+    "Public review audit",
+    ...activationPublicReviewAuditItems.map((item) => `${item.label}: ${item.value}`),
     "Worker runbook",
     ...activationWorkerRunbookItems.map((item) => `${item.label}: ${item.value}`),
     "Provider activation audit",
@@ -2194,6 +2204,14 @@ function JobPanel({
                 </dd>
               </div>
             ))}
+            {activationPublicReviewAuditItems.map((item) => (
+              <div key={item.label} className="flex items-center justify-between gap-2 text-[12px]">
+                <dt className="text-shadow-1 dark:text-moonlight">{item.label}</dt>
+                <dd className="text-right">
+                  <LemonTag colour={item.tone}>{item.value}</LemonTag>
+                </dd>
+              </div>
+            ))}
           </dl>
           <LemonButton type="button" size="sm" variant="secondary" className="mt-2" onClick={copyActivationHandoff}>
             {activationHandoffCopied ? "Handoff copied" : "Copy handoff"}
@@ -2254,6 +2272,14 @@ function JobPanel({
                 </div>
               ))}
               {activationPublicExportItems.map((item) => (
+                <div key={item.label} className="flex items-center justify-between gap-2 text-[12px]">
+                  <dt className="text-shadow-1 dark:text-moonlight">{item.label}</dt>
+                  <dd className="text-right">
+                    <LemonTag colour={item.tone}>{item.value}</LemonTag>
+                  </dd>
+                </div>
+              ))}
+              {activationPublicReviewAuditItems.map((item) => (
                 <div key={item.label} className="flex items-center justify-between gap-2 text-[12px]">
                   <dt className="text-shadow-1 dark:text-moonlight">{item.label}</dt>
                   <dd className="text-right">
