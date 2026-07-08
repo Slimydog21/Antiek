@@ -1147,6 +1147,12 @@ describe("Multimedia workstation", () => {
     expect(within(activationHandoff).getByText("Review before worker activation")).toBeTruthy();
     expect(within(activationHandoff).getByText("Spend boundary")).toBeTruthy();
     expect(within(activationHandoff).getByText("Queue records intent only")).toBeTruthy();
+    expect(within(activationHandoff).getAllByText("Public export").length).toBeGreaterThan(0);
+    expect(within(activationHandoff).getAllByText("Not ready for public export").length).toBeGreaterThan(0);
+    expect(within(activationHandoff).getAllByText("Required review").length).toBeGreaterThan(0);
+    expect(within(activationHandoff).getAllByText("Manual review + rights clearance").length).toBeGreaterThan(0);
+    expect(within(activationHandoff).getAllByText("Publish boundary").length).toBeGreaterThan(0);
+    expect(within(activationHandoff).getAllByText("No public export or publish action has run").length).toBeGreaterThan(0);
     fireEvent.click(within(activationHandoff).getByRole("button", { name: "Copy handoff" }));
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith(
@@ -1168,6 +1174,10 @@ describe("Multimedia workstation", () => {
           "Spend acknowledgement: Required",
           "Manual attach target: Select queued job",
           "Worker activation: Separate step required",
+          "Public export readiness",
+          "Public export: Not ready for public export",
+          "Required review: Manual review + rights clearance",
+          "Publish boundary: No public export or publish action has run",
           "Queued request audit: No queued live request",
           "Activation state: Evidence only; provider execution still requires a separate worker activation.",
           "Operator next step: Review this bundle before enabling a live provider worker.",
@@ -1353,6 +1363,10 @@ describe("Multimedia workstation", () => {
           "Spend acknowledgement: Acknowledged",
           "Manual attach target: job-mm-1-0001",
           "Worker activation: Separate step required",
+          "Public export readiness",
+          "Public export: Not ready for public export",
+          "Required review: Manual review + rights clearance",
+          "Publish boundary: No public export or publish action has run",
           "Queued request audit",
           "Queued job: job-mm-1-0001",
           "Budget cap: $75.00 cap",

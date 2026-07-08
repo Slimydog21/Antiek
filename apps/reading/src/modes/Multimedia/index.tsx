@@ -1912,13 +1912,16 @@ function JobPanel({
     ...activationDecision.map((item) => `${item.label}: ${item.value}`),
     "Activation blockers",
     ...activationBlockers.map((item) => `${item.label}: ${item.value}`),
+    "Public export readiness",
+    ...activationPublicExportItems.map((item) => `${item.label}: ${item.value}`),
     queueAuditFeedback ? "Queued request audit" : "Queued request audit: No queued live request",
     ...(queueAuditFeedback?.items.map((item) => `${item.label}: ${item.value}`) ?? []),
     "Activation state: Evidence only; provider execution still requires a separate worker activation.",
     "Operator next step: Review this bundle before enabling a live provider worker.",
     "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
   ];
-  const activationHandoffKey = [activationChecklistKey, activationDecisionKey, activationBlockersKey, queueAuditFeedbackKey].join("||");
+  const activationPublicExportKey = activationPublicExportItems.map((item) => `${item.label}:${item.value}`).join("|");
+  const activationHandoffKey = [activationChecklistKey, activationDecisionKey, activationBlockersKey, activationPublicExportKey, queueAuditFeedbackKey].join("||");
   const activationPacketItems = [
     "Activation packet",
     "Provider readiness",
@@ -2141,6 +2144,14 @@ function JobPanel({
                 <LemonTag colour="default">Queue records intent only</LemonTag>
               </dd>
             </div>
+            {activationPublicExportItems.map((item) => (
+              <div key={item.label} className="flex items-center justify-between gap-2 text-[12px]">
+                <dt className="text-shadow-1 dark:text-moonlight">{item.label}</dt>
+                <dd className="text-right">
+                  <LemonTag colour={item.tone}>{item.value}</LemonTag>
+                </dd>
+              </div>
+            ))}
           </dl>
           <LemonButton type="button" size="sm" variant="secondary" className="mt-2" onClick={copyActivationHandoff}>
             {activationHandoffCopied ? "Handoff copied" : "Copy handoff"}
