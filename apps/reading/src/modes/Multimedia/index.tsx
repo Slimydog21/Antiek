@@ -1015,6 +1015,10 @@ function JobPanel({
                 <span className="font-mono text-ink dark:text-bright">{job.kind}</span>
                 <span className="text-shadow-1 dark:text-moonlight">{job.progress_percent}%</span>
               </div>
+              <div className="mt-1 flex flex-wrap gap-1">
+                <LemonTag>{job.execution_mode}</LemonTag>
+                {job.provider_family && <LemonTag colour="muted">{job.provider_family}</LemonTag>}
+              </div>
               <p className="mt-1 text-[13px] leading-snug text-ink dark:text-bright">{job.message}</p>
               {job.error_code && (
                 <p className="mt-1 font-mono text-[11px] text-danger">{job.error_code}</p>

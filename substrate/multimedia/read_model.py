@@ -45,6 +45,7 @@ from substrate.multimedia.video import (
 PlanMode = Literal["video", "audio", "hybrid"]
 JobKind = Literal["render", "steering", "hardening", "provider_execution"]
 JobStatus = Literal["queued", "running", "succeeded", "failed", "canceled", "partial"]
+ExecutionMode = Literal["dry_run", "live_requested", "live"]
 
 
 class _ReadModelBase(BaseModel):
@@ -89,6 +90,8 @@ class MultimediaJobRecord(_ReadModelBase):
     sequence: int = Field(ge=1)
     kind: JobKind
     status: JobStatus
+    execution_mode: ExecutionMode = "dry_run"
+    provider_family: str | None = None
     progress_percent: int = Field(ge=0, le=100)
     message: str
     error_code: str | None = None
@@ -295,6 +298,7 @@ class MultimediaAssetStore:
                 status="failed",
                 progress_percent=0,
                 message="Requested dry-run revision does not match the current asset revision.",
+                execution_mode="live_requested",
                 error_code="revision_mismatch",
                 retryable=False,
             )
@@ -305,6 +309,7 @@ class MultimediaAssetStore:
                 status="failed",
                 progress_percent=0,
                 message="Live provider execution requires explicit operator spend acknowledgement.",
+                execution_mode="live_requested",
                 error_code="spend_not_acknowledged",
                 retryable=False,
             )
@@ -316,6 +321,7 @@ class MultimediaAssetStore:
                 status="failed",
                 progress_percent=0,
                 message=f"Live provider budget ${request.max_budget_usd:.2f} is below estimated floor ${estimated:.2f}.",
+                execution_mode="live_requested",
                 error_code="budget_below_estimate",
                 retryable=True,
             )
@@ -327,6 +333,7 @@ class MultimediaAssetStore:
                 status="failed",
                 progress_percent=0,
                 message=f"Provider families not configured: {', '.join(missing)}.",
+                execution_mode="live_requested",
                 error_code="provider_unconfigured",
                 retryable=False,
             )
@@ -340,6 +347,8 @@ class MultimediaAssetStore:
                 f"Live execution queued for {families} with route {request.route_policy} "
                 f"and max budget ${request.max_budget_usd:.2f}."
             ),
+            execution_mode="live_requested",
+            provider_family=families,
             retryable=True,
         )
 
@@ -351,6 +360,8 @@ class MultimediaAssetStore:
         status: JobStatus,
         progress_percent: int,
         message: str,
+        execution_mode: ExecutionMode = "dry_run",
+        provider_family: str | None = None,
         error_code: str | None = None,
         retryable: bool | None = None,
     ) -> MultimediaAssetRecord:
@@ -361,6 +372,8 @@ class MultimediaAssetStore:
             status=status,
             progress_percent=progress_percent,
             message=message,
+            execution_mode=execution_mode,
+            provider_family=provider_family,
             error_code=error_code,
             retryable=retryable,
         )
@@ -386,6 +399,7 @@ class MultimediaAssetStore:
                 status="failed",
                 progress_percent=0,
                 message="Live provider worker is disabled; dry-run worker execution is the only supported mode.",
+                execution_mode="live_requested",
                 error_code="live_worker_disabled",
                 retryable=False,
             )
@@ -404,6 +418,7 @@ class MultimediaAssetStore:
                 status="failed",
                 progress_percent=0,
                 message=f"Queued provider execution job {request.job_id!r} was not found.",
+                execution_mode="dry_run",
                 error_code="queued_job_not_found",
                 retryable=False,
             )
@@ -414,6 +429,8 @@ class MultimediaAssetStore:
             status="running",
             progress_percent=45,
             message=f"Dry-run worker claimed {target.job_id}; no provider call has been made.",
+            execution_mode="dry_run",
+            provider_family=target.provider_family,
             retryable=True,
         )
         completed = self._with_job(
@@ -422,6 +439,8 @@ class MultimediaAssetStore:
             status="succeeded",
             progress_percent=100,
             message="Dry-run worker completed provider execution without Krea/TTS/video spend.",
+            execution_mode="dry_run",
+            provider_family=target.provider_family,
             retryable=False,
         )
         self.save(completed)
@@ -449,6 +468,8 @@ class MultimediaAssetStore:
         status: JobStatus,
         progress_percent: int,
         message: str,
+        execution_mode: ExecutionMode = "dry_run",
+        provider_family: str | None = None,
         error_code: str | None = None,
         retryable: bool | None = None,
     ) -> MultimediaAssetRecord:
@@ -460,6 +481,8 @@ class MultimediaAssetStore:
             sequence=sequence,
             kind=kind,
             status=status,
+            execution_mode=execution_mode,
+            provider_family=provider_family,
             progress_percent=progress_percent,
             message=message,
             error_code=error_code,
@@ -514,6 +537,7 @@ def _latest_provider_job(record: MultimediaAssetRecord) -> MultimediaJobRecord |
 
 __all__ = [
     "CreateMultimediaDraftRequest",
+    "ExecutionMode",
     "LiveProviderExecutionRequest",
     "MultimediaAssetList",
     "MultimediaAssetRecord",

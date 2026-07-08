@@ -206,6 +206,8 @@ def test_live_provider_budget_gates_without_paid_calls(tmp_path, monkeypatch):
     )
     assert queued.jobs[-1].status == "queued"
     assert queued.jobs[-1].kind == "provider_execution"
+    assert queued.jobs[-1].execution_mode == "live_requested"
+    assert queued.jobs[-1].provider_family == "krea"
     assert queued.jobs[-1].progress_percent == 0
     assert "fake-test-key" not in queued.jobs[-1].message
 
@@ -224,6 +226,8 @@ def test_live_provider_budget_gates_without_paid_calls(tmp_path, monkeypatch):
     worked = store.run_provider_execution_worker(draft.asset.asset_id)
     assert [job.status for job in worked.jobs[-2:]] == ["running", "succeeded"]
     assert worked.jobs[-2].kind == "provider_execution"
+    assert worked.jobs[-2].execution_mode == "dry_run"
+    assert worked.jobs[-1].execution_mode == "dry_run"
     assert worked.jobs[-1].progress_percent == 100
     assert "fake-test-key" not in worked.jobs[-1].message
     assert worked.asset.status == "ready"
@@ -286,6 +290,8 @@ def test_live_provider_budget_route_without_provider_secrets(tmp_path, monkeypat
     assert queued.status_code == 200
     latest = queued.json()["jobs"][-1]
     assert latest["status"] == "queued"
+    assert latest["execution_mode"] == "live_requested"
+    assert latest["provider_family"] == "krea"
     assert latest["error_code"] is None
     assert "fake-route-key" not in latest["message"]
 
@@ -293,4 +299,5 @@ def test_live_provider_budget_route_without_provider_secrets(tmp_path, monkeypat
     assert worked.status_code == 200
     statuses = [job["status"] for job in worked.json()["jobs"][-2:]]
     assert statuses == ["running", "succeeded"]
+    assert worked.json()["jobs"][-1]["execution_mode"] == "dry_run"
     assert "fake-route-key" not in worked.json()["jobs"][-1]["message"]

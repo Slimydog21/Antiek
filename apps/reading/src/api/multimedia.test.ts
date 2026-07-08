@@ -56,6 +56,8 @@ const jobs = {
       sequence: 1,
       kind: "render",
       status: "succeeded",
+      execution_mode: "dry_run",
+      provider_family: null,
       progress_percent: 100,
       message: "Dry-run render manifest assembled without live provider spend.",
       error_code: null,

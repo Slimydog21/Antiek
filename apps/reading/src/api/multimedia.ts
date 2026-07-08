@@ -5,6 +5,7 @@ export type MultimediaRoutePolicy = "cheapest" | "balanced" | "highest_quality";
 export type MultimediaKind = "information_video" | "documentary_video" | "audio_experience";
 export type MultimediaJobKind = "render" | "steering" | "hardening" | "provider_execution";
 export type MultimediaJobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "partial";
+export type MultimediaExecutionMode = "dry_run" | "live_requested" | "live";
 
 export interface CreateMultimediaDraftRequest {
   topic: string;
@@ -82,6 +83,8 @@ export interface MultimediaJobRecord {
   sequence: number;
   kind: MultimediaJobKind;
   status: MultimediaJobStatus;
+  execution_mode: MultimediaExecutionMode;
+  provider_family: string | null;
   progress_percent: number;
   message: string;
   error_code: string | null;
