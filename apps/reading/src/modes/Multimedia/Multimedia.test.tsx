@@ -1151,6 +1151,10 @@ describe("Multimedia workstation", () => {
     expect(within(activationHandoff).getAllByText("Disabled in app").length).toBeGreaterThan(0);
     expect(within(activationHandoff).getAllByText("Activation authority").length).toBeGreaterThan(0);
     expect(within(activationHandoff).getAllByText("Separate worker required").length).toBeGreaterThan(0);
+    expect(within(activationHandoff).getAllByText("Activation audit").length).toBeGreaterThan(0);
+    expect(within(activationHandoff).getAllByText("Not run in app").length).toBeGreaterThan(0);
+    expect(within(activationHandoff).getAllByText("Required proof").length).toBeGreaterThan(0);
+    expect(within(activationHandoff).getAllByText("Worker logs + manual artifact attach").length).toBeGreaterThan(0);
     expect(within(activationHandoff).getAllByText("Public export").length).toBeGreaterThan(0);
     expect(within(activationHandoff).getAllByText("Not ready for public export").length).toBeGreaterThan(0);
     expect(within(activationHandoff).getAllByText("Required review").length).toBeGreaterThan(0);
@@ -1185,6 +1189,9 @@ describe("Multimedia workstation", () => {
           "Worker runbook",
           "Provider worker: Disabled in app",
           "Activation authority: Separate worker required",
+          "Provider activation audit",
+          "Activation audit: Not run in app",
+          "Required proof: Worker logs + manual artifact attach",
           "Queued request audit: No queued live request",
           "Activation state: Evidence only; provider execution still requires a separate worker activation.",
           "Operator next step: Review this bundle before enabling a live provider worker.",
@@ -1218,6 +1225,10 @@ describe("Multimedia workstation", () => {
     expect(within(activationPacket).getByText("Disabled in app")).toBeTruthy();
     expect(within(activationPacket).getByText("Activation authority")).toBeTruthy();
     expect(within(activationPacket).getByText("Separate worker required")).toBeTruthy();
+    expect(within(activationPacket).getByText("Activation audit")).toBeTruthy();
+    expect(within(activationPacket).getByText("Not run in app")).toBeTruthy();
+    expect(within(activationPacket).getByText("Required proof")).toBeTruthy();
+    expect(within(activationPacket).getByText("Worker logs + manual artifact attach")).toBeTruthy();
     expect(within(activationPacket).getByText("Public export")).toBeTruthy();
     expect(within(activationPacket).getByText("Not ready for public export")).toBeTruthy();
     expect(within(activationPacket).getByText("Required review")).toBeTruthy();
@@ -1268,6 +1279,9 @@ describe("Multimedia workstation", () => {
           "Worker runbook",
           "Provider worker: Disabled in app",
           "Activation authority: Separate worker required",
+          "Provider activation audit",
+          "Activation audit: Not run in app",
+          "Required proof: Worker logs + manual artifact attach",
           "Operator next step: Review this packet before enabling a live provider worker.",
           "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
           "Queued request audit: No queued live request",
@@ -1384,6 +1398,9 @@ describe("Multimedia workstation", () => {
           "Worker runbook",
           "Provider worker: Disabled in app",
           "Activation authority: Separate worker required",
+          "Provider activation audit",
+          "Activation audit: Not run in app",
+          "Required proof: Worker logs + manual artifact attach",
           "Queued request audit",
           "Queued job: job-mm-1-0001",
           "Budget cap: $75.00 cap",
@@ -1492,6 +1509,9 @@ describe("Multimedia workstation", () => {
           "Worker runbook",
           "Provider worker: Disabled in app",
           "Activation authority: Separate worker required",
+          "Provider activation audit",
+          "Activation audit: Not run in app",
+          "Required proof: Worker logs + manual artifact attach",
           "Operator next step: Review this packet before enabling a live provider worker.",
           "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
           "Queued request audit",

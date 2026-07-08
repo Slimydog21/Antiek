@@ -1903,6 +1903,10 @@ function JobPanel({
     { label: "Provider worker", value: "Disabled in app", tone: "muted" },
     { label: "Activation authority", value: "Separate worker required", tone: "sun" },
   ];
+  const activationAuditItems: LiveSpendReviewItem[] = [
+    { label: "Activation audit", value: "Not run in app", tone: "muted" },
+    { label: "Required proof", value: "Worker logs + manual artifact attach", tone: "sun" },
+  ];
   const liveSpendReviewKey = liveSpendReview.map((item) => `${item.label}:${item.value}`).join("|");
   const activationChecklistKey = activationChecklist.map((item) => `${item.label}:${item.value}`).join("|");
   const activationDecisionKey = activationDecision.map((item) => `${item.label}:${item.value}`).join("|");
@@ -1920,6 +1924,8 @@ function JobPanel({
     ...activationPublicExportItems.map((item) => `${item.label}: ${item.value}`),
     "Worker runbook",
     ...activationWorkerRunbookItems.map((item) => `${item.label}: ${item.value}`),
+    "Provider activation audit",
+    ...activationAuditItems.map((item) => `${item.label}: ${item.value}`),
     queueAuditFeedback ? "Queued request audit" : "Queued request audit: No queued live request",
     ...(queueAuditFeedback?.items.map((item) => `${item.label}: ${item.value}`) ?? []),
     "Activation state: Evidence only; provider execution still requires a separate worker activation.",
@@ -1928,12 +1934,14 @@ function JobPanel({
   ];
   const activationPublicExportKey = activationPublicExportItems.map((item) => `${item.label}:${item.value}`).join("|");
   const activationWorkerRunbookKey = activationWorkerRunbookItems.map((item) => `${item.label}:${item.value}`).join("|");
+  const activationAuditKey = activationAuditItems.map((item) => `${item.label}:${item.value}`).join("|");
   const activationHandoffKey = [
     activationChecklistKey,
     activationDecisionKey,
     activationBlockersKey,
     activationPublicExportKey,
     activationWorkerRunbookKey,
+    activationAuditKey,
     queueAuditFeedbackKey,
   ].join("||");
   const activationPacketItems = [
@@ -1952,6 +1960,8 @@ function JobPanel({
     ...activationPublicExportItems.map((item) => `${item.label}: ${item.value}`),
     "Worker runbook",
     ...activationWorkerRunbookItems.map((item) => `${item.label}: ${item.value}`),
+    "Provider activation audit",
+    ...activationAuditItems.map((item) => `${item.label}: ${item.value}`),
     "Operator next step: Review this packet before enabling a live provider worker.",
     "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
     queueAuditFeedback ? "Queued request audit" : "Queued request audit: No queued live request",
@@ -2168,6 +2178,14 @@ function JobPanel({
                 </dd>
               </div>
             ))}
+            {activationAuditItems.map((item) => (
+              <div key={item.label} className="flex items-center justify-between gap-2 text-[12px]">
+                <dt className="text-shadow-1 dark:text-moonlight">{item.label}</dt>
+                <dd className="text-right">
+                  <LemonTag colour={item.tone}>{item.value}</LemonTag>
+                </dd>
+              </div>
+            ))}
             {activationPublicExportItems.map((item) => (
               <div key={item.label} className="flex items-center justify-between gap-2 text-[12px]">
                 <dt className="text-shadow-1 dark:text-moonlight">{item.label}</dt>
@@ -2220,6 +2238,14 @@ function JobPanel({
                 </dd>
               </div>
               {activationWorkerRunbookItems.map((item) => (
+                <div key={item.label} className="flex items-center justify-between gap-2 text-[12px]">
+                  <dt className="text-shadow-1 dark:text-moonlight">{item.label}</dt>
+                  <dd className="text-right">
+                    <LemonTag colour={item.tone}>{item.value}</LemonTag>
+                  </dd>
+                </div>
+              ))}
+              {activationAuditItems.map((item) => (
                 <div key={item.label} className="flex items-center justify-between gap-2 text-[12px]">
                   <dt className="text-shadow-1 dark:text-moonlight">{item.label}</dt>
                   <dd className="text-right">
