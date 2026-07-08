@@ -15,6 +15,7 @@ import {
 } from "../../api/multimedia";
 import type {
   CreateMultimediaDraftRequest,
+  LiveProviderExecutionRequest,
   MultimediaAssetRecord,
   MultimediaAssetSummary,
   MultimediaJobRecord,
@@ -36,6 +37,10 @@ type LiveSpendReviewItem = {
   label: string;
   value: string;
   tone?: "default" | "muted" | "sun" | "danger";
+};
+type LiveSpendPreflight = {
+  items: LiveSpendReviewItem[];
+  request: LiveProviderExecutionRequest | null;
 };
 type PendingCommand =
   | "list"
@@ -177,6 +182,50 @@ function formatBudgetCap(value: string): string {
   const parsed = Number.parseFloat(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return "Enter positive budget";
   return `$${parsed.toFixed(2)} cap`;
+}
+
+function buildLiveSpendPreflight({
+  maxBudgetUsd,
+  operatorAck,
+  selectedRecord,
+  tier,
+  duration,
+  mode,
+}: {
+  maxBudgetUsd: string;
+  operatorAck: boolean;
+  selectedRecord: MultimediaAssetRecord | null;
+  tier: RouteTier;
+  duration: number;
+  mode: Mode;
+}): LiveSpendPreflight {
+  const parsedBudget = Number.parseFloat(maxBudgetUsd);
+  const hasPositiveBudget = Number.isFinite(parsedBudget) && parsedBudget > 0;
+  const providerFamilies = ["krea"];
+  const dryRunRevisionId = selectedRecord?.asset.revision_id ?? null;
+  const request =
+    hasPositiveBudget && dryRunRevisionId
+      ? {
+          max_budget_usd: parsedBudget,
+          route_policy: tier,
+          operator_acknowledged_spend: operatorAck,
+          provider_families: providerFamilies,
+          dry_run_revision_id: dryRunRevisionId,
+        }
+      : null;
+
+  return {
+    request,
+    items: [
+      { label: "Spend boundary", value: "No paid worker runs from Queue live job", tone: "sun" },
+      { label: "Budget cap", value: formatBudgetCap(maxBudgetUsd), tone: hasPositiveBudget ? "default" : "danger" },
+      { label: "Acknowledgement", value: operatorAck ? "Spend acknowledged" : "Acknowledgement required", tone: operatorAck ? "default" : "danger" },
+      { label: "Dry-run revision", value: dryRunRevisionId ?? "No asset selected", tone: dryRunRevisionId ? "default" : "muted" },
+      { label: "Provider route", value: `${TIER_COPY[tier].label} / ${providerFamilies.join(", ")}`, tone: "default" },
+      { label: "Requested media", value: `${selectedRecord?.asset.requested_duration_minutes ?? duration} min ${mode}`, tone: "default" },
+      { label: "Worker state", value: "Live worker disabled", tone: "muted" },
+    ],
+  };
 }
 
 function statusToRenderState(record: MultimediaAssetRecord | null): RenderState {
@@ -334,15 +383,7 @@ export default function Multimedia() {
   const canRunAssetCommand = Boolean(selectedRecord) && pendingCommand === null;
   const latestJob = selectedRecord?.jobs.at(-1) ?? null;
   const shouldPollJobs = latestJob?.kind === "provider_execution" && ["queued", "running"].includes(latestJob.status);
-  const liveSpendReview: LiveSpendReviewItem[] = [
-    { label: "Spend boundary", value: "No paid worker runs from Queue live job", tone: "sun" },
-    { label: "Budget cap", value: formatBudgetCap(maxBudgetUsd), tone: "default" },
-    { label: "Acknowledgement", value: operatorAck ? "Spend acknowledged" : "Acknowledgement required", tone: operatorAck ? "default" : "danger" },
-    { label: "Dry-run revision", value: selectedRecord?.asset.revision_id ?? "No asset selected", tone: selectedRecord ? "default" : "muted" },
-    { label: "Provider route", value: `${TIER_COPY[tier].label} / krea`, tone: "default" },
-    { label: "Requested media", value: `${selectedRecord?.asset.requested_duration_minutes ?? duration} min ${mode}`, tone: "default" },
-    { label: "Worker state", value: "Live worker disabled", tone: "muted" },
-  ];
+  const liveSpendPreflight = buildLiveSpendPreflight({ maxBudgetUsd, operatorAck, selectedRecord, tier, duration, mode });
   const visibleAssets = useMemo(
     () =>
       readinessFilter === "all"
@@ -573,20 +614,13 @@ export default function Multimedia() {
 
   async function queueLiveProviderJob() {
     if (!selectedRecord) return;
-    const parsedBudget = Number.parseFloat(maxBudgetUsd);
-    if (!Number.isFinite(parsedBudget) || parsedBudget <= 0) {
+    if (!liveSpendPreflight.request) {
       setApiError("Enter a positive live provider budget before queueing.");
       return;
     }
     setPendingCommand("queue");
     try {
-      const record = await prepareMultimediaLiveExecution(selectedRecord.asset.asset_id, {
-        max_budget_usd: parsedBudget,
-        route_policy: tier,
-        operator_acknowledged_spend: operatorAck,
-        provider_families: ["krea"],
-        dry_run_revision_id: selectedRecord.asset.revision_id,
-      });
+      const record = await prepareMultimediaLiveExecution(selectedRecord.asset.asset_id, liveSpendPreflight.request);
       setSelectedRecord(record);
       const queuedJob = record.jobs.at(-1);
       resetManualArtifactFields(queuedJob?.kind === "provider_execution" ? queuedJob.job_id : "");
@@ -1130,7 +1164,7 @@ export default function Multimedia() {
               canRunWorker={Boolean(selectedRecord) && pendingCommand === null}
               canQueue={Boolean(selectedRecord) && pendingCommand === null}
               canAttach={Boolean(selectedRecord) && pendingCommand === null}
-              liveSpendReview={liveSpendReview}
+              liveSpendReview={liveSpendPreflight.items}
               maxBudgetUsd={maxBudgetUsd}
               operatorAck={operatorAck}
               artifactJobId={artifactJobId}

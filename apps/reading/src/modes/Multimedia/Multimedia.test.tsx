@@ -550,6 +550,12 @@ describe("Multimedia workstation", () => {
     expect(within(liveSpendReview).getByText("30 min video")).toBeTruthy();
     expect(within(liveSpendReview).getByText("Live worker disabled")).toBeTruthy();
 
+    fireEvent.change(screen.getByLabelText("Budget"), { target: { value: "0" } });
+    expect(within(liveSpendReview).getByText("Enter positive budget")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Queue live job" }));
+    expect(mockPrepare).not.toHaveBeenCalled();
+    expect(screen.getByText("Enter a positive live provider budget before queueing.")).toBeTruthy();
+
     fireEvent.click(screen.getByLabelText("Spend acknowledged"));
     fireEvent.change(screen.getByLabelText("Budget"), { target: { value: "75" } });
 
