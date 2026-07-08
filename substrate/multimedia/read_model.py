@@ -83,6 +83,13 @@ class ProviderExecutionWorkerRequest(_ReadModelBase):
     job_id: str | None = None
 
 
+class ProviderArtifactAttachmentRequest(_ReadModelBase):
+    job_id: str
+    artifact_uri: str = Field(min_length=1)
+    artifact_checksum: str = Field(min_length=8)
+    artifact_media_type: str = Field(min_length=1)
+
+
 class MultimediaJobRecord(_ReadModelBase):
     job_id: str
     asset_id: str
@@ -455,6 +462,49 @@ class MultimediaAssetStore:
         self.save(completed)
         return completed
 
+    def attach_provider_artifact(
+        self,
+        asset_id: str,
+        request: ProviderArtifactAttachmentRequest,
+    ) -> MultimediaAssetRecord:
+        record = self.get(asset_id)
+        matches = tuple(
+            job
+            for job in record.jobs
+            if job.kind == "provider_execution"
+            and job.job_id == request.job_id
+            and job.execution_mode in {"live_requested", "live"}
+        )
+        if not matches:
+            return self.record_job(
+                asset_id,
+                kind="provider_execution",
+                status="failed",
+                progress_percent=0,
+                message=f"Provider artifact source job {request.job_id!r} was not found.",
+                execution_mode="live",
+                error_code="artifact_source_not_found",
+                retryable=False,
+            )
+        source = matches[-1]
+        if source.artifact_uri is not None:
+            return record
+        completed = self._with_job(
+            record,
+            kind="provider_execution",
+            status="succeeded",
+            progress_percent=100,
+            message=f"Provider artifact attached for {source.job_id}.",
+            execution_mode="live",
+            provider_family=source.provider_family,
+            artifact_uri=request.artifact_uri,
+            artifact_checksum=request.artifact_checksum,
+            artifact_media_type=request.artifact_media_type,
+            retryable=False,
+        )
+        self.save(completed)
+        return completed
+
     def save(self, record: MultimediaAssetRecord) -> None:
         path = self._path(record.asset.asset_id)
         tmp = path.with_suffix(".json.tmp")
@@ -561,5 +611,6 @@ __all__ = [
     "MultimediaJobList",
     "MultimediaJobRecord",
     "ProviderExecutionWorkerRequest",
+    "ProviderArtifactAttachmentRequest",
     "SteeringRequest",
 ]

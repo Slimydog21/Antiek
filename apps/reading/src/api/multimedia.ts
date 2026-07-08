@@ -32,6 +32,13 @@ export interface ProviderExecutionWorkerRequest {
   job_id?: string | null;
 }
 
+export interface ProviderArtifactAttachmentRequest {
+  job_id: string;
+  artifact_uri: string;
+  artifact_checksum: string;
+  artifact_media_type: string;
+}
+
 export interface MultimediaAssetSummary {
   asset_id: string;
   revision_id: string;
@@ -186,5 +193,19 @@ export async function runMultimediaProviderWorker(
   });
   if (resp.status === 404) throw new Error("multimedia_asset_not_found");
   if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/run-provider-worker: HTTP ${resp.status}`);
+  return (await resp.json()) as MultimediaAssetRecord;
+}
+
+export async function attachMultimediaProviderArtifact(
+  assetId: string,
+  request: ProviderArtifactAttachmentRequest,
+): Promise<MultimediaAssetRecord> {
+  const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/attach-provider-artifact`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 404) throw new Error("multimedia_asset_not_found");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/attach-provider-artifact: HTTP ${resp.status}`);
   return (await resp.json()) as MultimediaAssetRecord;
 }

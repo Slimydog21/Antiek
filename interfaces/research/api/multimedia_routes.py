@@ -15,6 +15,7 @@ from substrate.multimedia.read_model import (
     MultimediaAssetRecord,
     MultimediaAssetStore,
     MultimediaJobList,
+    ProviderArtifactAttachmentRequest,
     ProviderExecutionWorkerRequest,
     SteeringRequest,
 )
@@ -97,6 +98,17 @@ def run_multimedia_provider_worker(
 ) -> MultimediaAssetRecord:
     try:
         return get_store().run_provider_execution_worker(asset_id, request)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
+
+
+@multimedia_router.post("/assets/{asset_id}/attach-provider-artifact", response_model=MultimediaAssetRecord)
+def attach_multimedia_provider_artifact(
+    asset_id: str,
+    request: ProviderArtifactAttachmentRequest,
+) -> MultimediaAssetRecord:
+    try:
+        return get_store().attach_provider_artifact(asset_id, request)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
 

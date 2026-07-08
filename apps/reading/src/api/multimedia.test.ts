@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  attachMultimediaProviderArtifact,
   approveMultimediaDryRun,
   createMultimediaDraft,
   getMultimediaAsset,
@@ -158,6 +159,24 @@ describe("multimedia API client", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ dry_run: true, job_id: "job-mm-1-0001" }),
+    });
+
+    mockFetch.mockResolvedValueOnce(jsonResponse(record));
+    await attachMultimediaProviderArtifact("mm-1", {
+      job_id: "job-mm-1-0001",
+      artifact_uri: "https://cdn.example.test/mm-1.mp4",
+      artifact_checksum: "sha256:abcdef123456",
+      artifact_media_type: "video/mp4",
+    });
+    expect(mockFetch).toHaveBeenLastCalledWith("/api/multimedia/assets/mm-1/attach-provider-artifact", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        job_id: "job-mm-1-0001",
+        artifact_uri: "https://cdn.example.test/mm-1.mp4",
+        artifact_checksum: "sha256:abcdef123456",
+        artifact_media_type: "video/mp4",
+      }),
     });
   });
 });

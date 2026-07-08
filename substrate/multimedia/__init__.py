@@ -62,6 +62,7 @@ from .read_model import (
     MultimediaAssetSummary,
     MultimediaJobList,
     MultimediaJobRecord,
+    ProviderArtifactAttachmentRequest,
     ProviderExecutionWorkerRequest,
     SteeringRequest,
 )
@@ -111,6 +112,7 @@ __all__ = [
     "MultimediaAssetSummary",
     "MultimediaJobList",
     "MultimediaJobRecord",
+    "ProviderArtifactAttachmentRequest",
     "ProviderExecutionWorkerRequest",
     "MultimediaPlanRequest",
     "NarrationParagraph",

@@ -10,6 +10,7 @@ from substrate.multimedia.read_model import (
     CreateMultimediaDraftRequest,
     LiveProviderExecutionRequest,
     MultimediaAssetStore,
+    ProviderArtifactAttachmentRequest,
     ProviderExecutionWorkerRequest,
     SteeringRequest,
 )
@@ -237,8 +238,24 @@ def test_live_provider_budget_gates_without_paid_calls(tmp_path, monkeypatch):
     assert "fake-test-key" not in worked.jobs[-1].message
     assert worked.asset.status == "ready"
 
+    attached = store.attach_provider_artifact(
+        draft.asset.asset_id,
+        ProviderArtifactAttachmentRequest(
+            job_id=queued.jobs[-1].job_id,
+            artifact_uri="https://cdn.example.test/mm-asset.mp4",
+            artifact_checksum="sha256:abcdef123456",
+            artifact_media_type="video/mp4",
+        ),
+    )
+    assert attached.jobs[-1].status == "succeeded"
+    assert attached.jobs[-1].execution_mode == "live"
+    assert attached.jobs[-1].artifact_uri == "https://cdn.example.test/mm-asset.mp4"
+    assert attached.jobs[-1].artifact_checksum == "sha256:abcdef123456"
+    assert attached.jobs[-1].artifact_media_type == "video/mp4"
+    assert "fake-test-key" not in attached.jobs[-1].message
+
     unchanged = store.run_provider_execution_worker(draft.asset.asset_id)
-    assert len(unchanged.jobs) == len(worked.jobs)
+    assert len(unchanged.jobs) == len(attached.jobs)
 
     blocked = store.run_provider_execution_worker(
         draft.asset.asset_id,
@@ -309,3 +326,19 @@ def test_live_provider_budget_route_without_provider_secrets(tmp_path, monkeypat
     assert worked.json()["jobs"][-1]["execution_mode"] == "dry_run"
     assert worked.json()["jobs"][-1]["artifact_uri"] is None
     assert "fake-route-key" not in worked.json()["jobs"][-1]["message"]
+
+    attached = client.post(
+        f"/multimedia/assets/{asset_id}/attach-provider-artifact",
+        json={
+            "job_id": latest["job_id"],
+            "artifact_uri": "https://cdn.example.test/mm-route.mp4",
+            "artifact_checksum": "sha256:123456789abc",
+            "artifact_media_type": "video/mp4",
+        },
+    )
+    assert attached.status_code == 200
+    artifact_job = attached.json()["jobs"][-1]
+    assert artifact_job["execution_mode"] == "live"
+    assert artifact_job["artifact_uri"] == "https://cdn.example.test/mm-route.mp4"
+    assert artifact_job["artifact_checksum"] == "sha256:123456789abc"
+    assert "fake-route-key" not in artifact_job["message"]
