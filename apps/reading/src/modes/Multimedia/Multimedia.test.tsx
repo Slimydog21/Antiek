@@ -894,14 +894,17 @@ describe("Multimedia workstation", () => {
     await reviewPlan();
 
     const jobPanel = await screen.findByTestId("multimedia-job-panel");
-    expect(within(jobPanel).getByText("video/mp4")).toBeTruthy();
+    expect(within(jobPanel).getAllByText("video/mp4").length).toBeGreaterThan(0);
     const readiness = screen.getByTestId("multimedia-provider-readiness");
     expect(within(readiness).getByText("Live worker disabled")).toBeTruthy();
     expect(within(readiness).getByText("Activation boundary")).toBeTruthy();
     expect(within(readiness).getByText("Separate worker activation required")).toBeTruthy();
     expect(within(readiness).getByText("Attached")).toBeTruthy();
-    expect(within(jobPanel).getByText("sha256:abcdef123456")).toBeTruthy();
-    expect(within(jobPanel).getByText("https://cdn.example.test/mm-1.mp4")).toBeTruthy();
+    expect(within(jobPanel).getAllByText("sha256:abcdef123456").length).toBeGreaterThan(0);
+    expect(within(jobPanel).getAllByText("https://cdn.example.test/mm-1.mp4").length).toBeGreaterThan(0);
+    expect(within(jobPanel).getByText("Export review ready")).toBeTruthy();
+    expect(within(jobPanel).getByText("Manual review required before publish/export")).toBeTruthy();
+    expect(within(jobPanel).getByText("No public export or publish action has run")).toBeTruthy();
     expect(within(jobPanel).getByRole("link", { name: "Open artifact" }).getAttribute("href")).toBe(
       "https://cdn.example.test/mm-1.mp4",
     );
@@ -913,6 +916,28 @@ describe("Multimedia workstation", () => {
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://cdn.example.test/mm-1.mp4"));
     expect(within(jobPanel).getByRole("button", { name: "Copied" })).toBeTruthy();
+
+    fireEvent.click(within(jobPanel).getByRole("button", { name: "Copy export review" }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        [
+          "Artifact: video/mp4",
+          "Source job: job-mm-1-0004",
+          "Review gate: Manual review required before publish/export",
+          "Artifact URI: https://cdn.example.test/mm-1.mp4",
+          "Checksum: sha256:abcdef123456",
+          "Budget gate: $50.00 cap",
+          "Provider route: Balanced / krea",
+          "Dry-run revision: rev-1",
+          "Activation boundary: Separate worker activation required",
+          "Publish boundary: No public export or publish action has run",
+        ].join("\n"),
+      ),
+    );
+    expect(within(jobPanel).getByRole("button", { name: "Export review copied" })).toBeTruthy();
+    expect(mockAttachArtifact).not.toHaveBeenCalled();
+    expect(mockRunWorker).not.toHaveBeenCalled();
   });
 
   it("attaches a pasted provider artifact without running a paid provider worker", async () => {
@@ -933,7 +958,7 @@ describe("Multimedia workstation", () => {
       }),
     );
     expect(mockRunWorker).not.toHaveBeenCalled();
-    expect(await screen.findByText("https://cdn.example.test/mm-1.mp4")).toBeTruthy();
+    await waitFor(() => expect(screen.getAllByText("https://cdn.example.test/mm-1.mp4").length).toBeGreaterThan(0));
     expect(screen.getByText("Attachment saved for job-mm-1-0004 (video/mp4).")).toBeTruthy();
     expect(screen.getByText("Attachment saved")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Attach" })).toBeNull();

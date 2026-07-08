@@ -1689,6 +1689,7 @@ function JobPanel({
   const [activationChecklistCopied, setActivationChecklistCopied] = useState(false);
   const [activationHandoffCopied, setActivationHandoffCopied] = useState(false);
   const [queueAuditCopied, setQueueAuditCopied] = useState(false);
+  const [copiedJobExportReviewId, setCopiedJobExportReviewId] = useState<string | null>(null);
   const canSubmitArtifact =
     canAttach && artifactJobId.trim().length > 0 && artifactUri.trim().length > 0 && artifactChecksum.trim().length > 0 && artifactMediaType.trim().length > 0;
   const readiness = providerReadinessSummary(jobs, artifactJobId);
@@ -1704,6 +1705,22 @@ function JobPanel({
   const artifactJob = jobs.find((job) => job.job_id === artifactJobId);
   const validationHints =
     artifactJob?.error_code === "artifact_validation_failed" ? artifactValidationHints(artifactJob.message) : artifactValidationHints(artifactValidationMessage);
+  const jobExportReviewItems = (job: MultimediaJobRecord): PersistedQueuedAuditItem[] => [
+    { label: "Artifact", value: job.artifact_media_type ?? "provider artifact" },
+    { label: "Source job", value: job.job_id },
+    { label: "Review gate", value: "Manual review required before publish/export" },
+    { label: "Artifact URI", value: job.artifact_uri ?? "unavailable" },
+    { label: "Checksum", value: job.artifact_checksum ?? "unavailable" },
+    { label: "Budget gate", value: liveReviewValue("Budget cap") },
+    { label: "Provider route", value: liveReviewValue("Provider route") },
+    { label: "Dry-run revision", value: liveReviewValue("Dry-run revision") },
+    { label: "Activation boundary", value: "Separate worker activation required" },
+    { label: "Publish boundary", value: "No public export or publish action has run" },
+  ];
+  const jobExportReviewKey = recentJobs
+    .filter((job) => Boolean(job.artifact_uri))
+    .map((job) => `${job.job_id}:${jobExportReviewItems(job).map((item) => `${item.label}:${item.value}`).join("|")}`)
+    .join(";");
 
   async function copyArtifactUri(job: MultimediaJobRecord) {
     if (!job.artifact_uri || !navigator.clipboard) return;
@@ -1748,6 +1765,12 @@ function JobPanel({
     setQueueAuditCopied(true);
   }
 
+  async function copyJobExportReview(job: MultimediaJobRecord) {
+    if (!navigator.clipboard) return;
+    await navigator.clipboard.writeText(jobExportReviewItems(job).map((item) => `${item.label}: ${item.value}`).join("\n"));
+    setCopiedJobExportReviewId(job.job_id);
+  }
+
   useEffect(() => {
     setQueueAuditCopied(false);
   }, [queueAuditFeedback]);
@@ -1756,6 +1779,10 @@ function JobPanel({
     setActivationChecklistCopied(false);
     setActivationHandoffCopied(false);
   }, [activationChecklistKey]);
+
+  useEffect(() => {
+    setCopiedJobExportReviewId(null);
+  }, [jobExportReviewKey]);
 
   return (
     <section
@@ -2002,6 +2029,22 @@ function JobPanel({
                     <LemonButton type="button" size="sm" variant="tertiary" onClick={() => void copyArtifactUri(job)}>
                       {copiedJobId === job.job_id ? "Copied" : "Copy link"}
                     </LemonButton>
+                  </div>
+                  <div className="mt-2 border-t border-rule pt-2 dark:border-charcoal-2" data-testid={`multimedia-job-export-review-${job.job_id}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Export review ready</p>
+                      <LemonButton type="button" size="sm" variant="tertiary" onClick={() => void copyJobExportReview(job)}>
+                        {copiedJobExportReviewId === job.job_id ? "Export review copied" : "Copy export review"}
+                      </LemonButton>
+                    </div>
+                    <dl className="mt-2 grid grid-cols-1 gap-1">
+                      {jobExportReviewItems(job).map((item) => (
+                        <div key={item.label} className="flex items-center justify-between gap-2 text-[12px]">
+                          <dt className="text-shadow-1 dark:text-moonlight">{item.label}</dt>
+                          <dd className="max-w-[58%] truncate text-right font-mono text-ink dark:text-bright">{item.value}</dd>
+                        </div>
+                      ))}
+                    </dl>
                   </div>
                 </div>
               ) : (
