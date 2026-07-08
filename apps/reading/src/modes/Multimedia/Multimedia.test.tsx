@@ -784,6 +784,8 @@ describe("Multimedia workstation", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Review plan" }));
     await waitFor(() => expect(screen.getAllByText("sha256:3333abcd").length).toBeGreaterThan(0));
+    expect(screen.getByRole("button", { name: "Copy audit" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Audit copied" })).toBeNull();
     expect(screen.getByRole("button", { name: "Copy export review" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Export review copied" })).toBeNull();
 
