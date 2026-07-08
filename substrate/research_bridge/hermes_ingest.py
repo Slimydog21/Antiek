@@ -24,24 +24,13 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-try:
-    from ...runtime.db_lock import LockedConnection
-    from .ingest_file import FileIngestResult, ingest_file
-except ImportError:  # pragma: no cover
-    _here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
-    from substrate.research_bridge.ingest_file import (  # type: ignore[no-redef]
-        FileIngestResult,
-        ingest_file,
-    )
-
+from runtime.db_lock import LockedConnection
+from substrate.research_bridge.ingest_file import FileIngestResult, ingest_file
 
 HERMES_INGEST_VERSION: int = 1
 DEFAULT_HERMES_EVENTS_DIR: str = os.path.expanduser("~/.hermes/research_events")
