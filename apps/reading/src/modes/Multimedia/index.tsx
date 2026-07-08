@@ -180,6 +180,46 @@ function latestAttachableArtifactJobId(record: MultimediaAssetRecord): string {
   );
 }
 
+function providerReadinessSummary(jobs: MultimediaJobRecord[], artifactJobId: string): Array<{ label: string; value: string; tone: "default" | "muted" | "sun" | "danger" }> {
+  const providerJobs = jobs.filter((job) => job.kind === "provider_execution");
+  const latestMatchingJob = (predicate: (job: MultimediaJobRecord) => boolean): MultimediaJobRecord | undefined =>
+    providerJobs.slice().reverse().find(predicate);
+  const activeLiveJob = latestMatchingJob(
+    (job) => job.execution_mode === "live_requested" && (job.status === "queued" || job.status === "running"),
+  );
+  const attachedArtifact = latestMatchingJob((job) => Boolean(job.artifact_uri));
+  const rejectedArtifact = latestMatchingJob((job) => job.error_code === "artifact_validation_failed");
+  const dryRunCompletion = latestMatchingJob((job) => job.execution_mode === "dry_run" && job.status === "succeeded");
+
+  return [
+    {
+      label: "Spend boundary",
+      value: "Live worker disabled",
+      tone: "muted",
+    },
+    {
+      label: "Dry-run worker",
+      value: dryRunCompletion ? "Completed" : providerJobs.length ? "Available" : "No job rows",
+      tone: dryRunCompletion ? "default" : "muted",
+    },
+    {
+      label: "Live queue",
+      value: activeLiveJob ? `Queued ${activeLiveJob.job_id}` : "No active live job",
+      tone: activeLiveJob ? "sun" : "muted",
+    },
+    {
+      label: "Manual attach",
+      value: artifactJobId.trim() ? `Ready for ${artifactJobId.trim()}` : "Waiting for live job",
+      tone: artifactJobId.trim() ? "default" : "muted",
+    },
+    {
+      label: "Artifact state",
+      value: attachedArtifact ? "Attached" : rejectedArtifact ? "Rejected" : activeLiveJob ? "Pending" : "Not attached",
+      tone: attachedArtifact ? "default" : rejectedArtifact ? "danger" : activeLiveJob ? "sun" : "muted",
+    },
+  ];
+}
+
 export default function Multimedia() {
   const [topic, setTopic] = useState("The aircraft program that made cheap long-haul travel possible");
   const [duration, setDuration] = useState(30);
@@ -1039,6 +1079,7 @@ function JobPanel({
   const [copiedJobId, setCopiedJobId] = useState<string | null>(null);
   const canSubmitArtifact =
     canAttach && artifactJobId.trim().length > 0 && artifactUri.trim().length > 0 && artifactChecksum.trim().length > 0 && artifactMediaType.trim().length > 0;
+  const readiness = providerReadinessSummary(jobs, artifactJobId);
 
   async function copyArtifactUri(job: MultimediaJobRecord) {
     if (!job.artifact_uri || !navigator.clipboard) return;
@@ -1057,6 +1098,19 @@ function JobPanel({
           {latestJob?.status ?? "none"}
         </LemonTag>
       </div>
+      <dl className="mt-3 grid grid-cols-1 gap-2" data-testid="multimedia-provider-readiness">
+        {readiness.map((item) => (
+          <div
+            key={item.label}
+            className="flex items-center justify-between gap-2 rounded-md border border-rule bg-ice-0 px-2 py-1.5 text-[12px] dark:border-charcoal-1 dark:bg-charcoal-1"
+          >
+            <dt className="text-shadow-1 dark:text-moonlight">{item.label}</dt>
+            <dd className="flex justify-end text-right">
+              <LemonTag colour={item.tone}>{item.value}</LemonTag>
+            </dd>
+          </div>
+        ))}
+      </dl>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <label className="col-span-1 text-[12px] text-shadow-1 dark:text-moonlight">
           Budget

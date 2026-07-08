@@ -374,6 +374,11 @@ describe("Multimedia workstation", () => {
     expect(await screen.findByText(/Live execution queued for krea/)).toBeTruthy();
     expect(screen.getByText("live_requested")).toBeTruthy();
     expect(screen.getByText("Artifact pending")).toBeTruthy();
+    const readiness = screen.getByTestId("multimedia-provider-readiness");
+    expect(within(readiness).getByText("Live worker disabled")).toBeTruthy();
+    expect(within(readiness).getByText("Queued job-mm-1-0001")).toBeTruthy();
+    expect(within(readiness).getByText("Ready for job-mm-1-0001")).toBeTruthy();
+    expect(within(readiness).getByText("Pending")).toBeTruthy();
   });
 
   it("surfaces attached provider artifacts with open, download, and copy actions", async () => {
@@ -387,6 +392,9 @@ describe("Multimedia workstation", () => {
     await reviewPlan();
 
     expect(await screen.findByText("video/mp4")).toBeTruthy();
+    const readiness = screen.getByTestId("multimedia-provider-readiness");
+    expect(within(readiness).getByText("Live worker disabled")).toBeTruthy();
+    expect(within(readiness).getByText("Attached")).toBeTruthy();
     expect(screen.getByText("sha256:abcdef123456")).toBeTruthy();
     expect(screen.getByText("https://cdn.example.test/mm-1.mp4")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Open artifact" }).getAttribute("href")).toBe(
@@ -435,6 +443,7 @@ describe("Multimedia workstation", () => {
 
     await waitFor(() => expect(mockAttachArtifact).toHaveBeenCalled());
     expect(await screen.findByText("Artifact rejected")).toBeTruthy();
+    expect(within(screen.getByTestId("multimedia-provider-readiness")).getByText("Rejected")).toBeTruthy();
     expect(screen.getByText(/Check the artifact URL, sha256 checksum, and media type/)).toBeTruthy();
   });
 
