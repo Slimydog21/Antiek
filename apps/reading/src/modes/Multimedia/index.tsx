@@ -386,6 +386,7 @@ export default function Multimedia() {
   const [copiedRejectedAuditAssetId, setCopiedRejectedAuditAssetId] = useState<string | null>(null);
   const [copiedQueuedAuditAssetId, setCopiedQueuedAuditAssetId] = useState<string | null>(null);
   const [expandedArtifactAssetId, setExpandedArtifactAssetId] = useState<string | null>(null);
+  const [expandedQueuedAuditAssetId, setExpandedQueuedAuditAssetId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -1029,14 +1030,20 @@ export default function Multimedia() {
                           {asset.provider_readiness.status === "manual_attach_ready" && asset.provider_readiness.source_job_id && (
                             <div className="mx-3 mb-3 rounded-md border border-sun bg-sun/10 p-2 text-[11px] text-ink dark:border-sun/80 dark:bg-sun/10 dark:text-bright">
                               <p className="font-mono text-shadow-2 dark:text-moonlight">Queued live request</p>
-                              <dl className="mt-1 grid gap-1">
-                                {persistedQueuedAuditItems.map((item) => (
-                                  <div key={item.label} className="grid grid-cols-[88px_minmax(0,1fr)] gap-2">
-                                    <dt className="font-mono text-shadow-2 dark:text-moonlight">{item.label}</dt>
-                                    <dd className="truncate font-mono text-ink dark:text-bright">{item.value}</dd>
-                                  </div>
-                                ))}
-                              </dl>
+                              <p className="mt-1 truncate font-mono text-ink dark:text-bright">
+                                {asset.provider_readiness.source_job_id} / {TIER_COPY[asset.route_policy].label} /{" "}
+                                {asset.requested_duration_minutes} min
+                              </p>
+                              {expandedQueuedAuditAssetId === asset.asset_id && (
+                                <dl className="mt-2 grid gap-1">
+                                  {persistedQueuedAuditItems.map((item) => (
+                                    <div key={item.label} className="grid grid-cols-[104px_minmax(0,1fr)] gap-2">
+                                      <dt className="font-mono text-shadow-2 dark:text-moonlight">{item.label}</dt>
+                                      <dd className="truncate font-mono text-ink dark:text-bright">{item.value}</dd>
+                                    </div>
+                                  ))}
+                                </dl>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1051,6 +1058,17 @@ export default function Multimedia() {
                                 {copiedQueuedAuditAssetId === asset.asset_id ? "Queue audit copied" : "Copy queue audit"}
                               </button>
                             )}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedQueuedAuditAssetId((current) =>
+                                  current === asset.asset_id ? null : asset.asset_id,
+                                )
+                              }
+                              className="rounded-md border border-rule bg-ice-0 px-3 py-1.5 font-mono text-[11px] font-semibold text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
+                            >
+                              {expandedQueuedAuditAssetId === asset.asset_id ? "Hide details" : "Details"}
+                            </button>
                             <button
                               type="button"
                               onClick={() => reopenAssetForAttachment(asset)}

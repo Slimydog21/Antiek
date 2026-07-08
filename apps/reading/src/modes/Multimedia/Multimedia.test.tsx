@@ -424,6 +424,11 @@ describe("Multimedia workstation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Manual attach 1" }));
     const persistedAssets = screen.getByTestId("multimedia-persisted-assets");
     expect(within(persistedAssets).getByText("Queued live request")).toBeTruthy();
+    expect(within(persistedAssets).queryByText("Queued job")).toBeNull();
+    expect(within(persistedAssets).getByText("job-mm-1-0004 / Balanced / 30 min")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+
     expect(within(persistedAssets).getByText("Queued job")).toBeTruthy();
     expect(within(persistedAssets).getByText("Route")).toBeTruthy();
     expect(within(persistedAssets).getByText("Requested media")).toBeTruthy();
@@ -433,6 +438,9 @@ describe("Multimedia workstation", () => {
     expect(within(persistedAssets).getByText("Execution mode")).toBeTruthy();
     expect(within(persistedAssets).getAllByText("job-mm-1-0004").length).toBeGreaterThan(0);
     expect(within(persistedAssets).getByText("No paid worker consumed this job")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide details" }));
+    expect(within(persistedAssets).queryByText("Queued job")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Copy queue audit" }));
 
@@ -501,6 +509,8 @@ describe("Multimedia workstation", () => {
     expect(await screen.findByText(/Persisted assets/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Manual attach 1" }));
     const persistedAssets = screen.getByTestId("multimedia-persisted-assets");
+    fireEvent.click(screen.getByRole("button", { name: "Details" }));
+
     expect(within(persistedAssets).getByText("Cheapest")).toBeTruthy();
     expect(within(persistedAssets).getByText("15 min audio experience")).toBeTruthy();
     expect(within(persistedAssets).getAllByText("krea").length).toBeGreaterThan(0);
