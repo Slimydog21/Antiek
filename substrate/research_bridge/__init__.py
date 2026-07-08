@@ -36,6 +36,19 @@ from .gap import (
     record_prompt_signal,
     would_run_percentage,
 )
+from .hermes_ingest import (
+    HERMES_INGEST_VERSION,
+    HermesEventRecord,
+    HermesIngestBatch,
+    HermesIngestResult,
+    HermesInvestigation,
+    group_investigations,
+    ingest_hermes_events,
+    ingest_hermes_investigation,
+    iter_hermes_events,
+    parse_hermes_event_line,
+    render_investigation_text,
+)
 from .ingest import (
     MAX_PASTE_BYTES,
     PASTE_DOCUMENT_TYPE,
@@ -102,4 +115,15 @@ __all__ = [
     "record_prompt_answer",
     "record_prompt_signal",
     "would_run_percentage",
+    "HERMES_INGEST_VERSION",
+    "HermesEventRecord",
+    "HermesInvestigation",
+    "HermesIngestResult",
+    "HermesIngestBatch",
+    "parse_hermes_event_line",
+    "iter_hermes_events",
+    "group_investigations",
+    "render_investigation_text",
+    "ingest_hermes_investigation",
+    "ingest_hermes_events",
 ]
