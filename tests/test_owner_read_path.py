@@ -86,16 +86,21 @@ class _RecordingProvider:
 
 
 def register_fake(reply: str = "A synthesized answer.") -> _RecordingProvider:
-    """Register ONE fake provider under BOTH research-tier override names
-    ('deepseek' deep, 'xiaomi' fast) so the provider_override lands on it
-    whichever tier the caller chose. The shared instance records every prompt."""
+    """Register ONE fake provider under ALL research-tier override names so the
+    provider_override lands on it whichever tier the caller chose. The shared
+    instance records every prompt.
+
+    The claude-less research-tier map (#309) resolves fast→zai / deep→
+    zai_reasoning (GLM-5.2, thinking off / on); 'deepseek' is the config
+    primary. All override aliases share the SAME prompt log."""
     from substrate.dispatch.router import register_provider
 
     deep = _RecordingProvider(reply, name="deepseek")
     register_provider(deep)
-    fast = _RecordingProvider(reply, name="xiaomi")
-    fast.prompts = deep.prompts
-    register_provider(fast)
+    for override_name in ("zai", "zai_reasoning", "xiaomi"):
+        twin = _RecordingProvider(reply, name=override_name)
+        twin.prompts = deep.prompts
+        register_provider(twin)
     return deep
 
 
