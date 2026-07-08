@@ -1212,6 +1212,21 @@ describe("Multimedia workstation", () => {
       ),
     );
     expect(within(queueAudit).getByRole("button", { name: "Queued audit copied" })).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Budget"), { target: { value: "76" } });
+    fireEvent.click(screen.getByRole("button", { name: "Queue live job" }));
+    await waitFor(() =>
+      expect(mockPrepare).toHaveBeenLastCalledWith("mm-1", {
+        max_budget_usd: 76,
+        route_policy: "balanced",
+        operator_acknowledged_spend: true,
+        provider_families: ["krea"],
+        dry_run_revision_id: "rev-1",
+      }),
+    );
+    expect(within(queueAudit).getByText("$76.00 cap")).toBeTruthy();
+    await waitFor(() => expect(within(queueAudit).getByRole("button", { name: "Copy queued audit" })).toBeTruthy());
+    expect(within(queueAudit).queryByRole("button", { name: "Queued audit copied" })).toBeNull();
   });
 
   it("surfaces attached provider artifacts with open, download, and copy actions", async () => {

@@ -1806,6 +1806,7 @@ function JobPanel({
     .filter((job) => Boolean(job.artifact_uri))
     .map((job) => `${job.job_id}:${job.artifact_uri}`)
     .join(";");
+  const queueAuditFeedbackKey = queueAuditFeedback?.items.map((item) => `${item.label}:${item.value}`).join("|") ?? "";
 
   async function copyArtifactUri(job: MultimediaJobRecord) {
     if (!job.artifact_uri || !navigator.clipboard) return;
@@ -1858,7 +1859,7 @@ function JobPanel({
 
   useEffect(() => {
     setQueueAuditCopied(false);
-  }, [queueAuditFeedback]);
+  }, [queueAuditFeedbackKey]);
 
   useEffect(() => {
     setLiveReviewCopied(false);
