@@ -585,6 +585,28 @@ describe("Multimedia workstation", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("job-mm-2-0004"));
     expect(screen.getByRole("button", { name: "Job copied" })).toBeTruthy();
 
+    fireEvent.click(screen.getByRole("button", { name: "Copy audit" }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        [
+          "Asset: mm-2",
+          "Status: artifact_attached",
+          "Artifact URI: https://cdn.example.test/mm-2.mp4",
+          "Artifact checksum: sha256:2222abcd",
+          "Artifact media type: video/mp4",
+          "Provider: krea",
+          "Execution mode: live",
+          "Source job: job-mm-2-0004",
+          "Request route: Highest quality",
+          "Budget cap: $22.00 cap",
+          "Dry-run revision: rev-1",
+          "Copy action: Read-only; no provider worker triggered",
+        ].join("\n"),
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Audit copied" })).toBeTruthy();
+
     fireEvent.click(screen.getByRole("button", { name: "Details" }));
 
     expect(within(persistedAssets).getByText("Artifact URI")).toBeTruthy();

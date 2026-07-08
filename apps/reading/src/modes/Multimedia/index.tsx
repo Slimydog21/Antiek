@@ -280,6 +280,22 @@ function buildArtifactLineageItems(asset: MultimediaAssetSummary): PersistedQueu
   ];
 }
 
+function buildAttachedArtifactAuditItems(asset: MultimediaAssetSummary): PersistedQueuedAuditItem[] {
+  const readiness = asset.provider_readiness;
+  return [
+    { label: "Asset", value: asset.asset_id },
+    { label: "Status", value: readiness.status },
+    { label: "Artifact URI", value: readiness.artifact_uri ?? "unavailable" },
+    { label: "Artifact checksum", value: readiness.artifact_checksum ?? "unavailable" },
+    { label: "Artifact media type", value: readiness.artifact_media_type ?? "unavailable" },
+    { label: "Provider", value: readiness.provider_family ?? "unavailable" },
+    { label: "Execution mode", value: readiness.execution_mode ?? "unavailable" },
+    { label: "Source job", value: readiness.source_job_id ?? "unavailable" },
+    ...buildArtifactLineageItems(asset),
+    { label: "Copy action", value: "Read-only; no provider worker triggered" },
+  ];
+}
+
 function statusToRenderState(record: MultimediaAssetRecord | null): RenderState {
   if (!record) return "pending";
   if (record.asset.status === "ready") return "partial";
@@ -400,6 +416,7 @@ export default function Multimedia() {
   const [queueAuditFeedback, setQueueAuditFeedback] = useState<QueueAuditFeedback | null>(null);
   const [copiedAssetId, setCopiedAssetId] = useState<string | null>(null);
   const [copiedSourceJobAssetId, setCopiedSourceJobAssetId] = useState<string | null>(null);
+  const [copiedAttachedAuditAssetId, setCopiedAttachedAuditAssetId] = useState<string | null>(null);
   const [copiedRejectedAuditAssetId, setCopiedRejectedAuditAssetId] = useState<string | null>(null);
   const [copiedQueuedAuditAssetId, setCopiedQueuedAuditAssetId] = useState<string | null>(null);
   const [expandedArtifactAssetId, setExpandedArtifactAssetId] = useState<string | null>(null);
@@ -584,6 +601,13 @@ export default function Multimedia() {
     if (!sourceJobId || !navigator.clipboard) return;
     await navigator.clipboard.writeText(sourceJobId);
     setCopiedSourceJobAssetId(asset.asset_id);
+  }
+
+  async function copyAttachedArtifactAudit(asset: MultimediaAssetSummary) {
+    if (!navigator.clipboard) return;
+    const auditLines = buildAttachedArtifactAuditItems(asset).map((item) => `${item.label}: ${item.value}`);
+    await navigator.clipboard.writeText(auditLines.join("\n"));
+    setCopiedAttachedAuditAssetId(asset.asset_id);
   }
 
   async function copyRejectedArtifactAudit(asset: MultimediaAssetSummary) {
@@ -1141,6 +1165,13 @@ export default function Multimedia() {
                                   {copiedSourceJobAssetId === asset.asset_id ? "Job copied" : "Copy job"}
                                 </button>
                               )}
+                              <button
+                                type="button"
+                                onClick={() => void copyAttachedArtifactAudit(asset)}
+                                className="rounded-md border border-rule bg-ice-0 px-3 py-1.5 font-mono text-[11px] font-semibold text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
+                              >
+                                {copiedAttachedAuditAssetId === asset.asset_id ? "Audit copied" : "Copy audit"}
+                              </button>
                               <button
                                 type="button"
                                 onClick={() =>
