@@ -144,6 +144,8 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
         "status": "no_provider_jobs",
         "label": "No provider jobs",
         "source_job_id": None,
+        "execution_mode": None,
+        "provider_family": None,
         "artifact_uri": None,
         "artifact_checksum": None,
         "artifact_media_type": None,
@@ -275,6 +277,8 @@ def test_live_provider_budget_gates_without_paid_calls(tmp_path, monkeypatch):
     assert attached_summary.status == "artifact_attached"
     assert attached_summary.label == "Artifact attached"
     assert attached_summary.source_job_id == attached.jobs[-1].job_id
+    assert attached_summary.execution_mode == "live"
+    assert attached_summary.provider_family == "krea"
     assert attached_summary.artifact_uri == "https://cdn.example.test/mm-asset.mp4"
     assert attached_summary.artifact_checksum == "sha256:abcdef123456"
     assert attached_summary.artifact_media_type == "video/mp4"

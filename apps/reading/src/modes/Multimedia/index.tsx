@@ -802,6 +802,16 @@ export default function Multimedia() {
                                 {asset.provider_readiness.artifact_media_type}
                               </span>
                             )}
+                            {asset.provider_readiness.execution_mode && (
+                              <span className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">
+                                {asset.provider_readiness.execution_mode}
+                              </span>
+                            )}
+                            {asset.provider_readiness.provider_family && (
+                              <span className="font-mono text-[11px] text-shadow-2 dark:text-moonlight">
+                                {asset.provider_readiness.provider_family}
+                              </span>
+                            )}
                             {asset.provider_readiness.artifact_checksum && (
                               <span className="max-w-full truncate font-mono text-[11px] text-shadow-2 dark:text-moonlight">
                                 {asset.provider_readiness.artifact_checksum}

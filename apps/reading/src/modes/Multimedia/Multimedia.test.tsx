@@ -223,6 +223,8 @@ beforeEach(() => {
           status: "manual_attach_ready",
           label: "Manual attach ready",
           source_job_id: "job-mm-1-0004",
+          execution_mode: null,
+          provider_family: null,
           artifact_uri: null,
           artifact_checksum: null,
           artifact_media_type: null,
@@ -244,6 +246,8 @@ beforeEach(() => {
           status: "artifact_attached",
           label: "Artifact attached",
           source_job_id: "job-mm-2-0004",
+          execution_mode: "live",
+          provider_family: "krea",
           artifact_uri: "https://cdn.example.test/mm-2.mp4",
           artifact_checksum: "sha256:2222abcd",
           artifact_media_type: "video/mp4",
@@ -265,6 +269,8 @@ beforeEach(() => {
           status: "artifact_rejected",
           label: "Artifact rejected",
           source_job_id: "job-mm-3-0005",
+          execution_mode: null,
+          provider_family: null,
           artifact_uri: null,
           artifact_checksum: null,
           artifact_media_type: null,
@@ -424,6 +430,8 @@ describe("Multimedia workstation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Attached 1" }));
     const persistedAssets = screen.getByTestId("multimedia-persisted-assets");
     expect(within(persistedAssets).getByText("video/mp4")).toBeTruthy();
+    expect(within(persistedAssets).getByText("live")).toBeTruthy();
+    expect(within(persistedAssets).getByText("krea")).toBeTruthy();
     expect(within(persistedAssets).getByText("sha256:2222abcd")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Open" }).getAttribute("href")).toBe(
       "https://cdn.example.test/mm-2.mp4",
