@@ -1781,6 +1781,7 @@ function JobPanel({
     { label: "Provider route", value: liveReviewValue("Provider route") },
     { label: "Execution boundary", value: liveReviewValue("Worker state") },
   ];
+  const liveSpendReviewKey = liveSpendReview.map((item) => `${item.label}:${item.value}`).join("|");
   const activationChecklistKey = activationChecklist.map((item) => `${item.label}:${item.value}`).join("|");
   const artifactJob = jobs.find((job) => job.job_id === artifactJobId);
   const validationHints =
@@ -1858,6 +1859,10 @@ function JobPanel({
   useEffect(() => {
     setQueueAuditCopied(false);
   }, [queueAuditFeedback]);
+
+  useEffect(() => {
+    setLiveReviewCopied(false);
+  }, [liveSpendReviewKey]);
 
   useEffect(() => {
     setActivationChecklistCopied(false);

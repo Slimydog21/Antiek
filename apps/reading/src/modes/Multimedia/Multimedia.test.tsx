@@ -1157,6 +1157,13 @@ describe("Multimedia workstation", () => {
     );
     expect(within(liveSpendReview).getByRole("button", { name: "Review copied" })).toBeTruthy();
 
+    fireEvent.change(screen.getByLabelText("Budget"), { target: { value: "76" } });
+    expect(within(liveSpendReview).getByText("$76.00 cap")).toBeTruthy();
+    await waitFor(() => expect(within(liveSpendReview).getByRole("button", { name: "Copy review" })).toBeTruthy());
+    expect(within(liveSpendReview).queryByRole("button", { name: "Review copied" })).toBeNull();
+    fireEvent.change(screen.getByLabelText("Budget"), { target: { value: "75" } });
+    expect(within(liveSpendReview).getByText("$75.00 cap")).toBeTruthy();
+
     fireEvent.click(screen.getByRole("button", { name: "Queue live job" }));
 
     await waitFor(() =>
