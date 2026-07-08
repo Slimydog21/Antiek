@@ -3,6 +3,8 @@ import { API_BASE, apiFetch } from "../lib/api";
 export type MultimediaMode = "video" | "audio" | "hybrid";
 export type MultimediaRoutePolicy = "cheapest" | "balanced" | "highest_quality";
 export type MultimediaKind = "information_video" | "documentary_video" | "audio_experience";
+export type MultimediaJobKind = "render" | "steering" | "hardening" | "provider_execution";
+export type MultimediaJobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "partial";
 
 export interface CreateMultimediaDraftRequest {
   topic: string;
@@ -26,6 +28,8 @@ export interface MultimediaAssetSummary {
   route_policy: MultimediaRoutePolicy;
   estimated_cost_usd: number;
   hardening_status: string | null;
+  latest_job_status: MultimediaJobStatus | null;
+  latest_job_kind: MultimediaJobKind | null;
 }
 
 export interface MultimediaAssetList {
@@ -65,6 +69,25 @@ export interface MultimediaAssetRecord {
   style: string | null;
   hardening_report: MultimediaHardeningReport | null;
   latest_steering_intent: unknown | null;
+  jobs: MultimediaJobRecord[];
+}
+
+export interface MultimediaJobRecord {
+  job_id: string;
+  asset_id: string;
+  revision_id: string;
+  sequence: number;
+  kind: MultimediaJobKind;
+  status: MultimediaJobStatus;
+  progress_percent: number;
+  message: string;
+  error_code: string | null;
+  retryable: boolean | null;
+}
+
+export interface MultimediaJobList {
+  jobs: MultimediaJobRecord[];
+  count: number;
 }
 
 // The API serializes `gates` only; failed_gate_ids/manual_gate_ids are plain
@@ -100,6 +123,13 @@ export async function getMultimediaAsset(assetId: string): Promise<MultimediaAss
   if (resp.status === 404) throw new Error("multimedia_asset_not_found");
   if (!resp.ok) throw new Error(`GET /multimedia/assets/{id}: HTTP ${resp.status}`);
   return (await resp.json()) as MultimediaAssetRecord;
+}
+
+export async function listMultimediaJobs(assetId: string): Promise<MultimediaJobList> {
+  const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/jobs`);
+  if (resp.status === 404) throw new Error("multimedia_asset_not_found");
+  if (!resp.ok) throw new Error(`GET /multimedia/assets/{id}/jobs: HTTP ${resp.status}`);
+  return (await resp.json()) as MultimediaJobList;
 }
 
 export async function approveMultimediaDryRun(assetId: string): Promise<MultimediaAssetRecord> {

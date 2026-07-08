@@ -13,6 +13,7 @@ from substrate.multimedia.read_model import (
     MultimediaAssetList,
     MultimediaAssetRecord,
     MultimediaAssetStore,
+    MultimediaJobList,
     SteeringRequest,
 )
 
@@ -38,6 +39,14 @@ def list_multimedia_assets() -> MultimediaAssetList:
 def get_multimedia_asset(asset_id: str) -> MultimediaAssetRecord:
     try:
         return get_store().get(asset_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
+
+
+@multimedia_router.get("/assets/{asset_id}/jobs", response_model=MultimediaJobList)
+def list_multimedia_jobs(asset_id: str) -> MultimediaJobList:
+    try:
+        return get_store().list_jobs(asset_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
 
