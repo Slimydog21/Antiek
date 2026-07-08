@@ -50,6 +50,14 @@ from .provider_router import (
     ProviderUnavailable,
     route_media_request,
 )
+from .read_model import (
+    CreateMultimediaDraftRequest,
+    MultimediaAssetList,
+    MultimediaAssetRecord,
+    MultimediaAssetStore,
+    MultimediaAssetSummary,
+    SteeringRequest,
+)
 from .steering import (
     RevisionPlan,
     SegmentReuse,
@@ -149,4 +157,11 @@ __all__ = [
     "MultimediaHardeningReport",
     "ShipStatus",
     "evaluate_multimedia_asset",
+    # SPR-09 API persistence/read-model
+    "CreateMultimediaDraftRequest",
+    "MultimediaAssetList",
+    "MultimediaAssetRecord",
+    "MultimediaAssetStore",
+    "MultimediaAssetSummary",
+    "SteeringRequest",
 ]
