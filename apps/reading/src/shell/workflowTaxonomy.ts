@@ -501,6 +501,16 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     sharedReason: "Meta-navigation over the whole app.",
   },
   {
+    id: "Multimedia",
+    workflow: "shared",
+    label: "Multimedia",
+    blurb: "Plan and steer grounded audio/video explainers before paid media generation.",
+    built: true,
+    route: "/multimedia",
+    sharedReason:
+      "Generated information media composes Research, Read, Write, and Speak assets; routed as a cross-workflow product surface until the global workflow model is expanded.",
+  },
+  {
     id: "Loop3",
     workflow: "shared",
     label: "Loop 3 checklist",
