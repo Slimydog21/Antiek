@@ -1201,6 +1201,15 @@ export default function Multimedia() {
                             >
                               {copiedRejectedAuditAssetId === asset.asset_id ? "Audit copied" : "Copy audit"}
                             </button>
+                            {asset.provider_readiness.source_job_id && (
+                              <button
+                                type="button"
+                                onClick={() => void copyPersistedSourceJobId(asset)}
+                                className="rounded-md border border-rule bg-ice-0 px-3 py-1.5 font-mono text-[11px] font-semibold text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
+                              >
+                                {copiedSourceJobAssetId === asset.asset_id ? "Job copied" : "Copy job"}
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => reopenAssetForAttachment(asset)}

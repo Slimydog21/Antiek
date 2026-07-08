@@ -646,6 +646,11 @@ describe("Multimedia workstation", () => {
     );
     expect(screen.getByRole("button", { name: "Audit copied" })).toBeTruthy();
 
+    fireEvent.click(screen.getByRole("button", { name: "Copy job" }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("job-mm-3-0005"));
+    expect(screen.getByRole("button", { name: "Job copied" })).toBeTruthy();
+
     fireEvent.change(screen.getByLabelText("Artifact URL"), { target: { value: "https://cdn.example.test/stale.mp4" } });
     fireEvent.change(screen.getByLabelText("Checksum"), { target: { value: "sha256:stale" } });
     fireEvent.change(screen.getByLabelText("Media type"), { target: { value: "audio/mpeg" } });
