@@ -630,6 +630,9 @@ describe("Multimedia workstation", () => {
     expect(within(persistedAssets).getByText("Manual review required before publish/export")).toBeTruthy();
     expect(within(persistedAssets).getByText("Not ready for public export")).toBeTruthy();
     expect(within(persistedAssets).getByText("Manual review + rights clearance")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Review audit")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Review proof")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Manual review notes + rights clearance")).toBeTruthy();
     expect(within(persistedAssets).getAllByText("Provider").length).toBeGreaterThan(0);
     expect(within(persistedAssets).getAllByText("Execution mode").length).toBeGreaterThan(0);
     expect(within(persistedAssets).getByText("Required before export")).toBeTruthy();
@@ -688,6 +691,8 @@ describe("Multimedia workstation", () => {
           "Review gate: Manual review required before publish/export",
           "Export decision: Not ready for public export",
           "Required evidence: Manual review + rights clearance",
+          "Review audit: Not run in app",
+          "Review proof: Manual review notes + rights clearance",
           "Artifact URI: https://cdn.example.test/mm-2.mp4",
           "Checksum: sha256:2222abcd",
           "Request route: Highest quality",
@@ -1594,6 +1599,9 @@ describe("Multimedia workstation", () => {
     expect(within(jobPanel).getByText("Manual review required before publish/export")).toBeTruthy();
     expect(within(jobPanel).getAllByText("Not ready for public export").length).toBeGreaterThan(0);
     expect(within(jobPanel).getAllByText("Manual review + rights clearance").length).toBeGreaterThan(0);
+    expect(within(jobPanel).getAllByText("Review audit").length).toBeGreaterThan(0);
+    expect(within(jobPanel).getAllByText("Review proof").length).toBeGreaterThan(0);
+    expect(within(jobPanel).getAllByText("Manual review notes + rights clearance").length).toBeGreaterThan(0);
     expect(within(jobPanel).getByText("Required before export")).toBeTruthy();
     expect(within(jobPanel).getByText("Required before public use")).toBeTruthy();
     expect(within(jobPanel).getByText("No export or publish action available")).toBeTruthy();
@@ -1639,6 +1647,8 @@ describe("Multimedia workstation", () => {
           "Review gate: Manual review required before publish/export",
           "Export decision: Not ready for public export",
           "Required evidence: Manual review + rights clearance",
+          "Review audit: Not run in app",
+          "Review proof: Manual review notes + rights clearance",
           "Artifact URI: https://cdn.example.test/mm-1-v2.mp4",
           "Checksum: sha256:fedcba654321",
           "Budget gate: $88.00 cap",
