@@ -1485,6 +1485,8 @@ describe("Multimedia workstation", () => {
         [
           "Artifact: video/mp4",
           "Source job: job-mm-1-0004",
+          "Provider: krea",
+          "Execution mode: live",
           "Review gate: Manual review required before publish/export",
           "Export decision: Not ready for public export",
           "Required evidence: Manual review + rights clearance",

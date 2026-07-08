@@ -1886,6 +1886,8 @@ function JobPanel({
   const jobExportReviewItems = (job: MultimediaJobRecord): PersistedQueuedAuditItem[] => [
     { label: "Artifact", value: job.artifact_media_type ?? "provider artifact" },
     { label: "Source job", value: job.job_id },
+    { label: "Provider", value: job.provider_family ?? "unavailable" },
+    { label: "Execution mode", value: job.execution_mode },
     { label: "Review gate", value: "Manual review required before publish/export" },
     ...buildExportDecisionItems(),
     { label: "Artifact URI", value: job.artifact_uri ?? "unavailable" },
