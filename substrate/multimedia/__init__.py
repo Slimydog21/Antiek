@@ -12,6 +12,14 @@ from .audio_assembly import (
     ChapterAudio,
     assemble_audio_experience,
 )
+from .hardening import (
+    GateFinding,
+    GateResult,
+    GateStatus,
+    MultimediaHardeningReport,
+    ShipStatus,
+    evaluate_multimedia_asset,
+)
 from .narration import (
     NarrationParagraph,
     normalize_line,
@@ -134,4 +142,11 @@ __all__ = [
     "build_revision_asset",
     "parse_steering_prompt",
     "plan_revision",
+    # SPR-08 evaluation + hardening
+    "GateFinding",
+    "GateResult",
+    "GateStatus",
+    "MultimediaHardeningReport",
+    "ShipStatus",
+    "evaluate_multimedia_asset",
 ]
