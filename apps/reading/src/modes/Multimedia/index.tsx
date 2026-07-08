@@ -1839,7 +1839,11 @@ function JobPanel({
     { label: "Provider route", value: activeLiveRouteValue },
     { label: "Execution boundary", value: liveReviewValue("Worker state") },
   ];
-  const hasPositiveBudget = !liveReviewValue("Budget cap").includes("Enter positive budget");
+  const currentHasPositiveBudget = !liveReviewValue("Budget cap").includes("Enter positive budget");
+  const hasPositiveBudget =
+    activeLiveJob && typeof activeLiveJob.live_request_max_budget_usd === "number"
+      ? activeLiveJob.live_request_max_budget_usd > 0
+      : currentHasPositiveBudget;
   const hasSpendAcknowledgement = liveReviewValue("Acknowledgement") === "Spend acknowledged";
   const hasAttachTarget = artifactJobId.trim().length > 0;
   const activationHandoffReady = Boolean(activeLiveJob && hasPositiveBudget && hasSpendAcknowledgement && hasAttachTarget);

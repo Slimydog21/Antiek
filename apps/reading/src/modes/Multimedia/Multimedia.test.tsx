@@ -1468,6 +1468,12 @@ describe("Multimedia workstation", () => {
     expect(within(activationHandoff).queryByRole("button", { name: "Handoff copied" })).toBeNull();
     expect(within(activationPacket).getByRole("button", { name: "Copy activation packet" })).toBeTruthy();
     expect(within(activationPacket).queryByRole("button", { name: "Packet copied" })).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Budget"), { target: { value: "0" } });
+    expect(within(liveSpendReview).getByText("Enter positive budget")).toBeTruthy();
+    expect(within(activationDecision).getByText("Ready for separate worker handoff")).toBeTruthy();
+    expect(within(activationDecision).getByText("Queued job + acknowledged budget")).toBeTruthy();
+    expect(within(activationBlockers).getAllByText("$75.00 cap").length).toBeGreaterThan(0);
   });
 
   it("surfaces attached provider artifacts with open, download, and copy actions", async () => {
