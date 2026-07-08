@@ -1241,6 +1241,23 @@ describe("Multimedia workstation", () => {
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://cdn.example.test/mm-1.mp4"));
     expect(within(jobPanel).getByRole("button", { name: "Copied" })).toBeTruthy();
 
+    mockListJobs.mockResolvedValueOnce({
+      jobs: artifactProviderRecord.jobs.map((job) =>
+        job.job_id === "job-mm-1-0004"
+          ? {
+              ...job,
+              artifact_uri: "https://cdn.example.test/mm-1-v2.mp4",
+              artifact_checksum: "sha256:fedcba654321",
+            }
+          : job,
+      ),
+      count: artifactProviderRecord.jobs.length,
+    });
+    fireEvent.click(within(jobPanel).getByRole("button", { name: "Refresh jobs" }));
+    await waitFor(() => expect(within(jobPanel).getAllByText("https://cdn.example.test/mm-1-v2.mp4").length).toBeGreaterThan(0));
+    expect(within(jobPanel).getByRole("button", { name: "Copy link" })).toBeTruthy();
+    expect(within(jobPanel).queryByRole("button", { name: "Copied" })).toBeNull();
+
     fireEvent.click(within(jobPanel).getByRole("button", { name: "Copy export review" }));
 
     await waitFor(() =>
@@ -1249,8 +1266,8 @@ describe("Multimedia workstation", () => {
           "Artifact: video/mp4",
           "Source job: job-mm-1-0004",
           "Review gate: Manual review required before publish/export",
-          "Artifact URI: https://cdn.example.test/mm-1.mp4",
-          "Checksum: sha256:abcdef123456",
+          "Artifact URI: https://cdn.example.test/mm-1-v2.mp4",
+          "Checksum: sha256:fedcba654321",
           "Budget gate: $50.00 cap",
           "Provider route: Balanced / krea",
           "Dry-run revision: rev-1",
