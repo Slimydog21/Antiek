@@ -1092,7 +1092,7 @@ describe("Multimedia workstation", () => {
     expect(screen.getByRole("button", { name: "Readiness copied" })).toBeTruthy();
     const activationChecklist = screen.getByTestId("multimedia-live-activation-checklist");
     expect(within(activationChecklist).getByText("Budget gate")).toBeTruthy();
-    expect(within(activationChecklist).getByText("$50.00 cap")).toBeTruthy();
+    expect(within(activationChecklist).getAllByText("$50.00 cap").length).toBeGreaterThan(0);
     expect(within(activationChecklist).getByText("Operator acknowledgement")).toBeTruthy();
     expect(within(activationChecklist).getByText("Acknowledgement required")).toBeTruthy();
     expect(within(activationChecklist).getByText("Dry-run revision")).toBeTruthy();
@@ -1146,6 +1146,16 @@ describe("Multimedia workstation", () => {
     expect(within(activationDecision).getByText("Required evidence")).toBeTruthy();
     expect(within(activationDecision).getByText("Queue live job first")).toBeTruthy();
     expect(within(activationDecision).getByText("No paid provider runs from this screen")).toBeTruthy();
+    const activationBlockers = screen.getByTestId("multimedia-live-activation-blockers");
+    expect(within(activationBlockers).getByText("Queued live job")).toBeTruthy();
+    expect(within(activationBlockers).getByText("Missing")).toBeTruthy();
+    expect(within(activationBlockers).getByText("Budget")).toBeTruthy();
+    expect(within(activationBlockers).getAllByText("$50.00 cap").length).toBeGreaterThan(0);
+    expect(within(activationBlockers).getByText("Spend acknowledgement")).toBeTruthy();
+    expect(within(activationBlockers).getByText("Required")).toBeTruthy();
+    expect(within(activationBlockers).getByText("Manual attach target")).toBeTruthy();
+    expect(within(activationBlockers).getByText("Select queued job")).toBeTruthy();
+    expect(within(activationBlockers).getByText("Separate step required")).toBeTruthy();
     const activationPacket = screen.getByTestId("multimedia-live-activation-packet");
     expect(within(activationPacket).getByText("Evidence bundle")).toBeTruthy();
     expect(within(activationPacket).getByText("Readiness + spend + queue")).toBeTruthy();
@@ -1181,6 +1191,12 @@ describe("Multimedia workstation", () => {
           "Decision: Not ready for worker handoff",
           "Required evidence: Queue live job first",
           "No-spend boundary: No paid provider runs from this screen",
+          "Activation blockers",
+          "Queued live job: Missing",
+          "Budget: $50.00 cap",
+          "Spend acknowledgement: Required",
+          "Manual attach target: Select queued job",
+          "Worker activation: Separate step required",
           "Operator next step: Review this packet before enabling a live provider worker.",
           "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
           "Queued request audit: No queued live request",
@@ -1252,6 +1268,9 @@ describe("Multimedia workstation", () => {
     expect(within(readiness).getByText("Pending")).toBeTruthy();
     expect(within(activationDecision).getByText("Ready for separate worker handoff")).toBeTruthy();
     expect(within(activationDecision).getByText("Queued job + acknowledged budget")).toBeTruthy();
+    expect(within(activationBlockers).getAllByText("job-mm-1-0001").length).toBeGreaterThanOrEqual(2);
+    expect(within(activationBlockers).getAllByText("$75.00 cap").length).toBeGreaterThan(0);
+    expect(within(activationBlockers).getByText("Acknowledged")).toBeTruthy();
     await waitFor(() => expect(screen.getByRole("button", { name: "Copy readiness" })).toBeTruthy());
     expect(screen.queryByRole("button", { name: "Readiness copied" })).toBeNull();
     const queueAudit = screen.getByTestId("multimedia-live-queue-audit");
@@ -1311,6 +1330,12 @@ describe("Multimedia workstation", () => {
           "Decision: Ready for separate worker handoff",
           "Required evidence: Queued job + acknowledged budget",
           "No-spend boundary: No paid provider runs from this screen",
+          "Activation blockers",
+          "Queued live job: job-mm-1-0001",
+          "Budget: $75.00 cap",
+          "Spend acknowledgement: Acknowledged",
+          "Manual attach target: job-mm-1-0001",
+          "Worker activation: Separate step required",
           "Operator next step: Review this packet before enabling a live provider worker.",
           "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
           "Queued request audit",

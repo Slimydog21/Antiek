@@ -1814,6 +1814,29 @@ function JobPanel({
     },
     { label: "No-spend boundary", value: "No paid provider runs from this screen", tone: "default" },
   ];
+  const activationBlockers: LiveSpendReviewItem[] = [
+    {
+      label: "Queued live job",
+      value: activeLiveJob ? activeLiveJob.job_id : "Missing",
+      tone: activeLiveJob ? "default" : "danger",
+    },
+    {
+      label: "Budget",
+      value: hasPositiveBudget ? liveReviewValue("Budget cap") : "Enter positive budget",
+      tone: hasPositiveBudget ? "default" : "danger",
+    },
+    {
+      label: "Spend acknowledgement",
+      value: hasSpendAcknowledgement ? "Acknowledged" : "Required",
+      tone: hasSpendAcknowledgement ? "default" : "danger",
+    },
+    {
+      label: "Manual attach target",
+      value: hasAttachTarget ? artifactJobId.trim() : "Select queued job",
+      tone: hasAttachTarget ? "default" : "danger",
+    },
+    { label: "Worker activation", value: "Separate step required", tone: "sun" },
+  ];
   const liveSpendReviewKey = liveSpendReview.map((item) => `${item.label}:${item.value}`).join("|");
   const activationChecklistKey = activationChecklist.map((item) => `${item.label}:${item.value}`).join("|");
   const readinessKey = readiness.map((item) => `${item.label}:${item.value}`).join("|");
@@ -1827,6 +1850,8 @@ function JobPanel({
     ...activationChecklist.map((item) => `${item.label}: ${item.value}`),
     "Activation decision",
     ...activationDecision.map((item) => `${item.label}: ${item.value}`),
+    "Activation blockers",
+    ...activationBlockers.map((item) => `${item.label}: ${item.value}`),
     "Operator next step: Review this packet before enabling a live provider worker.",
     "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
     queueAuditFeedback ? "Queued request audit" : "Queued request audit: No queued live request",
@@ -2041,6 +2066,17 @@ function JobPanel({
             <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Activation decision</p>
             <dl className="mt-2 grid grid-cols-1 gap-1.5">
               {activationDecision.map((item) => (
+                <div key={item.label} className="flex items-center justify-between gap-2 text-[12px]">
+                  <dt className="text-shadow-1 dark:text-moonlight">{item.label}</dt>
+                  <dd className="text-right">
+                    <LemonTag colour={item.tone}>{item.value}</LemonTag>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+            <p className="mt-3 font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Handoff blockers</p>
+            <dl className="mt-2 grid grid-cols-1 gap-1.5" data-testid="multimedia-live-activation-blockers">
+              {activationBlockers.map((item) => (
                 <div key={item.label} className="flex items-center justify-between gap-2 text-[12px]">
                   <dt className="text-shadow-1 dark:text-moonlight">{item.label}</dt>
                   <dd className="text-right">
