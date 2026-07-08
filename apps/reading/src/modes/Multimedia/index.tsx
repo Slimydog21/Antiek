@@ -1818,18 +1818,27 @@ function JobPanel({
     canAttach && artifactJobId.trim().length > 0 && artifactUri.trim().length > 0 && artifactChecksum.trim().length > 0 && artifactMediaType.trim().length > 0;
   const readiness = providerReadinessSummary(jobs, artifactJobId);
   const liveReviewValue = (label: string) => liveSpendReview.find((item) => item.label === label)?.value ?? "Unavailable";
-  const activationChecklist = [
-    { label: "Budget gate", value: liveReviewValue("Budget cap") },
-    { label: "Operator acknowledgement", value: liveReviewValue("Acknowledgement") },
-    { label: "Dry-run revision", value: liveReviewValue("Dry-run revision") },
-    { label: "Provider route", value: liveReviewValue("Provider route") },
-    { label: "Execution boundary", value: liveReviewValue("Worker state") },
-  ];
   const activeLiveJob = jobs
     .filter((job) => job.kind === "provider_execution" && job.execution_mode === "live_requested")
     .slice()
     .reverse()
     .find((job) => job.status === "queued" || job.status === "running");
+  const activeLiveBudgetValue =
+    activeLiveJob && typeof activeLiveJob.live_request_max_budget_usd === "number"
+      ? formatPersistedBudgetCap(activeLiveJob.live_request_max_budget_usd)
+      : liveReviewValue("Budget cap");
+  const activeLiveRouteValue =
+    activeLiveJob && activeLiveJob.live_request_route_policy
+      ? `${TIER_COPY[activeLiveJob.live_request_route_policy].label} / ${activeLiveJob.provider_family ?? "unavailable"}`
+      : liveReviewValue("Provider route");
+  const activeLiveRevisionValue = activeLiveJob?.live_request_dry_run_revision_id ?? liveReviewValue("Dry-run revision");
+  const activationChecklist = [
+    { label: "Budget gate", value: activeLiveBudgetValue },
+    { label: "Operator acknowledgement", value: liveReviewValue("Acknowledgement") },
+    { label: "Dry-run revision", value: activeLiveRevisionValue },
+    { label: "Provider route", value: activeLiveRouteValue },
+    { label: "Execution boundary", value: liveReviewValue("Worker state") },
+  ];
   const hasPositiveBudget = !liveReviewValue("Budget cap").includes("Enter positive budget");
   const hasSpendAcknowledgement = liveReviewValue("Acknowledgement") === "Spend acknowledged";
   const hasAttachTarget = artifactJobId.trim().length > 0;
@@ -1864,7 +1873,7 @@ function JobPanel({
     },
     {
       label: "Budget",
-      value: hasPositiveBudget ? liveReviewValue("Budget cap") : "Enter positive budget",
+      value: hasPositiveBudget ? activeLiveBudgetValue : "Enter positive budget",
       tone: hasPositiveBudget ? "default" : "danger",
     },
     {

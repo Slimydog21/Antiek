@@ -1309,6 +1309,10 @@ describe("Multimedia workstation", () => {
     expect(within(activationBlockers).getAllByText("job-mm-1-0001").length).toBeGreaterThanOrEqual(2);
     expect(within(activationBlockers).getAllByText("$75.00 cap").length).toBeGreaterThan(0);
     expect(within(activationBlockers).getByText("Acknowledged")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Budget"), { target: { value: "76" } });
+    expect(within(liveSpendReview).getByText("$76.00 cap")).toBeTruthy();
+    expect(within(activationChecklist).getAllByText("$75.00 cap").length).toBeGreaterThan(0);
+    expect(within(activationBlockers).getAllByText("$75.00 cap").length).toBeGreaterThan(0);
     await waitFor(() => expect(within(activationHandoff).getByRole("button", { name: "Copy handoff" })).toBeTruthy());
     expect(within(activationHandoff).queryByRole("button", { name: "Handoff copied" })).toBeNull();
     fireEvent.click(within(activationHandoff).getByRole("button", { name: "Copy handoff" }));
@@ -1409,7 +1413,7 @@ describe("Multimedia workstation", () => {
           "Artifact state: Pending",
           "Live spend review",
           "Spend boundary: No paid worker runs from Queue live job",
-          "Budget cap: $75.00 cap",
+          "Budget cap: $76.00 cap",
           "Acknowledgement: Spend acknowledged",
           "Dry-run revision: rev-1",
           "Provider route: Balanced / krea",
@@ -1447,7 +1451,6 @@ describe("Multimedia workstation", () => {
     );
     expect(within(activationPacket).getByRole("button", { name: "Packet copied" })).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText("Budget"), { target: { value: "76" } });
     fireEvent.click(screen.getByRole("button", { name: "Queue live job" }));
     await waitFor(() =>
       expect(mockPrepare).toHaveBeenLastCalledWith("mm-1", {
