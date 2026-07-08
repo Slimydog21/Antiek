@@ -226,8 +226,46 @@ beforeEach(() => {
           artifact_media_type: null,
         },
       },
+      {
+        asset_id: "mm-2",
+        revision_id: "rev-1",
+        title: "Attached artifact documentary",
+        kind: "documentary_video",
+        status: "ready",
+        requested_duration_minutes: 20,
+        route_policy: "balanced",
+        estimated_cost_usd: 12,
+        hardening_status: null,
+        latest_job_status: "succeeded",
+        latest_job_kind: "provider_execution",
+        provider_readiness: {
+          status: "artifact_attached",
+          label: "Artifact attached",
+          source_job_id: "job-mm-2-0004",
+          artifact_media_type: "video/mp4",
+        },
+      },
+      {
+        asset_id: "mm-3",
+        revision_id: "rev-1",
+        title: "Rejected artifact documentary",
+        kind: "documentary_video",
+        status: "ready",
+        requested_duration_minutes: 20,
+        route_policy: "balanced",
+        estimated_cost_usd: 12,
+        hardening_status: null,
+        latest_job_status: "failed",
+        latest_job_kind: "provider_execution",
+        provider_readiness: {
+          status: "artifact_rejected",
+          label: "Artifact rejected",
+          source_job_id: "job-mm-3-0005",
+          artifact_media_type: null,
+        },
+      },
     ],
-    count: 1,
+    count: 3,
   });
   mockCreate.mockResolvedValue(draftRecord);
   mockGet.mockResolvedValue(draftRecord);
@@ -333,6 +371,27 @@ describe("Multimedia workstation", () => {
 
     await waitFor(() => expect(mockGet).toHaveBeenCalledWith("mm-1"));
     expect(await screen.findByText(/mm-1 \/ rev-1/)).toBeTruthy();
+  });
+
+  it("filters persisted assets by provider readiness", async () => {
+    render(<Multimedia />);
+
+    expect(await screen.findByText(/Persisted assets/)).toBeTruthy();
+    const persistedAssets = screen.getByTestId("multimedia-persisted-assets");
+    expect(within(persistedAssets).getByText("Attached artifact documentary")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Rejected artifact documentary")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Manual attach 1" }));
+
+    expect(within(persistedAssets).getByText(/The aircraft program/)).toBeTruthy();
+    expect(within(persistedAssets).queryByText("Attached artifact documentary")).toBeNull();
+    expect(within(persistedAssets).queryByText("Rejected artifact documentary")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Rejected 1" }));
+
+    expect(within(persistedAssets).queryByText(/The aircraft program/)).toBeNull();
+    expect(within(persistedAssets).queryByText("Attached artifact documentary")).toBeNull();
+    expect(within(persistedAssets).getByText("Rejected artifact documentary")).toBeTruthy();
   });
 
   it("applies steering and runs hardening through the API client", async () => {
@@ -450,7 +509,7 @@ describe("Multimedia workstation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Attach artifact" }));
 
     await waitFor(() => expect(mockAttachArtifact).toHaveBeenCalled());
-    expect(await screen.findByText("Artifact rejected")).toBeTruthy();
+    await waitFor(() => expect(screen.getAllByText("Artifact rejected").length).toBeGreaterThan(0));
     expect(within(screen.getByTestId("multimedia-provider-readiness")).getByText("Rejected")).toBeTruthy();
     expect(screen.getByText(/Check the artifact URL, sha256 checksum, and media type/)).toBeTruthy();
   });
@@ -460,7 +519,7 @@ describe("Multimedia workstation", () => {
 
     await reviewPlan();
 
-    expect(await screen.findByText("Artifact rejected")).toBeTruthy();
+    await waitFor(() => expect(screen.getAllByText("Artifact rejected").length).toBeGreaterThan(0));
     expect(screen.getByText(/Check the artifact URL, sha256 checksum, and media type/)).toBeTruthy();
     expect(screen.getByText("artifact_validation_failed")).toBeTruthy();
     expect(screen.queryByText("No artifact attached")).toBeNull();

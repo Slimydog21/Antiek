@@ -26,6 +26,7 @@ type Mode = "video" | "audio" | "hybrid";
 type RouteTier = "cheapest" | "balanced" | "highest_quality";
 type RenderState = "pending" | "rendering" | "partial" | "failed" | "over_budget" | "provider_unavailable";
 type PlayerView = "video" | "audio";
+type ReadinessFilter = "all" | "manual_attach_ready" | "artifact_attached" | "artifact_rejected";
 type PendingCommand =
   | "list"
   | "create"
@@ -131,6 +132,13 @@ const OMISSIONS = [
   "No manufacturer interviews are attached yet.",
   "Maintenance cost data is summarized, not source-complete.",
   "Generated visuals are barred from claiming archival truth.",
+];
+
+const READINESS_FILTERS: Array<{ value: ReadinessFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "manual_attach_ready", label: "Manual attach" },
+  { value: "artifact_attached", label: "Attached" },
+  { value: "artifact_rejected", label: "Rejected" },
 ];
 
 function estimateCost(minutes: number, mode: Mode, tier: RouteTier): string {
@@ -245,6 +253,7 @@ export default function Multimedia() {
   const [selectedSourceId, setSelectedSourceId] = useState(SOURCES[0].id);
   const [steer, setSteer] = useState("Make chapter 2 more concrete and add a voice note about turbofan reliability.");
   const [assets, setAssets] = useState<MultimediaAssetSummary[]>([]);
+  const [readinessFilter, setReadinessFilter] = useState<ReadinessFilter>("all");
   const [selectedRecord, setSelectedRecord] = useState<MultimediaAssetRecord | null>(null);
   const [pendingCommand, setPendingCommand] = useState<PendingCommand>(null);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -288,6 +297,13 @@ export default function Multimedia() {
   const canRunAssetCommand = Boolean(selectedRecord) && pendingCommand === null;
   const latestJob = selectedRecord?.jobs.at(-1) ?? null;
   const shouldPollJobs = latestJob?.kind === "provider_execution" && ["queued", "running"].includes(latestJob.status);
+  const visibleAssets = useMemo(
+    () =>
+      readinessFilter === "all"
+        ? assets
+        : assets.filter((asset) => asset.provider_readiness.status === readinessFilter),
+    [assets, readinessFilter],
+  );
 
   useEffect(() => {
     if (artifactJobId || !selectedRecord) return;
@@ -684,13 +700,41 @@ export default function Multimedia() {
             )}
 
             {assets.length > 0 && (
-              <section className="rounded-md border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1">
+              <section
+                className="rounded-md border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1"
+                data-testid="multimedia-persisted-assets"
+              >
                 <div className="flex items-center justify-between gap-3">
                   <p className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">Persisted assets</p>
                   <LemonTag>{assets.length}</LemonTag>
                 </div>
+                <div className="mt-2 flex flex-wrap gap-2" aria-label="Persisted asset readiness filters">
+                  {READINESS_FILTERS.map((filter) => {
+                    const count =
+                      filter.value === "all"
+                        ? assets.length
+                        : assets.filter((asset) => asset.provider_readiness.status === filter.value).length;
+                    const active = readinessFilter === filter.value;
+                    return (
+                      <button
+                        key={filter.value}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setReadinessFilter(filter.value)}
+                        className={
+                          "rounded-md border px-2.5 py-1 font-mono text-[11px] " +
+                          (active
+                            ? "border-sun bg-sun text-ink"
+                            : "border-rule bg-ice-1 text-shadow-1 dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-moonlight")
+                        }
+                      >
+                        {filter.label} {count}
+                      </button>
+                    );
+                  })}
+                </div>
                 <div className="mt-2 grid gap-2 md:grid-cols-2">
-                  {assets.map((asset) => (
+                  {visibleAssets.map((asset) => (
                     <button
                       key={`${asset.asset_id}-${asset.revision_id}`}
                       type="button"
@@ -719,6 +763,11 @@ export default function Multimedia() {
                     </button>
                   ))}
                 </div>
+                {visibleAssets.length === 0 && (
+                  <p className="mt-2 text-[12px] text-shadow-1 dark:text-moonlight" role="status">
+                    No persisted assets match this readiness filter.
+                  </p>
+                )}
               </section>
             )}
 
