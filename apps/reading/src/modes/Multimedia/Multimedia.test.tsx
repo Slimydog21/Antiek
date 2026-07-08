@@ -818,6 +818,102 @@ describe("Multimedia workstation", () => {
     );
     expect(screen.getByRole("button", { name: "Audit copied" })).toBeTruthy();
 
+    mockList.mockResolvedValueOnce({
+      assets: [
+        {
+          asset_id: "mm-1",
+          revision_id: "rev-1",
+          title: draftRecord.asset.title,
+          kind: "documentary_video",
+          status: "planned",
+          requested_duration_minutes: 30,
+          route_policy: "balanced",
+          estimated_cost_usd: 40.5,
+          hardening_status: null,
+          latest_job_status: null,
+          latest_job_kind: null,
+          provider_readiness: {
+            status: "manual_attach_ready",
+            label: "Manual attach ready",
+            source_job_id: "job-mm-1-0004",
+            execution_mode: null,
+            provider_family: null,
+            error_code: null,
+            message: null,
+            artifact_uri: null,
+            artifact_checksum: null,
+            artifact_media_type: null,
+          },
+        },
+        {
+          asset_id: "mm-2",
+          revision_id: "rev-1",
+          title: "Attached artifact documentary",
+          kind: "documentary_video",
+          status: "ready",
+          requested_duration_minutes: 20,
+          route_policy: "balanced",
+          estimated_cost_usd: 12,
+          hardening_status: null,
+          latest_job_status: "succeeded",
+          latest_job_kind: "provider_execution",
+          provider_readiness: {
+            status: "artifact_attached",
+            label: "Artifact attached",
+            source_job_id: "job-mm-2-0004",
+            execution_mode: "live",
+            provider_family: "krea",
+            live_request_max_budget_usd: 24,
+            live_request_route_policy: "highest_quality",
+            live_request_dry_run_revision_id: "rev-2",
+            error_code: null,
+            message: null,
+            artifact_uri: "https://cdn.example.test/mm-2-v2.mp4",
+            artifact_checksum: "sha256:3333abcd",
+            artifact_media_type: "video/mp4",
+          },
+        },
+        {
+          asset_id: "mm-3",
+          revision_id: "rev-1",
+          title: "Rejected artifact documentary",
+          kind: "documentary_video",
+          status: "ready",
+          requested_duration_minutes: 20,
+          route_policy: "balanced",
+          estimated_cost_usd: 12,
+          hardening_status: null,
+          latest_job_status: "failed",
+          latest_job_kind: "provider_execution",
+          provider_readiness: {
+            status: "artifact_rejected",
+            label: "Artifact rejected",
+            source_job_id: "job-mm-3-0005",
+            execution_mode: "live",
+            provider_family: "krea",
+            live_request_max_budget_usd: 14,
+            live_request_route_policy: "cheapest",
+            live_request_dry_run_revision_id: "rev-2",
+            error_code: "artifact_validation_failed",
+            message: "Provider artifact validation failed: artifact_checksum must be sha256-prefixed.",
+            artifact_uri: null,
+            artifact_checksum: null,
+            artifact_media_type: null,
+          },
+        },
+      ],
+      count: 3,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Review plan" }));
+    await waitFor(() =>
+      expect(
+        within(persistedAssets).getByText("Provider artifact validation failed: artifact_checksum must be sha256-prefixed."),
+      ).toBeTruthy(),
+    );
+    expect(within(persistedAssets).getByText("Cheapest / $14.00 cap / rev-2 / Separate worker activation required")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Copy audit" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Audit copied" })).toBeNull();
+
     fireEvent.click(screen.getByRole("button", { name: "Copy job" }));
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("job-mm-3-0005"));
@@ -833,11 +929,11 @@ describe("Multimedia workstation", () => {
     expect((screen.getByLabelText("Artifact URL") as HTMLInputElement).value).toBe("");
     expect((screen.getByLabelText("Checksum") as HTMLInputElement).value).toBe("");
     expect((screen.getByLabelText("Media type") as HTMLInputElement).value).toBe("video/mp4");
-    expect(screen.getByText("Artifact URL: http(s) URL with host")).toBeTruthy();
+    expect(screen.getByText("Checksum: sha256 digest")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Artifact URL"), { target: { value: "https://cdn.example.test/retry.mp4" } });
 
-    expect(screen.queryByText("Artifact URL: http(s) URL with host")).toBeNull();
+    expect(screen.queryByText("Checksum: sha256 digest")).toBeNull();
     expect(mockAttachArtifact).not.toHaveBeenCalled();
     expect(mockRunWorker).not.toHaveBeenCalled();
   });

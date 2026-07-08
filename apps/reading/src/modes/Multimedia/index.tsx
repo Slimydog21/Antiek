@@ -299,6 +299,20 @@ function buildAttachedArtifactAuditItems(asset: MultimediaAssetSummary): Persist
   ];
 }
 
+function buildRejectedArtifactAuditItems(asset: MultimediaAssetSummary): PersistedQueuedAuditItem[] {
+  const readiness = asset.provider_readiness;
+  return [
+    { label: "asset_id", value: asset.asset_id },
+    { label: "status", value: readiness.status },
+    ...(readiness.error_code ? [{ label: "error_code", value: readiness.error_code }] : []),
+    ...(readiness.message ? [{ label: "message", value: readiness.message }] : []),
+    ...(readiness.provider_family ? [{ label: "provider_family", value: readiness.provider_family }] : []),
+    ...(readiness.execution_mode ? [{ label: "execution_mode", value: readiness.execution_mode }] : []),
+    ...(readiness.source_job_id ? [{ label: "source_job_id", value: readiness.source_job_id }] : []),
+    ...buildArtifactLineageItems(asset),
+  ];
+}
+
 function buildAttachedArtifactExportReviewItems(asset: MultimediaAssetSummary): PersistedQueuedAuditItem[] {
   const readiness = asset.provider_readiness;
   return [
@@ -501,6 +515,14 @@ export default function Multimedia() {
         .join(";"),
     [assets],
   );
+  const rejectedArtifactAuditKey = useMemo(
+    () =>
+      assets
+        .filter((asset) => asset.provider_readiness.status === "artifact_rejected")
+        .map((asset) => `${asset.asset_id}:${buildRejectedArtifactAuditItems(asset).map((item) => `${item.label}:${item.value}`).join("|")}`)
+        .join(";"),
+    [assets],
+  );
   const persistedQueuedAuditKey = useMemo(
     () =>
       assets
@@ -541,6 +563,10 @@ export default function Multimedia() {
   useEffect(() => {
     setCopiedAttachedAuditAssetId(null);
   }, [attachedArtifactAuditKey]);
+
+  useEffect(() => {
+    setCopiedRejectedAuditAssetId(null);
+  }, [rejectedArtifactAuditKey]);
 
   useEffect(() => {
     setCopiedQueuedAuditAssetId(null);
@@ -677,18 +703,7 @@ export default function Multimedia() {
 
   async function copyRejectedArtifactAudit(asset: MultimediaAssetSummary) {
     if (!navigator.clipboard) return;
-    const readiness = asset.provider_readiness;
-    const lineageLines = buildArtifactLineageItems(asset).map((item) => `${item.label}: ${item.value}`);
-    const auditLines = [
-      `asset_id: ${asset.asset_id}`,
-      `status: ${readiness.status}`,
-      readiness.error_code ? `error_code: ${readiness.error_code}` : null,
-      readiness.message ? `message: ${readiness.message}` : null,
-      readiness.provider_family ? `provider_family: ${readiness.provider_family}` : null,
-      readiness.execution_mode ? `execution_mode: ${readiness.execution_mode}` : null,
-      readiness.source_job_id ? `source_job_id: ${readiness.source_job_id}` : null,
-      ...lineageLines,
-    ].filter((line): line is string => Boolean(line));
+    const auditLines = buildRejectedArtifactAuditItems(asset).map((item) => `${item.label}: ${item.value}`);
     await navigator.clipboard.writeText(auditLines.join("\n"));
     setCopiedRejectedAuditAssetId(asset.asset_id);
   }
