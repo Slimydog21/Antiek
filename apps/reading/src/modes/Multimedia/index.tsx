@@ -298,6 +298,19 @@ function buildAttachedArtifactAuditItems(asset: MultimediaAssetSummary): Persist
   ];
 }
 
+function buildAttachedArtifactExportReviewItems(asset: MultimediaAssetSummary): PersistedQueuedAuditItem[] {
+  const readiness = asset.provider_readiness;
+  return [
+    { label: "Artifact", value: readiness.artifact_media_type ?? "provider artifact" },
+    { label: "Source job", value: readiness.source_job_id ?? "unavailable" },
+    { label: "Review gate", value: "Manual review required before publish/export" },
+    { label: "Artifact URI", value: readiness.artifact_uri ?? "unavailable" },
+    { label: "Checksum", value: readiness.artifact_checksum ?? "unavailable" },
+    ...buildArtifactLineageItems(asset),
+    { label: "Publish boundary", value: "No public export or publish action has run" },
+  ];
+}
+
 function statusToRenderState(record: MultimediaAssetRecord | null): RenderState {
   if (!record) return "pending";
   if (record.asset.status === "ready") return "partial";
@@ -424,6 +437,7 @@ export default function Multimedia() {
   const [copiedAssetId, setCopiedAssetId] = useState<string | null>(null);
   const [copiedSourceJobAssetId, setCopiedSourceJobAssetId] = useState<string | null>(null);
   const [copiedAttachedAuditAssetId, setCopiedAttachedAuditAssetId] = useState<string | null>(null);
+  const [copiedExportReviewAssetId, setCopiedExportReviewAssetId] = useState<string | null>(null);
   const [copiedRejectedAuditAssetId, setCopiedRejectedAuditAssetId] = useState<string | null>(null);
   const [copiedQueuedAuditAssetId, setCopiedQueuedAuditAssetId] = useState<string | null>(null);
   const [expandedArtifactAssetId, setExpandedArtifactAssetId] = useState<string | null>(null);
@@ -615,6 +629,13 @@ export default function Multimedia() {
     const auditLines = buildAttachedArtifactAuditItems(asset).map((item) => `${item.label}: ${item.value}`);
     await navigator.clipboard.writeText(auditLines.join("\n"));
     setCopiedAttachedAuditAssetId(asset.asset_id);
+  }
+
+  async function copyAttachedExportReview(asset: MultimediaAssetSummary) {
+    if (!navigator.clipboard) return;
+    const reviewLines = buildAttachedArtifactExportReviewItems(asset).map((item) => `${item.label}: ${item.value}`);
+    await navigator.clipboard.writeText(reviewLines.join("\n"));
+    setCopiedExportReviewAssetId(asset.asset_id);
   }
 
   async function copyRejectedArtifactAudit(asset: MultimediaAssetSummary) {
@@ -1080,6 +1101,26 @@ export default function Multimedia() {
                               <p className="mt-1 truncate font-mono text-shadow-2 dark:text-moonlight">
                                 Open, download, copy link, and copy audit are read-only actions; no provider worker is triggered.
                               </p>
+                              <div className="mt-2 border-t border-rule pt-2 dark:border-charcoal-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="font-mono text-shadow-2 dark:text-moonlight">Export review ready</p>
+                                  <button
+                                    type="button"
+                                    onClick={() => void copyAttachedExportReview(asset)}
+                                    className="rounded-md border border-rule bg-white px-2 py-1 font-mono text-[10px] font-semibold text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
+                                  >
+                                    {copiedExportReviewAssetId === asset.asset_id ? "Export review copied" : "Copy export review"}
+                                  </button>
+                                </div>
+                                <dl className="mt-2 grid gap-1">
+                                  {buildAttachedArtifactExportReviewItems(asset).map((item) => (
+                                    <div key={item.label} className="grid grid-cols-[108px_minmax(0,1fr)] gap-2">
+                                      <dt className="font-mono text-shadow-2 dark:text-moonlight">{item.label}</dt>
+                                      <dd className="truncate font-mono text-ink dark:text-bright">{item.value}</dd>
+                                    </div>
+                                  ))}
+                                </dl>
+                              </div>
                             </div>
                           )}
                           {asset.provider_readiness.status === "artifact_rejected" && asset.provider_readiness.message && (

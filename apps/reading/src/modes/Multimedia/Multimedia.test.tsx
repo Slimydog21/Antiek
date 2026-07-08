@@ -570,10 +570,10 @@ describe("Multimedia workstation", () => {
     expect(await screen.findByText(/Persisted assets/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Attached 1" }));
     const persistedAssets = screen.getByTestId("multimedia-persisted-assets");
-    expect(within(persistedAssets).getByText("video/mp4")).toBeTruthy();
+    expect(within(persistedAssets).getAllByText("video/mp4").length).toBeGreaterThan(0);
     expect(within(persistedAssets).getByText("live")).toBeTruthy();
     expect(within(persistedAssets).getByText("krea")).toBeTruthy();
-    expect(within(persistedAssets).getByText("sha256:2222abcd")).toBeTruthy();
+    expect(within(persistedAssets).getAllByText("sha256:2222abcd").length).toBeGreaterThan(0);
     expect(within(persistedAssets).getByText("Artifact attached and ready")).toBeTruthy();
     expect(
       within(persistedAssets).getByText("Review the attached video/mp4 from job-mm-2-0004 before publishing or exporting."),
@@ -581,6 +581,9 @@ describe("Multimedia workstation", () => {
     expect(
       within(persistedAssets).getByText("Open, download, copy link, and copy audit are read-only actions; no provider worker is triggered."),
     ).toBeTruthy();
+    expect(within(persistedAssets).getByText("Export review ready")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Manual review required before publish/export")).toBeTruthy();
+    expect(within(persistedAssets).getByText("No public export or publish action has run")).toBeTruthy();
     expect(screen.getByRole("link", { name: "Open" }).getAttribute("href")).toBe(
       "https://cdn.example.test/mm-2.mp4",
     );
@@ -621,18 +624,38 @@ describe("Multimedia workstation", () => {
     );
     expect(screen.getByRole("button", { name: "Audit copied" })).toBeTruthy();
 
+    fireEvent.click(screen.getByRole("button", { name: "Copy export review" }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        [
+          "Artifact: video/mp4",
+          "Source job: job-mm-2-0004",
+          "Review gate: Manual review required before publish/export",
+          "Artifact URI: https://cdn.example.test/mm-2.mp4",
+          "Checksum: sha256:2222abcd",
+          "Request route: Highest quality",
+          "Budget cap: $22.00 cap",
+          "Dry-run revision: rev-1",
+          "Activation boundary: Separate worker activation required",
+          "Publish boundary: No public export or publish action has run",
+        ].join("\n"),
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Export review copied" })).toBeTruthy();
+
     fireEvent.click(screen.getByRole("button", { name: "Details" }));
 
-    expect(within(persistedAssets).getByText("Artifact URI")).toBeTruthy();
-    expect(within(persistedAssets).getByText("https://cdn.example.test/mm-2.mp4")).toBeTruthy();
-    expect(within(persistedAssets).getByText("Source job")).toBeTruthy();
+    expect(within(persistedAssets).getAllByText("Artifact URI").length).toBeGreaterThan(0);
+    expect(within(persistedAssets).getAllByText("https://cdn.example.test/mm-2.mp4").length).toBeGreaterThan(0);
+    expect(within(persistedAssets).getAllByText("Source job").length).toBeGreaterThan(0);
     expect(within(persistedAssets).getByText("krea / live / video/mp4")).toBeTruthy();
-    expect(within(persistedAssets).getByText("Request route")).toBeTruthy();
-    expect(within(persistedAssets).getByText("Highest quality")).toBeTruthy();
-    expect(within(persistedAssets).getByText("$22.00 cap")).toBeTruthy();
-    expect(within(persistedAssets).getByText("rev-1")).toBeTruthy();
-    expect(within(persistedAssets).getByText("Activation boundary")).toBeTruthy();
-    expect(within(persistedAssets).getByText("Separate worker activation required")).toBeTruthy();
+    expect(within(persistedAssets).getAllByText("Request route").length).toBeGreaterThan(0);
+    expect(within(persistedAssets).getAllByText("Highest quality").length).toBeGreaterThan(0);
+    expect(within(persistedAssets).getAllByText("$22.00 cap").length).toBeGreaterThan(0);
+    expect(within(persistedAssets).getAllByText("rev-1").length).toBeGreaterThan(0);
+    expect(within(persistedAssets).getAllByText("Activation boundary").length).toBeGreaterThan(0);
+    expect(within(persistedAssets).getAllByText("Separate worker activation required").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Rejected 1" }));
     expect(within(persistedAssets).getAllByText("artifact_validation_failed")).toHaveLength(2);
@@ -684,6 +707,7 @@ describe("Multimedia workstation", () => {
 
     expect(screen.queryByText("Artifact URL: http(s) URL with host")).toBeNull();
     expect(mockAttachArtifact).not.toHaveBeenCalled();
+    expect(mockRunWorker).not.toHaveBeenCalled();
   });
 
   it("applies steering and runs hardening through the API client", async () => {
