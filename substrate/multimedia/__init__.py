@@ -1,9 +1,21 @@
 """Multimedia planning and generation substrate.
 
-SPR-02 starts with the plan-before-render layer. Provider adapters live in
-later sprints; importing this package must not require paid media credentials.
+SPR-02 starts with the plan-before-render layer; SPR-03 adds the provider router;
+SPR-04 adds chaptered audio assembly + a playback read-model. Provider adapters
+that spend money stay operator-gated; importing this package must not require paid
+media credentials (CI runs against the deterministic fake TTS).
 """
 
+from .audio_assembly import (
+    AudioExperience,
+    ChapterAudio,
+    assemble_audio_experience,
+)
+from .narration import (
+    NarrationParagraph,
+    normalize_line,
+    normalize_script,
+)
 from .planner import (
     ChapterPlan,
     CoverageSuggestion,
@@ -12,6 +24,13 @@ from .planner import (
     MultimediaPlanRequest,
     StoryboardScene,
     build_multimedia_plan,
+)
+from .playback import (
+    PlaybackChapter,
+    PlaybackReadModel,
+    RegenerationTarget,
+    SourceCard,
+    build_playback_read_model,
 )
 from .provider_router import (
     BudgetExceeded,
@@ -22,20 +41,46 @@ from .provider_router import (
     ProviderUnavailable,
     route_media_request,
 )
+from .tts import (
+    FakeTTSProvider,
+    TTSProvider,
+    TTSRequest,
+    TTSResult,
+    make_tts_provider,
+)
 
 __all__ = [
+    # SPR-02 planner
     "ChapterPlan",
     "CoverageSuggestion",
     "EvidenceChunk",
     "MultimediaPlan",
     "MultimediaPlanRequest",
     "StoryboardScene",
+    "build_multimedia_plan",
+    # SPR-03 provider router
     "BudgetExceeded",
     "KreaProviderAdapter",
     "MediaGenerationRequest",
     "ProviderExecutionRecord",
     "ProviderRoute",
     "ProviderUnavailable",
-    "build_multimedia_plan",
     "route_media_request",
+    # SPR-04 narration + TTS + assembly + playback
+    "NarrationParagraph",
+    "normalize_line",
+    "normalize_script",
+    "FakeTTSProvider",
+    "TTSProvider",
+    "TTSRequest",
+    "TTSResult",
+    "make_tts_provider",
+    "AudioExperience",
+    "ChapterAudio",
+    "assemble_audio_experience",
+    "PlaybackChapter",
+    "PlaybackReadModel",
+    "RegenerationTarget",
+    "SourceCard",
+    "build_playback_read_model",
 ]
