@@ -676,6 +676,8 @@ describe("Multimedia workstation", () => {
           "Budget cap: $22.00 cap",
           "Dry-run revision: rev-1",
           "Activation boundary: Separate worker activation required",
+          "Activation audit: Not run in app",
+          "Activation proof: Worker logs + manual artifact attach",
           "Copy action: Read-only; no provider worker triggered",
         ].join("\n"),
       ),

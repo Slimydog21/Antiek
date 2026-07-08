@@ -325,6 +325,7 @@ function buildAttachedArtifactAuditItems(asset: MultimediaAssetSummary): Persist
     { label: "Execution mode", value: readiness.execution_mode ?? "unavailable" },
     { label: "Source job", value: readiness.source_job_id ?? "unavailable" },
     ...buildArtifactLineageItems(asset),
+    ...buildProviderActivationAuditItems(),
     { label: "Copy action", value: "Read-only; no provider worker triggered" },
   ];
 }
