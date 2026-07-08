@@ -822,6 +822,11 @@ export default function Multimedia() {
                                   {asset.provider_readiness.provider_family}
                                 </span>
                               )}
+                              {asset.provider_readiness.error_code && (
+                                <span className="font-mono text-[11px] text-danger">
+                                  {asset.provider_readiness.error_code}
+                                </span>
+                              )}
                               {asset.provider_readiness.artifact_checksum && (
                                 <span className="max-w-full truncate font-mono text-[11px] text-shadow-2 dark:text-moonlight">
                                   {asset.provider_readiness.artifact_checksum}
@@ -863,6 +868,19 @@ export default function Multimedia() {
                                 </div>
                               )}
                             </dl>
+                          )}
+                          {asset.provider_readiness.status === "artifact_rejected" && asset.provider_readiness.message && (
+                            <div className="mx-3 mb-3 rounded-md border border-danger bg-danger/10 p-2 text-[11px] text-ink dark:text-bright">
+                              <p className="font-mono text-danger">{asset.provider_readiness.error_code ?? "artifact_rejected"}</p>
+                              <p className="mt-1 leading-snug text-shadow-1 dark:text-moonlight">{asset.provider_readiness.message}</p>
+                              {(asset.provider_readiness.provider_family || asset.provider_readiness.execution_mode || asset.provider_readiness.source_job_id) && (
+                                <p className="mt-1 truncate font-mono text-shadow-2 dark:text-moonlight">
+                                  {[asset.provider_readiness.provider_family, asset.provider_readiness.execution_mode, asset.provider_readiness.source_job_id]
+                                    .filter(Boolean)
+                                    .join(" / ")}
+                                </p>
+                              )}
+                            </div>
                           )}
                         </div>
                         {asset.provider_readiness.status === "manual_attach_ready" && !attachedNow && (

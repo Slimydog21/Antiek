@@ -225,6 +225,8 @@ beforeEach(() => {
           source_job_id: "job-mm-1-0004",
           execution_mode: null,
           provider_family: null,
+          error_code: null,
+          message: null,
           artifact_uri: null,
           artifact_checksum: null,
           artifact_media_type: null,
@@ -248,6 +250,8 @@ beforeEach(() => {
           source_job_id: "job-mm-2-0004",
           execution_mode: "live",
           provider_family: "krea",
+          error_code: null,
+          message: null,
           artifact_uri: "https://cdn.example.test/mm-2.mp4",
           artifact_checksum: "sha256:2222abcd",
           artifact_media_type: "video/mp4",
@@ -269,8 +273,10 @@ beforeEach(() => {
           status: "artifact_rejected",
           label: "Artifact rejected",
           source_job_id: "job-mm-3-0005",
-          execution_mode: null,
-          provider_family: null,
+          execution_mode: "live",
+          provider_family: "krea",
+          error_code: "artifact_validation_failed",
+          message: "Provider artifact validation failed: artifact_uri must be an http(s) URL with a host.",
           artifact_uri: null,
           artifact_checksum: null,
           artifact_media_type: null,
@@ -458,6 +464,12 @@ describe("Multimedia workstation", () => {
     expect(within(persistedAssets).getByText("krea / live / video/mp4")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Rejected 1" }));
+    expect(within(persistedAssets).getAllByText("artifact_validation_failed")).toHaveLength(2);
+    expect(
+      within(persistedAssets).getByText("Provider artifact validation failed: artifact_uri must be an http(s) URL with a host."),
+    ).toBeTruthy();
+    expect(within(persistedAssets).getByText("krea / live / job-mm-3-0005")).toBeTruthy();
+
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(mockGet).toHaveBeenCalledWith("mm-3"));
     expect(mockAttachArtifact).not.toHaveBeenCalled();
@@ -595,7 +607,7 @@ describe("Multimedia workstation", () => {
 
     await waitFor(() => expect(screen.getAllByText("Artifact rejected").length).toBeGreaterThan(0));
     expect(screen.getByText(/Check the artifact URL, sha256 checksum, and media type/)).toBeTruthy();
-    expect(screen.getByText("artifact_validation_failed")).toBeTruthy();
+    expect(screen.getAllByText("artifact_validation_failed").length).toBeGreaterThan(0);
     expect(screen.queryByText("No artifact attached")).toBeNull();
   });
 

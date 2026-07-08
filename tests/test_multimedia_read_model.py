@@ -146,6 +146,8 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
         "source_job_id": None,
         "execution_mode": None,
         "provider_family": None,
+        "error_code": None,
+        "message": None,
         "artifact_uri": None,
         "artifact_checksum": None,
         "artifact_media_type": None,
@@ -370,6 +372,13 @@ def test_provider_artifact_attachment_validates_shape_without_paid_calls(tmp_pat
     assert rejected.jobs[-1].provider_family == "krea"
     assert rejected.jobs[-1].error_code == "artifact_validation_failed"
     assert rejected.jobs[-1].artifact_uri is None
+    rejected_summary = store.list_assets().assets[0].provider_readiness
+    assert rejected_summary.status == "artifact_rejected"
+    assert rejected_summary.source_job_id == rejected.jobs[-1].job_id
+    assert rejected_summary.execution_mode == "live"
+    assert rejected_summary.provider_family == "krea"
+    assert rejected_summary.error_code == "artifact_validation_failed"
+    assert rejected_summary.message == rejected.jobs[-1].message
     assert "http(s) URL" in rejected.jobs[-1].message
     assert "sha256" in rejected.jobs[-1].message
     assert "type/subtype" in rejected.jobs[-1].message

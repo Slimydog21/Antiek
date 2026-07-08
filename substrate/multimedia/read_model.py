@@ -149,6 +149,8 @@ class ProviderReadinessSummary(_ReadModelBase):
     source_job_id: str | None = None
     execution_mode: ExecutionMode | None = None
     provider_family: str | None = None
+    error_code: str | None = None
+    message: str | None = None
     artifact_uri: str | None = None
     artifact_checksum: str | None = None
     artifact_media_type: str | None = None
@@ -685,6 +687,10 @@ def _provider_readiness_summary(jobs: tuple[MultimediaJobRecord, ...]) -> Provid
                 status="artifact_rejected",
                 label="Artifact rejected",
                 source_job_id=job.job_id,
+                execution_mode=job.execution_mode,
+                provider_family=job.provider_family,
+                error_code=job.error_code,
+                message=job.message,
             )
 
     for job in reversed(provider_jobs):
