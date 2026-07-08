@@ -191,6 +191,10 @@ function formatBudgetCap(value: string): string {
   return `$${parsed.toFixed(2)} cap`;
 }
 
+function formatPersistedBudgetCap(value: number | null | undefined): string {
+  return typeof value === "number" && Number.isFinite(value) ? `$${value.toFixed(2)} cap` : "unavailable";
+}
+
 function buildLiveSpendPreflight({
   maxBudgetUsd,
   operatorAck,
@@ -251,14 +255,17 @@ function buildQueueAuditFeedback(job: MultimediaJobRecord, preflight: LiveSpendP
 
 function buildPersistedQueuedAuditItems(asset: MultimediaAssetSummary): PersistedQueuedAuditItem[] {
   const readiness = asset.provider_readiness;
+  const routePolicy = readiness.live_request_route_policy ?? asset.route_policy;
   return [
     { label: "Asset", value: asset.asset_id },
     { label: "Queued job", value: readiness.source_job_id ?? "unavailable" },
     { label: "Status", value: readiness.status },
-    { label: "Route", value: TIER_COPY[asset.route_policy].label },
+    { label: "Route", value: TIER_COPY[routePolicy].label },
     { label: "Requested media", value: `${asset.requested_duration_minutes} min ${asset.kind.replace(/_/g, " ")}` },
     { label: "Provider", value: readiness.provider_family ?? "unavailable" },
     { label: "Execution mode", value: readiness.execution_mode ?? "unavailable" },
+    { label: "Budget cap", value: formatPersistedBudgetCap(readiness.live_request_max_budget_usd) },
+    { label: "Dry-run revision", value: readiness.live_request_dry_run_revision_id ?? "unavailable" },
     { label: "Worker state", value: "No paid worker consumed this job" },
   ];
 }
@@ -1031,7 +1038,8 @@ export default function Multimedia() {
                             <div className="mx-3 mb-3 rounded-md border border-sun bg-sun/10 p-2 text-[11px] text-ink dark:border-sun/80 dark:bg-sun/10 dark:text-bright">
                               <p className="font-mono text-shadow-2 dark:text-moonlight">Queued live request</p>
                               <p className="mt-1 truncate font-mono text-ink dark:text-bright">
-                                {asset.provider_readiness.source_job_id} / {TIER_COPY[asset.route_policy].label} /{" "}
+                                {asset.provider_readiness.source_job_id} /{" "}
+                                {TIER_COPY[asset.provider_readiness.live_request_route_policy ?? asset.route_policy].label} /{" "}
                                 {asset.requested_duration_minutes} min
                               </p>
                               {expandedQueuedAuditAssetId === asset.asset_id && (

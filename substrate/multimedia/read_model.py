@@ -134,6 +134,9 @@ class MultimediaJobRecord(_ReadModelBase):
     status: JobStatus
     execution_mode: ExecutionMode = "dry_run"
     provider_family: str | None = None
+    live_request_max_budget_usd: float | None = Field(default=None, gt=0)
+    live_request_route_policy: RoutePolicy | None = None
+    live_request_dry_run_revision_id: str | None = None
     artifact_uri: str | None = None
     artifact_checksum: str | None = None
     artifact_media_type: str | None = None
@@ -149,6 +152,9 @@ class ProviderReadinessSummary(_ReadModelBase):
     source_job_id: str | None = None
     execution_mode: ExecutionMode | None = None
     provider_family: str | None = None
+    live_request_max_budget_usd: float | None = None
+    live_request_route_policy: RoutePolicy | None = None
+    live_request_dry_run_revision_id: str | None = None
     error_code: str | None = None
     message: str | None = None
     artifact_uri: str | None = None
@@ -409,6 +415,9 @@ class MultimediaAssetStore:
             ),
             execution_mode="live_requested",
             provider_family=families,
+            live_request_max_budget_usd=request.max_budget_usd,
+            live_request_route_policy=request.route_policy,
+            live_request_dry_run_revision_id=request.dry_run_revision_id,
             retryable=True,
         )
 
@@ -425,6 +434,9 @@ class MultimediaAssetStore:
         artifact_uri: str | None = None,
         artifact_checksum: str | None = None,
         artifact_media_type: str | None = None,
+        live_request_max_budget_usd: float | None = None,
+        live_request_route_policy: RoutePolicy | None = None,
+        live_request_dry_run_revision_id: str | None = None,
         error_code: str | None = None,
         retryable: bool | None = None,
     ) -> MultimediaAssetRecord:
@@ -440,6 +452,9 @@ class MultimediaAssetStore:
             artifact_uri=artifact_uri,
             artifact_checksum=artifact_checksum,
             artifact_media_type=artifact_media_type,
+            live_request_max_budget_usd=live_request_max_budget_usd,
+            live_request_route_policy=live_request_route_policy,
+            live_request_dry_run_revision_id=live_request_dry_run_revision_id,
             error_code=error_code,
             retryable=retryable,
         )
@@ -497,6 +512,9 @@ class MultimediaAssetStore:
             message=f"Dry-run worker claimed {target.job_id}; no provider call has been made.",
             execution_mode="dry_run",
             provider_family=target.provider_family,
+            live_request_max_budget_usd=target.live_request_max_budget_usd,
+            live_request_route_policy=target.live_request_route_policy,
+            live_request_dry_run_revision_id=target.live_request_dry_run_revision_id,
             retryable=True,
         )
         completed = self._with_job(
@@ -507,6 +525,9 @@ class MultimediaAssetStore:
             message="Dry-run worker completed provider execution without Krea/TTS/video spend.",
             execution_mode="dry_run",
             provider_family=target.provider_family,
+            live_request_max_budget_usd=target.live_request_max_budget_usd,
+            live_request_route_policy=target.live_request_route_policy,
+            live_request_dry_run_revision_id=target.live_request_dry_run_revision_id,
             retryable=False,
         )
         self.save(completed)
@@ -549,6 +570,9 @@ class MultimediaAssetStore:
                 message=f"Provider artifact validation failed: {'; '.join(validation_problems)}.",
                 execution_mode="live",
                 provider_family=source.provider_family,
+                live_request_max_budget_usd=source.live_request_max_budget_usd,
+                live_request_route_policy=source.live_request_route_policy,
+                live_request_dry_run_revision_id=source.live_request_dry_run_revision_id,
                 error_code="artifact_validation_failed",
                 retryable=False,
             )
@@ -560,6 +584,9 @@ class MultimediaAssetStore:
             message=f"Provider artifact attached for {source.job_id} after validating {request.artifact_media_type}.",
             execution_mode="live",
             provider_family=source.provider_family,
+            live_request_max_budget_usd=source.live_request_max_budget_usd,
+            live_request_route_policy=source.live_request_route_policy,
+            live_request_dry_run_revision_id=source.live_request_dry_run_revision_id,
             artifact_uri=request.artifact_uri,
             artifact_checksum=request.artifact_checksum,
             artifact_media_type=request.artifact_media_type,
@@ -595,6 +622,9 @@ class MultimediaAssetStore:
         artifact_uri: str | None = None,
         artifact_checksum: str | None = None,
         artifact_media_type: str | None = None,
+        live_request_max_budget_usd: float | None = None,
+        live_request_route_policy: RoutePolicy | None = None,
+        live_request_dry_run_revision_id: str | None = None,
         error_code: str | None = None,
         retryable: bool | None = None,
     ) -> MultimediaAssetRecord:
@@ -608,6 +638,9 @@ class MultimediaAssetStore:
             status=status,
             execution_mode=execution_mode,
             provider_family=provider_family,
+            live_request_max_budget_usd=live_request_max_budget_usd,
+            live_request_route_policy=live_request_route_policy,
+            live_request_dry_run_revision_id=live_request_dry_run_revision_id,
             artifact_uri=artifact_uri,
             artifact_checksum=artifact_checksum,
             artifact_media_type=artifact_media_type,
@@ -676,6 +709,9 @@ def _provider_readiness_summary(jobs: tuple[MultimediaJobRecord, ...]) -> Provid
                 source_job_id=job.job_id,
                 execution_mode=job.execution_mode,
                 provider_family=job.provider_family,
+                live_request_max_budget_usd=job.live_request_max_budget_usd,
+                live_request_route_policy=job.live_request_route_policy,
+                live_request_dry_run_revision_id=job.live_request_dry_run_revision_id,
                 artifact_uri=job.artifact_uri,
                 artifact_checksum=job.artifact_checksum,
                 artifact_media_type=job.artifact_media_type,
@@ -689,6 +725,9 @@ def _provider_readiness_summary(jobs: tuple[MultimediaJobRecord, ...]) -> Provid
                 source_job_id=job.job_id,
                 execution_mode=job.execution_mode,
                 provider_family=job.provider_family,
+                live_request_max_budget_usd=job.live_request_max_budget_usd,
+                live_request_route_policy=job.live_request_route_policy,
+                live_request_dry_run_revision_id=job.live_request_dry_run_revision_id,
                 error_code=job.error_code,
                 message=job.message,
             )
@@ -699,6 +738,11 @@ def _provider_readiness_summary(jobs: tuple[MultimediaJobRecord, ...]) -> Provid
                 status="manual_attach_ready",
                 label="Manual attach ready",
                 source_job_id=job.job_id,
+                execution_mode=job.execution_mode,
+                provider_family=job.provider_family,
+                live_request_max_budget_usd=job.live_request_max_budget_usd,
+                live_request_route_policy=job.live_request_route_policy,
+                live_request_dry_run_revision_id=job.live_request_dry_run_revision_id,
             )
 
     for job in reversed(provider_jobs):

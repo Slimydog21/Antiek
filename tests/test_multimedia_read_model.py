@@ -146,6 +146,9 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
         "source_job_id": None,
         "execution_mode": None,
         "provider_family": None,
+        "live_request_max_budget_usd": None,
+        "live_request_route_policy": None,
+        "live_request_dry_run_revision_id": None,
         "error_code": None,
         "message": None,
         "artifact_uri": None,
@@ -223,6 +226,9 @@ def test_live_provider_budget_gates_without_paid_calls(tmp_path, monkeypatch):
     assert queued.jobs[-1].kind == "provider_execution"
     assert queued.jobs[-1].execution_mode == "live_requested"
     assert queued.jobs[-1].provider_family == "krea"
+    assert queued.jobs[-1].live_request_max_budget_usd == sufficient_budget
+    assert queued.jobs[-1].live_request_route_policy == "balanced"
+    assert queued.jobs[-1].live_request_dry_run_revision_id == approved.asset.revision_id
     assert queued.jobs[-1].artifact_uri is None
     assert queued.jobs[-1].artifact_checksum is None
     assert queued.jobs[-1].artifact_media_type is None
@@ -232,6 +238,11 @@ def test_live_provider_budget_gates_without_paid_calls(tmp_path, monkeypatch):
     assert queued_summary.status == "manual_attach_ready"
     assert queued_summary.label == "Manual attach ready"
     assert queued_summary.source_job_id == queued.jobs[-1].job_id
+    assert queued_summary.execution_mode == "live_requested"
+    assert queued_summary.provider_family == "krea"
+    assert queued_summary.live_request_max_budget_usd == sufficient_budget
+    assert queued_summary.live_request_route_policy == "balanced"
+    assert queued_summary.live_request_dry_run_revision_id == approved.asset.revision_id
 
     duplicate = store.prepare_live_execution(
         draft.asset.asset_id,
@@ -249,7 +260,13 @@ def test_live_provider_budget_gates_without_paid_calls(tmp_path, monkeypatch):
     assert [job.status for job in worked.jobs[-2:]] == ["running", "succeeded"]
     assert worked.jobs[-2].kind == "provider_execution"
     assert worked.jobs[-2].execution_mode == "dry_run"
+    assert worked.jobs[-2].live_request_max_budget_usd == sufficient_budget
+    assert worked.jobs[-2].live_request_route_policy == "balanced"
+    assert worked.jobs[-2].live_request_dry_run_revision_id == approved.asset.revision_id
     assert worked.jobs[-1].execution_mode == "dry_run"
+    assert worked.jobs[-1].live_request_max_budget_usd == sufficient_budget
+    assert worked.jobs[-1].live_request_route_policy == "balanced"
+    assert worked.jobs[-1].live_request_dry_run_revision_id == approved.asset.revision_id
     assert worked.jobs[-1].artifact_uri is None
     assert worked.jobs[-1].artifact_checksum is None
     assert worked.jobs[-1].progress_percent == 100
@@ -258,6 +275,9 @@ def test_live_provider_budget_gates_without_paid_calls(tmp_path, monkeypatch):
     worked_summary = store.list_assets().assets[0].provider_readiness
     assert worked_summary.status == "manual_attach_ready"
     assert worked_summary.source_job_id == queued.jobs[-1].job_id
+    assert worked_summary.live_request_max_budget_usd == sufficient_budget
+    assert worked_summary.live_request_route_policy == "balanced"
+    assert worked_summary.live_request_dry_run_revision_id == approved.asset.revision_id
 
     attached = store.attach_provider_artifact(
         draft.asset.asset_id,
@@ -434,6 +454,9 @@ def test_live_provider_budget_route_without_provider_secrets(tmp_path, monkeypat
     assert latest["status"] == "queued"
     assert latest["execution_mode"] == "live_requested"
     assert latest["provider_family"] == "krea"
+    assert latest["live_request_max_budget_usd"] == sufficient_budget
+    assert latest["live_request_route_policy"] == "balanced"
+    assert latest["live_request_dry_run_revision_id"] == "rev-1"
     assert latest["artifact_uri"] is None
     assert latest["artifact_checksum"] is None
     assert latest["error_code"] is None

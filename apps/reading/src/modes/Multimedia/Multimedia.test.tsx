@@ -436,6 +436,8 @@ describe("Multimedia workstation", () => {
     expect(within(persistedAssets).getByText("30 min documentary video")).toBeTruthy();
     expect(within(persistedAssets).getByText("Provider")).toBeTruthy();
     expect(within(persistedAssets).getByText("Execution mode")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Budget cap")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Dry-run revision")).toBeTruthy();
     expect(within(persistedAssets).getAllByText("job-mm-1-0004").length).toBeGreaterThan(0);
     expect(within(persistedAssets).getByText("No paid worker consumed this job")).toBeTruthy();
 
@@ -454,6 +456,8 @@ describe("Multimedia workstation", () => {
           "Requested media: 30 min documentary video",
           "Provider: unavailable",
           "Execution mode: unavailable",
+          "Budget cap: unavailable",
+          "Dry-run revision: unavailable",
           "Worker state: No paid worker consumed this job",
         ].join("\n"),
       ),
@@ -494,6 +498,9 @@ describe("Multimedia workstation", () => {
             source_job_id: "job-mm-4-0001",
             execution_mode: "live",
             provider_family: "krea",
+            live_request_max_budget_usd: 18,
+            live_request_route_policy: "highest_quality",
+            live_request_dry_run_revision_id: "rev-1",
             error_code: null,
             message: null,
             artifact_uri: null,
@@ -511,8 +518,10 @@ describe("Multimedia workstation", () => {
     const persistedAssets = screen.getByTestId("multimedia-persisted-assets");
     fireEvent.click(screen.getByRole("button", { name: "Details" }));
 
-    expect(within(persistedAssets).getByText("Cheapest")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Highest quality")).toBeTruthy();
     expect(within(persistedAssets).getByText("15 min audio experience")).toBeTruthy();
+    expect(within(persistedAssets).getByText("$18.00 cap")).toBeTruthy();
+    expect(within(persistedAssets).getByText("rev-1")).toBeTruthy();
     expect(within(persistedAssets).getAllByText("krea").length).toBeGreaterThan(0);
     expect(within(persistedAssets).getAllByText("live").length).toBeGreaterThan(0);
 
@@ -524,10 +533,12 @@ describe("Multimedia workstation", () => {
           "Asset: mm-4",
           "Queued job: job-mm-4-0001",
           "Status: manual_attach_ready",
-          "Route: Cheapest",
+          "Route: Highest quality",
           "Requested media: 15 min audio experience",
           "Provider: krea",
           "Execution mode: live",
+          "Budget cap: $18.00 cap",
+          "Dry-run revision: rev-1",
           "Worker state: No paid worker consumed this job",
         ].join("\n"),
       ),

@@ -52,6 +52,9 @@ export interface MultimediaProviderReadinessSummary {
   source_job_id: string | null;
   execution_mode: MultimediaExecutionMode | null;
   provider_family: string | null;
+  live_request_max_budget_usd?: number | null;
+  live_request_route_policy?: MultimediaRoutePolicy | null;
+  live_request_dry_run_revision_id?: string | null;
   error_code: string | null;
   message: string | null;
   artifact_uri: string | null;
@@ -113,6 +116,9 @@ export interface MultimediaJobRecord {
   status: MultimediaJobStatus;
   execution_mode: MultimediaExecutionMode;
   provider_family: string | null;
+  live_request_max_budget_usd?: number | null;
+  live_request_route_policy?: MultimediaRoutePolicy | null;
+  live_request_dry_run_revision_id?: string | null;
   artifact_uri: string | null;
   artifact_checksum: string | null;
   artifact_media_type: string | null;
