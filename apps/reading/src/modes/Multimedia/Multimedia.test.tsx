@@ -425,6 +425,10 @@ describe("Multimedia workstation", () => {
     const persistedAssets = screen.getByTestId("multimedia-persisted-assets");
     expect(within(persistedAssets).getByText("Queued live request")).toBeTruthy();
     expect(within(persistedAssets).getByText("Queued job")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Route")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Requested media")).toBeTruthy();
+    expect(within(persistedAssets).getByText("Balanced")).toBeTruthy();
+    expect(within(persistedAssets).getByText("30 min documentary video")).toBeTruthy();
     expect(within(persistedAssets).getByText("Provider")).toBeTruthy();
     expect(within(persistedAssets).getByText("Execution mode")).toBeTruthy();
     expect(within(persistedAssets).getAllByText("job-mm-1-0004").length).toBeGreaterThan(0);
@@ -438,6 +442,8 @@ describe("Multimedia workstation", () => {
           "Asset: mm-1",
           "Queued job: job-mm-1-0004",
           "Status: manual_attach_ready",
+          "Route: Balanced",
+          "Requested media: 30 min documentary video",
           "Provider: unavailable",
           "Execution mode: unavailable",
           "Worker state: No paid worker consumed this job",
@@ -450,6 +456,72 @@ describe("Multimedia workstation", () => {
 
     await waitFor(() => expect(mockGet).toHaveBeenCalledWith("mm-1"));
     expect((screen.getByLabelText("Artifact job id") as HTMLInputElement).value).toBe("job-mm-1-0004");
+    expect(mockAttachArtifact).not.toHaveBeenCalled();
+    expect(mockRunWorker).not.toHaveBeenCalled();
+  });
+
+  it("copies provider metadata when a persisted manual-ready queue summary includes it", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    mockList.mockResolvedValueOnce({
+      assets: [
+        {
+          asset_id: "mm-4",
+          revision_id: "rev-1",
+          title: "Manual-ready live audio",
+          kind: "audio_experience",
+          status: "planned",
+          requested_duration_minutes: 15,
+          route_policy: "cheapest",
+          estimated_cost_usd: 6,
+          hardening_status: null,
+          latest_job_status: "queued",
+          latest_job_kind: "provider_execution",
+          provider_readiness: {
+            status: "manual_attach_ready",
+            label: "Manual attach ready",
+            source_job_id: "job-mm-4-0001",
+            execution_mode: "live",
+            provider_family: "krea",
+            error_code: null,
+            message: null,
+            artifact_uri: null,
+            artifact_checksum: null,
+            artifact_media_type: null,
+          },
+        },
+      ],
+      count: 1,
+    });
+    render(<Multimedia />);
+
+    expect(await screen.findByText(/Persisted assets/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Manual attach 1" }));
+    const persistedAssets = screen.getByTestId("multimedia-persisted-assets");
+    expect(within(persistedAssets).getByText("Cheapest")).toBeTruthy();
+    expect(within(persistedAssets).getByText("15 min audio experience")).toBeTruthy();
+    expect(within(persistedAssets).getAllByText("krea").length).toBeGreaterThan(0);
+    expect(within(persistedAssets).getAllByText("live").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy queue audit" }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        [
+          "Asset: mm-4",
+          "Queued job: job-mm-4-0001",
+          "Status: manual_attach_ready",
+          "Route: Cheapest",
+          "Requested media: 15 min audio experience",
+          "Provider: krea",
+          "Execution mode: live",
+          "Worker state: No paid worker consumed this job",
+        ].join("\n"),
+      ),
+    );
     expect(mockAttachArtifact).not.toHaveBeenCalled();
     expect(mockRunWorker).not.toHaveBeenCalled();
   });

@@ -255,6 +255,8 @@ function buildPersistedQueuedAuditItems(asset: MultimediaAssetSummary): Persiste
     { label: "Asset", value: asset.asset_id },
     { label: "Queued job", value: readiness.source_job_id ?? "unavailable" },
     { label: "Status", value: readiness.status },
+    { label: "Route", value: TIER_COPY[asset.route_policy].label },
+    { label: "Requested media", value: `${asset.requested_duration_minutes} min ${asset.kind.replace(/_/g, " ")}` },
     { label: "Provider", value: readiness.provider_family ?? "unavailable" },
     { label: "Execution mode", value: readiness.execution_mode ?? "unavailable" },
     { label: "Worker state", value: "No paid worker consumed this job" },
