@@ -1899,6 +1899,10 @@ function JobPanel({
   const artifactJob = jobs.find((job) => job.job_id === artifactJobId);
   const validationHints =
     artifactJob?.error_code === "artifact_validation_failed" ? artifactValidationHints(artifactJob.message) : artifactValidationHints(artifactValidationMessage);
+  const jobBudgetValue = (job: MultimediaJobRecord) =>
+    typeof job.live_request_max_budget_usd === "number" ? formatPersistedBudgetCap(job.live_request_max_budget_usd) : liveReviewValue("Budget cap");
+  const jobRequestRouteValue = (job: MultimediaJobRecord) =>
+    job.live_request_route_policy ? `${TIER_COPY[job.live_request_route_policy].label} / ${job.provider_family ?? "unavailable"}` : liveReviewValue("Provider route");
   const jobExportReviewItems = (job: MultimediaJobRecord): PersistedQueuedAuditItem[] => [
     { label: "Artifact", value: job.artifact_media_type ?? "provider artifact" },
     { label: "Source job", value: job.job_id },
@@ -1908,9 +1912,9 @@ function JobPanel({
     ...buildExportDecisionItems(),
     { label: "Artifact URI", value: job.artifact_uri ?? "unavailable" },
     { label: "Checksum", value: job.artifact_checksum ?? "unavailable" },
-    { label: "Budget gate", value: liveReviewValue("Budget cap") },
-    { label: "Provider route", value: liveReviewValue("Provider route") },
-    { label: "Dry-run revision", value: liveReviewValue("Dry-run revision") },
+    { label: "Budget gate", value: jobBudgetValue(job) },
+    { label: "Provider route", value: jobRequestRouteValue(job) },
+    { label: "Dry-run revision", value: job.live_request_dry_run_revision_id ?? liveReviewValue("Dry-run revision") },
     { label: "Activation boundary", value: "Separate worker activation required" },
     ...buildExportBlockerItems(),
     { label: "Publish boundary", value: "No public export or publish action has run" },
