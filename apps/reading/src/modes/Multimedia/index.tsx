@@ -1638,6 +1638,7 @@ function JobPanel({
   const recentJobs = jobs.slice(-4).reverse();
   const [copiedJobId, setCopiedJobId] = useState<string | null>(null);
   const [liveReviewCopied, setLiveReviewCopied] = useState(false);
+  const [activationChecklistCopied, setActivationChecklistCopied] = useState(false);
   const [queueAuditCopied, setQueueAuditCopied] = useState(false);
   const canSubmitArtifact =
     canAttach && artifactJobId.trim().length > 0 && artifactUri.trim().length > 0 && artifactChecksum.trim().length > 0 && artifactMediaType.trim().length > 0;
@@ -1664,6 +1665,17 @@ function JobPanel({
     if (!navigator.clipboard) return;
     await navigator.clipboard.writeText(liveSpendReview.map((item) => `${item.label}: ${item.value}`).join("\n"));
     setLiveReviewCopied(true);
+  }
+
+  async function copyActivationChecklist() {
+    if (!navigator.clipboard) return;
+    await navigator.clipboard.writeText(
+      [
+        ...activationChecklist.map((item) => `${item.label}: ${item.value}`),
+        "Activation state: Evidence only; provider execution still requires a separate worker activation.",
+      ].join("\n"),
+    );
+    setActivationChecklistCopied(true);
   }
 
   async function copyQueueAudit() {
@@ -1739,6 +1751,9 @@ function JobPanel({
         <p className="mt-2 text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
           This checklist is evidence only; provider execution still requires a separate worker activation.
         </p>
+        <LemonButton type="button" size="sm" variant="secondary" className="mt-2" onClick={copyActivationChecklist}>
+          {activationChecklistCopied ? "Checklist copied" : "Copy checklist"}
+        </LemonButton>
       </div>
       {queueAuditFeedback && (
         <div

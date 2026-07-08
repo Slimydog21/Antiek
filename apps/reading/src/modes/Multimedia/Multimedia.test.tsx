@@ -734,6 +734,20 @@ describe("Multimedia workstation", () => {
     expect(
       within(activationChecklist).getByText("This checklist is evidence only; provider execution still requires a separate worker activation."),
     ).toBeTruthy();
+    fireEvent.click(within(activationChecklist).getByRole("button", { name: "Copy checklist" }));
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        [
+          "Budget gate: $50.00 cap",
+          "Operator acknowledgement: Acknowledgement required",
+          "Dry-run revision: rev-1",
+          "Provider route: Balanced / krea",
+          "Execution boundary: Live worker disabled",
+          "Activation state: Evidence only; provider execution still requires a separate worker activation.",
+        ].join("\n"),
+      ),
+    );
+    expect(within(activationChecklist).getByRole("button", { name: "Checklist copied" })).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Budget"), { target: { value: "0" } });
     expect(within(liveSpendReview).getByText("Enter positive budget")).toBeTruthy();
