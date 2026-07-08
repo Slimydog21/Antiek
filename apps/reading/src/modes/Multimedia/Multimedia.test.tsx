@@ -490,6 +490,7 @@ describe("Multimedia workstation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(mockGet).toHaveBeenCalledWith("mm-3"));
     expect((screen.getByLabelText("Artifact job id") as HTMLInputElement).value).toBe("job-mm-3-0005");
+    expect(screen.getByText("Artifact URL: http(s) URL with host")).toBeTruthy();
     expect(mockAttachArtifact).not.toHaveBeenCalled();
   });
 

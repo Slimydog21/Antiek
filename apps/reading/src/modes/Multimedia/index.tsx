@@ -241,6 +241,21 @@ function providerReadinessSummary(jobs: MultimediaJobRecord[], artifactJobId: st
   ];
 }
 
+function artifactValidationHints(message: string | null | undefined) {
+  if (!message) return [];
+  const hints: string[] = [];
+  if (message.includes("artifact_uri") || message.includes("http(s) URL")) {
+    hints.push("Artifact URL: http(s) URL with host");
+  }
+  if (message.includes("artifact_checksum") || message.includes("sha256")) {
+    hints.push("Checksum: sha256 digest");
+  }
+  if (message.includes("artifact_media_type") || message.includes("type/subtype")) {
+    hints.push("Media type: type/subtype");
+  }
+  return hints;
+}
+
 export default function Multimedia() {
   const [topic, setTopic] = useState("The aircraft program that made cheap long-haul travel possible");
   const [duration, setDuration] = useState(30);
@@ -268,6 +283,7 @@ export default function Multimedia() {
   const [artifactUri, setArtifactUri] = useState("");
   const [artifactChecksum, setArtifactChecksum] = useState("");
   const [artifactMediaType, setArtifactMediaType] = useState("video/mp4");
+  const [artifactValidationMessage, setArtifactValidationMessage] = useState<string | null>(null);
   const [attachmentFeedback, setAttachmentFeedback] = useState<AttachmentFeedback | null>(null);
   const [copiedAssetId, setCopiedAssetId] = useState<string | null>(null);
   const [copiedSourceJobAssetId, setCopiedSourceJobAssetId] = useState<string | null>(null);
@@ -388,6 +404,7 @@ export default function Multimedia() {
       const record = await createMultimediaDraft(request);
       setSelectedRecord(record);
       setArtifactJobId(latestAttachableArtifactJobId(record));
+      setArtifactValidationMessage(null);
       setPlanReady(true);
       setApproved(false);
       setRenderState(statusToRenderState(record));
@@ -409,6 +426,7 @@ export default function Multimedia() {
       const record = await getMultimediaAsset(assetId);
       setSelectedRecord(record);
       setArtifactJobId(latestAttachableArtifactJobId(record));
+      setArtifactValidationMessage(null);
       setTopic(record.asset.title);
       setDuration(record.asset.requested_duration_minutes);
       setCustomDuration(String(record.asset.requested_duration_minutes));
@@ -430,6 +448,7 @@ export default function Multimedia() {
     if (asset.provider_readiness.source_job_id) {
       setArtifactJobId(asset.provider_readiness.source_job_id);
     }
+    setArtifactValidationMessage(asset.provider_readiness.message);
   }
 
   async function copyPersistedArtifactUri(asset: MultimediaAssetSummary) {
@@ -546,6 +565,7 @@ export default function Multimedia() {
         dry_run_revision_id: selectedRecord.asset.revision_id,
       });
       setSelectedRecord(record);
+      setArtifactValidationMessage(null);
       const queuedJob = record.jobs.at(-1);
       if (queuedJob?.kind === "provider_execution") setArtifactJobId(queuedJob.job_id);
       setApiError(null);
@@ -1094,6 +1114,7 @@ export default function Multimedia() {
               artifactUri={artifactUri}
               artifactChecksum={artifactChecksum}
               artifactMediaType={artifactMediaType}
+              artifactValidationMessage={artifactValidationMessage}
               onBudgetChange={setMaxBudgetUsd}
               onAckChange={setOperatorAck}
               onArtifactJobIdChange={setArtifactJobId}
@@ -1330,6 +1351,7 @@ function JobPanel({
   artifactUri,
   artifactChecksum,
   artifactMediaType,
+  artifactValidationMessage,
   onBudgetChange,
   onAckChange,
   onArtifactJobIdChange,
@@ -1353,6 +1375,7 @@ function JobPanel({
   artifactUri: string;
   artifactChecksum: string;
   artifactMediaType: string;
+  artifactValidationMessage: string | null;
   onBudgetChange: (value: string) => void;
   onAckChange: (value: boolean) => void;
   onArtifactJobIdChange: (value: string) => void;
@@ -1369,6 +1392,9 @@ function JobPanel({
   const canSubmitArtifact =
     canAttach && artifactJobId.trim().length > 0 && artifactUri.trim().length > 0 && artifactChecksum.trim().length > 0 && artifactMediaType.trim().length > 0;
   const readiness = providerReadinessSummary(jobs, artifactJobId);
+  const artifactJob = jobs.find((job) => job.job_id === artifactJobId);
+  const validationHints =
+    artifactJob?.error_code === "artifact_validation_failed" ? artifactValidationHints(artifactJob.message) : artifactValidationHints(artifactValidationMessage);
 
   async function copyArtifactUri(job: MultimediaJobRecord) {
     if (!job.artifact_uri || !navigator.clipboard) return;
@@ -1471,6 +1497,15 @@ function JobPanel({
             />
           </label>
         </div>
+        {validationHints.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1" aria-label="Artifact validation hints">
+            {validationHints.map((hint) => (
+              <span key={hint} className="rounded-md border border-danger bg-danger/10 px-2 py-1 font-mono text-[11px] text-danger">
+                {hint}
+              </span>
+            ))}
+          </div>
+        )}
         <LemonButton
           type="button"
           size="sm"
