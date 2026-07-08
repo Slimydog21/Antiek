@@ -1426,6 +1426,7 @@ function JobPanel({
 }) {
   const recentJobs = jobs.slice(-4).reverse();
   const [copiedJobId, setCopiedJobId] = useState<string | null>(null);
+  const [liveReviewCopied, setLiveReviewCopied] = useState(false);
   const canSubmitArtifact =
     canAttach && artifactJobId.trim().length > 0 && artifactUri.trim().length > 0 && artifactChecksum.trim().length > 0 && artifactMediaType.trim().length > 0;
   const readiness = providerReadinessSummary(jobs, artifactJobId);
@@ -1437,6 +1438,12 @@ function JobPanel({
     if (!job.artifact_uri || !navigator.clipboard) return;
     await navigator.clipboard.writeText(job.artifact_uri);
     setCopiedJobId(job.job_id);
+  }
+
+  async function copyLiveSpendReview() {
+    if (!navigator.clipboard) return;
+    await navigator.clipboard.writeText(liveSpendReview.map((item) => `${item.label}: ${item.value}`).join("\n"));
+    setLiveReviewCopied(true);
   }
 
   return (
@@ -1478,6 +1485,9 @@ function JobPanel({
             </div>
           ))}
         </dl>
+        <LemonButton type="button" size="sm" variant="secondary" className="mt-2" onClick={copyLiveSpendReview}>
+          {liveReviewCopied ? "Review copied" : "Copy review"}
+        </LemonButton>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <label className="col-span-1 text-[12px] text-shadow-1 dark:text-moonlight">

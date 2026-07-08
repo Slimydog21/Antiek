@@ -534,6 +534,11 @@ describe("Multimedia workstation", () => {
   });
 
   it("queues live provider execution only through explicit budget controls", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
     await reviewPlan();
 
     const liveSpendReview = screen.getByTestId("multimedia-live-spend-review");
@@ -550,6 +555,23 @@ describe("Multimedia workstation", () => {
 
     expect(within(liveSpendReview).getByText("$75.00 cap")).toBeTruthy();
     expect(within(liveSpendReview).getByText("Spend acknowledged")).toBeTruthy();
+
+    fireEvent.click(within(liveSpendReview).getByRole("button", { name: "Copy review" }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        [
+          "Spend boundary: No paid worker runs from Queue live job",
+          "Budget cap: $75.00 cap",
+          "Acknowledgement: Spend acknowledged",
+          "Dry-run revision: rev-1",
+          "Provider route: Balanced / krea",
+          "Requested media: 30 min video",
+          "Worker state: Live worker disabled",
+        ].join("\n"),
+      ),
+    );
+    expect(within(liveSpendReview).getByRole("button", { name: "Review copied" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Queue live job" }));
 
