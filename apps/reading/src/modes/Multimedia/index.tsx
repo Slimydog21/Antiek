@@ -366,6 +366,7 @@ export default function Multimedia() {
   const [copiedAssetId, setCopiedAssetId] = useState<string | null>(null);
   const [copiedSourceJobAssetId, setCopiedSourceJobAssetId] = useState<string | null>(null);
   const [copiedRejectedAuditAssetId, setCopiedRejectedAuditAssetId] = useState<string | null>(null);
+  const [copiedQueuedAuditAssetId, setCopiedQueuedAuditAssetId] = useState<string | null>(null);
   const [expandedArtifactAssetId, setExpandedArtifactAssetId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -563,6 +564,21 @@ export default function Multimedia() {
     ].filter((line): line is string => Boolean(line));
     await navigator.clipboard.writeText(auditLines.join("\n"));
     setCopiedRejectedAuditAssetId(asset.asset_id);
+  }
+
+  async function copyPersistedQueuedAudit(asset: MultimediaAssetSummary) {
+    if (!navigator.clipboard) return;
+    const readiness = asset.provider_readiness;
+    const auditLines = [
+      `asset_id: ${asset.asset_id}`,
+      `queued_job: ${readiness.source_job_id ?? "unavailable"}`,
+      `status: ${readiness.status}`,
+      `provider_family: ${readiness.provider_family ?? "unavailable"}`,
+      `execution_mode: ${readiness.execution_mode ?? "unavailable"}`,
+      "worker_state: no paid worker consumed this job",
+    ];
+    await navigator.clipboard.writeText(auditLines.join("\n"));
+    setCopiedQueuedAuditAssetId(asset.asset_id);
   }
 
   async function approvePlan() {
@@ -996,15 +1012,40 @@ export default function Multimedia() {
                               )}
                             </div>
                           )}
+                          {asset.provider_readiness.status === "manual_attach_ready" && asset.provider_readiness.source_job_id && (
+                            <div className="mx-3 mb-3 rounded-md border border-sun bg-sun/10 p-2 text-[11px] text-ink dark:border-sun/80 dark:bg-sun/10 dark:text-bright">
+                              <p className="font-mono text-shadow-2 dark:text-moonlight">Queued live request</p>
+                              <p className="mt-1 truncate font-mono text-ink dark:text-bright">{asset.provider_readiness.source_job_id}</p>
+                              <p className="mt-1 leading-snug text-shadow-1 dark:text-moonlight">
+                                No paid worker consumed this job.
+                              </p>
+                              {(asset.provider_readiness.provider_family || asset.provider_readiness.execution_mode) && (
+                                <p className="mt-1 truncate font-mono text-shadow-2 dark:text-moonlight">
+                                  {[asset.provider_readiness.provider_family, asset.provider_readiness.execution_mode].filter(Boolean).join(" / ")}
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </div>
                         {asset.provider_readiness.status === "manual_attach_ready" && !attachedNow && (
-                          <button
-                            type="button"
-                            onClick={() => reopenAssetForAttachment(asset)}
-                            className="m-2 self-center rounded-md border border-sun bg-sun px-3 py-1.5 font-mono text-[11px] font-semibold text-ink"
-                          >
-                            Attach
-                          </button>
+                          <div className="m-2 flex shrink-0 flex-col gap-1 self-center">
+                            {asset.provider_readiness.source_job_id && (
+                              <button
+                                type="button"
+                                onClick={() => void copyPersistedQueuedAudit(asset)}
+                                className="rounded-md border border-rule bg-ice-0 px-3 py-1.5 font-mono text-[11px] font-semibold text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright"
+                              >
+                                {copiedQueuedAuditAssetId === asset.asset_id ? "Queue audit copied" : "Copy queue audit"}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => reopenAssetForAttachment(asset)}
+                              className="rounded-md border border-sun bg-sun px-3 py-1.5 font-mono text-[11px] font-semibold text-ink"
+                            >
+                              Attach
+                            </button>
+                          </div>
                         )}
                         {asset.provider_readiness.status === "artifact_attached" && !attachedNow && (
                           asset.provider_readiness.artifact_uri ? (

@@ -384,7 +384,7 @@ describe("Multimedia workstation", () => {
 
     expect(await screen.findByText(/Persisted assets/)).toBeTruthy();
     expect(screen.getByText("Manual attach ready")).toBeTruthy();
-    expect(screen.getByText("job-mm-1-0004")).toBeTruthy();
+    expect(screen.getAllByText("job-mm-1-0004").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: /The aircraft program/ }));
 
     await waitFor(() => expect(mockGet).toHaveBeenCalledWith("mm-1"));
@@ -413,15 +413,42 @@ describe("Multimedia workstation", () => {
   });
 
   it("prefills manual artifact attachment from a manual-ready asset row", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
     render(<Multimedia />);
 
     expect(await screen.findByText(/Persisted assets/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Manual attach 1" }));
+    const persistedAssets = screen.getByTestId("multimedia-persisted-assets");
+    expect(within(persistedAssets).getByText("Queued live request")).toBeTruthy();
+    expect(within(persistedAssets).getAllByText("job-mm-1-0004").length).toBeGreaterThan(0);
+    expect(within(persistedAssets).getByText("No paid worker consumed this job.")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy queue audit" }));
+
+    await waitFor(() =>
+      expect(writeText).toHaveBeenCalledWith(
+        [
+          "asset_id: mm-1",
+          "queued_job: job-mm-1-0004",
+          "status: manual_attach_ready",
+          "provider_family: unavailable",
+          "execution_mode: unavailable",
+          "worker_state: no paid worker consumed this job",
+        ].join("\n"),
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Queue audit copied" })).toBeTruthy();
+
     fireEvent.click(screen.getByRole("button", { name: "Attach" }));
 
     await waitFor(() => expect(mockGet).toHaveBeenCalledWith("mm-1"));
     expect((screen.getByLabelText("Artifact job id") as HTMLInputElement).value).toBe("job-mm-1-0004");
     expect(mockAttachArtifact).not.toHaveBeenCalled();
+    expect(mockRunWorker).not.toHaveBeenCalled();
   });
 
   it("surfaces attached artifact previews and rejected retry actions in persisted rows", async () => {
