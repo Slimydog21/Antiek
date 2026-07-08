@@ -1060,7 +1060,16 @@ function JobPanel({
                 </div>
               ) : (
                 <p className="mt-1 font-mono text-[11px] text-shadow-1 dark:text-moonlight">
-                  {job.status === "queued" || job.status === "running" ? "Artifact pending" : "No artifact attached"}
+                  {job.error_code === "artifact_validation_failed"
+                    ? "Artifact rejected"
+                    : job.status === "queued" || job.status === "running"
+                      ? "Artifact pending"
+                      : "No artifact attached"}
+                </p>
+              )}
+              {job.error_code === "artifact_validation_failed" && (
+                <p className="mt-1 rounded-md border border-danger bg-ice-0 p-2 text-[12px] leading-snug text-danger dark:bg-charcoal-1">
+                  Check the artifact URL, sha256 checksum, and media type before attaching this provider output again.
                 </p>
               )}
               <p className="mt-1 text-[13px] leading-snug text-ink dark:text-bright">{job.message}</p>

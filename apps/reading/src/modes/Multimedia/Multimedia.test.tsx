@@ -177,6 +177,30 @@ const artifactProviderRecord: MultimediaAssetRecord = {
   ],
 };
 
+const rejectedArtifactRecord: MultimediaAssetRecord = {
+  ...approvedRecord,
+  jobs: [
+    ...queuedProviderRecord.jobs,
+    {
+      job_id: "job-mm-1-0005",
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      sequence: 5,
+      kind: "provider_execution",
+      status: "failed",
+      execution_mode: "live",
+      provider_family: "krea",
+      artifact_uri: null,
+      artifact_checksum: null,
+      artifact_media_type: null,
+      progress_percent: 0,
+      message: "Provider artifact validation failed: artifact_uri must be an http(s) URL with a host.",
+      error_code: "artifact_validation_failed",
+      retryable: false,
+    },
+  ],
+};
+
 beforeEach(() => {
   mockList.mockResolvedValue({
     assets: [
@@ -372,6 +396,17 @@ describe("Multimedia workstation", () => {
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://cdn.example.test/mm-1.mp4"));
     expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
+  });
+
+  it("distinguishes artifact validation failures from missing artifacts", async () => {
+    mockCreate.mockResolvedValueOnce(rejectedArtifactRecord);
+
+    await reviewPlan();
+
+    expect(await screen.findByText("Artifact rejected")).toBeTruthy();
+    expect(screen.getByText(/Check the artifact URL, sha256 checksum, and media type/)).toBeTruthy();
+    expect(screen.getByText("artifact_validation_failed")).toBeTruthy();
+    expect(screen.queryByText("No artifact attached")).toBeNull();
   });
 
   it("keeps the fixture preview visible when the API is unavailable", async () => {
