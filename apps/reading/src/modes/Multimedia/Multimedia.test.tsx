@@ -1197,6 +1197,12 @@ describe("Multimedia workstation", () => {
     expect(within(activationPacket).getByText("Readiness + spend + queue")).toBeTruthy();
     expect(within(activationPacket).getByText("Worker state")).toBeTruthy();
     expect(within(activationPacket).getByText("Disabled")).toBeTruthy();
+    expect(within(activationPacket).getByText("Public export")).toBeTruthy();
+    expect(within(activationPacket).getByText("Not ready for public export")).toBeTruthy();
+    expect(within(activationPacket).getByText("Required review")).toBeTruthy();
+    expect(within(activationPacket).getByText("Manual review + rights clearance")).toBeTruthy();
+    expect(within(activationPacket).getByText("Publish boundary")).toBeTruthy();
+    expect(within(activationPacket).getByText("No public export or publish action has run")).toBeTruthy();
     fireEvent.click(within(activationPacket).getByRole("button", { name: "Copy activation packet" }));
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith(
@@ -1234,6 +1240,10 @@ describe("Multimedia workstation", () => {
           "Spend acknowledgement: Required",
           "Manual attach target: Select queued job",
           "Worker activation: Separate step required",
+          "Public export readiness",
+          "Public export: Not ready for public export",
+          "Required review: Manual review + rights clearance",
+          "Publish boundary: No public export or publish action has run",
           "Operator next step: Review this packet before enabling a live provider worker.",
           "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
           "Queued request audit: No queued live request",
@@ -1444,6 +1454,10 @@ describe("Multimedia workstation", () => {
           "Spend acknowledgement: Acknowledged",
           "Manual attach target: job-mm-1-0001",
           "Worker activation: Separate step required",
+          "Public export readiness",
+          "Public export: Not ready for public export",
+          "Required review: Manual review + rights clearance",
+          "Publish boundary: No public export or publish action has run",
           "Operator next step: Review this packet before enabling a live provider worker.",
           "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
           "Queued request audit",
@@ -1506,12 +1520,12 @@ describe("Multimedia workstation", () => {
     expect(within(jobPanel).getAllByText("https://cdn.example.test/mm-1.mp4").length).toBeGreaterThan(0);
     expect(within(jobPanel).getByText("Export review required")).toBeTruthy();
     expect(within(jobPanel).getByText("Manual review required before publish/export")).toBeTruthy();
-    expect(within(jobPanel).getByText("Not ready for public export")).toBeTruthy();
-    expect(within(jobPanel).getByText("Manual review + rights clearance")).toBeTruthy();
+    expect(within(jobPanel).getAllByText("Not ready for public export").length).toBeGreaterThan(0);
+    expect(within(jobPanel).getAllByText("Manual review + rights clearance").length).toBeGreaterThan(0);
     expect(within(jobPanel).getByText("Required before export")).toBeTruthy();
     expect(within(jobPanel).getByText("Required before public use")).toBeTruthy();
     expect(within(jobPanel).getByText("No export or publish action available")).toBeTruthy();
-    expect(within(jobPanel).getByText("No public export or publish action has run")).toBeTruthy();
+    expect(within(jobPanel).getAllByText("No public export or publish action has run").length).toBeGreaterThan(0);
     expect(within(jobPanel).getByRole("link", { name: "Open artifact" }).getAttribute("href")).toBe(
       "https://cdn.example.test/mm-1.mp4",
     );

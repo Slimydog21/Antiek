@@ -1894,6 +1894,11 @@ function JobPanel({
     },
     { label: "Worker activation", value: "Separate step required", tone: "sun" },
   ];
+  const activationPublicExportItems: LiveSpendReviewItem[] = [
+    { label: "Public export", value: "Not ready for public export", tone: "sun" },
+    { label: "Required review", value: "Manual review + rights clearance", tone: "sun" },
+    { label: "Publish boundary", value: "No public export or publish action has run", tone: "default" },
+  ];
   const liveSpendReviewKey = liveSpendReview.map((item) => `${item.label}:${item.value}`).join("|");
   const activationChecklistKey = activationChecklist.map((item) => `${item.label}:${item.value}`).join("|");
   const activationDecisionKey = activationDecision.map((item) => `${item.label}:${item.value}`).join("|");
@@ -1926,6 +1931,8 @@ function JobPanel({
     ...activationDecision.map((item) => `${item.label}: ${item.value}`),
     "Activation blockers",
     ...activationBlockers.map((item) => `${item.label}: ${item.value}`),
+    "Public export readiness",
+    ...activationPublicExportItems.map((item) => `${item.label}: ${item.value}`),
     "Operator next step: Review this packet before enabling a live provider worker.",
     "Spend boundary: Queue live job records intent only; it does not call Krea/TTS/video providers.",
     queueAuditFeedback ? "Queued request audit" : "Queued request audit: No queued live request",
@@ -2177,6 +2184,14 @@ function JobPanel({
                   <LemonTag colour="muted">Disabled</LemonTag>
                 </dd>
               </div>
+              {activationPublicExportItems.map((item) => (
+                <div key={item.label} className="flex items-center justify-between gap-2 text-[12px]">
+                  <dt className="text-shadow-1 dark:text-moonlight">{item.label}</dt>
+                  <dd className="text-right">
+                    <LemonTag colour={item.tone}>{item.value}</LemonTag>
+                  </dd>
+                </div>
+              ))}
             </dl>
             <LemonButton type="button" size="sm" variant="secondary" className="mt-2" onClick={copyActivationPacket}>
               {activationPacketCopied ? "Packet copied" : "Copy activation packet"}
