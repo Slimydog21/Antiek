@@ -599,6 +599,13 @@ describe("Multimedia workstation", () => {
     expect(within(readiness).getByText("Queued job-mm-1-0001")).toBeTruthy();
     expect(within(readiness).getByText("Ready for job-mm-1-0001")).toBeTruthy();
     expect(within(readiness).getByText("Pending")).toBeTruthy();
+    const queueAudit = screen.getByTestId("multimedia-live-queue-audit");
+    expect(within(queueAudit).getByText("job-mm-1-0001")).toBeTruthy();
+    expect(within(queueAudit).getByText("$75.00 cap")).toBeTruthy();
+    expect(within(queueAudit).getByText("rev-1")).toBeTruthy();
+    expect(within(queueAudit).getByText("Balanced / krea")).toBeTruthy();
+    expect(within(queueAudit).getByText("30 min video")).toBeTruthy();
+    expect(within(queueAudit).getByText("No paid worker consumed this job")).toBeTruthy();
   });
 
   it("surfaces attached provider artifacts with open, download, and copy actions", async () => {

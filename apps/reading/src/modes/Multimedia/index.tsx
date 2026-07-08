@@ -42,6 +42,9 @@ type LiveSpendPreflight = {
   items: LiveSpendReviewItem[];
   request: LiveProviderExecutionRequest | null;
 };
+type QueueAuditFeedback = {
+  items: LiveSpendReviewItem[];
+};
 type PendingCommand =
   | "list"
   | "create"
@@ -228,6 +231,20 @@ function buildLiveSpendPreflight({
   };
 }
 
+function buildQueueAuditFeedback(job: MultimediaJobRecord, preflight: LiveSpendPreflight): QueueAuditFeedback {
+  const itemValue = (label: string) => preflight.items.find((item) => item.label === label)?.value ?? "Unknown";
+  return {
+    items: [
+      { label: "Queued job", value: job.job_id, tone: "sun" },
+      { label: "Budget cap", value: itemValue("Budget cap") },
+      { label: "Dry-run revision", value: itemValue("Dry-run revision") },
+      { label: "Provider route", value: itemValue("Provider route") },
+      { label: "Requested media", value: itemValue("Requested media") },
+      { label: "Worker state", value: "No paid worker consumed this job", tone: "muted" },
+    ],
+  };
+}
+
 function statusToRenderState(record: MultimediaAssetRecord | null): RenderState {
   if (!record) return "pending";
   if (record.asset.status === "ready") return "partial";
@@ -345,6 +362,7 @@ export default function Multimedia() {
   const [artifactMediaType, setArtifactMediaType] = useState("video/mp4");
   const [artifactValidationMessage, setArtifactValidationMessage] = useState<string | null>(null);
   const [attachmentFeedback, setAttachmentFeedback] = useState<AttachmentFeedback | null>(null);
+  const [queueAuditFeedback, setQueueAuditFeedback] = useState<QueueAuditFeedback | null>(null);
   const [copiedAssetId, setCopiedAssetId] = useState<string | null>(null);
   const [copiedSourceJobAssetId, setCopiedSourceJobAssetId] = useState<string | null>(null);
   const [copiedRejectedAuditAssetId, setCopiedRejectedAuditAssetId] = useState<string | null>(null);
@@ -473,6 +491,7 @@ export default function Multimedia() {
       const record = await createMultimediaDraft(request);
       setSelectedRecord(record);
       resetManualArtifactFields(latestAttachableArtifactJobId(record));
+      setQueueAuditFeedback(null);
       setPlanReady(true);
       setApproved(false);
       setRenderState(statusToRenderState(record));
@@ -494,6 +513,7 @@ export default function Multimedia() {
       const record = await getMultimediaAsset(assetId);
       setSelectedRecord(record);
       resetManualArtifactFields(latestAttachableArtifactJobId(record));
+      setQueueAuditFeedback(null);
       setTopic(record.asset.title);
       setDuration(record.asset.requested_duration_minutes);
       setCustomDuration(String(record.asset.requested_duration_minutes));
@@ -623,6 +643,7 @@ export default function Multimedia() {
       const record = await prepareMultimediaLiveExecution(selectedRecord.asset.asset_id, liveSpendPreflight.request);
       setSelectedRecord(record);
       const queuedJob = record.jobs.at(-1);
+      setQueueAuditFeedback(queuedJob?.kind === "provider_execution" ? buildQueueAuditFeedback(queuedJob, liveSpendPreflight) : null);
       resetManualArtifactFields(queuedJob?.kind === "provider_execution" ? queuedJob.job_id : "");
       setApiError(null);
       await refreshAssetList();
@@ -1165,6 +1186,7 @@ export default function Multimedia() {
               canQueue={Boolean(selectedRecord) && pendingCommand === null}
               canAttach={Boolean(selectedRecord) && pendingCommand === null}
               liveSpendReview={liveSpendPreflight.items}
+              queueAuditFeedback={queueAuditFeedback}
               maxBudgetUsd={maxBudgetUsd}
               operatorAck={operatorAck}
               artifactJobId={artifactJobId}
@@ -1415,6 +1437,7 @@ function JobPanel({
   canQueue,
   canAttach,
   liveSpendReview,
+  queueAuditFeedback,
   maxBudgetUsd,
   operatorAck,
   artifactJobId,
@@ -1440,6 +1463,7 @@ function JobPanel({
   canQueue: boolean;
   canAttach: boolean;
   liveSpendReview: LiveSpendReviewItem[];
+  queueAuditFeedback: QueueAuditFeedback | null;
   maxBudgetUsd: string;
   operatorAck: boolean;
   artifactJobId: string;
@@ -1523,6 +1547,24 @@ function JobPanel({
           {liveReviewCopied ? "Review copied" : "Copy review"}
         </LemonButton>
       </div>
+      {queueAuditFeedback && (
+        <div
+          className="mt-3 rounded-md border border-sun bg-sun/10 p-2 dark:border-sun/80 dark:bg-sun/10"
+          data-testid="multimedia-live-queue-audit"
+        >
+          <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Queued live request</p>
+          <dl className="mt-2 grid grid-cols-1 gap-1.5">
+            {queueAuditFeedback.items.map((item) => (
+              <div key={item.label} className="flex items-center justify-between gap-2 text-[12px]">
+                <dt className="text-shadow-1 dark:text-moonlight">{item.label}</dt>
+                <dd className="text-right">
+                  <LemonTag colour={item.tone ?? "default"}>{item.value}</LemonTag>
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
       <div className="mt-3 grid grid-cols-2 gap-2">
         <label className="col-span-1 text-[12px] text-shadow-1 dark:text-moonlight">
           Budget
