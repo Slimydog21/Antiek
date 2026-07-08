@@ -536,8 +536,21 @@ describe("Multimedia workstation", () => {
   it("queues live provider execution only through explicit budget controls", async () => {
     await reviewPlan();
 
+    const liveSpendReview = screen.getByTestId("multimedia-live-spend-review");
+    expect(within(liveSpendReview).getByText("No paid worker runs from Queue live job")).toBeTruthy();
+    expect(within(liveSpendReview).getByText("$50.00 cap")).toBeTruthy();
+    expect(within(liveSpendReview).getByText("Acknowledgement required")).toBeTruthy();
+    expect(within(liveSpendReview).getByText("rev-1")).toBeTruthy();
+    expect(within(liveSpendReview).getByText("Balanced / krea")).toBeTruthy();
+    expect(within(liveSpendReview).getByText("30 min video")).toBeTruthy();
+    expect(within(liveSpendReview).getByText("Live worker disabled")).toBeTruthy();
+
     fireEvent.click(screen.getByLabelText("Spend acknowledged"));
     fireEvent.change(screen.getByLabelText("Budget"), { target: { value: "75" } });
+
+    expect(within(liveSpendReview).getByText("$75.00 cap")).toBeTruthy();
+    expect(within(liveSpendReview).getByText("Spend acknowledged")).toBeTruthy();
+
     fireEvent.click(screen.getByRole("button", { name: "Queue live job" }));
 
     await waitFor(() =>
@@ -549,6 +562,7 @@ describe("Multimedia workstation", () => {
         dry_run_revision_id: "rev-1",
       }),
     );
+    expect(mockRunWorker).not.toHaveBeenCalled();
     expect(await screen.findByText(/Live execution queued for krea/)).toBeTruthy();
     expect(screen.getByText("live_requested")).toBeTruthy();
     expect(screen.getByText("Artifact pending")).toBeTruthy();

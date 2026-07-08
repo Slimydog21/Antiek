@@ -32,6 +32,11 @@ type AttachmentFeedback = {
   jobId: string;
   mediaType: string | null;
 };
+type LiveSpendReviewItem = {
+  label: string;
+  value: string;
+  tone?: "default" | "muted" | "sun" | "danger";
+};
 type PendingCommand =
   | "list"
   | "create"
@@ -166,6 +171,12 @@ function formatRecordCost(record: MultimediaAssetRecord | null, tier: RouteTier,
   if (!costRows.length) return fallback;
   const total = costRows.reduce((sum, row) => sum + (typeof row.cost_usd === "number" ? row.cost_usd : 0), 0);
   return `$${total.toFixed(2)}`;
+}
+
+function formatBudgetCap(value: string): string {
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return "Enter positive budget";
+  return `$${parsed.toFixed(2)} cap`;
 }
 
 function statusToRenderState(record: MultimediaAssetRecord | null): RenderState {
@@ -323,6 +334,15 @@ export default function Multimedia() {
   const canRunAssetCommand = Boolean(selectedRecord) && pendingCommand === null;
   const latestJob = selectedRecord?.jobs.at(-1) ?? null;
   const shouldPollJobs = latestJob?.kind === "provider_execution" && ["queued", "running"].includes(latestJob.status);
+  const liveSpendReview: LiveSpendReviewItem[] = [
+    { label: "Spend boundary", value: "No paid worker runs from Queue live job", tone: "sun" },
+    { label: "Budget cap", value: formatBudgetCap(maxBudgetUsd), tone: "default" },
+    { label: "Acknowledgement", value: operatorAck ? "Spend acknowledged" : "Acknowledgement required", tone: operatorAck ? "default" : "danger" },
+    { label: "Dry-run revision", value: selectedRecord?.asset.revision_id ?? "No asset selected", tone: selectedRecord ? "default" : "muted" },
+    { label: "Provider route", value: `${TIER_COPY[tier].label} / krea`, tone: "default" },
+    { label: "Requested media", value: `${selectedRecord?.asset.requested_duration_minutes ?? duration} min ${mode}`, tone: "default" },
+    { label: "Worker state", value: "Live worker disabled", tone: "muted" },
+  ];
   const visibleAssets = useMemo(
     () =>
       readinessFilter === "all"
@@ -1110,6 +1130,7 @@ export default function Multimedia() {
               canRunWorker={Boolean(selectedRecord) && pendingCommand === null}
               canQueue={Boolean(selectedRecord) && pendingCommand === null}
               canAttach={Boolean(selectedRecord) && pendingCommand === null}
+              liveSpendReview={liveSpendReview}
               maxBudgetUsd={maxBudgetUsd}
               operatorAck={operatorAck}
               artifactJobId={artifactJobId}
@@ -1359,6 +1380,7 @@ function JobPanel({
   canRunWorker,
   canQueue,
   canAttach,
+  liveSpendReview,
   maxBudgetUsd,
   operatorAck,
   artifactJobId,
@@ -1383,6 +1405,7 @@ function JobPanel({
   canRunWorker: boolean;
   canQueue: boolean;
   canAttach: boolean;
+  liveSpendReview: LiveSpendReviewItem[];
   maxBudgetUsd: string;
   operatorAck: boolean;
   artifactJobId: string;
@@ -1440,6 +1463,22 @@ function JobPanel({
           </div>
         ))}
       </dl>
+      <div
+        className="mt-3 rounded-md border border-rule bg-ice-0 p-2 dark:border-charcoal-1 dark:bg-charcoal-1"
+        data-testid="multimedia-live-spend-review"
+      >
+        <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Live spend review</p>
+        <dl className="mt-2 grid grid-cols-1 gap-1.5">
+          {liveSpendReview.map((item) => (
+            <div key={item.label} className="flex items-center justify-between gap-2 text-[12px]">
+              <dt className="text-shadow-1 dark:text-moonlight">{item.label}</dt>
+              <dd className="text-right">
+                <LemonTag colour={item.tone ?? "default"}>{item.value}</LemonTag>
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <label className="col-span-1 text-[12px] text-shadow-1 dark:text-moonlight">
           Budget
