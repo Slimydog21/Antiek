@@ -54,12 +54,12 @@ describe("DeepResearchSessionHost", () => {
     // Shipped panel chrome (not a reimplementation)
     expect(screen.getByRole("heading", { name: /research context/i })).toBeTruthy();
     expect(mount.textContent).toContain("launch-asset");
-    expect(screen.getByRole("button", { name: /load context/i })).toBeTruthy();
+    expect(screen.getByTestId("load-research-context")).toBeTruthy();
     first.unmount();
     // Double-run: remount still binds panel
     render(<DeepResearchSessionHost {...FIXTURE} />);
     expect(screen.getByTestId("deep-research-research-context-mount")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /load context/i })).toBeTruthy();
+    expect(screen.getByTestId("load-research-context")).toBeTruthy();
   });
 
   it("omits ResearchContextPanel when parent_asset_id is missing", () => {
