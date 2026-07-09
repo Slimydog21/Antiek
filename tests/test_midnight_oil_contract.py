@@ -13,12 +13,14 @@ from substrate.midnight_oil import (
     MidnightOilDryRunRequest,
     MidnightOilProviderRouteRequest,
     MidnightOilRequest,
+    MidnightOilRetrievalRequest,
     activation_checklist_midnight_oil,
     budget_reservation_midnight_oil,
     dispatch_midnight_oil,
     dry_run_midnight_oil,
     preflight_midnight_oil,
     provider_route_midnight_oil,
+    retrieval_midnight_oil,
 )
 
 
@@ -741,6 +743,178 @@ def test_provider_route_gate_rejects_mismatched_budget_reservation_chain() -> No
         )
 
 
+def test_retrieval_gate_blocks_source_fetch_without_side_effects() -> None:
+    preflight = preflight_midnight_oil(
+        MidnightOilRequest(
+            goal="Prepare retrieval for a midnight oil run about turbofan durability.",
+            work_minutes=150,
+            price_ceiling_usd=22.0,
+            route_mode="auto_balanced",
+            source_policy=["arxiv", "operator_corpus"],
+            operator_acknowledged_spend=True,
+        )
+    )
+
+    assert preflight.launch_packet is not None
+    assert preflight.approval_receipt is not None
+    assert preflight.runner_handoff is not None
+    assert preflight.applied_run_receipt is not None
+    dispatch_receipt = dispatch_midnight_oil(
+        MidnightOilDispatchRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            live_dispatch_requested=True,
+        )
+    )
+    checklist = activation_checklist_midnight_oil(
+        MidnightOilActivationChecklistRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            dispatch_receipt=dispatch_receipt,
+        )
+    )
+    reservation = budget_reservation_midnight_oil(
+        MidnightOilBudgetReservationRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            dispatch_receipt=dispatch_receipt,
+            activation_checklist_receipt=checklist,
+        )
+    )
+    provider_route = provider_route_midnight_oil(
+        MidnightOilProviderRouteRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            dispatch_receipt=dispatch_receipt,
+            activation_checklist_receipt=checklist,
+            budget_reservation_receipt=reservation,
+        )
+    )
+
+    retrieval = retrieval_midnight_oil(
+        MidnightOilRetrievalRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            dispatch_receipt=dispatch_receipt,
+            activation_checklist_receipt=checklist,
+            budget_reservation_receipt=reservation,
+            provider_route_receipt=provider_route,
+        )
+    )
+
+    assert retrieval.receipt_id == f"{preflight.run_id}-retrieval"
+    assert retrieval.provider_route_receipt_id == provider_route.receipt_id
+    assert retrieval.budget_reservation_receipt_id == reservation.receipt_id
+    assert retrieval.activation_checklist_receipt_id == checklist.receipt_id
+    assert retrieval.dispatch_receipt_id == dispatch_receipt.receipt_id
+    assert retrieval.applied_run_receipt_id == preflight.applied_run_receipt.receipt_id
+    assert retrieval.runner_handoff_id == preflight.runner_handoff.handoff_id
+    assert retrieval.approval_receipt_id == preflight.approval_receipt.receipt_id
+    assert retrieval.launch_packet_id == preflight.launch_packet.packet_id
+    assert retrieval.run_id == preflight.run_id
+    assert retrieval.status == "blocked_retrieval_executor_disabled"
+    assert retrieval.planned_source_policy == ["arxiv", "operator_corpus"]
+    assert retrieval.planned_source_receipt_ids == [
+        f"{preflight.run_id}-arxiv-source-receipt",
+        f"{preflight.run_id}-operator_corpus-source-receipt",
+    ]
+    assert retrieval.blocker_reason == "retrieval_executor_missing"
+    assert retrieval.retrieval_allowed is False
+    assert retrieval.source_receipts_created is False
+    assert retrieval.retrieval_performed is False
+    assert retrieval.provider_calls_made is False
+    assert retrieval.budget_reserved is False
+    assert retrieval.dispatch_performed is False
+    assert retrieval.graph_mutated is False
+    assert retrieval.final_artifact_created is False
+    assert "retrieval executor and source receipt writer" in retrieval.retrieval_notes[0]
+
+
+def test_retrieval_gate_rejects_mismatched_provider_route_chain() -> None:
+    preflight = preflight_midnight_oil(
+        MidnightOilRequest(
+            goal="Prepare retrieval for a midnight oil run about airline financing.",
+            work_minutes=120,
+            price_ceiling_usd=18.0,
+            route_mode="auto_cost",
+            source_policy=["web"],
+            operator_acknowledged_spend=True,
+        )
+    )
+
+    assert preflight.launch_packet is not None
+    assert preflight.approval_receipt is not None
+    assert preflight.runner_handoff is not None
+    assert preflight.applied_run_receipt is not None
+    dispatch_receipt = dispatch_midnight_oil(
+        MidnightOilDispatchRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            live_dispatch_requested=True,
+        )
+    )
+    checklist = activation_checklist_midnight_oil(
+        MidnightOilActivationChecklistRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            dispatch_receipt=dispatch_receipt,
+        )
+    )
+    reservation = budget_reservation_midnight_oil(
+        MidnightOilBudgetReservationRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            dispatch_receipt=dispatch_receipt,
+            activation_checklist_receipt=checklist,
+        )
+    )
+    provider_route = provider_route_midnight_oil(
+        MidnightOilProviderRouteRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            dispatch_receipt=dispatch_receipt,
+            activation_checklist_receipt=checklist,
+            budget_reservation_receipt=reservation,
+        )
+    )
+    bad_provider_route = provider_route.model_copy(
+        update={"budget_reservation_receipt_id": "wrong-budget-reservation"}
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="provider_route_receipt must reference budget_reservation_receipt",
+    ):
+        MidnightOilRetrievalRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            dispatch_receipt=dispatch_receipt,
+            activation_checklist_receipt=checklist,
+            budget_reservation_receipt=reservation,
+            provider_route_receipt=bad_provider_route,
+        )
+
+
 def test_final_artifact_contract_is_html_not_pdf_with_twin_note() -> None:
     result = preflight_midnight_oil(
         MidnightOilRequest(
@@ -1108,5 +1282,102 @@ def test_midnight_oil_provider_route_gate_api_contract() -> None:
     assert body["budget_reserved"] is False
     assert body["dispatch_performed"] is False
     assert body["retrieval_performed"] is False
+    assert body["graph_mutated"] is False
+    assert body["final_artifact_created"] is False
+
+
+def test_midnight_oil_retrieval_gate_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    preflight = preflight_midnight_oil(
+        MidnightOilRequest(
+            goal="Gate midnight oil retrieval about widebody maintenance.",
+            work_minutes=120,
+            price_ceiling_usd=25.0,
+            route_mode="auto_balanced",
+            source_policy=["arxiv", "web"],
+            operator_acknowledged_spend=True,
+        )
+    )
+
+    assert preflight.launch_packet is not None
+    assert preflight.approval_receipt is not None
+    assert preflight.runner_handoff is not None
+    assert preflight.applied_run_receipt is not None
+    dispatch_receipt = dispatch_midnight_oil(
+        MidnightOilDispatchRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            live_dispatch_requested=True,
+        )
+    )
+    checklist = activation_checklist_midnight_oil(
+        MidnightOilActivationChecklistRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            dispatch_receipt=dispatch_receipt,
+        )
+    )
+    reservation = budget_reservation_midnight_oil(
+        MidnightOilBudgetReservationRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            dispatch_receipt=dispatch_receipt,
+            activation_checklist_receipt=checklist,
+        )
+    )
+    provider_route = provider_route_midnight_oil(
+        MidnightOilProviderRouteRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            dispatch_receipt=dispatch_receipt,
+            activation_checklist_receipt=checklist,
+            budget_reservation_receipt=reservation,
+        )
+    )
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/retrieval",
+            json={
+                "launch_packet": preflight.launch_packet.model_dump(mode="json"),
+                "approval_receipt": preflight.approval_receipt.model_dump(mode="json"),
+                "runner_handoff": preflight.runner_handoff.model_dump(mode="json"),
+                "applied_run_receipt": preflight.applied_run_receipt.model_dump(mode="json"),
+                "dispatch_receipt": dispatch_receipt.model_dump(mode="json"),
+                "activation_checklist_receipt": checklist.model_dump(mode="json"),
+                "budget_reservation_receipt": reservation.model_dump(mode="json"),
+                "provider_route_receipt": provider_route.model_dump(mode="json"),
+            },
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["provider_route_receipt_id"] == provider_route.receipt_id
+    assert body["budget_reservation_receipt_id"] == reservation.receipt_id
+    assert body["activation_checklist_receipt_id"] == checklist.receipt_id
+    assert body["dispatch_receipt_id"] == dispatch_receipt.receipt_id
+    assert body["applied_run_receipt_id"] == preflight.applied_run_receipt.receipt_id
+    assert body["launch_packet_id"] == preflight.launch_packet.packet_id
+    assert body["status"] == "blocked_retrieval_executor_disabled"
+    assert body["planned_source_policy"] == ["arxiv", "web"]
+    assert body["planned_source_receipt_ids"] == [
+        f"{preflight.run_id}-arxiv-source-receipt",
+        f"{preflight.run_id}-web-source-receipt",
+    ]
+    assert body["blocker_reason"] == "retrieval_executor_missing"
+    assert body["retrieval_allowed"] is False
+    assert body["source_receipts_created"] is False
+    assert body["retrieval_performed"] is False
+    assert body["provider_calls_made"] is False
+    assert body["budget_reserved"] is False
+    assert body["dispatch_performed"] is False
     assert body["graph_mutated"] is False
     assert body["final_artifact_created"] is False

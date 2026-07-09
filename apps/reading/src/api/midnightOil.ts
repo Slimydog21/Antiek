@@ -271,6 +271,43 @@ export interface MidnightOilProviderRouteReceipt {
   provider_route_notes: string[];
 }
 
+export interface MidnightOilRetrievalRequest {
+  launch_packet: MidnightOilLaunchPacket;
+  approval_receipt: MidnightOilApprovalReceipt;
+  runner_handoff: MidnightOilRunnerHandoff;
+  applied_run_receipt: MidnightOilAppliedRunReceipt;
+  dispatch_receipt: MidnightOilDispatchReceipt;
+  activation_checklist_receipt: MidnightOilActivationChecklistReceipt;
+  budget_reservation_receipt: MidnightOilBudgetReservationReceipt;
+  provider_route_receipt: MidnightOilProviderRouteReceipt;
+}
+
+export interface MidnightOilRetrievalReceipt {
+  receipt_id: string;
+  provider_route_receipt_id: string;
+  budget_reservation_receipt_id: string;
+  activation_checklist_receipt_id: string;
+  dispatch_receipt_id: string;
+  applied_run_receipt_id: string;
+  runner_handoff_id: string;
+  approval_receipt_id: string;
+  launch_packet_id: string;
+  run_id: string;
+  status: "blocked_retrieval_executor_disabled";
+  planned_source_policy: MidnightOilSourcePolicy[];
+  planned_source_receipt_ids: string[];
+  blocker_reason: "retrieval_executor_missing";
+  retrieval_allowed: boolean;
+  source_receipts_created: boolean;
+  retrieval_performed: boolean;
+  provider_calls_made: boolean;
+  budget_reserved: boolean;
+  dispatch_performed: boolean;
+  graph_mutated: boolean;
+  final_artifact_created: boolean;
+  retrieval_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -359,4 +396,19 @@ export async function providerRouteMidnightOil(
     throw new Error(`POST /research/midnight-oil/provider-route: HTTP ${resp.status}: ${body}`);
   }
   return (await resp.json()) as MidnightOilProviderRouteReceipt;
+}
+
+export async function retrievalMidnightOil(
+  request: MidnightOilRetrievalRequest,
+): Promise<MidnightOilRetrievalReceipt> {
+  const resp = await apiFetch(`${API_BASE}/research/midnight-oil/retrieval`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`POST /research/midnight-oil/retrieval: HTTP ${resp.status}: ${body}`);
+  }
+  return (await resp.json()) as MidnightOilRetrievalReceipt;
 }

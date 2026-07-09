@@ -22,12 +22,15 @@ from substrate.midnight_oil import (
     MidnightOilProviderRouteReceipt,
     MidnightOilProviderRouteRequest,
     MidnightOilRequest,
+    MidnightOilRetrievalReceipt,
+    MidnightOilRetrievalRequest,
     activation_checklist_midnight_oil,
     budget_reservation_midnight_oil,
     dispatch_midnight_oil,
     dry_run_midnight_oil,
     preflight_midnight_oil,
     provider_route_midnight_oil,
+    retrieval_midnight_oil,
 )
 
 midnight_oil_router = APIRouter(prefix="/research/midnight-oil", tags=["deep-research"])
@@ -69,6 +72,13 @@ def post_midnight_oil_provider_route(
     return provider_route_midnight_oil(req)
 
 
+@midnight_oil_router.post("/retrieval", response_model=MidnightOilRetrievalReceipt)
+def post_midnight_oil_retrieval(
+    req: MidnightOilRetrievalRequest,
+) -> MidnightOilRetrievalReceipt:
+    return retrieval_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -81,5 +91,6 @@ __all__ = [
     "post_midnight_oil_dry_run",
     "post_midnight_oil_preflight",
     "post_midnight_oil_provider_route",
+    "post_midnight_oil_retrieval",
     "register_midnight_oil_routes",
 ]
