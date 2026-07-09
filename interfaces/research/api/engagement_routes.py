@@ -470,6 +470,84 @@ def get_hydrate_live_status() -> dict[str, Any]:
     return hydrate_live_status_payload()
 
 
+def twin_seed_live_status_payload(
+    *,
+    environ: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Residual (hs): offline-vs-live twin seed note_taker readiness report.
+
+    Never enables network or installs injectors. Surfaces env dual-gate + whether
+    a live seed fn is process-installed (Panels always force_offline seed).
+    """
+    from substrate.engagement_spine.twin import (
+        ANTIEK_TWIN_SEED_LIVE_ENV,
+        twin_seed_live_enabled,
+        twin_seed_live_fn_installed,
+    )
+    from substrate.engagement_spine.twin_seed_live_wiring import (
+        ANTIEK_TWIN_SEED_USE_DISPATCH_ENV,
+        env_flag,
+    )
+
+    env = environ if environ is not None else dict(os.environ)
+    live_env = (
+        twin_seed_live_enabled()
+        if environ is None
+        else env_flag(ANTIEK_TWIN_SEED_LIVE_ENV, environ=env)
+    )
+    use_dispatch = env_flag(ANTIEK_TWIN_SEED_USE_DISPATCH_ENV, environ=env)
+    injector_installed = twin_seed_live_fn_installed()
+    offline_honest = not injector_installed
+    notes: list[str] = []
+    if offline_honest:
+        notes.append(
+            "Twin seed default: offline-honest identity stubs "
+            "(UI panels force_offline=true)."
+        )
+    else:
+        notes.append(
+            "Live note_taker seed fn is process-installed "
+            "(panels still force_offline unless callers opt out)."
+        )
+    if live_env and not use_dispatch and not injector_installed:
+        notes.append(
+            f"{ANTIEK_TWIN_SEED_LIVE_ENV}=on but "
+            f"{ANTIEK_TWIN_SEED_USE_DISPATCH_ENV}=off — manual configure required."
+        )
+    if live_env and use_dispatch and not injector_installed:
+        notes.append(
+            "Dual-gate on but live seed fn not installed "
+            "(boot wiring may have failed)."
+        )
+    return {
+        "view_format": "html",
+        "product_panel": "twin_seed_live_status",
+        "source": "engagement_spine.twin_seed_live_wiring",
+        "offline_honest": offline_honest,
+        "live_env": live_env,
+        "use_dispatch": use_dispatch,
+        "injector_installed": injector_installed,
+        "live_env_flag": ANTIEK_TWIN_SEED_LIVE_ENV,
+        "use_dispatch_env_flag": ANTIEK_TWIN_SEED_USE_DISPATCH_ENV,
+        "notes": notes,
+        "html": (
+            "<section data-view-format=\"html\" data-product-panel=\"twin_seed_live_status\">"
+            f"<p>offline_honest={str(offline_honest).lower()} · "
+            f"live_env={str(live_env).lower()} · "
+            f"injector={str(injector_installed).lower()}</p>"
+            "<ul>"
+            + "".join(f"<li>{n}</li>" for n in notes)
+            + "</ul></section>"
+        ),
+    }
+
+
+@engagement_router.get("/twin-seed-live-status")
+def get_twin_seed_live_status() -> dict[str, Any]:
+    """GET residual (hs): offline-vs-live twin seed readiness (HTML-first)."""
+    return twin_seed_live_status_payload()
+
+
 @engagement_router.post("/hydrate-ref")
 def post_hydrate_ref(body: HydrateRefBody) -> dict[str, Any]:
     """Land arxiv/substack/url as an HTML-first asset (offline-safe by default).
@@ -782,4 +860,5 @@ __all__ = [
     "register_engagement_routes",
     "reset_engagement_stores",
     "hydrate_live_status_payload",
+    "twin_seed_live_status_payload",
 ]

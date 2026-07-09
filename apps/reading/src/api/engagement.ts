@@ -201,6 +201,26 @@ export async function fetchHydrateLiveStatus(): Promise<HydrateLiveStatusRespons
   return readJson<HydrateLiveStatusResponse>(res);
 }
 
+/** Residual (hs): offline-vs-live twin seed note_taker readiness (Settings). */
+export type TwinSeedLiveStatusResponse = {
+  view_format: "html" | string;
+  product_panel: string;
+  source: string;
+  offline_honest: boolean;
+  live_env: boolean;
+  use_dispatch: boolean;
+  injector_installed: boolean;
+  live_env_flag: string;
+  use_dispatch_env_flag: string;
+  notes: string[];
+  html?: string | null;
+};
+
+export async function fetchTwinSeedLiveStatus(): Promise<TwinSeedLiveStatusResponse> {
+  const res = await apiFetch(`${API_BASE}/engagement/twin-seed-live-status`);
+  return readJson<TwinSeedLiveStatusResponse>(res);
+}
+
 /** Hydrate arxiv/substack/url into HTML-first engagement asset. */
 export type HydrateRefResponse = {
   asset_id: string;

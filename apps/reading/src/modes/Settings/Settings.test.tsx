@@ -26,6 +26,7 @@ const {
   registerSettingsModel,
   fetchNotDiamondAdvisory,
   fetchHydrateLiveStatus,
+  fetchTwinSeedLiveStatus,
 } = vi.hoisted(() => {
   const models = {
     models: [
@@ -377,6 +378,22 @@ const {
       ],
       html: "<p>offline_honest=true</p>",
     })),
+    // Residual (hs): offline-honest twin seed status default.
+    fetchTwinSeedLiveStatus: vi.fn(async () => ({
+      view_format: "html",
+      product_panel: "twin_seed_live_status",
+      source: "engagement_spine.twin_seed_live_wiring",
+      offline_honest: true,
+      live_env: false,
+      use_dispatch: false,
+      injector_installed: false,
+      live_env_flag: "ANTIEK_TWIN_SEED_LIVE",
+      use_dispatch_env_flag: "ANTIEK_TWIN_SEED_USE_DISPATCH",
+      notes: [
+        "Twin seed default: offline-honest identity stubs (UI panels force_offline=true).",
+      ],
+      html: "<p>offline_honest=true</p>",
+    })),
   };
 });
 
@@ -402,6 +419,7 @@ vi.mock("../../api/settings", () => ({
 
 vi.mock("../../api/engagement", () => ({
   fetchHydrateLiveStatus,
+  fetchTwinSeedLiveStatus,
 }));
 
 describe("Settings SPR-01 + decision-tree install", () => {
@@ -428,6 +446,23 @@ describe("Settings SPR-01 + decision-tree install", () => {
     registerSettingsModel.mockClear();
     fetchNotDiamondAdvisory.mockClear();
     fetchHydrateLiveStatus.mockClear();
+    fetchTwinSeedLiveStatus.mockClear();
+  });
+
+  it("surfaces offline-honest twin seed live status (hs)", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(fetchTwinSeedLiveStatus).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-seed-live-status-panel")).toBeTruthy();
+    });
+    const panel = screen.getByTestId("twin-seed-live-status-panel");
+    expect(panel.getAttribute("data-offline-honest")).toBe("true");
+    expect(panel.getAttribute("data-injector-installed")).toBe("false");
+    const metrics = screen.getByTestId("twin-seed-live-status-metrics");
+    expect(metrics.getAttribute("data-offline-honest")).toBe("true");
+    expect(metrics.textContent).toMatch(/offline-honest identity stubs/);
   });
 
   it("surfaces offline-honest hydrate live status (hq)", async () => {

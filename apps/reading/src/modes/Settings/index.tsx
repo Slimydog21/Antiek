@@ -36,7 +36,9 @@ import {
 } from "../../api/settings";
 import {
   fetchHydrateLiveStatus,
+  fetchTwinSeedLiveStatus,
   type HydrateLiveStatusResponse,
+  type TwinSeedLiveStatusResponse,
 } from "../../api/engagement";
 
 /**
@@ -47,6 +49,7 @@ import {
  * + competitive dogfood fixtures listing (never auto-promoted)
  * + offline dogfood suite run → populate weekly leaderboard (residual bo).
  * + Residual (hq): hydrate live-injector readiness (arxiv/substack offline-honest default).
+ * + Residual (hs): twin seed live readiness (force_offline UI; dual-gate env).
  *
  * Honesty: spent/pricing may be unknown; UI never invents $0.00 when the
  * ledger or rate table is unset. Cost projection stays on #440 API.
@@ -101,6 +104,13 @@ export default function Settings() {
     useState<HydrateLiveStatusResponse | null>(null);
   const [hydrateLiveError, setHydrateLiveError] = useState<string | null>(null);
   const [hydrateLiveBusy, setHydrateLiveBusy] = useState(false);
+  // Residual (hs): twin seed note_taker readiness (offline default).
+  const [twinSeedLive, setTwinSeedLive] =
+    useState<TwinSeedLiveStatusResponse | null>(null);
+  const [twinSeedLiveError, setTwinSeedLiveError] = useState<string | null>(
+    null,
+  );
+  const [twinSeedLiveBusy, setTwinSeedLiveBusy] = useState(false);
   const [depth, setDepth] = useState<DepthTierResponse | null>(null);
   const [depthError, setDepthError] = useState<string | null>(null);
   const [depthBusy, setDepthBusy] = useState(false);
@@ -196,6 +206,19 @@ export default function Settings() {
       } catch (e) {
         if (!cancelled)
           setHydrateLiveError(e instanceof Error ? e.message : String(e));
+      }
+      try {
+        // Residual (hs): twin seed live readiness (panels force_offline).
+        const ts = await fetchTwinSeedLiveStatus();
+        if (!cancelled) {
+          if (ts.view_format !== "html") {
+            throw new Error("twin seed live status view_format must be html");
+          }
+          setTwinSeedLive(ts);
+        }
+      } catch (e) {
+        if (!cancelled)
+          setTwinSeedLiveError(e instanceof Error ? e.message : String(e));
       }
       try {
         const n = await fetchNotDiamondAdvisory({
@@ -406,6 +429,23 @@ export default function Settings() {
       setHydrateLiveError(e instanceof Error ? e.message : String(e));
     } finally {
       setHydrateLiveBusy(false);
+    }
+  }
+
+  /** Residual (hs): refresh twin seed live readiness (never installs injector). */
+  async function onRefreshTwinSeedLiveStatus() {
+    setTwinSeedLiveBusy(true);
+    setTwinSeedLiveError(null);
+    try {
+      const ts = await fetchTwinSeedLiveStatus();
+      if (ts.view_format !== "html") {
+        throw new Error("twin seed live status view_format must be html");
+      }
+      setTwinSeedLive(ts);
+    } catch (e) {
+      setTwinSeedLiveError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTwinSeedLiveBusy(false);
     }
   }
 
@@ -1047,6 +1087,81 @@ export default function Settings() {
                 </p>
               ))}
             </div>
+          </div>
+        </LemonCard>
+
+        {/* Residual (hs): twin seed note_taker readiness. */}
+        <LemonCard
+          title="Twin seed (recursive note-taker)"
+          elevation="z1"
+          colour="parchment"
+        >
+          <div
+            className="p-4 space-y-3"
+            data-testid="twin-seed-live-status-panel"
+            data-view-format="html"
+            data-offline-honest={
+              twinSeedLive ? String(twinSeedLive.offline_honest) : undefined
+            }
+            data-injector-installed={
+              twinSeedLive
+                ? String(twinSeedLive.injector_installed)
+                : undefined
+            }
+          >
+            <p className="text-sm text-ink dark:text-bright">
+              Recursive note-taker UI always force_offline seeds. Live
+              note_taker requires dual env gate + boot install — never silent
+              LLM from this panel.
+            </p>
+            <button
+              type="button"
+              data-testid="twin-seed-live-status-refresh"
+              disabled={twinSeedLiveBusy}
+              onClick={() => void onRefreshTwinSeedLiveStatus()}
+              className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+            >
+              {twinSeedLiveBusy ? "Refreshing…" : "Refresh twin seed status"}
+            </button>
+            {twinSeedLiveError ? (
+              <p className="text-sm text-emperor" role="alert">
+                {twinSeedLiveError}
+              </p>
+            ) : null}
+            {twinSeedLive ? (
+              <div
+                className="space-y-1 font-mono text-[11px]"
+                data-testid="twin-seed-live-status-metrics"
+                data-offline-honest={String(twinSeedLive.offline_honest)}
+                data-live-env={String(twinSeedLive.live_env)}
+                data-use-dispatch={String(twinSeedLive.use_dispatch)}
+                data-injector-installed={String(
+                  twinSeedLive.injector_installed,
+                )}
+                role="status"
+              >
+                <p>
+                  Mode:{" "}
+                  <strong>
+                    {twinSeedLive.offline_honest
+                      ? "offline-honest identity stubs"
+                      : "live note_taker installed"}
+                  </strong>
+                </p>
+                <p>
+                  env <code>{twinSeedLive.live_env_flag}</code>=
+                  {String(twinSeedLive.live_env)} ·{" "}
+                  <code>{twinSeedLive.use_dispatch_env_flag}</code>=
+                  {String(twinSeedLive.use_dispatch)} · injector=
+                  {String(twinSeedLive.injector_installed)}
+                </p>
+                {twinSeedLive.notes.map((n) => (
+                  <p key={n} className="opacity-80">
+                    {n}
+                  </p>
+                ))}
+              </div>
+            ) : null}
           </div>
         </LemonCard>
 

@@ -194,6 +194,11 @@ def twin_seed_live_enabled() -> bool:
     return True
 
 
+def twin_seed_live_fn_installed() -> bool:
+    """Residual (hs): True when a process-local live note_taker seed fn is set."""
+    return _twin_seed_live_fn is not None
+
+
 def seed_twins_for_asset(
     asset_id: str,
     *,
