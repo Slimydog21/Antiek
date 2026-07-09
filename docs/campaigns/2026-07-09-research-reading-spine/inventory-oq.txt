@@ -1,0 +1,8 @@
+# inventory-oq · MO offline run spawn_ids → recent_ring without auto-deposit
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: oq
+files:
+  apps/reading/src/modes/MidnightOil/index.tsx
+  apps/reading/src/modes/MidnightOil/MidnightOil.test.tsx
+proof: vitest MidnightOil 15 passed
+invariants: offline-honest · rememberSpawnIds shared · auto_deposit off still multi-selectable · never invent ids

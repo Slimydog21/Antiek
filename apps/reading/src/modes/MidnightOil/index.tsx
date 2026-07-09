@@ -40,6 +40,8 @@
  * recursive note-taker) — parity hosted/Write; remount after promote/merge.
  * Residual (op): ResearchContextPanel on deposit (search/metrics over twin
  * substrate that feeds the next prompt) — remount on same refresh key as twins.
+ * Residual (oq): offline run spawn_ids push recent_ring even when auto_deposit
+ * is off so swarm goals remain multi-selectable elsewhere (Write/hosted).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -178,16 +180,24 @@ export default function MidnightOil() {
   }, [deposit]);
 
   /**
-   * Residual (on): push deposit spawn ids into session recent_ring so they
-   * remain multi-selectable after windows close / navigate away.
+   * Residual (on/oq): push spawn ids into session recent_ring so they remain
+   * multi-selectable after windows close / navigate away.
    */
+  const rememberSpawnIds = useCallback((ids: readonly string[] | null | undefined) => {
+    let pushed = 0;
+    for (const raw of ids ?? []) {
+      const sid = String(raw || "").trim();
+      if (!sid) continue;
+      pushRecentDeepResearchSpawnId(sid);
+      pushed += 1;
+    }
+    if (pushed > 0) setRecentTick((n) => n + 1);
+  }, []);
+
   useEffect(() => {
     if (!depositSpawnIds.length) return;
-    for (const sid of depositSpawnIds) {
-      pushRecentDeepResearchSpawnId(sid);
-    }
-    setRecentTick((n) => n + 1);
-  }, [depositSpawnIds]);
+    rememberSpawnIds(depositSpawnIds);
+  }, [depositSpawnIds, rememberSpawnIds]);
 
   const maybeAutoOpenDeposit = useCallback(
     (dep: MidnightOilDepositResponse) => {
@@ -481,6 +491,8 @@ export default function MidnightOil() {
         status: result.status,
         runnable: result.runnable,
       });
+      // Residual (oq): remember offline swarm spawns even if auto_deposit is off.
+      rememberSpawnIds(result.spawn_ids);
       if (result.deposit) {
         setDeposit(result.deposit);
         setTwinReseedStatus(null);

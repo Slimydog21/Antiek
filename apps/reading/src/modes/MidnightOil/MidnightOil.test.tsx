@@ -890,6 +890,12 @@ describe("MidnightOil mode", () => {
         /complete/,
       );
     });
+    // Residual (oq): offline run spawn_ids enter recent_ring for collective.
+    await waitFor(() => {
+      expect(pushRecentDeepResearchSpawnIdMock).toHaveBeenCalledWith(
+        "spn_moil_run_0",
+      );
+    });
     expect(
       screen.getByTestId("moil-run-result").getAttribute("data-offline"),
     ).toBe("true");
@@ -916,6 +922,81 @@ describe("MidnightOil mode", () => {
     expect(depositMetrics.getAttribute("data-progress-seeded")).toBe("true");
     expect(depositMetrics.getAttribute("data-view-format")).toBe("html");
     expect(depositMetrics.textContent).toMatch(/Midnight Oil deposit/);
+  });
+
+  it("pushes offline run spawn_ids to recent_ring without auto-deposit (oq)", async () => {
+    createMidnightOilJob.mockResolvedValue({
+      job_id: "moil_run_no_dep",
+      goals: ["Goal alone"],
+      duration_minutes: 30,
+      status: "awaiting_approval",
+      recommended_price_ceiling_usd: 1.0,
+      view_format: "html",
+      runnable: false,
+      html: "<p>Receipt</p>",
+    });
+    approveMidnightOilCeiling.mockResolvedValue({
+      job_id: "moil_run_no_dep",
+      goals: ["Goal alone"],
+      duration_minutes: 30,
+      status: "approved",
+      recommended_price_ceiling_usd: 1.0,
+      approved_ceiling_usd: 1.0,
+      view_format: "html",
+      runnable: true,
+      html: "<p>Approved</p>",
+    });
+    runMidnightOilJob.mockResolvedValue({
+      job_id: "moil_run_no_dep",
+      status: "complete",
+      spent_usd: 0.05,
+      approved_ceiling_usd: 1.0,
+      spawn_ids: ["spn_run_only"],
+      goals_total: 1,
+      steps_cap: 4,
+      elapsed_ms: 0,
+      view_format: "html",
+      runnable: false,
+      offline: true,
+      live_step: false,
+      notes_list: ["Offline without auto-deposit."],
+      html: "<p>Offline run only</p>",
+      deposit: null,
+    });
+
+    render(<MidnightOil />);
+    fireEvent.change(screen.getByLabelText(/goals/i), {
+      target: { value: "Goal alone" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /create job \+ recommend ceiling/i }),
+    );
+    await waitFor(() => expect(screen.getByTestId("moil-job")).toBeTruthy());
+    fireEvent.click(
+      screen.getByRole("button", { name: /approve at recommended/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("moil-run-offline")).toBeTruthy();
+    });
+    // Turn off auto-deposit before run (testid is the checkbox input).
+    const autoDep = screen.getByTestId("moil-auto-deposit") as HTMLInputElement;
+    expect(autoDep.checked).toBe(true);
+    fireEvent.click(autoDep);
+    expect(autoDep.checked).toBe(false);
+    fireEvent.click(screen.getByTestId("moil-run-offline"));
+    await waitFor(() => {
+      expect(runMidnightOilJob).toHaveBeenCalledWith({
+        job_id: "moil_run_no_dep",
+        auto_deposit: false,
+        spent_per_goal: 0.05,
+      });
+    });
+    await waitFor(() => {
+      expect(pushRecentDeepResearchSpawnIdMock).toHaveBeenCalledWith(
+        "spn_run_only",
+      );
+    });
+    expect(screen.queryByTestId("moil-deposit-result")).toBeNull();
   });
 
   it("applies competitive recommended duration by tier (ng)", async () => {
