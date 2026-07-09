@@ -605,6 +605,15 @@ describe("CollectiveResearchPanel", () => {
     );
   });
 
+  it("links dual-gate L1–L4 checklist for L6 collective prep (nl)", () => {
+    render(
+      <CollectiveResearchPanel availableSpawnIds={["spn_1"]} parentAssetId="p" />,
+    );
+    const dual = screen.getByTestId("collective-dual-gate-checklist-link");
+    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
+    expect(dual.textContent).toMatch(/Dual-gate/i);
+  });
+
   it("selects all / invert / clear multi-select helpers (nk)", () => {
     render(
       <CollectiveResearchPanel

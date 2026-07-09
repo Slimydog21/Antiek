@@ -1,0 +1,8 @@
+# inventory-nl · collective dual-gate checklist deep-link
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: nl
+files:
+  apps/reading/src/components/engagement/CollectiveResearchPanel.tsx
+  apps/reading/src/components/engagement/CollectiveResearchPanel.test.tsx
+proof: vitest CollectiveResearchPanel 12 passed
+invariants: prep only · never enables L1–L4/L6 injectors · offline-honest

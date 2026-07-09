@@ -362,3 +362,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (nk, 2026-07-10) **Collective select-all/invert/clear:**
   - multi-select helpers for cohesive unit assembly
   - parity TwinNotes multi-select path
+
+- Closed (nl, 2026-07-10) **Collective dual-gate checklist link:**
+  - L6 live multi-agent collective prep surface
+  - dual-gate prep now spans attach/MO/marketplace/twins/context/progress/collective

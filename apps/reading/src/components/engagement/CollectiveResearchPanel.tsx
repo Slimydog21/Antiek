@@ -27,6 +27,8 @@
  * 15. Residual (lg): DecisionTreeDriverBadge with researchTier for model+depth.
  * 16. Residual (nk): select-all / invert / clear multi-select helpers
  *     (parity TwinNotes multi-select path for cohesive unit assembly).
+ * 17. Residual (nl): dual-gate L1–L4 checklist deep-link for L6 live multi-
+ *     agent collective prep (never enables injectors).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -405,14 +407,21 @@ export function CollectiveResearchPanel({
             Parent asset: <code>{parentAssetId}</code>
           </p>
         ) : null}
-        {/* Residual (ig): Settings deep-link for model driver + budget. */}
-        <p className="meta font-mono text-[11px]">
+        {/* Residual (ig/nl): Settings + dual-gate checklist (L6 collective prep). */}
+        <p className="meta font-mono text-[11px] space-x-3">
           <a
             href="/settings"
             data-testid="collective-settings-link"
             title="Open Settings for decision-tree driver and daily budget"
           >
             Settings · driver & budget
+          </a>
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+            data-testid="collective-dual-gate-checklist-link"
+            title="Dual-gate L1–L4 checklist (L6 live multi-agent collective prep; offline default)"
+          >
+            Dual-gate L1–L4 checklist
           </a>
         </p>
         {/* Residual (lg): model driver + budget + depth co-display (parity ku). */}
