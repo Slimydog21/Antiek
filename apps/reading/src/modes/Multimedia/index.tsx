@@ -333,6 +333,7 @@ function buildAttachedArtifactAuditItems(asset: MultimediaAssetSummary): Persist
     { label: "Source job", value: readiness.source_job_id ?? "unavailable" },
     ...buildArtifactLineageItems(asset),
     ...buildProviderActivationAuditItems(),
+    { label: "Provenance packet", value: "Evidence only; does not verify rights or media truth" },
     { label: "Copy action", value: "Read-only; no provider worker triggered" },
   ];
 }
@@ -350,6 +351,7 @@ function buildRejectedArtifactAuditItems(asset: MultimediaAssetSummary): Persist
     ...buildArtifactLineageItems(asset),
     ...buildProviderActivationAuditItems(),
     ...buildPublicReviewAuditItems(),
+    { label: "Provenance packet", value: "Evidence only; does not verify rights or media truth" },
     { label: "Copy action", value: "Read-only; no provider worker triggered" },
   ];
 }
