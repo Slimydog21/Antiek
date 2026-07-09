@@ -1,18 +1,15 @@
 import FloatMenu from "../shared/FloatMenu/FloatMenu";
 import { useFloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
 import type { FloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
+import { launchFloatingDeepResearch } from "../Reading/launchFloatingDeepResearch";
 
 /**
  * HighlightToolbar — the Research-synthesis HOST for the shared
- * {@link FloatMenu} (Living Roadmap SPR-04).
+ * {@link FloatMenu} (Living Roadmap SPR-04 + residual cd).
  *
- * It WAS the single-action "Follow this" floating toolbar; its selection-listen
- * + positioning is now the shared {@link useFloatMenuSelection} hook and its one
- * action is now the four-action FloatMenu {Note · Dialogue · Search ·
- * Deep-research}. This file is the thin Research-surface adapter: it owns the
- * scope + the host pixel read (via the hook) and wires Deep-research to the
- * EXISTING chase path (`onChaseThis` → ChaseThread + startInvestigation),
- * non-breaking against `ResearchWorkstation/index.tsx`.
+ * Deep-research primary path opens a floating deep_research_session window
+ * (same product path as Reading). ChaseThread remains the degraded fallback
+ * via `onChaseThis` when launch fails.
  *
  * Why a host adapter and not FloatMenu directly in the page: FloatMenu is
  * host-agnostic (it takes a rect prop, reads no DOM, imports nothing from
@@ -29,7 +26,7 @@ export default function HighlightToolbar({
   investigationId,
 }: {
   scopeRef: React.RefObject<HTMLElement | null>;
-  /** REUSED chase path — the host opens ChaseThread + startInvestigation. */
+  /** Degraded chase path — ChaseThread + startInvestigation when float launch fails. */
   onChaseThis: (selectedText: string) => void;
   /** The investigation the synthesis belongs to — the NOTE event bucket +
    * dialogue session. Optional for back-compat with the empty-synthesis case;
@@ -44,12 +41,21 @@ export default function HighlightToolbar({
       investigationId={investigationId ?? "__research__"}
       onDeepResearch={(safeSpawnText: string | null, _sel: FloatMenuSelection) => {
         // §9.0: `safeSpawnText` is null when the selection crosses a withheld
-        // region — the chase MUST NOT receive the withheld body. On the
-        // synthesis surface a selection resolves no withheld chunk (provenance
-        // empty), so safeSpawnText is the selection; the guard is the shared
-        // policy regardless. We refuse rather than spawn on a withheld body.
+        // region — the chase MUST NOT receive the withheld body.
         if (safeSpawnText === null) return;
-        onChaseThis(safeSpawnText);
+        const assetId = (investigationId || "").trim() || "__research__";
+        void (async () => {
+          try {
+            await launchFloatingDeepResearch({
+              asset_id: assetId,
+              selection_text: safeSpawnText,
+              goal_hint: "Deep-research the highlighted synthesis passage",
+              view_mode: "floating",
+            });
+          } catch {
+            onChaseThis(safeSpawnText);
+          }
+        })();
       }}
     />
   );

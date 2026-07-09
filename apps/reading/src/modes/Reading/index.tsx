@@ -21,6 +21,7 @@ import ResearchThis from "./ResearchThis";
 import TalkToBook from "./TalkToBook";
 import TocPanel from "./TocPanel";
 import VoiceNote from "./VoiceNote";
+import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
 import { paginate, windowForTocPage } from "./paginate";
 import { usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
@@ -194,18 +195,32 @@ export default function BookReader() {
     minLength: 8,
   });
 
-  // Deep-research → the EXISTING in-book chase (ChaseThread mounts inline
-  // beside the reading column, the same path the old "Go deeper" affordance
-  // used). §9.0: `safeSpawnText` is null when the selection crosses a withheld
-  // region — refuse rather than spawn on a withheld body (the chokepoint already
-  // refuses, so this is null only for a non-servable book; we never chase it).
+  // Deep-research (residual cd): primary → floating deep_research_session
+  // window via engagement sessions/open + openDeepResearchFromHighlight.
+  // Fallback → in-book ChaseThread if launch fails (degraded path).
+  // §9.0: `safeSpawnText` is null when the selection crosses a withheld
+  // region — refuse rather than spawn on a withheld body.
   const onDeepResearch = useCallback(
-    (safeSpawnText: string | null, _sel: FloatMenuSelection) => {
+    (safeSpawnText: string | null, sel: FloatMenuSelection) => {
       if (safeSpawnText === null) return;
       window.getSelection()?.removeAllRanges(); // collapse so the menu closes
-      setChasing(safeSpawnText);
+      void (async () => {
+        try {
+          await launchFloatingDeepResearch({
+            asset_id: documentId,
+            selection_text: safeSpawnText,
+            page: pageIndex,
+            region_id: sel.provenance.chunkId ?? undefined,
+            goal_hint: "Deep-research the highlighted passage from reading",
+            view_mode: "floating",
+          });
+        } catch {
+          // Degraded: keep the SHIPPED ChaseThread rabbit-hole path.
+          setChasing(safeSpawnText);
+        }
+      })();
     },
-    [],
+    [documentId, pageIndex],
   );
 
   // Turning the page (or jumping via TOC) collapses a stale selection — the

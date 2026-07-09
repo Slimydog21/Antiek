@@ -19,6 +19,7 @@ const {
   searchBlocksMock,
   startInvestigationMock,
   apiFetchMock,
+  launchFloatingDeepResearchMock,
 } = vi.hoisted(() => ({
   getBookMock: vi.fn(),
   getFullTextMock: vi.fn(),
@@ -37,6 +38,21 @@ const {
   apiFetchMock: vi.fn((_i: unknown, _init?: unknown) =>
     Promise.resolve(new Response(JSON.stringify({ text: "reply" }), { status: 200 })),
   ),
+  launchFloatingDeepResearchMock: vi.fn(async () => ({
+    session_id: "fsess_test",
+    spawn_id: "spn_test",
+    investigation_id: "inv_test",
+    parent_asset_id: "doc-1",
+    window_id: "wdr_fsess_test",
+    view_format: "html" as const,
+    view_mode: "floating",
+    status: "reserved",
+  })),
+}));
+
+vi.mock("./launchFloatingDeepResearch", () => ({
+  launchFloatingDeepResearch: (...args: unknown[]) =>
+    launchFloatingDeepResearchMock(...args),
 }));
 
 vi.mock("../../api/books", async (orig) => {
@@ -405,7 +421,8 @@ describe("BookReader", () => {
     expect(env.payload.note_text).toBe("a thought while reading");
   });
 
-  it("Deep-research in-book routes to the SAME ChaseThread, seeded with the passage, with a way home (generalized rabbit-hole, M2/M3)", async () => {
+  it("Deep-research in-book opens floating deep research window (residual cd)", async () => {
+    launchFloatingDeepResearchMock.mockClear();
     getBookMock.mockResolvedValue(makeDetail());
     getFullTextMock.mockResolvedValue(makeBody());
     await renderReader();
@@ -415,14 +432,41 @@ describe("BookReader", () => {
     const menu = await screen.findByRole("menu", { name: /Highlight actions/ });
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Deep-research" }));
 
-    // The inline chase mounts beside the reading column (the SAME ChaseThread
-    // the old "Go deeper" affordance used — now one of four float-menu actions).
-    const chasePanel = await screen.findByRole("complementary", { name: /Following this passage/ });
+    await waitFor(() => {
+      expect(launchFloatingDeepResearchMock).toHaveBeenCalled();
+    });
+    const call = launchFloatingDeepResearchMock.mock.calls.at(-1)?.[0] as {
+      asset_id: string;
+      selection_text: string;
+      view_mode: string;
+    };
+    expect(call.asset_id).toBe("doc-1");
+    expect(call.selection_text).toMatch(/opening of the book/);
+    expect(call.view_mode).toBe("floating");
+    // ChaseThread is the degraded fallback only — not used when launch succeeds.
+    expect(
+      screen.queryByRole("complementary", { name: /Following this passage/ }),
+    ).toBeNull();
+  });
+
+  it("Deep-research falls back to ChaseThread when floating launch fails", async () => {
+    launchFloatingDeepResearchMock.mockRejectedValueOnce(new Error("offline"));
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    await renderReader();
+    const para = await screen.findByText("The opening of the book.");
+    selectTextIn(para, "The opening of the book.");
+
+    const menu = await screen.findByRole("menu", { name: /Highlight actions/ });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Deep-research" }));
+
+    const chasePanel = await screen.findByRole("complementary", {
+      name: /Following this passage/,
+    });
     const lifted = within(chasePanel).getAllByText(/The opening of the book\./);
     expect(lifted.length).toBeGreaterThanOrEqual(1);
     const back = screen.getByRole("button", { name: /back to the book/ });
     fireEvent.click(back);
-    // Reversible: back to the companion, position held by usePosition.
     expect(screen.getByRole("complementary", { name: /Reading companion/ })).toBeTruthy();
   });
 
