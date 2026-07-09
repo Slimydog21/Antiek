@@ -341,6 +341,9 @@ describe("Multimedia workstation", () => {
 
     expect(screen.getByTestId("multimedia-suggestions")).toBeTruthy();
     expect(screen.getByText(/Unsourced claim guard/)).toBeTruthy();
+    expect(
+      screen.getByText("Approve render creates a draft render package only; it does not call providers, export, or publish media."),
+    ).toBeTruthy();
     expect(screen.queryByTestId("multimedia-player")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Approve render" }));

@@ -1517,6 +1517,9 @@ export default function Multimedia() {
                     Steer outline
                   </LemonButton>
                 </div>
+                <p className="text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
+                  Approve render creates a draft render package only; it does not call providers, export, or publish media.
+                </p>
               </>
             )}
           </section>
