@@ -13,6 +13,7 @@ import {
 } from "../../lib/api";
 import { seedTwinNotes } from "../../api/engagement";
 import { fetchHostedDocumentHtml } from "../../api/marketplaceHost";
+import { ResearchContextPanel } from "../../components/engagement/ResearchContextPanel";
 import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
 import GlassSurface from "../../shell/GlassSurface";
 import Canvas from "../DeepResearchWorkspace/Canvas/Canvas";
@@ -60,6 +61,8 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * (recursive note-taker substrate for the new writing asset).
  * Residual (ga): TwinNotesPanel on open piece so writing assets share the
  * recursive note-taker UI with reading/research hosts.
+ * Residual (gb): ResearchContextPanel on open piece + remount after twin
+ * promote (reading≡write context flywheel).
  */
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
@@ -75,6 +78,11 @@ export default function WriteHome() {
   const [pieces, setPieces] = useState<DeliverableSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [onRamp, setOnRamp] = useState<"idea" | "context" | null>(null);
+  // Residual (gb): remount research context after twin promote on Write piece.
+  const [contextRefreshKey, setContextRefreshKey] = useState(0);
+  const onContextNeedsRefresh = useCallback(() => {
+    setContextRefreshKey((k) => k + 1);
+  }, []);
   // Residual (fm): prepared HTML draft for Write surface.
   const [htmlDraft, setHtmlDraft] = useState<HtmlDraftImportPrepared | null>(
     null,
@@ -634,23 +642,44 @@ export default function WriteHome() {
           </p>
         )}
 
-        {/* Residual (ga): recursive note-taker on writing assets (reading≡write). */}
+        {/* Residual (ga/gb): twins + research context on writing assets. */}
         {detail?.deliverable_id ? (
-          <section
-            className="mt-4 border-t border-rule pt-4 dark:border-charcoal-1"
-            data-testid="write-piece-twins-mount"
-            data-view-format="html"
-            data-asset-id={detail.deliverable_id}
-          >
-            <TwinNotesPanel
-              assetId={detail.deliverable_id}
-              spawnId={null}
-              autoLoad
-              autoSeedIfEmpty
-              seedTitle={detail.title || detail.deliverable_id}
-              seedBodyText={detail.title || ""}
-            />
-          </section>
+          <>
+            <section
+              className="mt-4 border-t border-rule pt-4 dark:border-charcoal-1"
+              data-testid="write-piece-twins-mount"
+              data-view-format="html"
+              data-asset-id={detail.deliverable_id}
+            >
+              <TwinNotesPanel
+                assetId={detail.deliverable_id}
+                spawnId={null}
+                autoLoad
+                autoSeedIfEmpty
+                seedTitle={detail.title || detail.deliverable_id}
+                seedBodyText={detail.title || ""}
+                onPromoted={onContextNeedsRefresh}
+              />
+            </section>
+            <section
+              className="mt-4 border-t border-rule pt-4 dark:border-charcoal-1"
+              data-testid="write-piece-context-mount"
+              data-view-format="html"
+              data-asset-id={detail.deliverable_id}
+            >
+              <div
+                data-testid="write-piece-context-refresh"
+                data-refresh-key={String(contextRefreshKey)}
+              >
+                <ResearchContextPanel
+                  key={`ctx-${detail.deliverable_id}-${contextRefreshKey}`}
+                  assetId={detail.deliverable_id}
+                  spawnId={null}
+                  autoLoad
+                />
+              </div>
+            </section>
+          </>
         ) : null}
       </main>
 

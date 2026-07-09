@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
@@ -69,8 +69,29 @@ vi.mock("../../api/engagement", () => ({
 }));
 
 vi.mock("../../components/engagement/TwinNotesPanel", () => ({
-  TwinNotesPanel: (props: { assetId: string; autoLoad?: boolean }) => (
+  TwinNotesPanel: (props: {
+    assetId: string;
+    autoLoad?: boolean;
+    onPromoted?: (r: { promoted_count: number }) => void;
+  }) => (
     <div data-testid="twin-notes-panel-stub">
+      {props.assetId}:auto={String(Boolean(props.autoLoad))}
+      {props.onPromoted ? (
+        <button
+          type="button"
+          data-testid="write-twin-promote-notify"
+          onClick={() => props.onPromoted?.({ promoted_count: 1 })}
+        >
+          notify-promote
+        </button>
+      ) : null}
+    </div>
+  ),
+}));
+
+vi.mock("../../components/engagement/ResearchContextPanel", () => ({
+  ResearchContextPanel: (props: { assetId: string; autoLoad?: boolean }) => (
+    <div data-testid="research-context-panel-stub">
       {props.assetId}:auto={String(Boolean(props.autoLoad))}
     </div>
   ),
@@ -421,6 +442,41 @@ describe("WriteHome — the re-homed door", () => {
       /dlv-open:auto=true/,
     );
     expect(screen.getByTestId("outline-stub")).toBeTruthy();
+  });
+
+  it("mounts ResearchContextPanel and remounts after twin promote (gb)", async () => {
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-ctx",
+      title: "Context piece",
+      deliverable_kind: "general_essay",
+      investigation_root_id: "inv-2",
+      status: "draft",
+      sections: [],
+      created_at: null,
+      updated_at: null,
+      section_count: 0,
+    });
+    mountAt("/write/dlv-ctx");
+    await waitFor(() => {
+      expect(screen.getByTestId("write-piece-context-mount")).toBeTruthy();
+    });
+    expect(
+      screen.getByTestId("write-piece-context-mount").getAttribute("data-asset-id"),
+    ).toBe("dlv-ctx");
+    expect(screen.getByTestId("research-context-panel-stub").textContent).toMatch(
+      /dlv-ctx:auto=true/,
+    );
+    expect(
+      screen
+        .getByTestId("write-piece-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("0");
+    fireEvent.click(screen.getByTestId("write-twin-promote-notify"));
+    expect(
+      screen
+        .getByTestId("write-piece-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("1");
   });
 
   it("M1 — 'none' auto-spawns a research folder and creates the piece linked to it", async () => {

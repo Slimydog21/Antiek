@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(gb) · PR #465
+Write piece ResearchContextPanel (gb); TwinNotesPanel (ga); full Write land path.
+Operator merge still gated. Next residual (gc).

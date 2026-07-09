@@ -1,0 +1,17 @@
+# residual (gb) ResearchContextPanel on open Write piece + remount after promote
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(ga) prior | branch_only | campaign inventories
+(gb) write piece context | branch_only | ResearchContextPanel autoLoad; remount after twin promote; 12 WriteHome vitest
+
+PATHS:
+- apps/reading/src/modes/Write/WriteHome.tsx
+- apps/reading/src/modes/Write/WriteHome.test.tsx
+
+INVARIANTS:
+- asset_id = deliverable_id
+- HTML view_format
+- Same remount pattern as DR/hosted hosts (ec/ei)
+
+NEXT: (gc) re-derive; operator merge PR #465

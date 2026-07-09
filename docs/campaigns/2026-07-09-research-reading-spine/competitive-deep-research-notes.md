@@ -71,4 +71,5 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (fy, 2026-07-09): import badge data-html-prose + NEXT-WAVE-after-fx.md.
 - Closed (fz, 2026-07-09): offline twin seed on deliverable after Write HTML draft import (recursive note-taker).
 - Closed (ga, 2026-07-09): TwinNotesPanel mounted on open Write piece (reading≡write note-taker).
+- Closed (gb, 2026-07-09): ResearchContextPanel on open Write piece; remount after twin promote.
 - Left (env/operator): floating multi-agent *live* collective chat (merge+continue unit ships); live midnight oil multi-provider; paid marketplace rails; live hydrate/seed injectors; operator install of weekly LaunchAgent; PR #465 main merge.
