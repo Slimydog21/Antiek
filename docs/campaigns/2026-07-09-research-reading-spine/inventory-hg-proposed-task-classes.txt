@@ -1,0 +1,19 @@
+# residual (hg) suite proposal task-class breakdown UI
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(hf) prior | branch_only | campaign inventories
+(hg) proposed task classes | branch_only | groupProposedTasksByClass + antiek-bench-proposed-task-classes; 3 pure + 1 Settings vitest; suite-proposal 4_passed
+
+PATHS:
+- apps/reading/src/lib/suiteProposalTasks.ts
+- apps/reading/src/lib/suiteProposalTasks.test.ts
+- apps/reading/src/modes/Settings/index.tsx
+- apps/reading/src/modes/Settings/Settings.test.tsx
+
+BEHAVIOR:
+- Parse usage-<task_class>-* proposed item ids
+- Settings lists distill/wrestle/… counts (not active until promote)
+- propose≠promote unchanged
+
+NEXT: (hh) re-derive; operator merge PR #465

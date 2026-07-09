@@ -154,3 +154,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - antiek-bench-suite-proposal-feed-sources from usage.by_source
 - propose≠promote held; suite-proposal pytest 4_passed
 - tests: Settings suite proposal cases
+## residual (hg) proposed task-class breakdown — 2026-07-09
+- suiteProposalTasks pure helpers
+- antiek-bench-proposed-task-classes UI
+- suite-proposal still 4_passed propose≠promote

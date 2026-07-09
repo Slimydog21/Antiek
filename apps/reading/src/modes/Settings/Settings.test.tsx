@@ -588,6 +588,24 @@ describe("Settings SPR-01 + decision-tree install", () => {
     ).toBe("true");
   });
 
+  it("groups proposed suite tasks by task class (hg)", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("antiek-bench-proposed-tasks")).toBeTruthy();
+    });
+    // Mock has added_item_ids: ["usage-distill-abcd12-0"]
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("antiek-bench-proposed-task-classes").textContent,
+      ).toMatch(/distill/);
+    });
+    expect(
+      screen
+        .getByTestId("antiek-bench-proposed-task-classes")
+        .getAttribute("data-class-count"),
+    ).toBe("1");
+  });
+
   it("loads Antiek-bench suite proposal — proposed not auto-promoted", async () => {
     render(<Settings />);
     await waitFor(() => {

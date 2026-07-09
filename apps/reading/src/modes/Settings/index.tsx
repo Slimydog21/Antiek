@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { groupProposedTasksByClass } from "../../lib/suiteProposalTasks";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
@@ -1635,6 +1636,27 @@ export default function Settings() {
                       {suiteProposal.added_item_ids.length}) — not active until
                       Approve & promote
                     </p>
+                    {/* Residual (hg): task-class breakdown of proposed items. */}
+                    {(() => {
+                      const byClass = groupProposedTasksByClass(
+                        suiteProposal.added_item_ids,
+                      );
+                      const entries = Object.entries(byClass);
+                      if (entries.length === 0) return null;
+                      return (
+                        <ul
+                          className="space-y-0.5 text-[12px] font-mono"
+                          data-testid="antiek-bench-proposed-task-classes"
+                          data-class-count={String(entries.length)}
+                        >
+                          {entries.map(([tc, n]) => (
+                            <li key={tc}>
+                              <strong>{tc}</strong>: {n} proposed
+                            </li>
+                          ))}
+                        </ul>
+                      );
+                    })()}
                     <ul className="list-disc pl-4 text-[12px] font-mono">
                       {suiteProposal.added_item_ids.map((id) => (
                         <li key={id} data-testid="antiek-bench-proposed-task-id">

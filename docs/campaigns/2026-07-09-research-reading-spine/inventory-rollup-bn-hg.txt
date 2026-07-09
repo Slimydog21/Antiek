@@ -1,0 +1,2 @@
+# Campaign rollup (bn)–(hg) · PR #465
+Proposed task-class breakdown (hg); suite feed sources (hf). Next residual (hh).
