@@ -1,0 +1,7 @@
+# Campaign rollup (bn)–(cl) · PR #465
+bn–ch: midnight oil, bench, budget, twins, analysis pipeline
+ci: spawn merge into reading asset
+cj: publication refs on StartResearch launch
+ck: mid-session publication attach on DR host
+cl: complete session flywheel UI on DR host
+Operator merge still gated.

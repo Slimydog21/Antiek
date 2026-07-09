@@ -17,6 +17,7 @@
  * Residual (ce): expand full / restore floating mode controls.
  * Residual (ci): SpawnMergePanel — this spawn → draft/parent reading asset.
  * Residual (ck): PublicationAttachPanel — arxiv/substack attach + hydrate.
+ * Residual (cl): SessionFlywheelPanel — complete flywheel + twins/usage.
  */
 
 import { useMemo } from "react";
@@ -26,6 +27,7 @@ import { PublicationAttachPanel } from "../engagement/PublicationAttachPanel";
 import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
 import { ResearchLaunchBudgetPanel } from "../engagement/ResearchLaunchBudgetPanel";
 import { ResearchProgressPanel } from "../engagement/ResearchProgressPanel";
+import { SessionFlywheelPanel } from "../engagement/SessionFlywheelPanel";
 import { SpawnMergePanel } from "../engagement/SpawnMergePanel";
 import { TwinNotesPanel } from "../engagement/TwinNotesPanel";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
@@ -219,6 +221,23 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           <TwinNotesPanel
             assetId={props.parent_asset_id.trim()}
             spawnId={props.spawn_id?.trim() || null}
+          />
+        </section>
+      ) : null}
+
+      {/* Residual (cl): complete session → twins/context + bench usage. */}
+      {rawSessionId ? (
+        <section
+          className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
+          data-testid="deep-research-flywheel-mount"
+          data-view-format="html"
+        >
+          <SessionFlywheelPanel
+            sessionId={rawSessionId}
+            defaultOutputText={
+              props.goal?.trim() ||
+              (selection !== "(no selection)" ? selection : "")
+            }
           />
         </section>
       ) : null}

@@ -56,6 +56,12 @@ vi.mock("../engagement/PublicationAttachPanel", () => ({
   ),
 }));
 
+vi.mock("../engagement/SessionFlywheelPanel", () => ({
+  SessionFlywheelPanel: (props: { sessionId: string }) => (
+    <div data-testid="session-flywheel-panel-stub">{props.sessionId}</div>
+  ),
+}));
+
 const FIXTURE = {
   session_id: "fsess_launch_1",
   spawn_id: "spn_launch_1",
@@ -77,7 +83,8 @@ describe("DeepResearchSessionHost", () => {
   it("renders session identity and selection from payload", () => {
     render(<DeepResearchSessionHost {...FIXTURE} />);
     expect(screen.getByTestId("deep-research-session-host")).toBeTruthy();
-    expect(screen.getByText("fsess_launch_1")).toBeTruthy();
+    // Session id appears in identity rows + flywheel stub after residual cl
+    expect(screen.getAllByText("fsess_launch_1").length).toBeGreaterThanOrEqual(1);
     // Spawn/parent appear in identity rows and ResearchContextPanel meta
     expect(screen.getAllByText("spn_launch_1").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("launch-asset").length).toBeGreaterThanOrEqual(1);
@@ -114,6 +121,14 @@ describe("DeepResearchSessionHost", () => {
     ).toBeTruthy();
     expect(screen.getByTestId("publication-attach-panel-stub").textContent).toBe(
       "spn_launch_1",
+    );
+  });
+
+  it("mounts SessionFlywheelPanel when session present (cl)", () => {
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    expect(screen.getByTestId("deep-research-flywheel-mount")).toBeTruthy();
+    expect(screen.getByTestId("session-flywheel-panel-stub").textContent).toBe(
+      "fsess_launch_1",
     );
   });
 
