@@ -93,8 +93,9 @@ export default function HostedHtmlDocumentHost(
   const html = props.html?.trim() || "";
   const assetId = props.document_id?.trim() || "";
 
-  // Residual (eu/ob): open + recent DR session spawns for collective multi-select.
+  // Residual (eu/ob/oc): open + recent DR session spawns for collective multi-select.
   const windows = useWindows((s) => s.windows);
+  const [recentTick, setRecentTick] = useState(0);
   const availableSpawnIds = useMemo(
     () =>
       collectDeepResearchSpawnIds({
@@ -102,7 +103,7 @@ export default function HostedHtmlDocumentHost(
         windows,
         recentSpawnIds: listRecentDeepResearchSpawnIds(),
       }),
-    [windows],
+    [windows, recentTick],
   );
 
   const [highlightText, setHighlightText] = useState("");
@@ -527,6 +528,7 @@ export default function HostedHtmlDocumentHost(
             availableSpawnIds={availableSpawnIds}
             parentAssetId={assetId}
             onDocMerged={onContextNeedsRefresh}
+            onRecentSpawnsCleared={() => setRecentTick((n) => n + 1)}
           />
         </section>
       ) : null}

@@ -31,6 +31,7 @@
  *     agent collective prep (never enables injectors).
  * 18. Residual (ob): available list may include recent closed-window spawns
  *     (twin chase → collective cohesive unit without losing ids).
+ * 19. Residual (oc): Clear recent closed-window spawns control (session ring).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -45,6 +46,10 @@ import {
 import { fetchDepthTiers } from "../../api/settings";
 import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
+import {
+  clearRecentDeepResearchSpawnIds,
+  listRecentDeepResearchSpawnIds,
+} from "../../workspace/recentDeepResearchSpawns";
 import type { WindowMode } from "../../workspace/windowsStore";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 import {
@@ -68,6 +73,11 @@ export type CollectiveResearchPanelProps = {
   autoOpenDraft?: boolean;
   /** Residual (ep): after successful document merge or written analysis. */
   onDocMerged?: (result: MergeProductResponse) => void;
+  /**
+   * Residual (oc): parent re-reads recent spawn ring after clear
+   * (sessionStorage does not fire same-tab storage events).
+   */
+  onRecentSpawnsCleared?: () => void;
 };
 
 export function CollectiveResearchPanel({
@@ -76,8 +86,13 @@ export function CollectiveResearchPanel({
   preferredSpawnId = null,
   autoOpenDraft = true,
   onDocMerged,
+  onRecentSpawnsCleared,
 }: CollectiveResearchPanelProps) {
   const [selected, setSelected] = useState<string[]>([]);
+  /** Residual (oc): local read of recent ring size for chrome. */
+  const [recentCount, setRecentCount] = useState(
+    () => listRecentDeepResearchSpawnIds().length,
+  );
 
   // Auto-select preferred spawn once when available (residual cn).
   useEffect(() => {
@@ -181,6 +196,21 @@ export function CollectiveResearchPanel({
   const clearSpawnSelection = useCallback(() => {
     setSelected([]);
   }, []);
+
+  /**
+   * Residual (oc): clear session recent-spawn ring so closed-window ids
+   * leave the available list (after parent re-collects).
+   */
+  const clearRecentSpawns = useCallback(() => {
+    clearRecentDeepResearchSpawnIds();
+    setRecentCount(0);
+    onRecentSpawnsCleared?.();
+  }, [onRecentSpawnsCleared]);
+
+  // Keep recent count chrome honest when parent re-renders with new available list.
+  useEffect(() => {
+    setRecentCount(listRecentDeepResearchSpawnIds().length);
+  }, [availableSpawnIds]);
 
   const mergeCollective = useCallback(async () => {
     if (selected.length < 1) return;
@@ -459,6 +489,7 @@ export function CollectiveResearchPanel({
         data-testid="collective-select-controls"
         data-selected-count={String(selected.length)}
         data-available-count={String(availableSpawnIds.length)}
+        data-recent-count={String(recentCount)}
         data-view-format="html"
         title="Includes open deep-research windows and recent session opens (twin chase / float)"
       >
@@ -488,12 +519,24 @@ export function CollectiveResearchPanel({
         >
           Clear selection
         </button>
+        {/* Residual (oc): drop closed-window ring without inventing ids. */}
+        <button
+          type="button"
+          data-testid="collective-clear-recent-spawns"
+          onClick={() => clearRecentSpawns()}
+          disabled={busy || recentCount === 0}
+          title="Clear session recent deep-research spawn ids (closed windows leave the list)"
+        >
+          Clear recent ({recentCount})
+        </button>
         <span
           className="text-[11px] font-mono opacity-70"
           data-testid="collective-selection-count"
           data-selected-count={String(selected.length)}
+          data-recent-count={String(recentCount)}
         >
           Selected: {selected.length}/{availableSpawnIds.length}
+          {recentCount > 0 ? ` · recent=${recentCount}` : ""}
         </span>
       </div>
 

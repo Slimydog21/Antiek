@@ -614,6 +614,41 @@ describe("CollectiveResearchPanel", () => {
     expect(dual.textContent).toMatch(/Dual-gate/i);
   });
 
+  it("clears recent closed-window spawns (oc)", async () => {
+    const {
+      pushRecentDeepResearchSpawnId,
+      listRecentDeepResearchSpawnIds,
+      clearRecentDeepResearchSpawnIds,
+    } = await import("../../workspace/recentDeepResearchSpawns");
+    clearRecentDeepResearchSpawnIds();
+    pushRecentDeepResearchSpawnId("spn_recent");
+    expect(listRecentDeepResearchSpawnIds()).toContain("spn_recent");
+    const onRecentSpawnsCleared = vi.fn();
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_a", "spn_recent"]}
+        parentAssetId="parent"
+        onRecentSpawnsCleared={onRecentSpawnsCleared}
+      />,
+    );
+    const clearRecent = screen.getByTestId("collective-clear-recent-spawns");
+    expect(clearRecent.getAttribute("disabled")).toBeNull();
+    expect(
+      screen
+        .getByTestId("collective-select-controls")
+        .getAttribute("data-recent-count"),
+    ).toBe("1");
+    fireEvent.click(clearRecent);
+    expect(listRecentDeepResearchSpawnIds()).toEqual([]);
+    expect(onRecentSpawnsCleared).toHaveBeenCalled();
+    expect(
+      screen
+        .getByTestId("collective-select-controls")
+        .getAttribute("data-recent-count"),
+    ).toBe("0");
+    clearRecentDeepResearchSpawnIds();
+  });
+
   it("selects all / invert / clear multi-select helpers (nk)", () => {
     render(
       <CollectiveResearchPanel

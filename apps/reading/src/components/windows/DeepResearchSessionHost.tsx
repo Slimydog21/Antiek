@@ -165,7 +165,8 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
 
   // Subscribe to open windows so multi-session spawns appear in collective list.
   const windows = useWindows((s) => s.windows);
-  // Residual (ob): re-read recent ring when windows change (chase/float opens).
+  // Residual (ob/oc): re-read recent ring when windows change or clear recent.
+  const [recentTick, setRecentTick] = useState(0);
   const availableSpawnIds = useMemo(
     () =>
       collectDeepResearchSpawnIds({
@@ -174,7 +175,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
         windows,
         recentSpawnIds: listRecentDeepResearchSpawnIds(),
       }),
-    [props.spawn_id, props.available_spawn_ids, windows],
+    [props.spawn_id, props.available_spawn_ids, windows, recentTick],
   );
 
   const windowId = props.__windowId?.trim() || "";
@@ -433,6 +434,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             parentAssetId={props.parent_asset_id?.trim() || null}
             preferredSpawnId={props.spawn_id?.trim() || null}
             onDocMerged={onContextNeedsRefresh}
+            onRecentSpawnsCleared={() => setRecentTick((n) => n + 1)}
           />
         </section>
       ) : null}

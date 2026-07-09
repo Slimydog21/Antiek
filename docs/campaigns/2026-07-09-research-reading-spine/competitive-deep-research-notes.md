@@ -427,3 +427,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - sessionStorage ring (max 24) pushed on launchFloatingDeepResearch
   - collectDeepResearchSpawnIds merges recent + open windows
   - twin chase → collective cohesive unit without losing closed spawn ids
+
+- Closed (oc, 2026-07-10) **Collective clear recent closed-window spawns:**
+  - collective-clear-recent-spawns + data-recent-count
+  - onRecentSpawnsCleared parent re-collects available list

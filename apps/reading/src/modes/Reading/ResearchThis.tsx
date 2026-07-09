@@ -59,8 +59,9 @@ export default function ResearchThis({
   passageText,
 }: ResearchThisProps) {
   const navigate = useNavigate();
-  // Residual (fc/ob): open + recent DR session spawns for collective multi-select.
+  // Residual (fc/ob/oc): open + recent DR session spawns for collective multi-select.
   const windows = useWindows((s) => s.windows);
+  const [recentTick, setRecentTick] = useState(0);
   const availableSpawnIds = useMemo(
     () =>
       collectDeepResearchSpawnIds({
@@ -68,7 +69,7 @@ export default function ResearchThis({
         windows,
         recentSpawnIds: listRecentDeepResearchSpawnIds(),
       }),
-    [windows],
+    [windows, recentTick],
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -336,6 +337,7 @@ export default function ResearchThis({
           <CollectiveResearchPanel
             availableSpawnIds={availableSpawnIds}
             parentAssetId={documentId.trim()}
+            onRecentSpawnsCleared={() => setRecentTick((n) => n + 1)}
           />
         </section>
       ) : null}
