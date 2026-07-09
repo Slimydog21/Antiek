@@ -19,6 +19,7 @@ from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.research_artifact import (  # noqa: E402
     apply_source_merge_review,
     build_html_only,
+    commit_source_merge_review,
     compose_artifacts,
     export_research_artifact,
     import_agent_notes,
@@ -126,6 +127,16 @@ class SourceMergeApplyOut(BaseModel):
     hash_conflicts_acknowledged: bool
 
 
+class SourceMergeCommitIn(SourceMergeApplyIn):
+    expected_source_revision_id: str = Field(min_length=1)
+    expected_twin_revision_id: str = Field(min_length=1)
+    expected_before_source_hash: str = Field(min_length=1)
+    expected_after_source_hash: str = Field(min_length=1)
+    expected_before_twin_hash: str = Field(min_length=1)
+    expected_after_twin_hash: str = Field(min_length=1)
+    acknowledge_body_rewrite: bool = False
+
+
 class SourceMergePreviewOut(BaseModel):
     status: str
     document_id: str
@@ -140,6 +151,10 @@ class SourceMergePreviewOut(BaseModel):
     source_bytes_after: int
     twin_bytes_after: int
     writes_performed: bool
+
+
+class SourceMergeCommitOut(SourceMergePreviewOut):
+    event_id: str
 
 
 def _clean_member_ids(raw_ids: list[str]) -> list[str]:
@@ -373,6 +388,56 @@ async def post_source_merge_preview(body: SourceMergeApplyIn) -> SourceMergePrev
         source_bytes_after=preview.source_bytes_after,
         twin_bytes_after=preview.twin_bytes_after,
         writes_performed=preview.writes_performed,
+    )
+
+
+@artifact_router.post("/artifacts/source-merge/commit", response_model=SourceMergeCommitOut)
+async def post_source_merge_commit(body: SourceMergeCommitIn) -> SourceMergeCommitOut:
+    """Commit a reviewed preview to the source body and twin revision ledger."""
+
+    if not body.acknowledge_body_rewrite:
+        _raise_source_merge_refusal("source_merge_body_rewrite_acknowledgement_required")
+    db_path = _db()
+    member_ids = _validate_source_merge_preflight(body, db_path=db_path)
+    packet = body.reviewed_packet
+    try:
+        with connect_write(db_path, purpose="research_artifact/source_merge_commit") as con:
+            receipt = commit_source_merge_review(
+                con,
+                document_id=packet.document_id,
+                parent_reading_thread_id=packet.parent_reading_thread_id,
+                draft_merge_path=packet.draft_merge_path,
+                compose_index_path=packet.compose_index_path,
+                member_investigation_ids=member_ids,
+                expected_content_hashes=body.expected_content_hashes,
+                hash_conflicts=packet.hash_conflicts,
+                expected_source_revision_id=body.expected_source_revision_id,
+                expected_twin_revision_id=body.expected_twin_revision_id,
+                expected_before_source_hash=body.expected_before_source_hash,
+                expected_after_source_hash=body.expected_after_source_hash,
+                expected_before_twin_hash=body.expected_before_twin_hash,
+                expected_after_twin_hash=body.expected_after_twin_hash,
+                operator_reviewer=body.operator_reviewer,
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return SourceMergeCommitOut(
+        status=receipt.status,
+        document_id=receipt.document_id,
+        source_revision_id=receipt.source_revision_id,
+        twin_revision_id=receipt.twin_revision_id,
+        member_investigation_ids=receipt.member_investigation_ids,
+        before_source_hash=receipt.before_source_hash,
+        after_source_hash=receipt.after_source_hash,
+        before_twin_hash=receipt.before_twin_hash,
+        after_twin_hash=receipt.after_twin_hash,
+        source_bytes_before=receipt.source_bytes_before,
+        source_bytes_after=receipt.source_bytes_after,
+        twin_bytes_after=receipt.twin_bytes_after,
+        writes_performed=receipt.writes_performed,
+        event_id=receipt.event_id or "",
     )
 
 

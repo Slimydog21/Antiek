@@ -1254,6 +1254,20 @@ export interface SourceMergePreviewResponse {
   writes_performed: boolean;
 }
 
+export interface SourceMergeCommitRequest extends SourceMergeApplyRequest {
+  expected_source_revision_id: string;
+  expected_twin_revision_id: string;
+  expected_before_source_hash: string;
+  expected_after_source_hash: string;
+  expected_before_twin_hash: string;
+  expected_after_twin_hash: string;
+  acknowledge_body_rewrite: boolean;
+}
+
+export interface SourceMergeCommitResponse extends SourceMergePreviewResponse {
+  event_id: string;
+}
+
 /** GET /research/{id}/artifact/blocks — Lego refs for Write outline drops. */
 export async function getResearchArtifactBlocks(
   investigationId: string,
@@ -1343,6 +1357,25 @@ export async function previewSourceMerge(
   if (!resp.ok) {
     throw new ApiError(
       `POST /research/artifacts/source-merge/preview failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+/** POST /research/artifacts/source-merge/commit — rewrite source/twin from a bound preview. */
+export async function commitSourceMerge(
+  request: SourceMergeCommitRequest,
+): Promise<SourceMergeCommitResponse> {
+  const resp = await apiFetch(`${API_BASE}/research/artifacts/source-merge/commit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /research/artifacts/source-merge/commit failed: HTTP ${resp.status}`,
       resp.status,
       await resp.text(),
     );

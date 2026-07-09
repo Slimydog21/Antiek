@@ -357,6 +357,129 @@ def test_source_merge_preview_refuses_missing_source_document(api_env):
     assert resp.json()["detail"] == "source_merge_source_document_not_found"
 
 
+def _source_merge_preview_body(client: TestClient, packet: dict, hashes: dict[str, str]) -> dict:
+    resp = client.post(
+        "/research/artifacts/source-merge/preview",
+        json={
+            "reviewed_packet": packet,
+            "expected_content_hashes": hashes,
+            "acknowledge_reviewed_draft": True,
+            "acknowledge_source_book_mutation": True,
+            "acknowledge_twin_document_mutation": True,
+        },
+    )
+    assert resp.status_code == 200
+    return resp.json()
+
+
+def _source_merge_commit_payload(packet: dict, hashes: dict[str, str], preview: dict) -> dict:
+    return {
+        "reviewed_packet": packet,
+        "expected_content_hashes": hashes,
+        "acknowledge_reviewed_draft": True,
+        "acknowledge_source_book_mutation": True,
+        "acknowledge_twin_document_mutation": True,
+        "acknowledge_body_rewrite": True,
+        "expected_source_revision_id": preview["source_revision_id"],
+        "expected_twin_revision_id": preview["twin_revision_id"],
+        "expected_before_source_hash": preview["before_source_hash"],
+        "expected_after_source_hash": preview["after_source_hash"],
+        "expected_before_twin_hash": preview["before_twin_hash"],
+        "expected_after_twin_hash": preview["after_twin_hash"],
+        "operator_reviewer": "pytest",
+    }
+
+
+def test_source_merge_commit_requires_body_rewrite_acknowledgement(api_env):
+    client = _client()
+    packet, hashes = _source_merge_ready_packet(client)
+    preview = _source_merge_preview_body(client, packet, hashes)
+    payload = _source_merge_commit_payload(packet, hashes, preview)
+    payload["acknowledge_body_rewrite"] = False
+
+    resp = client.post("/research/artifacts/source-merge/commit", json=payload)
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "source_merge_body_rewrite_acknowledgement_required"
+
+
+def test_source_merge_commit_refuses_preview_hash_mismatch(api_env):
+    client = _client()
+    packet, hashes = _source_merge_ready_packet(client)
+    preview = _source_merge_preview_body(client, packet, hashes)
+    payload = _source_merge_commit_payload(packet, hashes, preview)
+    payload["expected_after_source_hash"] = "stale-" + payload["expected_after_source_hash"]
+
+    resp = client.post("/research/artifacts/source-merge/commit", json=payload)
+
+    assert resp.status_code == 409
+    assert resp.json()["detail"] == "source_merge_preview_binding_mismatch"
+
+
+def test_source_merge_commit_rewrites_source_body_and_emits_metadata_event(api_env):
+    client = _client()
+    packet, hashes = _source_merge_ready_packet(client)
+    preview = _source_merge_preview_body(client, packet, hashes)
+
+    resp = client.post(
+        "/research/artifacts/source-merge/commit",
+        json=_source_merge_commit_payload(packet, hashes, preview),
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "committed"
+    assert body["writes_performed"] is True
+    assert body["source_revision_id"] == preview["source_revision_id"]
+    assert body["after_source_hash"] == preview["after_source_hash"]
+
+    with connect_write(os.environ["ANTIEK_DUCKDB_PATH"], purpose="test/read_source_after_commit") as con:
+        (raw_text,) = con.execute(
+            "SELECT raw_text FROM documents WHERE document_id = ?",
+            ["doc-source-merge"],
+        ).fetchone()
+        (twin_body_json,) = con.execute(
+            "SELECT twin_body_json FROM source_merge_body_commits WHERE document_id = ?",
+            ["doc-source-merge"],
+        ).fetchone()
+    assert "Original source book body." in raw_text
+    assert "antiek-source-merge-start" in raw_text
+    assert "Source merge A" in raw_text
+    assert "Source merge B" in raw_text
+    twin_body = json.loads(twin_body_json)
+    assert twin_body["kind"] == "antiek.source_merge.preview_payload"
+    assert twin_body["member_investigation_ids"] == ["inv-src-a", "inv-src-b"]
+
+    events_path = Path(api_env["events"]) / "read-doc-source-merge.jsonl"
+    rows = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
+    event = rows[-1]
+    assert event["event_id"] == body["event_id"]
+    assert event["action_type"] == "source_merge.committed"
+    assert event["payload"]["source_book_body_rewritten"] is True
+    assert event["payload"]["twin_document_body_rewritten"] is True
+    assert event["payload"]["after_source_hash"] == preview["after_source_hash"]
+    assert "Source merge A" not in json.dumps(event)
+    assert "Source merge B" not in json.dumps(event)
+
+
+def test_source_merge_commit_is_idempotent_after_rewrite(api_env):
+    client = _client()
+    packet, hashes = _source_merge_ready_packet(client)
+    preview = _source_merge_preview_body(client, packet, hashes)
+    payload = _source_merge_commit_payload(packet, hashes, preview)
+
+    first = client.post("/research/artifacts/source-merge/commit", json=payload)
+    second = client.post("/research/artifacts/source-merge/commit", json=payload)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    first_body = first.json()
+    second_body = second.json()
+    assert first_body["writes_performed"] is True
+    assert second_body["writes_performed"] is False
+    assert {**first_body, "writes_performed": False} == second_body
+
+
 def test_source_merge_apply_records_deterministic_receipt(api_env):
     client = _client()
     packet, hashes = _source_merge_ready_packet(client)
