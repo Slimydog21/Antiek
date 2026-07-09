@@ -11,12 +11,14 @@
  * Residual (ah): mounts CollectiveResearchPanel with availableSpawnIds from
  * current spawn + open deep_research_session windows.
  * Residual (ao): passes parentAssetId so draft/parent document merge is enabled.
+ * Residual (ax): mounts ResearchProgressPanel when spawn_id is present.
  */
 
 import { useMemo } from "react";
 
 import { CollectiveResearchPanel } from "../engagement/CollectiveResearchPanel";
 import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
+import { ResearchProgressPanel } from "../engagement/ResearchProgressPanel";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import { useWindows } from "../../workspace/windowsStore";
 import { useInWindow } from "./windowHostContext";
@@ -130,6 +132,16 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             assetId={props.parent_asset_id.trim()}
             spawnId={props.spawn_id?.trim() || null}
           />
+        </section>
+      ) : null}
+
+      {props.spawn_id?.trim() ? (
+        <section
+          className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
+          data-testid="deep-research-progress-mount"
+          data-view-format="html"
+        >
+          <ResearchProgressPanel spawnId={props.spawn_id.trim()} />
         </section>
       ) : null}
 

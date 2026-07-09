@@ -239,6 +239,52 @@ export async function fetchEvidencePack(body: {
   return readJson<EvidencePackResponse>(res);
 }
 
+/** Research progress plan→gather→synthesize→cite telemetry. */
+export type ResearchProgressResponse = {
+  spawn_id: string;
+  event_count: number;
+  events: Array<{
+    spawn_id: string;
+    stage: string;
+    message: string;
+    ts: number;
+    sequence: number;
+  }>;
+  latest_stage: string | null;
+  is_terminal: boolean;
+  view_format: "html" | string;
+  product_panel: string;
+  source: string;
+  notes: string[];
+  html?: string | null;
+};
+
+export async function fetchResearchProgress(
+  spawnId: string,
+  opts?: { includeHtml?: boolean },
+): Promise<ResearchProgressResponse> {
+  const q = opts?.includeHtml ? "?include_html=true" : "";
+  const res = await apiFetch(
+    `${API_BASE}/engagement/progress/${encodeURIComponent(spawnId)}${q}`,
+  );
+  return readJson<ResearchProgressResponse>(res);
+}
+
+export async function seedResearchProgress(
+  spawnId: string,
+  opts?: { includeHtml?: boolean },
+): Promise<ResearchProgressResponse> {
+  const res = await apiFetch(`${API_BASE}/engagement/progress/seed`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      spawn_id: spawnId,
+      include_html: opts?.includeHtml ?? true,
+    }),
+  });
+  return readJson<ResearchProgressResponse>(res);
+}
+
 export async function openEngagementSession(
   body: SessionOpenRequest,
 ): Promise<SessionOpenResponse> {
