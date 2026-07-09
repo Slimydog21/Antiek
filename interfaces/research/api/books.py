@@ -521,6 +521,32 @@ class BookHtmlPublishJobOut(BaseModel):
     policy_notes: list[str]
 
 
+class BookHtmlIndexJobIn(BaseModel):
+    document_id: str = Field(min_length=1, max_length=160)
+    publish_job_id: str | None = Field(default=None, max_length=80)
+    apply: bool = False
+    acknowledge_embedding_compute: bool = False
+    allow_hash_provider: bool = False
+
+
+class BookHtmlIndexJobOut(BaseModel):
+    index_job_id: str
+    status: Literal["dry_run_ready", "indexed_for_vector_search"]
+    document_id: str
+    publish_job_id: str | None
+    provider: str | None
+    model_name: str | None
+    provider_is_hash: bool | None
+    applied: bool
+    chunks_found: int
+    chunks_embedded_before: int
+    vectors_rewritten: int
+    graph_mutation_performed: bool
+    count_preserved: bool
+    searchable_after_apply: bool
+    policy_notes: list[str]
+
+
 _PUBLISH_CONTENT_CLASS_BY_RIGHTS: dict[str, str] = {
     "public_domain": "public_domain",
     "publisher_opt_in": "opt_in_licensed",
@@ -633,6 +659,17 @@ def _book_html_publish_job_id(req: BookHtmlPublishJobIn) -> str:
         ]
     )
     return f"bookjob-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _book_html_index_job_id(req: BookHtmlIndexJobIn) -> str:
+    normalized = "|".join(
+        [
+            req.document_id.strip(),
+            (req.publish_job_id or "").strip(),
+            str(req.apply),
+        ]
+    )
+    return f"bookidx-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
 
 
 class _BookHtmlTextExtractor(HTMLParser):
@@ -1479,6 +1516,136 @@ def register_book_routes(app: FastAPI) -> None:
                 "Readable HTML text was chunked into the corpus for search, notes, and talk-to-book grounding.",
                 "No external file, storage reference, URL, provider, checkout, or spend path was touched.",
                 "This endpoint did not serve full text; subsequent reads still pass through the serve gate.",
+            ],
+        )
+
+    @app.post(
+        "/books/import/index-job",
+        response_model=BookHtmlIndexJobOut,
+        status_code=202,
+        tags=["books"],
+    )
+    async def book_html_index_job(req: BookHtmlIndexJobIn) -> BookHtmlIndexJobOut:
+        """Embed one published book's chunks for vector search.
+
+        This is deliberately document-scoped. The whole-corpus maintenance tool
+        remains ``tools/reembed_chunks.py``; the import chain needs a smaller
+        explicit post-publish job so a newly imported HTML book can enter
+        search/talk-to-book ranking without rewriting unrelated corpus rows.
+        """
+        document_id = req.document_id.strip()
+        publish_job_id = req.publish_job_id.strip() if req.publish_job_id else None
+        if publish_job_id is not None and not publish_job_id.startswith("bookjob-"):
+            raise HTTPException(status_code=400, detail="invalid_publish_job_id")
+        if req.apply and not req.acknowledge_embedding_compute:
+            raise HTTPException(status_code=400, detail="embedding_compute_ack_required")
+
+        db = _resolve_db_path()
+        from processing.embedding import (
+            HashEmbedding,
+            default_embedding_provider,
+            embedding_model_name,
+            embedding_provider_name,
+        )
+        from runtime.db_lock import connect_read, connect_write
+        from substrate.graph.embedding_meta import record_chunk_embedding_meta
+
+        con = connect_read(db)
+        try:
+            asset = get_book_asset(con, document_id)
+            if asset is None:
+                raise HTTPException(status_code=404, detail="book_not_found")
+            counts = con.execute(
+                "SELECT count(*), count(embedding) FROM chunks WHERE document_id = ?",
+                [document_id],
+            ).fetchone()
+        finally:
+            con.close()
+        chunks_found = int(counts[0] if counts else 0)
+        chunks_embedded_before = int(counts[1] if counts else 0)
+
+        if not req.apply:
+            return BookHtmlIndexJobOut(
+                index_job_id=_book_html_index_job_id(req),
+                status="dry_run_ready",
+                document_id=document_id,
+                publish_job_id=publish_job_id,
+                provider=None,
+                model_name=None,
+                provider_is_hash=None,
+                applied=False,
+                chunks_found=chunks_found,
+                chunks_embedded_before=chunks_embedded_before,
+                vectors_rewritten=0,
+                graph_mutation_performed=False,
+                count_preserved=True,
+                searchable_after_apply=chunks_found > 0,
+                policy_notes=[
+                    "Dry run only: no chunk embeddings were written.",
+                    "Apply this job explicitly after approving local embedding compute.",
+                    "The job is scoped to this document id and will not re-embed unrelated corpus chunks.",
+                ],
+            )
+
+        provider = default_embedding_provider()
+        provider_is_hash = isinstance(provider, HashEmbedding)
+        if provider_is_hash and not req.allow_hash_provider:
+            raise HTTPException(status_code=400, detail="hash_provider_refused")
+
+        rows: list[tuple[str, str]] = []
+        con = connect_read(db)
+        try:
+            rows = [
+                (str(chunk_id), str(text or ""))
+                for chunk_id, text in con.execute(
+                    "SELECT chunk_id, text FROM chunks WHERE document_id = ? ORDER BY chunk_index",
+                    [document_id],
+                ).fetchall()
+            ]
+        finally:
+            con.close()
+
+        vectors_rewritten = 0
+        con_w = connect_write(db, purpose="books:html_index_job")
+        try:
+            before_total = con_w.execute(
+                "SELECT count(*) FROM chunks WHERE document_id = ?",
+                [document_id],
+            ).fetchone()[0]
+            for chunk_id, text in rows:
+                con_w.execute(
+                    "UPDATE chunks SET embedding = ? WHERE chunk_id = ?",
+                    [list(provider.encode(text)), chunk_id],
+                )
+                record_chunk_embedding_meta(con_w, chunk_id=chunk_id, provider=provider)
+                vectors_rewritten += 1
+            after_total = con_w.execute(
+                "SELECT count(*) FROM chunks WHERE document_id = ?",
+                [document_id],
+            ).fetchone()[0]
+        finally:
+            con_w.close()
+
+        count_preserved = int(before_total) == int(after_total) == chunks_found
+        return BookHtmlIndexJobOut(
+            index_job_id=_book_html_index_job_id(req),
+            status="indexed_for_vector_search",
+            document_id=document_id,
+            publish_job_id=publish_job_id,
+            provider=embedding_provider_name(provider),
+            model_name=embedding_model_name(provider),
+            provider_is_hash=provider_is_hash,
+            applied=True,
+            chunks_found=chunks_found,
+            chunks_embedded_before=chunks_embedded_before,
+            vectors_rewritten=vectors_rewritten,
+            graph_mutation_performed=vectors_rewritten > 0,
+            count_preserved=count_preserved,
+            searchable_after_apply=vectors_rewritten > 0 and count_preserved,
+            policy_notes=[
+                "Only chunk embeddings for this document id were updated.",
+                "No external file, storage reference, URL, provider checkout, media render, or spend path was touched.",
+                "Embedding metadata was pinned so future vector search can reject incompatible query providers.",
             ],
         )
 

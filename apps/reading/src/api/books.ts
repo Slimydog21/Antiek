@@ -481,6 +481,32 @@ export interface BookHtmlPublishJobResponse {
   policy_notes: string[];
 }
 
+export interface BookHtmlIndexJobInput {
+  document_id: string;
+  publish_job_id?: string | null;
+  apply?: boolean;
+  acknowledge_embedding_compute?: boolean;
+  allow_hash_provider?: boolean;
+}
+
+export interface BookHtmlIndexJobResponse {
+  index_job_id: string;
+  status: "dry_run_ready" | "indexed_for_vector_search";
+  document_id: string;
+  publish_job_id: string | null;
+  provider: string | null;
+  model_name: string | null;
+  provider_is_hash: boolean | null;
+  applied: boolean;
+  chunks_found: number;
+  chunks_embedded_before: number;
+  vectors_rewritten: number;
+  graph_mutation_performed: boolean;
+  count_preserved: boolean;
+  searchable_after_apply: boolean;
+  policy_notes: string[];
+}
+
 /** Prompt-to-curate (Read SPR-04). Ranks ONLY servable books by relevance
  * to the prompt — a gated book is never curated into a readable list.
  * Returns 503 if the embedding model isn't available server-side. */
@@ -610,6 +636,22 @@ export async function runBookHtmlPublishJob(
   if (resp.status === 409) throw new Error("That document id already exists.");
   if (!resp.ok) throw new Error(`POST /books/import/publish-job: HTTP ${resp.status}`);
   return (await resp.json()) as BookHtmlPublishJobResponse;
+}
+
+export async function runBookHtmlIndexJob(
+  request: BookHtmlIndexJobInput,
+): Promise<BookHtmlIndexJobResponse> {
+  const resp = await apiFetch(`${API_BASE}/books/import/index-job`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 400) {
+    throw new Error("Confirm embedding compute and use a semantic embedding provider.");
+  }
+  if (resp.status === 404) throw new Error("book_not_found");
+  if (!resp.ok) throw new Error(`POST /books/import/index-job: HTTP ${resp.status}`);
+  return (await resp.json()) as BookHtmlIndexJobResponse;
 }
 
 // ── SPR-08 M2: talk-to-book (multi-turn, page-cited) ──────────────────

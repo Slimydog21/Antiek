@@ -4,6 +4,12 @@ from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
 from interfaces.research.api.books import _chunk_book_html_for_research
+from processing.embedding import (
+    HashEmbedding,
+    _reset_default_provider,
+    embedding_provider_fingerprint,
+    set_default_embedding_provider,
+)
 from runtime.db_lock import connect_read
 from substrate.graph import default_db_path
 
@@ -648,7 +654,115 @@ def test_html_publish_job_writes_book_through_existing_serve_gate() -> None:
     assert chunks[0][2] >= 5
     served_body = served.json()
     assert served_body["servable"] is True
+    assert served_body["reason"] == "servable"
     assert served_body["full_text"] == (
         "<article><h1>The Dream Machine</h1><p>Networked computing history.</p></article>"
     )
-    assert served_body["reason"] == "servable"
+
+
+def test_html_index_job_embeds_published_book_chunks_explicitly() -> None:
+    client = _client()
+    provider = HashEmbedding(dimension=8)
+    set_default_embedding_provider(provider)
+    try:
+        published = client.post(
+            "/books/import/publish-job",
+            json={
+                "publication_request_id": "bookpub-index123",
+                "serve_gate_review_id": "bookserve-index123",
+                "document_id": "book-indexable",
+                "title": "Indexable Book",
+                "html_body": "<article><h1>Indexable</h1><p>Vector searchable passage.</p></article>",
+                "rights_basis": "personal_license",
+                "license_basis": "Operator-owned copy for private Antiek library.",
+                "acknowledge_write_to_library": True,
+                "acknowledge_full_text_servable": True,
+            },
+        )
+        assert published.status_code == 201, published.text
+        publish_job_id = published.json()["publish_job_id"]
+
+        dry_run = client.post(
+            "/books/import/index-job",
+            json={
+                "document_id": "book-indexable",
+                "publish_job_id": publish_job_id,
+            },
+        )
+        assert dry_run.status_code == 202, dry_run.text
+        dry_body = dry_run.json()
+        assert dry_body["status"] == "dry_run_ready"
+        assert dry_body["applied"] is False
+        assert dry_body["chunks_found"] == 1
+        assert dry_body["chunks_embedded_before"] == 0
+        assert dry_body["vectors_rewritten"] == 0
+        assert dry_body["graph_mutation_performed"] is False
+
+        missing_ack = client.post(
+            "/books/import/index-job",
+            json={
+                "document_id": "book-indexable",
+                "publish_job_id": publish_job_id,
+                "apply": True,
+            },
+        )
+        assert missing_ack.status_code == 400
+        assert missing_ack.json()["detail"] == "embedding_compute_ack_required"
+
+        hash_refused = client.post(
+            "/books/import/index-job",
+            json={
+                "document_id": "book-indexable",
+                "publish_job_id": publish_job_id,
+                "apply": True,
+                "acknowledge_embedding_compute": True,
+            },
+        )
+        assert hash_refused.status_code == 400
+        assert hash_refused.json()["detail"] == "hash_provider_refused"
+
+        applied = client.post(
+            "/books/import/index-job",
+            json={
+                "document_id": "book-indexable",
+                "publish_job_id": publish_job_id,
+                "apply": True,
+                "acknowledge_embedding_compute": True,
+                "allow_hash_provider": True,
+            },
+        )
+        assert applied.status_code == 202, applied.text
+        body = applied.json()
+        assert body["index_job_id"].startswith("bookidx-")
+        assert body["status"] == "indexed_for_vector_search"
+        assert body["provider"] == "hash"
+        assert body["model_name"] == "hash-dim-8"
+        assert body["provider_is_hash"] is True
+        assert body["applied"] is True
+        assert body["chunks_found"] == 1
+        assert body["chunks_embedded_before"] == 0
+        assert body["vectors_rewritten"] == 1
+        assert body["graph_mutation_performed"] is True
+        assert body["count_preserved"] is True
+        assert body["searchable_after_apply"] is True
+
+        con = connect_read(default_db_path())
+        try:
+            row = con.execute(
+                "SELECT c.embedding, m.provider, m.model_name, m.dimension, m.fingerprint "
+                "FROM chunks c JOIN embeddings_meta m ON c.chunk_id = m.chunk_id "
+                "WHERE c.document_id = ?",
+                ["book-indexable"],
+            ).fetchone()
+        finally:
+            con.close()
+        assert row is not None
+        assert len(row[0]) == 8
+        assert row[1:] == (
+            "hash",
+            "hash-dim-8",
+            8,
+            embedding_provider_fingerprint(provider),
+        )
+    finally:
+        _reset_default_provider()

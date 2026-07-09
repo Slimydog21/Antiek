@@ -20,6 +20,7 @@ const {
   reviewBookHtmlServeGateMock,
   requestBookHtmlPublicationMock,
   runBookHtmlPublishJobMock,
+  runBookHtmlIndexJobMock,
   listInvestigationsMock,
   navigateMock,
 } = vi.hoisted(() => ({
@@ -33,6 +34,7 @@ const {
   reviewBookHtmlServeGateMock: vi.fn(),
   requestBookHtmlPublicationMock: vi.fn(),
   runBookHtmlPublishJobMock: vi.fn(),
+  runBookHtmlIndexJobMock: vi.fn(),
   // M1: the active-research signal documentsByTheme ranks the shelf to.
   // Default: no active research → the feed falls back to recency.
   listInvestigationsMock: vi.fn<
@@ -55,6 +57,7 @@ vi.mock("../../api/books", async (orig) => {
     reviewBookHtmlServeGate: reviewBookHtmlServeGateMock,
     requestBookHtmlPublication: requestBookHtmlPublicationMock,
     runBookHtmlPublishJob: runBookHtmlPublishJobMock,
+    runBookHtmlIndexJob: runBookHtmlIndexJobMock,
   };
 });
 
@@ -100,6 +103,7 @@ beforeEach(() => {
   reviewBookHtmlServeGateMock.mockReset();
   requestBookHtmlPublicationMock.mockReset();
   runBookHtmlPublishJobMock.mockReset();
+  runBookHtmlIndexJobMock.mockReset();
   listInvestigationsMock.mockReset();
   listInvestigationsMock.mockResolvedValue({ count: 0, investigations: [] });
   navigateMock.mockReset();
@@ -501,6 +505,23 @@ describe("Library", () => {
       open_route: "/read/book-dream-machine",
       policy_notes: [],
     });
+    runBookHtmlIndexJobMock.mockResolvedValue({
+      index_job_id: "bookidx-safe123",
+      status: "indexed_for_vector_search",
+      document_id: "book-dream-machine",
+      publish_job_id: "bookjob-safe123",
+      provider: "sentence-transformers",
+      model_name: "all-MiniLM-L6-v2",
+      provider_is_hash: false,
+      applied: true,
+      chunks_found: 1,
+      chunks_embedded_before: 0,
+      vectors_rewritten: 1,
+      graph_mutation_performed: true,
+      count_preserved: true,
+      searchable_after_apply: true,
+      policy_notes: [],
+    });
     renderLibrary();
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /Open Meditations/ })).toBeTruthy(),
@@ -693,6 +714,20 @@ describe("Library", () => {
       license_basis: "Operator-owned copy for private Antiek library.",
       acknowledge_write_to_library: true,
       acknowledge_full_text_servable: true,
+    });
+
+    fireEvent.click(screen.getByLabelText(/Run local embedding compute/));
+    fireEvent.click(screen.getByRole("button", { name: "Index chunks" }));
+
+    const indexStatus = await screen.findByText(/Indexed book-dream-machine/);
+    expect(indexStatus.textContent).toContain("bookidx-safe123");
+    expect(indexStatus.textContent).toContain("vectors 1");
+    expect(indexStatus.textContent).toContain("sentence-transformers");
+    expect(runBookHtmlIndexJobMock).toHaveBeenCalledWith({
+      document_id: "book-dream-machine",
+      publish_job_id: "bookjob-safe123",
+      apply: true,
+      acknowledge_embedding_compute: true,
     });
   });
 });

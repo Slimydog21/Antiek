@@ -5,6 +5,7 @@ import type {
   BookHtmlConversionResultResponse,
   BookHtmlConversionReviewResponse,
   BookHtmlFileHandoffResponse,
+  BookHtmlIndexJobResponse,
   BookHtmlImportPreflightResponse,
   BookHtmlPublishJobResponse,
   BookHtmlPublicationRequestResponse,
@@ -23,6 +24,7 @@ import {
   requestBookHtmlPublication,
   reviewBookHtmlConversion,
   reviewBookHtmlServeGate,
+  runBookHtmlIndexJob,
   runBookHtmlPublishJob,
 } from "../../api/books";
 import { listInvestigations } from "../../lib/api";
@@ -142,6 +144,9 @@ export default function Library() {
   const [publishServableAck, setPublishServableAck] = useState(false);
   const [publishBusy, setPublishBusy] = useState(false);
   const [publishReceipt, setPublishReceipt] = useState<BookHtmlPublishJobResponse | null>(null);
+  const [indexComputeAck, setIndexComputeAck] = useState(false);
+  const [indexBusy, setIndexBusy] = useState(false);
+  const [indexReceipt, setIndexReceipt] = useState<BookHtmlIndexJobResponse | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -440,6 +445,8 @@ export default function Library() {
         acknowledge_full_text_servable: publishServableAck,
       });
       setPublishReceipt(res);
+      setIndexReceipt(null);
+      setIndexComputeAck(false);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -457,6 +464,26 @@ export default function Library() {
     serveReceipt,
     serveRightsBasis,
   ]);
+
+  const onIndexJob = useCallback(async () => {
+    if (!publishReceipt) return;
+    setIndexBusy(true);
+    setError(null);
+    setIndexReceipt(null);
+    try {
+      const res = await runBookHtmlIndexJob({
+        document_id: publishReceipt.document_id,
+        publish_job_id: publishReceipt.publish_job_id,
+        apply: true,
+        acknowledge_embedding_compute: indexComputeAck,
+      });
+      setIndexReceipt(res);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIndexBusy(false);
+    }
+  }, [indexComputeAck, publishReceipt]);
 
   // The display order, in three layers of precedence:
   //   1. an ACTIVE CURATE prompt (explicit user query) re-ranks to that order;
@@ -1274,6 +1301,47 @@ export default function Library() {
                   Published {publishReceipt.document_id} through {publishReceipt.publish_job_id}; servable{" "}
                   {publishReceipt.servable_full_text ? "yes" : "no"}, chunks{" "}
                   {publishReceipt.chunks_indexed}, route {publishReceipt.open_route}.
+                </p>
+              )}
+            </form>
+          )}
+
+          {publishReceipt && (
+            <form
+              className="rounded-md border border-ice-4 dark:border-charcoal-1 bg-white/70 dark:bg-charcoal-2/70 p-3 space-y-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void onIndexJob();
+              }}
+            >
+              <div>
+                <p className="text-[13px] font-serif text-ink dark:text-bright">
+                  Index book chunks
+                </p>
+                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                  Embeds this published book&apos;s chunks for corpus search and talk-to-book ranking.
+                </p>
+              </div>
+              <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                <input
+                  type="checkbox"
+                  checked={indexComputeAck}
+                  onChange={(event) => setIndexComputeAck(event.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>Run local embedding compute for this book&apos;s chunks.</span>
+              </label>
+              <button
+                type="submit"
+                disabled={indexBusy || !indexComputeAck}
+                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+              >
+                {indexBusy ? "Indexing…" : "Index chunks"}
+              </button>
+              {indexReceipt && (
+                <p className="text-[13px] font-serif text-ink dark:text-bright" role="status">
+                  Indexed {indexReceipt.document_id} through {indexReceipt.index_job_id}; vectors{" "}
+                  {indexReceipt.vectors_rewritten}, provider {indexReceipt.provider ?? "unresolved"}.
                 </p>
               )}
             </form>
