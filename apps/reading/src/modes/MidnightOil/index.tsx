@@ -47,6 +47,8 @@
  * Residual (oy): optional arxiv/substack/URL pub refs on create — hydrate then
  * append as grounded goals so offline swarm inherits knowledge-dense sources
  * (parity Write/ResearchThis; offline-honest hydrate default).
+ * Residual (pa): budget projection promptText includes pub refs so soft-gate
+ * sees grounded-goal length before create (never under-project MO cost).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -746,9 +748,19 @@ export default function MidnightOil() {
           </div>
         </label>
         {/* Residual (cs): daily budget + prompt projection before ceiling approve. */}
-        <div data-testid="moil-budget-mount" data-view-format="html">
+        <div
+          data-testid="moil-budget-mount"
+          data-view-format="html"
+          data-pub-refs-chars={String(pubRefs.trim().length)}
+          data-prompt-includes-pub-refs={String(Boolean(pubRefs.trim()))}
+        >
           <ResearchLaunchBudgetPanel
-            promptText={goalsText}
+            /* Residual (pa): include pub refs so projection matches create goals. */
+            promptText={
+              pubRefs.trim()
+                ? `${goalsText}\n\nPublication refs:\n${pubRefs.trim()}`
+                : goalsText
+            }
             researchTier={researchTier}
             allowTierPick
             onResearchTierChange={onResearchTierChange}

@@ -526,3 +526,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (oz, 2026-07-10) **SESSION-ARC om–oy engagement + MO pubs:**
   - SESSION-ARC-om-oy-engagement-moil-pubs.md fleet handoff
+
+- Closed (pa, 2026-07-10) **MO budget projection includes pub refs:**
+  - promptText concatenates goals + publication refs
+  - data-prompt-includes-pub-refs / data-pub-refs-chars honesty

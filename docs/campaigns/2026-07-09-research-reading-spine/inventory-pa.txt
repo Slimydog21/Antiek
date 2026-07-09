@@ -1,0 +1,8 @@
+# inventory-pa · MO budget projection includes pub refs
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: pa
+files:
+  apps/reading/src/modes/MidnightOil/index.tsx
+  apps/reading/src/modes/MidnightOil/MidnightOil.test.tsx
+proof: vitest MidnightOil 17 passed
+invariants: soft budget · never under-project · HTML-first · data-prompt-includes-pub-refs

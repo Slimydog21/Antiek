@@ -153,6 +153,7 @@ vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => {
           data-testid="research-launch-budget-panel-stub"
           data-allow-tier-pick={props.allowTierPick ? "true" : "false"}
           data-research-tier={props.researchTier || "deep"}
+          data-prompt-len={String(props.promptText?.length ?? 0)}
         >
           goals={props.promptText.length}
           {props.allowTierPick ? (
@@ -989,6 +990,33 @@ describe("MidnightOil mode", () => {
     expect(depositMetrics.getAttribute("data-progress-seeded")).toBe("true");
     expect(depositMetrics.getAttribute("data-view-format")).toBe("html");
     expect(depositMetrics.textContent).toMatch(/Midnight Oil deposit/);
+  });
+
+  it("includes pub refs in budget projection promptText (pa)", () => {
+    render(<MidnightOil />);
+    fireEvent.change(screen.getByLabelText(/^Goals \(one per line\)$/i), {
+      target: { value: "Goal alone" },
+    });
+    const before = Number(
+      screen
+        .getByTestId("research-launch-budget-panel-stub")
+        .getAttribute("data-prompt-len") || 0,
+    );
+    fireEvent.change(screen.getByTestId("moil-pub-refs"), {
+      target: { value: "arxiv:1706.03762" },
+    });
+    const mount = screen.getByTestId("moil-budget-mount");
+    expect(mount.getAttribute("data-prompt-includes-pub-refs")).toBe("true");
+    expect(Number(mount.getAttribute("data-pub-refs-chars") || 0)).toBeGreaterThan(
+      0,
+    );
+    const after = Number(
+      screen
+        .getByTestId("research-launch-budget-panel-stub")
+        .getAttribute("data-prompt-len") || 0,
+    );
+    expect(after).toBeGreaterThan(before);
+    expect(after).toBeGreaterThan("Goal alone".length);
   });
 
   it("hydrates pub refs and appends grounded goals on create (oy)", async () => {
