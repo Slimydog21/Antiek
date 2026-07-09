@@ -618,6 +618,52 @@ export interface MidnightOilProviderExecutorAdapterPlanReceipt {
   adapter_plan_notes: string[];
 }
 
+export interface MidnightOilRetrievalAdapterPlanRequest {
+  launch_packet: MidnightOilLaunchPacket;
+  approval_receipt: MidnightOilApprovalReceipt;
+  runner_handoff: MidnightOilRunnerHandoff;
+  runner_control_plan_receipt: MidnightOilRunnerControlPlanReceipt;
+  budget_provider_adapter_plan_receipt: MidnightOilBudgetProviderAdapterPlanReceipt;
+  provider_executor_adapter_plan_receipt: MidnightOilProviderExecutorAdapterPlanReceipt;
+}
+
+export interface MidnightOilRetrievalAdapterPlanReceipt {
+  receipt_id: string;
+  runner_control_plan_receipt_id: string;
+  budget_provider_adapter_plan_receipt_id: string;
+  provider_executor_adapter_plan_receipt_id: string;
+  runner_readiness_receipt_id: string;
+  runner_handoff_id: string;
+  approval_receipt_id: string;
+  launch_packet_id: string;
+  run_id: string;
+  status: "blocked_retrieval_adapter_unimplemented";
+  adapter_key: "retrieval_executor_source_receipts";
+  planned_executor_id: string;
+  planned_source_ledger_id: string;
+  planned_source_policy: MidnightOilSourcePolicy[];
+  planned_source_receipt_ids: string[];
+  requested_source_count: number;
+  required_invariants: string[];
+  required_source_receipt_fields: string[];
+  blocker_reason: "retrieval_adapter_unimplemented";
+  retrieval_allowed: boolean;
+  retrieval_performed: boolean;
+  source_receipts_created: boolean;
+  provider_execution_allowed: boolean;
+  provider_calls_made: boolean;
+  live_run_allowed: boolean;
+  dispatch_allowed: boolean;
+  budget_reservation_allowed: boolean;
+  budget_reserved: boolean;
+  graph_mutation_allowed: boolean;
+  final_artifact_allowed: boolean;
+  dispatch_performed: boolean;
+  graph_mutated: boolean;
+  final_artifact_created: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -832,4 +878,21 @@ export async function providerExecutorAdapterPlanMidnightOil(
     );
   }
   return (await resp.json()) as MidnightOilProviderExecutorAdapterPlanReceipt;
+}
+
+export async function retrievalAdapterPlanMidnightOil(
+  request: MidnightOilRetrievalAdapterPlanRequest,
+): Promise<MidnightOilRetrievalAdapterPlanReceipt> {
+  const resp = await apiFetch(`${API_BASE}/research/midnight-oil/retrieval-adapter-plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/retrieval-adapter-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilRetrievalAdapterPlanReceipt;
 }
