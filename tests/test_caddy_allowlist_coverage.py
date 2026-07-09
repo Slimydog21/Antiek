@@ -33,6 +33,11 @@ _ALLOWLIST_EXCEPTIONS: set[str] = set()
 _DECORATOR = re.compile(
     r"""@app\.(?:get|post|put|delete|patch|websocket)\(\s*["']([^"']+)["']"""
 )
+# Standalone APIRouters register top-level prefixes the @app scanner misses
+# (e.g. multimedia_router = APIRouter(prefix="/multimedia") — live prod gap).
+_ROUTER_PREFIX = re.compile(
+    r"""APIRouter\(\s*(?:[^)]*?\bprefix\s*=\s*["']([^"']+)["'])"""
+)
 
 
 def _top_prefix(path: str) -> str:
@@ -44,10 +49,15 @@ def _registered_prefixes() -> set[str]:
     out: set[str] = set()
     for f in glob.glob(os.path.join(_API_DIR, "*.py")):
         with open(f, encoding="utf-8") as fh:
-            for m in _DECORATOR.finditer(fh.read()):
-                p = _top_prefix(m.group(1))
-                if p != "/":
-                    out.add(p)
+            src = fh.read()
+        for m in _DECORATOR.finditer(src):
+            p = _top_prefix(m.group(1))
+            if p != "/":
+                out.add(p)
+        for m in _ROUTER_PREFIX.finditer(src):
+            p = _top_prefix(m.group(1))
+            if p != "/":
+                out.add(p)
     return out
 
 
