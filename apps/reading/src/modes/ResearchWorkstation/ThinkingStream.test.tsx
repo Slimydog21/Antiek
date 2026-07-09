@@ -50,6 +50,7 @@ function state(overrides: Partial<InvestigationState>): InvestigationState {
     completedAt: null,
     streamStatus: "open",
     reconnects: 0,
+    sourcePolicy: [],
     ...overrides,
   };
 }

@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 
 import { useInvestigation } from "../../hooks/useInvestigation";
 import type { InvestigationState } from "../../hooks/useInvestigation";
+import type { ResearchSourcePolicy } from "../../lib/api";
 import { parseSynthesis } from "../../lib/synthesisParser";
 import GlassSurface from "../../shell/GlassSurface";
 import { PanelHost } from "../../workspace/PanelHost";
@@ -16,6 +17,30 @@ import PasteIngest from "./PasteIngest";
 import StartResearch from "./StartResearch";
 import SuggestedResearch from "./SuggestedResearch";
 import ThinkingStream from "./ThinkingStream";
+
+const SOURCE_POLICY_LABELS: Record<ResearchSourcePolicy, string> = {
+  operator_corpus: "Corpus",
+  web: "Web",
+  arxiv: "arXiv",
+  substack: "Substack",
+};
+
+export function SourceIntentReceipt({ policy }: { policy: ResearchSourcePolicy[] }) {
+  if (policy.length === 0) return null;
+  return (
+    <div className="border-b border-rule bg-ice-1 px-4 py-2 text-[11px] font-mono text-ink-mute dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-moonlight">
+      <span className="uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+        Source intent
+      </span>
+      <span className="ml-2 text-ink dark:text-bright">
+        {policy.map((item) => SOURCE_POLICY_LABELS[item] ?? item).join(" · ")}
+      </span>
+      <span className="ml-2 font-serif text-[12px]">
+        recorded at start; execution receipts arrive separately
+      </span>
+    </div>
+  );
+}
 
 /**
  * Mode A — Research Workstation (S5 redesign → Living-Roadmap SPR-05 M3).
@@ -209,6 +234,7 @@ function CenterContent({
     // honest no-result state on its own.
     return (
       <div className="flex h-full min-h-0 flex-col overflow-y-auto">
+        <SourceIntentReceipt policy={investigation.sourcePolicy} />
         {synth ? <MasterMdViewer synthesis={synth} /> : null}
         <div className="border-t border-rule dark:border-charcoal-1">
           <DistillView
@@ -244,16 +270,19 @@ function CenterContent({
   // the cascade monitor (DeepResearchWorkspace) is where Stop/redirect/deepen
   // are wired through a session.
   return (
-    <div className="flex h-full min-h-0">
-      <div className="min-w-0 flex-1">
-        <ThinkingStream investigation={investigation} />
-      </div>
-      <aside className="hidden w-[320px] shrink-0 flex-col overflow-y-auto border-l border-rule dark:border-charcoal-1 lg:flex">
-        <div className="border-b border-rule bg-ice-1 px-4 py-2 font-mono text-xs uppercase tracking-wider text-shadow-1 dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-moonlight">
-          Notes
+    <div className="flex h-full min-h-0 flex-col">
+      <SourceIntentReceipt policy={investigation.sourcePolicy} />
+      <div className="flex min-h-0 flex-1">
+        <div className="min-w-0 flex-1">
+          <ThinkingStream investigation={investigation} />
         </div>
-        <NotesPanel investigation={investigation} />
-      </aside>
+        <aside className="hidden w-[320px] shrink-0 flex-col overflow-y-auto border-l border-rule dark:border-charcoal-1 lg:flex">
+          <div className="border-b border-rule bg-ice-1 px-4 py-2 font-mono text-xs uppercase tracking-wider text-shadow-1 dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-moonlight">
+            Notes
+          </div>
+          <NotesPanel investigation={investigation} />
+        </aside>
+      </div>
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { Event } from "../generated/types";
 import { getInvestigationStatus, getTrajectory } from "../lib/api";
-import type { InvestigationStatus } from "../lib/api";
+import type { InvestigationStatus, ResearchSourcePolicy } from "../lib/api";
 import { useEventStream } from "./useEventStream";
 
 export interface InvestigationState {
@@ -22,6 +22,8 @@ export interface InvestigationState {
   /** How many times the live socket has reconnected (from useEventStream).
    *  A live view can show "reconnecting…" when this advances mid-run. */
   reconnects: number;
+  /** Metadata-only source-pack intent recorded when this research started. */
+  sourcePolicy: ResearchSourcePolicy[];
 }
 
 /**
@@ -103,7 +105,10 @@ export function useInvestigation(
 
   // Recompute derived fields whenever events change.
   const derived = useMemo<
-    Pick<InvestigationState, "status" | "question" | "terminalPayload" | "costTotal" | "completedAt">
+    Pick<
+      InvestigationState,
+      "status" | "question" | "terminalPayload" | "costTotal" | "completedAt" | "sourcePolicy"
+    >
   >(() => {
     if (loading) {
       return {
@@ -112,6 +117,7 @@ export function useInvestigation(
         terminalPayload: null,
         costTotal: 0,
         completedAt: null,
+        sourcePolicy: [],
       };
     }
     if (events.length === 0) {
@@ -121,16 +127,22 @@ export function useInvestigation(
         terminalPayload: null,
         costTotal: 0,
         completedAt: null,
+        sourcePolicy: status?.source_policy ?? [],
       };
     }
     let question: string | null = null;
+    let sourcePolicy: ResearchSourcePolicy[] = status?.source_policy ?? [];
     let terminal: { type: string; row: Event } | null = null;
     let cost = 0;
     for (const e of events) {
       const at = e.action_type;
       if (at === "investigation.start_requested" && question === null) {
-        const p = e.payload as { question?: string } | undefined;
+        const p = e.payload as {
+          question?: string;
+          source_policy?: ResearchSourcePolicy[];
+        } | undefined;
         if (p?.question) question = p.question;
+        if (Array.isArray(p?.source_policy)) sourcePolicy = p.source_policy;
       } else if (
         at === "investigation.completed" ||
         at === "investigation.failed"
@@ -154,6 +166,7 @@ export function useInvestigation(
         (status?.terminal_payload ?? null),
       costTotal: cost,
       completedAt: terminal?.row.emitted_at ?? null,
+      sourcePolicy,
     };
   }, [events, loading, status]);
 

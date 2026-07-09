@@ -53,6 +53,7 @@ vi.mock("../../hooks/useInvestigation", () => ({
     completedAt: null,
     streamStatus: "open",
     reconnects: 0,
+    sourcePolicy: [],
   }),
 }));
 // The Werner beat is decoration; render it inert.

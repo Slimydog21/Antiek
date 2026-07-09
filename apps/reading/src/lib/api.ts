@@ -559,6 +559,8 @@ export interface InvestigationStatus {
   /** The inline-rubric verdict for this research's answer; null when no
    *  score was persisted (the no-synthesis / no-key case). */
   rubric_score: RubricScore | null;
+  /** Metadata-only source-pack intent recorded on the start event. */
+  source_policy: ResearchSourcePolicy[];
 }
 
 /** GET /investigations/{id} — fetch terminal-state status. */
