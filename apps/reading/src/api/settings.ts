@@ -107,6 +107,65 @@ export async function clearDecisionTreeSelection(): Promise<DecisionTreeSelectio
   return readJson<DecisionTreeSelectionResponse>(res);
 }
 
+/** Depth-tier presets: flash | pro | wrestle (process-local). */
+export type DepthTierPreset = {
+  depth_tier: string;
+  label: string;
+  description: string;
+  dispatch_tier: string;
+  task_class: string;
+  default_input_chars: number;
+  default_expected_output_tokens: number;
+  competitor_posture: string;
+};
+
+export type DepthTierResponse = {
+  active_depth_tier: string | null;
+  active_preset: DepthTierPreset | null;
+  presets: DepthTierPreset[];
+  projection_hints: {
+    tier?: string;
+    input_chars?: number;
+    expected_output_tokens?: number;
+    task_class?: string;
+  } | null;
+  decision_tree_install?: Record<string, unknown> | null;
+  view_format: "html" | string;
+  settings_panel: string;
+  source: string;
+  notes: string[];
+  html?: string | null;
+};
+
+export async function fetchDepthTiers(opts?: {
+  includeHtml?: boolean;
+}): Promise<DepthTierResponse> {
+  const q = opts?.includeHtml ? "?include_html=true" : "";
+  const res = await apiFetch(`${API_BASE}/settings/depth-tier${q}`);
+  return readJson<DepthTierResponse>(res);
+}
+
+export async function applyDepthTier(opts: {
+  depth_tier: string;
+  model_id?: string | null;
+  provider_id?: string | null;
+  install_driver?: boolean;
+  includeHtml?: boolean;
+}): Promise<DepthTierResponse> {
+  const res = await apiFetch(`${API_BASE}/settings/depth-tier`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      depth_tier: opts.depth_tier,
+      model_id: opts.model_id ?? null,
+      provider_id: opts.provider_id ?? null,
+      install_driver: Boolean(opts.install_driver),
+      include_html: Boolean(opts.includeHtml),
+    }),
+  });
+  return readJson<DepthTierResponse>(res);
+}
+
 /** Weekly Antiek-bench usage summary (recorded engagement outcomes). */
 export type UsageTaskClassBucket = {
   worked?: number;

@@ -789,6 +789,117 @@ def delete_decision_tree_selection() -> DecisionTreeSelectionResponse:
     )
 
 
+class DepthTierApplyRequest(BaseModel):
+    """Select flash | pro | wrestle depth tier (optional driver install)."""
+
+    depth_tier: str = Field(min_length=1)
+    model_id: str | None = None
+    provider_id: str | None = None
+    install_driver: bool = False
+    include_html: bool = False
+
+
+class DepthTierResponse(BaseModel):
+    active_depth_tier: str | None = None
+    active_preset: dict[str, Any] | None = None
+    presets: list[dict[str, Any]] = Field(default_factory=list)
+    projection_hints: dict[str, Any] | None = None
+    decision_tree_install: dict[str, Any] | None = None
+    view_format: str = "html"
+    settings_panel: str = "depth_tier_presets"
+    source: str = "substrate.model_registration.depth_tiers"
+    notes: list[str] = Field(default_factory=list)
+    html: str | None = None
+
+
+@settings_router.get(
+    "/depth-tier",
+    response_model=DepthTierResponse,
+)
+def get_depth_tier(include_html: bool = False) -> DepthTierResponse:
+    """List depth-tier presets and process-local active selection."""
+    from substrate.model_registration import depth_tiers_settings_payload
+
+    payload = depth_tiers_settings_payload(include_html=include_html)
+    return DepthTierResponse(
+        active_depth_tier=payload.get("active_depth_tier"),
+        active_preset=payload.get("active_preset"),
+        presets=list(payload.get("presets") or []),
+        projection_hints=payload.get("projection_hints"),
+        view_format=str(payload.get("view_format") or "html"),
+        settings_panel=str(payload.get("settings_panel") or "depth_tier_presets"),
+        source=str(payload.get("source") or ""),
+        notes=list(payload.get("notes") or []),
+        html=payload.get("html"),
+    )
+
+
+@settings_router.post(
+    "/depth-tier",
+    response_model=DepthTierResponse,
+)
+def post_depth_tier(req: DepthTierApplyRequest) -> DepthTierResponse:
+    """Apply depth tier (+ optional decision-tree driver install)."""
+    from substrate.model_registration import (
+        apply_depth_tier,
+        depth_tiers_settings_payload,
+    )
+
+    try:
+        applied = apply_depth_tier(
+            req.depth_tier,
+            model_id=req.model_id,
+            provider_id=req.provider_id,
+            install_driver=req.install_driver,
+        )
+    except ValueError as exc:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    payload = depth_tiers_settings_payload(include_html=req.include_html)
+    return DepthTierResponse(
+        active_depth_tier=payload.get("active_depth_tier"),
+        active_preset=payload.get("active_preset"),
+        presets=list(payload.get("presets") or []),
+        projection_hints=applied.get("projection_hints")
+        or payload.get("projection_hints"),
+        decision_tree_install=applied.get("decision_tree_install"),
+        view_format=str(payload.get("view_format") or "html"),
+        settings_panel=str(payload.get("settings_panel") or "depth_tier_presets"),
+        source=str(payload.get("source") or ""),
+        notes=list(applied.get("notes") or []) + list(payload.get("notes") or []),
+        html=payload.get("html"),
+    )
+
+
+@settings_router.delete(
+    "/depth-tier",
+    response_model=DepthTierResponse,
+)
+def delete_depth_tier(include_html: bool = False) -> DepthTierResponse:
+    """Clear process-local depth tier selection."""
+    from substrate.model_registration import (
+        clear_active_depth_tier,
+        depth_tiers_settings_payload,
+    )
+
+    clear_active_depth_tier()
+    payload = depth_tiers_settings_payload(include_html=include_html)
+    payload["notes"] = list(payload.get("notes") or []) + ["depth tier cleared"]
+    return DepthTierResponse(
+        active_depth_tier=payload.get("active_depth_tier"),
+        active_preset=payload.get("active_preset"),
+        presets=list(payload.get("presets") or []),
+        projection_hints=payload.get("projection_hints"),
+        view_format=str(payload.get("view_format") or "html"),
+        settings_panel=str(payload.get("settings_panel") or "depth_tier_presets"),
+        source=str(payload.get("source") or ""),
+        notes=list(payload.get("notes") or []),
+        html=payload.get("html"),
+    )
+
+
 def register_settings_budget_routes(app: FastAPI) -> None:
     app.include_router(settings_router)
 
@@ -802,19 +913,24 @@ __all__ = [
     "BudgetResponse",
     "DecisionTreeSelectionRequest",
     "DecisionTreeSelectionResponse",
+    "DepthTierApplyRequest",
+    "DepthTierResponse",
     "ModelsResponse",
     "PromptCostEstimateRequest",
     "PromptCostEstimateResponse",
     "delete_decision_tree_selection",
+    "delete_depth_tier",
     "estimate_prompt_cost",
     "NotDiamondAdvisoryResponse",
     "get_antiek_bench_leaderboard",
     "get_antiek_bench_suite_proposal",
     "get_antiek_bench_usage_summary",
     "get_decision_tree_selection",
+    "get_depth_tier",
     "get_notdiamond_advisory",
     "post_antiek_bench_suite_approve",
     "post_decision_tree_selection",
+    "post_depth_tier",
     "read_operator_budget",
     "register_settings_budget_routes",
     "settings_router",

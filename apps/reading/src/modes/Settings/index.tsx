@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
+  applyDepthTier,
   approveAntiekBenchSuiteProposal,
   clearDecisionTreeSelection,
   estimatePromptCost,
   fetchAntiekBenchSuiteProposal,
   fetchAntiekBenchUsageSummary,
   fetchDecisionTreeSelection,
+  fetchDepthTiers,
   fetchNotDiamondAdvisory,
   fetchSettingsBudget,
   fetchSettingsModels,
@@ -17,6 +19,7 @@ import {
   type AntiekBenchUsageSummaryResponse,
   type BudgetResponse,
   type DecisionTreeSelectionResponse,
+  type DepthTierResponse,
   type ModelRow,
   type NotDiamondAdvisoryResponse,
   type PromptCostEstimateResponse,
@@ -74,6 +77,9 @@ export default function Settings() {
   const [suiteApproveBusy, setSuiteApproveBusy] = useState(false);
   const [nd, setNd] = useState<NotDiamondAdvisoryResponse | null>(null);
   const [ndError, setNdError] = useState<string | null>(null);
+  const [depth, setDepth] = useState<DepthTierResponse | null>(null);
+  const [depthError, setDepthError] = useState<string | null>(null);
+  const [depthBusy, setDepthBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -132,11 +138,51 @@ export default function Settings() {
       } catch (e) {
         if (!cancelled) setNdError(e instanceof Error ? e.message : String(e));
       }
+      try {
+        const d = await fetchDepthTiers({ includeHtml: true });
+        if (!cancelled) {
+          setDepth(d);
+          // Apply projection hints into cost estimator defaults when present.
+          const hints = d.projection_hints;
+          if (hints?.input_chars != null) setInputChars(hints.input_chars);
+          if (hints?.expected_output_tokens != null)
+            setOutTokens(hints.expected_output_tokens);
+        }
+      } catch (e) {
+        if (!cancelled)
+          setDepthError(e instanceof Error ? e.message : String(e));
+      }
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  async function onApplyDepthTier(tier: string) {
+    setDepthBusy(true);
+    setDepthError(null);
+    try {
+      const d = await applyDepthTier({
+        depth_tier: tier,
+        model_id: selectedModel || null,
+        provider_id: selectedProvider || null,
+        install_driver: Boolean(selectedModel.trim()),
+        includeHtml: true,
+      });
+      if (d.view_format !== "html") {
+        throw new Error("depth tier view_format must be html");
+      }
+      setDepth(d);
+      const hints = d.projection_hints;
+      if (hints?.input_chars != null) setInputChars(hints.input_chars);
+      if (hints?.expected_output_tokens != null)
+        setOutTokens(hints.expected_output_tokens);
+    } catch (e) {
+      setDepthError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDepthBusy(false);
+    }
+  }
 
   async function onRefreshUsage() {
     setUsageBusy(true);
@@ -352,6 +398,84 @@ export default function Settings() {
               Adding API keys / new models remains operator-gated. Decision-tree
               install below is process-local (same process as dispatch).
             </p>
+          </div>
+        </LemonCard>
+
+        <LemonCard title="Depth-tier presets" elevation="z1" colour="glacial">
+          <div
+            className="p-4 space-y-3"
+            data-testid="depth-tier-panel"
+            data-view-format="html"
+          >
+            <p className="text-sm text-ink dark:text-bright">
+              Flash / Pro / Wrestle map competitive speed vs depth postures onto
+              dispatch tier + Antiek-bench task class + cost-projection hints
+              (#440). Process-local like the decision-tree driver.
+            </p>
+            {depthError && (
+              <p className="text-sm text-red-700 dark:text-red-300 font-mono">
+                {depthError}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {(depth?.presets?.length
+                ? depth.presets
+                : [
+                    { depth_tier: "flash", label: "Flash" },
+                    { depth_tier: "pro", label: "Pro" },
+                    { depth_tier: "wrestle", label: "Wrestle" },
+                  ]
+              ).map((p) => (
+                <button
+                  key={p.depth_tier}
+                  type="button"
+                  data-testid={`depth-tier-${p.depth_tier}`}
+                  disabled={depthBusy}
+                  onClick={() => void onApplyDepthTier(p.depth_tier)}
+                  className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+                >
+                  {p.label || p.depth_tier}
+                  {depth?.active_depth_tier === p.depth_tier ? " ✓" : ""}
+                </button>
+              ))}
+            </div>
+            {depth && (
+              <div
+                className="font-mono text-[13px] space-y-1"
+                data-testid="depth-tier-summary"
+              >
+                <Row
+                  label="Active"
+                  value={depth.active_depth_tier ?? "(none)"}
+                />
+                {depth.projection_hints ? (
+                  <>
+                    <Row
+                      label="Dispatch tier"
+                      value={String(depth.projection_hints.tier ?? "—")}
+                    />
+                    <Row
+                      label="Task class"
+                      value={String(depth.projection_hints.task_class ?? "—")}
+                    />
+                    <Row
+                      label="Hint out tokens"
+                      value={String(
+                        depth.projection_hints.expected_output_tokens ?? "—",
+                      )}
+                    />
+                  </>
+                ) : null}
+                {depth.notes?.map((n) => (
+                  <p
+                    key={n}
+                    className="text-[11px] text-ink-soft dark:text-starlight"
+                  >
+                    {n}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
         </LemonCard>
 

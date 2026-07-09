@@ -17,6 +17,8 @@ const {
   fetchAntiekBenchUsageSummary,
   fetchAntiekBenchSuiteProposal,
   approveAntiekBenchSuiteProposal,
+  fetchDepthTiers,
+  applyDepthTier,
   fetchNotDiamondAdvisory,
 } = vi.hoisted(() => {
   const models = {
@@ -131,6 +133,84 @@ const {
       ],
       html: null,
     })),
+    fetchDepthTiers: vi.fn(async () => ({
+      active_depth_tier: null,
+      active_preset: null,
+      presets: [
+        {
+          depth_tier: "flash",
+          label: "Flash",
+          description: "fast",
+          dispatch_tier: "flash",
+          task_class: "distill",
+          default_input_chars: 1500,
+          default_expected_output_tokens: 400,
+          competitor_posture: "Perplexity-class speed",
+        },
+        {
+          depth_tier: "pro",
+          label: "Pro",
+          description: "balanced",
+          dispatch_tier: "pro",
+          task_class: "synthesize",
+          default_input_chars: 4000,
+          default_expected_output_tokens: 1200,
+          competitor_posture: "balanced",
+        },
+        {
+          depth_tier: "wrestle",
+          label: "Wrestle",
+          description: "deep",
+          dispatch_tier: "pro",
+          task_class: "wrestle",
+          default_input_chars: 8000,
+          default_expected_output_tokens: 4000,
+          competitor_posture: "depth",
+        },
+      ],
+      projection_hints: null,
+      view_format: "html",
+      settings_panel: "depth_tier_presets",
+      source: "substrate.model_registration.depth_tiers",
+      notes: [],
+      html: "<p>Depth-tier presets</p>",
+    })),
+    applyDepthTier: vi.fn(async (opts: { depth_tier: string }) => ({
+      active_depth_tier: opts.depth_tier,
+      active_preset: {
+        depth_tier: opts.depth_tier,
+        label: opts.depth_tier,
+        description: "",
+        dispatch_tier: opts.depth_tier === "flash" ? "flash" : "pro",
+        task_class:
+          opts.depth_tier === "flash"
+            ? "distill"
+            : opts.depth_tier === "wrestle"
+              ? "wrestle"
+              : "synthesize",
+        default_input_chars: 1500,
+        default_expected_output_tokens:
+          opts.depth_tier === "wrestle" ? 4000 : 400,
+        competitor_posture: "test",
+      },
+      presets: [],
+      projection_hints: {
+        tier: opts.depth_tier === "flash" ? "flash" : "pro",
+        input_chars: 1500,
+        expected_output_tokens: opts.depth_tier === "wrestle" ? 4000 : 400,
+        task_class:
+          opts.depth_tier === "flash"
+            ? "distill"
+            : opts.depth_tier === "wrestle"
+              ? "wrestle"
+              : "synthesize",
+      },
+      view_format: "html",
+      settings_panel: "depth_tier_presets",
+      source: "substrate.model_registration.depth_tiers",
+      notes: [`Active depth tier set to ${opts.depth_tier}`],
+      html: `<p>Active: ${opts.depth_tier}</p>`,
+    })),
     fetchNotDiamondAdvisory: vi.fn(async () => ({
       advisory_allowed: true,
       advisory_verdict: "GO",
@@ -162,6 +242,8 @@ vi.mock("../../api/settings", () => ({
   fetchAntiekBenchUsageSummary,
   fetchAntiekBenchSuiteProposal,
   approveAntiekBenchSuiteProposal,
+  fetchDepthTiers,
+  applyDepthTier,
   fetchNotDiamondAdvisory,
 }));
 
@@ -180,6 +262,8 @@ describe("Settings SPR-01 + decision-tree install", () => {
     fetchAntiekBenchUsageSummary.mockClear();
     fetchAntiekBenchSuiteProposal.mockClear();
     approveAntiekBenchSuiteProposal.mockClear();
+    fetchDepthTiers.mockClear();
+    applyDepthTier.mockClear();
     fetchNotDiamondAdvisory.mockClear();
   });
 
@@ -252,7 +336,8 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("antiek-bench-usage-panel").getAttribute("data-view-format")).toBe(
       "html",
     );
-    expect(screen.getByText(/wrestle/i)).toBeTruthy();
+    // wrestle appears in usage summary and depth-tier chrome
+    expect(screen.getAllByText(/wrestle/i).length).toBeGreaterThan(0);
     expect(screen.getByTestId("antiek-bench-usage-html").innerHTML).toContain("2");
   });
 
@@ -328,5 +413,30 @@ describe("Settings SPR-01 + decision-tree install", () => {
         screen.getByTestId("antiek-bench-suite-approve-result").textContent,
       ).toMatch(/approved|Promoted\s*true/i);
     });
+  });
+
+  it("applies depth-tier wrestle preset and shows projection hints", async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("depth-tier-panel")).toBeTruthy();
+    });
+    expect(fetchDepthTiers).toHaveBeenCalled();
+    await user.click(screen.getByTestId("depth-tier-wrestle"));
+    await waitFor(() => {
+      expect(applyDepthTier).toHaveBeenCalled();
+    });
+    const call = applyDepthTier.mock.calls.at(-1)?.[0] as {
+      depth_tier: string;
+    };
+    expect(call.depth_tier).toBe("wrestle");
+    await waitFor(() => {
+      expect(screen.getByTestId("depth-tier-summary").textContent).toMatch(
+        /wrestle/i,
+      );
+    });
+    expect(
+      screen.getByTestId("depth-tier-panel").getAttribute("data-view-format"),
+    ).toBe("html");
   });
 });
