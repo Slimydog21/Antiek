@@ -45,9 +45,11 @@ def test_post_export_artifact(api_env):
     body = resp.json()
     assert body["investigation_id"] == "inv-api"
     assert body["path"]
+    assert body["twin_notes_path"]
     assert body["content_hash"]
     assert body["size_bytes"] > 0
     assert os.path.isfile(body["path"])
+    assert os.path.isfile(body["twin_notes_path"])
 
 
 def test_get_artifact_blocks_empty(api_env):

@@ -45,6 +45,7 @@ class BlocksOut(BaseModel):
 class ExportOut(BaseModel):
     investigation_id: str
     path: str
+    twin_notes_path: str
     content_hash: str
     size_bytes: int
     event_id: str | None = None
@@ -70,6 +71,7 @@ async def post_export_artifact(investigation_id: str) -> ExportOut:
     return ExportOut(
         investigation_id=res.investigation_id,
         path=str(res.path),
+        twin_notes_path=str(res.twin_notes_path),
         content_hash=res.content_hash,
         size_bytes=res.size_bytes,
         event_id=res.event_id,
