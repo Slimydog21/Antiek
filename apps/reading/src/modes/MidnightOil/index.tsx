@@ -20,6 +20,7 @@
  * ceiling transparency (goals+duration → approve before swarm work).
  * Residual (hy): live-step status panel (offline-honest dual-gate readiness).
  * Residual (ic): Settings deep-link for decision-tree driver + daily budget.
+ * Residual (js): deposit progress panels pass researchTier + tier poll cadence.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -794,24 +795,42 @@ export default function MidnightOil() {
                   data-spawn-count={String(
                     deposit.spawn_ids.filter(Boolean).length,
                   )}
+                  data-research-tier={job.research_tier || researchTier}
                 >
                   <p className="text-[10px] font-mono uppercase tracking-wider opacity-70">
                     Research progress (deposit spawns)
                   </p>
-                  {deposit.spawn_ids.filter(Boolean).map((sid) => (
-                    <div
-                      key={sid}
-                      data-testid={`moil-progress-spawn-${sid}`}
-                      data-spawn-id={sid}
-                    >
-                      <ResearchProgressPanel
-                        spawnId={sid}
-                        autoLoad
-                        autoSeedIfEmpty
-                        pollIntervalMs={0}
-                      />
-                    </div>
-                  ))}
+                  {deposit.spawn_ids.filter(Boolean).map((sid) => {
+                    const tier = (job.research_tier || researchTier || "deep")
+                      .toString()
+                      .toLowerCase();
+                    // Residual (js): parity DR host poll cadence by tier.
+                    const pollMs =
+                      tier === "wrestle" ? 8000 : tier === "fast" ? 2000 : 4000;
+                    return (
+                      <div
+                        key={sid}
+                        data-testid={`moil-progress-spawn-${sid}`}
+                        data-spawn-id={sid}
+                        data-research-tier={tier}
+                        data-poll-ms={String(pollMs)}
+                      >
+                        <ResearchProgressPanel
+                          spawnId={sid}
+                          autoLoad
+                          autoSeedIfEmpty
+                          researchTier={
+                            tier === "fast" ||
+                            tier === "deep" ||
+                            tier === "wrestle"
+                              ? tier
+                              : "deep"
+                          }
+                          pollIntervalMs={pollMs}
+                        />
+                      </div>
+                    );
+                  })}
                 </section>
               ) : null}
               {deposit.progress ? (

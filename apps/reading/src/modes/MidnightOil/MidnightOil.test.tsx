@@ -124,10 +124,17 @@ vi.mock("../../components/engagement/ResearchProgressPanel", () => ({
     spawnId: string;
     autoLoad?: boolean;
     autoSeedIfEmpty?: boolean;
+    researchTier?: string | null;
+    pollIntervalMs?: number;
   }) => (
-    <div data-testid="research-progress-panel-stub">
+    <div
+      data-testid="research-progress-panel-stub"
+      data-research-tier={props.researchTier ?? ""}
+      data-poll-ms={String(props.pollIntervalMs ?? 0)}
+    >
       spawn={props.spawnId}:auto={String(Boolean(props.autoLoad))}:seed=
-      {String(Boolean(props.autoSeedIfEmpty))}
+      {String(Boolean(props.autoSeedIfEmpty))}:tier=
+      {props.researchTier ?? ""}:poll={String(props.pollIntervalMs ?? 0)}
     </div>
   ),
 }));
@@ -441,16 +448,29 @@ describe("MidnightOil mode", () => {
         /Twin notes reseeded/,
       );
     });
-    // Residual (gl): progress panel for deposit spawn_ids.
+    // Residual (gl/js): progress panel for deposit spawn_ids + tier poll.
     expect(screen.getByTestId("moil-deposit-progress-mount")).toBeTruthy();
     expect(
       screen
         .getByTestId("moil-deposit-progress-mount")
         .getAttribute("data-spawn-count"),
     ).toBe("1");
+    expect(
+      screen
+        .getByTestId("moil-deposit-progress-mount")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
     expect(screen.getByTestId("moil-progress-spawn-spn_1").textContent).toMatch(
       /spawn=spn_1:auto=true/,
     );
+    expect(
+      screen.getByTestId("moil-progress-spawn-spn_1").getAttribute("data-poll-ms"),
+    ).toBe("4000");
+    expect(
+      screen
+        .getByTestId("research-progress-panel-stub")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
     expect(screen.getByTestId("moil-progress-summary").textContent).toMatch(
       /complete/,
     );

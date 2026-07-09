@@ -1,0 +1,8 @@
+# inventory-js · MO deposit progress research_tier + poll
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: js
+files:
+  apps/reading/src/modes/MidnightOil/index.tsx
+  apps/reading/src/modes/MidnightOil/MidnightOil.test.tsx
+proof: MidnightOil vitest 9_passed (HONEST_OK)
+invariants: deposit progress tier parity DR host · wrestle 8s poll
