@@ -720,4 +720,45 @@ describe("MidnightOil mode", () => {
     expect(depositMetrics.getAttribute("data-view-format")).toBe("html");
     expect(depositMetrics.textContent).toMatch(/Midnight Oil deposit/);
   });
+
+  it("applies competitive recommended duration by tier (ng)", async () => {
+    render(<MidnightOil />);
+    await waitFor(() => {
+      expect(screen.getByTestId("moil-duration-recommend")).toBeTruthy();
+    });
+    // Default deep → recommend 10m.
+    expect(
+      screen
+        .getByTestId("moil-duration-recommend")
+        .getAttribute("data-recommended-minutes"),
+    ).toBe("10");
+    expect(
+      screen
+        .getByTestId("moil-duration-recommend")
+        .getAttribute("data-band-minutes"),
+    ).toBe("3–10");
+    // Default duration is 60; apply recommended.
+    expect(
+      (screen.getByTestId("moil-duration-minutes") as HTMLInputElement).value,
+    ).toBe("60");
+    fireEvent.click(screen.getByTestId("moil-apply-recommended-duration"));
+    expect(
+      (screen.getByTestId("moil-duration-minutes") as HTMLInputElement).value,
+    ).toBe("10");
+    expect(
+      screen
+        .getByTestId("moil-duration-recommend")
+        .getAttribute("data-matches-recommended"),
+    ).toBe("true");
+    // Wrestle chip → 30m.
+    fireEvent.click(screen.getByTestId("moil-duration-chip-wrestle"));
+    expect(
+      (screen.getByTestId("moil-duration-minutes") as HTMLInputElement).value,
+    ).toBe("30");
+    // Fast chip → 3m.
+    fireEvent.click(screen.getByTestId("moil-duration-chip-fast"));
+    expect(
+      (screen.getByTestId("moil-duration-minutes") as HTMLInputElement).value,
+    ).toBe("3");
+  });
 });

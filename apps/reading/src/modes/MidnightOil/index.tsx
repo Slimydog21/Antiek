@@ -26,6 +26,8 @@
  * Residual (me): soft-gate approve when ceiling may_exceed remaining budget
  * (force override required; unknown remaining never blocks).
  * Residual (ml): dual-gate L1–L4 checklist deep-link (parity mj; prep only).
+ * Residual (ng): competitive recommended duration by research_tier
+ * (parity progress mw bands) — apply-recommended chips for time-of-work.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -45,9 +47,11 @@ import { fetchDecisionTreeSelection, fetchDepthTiers } from "../../api/settings"
 import type { ResearchTier } from "../../lib/api";
 import {
   formatResearchTierCeilingFactor,
+  formatResearchTierDurationBand,
   mapDepthTierToResearchTier,
   mapResearchTierToCeilingMultiplier,
   mapResearchTierToProgressPollMs,
+  mapResearchTierToRecommendedDurationMinutes,
 } from "../../lib/researchTier";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
 import {
@@ -491,7 +495,61 @@ export default function MidnightOil() {
             value={durationMinutes}
             onChange={(e) => setDurationMinutes(Number(e.target.value))}
             disabled={busy}
+            data-testid="moil-duration-minutes"
           />
+          {/* Residual (ng): competitive duration recommendation by depth tier. */}
+          <div
+            className="flex flex-wrap items-center gap-2 text-[11px] font-mono"
+            data-testid="moil-duration-recommend"
+            data-research-tier={researchTier}
+            data-recommended-minutes={String(
+              mapResearchTierToRecommendedDurationMinutes(researchTier),
+            )}
+            data-band-minutes={formatResearchTierDurationBand(researchTier)}
+            data-current-minutes={String(durationMinutes)}
+            data-matches-recommended={String(
+              durationMinutes ===
+                mapResearchTierToRecommendedDurationMinutes(researchTier),
+            )}
+            role="status"
+          >
+            <span className="opacity-80">
+              Competitive band ({researchTier}):{" "}
+              {formatResearchTierDurationBand(researchTier)} min · recommend{" "}
+              {mapResearchTierToRecommendedDurationMinutes(researchTier)}m
+            </span>
+            <button
+              type="button"
+              data-testid="moil-apply-recommended-duration"
+              disabled={busy}
+              className="px-2 py-0.5 rounded border text-[11px]"
+              title="Apply competitive recommended duration for current research tier"
+              onClick={() =>
+                setDurationMinutes(
+                  mapResearchTierToRecommendedDurationMinutes(researchTier),
+                )
+              }
+            >
+              Use recommended ({mapResearchTierToRecommendedDurationMinutes(researchTier)}m)
+            </button>
+            {(["fast", "deep", "wrestle"] as const).map((tier) => (
+              <button
+                key={tier}
+                type="button"
+                data-testid={`moil-duration-chip-${tier}`}
+                disabled={busy}
+                className="px-2 py-0.5 rounded border text-[11px]"
+                title={`Set duration to ${mapResearchTierToRecommendedDurationMinutes(tier)}m (${formatResearchTierDurationBand(tier)} band)`}
+                onClick={() =>
+                  setDurationMinutes(
+                    mapResearchTierToRecommendedDurationMinutes(tier),
+                  )
+                }
+              >
+                {tier} {mapResearchTierToRecommendedDurationMinutes(tier)}m
+              </button>
+            ))}
+          </div>
         </label>
         <label className="block space-y-1">
           <span className="text-sm font-medium">Model id</span>

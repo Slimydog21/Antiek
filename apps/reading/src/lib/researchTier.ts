@@ -128,3 +128,42 @@ export function formatResearchTierCeilingFactor(
         : "deep";
   return `${mult.toFixed(1)}× (${name})`;
 }
+
+/**
+ * Residual (ng): competitive duration recommendation for Midnight Oil
+ * autonomous runs (parity ResearchProgressPanel mw bands).
+ * Honest estimate midpoints — not a live ETA; operator can override.
+ *   fast 1–3m → 3 · deep 3–10m → 10 · wrestle 10–30+m → 30
+ */
+export const RESEARCH_TIER_RECOMMENDED_DURATION_MINUTES = {
+  fast: 3,
+  deep: 10,
+  wrestle: 30,
+} as const;
+
+export function mapResearchTierToRecommendedDurationMinutes(
+  researchTier: ResearchTier | string | null | undefined,
+): number {
+  const t = String(researchTier || "")
+    .trim()
+    .toLowerCase();
+  if (t === "fast" || t === "flash") {
+    return RESEARCH_TIER_RECOMMENDED_DURATION_MINUTES.fast;
+  }
+  if (t === "wrestle") {
+    return RESEARCH_TIER_RECOMMENDED_DURATION_MINUTES.wrestle;
+  }
+  return RESEARCH_TIER_RECOMMENDED_DURATION_MINUTES.deep;
+}
+
+/** Competitive band label for MO duration chrome (offline-honest). */
+export function formatResearchTierDurationBand(
+  researchTier: ResearchTier | string | null | undefined,
+): string {
+  const t = String(researchTier || "")
+    .trim()
+    .toLowerCase();
+  if (t === "fast" || t === "flash") return "1–3";
+  if (t === "wrestle") return "10–30+";
+  return "3–10";
+}

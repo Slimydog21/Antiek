@@ -2,13 +2,16 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatResearchTierCeilingFactor,
+  formatResearchTierDurationBand,
   mapDepthTierToResearchTier,
   mapResearchTierToBenchTaskClass,
   mapResearchTierToCeilingMultiplier,
   mapResearchTierToDepthTier,
   mapResearchTierToProgressPollMs,
+  mapResearchTierToRecommendedDurationMinutes,
   RESEARCH_TIER_CEILING_MULTIPLIER,
   RESEARCH_TIER_PROGRESS_POLL_MS,
+  RESEARCH_TIER_RECOMMENDED_DURATION_MINUTES,
 } from "./researchTier";
 
 describe("researchTier map residual (gt)", () => {
@@ -77,5 +80,20 @@ describe("researchTier map residual (jv) MO ceiling multiplier", () => {
     expect(formatResearchTierCeilingFactor("wrestle")).toBe("2.0× (wrestle)");
     expect(formatResearchTierCeilingFactor("fast")).toBe("0.5× (fast)");
     expect(formatResearchTierCeilingFactor("deep")).toBe("1.0× (deep)");
+  });
+});
+
+describe("researchTier map residual (ng) MO recommended duration", () => {
+  it("maps closed tiers to competitive duration midpoints (parity mw)", () => {
+    expect(mapResearchTierToRecommendedDurationMinutes("fast")).toBe(
+      RESEARCH_TIER_RECOMMENDED_DURATION_MINUTES.fast,
+    );
+    expect(mapResearchTierToRecommendedDurationMinutes("deep")).toBe(10);
+    expect(mapResearchTierToRecommendedDurationMinutes("wrestle")).toBe(30);
+    expect(mapResearchTierToRecommendedDurationMinutes("flash")).toBe(3);
+    expect(mapResearchTierToRecommendedDurationMinutes(null)).toBe(10);
+    expect(formatResearchTierDurationBand("fast")).toBe("1–3");
+    expect(formatResearchTierDurationBand("deep")).toBe("3–10");
+    expect(formatResearchTierDurationBand("wrestle")).toBe("10–30+");
   });
 });

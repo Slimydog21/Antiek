@@ -341,3 +341,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (nf, 2026-07-10) **SESSION-ARC mx–ne multi-select chase:**
   - SESSION-ARC-mx-ne-multi-select-chase.md fleet handoff
   - multi-select promote/chase path offline-complete
+
+- Closed (ng, 2026-07-10) **Midnight Oil competitive recommended duration:**
+  - mapResearchTierToRecommendedDurationMinutes (fast 3 / deep 10 / wrestle 30)
+  - moil-duration-recommend chrome + Use recommended + tier chips
+  - parity ResearchProgressPanel mw bands; offline-honest estimate
