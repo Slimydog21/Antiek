@@ -4,6 +4,7 @@ import {
   activationChecklistMidnightOil,
   budgetProviderAdapterPlanMidnightOil,
   budgetReservationMidnightOil,
+  controlLedgerAdapterPlanMidnightOil,
   dispatchMidnightOil,
   dryRunMidnightOil,
   finalArtifactAdapterPlanMidnightOil,
@@ -23,6 +24,7 @@ import {
   type MidnightOilAppliedRunReceipt,
   type MidnightOilBudgetProviderAdapterPlanReceipt,
   type MidnightOilBudgetReservationReceipt,
+  type MidnightOilControlLedgerAdapterPlanReceipt,
   type MidnightOilDispatchReceipt,
   type MidnightOilFinalArtifactAdapterPlanReceipt,
   type MidnightOilFinalArtifactReceipt,
@@ -99,6 +101,8 @@ export default function MidnightOil() {
     useState<MidnightOilFinalArtifactAdapterPlanReceipt | null>(null);
   const [operatorDispatchAdapterPlanReceipt, setOperatorDispatchAdapterPlanReceipt] =
     useState<MidnightOilOperatorDispatchAdapterPlanReceipt | null>(null);
+  const [controlLedgerAdapterPlanReceipt, setControlLedgerAdapterPlanReceipt] =
+    useState<MidnightOilControlLedgerAdapterPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -117,6 +121,7 @@ export default function MidnightOil() {
   const [graphAdapterPlanBusy, setGraphAdapterPlanBusy] = useState(false);
   const [finalArtifactAdapterPlanBusy, setFinalArtifactAdapterPlanBusy] = useState(false);
   const [operatorDispatchAdapterPlanBusy, setOperatorDispatchAdapterPlanBusy] = useState(false);
+  const [controlLedgerAdapterPlanBusy, setControlLedgerAdapterPlanBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
@@ -139,10 +144,18 @@ export default function MidnightOil() {
     useState<string | null>(null);
   const [operatorDispatchAdapterPlanError, setOperatorDispatchAdapterPlanError] =
     useState<string | null>(null);
+  const [controlLedgerAdapterPlanError, setControlLedgerAdapterPlanError] =
+    useState<string | null>(null);
+
+  function clearControlLedgerAdapterPlan() {
+    setControlLedgerAdapterPlanError(null);
+    setControlLedgerAdapterPlanReceipt(null);
+  }
 
   function clearOperatorDispatchAdapterPlan() {
     setOperatorDispatchAdapterPlanError(null);
     setOperatorDispatchAdapterPlanReceipt(null);
+    clearControlLedgerAdapterPlan();
   }
 
   function clearFinalArtifactAdapterPlan() {
@@ -201,6 +214,7 @@ export default function MidnightOil() {
     setGraphAdapterPlanError(null);
     setFinalArtifactAdapterPlanError(null);
     setOperatorDispatchAdapterPlanError(null);
+    setControlLedgerAdapterPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -220,6 +234,7 @@ export default function MidnightOil() {
     setGraphAdapterPlanReceipt(null);
     setFinalArtifactAdapterPlanReceipt(null);
     setOperatorDispatchAdapterPlanReceipt(null);
+    setControlLedgerAdapterPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -918,6 +933,7 @@ export default function MidnightOil() {
     setOperatorDispatchAdapterPlanBusy(true);
     setOperatorDispatchAdapterPlanError(null);
     setOperatorDispatchAdapterPlanReceipt(null);
+    clearControlLedgerAdapterPlan();
     try {
       const result = await operatorDispatchAdapterPlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -935,6 +951,49 @@ export default function MidnightOil() {
       setOperatorDispatchAdapterPlanError(e instanceof Error ? e.message : String(e));
     } finally {
       setOperatorDispatchAdapterPlanBusy(false);
+    }
+  }
+
+  async function onControlLedgerAdapterPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt ||
+      !finalArtifactAdapterPlanReceipt ||
+      !operatorDispatchAdapterPlanReceipt
+    ) {
+      setControlLedgerAdapterPlanError(
+        "Control ledger adapter plan requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, retrieval adapter plan receipt, graph adapter plan receipt, final artifact adapter plan receipt, and operator dispatch adapter plan receipt.",
+      );
+      return;
+    }
+
+    setControlLedgerAdapterPlanBusy(true);
+    setControlLedgerAdapterPlanError(null);
+    setControlLedgerAdapterPlanReceipt(null);
+    try {
+      const result = await controlLedgerAdapterPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+        retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+        graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+        final_artifact_adapter_plan_receipt: finalArtifactAdapterPlanReceipt,
+        operator_dispatch_adapter_plan_receipt: operatorDispatchAdapterPlanReceipt,
+      });
+      setControlLedgerAdapterPlanReceipt(result);
+    } catch (e) {
+      setControlLedgerAdapterPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setControlLedgerAdapterPlanBusy(false);
     }
   }
 
@@ -2468,6 +2527,124 @@ export default function MidnightOil() {
                     {operatorDispatchAdapterPlanReceipt.required_dispatch_enablement_fields.join(
                       ", ",
                     )}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Control ledger adapter
+                </p>
+                <button
+                  type="button"
+                  onClick={onControlLedgerAdapterPlanGate}
+                  disabled={
+                    controlLedgerAdapterPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt ||
+                    !retrievalAdapterPlanReceipt ||
+                    !graphAdapterPlanReceipt ||
+                    !finalArtifactAdapterPlanReceipt ||
+                    !operatorDispatchAdapterPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {controlLedgerAdapterPlanBusy
+                    ? "Planning ledger..."
+                    : "Control ledger adapter"}
+                </button>
+              </div>
+
+              {controlLedgerAdapterPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {controlLedgerAdapterPlanError}
+                </p>
+              )}
+
+              {controlLedgerAdapterPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Control ledger adapter receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {controlLedgerAdapterPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={controlLedgerAdapterPlanReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Persistence"
+                      value={
+                        controlLedgerAdapterPlanReceipt.control_ledger_persistence_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Ledger"
+                      value={
+                        controlLedgerAdapterPlanReceipt.control_ledger_written
+                          ? "written"
+                          : "not written"
+                      }
+                    />
+                    <Metric
+                      label="Rollback"
+                      value={
+                        controlLedgerAdapterPlanReceipt.rollback_receipt_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Setting"
+                      value={controlLedgerAdapterPlanReceipt.planned_setting_id}
+                    />
+                    <Metric
+                      label="Control ledger"
+                      value={controlLedgerAdapterPlanReceipt.planned_control_ledger_id}
+                    />
+                    <Metric
+                      label="Audit log"
+                      value={controlLedgerAdapterPlanReceipt.planned_audit_log_id}
+                    />
+                    <Metric
+                      label="Rollback receipt"
+                      value={controlLedgerAdapterPlanReceipt.planned_rollback_receipt_id}
+                    />
+                    <Metric
+                      label="Adapter"
+                      value={controlLedgerAdapterPlanReceipt.adapter_key.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={controlLedgerAdapterPlanReceipt.blocker_reason.replaceAll("_", " ")}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {controlLedgerAdapterPlanReceipt.required_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Control ledger fields:{" "}
+                    {controlLedgerAdapterPlanReceipt.required_control_ledger_fields.join(", ")}
+                  </p>
+                  <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Rollback receipt fields:{" "}
+                    {controlLedgerAdapterPlanReceipt.required_rollback_receipt_fields.join(", ")}
                   </p>
                 </div>
               )}

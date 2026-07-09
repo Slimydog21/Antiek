@@ -7,6 +7,7 @@ import {
   activationChecklistMidnightOil,
   budgetProviderAdapterPlanMidnightOil,
   budgetReservationMidnightOil,
+  controlLedgerAdapterPlanMidnightOil,
   dispatchMidnightOil,
   dryRunMidnightOil,
   finalArtifactAdapterPlanMidnightOil,
@@ -855,6 +856,80 @@ vi.mock("../../api/midnightOil", () => ({
     final_artifact_created: false,
     adapter_plan_notes: ["operator dispatch adapter plan only: live dispatch remains disabled"],
   })),
+  controlLedgerAdapterPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-control-ledger-adapter-plan",
+    operator_dispatch_adapter_plan_receipt_id: "midnight-oil-test-operator-dispatch-adapter-plan",
+    runner_control_plan_receipt_id: "midnight-oil-test-runner-control-plan",
+    budget_provider_adapter_plan_receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+    provider_executor_adapter_plan_receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+    retrieval_adapter_plan_receipt_id: "midnight-oil-test-retrieval-adapter-plan",
+    graph_adapter_plan_receipt_id: "midnight-oil-test-graph-adapter-plan",
+    final_artifact_adapter_plan_receipt_id: "midnight-oil-test-final-artifact-adapter-plan",
+    runner_readiness_receipt_id: "midnight-oil-test-runner-readiness",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_control_ledger_adapter_unimplemented",
+    adapter_key: "operator_dispatch_control_ledger",
+    planned_setting_id: "midnight-oil-test-operator-live-dispatch-setting",
+    planned_control_ledger_id: "midnight-oil-test-operator-dispatch-control-ledger",
+    planned_audit_log_id: "midnight-oil-test-operator-dispatch-audit-log",
+    planned_rollback_receipt_id: "midnight-oil-test-operator-dispatch-rollback-receipt",
+    required_invariants: [
+      "control ledger adapter must persist exactly one enablement row per approved run id and idempotency key",
+      "control ledger adapter must bind the row to the launch packet, approval receipt, and operator setting",
+      "control ledger adapter must write an audit log row and rollback receipt before live dispatch can be enabled",
+    ],
+    required_control_ledger_fields: [
+      "control_ledger_id",
+      "operator_dispatch_setting_id",
+      "run_id",
+      "launch_packet_id",
+      "approval_receipt_id",
+      "approved_price_ceiling_usd",
+      "approved_work_minutes",
+      "enabled_by_operator_id",
+      "enabled_at",
+      "expires_at",
+      "idempotency_key",
+      "audit_log_id",
+      "rollback_receipt_id",
+      "created_at",
+    ],
+    required_rollback_receipt_fields: [
+      "rollback_receipt_id",
+      "control_ledger_id",
+      "operator_dispatch_setting_id",
+      "run_id",
+      "previous_enabled_state",
+      "rollback_reason",
+      "rolled_back_by_operator_id",
+      "rolled_back_at",
+    ],
+    blocker_reason: "control_ledger_adapter_unimplemented",
+    control_ledger_persistence_allowed: false,
+    control_ledger_written: false,
+    audit_log_written: false,
+    rollback_receipt_created: false,
+    operator_dispatch_allowed: false,
+    operator_live_dispatch_enabled: false,
+    live_run_allowed: false,
+    dispatch_allowed: false,
+    dispatch_performed: false,
+    budget_reservation_allowed: false,
+    budget_reserved: false,
+    provider_execution_allowed: false,
+    provider_calls_made: false,
+    retrieval_allowed: false,
+    retrieval_performed: false,
+    source_receipts_created: false,
+    graph_mutation_allowed: false,
+    graph_mutated: false,
+    final_artifact_allowed: false,
+    final_artifact_created: false,
+    adapter_plan_notes: ["control ledger adapter plan only: no ledger row is persisted"],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -1472,5 +1547,54 @@ describe("MidnightOil", () => {
       ),
     ).toBeTruthy();
     expect(screen.getByText(/Dispatch enablement fields:/)).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Control ledger adapter" }));
+
+    await waitFor(() => expect(controlLedgerAdapterPlanMidnightOil).toHaveBeenCalled());
+    expect(controlLedgerAdapterPlanMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      runner_control_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-control-plan",
+      }),
+      budget_provider_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+      }),
+      provider_executor_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+      }),
+      retrieval_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-retrieval-adapter-plan",
+      }),
+      graph_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-graph-adapter-plan",
+      }),
+      final_artifact_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-final-artifact-adapter-plan",
+      }),
+      operator_dispatch_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-operator-dispatch-adapter-plan",
+      }),
+    });
+    expect(screen.getByText("Control ledger adapter receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-control-ledger-adapter-plan")).toBeTruthy();
+    expect(screen.getByText("blocked control ledger adapter unimplemented")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-operator-dispatch-audit-log")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-operator-dispatch-rollback-receipt")).toBeTruthy();
+    expect(screen.getByText("operator dispatch control ledger")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "control ledger adapter must persist exactly one enablement row per approved run id and idempotency key",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Control ledger fields:/)).toBeTruthy();
+    expect(screen.getByText(/Rollback receipt fields:/)).toBeTruthy();
   });
 });
