@@ -74,3 +74,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - seedTwinNotes force_offline after host/purchase
 - marketplace-twin-seed-status UI
 - tests: MarketplaceHost 5 passed
+## residual (gk) Midnight Oil deposit twin reseed — 2026-07-09
+- seedTwinNotes force_offline after deposit + auto-deposit
+- moil-twin-reseed-status UI
+- tests: MidnightOil 6 passed

@@ -11,9 +11,12 @@
  * Residual (ex): auto-open deposit HTML floating after successful deposit /
  * auto-deposit run so Midnight Oil joins the reading flywheel without a click.
  * Residual (fo): Open Write HTML draft handoff for deposit document_id (fl/fm/fn).
+ * Residual (gk): client offline twin reseed after deposit (ensure recursive
+ * note-taker when backend twin_count is thin; non-fatal reinforce).
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { seedTwinNotes } from "../../api/engagement";
 import {
   approveMidnightOilCeiling,
   createMidnightOilJob,
@@ -86,6 +89,8 @@ export default function MidnightOil() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [depositWindowId, setDepositWindowId] = useState<string | null>(null);
+  // Residual (gk): twin reseed status after deposit.
+  const [twinReseedStatus, setTwinReseedStatus] = useState<string | null>(null);
 
   const maybeAutoOpenDeposit = useCallback(
     (dep: MidnightOilDepositResponse) => {
@@ -94,6 +99,44 @@ export default function MidnightOil() {
       if (winId) setDepositWindowId(winId);
     },
     [autoOpenDeposit],
+  );
+
+  /**
+   * Residual (gk): offline twin reseed after deposit lands.
+   * Reinforces recursive note-taker; never blocks deposit UX.
+   */
+  const reseedDepositTwins = useCallback(
+    async (dep: MidnightOilDepositResponse) => {
+      const assetId = (dep.document_id || dep.asset_id || "").trim();
+      if (!assetId || dep.view_format !== "html") {
+        setTwinReseedStatus(null);
+        return;
+      }
+      try {
+        const plain = (dep.html || "")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 2000);
+        const seeded = await seedTwinNotes({
+          asset_id: assetId,
+          title: `Midnight Oil · ${dep.job_id}`,
+          body_text: plain || dep.job_id,
+          include_html: false,
+          force_offline: true,
+        });
+        setTwinReseedStatus(
+          seeded.seeded === false
+            ? `Twin reseed skipped${seeded.seed_skipped ? `: ${seeded.seed_skipped}` : ""}`
+            : `Twin notes reseeded for ${assetId}`,
+        );
+      } catch (e) {
+        setTwinReseedStatus(
+          e instanceof Error ? e.message : "Twin reseed failed (non-fatal)",
+        );
+      }
+    },
+    [],
   );
   // Residual (dg): soft-gate create when budget projection would exceed.
   const [budgetWarn, setBudgetWarn] = useState(false);
@@ -198,6 +241,7 @@ export default function MidnightOil() {
     if (!job) return;
     setBusy(true);
     setError(null);
+    setTwinReseedStatus(null);
     try {
       const result = await depositMidnightOilJob({
         job_id: job.job_id,
@@ -216,6 +260,8 @@ export default function MidnightOil() {
         asset_id: result.asset_id,
         runnable: false,
       });
+      // Residual (gk): reinforce twin substrate after deposit.
+      await reseedDepositTwins(result);
       // Residual (ex): auto-open floating hosted HTML flywheel.
       maybeAutoOpenDeposit(result);
     } catch (err) {
@@ -246,6 +292,8 @@ export default function MidnightOil() {
       });
       if (result.deposit) {
         setDeposit(result.deposit);
+        setTwinReseedStatus(null);
+        await reseedDepositTwins(result.deposit);
         // Residual (ex): auto-deposit path also auto-opens.
         maybeAutoOpenDeposit(result.deposit);
       }
@@ -526,6 +574,16 @@ export default function MidnightOil() {
                 {String(deposit.usage_recorded)} · progress_seeded=
                 {String(deposit.progress_seeded)}
               </p>
+              {/* Residual (gk): client twin reseed status. */}
+              {twinReseedStatus ? (
+                <p
+                  className="font-mono text-[11px] opacity-80"
+                  data-testid="moil-twin-reseed-status"
+                  role="status"
+                >
+                  {twinReseedStatus}
+                </p>
+              ) : null}
               {deposit.progress ? (
                 <p className="font-mono text-sm" data-testid="moil-progress-summary">
                   progress latest=

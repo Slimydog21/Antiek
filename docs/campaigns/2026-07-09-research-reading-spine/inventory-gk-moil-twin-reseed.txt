@@ -1,0 +1,17 @@
+# residual (gk) Midnight Oil deposit offline twin reseed
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(gj) prior | branch_only | campaign inventories
+(gk) moil twin reseed | branch_only | seedTwinNotes after deposit/auto-deposit; moil-twin-reseed-status; 6 MidnightOil vitest
+
+PATHS:
+- apps/reading/src/modes/MidnightOil/index.tsx
+- apps/reading/src/modes/MidnightOil/MidnightOil.test.tsx
+
+BEHAVIOR:
+- reseedDepositTwins after onDeposit and auto_deposit run path
+- force_offline:true; non-fatal; status UI
+- Competitive (au) deposit polish: twins land for note-taker flywheel
+
+NEXT: (gl) re-derive; operator merge PR #465

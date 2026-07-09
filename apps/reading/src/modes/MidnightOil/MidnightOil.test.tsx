@@ -9,6 +9,7 @@ const {
   runMidnightOilJob,
   getMidnightOilJob,
   fetchDecisionTreeSelection,
+  seedTwinNotes,
 } = vi.hoisted(() => ({
   createMidnightOilJob: vi.fn(),
   approveMidnightOilCeiling: vi.fn(),
@@ -16,6 +17,7 @@ const {
   runMidnightOilJob: vi.fn(),
   getMidnightOilJob: vi.fn(),
   fetchDecisionTreeSelection: vi.fn(),
+  seedTwinNotes: vi.fn(),
 }));
 
 vi.mock("../../api/midnightOil", () => ({
@@ -24,6 +26,10 @@ vi.mock("../../api/midnightOil", () => ({
   depositMidnightOilJob,
   runMidnightOilJob,
   getMidnightOilJob,
+}));
+
+vi.mock("../../api/engagement", () => ({
+  seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...args),
 }));
 
 vi.mock("../../api/settings", () => ({
@@ -78,6 +84,14 @@ describe("MidnightOil mode", () => {
   beforeEach(() => {
     createMidnightOilJob.mockReset();
     approveMidnightOilCeiling.mockReset();
+    seedTwinNotes.mockReset().mockResolvedValue({
+      asset_id: "draft_moil_asset_dep_abc",
+      seeded: true,
+      view_format: "html",
+      notes: [],
+      insight_count: 1,
+      question_count: 1,
+    });
     depositMidnightOilJob.mockReset();
     runMidnightOilJob.mockReset();
     getMidnightOilJob.mockReset();
@@ -258,6 +272,20 @@ describe("MidnightOil mode", () => {
     await waitFor(() => {
       expect(screen.getByTestId("moil-deposit-result").textContent).toMatch(
         /twins=2/,
+      );
+    });
+    // Residual (gk): client offline twin reseed after deposit.
+    await waitFor(() => {
+      expect(seedTwinNotes).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "draft_moil_asset_dep_abc",
+          force_offline: true,
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("moil-twin-reseed-status").textContent).toMatch(
+        /Twin notes reseeded/,
       );
     });
     expect(screen.getByTestId("moil-progress-summary").textContent).toMatch(
