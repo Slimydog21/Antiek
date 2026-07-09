@@ -1,0 +1,9 @@
+# inventory-np · session-flywheel dual-gate checklist deep-link
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: np
+files:
+  apps/reading/src/components/engagement/SessionFlywheelPanel.tsx
+  apps/reading/src/components/engagement/SessionFlywheelPanel.test.tsx
+  docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md
+proof: vitest SessionFlywheelPanel 5 passed
+invariants: prep only · never enables injectors · Antiek-bench feed path honesty

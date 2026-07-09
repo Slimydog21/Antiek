@@ -190,4 +190,11 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
     expect(link.getAttribute("href")).toBe("/settings");
     expect(link.textContent).toMatch(/driver & budget/i);
   });
+
+  it("links dual-gate L1–L4 checklist (np)", () => {
+    render(<SessionFlywheelPanel sessionId="fsess_1" />);
+    const dual = screen.getByTestId("session-flywheel-dual-gate-checklist-link");
+    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
+    expect(dual.textContent).toMatch(/Dual-gate/i);
+  });
 });

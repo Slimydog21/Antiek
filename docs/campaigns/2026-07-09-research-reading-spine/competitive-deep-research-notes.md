@@ -376,3 +376,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (no, 2026-07-10) **Dual-gate UI prep surface index:**
   - DUAL-GATE checklist lists all 8 engagement deep-link testids
+
+- Closed (np, 2026-07-10) **SessionFlywheel dual-gate checklist link:**
+  - Completes dual-gate prep on land→twins→Antiek-bench flywheel path
+  - Checklist UI prep surfaces now 9 panels

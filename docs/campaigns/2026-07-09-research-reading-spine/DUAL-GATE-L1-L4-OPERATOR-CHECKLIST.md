@@ -115,5 +115,6 @@ Checklist is linked from engagement surfaces for operator prep only.
 | ResearchProgress | `research-progress-dual-gate-checklist-link` | multi-minute job |
 | Collective | `collective-dual-gate-checklist-link` | L6 multi-agent prep |
 | SpawnMerge | `spawn-merge-dual-gate-checklist-link` | merge path prep |
+| SessionFlywheel | `session-flywheel-dual-gate-checklist-link` | land → bench feed |
 
 L5 payment rails and L6 live multi-agent remain **deferred** (specs only until injectors exist).

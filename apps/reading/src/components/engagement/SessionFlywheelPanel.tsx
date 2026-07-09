@@ -13,6 +13,7 @@
  * Residual (kq): fall back to context.research_tier (pack identity from kk)
  * when session research_tier is absent; expose data-context-research-tier.
  * Residual (lt): DecisionTreeDriverBadge with pre/post complete tier.
+ * Residual (np): dual-gate L1–L4 checklist deep-link (prep only).
  * Composes shipped completeSessionFlywheel. HTML-first context pack.
  */
 
@@ -130,8 +131,8 @@ export function SessionFlywheelPanel({
         <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
           Land output → twins/context pack → usage events for Antiek-bench
         </p>
-        {/* Residual (ii): Settings deep-link for model driver + budget. */}
-        <p className="text-[11px] font-mono">
+        {/* Residual (ii/np): Settings + dual-gate checklist (flywheel prep). */}
+        <p className="text-[11px] font-mono space-x-3">
           <a
             href="/settings"
             data-testid="session-flywheel-settings-link"
@@ -139,6 +140,14 @@ export function SessionFlywheelPanel({
             title="Open Settings for decision-tree driver and daily budget"
           >
             Settings · driver & budget
+          </a>
+          <a
+            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+            data-testid="session-flywheel-dual-gate-checklist-link"
+            className="underline opacity-80 hover:opacity-100"
+            title="Dual-gate L1–L4 checklist (prep only; offline default)"
+          >
+            Dual-gate L1–L4 checklist
           </a>
         </p>
         {/* Residual (lt): model+budget+depth before/after flywheel complete. */}
