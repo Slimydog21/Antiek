@@ -7,11 +7,17 @@
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  *
- * Residual (ag): mounts ResearchContextPanel when parent_asset_id is present
- * so twin/source-ref context is reachable from the session chrome.
+ * Residual (ag): mounts ResearchContextPanel when parent_asset_id is present.
+ * Residual (ah): mounts CollectiveResearchPanel with availableSpawnIds from
+ * current spawn + open deep_research_session windows.
  */
 
+import { useMemo } from "react";
+
+import { CollectiveResearchPanel } from "../engagement/CollectiveResearchPanel";
 import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
+import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
+import { useWindows } from "../../workspace/windowsStore";
 import { useInWindow } from "./windowHostContext";
 
 export type DeepResearchSessionHostProps = {
@@ -25,6 +31,8 @@ export type DeepResearchSessionHostProps = {
   model_id?: string;
   region_id?: string;
   goal?: string;
+  /** Optional extra spawn ids for collective multi-select (tests / handoff). */
+  available_spawn_ids?: string[];
   __windowId?: string;
 };
 
@@ -55,6 +63,18 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
   const status = props.status?.trim() || "unknown";
   const viewFormat = (props.view_format?.trim() || "html").toLowerCase();
   const isHtml = viewFormat === "html";
+
+  // Subscribe to open windows so multi-session spawns appear in collective list.
+  const windows = useWindows((s) => s.windows);
+  const availableSpawnIds = useMemo(
+    () =>
+      collectDeepResearchSpawnIds({
+        currentSpawnId: props.spawn_id,
+        extraSpawnIds: props.available_spawn_ids,
+        windows,
+      }),
+    [props.spawn_id, props.available_spawn_ids, windows],
+  );
 
   return (
     <div
@@ -109,6 +129,18 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             assetId={props.parent_asset_id.trim()}
             spawnId={props.spawn_id?.trim() || null}
           />
+        </section>
+      ) : null}
+
+      {/* Product mount (ah): multi-select collective merge over open spawns. */}
+      {availableSpawnIds.length > 0 ? (
+        <section
+          className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
+          data-testid="deep-research-collective-mount"
+          data-view-format="html"
+          data-available-spawn-count={String(availableSpawnIds.length)}
+        >
+          <CollectiveResearchPanel availableSpawnIds={availableSpawnIds} />
         </section>
       ) : null}
     </div>

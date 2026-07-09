@@ -1,6 +1,7 @@
 /**
  * DeepResearchSessionHost + WINDOW_PAGES eligibility for deep_research_session.
  * Residual (ag): mounts ResearchContextPanel with asset/spawn identity.
+ * Residual (ah): mounts CollectiveResearchPanel with available spawn ids.
  */
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -65,6 +66,68 @@ describe("DeepResearchSessionHost", () => {
     const { parent_asset_id: _drop, ...noParent } = FIXTURE;
     render(<DeepResearchSessionHost {...noParent} />);
     expect(screen.queryByTestId("deep-research-research-context-mount")).toBeNull();
+  });
+
+  it("mounts CollectiveResearchPanel with available spawn ids from session", () => {
+    useWindows.getState().reset();
+    const first = render(<DeepResearchSessionHost {...FIXTURE} />);
+    const mount = screen.getByTestId("deep-research-collective-mount");
+    expect(mount).toBeTruthy();
+    expect(mount.getAttribute("data-view-format")).toBe("html");
+    expect(mount.getAttribute("data-available-spawn-count")).toBe("1");
+    // Shipped collective panel chrome
+    expect(
+      screen.getByRole("heading", { name: /collective deep research/i }),
+    ).toBeTruthy();
+    // Spawn appears in identity row + collective checkbox list
+    expect(screen.getAllByText("spn_launch_1").length).toBeGreaterThanOrEqual(1);
+    first.unmount();
+    // Double-run remount stable
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    expect(screen.getByTestId("deep-research-collective-mount")).toBeTruthy();
+    expect(
+      screen.getByTestId("deep-research-collective-mount").getAttribute(
+        "data-available-spawn-count",
+      ),
+    ).toBe("1");
+  });
+
+  it("includes spawn ids from other open deep_research_session windows", () => {
+    useWindows.getState().reset();
+    openWindow(
+      DEEP_RESEARCH_WINDOW_KIND as keyof typeof WINDOW_PAGES,
+      {
+        session_id: "fsess_other",
+        spawn_id: "spn_other_2",
+        parent_asset_id: "other-asset",
+        selection_text: "other",
+        status: "reserved",
+        view_format: "html",
+        investigation_id: "inv_other",
+      },
+      { id: "wdr_fsess_other", mode: "floating" },
+    );
+    render(
+      <DeepResearchSessionHost
+        {...FIXTURE}
+        available_spawn_ids={["spn_extra_3"]}
+      />,
+    );
+    const mount = screen.getByTestId("deep-research-collective-mount");
+    // current + open window + extra
+    expect(Number(mount.getAttribute("data-available-spawn-count"))).toBeGreaterThanOrEqual(
+      2,
+    );
+    expect(mount.textContent).toContain("spn_launch_1");
+    expect(mount.textContent).toContain("spn_other_2");
+    expect(mount.textContent).toContain("spn_extra_3");
+  });
+
+  it("omits CollectiveResearchPanel when no spawn ids available", () => {
+    useWindows.getState().reset();
+    const { spawn_id: _s, ...noSpawn } = FIXTURE;
+    render(<DeepResearchSessionHost {...noSpawn} />);
+    expect(screen.queryByTestId("deep-research-collective-mount")).toBeNull();
   });
 
   it("kind is window-eligible in WINDOW_PAGES registry", () => {
