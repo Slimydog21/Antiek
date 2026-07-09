@@ -44,10 +44,12 @@ vi.mock("../../api/settings", () => ({
 vi.mock("./DecisionTreeDriverBadge", () => ({
   DecisionTreeDriverBadge: (props: {
     researchTier?: string | null;
+    promptText?: string | null;
   }) => (
     <div
       data-testid="decision-tree-driver-badge-stub"
       data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+      data-prompt-len={String((props.promptText || "").length)}
     >
       driver badge
     </div>
@@ -963,6 +965,51 @@ describe("CollectiveResearchPanel", () => {
     expect(href).toMatch(/html_draft=draft_col_qe/);
     expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
     expect(screen.getByTestId("collective-open-write").getAttribute("data-has-twin-seed")).toBe("1");
+  });
+
+
+  it("passes unit prompt_block as driver badge promptText (qg)", async () => {
+    fetchCollectiveResearch.mockResolvedValue({
+      collective_id: "col_qg",
+      spawn_ids: ["spn_1", "spn_2"],
+      asset_ids: ["asset_x"],
+      investigation_ids: [],
+      twin_units: [],
+      source_references: [],
+      view_format: "html",
+      spawn_count: 2,
+      twin_count: 0,
+      ref_count: 0,
+      prompt_block: "# Collective unit col_qg\nLong prompt for budget projection.",
+    });
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_1", "spn_2"]}
+        parentAssetId="asset_x"
+        autoSelectNewestRecent={false}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("collective-select-spn_1"));
+    fireEvent.click(screen.getByTestId("collective-select-spn_2"));
+    // Before merge: selected spawn ids form promptText.
+    expect(
+      Number(
+        screen
+          .getByTestId("decision-tree-driver-badge-stub")
+          .getAttribute("data-prompt-len") || 0,
+      ),
+    ).toBeGreaterThan(0);
+    fireEvent.click(screen.getByTestId("collective-merge-prompt"));
+    await waitFor(() => {
+      expect(screen.getByTestId("collective-unit-result")).toBeTruthy();
+    });
+    expect(
+      Number(
+        screen
+          .getByTestId("decision-tree-driver-badge-stub")
+          .getAttribute("data-prompt-len") || 0,
+      ),
+    ).toBeGreaterThan(20);
   });
 
 });

@@ -26,6 +26,8 @@
  * 14. Residual (ke): after merge, adopt unit.recommended_research_tier
  *     (depth-max of member spawn tiers) for continue-as-unit budget.
  * 15. Residual (lg): DecisionTreeDriverBadge with researchTier for model+depth.
+ * 26. Residual (qg): DecisionTreeDriverBadge promptText from unit prompt_block
+ *     (or selected spawn ids) for budget projection foresight (parity pg–pj).
  * 16. Residual (nk): select-all / invert / clear multi-select helpers
  *     (parity TwinNotes multi-select path for cohesive unit assembly).
  * 17. Residual (nl): dual-gate L1–L4 checklist deep-link for L6 live multi-
@@ -633,7 +635,15 @@ export function CollectiveResearchPanel({
           data-view-format="html"
           data-research-tier={researchTier}
         >
-          <DecisionTreeDriverBadge researchTier={researchTier} />
+          <DecisionTreeDriverBadge
+            researchTier={researchTier}
+            promptText={
+              (unit?.prompt_block || "").trim() ||
+              (selected.length
+                ? `collective merge · ${selected.length} spawn(s): ${selected.join(",")}`
+                : "")
+            }
+          />
         </div>
       </header>
 
