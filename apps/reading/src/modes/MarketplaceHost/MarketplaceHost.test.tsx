@@ -116,6 +116,10 @@ describe("MarketplaceHost mode", () => {
         .getAttribute("data-view-format"),
     ).toBe("html");
     expect(screen.getByTestId("decision-tree-driver-badge-stub")).toBeTruthy();
+    // Residual (id): Settings deep-link for driver + twin seed readiness.
+    const settings = screen.getByTestId("marketplace-settings-link");
+    expect(settings.getAttribute("href")).toBe("/settings");
+    expect(settings.textContent).toMatch(/driver & twin seed/i);
     await waitFor(() => {
       expect(screen.getByText("Pride and Prejudice")).toBeTruthy();
     });

@@ -16,6 +16,7 @@
  * enter the recursive note-taker substrate (parity with Write fz).
  * Residual (hl): offline-seed honesty machine attrs on marketplace twin seed
  * status (parity TwinNotes hh).
+ * Residual (id): Settings deep-link for driver + twin seed readiness.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -358,6 +359,17 @@ export default function MarketplaceHost({
           {/* Residual (dz): Settings decision-tree driver (advisory readout). */}
           <div data-testid="marketplace-driver-badge-mount" data-view-format="html">
             <DecisionTreeDriverBadge />
+            {/* Residual (id): Settings deep-link (driver + twin seed readiness). */}
+            <p className="mt-1 text-[11px] font-mono">
+              <a
+                href="/settings"
+                data-testid="marketplace-settings-link"
+                className="underline opacity-80 hover:opacity-100"
+                title="Open Settings for decision-tree driver and twin seed readiness"
+              >
+                Settings · driver & twin seed
+              </a>
+            </p>
           </div>
         </div>
       </header>
