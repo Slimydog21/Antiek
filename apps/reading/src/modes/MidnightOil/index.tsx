@@ -11,6 +11,7 @@ import {
   graphAdapterPlanMidnightOil,
   graphMutationMidnightOil,
   liveRunActivationSettingsMidnightOil,
+  operatorDispatchAdapterPlanMidnightOil,
   preflightMidnightOil,
   providerExecutorAdapterPlanMidnightOil,
   providerRouteMidnightOil,
@@ -28,6 +29,7 @@ import {
   type MidnightOilGraphAdapterPlanReceipt,
   type MidnightOilGraphMutationReceipt,
   type MidnightOilLiveRunActivationSettingsReceipt,
+  type MidnightOilOperatorDispatchAdapterPlanReceipt,
   type MidnightOilPreflight,
   type MidnightOilProviderExecutorAdapterPlanReceipt,
   type MidnightOilProviderRouteReceipt,
@@ -95,6 +97,8 @@ export default function MidnightOil() {
     useState<MidnightOilGraphAdapterPlanReceipt | null>(null);
   const [finalArtifactAdapterPlanReceipt, setFinalArtifactAdapterPlanReceipt] =
     useState<MidnightOilFinalArtifactAdapterPlanReceipt | null>(null);
+  const [operatorDispatchAdapterPlanReceipt, setOperatorDispatchAdapterPlanReceipt] =
+    useState<MidnightOilOperatorDispatchAdapterPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -112,6 +116,7 @@ export default function MidnightOil() {
   const [retrievalAdapterPlanBusy, setRetrievalAdapterPlanBusy] = useState(false);
   const [graphAdapterPlanBusy, setGraphAdapterPlanBusy] = useState(false);
   const [finalArtifactAdapterPlanBusy, setFinalArtifactAdapterPlanBusy] = useState(false);
+  const [operatorDispatchAdapterPlanBusy, setOperatorDispatchAdapterPlanBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
@@ -132,10 +137,18 @@ export default function MidnightOil() {
   const [graphAdapterPlanError, setGraphAdapterPlanError] = useState<string | null>(null);
   const [finalArtifactAdapterPlanError, setFinalArtifactAdapterPlanError] =
     useState<string | null>(null);
+  const [operatorDispatchAdapterPlanError, setOperatorDispatchAdapterPlanError] =
+    useState<string | null>(null);
+
+  function clearOperatorDispatchAdapterPlan() {
+    setOperatorDispatchAdapterPlanError(null);
+    setOperatorDispatchAdapterPlanReceipt(null);
+  }
 
   function clearFinalArtifactAdapterPlan() {
     setFinalArtifactAdapterPlanError(null);
     setFinalArtifactAdapterPlanReceipt(null);
+    clearOperatorDispatchAdapterPlan();
   }
 
   function clearGraphAdapterPlan() {
@@ -187,6 +200,7 @@ export default function MidnightOil() {
     setRetrievalAdapterPlanError(null);
     setGraphAdapterPlanError(null);
     setFinalArtifactAdapterPlanError(null);
+    setOperatorDispatchAdapterPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -205,6 +219,7 @@ export default function MidnightOil() {
     setRetrievalAdapterPlanReceipt(null);
     setGraphAdapterPlanReceipt(null);
     setFinalArtifactAdapterPlanReceipt(null);
+    setOperatorDispatchAdapterPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -862,6 +877,7 @@ export default function MidnightOil() {
     setFinalArtifactAdapterPlanBusy(true);
     setFinalArtifactAdapterPlanError(null);
     setFinalArtifactAdapterPlanReceipt(null);
+    clearOperatorDispatchAdapterPlan();
     try {
       const result = await finalArtifactAdapterPlanMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -878,6 +894,47 @@ export default function MidnightOil() {
       setFinalArtifactAdapterPlanError(e instanceof Error ? e.message : String(e));
     } finally {
       setFinalArtifactAdapterPlanBusy(false);
+    }
+  }
+
+  async function onOperatorDispatchAdapterPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerControlPlanReceipt ||
+      !budgetProviderAdapterPlanReceipt ||
+      !providerExecutorAdapterPlanReceipt ||
+      !retrievalAdapterPlanReceipt ||
+      !graphAdapterPlanReceipt ||
+      !finalArtifactAdapterPlanReceipt
+    ) {
+      setOperatorDispatchAdapterPlanError(
+        "Operator dispatch adapter plan requires launch packet, approval receipt, runner handoff, runner control plan receipt, budget provider adapter plan receipt, provider executor adapter plan receipt, retrieval adapter plan receipt, graph adapter plan receipt, and final artifact adapter plan receipt.",
+      );
+      return;
+    }
+
+    setOperatorDispatchAdapterPlanBusy(true);
+    setOperatorDispatchAdapterPlanError(null);
+    setOperatorDispatchAdapterPlanReceipt(null);
+    try {
+      const result = await operatorDispatchAdapterPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_control_plan_receipt: runnerControlPlanReceipt,
+        budget_provider_adapter_plan_receipt: budgetProviderAdapterPlanReceipt,
+        provider_executor_adapter_plan_receipt: providerExecutorAdapterPlanReceipt,
+        retrieval_adapter_plan_receipt: retrievalAdapterPlanReceipt,
+        graph_adapter_plan_receipt: graphAdapterPlanReceipt,
+        final_artifact_adapter_plan_receipt: finalArtifactAdapterPlanReceipt,
+      });
+      setOperatorDispatchAdapterPlanReceipt(result);
+    } catch (e) {
+      setOperatorDispatchAdapterPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOperatorDispatchAdapterPlanBusy(false);
     }
   }
 
@@ -2301,6 +2358,116 @@ export default function MidnightOil() {
                   <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
                     Artifact receipt fields:{" "}
                     {finalArtifactAdapterPlanReceipt.required_artifact_receipt_fields.join(", ")}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Operator dispatch adapter
+                </p>
+                <button
+                  type="button"
+                  onClick={onOperatorDispatchAdapterPlanGate}
+                  disabled={
+                    operatorDispatchAdapterPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerControlPlanReceipt ||
+                    !budgetProviderAdapterPlanReceipt ||
+                    !providerExecutorAdapterPlanReceipt ||
+                    !retrievalAdapterPlanReceipt ||
+                    !graphAdapterPlanReceipt ||
+                    !finalArtifactAdapterPlanReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {operatorDispatchAdapterPlanBusy
+                    ? "Planning dispatch..."
+                    : "Operator dispatch adapter"}
+                </button>
+              </div>
+
+              {operatorDispatchAdapterPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {operatorDispatchAdapterPlanError}
+                </p>
+              )}
+
+              {operatorDispatchAdapterPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Operator dispatch adapter receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {operatorDispatchAdapterPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={operatorDispatchAdapterPlanReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Dispatch"
+                      value={
+                        operatorDispatchAdapterPlanReceipt.operator_dispatch_allowed
+                          ? "allowed"
+                          : "blocked"
+                      }
+                    />
+                    <Metric
+                      label="Live toggle"
+                      value={
+                        operatorDispatchAdapterPlanReceipt.operator_live_dispatch_enabled
+                          ? "enabled"
+                          : "disabled"
+                      }
+                    />
+                    <Metric
+                      label="Artifact"
+                      value={
+                        operatorDispatchAdapterPlanReceipt.final_artifact_created
+                          ? "created"
+                          : "not created"
+                      }
+                    />
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Setting"
+                      value={operatorDispatchAdapterPlanReceipt.planned_setting_id}
+                    />
+                    <Metric
+                      label="Control ledger"
+                      value={operatorDispatchAdapterPlanReceipt.planned_control_ledger_id}
+                    />
+                    <Metric
+                      label="Adapter"
+                      value={operatorDispatchAdapterPlanReceipt.adapter_key.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Blocker"
+                      value={operatorDispatchAdapterPlanReceipt.blocker_reason.replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    />
+                  </div>
+                  <ul className="mt-2 grid grid-cols-1 gap-1 text-[11px] text-ink-soft dark:text-starlight">
+                    {operatorDispatchAdapterPlanReceipt.required_invariants
+                      .slice(0, 5)
+                      .map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                  </ul>
+                  <p className="mt-2 font-mono text-[11px] text-ink-soft dark:text-starlight">
+                    Dispatch enablement fields:{" "}
+                    {operatorDispatchAdapterPlanReceipt.required_dispatch_enablement_fields.join(
+                      ", ",
+                    )}
                   </p>
                 </div>
               )}

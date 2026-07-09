@@ -14,6 +14,7 @@ import {
   graphAdapterPlanMidnightOil,
   graphMutationMidnightOil,
   liveRunActivationSettingsMidnightOil,
+  operatorDispatchAdapterPlanMidnightOil,
   preflightMidnightOil,
   providerExecutorAdapterPlanMidnightOil,
   providerRouteMidnightOil,
@@ -801,6 +802,59 @@ vi.mock("../../api/midnightOil", () => ({
     dispatch_performed: false,
     adapter_plan_notes: ["final artifact adapter plan only: no HTML asset writer is configured"],
   })),
+  operatorDispatchAdapterPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-operator-dispatch-adapter-plan",
+    runner_control_plan_receipt_id: "midnight-oil-test-runner-control-plan",
+    budget_provider_adapter_plan_receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+    provider_executor_adapter_plan_receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+    retrieval_adapter_plan_receipt_id: "midnight-oil-test-retrieval-adapter-plan",
+    graph_adapter_plan_receipt_id: "midnight-oil-test-graph-adapter-plan",
+    final_artifact_adapter_plan_receipt_id: "midnight-oil-test-final-artifact-adapter-plan",
+    runner_readiness_receipt_id: "midnight-oil-test-runner-readiness",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_operator_dispatch_adapter_unimplemented",
+    adapter_key: "operator_live_dispatch_enablement",
+    planned_setting_id: "midnight-oil-test-operator-live-dispatch-setting",
+    planned_control_ledger_id: "midnight-oil-test-operator-dispatch-control-ledger",
+    required_invariants: [
+      "operator dispatch adapter must require every implementation adapter plan before live enablement",
+      "operator dispatch adapter must require an explicit operator toggle for the approved run id",
+      "operator dispatch adapter must write a durable control ledger row before live dispatch",
+    ],
+    required_dispatch_enablement_fields: [
+      "operator_dispatch_setting_id",
+      "run_id",
+      "approval_receipt_id",
+      "approved_price_ceiling_usd",
+      "approved_work_minutes",
+      "enabled_by_operator_id",
+      "enabled_at",
+      "expires_at",
+      "idempotency_key",
+      "rollback_receipt_id",
+    ],
+    blocker_reason: "operator_dispatch_adapter_unimplemented",
+    operator_dispatch_allowed: false,
+    operator_live_dispatch_enabled: false,
+    live_run_allowed: false,
+    dispatch_allowed: false,
+    dispatch_performed: false,
+    budget_reservation_allowed: false,
+    budget_reserved: false,
+    provider_execution_allowed: false,
+    provider_calls_made: false,
+    retrieval_allowed: false,
+    retrieval_performed: false,
+    source_receipts_created: false,
+    graph_mutation_allowed: false,
+    graph_mutated: false,
+    final_artifact_allowed: false,
+    final_artifact_created: false,
+    adapter_plan_notes: ["operator dispatch adapter plan only: live dispatch remains disabled"],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -1373,5 +1427,50 @@ describe("MidnightOil", () => {
       ),
     ).toBeTruthy();
     expect(screen.getByText(/Artifact receipt fields:/)).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Operator dispatch adapter" }));
+
+    await waitFor(() => expect(operatorDispatchAdapterPlanMidnightOil).toHaveBeenCalled());
+    expect(operatorDispatchAdapterPlanMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      runner_control_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-control-plan",
+      }),
+      budget_provider_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-provider-adapter-plan",
+      }),
+      provider_executor_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-provider-executor-adapter-plan",
+      }),
+      retrieval_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-retrieval-adapter-plan",
+      }),
+      graph_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-graph-adapter-plan",
+      }),
+      final_artifact_adapter_plan_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-final-artifact-adapter-plan",
+      }),
+    });
+    expect(screen.getByText("Operator dispatch adapter receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-operator-dispatch-adapter-plan")).toBeTruthy();
+    expect(screen.getByText("blocked operator dispatch adapter unimplemented")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-operator-live-dispatch-setting")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-operator-dispatch-control-ledger")).toBeTruthy();
+    expect(screen.getByText("operator live dispatch enablement")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "operator dispatch adapter must require every implementation adapter plan before live enablement",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(/Dispatch enablement fields:/)).toBeTruthy();
   });
 });
