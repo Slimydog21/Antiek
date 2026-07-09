@@ -1,0 +1,7 @@
+# inventory-ld · session arc handoff kk–lc for fleet collab
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ld
+files:
+  docs/campaigns/2026-07-09-research-reading-spine/SESSION-ARC-kk-lc-depth-identity.md
+proof: docs honesty inventory of shipped residuals kk–lc
+invariants: operator merge PR #465 · fleet collab · zero-context handoff
