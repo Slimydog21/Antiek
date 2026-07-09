@@ -10,7 +10,7 @@ vi.mock("../../api/engagement", () => ({
     completeSessionFlywheel(...args),
 }));
 
-describe("SessionFlywheelPanel residual cl", () => {
+describe("SessionFlywheelPanel residual cl/ee", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
     completeSessionFlywheel.mockReset();
@@ -32,10 +32,12 @@ describe("SessionFlywheelPanel residual cl", () => {
       prompt_block: "# Research context pack\n",
     });
 
+    const onCompleted = vi.fn();
     render(
       <SessionFlywheelPanel
         sessionId="fsess_1"
         defaultOutputText="Attention is content-addressable memory."
+        onCompleted={onCompleted}
       />,
     );
     fireEvent.click(screen.getByTestId("session-flywheel-complete"));
@@ -58,6 +60,12 @@ describe("SessionFlywheelPanel residual cl", () => {
     expect(
       screen.getByTestId("session-flywheel-panel").getAttribute("data-view-format"),
     ).toBe("html");
+    // Residual (ee): parent notified so research context can remount.
+    await waitFor(() => {
+      expect(onCompleted).toHaveBeenCalled();
+    });
+    expect(onCompleted.mock.calls[0][0].view_format).toBe("html");
+    expect(onCompleted.mock.calls[0][0].status).toBe("complete");
   });
 
   it("disables complete when output too short", () => {

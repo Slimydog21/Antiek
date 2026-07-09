@@ -3,6 +3,8 @@
  *
  * Residual (cl): records output + optional twins/promote into research context
  * and feeds Antiek-bench usage events (server-side best-effort).
+ * Residual (ee): onCompleted notifies parent so research context remounts
+ * after twins/usage land.
  * Composes shipped completeSessionFlywheel. HTML-first context pack.
  */
 
@@ -16,11 +18,14 @@ export type SessionFlywheelPanelProps = {
   sessionId: string;
   /** Seed output from selection / goal when operator has not edited. */
   defaultOutputText?: string;
+  /** Residual (ee): after successful flywheel complete. */
+  onCompleted?: (result: SessionFlywheelResponse) => void;
 };
 
 export function SessionFlywheelPanel({
   sessionId,
   defaultOutputText = "",
+  onCompleted,
 }: SessionFlywheelPanelProps) {
   const [output, setOutput] = useState(defaultOutputText);
   const [recordTwins, setRecordTwins] = useState(true);
@@ -52,12 +57,13 @@ export function SessionFlywheelPanel({
         throw new Error("flywheel view_format must be html");
       }
       setResult(out);
+      onCompleted?.(out);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
-  }, [sessionId, output, recordTwins]);
+  }, [sessionId, output, recordTwins, onCompleted]);
 
   return (
     <section

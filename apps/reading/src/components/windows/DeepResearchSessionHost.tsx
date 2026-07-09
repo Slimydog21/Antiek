@@ -27,6 +27,7 @@
  * Residual (ec): remount ResearchContextPanel after twin promote so context
  * pack reloads recursive notes for prompts.
  * Residual (ed): remount ResearchContextPanel after publication attach.
+ * Residual (ee): remount ResearchContextPanel after session flywheel complete.
  */
 
 import { useCallback, useMemo, useState } from "react";
@@ -273,6 +274,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
               props.goal?.trim() ||
               (selection !== "(no selection)" ? selection : "")
             }
+            onCompleted={onTwinsPromoted}
           />
         </section>
       ) : null}

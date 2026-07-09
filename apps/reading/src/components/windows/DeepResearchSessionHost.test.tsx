@@ -71,8 +71,22 @@ vi.mock("../engagement/PublicationAttachPanel", () => ({
 }));
 
 vi.mock("../engagement/SessionFlywheelPanel", () => ({
-  SessionFlywheelPanel: (props: { sessionId: string }) => (
-    <div data-testid="session-flywheel-panel-stub">{props.sessionId}</div>
+  SessionFlywheelPanel: (props: {
+    sessionId: string;
+    onCompleted?: (r: { status: string }) => void;
+  }) => (
+    <div data-testid="session-flywheel-panel-stub">
+      {props.sessionId}
+      {props.onCompleted ? (
+        <button
+          type="button"
+          data-testid="session-flywheel-notify"
+          onClick={() => props.onCompleted?.({ status: "complete" })}
+        >
+          notify-flywheel
+        </button>
+      ) : null}
+    </div>
   ),
 }));
 
@@ -184,9 +198,24 @@ describe("DeepResearchSessionHost", () => {
   it("mounts SessionFlywheelPanel when session present (cl)", () => {
     render(<DeepResearchSessionHost {...FIXTURE} />);
     expect(screen.getByTestId("deep-research-flywheel-mount")).toBeTruthy();
-    expect(screen.getByTestId("session-flywheel-panel-stub").textContent).toBe(
-      "fsess_launch_1",
+    expect(screen.getByTestId("session-flywheel-panel-stub").textContent).toMatch(
+      /fsess_launch_1/,
     );
+  });
+
+  it("remounts research context after flywheel complete notify (ee)", () => {
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    expect(
+      screen
+        .getByTestId("deep-research-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("0");
+    fireEvent.click(screen.getByTestId("session-flywheel-notify"));
+    expect(
+      screen
+        .getByTestId("deep-research-context-refresh")
+        .getAttribute("data-refresh-key"),
+    ).toBe("1");
   });
 
   it("mounts ResearchProgressPanel with autoLoad+autoSeedIfEmpty (cp)", () => {
