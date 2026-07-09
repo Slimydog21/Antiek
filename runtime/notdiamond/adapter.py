@@ -6,11 +6,10 @@ There is no dispatch integration here; SPR-03 owns any pre-dispatch hook.
 
 from __future__ import annotations
 
-import concurrent.futures
 import os
 import time
 from collections.abc import Callable, Sequence
-from typing import Any
+from typing import Any, cast
 
 from .types import (
     NotDiamondAPIError,
@@ -26,7 +25,10 @@ from .types import (
 _DEFAULT_TIMEOUT_MS: int = 500
 _API_KEY_ENV: str = "NOTDIAMOND_API_KEY"
 
-Selector = Callable[[str, Sequence[dict[str, str]], Sequence[str], str], tuple[Any, Any]]
+Selector = Callable[
+    [str, Sequence[dict[str, str]], Sequence[str], str, float],
+    tuple[Any, Any],
+]
 
 
 def _resolve_api_key() -> str:
@@ -44,18 +46,35 @@ def _default_selector(
     messages: Sequence[dict[str, str]],
     candidates: Sequence[str],
     tradeoff: str,
+    timeout_s: float,
 ) -> tuple[Any, Any]:
     try:
-        from notdiamond import NotDiamond  # type: ignore[import-not-found]
+        from notdiamond import NotDiamond  # type: ignore[import-not-found, unused-ignore]
     except ImportError as exc:
         raise NotDiamondNotInstalled(
             "notdiamond SDK not installed. Install the optional extra "
             "(`pip install 'antiek[notdiamond]'`) to enable advisory routing."
         ) from exc
 
-    client = NotDiamond(api_key=api_key, llm_configs=list(candidates))
-    session_id, best = client.model_select(messages=list(messages), tradeoff=tradeoff)
-    return session_id, best
+    llm_providers = [_candidate_to_provider(candidate) for candidate in candidates]
+    client = NotDiamond(api_key=api_key, timeout=timeout_s, max_retries=0)
+    response = client.model_router.select_model(
+        llm_providers=cast(Any, llm_providers),
+        messages=cast(Any, list(messages)),
+        tradeoff=tradeoff,
+        timeout=timeout_s,
+    )
+    return response.session_id, response.providers[0]
+
+
+def _candidate_to_provider(candidate: str) -> dict[str, str]:
+    provider, sep, model = candidate.partition("/")
+    if not sep or not provider or not model:
+        raise NotDiamondAPIError(
+            "notdiamond: candidates must use provider/model form; "
+            f"got {candidate!r}."
+        )
+    return {"provider": provider, "model": model}
 
 
 def _parse_best(best: Any) -> tuple[str, str]:
@@ -94,39 +113,41 @@ def select_model(
     api_key = _resolve_api_key()
     selector = _selector or _default_selector
 
-    executor = concurrent.futures.ThreadPoolExecutor(
-        max_workers=1,
-        thread_name_prefix="nd-select",
-    )
     started = time.monotonic()
     try:
-        future = executor.submit(selector, api_key, messages, candidates, tradeoff)
-        try:
-            session_id, best = future.result(timeout=max(timeout_ms, 0) / 1000.0)
-        except concurrent.futures.TimeoutError as exc:
+        session_id, best = selector(
+            api_key,
+            messages,
+            candidates,
+            tradeoff,
+            max(timeout_ms, 0) / 1000.0,
+        )
+    except TimeoutError as exc:
+        raise NotDiamondTimeout(
+            f"notdiamond: select_model exceeded {timeout_ms}ms budget."
+        ) from exc
+    except NotDiamondError:
+        raise
+    except Exception as exc:
+        if exc.__class__.__name__ in {"APITimeoutError", "TimeoutException"}:
             raise NotDiamondTimeout(
                 f"notdiamond: select_model exceeded {timeout_ms}ms budget."
             ) from exc
-        except NotDiamondError:
-            raise
-        except Exception as exc:
-            raise NotDiamondAPIError(f"notdiamond: select_model failed: {exc}") from exc
+        raise NotDiamondAPIError(f"notdiamond: select_model failed: {exc}") from exc
 
-        latency_ms = int((time.monotonic() - started) * 1000)
-        try:
-            provider, model = _parse_best(best)
-            return Recommendation(
-                provider=provider,
-                model=model,
-                session_id=str(session_id),
-                decision_latency_ms=latency_ms,
-                raw={"best": repr(best), "session_id": str(session_id)},
-            )
-        except NotDiamondError:
-            raise
-        except Exception as exc:
-            raise NotDiamondAPIError(
-                f"notdiamond: failed to parse recommendation: {exc}"
-            ) from exc
-    finally:
-        executor.shutdown(wait=False, cancel_futures=True)
+    latency_ms = int((time.monotonic() - started) * 1000)
+    try:
+        provider, model = _parse_best(best)
+        return Recommendation(
+            provider=provider,
+            model=model,
+            session_id=str(session_id),
+            decision_latency_ms=latency_ms,
+            raw={"best": repr(best), "session_id": str(session_id)},
+        )
+    except NotDiamondError:
+        raise
+    except Exception as exc:
+        raise NotDiamondAPIError(
+            f"notdiamond: failed to parse recommendation: {exc}"
+        ) from exc

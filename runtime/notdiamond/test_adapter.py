@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import logging
 import sys
-import time
+import types
 from collections.abc import Sequence
 
 import pytest
 
+import runtime.notdiamond.adapter as adapter_mod
 from runtime.notdiamond import (
     NotDiamondAPIError,
     NotDiamondAuthError,
@@ -30,6 +31,7 @@ def _fake_ok(
     messages: Sequence[dict[str, str]],
     candidates: Sequence[str],
     tradeoff: str,
+    timeout_s: float,
 ) -> tuple[str, _FakeLLM]:
     return "sess-123", _FakeLLM("anthropic", "claude-3-5-haiku-20241022")
 
@@ -68,12 +70,85 @@ def test_parse_best_string_form(monkeypatch: pytest.MonkeyPatch) -> None:
         messages: Sequence[dict[str, str]],
         candidates: Sequence[str],
         tradeoff: str,
+        timeout_s: float,
     ) -> tuple[str, str]:
         return "sess-str", "openai/gpt-4o-mini"
 
     rec = select_model(_MESSAGES, _CANDIDATES, _selector=_fake_string)
     assert rec.provider == "openai"
     assert rec.model == "gpt-4o-mini"
+
+
+def test_default_selector_uses_native_model_router_and_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: dict[str, object] = {}
+
+    class _Provider:
+        provider = "anthropic"
+        model = "claude-3-5-haiku-20241022"
+
+    class _Response:
+        session_id = "sess-native"
+        providers = [_Provider()]
+
+    class _Router:
+        def select_model(self, **kwargs: object) -> _Response:
+            calls.update(kwargs)
+            return _Response()
+
+    class _NotDiamond:
+        def __init__(
+            self,
+            *,
+            api_key: str,
+            timeout: float,
+            max_retries: int,
+        ) -> None:
+            calls["api_key"] = api_key
+            calls["client_timeout"] = timeout
+            calls["max_retries"] = max_retries
+            self.model_router = _Router()
+
+    fake_module = types.SimpleNamespace(NotDiamond=_NotDiamond)
+    monkeypatch.setitem(sys.modules, "notdiamond", fake_module)
+
+    session_id, best = adapter_mod._default_selector(
+        "sk-test",
+        _MESSAGES,
+        _CANDIDATES,
+        "cost",
+        0.5,
+    )
+
+    assert session_id == "sess-native"
+    assert best is _Response.providers[0]
+    assert calls["api_key"] == "sk-test"
+    assert calls["client_timeout"] == 0.5
+    assert calls["max_retries"] == 0
+    assert calls["llm_providers"] == [
+        {"provider": "openai", "model": "gpt-4o-mini"},
+        {"provider": "anthropic", "model": "claude-3-5-haiku-20241022"},
+    ]
+    assert calls["messages"] == _MESSAGES
+    assert calls["tradeoff"] == "cost"
+    assert calls["timeout"] == 0.5
+
+
+def test_invalid_candidate_rejected_before_sdk_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _NotDiamond:
+        def __init__(self, **kwargs: object) -> None:
+            self.model_router = object()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "notdiamond",
+        types.SimpleNamespace(NotDiamond=_NotDiamond),
+    )
+    with pytest.raises(NotDiamondAPIError):
+        adapter_mod._default_selector("sk-test", _MESSAGES, ["gpt-4o-mini"], "cost", 0.5)
 
 
 def test_unparseable_best_raises_api_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -84,6 +159,7 @@ def test_unparseable_best_raises_api_error(monkeypatch: pytest.MonkeyPatch) -> N
         messages: Sequence[dict[str, str]],
         candidates: Sequence[str],
         tradeoff: str,
+        timeout_s: float,
     ) -> tuple[str, object]:
         return "sess", object()
 
@@ -110,6 +186,7 @@ def test_malformed_sdk_return_maps_to_api_error(
         messages: Sequence[dict[str, str]],
         candidates: Sequence[str],
         tradeoff: str,
+        timeout_s: float,
     ) -> tuple[str, _BadBest]:
         return "sess", _BadBest()
 
@@ -125,9 +202,10 @@ def test_timeout_maps_to_notdiamond_timeout(monkeypatch: pytest.MonkeyPatch) -> 
         messages: Sequence[dict[str, str]],
         candidates: Sequence[str],
         tradeoff: str,
+        timeout_s: float,
     ) -> tuple[str, _FakeLLM]:
-        time.sleep(0.5)
-        return "sess", _FakeLLM("openai", "gpt-4o-mini")
+        assert timeout_s == 0.01
+        raise TimeoutError
 
     with pytest.raises(NotDiamondTimeout):
         select_model(_MESSAGES, _CANDIDATES, timeout_ms=10, _selector=_fake_slow)
@@ -141,6 +219,7 @@ def test_sdk_exception_maps_to_api_error(monkeypatch: pytest.MonkeyPatch) -> Non
         messages: Sequence[dict[str, str]],
         candidates: Sequence[str],
         tradeoff: str,
+        timeout_s: float,
     ) -> tuple[str, _FakeLLM]:
         raise RuntimeError("boom from SDK")
 
@@ -160,6 +239,7 @@ def test_key_never_appears_in_logs(
         messages: Sequence[dict[str, str]],
         candidates: Sequence[str],
         tradeoff: str,
+        timeout_s: float,
     ) -> tuple[str, _FakeLLM]:
         raise RuntimeError("provider exploded")
 
