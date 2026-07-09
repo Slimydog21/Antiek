@@ -11,6 +11,7 @@ import {
   preflightMidnightOil,
   providerRouteMidnightOil,
   retrievalMidnightOil,
+  runnerControlPlanMidnightOil,
   runnerReadinessMidnightOil,
   type MidnightOilActivationChecklistReceipt,
   type MidnightOilAppliedRunReceipt,
@@ -22,6 +23,7 @@ import {
   type MidnightOilPreflight,
   type MidnightOilProviderRouteReceipt,
   type MidnightOilRetrievalReceipt,
+  type MidnightOilRunnerControlPlanReceipt,
   type MidnightOilRunnerReadinessReceipt,
   type MidnightOilRouteMode,
   type MidnightOilSourcePolicy,
@@ -71,6 +73,8 @@ export default function MidnightOil() {
     useState<MidnightOilFinalArtifactReceipt | null>(null);
   const [runnerReadinessReceipt, setRunnerReadinessReceipt] =
     useState<MidnightOilRunnerReadinessReceipt | null>(null);
+  const [runnerControlPlanReceipt, setRunnerControlPlanReceipt] =
+    useState<MidnightOilRunnerControlPlanReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [liveSettingsBusy, setLiveSettingsBusy] = useState(false);
@@ -82,6 +86,7 @@ export default function MidnightOil() {
   const [graphMutationBusy, setGraphMutationBusy] = useState(false);
   const [finalArtifactBusy, setFinalArtifactBusy] = useState(false);
   const [runnerReadinessBusy, setRunnerReadinessBusy] = useState(false);
+  const [runnerControlPlanBusy, setRunnerControlPlanBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [liveSettingsError, setLiveSettingsError] = useState<string | null>(null);
@@ -93,6 +98,12 @@ export default function MidnightOil() {
   const [graphMutationError, setGraphMutationError] = useState<string | null>(null);
   const [finalArtifactError, setFinalArtifactError] = useState<string | null>(null);
   const [runnerReadinessError, setRunnerReadinessError] = useState<string | null>(null);
+  const [runnerControlPlanError, setRunnerControlPlanError] = useState<string | null>(null);
+
+  function clearRunnerControlPlan() {
+    setRunnerControlPlanError(null);
+    setRunnerControlPlanReceipt(null);
+  }
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -107,6 +118,7 @@ export default function MidnightOil() {
     setRetrievalError(null);
     setGraphMutationError(null);
     setFinalArtifactError(null);
+    setRunnerControlPlanError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setLiveSettingsReceipt(null);
@@ -119,6 +131,7 @@ export default function MidnightOil() {
     setFinalArtifactReceipt(null);
     setRunnerReadinessError(null);
     setRunnerReadinessReceipt(null);
+    setRunnerControlPlanReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -192,6 +205,7 @@ export default function MidnightOil() {
     setFinalArtifactReceipt(null);
     setRunnerReadinessError(null);
     setRunnerReadinessReceipt(null);
+    clearRunnerControlPlan();
     try {
       const result = await liveRunActivationSettingsMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -240,6 +254,7 @@ export default function MidnightOil() {
     setFinalArtifactReceipt(null);
     setRunnerReadinessError(null);
     setRunnerReadinessReceipt(null);
+    clearRunnerControlPlan();
     try {
       const result = await dispatchMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -286,6 +301,7 @@ export default function MidnightOil() {
     setFinalArtifactReceipt(null);
     setRunnerReadinessError(null);
     setRunnerReadinessReceipt(null);
+    clearRunnerControlPlan();
     try {
       const result = await activationChecklistMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -331,6 +347,7 @@ export default function MidnightOil() {
     setFinalArtifactReceipt(null);
     setRunnerReadinessError(null);
     setRunnerReadinessReceipt(null);
+    clearRunnerControlPlan();
     try {
       const result = await budgetReservationMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -375,6 +392,7 @@ export default function MidnightOil() {
     setFinalArtifactReceipt(null);
     setRunnerReadinessError(null);
     setRunnerReadinessReceipt(null);
+    clearRunnerControlPlan();
     try {
       const result = await providerRouteMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -419,6 +437,7 @@ export default function MidnightOil() {
     setFinalArtifactReceipt(null);
     setRunnerReadinessError(null);
     setRunnerReadinessReceipt(null);
+    clearRunnerControlPlan();
     try {
       const result = await retrievalMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -463,6 +482,7 @@ export default function MidnightOil() {
     setFinalArtifactReceipt(null);
     setRunnerReadinessError(null);
     setRunnerReadinessReceipt(null);
+    clearRunnerControlPlan();
     try {
       const result = await graphMutationMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -507,6 +527,7 @@ export default function MidnightOil() {
     setFinalArtifactReceipt(null);
     setRunnerReadinessError(null);
     setRunnerReadinessReceipt(null);
+    clearRunnerControlPlan();
     try {
       const result = await finalArtifactMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -552,6 +573,7 @@ export default function MidnightOil() {
     setRunnerReadinessBusy(true);
     setRunnerReadinessError(null);
     setRunnerReadinessReceipt(null);
+    clearRunnerControlPlan();
     try {
       const result = await runnerReadinessMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -572,6 +594,37 @@ export default function MidnightOil() {
       setRunnerReadinessError(e instanceof Error ? e.message : String(e));
     } finally {
       setRunnerReadinessBusy(false);
+    }
+  }
+
+  async function onRunnerControlPlanGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !runnerReadinessReceipt
+    ) {
+      setRunnerControlPlanError(
+        "Runner control plan requires launch packet, approval receipt, runner handoff, and runner readiness receipt.",
+      );
+      return;
+    }
+
+    setRunnerControlPlanBusy(true);
+    setRunnerControlPlanError(null);
+    setRunnerControlPlanReceipt(null);
+    try {
+      const result = await runnerControlPlanMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        runner_readiness_receipt: runnerReadinessReceipt,
+      });
+      setRunnerControlPlanReceipt(result);
+    } catch (e) {
+      setRunnerControlPlanError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRunnerControlPlanBusy(false);
     }
   }
 
@@ -1502,6 +1555,77 @@ export default function MidnightOil() {
                       <li key={item}>{item}</li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Runner control plan
+                </p>
+                <button
+                  type="button"
+                  onClick={onRunnerControlPlanGate}
+                  disabled={
+                    runnerControlPlanBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !runnerReadinessReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {runnerControlPlanBusy ? "Planning controls..." : "Runner control plan"}
+                </button>
+              </div>
+
+              {runnerControlPlanError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {runnerControlPlanError}
+                </p>
+              )}
+
+              {runnerControlPlanReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Control plan receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {runnerControlPlanReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={runnerControlPlanReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Scope"
+                      value={`${runnerControlPlanReceipt.requested_control_scope.length}`}
+                    />
+                    <Metric
+                      label="Requirements"
+                      value={`${runnerControlPlanReceipt.implementation_requirements.length}`}
+                    />
+                    <Metric
+                      label="Live run"
+                      value={runnerControlPlanReceipt.live_run_allowed ? "allowed" : "blocked"}
+                    />
+                  </div>
+                  <ol className="mt-2 grid grid-cols-1 gap-2 text-[11px] text-ink-soft dark:text-starlight">
+                    {runnerControlPlanReceipt.implementation_requirements.map((requirement) => (
+                      <li
+                        key={requirement.control_key}
+                        className="rounded-md border border-rule px-3 py-2 dark:border-charcoal-1"
+                      >
+                        <p className="font-mono text-ink dark:text-bright">
+                          {requirement.control_key.replaceAll("_", " ")}
+                        </p>
+                        <p className="mt-1">{requirement.blocker}</p>
+                        <p className="mt-1 font-mono">{requirement.required_artifact}</p>
+                      </li>
+                    ))}
+                  </ol>
                 </div>
               )}
 

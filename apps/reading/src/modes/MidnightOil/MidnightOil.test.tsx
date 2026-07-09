@@ -14,6 +14,7 @@ import {
   preflightMidnightOil,
   providerRouteMidnightOil,
   retrievalMidnightOil,
+  runnerControlPlanMidnightOil,
   runnerReadinessMidnightOil,
 } from "../../api/midnightOil";
 
@@ -455,6 +456,74 @@ vi.mock("../../api/midnightOil", () => ({
     final_artifact_created: false,
     readiness_notes: ["runner readiness gate only: full no-spend receipt chain has been reviewed"],
   })),
+  runnerControlPlanMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-runner-control-plan",
+    runner_readiness_receipt_id: "midnight-oil-test-runner-readiness",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_runner_controls_unimplemented",
+    requested_control_scope: [
+      "budget_reservation_provider",
+      "model_provider_route_executor",
+      "retrieval_executor_source_receipts",
+      "graph_mutation_writer",
+      "final_html_artifact_writer",
+      "operator_live_dispatch_enablement",
+    ],
+    required_control_order: [
+      "budget_reservation_provider",
+      "model_provider_route_executor",
+      "retrieval_executor_source_receipts",
+      "graph_mutation_writer",
+      "final_html_artifact_writer",
+      "operator_live_dispatch_enablement",
+    ],
+    implementation_requirements: [
+      {
+        control_key: "budget_reservation_provider",
+        blocker: "budget reservation provider",
+        required_artifact: "Budget reservation provider with idempotent no-overrun holds.",
+        implementation_status: "missing",
+        live_enablement_allowed: false,
+      },
+      {
+        control_key: "model_provider_route_executor",
+        blocker: "model/provider route executor",
+        required_artifact: "Provider route executor that records route receipts before calls.",
+        implementation_status: "missing",
+        live_enablement_allowed: false,
+      },
+      {
+        control_key: "retrieval_executor_source_receipts",
+        blocker: "retrieval executor with source receipts",
+        required_artifact: "Retrieval executor that emits source receipts for every source.",
+        implementation_status: "missing",
+        live_enablement_allowed: false,
+      },
+    ],
+    remaining_blockers: [
+      "budget reservation provider",
+      "model/provider route executor",
+      "retrieval executor with source receipts",
+    ],
+    blocker_reason: "runner_controls_unimplemented",
+    live_run_allowed: false,
+    dispatch_allowed: false,
+    budget_reservation_allowed: false,
+    provider_execution_allowed: false,
+    retrieval_allowed: false,
+    graph_mutation_allowed: false,
+    final_artifact_allowed: false,
+    dispatch_performed: false,
+    budget_reserved: false,
+    provider_calls_made: false,
+    retrieval_performed: false,
+    graph_mutated: false,
+    final_artifact_created: false,
+    control_plan_notes: ["runner control plan only: implementation requirements recorded"],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -836,5 +905,29 @@ describe("MidnightOil", () => {
     expect(screen.getByText("blocked runner readiness controls missing")).toBeTruthy();
     expect(screen.getByText("6")).toBeTruthy();
     expect(screen.getByText("operator live-run dispatch enablement")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Runner control plan" }));
+
+    await waitFor(() => expect(runnerControlPlanMidnightOil).toHaveBeenCalled());
+    expect(runnerControlPlanMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      runner_readiness_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-runner-readiness",
+      }),
+    });
+    expect(screen.getByText("Control plan receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-runner-control-plan")).toBeTruthy();
+    expect(screen.getByText("blocked runner controls unimplemented")).toBeTruthy();
+    expect(screen.getAllByText("budget reservation provider").length).toBeGreaterThan(1);
+    expect(screen.getByText("Budget reservation provider with idempotent no-overrun holds.")).toBeTruthy();
+    expect(screen.getByText("Provider route executor that records route receipts before calls.")).toBeTruthy();
   });
 });
