@@ -11,21 +11,21 @@
 
 | Cycle | Package | Status |
 |---|---|---|
-| 1 | Engagement spine + Midnight oil + model residual + NotDiamond verdict | done |
+| 1 | Engagement spine + Midnight oil + model residual + NotDiamond | done |
 | 2 | Marketplace host-into-account (B) | done |
-| 3 | **Antiek-bench core (C)** | **done** — `substrate/antiek_bench/**` |
+| 3 | Antiek-bench core (C) | done |
+| 4 | **Settings-facing Antiek-bench leaderboard** | **done** |
 
-## Cycle 3 details (Antiek-bench)
+## Cycle 4 details
 
 | Item | Status |
 |---|---|
-| Offline suite with week_id + suite_version | done |
-| ≥2 task classes (distill, synthesize) | done |
-| Injectable stub providers | done |
-| propose_suite_delta without activate | done |
-| approve_and_promote explicit gate | done |
-| HTML summary (scores + task labels; not PDF) | done |
+| `build_leaderboard(week_id)` from offline runs | done |
+| Multi-task-class breakdown | done |
+| `settings_leaderboard_payload` JSON for Settings | done |
+| `GET /settings/antiek-bench/leaderboard` (injectable store) | done |
+| HTML leaderboard view (not PDF) | done |
 
 ## Non-claims
 
-No live multi-provider bench; no auto production traffic switch; operator merges only.
+No live multi-provider bench; no auto traffic switch; no full Settings React e2e; operator merges only.

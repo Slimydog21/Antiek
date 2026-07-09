@@ -1,0 +1,15 @@
+# Residual inventory — leaderboard cycle · 2026-07-09
+# origin/main @ b3875724 | PR #465 campaign/research-reading-spine-2026-07-09-main @ 758a30dc
+# Living-roadmap SPR-01..14: ALREADY SHIPPED — NOT rebuild TODOs.
+
+CAPABILITY | STATUS | EVIDENCE
+(a) research↔reading engagement spine | branch_only | substrate/engagement_spine/**
+(b) HTML-first human view | on_main + branch | services/html_projection/**
+(c) model driver/budget/projection/add-model | on_main + branch residual | #440 + model_registration
+(d) Midnight oil | branch_only | substrate/midnight_oil/**
+(e) book marketplace + host-into-account | branch_only | substrate/marketplace_host/**
+(f) recursive Antiek-bench core | branch_only | substrate/antiek_bench/** @ 758a30dc
+(g) NotDiamond usefulness | branch_only | docs/htmlspec/notdiamond-verdict/VERDICT.md
+(h) Antiek-bench settings leaderboard | missing → THIS CYCLE | substrate/antiek_bench/leaderboard.py + settings adjacency
+
+CHOSEN: (h) settings-facing leaderboard over offline runs

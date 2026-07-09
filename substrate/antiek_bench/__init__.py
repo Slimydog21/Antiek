@@ -12,12 +12,19 @@ Does not auto-switch production traffic. Does not call live multi-provider APIs.
 
 from __future__ import annotations
 
+from .leaderboard import (
+    LeaderboardSnapshot,
+    ModelLeaderboardRow,
+    build_leaderboard,
+    project_leaderboard_html,
+)
 from .rewrite import (
     SuiteProposal,
     approve_and_promote,
     propose_suite_delta,
 )
 from .run import BenchRunResult, TaskScore, run_suite
+from .settings_surface import settings_leaderboard_payload
 from .store import BenchStore, InMemoryBenchStore
 from .suite import (
     SuiteDefinition,
@@ -35,6 +42,8 @@ __all__ = [
     "BenchRunResult",
     "BenchStore",
     "InMemoryBenchStore",
+    "LeaderboardSnapshot",
+    "ModelLeaderboardRow",
     "SuiteDefinition",
     "SuiteItem",
     "SuiteProposal",
@@ -43,10 +52,13 @@ __all__ = [
     "TaskScore",
     "active_suite",
     "approve_and_promote",
+    "build_leaderboard",
     "default_core_suite",
     "get_suite",
+    "project_leaderboard_html",
     "project_run_html",
     "propose_suite_delta",
     "register_suite",
     "run_suite",
+    "settings_leaderboard_payload",
 ]

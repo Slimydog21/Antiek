@@ -350,16 +350,73 @@ def post_prompt_cost_estimate(req: PromptCostEstimateRequest) -> PromptCostEstim
     return estimate_prompt_cost(req, budget=budget)
 
 
+class AntiekBenchLeaderboardResponse(BaseModel):
+    """Settings-facing Antiek-bench weekly leaderboard (offline runs only)."""
+
+    week_id: str
+    models: list[dict[str, Any]] = Field(default_factory=list)
+    task_classes: list[str] = Field(default_factory=list)
+    run_count: int = 0
+    suite_versions: list[str] = Field(default_factory=list)
+    recommended_model_id: str | None = None
+    recommended_mean_score: float | None = None
+    settings_panel: str = "antiek_bench_weekly"
+    source: str = "antiek_bench.offline_runs"
+    notes: list[str] = Field(default_factory=list)
+
+
+@settings_router.get(
+    "/antiek-bench/leaderboard",
+    response_model=AntiekBenchLeaderboardResponse,
+)
+def get_antiek_bench_leaderboard(
+    request: Request,
+    week_id: str,
+) -> AntiekBenchLeaderboardResponse:
+    """Return weekly model/task-class leaderboard from offline bench store.
+
+    Requires ``app.state.antiek_bench_store`` (injectable BenchStore). When
+    unset, returns an honest empty snapshot with a note — never invents scores.
+    Does not run live multi-provider benchmarks.
+    """
+    store = getattr(request.app.state, "antiek_bench_store", None)
+    if store is None:
+        return AntiekBenchLeaderboardResponse(
+            week_id=week_id.strip(),
+            notes=[
+                "antiek_bench_store not configured on app.state; "
+                "no offline runs available for leaderboard"
+            ],
+        )
+    from substrate.antiek_bench import settings_leaderboard_payload
+
+    payload = settings_leaderboard_payload(week_id, store=store, include_html=False)
+    return AntiekBenchLeaderboardResponse(
+        week_id=str(payload.get("week_id") or week_id),
+        models=list(payload.get("models") or []),
+        task_classes=list(payload.get("task_classes") or []),
+        run_count=int(payload.get("run_count") or 0),
+        suite_versions=list(payload.get("suite_versions") or []),
+        recommended_model_id=payload.get("recommended_model_id"),
+        recommended_mean_score=payload.get("recommended_mean_score"),
+        settings_panel=str(payload.get("settings_panel") or "antiek_bench_weekly"),
+        source=str(payload.get("source") or "antiek_bench.offline_runs"),
+        notes=[],
+    )
+
+
 def register_settings_budget_routes(app: FastAPI) -> None:
     app.include_router(settings_router)
 
 
 __all__ = [
+    "AntiekBenchLeaderboardResponse",
     "BudgetResponse",
     "ModelsResponse",
     "PromptCostEstimateRequest",
     "PromptCostEstimateResponse",
     "estimate_prompt_cost",
+    "get_antiek_bench_leaderboard",
     "read_operator_budget",
     "register_settings_budget_routes",
     "settings_router",
