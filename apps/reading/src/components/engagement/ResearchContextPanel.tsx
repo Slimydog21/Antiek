@@ -4,9 +4,12 @@
  * Loads a ResearchContextPack from /engagement/research-context and renders
  * the prompt block for injection into the next deep-research turn.
  * HTML-first stance: this panel never offers PDF export.
+ *
+ * Residual (ff): recursive note-taker metrics strip — insight/question/other
+ * twin breakdown so operators see the twin substrate that feeds prompts.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   attachSourceRefs,
   fetchEvidencePack,
@@ -21,6 +24,33 @@ import {
   type TwinPromoteContextResponse,
 } from "../../api/engagement";
 import { detectSourceKindClient } from "../../workspace/researchContextPack";
+
+/** Pure twin-kind metrics for recursive note-taker substrate (residual ff). */
+export function twinNoteMetrics(
+  pack: Pick<ResearchContextResponse, "twin_units" | "twin_count"> | null,
+): {
+  total: number;
+  insights: number;
+  questions: number;
+  other: number;
+} {
+  const units = pack?.twin_units ?? [];
+  let insights = 0;
+  let questions = 0;
+  let other = 0;
+  for (const u of units) {
+    const k = (u.kind || "").toLowerCase();
+    if (k === "insight") insights += 1;
+    else if (k === "question") questions += 1;
+    else other += 1;
+  }
+  const fromUnits = units.length;
+  const total =
+    pack?.twin_count != null && pack.twin_count >= fromUnits
+      ? pack.twin_count
+      : fromUnits;
+  return { total, insights, questions, other };
+}
 
 export type ResearchContextPanelProps = {
   assetId: string;
@@ -53,6 +83,9 @@ export function ResearchContextPanel({
   );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Residual (ff): insight/question breakdown of twin note substrate.
+  const twinMetrics = useMemo(() => twinNoteMetrics(pack), [pack]);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -310,6 +343,21 @@ export function ResearchContextPanel({
             twins={pack.twin_count ?? pack.twin_units?.length ?? 0} · refs=
             {pack.ref_count ?? pack.source_references?.length ?? 0}
           </p>
+          {/* Residual (ff): recursive note-taker metrics (insight/question twin substrate). */}
+          <div
+            className="meta font-mono text-[11px]"
+            data-testid="research-context-twin-metrics"
+            data-twin-total={String(twinMetrics.total)}
+            data-twin-insights={String(twinMetrics.insights)}
+            data-twin-questions={String(twinMetrics.questions)}
+            data-twin-other={String(twinMetrics.other)}
+            role="status"
+          >
+            Recursive note-taker · insights={twinMetrics.insights} · questions=
+            {twinMetrics.questions}
+            {twinMetrics.other > 0 ? ` · other=${twinMetrics.other}` : ""} ·
+            total={twinMetrics.total}
+          </div>
           <ul className="twins">
             {(pack.twin_units ?? []).map((u) => (
               <li key={u.unit_id}>

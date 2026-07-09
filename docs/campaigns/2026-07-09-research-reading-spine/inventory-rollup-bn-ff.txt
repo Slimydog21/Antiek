@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(ff) · PR #465
+Twin metrics strip (ff); FloatMenu full (fe); driver refresh; reading collective; full/float highlight spine.
+Operator merge still gated. Next residual (fg).

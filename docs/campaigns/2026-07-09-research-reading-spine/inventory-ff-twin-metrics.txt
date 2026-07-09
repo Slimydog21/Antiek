@@ -1,0 +1,17 @@
+# residual (ff) recursive note-taker twin metrics on ResearchContextPanel
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(fe) prior | branch_only | campaign inventories
+(ff) twin metrics strip | branch_only | twinNoteMetrics + research-context-twin-metrics; 9 vitest
+
+PATHS:
+- apps/reading/src/components/engagement/ResearchContextPanel.tsx
+- apps/reading/src/components/engagement/ResearchContextPanel.test.tsx
+
+INVARIANTS:
+- Honest counts from twin_units kinds (insight/question/other)
+- HTML view_format panel only
+- Does not invent twin content
+
+NEXT: (fg) re-derive; operator merge PR #465

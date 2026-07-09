@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ResearchContextPanel } from "./ResearchContextPanel";
+import { ResearchContextPanel, twinNoteMetrics } from "./ResearchContextPanel";
 
 const fetchResearchContext = vi.fn();
 const attachSourceRefs = vi.fn();
@@ -105,6 +105,32 @@ describe("ResearchContextPanel", () => {
     expect(fetchResearchContext).toHaveBeenCalledWith(
       expect.objectContaining({ asset_id: "paper", spawn_id: "spn_1" }),
     );
+    // Residual (ff): recursive note-taker metrics strip.
+    const metrics = screen.getByTestId("research-context-twin-metrics");
+    expect(metrics.getAttribute("data-twin-insights")).toBe("1");
+    expect(metrics.getAttribute("data-twin-questions")).toBe("0");
+    expect(metrics.getAttribute("data-twin-total")).toBe("1");
+    expect(metrics.textContent).toMatch(/insights=1/);
+  });
+
+  it("twinNoteMetrics counts insight/question/other (ff)", () => {
+    expect(twinNoteMetrics(null)).toEqual({
+      total: 0,
+      insights: 0,
+      questions: 0,
+      other: 0,
+    });
+    expect(
+      twinNoteMetrics({
+        twin_count: 4,
+        twin_units: [
+          { kind: "insight" },
+          { kind: "insight" },
+          { kind: "question" },
+          { kind: "note" },
+        ] as { kind: string }[],
+      }),
+    ).toEqual({ total: 4, insights: 2, questions: 1, other: 1 });
   });
 
   it("attaches a ref then reloads", async () => {
