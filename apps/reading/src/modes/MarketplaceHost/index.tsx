@@ -92,7 +92,8 @@ export default function MarketplaceHost({
     }
   }, []);
 
-  /** Residual (dq): hydrate library list on enter so open-rehydrate works immediately. */
+  /** Residual (dq/dw): hydrate library list on enter so open-rehydrate works. */
+  const [libraryLoadNote, setLibraryLoadNote] = useState<string | null>(null);
   const loadLibrary = useCallback(async () => {
     try {
       const lib = await fetchAccountLibrary(ownerId);
@@ -101,9 +102,12 @@ export default function MarketplaceHost({
       }
       setLibraryHtml(lib.html);
       setLibraryDocs(lib.documents || []);
+      setLibraryLoadNote(null);
     } catch (e) {
-      // Non-fatal on mount — catalog still usable; host path will refresh library.
-      setError(e instanceof Error ? e.message : String(e));
+      // Residual (dw): non-fatal — catalog remains usable; quiet note not hard error.
+      setLibraryLoadNote(
+        e instanceof Error ? e.message : String(e),
+      );
     }
   }, [ownerId]);
 
@@ -320,6 +324,15 @@ export default function MarketplaceHost({
       {error ? (
         <p className="mt-4 text-red-600" role="alert">
           {error}
+        </p>
+      ) : null}
+      {libraryLoadNote ? (
+        <p
+          className="mt-2 text-sm opacity-70 font-mono"
+          data-testid="library-load-note"
+          role="status"
+        >
+          Library load note: {libraryLoadNote}
         </p>
       ) : null}
 

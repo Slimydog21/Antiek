@@ -1,0 +1,8 @@
+# residual (dw) quiet library load failures + hardenx re-check
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(dv) prior | branch_only | campaign inventories
+(dw) library load quiet | branch_only | libraryLoadNote non-fatal; MarketplaceHost 5 vitest; hardenx real=0
+
+NEXT: (dx) re-derive; operator merge PR #465
