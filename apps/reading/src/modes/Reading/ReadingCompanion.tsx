@@ -6,10 +6,12 @@ import { useInvestigationList } from "../../hooks/useInvestigationList";
 import {
   API_BASE,
   applySourceMerge,
+  commitSourceMerge,
   composeResearchArtifacts,
   type InvestigationSummary,
   type ResearchArtifactComposeResponse,
   type SourceMergeApplyResponse,
+  type SourceMergeCommitResponse,
   type SourceMergePreviewResponse,
   type SourceMergeReviewPacket,
   previewSourceMerge,
@@ -91,6 +93,10 @@ export default function ReadingCompanion({
   const [sourcePreviewBusy, setSourcePreviewBusy] = useState(false);
   const [sourcePreviewReceipt, setSourcePreviewReceipt] = useState<SourceMergePreviewResponse | null>(null);
   const [sourcePreviewError, setSourcePreviewError] = useState<string | null>(null);
+  const [sourceCommitAck, setSourceCommitAck] = useState(false);
+  const [sourceCommitBusy, setSourceCommitBusy] = useState(false);
+  const [sourceCommitReceipt, setSourceCommitReceipt] = useState<SourceMergeCommitResponse | null>(null);
+  const [sourceCommitError, setSourceCommitError] = useState<string | null>(null);
   const [sourceApplyBusy, setSourceApplyBusy] = useState(false);
   const [sourceApplyReceipt, setSourceApplyReceipt] = useState<SourceMergeApplyResponse | null>(null);
   const [sourceApplyError, setSourceApplyError] = useState<string | null>(null);
@@ -184,10 +190,37 @@ export default function ReadingCompanion({
     try {
       const result = await previewSourceMerge(request);
       setSourcePreviewReceipt(result);
+      setSourceCommitAck(false);
+      setSourceCommitReceipt(null);
+      setSourceCommitError(null);
     } catch (error) {
       setSourcePreviewError(error instanceof Error ? error.message : String(error));
     } finally {
       setSourcePreviewBusy(false);
+    }
+  }
+
+  async function commitSourceMergeReceipt() {
+    const request = buildSourceMergeApplyRequest();
+    if (!request || !sourcePreviewReceipt || !sourceCommitAck) return;
+    setSourceCommitBusy(true);
+    setSourceCommitError(null);
+    try {
+      const result = await commitSourceMerge({
+        ...request,
+        expected_source_revision_id: sourcePreviewReceipt.source_revision_id,
+        expected_twin_revision_id: sourcePreviewReceipt.twin_revision_id,
+        expected_before_source_hash: sourcePreviewReceipt.before_source_hash,
+        expected_after_source_hash: sourcePreviewReceipt.after_source_hash,
+        expected_before_twin_hash: sourcePreviewReceipt.before_twin_hash,
+        expected_after_twin_hash: sourcePreviewReceipt.after_twin_hash,
+        acknowledge_body_rewrite: true,
+      });
+      setSourceCommitReceipt(result);
+    } catch (error) {
+      setSourceCommitError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSourceCommitBusy(false);
     }
   }
 
@@ -222,6 +255,9 @@ export default function ReadingCompanion({
       setSourceApplyConflictAck(false);
       setSourcePreviewReceipt(null);
       setSourcePreviewError(null);
+      setSourceCommitAck(false);
+      setSourceCommitReceipt(null);
+      setSourceCommitError(null);
       setSourceApplyReceipt(null);
       setSourceApplyError(null);
     } catch (error) {
@@ -386,10 +422,48 @@ export default function ReadingCompanion({
                     after {sourcePreviewReceipt.after_source_hash}
                   </p>
                   <p>writes performed {String(sourcePreviewReceipt.writes_performed)}</p>
+                  <label className="mt-1 flex items-start gap-1.5 border-t border-rule pt-1 dark:border-charcoal-1">
+                    <input
+                      type="checkbox"
+                      checked={sourceCommitAck}
+                      onChange={(event) => setSourceCommitAck(event.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <span>Rewrite source from preview</span>
+                  </label>
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <p>Requires preview hash match</p>
+                    <button
+                      type="button"
+                      onClick={() => void commitSourceMergeReceipt()}
+                      disabled={sourceCommitBusy || !sourceCommitAck}
+                      className="shrink-0 text-ink underline disabled:cursor-not-allowed disabled:text-ink-mute dark:text-bright dark:disabled:text-moonlight"
+                      title="Commit the reviewed draft into the source body using the preview hashes"
+                    >
+                      {sourceCommitBusy ? "rewriting" : "rewrite source"}
+                    </button>
+                  </div>
                 </div>
               ) : null}
               {sourcePreviewError ? (
                 <p className="mt-1 text-emperor">{sourcePreviewError}</p>
+              ) : null}
+              {sourceCommitReceipt ? (
+                <div
+                  className="mt-1 border-t border-rule pt-1 dark:border-charcoal-1"
+                  aria-label="Source merge commit"
+                  role="region"
+                >
+                  <p>Commit {sourceCommitReceipt.status}</p>
+                  <p>{sourceCommitReceipt.source_bytes_before} → {sourceCommitReceipt.source_bytes_after} bytes</p>
+                  <p className="truncate" title={sourceCommitReceipt.event_id}>
+                    {sourceCommitReceipt.event_id}
+                  </p>
+                  <p>writes performed {String(sourceCommitReceipt.writes_performed)}</p>
+                </div>
+              ) : null}
+              {sourceCommitError ? (
+                <p className="mt-1 text-emperor">{sourceCommitError}</p>
               ) : null}
               {sourceApplyReceipt ? (
                 <div

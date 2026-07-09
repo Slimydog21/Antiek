@@ -33,12 +33,14 @@ const {
   composeResearchArtifactsMock,
   applySourceMergeMock,
   previewSourceMergeMock,
+  commitSourceMergeMock,
 } = vi.hoisted(() => ({
   useInvestigationMock: vi.fn(),
   listState: { investigations: [] as InvestigationSummary[], loading: false, error: null, refetch: vi.fn() },
   composeResearchArtifactsMock: vi.fn(),
   applySourceMergeMock: vi.fn(),
   previewSourceMergeMock: vi.fn(),
+  commitSourceMergeMock: vi.fn(),
 }));
 
 vi.mock("../../hooks/useInvestigation", () => ({
@@ -53,6 +55,7 @@ vi.mock("../../lib/api", async (orig) => {
     ...actual,
     API_BASE: "",
     applySourceMerge: applySourceMergeMock,
+    commitSourceMerge: commitSourceMergeMock,
     composeResearchArtifacts: composeResearchArtifactsMock,
     previewSourceMerge: previewSourceMergeMock,
   };
@@ -91,6 +94,7 @@ beforeEach(() => {
   composeResearchArtifactsMock.mockReset();
   applySourceMergeMock.mockReset();
   previewSourceMergeMock.mockReset();
+  commitSourceMergeMock.mockReset();
 });
 afterEach(() => {
   cleanup();
@@ -524,6 +528,123 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
     expect(screen.getByText("before before-hash")).toBeTruthy();
     expect(screen.getByText("after after-hash")).toBeTruthy();
     expect(screen.getByText("writes performed false")).toBeTruthy();
+  });
+
+  it("commits source merge only after preview acknowledgement", async () => {
+    for (const childInvestigationId of ["inv-commit-ready-a", "inv-commit-ready-b"]) {
+      recordChaseDraftHandoff(
+        buildChaseDraftHandoff({
+          childInvestigationId,
+          parentInvestigationId: "read-doc-1",
+          sourcePassage: `Completed chase ${childInvestigationId}.`,
+        }),
+      );
+    }
+    listState.investigations = [
+      summary({ investigation_id: "inv-commit-ready-a", status: "completed" }),
+      summary({ investigation_id: "inv-commit-ready-b", status: "completed" }),
+    ];
+    composeResearchArtifactsMock.mockResolvedValue({
+      path: "/tmp/commit-ready-compose.html",
+      draft_merge_path: "/tmp/commit-ready-draft.html",
+      members: [
+        {
+          investigation_id: "inv-commit-ready-b",
+          content_hash: "hash-b",
+          artifact_path: "/tmp/inv-commit-ready-b.html",
+          twin_notes_path: "/tmp/inv-commit-ready-b.notes.html",
+        },
+        {
+          investigation_id: "inv-commit-ready-a",
+          content_hash: "hash-a",
+          artifact_path: "/tmp/inv-commit-ready-a.html",
+          twin_notes_path: "/tmp/inv-commit-ready-a.notes.html",
+        },
+      ],
+      hash_conflicts: [],
+    });
+    previewSourceMergeMock.mockResolvedValue({
+      status: "previewed",
+      document_id: "doc-1",
+      source_revision_id: "srcmerge-doc-1-commit",
+      twin_revision_id: "twinmerge-doc-1-commit",
+      member_investigation_ids: ["inv-commit-ready-b", "inv-commit-ready-a"],
+      before_source_hash: "before-hash",
+      after_source_hash: "after-hash",
+      before_twin_hash: "before-twin",
+      after_twin_hash: "after-twin",
+      source_bytes_before: 22,
+      source_bytes_after: 88,
+      twin_bytes_after: 44,
+      writes_performed: false,
+    });
+    commitSourceMergeMock.mockResolvedValue({
+      status: "committed",
+      document_id: "doc-1",
+      source_revision_id: "srcmerge-doc-1-commit",
+      twin_revision_id: "twinmerge-doc-1-commit",
+      member_investigation_ids: ["inv-commit-ready-b", "inv-commit-ready-a"],
+      before_source_hash: "before-hash",
+      after_source_hash: "after-hash",
+      before_twin_hash: "before-twin",
+      after_twin_hash: "after-twin",
+      source_bytes_before: 22,
+      source_bytes_after: 88,
+      twin_bytes_after: 44,
+      writes_performed: true,
+      event_id: "evt-commit",
+    });
+    useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
+
+    renderCompanion();
+    fireEvent.click(screen.getByRole("button", { name: /draft ready/i }));
+    await screen.findByRole("region", { name: /Draft merge receipt/i });
+    fireEvent.click(screen.getByLabelText(/Reviewed draft/i));
+    fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
+    await screen.findByRole("region", { name: /Source merge preview/i });
+
+    expect((screen.getByRole("button", { name: /rewrite source/i }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByLabelText(/Rewrite source from preview/i));
+    fireEvent.click(screen.getByRole("button", { name: /rewrite source/i }));
+
+    await waitFor(() => expect(commitSourceMergeMock).toHaveBeenCalledTimes(1));
+    expect(commitSourceMergeMock).toHaveBeenCalledWith({
+      reviewed_packet: {
+        kind: "antiek.reader.source_merge_review_packet",
+        document_id: "doc-1",
+        title: "Meditations",
+        parent_reading_thread_id: "read-doc-1",
+        draft_merge_path: "/tmp/commit-ready-draft.html",
+        compose_index_path: "/tmp/commit-ready-compose.html",
+        member_investigation_ids: ["inv-commit-ready-b", "inv-commit-ready-a"],
+        requested_investigation_ids: ["inv-commit-ready-b", "inv-commit-ready-a"],
+        hash_conflict_count: 0,
+        hash_conflicts: [],
+        source_book_mutated: false,
+        twin_document_mutated: false,
+        no_spend: true,
+      },
+      expected_content_hashes: {
+        "inv-commit-ready-b": "hash-b",
+        "inv-commit-ready-a": "hash-a",
+      },
+      acknowledge_reviewed_draft: true,
+      acknowledge_source_book_mutation: true,
+      acknowledge_twin_document_mutation: true,
+      acknowledge_hash_conflicts: false,
+      operator_reviewer: "reader-companion",
+      expected_source_revision_id: "srcmerge-doc-1-commit",
+      expected_twin_revision_id: "twinmerge-doc-1-commit",
+      expected_before_source_hash: "before-hash",
+      expected_after_source_hash: "after-hash",
+      expected_before_twin_hash: "before-twin",
+      expected_after_twin_hash: "after-twin",
+      acknowledge_body_rewrite: true,
+    });
+    expect(await screen.findByRole("region", { name: /Source merge commit/i })).toBeTruthy();
+    expect(screen.getByText("Commit committed")).toBeTruthy();
+    expect(screen.getByText("evt-commit")).toBeTruthy();
+    expect(screen.getByText("writes performed true")).toBeTruthy();
   });
 
   it("requires conflict acknowledgement before applying a conflicted draft", async () => {
