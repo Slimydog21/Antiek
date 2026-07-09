@@ -18,6 +18,8 @@ from substrate.midnight_oil import (
     MidnightOilDispatchReceipt,
     MidnightOilDispatchRequest,
     MidnightOilDryRunRequest,
+    MidnightOilGraphMutationReceipt,
+    MidnightOilGraphMutationRequest,
     MidnightOilPreflight,
     MidnightOilProviderRouteReceipt,
     MidnightOilProviderRouteRequest,
@@ -28,6 +30,7 @@ from substrate.midnight_oil import (
     budget_reservation_midnight_oil,
     dispatch_midnight_oil,
     dry_run_midnight_oil,
+    graph_mutation_midnight_oil,
     preflight_midnight_oil,
     provider_route_midnight_oil,
     retrieval_midnight_oil,
@@ -79,6 +82,13 @@ def post_midnight_oil_retrieval(
     return retrieval_midnight_oil(req)
 
 
+@midnight_oil_router.post("/graph-mutation", response_model=MidnightOilGraphMutationReceipt)
+def post_midnight_oil_graph_mutation(
+    req: MidnightOilGraphMutationRequest,
+) -> MidnightOilGraphMutationReceipt:
+    return graph_mutation_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
@@ -89,6 +99,7 @@ __all__ = [
     "post_midnight_oil_budget_reservation",
     "post_midnight_oil_dispatch",
     "post_midnight_oil_dry_run",
+    "post_midnight_oil_graph_mutation",
     "post_midnight_oil_preflight",
     "post_midnight_oil_provider_route",
     "post_midnight_oil_retrieval",

@@ -715,6 +715,168 @@ class MidnightOilRetrievalReceipt(BaseModel):
     retrieval_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilGraphMutationRequest(BaseModel):
+    launch_packet: MidnightOilLaunchPacket
+    approval_receipt: MidnightOilApprovalReceipt
+    runner_handoff: MidnightOilRunnerHandoff
+    applied_run_receipt: MidnightOilAppliedRunReceipt
+    dispatch_receipt: MidnightOilDispatchReceipt
+    activation_checklist_receipt: MidnightOilActivationChecklistReceipt
+    budget_reservation_receipt: MidnightOilBudgetReservationReceipt
+    provider_route_receipt: MidnightOilProviderRouteReceipt
+    retrieval_receipt: MidnightOilRetrievalReceipt
+
+    @model_validator(mode="after")
+    def _receipt_chain_matches(self) -> MidnightOilGraphMutationRequest:
+        if self.approval_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("approval_receipt must reference launch_packet")
+        if self.runner_handoff.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("runner_handoff must reference launch_packet")
+        if self.runner_handoff.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("runner_handoff must reference approval_receipt")
+        if self.applied_run_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("applied_run_receipt must reference launch_packet")
+        if self.applied_run_receipt.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("applied_run_receipt must reference approval_receipt")
+        if self.applied_run_receipt.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError("applied_run_receipt must reference runner_handoff")
+        if self.dispatch_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("dispatch_receipt must reference launch_packet")
+        if self.dispatch_receipt.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("dispatch_receipt must reference approval_receipt")
+        if self.dispatch_receipt.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError("dispatch_receipt must reference runner_handoff")
+        if self.dispatch_receipt.applied_run_receipt_id != self.applied_run_receipt.receipt_id:
+            raise ValueError("dispatch_receipt must reference applied_run_receipt")
+        if self.activation_checklist_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("activation_checklist_receipt must reference launch_packet")
+        if self.activation_checklist_receipt.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("activation_checklist_receipt must reference approval_receipt")
+        if self.activation_checklist_receipt.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError("activation_checklist_receipt must reference runner_handoff")
+        if (
+            self.activation_checklist_receipt.applied_run_receipt_id
+            != self.applied_run_receipt.receipt_id
+        ):
+            raise ValueError("activation_checklist_receipt must reference applied_run_receipt")
+        if self.activation_checklist_receipt.dispatch_receipt_id != self.dispatch_receipt.receipt_id:
+            raise ValueError("activation_checklist_receipt must reference dispatch_receipt")
+        if self.activation_checklist_receipt.status != "activation_blocked_controls_missing":
+            raise ValueError("activation_checklist_receipt must be activation_blocked_controls_missing")
+        if self.activation_checklist_receipt.graph_mutation_allowed:
+            raise ValueError("activation_checklist_receipt must not allow graph mutation")
+        if self.budget_reservation_receipt.activation_checklist_receipt_id != (
+            self.activation_checklist_receipt.receipt_id
+        ):
+            raise ValueError(
+                "budget_reservation_receipt must reference activation_checklist_receipt"
+            )
+        if self.provider_route_receipt.budget_reservation_receipt_id != (
+            self.budget_reservation_receipt.receipt_id
+        ):
+            raise ValueError("provider_route_receipt must reference budget_reservation_receipt")
+        if self.retrieval_receipt.provider_route_receipt_id != self.provider_route_receipt.receipt_id:
+            raise ValueError("retrieval_receipt must reference provider_route_receipt")
+        if (
+            self.retrieval_receipt.budget_reservation_receipt_id
+            != self.budget_reservation_receipt.receipt_id
+        ):
+            raise ValueError("retrieval_receipt must reference budget_reservation_receipt")
+        if (
+            self.retrieval_receipt.activation_checklist_receipt_id
+            != self.activation_checklist_receipt.receipt_id
+        ):
+            raise ValueError("retrieval_receipt must reference activation_checklist_receipt")
+        if self.retrieval_receipt.dispatch_receipt_id != self.dispatch_receipt.receipt_id:
+            raise ValueError("retrieval_receipt must reference dispatch_receipt")
+        if self.retrieval_receipt.applied_run_receipt_id != self.applied_run_receipt.receipt_id:
+            raise ValueError("retrieval_receipt must reference applied_run_receipt")
+        if self.retrieval_receipt.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError("retrieval_receipt must reference runner_handoff")
+        if self.retrieval_receipt.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("retrieval_receipt must reference approval_receipt")
+        if self.retrieval_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("retrieval_receipt must reference launch_packet")
+        if self.retrieval_receipt.status != "blocked_retrieval_executor_disabled":
+            raise ValueError("retrieval_receipt must be blocked_retrieval_executor_disabled")
+        if self.retrieval_receipt.graph_mutated:
+            raise ValueError("retrieval_receipt must not mutate graph")
+        if self.retrieval_receipt.final_artifact_created:
+            raise ValueError("retrieval_receipt must not create final artifact")
+        if self.retrieval_receipt.source_receipts_created:
+            raise ValueError("retrieval_receipt must not create source receipts")
+        if self.retrieval_receipt.retrieval_performed:
+            raise ValueError("retrieval_receipt must not perform retrieval")
+        if (
+            self.dispatch_receipt.dispatch_performed
+            or self.applied_run_receipt.dispatch_performed
+            or self.budget_reservation_receipt.dispatch_performed
+            or self.provider_route_receipt.dispatch_performed
+            or self.retrieval_receipt.dispatch_performed
+        ):
+            raise ValueError("receipt chain must not dispatch")
+        if (
+            self.dispatch_receipt.budget_reserved
+            or self.applied_run_receipt.budget_reserved
+            or self.budget_reservation_receipt.budget_reserved
+            or self.provider_route_receipt.budget_reserved
+            or self.retrieval_receipt.budget_reserved
+        ):
+            raise ValueError("receipt chain must not reserve budget")
+        if (
+            self.dispatch_receipt.provider_calls_made
+            or self.applied_run_receipt.provider_calls_made
+            or self.budget_reservation_receipt.provider_calls_made
+            or self.provider_route_receipt.provider_calls_made
+            or self.retrieval_receipt.provider_calls_made
+        ):
+            raise ValueError("receipt chain must not include provider calls")
+        if (
+            self.dispatch_receipt.graph_mutated
+            or self.applied_run_receipt.graph_mutated
+            or self.budget_reservation_receipt.graph_mutated
+            or self.provider_route_receipt.graph_mutated
+            or self.retrieval_receipt.graph_mutated
+        ):
+            raise ValueError("receipt chain must not mutate graph")
+        if (
+            self.dispatch_receipt.final_artifact_created
+            or self.applied_run_receipt.final_artifact_created
+            or self.budget_reservation_receipt.final_artifact_created
+            or self.provider_route_receipt.final_artifact_created
+            or self.retrieval_receipt.final_artifact_created
+        ):
+            raise ValueError("receipt chain must not create final artifact")
+        return self
+
+
+class MidnightOilGraphMutationReceipt(BaseModel):
+    receipt_id: str
+    retrieval_receipt_id: str
+    provider_route_receipt_id: str
+    budget_reservation_receipt_id: str
+    activation_checklist_receipt_id: str
+    dispatch_receipt_id: str
+    applied_run_receipt_id: str
+    runner_handoff_id: str
+    approval_receipt_id: str
+    launch_packet_id: str
+    run_id: str
+    status: Literal["blocked_graph_mutation_disabled"] = "blocked_graph_mutation_disabled"
+    planned_graph_node_ids: list[str]
+    planned_graph_edge_ids: list[str]
+    blocker_reason: Literal["graph_mutation_writer_missing"] = "graph_mutation_writer_missing"
+    graph_mutation_allowed: bool = False
+    graph_mutated: bool = False
+    source_receipts_created: bool = False
+    retrieval_performed: bool = False
+    provider_calls_made: bool = False
+    budget_reserved: bool = False
+    dispatch_performed: bool = False
+    final_artifact_created: bool = False
+    graph_notes: list[str] = Field(default_factory=list)
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -950,6 +1112,50 @@ def retrieval_midnight_oil(req: MidnightOilRetrievalRequest) -> MidnightOilRetri
             "retrieval gate only: retrieval executor and source receipt writer are not configured",
             "no source receipt created, retrieval performed, graph mutation, or artifact write",
             "future live runner must replace this blocked receipt after source connector controls",
+        ],
+    )
+
+
+def graph_mutation_midnight_oil(
+    req: MidnightOilGraphMutationRequest,
+) -> MidnightOilGraphMutationReceipt:
+    planned_graph_node_ids = [
+        f"{req.launch_packet.run_id}-run-node",
+        *[
+            f"{req.launch_packet.run_id}-{source}-source-node"
+            for source in req.launch_packet.source_policy
+        ],
+    ]
+    planned_graph_edge_ids = [
+        f"{req.launch_packet.run_id}-{source}-source-edge"
+        for source in req.launch_packet.source_policy
+    ]
+    return MidnightOilGraphMutationReceipt(
+        receipt_id=f"{req.launch_packet.run_id}-graph-mutation",
+        retrieval_receipt_id=req.retrieval_receipt.receipt_id,
+        provider_route_receipt_id=req.provider_route_receipt.receipt_id,
+        budget_reservation_receipt_id=req.budget_reservation_receipt.receipt_id,
+        activation_checklist_receipt_id=req.activation_checklist_receipt.receipt_id,
+        dispatch_receipt_id=req.dispatch_receipt.receipt_id,
+        applied_run_receipt_id=req.applied_run_receipt.receipt_id,
+        runner_handoff_id=req.runner_handoff.handoff_id,
+        approval_receipt_id=req.approval_receipt.receipt_id,
+        launch_packet_id=req.launch_packet.packet_id,
+        run_id=req.launch_packet.run_id,
+        planned_graph_node_ids=planned_graph_node_ids,
+        planned_graph_edge_ids=planned_graph_edge_ids,
+        graph_mutation_allowed=False,
+        graph_mutated=False,
+        source_receipts_created=False,
+        retrieval_performed=False,
+        provider_calls_made=False,
+        budget_reserved=False,
+        dispatch_performed=False,
+        final_artifact_created=False,
+        graph_notes=[
+            "graph mutation gate only: graph writer is not configured",
+            "no graph node, graph edge, source receipt, retrieval, or artifact write",
+            "future live runner must replace this blocked receipt after graph writer controls",
         ],
     )
 

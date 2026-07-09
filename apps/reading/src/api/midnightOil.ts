@@ -308,6 +308,45 @@ export interface MidnightOilRetrievalReceipt {
   retrieval_notes: string[];
 }
 
+export interface MidnightOilGraphMutationRequest {
+  launch_packet: MidnightOilLaunchPacket;
+  approval_receipt: MidnightOilApprovalReceipt;
+  runner_handoff: MidnightOilRunnerHandoff;
+  applied_run_receipt: MidnightOilAppliedRunReceipt;
+  dispatch_receipt: MidnightOilDispatchReceipt;
+  activation_checklist_receipt: MidnightOilActivationChecklistReceipt;
+  budget_reservation_receipt: MidnightOilBudgetReservationReceipt;
+  provider_route_receipt: MidnightOilProviderRouteReceipt;
+  retrieval_receipt: MidnightOilRetrievalReceipt;
+}
+
+export interface MidnightOilGraphMutationReceipt {
+  receipt_id: string;
+  retrieval_receipt_id: string;
+  provider_route_receipt_id: string;
+  budget_reservation_receipt_id: string;
+  activation_checklist_receipt_id: string;
+  dispatch_receipt_id: string;
+  applied_run_receipt_id: string;
+  runner_handoff_id: string;
+  approval_receipt_id: string;
+  launch_packet_id: string;
+  run_id: string;
+  status: "blocked_graph_mutation_disabled";
+  planned_graph_node_ids: string[];
+  planned_graph_edge_ids: string[];
+  blocker_reason: "graph_mutation_writer_missing";
+  graph_mutation_allowed: boolean;
+  graph_mutated: boolean;
+  source_receipts_created: boolean;
+  retrieval_performed: boolean;
+  provider_calls_made: boolean;
+  budget_reserved: boolean;
+  dispatch_performed: boolean;
+  final_artifact_created: boolean;
+  graph_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -411,4 +450,19 @@ export async function retrievalMidnightOil(
     throw new Error(`POST /research/midnight-oil/retrieval: HTTP ${resp.status}: ${body}`);
   }
   return (await resp.json()) as MidnightOilRetrievalReceipt;
+}
+
+export async function graphMutationMidnightOil(
+  request: MidnightOilGraphMutationRequest,
+): Promise<MidnightOilGraphMutationReceipt> {
+  const resp = await apiFetch(`${API_BASE}/research/midnight-oil/graph-mutation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`POST /research/midnight-oil/graph-mutation: HTTP ${resp.status}: ${body}`);
+  }
+  return (await resp.json()) as MidnightOilGraphMutationReceipt;
 }
