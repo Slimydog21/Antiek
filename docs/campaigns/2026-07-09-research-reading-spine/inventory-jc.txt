@@ -1,0 +1,13 @@
+# inventory-jc · host DR Settings depth-tier prefill · residual (jc)
+
+## Delta
+- fetchDepthTiers on mount → mapDepthTierToResearchTier → hostDrTier
+- data-depth-prefill installed|none|error|pending
+- marketplace-host-dr-depth-prefill status
+- Default deep when Settings unset; wrestle when Settings wrestle
+
+## Verified
+vitest MarketplaceHost 9_passed
+
+## Next
+(jd) re-derive

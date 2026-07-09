@@ -11,6 +11,7 @@ const {
   openWindow,
   seedTwinNotes,
   launchFloatingDeepResearch,
+  fetchDepthTiers,
 } = vi.hoisted(() => ({
   fetchMarketplaceCatalog: vi.fn(),
   hostBookIntoAccount: vi.fn(),
@@ -20,6 +21,16 @@ const {
   openWindow: vi.fn(() => "win:hosted:hdoc_abc"),
   seedTwinNotes: vi.fn(),
   launchFloatingDeepResearch: vi.fn(),
+  fetchDepthTiers: vi.fn(async () => ({
+    active_depth_tier: null as string | null,
+    active_preset: null,
+    presets: [],
+    projection_hints: null,
+    view_format: "html" as const,
+    settings_panel: "depth_tier_presets",
+    source: "test",
+    notes: [] as string[],
+  })),
 }));
 
 vi.mock("../../api/marketplaceHost", () => ({
@@ -40,6 +51,10 @@ vi.mock("../../components/windows/openWindow", () => ({
 
 vi.mock("../Reading/launchFloatingDeepResearch", () => ({
   launchFloatingDeepResearch,
+}));
+
+vi.mock("../../api/settings", () => ({
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),
 }));
 
 vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
@@ -93,6 +108,16 @@ describe("MarketplaceHost mode", () => {
     purchaseAndHost.mockReset();
     fetchHostedDocumentHtml.mockReset();
     openWindow.mockClear();
+    fetchDepthTiers.mockReset().mockResolvedValue({
+      active_depth_tier: null,
+      active_preset: null,
+      presets: [],
+      projection_hints: null,
+      view_format: "html",
+      settings_panel: "depth_tier_presets",
+      source: "test",
+      notes: [],
+    });
     launchFloatingDeepResearch.mockReset().mockResolvedValue({
       session_id: "fsess_mkt",
       spawn_id: "spn_mkt",
@@ -230,6 +255,17 @@ describe("MarketplaceHost mode", () => {
     expect(
       screen.getByTestId("research-launch-budget-panel-stub"),
     ).toBeTruthy();
+    // Residual (jc): default depth prefill none when Settings unset.
+    await waitFor(() => {
+      expect(fetchDepthTiers).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("marketplace-host-dr-budget-mount")
+          .getAttribute("data-depth-prefill"),
+      ).toBe("none");
+    });
     // Residual (iu): one-click floating deep research on hosted book.
     fireEvent.click(screen.getByTestId("marketplace-host-deep-research"));
     await waitFor(() => {
@@ -578,6 +614,83 @@ describe("MarketplaceHost mode", () => {
     expect(
       screen.getByTestId("marketplace-host-mode").getAttribute("data-view-format"),
     ).toBe("html");
+  });
+
+  it("prefills host DR depth tier from Settings wrestle (jc)", async () => {
+    fetchDepthTiers.mockResolvedValue({
+      active_depth_tier: "wrestle",
+      active_preset: {
+        depth_tier: "wrestle",
+        label: "Wrestle",
+        description: "deep",
+        dispatch_tier: "pro",
+        task_class: "wrestle",
+        default_input_chars: 8000,
+        default_expected_output_tokens: 4000,
+        competitor_posture: "depth",
+      },
+      presets: [],
+      projection_hints: null,
+      view_format: "html",
+      settings_panel: "depth_tier_presets",
+      source: "test",
+      notes: [],
+    });
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-origin",
+          title: "On the Origin of Species",
+          author: "Charles Darwin",
+          license_class: "public_domain",
+          is_free: true,
+          source: "project_gutenberg",
+        },
+      ],
+      count: 1,
+      view_format: "html",
+    });
+    hostBookIntoAccount.mockResolvedValue({
+      document_id: "hdoc_origin",
+      owner_id: "operator",
+      book_id: "pd-origin",
+      content_hash: "o",
+      title: "On the Origin of Species",
+      license_class: "public_domain",
+      already_hosted: false,
+      source_format: "html",
+      library_document_ids: ["hdoc_origin"],
+      view_format: "html",
+      html: "<p>Beagle voyage</p>",
+    });
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "operator",
+      documents: [],
+      count: 0,
+      view_format: "html",
+      html: "",
+    });
+    render(<MarketplaceHost ownerId="operator" />);
+    await waitFor(() => {
+      expect(screen.getByText("On the Origin of Species")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("marketplace-host-dr-budget-mount")).toBeTruthy();
+    });
+    await waitFor(() => {
+      const mount = screen.getByTestId("marketplace-host-dr-budget-mount");
+      expect(mount.getAttribute("data-depth-prefill")).toBe("installed");
+      expect(mount.getAttribute("data-research-tier")).toBe("wrestle");
+    });
+    expect(
+      screen.getByTestId("marketplace-host-dr-depth-prefill").textContent,
+    ).toMatch(/installed.*wrestle/i);
+    expect(
+      screen
+        .getByTestId("research-launch-budget-panel-stub")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
   });
 
   it("groups catalog entries by knowledge source (io)", () => {

@@ -35,6 +35,7 @@
  * Residual (iy): budget soft-gate on host/library DR launch (parity di/cs).
  * Residual (ja): DR status surfaces research_tier used for launch audit.
  * Residual (jb): reset budget force override when hosted document changes.
+ * Residual (jc): prefill host DR depth tier from Settings depth-tier (parity gt/gs).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -55,6 +56,8 @@ import {
   type ResearchLaunchBudgetProjection,
   type ResearchLaunchTier,
 } from "../../components/engagement/ResearchLaunchBudgetPanel";
+import { fetchDepthTiers } from "../../api/settings";
+import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import { openWindow } from "../../components/windows/openWindow";
 import { launchFloatingDeepResearch } from "../Reading/launchFloatingDeepResearch";
 
@@ -200,6 +203,12 @@ export default function MarketplaceHost({
   const [hostDrForceBudget, setHostDrForceBudget] = useState(false);
   const [hostDrTier, setHostDrTier] = useState<ResearchLaunchTier>("deep");
   const [hostDrPromptPreview, setHostDrPromptPreview] = useState("");
+  /**
+   * Residual (jc): Settings depth-tier prefill for host DR (pending|installed|none|error).
+   */
+  const [hostDrDepthPrefill, setHostDrDepthPrefill] = useState<
+    "pending" | "installed" | "none" | "error"
+  >("pending");
   const loadLibrary = useCallback(async () => {
     try {
       const lib = await fetchAccountLibrary(ownerId);
@@ -221,6 +230,28 @@ export default function MarketplaceHost({
     void loadCatalog();
     void loadLibrary();
   }, [loadCatalog, loadLibrary]);
+
+  // Residual (jc): prefill host DR tier from Settings depth-tier (parity Midnight Oil gt).
+  useEffect(() => {
+    let cancelled = false;
+    void fetchDepthTiers()
+      .then((resp) => {
+        if (cancelled) return;
+        const mapped = mapDepthTierToResearchTier(resp.active_depth_tier);
+        if (mapped) {
+          setHostDrTier(mapped);
+          setHostDrDepthPrefill("installed");
+        } else {
+          setHostDrDepthPrefill("none");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setHostDrDepthPrefill("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function openHostedWindow(opts: {
     document_id: string;
@@ -804,12 +835,26 @@ export default function MarketplaceHost({
             {hosted.already_hosted ? "Already hosted" : "Newly hosted"} ·{" "}
             {hosted.license_class} · view_format={hosted.view_format}
           </p>
-          {/* Residual (iy): budget projection soft-gate before DR launch. */}
+          {/* Residual (iy/jc): budget projection soft-gate + Settings depth prefill. */}
           <div
             className="space-y-2 border rounded p-3"
             data-testid="marketplace-host-dr-budget-mount"
             data-view-format="html"
+            data-research-tier={hostDrTier}
+            data-depth-prefill={hostDrDepthPrefill}
           >
+            <p
+              className="text-[11px] font-mono opacity-80"
+              data-testid="marketplace-host-dr-depth-prefill"
+              role="status"
+            >
+              Depth prefill: {hostDrDepthPrefill}
+              {hostDrDepthPrefill === "installed"
+                ? ` → ${hostDrTier}`
+                : hostDrDepthPrefill === "none"
+                  ? " (default deep)"
+                  : ""}
+            </p>
             <ResearchLaunchBudgetPanel
               promptText={hostDrPromptPreview || hosted.title || "hosted book"}
               researchTier={hostDrTier}
