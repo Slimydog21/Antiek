@@ -1,0 +1,17 @@
+# residual (dd) TwinNotesPanel autoSeedIfEmpty (offline recursive note-taker)
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(dc) prior | branch_only | campaign inventories
+(dd) twin autoSeedIfEmpty | branch_only | TwinNotesPanel seeds offline when empty; Hosted + DR hosts enable; 25 vitest; hardenx real=0
+
+## What shipped
+- TwinNotesPanel `autoSeedIfEmpty` + optional seedTitle/seedBodyText.
+- On autoLoad with note_count=0 → seedTwinNotes(force_offline=true).
+- HostedHtmlDocumentHost + DeepResearchSessionHost enable autoSeedIfEmpty.
+- Existing non-empty twins never re-seeded; seed status honest on skip/fail.
+
+## Why (north star)
+Every information asset gets a twin substrate without a manual seed click — recursive note-taker default for reading and deep research hosts.
+
+NEXT: (de) re-derive; operator merge PR #465

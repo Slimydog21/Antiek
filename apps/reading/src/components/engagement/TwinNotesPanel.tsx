@@ -3,6 +3,8 @@
  *
  * Residual (ba): every information asset has a twin substrate of LLM/operator
  * notes. Residual (cq): autoLoad twins on mount for DR/hosted windows.
+ * Residual (dd): autoSeedIfEmpty — offline seed when load finds zero notes so
+ * the recursive note-taker substrate exists without a manual click.
  * HTML-first; never PDF.
  */
 
@@ -11,6 +13,7 @@ import {
   fetchTwinNotes,
   promoteTwinsToContext,
   recordTwinNote,
+  seedTwinNotes,
   type TwinNotesResponse,
   type TwinPromoteContextResponse,
 } from "../../api/engagement";
@@ -20,12 +23,23 @@ export type TwinNotesPanelProps = {
   spawnId?: string | null;
   /** Residual (cq): fetch twin notes on mount. */
   autoLoad?: boolean;
+  /**
+   * Residual (dd): when autoLoad finds note_count=0, call offline twin seed.
+   * Does not invent live LLM content; force_offline seed only.
+   */
+  autoSeedIfEmpty?: boolean;
+  /** Optional title/body context for offline seed. */
+  seedTitle?: string | null;
+  seedBodyText?: string | null;
 };
 
 export function TwinNotesPanel({
   assetId,
   spawnId = null,
   autoLoad = false,
+  autoSeedIfEmpty = false,
+  seedTitle = null,
+  seedBodyText = null,
 }: TwinNotesPanelProps) {
   const [twins, setTwins] = useState<TwinNotesResponse | null>(null);
   const [promoted, setPromoted] = useState<TwinPromoteContextResponse | null>(
@@ -35,14 +49,43 @@ export function TwinNotesPanel({
   const [kind, setKind] = useState<"insight" | "question">("insight");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [seedStatus, setSeedStatus] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setBusy(true);
     setError(null);
     try {
-      const t = await fetchTwinNotes(assetId, { includeHtml: true });
+      let t = await fetchTwinNotes(assetId, { includeHtml: true });
       if (t.view_format !== "html") {
         throw new Error("twin notes view_format must be html");
+      }
+      // Residual (dd): offline seed when empty so every asset has a twin twin.
+      if (autoSeedIfEmpty && (t.note_count ?? 0) === 0) {
+        try {
+          const seeded = await seedTwinNotes({
+            asset_id: assetId,
+            title: seedTitle?.trim() || assetId,
+            body_text: seedBodyText?.trim() || "",
+            source_spawn_id: spawnId,
+            include_html: true,
+            force_offline: true,
+          });
+          if (seeded.view_format !== "html") {
+            throw new Error("twin seed view_format must be html");
+          }
+          setSeedStatus(
+            seeded.seeded
+              ? "offline seed applied (recursive note-taker)"
+              : `seed skipped: ${seeded.seed_skipped || "none"}`,
+          );
+          t = seeded;
+        } catch (seedErr) {
+          setSeedStatus(
+            seedErr instanceof Error
+              ? `seed failed: ${seedErr.message}`
+              : "seed failed",
+          );
+        }
       }
       setTwins(t);
     } catch (e) {
@@ -50,14 +93,14 @@ export function TwinNotesPanel({
     } finally {
       setBusy(false);
     }
-  }, [assetId]);
+  }, [assetId, autoSeedIfEmpty, seedTitle, seedBodyText, spawnId]);
 
   useEffect(() => {
     if (!autoLoad || !assetId.trim()) return;
     void load();
-    // Mount-once per asset when autoLoad is on (residual cq).
+    // Mount-once per asset when autoLoad is on (residual cq/dd).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoLoad, assetId]);
+  }, [autoLoad, assetId, autoSeedIfEmpty]);
 
   const record = useCallback(async () => {
     if (!text.trim()) return;
@@ -163,6 +206,15 @@ export function TwinNotesPanel({
       {error ? (
         <p className="error" role="alert">
           {error}
+        </p>
+      ) : null}
+      {seedStatus ? (
+        <p
+          className="meta font-mono text-[11px]"
+          data-testid="twin-seed-status"
+          role="status"
+        >
+          {seedStatus}
         </p>
       ) : null}
       {twins ? (

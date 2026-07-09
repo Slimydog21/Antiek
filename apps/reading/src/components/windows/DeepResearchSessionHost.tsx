@@ -22,6 +22,7 @@
  * Residual (cq): TwinNotesPanel autoLoad.
  * Residual (cr): ResearchProgressPanel pollIntervalMs for multi-minute jobs.
  * Residual (cw): DecisionTreeDriverBadge — active model driver readout.
+ * Residual (dd): TwinNotesPanel autoSeedIfEmpty (offline recursive note-taker).
  */
 
 import { useMemo } from "react";
@@ -234,6 +235,9 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             assetId={props.parent_asset_id.trim()}
             spawnId={props.spawn_id?.trim() || null}
             autoLoad
+            autoSeedIfEmpty
+            seedTitle={props.goal?.trim() || props.parent_asset_id.trim()}
+            seedBodyText={props.selection_text?.trim() || props.goal?.trim() || ""}
           />
         </section>
       ) : null}

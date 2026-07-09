@@ -1,0 +1,4 @@
+# Campaign rollup (bn)–(dd) · PR #465
+dc: collective continue as unit · dd: twin autoSeedIfEmpty on hosted + DR hosts.
+hardenx root real=0 (advisory only).
+Operator merge still gated.

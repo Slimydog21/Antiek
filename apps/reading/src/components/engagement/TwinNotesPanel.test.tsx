@@ -5,11 +5,13 @@ import { TwinNotesPanel } from "./TwinNotesPanel";
 const fetchTwinNotes = vi.fn();
 const recordTwinNote = vi.fn();
 const promoteTwinsToContext = vi.fn();
+const seedTwinNotes = vi.fn();
 
 vi.mock("../../api/engagement", () => ({
   fetchTwinNotes: (...args: unknown[]) => fetchTwinNotes(...args),
   recordTwinNote: (...args: unknown[]) => recordTwinNote(...args),
   promoteTwinsToContext: (...args: unknown[]) => promoteTwinsToContext(...args),
+  seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...args),
 }));
 
 describe("TwinNotesPanel", () => {
@@ -18,6 +20,7 @@ describe("TwinNotesPanel", () => {
     fetchTwinNotes.mockReset();
     recordTwinNote.mockReset();
     promoteTwinsToContext.mockReset();
+    seedTwinNotes.mockReset();
   });
 
   it("auto-loads twins on mount when autoLoad (cq)", async () => {
@@ -47,6 +50,73 @@ describe("TwinNotesPanel", () => {
     await waitFor(() => {
       expect(screen.getByTestId("twin-notes-summary").textContent).toMatch(
         /insights=1/,
+      );
+    });
+    expect(seedTwinNotes).not.toHaveBeenCalled();
+  });
+
+  it("offline seeds when empty and autoSeedIfEmpty (dd)", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 0,
+      insight_count: 0,
+      question_count: 0,
+      notes: [],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "",
+    });
+    seedTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 2,
+      insight_count: 1,
+      question_count: 1,
+      notes: [
+        {
+          note_id: "twin_seed_1",
+          asset_id: "paper",
+          kind: "insight",
+          text: "Offline seed insight",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>seeded</p>",
+      seeded: true,
+      force_offline: true,
+    });
+
+    render(
+      <TwinNotesPanel
+        assetId="paper"
+        autoLoad
+        autoSeedIfEmpty
+        seedTitle="Attention paper"
+        seedBodyText="Transformers are all you need."
+      />,
+    );
+
+    await waitFor(() => {
+      expect(seedTwinNotes).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "paper",
+          force_offline: true,
+          title: "Attention paper",
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-seed-status").textContent).toMatch(
+        /offline seed applied/,
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-notes-summary").textContent).toMatch(
+        /notes=2/,
       );
     });
   });

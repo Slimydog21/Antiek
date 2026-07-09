@@ -173,7 +173,14 @@ export default function HostedHtmlDocumentHost(
           data-testid="hosted-html-twins-mount"
           data-view-format="html"
         >
-          <TwinNotesPanel assetId={assetId} spawnId={null} autoLoad />
+          <TwinNotesPanel
+            assetId={assetId}
+            spawnId={null}
+            autoLoad
+            autoSeedIfEmpty
+            seedTitle={title}
+            seedBodyText={html ? html.replace(/<[^>]+>/g, " ").slice(0, 500) : title}
+          />
         </section>
       ) : null}
 
