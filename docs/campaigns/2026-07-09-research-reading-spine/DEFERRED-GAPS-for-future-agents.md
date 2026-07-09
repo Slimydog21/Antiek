@@ -57,7 +57,12 @@ API+UI+HTML research_tier identity (see competitive notes jt–jw, jy–ka, kd�
 **kn–ks** closed merge + attach-refs + flywheel pack fallback + TwinNotes researchTier on
 DR/Hosted/Write hosts (see competitive notes kn–ko, kq–ks).
 
+## Dual-gate checklist (ky)
+
+Executable operator/agent prep: `DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md`.
+Does not enable live injectors — documents how to enable without silent failure.
+
 ## Next residual after this doc
 
-**(ku)+** next thin product residual or operator merge PR #465.
+**(kz)+** next thin product residual or operator merge PR #465.
 Infinite continues until STOP.
