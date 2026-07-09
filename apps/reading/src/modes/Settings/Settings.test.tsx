@@ -1,5 +1,5 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Settings from "./index";
 
@@ -53,6 +53,10 @@ describe("Settings SPR-01", () => {
     vi.clearAllMocks();
   });
 
+  afterEach(() => {
+    cleanup();
+  });
+
   it("renders registered providers and budget bar", async () => {
     render(<Settings />);
     await waitFor(() => {
@@ -76,5 +80,27 @@ describe("Settings SPR-01", () => {
         screen.getByText(/tier pricing is 0\.0 placeholder/i),
       ).toBeTruthy();
     });
+  });
+
+  it("shows a decision-tree recommendation without mutating providers", async () => {
+    render(<Settings />);
+    await waitFor(() => expect(screen.getByText("zai")).toBeTruthy());
+
+    expect(screen.getByText("Decision tree")).toBeTruthy();
+    expect(screen.getByText("Recommended depth")).toBeTruthy();
+    expect(screen.getByText("Deep")).toBeTruthy();
+    expect(screen.getByText(/does not mutate provider registration/i)).toBeTruthy();
+  });
+
+  it("recommends Fast when cheapest is selected", async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await waitFor(() => expect(screen.getByText("zai")).toBeTruthy());
+
+    await user.click(screen.getByRole("button", { name: "Cheapest" }));
+    await waitFor(() => {
+      expect(screen.getByText("Fast")).toBeTruthy();
+    });
+    expect(screen.getByText(/minimise latency and spend/i)).toBeTruthy();
   });
 });

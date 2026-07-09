@@ -39,6 +39,11 @@ export default function Settings() {
   );
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const [estimating, setEstimating] = useState(false);
+  const [decision, setDecision] = useState<DecisionTreeState>({
+    task: "source-heavy",
+    priority: "quality",
+    budget: "known",
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -181,7 +186,7 @@ export default function Settings() {
             )}
             <p className="text-[11px] text-ink-soft dark:text-starlight font-serif italic">
               Adding API keys / new models lands in SPR-02. Decision-tree
-              per-prompt override lands in SPR-03.
+              recommendations stay in the closed Fast/Deep set below.
             </p>
           </div>
         </LemonCard>
@@ -349,10 +354,18 @@ export default function Settings() {
           </div>
         </LemonCard>
 
+        <LemonCard title="Decision tree" elevation="z1">
+          <DecisionTreePanel
+            value={decision}
+            onChange={setDecision}
+            budget={budget}
+          />
+        </LemonCard>
+
         <LemonCard title="Coming later" elevation="z1">
           <ul className="p-4 space-y-2 text-sm text-ink dark:text-bright list-disc list-inside">
             <li>Add model + multi-provider secret vault (SPR-02)</li>
-            <li>Decision-tree per-prompt model override (SPR-03)</li>
+            <li>Persist decision-tree choice into new research defaults</li>
             <li>Antiek-bench weekly model quality report</li>
             <li>Midnight oil: time + goals + price-ceiling approve UI</li>
             <li>Keyboard map customisation + layout export</li>
@@ -361,6 +374,153 @@ export default function Settings() {
       </div>
     </div>
   );
+}
+
+type DecisionTask = "quick" | "source-heavy" | "synthesis";
+type DecisionPriority = "cost" | "balanced" | "quality";
+type DecisionBudget = "known" | "tight" | "unknown";
+
+interface DecisionTreeState {
+  task: DecisionTask;
+  priority: DecisionPriority;
+  budget: DecisionBudget;
+}
+
+function DecisionTreePanel({
+  value,
+  onChange,
+  budget,
+}: {
+  value: DecisionTreeState;
+  onChange: (next: DecisionTreeState) => void;
+  budget: BudgetResponse | null;
+}) {
+  const recommendation = recommendDecision(value, budget);
+  return (
+    <div className="p-4 space-y-4">
+      <div className="grid gap-4 md:grid-cols-3">
+        <OptionGroup
+          label="Task"
+          value={value.task}
+          options={[
+            ["quick", "Quick scan"],
+            ["source-heavy", "Source chase"],
+            ["synthesis", "Deep synthesis"],
+          ]}
+          onChange={(task) => onChange({ ...value, task })}
+        />
+        <OptionGroup
+          label="Priority"
+          value={value.priority}
+          options={[
+            ["cost", "Cheapest"],
+            ["balanced", "Balanced"],
+            ["quality", "Quality"],
+          ]}
+          onChange={(priority) => onChange({ ...value, priority })}
+        />
+        <OptionGroup
+          label="Budget"
+          value={value.budget}
+          options={[
+            ["known", "Known"],
+            ["tight", "Tight"],
+            ["unknown", "Unknown"],
+          ]}
+          onChange={(nextBudget) => onChange({ ...value, budget: nextBudget })}
+        />
+      </div>
+      <div
+        className="border border-ink/10 dark:border-bright/10 rounded p-3 font-mono text-[13px] space-y-2"
+        aria-live="polite"
+      >
+        <Row label="Recommended depth" value={recommendation.tierLabel} />
+        <Row label="Route posture" value={recommendation.routePosture} />
+        <p className="text-[11px] text-ink-soft dark:text-starlight">
+          {recommendation.reason}
+        </p>
+        <p className="text-[11px] text-ink-soft dark:text-starlight">
+          Apply this explicitly in the Research home depth selector. Settings
+          does not mutate provider registration, store secrets, or silently
+          reroute existing prompts.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function OptionGroup<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: [T, string][];
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] uppercase tracking-wider text-ink-soft dark:text-starlight font-mono">
+        {label}
+      </p>
+      <div className="inline-flex max-w-full flex-wrap rounded border border-ink/20 dark:border-bright/20 overflow-hidden">
+        {options.map(([optionValue, optionLabel]) => {
+          const active = optionValue === value;
+          return (
+            <button
+              key={optionValue}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onChange(optionValue)}
+              className={
+                "px-2.5 py-1.5 text-[12px] font-mono border-r last:border-r-0 border-ink/10 dark:border-bright/10 " +
+                (active
+                  ? "bg-ink text-ice-0 dark:bg-bright dark:text-space-2"
+                  : "bg-transparent text-ink dark:text-bright hover:bg-ink/5 dark:hover:bg-bright/10")
+              }
+            >
+              {optionLabel}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function recommendDecision(
+  value: DecisionTreeState,
+  budget: BudgetResponse | null,
+): { tierLabel: string; routePosture: string; reason: string } {
+  const remaining = budget?.remaining_usd ?? null;
+  const budgetLooksTight =
+    value.budget === "tight" ||
+    (budget?.spent_status === "known" && remaining != null && remaining < 1);
+
+  if (value.task === "quick" || value.priority === "cost" || budgetLooksTight) {
+    return {
+      tierLabel: "Fast",
+      routePosture: "minimise latency and spend",
+      reason:
+        "Use Fast when the prompt needs a quick scan, budget is tight, or you want the cheapest acceptable answer.",
+    };
+  }
+  if (value.task === "synthesis" || value.priority === "quality") {
+    return {
+      tierLabel: "Deep",
+      routePosture: "maximise synthesis quality",
+      reason:
+        "Use Deep when the prompt needs cross-source reasoning, careful synthesis, or a defensible answer over lowest cost.",
+    };
+  }
+  return {
+    tierLabel: "Deep",
+    routePosture: "balanced default",
+    reason:
+      "Balanced source-chasing defaults to Deep because missing evidence is more expensive than a slower first pass.",
+  };
 }
 
 function Row({ label, value }: { label: string; value: string }) {
