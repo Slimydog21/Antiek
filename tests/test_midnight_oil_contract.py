@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from substrate.midnight_oil import (
     MidnightOilActivationChecklistRequest,
+    MidnightOilBudgetProviderAdapterPlanRequest,
     MidnightOilBudgetReservationRequest,
     MidnightOilDispatchRequest,
     MidnightOilDryRunRequest,
@@ -20,6 +21,7 @@ from substrate.midnight_oil import (
     MidnightOilRunnerControlPlanRequest,
     MidnightOilRunnerReadinessRequest,
     activation_checklist_midnight_oil,
+    budget_provider_adapter_plan_midnight_oil,
     budget_reservation_midnight_oil,
     dispatch_midnight_oil,
     dry_run_midnight_oil,
@@ -2296,6 +2298,196 @@ def test_midnight_oil_runner_control_plan_api_contract() -> None:
     assert body["final_artifact_allowed"] is False
     assert body["dispatch_performed"] is False
     assert body["budget_reserved"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["graph_mutated"] is False
+    assert body["final_artifact_created"] is False
+
+
+def test_budget_provider_adapter_plan_records_disabled_adapter_requirements() -> None:
+    chain = _accepted_midnight_oil_gate_chain(
+        goal="Plan a budget provider adapter for a midnight oil widebody run.",
+        source_policy=["arxiv", "substack"],
+    )
+    preflight = chain["preflight"]
+    readiness = runner_readiness_midnight_oil(
+        MidnightOilRunnerReadinessRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            live_run_activation_settings_receipt=chain["live_settings"],
+            dispatch_receipt=chain["dispatch"],
+            activation_checklist_receipt=chain["checklist"],
+            budget_reservation_receipt=chain["reservation"],
+            provider_route_receipt=chain["provider_route"],
+            retrieval_receipt=chain["retrieval"],
+            graph_mutation_receipt=chain["graph"],
+            final_artifact_receipt=chain["final_artifact"],
+        )
+    )
+    control_plan = runner_control_plan_midnight_oil(
+        MidnightOilRunnerControlPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_readiness_receipt=readiness,
+            requested_control_scope=["budget_reservation_provider"],
+        )
+    )
+
+    adapter_plan = budget_provider_adapter_plan_midnight_oil(
+        MidnightOilBudgetProviderAdapterPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=control_plan,
+        )
+    )
+
+    assert adapter_plan.receipt_id == f"{preflight.run_id}-budget-provider-adapter-plan"
+    assert adapter_plan.runner_control_plan_receipt_id == control_plan.receipt_id
+    assert adapter_plan.runner_readiness_receipt_id == readiness.receipt_id
+    assert adapter_plan.status == "blocked_budget_provider_adapter_unimplemented"
+    assert adapter_plan.adapter_key == "budget_reservation_provider"
+    assert adapter_plan.planned_adapter_id == f"{preflight.run_id}-budget-provider-adapter"
+    assert adapter_plan.planned_ledger_id == f"{preflight.run_id}-budget-reservation-ledger"
+    assert preflight.launch_packet.packet_id in adapter_plan.idempotency_key
+    assert preflight.approval_receipt.receipt_id in adapter_plan.idempotency_key
+    assert adapter_plan.approved_price_ceiling_usd == preflight.price_ceiling_usd
+    assert adapter_plan.planned_budget_usd == preflight.planned_budget_usd
+    assert "approved price ceiling" in adapter_plan.required_invariants[0]
+    assert "reservation_id" in adapter_plan.required_ledger_fields
+    assert "released_at" in adapter_plan.required_ledger_fields
+    assert adapter_plan.blocker_reason == "budget_provider_adapter_unimplemented"
+    assert adapter_plan.budget_reservation_allowed is False
+    assert adapter_plan.budget_reserved is False
+    assert adapter_plan.live_run_allowed is False
+    assert adapter_plan.dispatch_allowed is False
+    assert adapter_plan.provider_execution_allowed is False
+    assert adapter_plan.retrieval_allowed is False
+    assert adapter_plan.graph_mutation_allowed is False
+    assert adapter_plan.final_artifact_allowed is False
+    assert adapter_plan.dispatch_performed is False
+    assert adapter_plan.provider_calls_made is False
+    assert adapter_plan.retrieval_performed is False
+    assert adapter_plan.graph_mutated is False
+    assert adapter_plan.final_artifact_created is False
+    assert "no reservation provider is configured" in adapter_plan.adapter_plan_notes[0]
+
+
+def test_budget_provider_adapter_plan_rejects_control_plan_without_budget_provider() -> None:
+    chain = _accepted_midnight_oil_gate_chain(
+        goal="Reject a budget adapter plan when budget provider was not requested.",
+        source_policy=["web"],
+    )
+    preflight = chain["preflight"]
+    readiness = runner_readiness_midnight_oil(
+        MidnightOilRunnerReadinessRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            live_run_activation_settings_receipt=chain["live_settings"],
+            dispatch_receipt=chain["dispatch"],
+            activation_checklist_receipt=chain["checklist"],
+            budget_reservation_receipt=chain["reservation"],
+            provider_route_receipt=chain["provider_route"],
+            retrieval_receipt=chain["retrieval"],
+            graph_mutation_receipt=chain["graph"],
+            final_artifact_receipt=chain["final_artifact"],
+        )
+    )
+    control_plan = runner_control_plan_midnight_oil(
+        MidnightOilRunnerControlPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_readiness_receipt=readiness,
+            requested_control_scope=["operator_live_dispatch_enablement"],
+        )
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="runner_control_plan_receipt must request budget_reservation_provider",
+    ):
+        MidnightOilBudgetProviderAdapterPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=control_plan,
+        )
+
+
+def test_midnight_oil_budget_provider_adapter_plan_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_gate_chain(
+        goal="Expose budget provider adapter planning over the API.",
+        source_policy=["arxiv", "web"],
+    )
+    preflight = chain["preflight"]
+    readiness = runner_readiness_midnight_oil(
+        MidnightOilRunnerReadinessRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            live_run_activation_settings_receipt=chain["live_settings"],
+            dispatch_receipt=chain["dispatch"],
+            activation_checklist_receipt=chain["checklist"],
+            budget_reservation_receipt=chain["reservation"],
+            provider_route_receipt=chain["provider_route"],
+            retrieval_receipt=chain["retrieval"],
+            graph_mutation_receipt=chain["graph"],
+            final_artifact_receipt=chain["final_artifact"],
+        )
+    )
+    control_plan = runner_control_plan_midnight_oil(
+        MidnightOilRunnerControlPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_readiness_receipt=readiness,
+            requested_control_scope=["budget_reservation_provider"],
+        )
+    )
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/budget-provider-adapter-plan",
+            json={
+                "launch_packet": preflight.launch_packet.model_dump(mode="json"),
+                "approval_receipt": preflight.approval_receipt.model_dump(mode="json"),
+                "runner_handoff": preflight.runner_handoff.model_dump(mode="json"),
+                "runner_control_plan_receipt": control_plan.model_dump(mode="json"),
+            },
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["receipt_id"] == f"{preflight.run_id}-budget-provider-adapter-plan"
+    assert body["runner_control_plan_receipt_id"] == control_plan.receipt_id
+    assert body["runner_readiness_receipt_id"] == readiness.receipt_id
+    assert body["status"] == "blocked_budget_provider_adapter_unimplemented"
+    assert body["adapter_key"] == "budget_reservation_provider"
+    assert body["planned_adapter_id"] == f"{preflight.run_id}-budget-provider-adapter"
+    assert body["planned_ledger_id"] == f"{preflight.run_id}-budget-reservation-ledger"
+    assert body["approved_price_ceiling_usd"] == preflight.price_ceiling_usd
+    assert body["planned_budget_usd"] == preflight.planned_budget_usd
+    assert "idempotency_key" in body
+    assert "status" in body["required_ledger_fields"]
+    assert body["blocker_reason"] == "budget_provider_adapter_unimplemented"
+    assert body["budget_reservation_allowed"] is False
+    assert body["budget_reserved"] is False
+    assert body["live_run_allowed"] is False
+    assert body["dispatch_allowed"] is False
+    assert body["provider_execution_allowed"] is False
+    assert body["retrieval_allowed"] is False
+    assert body["graph_mutation_allowed"] is False
+    assert body["final_artifact_allowed"] is False
+    assert body["dispatch_performed"] is False
     assert body["provider_calls_made"] is False
     assert body["retrieval_performed"] is False
     assert body["graph_mutated"] is False

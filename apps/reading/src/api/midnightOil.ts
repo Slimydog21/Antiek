@@ -532,6 +532,48 @@ export interface MidnightOilRunnerControlPlanReceipt {
   control_plan_notes: string[];
 }
 
+export interface MidnightOilBudgetProviderAdapterPlanRequest {
+  launch_packet: MidnightOilLaunchPacket;
+  approval_receipt: MidnightOilApprovalReceipt;
+  runner_handoff: MidnightOilRunnerHandoff;
+  runner_control_plan_receipt: MidnightOilRunnerControlPlanReceipt;
+}
+
+export interface MidnightOilBudgetProviderAdapterPlanReceipt {
+  receipt_id: string;
+  runner_control_plan_receipt_id: string;
+  runner_readiness_receipt_id: string;
+  runner_handoff_id: string;
+  approval_receipt_id: string;
+  launch_packet_id: string;
+  run_id: string;
+  status: "blocked_budget_provider_adapter_unimplemented";
+  adapter_key: "budget_reservation_provider";
+  planned_adapter_id: string;
+  planned_ledger_id: string;
+  idempotency_key: string;
+  approved_price_ceiling_usd: number;
+  planned_budget_usd: number;
+  unallocated_budget_usd: number;
+  required_invariants: string[];
+  required_ledger_fields: string[];
+  blocker_reason: "budget_provider_adapter_unimplemented";
+  budget_reservation_allowed: boolean;
+  budget_reserved: boolean;
+  live_run_allowed: boolean;
+  dispatch_allowed: boolean;
+  provider_execution_allowed: boolean;
+  retrieval_allowed: boolean;
+  graph_mutation_allowed: boolean;
+  final_artifact_allowed: boolean;
+  dispatch_performed: boolean;
+  provider_calls_made: boolean;
+  retrieval_performed: boolean;
+  graph_mutated: boolean;
+  final_artifact_created: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -712,4 +754,21 @@ export async function runnerControlPlanMidnightOil(
     throw new Error(`POST /research/midnight-oil/runner-control-plan: HTTP ${resp.status}: ${body}`);
   }
   return (await resp.json()) as MidnightOilRunnerControlPlanReceipt;
+}
+
+export async function budgetProviderAdapterPlanMidnightOil(
+  request: MidnightOilBudgetProviderAdapterPlanRequest,
+): Promise<MidnightOilBudgetProviderAdapterPlanReceipt> {
+  const resp = await apiFetch(`${API_BASE}/research/midnight-oil/budget-provider-adapter-plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/budget-provider-adapter-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilBudgetProviderAdapterPlanReceipt;
 }

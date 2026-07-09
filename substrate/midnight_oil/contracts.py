@@ -1366,6 +1366,111 @@ class MidnightOilRunnerControlPlanReceipt(BaseModel):
     control_plan_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilBudgetProviderAdapterPlanRequest(BaseModel):
+    launch_packet: MidnightOilLaunchPacket
+    approval_receipt: MidnightOilApprovalReceipt
+    runner_handoff: MidnightOilRunnerHandoff
+    runner_control_plan_receipt: MidnightOilRunnerControlPlanReceipt
+
+    @model_validator(mode="after")
+    def _receipt_chain_matches(self) -> MidnightOilBudgetProviderAdapterPlanRequest:
+        if self.approval_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("approval_receipt must reference launch_packet")
+        if self.runner_handoff.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("runner_handoff must reference launch_packet")
+        if self.runner_handoff.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("runner_handoff must reference approval_receipt")
+        if self.runner_control_plan_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("runner_control_plan_receipt must reference launch_packet")
+        if (
+            self.runner_control_plan_receipt.approval_receipt_id
+            != self.approval_receipt.receipt_id
+        ):
+            raise ValueError("runner_control_plan_receipt must reference approval_receipt")
+        if self.runner_control_plan_receipt.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError("runner_control_plan_receipt must reference runner_handoff")
+        if self.runner_control_plan_receipt.run_id != self.launch_packet.run_id:
+            raise ValueError("runner_control_plan_receipt run_id must match launch_packet")
+        if self.runner_control_plan_receipt.status != "blocked_runner_controls_unimplemented":
+            raise ValueError("runner_control_plan_receipt must be blocked_runner_controls_unimplemented")
+        if "budget_reservation_provider" not in (
+            self.runner_control_plan_receipt.requested_control_scope
+        ):
+            raise ValueError("runner_control_plan_receipt must request budget_reservation_provider")
+        if self.runner_control_plan_receipt.live_run_allowed:
+            raise ValueError("runner_control_plan_receipt must not allow live run")
+        if (
+            self.runner_control_plan_receipt.dispatch_allowed
+            or self.runner_control_plan_receipt.dispatch_performed
+        ):
+            raise ValueError("runner_control_plan_receipt must not dispatch")
+        if (
+            self.runner_control_plan_receipt.budget_reservation_allowed
+            or self.runner_control_plan_receipt.budget_reserved
+        ):
+            raise ValueError("runner_control_plan_receipt must not reserve budget")
+        if (
+            self.runner_control_plan_receipt.provider_execution_allowed
+            or self.runner_control_plan_receipt.provider_calls_made
+        ):
+            raise ValueError("runner_control_plan_receipt must not include provider calls")
+        if (
+            self.runner_control_plan_receipt.retrieval_allowed
+            or self.runner_control_plan_receipt.retrieval_performed
+        ):
+            raise ValueError("runner_control_plan_receipt must not perform retrieval")
+        if (
+            self.runner_control_plan_receipt.graph_mutation_allowed
+            or self.runner_control_plan_receipt.graph_mutated
+        ):
+            raise ValueError("runner_control_plan_receipt must not mutate graph")
+        if (
+            self.runner_control_plan_receipt.final_artifact_allowed
+            or self.runner_control_plan_receipt.final_artifact_created
+        ):
+            raise ValueError("runner_control_plan_receipt must not create final artifact")
+        return self
+
+
+class MidnightOilBudgetProviderAdapterPlanReceipt(BaseModel):
+    receipt_id: str
+    runner_control_plan_receipt_id: str
+    runner_readiness_receipt_id: str
+    runner_handoff_id: str
+    approval_receipt_id: str
+    launch_packet_id: str
+    run_id: str
+    status: Literal["blocked_budget_provider_adapter_unimplemented"] = (
+        "blocked_budget_provider_adapter_unimplemented"
+    )
+    adapter_key: Literal["budget_reservation_provider"] = "budget_reservation_provider"
+    planned_adapter_id: str
+    planned_ledger_id: str
+    idempotency_key: str
+    approved_price_ceiling_usd: float = Field(ge=0.0)
+    planned_budget_usd: float = Field(ge=0.0)
+    unallocated_budget_usd: float = Field(ge=0.0)
+    required_invariants: list[str]
+    required_ledger_fields: list[str]
+    blocker_reason: Literal["budget_provider_adapter_unimplemented"] = (
+        "budget_provider_adapter_unimplemented"
+    )
+    budget_reservation_allowed: bool = False
+    budget_reserved: bool = False
+    live_run_allowed: bool = False
+    dispatch_allowed: bool = False
+    provider_execution_allowed: bool = False
+    retrieval_allowed: bool = False
+    graph_mutation_allowed: bool = False
+    final_artifact_allowed: bool = False
+    dispatch_performed: bool = False
+    provider_calls_made: bool = False
+    retrieval_performed: bool = False
+    graph_mutated: bool = False
+    final_artifact_created: bool = False
+    adapter_plan_notes: list[str] = Field(default_factory=list)
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -1839,6 +1944,70 @@ def runner_control_plan_midnight_oil(
         control_plan_notes=[
             "runner control plan only: implementation requirements are recorded without enabling live execution",
             "every requested control remains missing until replaced by a concrete provider, executor, writer, or operator setting",
+            "no dispatch, budget reservation, provider call, retrieval, graph mutation, or artifact write is performed",
+        ],
+    )
+
+
+def budget_provider_adapter_plan_midnight_oil(
+    req: MidnightOilBudgetProviderAdapterPlanRequest,
+) -> MidnightOilBudgetProviderAdapterPlanReceipt:
+    run_id = req.launch_packet.run_id
+    return MidnightOilBudgetProviderAdapterPlanReceipt(
+        receipt_id=f"{run_id}-budget-provider-adapter-plan",
+        runner_control_plan_receipt_id=req.runner_control_plan_receipt.receipt_id,
+        runner_readiness_receipt_id=(
+            req.runner_control_plan_receipt.runner_readiness_receipt_id
+        ),
+        runner_handoff_id=req.runner_handoff.handoff_id,
+        approval_receipt_id=req.approval_receipt.receipt_id,
+        launch_packet_id=req.launch_packet.packet_id,
+        run_id=run_id,
+        planned_adapter_id=f"{run_id}-budget-provider-adapter",
+        planned_ledger_id=f"{run_id}-budget-reservation-ledger",
+        idempotency_key=(
+            f"{req.launch_packet.packet_id}:"
+            f"{req.approval_receipt.receipt_id}:budget_reservation_provider"
+        ),
+        approved_price_ceiling_usd=req.approval_receipt.approved_price_ceiling_usd,
+        planned_budget_usd=req.approval_receipt.planned_budget_usd,
+        unallocated_budget_usd=req.approval_receipt.unallocated_budget_usd,
+        required_invariants=[
+            "adapter must reject reservations above the approved price ceiling",
+            "adapter must be idempotent for the same launch packet and approval receipt",
+            "adapter must write a durable ledger row before any provider execution can proceed",
+            "adapter must expose an explicit release path for cancelled or failed live runs",
+            "adapter must remain disabled until operator live-run controls and credentials are present",
+        ],
+        required_ledger_fields=[
+            "reservation_id",
+            "run_id",
+            "launch_packet_id",
+            "approval_receipt_id",
+            "approved_price_ceiling_usd",
+            "planned_budget_usd",
+            "reserved_budget_usd",
+            "idempotency_key",
+            "status",
+            "created_at",
+            "released_at",
+        ],
+        budget_reservation_allowed=False,
+        budget_reserved=False,
+        live_run_allowed=False,
+        dispatch_allowed=False,
+        provider_execution_allowed=False,
+        retrieval_allowed=False,
+        graph_mutation_allowed=False,
+        final_artifact_allowed=False,
+        dispatch_performed=False,
+        provider_calls_made=False,
+        retrieval_performed=False,
+        graph_mutated=False,
+        final_artifact_created=False,
+        adapter_plan_notes=[
+            "budget provider adapter plan only: no reservation provider is configured or invoked",
+            "this receipt documents invariants and ledger fields required before live budget holds",
             "no dispatch, budget reservation, provider call, retrieval, graph mutation, or artifact write is performed",
         ],
     )
