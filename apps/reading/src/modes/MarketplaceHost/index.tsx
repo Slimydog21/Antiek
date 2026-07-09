@@ -31,6 +31,7 @@
  * Residual (iu): host-result one-click floating deep research on hosted book
  * (reading ≡ research flywheel; decision-tree driver chokepoint).
  * Residual (iv): host-result deep research full window mode (parity hosted es).
+ * Residual (iw): library row deep research launch parity (float|full).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -280,6 +281,63 @@ export default function MarketplaceHost({
         e instanceof Error ? e.message : "Deep research launch failed",
       );
     } finally {
+      setHostDrBusy(false);
+    }
+  }
+
+  /**
+   * Residual (iw): deep research from library row — rehydrate HTML then launch.
+   */
+  async function onDeepResearchLibraryDoc(
+    doc: LibraryDoc,
+    viewMode: "floating" | "full" = "floating",
+  ) {
+    if ((doc.view_format || "html") !== "html") {
+      setError("view_format must be html — PDF is not a research surface");
+      return;
+    }
+    setHostDrBusy(true);
+    setHostDrStatus(null);
+    setError(null);
+    try {
+      let html = "";
+      let title = doc.title || doc.document_id;
+      if (
+        hosted &&
+        hosted.document_id === doc.document_id &&
+        hosted.html &&
+        hosted.view_format === "html"
+      ) {
+        html = hosted.html;
+        title = hosted.title || title;
+      } else {
+        const body = await fetchHostedDocumentHtml(doc.document_id);
+        if (body.view_format !== "html") {
+          throw new Error("document view_format must be html");
+        }
+        html = body.html || "";
+        title = body.title || title;
+      }
+      await onDeepResearchHostedBook(
+        {
+          document_id: doc.document_id,
+          owner_id: ownerId,
+          book_id: doc.document_id,
+          content_hash: "",
+          title: title || doc.document_id,
+          license_class: doc.license_class || "unknown",
+          already_hosted: true,
+          source_format: "html",
+          library_document_ids: [doc.document_id],
+          view_format: "html",
+          html,
+        },
+        viewMode,
+      );
+    } catch (e) {
+      setHostDrStatus(
+        e instanceof Error ? e.message : "Library deep research failed",
+      );
       setHostDrBusy(false);
     }
   }
@@ -902,6 +960,29 @@ export default function MarketplaceHost({
                     >
                       Open Write
                     </a>
+                    {/* Residual (iw): library → floating|full deep research. */}
+                    <button
+                      type="button"
+                      data-testid={`library-deep-research-${d.document_id}`}
+                      data-view-mode="floating"
+                      className="text-xs font-mono border rounded px-2 py-1"
+                      disabled={hostDrBusy || busy}
+                      onClick={() => void onDeepResearchLibraryDoc(d, "floating")}
+                      title="Floating deep research on library HTML document"
+                    >
+                      DR float
+                    </button>
+                    <button
+                      type="button"
+                      data-testid={`library-deep-research-full-${d.document_id}`}
+                      data-view-mode="full"
+                      className="text-xs font-mono border rounded px-2 py-1"
+                      disabled={hostDrBusy || busy}
+                      onClick={() => void onDeepResearchLibraryDoc(d, "full")}
+                      title="Full deep research on library HTML document"
+                    >
+                      DR full
+                    </button>
                   </div>
                 ) : null}
               </li>

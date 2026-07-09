@@ -1,0 +1,11 @@
+# inventory-iw · library row deep research · residual (iw)
+
+## Delta
+- library-deep-research-{id} float + library-deep-research-full-{id}
+- onDeepResearchLibraryDoc rehydrates HTML then launches DR
+
+## Verified
+vitest MarketplaceHost 8_passed
+
+## Next
+(ix) re-derive

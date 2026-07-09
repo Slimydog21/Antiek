@@ -264,6 +264,25 @@ describe("MarketplaceHost mode", () => {
     const libWrite = screen.getByTestId("library-open-write-hdoc_abc");
     expect(libWrite.getAttribute("href")).toBe("/write?html_draft=hdoc_abc");
     expect(libWrite.getAttribute("data-view-format")).toBe("html");
+    // Residual (iw): library row deep research float|full.
+    fireEvent.click(screen.getByTestId("library-deep-research-hdoc_abc"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "hdoc_abc",
+          view_mode: "floating",
+        }),
+      );
+    });
+    fireEvent.click(screen.getByTestId("library-deep-research-full-hdoc_abc"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "hdoc_abc",
+          view_mode: "full",
+        }),
+      );
+    });
     expect(screen.getByTestId("library-filter-count").textContent).toMatch(
       /Showing 1 of 1/,
     );
