@@ -3,6 +3,6 @@
 
 CAPABILITY | STATUS | EVIDENCE
 (a)–(bb) prior | branch_only | campaign inventories
-(bc) context search twins+refs | branch_only | context_search.py; POST /engagement/context-search; ResearchContextPanel Search twins/refs; tests; THIS CYCLE
+(bc) context search twins+refs | branch_only | context_search.py; POST /engagement/context-search; ResearchContextPanel Search twins/refs; tests; @ f988157c
 
 NEXT: (bd) settings Antiek-bench leaderboard product polish; operator merge PR #465
