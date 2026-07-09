@@ -265,6 +265,72 @@ class MidnightOilDispatchReceipt(BaseModel):
     dispatch_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilActivationChecklistRequest(BaseModel):
+    launch_packet: MidnightOilLaunchPacket
+    approval_receipt: MidnightOilApprovalReceipt
+    runner_handoff: MidnightOilRunnerHandoff
+    applied_run_receipt: MidnightOilAppliedRunReceipt
+    dispatch_receipt: MidnightOilDispatchReceipt
+
+    @model_validator(mode="after")
+    def _receipt_chain_matches(self) -> MidnightOilActivationChecklistRequest:
+        if self.approval_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("approval_receipt must reference launch_packet")
+        if self.runner_handoff.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("runner_handoff must reference launch_packet")
+        if self.runner_handoff.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("runner_handoff must reference approval_receipt")
+        if self.applied_run_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("applied_run_receipt must reference launch_packet")
+        if self.applied_run_receipt.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("applied_run_receipt must reference approval_receipt")
+        if self.applied_run_receipt.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError("applied_run_receipt must reference runner_handoff")
+        if self.dispatch_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("dispatch_receipt must reference launch_packet")
+        if self.dispatch_receipt.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("dispatch_receipt must reference approval_receipt")
+        if self.dispatch_receipt.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError("dispatch_receipt must reference runner_handoff")
+        if self.dispatch_receipt.applied_run_receipt_id != self.applied_run_receipt.receipt_id:
+            raise ValueError("dispatch_receipt must reference applied_run_receipt")
+        if self.dispatch_receipt.status != "blocked_live_dispatch_disabled":
+            raise ValueError("dispatch_receipt must be blocked_live_dispatch_disabled")
+        if self.dispatch_receipt.dispatch_performed:
+            raise ValueError("dispatch_receipt must not dispatch")
+        if self.dispatch_receipt.budget_reserved:
+            raise ValueError("dispatch_receipt must not reserve budget")
+        if self.dispatch_receipt.provider_calls_made:
+            raise ValueError("dispatch_receipt must not include provider calls")
+        if self.dispatch_receipt.retrieval_performed:
+            raise ValueError("dispatch_receipt must not perform retrieval")
+        if self.dispatch_receipt.graph_mutated:
+            raise ValueError("dispatch_receipt must not mutate graph")
+        if self.dispatch_receipt.final_artifact_created:
+            raise ValueError("dispatch_receipt must not create final artifact")
+        return self
+
+
+class MidnightOilActivationChecklistReceipt(BaseModel):
+    receipt_id: str
+    dispatch_receipt_id: str
+    applied_run_receipt_id: str
+    runner_handoff_id: str
+    approval_receipt_id: str
+    launch_packet_id: str
+    run_id: str
+    status: Literal["activation_blocked_controls_missing"] = "activation_blocked_controls_missing"
+    completed_items: list[str]
+    missing_items: list[str]
+    dispatch_allowed: bool = False
+    budget_reservation_allowed: bool = False
+    provider_execution_allowed: bool = False
+    retrieval_allowed: bool = False
+    graph_mutation_allowed: bool = False
+    final_artifact_allowed: bool = False
+    checklist_notes: list[str] = Field(default_factory=list)
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -364,6 +430,47 @@ def dispatch_midnight_oil(req: MidnightOilDispatchRequest) -> MidnightOilDispatc
             "live dispatch gate only: autonomous runner execution is disabled",
             "no budget reserved, provider calls made, retrieval performed, or graph mutation",
             "future live runner must replace this blocked receipt after operator-enabled controls",
+        ],
+    )
+
+
+def activation_checklist_midnight_oil(
+    req: MidnightOilActivationChecklistRequest,
+) -> MidnightOilActivationChecklistReceipt:
+    return MidnightOilActivationChecklistReceipt(
+        receipt_id=f"{req.launch_packet.run_id}-activation-checklist",
+        dispatch_receipt_id=req.dispatch_receipt.receipt_id,
+        applied_run_receipt_id=req.applied_run_receipt.receipt_id,
+        runner_handoff_id=req.runner_handoff.handoff_id,
+        approval_receipt_id=req.approval_receipt.receipt_id,
+        launch_packet_id=req.launch_packet.packet_id,
+        run_id=req.launch_packet.run_id,
+        completed_items=[
+            "operator acknowledged spend ceiling for preflight",
+            "launch packet exists",
+            "approval receipt exists",
+            "runner handoff exists",
+            "applied run receipt exists",
+            "blocked dispatch receipt exists",
+        ],
+        missing_items=[
+            "operator live-run activation setting",
+            "budget reservation provider",
+            "model/provider route executor",
+            "retrieval executor with source receipts",
+            "graph mutation writer",
+            "final HTML artifact writer",
+        ],
+        dispatch_allowed=False,
+        budget_reservation_allowed=False,
+        provider_execution_allowed=False,
+        retrieval_allowed=False,
+        graph_mutation_allowed=False,
+        final_artifact_allowed=False,
+        checklist_notes=[
+            "activation checklist only: live execution remains blocked",
+            "no budget reservation, provider call, retrieval, graph mutation, or artifact write is allowed",
+            "future live runner must satisfy every missing item before replacing this receipt",
         ],
     )
 

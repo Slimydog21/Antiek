@@ -10,12 +10,15 @@ from __future__ import annotations
 from fastapi import APIRouter, FastAPI
 
 from substrate.midnight_oil import (
+    MidnightOilActivationChecklistReceipt,
+    MidnightOilActivationChecklistRequest,
     MidnightOilAppliedRunReceipt,
     MidnightOilDispatchReceipt,
     MidnightOilDispatchRequest,
     MidnightOilDryRunRequest,
     MidnightOilPreflight,
     MidnightOilRequest,
+    activation_checklist_midnight_oil,
     dispatch_midnight_oil,
     dry_run_midnight_oil,
     preflight_midnight_oil,
@@ -39,12 +42,20 @@ def post_midnight_oil_dispatch(req: MidnightOilDispatchRequest) -> MidnightOilDi
     return dispatch_midnight_oil(req)
 
 
+@midnight_oil_router.post("/activation-checklist", response_model=MidnightOilActivationChecklistReceipt)
+def post_midnight_oil_activation_checklist(
+    req: MidnightOilActivationChecklistRequest,
+) -> MidnightOilActivationChecklistReceipt:
+    return activation_checklist_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
 
 __all__ = [
     "midnight_oil_router",
+    "post_midnight_oil_activation_checklist",
     "post_midnight_oil_dispatch",
     "post_midnight_oil_dry_run",
     "post_midnight_oil_preflight",

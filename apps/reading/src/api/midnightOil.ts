@@ -174,6 +174,34 @@ export interface MidnightOilDispatchReceipt {
   dispatch_notes: string[];
 }
 
+export interface MidnightOilActivationChecklistRequest {
+  launch_packet: MidnightOilLaunchPacket;
+  approval_receipt: MidnightOilApprovalReceipt;
+  runner_handoff: MidnightOilRunnerHandoff;
+  applied_run_receipt: MidnightOilAppliedRunReceipt;
+  dispatch_receipt: MidnightOilDispatchReceipt;
+}
+
+export interface MidnightOilActivationChecklistReceipt {
+  receipt_id: string;
+  dispatch_receipt_id: string;
+  applied_run_receipt_id: string;
+  runner_handoff_id: string;
+  approval_receipt_id: string;
+  launch_packet_id: string;
+  run_id: string;
+  status: "activation_blocked_controls_missing";
+  completed_items: string[];
+  missing_items: string[];
+  dispatch_allowed: boolean;
+  budget_reservation_allowed: boolean;
+  provider_execution_allowed: boolean;
+  retrieval_allowed: boolean;
+  graph_mutation_allowed: boolean;
+  final_artifact_allowed: boolean;
+  checklist_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -217,4 +245,19 @@ export async function dispatchMidnightOil(
     throw new Error(`POST /research/midnight-oil/dispatch: HTTP ${resp.status}: ${body}`);
   }
   return (await resp.json()) as MidnightOilDispatchReceipt;
+}
+
+export async function activationChecklistMidnightOil(
+  request: MidnightOilActivationChecklistRequest,
+): Promise<MidnightOilActivationChecklistReceipt> {
+  const resp = await apiFetch(`${API_BASE}/research/midnight-oil/activation-checklist`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`POST /research/midnight-oil/activation-checklist: HTTP ${resp.status}: ${body}`);
+  }
+  return (await resp.json()) as MidnightOilActivationChecklistReceipt;
 }

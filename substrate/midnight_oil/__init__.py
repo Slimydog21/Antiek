@@ -1,6 +1,8 @@
 """Midnight-oil autonomous research contracts."""
 
 from .contracts import (
+    MidnightOilActivationChecklistReceipt,
+    MidnightOilActivationChecklistRequest,
     MidnightOilAppliedRunReceipt,
     MidnightOilApprovalReceipt,
     MidnightOilArtifactContract,
@@ -12,12 +14,15 @@ from .contracts import (
     MidnightOilRequest,
     MidnightOilRolePlan,
     MidnightOilRunnerHandoff,
+    activation_checklist_midnight_oil,
     dispatch_midnight_oil,
     dry_run_midnight_oil,
     preflight_midnight_oil,
 )
 
 __all__ = [
+    "MidnightOilActivationChecklistReceipt",
+    "MidnightOilActivationChecklistRequest",
     "MidnightOilAppliedRunReceipt",
     "MidnightOilApprovalReceipt",
     "MidnightOilArtifactContract",
@@ -29,6 +34,7 @@ __all__ = [
     "MidnightOilRequest",
     "MidnightOilRolePlan",
     "MidnightOilRunnerHandoff",
+    "activation_checklist_midnight_oil",
     "dispatch_midnight_oil",
     "dry_run_midnight_oil",
     "preflight_midnight_oil",
