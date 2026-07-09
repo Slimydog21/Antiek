@@ -2587,7 +2587,7 @@ function StatusPanel({
 }) {
   const message: Record<RenderState, string> = {
     pending: "Waiting for plan approval. No paid media calls have started.",
-    rendering: "Rendering dry-run package. Provider calls are queued behind budget approval.",
+    rendering: "Rendering dry-run package. Provider calls remain behind separate budget approval and are not started here.",
     partial: "Partial render available. One visual beat fell back to a placeholder.",
     failed: "Render failed. The manifest and transcript are retained for retry.",
     over_budget: "Over budget. Choose a cheaper route or approve a higher ceiling.",

@@ -396,6 +396,23 @@ describe("Multimedia workstation", () => {
     expect(screen.getByRole("status").textContent).toContain("Partial render available");
   });
 
+  it("keeps failed render retry in dry-run mode without provider activation", async () => {
+    await reviewPlan();
+    fireEvent.click(screen.getByRole("button", { name: "Approve render" }));
+    await screen.findByTestId("multimedia-player");
+
+    fireEvent.click(screen.getByRole("button", { name: "Sim failed" }));
+    expect(screen.getByRole("status").textContent).toContain("Render failed");
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry render" }));
+    expect(screen.getByRole("status").textContent).toContain(
+      "Rendering dry-run package. Provider calls remain behind separate budget approval and are not started here.",
+    );
+    expect(
+      screen.getByText("Simulator and fallback controls change preview state or route only; they do not call providers, export, or publish media."),
+    ).toBeTruthy();
+  });
+
   it("highlights the current transcript segment and source card when a chapter is inspected", async () => {
     await reviewPlan();
     fireEvent.click(screen.getByRole("button", { name: "Approve render" }));
