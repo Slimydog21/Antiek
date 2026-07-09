@@ -1816,6 +1816,158 @@ class MidnightOilRetrievalAdapterPlanReceipt(BaseModel):
     adapter_plan_notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilGraphAdapterPlanRequest(BaseModel):
+    launch_packet: MidnightOilLaunchPacket
+    approval_receipt: MidnightOilApprovalReceipt
+    runner_handoff: MidnightOilRunnerHandoff
+    runner_control_plan_receipt: MidnightOilRunnerControlPlanReceipt
+    budget_provider_adapter_plan_receipt: MidnightOilBudgetProviderAdapterPlanReceipt
+    provider_executor_adapter_plan_receipt: MidnightOilProviderExecutorAdapterPlanReceipt
+    retrieval_adapter_plan_receipt: MidnightOilRetrievalAdapterPlanReceipt
+
+    @model_validator(mode="after")
+    def _receipt_chain_matches(self) -> MidnightOilGraphAdapterPlanRequest:
+        if self.approval_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("approval_receipt must reference launch_packet")
+        if self.runner_handoff.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("runner_handoff must reference launch_packet")
+        if self.runner_handoff.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("runner_handoff must reference approval_receipt")
+        if self.runner_control_plan_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("runner_control_plan_receipt must reference launch_packet")
+        if self.runner_control_plan_receipt.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("runner_control_plan_receipt must reference approval_receipt")
+        if self.runner_control_plan_receipt.runner_handoff_id != self.runner_handoff.handoff_id:
+            raise ValueError("runner_control_plan_receipt must reference runner_handoff")
+        if self.runner_control_plan_receipt.status != "blocked_runner_controls_unimplemented":
+            raise ValueError("runner_control_plan_receipt must be blocked_runner_controls_unimplemented")
+        if "graph_mutation_writer" not in self.runner_control_plan_receipt.requested_control_scope:
+            raise ValueError("runner_control_plan_receipt must request graph_mutation_writer")
+        if (
+            self.budget_provider_adapter_plan_receipt.runner_control_plan_receipt_id
+            != self.runner_control_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "budget_provider_adapter_plan_receipt must reference runner_control_plan_receipt"
+            )
+        if (
+            self.budget_provider_adapter_plan_receipt.status
+            != "blocked_budget_provider_adapter_unimplemented"
+        ):
+            raise ValueError(
+                "budget_provider_adapter_plan_receipt must be blocked_budget_provider_adapter_unimplemented"
+            )
+        if (
+            self.provider_executor_adapter_plan_receipt.budget_provider_adapter_plan_receipt_id
+            != self.budget_provider_adapter_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "provider_executor_adapter_plan_receipt must reference budget_provider_adapter_plan_receipt"
+            )
+        if (
+            self.provider_executor_adapter_plan_receipt.status
+            != "blocked_provider_executor_adapter_unimplemented"
+        ):
+            raise ValueError(
+                "provider_executor_adapter_plan_receipt must be blocked_provider_executor_adapter_unimplemented"
+            )
+        if (
+            self.retrieval_adapter_plan_receipt.provider_executor_adapter_plan_receipt_id
+            != self.provider_executor_adapter_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "retrieval_adapter_plan_receipt must reference provider_executor_adapter_plan_receipt"
+            )
+        if (
+            self.retrieval_adapter_plan_receipt.budget_provider_adapter_plan_receipt_id
+            != self.budget_provider_adapter_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "retrieval_adapter_plan_receipt must reference budget_provider_adapter_plan_receipt"
+            )
+        if (
+            self.retrieval_adapter_plan_receipt.runner_control_plan_receipt_id
+            != self.runner_control_plan_receipt.receipt_id
+        ):
+            raise ValueError(
+                "retrieval_adapter_plan_receipt must reference runner_control_plan_receipt"
+            )
+        if self.retrieval_adapter_plan_receipt.status != "blocked_retrieval_adapter_unimplemented":
+            raise ValueError(
+                "retrieval_adapter_plan_receipt must be blocked_retrieval_adapter_unimplemented"
+            )
+        receipts = (
+            self.runner_control_plan_receipt,
+            self.budget_provider_adapter_plan_receipt,
+            self.provider_executor_adapter_plan_receipt,
+            self.retrieval_adapter_plan_receipt,
+        )
+        if any(receipt.live_run_allowed for receipt in receipts):
+            raise ValueError("receipt chain must not allow live run")
+        if any(receipt.dispatch_allowed or receipt.dispatch_performed for receipt in receipts):
+            raise ValueError("receipt chain must not dispatch")
+        if any(
+            receipt.budget_reservation_allowed or receipt.budget_reserved for receipt in receipts
+        ):
+            raise ValueError("receipt chain must not reserve budget")
+        if any(
+            receipt.provider_execution_allowed or receipt.provider_calls_made
+            for receipt in receipts
+        ):
+            raise ValueError("receipt chain must not include provider calls")
+        if any(receipt.retrieval_allowed or receipt.retrieval_performed for receipt in receipts):
+            raise ValueError("receipt chain must not perform retrieval")
+        if self.retrieval_adapter_plan_receipt.source_receipts_created:
+            raise ValueError("receipt chain must not create source receipts")
+        if any(receipt.graph_mutation_allowed or receipt.graph_mutated for receipt in receipts):
+            raise ValueError("receipt chain must not mutate graph")
+        if any(
+            receipt.final_artifact_allowed or receipt.final_artifact_created
+            for receipt in receipts
+        ):
+            raise ValueError("receipt chain must not create final artifact")
+        return self
+
+
+class MidnightOilGraphAdapterPlanReceipt(BaseModel):
+    receipt_id: str
+    runner_control_plan_receipt_id: str
+    budget_provider_adapter_plan_receipt_id: str
+    provider_executor_adapter_plan_receipt_id: str
+    retrieval_adapter_plan_receipt_id: str
+    runner_readiness_receipt_id: str
+    runner_handoff_id: str
+    approval_receipt_id: str
+    launch_packet_id: str
+    run_id: str
+    status: Literal["blocked_graph_adapter_unimplemented"] = (
+        "blocked_graph_adapter_unimplemented"
+    )
+    adapter_key: Literal["graph_mutation_writer"] = "graph_mutation_writer"
+    planned_writer_id: str
+    planned_graph_ledger_id: str
+    planned_graph_node_ids: list[str]
+    planned_graph_edge_ids: list[str]
+    required_invariants: list[str]
+    required_graph_receipt_fields: list[str]
+    blocker_reason: Literal["graph_adapter_unimplemented"] = "graph_adapter_unimplemented"
+    graph_mutation_allowed: bool = False
+    graph_mutated: bool = False
+    source_receipts_created: bool = False
+    retrieval_allowed: bool = False
+    retrieval_performed: bool = False
+    provider_execution_allowed: bool = False
+    provider_calls_made: bool = False
+    live_run_allowed: bool = False
+    dispatch_allowed: bool = False
+    budget_reservation_allowed: bool = False
+    budget_reserved: bool = False
+    final_artifact_allowed: bool = False
+    dispatch_performed: bool = False
+    final_artifact_created: bool = False
+    adapter_plan_notes: list[str] = Field(default_factory=list)
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -2484,6 +2636,78 @@ def retrieval_adapter_plan_midnight_oil(
             "retrieval adapter plan only: no source connector is configured or invoked",
             "this receipt documents source receipt invariants required before retrieval execution",
             "no dispatch, budget reservation, provider call, retrieval, graph mutation, or artifact write is performed",
+        ],
+    )
+
+
+def graph_adapter_plan_midnight_oil(
+    req: MidnightOilGraphAdapterPlanRequest,
+) -> MidnightOilGraphAdapterPlanReceipt:
+    run_id = req.launch_packet.run_id
+    planned_graph_node_ids = [
+        f"{run_id}-run-node",
+        *[f"{run_id}-{source}-source-node" for source in req.launch_packet.source_policy],
+    ]
+    planned_graph_edge_ids = [
+        f"{run_id}-{source}-cites-edge" for source in req.launch_packet.source_policy
+    ]
+    return MidnightOilGraphAdapterPlanReceipt(
+        receipt_id=f"{run_id}-graph-adapter-plan",
+        runner_control_plan_receipt_id=req.runner_control_plan_receipt.receipt_id,
+        budget_provider_adapter_plan_receipt_id=(
+            req.budget_provider_adapter_plan_receipt.receipt_id
+        ),
+        provider_executor_adapter_plan_receipt_id=(
+            req.provider_executor_adapter_plan_receipt.receipt_id
+        ),
+        retrieval_adapter_plan_receipt_id=req.retrieval_adapter_plan_receipt.receipt_id,
+        runner_readiness_receipt_id=(
+            req.runner_control_plan_receipt.runner_readiness_receipt_id
+        ),
+        runner_handoff_id=req.runner_handoff.handoff_id,
+        approval_receipt_id=req.approval_receipt.receipt_id,
+        launch_packet_id=req.launch_packet.packet_id,
+        run_id=run_id,
+        planned_writer_id=f"{run_id}-graph-adapter",
+        planned_graph_ledger_id=f"{run_id}-graph-mutation-ledger",
+        planned_graph_node_ids=planned_graph_node_ids,
+        planned_graph_edge_ids=planned_graph_edge_ids,
+        required_invariants=[
+            "graph adapter must require source receipts before any graph write",
+            "graph adapter must write idempotent nodes and edges keyed by run and source receipt",
+            "graph adapter must preserve provenance links to route and source receipts",
+            "graph adapter must reject graph writes without an approved HTML asset contract",
+            "graph adapter must remain disabled until graph storage credentials and live-run controls are present",
+        ],
+        required_graph_receipt_fields=[
+            "graph_receipt_id",
+            "run_id",
+            "node_ids",
+            "edge_ids",
+            "source_receipt_ids",
+            "route_receipt_ids",
+            "content_digest",
+            "idempotency_key",
+            "created_at",
+        ],
+        graph_mutation_allowed=False,
+        graph_mutated=False,
+        source_receipts_created=False,
+        retrieval_allowed=False,
+        retrieval_performed=False,
+        provider_execution_allowed=False,
+        provider_calls_made=False,
+        live_run_allowed=False,
+        dispatch_allowed=False,
+        budget_reservation_allowed=False,
+        budget_reserved=False,
+        final_artifact_allowed=False,
+        dispatch_performed=False,
+        final_artifact_created=False,
+        adapter_plan_notes=[
+            "graph adapter plan only: no graph writer is configured or invoked",
+            "this receipt documents graph mutation invariants required before graph writes",
+            "no dispatch, budget reservation, provider call, retrieval, source receipt, graph mutation, or artifact write is performed",
         ],
     )
 

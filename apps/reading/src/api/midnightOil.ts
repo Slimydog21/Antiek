@@ -664,6 +664,53 @@ export interface MidnightOilRetrievalAdapterPlanReceipt {
   adapter_plan_notes: string[];
 }
 
+export interface MidnightOilGraphAdapterPlanRequest {
+  launch_packet: MidnightOilLaunchPacket;
+  approval_receipt: MidnightOilApprovalReceipt;
+  runner_handoff: MidnightOilRunnerHandoff;
+  runner_control_plan_receipt: MidnightOilRunnerControlPlanReceipt;
+  budget_provider_adapter_plan_receipt: MidnightOilBudgetProviderAdapterPlanReceipt;
+  provider_executor_adapter_plan_receipt: MidnightOilProviderExecutorAdapterPlanReceipt;
+  retrieval_adapter_plan_receipt: MidnightOilRetrievalAdapterPlanReceipt;
+}
+
+export interface MidnightOilGraphAdapterPlanReceipt {
+  receipt_id: string;
+  runner_control_plan_receipt_id: string;
+  budget_provider_adapter_plan_receipt_id: string;
+  provider_executor_adapter_plan_receipt_id: string;
+  retrieval_adapter_plan_receipt_id: string;
+  runner_readiness_receipt_id: string;
+  runner_handoff_id: string;
+  approval_receipt_id: string;
+  launch_packet_id: string;
+  run_id: string;
+  status: "blocked_graph_adapter_unimplemented";
+  adapter_key: "graph_mutation_writer";
+  planned_writer_id: string;
+  planned_graph_ledger_id: string;
+  planned_graph_node_ids: string[];
+  planned_graph_edge_ids: string[];
+  required_invariants: string[];
+  required_graph_receipt_fields: string[];
+  blocker_reason: "graph_adapter_unimplemented";
+  graph_mutation_allowed: boolean;
+  graph_mutated: boolean;
+  source_receipts_created: boolean;
+  retrieval_allowed: boolean;
+  retrieval_performed: boolean;
+  provider_execution_allowed: boolean;
+  provider_calls_made: boolean;
+  live_run_allowed: boolean;
+  dispatch_allowed: boolean;
+  budget_reservation_allowed: boolean;
+  budget_reserved: boolean;
+  final_artifact_allowed: boolean;
+  dispatch_performed: boolean;
+  final_artifact_created: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -895,4 +942,21 @@ export async function retrievalAdapterPlanMidnightOil(
     );
   }
   return (await resp.json()) as MidnightOilRetrievalAdapterPlanReceipt;
+}
+
+export async function graphAdapterPlanMidnightOil(
+  request: MidnightOilGraphAdapterPlanRequest,
+): Promise<MidnightOilGraphAdapterPlanReceipt> {
+  const resp = await apiFetch(`${API_BASE}/research/midnight-oil/graph-adapter-plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/graph-adapter-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilGraphAdapterPlanReceipt;
 }

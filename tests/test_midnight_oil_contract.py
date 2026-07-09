@@ -13,6 +13,7 @@ from substrate.midnight_oil import (
     MidnightOilDispatchRequest,
     MidnightOilDryRunRequest,
     MidnightOilFinalArtifactRequest,
+    MidnightOilGraphAdapterPlanRequest,
     MidnightOilGraphMutationRequest,
     MidnightOilLiveRunActivationSettingsRequest,
     MidnightOilProviderExecutorAdapterPlanRequest,
@@ -28,6 +29,7 @@ from substrate.midnight_oil import (
     dispatch_midnight_oil,
     dry_run_midnight_oil,
     final_artifact_midnight_oil,
+    graph_adapter_plan_midnight_oil,
     graph_mutation_midnight_oil,
     live_run_activation_settings_midnight_oil,
     preflight_midnight_oil,
@@ -2999,4 +3001,297 @@ def test_midnight_oil_retrieval_adapter_plan_api_contract() -> None:
     assert body["final_artifact_allowed"] is False
     assert body["dispatch_performed"] is False
     assert body["graph_mutated"] is False
+    assert body["final_artifact_created"] is False
+
+
+def test_graph_adapter_plan_records_disabled_graph_requirements() -> None:
+    chain = _accepted_midnight_oil_gate_chain(
+        goal="Plan a graph adapter for a midnight oil source graph.",
+        source_policy=["arxiv", "web"],
+    )
+    preflight = chain["preflight"]
+    readiness = runner_readiness_midnight_oil(
+        MidnightOilRunnerReadinessRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            live_run_activation_settings_receipt=chain["live_settings"],
+            dispatch_receipt=chain["dispatch"],
+            activation_checklist_receipt=chain["checklist"],
+            budget_reservation_receipt=chain["reservation"],
+            provider_route_receipt=chain["provider_route"],
+            retrieval_receipt=chain["retrieval"],
+            graph_mutation_receipt=chain["graph"],
+            final_artifact_receipt=chain["final_artifact"],
+        )
+    )
+    control_plan = runner_control_plan_midnight_oil(
+        MidnightOilRunnerControlPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_readiness_receipt=readiness,
+            requested_control_scope=[
+                "budget_reservation_provider",
+                "model_provider_route_executor",
+                "retrieval_executor_source_receipts",
+                "graph_mutation_writer",
+            ],
+        )
+    )
+    budget_adapter_plan = budget_provider_adapter_plan_midnight_oil(
+        MidnightOilBudgetProviderAdapterPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=control_plan,
+        )
+    )
+    provider_adapter_plan = provider_executor_adapter_plan_midnight_oil(
+        MidnightOilProviderExecutorAdapterPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=control_plan,
+            budget_provider_adapter_plan_receipt=budget_adapter_plan,
+        )
+    )
+    retrieval_adapter_plan = retrieval_adapter_plan_midnight_oil(
+        MidnightOilRetrievalAdapterPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=control_plan,
+            budget_provider_adapter_plan_receipt=budget_adapter_plan,
+            provider_executor_adapter_plan_receipt=provider_adapter_plan,
+        )
+    )
+
+    graph_adapter_plan = graph_adapter_plan_midnight_oil(
+        MidnightOilGraphAdapterPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=control_plan,
+            budget_provider_adapter_plan_receipt=budget_adapter_plan,
+            provider_executor_adapter_plan_receipt=provider_adapter_plan,
+            retrieval_adapter_plan_receipt=retrieval_adapter_plan,
+        )
+    )
+
+    assert graph_adapter_plan.receipt_id == f"{preflight.run_id}-graph-adapter-plan"
+    assert graph_adapter_plan.retrieval_adapter_plan_receipt_id == retrieval_adapter_plan.receipt_id
+    assert graph_adapter_plan.status == "blocked_graph_adapter_unimplemented"
+    assert graph_adapter_plan.adapter_key == "graph_mutation_writer"
+    assert graph_adapter_plan.planned_writer_id == f"{preflight.run_id}-graph-adapter"
+    assert graph_adapter_plan.planned_graph_ledger_id == f"{preflight.run_id}-graph-mutation-ledger"
+    assert graph_adapter_plan.planned_graph_node_ids == [
+        f"{preflight.run_id}-run-node",
+        f"{preflight.run_id}-arxiv-source-node",
+        f"{preflight.run_id}-web-source-node",
+    ]
+    assert graph_adapter_plan.planned_graph_edge_ids == [
+        f"{preflight.run_id}-arxiv-cites-edge",
+        f"{preflight.run_id}-web-cites-edge",
+    ]
+    assert "source receipts" in graph_adapter_plan.required_invariants[0]
+    assert "node_ids" in graph_adapter_plan.required_graph_receipt_fields
+    assert "source_receipt_ids" in graph_adapter_plan.required_graph_receipt_fields
+    assert graph_adapter_plan.blocker_reason == "graph_adapter_unimplemented"
+    assert graph_adapter_plan.graph_mutation_allowed is False
+    assert graph_adapter_plan.graph_mutated is False
+    assert graph_adapter_plan.source_receipts_created is False
+    assert graph_adapter_plan.retrieval_allowed is False
+    assert graph_adapter_plan.retrieval_performed is False
+    assert graph_adapter_plan.provider_execution_allowed is False
+    assert graph_adapter_plan.provider_calls_made is False
+    assert graph_adapter_plan.live_run_allowed is False
+    assert graph_adapter_plan.dispatch_allowed is False
+    assert graph_adapter_plan.budget_reservation_allowed is False
+    assert graph_adapter_plan.budget_reserved is False
+    assert graph_adapter_plan.final_artifact_allowed is False
+    assert graph_adapter_plan.dispatch_performed is False
+    assert graph_adapter_plan.final_artifact_created is False
+    assert "no graph writer is configured" in graph_adapter_plan.adapter_plan_notes[0]
+
+
+def test_graph_adapter_plan_rejects_control_plan_without_graph_scope() -> None:
+    chain = _accepted_midnight_oil_gate_chain(
+        goal="Reject graph adapter planning when graph controls were not requested.",
+        source_policy=["web"],
+    )
+    preflight = chain["preflight"]
+    readiness = runner_readiness_midnight_oil(
+        MidnightOilRunnerReadinessRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            live_run_activation_settings_receipt=chain["live_settings"],
+            dispatch_receipt=chain["dispatch"],
+            activation_checklist_receipt=chain["checklist"],
+            budget_reservation_receipt=chain["reservation"],
+            provider_route_receipt=chain["provider_route"],
+            retrieval_receipt=chain["retrieval"],
+            graph_mutation_receipt=chain["graph"],
+            final_artifact_receipt=chain["final_artifact"],
+        )
+    )
+    control_plan = runner_control_plan_midnight_oil(
+        MidnightOilRunnerControlPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_readiness_receipt=readiness,
+            requested_control_scope=[
+                "budget_reservation_provider",
+                "model_provider_route_executor",
+                "retrieval_executor_source_receipts",
+            ],
+        )
+    )
+    budget_adapter_plan = budget_provider_adapter_plan_midnight_oil(
+        MidnightOilBudgetProviderAdapterPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=control_plan,
+        )
+    )
+    provider_adapter_plan = provider_executor_adapter_plan_midnight_oil(
+        MidnightOilProviderExecutorAdapterPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=control_plan,
+            budget_provider_adapter_plan_receipt=budget_adapter_plan,
+        )
+    )
+    retrieval_adapter_plan = retrieval_adapter_plan_midnight_oil(
+        MidnightOilRetrievalAdapterPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=control_plan,
+            budget_provider_adapter_plan_receipt=budget_adapter_plan,
+            provider_executor_adapter_plan_receipt=provider_adapter_plan,
+        )
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match="runner_control_plan_receipt must request graph_mutation_writer",
+    ):
+        MidnightOilGraphAdapterPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=control_plan,
+            budget_provider_adapter_plan_receipt=budget_adapter_plan,
+            provider_executor_adapter_plan_receipt=provider_adapter_plan,
+            retrieval_adapter_plan_receipt=retrieval_adapter_plan,
+        )
+
+
+def test_midnight_oil_graph_adapter_plan_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    chain = _accepted_midnight_oil_gate_chain(
+        goal="Expose graph adapter planning over the API.",
+        source_policy=["arxiv", "substack"],
+    )
+    preflight = chain["preflight"]
+    readiness = runner_readiness_midnight_oil(
+        MidnightOilRunnerReadinessRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            applied_run_receipt=preflight.applied_run_receipt,
+            live_run_activation_settings_receipt=chain["live_settings"],
+            dispatch_receipt=chain["dispatch"],
+            activation_checklist_receipt=chain["checklist"],
+            budget_reservation_receipt=chain["reservation"],
+            provider_route_receipt=chain["provider_route"],
+            retrieval_receipt=chain["retrieval"],
+            graph_mutation_receipt=chain["graph"],
+            final_artifact_receipt=chain["final_artifact"],
+        )
+    )
+    control_plan = runner_control_plan_midnight_oil(
+        MidnightOilRunnerControlPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_readiness_receipt=readiness,
+            requested_control_scope=[
+                "budget_reservation_provider",
+                "model_provider_route_executor",
+                "retrieval_executor_source_receipts",
+                "graph_mutation_writer",
+            ],
+        )
+    )
+    budget_adapter_plan = budget_provider_adapter_plan_midnight_oil(
+        MidnightOilBudgetProviderAdapterPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=control_plan,
+        )
+    )
+    provider_adapter_plan = provider_executor_adapter_plan_midnight_oil(
+        MidnightOilProviderExecutorAdapterPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=control_plan,
+            budget_provider_adapter_plan_receipt=budget_adapter_plan,
+        )
+    )
+    retrieval_adapter_plan = retrieval_adapter_plan_midnight_oil(
+        MidnightOilRetrievalAdapterPlanRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+            runner_control_plan_receipt=control_plan,
+            budget_provider_adapter_plan_receipt=budget_adapter_plan,
+            provider_executor_adapter_plan_receipt=provider_adapter_plan,
+        )
+    )
+
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/graph-adapter-plan",
+            json={
+                "launch_packet": preflight.launch_packet.model_dump(mode="json"),
+                "approval_receipt": preflight.approval_receipt.model_dump(mode="json"),
+                "runner_handoff": preflight.runner_handoff.model_dump(mode="json"),
+                "runner_control_plan_receipt": control_plan.model_dump(mode="json"),
+                "budget_provider_adapter_plan_receipt": budget_adapter_plan.model_dump(mode="json"),
+                "provider_executor_adapter_plan_receipt": provider_adapter_plan.model_dump(
+                    mode="json"
+                ),
+                "retrieval_adapter_plan_receipt": retrieval_adapter_plan.model_dump(mode="json"),
+            },
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["receipt_id"] == f"{preflight.run_id}-graph-adapter-plan"
+    assert body["retrieval_adapter_plan_receipt_id"] == retrieval_adapter_plan.receipt_id
+    assert body["status"] == "blocked_graph_adapter_unimplemented"
+    assert body["adapter_key"] == "graph_mutation_writer"
+    assert body["planned_writer_id"] == f"{preflight.run_id}-graph-adapter"
+    assert body["planned_graph_ledger_id"] == f"{preflight.run_id}-graph-mutation-ledger"
+    assert "node_ids" in body["required_graph_receipt_fields"]
+    assert "route_receipt_ids" in body["required_graph_receipt_fields"]
+    assert body["blocker_reason"] == "graph_adapter_unimplemented"
+    assert body["graph_mutation_allowed"] is False
+    assert body["graph_mutated"] is False
+    assert body["source_receipts_created"] is False
+    assert body["retrieval_performed"] is False
+    assert body["provider_calls_made"] is False
+    assert body["budget_reserved"] is False
+    assert body["dispatch_performed"] is False
     assert body["final_artifact_created"] is False
