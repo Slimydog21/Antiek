@@ -20,7 +20,7 @@ import type { TraceTarget } from "./writeApi";
 const {
   listDeliverablesMock, getTraceTargetMock, listInvestigationsMock,
   startInvestigationMock, createDeliverableMock, fetchHostedDocumentHtmlMock,
-  createSectionMock, updateSectionProseMock,
+  createSectionMock, updateSectionProseMock, seedTwinNotesMock,
 } = vi.hoisted(() => ({
   listDeliverablesMock: vi.fn(),
   getTraceTargetMock: vi.fn(),
@@ -30,6 +30,7 @@ const {
   fetchHostedDocumentHtmlMock: vi.fn(),
   createSectionMock: vi.fn(),
   updateSectionProseMock: vi.fn(),
+  seedTwinNotesMock: vi.fn(),
 }));
 
 vi.mock("../../lib/api", async (orig) => ({
@@ -46,6 +47,10 @@ vi.mock("../../lib/api", async (orig) => ({
 vi.mock("../../api/marketplaceHost", () => ({
   fetchHostedDocumentHtml: (...args: unknown[]) =>
     fetchHostedDocumentHtmlMock(...args),
+}));
+
+vi.mock("../../api/engagement", () => ({
+  seedTwinNotes: (...args: unknown[]) => seedTwinNotesMock(...args),
 }));
 
 vi.mock("./writeApi", async (orig) => ({
@@ -79,6 +84,14 @@ beforeEach(() => {
     section_id: "sec_import_0",
     claim_node_id: null,
     claim_event_id: null,
+  });
+  seedTwinNotesMock.mockReset().mockResolvedValue({
+    asset_id: "dlv-new",
+    seeded: true,
+    view_format: "html",
+    notes: [],
+    insight_count: 1,
+    question_count: 1,
   });
   fetchHostedDocumentHtmlMock.mockReset().mockResolvedValue({
     document_id: "draft_merge_abc",
@@ -236,6 +249,15 @@ describe("WriteHome — the re-homed door", () => {
         expect.objectContaining({
           prose_text: expect.stringMatching(/Attention is content-addressable/),
           promote_to_graph: false,
+        }),
+      );
+    });
+    // Residual (fz): twin seed on deliverable after import.
+    await waitFor(() => {
+      expect(seedTwinNotesMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "dlv-new",
+          force_offline: true,
         }),
       );
     });

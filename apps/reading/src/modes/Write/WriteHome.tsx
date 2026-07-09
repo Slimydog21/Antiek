@@ -11,6 +11,7 @@ import {
   type DeliverableKind,
   type DeliverableSummary,
 } from "../../lib/api";
+import { seedTwinNotes } from "../../api/engagement";
 import { fetchHostedDocumentHtml } from "../../api/marketplaceHost";
 import GlassSurface from "../../shell/GlassSurface";
 import Canvas from "../DeepResearchWorkspace/Canvas/Canvas";
@@ -54,6 +55,8 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * Residual (fv): nest h2/h3 under preceding higher-level section via
  * parent_section_id when createSection accepts it.
  * Residual (fx): prefer html_fragment for section prose (HTML-first land).
+ * Residual (fz): offline twin seed on deliverable after HTML draft import
+ * (recursive note-taker substrate for the new writing asset).
  */
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
@@ -273,6 +276,18 @@ export default function WriteHome() {
               prose_text: prose.slice(0, 100_000),
               promote_to_graph: false,
             });
+          }
+          // Residual (fz): recursive note-taker twin on the new writing asset.
+          try {
+            await seedTwinNotes({
+              asset_id: d.deliverable_id,
+              title: newTitle.trim() || htmlDraft.title_hint,
+              body_text: htmlDraft.plain_text.slice(0, 2000),
+              include_html: false,
+              force_offline: true,
+            });
+          } catch {
+            // Twin seed optional; piece + sections already landed.
           }
         } catch {
           // Non-fatal: piece still opens; operator can paste from brainstorm seed.
