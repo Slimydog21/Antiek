@@ -10,8 +10,11 @@ from __future__ import annotations
 from fastapi import APIRouter, FastAPI
 
 from substrate.midnight_oil import (
+    MidnightOilAppliedRunReceipt,
+    MidnightOilDryRunRequest,
     MidnightOilPreflight,
     MidnightOilRequest,
+    dry_run_midnight_oil,
     preflight_midnight_oil,
 )
 
@@ -23,12 +26,18 @@ def post_midnight_oil_preflight(req: MidnightOilRequest) -> MidnightOilPreflight
     return preflight_midnight_oil(req)
 
 
+@midnight_oil_router.post("/dry-run", response_model=MidnightOilAppliedRunReceipt)
+def post_midnight_oil_dry_run(req: MidnightOilDryRunRequest) -> MidnightOilAppliedRunReceipt:
+    return dry_run_midnight_oil(req)
+
+
 def register_midnight_oil_routes(app: FastAPI) -> None:
     app.include_router(midnight_oil_router)
 
 
 __all__ = [
     "midnight_oil_router",
+    "post_midnight_oil_dry_run",
     "post_midnight_oil_preflight",
     "register_midnight_oil_routes",
 ]

@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
-from substrate.midnight_oil import MidnightOilRequest, preflight_midnight_oil
+from substrate.midnight_oil import (
+    MidnightOilDryRunRequest,
+    MidnightOilRequest,
+    dry_run_midnight_oil,
+    preflight_midnight_oil,
+)
 
 
 def test_no_ack_request_is_denied_before_dispatch() -> None:
@@ -237,6 +244,66 @@ def test_accepted_preflight_emits_dry_applied_run_receipt_without_side_effects()
     assert "no autonomous agents dispatched" in applied.applied_notes[0]
 
 
+def test_dry_run_endpoint_contract_consumes_matching_receipt_chain() -> None:
+    preflight = preflight_midnight_oil(
+        MidnightOilRequest(
+            goal="Dry-run a midnight oil plan about turbofan maintenance backlogs.",
+            work_minutes=90,
+            price_ceiling_usd=14.0,
+            route_mode="auto_cost",
+            source_policy=["arxiv", "web"],
+            operator_acknowledged_spend=True,
+        )
+    )
+
+    assert preflight.launch_packet is not None
+    assert preflight.approval_receipt is not None
+    assert preflight.runner_handoff is not None
+    dry_run = dry_run_midnight_oil(
+        MidnightOilDryRunRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=preflight.runner_handoff,
+        )
+    )
+
+    assert dry_run.runner_handoff_id == preflight.runner_handoff.handoff_id
+    assert dry_run.approval_receipt_id == preflight.approval_receipt.receipt_id
+    assert dry_run.launch_packet_id == preflight.launch_packet.packet_id
+    assert dry_run.status == "planned_not_dispatched"
+    assert dry_run.dispatch_performed is False
+    assert dry_run.budget_reserved is False
+    assert dry_run.provider_calls_made is False
+    assert dry_run.retrieval_performed is False
+    assert dry_run.graph_mutated is False
+    assert dry_run.final_artifact_created is False
+
+
+def test_dry_run_rejects_mismatched_receipt_chain() -> None:
+    preflight = preflight_midnight_oil(
+        MidnightOilRequest(
+            goal="Dry-run a midnight oil plan about airport slot constraints.",
+            work_minutes=90,
+            price_ceiling_usd=14.0,
+            route_mode="auto_cost",
+            source_policy=["web"],
+            operator_acknowledged_spend=True,
+        )
+    )
+
+    assert preflight.launch_packet is not None
+    assert preflight.approval_receipt is not None
+    assert preflight.runner_handoff is not None
+    bad_handoff = preflight.runner_handoff.model_copy(update={"launch_packet_id": "wrong-packet"})
+
+    with pytest.raises(ValidationError, match="runner_handoff must reference launch_packet"):
+        MidnightOilDryRunRequest(
+            launch_packet=preflight.launch_packet,
+            approval_receipt=preflight.approval_receipt,
+            runner_handoff=bad_handoff,
+        )
+
+
 def test_final_artifact_contract_is_html_not_pdf_with_twin_note() -> None:
     result = preflight_midnight_oil(
         MidnightOilRequest(
@@ -312,3 +379,44 @@ def test_midnight_oil_preflight_api_contract() -> None:
     assert body["applied_run_receipt"]["final_artifact_created"] is False
     assert body["artifact_contract"]["final_format"] == "html"
     assert len(body["role_plans"]) == 4
+
+
+def test_midnight_oil_dry_run_api_contract() -> None:
+    from interfaces.research.api.app import create_app
+
+    preflight = preflight_midnight_oil(
+        MidnightOilRequest(
+            goal="Dry-run a midnight oil plan about widebody engine maintenance.",
+            work_minutes=120,
+            price_ceiling_usd=25.0,
+            route_mode="auto_balanced",
+            source_policy=["arxiv", "web"],
+            operator_acknowledged_spend=True,
+        )
+    )
+
+    assert preflight.launch_packet is not None
+    assert preflight.approval_receipt is not None
+    assert preflight.runner_handoff is not None
+    with TestClient(create_app()) as client:
+        r = client.post(
+            "/research/midnight-oil/dry-run",
+            json={
+                "launch_packet": preflight.launch_packet.model_dump(mode="json"),
+                "approval_receipt": preflight.approval_receipt.model_dump(mode="json"),
+                "runner_handoff": preflight.runner_handoff.model_dump(mode="json"),
+            },
+        )
+
+    assert r.status_code == 200
+    body = r.json()
+    assert body["runner_handoff_id"] == preflight.runner_handoff.handoff_id
+    assert body["approval_receipt_id"] == preflight.approval_receipt.receipt_id
+    assert body["launch_packet_id"] == preflight.launch_packet.packet_id
+    assert body["status"] == "planned_not_dispatched"
+    assert body["dispatch_performed"] is False
+    assert body["budget_reserved"] is False
+    assert body["provider_calls_made"] is False
+    assert body["retrieval_performed"] is False
+    assert body["graph_mutated"] is False
+    assert body["final_artifact_created"] is False

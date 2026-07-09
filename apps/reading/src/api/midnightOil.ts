@@ -140,6 +140,12 @@ export interface MidnightOilPreflight {
   notes: string[];
 }
 
+export interface MidnightOilDryRunRequest {
+  launch_packet: MidnightOilLaunchPacket;
+  approval_receipt: MidnightOilApprovalReceipt;
+  runner_handoff: MidnightOilRunnerHandoff;
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -153,4 +159,19 @@ export async function preflightMidnightOil(
     throw new Error(`POST /research/midnight-oil/preflight: HTTP ${resp.status}: ${body}`);
   }
   return (await resp.json()) as MidnightOilPreflight;
+}
+
+export async function dryRunMidnightOil(
+  request: MidnightOilDryRunRequest,
+): Promise<MidnightOilAppliedRunReceipt> {
+  const resp = await apiFetch(`${API_BASE}/research/midnight-oil/dry-run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`POST /research/midnight-oil/dry-run: HTTP ${resp.status}: ${body}`);
+  }
+  return (await resp.json()) as MidnightOilAppliedRunReceipt;
 }

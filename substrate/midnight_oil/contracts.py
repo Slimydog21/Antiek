@@ -173,6 +173,34 @@ class MidnightOilPreflight(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class MidnightOilDryRunRequest(BaseModel):
+    launch_packet: MidnightOilLaunchPacket
+    approval_receipt: MidnightOilApprovalReceipt
+    runner_handoff: MidnightOilRunnerHandoff
+
+    @model_validator(mode="after")
+    def _receipt_chain_matches(self) -> MidnightOilDryRunRequest:
+        if self.approval_receipt.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("approval_receipt must reference launch_packet")
+        if self.runner_handoff.launch_packet_id != self.launch_packet.packet_id:
+            raise ValueError("runner_handoff must reference launch_packet")
+        if self.runner_handoff.approval_receipt_id != self.approval_receipt.receipt_id:
+            raise ValueError("runner_handoff must reference approval_receipt")
+        if self.runner_handoff.run_id != self.launch_packet.run_id:
+            raise ValueError("runner_handoff run_id must match launch_packet")
+        if self.approval_receipt.run_id != self.launch_packet.run_id:
+            raise ValueError("approval_receipt run_id must match launch_packet")
+        if self.runner_handoff.dispatch_performed:
+            raise ValueError("runner_handoff must not already be dispatched")
+        if self.runner_handoff.budget_reserved:
+            raise ValueError("runner_handoff must not reserve budget")
+        if self.runner_handoff.provider_calls_made:
+            raise ValueError("runner_handoff must not include provider calls")
+        if self.runner_handoff.graph_mutated:
+            raise ValueError("runner_handoff must not mutate graph")
+        return self
+
+
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
     price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
@@ -241,6 +269,14 @@ def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
             "preflight only: no agents launched, no budget reserved, no retrieval performed",
             "each future subagent must inherit the parent ceiling through this role allocation",
         ],
+    )
+
+
+def dry_run_midnight_oil(req: MidnightOilDryRunRequest) -> MidnightOilAppliedRunReceipt:
+    return _applied_run_receipt(
+        launch_packet=req.launch_packet,
+        approval_receipt=req.approval_receipt,
+        runner_handoff=req.runner_handoff,
     )
 
 
