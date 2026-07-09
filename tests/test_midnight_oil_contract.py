@@ -27,6 +27,7 @@ def test_no_ack_request_is_denied_before_dispatch() -> None:
     assert result.launch_packet is None
     assert result.approval_receipt is None
     assert result.runner_handoff is None
+    assert result.applied_run_receipt is None
     assert "denied before dispatch" in result.notes[0]
 
 
@@ -200,6 +201,42 @@ def test_accepted_preflight_emits_runner_apply_handoff_without_side_effects() ->
     assert "ready for a future dispatcher" in handoff.handoff_notes[0]
 
 
+def test_accepted_preflight_emits_dry_applied_run_receipt_without_side_effects() -> None:
+    result = preflight_midnight_oil(
+        MidnightOilRequest(
+            goal="Prepare a midnight oil run about regional jet supply chains.",
+            work_minutes=240,
+            price_ceiling_usd=64.0,
+            route_mode="auto_quality",
+            source_policy=["arxiv", "substack", "operator_corpus"],
+            operator_acknowledged_spend=True,
+        )
+    )
+
+    assert result.launch_packet is not None
+    assert result.approval_receipt is not None
+    assert result.runner_handoff is not None
+    assert result.applied_run_receipt is not None
+    applied = result.applied_run_receipt
+    assert applied.receipt_id == f"{result.run_id}-applied-run-receipt"
+    assert applied.runner_handoff_id == result.runner_handoff.handoff_id
+    assert applied.approval_receipt_id == result.approval_receipt.receipt_id
+    assert applied.launch_packet_id == result.launch_packet.packet_id
+    assert applied.run_id == result.run_id
+    assert applied.status == "planned_not_dispatched"
+    assert applied.planned_role_count == len(result.role_plans)
+    assert applied.planned_budget_usd == result.planned_budget_usd
+    assert applied.unallocated_budget_usd == result.unallocated_budget_usd
+    assert applied.planned_role_route_receipt_ids == result.runner_handoff.role_route_receipt_ids
+    assert applied.dispatch_performed is False
+    assert applied.budget_reserved is False
+    assert applied.provider_calls_made is False
+    assert applied.retrieval_performed is False
+    assert applied.graph_mutated is False
+    assert applied.final_artifact_created is False
+    assert "no autonomous agents dispatched" in applied.applied_notes[0]
+
+
 def test_final_artifact_contract_is_html_not_pdf_with_twin_note() -> None:
     result = preflight_midnight_oil(
         MidnightOilRequest(
@@ -262,5 +299,16 @@ def test_midnight_oil_preflight_api_contract() -> None:
     assert body["runner_handoff"]["budget_reserved"] is False
     assert body["runner_handoff"]["provider_calls_made"] is False
     assert body["runner_handoff"]["graph_mutated"] is False
+    assert body["applied_run_receipt"]["runner_handoff_id"] == body["runner_handoff"]["handoff_id"]
+    assert body["applied_run_receipt"]["approval_receipt_id"] == body["approval_receipt"]["receipt_id"]
+    assert body["applied_run_receipt"]["launch_packet_id"] == body["launch_packet"]["packet_id"]
+    assert body["applied_run_receipt"]["status"] == "planned_not_dispatched"
+    assert body["applied_run_receipt"]["planned_role_count"] == 4
+    assert body["applied_run_receipt"]["dispatch_performed"] is False
+    assert body["applied_run_receipt"]["budget_reserved"] is False
+    assert body["applied_run_receipt"]["provider_calls_made"] is False
+    assert body["applied_run_receipt"]["retrieval_performed"] is False
+    assert body["applied_run_receipt"]["graph_mutated"] is False
+    assert body["applied_run_receipt"]["final_artifact_created"] is False
     assert body["artifact_contract"]["final_format"] == "html"
     assert len(body["role_plans"]) == 4
