@@ -296,6 +296,42 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
     vi.unstubAllGlobals();
   });
 
+  it("launches deep research in full window mode (es)", async () => {
+    launchFloatingDeepResearch.mockResolvedValue({
+      session_id: "fsess_full",
+      spawn_id: "spn_full",
+      investigation_id: "inv_full",
+      parent_asset_id: "doc_full",
+      window_id: "wdr_full",
+      view_format: "html",
+      view_mode: "full",
+      status: "reserved",
+      model_id: null,
+    });
+    render(
+      <HostedHtmlDocumentHost
+        document_id="doc_full"
+        title="Full"
+        view_format="html"
+        html="<p>Body</p>"
+      />,
+    );
+    fireEvent.click(screen.getByTestId("hosted-html-deep-research-full"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "doc_full",
+          view_mode: "full",
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("hosted-html-research-window-id").textContent,
+      ).toMatch(/wdr_full/);
+    });
+  });
+
   it("hydrates optional pub refs and passes references on launch (er)", async () => {
     launchFloatingDeepResearch.mockResolvedValue({
       session_id: "fsess_pub",

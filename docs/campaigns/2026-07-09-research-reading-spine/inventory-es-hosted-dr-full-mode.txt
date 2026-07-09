@@ -1,0 +1,17 @@
+# residual (es) hosted book deep research full window mode
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(er) prior | branch_only | campaign inventories
+(es) hosted DR full mode | branch_only | spinDeepResearch(viewMode); hosted-html-deep-research-full; 8 vitest
+
+PATHS:
+- apps/reading/src/components/windows/HostedHtmlDocumentHost.tsx
+- apps/reading/src/components/windows/HostedHtmlDocumentHost.test.tsx
+
+INVARIANTS:
+- view_mode floating | full via launchFloatingDeepResearch
+- same budget soft-gate + highlight + pub refs for both modes
+- HTML-first only
+
+NEXT: (et) re-derive; operator merge PR #465

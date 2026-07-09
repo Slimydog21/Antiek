@@ -15,6 +15,8 @@
  * Residual (er): optional arxiv/substack/URL pub refs hydrate + attach on
  * float open (parity with ResearchThis cu) — knowledge-dense grounding from
  * marketplace/hosted books.
+ * Residual (es): launch deep research as full window (view_mode full) as well
+ * as floating — north-star “open in full screen” without leaving the hosted book.
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
@@ -26,6 +28,7 @@ import {
   hydratePublicationRefs,
   parsePublicationRefs,
 } from "../../modes/ResearchWorkstation/publicationRefs";
+import type { WindowMode } from "../../workspace/windowsStore";
 import { DecisionTreeDriverBadge } from "../engagement/DecisionTreeDriverBadge";
 import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
 import {
@@ -124,7 +127,7 @@ export default function HostedHtmlDocumentHost(
     setContextRefreshKey((k) => k + 1);
   }, []);
 
-  const spinFloating = async () => {
+  const spinDeepResearch = async (viewMode: WindowMode = "floating") => {
     if (!assetId) {
       setError("document_id is required for deep research");
       return;
@@ -172,7 +175,7 @@ export default function HostedHtmlDocumentHost(
         asset_id: assetId,
         selection_text: selection,
         goal_hint: goal,
-        view_mode: "floating",
+        view_mode: viewMode,
         references: refs.length ? refs : undefined,
       });
       setLastWindowId(out.window_id);
@@ -332,13 +335,24 @@ export default function HostedHtmlDocumentHost(
               className="rounded border border-ink/20 px-3 py-1.5 text-xs font-mono dark:border-bright/20"
               data-testid="hosted-html-deep-research"
               disabled={busy || (budgetWarn && !forceOverBudget)}
-              onClick={() => void spinFloating()}
+              onClick={() => void spinDeepResearch("floating")}
             >
               {busy
                 ? "Opening…"
                 : fromHighlight
                   ? "Deep research highlight (window)"
                   : "Deep research (window)"}
+            </button>
+            {/* Residual (es): full window over the working region. */}
+            <button
+              type="button"
+              className="rounded border border-ink/20 px-3 py-1.5 text-xs font-mono dark:border-bright/20"
+              data-testid="hosted-html-deep-research-full"
+              disabled={busy || (budgetWarn && !forceOverBudget)}
+              onClick={() => void spinDeepResearch("full")}
+              title="Open deep research expanded to full working region"
+            >
+              {busy ? "Opening…" : "Deep research (full)"}
             </button>
             {lastWindowId ? (
               <span
