@@ -157,3 +157,9 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - (ky) DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md for live hydrate/seed/MO-step
   Completes driver+depth co-display on marketplace and documents honest live enablement.
 
+
+- Closed (la–lb, 2026-07-10) **Recursive note-taker seed depth identity:**
+  - (la) seed_twins_for_asset research_tier from source_spawn + HTML tier=
+  - (lb) TwinNotesPanel prop||API research_tier fallback chrome
+  Twin seed + UI now inherit closed depth when spawn-scoped.
+
