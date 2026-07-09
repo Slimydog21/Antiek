@@ -22,6 +22,11 @@ from substrate.antiek_bench import (  # noqa: E402
     build_leaderboard,
     run_offline_dogfood_product,
 )
+from substrate.antiek_bench.settings_surface import (  # noqa: E402
+    settings_suite_proposal_payload,
+)
+from substrate.antiek_bench.suite import SuiteRegistry  # noqa: E402
+from substrate.antiek_bench.usage_bridge import list_usage_events  # noqa: E402
 
 
 def test_run_offline_dogfood_product_records_and_ranks():
@@ -40,12 +45,26 @@ def test_run_offline_dogfood_product_records_and_ranks():
     assert out["recommended_model_id"] == "stub-strong"
     assert out["html"]
     assert "application/pdf" not in out["html"].lower()
+    # Residual (ds): dogfood scores → usage events for recursive suite rewrite.
+    assert out["usage_events_recorded"] > 0
+    events = list_usage_events(store=store)
+    assert len(events) == out["usage_events_recorded"]
+    assert all(e.get("source") == "antiek_bench.offline_dogfood" for e in events)
 
     snap = build_leaderboard("2026-W28", store=store)
     assert snap.run_count == len(DEFAULT_OFFLINE_MODELS)
     assert snap.models[0].model_id == "stub-strong"
     # Strong stub should beat weak
     assert snap.models[0].mean_score >= snap.models[-1].mean_score
+
+    # Suite proposal can form from dogfood usage; never auto-promoted.
+    prop = settings_suite_proposal_payload(
+        store=store, registry=SuiteRegistry(), include_html=True
+    )
+    assert prop["auto_promoted"] is False
+    assert prop["view_format"] == "html"
+    assert prop["has_proposal"] is True
+    assert prop["status"] == "proposed"
 
 
 def test_run_offline_rejects_empty_week():

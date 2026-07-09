@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(ds) · PR #465
+dr: weekly LaunchAgent · ds: dogfood scores feed usage events for recursive suite proposals.
+Operator merge still gated.

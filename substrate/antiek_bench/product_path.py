@@ -14,6 +14,7 @@ from .run import BenchRunResult, keyword_stub_provider, run_suite
 from .settings_surface import settings_leaderboard_payload
 from .store import BenchStore
 from .summary import project_run_html
+from .usage_bridge import UsageEvent, record_usage_event
 
 # Default offline cohort: quality tiers for honest differentiation.
 DEFAULT_OFFLINE_MODELS: tuple[tuple[str, float], ...] = (
@@ -23,17 +24,59 @@ DEFAULT_OFFLINE_MODELS: tuple[tuple[str, float], ...] = (
 )
 
 
+def record_dogfood_runs_as_usage(
+    runs: Sequence[dict[str, Any]],
+    *,
+    store: BenchStore,
+    week_id: str,
+    worked_threshold: float = 0.5,
+) -> int:
+    """Residual (ds): map offline dogfood item scores → usage events for rewrite.
+
+    Outcome worked when score >= worked_threshold else failed. Does not
+    auto-promote suite rewrites — only feeds propose_from_recorded_usage.
+    """
+    n = 0
+    for run in runs:
+        mid = str(run.get("model_id") or "")
+        for sc in run.get("scores") or []:
+            tc = str(sc.get("task_class") or "").strip()
+            if tc not in ("distill", "synthesize", "wrestle", "book_qa"):
+                continue
+            score = float(sc.get("score") or 0.0)
+            outcome = "worked" if score >= worked_threshold else "failed"
+            hint = str(sc.get("item_id") or sc.get("response_preview") or "")[:200]
+            record_usage_event(
+                UsageEvent(
+                    task_class=tc,  # type: ignore[arg-type]
+                    outcome=outcome,  # type: ignore[arg-type]
+                    prompt_hint=hint,
+                    source="antiek_bench.offline_dogfood",
+                    model_id=mid or None,
+                    week_id=week_id,
+                ),
+                store=store,
+            )
+            n += 1
+    return n
+
+
 def run_offline_dogfood_product(
     *,
     week_id: str,
     store: BenchStore,
     models: Sequence[tuple[str, float]] | None = None,
     include_html: bool = True,
+    record_usage_events: bool = True,
 ) -> dict[str, Any]:
     """Product entry: run competitive dogfood suite offline for a model cohort.
 
     Records one run per model via ``run_suite`` + stub providers. Returns
     run summaries + refreshed leaderboard payload for the same week.
+
+    Residual (ds): when ``record_usage_events`` is true (default), also append
+    usage-bridge events from per-item scores so weekly suite proposals can
+    learn offline without live multi-provider.
     """
     wid = (week_id or "").strip()
     if not wid:
@@ -60,6 +103,12 @@ def run_offline_dogfood_product(
         entry["quality_stub"] = float(quality)
         runs.append(entry)
 
+    usage_events_recorded = 0
+    if record_usage_events:
+        usage_events_recorded = record_dogfood_runs_as_usage(
+            runs, store=store, week_id=wid
+        )
+
     leaderboard = settings_leaderboard_payload(wid, store=store, include_html=include_html)
 
     payload: dict[str, Any] = {
@@ -72,6 +121,7 @@ def run_offline_dogfood_product(
         "recommended_model_id": leaderboard.get("recommended_model_id"),
         "recommended_mean_score": leaderboard.get("recommended_mean_score"),
         "leaderboard": leaderboard,
+        "usage_events_recorded": usage_events_recorded,
         "view_format": "html",
         "offline": True,
         "auto_promoted": False,
@@ -82,6 +132,12 @@ def run_offline_dogfood_product(
             "Offline dogfood suite run — keyword stub providers only.",
             "No live multi-provider calls; quality tiers differentiate stubs.",
             "Leaderboard is advisory for decision-tree install — never auto-routes.",
+            (
+                f"Recorded {usage_events_recorded} usage events for suite rewrite "
+                "proposals (proposed only; never auto-promoted)."
+                if record_usage_events
+                else "Usage event recording skipped (record_usage_events=false)."
+            ),
         ],
     }
 
