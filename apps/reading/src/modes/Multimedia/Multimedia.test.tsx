@@ -1170,6 +1170,11 @@ describe("Multimedia workstation", () => {
         "Queue live job records request metadata only; it does not call providers, start workers, export, or publish media. Refresh jobs reloads status only; Run dry-run worker stays in dry-run mode and does not call Krea/TTS/video providers.",
       ),
     ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Artifact fields are local metadata until Attach artifact is submitted; entering a URL, checksum, or media type does not fetch, preview, export, publish, or call providers.",
+      ),
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Run dry-run worker" }));
 

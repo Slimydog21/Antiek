@@ -2426,6 +2426,10 @@ function JobPanel({
         <p className="mt-1 text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
           Attach artifact stores manual evidence only; it does not run providers, publish, or export.
         </p>
+        <p className="mt-1 text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
+          Artifact fields are local metadata until Attach artifact is submitted; entering a URL, checksum, or media type does not fetch,
+          preview, export, publish, or call providers.
+        </p>
         <div className="mt-2 grid grid-cols-2 gap-2">
           <label className="col-span-2 text-[12px] text-shadow-1 dark:text-moonlight">
             Artifact job id
