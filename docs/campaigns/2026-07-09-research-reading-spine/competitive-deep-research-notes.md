@@ -546,3 +546,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (pe, 2026-07-10) **Antiek-bench suite rewrite rationale chrome (V3):**
   - data-has-rationale + feed_source_count on suite metrics
   - rewrite rationale propose≠promote honesty banner
+
+- Closed (pf, 2026-07-10) **SESSION-ARC om–pe engagement + MO + bench:**
+  - SESSION-ARC-om-pe-engagement-moil-bench.md fleet handoff
