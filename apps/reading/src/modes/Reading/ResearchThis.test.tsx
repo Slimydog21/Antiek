@@ -9,7 +9,6 @@ const spinResearch = vi.fn();
 const navigate = vi.fn();
 const hydratePublicationRefs = vi.fn();
 const parsePublicationRefs = vi.fn();
-const fetchDecisionTreeSelection = vi.fn();
 
 vi.mock("./launchFloatingDeepResearch", () => ({
   launchFloatingDeepResearch: (...args: unknown[]) =>
@@ -24,11 +23,6 @@ vi.mock("../ResearchWorkstation/publicationRefs", () => ({
 
 vi.mock("../../api/books", () => ({
   spinResearch: (...args: unknown[]) => spinResearch(...args),
-}));
-
-vi.mock("../../api/settings", () => ({
-  fetchDecisionTreeSelection: (...args: unknown[]) =>
-    fetchDecisionTreeSelection(...args),
 }));
 
 vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => ({
@@ -66,12 +60,6 @@ describe("ResearchThis residual cc/cu/cx", () => {
     hydratePublicationRefs.mockReset();
     parsePublicationRefs.mockReset();
     parsePublicationRefs.mockReturnValue([]);
-    fetchDecisionTreeSelection.mockReset();
-    fetchDecisionTreeSelection.mockResolvedValue({
-      installed: false,
-      model_id: null,
-      provider_id: null,
-    });
   });
 
   afterEach(() => cleanup());
@@ -124,56 +112,13 @@ describe("ResearchThis residual cc/cu/cx", () => {
       asset_id: string;
       selection_text: string;
       view_mode: string;
-      model_id: string | null;
     };
     expect(call.asset_id).toBe("doc-1");
     expect(call.selection_text).toMatch(/Attention/);
     expect(call.view_mode).toBe("floating");
-    expect(call.model_id).toBeNull();
     await waitFor(() => {
       expect(screen.getByTestId("research-this-window-id").textContent).toMatch(
         /wdr_fsess_1/,
-      );
-    });
-  });
-
-  it("passes decision-tree model_id when installed (cx)", async () => {
-    fetchDecisionTreeSelection.mockResolvedValue({
-      installed: true,
-      model_id: "claude-opus-4-8",
-      provider_id: "anthropic",
-    });
-    launchFloatingDeepResearch.mockResolvedValue({
-      session_id: "fsess_cx",
-      spawn_id: "spn_cx",
-      investigation_id: "inv_cx",
-      parent_asset_id: "doc-1",
-      window_id: "wdr_fsess_cx",
-      view_format: "html",
-      view_mode: "floating",
-      status: "reserved",
-    });
-
-    render(
-      <MemoryRouter>
-        <ResearchThis
-          documentId="doc-1"
-          pageIndex={1}
-          passageText="Twin notes are recursive."
-        />
-      </MemoryRouter>,
-    );
-
-    fireEvent.click(screen.getByTestId("research-this-floating"));
-    await waitFor(() => {
-      expect(fetchDecisionTreeSelection).toHaveBeenCalled();
-    });
-    await waitFor(() => {
-      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
-        expect.objectContaining({
-          model_id: "claude-opus-4-8",
-          view_mode: "floating",
-        }),
       );
     });
   });

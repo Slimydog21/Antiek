@@ -1,12 +1,17 @@
 /**
  * Product path: reading highlight/page → engagement session → floating
- * deep_research_session window (residual cc).
+ * deep_research_session window (residual cc/cy).
  *
  * Composes shipped `openEngagementSession` (API) + `openDeepResearchFromHighlight`
  * (window host). Does not reimplement spawn/session substrate.
+ *
+ * Residual (cy): when callers omit model_id, resolve Settings decision-tree
+ * driver (installed only). Float-menu, ResearchThis, HighlightToolbar share
+ * one chokepoint — never invent a model when none is installed.
  */
 
 import { openEngagementSession } from "../../api/engagement";
+import { fetchDecisionTreeSelection } from "../../api/settings";
 import { openDeepResearchFromHighlight } from "../../workspace/deepResearchWindow";
 import type { WindowMode } from "../../workspace/windowsStore";
 
@@ -16,6 +21,7 @@ export type LaunchFloatingDeepResearchInput = {
   region_id?: string | null;
   page?: number | null;
   goal_hint?: string | null;
+  /** Explicit model; when null/undefined/empty, resolve decision-tree driver. */
   model_id?: string | null;
   /** arxiv/substack/url handles for spawn attach (residual cm) */
   references?: string[];
@@ -31,7 +37,25 @@ export type LaunchFloatingDeepResearchResult = {
   view_format: "html";
   view_mode: string;
   status: string;
+  /** Model used for open (explicit or decision-tree); null when none. */
+  model_id: string | null;
 };
+
+/**
+ * Resolve decision-tree driver model_id when installed.
+ * Non-fatal on fetch failure — returns null (session may still open).
+ */
+export async function resolveDecisionTreeModelId(): Promise<string | null> {
+  try {
+    const tree = await fetchDecisionTreeSelection();
+    if (tree.installed && tree.model_id?.trim()) {
+      return tree.model_id.trim();
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
 
 export async function launchFloatingDeepResearch(
   input: LaunchFloatingDeepResearchInput,
@@ -50,13 +74,19 @@ export async function launchFloatingDeepResearch(
     .map((r) => (r || "").trim())
     .filter(Boolean);
 
+  // Residual (cy): explicit non-empty model_id wins; otherwise decision-tree.
+  const explicit = (input.model_id || "").trim();
+  const modelId = explicit
+    ? explicit
+    : await resolveDecisionTreeModelId();
+
   const session = await openEngagementSession({
     asset_id: assetId,
     selection_text: selection,
     region_id: input.region_id,
     page: input.page,
     goal_hint: input.goal_hint,
-    model_id: input.model_id,
+    model_id: modelId,
     references: refs.length ? refs : undefined,
     view_mode: mode === "full" ? "full" : "floating",
   });
@@ -65,6 +95,9 @@ export async function launchFloatingDeepResearch(
     throw new Error("session view_format must be html");
   }
 
+  const resolvedModel =
+    (session.model_id || "").trim() || modelId || null;
+
   const windowId = openDeepResearchFromHighlight({
     asset_id: session.parent_asset_id || assetId,
     selection_text: session.selection_text || selection,
@@ -72,7 +105,7 @@ export async function launchFloatingDeepResearch(
     spawn_id: session.spawn_id,
     investigation_id: session.investigation_id,
     region_id: input.region_id ?? undefined,
-    model_id: session.model_id ?? input.model_id ?? undefined,
+    model_id: resolvedModel ?? undefined,
     status: session.status,
     goal: session.goal,
     mode: mode === "full" ? "full" : "floating",
@@ -87,5 +120,6 @@ export async function launchFloatingDeepResearch(
     view_format: "html",
     view_mode: session.view_mode || mode,
     status: session.status,
+    model_id: resolvedModel,
   };
 }
