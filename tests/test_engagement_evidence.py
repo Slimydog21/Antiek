@@ -60,6 +60,28 @@ def test_evidence_pack_with_twins_and_refs():
     assert "application/pdf" not in pack["html"].lower()
     assert "content-addressable" in pack["html"]
     assert "1706.03762" in pack["html"] or "arxiv" in pack["html"].lower()
+    # Residual (kc): default research_tier deep when spawn reserved without tier.
+    assert pack["research_tier"] == "deep"
+
+
+def test_evidence_pack_surfaces_spawn_research_tier_wrestle():
+    """Residual (kc): evidence pack carries reserved spawn research_tier."""
+    store = eng_mod._eng()
+    spawn = spawn_from_highlight(
+        HighlightSelection(
+            asset_id="paper-w",
+            selection_text="wrestle evidence",
+            region_id="ev-w",
+        ),
+        store=store,
+        research_tier="wrestle",
+    )
+    record_twin_insight("paper-w", "Wrestle insight", store=store)
+    pack = evidence_pack_payload(
+        "paper-w", store=store, spawn_id=spawn.spawn_id, include_html=False
+    )
+    assert pack["research_tier"] == "wrestle"
+    assert pack["spawn_id"] == spawn.spawn_id
 
 
 def test_api_evidence_pack_double_run(client):

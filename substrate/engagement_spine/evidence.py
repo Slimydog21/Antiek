@@ -22,7 +22,13 @@ def evidence_pack_payload(
     spawn_id: str | None = None,
     include_html: bool = True,
 ) -> dict[str, Any]:
-    """Assemble evidence pack from twins + optional spawn source refs."""
+    """Assemble evidence pack from twins + optional spawn source refs.
+
+    Residual (kc): when ``spawn_id`` is set, include reserved ``research_tier``
+    so citation-trust surfaces can show depth posture (default deep).
+    """
+    from substrate.dispatch.research_tier import normalize_research_tier
+
     if not asset_id.strip():
         raise ValueError("asset_id is required")
     twins = list_twin_notes(asset_id, store=store)
@@ -30,6 +36,10 @@ def evidence_pack_payload(
     # Also collect refs from any spawns if spawn_id omitted? keep explicit.
     insights = [t for t in twins if t.kind == "insight"]
     questions = [t for t in twins if t.kind == "question"]
+    research_tier = None
+    if spawn_id:
+        row = store.get_spawn(spawn_id) or {}
+        research_tier = normalize_research_tier(row.get("research_tier"))
     payload: dict[str, Any] = {
         "asset_id": asset_id,
         "spawn_id": spawn_id,
@@ -39,6 +49,7 @@ def evidence_pack_payload(
         "insights": [t.text for t in insights],
         "questions": [t.text for t in questions],
         "source_references": [r.to_dict() for r in refs],
+        "research_tier": research_tier,
         "view_format": "html",
         "product_panel": "evidence_pack",
         "source": "engagement_spine.evidence",
