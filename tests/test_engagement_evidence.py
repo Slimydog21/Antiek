@@ -78,10 +78,13 @@ def test_evidence_pack_surfaces_spawn_research_tier_wrestle():
     )
     record_twin_insight("paper-w", "Wrestle insight", store=store)
     pack = evidence_pack_payload(
-        "paper-w", store=store, spawn_id=spawn.spawn_id, include_html=False
+        "paper-w", store=store, spawn_id=spawn.spawn_id, include_html=True
     )
     assert pack["research_tier"] == "wrestle"
     assert pack["spawn_id"] == spawn.spawn_id
+    # Residual (ki): HTML projection includes tier for agent-readable audit.
+    assert "tier=wrestle" in (pack.get("html") or "")
+    assert "application/pdf" not in (pack.get("html") or "").lower()
 
 
 def test_api_evidence_pack_double_run(client):

@@ -73,9 +73,12 @@ def test_progress_payload_surfaces_spawn_research_tier_wrestle():
     )
     assert spawn.research_tier == "wrestle"
     seed_default_pipeline(spawn.spawn_id, store=store)
-    payload = progress_payload(spawn.spawn_id, store=store)
+    payload = progress_payload(spawn.spawn_id, store=store, include_html=True)
     assert payload["research_tier"] == "wrestle"
     assert payload["spawn_id"] == spawn.spawn_id
+    # Residual (ki): HTML projection includes tier for agent-readable audit.
+    assert "tier=wrestle" in (payload.get("html") or "")
+    assert "application/pdf" not in (payload.get("html") or "").lower()
 
 
 def test_api_progress_double_run(client):

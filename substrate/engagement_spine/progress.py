@@ -162,7 +162,15 @@ def project_progress_html(payload: dict[str, Any]) -> str:
             "content": [
                 {
                     "type": "text",
-                    "text": f"Spawn {spawn_id} · latest={latest} · view: HTML",
+                    "text": (
+                        f"Spawn {spawn_id} · latest={latest}"
+                        + (
+                            f" · tier={payload.get('research_tier')}"
+                            if payload.get("research_tier")
+                            else ""
+                        )
+                        + " · view: HTML"
+                    ),
                 }
             ],
         },

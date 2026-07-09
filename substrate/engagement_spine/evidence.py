@@ -86,7 +86,13 @@ def project_evidence_html(
                     "text": (
                         f"Asset {asset_id} · insights={payload.get('insight_count')} · "
                         f"questions={payload.get('question_count')} · "
-                        f"refs={payload.get('ref_count')} · view: HTML"
+                        f"refs={payload.get('ref_count')}"
+                        + (
+                            f" · tier={payload.get('research_tier')}"
+                            if payload.get("research_tier")
+                            else ""
+                        )
+                        + " · view: HTML"
                     ),
                 }
             ],
