@@ -381,6 +381,41 @@ export interface BookHtmlConversionResultResponse {
   policy_notes: string[];
 }
 
+export interface BookHtmlServeGateReviewInput {
+  conversion_result_id: string;
+  title: string;
+  author?: string | null;
+  rights_basis?:
+    | "public_domain"
+    | "publisher_opt_in"
+    | "platform_authored"
+    | "personal_license"
+    | "unknown";
+  servability_decision?: "servable_full_text" | "gated_metadata_only" | "blocked";
+  acknowledge_rights_reviewed: boolean;
+  acknowledge_no_publication: boolean;
+}
+
+export interface BookHtmlServeGateReviewResponse {
+  serve_gate_review_id: string;
+  status: "ready_for_publication_request" | "blocked";
+  conversion_result_id: string;
+  title: string;
+  author: string | null;
+  rights_basis: string;
+  servability_decision: string;
+  import_target: "antiek_html";
+  rights_review_recorded: boolean;
+  html_output_read: boolean;
+  ingest_attempted: boolean;
+  graph_mutation_performed: boolean;
+  shelf_publication_attempted: boolean;
+  full_text_served: boolean;
+  publication_allowed_next: boolean;
+  required_operator_steps: string[];
+  policy_notes: string[];
+}
+
 /** Prompt-to-curate (Read SPR-04). Ranks ONLY servable books by relevance
  * to the prompt — a gated book is never curated into a readable list.
  * Returns 503 if the embedding model isn't available server-side. */
@@ -464,6 +499,21 @@ export async function recordBookHtmlConversionResult(
   }
   if (!resp.ok) throw new Error(`POST /books/import/conversion-result: HTTP ${resp.status}`);
   return (await resp.json()) as BookHtmlConversionResultResponse;
+}
+
+export async function reviewBookHtmlServeGate(
+  request: BookHtmlServeGateReviewInput,
+): Promise<BookHtmlServeGateReviewResponse> {
+  const resp = await apiFetch(`${API_BASE}/books/import/serve-gate-review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 400) {
+    throw new Error("Confirm rights review and no-publication boundary.");
+  }
+  if (!resp.ok) throw new Error(`POST /books/import/serve-gate-review: HTTP ${resp.status}`);
+  return (await resp.json()) as BookHtmlServeGateReviewResponse;
 }
 
 // ── SPR-08 M2: talk-to-book (multi-turn, page-cited) ──────────────────

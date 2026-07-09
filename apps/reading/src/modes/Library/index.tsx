@@ -6,6 +6,7 @@ import type {
   BookHtmlConversionReviewResponse,
   BookHtmlFileHandoffResponse,
   BookHtmlImportPreflightResponse,
+  BookHtmlServeGateReviewResponse,
   BookPurchaseRequestResponse,
   BookSummary,
   CorpusStatus,
@@ -18,6 +19,7 @@ import {
   recordBookHtmlConversionResult,
   requestBookPurchase,
   reviewBookHtmlConversion,
+  reviewBookHtmlServeGate,
 } from "../../api/books";
 import { listInvestigations } from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
@@ -110,6 +112,16 @@ export default function Library() {
   const [outputNoPublishAck, setOutputNoPublishAck] = useState(false);
   const [outputBusy, setOutputBusy] = useState(false);
   const [outputReceipt, setOutputReceipt] = useState<BookHtmlConversionResultResponse | null>(null);
+  const [serveRightsBasis, setServeRightsBasis] = useState<
+    "public_domain" | "publisher_opt_in" | "platform_authored" | "personal_license" | "unknown"
+  >("personal_license");
+  const [serveDecision, setServeDecision] = useState<"servable_full_text" | "gated_metadata_only" | "blocked">(
+    "servable_full_text",
+  );
+  const [serveRightsAck, setServeRightsAck] = useState(false);
+  const [serveNoPublishAck, setServeNoPublishAck] = useState(false);
+  const [serveBusy, setServeBusy] = useState(false);
+  const [serveReceipt, setServeReceipt] = useState<BookHtmlServeGateReviewResponse | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -300,6 +312,7 @@ export default function Library() {
         acknowledge_no_publish_or_serve: outputNoPublishAck,
       });
       setOutputReceipt(res);
+      setServeReceipt(null);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -313,6 +326,38 @@ export default function Library() {
     outputNoPublishAck,
     outputPageCount,
     outputRef,
+  ]);
+
+  const onServeGateReview = useCallback(async () => {
+    if (!outputReceipt) return;
+    setServeBusy(true);
+    setError(null);
+    setServeReceipt(null);
+    try {
+      const res = await reviewBookHtmlServeGate({
+        conversion_result_id: outputReceipt.conversion_result_id,
+        title: importReceipt?.title ?? purchaseTitle,
+        author: importReceipt?.author ?? (purchaseAuthor.trim() || null),
+        rights_basis: serveRightsBasis,
+        servability_decision: serveDecision,
+        acknowledge_rights_reviewed: serveRightsAck,
+        acknowledge_no_publication: serveNoPublishAck,
+      });
+      setServeReceipt(res);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setServeBusy(false);
+    }
+  }, [
+    importReceipt,
+    outputReceipt,
+    purchaseAuthor,
+    purchaseTitle,
+    serveDecision,
+    serveNoPublishAck,
+    serveRightsAck,
+    serveRightsBasis,
   ]);
 
   // The display order, in three layers of precedence:
@@ -868,6 +913,100 @@ export default function Library() {
                   {outputReceipt.output_ref_fetched ? "yes" : "no"}, ingested{" "}
                   {outputReceipt.ingest_attempted ? "yes" : "no"}, served{" "}
                   {outputReceipt.full_text_served ? "yes" : "no"}.
+                </p>
+              )}
+            </form>
+          )}
+
+          {outputReceipt && (
+            <form
+              className="rounded-md border border-ice-4 dark:border-charcoal-1 bg-white/70 dark:bg-charcoal-2/70 p-3 space-y-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void onServeGateReview();
+              }}
+            >
+              <div>
+                <p className="text-[13px] font-serif text-ink dark:text-bright">
+                  Serve-gate review
+                </p>
+                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                  Records rights and servability metadata only; no HTML is read,
+                  no graph state changes, and nothing is published here.
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                <label className="flex-1 min-w-0 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Rights basis
+                  <select
+                    value={serveRightsBasis}
+                    onChange={(event) =>
+                      setServeRightsBasis(
+                        event.target.value as
+                          | "public_domain"
+                          | "publisher_opt_in"
+                          | "platform_authored"
+                          | "personal_license"
+                          | "unknown",
+                      )
+                    }
+                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  >
+                    <option value="personal_license">Personal license</option>
+                    <option value="public_domain">Public domain</option>
+                    <option value="publisher_opt_in">Publisher opt-in</option>
+                    <option value="platform_authored">Platform authored</option>
+                    <option value="unknown">Unknown</option>
+                  </select>
+                </label>
+                <label className="flex-1 min-w-0 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Servability
+                  <select
+                    value={serveDecision}
+                    onChange={(event) =>
+                      setServeDecision(event.target.value as "servable_full_text" | "gated_metadata_only" | "blocked")
+                    }
+                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  >
+                    <option value="servable_full_text">Servable full text</option>
+                    <option value="gated_metadata_only">Gated metadata only</option>
+                    <option value="blocked">Blocked</option>
+                  </select>
+                </label>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                  <input
+                    type="checkbox"
+                    checked={serveRightsAck}
+                    onChange={(event) => setServeRightsAck(event.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>I reviewed rights and servability evidence for this converted HTML.</span>
+                </label>
+                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                  <input
+                    type="checkbox"
+                    checked={serveNoPublishAck}
+                    onChange={(event) => setServeNoPublishAck(event.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>No ingest, graph write, shelf publication, or full-text serve runs from this review.</span>
+                </label>
+              </div>
+              <button
+                type="submit"
+                disabled={serveBusy}
+                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+              >
+                {serveBusy ? "Reviewing…" : "Review serve gate"}
+              </button>
+              {serveReceipt && (
+                <p className="text-[13px] font-serif text-ink dark:text-bright" role="status">
+                  Serve gate {serveReceipt.serve_gate_review_id} is{" "}
+                  {serveReceipt.publication_allowed_next ? "ready for publication request" : "blocked"}; published{" "}
+                  {serveReceipt.shelf_publication_attempted ? "yes" : "no"}, served{" "}
+                  {serveReceipt.full_text_served ? "yes" : "no"}.
                 </p>
               )}
             </form>

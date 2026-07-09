@@ -406,6 +406,44 @@ class BookHtmlConversionResultOut(BaseModel):
     policy_notes: list[str]
 
 
+class BookHtmlServeGateReviewIn(BaseModel):
+    conversion_result_id: str = Field(min_length=1, max_length=80)
+    title: str = Field(min_length=1, max_length=300)
+    author: str | None = Field(default=None, max_length=200)
+    rights_basis: Literal[
+        "public_domain",
+        "publisher_opt_in",
+        "platform_authored",
+        "personal_license",
+        "unknown",
+    ] = "unknown"
+    servability_decision: Literal["servable_full_text", "gated_metadata_only", "blocked"] = (
+        "gated_metadata_only"
+    )
+    acknowledge_rights_reviewed: bool = False
+    acknowledge_no_publication: bool = False
+
+
+class BookHtmlServeGateReviewOut(BaseModel):
+    serve_gate_review_id: str
+    status: Literal["ready_for_publication_request", "blocked"]
+    conversion_result_id: str
+    title: str
+    author: str | None
+    rights_basis: str
+    servability_decision: str
+    import_target: Literal["antiek_html"]
+    rights_review_recorded: bool
+    html_output_read: bool
+    ingest_attempted: bool
+    graph_mutation_performed: bool
+    shelf_publication_attempted: bool
+    full_text_served: bool
+    publication_allowed_next: bool
+    required_operator_steps: list[str]
+    policy_notes: list[str]
+
+
 def _book_purchase_request_id(req: BookPurchaseRequestIn) -> str:
     normalized = "|".join(
         [
@@ -472,6 +510,19 @@ def _book_html_conversion_result_id(req: BookHtmlConversionResultIn) -> str:
         ]
     )
     return f"bookout-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _book_html_serve_gate_review_id(req: BookHtmlServeGateReviewIn) -> str:
+    normalized = "|".join(
+        [
+            req.conversion_result_id.strip(),
+            req.title.strip().casefold(),
+            (req.author or "").strip().casefold(),
+            req.rights_basis,
+            req.servability_decision,
+        ]
+    )
+    return f"bookserve-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
 
 
 class SpinResearchRequest(BaseModel):
@@ -1029,6 +1080,52 @@ def register_book_routes(app: FastAPI) -> None:
             policy_notes=[
                 "Only converted-output metadata was recorded; the HTML output reference was not opened or fetched.",
                 "No ingest, graph mutation, shelf publication, or full-text serving happened.",
+            ],
+        )
+
+    @app.post(
+        "/books/import/serve-gate-review",
+        response_model=BookHtmlServeGateReviewOut,
+        status_code=202,
+        tags=["books"],
+    )
+    async def book_html_serve_gate_review(
+        req: BookHtmlServeGateReviewIn,
+    ) -> BookHtmlServeGateReviewOut:
+        """Record rights/servability review without publishing to the shelf."""
+        conversion_result_id = req.conversion_result_id.strip()
+        if not conversion_result_id.startswith("bookout-"):
+            raise HTTPException(status_code=400, detail="invalid_conversion_result_id")
+        if not req.acknowledge_rights_reviewed:
+            raise HTTPException(status_code=400, detail="rights_review_ack_required")
+        if not req.acknowledge_no_publication:
+            raise HTTPException(status_code=400, detail="no_publication_ack_required")
+
+        publication_allowed = req.servability_decision == "servable_full_text"
+        return BookHtmlServeGateReviewOut(
+            serve_gate_review_id=_book_html_serve_gate_review_id(req),
+            status="ready_for_publication_request" if publication_allowed else "blocked",
+            conversion_result_id=conversion_result_id,
+            title=req.title.strip(),
+            author=req.author.strip() if req.author else None,
+            rights_basis=req.rights_basis,
+            servability_decision=req.servability_decision,
+            import_target="antiek_html",
+            rights_review_recorded=True,
+            html_output_read=False,
+            ingest_attempted=False,
+            graph_mutation_performed=False,
+            shelf_publication_attempted=False,
+            full_text_served=False,
+            publication_allowed_next=publication_allowed,
+            required_operator_steps=[
+                "Submit a separate publication request only if the servability decision allows full-text publication.",
+                "Persist the converted HTML through the book ingest path only after publication approval.",
+                "Expose the book in Library/Reader only after substrate servability state is written.",
+            ],
+            policy_notes=[
+                "Rights and servability review metadata was recorded; converted HTML was not read.",
+                "No ingest, graph mutation, shelf publication, or full-text serving happened in this review.",
             ],
         )
 

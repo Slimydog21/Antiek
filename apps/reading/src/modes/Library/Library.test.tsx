@@ -17,6 +17,7 @@ const {
   handoffBookHtmlFileMock,
   reviewBookHtmlConversionMock,
   recordBookHtmlConversionResultMock,
+  reviewBookHtmlServeGateMock,
   listInvestigationsMock,
   navigateMock,
 } = vi.hoisted(() => ({
@@ -27,6 +28,7 @@ const {
   handoffBookHtmlFileMock: vi.fn(),
   reviewBookHtmlConversionMock: vi.fn(),
   recordBookHtmlConversionResultMock: vi.fn(),
+  reviewBookHtmlServeGateMock: vi.fn(),
   // M1: the active-research signal documentsByTheme ranks the shelf to.
   // Default: no active research → the feed falls back to recency.
   listInvestigationsMock: vi.fn<
@@ -46,6 +48,7 @@ vi.mock("../../api/books", async (orig) => {
     handoffBookHtmlFile: handoffBookHtmlFileMock,
     reviewBookHtmlConversion: reviewBookHtmlConversionMock,
     recordBookHtmlConversionResult: recordBookHtmlConversionResultMock,
+    reviewBookHtmlServeGate: reviewBookHtmlServeGateMock,
   };
 });
 
@@ -88,6 +91,7 @@ beforeEach(() => {
   handoffBookHtmlFileMock.mockReset();
   reviewBookHtmlConversionMock.mockReset();
   recordBookHtmlConversionResultMock.mockReset();
+  reviewBookHtmlServeGateMock.mockReset();
   listInvestigationsMock.mockReset();
   listInvestigationsMock.mockResolvedValue({ count: 0, investigations: [] });
   navigateMock.mockReset();
@@ -330,7 +334,7 @@ describe("Library", () => {
     });
   });
 
-  it("preflights through output metadata without reading, converting, publishing, or serving", async () => {
+  it("preflights through serve-gate review without publishing or serving", async () => {
     listBooksMock.mockResolvedValue({ books: [servableBook], count: 1 });
     requestBookPurchaseMock.mockResolvedValue({
       request_id: "bookreq-safe123",
@@ -427,6 +431,25 @@ describe("Library", () => {
       shelf_publication_attempted: false,
       full_text_served: false,
       serve_gate_required: true,
+      required_operator_steps: [],
+      policy_notes: [],
+    });
+    reviewBookHtmlServeGateMock.mockResolvedValue({
+      serve_gate_review_id: "bookserve-safe123",
+      status: "ready_for_publication_request",
+      conversion_result_id: "bookout-safe123",
+      title: "The Dream Machine",
+      author: "M. Mitchell Waldrop",
+      rights_basis: "personal_license",
+      servability_decision: "servable_full_text",
+      import_target: "antiek_html",
+      rights_review_recorded: true,
+      html_output_read: false,
+      ingest_attempted: false,
+      graph_mutation_performed: false,
+      shelf_publication_attempted: false,
+      full_text_served: false,
+      publication_allowed_next: true,
       required_operator_steps: [],
       policy_notes: [],
     });
@@ -541,6 +564,30 @@ describe("Library", () => {
       page_count_estimate: 340,
       acknowledge_output_metadata_only: true,
       acknowledge_no_publish_or_serve: true,
+    });
+
+    fireEvent.change(screen.getByLabelText("Rights basis"), {
+      target: { value: "personal_license" },
+    });
+    fireEvent.change(screen.getByLabelText("Servability"), {
+      target: { value: "servable_full_text" },
+    });
+    fireEvent.click(screen.getByLabelText(/reviewed rights and servability/));
+    fireEvent.click(screen.getByLabelText(/No ingest, graph write/));
+    fireEvent.click(screen.getByRole("button", { name: "Review serve gate" }));
+
+    const serveStatus = await screen.findByText(/Serve gate bookserve-safe123/);
+    expect(serveStatus.textContent).toContain("ready for publication request");
+    expect(serveStatus.textContent).toContain("published no");
+    expect(serveStatus.textContent).toContain("served no");
+    expect(reviewBookHtmlServeGateMock).toHaveBeenCalledWith({
+      conversion_result_id: "bookout-safe123",
+      title: "The Dream Machine",
+      author: "M. Mitchell Waldrop",
+      rights_basis: "personal_license",
+      servability_decision: "servable_full_text",
+      acknowledge_rights_reviewed: true,
+      acknowledge_no_publication: true,
     });
   });
 });

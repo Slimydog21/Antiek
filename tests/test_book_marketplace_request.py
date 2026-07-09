@@ -355,3 +355,106 @@ def test_html_conversion_result_records_output_metadata_without_publish_or_serve
     assert body["full_text_served"] is False
     assert body["serve_gate_required"] is True
     assert any("metadata was recorded" in note for note in body["policy_notes"])
+
+
+def test_html_serve_gate_review_requires_valid_result_and_acknowledgements() -> None:
+    client = _client()
+
+    invalid_result = client.post(
+        "/books/import/serve-gate-review",
+        json={
+            "conversion_result_id": "not-a-result",
+            "title": "The Dream Machine",
+            "rights_basis": "personal_license",
+            "servability_decision": "servable_full_text",
+            "acknowledge_rights_reviewed": True,
+            "acknowledge_no_publication": True,
+        },
+    )
+    assert invalid_result.status_code == 400
+    assert invalid_result.json()["detail"] == "invalid_conversion_result_id"
+
+    missing_rights_ack = client.post(
+        "/books/import/serve-gate-review",
+        json={
+            "conversion_result_id": "bookout-safe123",
+            "title": "The Dream Machine",
+            "rights_basis": "personal_license",
+            "servability_decision": "servable_full_text",
+            "acknowledge_rights_reviewed": False,
+            "acknowledge_no_publication": True,
+        },
+    )
+    assert missing_rights_ack.status_code == 400
+    assert missing_rights_ack.json()["detail"] == "rights_review_ack_required"
+
+    missing_publication_ack = client.post(
+        "/books/import/serve-gate-review",
+        json={
+            "conversion_result_id": "bookout-safe123",
+            "title": "The Dream Machine",
+            "rights_basis": "personal_license",
+            "servability_decision": "servable_full_text",
+            "acknowledge_rights_reviewed": True,
+            "acknowledge_no_publication": False,
+        },
+    )
+    assert missing_publication_ack.status_code == 400
+    assert missing_publication_ack.json()["detail"] == "no_publication_ack_required"
+
+
+def test_html_serve_gate_review_records_rights_without_publishing() -> None:
+    client = _client()
+
+    resp = client.post(
+        "/books/import/serve-gate-review",
+        json={
+            "conversion_result_id": "bookout-safe123",
+            "title": "The Dream Machine",
+            "author": "M. Mitchell Waldrop",
+            "rights_basis": "personal_license",
+            "servability_decision": "servable_full_text",
+            "acknowledge_rights_reviewed": True,
+            "acknowledge_no_publication": True,
+        },
+    )
+
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert body["serve_gate_review_id"].startswith("bookserve-")
+    assert body["status"] == "ready_for_publication_request"
+    assert body["conversion_result_id"] == "bookout-safe123"
+    assert body["title"] == "The Dream Machine"
+    assert body["rights_basis"] == "personal_license"
+    assert body["servability_decision"] == "servable_full_text"
+    assert body["rights_review_recorded"] is True
+    assert body["html_output_read"] is False
+    assert body["ingest_attempted"] is False
+    assert body["graph_mutation_performed"] is False
+    assert body["shelf_publication_attempted"] is False
+    assert body["full_text_served"] is False
+    assert body["publication_allowed_next"] is True
+    assert any("servability review metadata" in note for note in body["policy_notes"])
+
+
+def test_html_serve_gate_review_blocks_nonservable_decision() -> None:
+    client = _client()
+
+    resp = client.post(
+        "/books/import/serve-gate-review",
+        json={
+            "conversion_result_id": "bookout-safe123",
+            "title": "The Dream Machine",
+            "rights_basis": "unknown",
+            "servability_decision": "gated_metadata_only",
+            "acknowledge_rights_reviewed": True,
+            "acknowledge_no_publication": True,
+        },
+    )
+
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert body["status"] == "blocked"
+    assert body["publication_allowed_next"] is False
+    assert body["shelf_publication_attempted"] is False
+    assert body["full_text_served"] is False
