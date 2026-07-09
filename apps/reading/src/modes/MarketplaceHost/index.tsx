@@ -22,6 +22,8 @@
  * Residual (in): host-result metrics after host/purchase land.
  * Residual (io): knowledge-dense PD catalog expansion + source surface in UI
  * (project_gutenberg / standard_ebooks / marketplace_stub); filter includes source.
+ * Residual (ip): host-land metrics include catalog knowledge source + recursive
+ * note-taker substrate note after twin seed.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -543,7 +545,7 @@ export default function MarketplaceHost({
       {hosted ? (
         <section className="mt-8 space-y-2" data-testid="host-result">
           <h2 className="text-lg font-medium">Hosted {hosted.document_id}</h2>
-          {/* Residual (in): machine-readable host land metrics. */}
+          {/* Residual (in/ip): host land metrics + catalog knowledge source. */}
           <div
             data-testid="marketplace-host-metrics"
             data-document-id={hosted.document_id}
@@ -551,13 +553,36 @@ export default function MarketplaceHost({
             data-license-class={hosted.license_class ?? ""}
             data-view-format={hosted.view_format ?? "html"}
             data-book-id={hosted.book_id ?? ""}
+            data-catalog-source={
+              entries.find((e) => e.book_id === hosted.book_id)?.source ||
+              "unknown"
+            }
+            data-twin-seeded={
+              twinSeedStatus
+                ? twinSeedHonesty?.seeded === false
+                  ? "skipped"
+                  : "true"
+                : "pending"
+            }
             role="status"
             className="font-mono text-[11px] opacity-80"
           >
             Host land · document={hosted.document_id} · already=
             {String(Boolean(hosted.already_hosted))} · view=
-            {hosted.view_format}
+            {hosted.view_format} · catalog_source=
+            {entries.find((e) => e.book_id === hosted.book_id)?.source ||
+              "unknown"}
           </div>
+          {/* Residual (ip): recursive note-taker substrate after host. */}
+          <p
+            className="text-[11px] font-mono opacity-80"
+            data-testid="marketplace-host-research-substrate"
+            data-view-format="html"
+            role="status"
+          >
+            Research substrate: HTML host + offline twin seed path (recursive
+            note-taker) — ready for floating deep research on this book
+          </p>
           <p>
             {hosted.already_hosted ? "Already hosted" : "Newly hosted"} ·{" "}
             {hosted.license_class} · view_format={hosted.view_format}

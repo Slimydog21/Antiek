@@ -143,12 +143,18 @@ describe("MarketplaceHost mode", () => {
     await waitFor(() => {
       expect(screen.getByTestId("host-result").textContent).toContain("hdoc_abc");
     });
-    // Residual (in): host land metrics.
+    // Residual (in/ip): host land metrics + catalog source + research substrate.
     const hostMetrics = screen.getByTestId("marketplace-host-metrics");
     expect(hostMetrics.getAttribute("data-document-id")).toBe("hdoc_abc");
     expect(hostMetrics.getAttribute("data-view-format")).toBe("html");
     expect(hostMetrics.getAttribute("data-already-hosted")).toBe("false");
+    expect(hostMetrics.getAttribute("data-catalog-source")).toBe(
+      "standard_ebooks",
+    );
     expect(hostMetrics.textContent).toMatch(/Host land/);
+    expect(
+      screen.getByTestId("marketplace-host-research-substrate").textContent,
+    ).toMatch(/recursive note-taker/i);
     expect(hostBookIntoAccount).toHaveBeenCalledWith({
       owner_id: "operator",
       book_id: "pd-pride",

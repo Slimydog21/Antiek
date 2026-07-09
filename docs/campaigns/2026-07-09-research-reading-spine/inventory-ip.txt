@@ -1,0 +1,11 @@
+# inventory-ip · host catalog source + research substrate · residual (ip)
+
+## Delta
+- marketplace-host-metrics: data-catalog-source, data-twin-seeded
+- marketplace-host-research-substrate note (HTML host + offline twin seed → DR ready)
+
+## Verified
+vitest MarketplaceHost 7_passed
+
+## Next
+(iq) re-derive
