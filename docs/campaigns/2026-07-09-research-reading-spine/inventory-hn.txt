@@ -1,0 +1,13 @@
+# inventory-hn · Midnight Oil ceiling metrics · residual (hn)
+
+## Delta
+- moil-ceiling-metrics: job_id, status, duration, goal_count, model, tier,
+  recommended_usd, approved_usd, runnable
+- moil-ceiling-formula-note: duration×tokens×rates×fanout×1.25 safety
+- recommended-ceiling / approved-ceiling data-usd attrs
+
+## Verified
+vitest MidnightOil 7_passed
+
+## Next
+(ho) re-derive — competitive DR gap / spawn-merge metrics

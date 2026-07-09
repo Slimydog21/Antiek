@@ -16,6 +16,8 @@
  * Residual (gl): ResearchProgressPanel on deposit when spawn_ids present
  * (competitive multi-minute plan→gather→synthesize→cite telemetry).
  * Residual (gs): budget-panel depth tier → create research_tier (fast|deep|wrestle).
+ * Residual (hn): moil-ceiling-metrics + formula note for recommended price
+ * ceiling transparency (goals+duration → approve before swarm work).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -455,12 +457,50 @@ export default function MidnightOil() {
             Research tier:{" "}
             <strong>{job.research_tier || researchTier}</strong>
           </p>
-          <p data-testid="recommended-ceiling">
+          {/* Residual (hn): recommended price ceiling metrics + formula transparency. */}
+          <div
+            data-testid="moil-ceiling-metrics"
+            data-job-id={job.job_id}
+            data-status={job.status}
+            data-duration-minutes={String(job.duration_minutes ?? 0)}
+            data-goal-count={String((job.goals || []).length)}
+            data-model-id={job.model_id || "default"}
+            data-research-tier={job.research_tier || researchTier}
+            data-recommended-usd={String(job.recommended_price_ceiling_usd)}
+            data-approved-usd={
+              job.approved_ceiling_usd != null
+                ? String(job.approved_ceiling_usd)
+                : ""
+            }
+            data-runnable={String(Boolean(job.runnable))}
+            data-view-format="html"
+            role="status"
+          >
+            Ceiling audit · duration={job.duration_minutes}m · goals=
+            {(job.goals || []).length} · model=
+            {job.model_id || "default"} · recommended=$
+            {job.recommended_price_ceiling_usd.toFixed(2)}
+          </div>
+          <p
+            data-testid="recommended-ceiling"
+            data-recommended-usd={String(job.recommended_price_ceiling_usd)}
+            data-duration-minutes={String(job.duration_minutes ?? 0)}
+          >
             Recommended ceiling:{" "}
             <strong>${job.recommended_price_ceiling_usd.toFixed(2)}</strong>
           </p>
+          <p
+            className="text-[11px] font-mono opacity-70"
+            data-testid="moil-ceiling-formula-note"
+          >
+            Formula: duration × tokens/min × model rates × fanout × 1.25 safety
+            (recommendation only — explicit approve required before swarm work)
+          </p>
           {job.approved_ceiling_usd != null ? (
-            <p data-testid="approved-ceiling">
+            <p
+              data-testid="approved-ceiling"
+              data-approved-usd={String(job.approved_ceiling_usd)}
+            >
               Approved ceiling:{" "}
               <strong>${job.approved_ceiling_usd.toFixed(2)}</strong>
             </p>

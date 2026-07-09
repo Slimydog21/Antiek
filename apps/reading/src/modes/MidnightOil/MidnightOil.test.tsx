@@ -271,6 +271,24 @@ describe("MidnightOil mode", () => {
         "3.60",
       );
     });
+    // Residual (hn): recommended ceiling metrics + formula transparency.
+    const metrics = screen.getByTestId("moil-ceiling-metrics");
+    expect(metrics.getAttribute("data-job-id")).toBe("moil_test");
+    expect(metrics.getAttribute("data-status")).toBe("awaiting_approval");
+    expect(metrics.getAttribute("data-duration-minutes")).toBe("60");
+    expect(metrics.getAttribute("data-goal-count")).toBe("1");
+    expect(metrics.getAttribute("data-recommended-usd")).toBe("3.6");
+    expect(metrics.getAttribute("data-research-tier")).toBe("deep");
+    expect(metrics.getAttribute("data-view-format")).toBe("html");
+    expect(metrics.textContent).toMatch(/Ceiling audit/);
+    expect(
+      screen.getByTestId("moil-ceiling-formula-note").textContent,
+    ).toMatch(/1\.25 safety/);
+    expect(
+      screen
+        .getByTestId("recommended-ceiling")
+        .getAttribute("data-recommended-usd"),
+    ).toBe("3.6");
 
     fireEvent.click(
       screen.getByRole("button", { name: /approve at recommended/i }),
