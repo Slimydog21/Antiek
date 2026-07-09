@@ -43,6 +43,8 @@
  * Residual (ly): open catalog as HTML asset window (project_catalog_html;
  * chip-aware free_only/subject/source filters).
  * Residual (mb): surface host usage_event (Antiek-bench book_qa) on host land.
+ * Residual (mh): host-land metrics include catalog subjects for research-domain
+ * continuity after host (parity subject chips).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -1052,6 +1054,12 @@ export default function MarketplaceHost({
             }
             data-usage-task-class={hosted.usage_event?.task_class || ""}
             data-usage-source={hosted.usage_event?.source || ""}
+            data-subjects={
+              (
+                entries.find((e) => e.book_id === hosted.book_id)?.subjects ||
+                []
+              ).join(",") || "none"
+            }
             data-twin-seeded={
               twinSeedStatus
                 ? twinSeedHonesty?.seeded === false
@@ -1067,6 +1075,10 @@ export default function MarketplaceHost({
             {hosted.view_format} · catalog_source=
             {entries.find((e) => e.book_id === hosted.book_id)?.source ||
               "unknown"}
+            · subjects=
+            {(
+              entries.find((e) => e.book_id === hosted.book_id)?.subjects || []
+            ).join(",") || "none"}
           </div>
           {/* Residual (ip): recursive note-taker substrate after host. */}
           <p

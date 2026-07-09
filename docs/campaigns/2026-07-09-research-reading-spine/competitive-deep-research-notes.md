@@ -252,3 +252,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (mg, 2026-07-10) **SESSION-ARC md–mf MO budget + catalog HTML:**
   - SESSION-ARC-md-mf-moil-catalog.md fleet handoff
+
+- Closed (mh, 2026-07-10) **Host-land catalog subjects:**
+  - marketplace-host-metrics data-subjects + chrome from catalog entry

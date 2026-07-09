@@ -1,0 +1,8 @@
+# inventory-mh · host-land catalog subjects continuity
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: mh
+files:
+  apps/reading/src/modes/MarketplaceHost/index.tsx
+  apps/reading/src/modes/MarketplaceHost/MarketplaceHost.test.tsx
+proof: vitest MarketplaceHost 13 passed
+invariants: HTML-first · subjects from catalog entry · research-domain continuity

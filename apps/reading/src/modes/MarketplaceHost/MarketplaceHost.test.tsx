@@ -169,6 +169,7 @@ describe("MarketplaceHost mode", () => {
           license_class: "public_domain",
           is_free: true,
           source: "standard_ebooks",
+          subjects: ["literature"],
         },
       ],
       count: 1,
@@ -262,6 +263,9 @@ describe("MarketplaceHost mode", () => {
     expect(hostMetrics.getAttribute("data-catalog-source")).toBe(
       "standard_ebooks",
     );
+    // Residual (mh): research-domain subjects on host land.
+    expect(hostMetrics.getAttribute("data-subjects")).toBe("literature");
+    expect(hostMetrics.textContent).toMatch(/subjects=literature/);
     expect(hostMetrics.textContent).toMatch(/Host land/);
     expect(
       screen.getByTestId("marketplace-host-research-substrate").textContent,
