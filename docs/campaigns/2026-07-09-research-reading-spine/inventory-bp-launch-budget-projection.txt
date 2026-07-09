@@ -1,0 +1,16 @@
+# residual (bp) Research launch budget bar + prompt cost projection
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(bo) prior | branch_only | campaign inventories
+(bp) launch budget + projection | branch_only | ResearchLaunchBudgetPanel on StartResearch; #440 estimate + budget + decision-tree; 5 panel vitest + 25 StartResearch; tip after commit
+
+PRODUCT PATH:
+composer prompt + depth tier → map fast/deep → flash/pro → estimatePromptCost + budget bar + would_exceed + driver readout
+
+HONESTY:
+- never invent $0 when spent_status unknown or rates unset
+- decision-tree driver advisory display only
+- HTML-first panel data-view-format=html
+
+NEXT: (bq) ChatInputArea live projection parity / Midnight Oil live injectors; operator merge PR #465

@@ -11,6 +11,7 @@ import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useStartInvestigation } from "../../hooks/useStartInvestigation";
 import { ApiError, ingestSource, ingestVoiceNote } from "../../lib/api";
 import type { ResearchTier } from "../../lib/api";
+import { ResearchLaunchBudgetPanel } from "../../components/engagement/ResearchLaunchBudgetPanel";
 import CascadeProposal from "./CascadeProposal";
 import MyResearch from "./MyResearch";
 import VoiceChaseButton from "./VoiceChaseButton";
@@ -74,9 +75,6 @@ const EXAMPLE_PROMPTS: readonly string[] = [
   "Where do these authors disagree, and which side has the better-grounded claims?",
 ];
 
-/** Cost line shared with ChatInputArea — kept in sync intentionally. */
-const COST_ESTIMATE = "~$0.08-$0.16 / investigation";
-
 /**
  * SPR-01 M3 — the curated research tiers. This is the WHOLE set the entry
  * offers: two values, no raw model dropdown, no BYO-model. The label +
@@ -85,6 +83,10 @@ const COST_ESTIMATE = "~$0.08-$0.16 / investigation";
  * substrate/dispatch/research_tier.py and is never exposed to the client.
  * Default is "deep" (mirrors DEFAULT_RESEARCH_TIER): a cold research question
  * is the high-value case; the operator opts DOWN to fast for cheap asks.
+ *
+ * Residual (bp): live budget bar + #440 cost projection for the typed prompt
+ * mount below the depth control (ResearchLaunchBudgetPanel). Static
+ * "~$0.08–$0.16" copy is retired in favor of honest projection / unknown.
  */
 const RESEARCH_TIER_OPTIONS: ReadonlyArray<{
   value: ResearchTier;
@@ -620,12 +622,20 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             </span>
           </div>
 
+          {/* Residual (bp): daily budget bar + prompt cost projection +
+              decision-tree driver readout. Uses Settings #440 estimate API;
+              never invents $0 when ledger/rates unknown. */}
+          <ResearchLaunchBudgetPanel
+            promptText={question}
+            researchTier={tier}
+          />
+
           <div className="flex items-center justify-between gap-3">
             <div className="text-[11px] font-mono text-ink-mute dark:text-moonlight">
               <kbd className="border-2 border-ink dark:border-bright rounded px-1.5 text-[10px] font-mono bg-ice-0 dark:bg-charcoal-1 shadow-z1 dark:shadow-z1-night mr-1.5">
                 ⌘ ↵
               </kbd>
-              to ask · {COST_ESTIMATE}
+              to ask · live projection above
             </div>
             <div className="flex items-center gap-2">
               {/* SPR-05 M2 — the OPTIONAL "plan it first" path (operator
