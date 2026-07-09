@@ -39,6 +39,8 @@ import os
 import sys
 
 try:
+    from substrate.dispatch.nd_attribution import consume_nd_decision
+
     from ...event_log import emit_typed
     from ...schemas.events import DispatchCallPayload
     from ..research_runner.budget import BudgetManager
@@ -48,6 +50,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from runtime.remote_exec.provider import RemoteStepEvent  # type: ignore[no-redef]
     from runtime.research_runner.budget import BudgetManager  # type: ignore[no-redef]
+    from substrate.dispatch.nd_attribution import consume_nd_decision  # type: ignore[no-redef]
     from substrate.event_log import emit_typed  # type: ignore[no-redef]
     from substrate.schemas.events import DispatchCallPayload  # type: ignore[no-redef]
 
@@ -110,6 +113,7 @@ def record_remote_dispatch(
             prompt_hash=str(event.data.get("prompt_hash", "remote")),
             finish_reason=event.data.get("finish_reason"),
             context_pack_event_id=context_pack_event_id,
+            **consume_nd_decision(),
         ),
         parent_event_id=parent_event_id,
         role=role,

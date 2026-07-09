@@ -606,6 +606,13 @@ export interface DispatchCallPayload {
   parent_run_id?: string | null;
   feature_label?: string | null;
   session_id?: string | null;
+  nd_session_id?: string | null;
+  nd_recommended_provider?: string | null;
+  nd_recommended_model?: string | null;
+  nd_tradeoff?: string | null;
+  nd_decision_latency_ms?: number | null;
+  nd_bypassed?: boolean;
+  nd_bypass_reason?: string | null;
 }
 
 /**

@@ -19,6 +19,7 @@ Discipline:
 from __future__ import annotations
 
 import hashlib
+import importlib
 import os
 import time
 from collections.abc import Mapping
@@ -36,7 +37,6 @@ try:
         NormalizedUsage,
         Provider,
         ProviderError,
-        RawProviderResponse,
     )
     from .breaker import default_breaker
 except ImportError:  # pragma: no cover
@@ -319,6 +319,16 @@ def normalize_finish_reason(provider_native: str | None) -> str | None:
     return _FINISH_REASON_MAP.get(provider_native, "error")
 
 
+def _consume_nd_decision() -> dict[str, object]:
+    """Drain ND attribution lazily to avoid dispatch package import cycles."""
+    try:
+        module = importlib.import_module(".nd_attribution", package=__package__)
+    except ImportError:  # pragma: no cover
+        module = importlib.import_module("dispatch.nd_attribution")
+    consume_nd_decision = module.consume_nd_decision
+    return dict(consume_nd_decision())
+
+
 # ---------------------------------------------------------------------------
 # The dispatch function
 # ---------------------------------------------------------------------------
@@ -358,6 +368,7 @@ def _emit_dispatch_call(
             prompt_hash=prompt_hash,
             finish_reason=finish_reason,  # type: ignore[arg-type]
             context_pack_event_id=context_pack_event_id,
+            **_consume_nd_decision(),
         ),
         parent_event_id=parent_event_id,
         role=role,

@@ -76,6 +76,13 @@ def iter_dispatch_call_rows(
                 "output_tokens": payload.get("output_tokens"),
                 "cost_usd": payload.get("cost_usd"),
                 "latency_ms": payload.get("latency_ms"),
+                "nd_session_id": payload.get("nd_session_id"),
+                "nd_recommended_provider": payload.get("nd_recommended_provider"),
+                "nd_recommended_model": payload.get("nd_recommended_model"),
+                "nd_tradeoff": payload.get("nd_tradeoff"),
+                "nd_decision_latency_ms": payload.get("nd_decision_latency_ms"),
+                "nd_bypassed": payload.get("nd_bypassed", False),
+                "nd_bypass_reason": payload.get("nd_bypass_reason"),
                 "is_remote_exec": is_remote_exec_provider(
                     provider if isinstance(provider, str) else None
                 ),
