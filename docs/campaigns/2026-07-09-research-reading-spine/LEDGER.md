@@ -50,3 +50,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - Load html_draft on open piece; section_index offset; seedTwins:false
 - UI: write-piece-html-reimport / write-piece-reimport-run / status
 - tests: WriteHome.test.tsx 14 passed
+## residual (ge) Write piece deep research + pub refs — 2026-07-09
+- write-piece-research-launch panel: pubs + budget + float|full
+- launchFloatingDeepResearch + hydratePublicationRefs shared paths
+- tests: WriteHome.test.tsx 15 passed

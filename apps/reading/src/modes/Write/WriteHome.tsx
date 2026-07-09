@@ -14,10 +14,20 @@ import {
 import { seedTwinNotes } from "../../api/engagement";
 import { fetchHostedDocumentHtml } from "../../api/marketplaceHost";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
+import {
+  ResearchLaunchBudgetPanel,
+  type ResearchLaunchBudgetProjection,
+} from "../../components/engagement/ResearchLaunchBudgetPanel";
 import { ResearchContextPanel } from "../../components/engagement/ResearchContextPanel";
 import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
 import GlassSurface from "../../shell/GlassSurface";
+import type { WindowMode } from "../../workspace/windowsStore";
 import Canvas from "../DeepResearchWorkspace/Canvas/Canvas";
+import { launchFloatingDeepResearch } from "../Reading/launchFloatingDeepResearch";
+import {
+  hydratePublicationRefs,
+  parsePublicationRefs,
+} from "../ResearchWorkstation/publicationRefs";
 import BlockRepository from "./BlockRepository";
 import ConnectResearch from "./ConnectResearch";
 import { ContextWindow } from "./ContextWindow/ContextWindow";
@@ -66,6 +76,8 @@ import { getTraceTarget, type RepositoryHit } from "./writeApi";
  * promote (reading≡write context flywheel).
  * Residual (gc): DecisionTreeDriverBadge on open piece (model + budget bar).
  * Residual (gd): re-import html_draft into an existing open piece (not only create).
+ * Residual (ge): deep research launch + pub refs on open piece (reading≡write
+ * parity with hosted HTML host: arxiv/substack grounding, float|full, budget soft-gate).
  */
 export default function WriteHome() {
   const { deliverableId } = useParams<{ deliverableId?: string }>();
@@ -83,9 +95,6 @@ export default function WriteHome() {
   const [onRamp, setOnRamp] = useState<"idea" | "context" | null>(null);
   // Residual (gb): remount research context after twin promote on Write piece.
   const [contextRefreshKey, setContextRefreshKey] = useState(0);
-  const onContextNeedsRefresh = useCallback(() => {
-    setContextRefreshKey((k) => k + 1);
-  }, []);
   // Residual (fm): prepared HTML draft for Write surface.
   const [htmlDraft, setHtmlDraft] = useState<HtmlDraftImportPrepared | null>(
     null,
@@ -95,6 +104,23 @@ export default function WriteHome() {
   const [brainstormSeed, setBrainstormSeed] = useState<string | null>(null);
   const [reimportBusy, setReimportBusy] = useState(false);
   const [reimportStatus, setReimportStatus] = useState<string | null>(null);
+  // Residual (ge): write-piece deep research launch (parity with hosted host).
+  const [writePubRefs, setWritePubRefs] = useState("");
+  const [writePubRefStatus, setWritePubRefStatus] = useState<string | null>(null);
+  const [writeDrBusy, setWriteDrBusy] = useState(false);
+  const [writeDrError, setWriteDrError] = useState<string | null>(null);
+  const [writeDrWindowId, setWriteDrWindowId] = useState<string | null>(null);
+  const [writeBudgetWarn, setWriteBudgetWarn] = useState(false);
+  const [writeForceOverBudget, setWriteForceOverBudget] = useState(false);
+  const onContextNeedsRefresh = useCallback(() => {
+    setContextRefreshKey((k) => k + 1);
+  }, []);
+  const onWriteDrProjectionChange = useCallback(
+    (p: ResearchLaunchBudgetProjection) => {
+      setWriteBudgetWarn(p.wouldExceedBudget === true);
+    },
+    [],
+  );
   // The "start a piece" action — must be declared before html_draft load effect.
   const [starting, setStarting] = useState(false);
   const [newTitle, setNewTitle] = useState("");
@@ -349,6 +375,63 @@ export default function WriteHome() {
       );
     } finally {
       setReimportBusy(false);
+    }
+  }
+
+  /**
+   * Residual (ge): launch deep research from open Write piece.
+   * Highlight text wins; else title-based selection. Optional pub refs.
+   */
+  async function spinWriteDeepResearch(viewMode: WindowMode = "floating") {
+    const assetId = detail?.deliverable_id;
+    if (!assetId) {
+      setWriteDrError("Open a writing piece before launching deep research.");
+      return;
+    }
+    if (writeBudgetWarn && !writeForceOverBudget) {
+      setWriteDrError(
+        "Projected cost may exceed remaining daily budget — enable force override or reduce scope.",
+      );
+      return;
+    }
+    setWriteDrBusy(true);
+    setWriteDrError(null);
+    setWritePubRefStatus(null);
+    try {
+      const title = detail?.title?.trim() || "writing piece";
+      let selection = `Deep-research writing piece: ${title} (${assetId})`;
+      let goal = `Deep-research the writing piece «${title}»`;
+      if (typeof window !== "undefined" && window.getSelection) {
+        const live = (window.getSelection()?.toString() || "").trim();
+        if (live) {
+          selection = live.slice(0, 8000);
+          goal = `Deep-research the highlighted passage from writing piece «${title}»`;
+        }
+      }
+      const refs = parsePublicationRefs(writePubRefs);
+      if (refs.length > 0) {
+        const hydrated = await hydratePublicationRefs(refs);
+        setWritePubRefStatus(
+          `Hydrated ${hydrated.ok.length} pub asset(s)` +
+            (hydrated.failed.length
+              ? ` · ${hydrated.failed.length} failed`
+              : "") +
+            " · HTML-first",
+        );
+      }
+      const out = await launchFloatingDeepResearch({
+        asset_id: assetId,
+        selection_text: selection,
+        goal_hint: goal,
+        view_mode: viewMode,
+        references: refs.length ? refs : undefined,
+      });
+      setWriteDrWindowId(out.window_id);
+      onContextNeedsRefresh();
+    } catch (e: unknown) {
+      setWriteDrError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setWriteDrBusy(false);
     }
   }
 
@@ -727,6 +810,118 @@ export default function WriteHome() {
             <ContextWindow />
           </div>
         )}
+
+        {/* Residual (ge): deep research + pub refs on open Write piece. */}
+        {detail?.deliverable_id ? (
+          <section
+            className="mb-4 space-y-2 rounded border border-ink/20 p-3 font-mono text-[12px] dark:border-bright/20"
+            data-testid="write-piece-research-launch"
+            data-view-format="html"
+            data-asset-id={detail.deliverable_id}
+          >
+            <p className="text-[10px] uppercase tracking-wider text-ink-mute dark:text-moonlight">
+              Deep research from this piece
+            </p>
+            <p className="text-[11px] text-ink-mute dark:text-moonlight">
+              Select text in the outline, or research the whole piece. Optional
+              arxiv / substack / URL grounding.
+            </p>
+            <div
+              className="space-y-1"
+              data-testid="write-piece-pub-refs"
+              data-view-format="html"
+            >
+              <label
+                className="text-[10px] uppercase tracking-wider text-ink-mute dark:text-moonlight"
+                htmlFor="write-piece-refs-input"
+              >
+                Ground with pubs (optional)
+              </label>
+              <textarea
+                id="write-piece-refs-input"
+                data-testid="write-piece-refs-input"
+                value={writePubRefs}
+                onChange={(e) => setWritePubRefs(e.target.value)}
+                disabled={writeDrBusy}
+                rows={2}
+                placeholder={"arxiv:1706.03762\nhttps://…"}
+                className="w-full rounded border border-ink/20 bg-transparent px-2 py-1 text-[11px] font-mono dark:border-bright/20"
+              />
+              {writePubRefStatus ? (
+                <p
+                  className="text-[10px] text-aurora"
+                  data-testid="write-piece-refs-status"
+                  role="status"
+                >
+                  {writePubRefStatus}
+                </p>
+              ) : null}
+            </div>
+            <ResearchLaunchBudgetPanel
+              promptText={
+                detail.title
+                  ? `Deep-research writing piece: ${detail.title} (${detail.deliverable_id})`
+                  : `Deep-research writing piece (${detail.deliverable_id})`
+              }
+              researchTier="deep"
+              onProjectionChange={onWriteDrProjectionChange}
+            />
+            {writeBudgetWarn ? (
+              <label
+                className="flex items-center gap-2 text-[11px] text-emperor"
+                data-testid="write-piece-over-budget-warn"
+              >
+                <input
+                  type="checkbox"
+                  data-testid="write-piece-force-over-budget"
+                  checked={writeForceOverBudget}
+                  onChange={(e) => setWriteForceOverBudget(e.target.checked)}
+                  disabled={writeDrBusy}
+                />
+                Force open despite budget projection
+              </label>
+            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                data-testid="write-piece-deep-research"
+                disabled={writeDrBusy || (writeBudgetWarn && !writeForceOverBudget)}
+                onClick={() => void spinWriteDeepResearch("floating")}
+                className="rounded border border-ink/30 px-2 py-1 text-[11px] hover:bg-ink/5 disabled:opacity-50 dark:border-bright/30"
+              >
+                {writeDrBusy ? "Opening…" : "Deep research (window)"}
+              </button>
+              <button
+                type="button"
+                data-testid="write-piece-deep-research-full"
+                disabled={writeDrBusy || (writeBudgetWarn && !writeForceOverBudget)}
+                onClick={() => void spinWriteDeepResearch("full")}
+                className="rounded border border-ink/30 px-2 py-1 text-[11px] hover:bg-ink/5 disabled:opacity-50 dark:border-bright/30"
+                title="Open deep research expanded to full working region"
+              >
+                {writeDrBusy ? "Opening…" : "Deep research (full)"}
+              </button>
+              {writeDrWindowId ? (
+                <span
+                  className="text-[11px] text-aurora"
+                  data-testid="write-piece-research-window-id"
+                  role="status"
+                >
+                  Window {writeDrWindowId}
+                </span>
+              ) : null}
+              {writeDrError ? (
+                <span
+                  className="text-[11px] text-emperor"
+                  role="alert"
+                  data-testid="write-piece-research-error"
+                >
+                  {writeDrError}
+                </span>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
 
         {detail ? (
           pieceView === "canvas" && detail.investigation_root_id ? (

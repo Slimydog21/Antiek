@@ -21,6 +21,7 @@ const {
   listDeliverablesMock, getTraceTargetMock, listInvestigationsMock,
   startInvestigationMock, createDeliverableMock, fetchHostedDocumentHtmlMock,
   createSectionMock, updateSectionProseMock, seedTwinNotesMock, getDeliverableMock,
+  launchFloatingDeepResearchMock, hydratePublicationRefsMock, parsePublicationRefsMock,
 } = vi.hoisted(() => ({
   listDeliverablesMock: vi.fn(),
   getTraceTargetMock: vi.fn(),
@@ -32,6 +33,14 @@ const {
   updateSectionProseMock: vi.fn(),
   seedTwinNotesMock: vi.fn(),
   getDeliverableMock: vi.fn(),
+  launchFloatingDeepResearchMock: vi.fn(),
+  hydratePublicationRefsMock: vi.fn(),
+  parsePublicationRefsMock: vi.fn((raw: string) =>
+    (raw || "")
+      .split(/\r?\n+/)
+      .map((l) => l.trim())
+      .filter(Boolean),
+  ),
 }));
 
 vi.mock("../../lib/api", async (orig) => ({
@@ -103,6 +112,29 @@ vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
   ),
 }));
 
+vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => ({
+  ResearchLaunchBudgetPanel: (props: {
+    promptText?: string;
+    onProjectionChange?: (p: { wouldExceedBudget: boolean }) => void;
+  }) => (
+    <div data-testid="research-launch-budget-panel-stub">
+      budget len={props.promptText?.length ?? 0}
+    </div>
+  ),
+}));
+
+vi.mock("../Reading/launchFloatingDeepResearch", () => ({
+  launchFloatingDeepResearch: (...args: unknown[]) =>
+    launchFloatingDeepResearchMock(...args),
+}));
+
+vi.mock("../ResearchWorkstation/publicationRefs", () => ({
+  parsePublicationRefs: (...args: unknown[]) =>
+    parsePublicationRefsMock(...(args as [string])),
+  hydratePublicationRefs: (...args: unknown[]) =>
+    hydratePublicationRefsMock(...args),
+}));
+
 vi.mock("./Outline", () => ({
   default: () => <div data-testid="outline-stub">outline</div>,
 }));
@@ -162,6 +194,23 @@ beforeEach(() => {
     title: "Merged research draft",
     html: "<article><p>Attention is content-addressable memory.</p></article>",
   });
+  launchFloatingDeepResearchMock.mockReset().mockResolvedValue({
+    session_id: "sess_write",
+    spawn_id: "spawn_write",
+    investigation_id: "inv_write",
+    parent_asset_id: "dlv-open",
+    window_id: "win_write_dr",
+    view_format: "html",
+    view_mode: "floating",
+    status: "open",
+    model_id: null,
+  });
+  hydratePublicationRefsMock.mockReset().mockResolvedValue({
+    ok: [{ asset_id: "pub_1", view_format: "html" }],
+    failed: [],
+    view_format: "html",
+  });
+  parsePublicationRefsMock.mockClear();
   // WriteHome now renders through GlassSurface (SPR-03 M2 landing-glass home /
   // M3 solid open-piece), which reads prefers-reduced-motion via
   // window.matchMedia. jsdom lacks it; stub the default (motion allowed → the
@@ -505,6 +554,68 @@ describe("WriteHome — the re-homed door", () => {
       screen.getByTestId("write-piece-driver-badge").getAttribute("data-view-format"),
     ).toBe("html");
     expect(screen.getByTestId("decision-tree-driver-badge-stub")).toBeTruthy();
+  });
+
+  it("launches deep research from open Write piece with pub refs (ge)", async () => {
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-open",
+      title: "Essay on attention",
+      deliverable_kind: "general_essay",
+      investigation_root_id: "inv-1",
+      status: "draft",
+      sections: [],
+      created_at: null,
+      updated_at: null,
+      section_count: 0,
+    });
+    mountAt("/write/dlv-open");
+    await waitFor(() => {
+      expect(screen.getByTestId("write-piece-research-launch")).toBeTruthy();
+    });
+    const panel = screen.getByTestId("write-piece-research-launch");
+    expect(panel.getAttribute("data-asset-id")).toBe("dlv-open");
+    expect(panel.getAttribute("data-view-format")).toBe("html");
+    expect(screen.getByTestId("write-piece-pub-refs")).toBeTruthy();
+    expect(screen.getByTestId("research-launch-budget-panel-stub")).toBeTruthy();
+    await userEvent.type(
+      screen.getByTestId("write-piece-refs-input"),
+      "arxiv:1706.03762",
+    );
+    await userEvent.click(screen.getByTestId("write-piece-deep-research"));
+    await waitFor(() => {
+      expect(hydratePublicationRefsMock).toHaveBeenCalledWith([
+        "arxiv:1706.03762",
+      ]);
+    });
+    await waitFor(() => {
+      expect(launchFloatingDeepResearchMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "dlv-open",
+          view_mode: "floating",
+          references: ["arxiv:1706.03762"],
+          selection_text: expect.stringMatching(/Essay on attention/),
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("write-piece-research-window-id").textContent).toMatch(
+        /win_write_dr/,
+      );
+    });
+    expect(screen.getByTestId("write-piece-refs-status").textContent).toMatch(
+      /Hydrated 1/,
+    );
+    // Full window path
+    launchFloatingDeepResearchMock.mockClear();
+    await userEvent.click(screen.getByTestId("write-piece-deep-research-full"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearchMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "dlv-open",
+          view_mode: "full",
+        }),
+      );
+    });
   });
 
   it("re-imports html_draft into open piece with section index offset (gd)", async () => {
