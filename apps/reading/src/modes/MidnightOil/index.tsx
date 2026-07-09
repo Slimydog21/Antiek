@@ -6,11 +6,13 @@ import {
   dispatchMidnightOil,
   dryRunMidnightOil,
   preflightMidnightOil,
+  providerRouteMidnightOil,
   type MidnightOilActivationChecklistReceipt,
   type MidnightOilAppliedRunReceipt,
   type MidnightOilBudgetReservationReceipt,
   type MidnightOilDispatchReceipt,
   type MidnightOilPreflight,
+  type MidnightOilProviderRouteReceipt,
   type MidnightOilRouteMode,
   type MidnightOilSourcePolicy,
 } from "../../api/midnightOil";
@@ -48,16 +50,20 @@ export default function MidnightOil() {
     useState<MidnightOilActivationChecklistReceipt | null>(null);
   const [budgetReservationReceipt, setBudgetReservationReceipt] =
     useState<MidnightOilBudgetReservationReceipt | null>(null);
+  const [providerRouteReceipt, setProviderRouteReceipt] =
+    useState<MidnightOilProviderRouteReceipt | null>(null);
   const [busy, setBusy] = useState(false);
   const [dryRunBusy, setDryRunBusy] = useState(false);
   const [dispatchBusy, setDispatchBusy] = useState(false);
   const [activationBusy, setActivationBusy] = useState(false);
   const [budgetReservationBusy, setBudgetReservationBusy] = useState(false);
+  const [providerRouteBusy, setProviderRouteBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dryRunError, setDryRunError] = useState<string | null>(null);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
   const [activationError, setActivationError] = useState<string | null>(null);
   const [budgetReservationError, setBudgetReservationError] = useState<string | null>(null);
+  const [providerRouteError, setProviderRouteError] = useState<string | null>(null);
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -67,11 +73,13 @@ export default function MidnightOil() {
     setDispatchError(null);
     setActivationError(null);
     setBudgetReservationError(null);
+    setProviderRouteError(null);
     setPreflight(null);
     setDryRunReceipt(null);
     setDispatchReceipt(null);
     setActivationReceipt(null);
     setBudgetReservationReceipt(null);
+    setProviderRouteReceipt(null);
     try {
       const result = await preflightMidnightOil({
         goal,
@@ -133,6 +141,8 @@ export default function MidnightOil() {
     setActivationReceipt(null);
     setBudgetReservationError(null);
     setBudgetReservationReceipt(null);
+    setProviderRouteError(null);
+    setProviderRouteReceipt(null);
     try {
       const result = await dispatchMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -168,6 +178,8 @@ export default function MidnightOil() {
     setActivationReceipt(null);
     setBudgetReservationError(null);
     setBudgetReservationReceipt(null);
+    setProviderRouteError(null);
+    setProviderRouteReceipt(null);
     try {
       const result = await activationChecklistMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -202,6 +214,8 @@ export default function MidnightOil() {
     setBudgetReservationBusy(true);
     setBudgetReservationError(null);
     setBudgetReservationReceipt(null);
+    setProviderRouteError(null);
+    setProviderRouteReceipt(null);
     try {
       const result = await budgetReservationMidnightOil({
         launch_packet: preflight.launch_packet,
@@ -216,6 +230,43 @@ export default function MidnightOil() {
       setBudgetReservationError(e instanceof Error ? e.message : String(e));
     } finally {
       setBudgetReservationBusy(false);
+    }
+  }
+
+  async function onProviderRouteGate() {
+    if (
+      !preflight?.launch_packet ||
+      !preflight.approval_receipt ||
+      !preflight.runner_handoff ||
+      !preflight.applied_run_receipt ||
+      !dispatchReceipt ||
+      !activationReceipt ||
+      !budgetReservationReceipt
+    ) {
+      setProviderRouteError(
+        "Provider route requires launch packet, approval receipt, runner handoff, applied run receipt, dispatch receipt, activation receipt, and budget reservation receipt.",
+      );
+      return;
+    }
+
+    setProviderRouteBusy(true);
+    setProviderRouteError(null);
+    setProviderRouteReceipt(null);
+    try {
+      const result = await providerRouteMidnightOil({
+        launch_packet: preflight.launch_packet,
+        approval_receipt: preflight.approval_receipt,
+        runner_handoff: preflight.runner_handoff,
+        applied_run_receipt: preflight.applied_run_receipt,
+        dispatch_receipt: dispatchReceipt,
+        activation_checklist_receipt: activationReceipt,
+        budget_reservation_receipt: budgetReservationReceipt,
+      });
+      setProviderRouteReceipt(result);
+    } catch (e) {
+      setProviderRouteError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setProviderRouteBusy(false);
     }
   }
 
@@ -762,6 +813,63 @@ export default function MidnightOil() {
                     <Metric
                       label="Reserved"
                       value={budgetReservationReceipt.budget_reserved ? "yes" : "no"}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-2 border-t border-rule pt-3 dark:border-charcoal-1 md:flex-row md:items-center md:justify-between">
+                <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Provider route
+                </p>
+                <button
+                  type="button"
+                  onClick={onProviderRouteGate}
+                  disabled={
+                    providerRouteBusy ||
+                    !preflight.launch_packet ||
+                    !preflight.approval_receipt ||
+                    !preflight.runner_handoff ||
+                    !preflight.applied_run_receipt ||
+                    !dispatchReceipt ||
+                    !activationReceipt ||
+                    !budgetReservationReceipt
+                  }
+                  className="shrink-0 rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+                >
+                  {providerRouteBusy ? "Checking route..." : "Provider route"}
+                </button>
+              </div>
+
+              {providerRouteError && (
+                <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-emperor">
+                  {providerRouteError}
+                </p>
+              )}
+
+              {providerRouteReceipt && (
+                <div className="rounded-md border border-rule dark:border-charcoal-1 px-3 py-2">
+                  <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                    <p className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                      Provider receipt
+                    </p>
+                    <p className="font-mono text-[12px] text-ink dark:text-bright">
+                      {providerRouteReceipt.receipt_id}
+                    </p>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 md:grid-cols-4 gap-2 font-mono text-[12px]">
+                    <Metric
+                      label="Status"
+                      value={providerRouteReceipt.status.replaceAll("_", " ")}
+                    />
+                    <Metric label="Routes" value={`${providerRouteReceipt.requested_route_count}`} />
+                    <Metric
+                      label="Blocker"
+                      value={providerRouteReceipt.blocker_reason.replaceAll("_", " ")}
+                    />
+                    <Metric
+                      label="Provider calls"
+                      value={providerRouteReceipt.provider_calls_made ? "made" : "none"}
                     />
                   </div>
                 </div>

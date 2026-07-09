@@ -9,6 +9,7 @@ import {
   dispatchMidnightOil,
   dryRunMidnightOil,
   preflightMidnightOil,
+  providerRouteMidnightOil,
 } from "../../api/midnightOil";
 
 vi.mock("../../api/midnightOil", () => ({
@@ -239,6 +240,33 @@ vi.mock("../../api/midnightOil", () => ({
     final_artifact_created: false,
     reservation_notes: ["budget reservation gate only: reservation provider is not configured"],
   })),
+  providerRouteMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-provider-route",
+    budget_reservation_receipt_id: "midnight-oil-test-budget-reservation",
+    activation_checklist_receipt_id: "midnight-oil-test-activation-checklist",
+    dispatch_receipt_id: "midnight-oil-test-dispatch-receipt",
+    applied_run_receipt_id: "midnight-oil-test-applied-run-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_provider_route_executor_disabled",
+    requested_route_count: 2,
+    planned_role_route_receipt_ids: [
+      "midnight-oil-test-planner-route-receipt",
+      "midnight-oil-test-gatherer-route-receipt",
+    ],
+    blocker_reason: "provider_route_executor_missing",
+    route_executor_allowed: false,
+    provider_execution_allowed: false,
+    provider_calls_made: false,
+    budget_reserved: false,
+    dispatch_performed: false,
+    retrieval_performed: false,
+    graph_mutated: false,
+    final_artifact_created: false,
+    provider_route_notes: ["provider route gate only: model/provider route executor is not configured"],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -396,5 +424,37 @@ describe("MidnightOil", () => {
     expect(screen.getByText("blocked budget reservation disabled")).toBeTruthy();
     expect(screen.getByText("budget reservation provider missing")).toBeTruthy();
     expect(screen.getAllByText("$7.20").length).toBeGreaterThan(1);
+
+    await user.click(screen.getByRole("button", { name: "Provider route" }));
+
+    await waitFor(() => expect(providerRouteMidnightOil).toHaveBeenCalled());
+    expect(providerRouteMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      applied_run_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-applied-run-receipt",
+      }),
+      dispatch_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-dispatch-receipt",
+      }),
+      activation_checklist_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-activation-checklist",
+      }),
+      budget_reservation_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-reservation",
+      }),
+    });
+    expect(screen.getByText("Provider receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-provider-route")).toBeTruthy();
+    expect(screen.getByText("blocked provider route executor disabled")).toBeTruthy();
+    expect(screen.getByText("provider route executor missing")).toBeTruthy();
+    expect(screen.getAllByText("none").length).toBeGreaterThan(1);
   });
 });
