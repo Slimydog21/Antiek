@@ -1646,6 +1646,11 @@ describe("Multimedia workstation", () => {
     expect(within(readiness).getByText("Attached")).toBeTruthy();
     expect(within(jobPanel).getAllByText("sha256:abcdef123456").length).toBeGreaterThan(0);
     expect(within(jobPanel).getAllByText("https://cdn.example.test/mm-1.mp4").length).toBeGreaterThan(0);
+    expect(
+      within(jobPanel).getByText(
+        "Open, download, copy link, and copy export review are read-only; no provider worker or public export is triggered.",
+      ),
+    ).toBeTruthy();
     expect(within(jobPanel).getByText("Export review required")).toBeTruthy();
     expect(within(jobPanel).getByText("Manual review required before publish/export")).toBeTruthy();
     expect(within(jobPanel).getAllByText("Not ready for public export").length).toBeGreaterThan(0);

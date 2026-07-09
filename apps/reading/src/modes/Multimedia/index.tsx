@@ -2469,6 +2469,9 @@ function JobPanel({
                     )}
                   </div>
                   <p className="mt-1 break-all font-mono text-[11px] text-ink dark:text-bright">{job.artifact_uri}</p>
+                  <p className="mt-1 leading-snug text-[11px] text-shadow-1 dark:text-moonlight">
+                    Open, download, copy link, and copy export review are read-only; no provider worker or public export is triggered.
+                  </p>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <a
                       className="inline-flex h-7 items-center rounded-hog border-edge border-sun bg-ice-0 px-2.5 font-mono text-[12px] font-semibold text-ink shadow-z1 dark:bg-charcoal-2 dark:text-bright dark:shadow-z1-night"
