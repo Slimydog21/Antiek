@@ -4,10 +4,15 @@ import { CollectiveResearchPanel } from "./CollectiveResearchPanel";
 
 const fetchCollectiveResearch = vi.fn();
 const mergeSpawnOutputs = vi.fn();
+const openWindow = vi.fn(() => "win:analysis:draft_1");
 
 vi.mock("../../api/engagement", () => ({
   fetchCollectiveResearch: (...args: unknown[]) => fetchCollectiveResearch(...args),
   mergeSpawnOutputs: (...args: unknown[]) => mergeSpawnOutputs(...args),
+}));
+
+vi.mock("../windows/openWindow", () => ({
+  openWindow: (...args: unknown[]) => openWindow(...args),
 }));
 
 describe("CollectiveResearchPanel", () => {
@@ -15,6 +20,7 @@ describe("CollectiveResearchPanel", () => {
   beforeEach(() => {
     fetchCollectiveResearch.mockReset();
     mergeSpawnOutputs.mockReset();
+    openWindow.mockClear();
   });
 
   it("merges selected spawns into collective prompt", async () => {
@@ -175,6 +181,15 @@ describe("CollectiveResearchPanel", () => {
     });
     expect(screen.getByTestId("collective-prompt-block").textContent).toMatch(
       /col_analysis/,
+    );
+    fireEvent.click(screen.getByTestId("collective-open-analysis-window"));
+    expect(openWindow).toHaveBeenCalledWith(
+      "hosted_html_document",
+      expect.objectContaining({
+        document_id: "draft_analysis_1",
+        view_format: "html",
+      }),
+      expect.objectContaining({ mode: "floating" }),
     );
   });
 });

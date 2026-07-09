@@ -15,6 +15,7 @@ import {
   type MergeMode,
   type MergeProductResponse,
 } from "../../api/engagement";
+import { openWindow } from "../windows/openWindow";
 
 export type CollectiveResearchPanelProps = {
   /** Pre-listed spawn ids available for multi-select */
@@ -244,6 +245,32 @@ export function CollectiveResearchPanel({
               {n}
             </p>
           ))}
+          {/* Residual (cg): open draft analysis HTML in floating window. */}
+          {docMerge.html && docMerge.view_format === "html" ? (
+            <button
+              type="button"
+              data-testid="collective-open-analysis-window"
+              onClick={() => {
+                openWindow(
+                  "hosted_html_document",
+                  {
+                    document_id: docMerge.document_id,
+                    title: `Written analysis (${docMerge.mode})`,
+                    html: docMerge.html,
+                    view_format: "html",
+                    source: "collective_written_analysis",
+                  },
+                  {
+                    id: `win:analysis:${docMerge.document_id}`,
+                    title: "Written analysis",
+                    mode: "floating",
+                  },
+                );
+              }}
+            >
+              Open analysis in window
+            </button>
+          ) : null}
           {docMerge.html ? (
             <div
               className="merge-html"
