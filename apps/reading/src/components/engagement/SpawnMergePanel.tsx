@@ -7,6 +7,9 @@
  * Residual (cp): seed twin notes on the merged document_id after success.
  * Residual (eh): onMerged notifies parent so research context remounts
  * after draft/parent merge + twin seed.
+ * Residual (el): auto-open draft_combined HTML in hosted_html_document so the
+ * draft joins the reading/research flywheel without a second click (parent
+ * merge stays manual — parent may already be open).
  */
 
 import { useCallback, useState } from "react";
@@ -18,21 +21,54 @@ import {
 } from "../../api/engagement";
 import { openWindow } from "../windows/openWindow";
 
+/** Open merged HTML as hosted document (HTML-first; never PDF). */
+export function openMergedResearchWindow(
+  result: Pick<MergeProductResponse, "document_id" | "mode" | "html" | "view_format">,
+): string | null {
+  if (result.view_format !== "html" || !result.html?.trim()) {
+    return null;
+  }
+  return openWindow(
+    "hosted_html_document",
+    {
+      document_id: result.document_id,
+      title: `Merged research (${result.mode})`,
+      html: result.html,
+      view_format: "html",
+      source: "spawn_merge_panel",
+    },
+    {
+      id: `win:merge:${result.document_id}`,
+      title: "Merged research",
+      mode: "floating",
+    },
+  );
+}
+
 export type SpawnMergePanelProps = {
   spawnId: string;
   parentAssetId: string;
   /** Residual (eh): after successful HTML merge (+ twin seed attempt). */
   onMerged?: (result: MergeProductResponse) => void;
+  /**
+   * Residual (el): when true (default), open hosted HTML window after a
+   * successful draft_combined merge. into_parent never auto-opens.
+   */
+  autoOpenDraft?: boolean;
 };
 
 export function SpawnMergePanel({
   spawnId,
   parentAssetId,
   onMerged,
+  autoOpenDraft = true,
 }: SpawnMergePanelProps) {
   const [result, setResult] = useState<MergeProductResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [autoOpenedWindowId, setAutoOpenedWindowId] = useState<string | null>(
+    null,
+  );
 
   const merge = useCallback(
     async (mode: MergeMode) => {
@@ -44,6 +80,7 @@ export function SpawnMergePanel({
       }
       setBusy(true);
       setError(null);
+      setAutoOpenedWindowId(null);
       try {
         const out = await mergeSpawnOutputs({
           parent_asset_id: parent,
@@ -77,13 +114,31 @@ export function SpawnMergePanel({
         const final = { ...out, notes };
         setResult(final);
         onMerged?.(final);
+
+        // Residual (el): draft_combined → auto-open hosted HTML flywheel.
+        if (
+          autoOpenDraft &&
+          mode === "draft_combined" &&
+          final.view_format === "html" &&
+          final.html?.trim()
+        ) {
+          const winId = openMergedResearchWindow(final);
+          if (winId) {
+            setAutoOpenedWindowId(winId);
+            notes = [
+              ...notes,
+              "Draft combined auto-opened in hosted HTML window (el).",
+            ];
+            setResult({ ...final, notes });
+          }
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       } finally {
         setBusy(false);
       }
     },
-    [spawnId, parentAssetId, onMerged],
+    [spawnId, parentAssetId, onMerged, autoOpenDraft],
   );
 
   return (
@@ -91,6 +146,7 @@ export function SpawnMergePanel({
       className="spawn-merge-panel space-y-2"
       data-testid="spawn-merge-panel"
       data-view-format="html"
+      data-auto-open-draft={autoOpenDraft ? "true" : "false"}
       aria-label="Merge this deep research"
     >
       <header>
@@ -99,6 +155,9 @@ export function SpawnMergePanel({
         </h2>
         <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
           Spawn <code>{spawnId}</code> → parent <code>{parentAssetId}</code>
+          {autoOpenDraft
+            ? " · draft auto-opens HTML window"
+            : " · draft open is manual"}
         </p>
       </header>
 
@@ -141,6 +200,15 @@ export function SpawnMergePanel({
             <code>{result.document_id}</code> · draft_leaves_parent=
             {String(result.draft_leaves_parent)}
           </p>
+          {autoOpenedWindowId ? (
+            <p
+              className="text-[11px] font-mono text-aurora"
+              data-testid="spawn-merge-auto-open-window"
+              role="status"
+            >
+              Auto-opened window {autoOpenedWindowId}
+            </p>
+          ) : null}
           {result.notes?.map((n) => (
             <p
               key={n}
@@ -155,21 +223,7 @@ export function SpawnMergePanel({
                 type="button"
                 data-testid="spawn-merge-open-window"
                 onClick={() => {
-                  openWindow(
-                    "hosted_html_document",
-                    {
-                      document_id: result.document_id,
-                      title: `Merged research (${result.mode})`,
-                      html: result.html,
-                      view_format: "html",
-                      source: "spawn_merge_panel",
-                    },
-                    {
-                      id: `win:merge:${result.document_id}`,
-                      title: "Merged research",
-                      mode: "floating",
-                    },
-                  );
+                  openMergedResearchWindow(result);
                 }}
                 className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono hover:bg-ink/5 dark:border-bright/30"
               >

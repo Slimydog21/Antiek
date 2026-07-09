@@ -56,6 +56,9 @@ describe("SpawnMergePanel residual ci", () => {
         onMerged={onMerged}
       />,
     );
+    expect(
+      screen.getByTestId("spawn-merge-panel").getAttribute("data-auto-open-draft"),
+    ).toBe("true");
     fireEvent.click(screen.getByTestId("spawn-merge-draft"));
     await waitFor(() => {
       expect(mergeSpawnOutputs).toHaveBeenCalledWith({
@@ -89,9 +92,61 @@ describe("SpawnMergePanel residual ci", () => {
     });
     expect(onMerged.mock.calls[0][0].document_id).toBe("draft_book-1_abc");
     expect(onMerged.mock.calls[0][0].view_format).toBe("html");
+    // Residual (el): draft_combined auto-opens hosted HTML without extra click.
+    await waitFor(() => {
+      expect(openWindow).toHaveBeenCalledWith(
+        "hosted_html_document",
+        expect.objectContaining({
+          document_id: "draft_book-1_abc",
+          view_format: "html",
+          html: "<p>Draft merge HTML</p>",
+          source: "spawn_merge_panel",
+        }),
+        expect.objectContaining({
+          id: "win:merge:draft_book-1_abc",
+          mode: "floating",
+        }),
+      );
+    });
+    expect(screen.getByTestId("spawn-merge-auto-open-window").textContent).toMatch(
+      /win:merge:draft_1/,
+    );
   });
 
-  it("merges into parent and opens HTML window", async () => {
+  it("does not auto-open draft when autoOpenDraft is false", async () => {
+    mergeSpawnOutputs.mockResolvedValue({
+      mode: "draft_combined",
+      parent_asset_id: "book-1",
+      document_id: "draft_manual",
+      source_spawn_ids: ["spn_1"],
+      sections_merged: 1,
+      draft_leaves_parent: true,
+      parent_document_id: "book-1",
+      view_format: "html",
+      product_panel: "engagement_merge",
+      source: "engagement_spine.merge_spawn_outputs",
+      notes: ["Draft"],
+      html: "<p>Manual open</p>",
+    });
+    render(
+      <SpawnMergePanel
+        spawnId="spn_1"
+        parentAssetId="book-1"
+        autoOpenDraft={false}
+      />,
+    );
+    expect(
+      screen.getByTestId("spawn-merge-panel").getAttribute("data-auto-open-draft"),
+    ).toBe("false");
+    fireEvent.click(screen.getByTestId("spawn-merge-draft"));
+    await waitFor(() => {
+      expect(screen.getByTestId("spawn-merge-open-window")).toBeTruthy();
+    });
+    expect(openWindow).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("spawn-merge-auto-open-window")).toBeNull();
+  });
+
+  it("merges into parent without auto-open; manual open still works", async () => {
     mergeSpawnOutputs.mockResolvedValue({
       mode: "into_parent",
       parent_asset_id: "book-1",
@@ -122,6 +177,9 @@ describe("SpawnMergePanel residual ci", () => {
     await waitFor(() => {
       expect(screen.getByTestId("spawn-merge-open-window")).toBeTruthy();
     });
+    // Residual (el): into_parent does not auto-open (parent may already be open).
+    expect(openWindow).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("spawn-merge-auto-open-window")).toBeNull();
     fireEvent.click(screen.getByTestId("spawn-merge-open-window"));
     expect(openWindow).toHaveBeenCalledWith(
       "hosted_html_document",

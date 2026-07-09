@@ -1,0 +1,18 @@
+# residual (el) auto-open draft_combined merge in hosted HTML window
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(ek) prior | branch_only | campaign inventories
+(el) draft merge auto-open | branch_only | SpawnMergePanel openMergedResearchWindow + autoOpenDraft default true; into_parent manual only; 4 vitest
+
+PATHS:
+- apps/reading/src/components/engagement/SpawnMergePanel.tsx
+- apps/reading/src/components/engagement/SpawnMergePanel.test.tsx
+
+INVARIANTS:
+- HTML-only open (view_format html + html body)
+- draft_combined auto-opens hosted_html_document flywheel
+- into_parent does not auto-open
+- autoOpenDraft=false keeps manual open
+
+NEXT: (em) re-derive; operator merge PR #465
