@@ -66,4 +66,5 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (ft, 2026-07-09): Write create piece imports HTML draft plain text into outline section 0 (createSection + updateSectionProse).
 - Closed (fu, 2026-07-09): multi-section HTML outline import via h1–h3 split (MAX 20 sections).
 - Closed (fv, 2026-07-09): nest h2/h3 under parent_section_id by heading level on Write import.
+- Closed (fw, 2026-07-09): Write HTML draft shows outline section preview before create piece.
 - Left (env/operator): floating multi-agent *live* collective chat (merge+continue unit ships); live midnight oil multi-provider; paid marketplace rails; live hydrate/seed injectors; operator install of weekly LaunchAgent; PR #465 main merge.

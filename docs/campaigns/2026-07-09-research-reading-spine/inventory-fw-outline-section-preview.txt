@@ -1,0 +1,16 @@
+# residual (fw) Write HTML draft outline section preview before create
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(fv) prior | branch_only | campaign inventories
+(fw) section preview | branch_only | write-html-draft-section-preview + items with heading-level; 10 WriteHome vitest
+
+PATHS:
+- apps/reading/src/modes/Write/WriteHome.tsx
+- apps/reading/src/modes/Write/WriteHome.test.tsx
+
+INVARIANTS:
+- Preview matches outline_sections that will import
+- No invent of sections not in HTML
+
+NEXT: (fx) re-derive; operator merge PR #465

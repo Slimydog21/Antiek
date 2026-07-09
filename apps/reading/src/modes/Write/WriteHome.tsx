@@ -314,6 +314,38 @@ export default function WriteHome() {
             <p data-testid="write-html-draft-title">
               Title: <strong>{htmlDraft.title}</strong>
             </p>
+            {/* Residual (fw): preview outline sections that will import on create. */}
+            {htmlDraft.outline_sections?.length ? (
+              <div
+                className="space-y-1"
+                data-testid="write-html-draft-section-preview"
+                data-section-count={String(htmlDraft.outline_sections.length)}
+              >
+                <p className="text-[10px] uppercase tracking-wide text-ink-mute dark:text-moonlight">
+                  Outline preview (imports on create)
+                </p>
+                <ol className="list-decimal pl-4 text-[11px]">
+                  {htmlDraft.outline_sections.map((s) => (
+                    <li
+                      key={`${s.section_index}-${s.title}`}
+                      data-testid="write-html-draft-section-preview-item"
+                      data-heading-level={String(s.heading_level ?? 0)}
+                      data-section-index={String(s.section_index)}
+                    >
+                      <span className="font-semibold">{s.title}</span>
+                      {s.heading_level >= 2 ? (
+                        <span className="text-ink-mute"> · h{s.heading_level}</span>
+                      ) : null}
+                      <span className="text-ink-mute">
+                        {" "}
+                        · {(s.plain_text || "").slice(0, 80)}
+                        {(s.plain_text || "").length > 80 ? "…" : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ) : null}
             <p
               className="max-h-24 overflow-auto text-[11px] text-ink-soft dark:text-moonlight"
               data-testid="write-html-draft-plain-preview"

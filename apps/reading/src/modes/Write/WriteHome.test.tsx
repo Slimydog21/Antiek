@@ -272,6 +272,15 @@ describe("WriteHome — the re-homed door", () => {
         .getByTestId("write-html-draft-import-outline")
         .getAttribute("data-section-count"),
     ).toBe("2");
+    // Residual (fw): section preview before create.
+    const preview = screen.getByTestId("write-html-draft-section-preview");
+    expect(preview.getAttribute("data-section-count")).toBe("2");
+    const items = screen.getAllByTestId("write-html-draft-section-preview-item");
+    expect(items).toHaveLength(2);
+    expect(items[0].getAttribute("data-heading-level")).toBe("1");
+    expect(items[1].getAttribute("data-heading-level")).toBe("2");
+    expect(items[0].textContent).toMatch(/First/);
+    expect(items[1].textContent).toMatch(/Second/);
     const title = await screen.findByPlaceholderText(/what are you writing/i);
     await userEvent.clear(title);
     await userEvent.type(title, "Multi section piece");
