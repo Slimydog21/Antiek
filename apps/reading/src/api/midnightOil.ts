@@ -711,6 +711,57 @@ export interface MidnightOilGraphAdapterPlanReceipt {
   adapter_plan_notes: string[];
 }
 
+export interface MidnightOilFinalArtifactAdapterPlanRequest {
+  launch_packet: MidnightOilLaunchPacket;
+  approval_receipt: MidnightOilApprovalReceipt;
+  runner_handoff: MidnightOilRunnerHandoff;
+  runner_control_plan_receipt: MidnightOilRunnerControlPlanReceipt;
+  budget_provider_adapter_plan_receipt: MidnightOilBudgetProviderAdapterPlanReceipt;
+  provider_executor_adapter_plan_receipt: MidnightOilProviderExecutorAdapterPlanReceipt;
+  retrieval_adapter_plan_receipt: MidnightOilRetrievalAdapterPlanReceipt;
+  graph_adapter_plan_receipt: MidnightOilGraphAdapterPlanReceipt;
+}
+
+export interface MidnightOilFinalArtifactAdapterPlanReceipt {
+  receipt_id: string;
+  runner_control_plan_receipt_id: string;
+  budget_provider_adapter_plan_receipt_id: string;
+  provider_executor_adapter_plan_receipt_id: string;
+  retrieval_adapter_plan_receipt_id: string;
+  graph_adapter_plan_receipt_id: string;
+  runner_readiness_receipt_id: string;
+  runner_handoff_id: string;
+  approval_receipt_id: string;
+  launch_packet_id: string;
+  run_id: string;
+  status: "blocked_final_artifact_adapter_unimplemented";
+  adapter_key: "final_html_artifact_writer";
+  planned_writer_id: string;
+  planned_artifact_ledger_id: string;
+  planned_artifact_id: string;
+  planned_twin_note_document_id: string;
+  final_format: "html";
+  pdf_allowed: boolean;
+  required_invariants: string[];
+  required_artifact_receipt_fields: string[];
+  blocker_reason: "final_artifact_adapter_unimplemented";
+  final_artifact_allowed: boolean;
+  final_artifact_created: boolean;
+  graph_mutation_allowed: boolean;
+  graph_mutated: boolean;
+  source_receipts_created: boolean;
+  retrieval_allowed: boolean;
+  retrieval_performed: boolean;
+  provider_execution_allowed: boolean;
+  provider_calls_made: boolean;
+  live_run_allowed: boolean;
+  dispatch_allowed: boolean;
+  budget_reservation_allowed: boolean;
+  budget_reserved: boolean;
+  dispatch_performed: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -959,4 +1010,21 @@ export async function graphAdapterPlanMidnightOil(
     );
   }
   return (await resp.json()) as MidnightOilGraphAdapterPlanReceipt;
+}
+
+export async function finalArtifactAdapterPlanMidnightOil(
+  request: MidnightOilFinalArtifactAdapterPlanRequest,
+): Promise<MidnightOilFinalArtifactAdapterPlanReceipt> {
+  const resp = await apiFetch(`${API_BASE}/research/midnight-oil/final-artifact-adapter-plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/final-artifact-adapter-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilFinalArtifactAdapterPlanReceipt;
 }
