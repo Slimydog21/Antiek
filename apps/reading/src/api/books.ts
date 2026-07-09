@@ -258,6 +258,36 @@ export interface BookPurchaseRequestResponse {
   policy_notes: string[];
 }
 
+export interface BookHtmlImportPreflightInput {
+  title: string;
+  author?: string | null;
+  source_request_id?: string | null;
+  file_name?: string | null;
+  file_format?: "epub" | "html" | "pdf" | "kindle" | "unknown";
+  has_legal_access: boolean;
+  acknowledge_no_upload_or_ingest: boolean;
+}
+
+export interface BookHtmlImportPreflightResponse {
+  import_preflight_id: string;
+  status: "ready_for_operator_file" | "blocked";
+  title: string;
+  author: string | null;
+  source_request_id: string | null;
+  file_name: string | null;
+  file_format: string;
+  import_target: "antiek_html";
+  external_call_performed: boolean;
+  file_uploaded: boolean;
+  file_read_attempted: boolean;
+  ingest_attempted: boolean;
+  graph_mutation_performed: boolean;
+  html_conversion_required: boolean;
+  html_hosting_required: boolean;
+  required_operator_steps: string[];
+  policy_notes: string[];
+}
+
 /** Prompt-to-curate (Read SPR-04). Ranks ONLY servable books by relevance
  * to the prompt — a gated book is never curated into a readable list.
  * Returns 503 if the embedding model isn't available server-side. */
@@ -283,6 +313,19 @@ export async function requestBookPurchase(
   if (resp.status === 400) throw new Error("Confirm manual purchase before preparing the request.");
   if (!resp.ok) throw new Error(`POST /books/marketplace/purchase-request: HTTP ${resp.status}`);
   return (await resp.json()) as BookPurchaseRequestResponse;
+}
+
+export async function preflightBookHtmlImport(
+  request: BookHtmlImportPreflightInput,
+): Promise<BookHtmlImportPreflightResponse> {
+  const resp = await apiFetch(`${API_BASE}/books/import/html-preflight`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 400) throw new Error("Confirm legal access and the no-upload preflight boundary.");
+  if (!resp.ok) throw new Error(`POST /books/import/html-preflight: HTTP ${resp.status}`);
+  return (await resp.json()) as BookHtmlImportPreflightResponse;
 }
 
 // ── SPR-08 M2: talk-to-book (multi-turn, page-cited) ──────────────────

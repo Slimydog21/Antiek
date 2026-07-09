@@ -283,6 +283,36 @@ class BookPurchaseRequestOut(BaseModel):
     policy_notes: list[str]
 
 
+class BookHtmlImportPreflightIn(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    author: str | None = Field(default=None, max_length=200)
+    source_request_id: str | None = Field(default=None, max_length=80)
+    file_name: str | None = Field(default=None, max_length=300)
+    file_format: Literal["epub", "html", "pdf", "kindle", "unknown"] = "unknown"
+    has_legal_access: bool = False
+    acknowledge_no_upload_or_ingest: bool = False
+
+
+class BookHtmlImportPreflightOut(BaseModel):
+    import_preflight_id: str
+    status: Literal["ready_for_operator_file", "blocked"]
+    title: str
+    author: str | None
+    source_request_id: str | None
+    file_name: str | None
+    file_format: str
+    import_target: Literal["antiek_html"]
+    external_call_performed: bool
+    file_uploaded: bool
+    file_read_attempted: bool
+    ingest_attempted: bool
+    graph_mutation_performed: bool
+    html_conversion_required: bool
+    html_hosting_required: bool
+    required_operator_steps: list[str]
+    policy_notes: list[str]
+
+
 def _book_purchase_request_id(req: BookPurchaseRequestIn) -> str:
     normalized = "|".join(
         [
@@ -296,6 +326,20 @@ def _book_purchase_request_id(req: BookPurchaseRequestIn) -> str:
         ]
     )
     return f"bookreq-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _book_html_import_preflight_id(req: BookHtmlImportPreflightIn) -> str:
+    normalized = "|".join(
+        [
+            req.title.strip().casefold(),
+            (req.author or "").strip().casefold(),
+            (req.source_request_id or "").strip(),
+            (req.file_name or "").strip(),
+            req.file_format,
+            str(req.has_legal_access),
+        ]
+    )
+    return f"bookimp-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
 
 
 class SpinResearchRequest(BaseModel):
@@ -631,6 +675,60 @@ def register_book_routes(app: FastAPI) -> None:
             policy_notes=[
                 "No checkout, store lookup, provider call, URL fetch, budget reservation, charge, or ingest was performed.",
                 "The future reader surface must continue to render HTML-first and keep gated/source material behind the serve gate.",
+            ],
+        )
+
+    @app.post(
+        "/books/import/html-preflight",
+        response_model=BookHtmlImportPreflightOut,
+        status_code=202,
+        tags=["books"],
+    )
+    async def book_html_import_preflight(
+        req: BookHtmlImportPreflightIn,
+    ) -> BookHtmlImportPreflightOut:
+        """Prepare the HTML-first import gate without touching the file.
+
+        This records that the operator claims legal access and wants Antiek
+        HTML hosting, but it does not accept an upload, read a local path, fetch
+        a URL, convert content, ingest into the graph, or serve the book.
+        """
+        if not req.acknowledge_no_upload_or_ingest:
+            raise HTTPException(
+                status_code=400,
+                detail="html_import_preflight_ack_required",
+            )
+        if not req.has_legal_access:
+            raise HTTPException(
+                status_code=400,
+                detail="legal_access_required",
+            )
+
+        fmt = req.file_format
+        return BookHtmlImportPreflightOut(
+            import_preflight_id=_book_html_import_preflight_id(req),
+            status="ready_for_operator_file",
+            title=req.title.strip(),
+            author=req.author.strip() if req.author else None,
+            source_request_id=req.source_request_id.strip() if req.source_request_id else None,
+            file_name=req.file_name.strip() if req.file_name else None,
+            file_format=fmt,
+            import_target="antiek_html",
+            external_call_performed=False,
+            file_uploaded=False,
+            file_read_attempted=False,
+            ingest_attempted=False,
+            graph_mutation_performed=False,
+            html_conversion_required=fmt != "html",
+            html_hosting_required=True,
+            required_operator_steps=[
+                "Attach or upload the legally obtained file in a later explicit import step.",
+                "Run conversion into Antiek HTML after the file gate validates format and rights.",
+                "Host the readable copy behind the existing book serve gate before it appears on the shelf.",
+            ],
+            policy_notes=[
+                "No upload, file read, URL fetch, conversion, graph write, or full-text serve happened in this preflight.",
+                "The readable asset remains HTML-first and must pass the serve gate before Library/Reader access.",
             ],
         )
 

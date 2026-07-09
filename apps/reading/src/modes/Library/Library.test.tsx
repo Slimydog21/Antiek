@@ -13,12 +13,14 @@ const {
   listBooksMock,
   curateBooksMock,
   requestBookPurchaseMock,
+  preflightBookHtmlImportMock,
   listInvestigationsMock,
   navigateMock,
 } = vi.hoisted(() => ({
   listBooksMock: vi.fn(),
   curateBooksMock: vi.fn(),
   requestBookPurchaseMock: vi.fn(),
+  preflightBookHtmlImportMock: vi.fn(),
   // M1: the active-research signal documentsByTheme ranks the shelf to.
   // Default: no active research → the feed falls back to recency.
   listInvestigationsMock: vi.fn<
@@ -34,6 +36,7 @@ vi.mock("../../api/books", async (orig) => {
     listBooks: listBooksMock,
     curateBooks: curateBooksMock,
     requestBookPurchase: requestBookPurchaseMock,
+    preflightBookHtmlImport: preflightBookHtmlImportMock,
   };
 });
 
@@ -72,6 +75,7 @@ beforeEach(() => {
   listBooksMock.mockReset();
   curateBooksMock.mockReset();
   requestBookPurchaseMock.mockReset();
+  preflightBookHtmlImportMock.mockReset();
   listInvestigationsMock.mockReset();
   listInvestigationsMock.mockResolvedValue({ count: 0, investigations: [] });
   navigateMock.mockReset();
@@ -311,6 +315,85 @@ describe("Library", () => {
       desired_format: "unknown",
       import_target: "antiek_html",
       acknowledge_manual_purchase_only: true,
+    });
+  });
+
+  it("preflights a legally held book file for later Antiek HTML import without uploading or ingesting", async () => {
+    listBooksMock.mockResolvedValue({ books: [servableBook], count: 1 });
+    requestBookPurchaseMock.mockResolvedValue({
+      request_id: "bookreq-safe123",
+      status: "needs_operator_purchase",
+      title: "The Dream Machine",
+      author: "M. Mitchell Waldrop",
+      store: "other",
+      source_url: null,
+      max_price_usd_cents: 2500,
+      desired_format: "unknown",
+      import_target: "antiek_html",
+      purchase_allowed: false,
+      external_call_performed: false,
+      spend_reserved_usd_cents: 0,
+      charge_attempted: false,
+      ingest_attempted: false,
+      html_hosting_required: true,
+      required_operator_steps: [],
+      policy_notes: [],
+    });
+    preflightBookHtmlImportMock.mockResolvedValue({
+      import_preflight_id: "bookimp-safe123",
+      status: "ready_for_operator_file",
+      title: "The Dream Machine",
+      author: "M. Mitchell Waldrop",
+      source_request_id: "bookreq-safe123",
+      file_name: "dream-machine.epub",
+      file_format: "epub",
+      import_target: "antiek_html",
+      external_call_performed: false,
+      file_uploaded: false,
+      file_read_attempted: false,
+      ingest_attempted: false,
+      graph_mutation_performed: false,
+      html_conversion_required: true,
+      html_hosting_required: true,
+      required_operator_steps: [],
+      policy_notes: [],
+    });
+    renderLibrary();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Open Meditations/ })).toBeTruthy(),
+    );
+
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "The Dream Machine" },
+    });
+    fireEvent.change(screen.getByLabelText("Author"), {
+      target: { value: "M. Mitchell Waldrop" },
+    });
+    fireEvent.click(screen.getByLabelText(/No purchase, fetch/));
+    fireEvent.click(screen.getByRole("button", { name: "Prepare request" }));
+    await waitFor(() => expect(screen.getByRole("status").textContent).toContain("bookreq-safe123"));
+
+    fireEvent.change(screen.getByLabelText("File name"), {
+      target: { value: "dream-machine.epub" },
+    });
+    fireEvent.change(screen.getByLabelText("Format"), {
+      target: { value: "epub" },
+    });
+    fireEvent.click(screen.getByLabelText(/I have legal access/));
+    fireEvent.click(screen.getByLabelText(/No upload, file read/));
+    fireEvent.click(screen.getByRole("button", { name: "Check import" }));
+
+    const importStatus = await screen.findByText(/Import bookimp-safe123/);
+    expect(importStatus.textContent).toContain("uploaded no");
+    expect(importStatus.textContent).toContain("ingested no");
+    expect(preflightBookHtmlImportMock).toHaveBeenCalledWith({
+      title: "The Dream Machine",
+      author: "M. Mitchell Waldrop",
+      source_request_id: "bookreq-safe123",
+      file_name: "dream-machine.epub",
+      file_format: "epub",
+      has_legal_access: true,
+      acknowledge_no_upload_or_ingest: true,
     });
   });
 });

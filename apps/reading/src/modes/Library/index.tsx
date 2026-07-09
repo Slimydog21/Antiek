@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import type { BookPurchaseRequestResponse, BookSummary, CorpusStatus } from "../../api/books";
-import { curateBooks, listBooks, requestBookPurchase } from "../../api/books";
+import type {
+  BookHtmlImportPreflightResponse,
+  BookPurchaseRequestResponse,
+  BookSummary,
+  CorpusStatus,
+} from "../../api/books";
+import {
+  curateBooks,
+  listBooks,
+  preflightBookHtmlImport,
+  requestBookPurchase,
+} from "../../api/books";
 import { listInvestigations } from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
 import { useInWindow } from "../../components/windows/windowHostContext";
@@ -65,6 +75,12 @@ export default function Library() {
   const [purchaseAck, setPurchaseAck] = useState(false);
   const [purchaseBusy, setPurchaseBusy] = useState(false);
   const [purchaseReceipt, setPurchaseReceipt] = useState<BookPurchaseRequestResponse | null>(null);
+  const [importFileName, setImportFileName] = useState("");
+  const [importFileFormat, setImportFileFormat] = useState<"epub" | "html" | "pdf" | "kindle" | "unknown">("epub");
+  const [importHasLegalAccess, setImportHasLegalAccess] = useState(false);
+  const [importAck, setImportAck] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importReceipt, setImportReceipt] = useState<BookHtmlImportPreflightResponse | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -142,6 +158,38 @@ export default function Library() {
       setPurchaseBusy(false);
     }
   }, [purchaseAck, purchaseAuthor, purchaseMaxUsd, purchaseTitle, purchaseUrl]);
+
+  const onImportPreflight = useCallback(async () => {
+    const title = purchaseReceipt?.title ?? purchaseTitle;
+    const author = purchaseReceipt?.author ?? (purchaseAuthor.trim() || null);
+    setImportBusy(true);
+    setError(null);
+    setImportReceipt(null);
+    try {
+      const res = await preflightBookHtmlImport({
+        title,
+        author,
+        source_request_id: purchaseReceipt?.request_id ?? null,
+        file_name: importFileName.trim() || null,
+        file_format: importFileFormat,
+        has_legal_access: importHasLegalAccess,
+        acknowledge_no_upload_or_ingest: importAck,
+      });
+      setImportReceipt(res);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setImportBusy(false);
+    }
+  }, [
+    importAck,
+    importFileFormat,
+    importFileName,
+    importHasLegalAccess,
+    purchaseAuthor,
+    purchaseReceipt,
+    purchaseTitle,
+  ]);
 
   // The display order, in three layers of precedence:
   //   1. an ACTIVE CURATE prompt (explicit user query) re-ranks to that order;
@@ -366,6 +414,84 @@ export default function Library() {
               <p className="text-[13px] font-serif text-ink dark:text-bright" role="status">
                 Request {purchaseReceipt.request_id} is ready for manual purchase; Antiek reserved $
                 {(purchaseReceipt.spend_reserved_usd_cents / 100).toFixed(2)} and performed no external call.
+              </p>
+            )}
+          </form>
+
+          <form
+            className="rounded-md border border-ice-4 dark:border-charcoal-1 bg-white/70 dark:bg-charcoal-2/70 p-3 space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void onImportPreflight();
+            }}
+          >
+            <div>
+              <p className="text-[13px] font-serif text-ink dark:text-bright">
+                HTML import preflight
+              </p>
+              <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                Checks legal-access and HTML-hosting posture only; no upload,
+                file read, conversion, ingest, or graph write runs here.
+              </p>
+            </div>
+            <div className="flex flex-col gap-3 md:flex-row md:items-end">
+              <label className="flex-1 min-w-0 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                File name
+                <input
+                  value={importFileName}
+                  onChange={(event) => setImportFileName(event.target.value)}
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  placeholder="Optional filename"
+                />
+              </label>
+              <label className="w-full md:w-36 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                Format
+                <select
+                  value={importFileFormat}
+                  onChange={(event) => setImportFileFormat(event.target.value as typeof importFileFormat)}
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                >
+                  <option value="epub">EPUB</option>
+                  <option value="html">HTML</option>
+                  <option value="pdf">PDF</option>
+                  <option value="kindle">Kindle</option>
+                  <option value="unknown">Unknown</option>
+                </select>
+              </label>
+            </div>
+            <div className="flex flex-col gap-2">
+              <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                <input
+                  type="checkbox"
+                  checked={importHasLegalAccess}
+                  onChange={(event) => setImportHasLegalAccess(event.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>I have legal access to this file or receipt-backed copy.</span>
+              </label>
+              <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                <input
+                  type="checkbox"
+                  checked={importAck}
+                  onChange={(event) => setImportAck(event.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>No upload, file read, conversion, ingest, or graph write runs from this preflight.</span>
+              </label>
+            </div>
+            <button
+              type="submit"
+              disabled={importBusy || (purchaseReceipt?.title ?? purchaseTitle).trim().length === 0}
+              className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+            >
+              {importBusy ? "Checking…" : "Check import"}
+            </button>
+            {importReceipt && (
+              <p className="text-[13px] font-serif text-ink dark:text-bright" role="status">
+                Import {importReceipt.import_preflight_id} is ready for operator file handoff; uploaded{" "}
+                {importReceipt.file_uploaded ? "yes" : "no"}, ingested{" "}
+                {importReceipt.ingest_attempted ? "yes" : "no"}, HTML hosting required{" "}
+                {importReceipt.html_hosting_required ? "yes" : "no"}.
               </p>
             )}
           </form>
