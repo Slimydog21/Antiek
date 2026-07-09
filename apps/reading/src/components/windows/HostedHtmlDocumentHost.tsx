@@ -260,7 +260,7 @@ export default function HostedHtmlDocumentHost(
           </div>
           {/* Residual (da): driver readout on reading host (parity with DR). */}
           <div className="flex flex-col items-end gap-1">
-            <DecisionTreeDriverBadge />
+            <DecisionTreeDriverBadge researchTier={researchTier} />
             {/* Residual (fl): handoff draft HTML into Write mode (import lands later). */}
             {assetId && isHtml ? (
               <a

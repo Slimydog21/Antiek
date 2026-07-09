@@ -11,6 +11,8 @@
  * on ResearchLaunchBudgetPanel.
  * Residual (fd): manual refresh of driver + budget without remounting the host.
  * Residual (fj): deep-link to Settings decision-tree / model budget controls.
+ * Residual (ku): optional researchTier chrome so model driver + depth posture
+ * share one decision-tree surface (not NotDiamond authority).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -41,12 +43,23 @@ export function budgetUsagePct(budget: BudgetResponse | null): number | null {
   return Math.min(100, (budget.spent_usd / budget.daily_cap_usd) * 100);
 }
 
-export function DecisionTreeDriverBadge() {
+export type DecisionTreeDriverBadgeProps = {
+  /**
+   * Residual (ku): closed research tier for depth posture chrome when host
+   * knows workstation depth (fast|deep|wrestle). Advisory only.
+   */
+  researchTier?: "fast" | "deep" | "wrestle" | string | null;
+};
+
+export function DecisionTreeDriverBadge({
+  researchTier = null,
+}: DecisionTreeDriverBadgeProps = {}) {
   const [tree, setTree] = useState<DecisionTreeSelectionResponse | null>(null);
   const [budget, setBudget] = useState<BudgetResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const normalizedTier = (researchTier || "").trim().toLowerCase() || "";
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -77,6 +90,7 @@ export function DecisionTreeDriverBadge() {
       data-testid="decision-tree-driver-badge"
       data-view-format="html"
       data-refresh-tick={String(refreshTick)}
+      data-research-tier={normalizedTier}
     >
       <div className="flex flex-wrap items-center gap-2">
         {error ? (
@@ -111,12 +125,30 @@ export function DecisionTreeDriverBadge() {
         </a>
       </div>
 
-      {/* Residual (hv): machine-readable driver + budget metrics. */}
+      {/* Residual (ku): depth posture next to model driver (advisory). */}
+      {normalizedTier ? (
+        <p
+          className="opacity-90"
+          data-testid="decision-tree-research-tier"
+          data-research-tier={normalizedTier}
+          role="status"
+        >
+          Research tier: <strong>{normalizedTier}</strong>
+          {normalizedTier === "wrestle"
+            ? " · multi-minute long-horizon depth"
+            : normalizedTier === "fast"
+              ? " · flash / distill depth"
+              : " · deep / synthesize depth"}
+        </p>
+      ) : null}
+
+      {/* Residual (hv/ku): machine-readable driver + budget + depth metrics. */}
       <div
         data-testid="decision-tree-driver-metrics"
         data-installed={String(Boolean(tree?.installed && tree.model_id))}
         data-model-id={tree?.model_id ?? ""}
         data-provider-id={tree?.provider_id ?? ""}
+        data-research-tier={normalizedTier}
         data-spent-status={budget?.spent_status ?? "unknown"}
         data-spent-usd={
           budget?.spent_usd != null ? String(budget.spent_usd) : ""
@@ -135,6 +167,7 @@ export function DecisionTreeDriverBadge() {
         {String(Boolean(tree?.installed && tree.model_id))} · model=
         {tree?.model_id || "(none)"} · usage_pct=
         {pct != null ? `${Math.round(pct)}%` : "unknown"}
+        {normalizedTier ? ` · tier=${normalizedTier}` : ""}
       </div>
 
       {/* Residual (eq): compact usage bar for the operator's daily API budget. */}

@@ -195,7 +195,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             <p className="text-xs text-shadow-1 dark:text-moonlight">
               Window-native host · content stance: {isHtml ? "HTML" : viewFormat} · not PDF
             </p>
-            <DecisionTreeDriverBadge />
+            <DecisionTreeDriverBadge researchTier={researchTier} />
           </div>
           {/* Residual (ce): floating ⇄ full without leaving the host. */}
           {rawSessionId ? (

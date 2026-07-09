@@ -795,7 +795,7 @@ export default function WriteHome() {
           <div className="flex shrink-0 flex-col items-end gap-2">
             {/* Residual (gc): model driver + budget usage on Write piece. */}
             <div data-testid="write-piece-driver-badge" data-view-format="html">
-              <DecisionTreeDriverBadge />
+              <DecisionTreeDriverBadge researchTier={writeResearchTier} />
               {/* Residual (if): Settings deep-link for driver + budget. */}
               <p className="mt-1 text-[11px] font-mono">
                 <a

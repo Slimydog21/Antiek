@@ -46,6 +46,36 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
     });
   });
 
+  it("surfaces researchTier chrome when provided (ku)", async () => {
+    fetchDecisionTreeSelection.mockResolvedValue({
+      model_id: "glm-5.2",
+      provider_id: "zai",
+      installed: true,
+      notes: [],
+      source: "test",
+    });
+    render(<DecisionTreeDriverBadge researchTier="wrestle" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("decision-tree-driver-active")).toBeTruthy();
+    });
+    expect(
+      screen
+        .getByTestId("decision-tree-driver-badge")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+    expect(
+      screen
+        .getByTestId("decision-tree-driver-metrics")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+    expect(screen.getByTestId("decision-tree-research-tier").textContent).toMatch(
+      /wrestle/i,
+    );
+    expect(screen.getByTestId("decision-tree-research-tier").textContent).toMatch(
+      /long-horizon/i,
+    );
+  });
+
   it("shows none when not installed", async () => {
     fetchDecisionTreeSelection.mockResolvedValue({
       model_id: null,
