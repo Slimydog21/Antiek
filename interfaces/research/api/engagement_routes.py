@@ -391,6 +391,85 @@ hydrate_arxiv_fetch_by_id: Any = None
 hydrate_substack_fetch_post: Any = None
 
 
+def hydrate_live_status_payload(
+    *,
+    environ: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Residual (hq): honest offline-vs-live hydrate injector readiness report.
+
+    Never enables network. Surfaces process injectors + env flag intent so
+    Settings can show operators that arxiv/substack stay offline-honest by default.
+    """
+    from substrate.engagement_spine.hydrate_live_wiring import (
+        ANTIEK_HYDRATE_LIVE_ARXIV_ENV,
+        ANTIEK_HYDRATE_LIVE_SUBSTACK_ENV,
+        env_flag,
+    )
+
+    env = environ if environ is not None else dict(os.environ)
+    arxiv_env = env_flag(ANTIEK_HYDRATE_LIVE_ARXIV_ENV, environ=env)
+    substack_env = env_flag(ANTIEK_HYDRATE_LIVE_SUBSTACK_ENV, environ=env)
+    arxiv_injector = hydrate_arxiv_fetch_by_id is not None
+    substack_injector = hydrate_substack_fetch_post is not None
+    generic_injector = hydrate_fetch_publication is not None
+    any_live = arxiv_injector or substack_injector or generic_injector
+    offline_honest = not any_live
+    notes: list[str] = []
+    if offline_honest:
+        notes.append(
+            "Hydrate default: offline-honest identity — no live body injectors installed."
+        )
+    else:
+        notes.append(
+            "At least one live hydrate injector is process-installed "
+            "(still opt-in; not silent network from UI alone)."
+        )
+    if arxiv_env and not arxiv_injector:
+        notes.append(
+            f"{ANTIEK_HYDRATE_LIVE_ARXIV_ENV}=on but arxiv injector not installed "
+            "(boot wiring may have failed or not run)."
+        )
+    if substack_env and not substack_injector:
+        notes.append(
+            f"{ANTIEK_HYDRATE_LIVE_SUBSTACK_ENV}=on but substack injector not installed "
+            "(factory required; refuse auto page scrape)."
+        )
+    return {
+        "view_format": "html",
+        "product_panel": "hydrate_live_status",
+        "source": "engagement_spine.hydrate_live_wiring",
+        "offline_honest": offline_honest,
+        "any_live_injector": any_live,
+        "arxiv": {
+            "env_flag": ANTIEK_HYDRATE_LIVE_ARXIV_ENV,
+            "env_enabled": arxiv_env,
+            "injector_installed": arxiv_injector,
+        },
+        "substack": {
+            "env_flag": ANTIEK_HYDRATE_LIVE_SUBSTACK_ENV,
+            "env_enabled": substack_env,
+            "injector_installed": substack_injector,
+        },
+        "generic_fetch_publication_installed": generic_injector,
+        "notes": notes,
+        "html": (
+            "<section data-view-format=\"html\" data-product-panel=\"hydrate_live_status\">"
+            f"<p>offline_honest={str(offline_honest).lower()} · "
+            f"arxiv_injector={str(arxiv_injector).lower()} · "
+            f"substack_injector={str(substack_injector).lower()}</p>"
+            "<ul>"
+            + "".join(f"<li>{n}</li>" for n in notes)
+            + "</ul></section>"
+        ),
+    }
+
+
+@engagement_router.get("/hydrate-live-status")
+def get_hydrate_live_status() -> dict[str, Any]:
+    """GET residual (hq): offline-vs-live hydrate injector readiness (HTML-first)."""
+    return hydrate_live_status_payload()
+
+
 @engagement_router.post("/hydrate-ref")
 def post_hydrate_ref(body: HydrateRefBody) -> dict[str, Any]:
     """Land arxiv/substack/url as an HTML-first asset (offline-safe by default).
@@ -702,4 +781,5 @@ __all__ = [
     "engagement_router",
     "register_engagement_routes",
     "reset_engagement_stores",
+    "hydrate_live_status_payload",
 ]

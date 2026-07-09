@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(hq) · PR #465
+Hydrate live status Settings surface (hq); launch projection metrics (hp).
+Next residual (hr).

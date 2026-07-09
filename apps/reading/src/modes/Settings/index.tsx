@@ -34,6 +34,10 @@ import {
   type PromptCostEstimateResponse,
   type RegisteredModelsResponse,
 } from "../../api/settings";
+import {
+  fetchHydrateLiveStatus,
+  type HydrateLiveStatusResponse,
+} from "../../api/engagement";
 
 /**
  * Operator Settings — model inventory + budget + prompt projection (SPR-01)
@@ -42,6 +46,7 @@ import {
  * + Antiek-bench suite rewrite proposal (proposed only; not auto-promoted)
  * + competitive dogfood fixtures listing (never auto-promoted)
  * + offline dogfood suite run → populate weekly leaderboard (residual bo).
+ * + Residual (hq): hydrate live-injector readiness (arxiv/substack offline-honest default).
  *
  * Honesty: spent/pricing may be unknown; UI never invents $0.00 when the
  * ledger or rate table is unset. Cost projection stays on #440 API.
@@ -91,6 +96,11 @@ export default function Settings() {
   const [ndError, setNdError] = useState<string | null>(null);
   // Residual (he): explicit weekly refresh of NotDiamond advisory (never authority).
   const [ndBusy, setNdBusy] = useState(false);
+  // Residual (hq): arxiv/substack hydrate injector readiness (offline default).
+  const [hydrateLive, setHydrateLive] =
+    useState<HydrateLiveStatusResponse | null>(null);
+  const [hydrateLiveError, setHydrateLiveError] = useState<string | null>(null);
+  const [hydrateLiveBusy, setHydrateLiveBusy] = useState(false);
   const [depth, setDepth] = useState<DepthTierResponse | null>(null);
   const [depthError, setDepthError] = useState<string | null>(null);
   const [depthBusy, setDepthBusy] = useState(false);
@@ -173,6 +183,19 @@ export default function Settings() {
       } catch (e) {
         if (!cancelled)
           setSuiteProposalError(e instanceof Error ? e.message : String(e));
+      }
+      try {
+        // Residual (hq): publication hydrate injector readiness (offline default).
+        const h = await fetchHydrateLiveStatus();
+        if (!cancelled) {
+          if (h.view_format !== "html") {
+            throw new Error("hydrate live status view_format must be html");
+          }
+          setHydrateLive(h);
+        }
+      } catch (e) {
+        if (!cancelled)
+          setHydrateLiveError(e instanceof Error ? e.message : String(e));
       }
       try {
         const n = await fetchNotDiamondAdvisory({
@@ -366,6 +389,23 @@ export default function Settings() {
       setOfflineRunError(e instanceof Error ? e.message : String(e));
     } finally {
       setOfflineRunBusy(false);
+    }
+  }
+
+  /** Residual (hq): refresh hydrate injector readiness (never enables network). */
+  async function onRefreshHydrateLiveStatus() {
+    setHydrateLiveBusy(true);
+    setHydrateLiveError(null);
+    try {
+      const h = await fetchHydrateLiveStatus();
+      if (h.view_format !== "html") {
+        throw new Error("hydrate live status view_format must be html");
+      }
+      setHydrateLive(h);
+    } catch (e) {
+      setHydrateLiveError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setHydrateLiveBusy(false);
     }
   }
 
@@ -1007,6 +1047,87 @@ export default function Settings() {
                 </p>
               ))}
             </div>
+          </div>
+        </LemonCard>
+
+        {/* Residual (hq): arxiv/substack hydrate injector readiness. */}
+        <LemonCard
+          title="Publication hydrate (arxiv / substack)"
+          elevation="z1"
+          colour="parchment"
+        >
+          <div
+            className="p-4 space-y-3"
+            data-testid="hydrate-live-status-panel"
+            data-view-format="html"
+            data-offline-honest={
+              hydrateLive ? String(hydrateLive.offline_honest) : undefined
+            }
+            data-any-live-injector={
+              hydrateLive ? String(hydrateLive.any_live_injector) : undefined
+            }
+          >
+            <p className="text-sm text-ink dark:text-bright">
+              Knowledge-dense refs hydrate offline-honest by default (identity
+              only). Live arXiv/Substack injectors are env-gated process
+              installs — never silent network from this UI.
+            </p>
+            <button
+              type="button"
+              data-testid="hydrate-live-status-refresh"
+              disabled={hydrateLiveBusy}
+              onClick={() => void onRefreshHydrateLiveStatus()}
+              className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+            >
+              {hydrateLiveBusy ? "Refreshing…" : "Refresh hydrate status"}
+            </button>
+            {hydrateLiveError ? (
+              <p className="text-sm text-emperor" role="alert">
+                {hydrateLiveError}
+              </p>
+            ) : null}
+            {hydrateLive ? (
+              <div
+                className="space-y-1 font-mono text-[11px]"
+                data-testid="hydrate-live-status-metrics"
+                data-offline-honest={String(hydrateLive.offline_honest)}
+                data-arxiv-env={String(hydrateLive.arxiv.env_enabled)}
+                data-arxiv-injector={String(
+                  hydrateLive.arxiv.injector_installed,
+                )}
+                data-substack-env={String(hydrateLive.substack.env_enabled)}
+                data-substack-injector={String(
+                  hydrateLive.substack.injector_installed,
+                )}
+                role="status"
+              >
+                <p>
+                  Mode:{" "}
+                  <strong>
+                    {hydrateLive.offline_honest
+                      ? "offline-honest identity"
+                      : "live injector(s) installed"}
+                  </strong>
+                </p>
+                <p>
+                  arXiv · env{" "}
+                  <code>{hydrateLive.arxiv.env_flag}</code>=
+                  {String(hydrateLive.arxiv.env_enabled)} · injector=
+                  {String(hydrateLive.arxiv.injector_installed)}
+                </p>
+                <p>
+                  Substack · env{" "}
+                  <code>{hydrateLive.substack.env_flag}</code>=
+                  {String(hydrateLive.substack.env_enabled)} · injector=
+                  {String(hydrateLive.substack.injector_installed)}
+                </p>
+                {hydrateLive.notes.map((n) => (
+                  <p key={n} className="opacity-80">
+                    {n}
+                  </p>
+                ))}
+              </div>
+            ) : null}
           </div>
         </LemonCard>
 

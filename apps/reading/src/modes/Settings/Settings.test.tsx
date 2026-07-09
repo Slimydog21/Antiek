@@ -25,6 +25,7 @@ const {
   fetchRegisteredModels,
   registerSettingsModel,
   fetchNotDiamondAdvisory,
+  fetchHydrateLiveStatus,
 } = vi.hoisted(() => {
   const models = {
     models: [
@@ -353,6 +354,29 @@ const {
       notes: ["Authority REJECT under §16"],
       html: "<p>Authority REJECT — not the dispatch authority · Suggested model (advisory): stub-strong</p>",
     })),
+    // Residual (hq): offline-honest hydrate status default.
+    fetchHydrateLiveStatus: vi.fn(async () => ({
+      view_format: "html",
+      product_panel: "hydrate_live_status",
+      source: "engagement_spine.hydrate_live_wiring",
+      offline_honest: true,
+      any_live_injector: false,
+      arxiv: {
+        env_flag: "ANTIEK_HYDRATE_LIVE_ARXIV",
+        env_enabled: false,
+        injector_installed: false,
+      },
+      substack: {
+        env_flag: "ANTIEK_HYDRATE_LIVE_SUBSTACK",
+        env_enabled: false,
+        injector_installed: false,
+      },
+      generic_fetch_publication_installed: false,
+      notes: [
+        "Hydrate default: offline-honest identity — no live body injectors installed.",
+      ],
+      html: "<p>offline_honest=true</p>",
+    })),
   };
 });
 
@@ -374,6 +398,10 @@ vi.mock("../../api/settings", () => ({
   fetchRegisteredModels,
   registerSettingsModel,
   fetchNotDiamondAdvisory,
+}));
+
+vi.mock("../../api/engagement", () => ({
+  fetchHydrateLiveStatus,
 }));
 
 describe("Settings SPR-01 + decision-tree install", () => {
@@ -399,6 +427,25 @@ describe("Settings SPR-01 + decision-tree install", () => {
     fetchRegisteredModels.mockClear();
     registerSettingsModel.mockClear();
     fetchNotDiamondAdvisory.mockClear();
+    fetchHydrateLiveStatus.mockClear();
+  });
+
+  it("surfaces offline-honest hydrate live status (hq)", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(fetchHydrateLiveStatus).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("hydrate-live-status-panel")).toBeTruthy();
+    });
+    const panel = screen.getByTestId("hydrate-live-status-panel");
+    expect(panel.getAttribute("data-offline-honest")).toBe("true");
+    expect(panel.getAttribute("data-any-live-injector")).toBe("false");
+    const metrics = screen.getByTestId("hydrate-live-status-metrics");
+    expect(metrics.getAttribute("data-offline-honest")).toBe("true");
+    expect(metrics.getAttribute("data-arxiv-injector")).toBe("false");
+    expect(metrics.getAttribute("data-substack-injector")).toBe("false");
+    expect(metrics.textContent).toMatch(/offline-honest identity/);
   });
 
   it("renders registered providers and budget bar", async () => {

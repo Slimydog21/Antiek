@@ -174,6 +174,33 @@ export async function mergeSpawnOutputs(body: {
   return readJson<MergeProductResponse>(res);
 }
 
+/** Residual (hq): offline-vs-live hydrate injector readiness (Settings). */
+export type HydrateLiveStatusResponse = {
+  view_format: "html" | string;
+  product_panel: string;
+  source: string;
+  offline_honest: boolean;
+  any_live_injector: boolean;
+  arxiv: {
+    env_flag: string;
+    env_enabled: boolean;
+    injector_installed: boolean;
+  };
+  substack: {
+    env_flag: string;
+    env_enabled: boolean;
+    injector_installed: boolean;
+  };
+  generic_fetch_publication_installed: boolean;
+  notes: string[];
+  html?: string | null;
+};
+
+export async function fetchHydrateLiveStatus(): Promise<HydrateLiveStatusResponse> {
+  const res = await apiFetch(`${API_BASE}/engagement/hydrate-live-status`);
+  return readJson<HydrateLiveStatusResponse>(res);
+}
+
 /** Hydrate arxiv/substack/url into HTML-first engagement asset. */
 export type HydrateRefResponse = {
   asset_id: string;
