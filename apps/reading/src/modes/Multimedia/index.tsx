@@ -988,6 +988,9 @@ export default function Multimedia() {
                 />
                 <span>15-45 minutes</span>
               </label>
+              <p className="mt-1 text-[11px] leading-snug text-shadow-1 dark:text-moonlight">
+                Duration changes scope and estimates only; it does not call providers or spend budget.
+              </p>
             </div>
 
             <Fieldset label="Mode">
