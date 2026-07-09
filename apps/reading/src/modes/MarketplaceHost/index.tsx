@@ -324,6 +324,7 @@ export default function MarketplaceHost({
         selection_text: selection,
         goal_hint: `Wrestle claims and cite evidence in “${title}” (marketplace HTML host · tier=${hostDrTier}).`,
         view_mode: viewMode,
+        research_tier: hostDrTier,
       });
       if (out.view_format !== "html") {
         throw new Error("deep research view_format must be html");

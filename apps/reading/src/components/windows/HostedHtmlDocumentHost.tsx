@@ -228,6 +228,7 @@ export default function HostedHtmlDocumentHost(
         goal_hint: goal,
         view_mode: viewMode,
         references: refs.length ? refs : undefined,
+        research_tier: researchTier,
       });
       setLastWindowId(out.window_id);
     } catch (e: unknown) {

@@ -26,6 +26,11 @@ export type LaunchFloatingDeepResearchInput = {
   /** arxiv/substack/url handles for spawn attach (residual cm) */
   references?: string[];
   view_mode?: WindowMode;
+  /**
+   * Residual (ji): closed research tier for reserved spawn.
+   * When omitted, server normalizes to deep.
+   */
+  research_tier?: "fast" | "deep" | "wrestle" | null;
 };
 
 export type LaunchFloatingDeepResearchResult = {
@@ -39,6 +44,8 @@ export type LaunchFloatingDeepResearchResult = {
   status: string;
   /** Model used for open (explicit or decision-tree); null when none. */
   model_id: string | null;
+  /** Research tier recorded on the session (default deep). */
+  research_tier: "fast" | "deep" | "wrestle" | string;
 };
 
 /**
@@ -80,6 +87,13 @@ export async function launchFloatingDeepResearch(
     ? explicit
     : await resolveDecisionTreeModelId();
 
+  // Residual (ji): only send closed-set tiers; omit when unset (server → deep).
+  const rawTier = (input.research_tier || "").trim().toLowerCase();
+  const researchTier =
+    rawTier === "fast" || rawTier === "deep" || rawTier === "wrestle"
+      ? rawTier
+      : undefined;
+
   const session = await openEngagementSession({
     asset_id: assetId,
     selection_text: selection,
@@ -89,6 +103,7 @@ export async function launchFloatingDeepResearch(
     model_id: modelId,
     references: refs.length ? refs : undefined,
     view_mode: mode === "full" ? "full" : "floating",
+    research_tier: researchTier,
   });
 
   if (session.view_format !== "html") {
@@ -97,6 +112,17 @@ export async function launchFloatingDeepResearch(
 
   const resolvedModel =
     (session.model_id || "").trim() || modelId || null;
+  const resolvedTier = (() => {
+    const fromSession = (session.research_tier || "").trim().toLowerCase();
+    if (
+      fromSession === "fast" ||
+      fromSession === "deep" ||
+      fromSession === "wrestle"
+    ) {
+      return fromSession;
+    }
+    return researchTier ?? "deep";
+  })();
 
   const windowId = openDeepResearchFromHighlight({
     asset_id: session.parent_asset_id || assetId,
@@ -121,5 +147,6 @@ export async function launchFloatingDeepResearch(
     view_mode: session.view_mode || mode,
     status: session.status,
     model_id: resolvedModel,
+    research_tier: resolvedTier,
   };
 }

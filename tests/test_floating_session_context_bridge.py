@@ -81,9 +81,11 @@ def test_open_with_refs_and_session_context(stores):
         session_store=sess,
         references=["https://arxiv.org/abs/1706.03762"],
         model_id="test-model",
+        research_tier="wrestle",
     )
     assert session.session_id.startswith("fsess_")
     assert session.model_id == "test-model"
+    assert session.research_tier == "wrestle"  # residual (ji)
     rec = _Rec()
     pack = session_research_context(
         session.session_id,

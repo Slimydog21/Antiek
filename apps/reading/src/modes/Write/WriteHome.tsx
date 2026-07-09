@@ -503,6 +503,7 @@ export default function WriteHome() {
         goal_hint: goal,
         view_mode: viewMode,
         references: refs.length ? refs : undefined,
+        research_tier: writeResearchTier,
       });
       setWriteDrWindowId(out.window_id);
       onContextNeedsRefresh();

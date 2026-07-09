@@ -379,10 +379,12 @@ def spawn_from_highlight_with_references(
     references: Sequence[str | SourceReference] = (),
     model_id: str | None = None,
     force_new: bool = False,
+    research_tier: str | None = None,
 ) -> Any:
     """Product entry: reserve spawn from highlight, then attach source refs.
 
     Composes ``spawn_from_highlight`` + ``attach_source_references``. No network.
+    Residual (ji): optional ``research_tier`` passed through to spawn reservation.
     """
     from .spawn import spawn_from_highlight
 
@@ -391,6 +393,7 @@ def spawn_from_highlight_with_references(
         store=store,
         model_id=model_id,
         force_new=force_new,
+        research_tier=research_tier,
     )
     if not references:
         return spawn

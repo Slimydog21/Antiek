@@ -325,6 +325,7 @@ export function CollectiveResearchPanel({
           selection_text: selection,
           goal_hint: `Continue collective deep research unit ${unit.collective_id} as one cohesive prompt`,
           view_mode: viewMode,
+          research_tier: researchTier,
         });
         setContinueWindowId(out.window_id);
       } catch (e) {
@@ -333,7 +334,7 @@ export function CollectiveResearchPanel({
         setBusy(false);
       }
     },
-    [unit, parentAssetId, budgetWarn, forceOverBudget],
+    [unit, parentAssetId, budgetWarn, forceOverBudget, researchTier],
   );
 
   return (

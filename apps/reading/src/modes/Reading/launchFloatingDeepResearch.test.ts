@@ -177,4 +177,31 @@ describe("launchFloatingDeepResearch residual cc/cy", () => {
     ).rejects.toThrow(/selection_text/);
     expect(openEngagementSession).not.toHaveBeenCalled();
   });
+
+  it("forwards research_tier to session open and result (ji)", async () => {
+    openEngagementSession.mockResolvedValue({
+      session_id: "fsess_tier",
+      spawn_id: "spn_tier",
+      investigation_id: "inv_tier",
+      parent_asset_id: "doc-1",
+      selection_text: "wrestle claim",
+      status: "reserved",
+      view_mode: "floating",
+      view_format: "html",
+      goal: "g",
+      model_id: null,
+      research_tier: "wrestle",
+    });
+
+    const out = await launchFloatingDeepResearch({
+      asset_id: "doc-1",
+      selection_text: "wrestle claim",
+      research_tier: "wrestle",
+    });
+
+    expect(openEngagementSession).toHaveBeenCalledWith(
+      expect.objectContaining({ research_tier: "wrestle" }),
+    );
+    expect(out.research_tier).toBe("wrestle");
+  });
 });

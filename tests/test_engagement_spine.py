@@ -55,6 +55,7 @@ def test_spawn_from_highlight_reserves_investigation(store):
     assert spawn.investigation_id.startswith("inv_")
     assert spawn.spawn_id.startswith("spn_")
     assert spawn.model_id == "glm-5.2"
+    assert spawn.research_tier == "deep"  # default when omitted (ji)
     assert "Deep-research" in spawn.goal
 
     # Persisted
@@ -62,6 +63,34 @@ def test_spawn_from_highlight_reserves_investigation(store):
     assert again is not None
     assert again.spawn_id == spawn.spawn_id
     assert again.investigation_id == spawn.investigation_id
+    assert again.research_tier == "deep"
+
+
+def test_spawn_records_research_tier_wrestle(store):
+    """Residual (ji): closed research_tier persists on reserved spawn."""
+    sel = HighlightSelection(
+        asset_id="book-wrestle-1",
+        selection_text="Long-horizon claim to wrestle with.",
+        region_id="r-wrestle-1",
+    )
+    spawn = spawn_from_highlight(
+        sel, store=store, model_id="glm-5.2", research_tier="wrestle"
+    )
+    assert spawn.research_tier == "wrestle"
+    again = get_spawn(spawn.spawn_id, store=store)
+    assert again is not None
+    assert again.research_tier == "wrestle"
+    # Unknown tier coerces to deep (normalize), force_new for new row.
+    coerced = spawn_from_highlight(
+        HighlightSelection(
+            asset_id="book-wrestle-1",
+            selection_text="Other passage",
+            region_id="r-coerce",
+        ),
+        store=store,
+        research_tier="turbo",  # type: ignore[arg-type]
+    )
+    assert coerced.research_tier == "deep"
 
 
 def test_spawn_idempotent_on_same_region(store):

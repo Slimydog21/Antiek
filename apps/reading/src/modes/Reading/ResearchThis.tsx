@@ -141,6 +141,8 @@ export default function ResearchThis({
         goal_hint: "Deep-research the highlighted passage from reading",
         view_mode: viewMode,
         references: refs.length ? refs : undefined,
+        // Residual (ji): pass Settings/picker tier onto reserved spawn.
+        research_tier: researchTier,
       });
       track("reading_research_spun", {
         document_id: documentId,
@@ -150,6 +152,7 @@ export default function ResearchThis({
         session_id: out.session_id,
         publication_ref_count: refs.length,
         model_id: out.model_id,
+        research_tier: out.research_tier,
       });
       setLastWindowId(out.window_id);
     } catch (e: unknown) {

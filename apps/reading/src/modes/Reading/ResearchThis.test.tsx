@@ -183,6 +183,50 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
     );
   });
 
+  it("forwards research_tier on floating launch (ji)", async () => {
+    fetchDepthTiers.mockResolvedValue({
+      active_depth_tier: "wrestle",
+      active_preset: null,
+      tiers: [],
+    });
+    launchFloatingDeepResearch.mockResolvedValue({
+      session_id: "fsess_tier",
+      spawn_id: "spn_tier",
+      investigation_id: "inv_tier",
+      parent_asset_id: "doc-1",
+      window_id: "wdr_tier",
+      view_format: "html",
+      view_mode: "floating",
+      status: "reserved",
+      research_tier: "wrestle",
+    });
+    render(
+      <MemoryRouter>
+        <ResearchThis
+          documentId="doc-1"
+          pageIndex={0}
+          passageText="Pass tier to spawn reservation."
+        />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("research-this-budget-mount").getAttribute(
+          "data-depth-prefill",
+        ),
+      ).toBe("installed");
+    });
+    fireEvent.click(screen.getByTestId("research-this-floating"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          research_tier: "wrestle",
+          view_mode: "floating",
+        }),
+      );
+    });
+  });
+
   it("opens floating deep research window from passage", async () => {
     launchFloatingDeepResearch.mockResolvedValue({
       session_id: "fsess_1",

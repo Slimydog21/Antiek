@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
+from substrate.dispatch.research_tier import normalize_research_tier
 from substrate.engagement_spine import (
     HighlightSelection,
     SourceReference,
@@ -35,8 +36,12 @@ def open_from_highlight_with_references(
     model_id: str | None = None,
     view_mode: ViewMode = "floating",
     force_new: bool = False,
+    research_tier: str | None = None,
 ) -> FloatingSession:
-    """Open floating session from highlight and attach source references."""
+    """Open floating session from highlight and attach source references.
+
+    Residual (ji): optional ``research_tier`` on spawn + session reservation.
+    """
     if view_mode not in ("floating", "full"):
         raise ValueError(f"invalid view_mode: {view_mode!r}")
 
@@ -46,6 +51,7 @@ def open_from_highlight_with_references(
         references=references,
         model_id=model_id,
         force_new=force_new,
+        research_tier=research_tier,
     )
     sid = _session_id(spawn.parent_asset_id, spawn.spawn_id)
     existing = session_store.get_session(sid)
@@ -63,6 +69,9 @@ def open_from_highlight_with_references(
         model_id=spawn.model_id,
         goal=spawn.goal,
         status=spawn.status,
+        research_tier=normalize_research_tier(
+            getattr(spawn, "research_tier", None),
+        ),
     )
     session_store.put_session(_to_row(session))
     return session

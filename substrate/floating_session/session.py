@@ -6,6 +6,10 @@ import hashlib
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from substrate.dispatch.research_tier import (
+    DEFAULT_RESEARCH_TIER,
+    normalize_research_tier,
+)
 from substrate.engagement_spine import (
     HighlightSelection,
     complete_spawn,
@@ -34,6 +38,8 @@ class FloatingSession:
     model_id: str | None = None
     goal: str = ""
     status: str = "reserved"  # mirrors spawn status when known
+    # Residual (ji): closed research tier mirrored from spawn reservation.
+    research_tier: str = DEFAULT_RESEARCH_TIER
 
 
 def _session_id(parent_asset_id: str, spawn_id: str) -> str:
@@ -55,6 +61,7 @@ def _to_row(session: FloatingSession) -> dict[str, Any]:
         "model_id": session.model_id,
         "goal": session.goal,
         "status": session.status,
+        "research_tier": normalize_research_tier(session.research_tier),
     }
 
 
@@ -70,6 +77,7 @@ def _from_row(row: dict[str, Any]) -> FloatingSession:
         model_id=row.get("model_id"),
         goal=row.get("goal") or "",
         status=row.get("status") or "reserved",
+        research_tier=normalize_research_tier(row.get("research_tier")),
     )
 
 
@@ -81,11 +89,14 @@ def open_from_highlight(
     model_id: str | None = None,
     view_mode: ViewMode = "floating",
     force_new: bool = False,
+    research_tier: str | None = None,
 ) -> FloatingSession:
     """Open a deep-research session from a highlight.
 
     Reserves (or reuses) an engagement_spine spawn, then stores a session
     chrome descriptor with floating|full view mode.
+
+    Residual (ji): optional ``research_tier`` recorded on spawn + session.
     """
     if view_mode not in ("floating", "full"):
         raise ValueError(f"invalid view_mode: {view_mode!r}")
@@ -95,6 +106,7 @@ def open_from_highlight(
         store=engagement_store,
         model_id=model_id,
         force_new=force_new,
+        research_tier=research_tier,
     )
     sid = _session_id(spawn.parent_asset_id, spawn.spawn_id)
 
@@ -114,6 +126,7 @@ def open_from_highlight(
         model_id=spawn.model_id,
         goal=spawn.goal,
         status=spawn.status,
+        research_tier=spawn.research_tier,
     )
     session_store.put_session(_to_row(session))
     return session

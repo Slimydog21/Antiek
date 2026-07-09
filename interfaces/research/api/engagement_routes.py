@@ -163,6 +163,8 @@ class HighlightBody(BaseModel):
     model_id: str | None = None
     references: list[str] = Field(default_factory=list)
     force_new: bool = False
+    # Residual (ji): closed research tier for reserved spawn (fast|deep|wrestle).
+    research_tier: Literal["fast", "deep", "wrestle"] | None = None
 
 
 class AttachRefsBody(BaseModel):
@@ -283,6 +285,7 @@ def post_spawn_from_highlight(body: HighlightBody) -> dict[str, Any]:
             references=body.references,
             model_id=body.model_id,
             force_new=body.force_new,
+            research_tier=body.research_tier,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -295,6 +298,7 @@ def post_spawn_from_highlight(body: HighlightBody) -> dict[str, Any]:
         "model_id": spawn.model_id,
         "region_id": spawn.region_id,
         "source_references": list(spawn.source_references),
+        "research_tier": getattr(spawn, "research_tier", None) or "deep",
         "view_format": "html",
     }
 
@@ -758,6 +762,7 @@ def post_session_open(body: SessionOpenBody) -> dict[str, Any]:
             model_id=body.model_id,
             view_mode=body.view_mode,
             force_new=body.force_new,
+            research_tier=body.research_tier,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -771,6 +776,7 @@ def post_session_open(body: SessionOpenBody) -> dict[str, Any]:
         "view_mode": session.view_mode,
         "model_id": session.model_id,
         "goal": session.goal,
+        "research_tier": getattr(session, "research_tier", None) or "deep",
         "view_format": "html",
     }
 

@@ -15,6 +15,11 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from substrate.dispatch.research_tier import (
+    DEFAULT_RESEARCH_TIER,
+    normalize_research_tier,
+)
+
 from .store import EngagementStore
 
 SpawnStatus = Literal["reserved", "running", "complete", "failed"]
@@ -48,6 +53,9 @@ class ResearchSpawn:
     output_questions: tuple[str, ...] = ()
     # Knowledge-dense publication handles (arxiv/substack/url) — see source_refs.
     source_references: tuple[dict[str, Any], ...] = ()
+    # Residual (ji): closed research tier {fast, deep, wrestle} — queryable
+    # on reserved spawn; default deep when absent (legacy rows).
+    research_tier: str = DEFAULT_RESEARCH_TIER
 
 
 def _stable_spawn_id(asset_id: str, selection_text: str, region_id: str | None) -> str:
@@ -78,16 +86,23 @@ def spawn_from_highlight(
     store: EngagementStore,
     model_id: str | None = None,
     force_new: bool = False,
+    research_tier: str | None = None,
 ) -> ResearchSpawn:
     """Reserve a deep-research work unit from a highlight/selection.
 
     Idempotent when ``region_id`` is set and ``force_new`` is False: re-selecting
     the same region returns the existing spawn without creating a duplicate.
+
+    Residual (ji): ``research_tier`` is normalized to the closed set
+    {fast, deep, wrestle} and persisted on the spawn row for later runners /
+    Antiek-bench task class (default deep when omitted).
     """
     if not selection.asset_id or not selection.asset_id.strip():
         raise ValueError("asset_id is required")
     if not selection.selection_text or not selection.selection_text.strip():
         raise ValueError("selection_text is required")
+
+    tier = normalize_research_tier(research_tier)
 
     if selection.region_id and not force_new:
         # Prefer existing spawn for this region on this asset.
@@ -115,6 +130,7 @@ def spawn_from_highlight(
         status="reserved",
         model_id=model_id,
         region_id=selection.region_id,
+        research_tier=tier,
     )
     store.put_spawn(_to_row(spawn))
     return spawn
@@ -214,6 +230,7 @@ def _to_row(spawn: ResearchSpawn) -> dict[str, Any]:
         "output_insights": list(spawn.output_insights),
         "output_questions": list(spawn.output_questions),
         "source_references": list(spawn.source_references or ()),
+        "research_tier": normalize_research_tier(spawn.research_tier),
     }
 
 
@@ -234,4 +251,5 @@ def _from_row(row: dict[str, Any]) -> ResearchSpawn:
         output_insights=tuple(row.get("output_insights") or ()),
         output_questions=tuple(row.get("output_questions") or ()),
         source_references=tuple(dict(r) for r in refs if isinstance(r, dict)),
+        research_tier=normalize_research_tier(row.get("research_tier")),
     )

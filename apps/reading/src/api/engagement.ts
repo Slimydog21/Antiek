@@ -22,6 +22,8 @@ export type SpawnFromHighlightRequest = {
   model_id?: string | null;
   references?: string[];
   force_new?: boolean;
+  /** Residual (ji): closed research tier for reserved spawn. */
+  research_tier?: "fast" | "deep" | "wrestle" | null;
 };
 
 export type SpawnResponse = {
@@ -33,6 +35,7 @@ export type SpawnResponse = {
   model_id?: string | null;
   region_id?: string | null;
   source_references: SourceReference[];
+  research_tier?: "fast" | "deep" | "wrestle" | string | null;
   view_format: "html";
 };
 
@@ -50,6 +53,7 @@ export type SessionOpenResponse = {
   view_mode: string;
   model_id?: string | null;
   goal?: string;
+  research_tier?: "fast" | "deep" | "wrestle" | string | null;
   view_format: "html";
 };
 
