@@ -104,6 +104,13 @@ full engagement spine (collective + twins + research context) + offline run
 spawn_ids always enter recent_ring (auto_deposit off still multi-selectable).
 See `SESSION-ARC-om-oq-write-moil-engagement.md`.
 
+## Closed since or (engagement host matrix · 2026-07-10)
+
+**(or–ov)** Settings MO/collective bench chrome; MO run recent_ring honesty;
+ResearchThis + HostedHtml recent_ring vitest proof + data-recent-count.
+Full closed-window multi-select matrix proven offline.
+See `SESSION-ARC-om-ov-engagement-parity.md`.
+
 ## Next residual after this doc
 
 ## Closed since oi (collective bench feed · 2026-07-10)
