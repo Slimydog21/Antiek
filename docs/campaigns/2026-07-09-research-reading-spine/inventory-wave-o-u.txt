@@ -1,0 +1,17 @@
+# Campaign residuals o–u inventory — 2026-07-09 tip
+# PR #465 campaign/research-reading-spine-2026-07-09-main
+
+(o) twin-note promote→search/context | SHIPPED | twin_promote.py @ 7bb082e4
+(p) arxiv/substack ref attach on spawn | SHIPPED | source_refs.py @ 26dc692f
+(q) research context pack (twins+refs) | SHIPPED | research_context.py @ 2f0b6b18
+(r) multi-spawn collective merge | SHIPPED | collective.py @ 042da32a
+(s) floating session context bridge | SHIPPED | context_bridge.py @ 12a2e3ca
+(t) complete_session twin deposit | SHIPPED | session.py @ 213d988d
+(u) complete→twin→promote→context flywheel | SHIPPED | flywheel.py (this tip)
+
+Next residuals:
+- TS/UI chrome for attach refs + collective select + context panel
+- marketplace host UX polish (substrate/marketplace_host already present)
+- recursive Antiek-bench usage-driven rewrite loop
+- midnight oil price-ceiling UX polish
+- NotDiamond remains advisory-only (verdict REJECT for authority)
