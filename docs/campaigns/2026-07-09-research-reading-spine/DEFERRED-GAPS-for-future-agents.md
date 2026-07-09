@@ -48,6 +48,13 @@ persistence across reading/research/write/MO/TalkToBook/progress (see
 `competitive-deep-research-notes.md` jf–jo block + inventory-jq). Live L1–L4
 injectors remain operator dual-gate; NotDiamond remains advisory only (L7).
 
+## Closed since jq (depth identity surfaces · 2026-07-10)
+
+**jr–kl** closed MO deposit progress tier, flywheel→bench task_class, shared poll/ceiling
+maps, budget intensity chrome, MetaReading, progress/evidence/search/collective/research-context
+API+UI+HTML research_tier identity (see competitive notes jt–jw, jy–ka, kd–ke, kf–kl).
+
 ## Next residual after this doc
 
-**(id)+** implement next thin product residual or operator merge PR #465.
+**(kn)+** next thin product residual (twin polish / marketplace / MO UX) or operator merge PR #465.
+Infinite continues until STOP.

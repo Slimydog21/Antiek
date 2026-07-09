@@ -118,3 +118,16 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - (kd) Evidence pack UI research_tier chrome (citation-trust depth posture)
   - (ke) Collective multi-spawn recommended_research_tier depth-max for continue-as-unit
 
+
+- Closed (kf–kl, 2026-07-10) **HTML + research-context pack depth identity (reading ≡ research):**
+  - (kf) competitive notes + suite-proposal plan AC recheck (propose≠promote)
+  - (kg) intelligent context search payload research_tier when spawn-scoped
+  - (kh) context_search HTML projects tier=…
+  - (ki) evidence + progress HTML projects tier=… (parity kh)
+  - (kj) collective HTML recommended_tier + member tiers
+  - (kk) ResearchContextPack.research_tier + research_context_html + prompt_block
+  - (kl) ResearchContextPanel pack chrome (parity evidence kd)
+  Competitive bar: every human-viewable engagement surface that can name a spawn
+  also names closed depth (fast|deep|wrestle) in API + HTML + UI when identity exists.
+  NotDiamond remains advisory only (L7). Live hydrate/seed/MO-step injectors dual-gate (L1–L4).
+
