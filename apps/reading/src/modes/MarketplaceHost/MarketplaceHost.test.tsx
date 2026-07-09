@@ -7,12 +7,14 @@ const {
   hostBookIntoAccount,
   fetchAccountLibrary,
   purchaseAndHost,
+  fetchHostedDocumentHtml,
   openWindow,
 } = vi.hoisted(() => ({
   fetchMarketplaceCatalog: vi.fn(),
   hostBookIntoAccount: vi.fn(),
   fetchAccountLibrary: vi.fn(),
   purchaseAndHost: vi.fn(),
+  fetchHostedDocumentHtml: vi.fn(),
   openWindow: vi.fn(() => "win:hosted:hdoc_abc"),
 }));
 
@@ -21,6 +23,7 @@ vi.mock("../../api/marketplaceHost", () => ({
   hostBookIntoAccount,
   fetchAccountLibrary,
   purchaseAndHost,
+  fetchHostedDocumentHtml,
 }));
 
 vi.mock("../../components/windows/openWindow", () => ({
@@ -34,6 +37,7 @@ describe("MarketplaceHost mode", () => {
     hostBookIntoAccount.mockReset();
     fetchAccountLibrary.mockReset();
     purchaseAndHost.mockReset();
+    fetchHostedDocumentHtml.mockReset();
     openWindow.mockClear();
   });
 
@@ -113,6 +117,113 @@ describe("MarketplaceHost mode", () => {
       target: { value: "nope" },
     });
     expect(screen.getByTestId("library-filter-empty")).toBeTruthy();
+  });
+
+  it("rehydrates library doc HTML when opening without session body (do)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [],
+      count: 0,
+      view_format: "html",
+    });
+    // Simulate library already populated without a last-host body.
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "operator",
+      documents: [
+        {
+          document_id: "hdoc_old",
+          title: "Old Hosted Book",
+          license_class: "public_domain",
+          view_format: "html",
+        },
+      ],
+      count: 1,
+      view_format: "html",
+      html: "<p>Library</p>",
+    });
+    fetchHostedDocumentHtml.mockResolvedValue({
+      document_id: "hdoc_old",
+      view_format: "html",
+      html: "<article><h1>Old Hosted Book</h1><p>Rehydrated body.</p></article>",
+    });
+
+    // Force library state by host path that sets docs then clear hosted via re-render...
+    // Instead: host once with different id then open the old library doc.
+    hostBookIntoAccount.mockResolvedValue({
+      document_id: "hdoc_new",
+      owner_id: "operator",
+      book_id: "pd-x",
+      content_hash: "x",
+      title: "New",
+      license_class: "public_domain",
+      already_hosted: false,
+      source_format: "html",
+      library_document_ids: ["hdoc_old", "hdoc_new"],
+      view_format: "html",
+      html: "<p>new only</p>",
+    });
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-x",
+          title: "New",
+          author: "A",
+          license_class: "public_domain",
+          is_free: true,
+          source: "standard_ebooks",
+        },
+      ],
+      count: 1,
+      view_format: "html",
+    });
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "operator",
+      documents: [
+        {
+          document_id: "hdoc_old",
+          title: "Old Hosted Book",
+          license_class: "public_domain",
+          view_format: "html",
+        },
+        {
+          document_id: "hdoc_new",
+          title: "New",
+          license_class: "public_domain",
+          view_format: "html",
+        },
+      ],
+      count: 2,
+      view_format: "html",
+      html: "<p>Library</p>",
+    });
+
+    render(<MarketplaceHost ownerId="operator" />);
+    await waitFor(() => {
+      expect(screen.getByText("New")).toBeTruthy();
+    });
+    // Uncheck auto-open so openWindow is only from library open.
+    fireEvent.click(screen.getByTestId("auto-open-hosted-window").querySelector("input")!);
+    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("library-doc-hdoc_old")).toBeTruthy();
+    });
+    openWindow.mockClear();
+    fireEvent.click(screen.getByTestId("library-open-hdoc_old"));
+    await waitFor(() => {
+      expect(fetchHostedDocumentHtml).toHaveBeenCalledWith("hdoc_old");
+    });
+    await waitFor(() => {
+      expect(openWindow).toHaveBeenCalledWith(
+        "hosted_html_document",
+        expect.objectContaining({
+          document_id: "hdoc_old",
+          view_format: "html",
+          source: "marketplace_library_rehydrate",
+        }),
+        expect.objectContaining({ id: "win:hosted:hdoc_old" }),
+      );
+    });
+    const payload = openWindow.mock.calls.at(-1)?.[1] as { html?: string };
+    expect(payload.html).toMatch(/Rehydrated body/);
   });
 
   it("filters catalog by title/author substring (dj)", async () => {

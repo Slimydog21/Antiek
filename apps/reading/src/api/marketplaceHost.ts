@@ -94,3 +94,21 @@ export async function fetchAccountLibrary(ownerId: string): Promise<{
   );
   return readJson(res);
 }
+
+/** Residual (do): rehydrate hosted document HTML body for library open. */
+export type HostedDocumentHtmlResponse = {
+  document_id: string;
+  view_format: "html" | string;
+  html: string;
+  title?: string;
+  license_class?: string;
+};
+
+export async function fetchHostedDocumentHtml(
+  documentId: string,
+): Promise<HostedDocumentHtmlResponse> {
+  const res = await apiFetch(
+    `${API_BASE}/marketplace/documents/${encodeURIComponent(documentId)}/html`,
+  );
+  return readJson(res);
+}

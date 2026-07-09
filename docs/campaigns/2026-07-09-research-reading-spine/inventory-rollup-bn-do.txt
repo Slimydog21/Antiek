@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(do) · PR #465
+dn: deferred live council spec · do: library open rehydrates HTML body from store.
+Operator merge still gated. Next residual (dp).

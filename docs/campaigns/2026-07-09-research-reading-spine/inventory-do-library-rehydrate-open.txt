@@ -1,0 +1,17 @@
+# residual (do) Library open rehydrates hosted HTML body
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(dn) prior | branch_only | campaign inventories
+(do) library rehydrate open | branch_only | fetchHostedDocumentHtml + MarketplaceHost Open window for any library doc; 5+3 vitest
+
+## What shipped
+- Client `fetchHostedDocumentHtml` → GET `/marketplace/documents/{id}/html`.
+- Library list always shows Open window for HTML docs.
+- Prefer in-session host body when document_id matches; else rehydrate.
+- source=marketplace_library_rehydrate for rehydrate path.
+
+## Why (north star)
+Seamless HTML reading: any hosted book in the account library opens without depending on the last host response body still being in React state.
+
+NEXT: (dp) re-derive; operator merge PR #465

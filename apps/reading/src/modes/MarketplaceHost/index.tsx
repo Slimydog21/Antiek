@@ -5,11 +5,14 @@
  * Residual (dj): client-side catalog filter (title/author/license) so the
  * operator can find a book before host/purchase without a second network hop.
  * Residual (dl): structured account library list + filter (HTML-first docs).
+ * Residual (do): rehydrate document HTML via GET /documents/{id}/html so any
+ * library row can open a hosted window without last-host session body.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchAccountLibrary,
+  fetchHostedDocumentHtml,
   fetchMarketplaceCatalog,
   hostBookIntoAccount,
   purchaseAndHost,
@@ -92,24 +95,82 @@ export default function MarketplaceHost({
     void loadCatalog();
   }, [loadCatalog]);
 
-  function openHostedWindow(result: HostResultResponse) {
-    if (result.view_format !== "html" || !result.html) return;
+  function openHostedWindow(opts: {
+    document_id: string;
+    title?: string;
+    html: string;
+    view_format?: string;
+    license_class?: string;
+    owner_id?: string;
+    source?: string;
+  }) {
+    if ((opts.view_format || "html") !== "html" || !opts.html) return;
     openWindow(
       "hosted_html_document",
       {
-        document_id: result.document_id,
-        title: result.title,
-        html: result.html,
-        view_format: result.view_format,
-        license_class: result.license_class,
-        owner_id: result.owner_id,
-        source: "marketplace_host",
+        document_id: opts.document_id,
+        title: opts.title,
+        html: opts.html,
+        view_format: "html",
+        license_class: opts.license_class,
+        owner_id: opts.owner_id,
+        source: opts.source || "marketplace_host",
       },
       {
-        id: `win:hosted:${result.document_id}`,
-        title: result.title || "Hosted book",
+        id: `win:hosted:${opts.document_id}`,
+        title: opts.title || "Hosted book",
       },
     );
+  }
+
+  /** Residual (do): fetch HTML body then open reading window for any library doc. */
+  async function onOpenLibraryDoc(doc: LibraryDoc) {
+    if ((doc.view_format || "html") !== "html") {
+      setError("view_format must be html — PDF is not a reading surface");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      // Prefer in-session host body when it matches (avoids extra round-trip).
+      if (
+        hosted &&
+        hosted.document_id === doc.document_id &&
+        hosted.html &&
+        hosted.view_format === "html"
+      ) {
+        openHostedWindow({
+          document_id: hosted.document_id,
+          title: hosted.title || doc.title,
+          html: hosted.html,
+          view_format: "html",
+          license_class: hosted.license_class || doc.license_class,
+          owner_id: hosted.owner_id || ownerId,
+          source: "marketplace_library",
+        });
+        return;
+      }
+      const body = await fetchHostedDocumentHtml(doc.document_id);
+      if (body.view_format !== "html") {
+        throw new Error("hosted document view_format must be html");
+      }
+      if (!body.html?.trim()) {
+        throw new Error("hosted document HTML body empty");
+      }
+      openHostedWindow({
+        document_id: body.document_id || doc.document_id,
+        title: body.title || doc.title || doc.document_id,
+        html: body.html,
+        view_format: "html",
+        license_class: body.license_class || doc.license_class,
+        owner_id: ownerId,
+        source: "marketplace_library_rehydrate",
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function onHost(bookId: string) {
@@ -129,7 +190,15 @@ export default function MarketplaceHost({
       setLibraryDocs(lib.documents || []);
       // Residual (dk): seamless port into reading surface.
       if (autoOpenWindow) {
-        openHostedWindow(result);
+        openHostedWindow({
+          document_id: result.document_id,
+          title: result.title,
+          html: result.html,
+          view_format: result.view_format,
+          license_class: result.license_class,
+          owner_id: result.owner_id,
+          source: "marketplace_host",
+        });
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -157,7 +226,15 @@ export default function MarketplaceHost({
       setLibraryHtml(lib.html);
       setLibraryDocs(lib.documents || []);
       if (autoOpenWindow) {
-        openHostedWindow(result);
+        openHostedWindow({
+          document_id: result.document_id,
+          title: result.title,
+          html: result.html,
+          view_format: result.view_format,
+          license_class: result.license_class,
+          owner_id: result.owner_id,
+          source: "marketplace_host",
+        });
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -290,7 +367,15 @@ export default function MarketplaceHost({
                 setError("view_format must be html — PDF is not a reading surface");
                 return;
               }
-              openHostedWindow(hosted);
+              openHostedWindow({
+                document_id: hosted.document_id,
+                title: hosted.title,
+                html: hosted.html,
+                view_format: hosted.view_format,
+                license_class: hosted.license_class,
+                owner_id: hosted.owner_id,
+                source: "marketplace_host",
+              });
             }}
             className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
           >
@@ -345,15 +430,13 @@ export default function MarketplaceHost({
                     {" · not PDF"}
                   </div>
                 </div>
-                {hosted &&
-                hosted.document_id === d.document_id &&
-                hosted.html &&
-                hosted.view_format === "html" ? (
+                {(d.view_format || "html") === "html" ? (
                   <button
                     type="button"
                     data-testid={`library-open-${d.document_id}`}
                     className="text-xs font-mono border rounded px-2 py-1"
-                    onClick={() => openHostedWindow(hosted)}
+                    disabled={busy}
+                    onClick={() => void onOpenLibraryDoc(d)}
                   >
                     Open window
                   </button>
