@@ -9,12 +9,12 @@ CAPABILITY | STATUS | EVIDENCE
 (a)–(ak) prior campaign residuals | branch_only | PR #465 campaign inventories inventory-ak..am
 (al) Settings suite-proposal visibility | branch_only | suite-proposal GET; @ 0f286e35
 (am) Settings suite approve/promote control | branch_only | POST suite-proposal/approve; @ a20a7efb
-(an) merge draft_combined / into_parent product path | branch_only | merge_product_payload + project_merge_html; POST /engagement/merge; mergeSpawnOutputs TS client; tests/test_engagement_merge_product.py; THIS CYCLE
+(an) merge draft_combined / into_parent product path | branch_only | merge_product_payload + project_merge_html; POST /engagement/merge; mergeSpawnOutputs TS client; tests/test_engagement_merge_product.py; @ d61fad50
 
 ALREADY_SHIPPED_DO_NOT_REBUILD:
 - merge_spawn_outputs core (engagement_spine/merge.py) — product path composes only
 - floating_session merge_sessions substrate
 - collective research unit (different from document merge)
 
-THIS_CYCLE_RESIDUAL: (an) merge product path — shipping
+THIS_CYCLE_RESIDUAL: (an) merge product path — complete @ d61fad50
 NEXT_RESIDUAL: (ao) CollectiveResearchPanel → merge draft UI wire OR competitive deep-research notes→spec; operator merge PR #465
