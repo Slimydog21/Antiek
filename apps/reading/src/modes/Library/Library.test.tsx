@@ -492,6 +492,8 @@ describe("Library", () => {
       servable_full_text: true,
       document_inserted: true,
       book_asset_registered: true,
+      chunks_indexed: 1,
+      chunked_for_research: true,
       graph_mutation_performed: true,
       shelf_publication_attempted: true,
       reader_route_created: true,
@@ -677,6 +679,7 @@ describe("Library", () => {
     const publishStatus = await screen.findByText(/Published book-dream-machine/);
     expect(publishStatus.textContent).toContain("bookjob-safe123");
     expect(publishStatus.textContent).toContain("servable yes");
+    expect(publishStatus.textContent).toContain("chunks 1");
     expect(publishStatus.textContent).toContain("/read/book-dream-machine");
     expect(runBookHtmlPublishJobMock).toHaveBeenCalledWith({
       publication_request_id: "bookpub-safe123",

@@ -1272,7 +1272,8 @@ export default function Library() {
               {publishReceipt && (
                 <p className="text-[13px] font-serif text-ink dark:text-bright" role="status">
                   Published {publishReceipt.document_id} through {publishReceipt.publish_job_id}; servable{" "}
-                  {publishReceipt.servable_full_text ? "yes" : "no"}, route {publishReceipt.open_route}.
+                  {publishReceipt.servable_full_text ? "yes" : "no"}, chunks{" "}
+                  {publishReceipt.chunks_indexed}, route {publishReceipt.open_route}.
                 </p>
               )}
             </form>

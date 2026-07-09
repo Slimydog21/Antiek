@@ -3,10 +3,22 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
+from interfaces.research.api.books import _chunk_book_html_for_research
+from runtime.db_lock import connect_read
+from substrate.graph import default_db_path
 
 
 def _client() -> TestClient:
     return TestClient(create_app(register_wrestling=False, register_providers=False))
+
+
+def test_html_publish_chunker_indexes_visible_text_only() -> None:
+    chunks = _chunk_book_html_for_research(
+        "<article><h1>Wing sweep</h1><p>Delta wings delay shock formation.</p>"
+        "<script>do not index this hidden prompt</script></article>"
+    )
+
+    assert chunks == ["Wing sweep\n\nDelta wings delay shock formation."]
 
 
 def test_purchase_request_requires_manual_no_spend_ack() -> None:
@@ -602,6 +614,8 @@ def test_html_publish_job_writes_book_through_existing_serve_gate() -> None:
     assert body["servable_full_text"] is True
     assert body["document_inserted"] is True
     assert body["book_asset_registered"] is True
+    assert body["chunks_indexed"] == 1
+    assert body["chunked_for_research"] is True
     assert body["graph_mutation_performed"] is True
     assert body["shelf_publication_attempted"] is True
     assert body["reader_route_created"] is True
@@ -618,6 +632,20 @@ def test_html_publish_job_writes_book_through_existing_serve_gate() -> None:
 
     served = client.get("/books/book-dream-machine/full-text")
     assert served.status_code == 200, served.text
+    assert served.json()["full_text"].startswith("<article>")
+
+    con = connect_read(default_db_path())
+    try:
+        chunks = con.execute(
+            "SELECT section_path, text, token_count FROM chunks WHERE document_id = ?",
+            ["book-dream-machine"],
+        ).fetchall()
+    finally:
+        con.close()
+    assert len(chunks) == 1
+    assert chunks[0][0] == "HTML section 1"
+    assert "Networked computing history." in chunks[0][1]
+    assert chunks[0][2] >= 5
     served_body = served.json()
     assert served_body["servable"] is True
     assert served_body["full_text"] == (

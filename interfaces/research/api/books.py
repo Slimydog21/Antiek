@@ -26,6 +26,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
+from html.parser import HTMLParser
 from typing import Literal, cast
 
 from fastapi import FastAPI, HTTPException, Request
@@ -33,6 +35,11 @@ from pydantic import BaseModel, Field
 
 from substrate.books.model import BookAsset, get_book_asset, list_book_assets
 from substrate.books.serve import ServeResult
+from substrate.research_bridge.ingest import (
+    CHUNK_TARGET_CHARS,
+    _chunk_paragraphs,
+    _split_paragraphs,
+)
 
 from .operator_allowlist import operator_allowlist_from_env
 from .serve_guard import serve_full_text_guarded
@@ -504,6 +511,8 @@ class BookHtmlPublishJobOut(BaseModel):
     servable_full_text: bool
     document_inserted: bool
     book_asset_registered: bool
+    chunks_indexed: int
+    chunked_for_research: bool
     graph_mutation_performed: bool
     shelf_publication_attempted: bool
     reader_route_created: bool
@@ -624,6 +633,92 @@ def _book_html_publish_job_id(req: BookHtmlPublishJobIn) -> str:
         ]
     )
     return f"bookjob-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
+
+
+class _BookHtmlTextExtractor(HTMLParser):
+    _BLOCK_TAGS = {
+        "article",
+        "aside",
+        "blockquote",
+        "br",
+        "dd",
+        "div",
+        "dl",
+        "dt",
+        "figcaption",
+        "figure",
+        "footer",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "header",
+        "hr",
+        "li",
+        "main",
+        "nav",
+        "ol",
+        "p",
+        "pre",
+        "section",
+        "table",
+        "td",
+        "th",
+        "tr",
+        "ul",
+    }
+    _SKIP_TAGS = {"script", "style", "noscript", "template"}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, _attrs: list[tuple[str, str | None]]) -> None:
+        lowered = tag.lower()
+        if lowered in self._SKIP_TAGS:
+            self._skip_depth += 1
+            return
+        if self._skip_depth == 0 and lowered in self._BLOCK_TAGS:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        lowered = tag.lower()
+        if lowered in self._SKIP_TAGS and self._skip_depth:
+            self._skip_depth -= 1
+            return
+        if self._skip_depth == 0 and lowered in self._BLOCK_TAGS:
+            self.parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth == 0:
+            self.parts.append(data)
+
+    def text(self) -> str:
+        text = "".join(self.parts)
+        text = re.sub(r"[ \t\r\f\v]+", " ", text)
+        text = re.sub(r" *\n *", "\n", text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip()
+
+
+def _extract_text_from_book_html(html_body: str) -> str:
+    parser = _BookHtmlTextExtractor()
+    parser.feed(html_body)
+    parser.close()
+    return parser.text()
+
+
+def _chunk_book_html_for_research(html_body: str) -> list[str]:
+    text = _extract_text_from_book_html(html_body)
+    if not text:
+        return []
+    return [
+        re.sub(r"\n{3,}", "\n\n", chunk.strip())
+        for chunk in _chunk_paragraphs(_split_paragraphs(text), CHUNK_TARGET_CHARS)
+    ]
 
 
 class SpinResearchRequest(BaseModel):
@@ -1306,7 +1401,9 @@ def register_book_routes(app: FastAPI) -> None:
         db = _resolve_db_path()
         from runtime.db_lock import connect_write
         from substrate.books.ingest import register_book
-        from substrate.graph.ops import insert_document
+        from substrate.graph.ops import insert_chunk, insert_document
+
+        chunks = _chunk_book_html_for_research(req.html_body)
 
         con = connect_write(db, purpose="books:html_publish_job")
         try:
@@ -1333,6 +1430,17 @@ def register_book_routes(app: FastAPI) -> None:
                 },
                 content_class=content_class,
             )
+            chunk_count = 0
+            for index, chunk_text in enumerate(chunks):
+                insert_chunk(
+                    con,
+                    document_id=document_id,
+                    chunk_index=index,
+                    section_path=f"HTML section {index + 1}",
+                    text=chunk_text,
+                    token_count=len(chunk_text.split()),
+                )
+                chunk_count += 1
             asset = register_book(
                 con,
                 document_id=document_id,
@@ -1359,6 +1467,8 @@ def register_book_routes(app: FastAPI) -> None:
             servable_full_text=asset.servable_full_text,
             document_inserted=True,
             book_asset_registered=True,
+            chunks_indexed=chunk_count,
+            chunked_for_research=chunk_count > 0,
             graph_mutation_performed=True,
             shelf_publication_attempted=True,
             reader_route_created=True,
@@ -1366,6 +1476,7 @@ def register_book_routes(app: FastAPI) -> None:
             open_route=f"/read/{document_id}",
             policy_notes=[
                 "Inline Antiek HTML was written through the existing document/book substrate path.",
+                "Readable HTML text was chunked into the corpus for search, notes, and talk-to-book grounding.",
                 "No external file, storage reference, URL, provider, checkout, or spend path was touched.",
                 "This endpoint did not serve full text; subsequent reads still pass through the serve gate.",
             ],

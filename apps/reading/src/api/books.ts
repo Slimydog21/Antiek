@@ -471,6 +471,8 @@ export interface BookHtmlPublishJobResponse {
   servable_full_text: boolean;
   document_inserted: boolean;
   book_asset_registered: boolean;
+  chunks_indexed: number;
+  chunked_for_research: boolean;
   graph_mutation_performed: boolean;
   shelf_publication_attempted: boolean;
   reader_route_created: boolean;
