@@ -1,0 +1,8 @@
+# inventory-oo · Midnight Oil deposit TwinNotesPanel
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: oo
+files:
+  apps/reading/src/modes/MidnightOil/index.tsx
+  apps/reading/src/modes/MidnightOil/MidnightOil.test.tsx
+proof: vitest MidnightOil 14 passed
+invariants: HTML-first · recursive note-taker · autoLoad/seed/promote · remount after promote/merge · researchTier parity

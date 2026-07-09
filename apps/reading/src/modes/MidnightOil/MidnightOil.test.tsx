@@ -186,6 +186,7 @@ vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
     recentSpawnIds?: readonly string[] | null;
     preferredSpawnId?: string | null;
     onRecentSpawnsCleared?: () => void;
+    onDocMerged?: (r: { document_id: string }) => void;
   }) => (
     <div
       data-testid="collective-research-panel-stub"
@@ -196,9 +197,36 @@ vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
       }
       data-preferred={props.preferredSpawnId ?? ""}
       data-has-clear={props.onRecentSpawnsCleared ? "1" : "0"}
+      data-has-merged={props.onDocMerged ? "1" : "0"}
     >
       parent={props.parentAssetId ?? ""}:spawns=
       {props.availableSpawnIds.join(",")}
+    </div>
+  ),
+}));
+
+vi.mock("../../components/engagement/TwinNotesPanel", () => ({
+  TwinNotesPanel: (props: {
+    assetId: string;
+    spawnId?: string | null;
+    researchTier?: string | null;
+    autoLoad?: boolean;
+    autoSeedIfEmpty?: boolean;
+    autoPromoteAfterLoad?: boolean;
+    onPromoted?: () => void;
+  }) => (
+    <div
+      data-testid="twin-notes-panel-stub"
+      data-asset-id={props.assetId}
+      data-spawn-id={props.spawnId ?? ""}
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+      data-auto-load={props.autoLoad ? "1" : "0"}
+      data-auto-seed={props.autoSeedIfEmpty ? "1" : "0"}
+      data-auto-promote={props.autoPromoteAfterLoad ? "1" : "0"}
+      data-has-promoted={props.onPromoted ? "1" : "0"}
+    >
+      twins={props.assetId}
+      {props.researchTier ? `:tier=${props.researchTier}` : ""}
     </div>
   ),
 }));
@@ -621,6 +649,28 @@ describe("MidnightOil mode", () => {
         /Twin notes reseeded/,
       );
     });
+    // Residual (oo): TwinNotesPanel on deposit HTML asset (promote/chase).
+    expect(screen.getByTestId("moil-deposit-twins-mount")).toBeTruthy();
+    expect(
+      screen.getByTestId("moil-deposit-twins-mount").getAttribute("data-asset-id"),
+    ).toBe("draft_moil_asset_dep_abc");
+    expect(
+      screen
+        .getByTestId("moil-deposit-twins-mount")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
+    expect(
+      screen.getByTestId("moil-deposit-twins-refresh").getAttribute("data-refresh-key"),
+    ).toBe("0");
+    const twinsStub = screen.getByTestId("twin-notes-panel-stub");
+    expect(twinsStub.getAttribute("data-asset-id")).toBe(
+      "draft_moil_asset_dep_abc",
+    );
+    expect(twinsStub.getAttribute("data-spawn-id")).toBe("spn_1");
+    expect(twinsStub.getAttribute("data-auto-load")).toBe("1");
+    expect(twinsStub.getAttribute("data-auto-seed")).toBe("1");
+    expect(twinsStub.getAttribute("data-auto-promote")).toBe("1");
+    expect(twinsStub.getAttribute("data-has-promoted")).toBe("1");
     // Residual (gl/js): progress panel for deposit spawn_ids + tier poll.
     expect(screen.getByTestId("moil-deposit-progress-mount")).toBeTruthy();
     expect(
@@ -667,6 +717,7 @@ describe("MidnightOil mode", () => {
     expect(collectiveStub.getAttribute("data-spawns")).toBe("spn_1");
     expect(collectiveStub.getAttribute("data-preferred")).toBe("spn_1");
     expect(collectiveStub.getAttribute("data-has-clear")).toBe("1");
+    expect(collectiveStub.getAttribute("data-has-merged")).toBe("1");
     expect(screen.getByTestId("moil-progress-summary").textContent).toMatch(
       /complete/,
     );

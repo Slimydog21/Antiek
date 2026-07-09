@@ -476,3 +476,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - CollectiveResearchPanel on deposit (parent=document_id)
   - deposit spawn_ids push recent_ring for closed-window multi-select
   - offline swarm → cohesive unit without leaving MO
+
+- Closed (oo, 2026-07-10) **Midnight Oil deposit TwinNotesPanel:**
+  - autoLoad / autoSeedIfEmpty / autoPromoteAfterLoad on deposit asset
+  - remount after promote + collective onDocMerged
+  - recursive note-taker promote/chase without leaving MO

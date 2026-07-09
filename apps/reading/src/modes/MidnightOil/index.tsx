@@ -36,6 +36,8 @@
  * open windows / recent_ring) exist — multi-select merge into deposit HTML
  * asset without leaving Midnight Oil (offline swarm → cohesive unit).
  * Deposit spawn_ids also push into recent_ring for closed-window merge.
+ * Residual (oo): TwinNotesPanel on deposit HTML asset (promote/chase multi-select
+ * recursive note-taker) — parity hosted/Write; remount after promote/merge.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -69,6 +71,7 @@ import {
   type ResearchLaunchTier,
 } from "../../components/engagement/ResearchLaunchBudgetPanel";
 import { ResearchProgressPanel } from "../../components/engagement/ResearchProgressPanel";
+import { TwinNotesPanel } from "../../components/engagement/TwinNotesPanel";
 import { openWindow } from "../../components/windows/openWindow";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import {
@@ -140,6 +143,11 @@ export default function MidnightOil() {
   // Residual (on): deposit spawn → recent_ring + collective multi-select.
   const windows = useWindows((s) => s.windows);
   const [recentTick, setRecentTick] = useState(0);
+  // Residual (oo): remount twin panel after promote / collective merge.
+  const [contextRefreshKey, setContextRefreshKey] = useState(0);
+  const onContextNeedsRefresh = useCallback(() => {
+    setContextRefreshKey((n) => n + 1);
+  }, []);
   const recentSpawnIds = useMemo(
     () => listRecentDeepResearchSpawnIds(),
     [windows, recentTick, deposit],
@@ -1023,6 +1031,60 @@ export default function MidnightOil() {
                   {twinReseedStatus}
                 </p>
               ) : null}
+              {/* Residual (oo): recursive note-taker UI on deposit HTML asset. */}
+              {depositParentAssetId ? (
+                <section
+                  className="space-y-2 border-t border-ink/10 pt-2 dark:border-bright/10"
+                  data-testid="moil-deposit-twins-mount"
+                  data-view-format="html"
+                  data-asset-id={depositParentAssetId}
+                  data-research-tier={
+                    (job.research_tier || researchTier || "deep")
+                      .toString()
+                      .toLowerCase()
+                  }
+                >
+                  <p className="text-[10px] font-mono uppercase tracking-wider opacity-70">
+                    Twin notes (deposit asset)
+                  </p>
+                  <div
+                    data-testid="moil-deposit-twins-refresh"
+                    data-refresh-key={String(contextRefreshKey)}
+                  >
+                    <TwinNotesPanel
+                      key={`twins-${depositParentAssetId}-${contextRefreshKey}`}
+                      assetId={depositParentAssetId}
+                      spawnId={depositSpawnIds[0] ?? null}
+                      autoLoad
+                      autoSeedIfEmpty
+                      autoPromoteAfterLoad
+                      onPromoted={onContextNeedsRefresh}
+                      seedTitle={`Midnight Oil · ${deposit.job_id}`}
+                      seedBodyText={
+                        deposit.html
+                          ? deposit.html.replace(/<[^>]+>/g, " ").slice(0, 500)
+                          : deposit.job_id
+                      }
+                      researchTier={
+                        (() => {
+                          const tier = (
+                            job.research_tier ||
+                            researchTier ||
+                            "deep"
+                          )
+                            .toString()
+                            .toLowerCase();
+                          return tier === "fast" ||
+                            tier === "deep" ||
+                            tier === "wrestle"
+                            ? tier
+                            : "deep";
+                        })()
+                      }
+                    />
+                  </div>
+                </section>
+              ) : null}
               {/* Residual (gl): multi-minute progress for deposit spawn(s). */}
               {Array.isArray(deposit.spawn_ids) &&
               deposit.spawn_ids.filter(Boolean).length > 0 ? (
@@ -1087,6 +1149,7 @@ export default function MidnightOil() {
                     parentAssetId={depositParentAssetId}
                     recentSpawnIds={recentSpawnIds}
                     preferredSpawnId={depositSpawnIds[0] ?? null}
+                    onDocMerged={onContextNeedsRefresh}
                     onRecentSpawnsCleared={() => setRecentTick((n) => n + 1)}
                   />
                 </section>
