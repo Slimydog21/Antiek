@@ -212,6 +212,16 @@ def collective_research_html(unit: CollectiveResearchUnit) -> str:
                         f"spawns={len(unit.spawn_ids)} "
                         f"twins={len(unit.twin_units)} "
                         f"refs={len(unit.source_references)}"
+                        + (
+                            f" · recommended_tier={unit.recommended_research_tier}"
+                            if unit.recommended_research_tier
+                            else ""
+                        )
+                        + (
+                            f" · tiers={','.join(unit.research_tiers)}"
+                            if unit.research_tiers
+                            else ""
+                        )
                     ),
                 }
             ],

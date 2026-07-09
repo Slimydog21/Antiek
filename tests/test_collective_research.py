@@ -112,6 +112,10 @@ def test_merge_two_spawns_collective(store):
     html = collective_research_html(unit)
     assert unit.collective_id in html or "Collective" in html
     assert unit.view_format == "html"
+    # Residual (kj): HTML projection surfaces recommended + member tiers.
+    assert "recommended_tier=wrestle" in html
+    assert "tiers=fast,wrestle" in html
+    assert "application/pdf" not in html.lower()
 
 
 def test_collective_id_stable_regardless_of_order(store):
