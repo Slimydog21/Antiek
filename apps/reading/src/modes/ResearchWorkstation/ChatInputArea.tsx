@@ -7,6 +7,11 @@ import LemonTextarea from "../../components/lemon/LemonTextarea";
 import { track, trackException } from "../../lib/analytics";
 import { startInvestigation } from "../../lib/api";
 import type { ResearchTier } from "../../lib/api";
+import {
+  hydratePublicationRefs,
+  parsePublicationRefs,
+  questionWithPublicationRefs,
+} from "./publicationRefs";
 
 /**
  * Bottom-of-center chat input. Submit on Cmd/Ctrl+Enter; click "Ask"
@@ -26,6 +31,7 @@ import type { ResearchTier } from "../../lib/api";
  * by PanelLayoutPanel; this component renders only the inner controls.
  *
  * Residual (bq): live budget + #440 projection (parity with StartResearch bp).
+ * Residual (ct): publication refs (arxiv/substack/url) parity with StartResearch cj.
  */
 export default function ChatInputArea({
   parentInvestigationId,
@@ -43,6 +49,8 @@ export default function ChatInputArea({
   researchTier?: ResearchTier;
 }) {
   const [question, setQuestion] = useState(spawnContext ?? "");
+  const [pubRefs, setPubRefs] = useState("");
+  const [pubRefStatus, setPubRefStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -55,16 +63,29 @@ export default function ChatInputArea({
     }
     setBusy(true);
     setError(null);
+    setPubRefStatus(null);
     try {
+      const refs = parsePublicationRefs(pubRefs);
+      let launchQuestion = q;
+      if (refs.length > 0) {
+        const hydrated = await hydratePublicationRefs(refs);
+        setPubRefStatus(
+          `Hydrated ${hydrated.ok.length} publication asset(s)` +
+            (hydrated.failed.length ? ` · ${hydrated.failed.length} failed` : "") +
+            " · HTML-first",
+        );
+        launchQuestion = questionWithPublicationRefs(q, refs);
+      }
       const resp = await startInvestigation({
-        question: q,
+        question: launchQuestion,
         parent_investigation_id: parentInvestigationId,
         spawn_context: spawnContext,
       });
       track("investigation_started", {
-        question_length: q.length,
+        question_length: launchQuestion.length,
         has_parent: Boolean(parentInvestigationId),
         has_spawn_context: Boolean(spawnContext),
+        publication_ref_count: refs.length,
       });
       setQuestion("");
       if (onSubmitted) {
@@ -79,7 +100,14 @@ export default function ChatInputArea({
     } finally {
       setBusy(false);
     }
-  }, [question, parentInvestigationId, spawnContext, navigate, onSubmitted]);
+  }, [
+    question,
+    pubRefs,
+    parentInvestigationId,
+    spawnContext,
+    navigate,
+    onSubmitted,
+  ]);
 
   return (
     <div className="h-full flex flex-col p-3 bg-ice-1 dark:bg-charcoal-2 text-ink dark:text-bright">
@@ -98,6 +126,38 @@ export default function ChatInputArea({
         {error && (
           <div className="text-xs font-mono text-emperor mt-2">{error}</div>
         )}
+      </div>
+      {/* Residual (ct): arxiv/substack/URL handles for chase follow-ups. */}
+      <div
+        className="mt-2 space-y-1"
+        data-testid="chat-input-publication-refs"
+        data-view-format="html"
+      >
+        <label
+          className="text-[10px] font-mono uppercase tracking-wider text-ink-mute dark:text-moonlight"
+          htmlFor="chat-publication-refs-input"
+        >
+          Publication refs
+        </label>
+        <textarea
+          id="chat-publication-refs-input"
+          data-testid="chat-publication-refs-input"
+          value={pubRefs}
+          onChange={(e) => setPubRefs(e.target.value)}
+          disabled={busy}
+          rows={2}
+          placeholder={"arxiv:1706.03762\nhttps://…"}
+          className="w-full rounded border border-ink/20 bg-transparent px-2 py-1 text-[11px] font-mono dark:border-bright/20"
+        />
+        {pubRefStatus ? (
+          <p
+            className="text-[10px] font-mono text-aurora"
+            data-testid="chat-publication-refs-status"
+            role="status"
+          >
+            {pubRefStatus}
+          </p>
+        ) : null}
       </div>
       {/* Residual (bq): same launch budget panel as StartResearch (bp). */}
       <div className="mt-2" data-testid="chat-input-budget-mount">
