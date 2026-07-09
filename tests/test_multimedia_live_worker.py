@@ -15,6 +15,7 @@ from substrate.multimedia.live_worker import (
     attach_provider_artifacts_to_manifest,
     evaluate_public_export_gate,
     plan_provider_artifact_attachment,
+    plan_public_export,
     preview_next_live_execution,
     record_provider_artifact_receipt,
     record_public_export_review,
@@ -28,6 +29,82 @@ from substrate.multimedia.read_model import (
 )
 
 SHA = "e" * 64
+
+
+def _create_reviewed_public_export_asset(tmp_path, monkeypatch):
+    monkeypatch.setenv("KREA_API_KEY", "presence-only-not-a-real-secret")
+    store = MultimediaAssetStore(tmp_path)
+    draft = store.create_draft(
+        CreateMultimediaDraftRequest(
+            topic="documentary on fly-by-wire certification",
+            target_minutes=20,
+            mode="video",
+            route_policy="balanced",
+            sources=("Digital flight controls changed aircraft design and safety cases.",),
+        )
+    )
+    store.approve_dry_run(draft.asset.asset_id)
+    store.prepare_live_execution(
+        draft.asset.asset_id,
+        LiveProviderExecutionRequest(
+            max_budget_usd=100,
+            route_policy="balanced",
+            operator_acknowledged_spend=True,
+            dry_run_revision_id=draft.asset.revision_id,
+        ),
+    )
+    previewed = preview_next_live_execution(store, draft.asset.asset_id)
+    route_preview = previewed.jobs[-1].route_preview
+    assert route_preview is not None
+    provider_file = GeneratedFile(
+        file_id="krea-file-public-export-plan",
+        kind="video",
+        storage_uri="s3://antiek/multimedia/krea-file-public-export-plan.mp4",
+        sha256=SHA,
+        mime="video/mp4",
+        provider="krea",
+        duration_seconds=route_preview.duration_seconds,
+        width_px=route_preview.resolution[0] if route_preview.resolution else None,
+        height_px=route_preview.resolution[1] if route_preview.resolution else None,
+    )
+    record_provider_artifact_receipt(
+        store,
+        draft.asset.asset_id,
+        LiveProviderArtifactReceipt(
+            provider_job_id="krea-job-public-export-plan",
+            provider="krea",
+            status="succeeded",
+            files=(provider_file,),
+        ),
+    )
+    plan_provider_artifact_attachment(store, draft.asset.asset_id)
+    attached = attach_provider_artifacts_to_manifest(store, draft.asset.asset_id)
+    manual_report = MultimediaHardeningReport(
+        asset_id=draft.asset.asset_id,
+        revision_id=draft.asset.revision_id,
+        ship_status="manual_review",
+        gates=(
+            GateResult(gate_id="grounding_and_disclosure", status="pass"),
+            GateResult(gate_id="cost_and_budget", status="pass"),
+            GateResult(gate_id="playback_and_accessibility", status="pass"),
+            GateResult(gate_id="provider_safety_retry", status="pass"),
+            GateResult(gate_id="rights_and_publication", status="manual"),
+        ),
+    )
+    store.save(attached.model_copy(update={"hardening_report": manual_report}))
+    gate_record = evaluate_public_export_gate(store, draft.asset.asset_id)
+    gate = gate_record.jobs[-1].public_export_gate
+    assert gate is not None
+    record_public_export_review(
+        store,
+        draft.asset.asset_id,
+        MultimediaPublicExportReviewRequest(
+            decision="approved",
+            gate_ids=gate.required_gate_ids,
+            operator_acknowledged_public_distribution=True,
+        ),
+    )
+    return store, draft
 
 
 def test_live_worker_preview_consumes_queued_plan_without_provider_call(tmp_path, monkeypatch):
@@ -749,6 +826,78 @@ def test_public_export_review_approval_records_ready_without_enabling_publish(tm
     reloaded = MultimediaAssetStore(tmp_path).list_jobs(draft.asset.asset_id)
     assert reloaded.jobs[-1].public_export_gate == job.public_export_gate
     assert reloaded.jobs[-1].public_export_review == job.public_export_review
+
+
+def test_public_export_plan_requires_approved_review(tmp_path):
+    store = MultimediaAssetStore(tmp_path)
+    draft = store.create_draft(
+        CreateMultimediaDraftRequest(
+            topic="documentary on VHF navigation",
+            target_minutes=20,
+            mode="video",
+            route_policy="balanced",
+        )
+    )
+
+    planned = plan_public_export(store, draft.asset.asset_id)
+
+    assert planned.jobs[-1].status == "failed"
+    assert planned.jobs[-1].error_code == "public_export_review_missing"
+    assert planned.jobs[-1].public_export_plan is None
+
+
+def test_public_export_plan_stages_without_public_url_or_publish_enablement(tmp_path, monkeypatch):
+    store, draft = _create_reviewed_public_export_asset(tmp_path, monkeypatch)
+
+    planned = plan_public_export(store, draft.asset.asset_id)
+    job = planned.jobs[-1]
+
+    assert job.kind == "export_gate"
+    assert job.status == "partial"
+    assert job.progress_percent == 99
+    assert job.public_export_gate is not None
+    assert job.public_export_gate.status == "ready"
+    assert job.public_export_gate.public_export_enabled is False
+    assert job.public_export_review is not None
+    assert job.public_export_review.decision == "approved"
+    assert job.public_export_plan is not None
+    assert job.public_export_plan.export_id == f"export-{draft.asset.asset_id}-{draft.asset.revision_id}"
+    assert "krea-file-public-export-plan" in job.public_export_plan.attached_file_ids
+    assert job.public_export_plan.review_gate_ids == ("rights_and_publication",)
+    assert job.public_export_plan.public_url is None
+    assert job.public_export_plan.publish_enabled is False
+    assert "presence-only-not-a-real-secret" not in job.model_dump_json()
+
+    reloaded = MultimediaAssetStore(tmp_path).list_jobs(draft.asset.asset_id)
+    assert reloaded.jobs[-1].public_export_plan == job.public_export_plan
+
+
+def test_public_export_plan_rejects_attachment_ids_changed_after_review(tmp_path, monkeypatch):
+    store, draft = _create_reviewed_public_export_asset(tmp_path, monkeypatch)
+    record = store.get(draft.asset.asset_id)
+    added_file = GeneratedFile(
+        file_id="late-unreviewed-file",
+        kind="video",
+        storage_uri="s3://antiek/multimedia/late-unreviewed-file.mp4",
+        sha256=SHA,
+        mime="video/mp4",
+        provider="krea",
+        duration_seconds=60,
+        width_px=1280,
+        height_px=720,
+    )
+    manifest = record.asset.manifest.model_copy(
+        update={"files": record.asset.manifest.files + (added_file,)}
+    )
+    store.save(record.model_copy(update={"asset": record.asset.model_copy(update={"manifest": manifest})}))
+
+    planned = plan_public_export(store, draft.asset.asset_id)
+
+    assert planned.jobs[-1].status == "failed"
+    assert planned.jobs[-1].error_code == "public_export_attachment_mismatch"
+    assert planned.jobs[-1].public_export_plan is None
+    assert planned.jobs[-1].public_export_gate is not None
+    assert planned.jobs[-1].public_export_review is not None
 
 
 def test_provider_artifact_attachment_plan_requires_successful_receipt(tmp_path, monkeypatch):

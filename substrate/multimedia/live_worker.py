@@ -24,6 +24,7 @@ from substrate.multimedia.read_model import (
     MultimediaAssetStore,
     MultimediaJobRecord,
     MultimediaPublicExportGate,
+    MultimediaPublicExportPlan,
     MultimediaPublicExportReview,
     MultimediaPublicExportReviewRequest,
 )
@@ -214,6 +215,83 @@ def record_public_export_review(
         retryable=False,
         public_export_gate=ready_gate,
         public_export_review=review,
+    )
+
+
+def plan_public_export(
+    store: MultimediaAssetStore,
+    asset_id: str,
+) -> MultimediaAssetRecord:
+    """Stage a future public-export plan without publishing anything."""
+
+    record = store.get(asset_id)
+    gate = _latest_public_export_gate(record)
+    review = _latest_public_export_review(record)
+    if gate is None or review is None:
+        return store.record_job(
+            asset_id,
+            kind="export_gate",
+            status="failed",
+            progress_percent=98,
+            message="Public export planning requires a ready gate and approved manual review.",
+            error_code="public_export_review_missing",
+            retryable=False,
+            public_export_gate=gate,
+            public_export_review=review,
+        )
+    if gate.status != "ready" or gate.public_export_enabled:
+        return store.record_job(
+            asset_id,
+            kind="export_gate",
+            status="failed",
+            progress_percent=98,
+            message="Public export planning requires a ready gate with publication still disabled.",
+            error_code="public_export_gate_not_ready",
+            retryable=False,
+            public_export_gate=gate,
+            public_export_review=review,
+        )
+    if review.decision != "approved":
+        return store.record_job(
+            asset_id,
+            kind="export_gate",
+            status="failed",
+            progress_percent=98,
+            message="Public export planning requires an approved manual review.",
+            error_code="public_export_review_not_approved",
+            retryable=False,
+            public_export_gate=gate,
+            public_export_review=review,
+        )
+    attached_file_ids = tuple(file.file_id for file in record.asset.manifest.files)
+    if attached_file_ids != review.attached_file_ids or attached_file_ids != gate.attached_file_ids:
+        return store.record_job(
+            asset_id,
+            kind="export_gate",
+            status="failed",
+            progress_percent=98,
+            message="Public export planning found attachment ids that differ from the approved review.",
+            error_code="public_export_attachment_mismatch",
+            retryable=False,
+            public_export_gate=gate,
+            public_export_review=review,
+        )
+
+    export_plan = MultimediaPublicExportPlan(
+        export_id=f"export-{record.asset.asset_id}-{record.asset.revision_id}",
+        attached_file_ids=attached_file_ids,
+        review_gate_ids=review.gate_ids,
+    )
+    return store.record_job(
+        asset_id,
+        kind="export_gate",
+        status="partial",
+        progress_percent=99,
+        message="Public export plan staged; no public URL has been minted.",
+        retryable=False,
+        public_export_gate=gate,
+        public_export_review=review,
+        public_export_plan=export_plan,
     )
 
 
@@ -549,6 +627,13 @@ def _latest_public_export_gate(record: MultimediaAssetRecord) -> MultimediaPubli
     return None
 
 
+def _latest_public_export_review(record: MultimediaAssetRecord) -> MultimediaPublicExportReview | None:
+    for job in reversed(record.jobs):
+        if job.kind == "export_gate" and job.public_export_review:
+            return job.public_export_review
+    return None
+
+
 def _attachment_mismatch(
     preview: LiveProviderRoutePreview,
     receipt: LiveProviderArtifactReceipt,
@@ -592,6 +677,7 @@ def _primary_generation_kind(kind: AssetKind) -> GenerationKind:
 __all__ = [
     "attach_provider_artifacts_to_manifest",
     "evaluate_public_export_gate",
+    "plan_public_export",
     "plan_provider_artifact_attachment",
     "preview_next_live_execution",
     "record_provider_artifact_receipt",
