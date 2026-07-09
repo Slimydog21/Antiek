@@ -99,3 +99,11 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - (jo) progress poll cadence by tier (fast 2s / deep 4s / wrestle 8s)
   Competitive match: budget-capped depth honesty + multi-minute wrestle posture without second runtime.
 
+
+- Closed (jt–jw, 2026-07-10) **Depth → bench + intensity honesty:**
+  - (jt) session flywheel research_tier → Antiek-bench task_class on complete
+  - (ju) shared progress poll map (TS)
+  - (jv) shared MO ceiling multiplier map (TS ↔ Python contract)
+  - (jw) budget panel intensity chrome on every launch surface
+  - (jx) substrate TIER_MULTIPLIER closed-set contract test for fleet parity
+

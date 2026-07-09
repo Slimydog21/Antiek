@@ -395,3 +395,20 @@ def test_worker_dedups_repeated_spawn_id():
     assert final.status == "complete"
     assert final.spawn_ids == ("spn_worker_1",)
     assert final.spawn_ids.count("spn_worker_1") == 1
+
+def test_tier_multiplier_contract_matches_closed_set():
+    """Residual (jx): substrate TIER_MULTIPLIER contract for TS parity (jv).
+
+    Client RESEARCH_TIER_CEILING_MULTIPLIER must stay: fast 0.5, deep 1.0, wrestle 2.0.
+    """
+    from substrate.midnight_oil.ceiling import TIER_MULTIPLIER, tier_multiplier
+
+    assert set(TIER_MULTIPLIER) == {"fast", "deep", "wrestle"}
+    assert TIER_MULTIPLIER["fast"] == 0.5
+    assert TIER_MULTIPLIER["deep"] == 1.0
+    assert TIER_MULTIPLIER["wrestle"] == 2.0
+    assert tier_multiplier("fast") == 0.5
+    assert tier_multiplier("wrestle") == 2.0
+    assert tier_multiplier(None) == 1.0
+    assert tier_multiplier("turbo") == 1.0  # normalize → deep
+

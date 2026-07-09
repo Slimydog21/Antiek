@@ -1,0 +1,8 @@
+# inventory-jx · TIER_MULTIPLIER closed-set contract test
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: jx
+files:
+  tests/test_midnight_oil.py
+  docs/campaigns/2026-07-09-research-reading-spine/competitive-deep-research-notes.md
+proof: test_tier_multiplier_contract_matches_closed_set 1_passed (HONEST_OK)
+invariants: fast 0.5 · deep 1.0 · wrestle 2.0 · TS parity jv
