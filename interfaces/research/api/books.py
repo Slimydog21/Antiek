@@ -375,6 +375,37 @@ class BookHtmlConversionReviewOut(BaseModel):
     policy_notes: list[str]
 
 
+class BookHtmlConversionResultIn(BaseModel):
+    conversion_review_id: str = Field(min_length=1, max_length=80)
+    handoff_id: str = Field(min_length=1, max_length=80)
+    html_output_ref: str = Field(min_length=1, max_length=500)
+    html_checksum_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    page_count_estimate: int | None = Field(default=None, ge=0, le=100_000)
+    acknowledge_output_metadata_only: bool = False
+    acknowledge_no_publish_or_serve: bool = False
+
+
+class BookHtmlConversionResultOut(BaseModel):
+    conversion_result_id: str
+    status: Literal["ready_for_serve_gate_review"]
+    conversion_review_id: str
+    handoff_id: str
+    html_output_ref: str
+    html_checksum_sha256: str | None
+    page_count_estimate: int | None
+    import_target: Literal["antiek_html"]
+    output_metadata_recorded: bool
+    output_ref_fetched: bool
+    html_output_read: bool
+    ingest_attempted: bool
+    graph_mutation_performed: bool
+    shelf_publication_attempted: bool
+    full_text_served: bool
+    serve_gate_required: bool
+    required_operator_steps: list[str]
+    policy_notes: list[str]
+
+
 def _book_purchase_request_id(req: BookPurchaseRequestIn) -> str:
     normalized = "|".join(
         [
@@ -428,6 +459,19 @@ def _book_html_conversion_review_id(req: BookHtmlConversionReviewIn) -> str:
         ]
     )
     return f"bookconv-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
+
+
+def _book_html_conversion_result_id(req: BookHtmlConversionResultIn) -> str:
+    normalized = "|".join(
+        [
+            req.conversion_review_id.strip(),
+            req.handoff_id.strip(),
+            req.html_output_ref.strip(),
+            (req.html_checksum_sha256 or "").strip().casefold(),
+            str(req.page_count_estimate),
+        ]
+    )
+    return f"bookout-{hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:16]}"
 
 
 class SpinResearchRequest(BaseModel):
@@ -930,6 +974,61 @@ def register_book_routes(app: FastAPI) -> None:
             policy_notes=[
                 "No storage reference or file bytes were read during conversion review.",
                 "No converter ran, no HTML output was written, and no graph or shelf state changed.",
+            ],
+        )
+
+    @app.post(
+        "/books/import/conversion-result",
+        response_model=BookHtmlConversionResultOut,
+        status_code=202,
+        tags=["books"],
+    )
+    async def book_html_conversion_result(
+        req: BookHtmlConversionResultIn,
+    ) -> BookHtmlConversionResultOut:
+        """Record converted HTML output metadata without reading or publishing it."""
+        conversion_review_id = req.conversion_review_id.strip()
+        handoff_id = req.handoff_id.strip()
+        if not conversion_review_id.startswith("bookconv-"):
+            raise HTTPException(status_code=400, detail="invalid_conversion_review_id")
+        if not handoff_id.startswith("bookhand-"):
+            raise HTTPException(status_code=400, detail="invalid_handoff_id")
+        if not req.acknowledge_output_metadata_only:
+            raise HTTPException(status_code=400, detail="output_metadata_ack_required")
+        if not req.acknowledge_no_publish_or_serve:
+            raise HTTPException(status_code=400, detail="no_publish_or_serve_ack_required")
+
+        checksum = (
+            req.html_checksum_sha256.strip().casefold() if req.html_checksum_sha256 else None
+        )
+        if checksum is not None and any(ch not in "0123456789abcdef" for ch in checksum):
+            raise HTTPException(status_code=400, detail="invalid_sha256_checksum")
+
+        return BookHtmlConversionResultOut(
+            conversion_result_id=_book_html_conversion_result_id(req),
+            status="ready_for_serve_gate_review",
+            conversion_review_id=conversion_review_id,
+            handoff_id=handoff_id,
+            html_output_ref=req.html_output_ref.strip(),
+            html_checksum_sha256=checksum,
+            page_count_estimate=req.page_count_estimate,
+            import_target="antiek_html",
+            output_metadata_recorded=True,
+            output_ref_fetched=False,
+            html_output_read=False,
+            ingest_attempted=False,
+            graph_mutation_performed=False,
+            shelf_publication_attempted=False,
+            full_text_served=False,
+            serve_gate_required=True,
+            required_operator_steps=[
+                "Review the converted HTML output in a later explicit serve-gate step.",
+                "Validate rights, structure, and checksum before any graph ingest or shelf publication.",
+                "Publish to Library/Reader only after the serve gate approves full-text servability.",
+            ],
+            policy_notes=[
+                "Only converted-output metadata was recorded; the HTML output reference was not opened or fetched.",
+                "No ingest, graph mutation, shelf publication, or full-text serving happened.",
             ],
         )
 

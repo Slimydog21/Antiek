@@ -275,3 +275,83 @@ def test_html_conversion_review_is_no_run_no_write_contract() -> None:
     assert body["html_hosting_required"] is True
     assert body["serve_gate_required"] is True
     assert any("No converter ran" in note for note in body["policy_notes"])
+
+
+def test_html_conversion_result_requires_valid_ids_and_publish_ack() -> None:
+    client = _client()
+
+    invalid_review = client.post(
+        "/books/import/conversion-result",
+        json={
+            "conversion_review_id": "not-a-review",
+            "handoff_id": "bookhand-safe123",
+            "html_output_ref": "operator-vault://books/dream-machine/index.html",
+            "acknowledge_output_metadata_only": True,
+            "acknowledge_no_publish_or_serve": True,
+        },
+    )
+    assert invalid_review.status_code == 400
+    assert invalid_review.json()["detail"] == "invalid_conversion_review_id"
+
+    missing_metadata_ack = client.post(
+        "/books/import/conversion-result",
+        json={
+            "conversion_review_id": "bookconv-safe123",
+            "handoff_id": "bookhand-safe123",
+            "html_output_ref": "operator-vault://books/dream-machine/index.html",
+            "acknowledge_output_metadata_only": False,
+            "acknowledge_no_publish_or_serve": True,
+        },
+    )
+    assert missing_metadata_ack.status_code == 400
+    assert missing_metadata_ack.json()["detail"] == "output_metadata_ack_required"
+
+    missing_publish_ack = client.post(
+        "/books/import/conversion-result",
+        json={
+            "conversion_review_id": "bookconv-safe123",
+            "handoff_id": "bookhand-safe123",
+            "html_output_ref": "operator-vault://books/dream-machine/index.html",
+            "acknowledge_output_metadata_only": True,
+            "acknowledge_no_publish_or_serve": False,
+        },
+    )
+    assert missing_publish_ack.status_code == 400
+    assert missing_publish_ack.json()["detail"] == "no_publish_or_serve_ack_required"
+
+
+def test_html_conversion_result_records_output_metadata_without_publish_or_serve() -> None:
+    client = _client()
+    checksum = "b" * 64
+
+    resp = client.post(
+        "/books/import/conversion-result",
+        json={
+            "conversion_review_id": "bookconv-safe123",
+            "handoff_id": "bookhand-safe123",
+            "html_output_ref": "operator-vault://books/dream-machine/index.html",
+            "html_checksum_sha256": checksum,
+            "page_count_estimate": 340,
+            "acknowledge_output_metadata_only": True,
+            "acknowledge_no_publish_or_serve": True,
+        },
+    )
+
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert body["conversion_result_id"].startswith("bookout-")
+    assert body["status"] == "ready_for_serve_gate_review"
+    assert body["conversion_review_id"] == "bookconv-safe123"
+    assert body["handoff_id"] == "bookhand-safe123"
+    assert body["html_output_ref"] == "operator-vault://books/dream-machine/index.html"
+    assert body["html_checksum_sha256"] == checksum
+    assert body["page_count_estimate"] == 340
+    assert body["output_metadata_recorded"] is True
+    assert body["output_ref_fetched"] is False
+    assert body["html_output_read"] is False
+    assert body["ingest_attempted"] is False
+    assert body["graph_mutation_performed"] is False
+    assert body["shelf_publication_attempted"] is False
+    assert body["full_text_served"] is False
+    assert body["serve_gate_required"] is True
+    assert any("metadata was recorded" in note for note in body["policy_notes"])

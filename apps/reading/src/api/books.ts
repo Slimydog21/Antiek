@@ -350,6 +350,37 @@ export interface BookHtmlConversionReviewResponse {
   policy_notes: string[];
 }
 
+export interface BookHtmlConversionResultInput {
+  conversion_review_id: string;
+  handoff_id: string;
+  html_output_ref: string;
+  html_checksum_sha256?: string | null;
+  page_count_estimate?: number | null;
+  acknowledge_output_metadata_only: boolean;
+  acknowledge_no_publish_or_serve: boolean;
+}
+
+export interface BookHtmlConversionResultResponse {
+  conversion_result_id: string;
+  status: "ready_for_serve_gate_review";
+  conversion_review_id: string;
+  handoff_id: string;
+  html_output_ref: string;
+  html_checksum_sha256: string | null;
+  page_count_estimate: number | null;
+  import_target: "antiek_html";
+  output_metadata_recorded: boolean;
+  output_ref_fetched: boolean;
+  html_output_read: boolean;
+  ingest_attempted: boolean;
+  graph_mutation_performed: boolean;
+  shelf_publication_attempted: boolean;
+  full_text_served: boolean;
+  serve_gate_required: boolean;
+  required_operator_steps: string[];
+  policy_notes: string[];
+}
+
 /** Prompt-to-curate (Read SPR-04). Ranks ONLY servable books by relevance
  * to the prompt — a gated book is never curated into a readable list.
  * Returns 503 if the embedding model isn't available server-side. */
@@ -418,6 +449,21 @@ export async function reviewBookHtmlConversion(
   }
   if (!resp.ok) throw new Error(`POST /books/import/conversion-review: HTTP ${resp.status}`);
   return (await resp.json()) as BookHtmlConversionReviewResponse;
+}
+
+export async function recordBookHtmlConversionResult(
+  request: BookHtmlConversionResultInput,
+): Promise<BookHtmlConversionResultResponse> {
+  const resp = await apiFetch(`${API_BASE}/books/import/conversion-result`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 400) {
+    throw new Error("Confirm output metadata and no-publish review boundary.");
+  }
+  if (!resp.ok) throw new Error(`POST /books/import/conversion-result: HTTP ${resp.status}`);
+  return (await resp.json()) as BookHtmlConversionResultResponse;
 }
 
 // ── SPR-08 M2: talk-to-book (multi-turn, page-cited) ──────────────────

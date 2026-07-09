@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import type {
+  BookHtmlConversionResultResponse,
   BookHtmlConversionReviewResponse,
   BookHtmlFileHandoffResponse,
   BookHtmlImportPreflightResponse,
@@ -14,6 +15,7 @@ import {
   handoffBookHtmlFile,
   listBooks,
   preflightBookHtmlImport,
+  recordBookHtmlConversionResult,
   requestBookPurchase,
   reviewBookHtmlConversion,
 } from "../../api/books";
@@ -101,6 +103,13 @@ export default function Library() {
   const [conversionNoRunAck, setConversionNoRunAck] = useState(false);
   const [conversionBusy, setConversionBusy] = useState(false);
   const [conversionReceipt, setConversionReceipt] = useState<BookHtmlConversionReviewResponse | null>(null);
+  const [outputRef, setOutputRef] = useState("");
+  const [outputChecksum, setOutputChecksum] = useState("");
+  const [outputPageCount, setOutputPageCount] = useState("");
+  const [outputMetadataAck, setOutputMetadataAck] = useState(false);
+  const [outputNoPublishAck, setOutputNoPublishAck] = useState(false);
+  const [outputBusy, setOutputBusy] = useState(false);
+  const [outputReceipt, setOutputReceipt] = useState<BookHtmlConversionResultResponse | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -259,6 +268,7 @@ export default function Library() {
         acknowledge_no_conversion_run: conversionNoRunAck,
       });
       setConversionReceipt(res);
+      setOutputReceipt(null);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -271,6 +281,38 @@ export default function Library() {
     conversionSandboxAck,
     handoffReceipt,
     importReceipt,
+  ]);
+
+  const onConversionResult = useCallback(async () => {
+    if (!conversionReceipt || !handoffReceipt) return;
+    const pageCount = outputPageCount.trim().length > 0 ? Number(outputPageCount) : null;
+    setOutputBusy(true);
+    setError(null);
+    setOutputReceipt(null);
+    try {
+      const res = await recordBookHtmlConversionResult({
+        conversion_review_id: conversionReceipt.conversion_review_id,
+        handoff_id: handoffReceipt.handoff_id,
+        html_output_ref: outputRef,
+        html_checksum_sha256: outputChecksum.trim() || null,
+        page_count_estimate: pageCount === null || Number.isNaN(pageCount) ? null : pageCount,
+        acknowledge_output_metadata_only: outputMetadataAck,
+        acknowledge_no_publish_or_serve: outputNoPublishAck,
+      });
+      setOutputReceipt(res);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setOutputBusy(false);
+    }
+  }, [
+    conversionReceipt,
+    handoffReceipt,
+    outputChecksum,
+    outputMetadataAck,
+    outputNoPublishAck,
+    outputPageCount,
+    outputRef,
   ]);
 
   // The display order, in three layers of precedence:
@@ -740,6 +782,92 @@ export default function Library() {
                   {conversionReceipt.file_read_attempted ? "yes" : "no"}, converted{" "}
                   {conversionReceipt.conversion_attempted ? "yes" : "no"}, output written{" "}
                   {conversionReceipt.output_written ? "yes" : "no"}.
+                </p>
+              )}
+            </form>
+          )}
+
+          {conversionReceipt && (
+            <form
+              className="rounded-md border border-ice-4 dark:border-charcoal-1 bg-white/70 dark:bg-charcoal-2/70 p-3 space-y-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void onConversionResult();
+              }}
+            >
+              <div>
+                <p className="text-[13px] font-serif text-ink dark:text-bright">
+                  Converted HTML metadata
+                </p>
+                <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+                  Records the converted HTML output reference only; no output is
+                  fetched, ingested, published, or served here.
+                </p>
+              </div>
+              <label className="block text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                HTML output reference
+                <input
+                  value={outputRef}
+                  onChange={(event) => setOutputRef(event.target.value)}
+                  required
+                  className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  placeholder="operator-vault://books/title/index.html"
+                />
+              </label>
+              <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                <label className="flex-1 min-w-0 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  HTML SHA-256
+                  <input
+                    value={outputChecksum}
+                    onChange={(event) => setOutputChecksum(event.target.value)}
+                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                    placeholder="Optional 64-character checksum"
+                  />
+                </label>
+                <label className="w-full md:w-32 text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+                  Pages
+                  <input
+                    value={outputPageCount}
+                    onChange={(event) => setOutputPageCount(event.target.value)}
+                    min="0"
+                    type="number"
+                    className="mt-1 w-full rounded-md border border-ice-4 dark:border-charcoal-1 bg-white dark:bg-charcoal-3 px-2 py-1.5 text-sm normal-case tracking-normal text-ink dark:text-bright"
+                  />
+                </label>
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                  <input
+                    type="checkbox"
+                    checked={outputMetadataAck}
+                    onChange={(event) => setOutputMetadataAck(event.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>This records converted-output metadata only.</span>
+                </label>
+                <label className="flex items-start gap-2 text-[12px] font-serif text-ink-soft dark:text-starlight">
+                  <input
+                    type="checkbox"
+                    checked={outputNoPublishAck}
+                    onChange={(event) => setOutputNoPublishAck(event.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>No output fetch, ingest, graph write, shelf publication, or full-text serve runs from this receipt.</span>
+                </label>
+              </div>
+              <button
+                type="submit"
+                disabled={outputBusy || outputRef.trim().length === 0}
+                className="rounded-md bg-ink px-3 py-1.5 text-xs font-mono text-white disabled:cursor-not-allowed disabled:opacity-50 dark:bg-bright dark:text-charcoal-3"
+              >
+                {outputBusy ? "Recording…" : "Record output"}
+              </button>
+              {outputReceipt && (
+                <p className="text-[13px] font-serif text-ink dark:text-bright" role="status">
+                  Output {outputReceipt.conversion_result_id} is ready for serve-gate review; fetched{" "}
+                  {outputReceipt.output_ref_fetched ? "yes" : "no"}, ingested{" "}
+                  {outputReceipt.ingest_attempted ? "yes" : "no"}, served{" "}
+                  {outputReceipt.full_text_served ? "yes" : "no"}.
                 </p>
               )}
             </form>

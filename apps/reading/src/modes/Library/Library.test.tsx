@@ -16,6 +16,7 @@ const {
   preflightBookHtmlImportMock,
   handoffBookHtmlFileMock,
   reviewBookHtmlConversionMock,
+  recordBookHtmlConversionResultMock,
   listInvestigationsMock,
   navigateMock,
 } = vi.hoisted(() => ({
@@ -25,6 +26,7 @@ const {
   preflightBookHtmlImportMock: vi.fn(),
   handoffBookHtmlFileMock: vi.fn(),
   reviewBookHtmlConversionMock: vi.fn(),
+  recordBookHtmlConversionResultMock: vi.fn(),
   // M1: the active-research signal documentsByTheme ranks the shelf to.
   // Default: no active research → the feed falls back to recency.
   listInvestigationsMock: vi.fn<
@@ -43,6 +45,7 @@ vi.mock("../../api/books", async (orig) => {
     preflightBookHtmlImport: preflightBookHtmlImportMock,
     handoffBookHtmlFile: handoffBookHtmlFileMock,
     reviewBookHtmlConversion: reviewBookHtmlConversionMock,
+    recordBookHtmlConversionResult: recordBookHtmlConversionResultMock,
   };
 });
 
@@ -84,6 +87,7 @@ beforeEach(() => {
   preflightBookHtmlImportMock.mockReset();
   handoffBookHtmlFileMock.mockReset();
   reviewBookHtmlConversionMock.mockReset();
+  recordBookHtmlConversionResultMock.mockReset();
   listInvestigationsMock.mockReset();
   listInvestigationsMock.mockResolvedValue({ count: 0, investigations: [] });
   navigateMock.mockReset();
@@ -326,7 +330,7 @@ describe("Library", () => {
     });
   });
 
-  it("preflights, records handoff, and reviews conversion without reading or converting", async () => {
+  it("preflights through output metadata without reading, converting, publishing, or serving", async () => {
     listBooksMock.mockResolvedValue({ books: [servableBook], count: 1 });
     requestBookPurchaseMock.mockResolvedValue({
       request_id: "bookreq-safe123",
@@ -402,6 +406,26 @@ describe("Library", () => {
       ingest_attempted: false,
       graph_mutation_performed: false,
       html_hosting_required: true,
+      serve_gate_required: true,
+      required_operator_steps: [],
+      policy_notes: [],
+    });
+    recordBookHtmlConversionResultMock.mockResolvedValue({
+      conversion_result_id: "bookout-safe123",
+      status: "ready_for_serve_gate_review",
+      conversion_review_id: "bookconv-safe123",
+      handoff_id: "bookhand-safe123",
+      html_output_ref: "operator-vault://books/dream-machine/index.html",
+      html_checksum_sha256: "b".repeat(64),
+      page_count_estimate: 340,
+      import_target: "antiek_html",
+      output_metadata_recorded: true,
+      output_ref_fetched: false,
+      html_output_read: false,
+      ingest_attempted: false,
+      graph_mutation_performed: false,
+      shelf_publication_attempted: false,
+      full_text_served: false,
       serve_gate_required: true,
       required_operator_steps: [],
       policy_notes: [],
@@ -490,6 +514,33 @@ describe("Library", () => {
       output_format: "antiek_html",
       acknowledge_sandbox_required: true,
       acknowledge_no_conversion_run: true,
+    });
+
+    fireEvent.change(screen.getByLabelText("HTML output reference"), {
+      target: { value: "operator-vault://books/dream-machine/index.html" },
+    });
+    fireEvent.change(screen.getByLabelText("HTML SHA-256"), {
+      target: { value: "b".repeat(64) },
+    });
+    fireEvent.change(screen.getByLabelText("Pages"), {
+      target: { value: "340" },
+    });
+    fireEvent.click(screen.getByLabelText(/converted-output metadata only/));
+    fireEvent.click(screen.getByLabelText(/No output fetch, ingest/));
+    fireEvent.click(screen.getByRole("button", { name: "Record output" }));
+
+    const outputStatus = await screen.findByText(/Output bookout-safe123/);
+    expect(outputStatus.textContent).toContain("fetched no");
+    expect(outputStatus.textContent).toContain("ingested no");
+    expect(outputStatus.textContent).toContain("served no");
+    expect(recordBookHtmlConversionResultMock).toHaveBeenCalledWith({
+      conversion_review_id: "bookconv-safe123",
+      handoff_id: "bookhand-safe123",
+      html_output_ref: "operator-vault://books/dream-machine/index.html",
+      html_checksum_sha256: "b".repeat(64),
+      page_count_estimate: 340,
+      acknowledge_output_metadata_only: true,
+      acknowledge_no_publish_or_serve: true,
     });
   });
 });
