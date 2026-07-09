@@ -242,3 +242,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (md, 2026-07-10) **Midnight Oil ceiling budget fit:**
   - moil-ceiling-budget-fit chrome (fits|may_exceed|unknown)
   - remaining from budget projection; never invent $0
+
+- Closed (me, 2026-07-10) **Midnight Oil approve soft-gate:**
+  - Force override when ceiling may_exceed remaining daily budget
+  - Unknown remaining never blocks approve

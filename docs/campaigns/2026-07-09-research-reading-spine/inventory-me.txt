@@ -1,0 +1,8 @@
+# inventory-me · Midnight Oil approve soft-gate on ceiling budget exceed
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: me
+files:
+  apps/reading/src/modes/MidnightOil/index.tsx
+  apps/reading/src/modes/MidnightOil/MidnightOil.test.tsx
+proof: vitest MidnightOil 10 passed
+invariants: unknown remaining never blocks · force override required for may_exceed · soft gate

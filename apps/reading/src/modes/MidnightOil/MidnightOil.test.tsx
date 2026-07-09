@@ -378,6 +378,63 @@ describe("MidnightOil mode", () => {
     });
   });
 
+  it("soft-gates approve when ceiling may exceed remaining budget (me)", async () => {
+    // Override budget mock remaining to $1 so ceiling $3.6 may_exceed.
+    // Re-render path: use existing mock remaining=5 for create, then we need
+    // a separate mock — patch via creating high ceiling + low remaining is
+    // hard mid-mock; instead create with huge recommended and reuse remaining=5.
+    createMidnightOilJob.mockResolvedValue({
+      job_id: "moil_over",
+      goals: ["Huge wrestle"],
+      duration_minutes: 600,
+      status: "awaiting_approval",
+      research_tier: "wrestle",
+      recommended_price_ceiling_usd: 50,
+      view_format: "html",
+      runnable: false,
+      html: "<p>over</p>",
+    });
+    approveMidnightOilCeiling.mockResolvedValue({
+      job_id: "moil_over",
+      goals: ["Huge wrestle"],
+      duration_minutes: 600,
+      status: "approved",
+      research_tier: "wrestle",
+      recommended_price_ceiling_usd: 50,
+      approved_ceiling_usd: 50,
+      view_format: "html",
+      runnable: true,
+      html: "<p>ok</p>",
+    });
+    render(<MidnightOil />);
+    fireEvent.change(screen.getByLabelText(/goals/i), {
+      target: { value: "Huge wrestle" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /create job \+ recommend ceiling/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("moil-ceiling-budget-fit").getAttribute("data-fit")).toBe(
+        "may_exceed",
+      );
+    });
+    fireEvent.click(screen.getByTestId("moil-approve-recommended"));
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toMatch(
+        /may exceed remaining daily budget/i,
+      );
+    });
+    expect(approveMidnightOilCeiling).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("moil-force-ceiling-over-budget").querySelector("input")!);
+    fireEvent.click(screen.getByTestId("moil-approve-recommended"));
+    await waitFor(() => {
+      expect(approveMidnightOilCeiling).toHaveBeenCalledWith({
+        job_id: "moil_over",
+        use_recommended: true,
+      });
+    });
+  });
+
   it("deposits results and shows progress after approve", async () => {
     createMidnightOilJob.mockResolvedValue({
       job_id: "moil_dep",

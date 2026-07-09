@@ -23,6 +23,8 @@
  * Residual (js): deposit progress panels pass researchTier + tier poll cadence.
  * Residual (md): recommended ceiling vs remaining daily budget fit chrome
  * (fits | may_exceed | unknown) — never invent $0 remaining.
+ * Residual (me): soft-gate approve when ceiling may_exceed remaining budget
+ * (force override required; unknown remaining never blocks).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -172,6 +174,11 @@ export default function MidnightOil() {
   const [budgetRemainingUsd, setBudgetRemainingUsd] = useState<number | null>(
     null,
   );
+  /**
+   * Residual (me): force approve when recommended ceiling may_exceed remaining.
+   * Unknown remaining never requires force (cannot assert).
+   */
+  const [forceCeilingOverBudget, setForceCeilingOverBudget] = useState(false);
   // Residual (gs): depth tier for autonomous job create.
   const [researchTier, setResearchTier] = useState<ResearchTier>("deep");
   const onProjectionChange = useCallback(
@@ -267,8 +274,23 @@ export default function MidnightOil() {
     }
   }
 
+  /** Residual (me): may_exceed remaining daily budget for a ceiling amount. */
+  function ceilingMayExceedRemaining(ceilingUsd: number): boolean {
+    if (budgetRemainingUsd == null || !Number.isFinite(budgetRemainingUsd)) {
+      return false; // unknown → never invent block
+    }
+    return ceilingUsd > budgetRemainingUsd + 1e-9;
+  }
+
   async function onApproveRecommended() {
     if (!job) return;
+    const rec = job.recommended_price_ceiling_usd;
+    if (ceilingMayExceedRemaining(rec) && !forceCeilingOverBudget) {
+      setError(
+        "Recommended ceiling may exceed remaining daily budget — enable force override or lower duration/tier.",
+      );
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -286,10 +308,20 @@ export default function MidnightOil() {
 
   async function onApproveCustom() {
     if (!job) return;
+    const amount = Number(ceilingInput);
+    if (
+      Number.isFinite(amount) &&
+      ceilingMayExceedRemaining(amount) &&
+      !forceCeilingOverBudget
+    ) {
+      setError(
+        "Custom ceiling may exceed remaining daily budget — enable force override or lower the amount.",
+      );
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      const amount = Number(ceilingInput);
       const approved = await approveMidnightOilCeiling({
         job_id: job.job_id,
         ceiling_usd: amount,
@@ -640,10 +672,24 @@ export default function MidnightOil() {
 
           {job.status === "awaiting_approval" ? (
             <div className="space-y-2 border rounded p-3">
+              {/* Residual (me): force when ceiling may_exceed remaining budget. */}
+              <label
+                className="flex items-center gap-2 text-sm font-mono"
+                data-testid="moil-force-ceiling-over-budget"
+              >
+                <input
+                  type="checkbox"
+                  checked={forceCeilingOverBudget}
+                  onChange={(e) => setForceCeilingOverBudget(e.target.checked)}
+                  disabled={busy}
+                />
+                Force approve if ceiling may exceed remaining daily budget
+              </label>
               <button
                 type="button"
                 onClick={() => void onApproveRecommended()}
                 disabled={busy}
+                data-testid="moil-approve-recommended"
               >
                 Approve at recommended
               </button>
