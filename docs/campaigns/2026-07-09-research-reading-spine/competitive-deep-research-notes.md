@@ -380,3 +380,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (np, 2026-07-10) **SessionFlywheel dual-gate checklist link:**
   - Completes dual-gate prep on land→twins→Antiek-bench flywheel path
   - Checklist UI prep surfaces now 9 panels
+
+- Closed (nq, 2026-07-10) **SESSION-ARC nl–np dual-gate surfaces:**
+  - 9 engagement dual-gate prep deep-links complete offline
