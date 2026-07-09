@@ -48,6 +48,8 @@ export interface MidnightOilPreflight {
   route_mode: MidnightOilRouteMode;
   source_policy: MidnightOilSourcePolicy[];
   deliverable: "html_research_asset";
+  planned_budget_usd: number;
+  unallocated_budget_usd: number;
   role_plans: MidnightOilRolePlan[];
   artifact_contract: MidnightOilArtifactContract;
   notes: string[];

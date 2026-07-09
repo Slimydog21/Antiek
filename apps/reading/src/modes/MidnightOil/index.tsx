@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import {
   preflightMidnightOil,
@@ -36,11 +36,6 @@ export default function MidnightOil() {
   const [preflight, setPreflight] = useState<MidnightOilPreflight | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const plannedBudget = useMemo(() => {
-    if (!preflight) return null;
-    return preflight.role_plans.reduce((sum, plan) => sum + plan.budget_usd, 0);
-  }, [preflight]);
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -204,12 +199,16 @@ export default function MidnightOil() {
         {preflight && (
           <LemonCard title="Run contract" elevation="z1">
             <div className="p-4 space-y-4" aria-live="polite">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 font-mono text-[13px]">
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-3 font-mono text-[13px]">
                 <Metric label="Accepted" value={preflight.accepted ? "yes" : "no"} />
                 <Metric label="Run id" value={preflight.run_id ?? "not issued"} />
                 <Metric
                   label="Planned budget"
-                  value={plannedBudget == null ? "none" : `$${plannedBudget.toFixed(2)}`}
+                  value={`$${preflight.planned_budget_usd.toFixed(2)}`}
+                />
+                <Metric
+                  label="Unallocated"
+                  value={`$${preflight.unallocated_budget_usd.toFixed(2)}`}
                 />
                 <Metric label="Final format" value={preflight.artifact_contract.final_format} />
               </div>

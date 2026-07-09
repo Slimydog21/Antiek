@@ -79,28 +79,29 @@ class MidnightOilPreflight(BaseModel):
     route_mode: RouteMode
     source_policy: list[SourcePolicy]
     deliverable: DeliverableKind
+    planned_budget_usd: float = Field(default=0.0, ge=0.0)
+    unallocated_budget_usd: float = Field(default=0.0, ge=0.0)
     role_plans: list[MidnightOilRolePlan] = Field(default_factory=list)
     artifact_contract: MidnightOilArtifactContract = Field(
         default_factory=MidnightOilArtifactContract
     )
     notes: list[str] = Field(default_factory=list)
 
-    @property
-    def planned_budget_usd(self) -> float:
-        return round(sum(plan.budget_usd for plan in self.role_plans), 2)
-
 
 def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
+    price_ceiling_usd = round(req.price_ceiling_usd, 2)
     if not req.operator_acknowledged_spend:
         return MidnightOilPreflight(
             accepted=False,
             denial_reason="operator_acknowledged_spend_required",
             goal=req.goal,
             work_minutes=req.work_minutes,
-            price_ceiling_usd=round(req.price_ceiling_usd, 2),
+            price_ceiling_usd=price_ceiling_usd,
             route_mode=req.route_mode,
             source_policy=req.source_policy,
             deliverable=req.deliverable,
+            planned_budget_usd=0.0,
+            unallocated_budget_usd=price_ceiling_usd,
             notes=[
                 "denied before dispatch: autonomous research requires explicit spend acknowledgement"
             ],
@@ -113,15 +114,18 @@ def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
         work_minutes=req.work_minutes,
         route_mode=req.route_mode,
     )
+    planned_budget_usd = round(sum(plan.budget_usd for plan in role_plans), 2)
     return MidnightOilPreflight(
         accepted=True,
         run_id=run_id,
         goal=req.goal,
         work_minutes=req.work_minutes,
-        price_ceiling_usd=round(req.price_ceiling_usd, 2),
+        price_ceiling_usd=price_ceiling_usd,
         route_mode=req.route_mode,
         source_policy=req.source_policy,
         deliverable=req.deliverable,
+        planned_budget_usd=planned_budget_usd,
+        unallocated_budget_usd=round(max(0.0, price_ceiling_usd - planned_budget_usd), 2),
         role_plans=role_plans,
         notes=[
             "preflight only: no agents launched, no budget reserved, no retrieval performed",

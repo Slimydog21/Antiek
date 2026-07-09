@@ -16,6 +16,8 @@ vi.mock("../../api/midnightOil", () => ({
     route_mode: "auto_cost",
     source_policy: ["arxiv", "substack", "operator_corpus"],
     deliverable: "html_research_asset",
+    planned_budget_usd: 7.2,
+    unallocated_budget_usd: 4.8,
     role_plans: [
       {
         role: "planner",
@@ -83,6 +85,8 @@ describe("MidnightOil", () => {
 
     expect(screen.getByText("midnight-oil-test")).toBeTruthy();
     expect(screen.getByText("$7.20")).toBeTruthy();
+    expect(screen.getByText("$4.80")).toBeTruthy();
+    expect(screen.getByText("Unallocated")).toBeTruthy();
     expect(screen.getByText("html")).toBeTruthy();
     expect(screen.getByText("Twin notes")).toBeTruthy();
     expect(screen.getByText(/no agents launched/i)).toBeTruthy();
