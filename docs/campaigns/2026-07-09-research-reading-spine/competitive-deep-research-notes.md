@@ -570,3 +570,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (pk, 2026-07-10) **SESSION-ARC pg–pj driver projection:**
   - SESSION-ARC-pg-pj-driver-projection.md fleet handoff
   - MO/Write/ResearchThis/Hosted cost foresight matrix complete
+
+- Closed (pl, 2026-07-10) **DR host driver badge promptText:**
+  - selection + goal → DecisionTreeDriverBadge
+  - completes cost foresight matrix across all engagement hosts

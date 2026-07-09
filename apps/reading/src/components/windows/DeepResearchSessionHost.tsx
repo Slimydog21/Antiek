@@ -22,6 +22,8 @@
  * Residual (cq): TwinNotesPanel autoLoad.
  * Residual (cr): ResearchProgressPanel pollIntervalMs for multi-minute jobs.
  * Residual (cw): DecisionTreeDriverBadge — active model driver readout.
+ * Residual (pl): DecisionTreeDriverBadge promptText = selection + goal for
+ * cost-vs-remaining projection (parity pg–pj host matrix).
  * Residual (dd): TwinNotesPanel autoSeedIfEmpty (offline recursive note-taker).
  * Residual (ea): TwinNotesPanel autoPromoteAfterLoad into research context.
  * Residual (ec): remount ResearchContextPanel after twin promote so context
@@ -203,7 +205,18 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             <p className="text-xs text-shadow-1 dark:text-moonlight">
               Window-native host · content stance: {isHtml ? "HTML" : viewFormat} · not PDF
             </p>
-            <DecisionTreeDriverBadge researchTier={researchTier} />
+            <DecisionTreeDriverBadge
+              researchTier={researchTier}
+              /* Residual (pl): session selection + goal cost foresight. */
+              promptText={
+                [
+                  props.selection_text?.trim() || "",
+                  props.goal?.trim() || "",
+                ]
+                  .filter(Boolean)
+                  .join("\n\n") || null
+              }
+            />
           </div>
           {/* Residual (ce): floating ⇄ full without leaving the host. */}
           {rawSessionId ? (

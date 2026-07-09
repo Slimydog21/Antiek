@@ -1,0 +1,7 @@
+# inventory-pl · DR host DecisionTreeDriverBadge promptText
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: pl
+files:
+  apps/reading/src/components/windows/DeepResearchSessionHost.tsx
+proof: vitest DeepResearchSessionHost 27 passed
+invariants: selection+goal → badge projection · completes host matrix
