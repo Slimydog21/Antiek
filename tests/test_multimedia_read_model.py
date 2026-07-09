@@ -261,7 +261,21 @@ def test_live_provider_budget_gates_without_paid_calls(tmp_path, monkeypatch):
     assert mismatch.jobs[-1].error_code == "revision_mismatch"
     assert mismatch.jobs[-1].retryable is False
 
-    # 4b. Unknown / misspelled provider family is treated as unconfigured
+    # 4b. The requested route must match the reviewed dry-run asset. Route
+    #     changes require a new draft so the cost/quality decision is audited.
+    route_mismatch = store.prepare_live_execution(
+        asset_id,
+        LiveProviderExecutionRequest(
+            max_budget_usd=25,
+            route_policy="highest_quality",
+            operator_acknowledged_spend=True,
+        ),
+    )
+    assert route_mismatch.jobs[-1].status == "failed"
+    assert route_mismatch.jobs[-1].error_code == "route_policy_mismatch"
+    assert route_mismatch.jobs[-1].retryable is False
+
+    # 4c. Unknown / misspelled provider family is treated as unconfigured
     #     (fail-closed: the gate never queues for a provider whose readiness
     #     was never checked).
     unknown = store.prepare_live_execution(

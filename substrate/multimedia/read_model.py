@@ -323,6 +323,19 @@ class MultimediaAssetStore:
                 error_code="revision_mismatch",
                 retryable=False,
             )
+        if request.route_policy != record.asset.route_policy:
+            return self.record_job(
+                asset_id,
+                kind="provider_execution",
+                status="failed",
+                progress_percent=0,
+                message=(
+                    "Requested route policy does not match the reviewed dry-run asset. "
+                    "Create a new draft for a different generation route."
+                ),
+                error_code="route_policy_mismatch",
+                retryable=False,
+            )
         if not request.operator_acknowledged_spend:
             return self.record_job(
                 asset_id,
