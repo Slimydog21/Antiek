@@ -32,7 +32,7 @@ Highest leverage. Agents never merge main/prod.
 | V2 | **Collective “cohesive unit prompt” history** | ✅ **py**: sessionStorage unit membership + Restore last unit multi-select (merge/analysis/continue) | Optional: server-side membership later |
 | V3 | **Antiek-bench recursive rewrite weekly chrome** | ✅ **pe+qa**: rationale + primary by_source feed driver + ranked feeds (propose≠promote) | Closed offline polish |
 | V4 | **Model decision-tree “prompt projection vs cap”** | ✅ **Closed pg–pj** DecisionTreeDriverBadge promptText on MO/Write/ResearchThis/Hosted | See SESSION-ARC-pg-pj |
-| V5 | **Marketplace free→account host polish** | One-click host + open hosted HTML + twins auto-seed + DR float from catalog row | Mostly shipped (iu–iw); dogfood any broken deep-links |
+| V5 | **Marketplace free→account host polish** | ✅ **iu–iw + qc**: host/library DR + dual Write html_draft+twin_seed | Closed offline polish |
 | V6 | **HTML draft twin seed after MO deposit write handoff** | ✅ **pz**: MO Open Write dual handoff html_draft + twin_seed (midnight_oil_deposit source) | Write create seeds via fz/pq |
 
 ### P2 — Dual-gate live injectors (operator-only)

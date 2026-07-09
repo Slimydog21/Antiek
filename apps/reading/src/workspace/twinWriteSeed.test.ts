@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   TWIN_WRITE_SEED_KEY_PREFIX,
   buildTwinWriteHref,
+  buildMarketplaceWriteHref,
   buildWriteHtmlDraftHref,
   loadTwinWriteSeed,
   plainTextFromHtml,
@@ -72,6 +73,16 @@ describe("twinWriteSeed (pp)", () => {
   it("strips HTML for MO deposit twin_seed plain text (pz)", () => {
     expect(plainTextFromHtml("<p>Hello <b>world</b></p>")).toBe("Hello world");
     expect(plainTextFromHtml("   ")).toBe("");
+  });
+
+  it("builds marketplace dual Write href with twin_seed (qc)", () => {
+    const href = buildMarketplaceWriteHref({
+      documentId: "hdoc_abc",
+      title: "Principia",
+      html: "<article><p>Book body</p></article>",
+    });
+    expect(href).toMatch(/html_draft=hdoc_abc/);
+    expect(href).toMatch(/twin_seed=antiek\.twin_write_seed\./);
   });
 
   it("stores midnight_oil_deposit source provenance (pz)", () => {

@@ -642,3 +642,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - mergeBuckets accumulate asset_ids; per-bucket select/remove
   - merge draft label A+B+C · data-merge-assets=A|B|C
   - TwinNotesPanel vitest 29 passed
+
+- Closed (qc, 2026-07-10) **marketplace Write dual handoff (FUTURE-AGENT V5):**
+  - buildMarketplaceWriteHref + source=marketplace_host
+  - host + library Open Write html_draft+twin_seed
+  - vitest 20 passed

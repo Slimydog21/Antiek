@@ -352,7 +352,9 @@ describe("MarketplaceHost mode", () => {
     });
     // Residual (gi): host-result → Write HTML draft handoff.
     const writeLink = screen.getByTestId("marketplace-open-write");
-    expect(writeLink.getAttribute("href")).toBe("/write?html_draft=hdoc_abc");
+    expect(writeLink.getAttribute("href") || "").toMatch(/html_draft=hdoc_abc/);
+    expect(writeLink.getAttribute("href") || "").toMatch(/twin_seed=antiek\.twin_write_seed\./);
+    expect(writeLink.getAttribute("data-has-twin-seed")).toBe("1");
     expect(writeLink.getAttribute("data-view-format")).toBe("html");
     expect(writeLink.getAttribute("data-document-id")).toBe("hdoc_abc");
     // Residual (gj/mo): offline twin seed after host with domain subjects.
@@ -396,7 +398,9 @@ describe("MarketplaceHost mode", () => {
     });
     // Residual (gi): library row → Write handoff.
     const libWrite = screen.getByTestId("library-open-write-hdoc_abc");
-    expect(libWrite.getAttribute("href")).toBe("/write?html_draft=hdoc_abc");
+    expect(libWrite.getAttribute("href") || "").toMatch(/html_draft=hdoc_abc/);
+    expect(libWrite.getAttribute("href") || "").toMatch(/twin_seed=antiek\.twin_write_seed\./);
+    expect(libWrite.getAttribute("data-has-twin-seed")).toBe("1");
     expect(libWrite.getAttribute("data-view-format")).toBe("html");
     // Residual (iw): library row deep research float|full.
     fireEvent.click(screen.getByTestId("library-deep-research-hdoc_abc"));

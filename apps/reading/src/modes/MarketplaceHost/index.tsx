@@ -12,6 +12,8 @@
  * host/research (reading ≡ research model visibility).
  * Residual (gi): Open Write HTML draft handoff from host-result + library
  * rows (marketplace → write flywheel; fl path).
+ * Residual (qc / FUTURE-AGENT V5): dual handoff html_draft + twin_seed on host
+ * and library Open Write (parity MO pz; seeds note-taker when empty).
  * Residual (gj): offline twin seed after host/purchase so marketplace books
  * enter the recursive note-taker substrate (parity with Write fz).
  * Residual (hl): offline-seed honesty machine attrs on marketplace twin seed
@@ -75,6 +77,7 @@ import {
 import { fetchDepthTiers } from "../../api/settings";
 import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import { openWindow } from "../../components/windows/openWindow";
+import { buildMarketplaceWriteHref } from "../../workspace/twinWriteSeed";
 import { launchFloatingDeepResearch } from "../Reading/launchFloatingDeepResearch";
 
 type LibraryDoc = {
@@ -1247,12 +1250,17 @@ export default function MarketplaceHost({
             {/* Residual (gi): handoff hosted HTML into Write mode (fl path). */}
             {hosted.view_format === "html" && hosted.document_id ? (
               <a
-                href={`/write?html_draft=${encodeURIComponent(hosted.document_id)}`}
+                href={buildMarketplaceWriteHref({
+                  documentId: hosted.document_id,
+                  title: hosted.title,
+                  html: hosted.html,
+                })}
                 data-testid="marketplace-open-write"
                 data-view-format="html"
                 data-document-id={hosted.document_id}
+                data-has-twin-seed="1"
                 className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono underline hover:bg-ink/5 dark:hover:bg-bright/10"
-                title="Open Write with hosted book as HTML draft handoff"
+                title="Open Write with hosted book as HTML draft + twin_seed (seeds note-taker when empty)"
               >
                 Open Write (HTML draft)
               </a>
@@ -1408,12 +1416,17 @@ export default function MarketplaceHost({
                     </button>
                     {/* Residual (gi): library → Write HTML draft handoff. */}
                     <a
-                      href={`/write?html_draft=${encodeURIComponent(d.document_id)}`}
+                      href={buildMarketplaceWriteHref({
+                        documentId: d.document_id,
+                        title: d.title,
+                        html: null,
+                      })}
                       data-testid={`library-open-write-${d.document_id}`}
                       data-view-format="html"
                       data-document-id={d.document_id}
+                      data-has-twin-seed="1"
                       className="text-xs font-mono border rounded px-2 py-1 underline"
-                      title="Open Write with library document as HTML draft handoff"
+                      title="Open Write with library document as HTML draft + twin_seed"
                     >
                       Open Write
                     </a>

@@ -12,7 +12,8 @@ export const TWIN_WRITE_SEED_KEY_PREFIX = "antiek.twin_write_seed.";
 export type TwinWriteSeedSource =
   | "twin_draft_selected"
   | "midnight_oil_deposit"
-  | "collective_doc_merge";
+  | "collective_doc_merge"
+  | "marketplace_host";
 
 export type TwinWriteSeedPayload = {
   plain_text: string;
@@ -48,7 +49,8 @@ export function storeTwinWriteSeed(input: {
   const key = makeTwinWriteSeedKey();
   const source: TwinWriteSeedSource =
     input.source === "midnight_oil_deposit" ||
-    input.source === "collective_doc_merge"
+    input.source === "collective_doc_merge" ||
+    input.source === "marketplace_host"
       ? input.source
       : "twin_draft_selected";
   const payload: TwinWriteSeedPayload = {
@@ -81,7 +83,9 @@ export function loadTwinWriteSeed(key: string): TwinWriteSeedPayload | null {
     if (!plain) return null;
     const srcRaw = String(parsed.source || "twin_draft_selected").trim();
     const source: TwinWriteSeedSource =
-      srcRaw === "midnight_oil_deposit" || srcRaw === "collective_doc_merge"
+      srcRaw === "midnight_oil_deposit" ||
+      srcRaw === "collective_doc_merge" ||
+      srcRaw === "marketplace_host"
         ? srcRaw
         : "twin_draft_selected";
     return {
@@ -135,4 +139,33 @@ export function plainTextFromHtml(html: string, maxLen = 16000): string {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, maxLen);
+}
+
+/**
+ * Residual (qc / FUTURE-AGENT V5): dual Write handoff for marketplace host /
+ * library HTML docs — html_draft + optional twin_seed (parity MO pz).
+ */
+export function buildMarketplaceWriteHref(opts: {
+  documentId: string;
+  title?: string | null;
+  html?: string | null;
+}): string {
+  const doc = String(opts.documentId || "").trim();
+  if (!doc) return "/write";
+  const plain =
+    plainTextFromHtml(opts.html || "") ||
+    String(opts.title || "").trim() ||
+    doc;
+  const seedKey = storeTwinWriteSeed({
+    plain_text: plain,
+    html: String(opts.html || ""),
+    title: String(opts.title || "").trim() || `Marketplace · ${doc}`,
+    asset_id: doc,
+    note_ids: [],
+    source: "marketplace_host",
+  });
+  return buildWriteHtmlDraftHref({
+    documentId: doc,
+    twinSeedKey: seedKey,
+  });
 }
