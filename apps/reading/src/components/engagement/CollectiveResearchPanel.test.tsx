@@ -199,6 +199,9 @@ describe("CollectiveResearchPanel", () => {
       twin_count: 0,
       ref_count: 0,
       prompt_block: "# Collective unit col_w\n",
+      // Residual (ke): member tiers; recommended depth-max.
+      research_tiers: ["deep", "wrestle"],
+      recommended_research_tier: "wrestle",
     });
     render(
       <CollectiveResearchPanel availableSpawnIds={["spn_1", "spn_2"]} />,
@@ -214,6 +217,15 @@ describe("CollectiveResearchPanel", () => {
     });
     expect(screen.getByTestId("collective-depth-prefill").textContent).toMatch(
       /installed.*wrestle/i,
+    );
+    // Residual (ke): metrics + recommended tier chrome.
+    expect(
+      screen
+        .getByTestId("collective-unit-metrics")
+        .getAttribute("data-recommended-research-tier"),
+    ).toBe("wrestle");
+    expect(screen.getByTestId("collective-recommended-tier").textContent).toBe(
+      "wrestle",
     );
     expect(
       screen

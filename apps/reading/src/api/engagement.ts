@@ -68,6 +68,8 @@ export type CollectiveResponse = CollectiveResearchUnit & {
   twin_count: number;
   ref_count: number;
   prompt_block: string;
+  research_tiers?: string[];
+  recommended_research_tier?: "fast" | "deep" | "wrestle" | string;
 };
 
 export type SessionFlywheelResponse = {

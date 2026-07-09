@@ -17,6 +17,22 @@ from .store import EngagementStore
 from .twin_promote import TwinContextUnit
 
 
+def _max_research_tier(tiers: Sequence[str]) -> str:
+    """Residual (ke): depth-max of closed set for continue-as-unit default."""
+    from substrate.dispatch.research_tier import normalize_research_tier
+
+    order = {"fast": 0, "deep": 1, "wrestle": 2}
+    best = "deep"
+    best_rank = -1
+    for raw in tiers:
+        t = normalize_research_tier(raw)
+        rank = order.get(t, 1)
+        if rank > best_rank:
+            best = t
+            best_rank = rank
+    return best
+
+
 @dataclass(frozen=True)
 class CollectiveResearchUnit:
     """Merged multi-spawn research unit for cohesive prompting."""
@@ -28,6 +44,9 @@ class CollectiveResearchUnit:
     twin_units: tuple[TwinContextUnit, ...]
     source_references: tuple[SourceReference, ...]
     view_format: str = "html"
+    # Residual (ke): per-spawn tiers + depth-max for continue-as-unit budget.
+    research_tiers: tuple[str, ...] = ()
+    recommended_research_tier: str = "deep"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -41,6 +60,8 @@ class CollectiveResearchUnit:
             "spawn_count": len(self.spawn_ids),
             "twin_count": len(self.twin_units),
             "ref_count": len(self.source_references),
+            "research_tiers": list(self.research_tiers),
+            "recommended_research_tier": self.recommended_research_tier,
         }
 
     def prompt_block(self, *, max_twins: int = 20, max_refs: int = 20) -> str:
@@ -48,6 +69,8 @@ class CollectiveResearchUnit:
             f"# Collective deep-research unit `{self.collective_id}`",
             f"spawns ({len(self.spawn_ids)}): {', '.join(self.spawn_ids)}",
             f"assets: {', '.join(self.asset_ids)}",
+            f"research_tiers: {', '.join(self.research_tiers) or 'deep'}",
+            f"recommended_research_tier: {self.recommended_research_tier}",
             "",
             "## Merged twin-derived insights & questions",
         ]
@@ -109,11 +132,14 @@ def merge_spawns_collective(
     if missing:
         raise KeyError(f"unknown spawn_id(s): {missing}")
 
+    from substrate.dispatch.research_tier import normalize_research_tier
+
     packs: list[ResearchContextPack] = []
     asset_ids: list[str] = []
     inv_ids: list[str] = []
     all_twins: list[TwinContextUnit] = []
     all_refs: list[SourceReference] = []
+    tier_list: list[str] = []
 
     for sid in ids:
         row = store.get_spawn(sid)
@@ -125,6 +151,8 @@ def merge_spawns_collective(
         inv = row.get("investigation_id")
         if inv:
             inv_ids.append(str(inv))
+        # Residual (ke): capture each spawn's closed research_tier.
+        tier_list.append(normalize_research_tier(row.get("research_tier")))
         pack = assemble_research_context(
             asset,
             store=store,
@@ -145,6 +173,7 @@ def merge_spawns_collective(
     # but collective_id is sorted for identity stability.
     unique_assets = tuple(dict.fromkeys(asset_ids))
     unique_invs = tuple(dict.fromkeys(inv_ids))
+    tiers = tuple(tier_list)
 
     return CollectiveResearchUnit(
         collective_id=_collective_id(ids),
@@ -154,6 +183,8 @@ def merge_spawns_collective(
         twin_units=_dedupe_twin_units(all_twins),
         source_references=tuple(all_refs),
         view_format="html",
+        research_tiers=tiers,
+        recommended_research_tier=_max_research_tier(tiers),
     )
 
 

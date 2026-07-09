@@ -55,6 +55,10 @@ export type CollectiveResearchUnit = {
   twin_units: TwinContextUnit[];
   source_references: SourceReference[];
   view_format: "html";
+  /** Residual (ke): per-spawn closed tiers from merge. */
+  research_tiers?: string[];
+  /** Residual (ke): depth-max of members for continue-as-unit default. */
+  recommended_research_tier?: "fast" | "deep" | "wrestle" | string;
 };
 
 /** Build the same compact prompt block shape as Python ResearchContextPack.prompt_block. */

@@ -22,6 +22,8 @@
  *     cohesive unit audit (parity twin/flywheel/progress metrics).
  * 12. Residual (ig): Settings deep-link for driver + budget before continue.
  * 13. Residual (jf): prefill researchTier from Settings depth-tier (parity je).
+ * 14. Residual (ke): after merge, adopt unit.recommended_research_tier
+ *     (depth-max of member spawn tiers) for continue-as-unit budget.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -160,6 +162,15 @@ export function CollectiveResearchPanel({
         throw new Error("collective view_format must be html");
       }
       setUnit(result);
+      // Residual (ke): depth-max of member spawn tiers for continue budget.
+      const rec = (result.recommended_research_tier || "")
+        .toString()
+        .trim()
+        .toLowerCase();
+      if (rec === "fast" || rec === "deep" || rec === "wrestle") {
+        setResearchTier(rec);
+        setDepthPrefill("installed");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -245,6 +256,15 @@ export function CollectiveResearchPanel({
         throw new Error("collective view_format must be html");
       }
       setUnit(collective);
+      // Residual (ke): depth-max of member spawn tiers for continue budget.
+      const rec = (collective.recommended_research_tier || "")
+        .toString()
+        .trim()
+        .toLowerCase();
+      if (rec === "fast" || rec === "deep" || rec === "wrestle") {
+        setResearchTier(rec);
+        setDepthPrefill("installed");
+      }
       const draft = await mergeSpawnOutputs({
         parent_asset_id: parentAssetId,
         spawn_ids: selected,
@@ -452,15 +472,31 @@ export function CollectiveResearchPanel({
             data-spawn-count={String(unit.spawn_count ?? 0)}
             data-twin-count={String(unit.twin_count ?? 0)}
             data-ref-count={String(unit.ref_count ?? 0)}
+            data-research-tiers={(unit.research_tiers || []).join(",")}
+            data-recommended-research-tier={
+              unit.recommended_research_tier || ""
+            }
             data-view-format="html"
             role="status"
           >
             Collective unit · spawns={unit.spawn_count ?? 0} · twins=
             {unit.twin_count ?? 0} · refs={unit.ref_count ?? 0}
+            {unit.recommended_research_tier
+              ? ` · tier=${unit.recommended_research_tier}`
+              : ""}
           </div>
           <p>
             collective <code>{unit.collective_id}</code> · spawns=
             {unit.spawn_count} · twins={unit.twin_count} · refs={unit.ref_count}
+            {unit.recommended_research_tier ? (
+              <>
+                {" "}
+                · recommended tier=
+                <code data-testid="collective-recommended-tier">
+                  {unit.recommended_research_tier}
+                </code>
+              </>
+            ) : null}
           </p>
           <pre className="prompt-block" data-testid="collective-prompt-block">
             {unit.prompt_block}

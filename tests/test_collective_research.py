@@ -75,6 +75,7 @@ def test_merge_two_spawns_collective(store):
         ),
         store=store,
         references=["https://arxiv.org/abs/1706.03762"],
+        research_tier="fast",
     )
     s2 = spawn_from_highlight_with_references(
         HighlightSelection(
@@ -84,6 +85,7 @@ def test_merge_two_spawns_collective(store):
         ),
         store=store,
         references=["https://arxiv.org/abs/1512.03385"],
+        research_tier="wrestle",
     )
     rec = _Rec()
     unit = merge_spawns_collective(
@@ -97,7 +99,14 @@ def test_merge_two_spawns_collective(store):
     assert set(unit.asset_ids) == {"asset-a", "asset-b"}
     assert len(unit.twin_units) >= 2
     assert len(unit.source_references) == 2
+    # Residual (ke): depth-max of member tiers for continue-as-unit.
+    assert unit.research_tiers == ("fast", "wrestle")
+    assert unit.recommended_research_tier == "wrestle"
+    d = unit.to_dict()
+    assert d["recommended_research_tier"] == "wrestle"
+    assert d["research_tiers"] == ["fast", "wrestle"]
     block = unit.prompt_block()
+    assert "recommended_research_tier: wrestle" in block
     assert "Finding A" in block and "Finding B" in block
     assert "1706.03762" in block or "arxiv" in block
     html = collective_research_html(unit)
