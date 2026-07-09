@@ -39,6 +39,8 @@ import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
  * main reading surface multi-select merges into this document (parity eu).
  * Residual (jg): Settings depth-tier prefill for budget projection (parity jc–jf).
  * Residual (ll): DecisionTreeDriverBadge researchTier before launch.
+ * Residual (pi): DecisionTreeDriverBadge promptText = selection + pub refs
+ * for cost-vs-remaining projection (parity MO pg / Write ph).
  * Full-page workstation handoff remains an explicit tertiary action.
  *
  * Gate-safe: passageText for gated books is still constrained server-side;
@@ -252,7 +254,15 @@ export default function ResearchThis({
           data-view-format="html"
           data-research-tier={researchTier}
         >
-          <DecisionTreeDriverBadge researchTier={researchTier} />
+          <DecisionTreeDriverBadge
+            researchTier={researchTier}
+            /* Residual (pi): selection + pub refs cost foresight. */
+            promptText={
+              pubRefs.trim()
+                ? `${selection}\n\nPublication refs:\n${pubRefs.trim()}`
+                : selection
+            }
+          />
         </div>
         <ResearchLaunchBudgetPanel
           promptText={selection}

@@ -76,10 +76,12 @@ vi.mock("../../components/engagement/CollectiveResearchPanel", () => ({
 vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
   DecisionTreeDriverBadge: (props: {
     researchTier?: string | null;
+    promptText?: string | null;
   }) => (
     <div
       data-testid="decision-tree-driver-badge-stub"
       data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+      data-prompt-len={String((props.promptText || "").length)}
     >
       driver badge
     </div>
@@ -177,6 +179,14 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
         .getByTestId("decision-tree-driver-badge-stub")
         .getAttribute("data-research-tier"),
     ).toBe("deep");
+    // Residual (pi): selection passage feeds badge prompt projection.
+    expect(
+      Number(
+        screen
+          .getByTestId("decision-tree-driver-badge-stub")
+          .getAttribute("data-prompt-len") || 0,
+      ),
+    ).toBeGreaterThan(0);
   });
 
   it("mounts budget projection panel before float open (cx)", async () => {

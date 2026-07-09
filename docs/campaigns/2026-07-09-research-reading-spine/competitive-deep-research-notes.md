@@ -558,3 +558,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (ph, 2026-07-10) **WriteHome driver badge promptText projection:**
   - DR selection + pub refs → DecisionTreeDriverBadge promptText
   - writing≡research cost foresight before float/full fire
+
+- Closed (pi, 2026-07-10) **ResearchThis driver badge promptText projection:**
+  - selection + pub refs → DecisionTreeDriverBadge promptText
+  - reading≡write≡MO cost foresight before float/full fire
