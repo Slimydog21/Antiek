@@ -567,6 +567,27 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(call.provider_id).toBeTruthy();
   });
 
+  it("shows suite proposal feed sources from usage by_source (hf)", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("antiek-bench-suite-proposal-feed-sources"),
+      ).toBeTruthy();
+    });
+    // Usage mock includes investigation_start + session_flywheel (hb).
+    expect(
+      screen.getByTestId("antiek-bench-suite-proposal-feed-sources").textContent,
+    ).toMatch(/investigation_start/);
+    expect(
+      screen.getByTestId("antiek-bench-suite-proposal-feed-sources").textContent,
+    ).toMatch(/session_flywheel/);
+    expect(
+      screen.getByTestId("antiek-bench-suite-proposal-panel").getAttribute(
+        "data-propose-not-promote",
+      ),
+    ).toBe("true");
+  });
+
   it("loads Antiek-bench suite proposal — proposed not auto-promoted", async () => {
     render(<Settings />);
     await waitFor(() => {

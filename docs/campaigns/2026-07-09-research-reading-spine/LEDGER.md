@@ -150,3 +150,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - notdiamond-refresh-advisory + week badge + authority data attrs
 - never dispatch authority; install operator-gated
 - tests: Settings NotDiamond cases (3)
+## residual (hf) suite proposal feed sources UI — 2026-07-09
+- antiek-bench-suite-proposal-feed-sources from usage.by_source
+- propose≠promote held; suite-proposal pytest 4_passed
+- tests: Settings suite proposal cases

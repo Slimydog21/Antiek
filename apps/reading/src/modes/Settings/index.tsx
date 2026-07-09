@@ -1490,6 +1490,28 @@ export default function Settings() {
               Invariant: propose ≠ auto-promote · auto_promoted=
               {String(suiteProposal?.auto_promoted ?? false)}
             </p>
+            {/* Residual (hf): show which usage sources feed this rewrite. */}
+            {Object.keys(usage?.by_source || {}).length > 0 ? (
+              <p
+                className="text-[11px] font-mono text-ink-soft dark:text-starlight"
+                data-testid="antiek-bench-suite-proposal-feed-sources"
+                role="status"
+              >
+                Feed sources:{" "}
+                {Object.entries(usage?.by_source || {})
+                  .map(([src, n]) => `${src}=${n}`)
+                  .join(" · ")}
+              </p>
+            ) : (
+              <p
+                className="text-[11px] font-mono text-ink-soft dark:text-starlight"
+                data-testid="antiek-bench-suite-proposal-feed-sources"
+                role="status"
+              >
+                Feed sources: (none yet — investigation starts + engagement
+                flywheel deposits populate usage)
+              </p>
+            )}
             {suiteProposalError && (
               <p className="text-sm text-red-700 dark:text-red-300 font-mono">
                 {suiteProposalError}

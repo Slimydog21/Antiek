@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(hf) · PR #465
+Suite proposal feed sources UI (hf); NotDiamond weekly refresh (he).
+Recursive bench feedback loop visible end-to-end in Settings. Next (hg).

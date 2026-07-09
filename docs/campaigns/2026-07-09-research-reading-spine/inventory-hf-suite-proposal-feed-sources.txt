@@ -1,0 +1,17 @@
+# residual (hf) suite proposal feed sources from usage by_source
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(he) prior | branch_only | campaign inventories
+(hf) suite proposal feed sources | branch_only | antiek-bench-suite-proposal-feed-sources; propose≠promote held; 3 suite proposal vitest + 4 pytest
+
+PATHS:
+- apps/reading/src/modes/Settings/index.tsx
+- apps/reading/src/modes/Settings/Settings.test.tsx
+
+BEHAVIOR:
+- Suite proposal panel lists usage feed sources (investigation_start, session_flywheel)
+- Empty state honest when no usage yet
+- auto_promoted remains false path; propose≠promote invariant
+
+NEXT: (hg) re-derive; operator merge PR #465
