@@ -1,7 +1,7 @@
 # Antiek OBJECTIVE residual inventory — residual (al) Settings suite-proposal visibility
 # Date: 2026-07-09
 # origin/main: b3875724c6223a7cc66a05c5b6d2bba8e5d69b1d
-# branch of record: campaign/research-reading-spine-2026-07-09-main @ 96e1e0ce2f85a749723c56ca2b1b05107de9a906 (short 96e1e0ce)
+# branch of record: campaign/research-reading-spine-2026-07-09-main @ 0f286e358d0581e263fe3279c7a6f8152a88ee8c (short 0f286e35)
 # PR: https://github.com/Slimydog21/Antiek/pull/465
 # Status values: on_main | branch_only | missing | spec_only
 # Living-roadmap SPR-01..14: ALREADY on origin/main — NOT rebuild TODOs.
