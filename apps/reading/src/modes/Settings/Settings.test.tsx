@@ -496,12 +496,54 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(
       screen.getByTestId("notdiamond-advisory-panel").getAttribute("data-view-format"),
     ).toBe("html");
+    // Residual (he): authority / kill-switch attributes for honest posture.
+    expect(
+      screen
+        .getByTestId("notdiamond-advisory-panel")
+        .getAttribute("data-authority-rejected"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByTestId("notdiamond-advisory-panel")
+        .getAttribute("data-is-dispatch-authority"),
+    ).toBe("false");
+    expect(
+      screen.getByTestId("notdiamond-advisory-panel").getAttribute("data-kill-switch"),
+    ).toBe("off");
+    expect(screen.getByTestId("notdiamond-refresh-advisory")).toBeTruthy();
+    expect(screen.getByTestId("notdiamond-week-id")).toBeTruthy();
     expect(screen.getByTestId("notdiamond-advisory-summary").textContent).toMatch(
       /false/i,
     );
     expect(screen.getByTestId("notdiamond-advisory-html").innerHTML).toMatch(
       /authority|REJECT/i,
     );
+  });
+
+  it("refreshes NotDiamond weekly advisory for leaderboard week (he)", async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("notdiamond-refresh-advisory")).toBeTruthy();
+    });
+    fetchNotDiamondAdvisory.mockClear();
+    await user.click(screen.getByTestId("notdiamond-refresh-advisory"));
+    await waitFor(() => {
+      expect(fetchNotDiamondAdvisory).toHaveBeenCalled();
+    });
+    const call = fetchNotDiamondAdvisory.mock.calls.at(-1)?.[0] as {
+      includeHtml?: boolean;
+      weekId?: string;
+    };
+    expect(call.includeHtml).toBe(true);
+    expect(typeof call.weekId === "string" || call.weekId === undefined).toBe(
+      true,
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("notdiamond-advisory-summary").textContent,
+      ).toMatch(/REJECT|GO/i);
+    });
   });
 
   it("installs NotDiamond advisory pick as decision-tree driver (never authority)", async () => {

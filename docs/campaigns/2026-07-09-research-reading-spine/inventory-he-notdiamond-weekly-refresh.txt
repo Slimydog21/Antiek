@@ -1,0 +1,18 @@
+# residual (he) NotDiamond weekly advisory refresh UX
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(hd) prior | branch_only | campaign inventories
+(he) ND weekly refresh UX | branch_only | notdiamond-refresh-advisory + week id + authority attrs; 3 NotDiamond Settings vitest
+
+PATHS:
+- apps/reading/src/modes/Settings/index.tsx
+- apps/reading/src/modes/Settings/Settings.test.tsx
+
+BEHAVIOR:
+- Refresh weekly advisory bound to leaderboard week_id
+- data-authority-rejected / data-is-dispatch-authority / data-kill-switch
+- Install remains operator-gated; authority always REJECT
+- HTML view_format; never NotDiamond dispatch
+
+NEXT: (hf) re-derive; operator merge PR #465

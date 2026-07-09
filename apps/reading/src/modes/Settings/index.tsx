@@ -88,6 +88,8 @@ export default function Settings() {
   const [suiteApproveBusy, setSuiteApproveBusy] = useState(false);
   const [nd, setNd] = useState<NotDiamondAdvisoryResponse | null>(null);
   const [ndError, setNdError] = useState<string | null>(null);
+  // Residual (he): explicit weekly refresh of NotDiamond advisory (never authority).
+  const [ndBusy, setNdBusy] = useState(false);
   const [depth, setDepth] = useState<DepthTierResponse | null>(null);
   const [depthError, setDepthError] = useState<string | null>(null);
   const [depthBusy, setDepthBusy] = useState(false);
@@ -363,6 +365,31 @@ export default function Settings() {
       setOfflineRunError(e instanceof Error ? e.message : String(e));
     } finally {
       setOfflineRunBusy(false);
+    }
+  }
+
+  /** Residual (he): refresh NotDiamond advisory for the active week_id. */
+  async function onRefreshNotDiamondAdvisory() {
+    setNdBusy(true);
+    setNdError(null);
+    try {
+      const n = await fetchNotDiamondAdvisory({
+        includeHtml: true,
+        weekId: leaderboardWeek.trim() || undefined,
+      });
+      if (n.notdiamond_is_dispatch_authority) {
+        throw new Error(
+          "NotDiamond reported dispatch authority — refusing to surface as router",
+        );
+      }
+      if (n.view_format !== "html") {
+        throw new Error("NotDiamond advisory view_format must be html");
+      }
+      setNd(n);
+    } catch (e) {
+      setNdError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setNdBusy(false);
     }
   }
 
@@ -987,14 +1014,44 @@ export default function Settings() {
             className="p-4 space-y-3"
             data-testid="notdiamond-advisory-panel"
             data-view-format="html"
+            data-authority-rejected={
+              nd?.authority_rejected === true ? "true" : "false"
+            }
+            data-is-dispatch-authority={
+              nd?.notdiamond_is_dispatch_authority === true ? "true" : "false"
+            }
+            data-kill-switch={nd?.kill_switch_enabled ? "on" : "off"}
+            data-suggestion-week={nd?.suggestion_week_id || leaderboardWeek || ""}
           >
             <p className="text-sm text-ink dark:text-bright">
               Campaign verdict: advisory GO (measured wedge only); authoritative
               dispatch REJECT under §16. NotDiamond is never the dispatch owner
               — decision-tree + Hermes remain primary.
             </p>
+            {/* Residual (he): weekly advisory refresh tied to leaderboard week. */}
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="text-[11px] font-mono text-ink-soft dark:text-starlight">
+                Week{" "}
+                <code data-testid="notdiamond-week-id">
+                  {leaderboardWeek || "—"}
+                </code>
+              </label>
+              <button
+                type="button"
+                data-testid="notdiamond-refresh-advisory"
+                disabled={ndBusy}
+                onClick={() => void onRefreshNotDiamondAdvisory()}
+                className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+              >
+                {ndBusy ? "Refreshing…" : "Refresh weekly advisory"}
+              </button>
+            </div>
             {ndError && (
-              <p className="text-sm text-red-700 dark:text-red-300 font-mono">
+              <p
+                className="text-sm text-red-700 dark:text-red-300 font-mono"
+                data-testid="notdiamond-advisory-error"
+                role="alert"
+              >
                 {ndError}
               </p>
             )}
@@ -1021,6 +1078,10 @@ export default function Settings() {
                   value={`${nd.kill_switch_env}=${nd.kill_switch_enabled ? "on" : "off (default)"}`}
                 />
                 <Row
+                  label="Suggestion week"
+                  value={nd.suggestion_week_id || leaderboardWeek || "—"}
+                />
+                <Row
                   label="Suggested model"
                   value={
                     nd.suggested_model_id
@@ -1041,7 +1102,11 @@ export default function Settings() {
                   <button
                     type="button"
                     data-testid="notdiamond-install-advisory"
-                    disabled={treeBusy || nd.notdiamond_is_dispatch_authority}
+                    disabled={
+                      treeBusy ||
+                      ndBusy ||
+                      nd.notdiamond_is_dispatch_authority
+                    }
                     onClick={() => void onInstallNotDiamondAdvisory()}
                     className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
                   >

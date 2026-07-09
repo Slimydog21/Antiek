@@ -146,3 +146,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 ## residual (hd) ResearchContext hydrate offline_honest — 2026-07-09
 - hydrate-ref-offline-honest status + data attributes
 - tests: ResearchContextPanel 9 passed
+## residual (he) NotDiamond weekly advisory refresh UX — 2026-07-09
+- notdiamond-refresh-advisory + week badge + authority data attrs
+- never dispatch authority; install operator-gated
+- tests: Settings NotDiamond cases (3)
