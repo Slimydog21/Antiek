@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Settings from "./index";
-import { estimatePromptCost, type BudgetResponse } from "../../api/settings";
+import {
+  estimateNotDiamondAdvisor,
+  estimatePromptCost,
+  type BudgetResponse,
+} from "../../api/settings";
 
 vi.mock("../../workspace/useViewportTier", () => ({
   useViewportTier: () => "desktop",
@@ -97,6 +101,57 @@ vi.mock("../../api/settings", () => ({
       },
     ],
   })),
+  estimateNotDiamondAdvisor: vi.fn(async () => ({
+    estimate: {
+      estimated_usd_low: 0.001,
+      estimated_usd_high: 0.002,
+      would_exceed_budget: false,
+      pricing_known: true,
+      notes: [],
+      assumed_input_tokens: 500,
+      assumed_output_tokens: 500,
+      tier: "pro",
+      provider: "zai",
+      model: "glm-5.2",
+      task_kind: "research_question",
+      role: "synthesizer",
+      route_mode: "auto_balanced",
+      selected_candidate: {
+        provider: "zai",
+        model: "glm-5.2",
+        tier: "pro",
+        fallback_chain_index: 0,
+        estimated_usd_low: 0.001,
+        estimated_usd_high: 0.002,
+        pricing_known: true,
+        cache_status: "cold",
+        selection_reason: "auto_balanced",
+      },
+      candidates: [],
+    },
+    recommendation: {
+      advisor: "notdiamond",
+      mode: "shadow",
+      available: false,
+      provider: "zai",
+      model: "glm-5.2",
+      tier: "pro",
+      source: "local_policy",
+      confidence: null,
+      session_id: null,
+      reason: "no NotDiamond call performed in offline advisory sprint",
+      cache_caveat: null,
+      external_call_performed: false,
+      notdiamond_would_call: true,
+      promotion_gate: {
+        eligible: false,
+        required_consecutive_weeks: 2,
+        evidence_week_ids: [],
+        reason: "promotion requires two consecutive ratified Antiek-bench weeks",
+      },
+      notes: ["future live adapter must pass redacted prompt features"],
+    },
+  })),
 }));
 
 describe("Settings SPR-01", () => {
@@ -173,6 +228,34 @@ describe("Settings SPR-01", () => {
     );
     expect(screen.getByText("Manual override")).toBeTruthy();
     expect(screen.queryByText("Recommendation")).toBeNull();
+  });
+
+  it("renders a NotDiamond advisor receipt without implying a live external call", async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await waitFor(() => expect(screen.getByText("zai")).toBeTruthy());
+    await user.type(
+      screen.getByRole("textbox", { name: /prompt/i }),
+      "Route this reading prompt.",
+    );
+    await user.click(screen.getByRole("button", { name: /check notdiamond/i }));
+    await waitFor(() => expect(estimateNotDiamondAdvisor).toHaveBeenCalled());
+
+    expect(estimateNotDiamondAdvisor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task_kind: "research_question",
+        route_mode: "auto_balanced",
+        prompt_chars: 26,
+      }),
+    );
+    expect(screen.getByLabelText(/notdiamond advisor: zai \/ glm-5\.2/i)).toBeTruthy();
+    expect(screen.getByText("Advisor source")).toBeTruthy();
+    expect(screen.getByText("local_policy")).toBeTruthy();
+    expect(screen.getByText("External call")).toBeTruthy();
+    expect(screen.getAllByText("no").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(/no NotDiamond call performed in offline advisory sprint/i),
+    ).toBeTruthy();
   });
 
   it("renders no-cap and unknown-spend budget states accessibly", async () => {

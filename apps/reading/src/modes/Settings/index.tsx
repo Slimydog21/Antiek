@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import {
+  estimateNotDiamondAdvisor,
   estimatePromptCost,
   fetchLatestAntiekBench,
   fetchSettingsBudget,
@@ -9,6 +10,7 @@ import {
   type AntiekBenchLatestResponse,
   type BudgetResponse,
   type ModelRow,
+  type NotDiamondAdvisorResponse,
   type PromptCostEstimateRequest,
   type PromptCostEstimateResponse,
 } from "../../api/settings";
@@ -66,6 +68,9 @@ export default function Settings() {
   );
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const [estimating, setEstimating] = useState(false);
+  const [advisor, setAdvisor] = useState<NotDiamondAdvisorResponse | null>(null);
+  const [advisorError, setAdvisorError] = useState<string | null>(null);
+  const [advising, setAdvising] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -136,32 +141,50 @@ export default function Settings() {
           ? "cap exceeded"
           : "within cap";
 
+  function promptEstimateRequest(): PromptCostEstimateRequest {
+    return {
+      task_kind: taskKind,
+      role:
+        taskKind === "verification"
+          ? "verifier"
+          : taskKind === "research_question" || taskKind === "synthesis"
+            ? "synthesizer"
+            : "decomposer",
+      route_mode: routeMode,
+      manual_provider: routeMode === "manual" ? manualProvider || null : null,
+      manual_model: routeMode === "manual" ? manualModel || null : null,
+      session_cache_key: sessionCacheKey.trim() || null,
+      tier: "pro",
+      prompt_chars: promptChars,
+      input_chars: promptChars,
+      expected_output_tokens: outTokens,
+    };
+  }
+
   async function onEstimate() {
     setEstimating(true);
     setEstimateError(null);
     try {
-      const res = await estimatePromptCost({
-        task_kind: taskKind,
-        role:
-          taskKind === "verification"
-            ? "verifier"
-            : taskKind === "research_question" || taskKind === "synthesis"
-              ? "synthesizer"
-              : "decomposer",
-        route_mode: routeMode,
-        manual_provider: routeMode === "manual" ? manualProvider || null : null,
-        manual_model: routeMode === "manual" ? manualModel || null : null,
-        session_cache_key: sessionCacheKey.trim() || null,
-        tier: "pro",
-        prompt_chars: promptChars,
-        input_chars: promptChars,
-        expected_output_tokens: outTokens,
-      });
+      const res = await estimatePromptCost(promptEstimateRequest());
       setEstimate(res);
     } catch (e) {
       setEstimateError(e instanceof Error ? e.message : String(e));
     } finally {
       setEstimating(false);
+    }
+  }
+
+  async function onAdvisor() {
+    setAdvising(true);
+    setAdvisorError(null);
+    try {
+      const res = await estimateNotDiamondAdvisor(promptEstimateRequest());
+      setAdvisor(res);
+      setEstimate(res.estimate);
+    } catch (e) {
+      setAdvisorError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setAdvising(false);
     }
   }
 
@@ -516,17 +539,32 @@ export default function Settings() {
                 />
               </label>
             </div>
-            <button
-              type="button"
-              onClick={onEstimate}
-              disabled={estimating}
-              className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
-            >
-              {estimating ? "Estimating…" : "Project cost"}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={onEstimate}
+                disabled={estimating}
+                className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+              >
+                {estimating ? "Estimating…" : "Project cost"}
+              </button>
+              <button
+                type="button"
+                onClick={onAdvisor}
+                disabled={advising}
+                className="px-3 py-1.5 rounded border border-ink/30 dark:border-bright/30 text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+              >
+                {advising ? "Checking…" : "Check NotDiamond"}
+              </button>
+            </div>
             {estimateError && (
               <p className="text-sm text-red-700 dark:text-red-300 font-mono">
                 {estimateError}
+              </p>
+            )}
+            {advisorError && (
+              <p className="text-sm text-red-700 dark:text-red-300 font-mono">
+                {advisorError}
               </p>
             )}
             {estimate && (
@@ -606,6 +644,57 @@ export default function Settings() {
                   </div>
                 )}
                 {estimate.notes.map((n) => (
+                  <p
+                    key={n}
+                    className="text-[11px] text-ink-soft dark:text-starlight"
+                  >
+                    {n}
+                  </p>
+                ))}
+              </div>
+            )}
+            {advisor && (
+              <div
+                className="font-mono text-[13px] space-y-1 border-t border-ink/10 dark:border-bright/10 pt-3"
+                aria-live="polite"
+                aria-label={`NotDiamond advisor: ${advisor.recommendation.provider ?? "none"} / ${
+                  advisor.recommendation.model ?? "none"
+                }`}
+              >
+                <Row label="Advisor mode" value={advisor.recommendation.mode} />
+                <Row label="Advisor source" value={advisor.recommendation.source} />
+                <Row
+                  label="Advisor route"
+                  value={
+                    advisor.recommendation.provider && advisor.recommendation.model
+                      ? `${advisor.recommendation.provider} / ${advisor.recommendation.model}`
+                      : "none"
+                  }
+                />
+                <Row
+                  label="External call"
+                  value={advisor.recommendation.external_call_performed ? "yes" : "no"}
+                />
+                <Row
+                  label="Would call"
+                  value={advisor.recommendation.notdiamond_would_call ? "yes" : "no"}
+                />
+                <Row
+                  label="Promotion eligible"
+                  value={advisor.recommendation.promotion_gate.eligible ? "yes" : "no"}
+                />
+                <p className="text-[11px] text-ink-soft dark:text-starlight">
+                  {advisor.recommendation.reason}
+                </p>
+                {advisor.recommendation.cache_caveat && (
+                  <p className="text-[11px] text-ink-soft dark:text-starlight">
+                    {advisor.recommendation.cache_caveat}
+                  </p>
+                )}
+                <p className="text-[11px] text-ink-soft dark:text-starlight">
+                  {advisor.recommendation.promotion_gate.reason}
+                </p>
+                {advisor.recommendation.notes.map((n) => (
                   <p
                     key={n}
                     className="text-[11px] text-ink-soft dark:text-starlight"

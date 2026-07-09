@@ -86,6 +86,42 @@ export interface PromptCostEstimateResponse {
   candidates: PromptCostCandidate[];
 }
 
+export interface NotDiamondPromotionGate {
+  eligible: boolean;
+  required_consecutive_weeks: number;
+  evidence_week_ids: string[];
+  reason: string;
+}
+
+export interface NotDiamondAdvisorRecommendation {
+  advisor: "notdiamond";
+  mode: "disabled" | "shadow" | "advisory";
+  available: boolean;
+  provider: string | null;
+  model: string | null;
+  tier: string | null;
+  source:
+    | "disabled"
+    | "local_policy"
+    | "notdiamond_candidate"
+    | "advisor_unavailable"
+    | "advisor_candidate_unavailable"
+    | "advisor_cache_penalty";
+  confidence: number | null;
+  session_id: string | null;
+  reason: string;
+  cache_caveat: string | null;
+  external_call_performed: boolean;
+  notdiamond_would_call: boolean;
+  promotion_gate: NotDiamondPromotionGate;
+  notes: string[];
+}
+
+export interface NotDiamondAdvisorResponse {
+  estimate: PromptCostEstimateResponse;
+  recommendation: NotDiamondAdvisorRecommendation;
+}
+
 export interface AntiekBenchBestModelRow {
   task_class: string;
   provider: string;
@@ -140,4 +176,15 @@ export async function estimatePromptCost(
     body: JSON.stringify(body),
   });
   return readJson<PromptCostEstimateResponse>(res);
+}
+
+export async function estimateNotDiamondAdvisor(
+  body: PromptCostEstimateRequest,
+): Promise<NotDiamondAdvisorResponse> {
+  const res = await apiFetch(`${API_BASE}/settings/router-advisor/notdiamond`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return readJson<NotDiamondAdvisorResponse>(res);
 }
