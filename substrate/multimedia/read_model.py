@@ -178,6 +178,35 @@ class MultimediaPublicExportGate(_ReadModelBase):
         return self
 
 
+class MultimediaPublicExportReviewRequest(_ReadModelBase):
+    """Operator review input for future public multimedia export.
+
+    Approval records readiness only. It is not a publish command and must not
+    flip ``public_export_enabled`` or create public URLs.
+    """
+
+    decision: Literal["approved", "rejected"]
+    gate_ids: tuple[str, ...] = Field(min_length=1)
+    operator_acknowledged_public_distribution: bool = False
+    notes: str | None = None
+
+    @model_validator(mode="after")
+    def approval_requires_distribution_ack(self) -> MultimediaPublicExportReviewRequest:
+        if self.decision == "approved" and not self.operator_acknowledged_public_distribution:
+            raise ValueError("approved public export review requires explicit operator acknowledgement")
+        return self
+
+
+class MultimediaPublicExportReview(_ReadModelBase):
+    """Persisted manual review receipt for public multimedia export."""
+
+    decision: Literal["approved", "rejected"]
+    gate_ids: tuple[str, ...] = Field(min_length=1)
+    attached_file_ids: tuple[str, ...] = Field(min_length=1)
+    operator_acknowledged_public_distribution: bool
+    notes: str | None = None
+
+
 class MultimediaJobRecord(_ReadModelBase):
     """Durable progress record for one multimedia operation.
 
@@ -202,6 +231,7 @@ class MultimediaJobRecord(_ReadModelBase):
     artifact_receipt: LiveProviderArtifactReceipt | None = None
     attachment_plan: LiveProviderAttachmentPlan | None = None
     public_export_gate: MultimediaPublicExportGate | None = None
+    public_export_review: MultimediaPublicExportReview | None = None
 
 
 class MultimediaAssetSummary(_ReadModelBase):
@@ -495,6 +525,7 @@ class MultimediaAssetStore:
         artifact_receipt: LiveProviderArtifactReceipt | None = None,
         attachment_plan: LiveProviderAttachmentPlan | None = None,
         public_export_gate: MultimediaPublicExportGate | None = None,
+        public_export_review: MultimediaPublicExportReview | None = None,
     ) -> MultimediaAssetRecord:
         """Append an arbitrary job row (failed/partial provider jobs, retries).
 
@@ -516,6 +547,7 @@ class MultimediaAssetStore:
             artifact_receipt=artifact_receipt,
             attachment_plan=attachment_plan,
             public_export_gate=public_export_gate,
+            public_export_review=public_export_review,
         )
         self.save(updated)
         return updated
@@ -540,6 +572,7 @@ class MultimediaAssetStore:
         artifact_receipt: LiveProviderArtifactReceipt | None = None,
         attachment_plan: LiveProviderAttachmentPlan | None = None,
         public_export_gate: MultimediaPublicExportGate | None = None,
+        public_export_review: MultimediaPublicExportReview | None = None,
     ) -> MultimediaAssetRecord:
         sequence = max((job.sequence for job in record.jobs), default=0) + 1
         job = MultimediaJobRecord(
@@ -558,6 +591,7 @@ class MultimediaAssetStore:
             artifact_receipt=artifact_receipt,
             attachment_plan=attachment_plan,
             public_export_gate=public_export_gate,
+            public_export_review=public_export_review,
         )
         return record.model_copy(update={"jobs": record.jobs + (job,)})
 

@@ -26,6 +26,7 @@ from .live_worker import (
     plan_provider_artifact_attachment,
     preview_next_live_execution,
     record_provider_artifact_receipt,
+    record_public_export_review,
 )
 from .narration import (
     NarrationParagraph,
@@ -68,6 +69,8 @@ from .read_model import (
     MultimediaAssetStore,
     MultimediaAssetSummary,
     MultimediaPublicExportGate,
+    MultimediaPublicExportReview,
+    MultimediaPublicExportReviewRequest,
     SteeringRequest,
 )
 from .steering import (
@@ -172,6 +175,8 @@ __all__ = [
     "GateStatus",
     "MultimediaHardeningReport",
     "MultimediaPublicExportGate",
+    "MultimediaPublicExportReview",
+    "MultimediaPublicExportReviewRequest",
     "ShipStatus",
     "evaluate_multimedia_asset",
     # SPR-09 API persistence/read-model
@@ -186,4 +191,5 @@ __all__ = [
     "plan_provider_artifact_attachment",
     "preview_next_live_execution",
     "record_provider_artifact_receipt",
+    "record_public_export_review",
 ]

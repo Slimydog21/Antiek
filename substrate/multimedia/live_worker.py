@@ -24,6 +24,8 @@ from substrate.multimedia.read_model import (
     MultimediaAssetStore,
     MultimediaJobRecord,
     MultimediaPublicExportGate,
+    MultimediaPublicExportReview,
+    MultimediaPublicExportReviewRequest,
 )
 
 
@@ -110,6 +112,108 @@ def evaluate_public_export_gate(
         message=gate.reason,
         retryable=True,
         public_export_gate=gate,
+    )
+
+
+def record_public_export_review(
+    store: MultimediaAssetStore,
+    asset_id: str,
+    request: MultimediaPublicExportReviewRequest,
+) -> MultimediaAssetRecord:
+    """Persist manual public-export review without publishing the asset."""
+
+    record = store.get(asset_id)
+    gate = _latest_public_export_gate(record)
+    if gate is None:
+        return store.record_job(
+            asset_id,
+            kind="export_gate",
+            status="failed",
+            progress_percent=95,
+            message="Public export review requires a prior export gate evaluation.",
+            error_code="public_export_gate_missing",
+            retryable=False,
+        )
+    if gate.status != "manual_review":
+        return store.record_job(
+            asset_id,
+            kind="export_gate",
+            status="failed",
+            progress_percent=95,
+            message="Public export review can only act on a manual-review export gate.",
+            error_code="public_export_review_not_allowed",
+            retryable=False,
+            public_export_gate=gate,
+        )
+
+    missing_gate_ids = tuple(gate_id for gate_id in gate.required_gate_ids if gate_id not in request.gate_ids)
+    if missing_gate_ids:
+        review = MultimediaPublicExportReview(
+            decision=request.decision,
+            gate_ids=request.gate_ids,
+            attached_file_ids=gate.attached_file_ids,
+            operator_acknowledged_public_distribution=request.operator_acknowledged_public_distribution,
+            notes=request.notes,
+        )
+        return store.record_job(
+            asset_id,
+            kind="export_gate",
+            status="failed",
+            progress_percent=95,
+            message=f"Public export review is missing required gate approvals: {', '.join(missing_gate_ids)}.",
+            error_code="public_export_review_gate_missing",
+            retryable=False,
+            public_export_gate=gate,
+            public_export_review=review,
+        )
+
+    review = MultimediaPublicExportReview(
+        decision=request.decision,
+        gate_ids=request.gate_ids,
+        attached_file_ids=gate.attached_file_ids,
+        operator_acknowledged_public_distribution=request.operator_acknowledged_public_distribution,
+        notes=request.notes,
+    )
+    if request.decision == "rejected":
+        blocked_gate = gate.model_copy(
+            update={
+                "status": "blocked",
+                "public_export_enabled": False,
+                "reason": request.notes or "Operator rejected public multimedia export.",
+            }
+        )
+        return store.record_job(
+            asset_id,
+            kind="export_gate",
+            status="failed",
+            progress_percent=95,
+            message=blocked_gate.reason,
+            error_code="public_export_review_rejected",
+            retryable=False,
+            public_export_gate=blocked_gate,
+            public_export_review=review,
+        )
+
+    ready_gate = gate.model_copy(
+        update={
+            "status": "ready",
+            "public_export_enabled": False,
+            "required_gate_ids": (),
+            "reason": (
+                "Manual publication review approved; public export remains disabled "
+                "until a separate publish command runs."
+            ),
+        }
+    )
+    return store.record_job(
+        asset_id,
+        kind="export_gate",
+        status="partial",
+        progress_percent=98,
+        message=ready_gate.reason,
+        retryable=False,
+        public_export_gate=ready_gate,
+        public_export_review=review,
     )
 
 
@@ -438,6 +542,13 @@ def _latest_attachment_plan(record: MultimediaAssetRecord) -> LiveProviderAttach
     return None
 
 
+def _latest_public_export_gate(record: MultimediaAssetRecord) -> MultimediaPublicExportGate | None:
+    for job in reversed(record.jobs):
+        if job.kind == "export_gate" and job.public_export_gate:
+            return job.public_export_gate
+    return None
+
+
 def _attachment_mismatch(
     preview: LiveProviderRoutePreview,
     receipt: LiveProviderArtifactReceipt,
@@ -484,4 +595,5 @@ __all__ = [
     "plan_provider_artifact_attachment",
     "preview_next_live_execution",
     "record_provider_artifact_receipt",
+    "record_public_export_review",
 ]
