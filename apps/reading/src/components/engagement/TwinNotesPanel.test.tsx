@@ -30,6 +30,46 @@ describe("TwinNotesPanel", () => {
     expect(link.textContent).toMatch(/twin seed readiness/i);
   });
 
+  it("surfaces researchTier chrome when provided (kr)", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 1,
+      insight_count: 1,
+      question_count: 0,
+      notes: [
+        {
+          note_id: "twin_w",
+          asset_id: "paper",
+          kind: "insight",
+          text: "Wrestle twin",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>twins</p>",
+    });
+    render(
+      <TwinNotesPanel assetId="paper" autoLoad researchTier="wrestle" />,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-notes-summary")).toBeTruthy();
+    });
+    expect(
+      screen.getByTestId("twin-notes-panel").getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+    expect(
+      screen.getByTestId("twin-notes-metrics").getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+    expect(screen.getByTestId("twin-notes-research-tier").textContent).toMatch(
+      /wrestle/i,
+    );
+    expect(screen.getByTestId("twin-notes-research-tier").textContent).toMatch(
+      /long-horizon/i,
+    );
+  });
+
   it("auto-loads twins on mount when autoLoad (cq)", async () => {
     fetchTwinNotes.mockResolvedValue({
       asset_id: "paper",

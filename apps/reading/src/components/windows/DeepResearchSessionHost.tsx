@@ -362,6 +362,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
               seedBodyText={
                 props.selection_text?.trim() || props.goal?.trim() || ""
               }
+              researchTier={researchTier}
             />
           </div>
         </section>

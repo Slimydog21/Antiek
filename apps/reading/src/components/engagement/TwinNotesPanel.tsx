@@ -14,6 +14,7 @@
  * Residual (hi): twin-promote-metrics data attributes for promote→context
  * audit (parity twin-notes-metrics fk / context-search-metrics fi).
  * Residual (ib): Settings deep-link for twin seed live readiness (hs).
+ * Residual (kr): optional researchTier chrome for depth posture on note-taker.
  * HTML-first; never PDF.
  */
 
@@ -50,6 +51,11 @@ export type TwinNotesPanelProps = {
    * context panels can remount/reload with recursive notes.
    */
   onPromoted?: (result: TwinPromoteContextResponse) => void;
+  /**
+   * Residual (kr): closed research tier for depth posture chrome when parent
+   * session/host knows spawn identity (fast|deep|wrestle).
+   */
+  researchTier?: "fast" | "deep" | "wrestle" | string | null;
 };
 
 export function TwinNotesPanel({
@@ -61,6 +67,7 @@ export function TwinNotesPanel({
   seedBodyText = null,
   autoPromoteAfterLoad = false,
   onPromoted,
+  researchTier = null,
 }: TwinNotesPanelProps) {
   const [twins, setTwins] = useState<TwinNotesResponse | null>(null);
   const [promoted, setPromoted] = useState<TwinPromoteContextResponse | null>(
@@ -80,6 +87,9 @@ export function TwinNotesPanel({
     seedSkipped: string | null;
   } | null>(null);
   const [promoteStatus, setPromoteStatus] = useState<string | null>(null);
+
+  // Residual (kr): normalize optional parent-supplied depth for chrome.
+  const normalizedResearchTier = (researchTier || "").trim().toLowerCase() || "";
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -240,12 +250,19 @@ export function TwinNotesPanel({
       className="twin-notes-panel"
       data-testid="twin-notes-panel"
       data-view-format="html"
+      data-research-tier={normalizedResearchTier}
       aria-label="Twin notes"
     >
       <header>
         <h2>Twin notes</h2>
         <p className="meta">
           Recursive note-taker for asset <code>{assetId}</code>
+          {normalizedResearchTier ? (
+            <>
+              {" "}
+              · tier <code>{normalizedResearchTier}</code>
+            </>
+          ) : null}
         </p>
         {/* Residual (ib): Settings deep-link for twin seed dual-gate readiness. */}
         <p className="meta font-mono text-[11px]">
@@ -257,6 +274,22 @@ export function TwinNotesPanel({
             Settings · twin seed readiness
           </a>
         </p>
+        {/* Residual (kr): depth posture when host passes researchTier. */}
+        {normalizedResearchTier ? (
+          <p
+            className="meta font-mono text-[11px]"
+            data-testid="twin-notes-research-tier"
+            data-research-tier={normalizedResearchTier}
+            role="status"
+          >
+            Research tier: <strong>{normalizedResearchTier}</strong>
+            {normalizedResearchTier === "wrestle"
+              ? " · multi-minute long-horizon depth"
+              : normalizedResearchTier === "fast"
+                ? " · flash / distill depth"
+                : " · deep / synthesize depth"}
+          </p>
+        ) : null}
       </header>
       <div className="controls" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
         <select
@@ -346,11 +379,13 @@ export function TwinNotesPanel({
             data-note-count={String(twins.note_count ?? 0)}
             data-insight-count={String(twins.insight_count ?? 0)}
             data-question-count={String(twins.question_count ?? 0)}
+            data-research-tier={normalizedResearchTier}
             data-view-format="html"
             role="status"
           >
             Recursive note-taker · notes={twins.note_count ?? 0} · insights=
             {twins.insight_count ?? 0} · questions={twins.question_count ?? 0}
+            {normalizedResearchTier ? ` · tier=${normalizedResearchTier}` : ""}
           </div>
           <p>
             notes={twins.note_count} · insights={twins.insight_count} · questions=

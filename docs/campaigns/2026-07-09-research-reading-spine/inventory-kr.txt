@@ -1,0 +1,9 @@
+# inventory-kr · TwinNotesPanel researchTier chrome + DR host wire
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: kr
+files:
+  apps/reading/src/components/engagement/TwinNotesPanel.tsx
+  apps/reading/src/components/engagement/TwinNotesPanel.test.tsx
+  apps/reading/src/components/windows/DeepResearchSessionHost.tsx
+proof: TwinNotesPanel vitest 8_passed (HONEST_OK)
+invariants: HTML · optional researchTier · recursive note-taker depth · no PDF
