@@ -1,0 +1,8 @@
+# inventory-na · twin chase budget soft-gate
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: na
+files:
+  apps/reading/src/components/engagement/TwinNotesPanel.tsx
+  apps/reading/src/components/engagement/TwinNotesPanel.test.tsx
+proof: vitest TwinNotesPanel 19 passed
+invariants: HTML-first · soft budget never invent $0 · force override · ResearchLaunchBudgetPanel chokepoint

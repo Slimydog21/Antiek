@@ -20,6 +20,55 @@ vi.mock("../../modes/Reading/launchFloatingDeepResearch", () => ({
     launchFloatingDeepResearch(...args),
 }));
 
+// Residual (na): budget panel — controllable soft-gate via onProjectionChange.
+let mockWouldExceed: boolean | null = false;
+vi.mock("./ResearchLaunchBudgetPanel", () => ({
+  ResearchLaunchBudgetPanel: (props: {
+    promptText: string;
+    researchTier: string;
+    onProjectionChange?: (p: {
+      wouldExceedBudget: boolean | null;
+      pricingKnown: boolean;
+      estimatedUsdHigh: number | null;
+      remainingUsd: number | null;
+      modelId: string | null;
+    }) => void;
+    onResearchTierChange?: (t: string) => void;
+    allowTierPick?: boolean;
+  }) => {
+    // Fire projection once so parents receive soft-gate state.
+    if (props.onProjectionChange) {
+      queueMicrotask(() => {
+        props.onProjectionChange?.({
+          wouldExceedBudget: mockWouldExceed,
+          pricingKnown: mockWouldExceed !== null,
+          estimatedUsdHigh: mockWouldExceed ? 9.99 : 0.05,
+          remainingUsd: mockWouldExceed ? 0.01 : 10,
+          modelId: "model-a",
+        });
+      });
+    }
+    return (
+      <div
+        data-testid="mock-research-launch-budget"
+        data-prompt-len={String((props.promptText || "").length)}
+        data-research-tier={props.researchTier}
+      >
+        mock budget · tier={props.researchTier}
+        {props.allowTierPick ? (
+          <button
+            type="button"
+            data-testid="mock-budget-pick-wrestle"
+            onClick={() => props.onResearchTierChange?.("wrestle")}
+          >
+            pick wrestle
+          </button>
+        ) : null}
+      </div>
+    );
+  },
+}));
+
 describe("buildTwinChasePayload (mz)", () => {
   it("orders questions before insights and builds goal_hint", () => {
     const payload = buildTwinChasePayload(
@@ -46,6 +95,7 @@ describe("TwinNotesPanel", () => {
     promoteTwinsToContext.mockReset();
     seedTwinNotes.mockReset();
     launchFloatingDeepResearch.mockReset();
+    mockWouldExceed = false;
   });
 
   it("links to Settings twin seed readiness (ib)", () => {
@@ -1015,6 +1065,72 @@ describe("TwinNotesPanel", () => {
     await waitFor(() => {
       expect(screen.getByTestId("twin-chase-status").textContent).toMatch(
         /mode=full/,
+      );
+    });
+  });
+
+  it("soft-gates chase when budget would exceed; force unlocks (na)", async () => {
+    mockWouldExceed = true;
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 1,
+      insight_count: 0,
+      question_count: 1,
+      notes: [
+        {
+          note_id: "twin_q",
+          asset_id: "paper",
+          kind: "question",
+          text: "Expensive Q",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>twins</p>",
+    });
+    launchFloatingDeepResearch.mockResolvedValue({
+      session_id: "sess_force",
+      spawn_id: "spn_force",
+      investigation_id: "inv_force",
+      parent_asset_id: "paper",
+      window_id: "win_force",
+      view_format: "html",
+      view_mode: "floating",
+      status: "reserved",
+      model_id: "model-a",
+      research_tier: "deep",
+    });
+    render(<TwinNotesPanel assetId="paper" autoLoad researchTier="deep" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-select-twin_q")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("twin-select-twin_q"));
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-chase-budget-mount")).toBeTruthy();
+      expect(
+        screen
+          .getByTestId("twin-chase-budget-mount")
+          .getAttribute("data-budget-warn"),
+      ).toBe("true");
+    });
+    // Soft-gate: chase buttons disabled until force.
+    expect(
+      (screen.getByTestId("twin-chase-selected") as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(screen.getByTestId("twin-chase-force-budget")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("twin-chase-force-budget"));
+    expect(
+      (screen.getByTestId("twin-chase-selected") as HTMLButtonElement).disabled,
+    ).toBe(false);
+    fireEvent.click(screen.getByTestId("twin-chase-selected"));
+    await waitFor(() => {
+      expect(launchFloatingDeepResearch).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-chase-status").textContent).toMatch(
+        /force_budget/,
       );
     });
   });

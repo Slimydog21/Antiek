@@ -29,6 +29,8 @@
  * note_ids on promote metrics for audit honesty.
  * Residual (mz): chase selected twin notes as floating deep research
  * (highlight→float DR parity for recursive note-taker questions/insights).
+ * Residual (na): budget soft-gate on twin chase (parity marketplace iy) —
+ * ResearchLaunchBudgetPanel + force override when projection would exceed.
  * HTML-first; never PDF.
  */
 
@@ -42,6 +44,11 @@ import {
   type TwinPromoteContextResponse,
 } from "../../api/engagement";
 import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
+import {
+  ResearchLaunchBudgetPanel,
+  type ResearchLaunchBudgetProjection,
+  type ResearchLaunchTier,
+} from "./ResearchLaunchBudgetPanel";
 
 /** Minimal twin note shape for residual (mz) chase payload. */
 export type TwinChaseNote = {
@@ -139,6 +146,17 @@ export function TwinNotesPanel({
   /** Residual (mz): chase-selected deep research status chrome. */
   const [chaseStatus, setChaseStatus] = useState<string | null>(null);
   /**
+   * Residual (na): soft budget gate before twin chase launch.
+   * wouldExceed → warn + require force checkbox (never invent $0).
+   */
+  const [chaseBudgetWarn, setChaseBudgetWarn] = useState(false);
+  const [chaseForceBudget, setChaseForceBudget] = useState(false);
+  /**
+   * Residual (na): chase depth tier for budget projection (defaults from
+   * researchTier prop / deep).
+   */
+  const [chaseTier, setChaseTier] = useState<ResearchLaunchTier>("deep");
+  /**
    * Residual (mq): which twin kinds to promote into context.
    * all → both; insight|question → single-class selective merge.
    */
@@ -164,6 +182,22 @@ export function TwinNotesPanel({
   const apiResearchTier = (twins?.research_tier || "").trim().toLowerCase() || "";
   const normalizedResearchTier =
     (researchTier || "").trim().toLowerCase() || apiResearchTier;
+
+  // Residual (na): prefill chase tier from host researchTier when closed-set.
+  useEffect(() => {
+    const t = (normalizedResearchTier || "").trim().toLowerCase();
+    if (t === "fast" || t === "deep" || t === "wrestle") {
+      setChaseTier(t);
+    }
+  }, [normalizedResearchTier]);
+
+  // Residual (na): clear force when selection empties (fresh batch honesty).
+  useEffect(() => {
+    if (selectedNoteIds.size === 0) {
+      setChaseForceBudget(false);
+      setChaseBudgetWarn(false);
+    }
+  }, [selectedNoteIds.size]);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -420,14 +454,28 @@ export function TwinNotesPanel({
       }));
   }, [twins?.notes, selectedNoteIds]);
 
+  /** Residual (na): selection_text preview for budget projection. */
+  const chasePromptPreview = useMemo(() => {
+    if (selectedNotes.length < 1) return "";
+    return buildTwinChasePayload(selectedNotes, assetId).selection_text;
+  }, [selectedNotes, assetId]);
+
   /**
-   * Residual (mz): spin floating deep research from multi-selected twins
-   * (questions preferred in payload order). Clears selection on success.
+   * Residual (mz/na): spin floating deep research from multi-selected twins
+   * (questions preferred in payload order). Soft-gates on budget projection.
+   * Clears selection on success.
    */
   const chaseSelected = useCallback(
     async (viewMode: "floating" | "full" = "floating") => {
       if (selectedNotes.length < 1) {
         setError("Select at least one twin note to chase as deep research");
+        return;
+      }
+      // Residual (na): soft budget gate (parity marketplace iy).
+      if (chaseBudgetWarn && !chaseForceBudget) {
+        setError(
+          "Budget projection may exceed daily cap — check Force chase despite budget, or lower depth tier",
+        );
         return;
       }
       setBusy(true);
@@ -438,25 +486,22 @@ export function TwinNotesPanel({
         if (!payload.selection_text.trim()) {
           throw new Error("Selected twin notes have empty text");
         }
-        const rawTier = (normalizedResearchTier || "").trim().toLowerCase();
-        const research_tier =
-          rawTier === "fast" || rawTier === "deep" || rawTier === "wrestle"
-            ? rawTier
-            : undefined;
         const out = await launchFloatingDeepResearch({
           asset_id: assetId,
           selection_text: payload.selection_text,
           goal_hint: payload.goal_hint,
           view_mode: viewMode,
-          research_tier: research_tier ?? null,
+          research_tier: chaseTier,
         });
         if (out.view_format !== "html") {
           throw new Error("twin chase view_format must be html");
         }
         setSelectedNoteIds(new Set());
+        setChaseForceBudget(false);
         setChaseStatus(
           `chased ${payload.note_ids.length} twin note(s) → spawn=${out.spawn_id} · ` +
-            `mode=${viewMode} · tier=${out.research_tier}`,
+            `mode=${viewMode} · tier=${out.research_tier}` +
+            (chaseBudgetWarn && chaseForceBudget ? " · force_budget" : ""),
         );
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -464,7 +509,13 @@ export function TwinNotesPanel({
         setBusy(false);
       }
     },
-    [assetId, normalizedResearchTier, selectedNotes],
+    [
+      assetId,
+      chaseBudgetWarn,
+      chaseForceBudget,
+      chaseTier,
+      selectedNotes,
+    ],
   );
 
   return (
@@ -626,7 +677,11 @@ export function TwinNotesPanel({
           type="button"
           data-testid="twin-chase-selected"
           onClick={() => void chaseSelected("floating")}
-          disabled={busy || selectedNoteIds.size === 0}
+          disabled={
+            busy ||
+            selectedNoteIds.size === 0 ||
+            (chaseBudgetWarn && !chaseForceBudget)
+          }
           title="Spin floating deep research from multi-selected twin notes (questions preferred)"
         >
           Chase selected ({selectedNoteIds.size})
@@ -635,12 +690,50 @@ export function TwinNotesPanel({
           type="button"
           data-testid="twin-chase-selected-full"
           onClick={() => void chaseSelected("full")}
-          disabled={busy || selectedNoteIds.size === 0}
+          disabled={
+            busy ||
+            selectedNoteIds.size === 0 ||
+            (chaseBudgetWarn && !chaseForceBudget)
+          }
           title="Spin full working-region deep research from multi-selected twin notes"
         >
           Chase full
         </button>
       </div>
+      {/* Residual (na): budget projection soft-gate when multi-select is active. */}
+      {selectedNoteIds.size > 0 ? (
+        <div
+          className="space-y-2 border rounded p-3 my-2"
+          data-testid="twin-chase-budget-mount"
+          data-view-format="html"
+          data-research-tier={chaseTier}
+          data-selected-count={String(selectedNoteIds.size)}
+          data-budget-warn={String(chaseBudgetWarn)}
+          data-force-budget={String(chaseForceBudget)}
+        >
+          <ResearchLaunchBudgetPanel
+            promptText={chasePromptPreview || "twin chase"}
+            researchTier={chaseTier}
+            allowTierPick
+            onResearchTierChange={setChaseTier}
+            onProjectionChange={(p: ResearchLaunchBudgetProjection) => {
+              setChaseBudgetWarn(p.wouldExceedBudget === true);
+            }}
+          />
+          {chaseBudgetWarn ? (
+            <label className="flex items-center gap-2 text-[11px] font-mono">
+              <input
+                type="checkbox"
+                data-testid="twin-chase-force-budget"
+                checked={chaseForceBudget}
+                onChange={(e) => setChaseForceBudget(e.target.checked)}
+              />
+              Force chase despite budget projection
+            </label>
+          ) : null}
+        </div>
+      ) : null}
+
       {error ? (
         <p className="error" role="alert">
           {error}

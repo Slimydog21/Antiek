@@ -317,3 +317,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (mz, 2026-07-10) **Chase selected twins as floating deep research:**
   - buildTwinChasePayload (questions first) + Chase selected / Chase full
   - launchFloatingDeepResearch chokepoint; selection clears on success
+
+- Closed (na, 2026-07-10) **Twin chase budget soft-gate:**
+  - ResearchLaunchBudgetPanel on multi-select + force override
+  - parity marketplace iy; never invent $0 when unknown
