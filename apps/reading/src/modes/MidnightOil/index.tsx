@@ -39,7 +39,9 @@ import {
 import { fetchDecisionTreeSelection, fetchDepthTiers } from "../../api/settings";
 import type { ResearchTier } from "../../lib/api";
 import {
+  formatResearchTierCeilingFactor,
   mapDepthTierToResearchTier,
+  mapResearchTierToCeilingMultiplier,
   mapResearchTierToProgressPollMs,
 } from "../../lib/researchTier";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
@@ -566,21 +568,17 @@ export default function MidnightOil() {
             className="text-[11px] font-mono opacity-70"
             data-testid="moil-ceiling-tier-factor"
             data-research-tier={job.research_tier || researchTier}
-            data-tier-multiplier={
-              (job.research_tier || researchTier) === "wrestle"
-                ? "2"
-                : (job.research_tier || researchTier) === "fast"
-                  ? "0.5"
-                  : "1"
-            }
+            data-tier-multiplier={String(
+              mapResearchTierToCeilingMultiplier(
+                job.research_tier || researchTier,
+              ),
+            )}
           >
             Tier factor applied:{" "}
             <strong>
-              {(job.research_tier || researchTier) === "wrestle"
-                ? "2.0× (wrestle)"
-                : (job.research_tier || researchTier) === "fast"
-                  ? "0.5× (fast)"
-                  : "1.0× (deep)"}
+              {formatResearchTierCeilingFactor(
+                job.research_tier || researchTier,
+              )}
             </strong>
           </p>
           {job.approved_ceiling_usd != null ? (

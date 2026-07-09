@@ -86,3 +86,45 @@ export function mapResearchTierToProgressPollMs(
   if (t === "wrestle") return RESEARCH_TIER_PROGRESS_POLL_MS.wrestle;
   return RESEARCH_TIER_PROGRESS_POLL_MS.deep;
 }
+
+/**
+ * Residual (jv): Midnight Oil ceiling intensity multipliers.
+ * Mirrors substrate/midnight_oil/ceiling.py TIER_MULTIPLIER
+ * (fast 0.5 · deep 1.0 · wrestle 2.0). Display/audit only on client —
+ * server still owns the recommended ceiling math.
+ */
+export const RESEARCH_TIER_CEILING_MULTIPLIER = {
+  fast: 0.5,
+  deep: 1.0,
+  wrestle: 2.0,
+} as const;
+
+export function mapResearchTierToCeilingMultiplier(
+  researchTier: ResearchTier | string | null | undefined,
+): number {
+  const t = String(researchTier || "")
+    .trim()
+    .toLowerCase();
+  if (t === "fast" || t === "flash") {
+    return RESEARCH_TIER_CEILING_MULTIPLIER.fast;
+  }
+  if (t === "wrestle") return RESEARCH_TIER_CEILING_MULTIPLIER.wrestle;
+  return RESEARCH_TIER_CEILING_MULTIPLIER.deep;
+}
+
+/** Operator-facing label for MO tier factor chrome. */
+export function formatResearchTierCeilingFactor(
+  researchTier: ResearchTier | string | null | undefined,
+): string {
+  const t = String(researchTier || "")
+    .trim()
+    .toLowerCase();
+  const mult = mapResearchTierToCeilingMultiplier(t);
+  const name =
+    t === "fast" || t === "flash"
+      ? "fast"
+      : t === "wrestle"
+        ? "wrestle"
+        : "deep";
+  return `${mult.toFixed(1)}× (${name})`;
+}

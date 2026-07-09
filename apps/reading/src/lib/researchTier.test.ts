@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  formatResearchTierCeilingFactor,
   mapDepthTierToResearchTier,
   mapResearchTierToBenchTaskClass,
+  mapResearchTierToCeilingMultiplier,
   mapResearchTierToDepthTier,
   mapResearchTierToProgressPollMs,
+  RESEARCH_TIER_CEILING_MULTIPLIER,
   RESEARCH_TIER_PROGRESS_POLL_MS,
 } from "./researchTier";
 
@@ -60,5 +63,19 @@ describe("researchTier map residual (ju) progress poll cadence", () => {
     expect(mapResearchTierToProgressPollMs("flash")).toBe(2000);
     expect(mapResearchTierToProgressPollMs(null)).toBe(4000);
     expect(mapResearchTierToProgressPollMs("turbo")).toBe(4000);
+  });
+});
+
+describe("researchTier map residual (jv) MO ceiling multiplier", () => {
+  it("mirrors substrate midnight_oil.ceiling TIER_MULTIPLIER", () => {
+    expect(mapResearchTierToCeilingMultiplier("fast")).toBe(
+      RESEARCH_TIER_CEILING_MULTIPLIER.fast,
+    );
+    expect(mapResearchTierToCeilingMultiplier("deep")).toBe(1.0);
+    expect(mapResearchTierToCeilingMultiplier("wrestle")).toBe(2.0);
+    expect(mapResearchTierToCeilingMultiplier(null)).toBe(1.0);
+    expect(formatResearchTierCeilingFactor("wrestle")).toBe("2.0× (wrestle)");
+    expect(formatResearchTierCeilingFactor("fast")).toBe("0.5× (fast)");
+    expect(formatResearchTierCeilingFactor("deep")).toBe("1.0× (deep)");
   });
 });
