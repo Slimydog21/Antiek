@@ -1,0 +1,19 @@
+# residual (gx) investigation start → Antiek-bench usage (research_tier → task_class)
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(gw) prior | branch_only | campaign inventories
+(gx) investigation start usage | branch_only | _record_investigation_start_usage; POST /investigations best-effort; shared get_bench_usage_store; helper unit test 1_passed
+
+PATHS:
+- interfaces/research/api/app.py
+- tests/test_investigation_endpoints.py
+
+BEHAVIOR:
+- InvestigationStartRequest.research_tier accepts wrestle
+- Explicit tier on start → usage event source=investigation_start
+- fast→distill, deep→synthesize, wrestle→wrestle
+- Omitted tier → no invented usage event (honest None)
+- Never fails start path on bench errors
+
+NEXT: (gy) re-derive; operator merge PR #465

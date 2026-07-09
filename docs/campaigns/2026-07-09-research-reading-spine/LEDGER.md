@@ -121,3 +121,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 ## residual (gw) TS research_tier → bench task_class — 2026-07-09
 - mapResearchTierToBenchTaskClass parity with usage_bridge
 - tests: researchTier 5 passed
+## residual (gx) investigation start → Antiek-bench usage — 2026-07-09
+- _record_investigation_start_usage via get_bench_usage_store
+- wrestle accepted on InvestigationStartRequest
+- tests: test_record_investigation_start_usage_helper_gx

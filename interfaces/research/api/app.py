@@ -286,10 +286,9 @@ class InvestigationStartRequest(BaseModel):
     investigation_id: str | None = None
     parent_investigation_id: str | None = None
     spawn_context: str | None = None
-    # SPR-01 M3: curated fast/deep research tier from the research entry.
-    # CLOSED set; recorded on the start event so the chosen tier is
-    # queryable. "fast" → MiMo V2.5 Pro, "deep" → DeepSeek V4 Pro (the
-    # tier→provider map lives in substrate/dispatch/research_tier.py).
+    # SPR-01 M3 / residual (gp): curated fast|deep|wrestle research tier from
+    # the research entry. CLOSED set; recorded on the start event so the chosen
+    # tier is queryable. Map lives in substrate/dispatch/research_tier.py.
     #
     # §14.4 measurement-window scoping (default is None, NOT "deep"): the
     # persisted tier is consumed by exactly ONE dispatch role — the
@@ -306,7 +305,7 @@ class InvestigationStartRequest(BaseModel):
     # override is gated on an explicit choice. Reconsider-if: once the §14.4
     # window closes (Sprint 20 verdict landed), the operator may restore a
     # "deep" default if deep-synthesizer routing is then desired.
-    research_tier: Literal["fast", "deep"] | None = None
+    research_tier: Literal["fast", "deep", "wrestle"] | None = None
 
 
 # ── Sprint 11 additions ────────────────────────────────────────────────
@@ -1320,6 +1319,47 @@ class AttributionComputeRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _record_investigation_start_usage(
+    *,
+    research_tier: str | None,
+    question: str,
+) -> dict[str, Any] | None:
+    """Residual (gx): record interactive start → Antiek-bench usage event.
+
+    Maps ResearchTier → task_class (fast→distill, deep→synthesize,
+    wrestle→wrestle). When tier is omitted (None), does not invent a default
+    task_class for bench learning of *explicit* operator depth choices —
+    returns None. Never raises to callers (best-effort only).
+
+    Uses the same process-local usage store as engagement flywheel /
+    Settings suite-proposal (get_bench_usage_store), not a fresh InMemory
+    instance per call.
+    """
+    from interfaces.research.api.engagement_routes import get_bench_usage_store
+    from substrate.antiek_bench import (
+        UsageEvent,
+        record_usage_event,
+        research_tier_to_task_class,
+    )
+
+    task = research_tier_to_task_class(research_tier)
+    if task is None:
+        return None
+    store = get_bench_usage_store(create_if_missing=True)
+    if store is None:
+        return None
+    return record_usage_event(
+        UsageEvent(
+            task_class=task,
+            outcome="worked",
+            prompt_hint=(question or "")[:280],
+            source="investigation_start",
+            model_id=None,
+        ),
+        store=store,
+    )
+
+
 def create_app(
     *,
     broadcaster: EventBroadcaster | None = None,
@@ -2256,6 +2296,16 @@ def create_app(
                 except Exception:  # pragma: no cover — diagnostic
                     pass
                 break
+
+        # Residual (gx): feed Antiek-bench recursive rewrite with interactive
+        # start outcomes (best-effort; never fail the start path).
+        try:
+            _record_investigation_start_usage(
+                research_tier=req.research_tier,
+                question=req.question,
+            )
+        except Exception:  # pragma: no cover — never fail start on bench
+            pass
 
         return InvestigationStartResponse(
             investigation_id=investigation_id,

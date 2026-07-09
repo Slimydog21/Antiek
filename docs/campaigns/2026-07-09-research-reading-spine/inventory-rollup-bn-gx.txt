@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(gx) · PR #465
+Investigation start bench usage (gx); TS/Python tier→task_class (gw/gv).
+Interactive + autonomous depth choices feed recursive Antiek-bench. Next (gy).

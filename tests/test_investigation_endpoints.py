@@ -440,6 +440,68 @@ async def test_post_records_research_tier_on_start_event(async_client):
 
 
 @pytest.mark.asyncio
+async def test_post_wrestle_records_start_event_and_bench_usage(async_client):
+    """Residual (gx): wrestle start records event + Antiek-bench usage task_class."""
+    from interfaces.research.api.engagement_routes import (
+        get_bench_usage_store,
+        reset_bench_usage_store,
+    )
+    from substrate.antiek_bench import list_usage_events
+
+    reset_bench_usage_store()
+    store = get_bench_usage_store(create_if_missing=True)
+    before = len(list_usage_events(store=store))
+    r = await async_client.post(
+        "/investigations",
+        json={
+            "question": "Wrestle multi-hop across the corpus with care.",
+            "investigation_id": "inv-tier-wrestle-gx",
+            "research_tier": "wrestle",
+        },
+    )
+    assert r.status_code == 202, r.text
+    rows = trajectory("inv-tier-wrestle-gx")
+    start = [
+        x
+        for x in rows
+        if x["action_type"] == ActionType.INVESTIGATION_START_REQUESTED.value
+    ]
+    assert len(start) == 1
+    assert start[0]["payload"]["research_tier"] == "wrestle"
+    events = list_usage_events(store=store)
+    assert len(events) == before + 1
+    ev = events[-1]
+    assert ev.get("source") == "investigation_start"
+    assert ev.get("task_class") == "wrestle"
+    assert "Wrestle multi-hop" in (ev.get("prompt_hint") or "")
+
+
+def test_record_investigation_start_usage_helper_gx():
+    """Residual (gx): pure helper maps tier → task_class without inventing None."""
+    from interfaces.research.api.app import _record_investigation_start_usage
+    from interfaces.research.api.engagement_routes import (
+        get_bench_usage_store,
+        reset_bench_usage_store,
+    )
+    from substrate.antiek_bench import list_usage_events
+
+    reset_bench_usage_store()
+    store = get_bench_usage_store(create_if_missing=True)
+    assert _record_investigation_start_usage(research_tier=None, question="x") is None
+    r = _record_investigation_start_usage(
+        research_tier="wrestle",
+        question="Helper wrestle path",
+    )
+    assert r is not None
+    assert r["task_class"] == "wrestle"
+    assert r["source"] == "investigation_start"
+    r2 = _record_investigation_start_usage(research_tier="fast", question="quick")
+    assert r2 is not None and r2["task_class"] == "distill"
+    events = list_usage_events(store=store)
+    assert len(events) == 2
+
+
+@pytest.mark.asyncio
 async def test_get_status_surfaces_chosen_research_tier(async_client):
     """GET /investigations/{id} reads the chosen tier back out — queryable
     after the fact, not recomputed."""
