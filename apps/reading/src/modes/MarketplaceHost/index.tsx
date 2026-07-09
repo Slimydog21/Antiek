@@ -604,7 +604,7 @@ export default function MarketplaceHost({
           </div>
           {/* Residual (dz): Settings decision-tree driver (advisory readout). */}
           <div data-testid="marketplace-driver-badge-mount" data-view-format="html">
-            <DecisionTreeDriverBadge />
+            <DecisionTreeDriverBadge researchTier={hostDrTier} />
             {/* Residual (id): Settings deep-link (driver + twin seed readiness). */}
             <p className="mt-1 text-[11px] font-mono">
               <a

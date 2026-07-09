@@ -58,8 +58,15 @@ vi.mock("../../api/settings", () => ({
 }));
 
 vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
-  DecisionTreeDriverBadge: () => (
-    <div data-testid="decision-tree-driver-badge-stub">driver badge</div>
+  DecisionTreeDriverBadge: (props: {
+    researchTier?: string | null;
+  }) => (
+    <div
+      data-testid="decision-tree-driver-badge-stub"
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+    >
+      driver badge{props.researchTier ? `:tier=${props.researchTier}` : ""}
+    </div>
   ),
 }));
 
@@ -200,6 +207,12 @@ describe("MarketplaceHost mode", () => {
         .getAttribute("data-view-format"),
     ).toBe("html");
     expect(screen.getByTestId("decision-tree-driver-badge-stub")).toBeTruthy();
+    // Residual (kx): marketplace wires hostDrTier into driver badge (ku).
+    expect(
+      screen
+        .getByTestId("decision-tree-driver-badge-stub")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
     // Residual (id): Settings deep-link for driver + twin seed readiness.
     const settings = screen.getByTestId("marketplace-settings-link");
     expect(settings.getAttribute("href")).toBe("/settings");
