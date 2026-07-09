@@ -17,6 +17,7 @@
  * Residual (ih): Settings deep-link for driver + budget.
  * Residual (kn): surface recommended_research_tier + research_tiers from merge.
  * Residual (lj): DecisionTreeDriverBadge with merge recommended tier (or prop).
+ * Residual (qh): DecisionTreeDriverBadge promptText for cost projection foresight.
  * Residual (nn): dual-gate L1–L4 checklist deep-link (prep only).
  */
 
@@ -28,7 +29,10 @@ import {
   type MergeProductResponse,
 } from "../../api/engagement";
 import { openWindow } from "../windows/openWindow";
-import { buildMergedDocWriteHref } from "../../workspace/twinWriteSeed";
+import {
+  buildMergedDocWriteHref,
+  plainTextFromHtml,
+} from "../../workspace/twinWriteSeed";
 import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 
 export type OpenMergedResearchWindowOpts = {
@@ -231,7 +235,15 @@ export function SpawnMergePanel({
           data-view-format="html"
           data-research-tier={badgeResearchTier}
         >
-          <DecisionTreeDriverBadge researchTier={badgeResearchTier} />
+          <DecisionTreeDriverBadge
+            researchTier={badgeResearchTier}
+            promptText={
+              (result?.html
+                ? plainTextFromHtml(result.html)
+                : "") ||
+              `spawn merge · ${spawnId.trim()} → ${parentAssetId.trim()}`
+            }
+          />
         </div>
       </header>
 

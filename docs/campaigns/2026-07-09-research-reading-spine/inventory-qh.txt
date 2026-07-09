@@ -1,0 +1,4 @@
+# inventory-qh · spawn-merge driver badge promptText
+residual: qh · 2026-07-10
+- DecisionTreeDriverBadge promptText from merge HTML plain or spawn→parent
+- vitest SpawnMergePanel 7 passed

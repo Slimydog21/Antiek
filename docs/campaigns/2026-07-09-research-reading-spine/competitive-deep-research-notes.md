@@ -655,3 +655,5 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (qf, 2026-07-10) **Write dual-handoff matrix SESSION-ARC** + buildMergedDocWriteHref test
 
 - Closed (qg, 2026-07-10) **collective DecisionTreeDriverBadge promptText** for budget foresight
+
+- Closed (qh, 2026-07-10) **spawn-merge DecisionTreeDriverBadge promptText**

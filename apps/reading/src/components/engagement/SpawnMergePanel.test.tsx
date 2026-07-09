@@ -19,10 +19,12 @@ vi.mock("../windows/openWindow", () => ({
 vi.mock("./DecisionTreeDriverBadge", () => ({
   DecisionTreeDriverBadge: (props: {
     researchTier?: string | null;
+    promptText?: string | null;
   }) => (
     <div
       data-testid="decision-tree-driver-badge-stub"
       data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+      data-prompt-len={String((props.promptText || "").length)}
     >
       driver badge
     </div>
@@ -350,4 +352,14 @@ describe("SpawnMergePanel residual ci", () => {
       expect(screen.getByRole("alert").textContent).toMatch(/html/i);
     });
   });
+
+  it("passes spawn merge promptText to driver badge (qh)", () => {
+    render(
+      <SpawnMergePanel spawnId="spn_qh" parentAssetId="paper_qh" />,
+    );
+    const badge = screen.getByTestId("decision-tree-driver-badge-stub");
+    expect(Number(badge.getAttribute("data-prompt-len") || 0)).toBeGreaterThan(5);
+    expect(badge.getAttribute("data-prompt-len")).not.toBe("0");
+  });
+
 });
