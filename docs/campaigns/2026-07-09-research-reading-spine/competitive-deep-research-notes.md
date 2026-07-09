@@ -566,3 +566,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (pj, 2026-07-10) **HostedHtml driver badge promptText projection:**
   - selection + pub refs → DecisionTreeDriverBadge promptText
   - marketplace books ≡ reading≡write≡MO cost foresight
+
+- Closed (pk, 2026-07-10) **SESSION-ARC pg–pj driver projection:**
+  - SESSION-ARC-pg-pj-driver-projection.md fleet handoff
+  - MO/Write/ResearchThis/Hosted cost foresight matrix complete

@@ -31,7 +31,7 @@ Highest leverage. Agents never merge main/prod.
 | V1 | **Recursive twin cross-asset merge UI** | Multi-select twins from asset A + B → combined twin substrate draft (HTML) before promote | Substrate promote exists; need compose UI + draft_combined twins |
 | V2 | **Collective “cohesive unit prompt” history** | After collective continue-as-unit, re-open unit shows prior multi-select spawn set | Ring already max 24; persist unit membership on analysis asset |
 | V3 | **Antiek-bench recursive rewrite weekly chrome** | Settings shows last rewrite proposal delta + which by_source drove added tasks | propose≠promote already; polish rewrite rationale UI |
-| V4 | **Model decision-tree “prompt projection vs cap”** | DecisionTreeDriverBadge shows estimated impact of current prompt on remaining daily budget | Budget panel has projection; badge compact bar exists — wire live prompt when available |
+| V4 | **Model decision-tree “prompt projection vs cap”** | ✅ **Closed pg–pj** DecisionTreeDriverBadge promptText on MO/Write/ResearchThis/Hosted | See SESSION-ARC-pg-pj |
 | V5 | **Marketplace free→account host polish** | One-click host + open hosted HTML + twins auto-seed + DR float from catalog row | Mostly shipped (iu–iw); dogfood any broken deep-links |
 | V6 | **HTML draft twin seed after MO deposit write handoff** | Open Write from deposit seeds twins if empty | Write HTML import seeds (fz); verify MO handoff path |
 
