@@ -490,3 +490,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (oq, 2026-07-10) **MO offline run → recent_ring without auto-deposit:**
   - rememberSpawnIds chokepoint on run + deposit
   - auto_deposit off still feeds collective multi-select elsewhere
+
+- Closed (or, 2026-07-10) **SESSION-ARC om–oq Write + MO engagement:**
+  - SESSION-ARC-om-oq-write-moil-engagement.md fleet handoff
+  - DEFERRED-GAPS closed-since-om block

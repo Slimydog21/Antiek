@@ -97,6 +97,13 @@ Settings known_sources + by_source API fix; suite proposal feed chrome.
 **(ob–og)** recent DR spawn ring, clear recent, origin badges, select recent
 only — twin chase → collective cohesive unit path offline-complete.
 
+## Closed since om (Write + Midnight Oil engagement · 2026-07-10)
+
+**(om–oq)** WriteHome recent_ring collective parity; Midnight Oil deposit
+full engagement spine (collective + twins + research context) + offline run
+spawn_ids always enter recent_ring (auto_deposit off still multi-selectable).
+See `SESSION-ARC-om-oq-write-moil-engagement.md`.
+
 ## Next residual after this doc
 
 ## Closed since oi (collective bench feed · 2026-07-10)
