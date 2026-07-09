@@ -199,3 +199,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - (lr) ResearchProgressPanel DecisionTreeDriverBadge when tier known
   Long-horizon plan→cite jobs keep model driver, budget, and depth visible mid-run.
 
+
+- Closed (lt–lu, 2026-07-10) **Flywheel complete driver+depth:**
+  - (lt) SessionFlywheelPanel DecisionTreeDriverBadge (prop → post-complete effective)
+  - (lu) DeepResearchSessionHost wires session researchTier into flywheel panel
+

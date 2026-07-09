@@ -1,0 +1,8 @@
+# inventory-lu · DR host wires researchTier into SessionFlywheelPanel
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: lu
+files:
+  apps/reading/src/components/windows/DeepResearchSessionHost.tsx
+  docs/campaigns/2026-07-09-research-reading-spine/competitive-deep-research-notes.md
+proof: suite-proposal 4_passed; SessionFlywheelPanel 4_passed (lt); docs honesty
+invariants: HTML · session tier into flywheel badge · NotDiamond advisory

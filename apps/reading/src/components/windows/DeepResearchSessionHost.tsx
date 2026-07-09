@@ -382,6 +382,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
               (selection !== "(no selection)" ? selection : "")
             }
             onCompleted={onContextNeedsRefresh}
+            researchTier={researchTier}
           />
         </section>
       ) : null}
