@@ -14,8 +14,10 @@ vi.mock("../engagement/TwinNotesPanel", () => ({
 }));
 
 vi.mock("../engagement/ResearchContextPanel", () => ({
-  ResearchContextPanel: (props: { assetId: string }) => (
-    <div data-testid="research-context-panel-stub">{props.assetId}</div>
+  ResearchContextPanel: (props: { assetId: string; autoLoad?: boolean }) => (
+    <div data-testid="research-context-panel-stub">
+      {props.assetId}:auto={String(Boolean(props.autoLoad))}
+    </div>
   ),
 }));
 
@@ -43,7 +45,7 @@ describe("HostedHtmlDocumentHost", () => {
     );
   });
 
-  it("mounts twin notes + research context for document_id (bw)", () => {
+  it("mounts twin notes + research context for document_id (bw/cv)", () => {
     render(
       <HostedHtmlDocumentHost
         document_id="hdoc_xyz"
@@ -53,12 +55,12 @@ describe("HostedHtmlDocumentHost", () => {
       />,
     );
     expect(screen.getByTestId("hosted-html-twins-mount")).toBeTruthy();
-    expect(screen.getByTestId("twin-notes-panel-stub").textContent).toBe(
-      "hdoc_xyz",
+    expect(screen.getByTestId("twin-notes-panel-stub").textContent).toMatch(
+      /hdoc_xyz/,
     );
     expect(screen.getByTestId("hosted-html-context-mount")).toBeTruthy();
-    expect(screen.getByTestId("research-context-panel-stub").textContent).toBe(
-      "hdoc_xyz",
+    expect(screen.getByTestId("research-context-panel-stub").textContent).toMatch(
+      /hdoc_xyz:auto=true/,
     );
   });
 

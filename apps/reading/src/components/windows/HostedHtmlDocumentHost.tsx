@@ -93,7 +93,7 @@ export default function HostedHtmlDocumentHost(
           data-testid="hosted-html-context-mount"
           data-view-format="html"
         >
-          <ResearchContextPanel assetId={assetId} spawnId={null} />
+          <ResearchContextPanel assetId={assetId} spawnId={null} autoLoad />
         </section>
       ) : null}
     </div>
