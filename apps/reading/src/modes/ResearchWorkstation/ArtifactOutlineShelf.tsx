@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type DragEvent } from "react";
 
 import {
   composeResearchArtifacts,
@@ -6,6 +6,7 @@ import {
   getResearchArtifactBlocks,
   type ResearchArtifactBlock,
 } from "../../lib/api";
+import { useInvestigationList } from "../../hooks/useInvestigationList";
 import { artifactKindToBlockKind } from "../../lib/artifactBlocks";
 import {
   DRAG_MIME,
@@ -47,10 +48,19 @@ export default function ArtifactOutlineShelf({
   const [exportPath, setExportPath] = useState<string | null>(null);
   const [twinNotesPath, setTwinNotesPath] = useState<string | null>(null);
   const [mergeIds, setMergeIds] = useState("");
+  const [selectedChildIds, setSelectedChildIds] = useState<string[]>([]);
   const [draftMergePath, setDraftMergePath] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [mergeBusy, setMergeBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const { investigations } = useInvestigationList({ limit: 200, pollIntervalMs: 0 });
+  const childOptions = useMemo(
+    () =>
+      investigations
+        .filter((item) => item.parent_investigation_id === investigationId)
+        .sort((a, b) => (b.started_at ?? "").localeCompare(a.started_at ?? "")),
+    [investigations, investigationId],
+  );
 
   const reload = useCallback(async () => {
     try {
@@ -83,7 +93,7 @@ export default function ArtifactOutlineShelf({
   };
 
   const onDraftMerge = async () => {
-    const ids = [investigationId, ...parseSiblingIds(mergeIds)];
+    const ids = [investigationId, ...selectedChildIds, ...parseSiblingIds(mergeIds)];
     const uniqueIds = Array.from(new Set(ids));
     if (uniqueIds.length < 2) {
       setErr("Add at least one other research id to draft a merge.");
@@ -99,6 +109,14 @@ export default function ArtifactOutlineShelf({
     } finally {
       setMergeBusy(false);
     }
+  };
+
+  const toggleChild = (childId: string) => {
+    setSelectedChildIds((current) =>
+      current.includes(childId)
+        ? current.filter((id) => id !== childId)
+        : [...current, childId],
+    );
   };
 
   if (!blocks.length && !exportPath && !err) {
@@ -132,6 +150,25 @@ export default function ArtifactOutlineShelf({
           </span>
         ) : null}
       </div>
+      {childOptions.length > 0 ? (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {childOptions.map((child) => (
+            <label
+              key={child.investigation_id}
+              className="inline-flex max-w-full items-center gap-1.5 rounded-hog border border-rule bg-ice-0 px-2 py-1 font-mono text-[11px] text-ink dark:bg-charcoal-2 dark:text-bright"
+              title={child.question ?? child.investigation_id}
+            >
+              <input
+                type="checkbox"
+                checked={selectedChildIds.includes(child.investigation_id)}
+                onChange={() => toggleChild(child.investigation_id)}
+                className="h-3 w-3 accent-sun"
+              />
+              <span className="truncate">{child.question ?? child.investigation_id}</span>
+            </label>
+          ))}
+        </div>
+      ) : null}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input
           value={mergeIds}

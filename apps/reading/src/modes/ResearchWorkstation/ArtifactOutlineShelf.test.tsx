@@ -3,11 +3,12 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 
 import ArtifactOutlineShelf from "./ArtifactOutlineShelf";
 
-const { composeResearchArtifactsMock, exportResearchArtifactMock, getResearchArtifactBlocksMock } =
+const { composeResearchArtifactsMock, exportResearchArtifactMock, getResearchArtifactBlocksMock, listState } =
   vi.hoisted(() => ({
     composeResearchArtifactsMock: vi.fn(),
     exportResearchArtifactMock: vi.fn(),
     getResearchArtifactBlocksMock: vi.fn(),
+    listState: { investigations: [] as unknown[], loading: false, error: null, refetch: vi.fn() },
   }));
 
 vi.mock("../../lib/api", () => ({
@@ -16,9 +17,14 @@ vi.mock("../../lib/api", () => ({
   getResearchArtifactBlocks: getResearchArtifactBlocksMock,
 }));
 
+vi.mock("../../hooks/useInvestigationList", () => ({
+  useInvestigationList: () => listState,
+}));
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  listState.investigations = [];
 });
 
 describe("ArtifactOutlineShelf", () => {
@@ -73,6 +79,58 @@ describe("ArtifactOutlineShelf", () => {
       expect(composeResearchArtifactsMock).toHaveBeenCalledWith(["inv-a", "inv-b", "inv-c"], true),
     );
     expect(await screen.findByText("/tmp/artifacts/draft-merge.html")).toBeTruthy();
+  });
+
+  it("draft-merges selected child researches from the investigation list", async () => {
+    listState.investigations = [
+      {
+        investigation_id: "inv-child-a",
+        question: "Child A",
+        status: "completed",
+        started_at: "2026-07-09T12:00:00Z",
+        completed_at: null,
+        cost_usd_total: 0,
+        parent_investigation_id: "inv-a",
+      },
+      {
+        investigation_id: "inv-other",
+        question: "Other parent",
+        status: "completed",
+        started_at: "2026-07-09T12:01:00Z",
+        completed_at: null,
+        cost_usd_total: 0,
+        parent_investigation_id: "inv-z",
+      },
+    ];
+    getResearchArtifactBlocksMock.mockResolvedValue({
+      investigation_id: "inv-a",
+      blocks: [
+        {
+          node_id: "node-1",
+          kind: "insight",
+          label: "A useful finding",
+          investigation_id: "inv-a",
+          artifact_path: null,
+        },
+      ],
+    });
+    composeResearchArtifactsMock.mockResolvedValue({
+      path: "/tmp/artifacts/compose.html",
+      draft_merge_path: "/tmp/artifacts/child-draft-merge.html",
+      members: [],
+      hash_conflicts: [],
+    });
+
+    render(<ArtifactOutlineShelf investigationId="inv-a" />);
+
+    fireEvent.click(await screen.findByLabelText("Child A"));
+    expect(screen.queryByLabelText("Other parent")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Draft merge/i }));
+
+    await waitFor(() =>
+      expect(composeResearchArtifactsMock).toHaveBeenCalledWith(["inv-a", "inv-child-a"], true),
+    );
+    expect(await screen.findByText("/tmp/artifacts/child-draft-merge.html")).toBeTruthy();
   });
 
   it("refuses a draft merge without a second research id", async () => {
