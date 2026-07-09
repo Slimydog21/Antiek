@@ -506,3 +506,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (ou, 2026-07-10) **ResearchThis recent_ring collective proof:**
   - data-recent-count on research-this-collective-mount
   - vitest wires listRecent → collect → CollectiveResearchPanel (parity om)
+
+- Closed (ov, 2026-07-10) **HostedHtml recent_ring collective proof:**
+  - data-recent-count on hosted-html-collective-mount
+  - vitest parity Write/ResearchThis (marketplace books ≡ reading)

@@ -520,13 +520,14 @@ export default function HostedHtmlDocumentHost(
         </section>
       ) : null}
 
-      {/* Residual (eu): multi-select open DR spawns → merge into this book. */}
+      {/* Residual (eu/ov): multi-select open + recent DR spawns → this book. */}
       {assetId && isHtml && availableSpawnIds.length > 0 ? (
         <section
           className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
           data-testid="hosted-html-collective-mount"
           data-view-format="html"
           data-available-spawn-count={String(availableSpawnIds.length)}
+          data-recent-count={String(recentSpawnIds.length)}
         >
           <CollectiveResearchPanel
             availableSpawnIds={availableSpawnIds}
