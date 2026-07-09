@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   mapDepthTierToResearchTier,
+  mapResearchTierToBenchTaskClass,
   mapResearchTierToDepthTier,
 } from "./researchTier";
 
@@ -28,5 +29,17 @@ describe("researchTier map residual (gt)", () => {
     expect(mapResearchTierToDepthTier("deep")).toBe("pro");
     expect(mapResearchTierToDepthTier("wrestle")).toBe("wrestle");
     expect(mapResearchTierToDepthTier(null)).toBeNull();
+  });
+});
+
+describe("researchTier map residual (gw) bench task_class", () => {
+  it("maps ResearchTier to Antiek-bench task_class", () => {
+    expect(mapResearchTierToBenchTaskClass("wrestle")).toBe("wrestle");
+    expect(mapResearchTierToBenchTaskClass("fast")).toBe("distill");
+    expect(mapResearchTierToBenchTaskClass("flash")).toBe("distill");
+    expect(mapResearchTierToBenchTaskClass("deep")).toBe("synthesize");
+    expect(mapResearchTierToBenchTaskClass("pro")).toBe("synthesize");
+    expect(mapResearchTierToBenchTaskClass(null)).toBeNull();
+    expect(mapResearchTierToBenchTaskClass("unknown")).toBeNull();
   });
 });

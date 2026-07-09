@@ -118,3 +118,6 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - research_tier_to_task_class; record_session_flywheel_usage override
 - Midnight Oil deposit passes job.research_tier
 - tests: deposit_usage + usage_bridge + suite-proposal
+## residual (gw) TS research_tier → bench task_class — 2026-07-09
+- mapResearchTierToBenchTaskClass parity with usage_bridge
+- tests: researchTier 5 passed

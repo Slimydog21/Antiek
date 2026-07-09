@@ -38,3 +38,28 @@ export function mapResearchTierToDepthTier(
   if (researchTier === "wrestle") return "wrestle";
   return null;
 }
+
+/** Antiek-bench recursive suite rewrite task classes. */
+export type AntiekBenchTaskClass =
+  | "distill"
+  | "synthesize"
+  | "wrestle"
+  | "book_qa";
+
+/**
+ * Residual (gw): map ResearchTier → Antiek-bench task_class (parity with
+ * substrate.antiek_bench.usage_bridge.research_tier_to_task_class).
+ * Returns null when unset so callers keep engagement heuristics.
+ */
+export function mapResearchTierToBenchTaskClass(
+  researchTier: ResearchTier | string | null | undefined,
+): AntiekBenchTaskClass | null {
+  const t = String(researchTier || "")
+    .trim()
+    .toLowerCase();
+  if (!t) return null;
+  if (t === "wrestle") return "wrestle";
+  if (t === "fast" || t === "flash") return "distill";
+  if (t === "deep" || t === "pro") return "synthesize";
+  return null;
+}
