@@ -146,6 +146,37 @@ describe("SpawnMergePanel residual ci", () => {
     expect(screen.queryByTestId("spawn-merge-auto-open-window")).toBeNull();
   });
 
+  it("links Open Write handoff for merged HTML document (fn)", async () => {
+    mergeSpawnOutputs.mockResolvedValue({
+      mode: "draft_combined",
+      parent_asset_id: "book-1",
+      document_id: "draft_for_write",
+      source_spawn_ids: ["spn_1"],
+      sections_merged: 1,
+      draft_leaves_parent: true,
+      parent_document_id: "book-1",
+      view_format: "html",
+      product_panel: "engagement_merge",
+      source: "engagement_spine.merge_spawn_outputs",
+      notes: ["Draft"],
+      html: "<p>Write me</p>",
+    });
+    render(
+      <SpawnMergePanel
+        spawnId="spn_1"
+        parentAssetId="book-1"
+        autoOpenDraft={false}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("spawn-merge-draft"));
+    await waitFor(() => {
+      expect(screen.getByTestId("spawn-merge-open-write")).toBeTruthy();
+    });
+    const link = screen.getByTestId("spawn-merge-open-write");
+    expect(link.getAttribute("href")).toBe("/write?html_draft=draft_for_write");
+    expect(link.getAttribute("data-view-format")).toBe("html");
+  });
+
   it("opens merged HTML in full working-region window (ev)", async () => {
     mergeSpawnOutputs.mockResolvedValue({
       mode: "draft_combined",

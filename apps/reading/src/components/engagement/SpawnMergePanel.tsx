@@ -11,6 +11,7 @@
  * draft joins the reading/research flywheel without a second click (parent
  * merge stays manual — parent may already be open).
  * Residual (ev): manual re-open as full working-region window after merge.
+ * Residual (fn): Open Write handoff link for merged HTML document_id (fl/fm).
  */
 
 import { useCallback, useState } from "react";
@@ -261,6 +262,16 @@ export function SpawnMergePanel({
                 >
                   Open merged HTML full
                 </button>
+                {/* Residual (fn): handoff merged HTML draft into Write mode. */}
+                <a
+                  href={`/write?html_draft=${encodeURIComponent(result.document_id)}`}
+                  data-testid="spawn-merge-open-write"
+                  data-view-format="html"
+                  className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono underline hover:bg-ink/5 dark:border-bright/30"
+                  title="Open Write with this HTML merge document as draft handoff"
+                >
+                  Open Write (HTML draft)
+                </a>
               </div>
               <div
                 className="prose max-h-40 overflow-auto text-sm"

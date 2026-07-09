@@ -17,6 +17,7 @@
  *    context after document merge / written analysis (+ twin seed).
  * 9. Residual (ey): continue cohesive unit as full working-region window as
  *    well as floating (parity with ResearchThis et / hosted es).
+ * 10. Residual (fn): Open Write handoff for merged draft document_id (fl/fm).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -529,6 +530,16 @@ export function CollectiveResearchPanel({
               >
                 Open analysis full
               </button>
+              {/* Residual (fn): handoff collective draft into Write mode. */}
+              <a
+                href={`/write?html_draft=${encodeURIComponent(docMerge.document_id)}`}
+                data-testid="collective-open-write"
+                data-view-format="html"
+                className="underline"
+                title="Open Write with this HTML merge document as draft handoff"
+              >
+                Open Write (HTML draft)
+              </a>
             </div>
           ) : null}
           {docMerge.html ? (

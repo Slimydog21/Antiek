@@ -457,5 +457,10 @@ describe("CollectiveResearchPanel", () => {
     });
     expect(screen.getByTestId("collective-auto-open-window")).toBeTruthy();
     expect(screen.getByTestId("collective-open-analysis-window")).toBeTruthy();
+    // Residual (fn): Write handoff for analysis draft document.
+    const write = screen.getByTestId("collective-open-write");
+    expect(write.getAttribute("href")).toBe(
+      "/write?html_draft=draft_analysis_1",
+    );
   });
 });

@@ -1,0 +1,16 @@
+# residual (fn) spawn/collective merge → Write HTML draft handoff
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(fm) prior | branch_only | campaign inventories
+(fn) merge open Write | branch_only | spawn-merge-open-write + collective-open-write href=/write?html_draft=; 6 spawn + 8 collective vitest
+
+PATHS:
+- apps/reading/src/components/engagement/SpawnMergePanel.tsx
+- apps/reading/src/components/engagement/CollectiveResearchPanel.tsx
+
+INVARIANTS:
+- HTML document_id only
+- Handoff uses same ?html_draft= as fl/fm Write path
+
+NEXT: (fo) re-derive; operator merge PR #465
