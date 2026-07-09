@@ -366,3 +366,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (nl, 2026-07-10) **Collective dual-gate checklist link:**
   - L6 live multi-agent collective prep surface
   - dual-gate prep now spans attach/MO/marketplace/twins/context/progress/collective
+
+- Closed (nm, 2026-07-10) **SESSION-ARC nk–nl collective multi-select:**
+  - SESSION-ARC-nk-nl-collective-multiselect.md fleet handoff
+  - dual-gate prep surfaces complete on major engagement panels

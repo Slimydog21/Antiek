@@ -1,0 +1,9 @@
+# inventory-nm · SESSION-ARC nk–nl collective multi-select + dual-gate
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: nm
+files:
+  docs/campaigns/2026-07-09-research-reading-spine/SESSION-ARC-nk-nl-collective-multiselect.md
+  docs/campaigns/2026-07-09-research-reading-spine/NEXT-WAVE-after-nm.md
+  docs/campaigns/2026-07-09-research-reading-spine/competitive-deep-research-notes.md
+proof: docs-only; CollectiveResearchPanel 12-passed suite on branch
+invariants: zero-context fleet handoff · operator merge gated
