@@ -419,6 +419,13 @@ export type NotDiamondAdvisoryResponse = {
   authority_allowed: boolean;
   authority_rejected: boolean;
   authority_verdict: string;
+  /** Residual (br): advisory suggestion for explicit decision-tree install only. */
+  suggested_model_id?: string | null;
+  suggested_provider_id?: string | null;
+  suggestion_source?: string | null;
+  suggestion_week_id?: string | null;
+  recommended_mean_score?: number | null;
+  installable?: boolean;
   dispatch_owner: string;
   notdiamond_is_dispatch_authority: boolean;
   kill_switch_env: string;
@@ -434,8 +441,12 @@ export type NotDiamondAdvisoryResponse = {
 
 export async function fetchNotDiamondAdvisory(opts?: {
   includeHtml?: boolean;
+  weekId?: string;
 }): Promise<NotDiamondAdvisoryResponse> {
-  const q = opts?.includeHtml ? "?include_html=true" : "";
+  const params = new URLSearchParams();
+  if (opts?.includeHtml) params.set("include_html", "true");
+  if (opts?.weekId) params.set("week_id", opts.weekId);
+  const q = params.toString() ? `?${params.toString()}` : "";
   const res = await apiFetch(`${API_BASE}/settings/notdiamond/advisory${q}`);
   return readJson<NotDiamondAdvisoryResponse>(res);
 }

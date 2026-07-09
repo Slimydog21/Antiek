@@ -172,7 +172,10 @@ export default function Settings() {
           setSuiteProposalError(e instanceof Error ? e.message : String(e));
       }
       try {
-        const n = await fetchNotDiamondAdvisory({ includeHtml: true });
+        const n = await fetchNotDiamondAdvisory({
+          includeHtml: true,
+          weekId: leaderboardWeek,
+        });
         if (!cancelled) setNd(n);
       } catch (e) {
         if (!cancelled) setNdError(e instanceof Error ? e.message : String(e));
@@ -318,6 +321,41 @@ export default function Settings() {
       setOfflineRunError(e instanceof Error ? e.message : String(e));
     } finally {
       setOfflineRunBusy(false);
+    }
+  }
+
+  async function onInstallNotDiamondAdvisory() {
+    if (!nd?.suggested_model_id) {
+      setNdError("No advisory suggestion to install");
+      return;
+    }
+    if (nd.notdiamond_is_dispatch_authority) {
+      setNdError("Refusing install: NotDiamond must never be dispatch authority");
+      return;
+    }
+    setTreeBusy(true);
+    setTreeError(null);
+    setNdError(null);
+    try {
+      const provider =
+        nd.suggested_provider_id ||
+        selectedProvider ||
+        models?.find((m) => m.ready)?.provider_id ||
+        models?.[0]?.provider_id ||
+        "offline-stub";
+      const mid = nd.suggested_model_id;
+      const result = await installDecisionTreeSelection({
+        model_id: mid,
+        provider_id: provider,
+      });
+      setTree(result);
+      setSelectedModel(mid);
+      setSelectedProvider(provider);
+    } catch (e) {
+      setNdError(e instanceof Error ? e.message : String(e));
+      setTreeError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTreeBusy(false);
     }
   }
 
@@ -940,7 +978,34 @@ export default function Settings() {
                   label="Kill-switch"
                   value={`${nd.kill_switch_env}=${nd.kill_switch_enabled ? "on" : "off (default)"}`}
                 />
+                <Row
+                  label="Suggested model"
+                  value={
+                    nd.suggested_model_id
+                      ? `${nd.suggested_model_id}${
+                          nd.recommended_mean_score != null
+                            ? ` (${nd.recommended_mean_score})`
+                            : ""
+                        }`
+                      : "—"
+                  }
+                />
+                <Row
+                  label="Suggestion source"
+                  value={nd.suggestion_source || "—"}
+                />
                 <Row label="View" value={nd.view_format} />
+                {nd.suggested_model_id && nd.installable !== false ? (
+                  <button
+                    type="button"
+                    data-testid="notdiamond-install-advisory"
+                    disabled={treeBusy || nd.notdiamond_is_dispatch_authority}
+                    onClick={() => void onInstallNotDiamondAdvisory()}
+                    className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+                  >
+                    Install advisory pick as decision-tree driver
+                  </button>
+                ) : null}
                 {nd.notes?.map((n) => (
                   <p
                     key={n}

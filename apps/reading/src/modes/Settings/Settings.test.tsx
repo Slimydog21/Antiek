@@ -337,12 +337,16 @@ const {
       kill_switch_env: "ANTIEK_NOTDIAMOND",
       kill_switch_enabled: false,
       default_off: true,
+      suggested_model_id: "stub-strong",
+      suggested_provider_id: "offline-stub",
+      suggestion_source: "notdiamond_advisory.offline_fallback",
+      installable: true,
       view_format: "html",
       settings_panel: "notdiamond_advisory",
       source: "docs/htmlspec/notdiamond-verdict/VERDICT.md",
       verdict_date: "2026-07-09",
       notes: ["Authority REJECT under §16"],
-      html: "<p>Authority REJECT — not the dispatch authority</p>",
+      html: "<p>Authority REJECT — not the dispatch authority · Suggested model (advisory): stub-strong</p>",
     })),
   };
 });
@@ -486,6 +490,27 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("notdiamond-advisory-html").innerHTML).toMatch(
       /authority|REJECT/i,
     );
+  });
+
+  it("installs NotDiamond advisory pick as decision-tree driver (never authority)", async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("notdiamond-install-advisory")).toBeTruthy();
+    });
+    expect(screen.getByTestId("notdiamond-advisory-summary").textContent).toMatch(
+      /stub-strong/,
+    );
+    await user.click(screen.getByTestId("notdiamond-install-advisory"));
+    await waitFor(() => {
+      expect(installDecisionTreeSelection).toHaveBeenCalled();
+    });
+    const call = installDecisionTreeSelection.mock.calls.at(-1)?.[0] as {
+      model_id: string;
+      provider_id?: string;
+    };
+    expect(call.model_id).toBe("stub-strong");
+    expect(call.provider_id).toBeTruthy();
   });
 
   it("loads Antiek-bench suite proposal — proposed not auto-promoted", async () => {

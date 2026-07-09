@@ -762,6 +762,13 @@ class NotDiamondAdvisoryResponse(BaseModel):
     kill_switch_env: str = "ANTIEK_NOTDIAMOND"
     kill_switch_enabled: bool = False
     default_off: bool = True
+    # Residual (br): advisory suggestion for explicit decision-tree install only
+    suggested_model_id: str | None = None
+    suggested_provider_id: str | None = None
+    suggestion_source: str | None = None
+    suggestion_week_id: str | None = None
+    recommended_mean_score: float | None = None
+    installable: bool = False
     view_format: str = "html"
     settings_panel: str = "notdiamond_advisory"
     source: str = "docs/htmlspec/notdiamond-verdict/VERDICT.md"
@@ -774,15 +781,33 @@ class NotDiamondAdvisoryResponse(BaseModel):
     "/notdiamond/advisory",
     response_model=NotDiamondAdvisoryResponse,
 )
-def get_notdiamond_advisory(include_html: bool = False) -> NotDiamondAdvisoryResponse:
+def get_notdiamond_advisory(
+    request: Request,
+    include_html: bool = False,
+    week_id: str | None = None,
+) -> NotDiamondAdvisoryResponse:
     """Return offline NotDiamond advisory posture for Settings.
 
     Never calls NotDiamond HTTP. Never claims ND owns dispatch.
     Authority is always rejected; advisory may be GO with kill-switch default off.
+    ``suggested_model_id`` is advisory for explicit decision-tree install only.
     """
     from substrate.notdiamond_advisory import notdiamond_advisory_payload
 
-    payload = notdiamond_advisory_payload(include_html=include_html)
+    store = getattr(request.app.state, "antiek_bench_store", None)
+    if store is None:
+        try:
+            from .engagement_routes import get_bench_usage_store
+
+            store = get_bench_usage_store(create_if_missing=False)
+        except Exception:
+            store = None
+
+    payload = notdiamond_advisory_payload(
+        include_html=include_html,
+        store=store,
+        week_id=week_id,
+    )
     return NotDiamondAdvisoryResponse(
         advisory_allowed=bool(payload.get("advisory_allowed")),
         advisory_verdict=str(payload.get("advisory_verdict") or "GO"),
@@ -798,6 +823,12 @@ def get_notdiamond_advisory(include_html: bool = False) -> NotDiamondAdvisoryRes
         kill_switch_env=str(payload.get("kill_switch_env") or "ANTIEK_NOTDIAMOND"),
         kill_switch_enabled=bool(payload.get("kill_switch_enabled")),
         default_off=bool(payload.get("default_off", True)),
+        suggested_model_id=payload.get("suggested_model_id"),
+        suggested_provider_id=payload.get("suggested_provider_id"),
+        suggestion_source=payload.get("suggestion_source"),
+        suggestion_week_id=payload.get("suggestion_week_id"),
+        recommended_mean_score=payload.get("recommended_mean_score"),
+        installable=bool(payload.get("installable")),
         view_format=str(payload.get("view_format") or "html"),
         settings_panel=str(payload.get("settings_panel") or "notdiamond_advisory"),
         source=str(payload.get("source") or ""),
