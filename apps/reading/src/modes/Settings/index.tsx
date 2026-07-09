@@ -1392,11 +1392,25 @@ export default function Settings() {
             className="p-4 space-y-3"
             data-testid="antiek-bench-suite-proposal-panel"
             data-view-format="html"
+            data-propose-not-promote="true"
+            data-auto-promoted={String(
+              suiteProposal?.auto_promoted === true,
+            )}
+            data-has-proposal={String(Boolean(suiteProposal?.has_proposal))}
           >
             <p className="text-sm text-ink dark:text-bright">
               Recursive suite rewrite proposal derived from recorded usage
               events. Status is always <strong>proposed</strong> here —
               operator must explicitly approve/promote (not auto-active).
+            </p>
+            {/* Residual (fg): explicit propose≠promote honesty banner. */}
+            <p
+              className="text-[11px] font-mono text-aurora"
+              data-testid="antiek-bench-propose-not-promote"
+              role="status"
+            >
+              Invariant: propose ≠ auto-promote · auto_promoted=
+              {String(suiteProposal?.auto_promoted ?? false)}
             </p>
             {suiteProposalError && (
               <p className="text-sm text-red-700 dark:text-red-300 font-mono">
@@ -1509,6 +1523,35 @@ export default function Settings() {
                 />
                 <Row label="Events" value={String(suiteProposal.event_count)} />
                 <Row label="View" value={suiteProposal.view_format} />
+                {/* Residual (fg): proposed sub-benchmark / task item ids. */}
+                {suiteProposal.added_item_ids?.length ? (
+                  <div
+                    className="space-y-1"
+                    data-testid="antiek-bench-proposed-tasks"
+                    data-task-count={String(suiteProposal.added_item_ids.length)}
+                  >
+                    <p className="text-[11px] font-mono text-ink-soft dark:text-starlight">
+                      Proposed sub-benchmark tasks (
+                      {suiteProposal.added_item_ids.length}) — not active until
+                      Approve & promote
+                    </p>
+                    <ul className="list-disc pl-4 text-[12px] font-mono">
+                      {suiteProposal.added_item_ids.map((id) => (
+                        <li key={id} data-testid="antiek-bench-proposed-task-id">
+                          {id}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : suiteProposal.has_proposal ? (
+                  <p
+                    className="text-[11px] font-mono text-ink-soft dark:text-starlight"
+                    data-testid="antiek-bench-proposed-tasks-empty"
+                  >
+                    Proposal has no added_item_ids yet (rewrite may be
+                    rationale-only).
+                  </p>
+                ) : null}
                 {suiteProposal.rationale ? (
                   <p
                     className="text-[11px] text-ink-soft dark:text-starlight"

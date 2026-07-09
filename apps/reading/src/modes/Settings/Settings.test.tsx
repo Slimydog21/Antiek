@@ -525,11 +525,19 @@ describe("Settings SPR-01 + decision-tree install", () => {
         screen.getByTestId("antiek-bench-suite-proposal-summary").textContent,
       ).toMatch(/proposed/i);
     });
-    expect(
-      screen
-        .getByTestId("antiek-bench-suite-proposal-panel")
-        .getAttribute("data-view-format"),
-    ).toBe("html");
+    const panel = screen.getByTestId("antiek-bench-suite-proposal-panel");
+    expect(panel.getAttribute("data-view-format")).toBe("html");
+    // Residual (fg): propose≠promote banner + proposed task list.
+    expect(panel.getAttribute("data-propose-not-promote")).toBe("true");
+    expect(panel.getAttribute("data-auto-promoted")).toBe("false");
+    expect(screen.getByTestId("antiek-bench-propose-not-promote").textContent).toMatch(
+      /propose ≠ auto-promote/i,
+    );
+    const tasks = screen.getByTestId("antiek-bench-proposed-tasks");
+    expect(tasks.getAttribute("data-task-count")).toBe("1");
+    expect(screen.getByTestId("antiek-bench-proposed-task-id").textContent).toMatch(
+      /usage-distill/,
+    );
     const summary = screen.getByTestId("antiek-bench-suite-proposal-summary");
     expect(summary.textContent).toMatch(/prop_testdeadbeef01/);
     expect(summary.textContent).toMatch(/Auto-promoted\s*false/i);
