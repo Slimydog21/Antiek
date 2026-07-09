@@ -4,11 +4,13 @@ import { CollectiveResearchPanel } from "./CollectiveResearchPanel";
 
 const fetchCollectiveResearch = vi.fn();
 const mergeSpawnOutputs = vi.fn();
+const seedTwinNotes = vi.fn();
 const openWindow = vi.fn(() => "win:analysis:draft_1");
 
 vi.mock("../../api/engagement", () => ({
   fetchCollectiveResearch: (...args: unknown[]) => fetchCollectiveResearch(...args),
   mergeSpawnOutputs: (...args: unknown[]) => mergeSpawnOutputs(...args),
+  seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...args),
 }));
 
 vi.mock("../windows/openWindow", () => ({
@@ -20,6 +22,15 @@ describe("CollectiveResearchPanel", () => {
   beforeEach(() => {
     fetchCollectiveResearch.mockReset();
     mergeSpawnOutputs.mockReset();
+    seedTwinNotes.mockReset();
+    seedTwinNotes.mockResolvedValue({
+      asset_id: "draft_analysis_1",
+      seeded: true,
+      view_format: "html",
+      notes: [],
+      insight_count: 1,
+      question_count: 1,
+    });
     openWindow.mockClear();
   });
 
@@ -175,9 +186,17 @@ describe("CollectiveResearchPanel", () => {
       });
     });
     await waitFor(() => {
+      expect(seedTwinNotes).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "draft_analysis_1",
+          force_offline: true,
+        }),
+      );
+    });
+    await waitFor(() => {
       expect(
         screen.getByTestId("collective-doc-merge-result").textContent,
-      ).toMatch(/written analysis|draft_combined/i);
+      ).toMatch(/written analysis|draft_combined|Twin notes seeded/i);
     });
     expect(screen.getByTestId("collective-prompt-block").textContent).toMatch(
       /col_analysis/,

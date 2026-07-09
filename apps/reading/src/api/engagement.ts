@@ -340,6 +340,36 @@ export async function recordTwinNote(body: {
   return readJson<TwinNotesResponse>(res);
 }
 
+/** Residual (ch): seed insight + question twins for an asset (offline default). */
+export async function seedTwinNotes(body: {
+  asset_id: string;
+  title?: string;
+  body_text?: string;
+  source_spawn_id?: string | null;
+  include_html?: boolean;
+  force_offline?: boolean;
+}): Promise<
+  TwinNotesResponse & {
+    seeded?: boolean;
+    live_seed?: boolean;
+    seed_skipped?: string | null;
+  }
+> {
+  const res = await apiFetch(`${API_BASE}/engagement/twins/seed`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      asset_id: body.asset_id,
+      title: body.title ?? "",
+      body_text: body.body_text ?? "",
+      source_spawn_id: body.source_spawn_id ?? null,
+      include_html: body.include_html ?? true,
+      force_offline: Boolean(body.force_offline),
+    }),
+  });
+  return readJson(res);
+}
+
 /** Promote twins into depth-graph context units for research prompts. */
 export type TwinPromoteContextResponse = {
   asset_id: string;

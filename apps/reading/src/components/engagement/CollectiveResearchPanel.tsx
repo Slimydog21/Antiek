@@ -11,6 +11,7 @@ import { useCallback, useState } from "react";
 import {
   fetchCollectiveResearch,
   mergeSpawnOutputs,
+  seedTwinNotes,
   type CollectiveResponse,
   type MergeMode,
   type MergeProductResponse,
@@ -110,12 +111,28 @@ export function CollectiveResearchPanel({
       if (draft.view_format !== "html") {
         throw new Error("analysis draft view_format must be html");
       }
+      // Residual (ch): recursive note-taker seed on the analysis draft asset.
+      let twinNote = "";
+      try {
+        const twins = await seedTwinNotes({
+          asset_id: draft.document_id,
+          title: `Written analysis of ${selected.length} spawn(s)`,
+          body_text: collective.prompt_block?.slice(0, 500) || "",
+          include_html: false,
+          force_offline: true,
+        });
+        twinNote = twins.seeded
+          ? "Twin notes seeded on analysis draft (recursive note-taker)."
+          : `Twin seed: ${twins.seed_skipped || "skipped"}`;
+      } catch {
+        twinNote = "Twin seed skipped (API unavailable).";
+      }
       setDocMerge({
         ...draft,
-        // surface analysis product label without changing API contract shape
         notes: [
           ...(draft.notes || []),
           "Written analysis draft from collective deep research (residual cf).",
+          twinNote,
         ],
       });
     } catch (e) {

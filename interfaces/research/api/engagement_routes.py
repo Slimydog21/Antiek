@@ -516,6 +516,36 @@ def post_twins(body: TwinRecordBody) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
+class TwinSeedBody(BaseModel):
+    """Offline (or env-gated live) twin seed for any asset (residual ch)."""
+
+    asset_id: str = Field(min_length=1)
+    title: str = ""
+    body_text: str = ""
+    source_spawn_id: str | None = None
+    include_html: bool = True
+    force_offline: bool = False
+
+
+@engagement_router.post("/twins/seed")
+def post_twins_seed(body: TwinSeedBody) -> dict[str, Any]:
+    """Seed insight + question twins for an asset (idempotent offline default)."""
+    from substrate.engagement_spine import seed_twins_for_asset
+
+    try:
+        return seed_twins_for_asset(
+            body.asset_id,
+            store=_eng(),
+            title=body.title or body.asset_id,
+            body_text=body.body_text,
+            source_spawn_id=body.source_spawn_id,
+            include_html=body.include_html,
+            force_offline=body.force_offline,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
 @engagement_router.post("/twins/promote-context")
 def post_twins_promote_context(body: TwinPromoteContextBody) -> dict[str, Any]:
     """Promote asset twins into research context units (idempotent offline-safe).
