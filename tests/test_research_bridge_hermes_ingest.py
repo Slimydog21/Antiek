@@ -406,3 +406,32 @@ def test_payload_node_budget_stops_huge_object():
     rendered = _render_payload(huge)
     assert len(rendered) <= 8_192 + 32
     assert "truncated" in rendered or "…" in rendered
+
+
+def test_meta_secret_values_are_redacted():
+    record = parse_hermes_event_line(
+        json.dumps(
+            _event(
+                "sk-live-abcdefghijklmnopqrstuvwxyz",
+                "inv-with-Bearer abcdefghijklmnop",
+                phase="Bearer supersecrettokenvalue",
+                role="note_taker",
+            )
+        )
+    )
+    assert record is not None
+    assert record.event_id == "[redacted]"
+    # investigation_id may be truncated/filename-safe but secret-shaped → redacted
+    assert "Bearer" not in (record.investigation_id or "")
+    assert "sk-live" not in (record.event_id or "")
+    text = render_investigation_text(
+        group_investigations([record])[record.investigation_id]
+    )
+    assert "sk-live" not in text
+    assert "supersecrettokenvalue" not in text
+
+
+def test_payload_string_secret_values_redacted():
+    rendered = _render_payload({"note": "token is sk-live-abcdefghijklmnopqrstuvwxyz ok"})
+    assert "sk-live" not in rendered
+    assert "[redacted]" in rendered

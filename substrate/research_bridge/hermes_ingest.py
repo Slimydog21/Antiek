@@ -68,6 +68,20 @@ _SECRET_KEY_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Secret-shaped *values* (metadata fields, free-form strings) — not only key names.
+_SECRET_VALUE_RE = re.compile(
+    r"(?i)("
+    r"sk-[A-Za-z0-9_\-]{10,}"  # OpenAI-style / generic secret keys
+    r"|Bearer\s+[A-Za-z0-9\-._~+/]+=*"
+    r"|ghp_[A-Za-z0-9]{20,}"
+    r"|github_pat_[A-Za-z0-9_]{20,}"
+    r"|xox[baprs]-[A-Za-z0-9-]{10,}"
+    r"|AIza[0-9A-Za-z\-_]{20,}"
+    r"|-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"
+    r"|eyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}"  # JWT-shaped
+    r")"
+)
+
 HermesIngestStatus = Literal["ok", "cache_hit", "error", "skipped_empty"]
 
 
@@ -494,8 +508,8 @@ def _as_optional_str(value: Any) -> str | None:
 
 
 def _cap_meta(value: str, limit: int) -> str:
-    """Cap a metadata string; secret-like whole values become redacted."""
-    if _is_secret_key(value):
+    """Cap a metadata string; secret-shaped values become redacted."""
+    if _looks_like_secret_value(value) or _is_secret_key(value):
         return "[redacted]"
     return _truncate(value, limit)
 
@@ -509,6 +523,13 @@ def _cap_meta_opt(value: Any) -> str | None:
 
 def _is_secret_key(key: str) -> bool:
     return _SECRET_KEY_RE.search(key) is not None
+
+
+def _looks_like_secret_value(value: str) -> bool:
+    """True when a free-form string looks like a credential, not prose."""
+    if not value or len(value) < 12:
+        return False
+    return _SECRET_VALUE_RE.search(value) is not None
 
 
 def _truncate(text: str, limit: int) -> str:
@@ -536,6 +557,8 @@ def _sanitize_payload_value(
     if value is None or isinstance(value, (bool, int, float)):
         return value
     if isinstance(value, str):
+        if _looks_like_secret_value(value):
+            return "[redacted]"
         return _truncate(value, _MAX_PAYLOAD_VALUE_CHARS)
     if isinstance(value, dict):
         out: dict[str, Any] = {}
