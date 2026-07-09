@@ -1,0 +1,10 @@
+# inventory-lh · TalkToBook + MetaReading DecisionTreeDriverBadge researchTier
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: lh
+files:
+  apps/reading/src/modes/Reading/TalkToBook.tsx
+  apps/reading/src/modes/Reading/TalkToBook.test.tsx
+  apps/reading/src/modes/Reading/MetaReading/index.tsx
+  apps/reading/src/modes/Reading/MetaReading/MetaReading.test.tsx
+proof: TalkToBook 9_passed + MetaReading 12_passed (HONEST_OK)
+invariants: HTML · reading ≡ research model+depth · NotDiamond advisory · no PDF

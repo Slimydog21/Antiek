@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { LemonButton } from "../../../components/lemon";
 import { generateMetaReading, getSavedMetaReading } from "../../../api/books";
 import type { BookCitation, MetaReadingResponse } from "../../../api/books";
+import { DecisionTreeDriverBadge } from "../../../components/engagement/DecisionTreeDriverBadge";
 import { useSettingsResearchTier } from "../../../lib/useSettingsResearchTier";
 import ReadAloud from "../../../components/voice/ReadAloud";
 import { acceptPromotion, suggestPromotion } from "../../../lib/researchSuggestion";
@@ -26,6 +27,7 @@ import { acceptPromotion, suggestPromotion } from "../../../lib/researchSuggesti
  *   • narratable via the SPR-14 shared TTS service;
  *   • a SUGGEST-NOT-AUTOSHIP promote-into-Research link (never auto).
  * Residual (jy): Settings depth-tier → research_tier on generate (parity DR).
+ * Residual (lh): DecisionTreeDriverBadge researchTier (reading ≡ research).
  *
  * PROPOSED BOUNDARY (operator decision 2, sign-off pending): the surface
  * carries the "proposed (sign-off pending)" banner. Reversible to a soft corpus
@@ -184,6 +186,14 @@ export default function MetaReading() {
                   ? " (default deep)"
                   : ""}
             </p>
+            {/* Residual (lh): model driver + budget + depth (parity DR ku). */}
+            <div
+              data-testid="meta-reading-driver-badge-mount"
+              data-view-format="html"
+              data-research-tier={researchTier}
+            >
+              <DecisionTreeDriverBadge researchTier={researchTier} />
+            </div>
           </header>
 
           {/* The ask + the HARD length-box. */}

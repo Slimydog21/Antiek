@@ -30,6 +30,14 @@ vi.mock("../../api/books", async (orig) => {
 
 vi.mock("../../api/settings", () => ({
   fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...args),
+  fetchDecisionTreeSelection: vi.fn(async () => ({
+    model_id: null,
+    provider_id: null,
+    installed: false,
+    notes: [],
+    source: "test",
+  })),
+  fetchSettingsBudget: vi.fn(async () => null),
 }));
 
 // Stub ReadAloud so the TTS network path isn't coupled into this test (the real
@@ -40,6 +48,19 @@ vi.mock("../../components/voice/ReadAloud", () => ({
     <button type="button" data-testid="read-aloud" data-text={text}>
       {label ?? "Read aloud"}
     </button>
+  ),
+}));
+
+vi.mock("../../components/engagement/DecisionTreeDriverBadge", () => ({
+  DecisionTreeDriverBadge: (props: {
+    researchTier?: string | null;
+  }) => (
+    <div
+      data-testid="decision-tree-driver-badge-stub"
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+    >
+      driver badge
+    </div>
   ),
 }));
 
@@ -89,6 +110,25 @@ async function openAndAsk(
 }
 
 describe("TalkToBook (M2)", () => {
+  it("mounts DecisionTreeDriverBadge with researchTier when open (lh)", async () => {
+    askBookMock.mockResolvedValue(answer());
+    render(<TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />);
+    fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
+    await waitFor(() => {
+      expect(screen.getByTestId("talk-to-book-driver-badge-mount")).toBeTruthy();
+    });
+    expect(
+      screen
+        .getByTestId("talk-to-book-driver-badge-mount")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
+    expect(
+      screen
+        .getByTestId("decision-tree-driver-badge-stub")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
+  });
+
   it("answers cite pages and a citation click jumps the reader to that page", async () => {
     askBookMock.mockResolvedValue(answer());
     const jump = vi.fn();

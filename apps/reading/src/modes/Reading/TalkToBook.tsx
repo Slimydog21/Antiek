@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import { LemonButton } from "../../components/lemon";
 import { askBook } from "../../api/books";
 import type { BookCitation } from "../../api/books";
+import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
 import { useSettingsResearchTier } from "../../lib/useSettingsResearchTier";
 import ReadAloud from "../../components/voice/ReadAloud";
 import { useTalkThread } from "./useTalkThread";
@@ -24,6 +25,7 @@ import type { TalkMessage } from "./useTalkThread";
  *     precedent — NOT substrate truth);
  *   • reads any answer aloud via the SPR-14 shared TTS service (`ReadAloud`).
  * Residual (jn): Settings depth-tier → researchTier on each ask (parity DR).
+ * Residual (lh): DecisionTreeDriverBadge researchTier (reading ≡ research).
  *
  * §9.0: a withheld region can never be cited — the backend search gate keeps a
  * withheld body out of the model context and the citation set, so this surface
@@ -109,29 +111,39 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
       data-research-tier={researchTier}
       data-depth-prefill={depthPrefill}
     >
-      <header className="flex items-center justify-between gap-2 border-b border-rule dark:border-charcoal-1 px-3 py-2">
-        <span className="text-[13px] font-serif text-ink dark:text-bright truncate">
-          Talk to “{title ?? "this book"}”
-        </span>
-        <div className="flex items-center gap-2 shrink-0">
-          {turnCount > 0 && (
+      <header className="flex flex-col gap-1 border-b border-rule dark:border-charcoal-1 px-3 py-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[13px] font-serif text-ink dark:text-bright truncate">
+            Talk to “{title ?? "this book"}”
+          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            {turnCount > 0 && (
+              <button
+                type="button"
+                onClick={thread.reset}
+                className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
+                title="Clear the conversation"
+              >
+                clear
+              </button>
+            )}
             <button
               type="button"
-              onClick={thread.reset}
-              className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:underline"
-              title="Clear the conversation"
+              onClick={() => setOpen(false)}
+              aria-label="Close"
+              className="text-[13px] font-mono text-ink dark:text-bright hover:opacity-70"
             >
-              clear
+              ✕
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setOpen(false)}
-            aria-label="Close"
-            className="text-[13px] font-mono text-ink dark:text-bright hover:opacity-70"
-          >
-            ✕
-          </button>
+          </div>
+        </div>
+        {/* Residual (lh): model driver + budget + depth (parity DR ku). */}
+        <div
+          data-testid="talk-to-book-driver-badge-mount"
+          data-view-format="html"
+          data-research-tier={researchTier}
+        >
+          <DecisionTreeDriverBadge researchTier={researchTier} />
         </div>
       </header>
 

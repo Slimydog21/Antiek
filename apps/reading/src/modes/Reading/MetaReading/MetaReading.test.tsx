@@ -33,6 +33,27 @@ vi.mock("../../../api/books", async (orig) => {
 
 vi.mock("../../../api/settings", () => ({
   fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...args),
+  fetchDecisionTreeSelection: vi.fn(async () => ({
+    model_id: null,
+    provider_id: null,
+    installed: false,
+    notes: [],
+    source: "test",
+  })),
+  fetchSettingsBudget: vi.fn(async () => null),
+}));
+
+vi.mock("../../../components/engagement/DecisionTreeDriverBadge", () => ({
+  DecisionTreeDriverBadge: (props: {
+    researchTier?: string | null;
+  }) => (
+    <div
+      data-testid="decision-tree-driver-badge-stub"
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+    >
+      driver badge
+    </div>
+  ),
 }));
 
 vi.mock("../../../lib/researchSuggestion", async (orig) => {
@@ -115,6 +136,23 @@ describe("MetaReading (M4)", () => {
     const banner = screen.getByTestId("meta-reading-proposed-banner");
     expect(banner.textContent?.toLowerCase()).toContain("proposed");
     expect(banner.textContent?.toLowerCase()).toContain("owned");
+  });
+
+  it("mounts DecisionTreeDriverBadge with researchTier (lh)", async () => {
+    render(<MetaReading />);
+    await waitFor(() => {
+      expect(screen.getByTestId("meta-reading-driver-badge-mount")).toBeTruthy();
+    });
+    expect(
+      screen
+        .getByTestId("meta-reading-driver-badge-mount")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
+    expect(
+      screen
+        .getByTestId("decision-tree-driver-badge-stub")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
   });
 
   it("a cited passage opens the SPR-07 reader at the resolved page", async () => {
