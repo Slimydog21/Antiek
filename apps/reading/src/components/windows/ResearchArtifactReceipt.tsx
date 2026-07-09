@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { LemonButton } from "../lemon";
+import { API_BASE } from "../../lib/api";
 
 export interface ResearchArtifactReceiptProps {
   investigationId?: string;
@@ -18,6 +19,12 @@ function cleanPath(value: unknown): string | null {
 function basename(path: string): string {
   const parts = path.split("/");
   return parts[parts.length - 1] || path;
+}
+
+function artifactViewHref(investigationId: string, kind: "artifact" | "notes"): string {
+  const encoded = encodeURIComponent(investigationId);
+  const suffix = kind === "artifact" ? "html" : "twin-notes.html";
+  return `${API_BASE}/research/${encoded}/artifact/${suffix}`;
 }
 
 export default function ResearchArtifactReceipt({
@@ -72,14 +79,29 @@ export default function ResearchArtifactReceipt({
                       {basename(path.value)}
                     </p>
                   </div>
-                  <LemonButton
-                    type="button"
-                    size="sm"
-                    variant="tertiary"
-                    onClick={() => void copy(path.key, path.value)}
-                  >
-                    {copied === path.key ? "Copied" : "Copy"}
-                  </LemonButton>
+                  <div className="flex shrink-0 items-center gap-1">
+                    {investigationId && (
+                      <a
+                        href={artifactViewHref(
+                          investigationId,
+                          path.key === "artifact" ? "artifact" : "notes",
+                        )}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex h-7 items-center rounded-hog px-2 font-mono text-[12px] font-semibold text-ink hover:bg-ice-3 dark:text-bright dark:hover:bg-charcoal-1"
+                      >
+                        Open
+                      </a>
+                    )}
+                    <LemonButton
+                      type="button"
+                      size="sm"
+                      variant="tertiary"
+                      onClick={() => void copy(path.key, path.value)}
+                    >
+                      {copied === path.key ? "Copied" : "Copy"}
+                    </LemonButton>
+                  </div>
                 </div>
               </li>
             ))}

@@ -52,6 +52,40 @@ def test_post_export_artifact(api_env):
     assert os.path.isfile(body["twin_notes_path"])
 
 
+def test_get_artifact_html_renders_by_investigation_id(api_env):
+    promote_insight(
+        text="HTML view insight.",
+        investigation_id="inv-html-view",
+        confidence="moderate",
+        source_document_id="doc-1",
+    )
+    client = _client()
+    resp = client.get("/research/inv-html-view/artifact/html")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/html")
+    assert resp.headers["x-antiek-investigation-id"] == "inv-html-view"
+    assert resp.headers["x-antiek-content-hash"]
+    assert "HTML view insight." in resp.text
+
+
+def test_get_artifact_twin_notes_renders_by_investigation_id(api_env):
+    promote_insight(
+        text="Twin route insight.",
+        investigation_id="inv-notes-view",
+        confidence="moderate",
+        source_document_id="doc-1",
+    )
+    client = _client()
+    resp = client.get("/research/inv-notes-view/artifact/twin-notes.html")
+
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/html")
+    assert resp.headers["x-antiek-investigation-id"] == "inv-notes-view"
+    assert resp.headers["x-antiek-content-hash"]
+    assert "Twin route insight." in resp.text
+
+
 def test_get_artifact_blocks_empty(api_env):
     client = _client()
     resp = client.get("/research/inv-empty/artifact/blocks")

@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -15,11 +16,14 @@ if _PKG_ROOT not in sys.path:
 
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.research_artifact import (  # noqa: E402
+    build_html_only,
     compose_artifacts,
     export_research_artifact,
     import_agent_notes,
     list_outline_blocks,
+    render_twin_notes_html,
 )
+from substrate.research_artifact.paths import artifact_path_for  # noqa: E402
 
 artifact_router = APIRouter(prefix="/research", tags=["research-artifact"])
 
@@ -95,6 +99,37 @@ async def post_export_artifact(investigation_id: str) -> ExportOut:
         content_hash=res.content_hash,
         size_bytes=res.size_bytes,
         event_id=res.event_id,
+    )
+
+
+@artifact_router.get("/{investigation_id}/artifact/html", response_class=HTMLResponse)
+async def get_artifact_html(investigation_id: str) -> HTMLResponse:
+    try:
+        body, html = build_html_only(investigation_id, db_path=_db())
+    except Exception as exc:  # pragma: no cover — surface as 500 with message
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return HTMLResponse(
+        html,
+        headers={
+            "x-antiek-investigation-id": investigation_id,
+            "x-antiek-content-hash": body.content_hash(),
+        },
+    )
+
+
+@artifact_router.get("/{investigation_id}/artifact/twin-notes.html", response_class=HTMLResponse)
+async def get_artifact_twin_notes_html(investigation_id: str) -> HTMLResponse:
+    try:
+        body, _html = build_html_only(investigation_id, db_path=_db())
+        notes_html = render_twin_notes_html(body, artifact_path=artifact_path_for(investigation_id))
+    except Exception as exc:  # pragma: no cover — surface as 500 with message
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return HTMLResponse(
+        notes_html,
+        headers={
+            "x-antiek-investigation-id": investigation_id,
+            "x-antiek-content-hash": body.content_hash(),
+        },
     )
 
 
