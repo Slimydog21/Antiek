@@ -132,7 +132,12 @@ jobs:
           # extra Authorization header.
           ANTIEK_OPERATOR_TOKEN: ""
         run: |
-          python -m pytest tests/ -q -m "not integration"
+          # xdist is already a declared dev dependency. Enable it at the CI
+          # callsite, not global addopts, so local one-off debugging remains
+          # serial unless the operator asks for parallelism. ``loadscope`` keeps
+          # module/class scopes together for the known order-sensitive probes
+          # while still splitting the ~5k-test blanket suite across workers.
+          python -m pytest tests/ -q -m "not integration" -n auto --dist loadscope
 
       - name: HTML-projection layer gates (HPRJ SPR-07 M4)
         # The projection / .antiek-format / ingestion layer's gates live under
