@@ -1,0 +1,11 @@
+# Campaign rollup (bn)–(ce) · tip 8c363438 · PR #465
+
+| Residual | Capability |
+|---|---|
+| bn–cb | Midnight Oil, bench, budget UI, ND, twins live, boot wiring |
+| cc | Reading page → floating deep research |
+| cd | Float-menu Deep-research → floating window (+ HighlightToolbar) |
+| ce | Expand full / restore floating on DR host |
+
+Next (cf): competitive polish / written analysis merge / hardenx
+Operator merge PR #465 still gated.
