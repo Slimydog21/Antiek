@@ -255,6 +255,10 @@ class SpinResearchRequest(BaseModel):
     # side and replaced by the bounded snippet — the seed can never carry
     # gated full text, even if the client sends it (defense in depth).
     passage_text: str | None = None
+    # Optional HTML-first bridge: immediately export the spawned research shell
+    # and twin notes so the reader/workstation can open it without waiting for
+    # any provider-backed research work.
+    export_artifact: bool = False
 
 
 class SpinResearchResponse(BaseModel):
@@ -264,6 +268,8 @@ class SpinResearchResponse(BaseModel):
     gated: bool
     servability: str
     seed_preview: str
+    artifact_path: str | None = None
+    twin_notes_path: str | None = None
 
 
 class ImpressionItem(BaseModel):
@@ -658,6 +664,7 @@ def register_book_routes(app: FastAPI) -> None:
             link_passage_to_research,
         )
         from substrate.event_log import emit_typed
+        from substrate.research_artifact import export_research_artifact
         from substrate.schemas import InvestigationStartRequestedPayload
 
         db = _resolve_db_path()
@@ -698,6 +705,17 @@ def register_book_routes(app: FastAPI) -> None:
             page_index=req.page_index,
             investigation_id=investigation_id,
         )
+        artifact_path: str | None = None
+        twin_notes_path: str | None = None
+        if req.export_artifact:
+            exported = export_research_artifact(
+                investigation_id,
+                db_path=db,
+                emit_event=False,
+                generating_role="read/spin_research",
+            )
+            artifact_path = str(exported.path)
+            twin_notes_path = str(exported.twin_notes_path)
         return SpinResearchResponse(
             investigation_id=investigation_id,
             document_id=document_id,
@@ -705,6 +723,8 @@ def register_book_routes(app: FastAPI) -> None:
             gated=seed.gated,
             servability=seed.servability,
             seed_preview=seed.seed_text[:240] + ("…" if len(seed.seed_text) > 240 else ""),
+            artifact_path=artifact_path,
+            twin_notes_path=twin_notes_path,
         )
 
     # ── SPR-08 M2 — talk-to-book (multi-turn, page-cited, gate-safe) ──

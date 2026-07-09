@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -151,6 +152,44 @@ def test_spin_research_endpoint_gate_safe(db):
     assert _GATED_BODY.strip() not in body["seed_preview"]  # full body never seeded
     # The two-way link was recorded.
     assert researches_for_passage("doc-gated-api", 1) == [body["investigation_id"]]
+
+
+def test_spin_research_endpoint_can_export_html_artifact_shell(db, monkeypatch):
+    """Reading highlight → research should be able to open HTML asset + twin immediately.
+
+    The export is still no-spend/no-provider and must preserve the gated seed
+    guard: the artifact shell may include the safe seed preview/question, never
+    the gated passage body supplied by the client.
+    """
+    from fastapi.testclient import TestClient
+
+    from interfaces.research.api.app import create_app
+
+    arts = os.path.join(os.path.dirname(db), "artifacts")
+    monkeypatch.setenv("ANTIEK_RESEARCH_ARTIFACTS_DIR", arts)
+    _register(db, "doc-gated-export", _GATED_BODY)  # gated default
+    client = TestClient(create_app(register_wrestling=False, register_providers=False, cors_origins=[]))
+    resp = client.post(
+        "/books/doc-gated-export/spin-research",
+        json={
+            "page_index": 2,
+            "passage_text": _GATED_BODY,
+            "export_artifact": True,
+        },
+    )
+
+    assert resp.status_code == 202
+    body = resp.json()
+    assert body["artifact_path"]
+    assert body["twin_notes_path"]
+    assert os.path.isfile(body["artifact_path"])
+    assert os.path.isfile(body["twin_notes_path"])
+    artifact = Path(body["artifact_path"]).read_text(encoding="utf-8")
+    twin = Path(body["twin_notes_path"]).read_text(encoding="utf-8")
+    assert _GATED_BODY.strip() not in artifact
+    assert _GATED_BODY.strip() not in twin
+    assert "ResearchArtifact twin notes" in twin
+    assert "A Book" in artifact
 
 
 def test_spin_research_endpoint_unknown_book_404(db):
