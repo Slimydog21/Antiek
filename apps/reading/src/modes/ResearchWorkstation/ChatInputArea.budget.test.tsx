@@ -94,6 +94,24 @@ describe("ChatInputArea budget projection (bq)", () => {
     cleanup();
   });
 
+  it("mounts DecisionTreeDriverBadge with launchTier (ln)", async () => {
+    render(
+      <MemoryRouter>
+        <ChatInputArea />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("chat-input-driver-badge-mount")).toBeTruthy();
+    });
+    expect(
+      screen
+        .getByTestId("chat-input-driver-badge-mount")
+        .getAttribute("data-research-tier"),
+    ).toBe("deep");
+    // Real DecisionTreeDriverBadge uses decision-tree-driver-badge test id.
+    expect(screen.getByTestId("decision-tree-driver-badge")).toBeTruthy();
+  });
+
   it("mounts ResearchLaunchBudgetPanel and retires static cost copy", async () => {
     render(
       <MemoryRouter>

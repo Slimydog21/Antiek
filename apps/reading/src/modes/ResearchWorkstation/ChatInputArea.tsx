@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
 import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
@@ -41,6 +42,7 @@ import {
  * Residual (bq): live budget + #440 projection (parity with StartResearch bp).
  * Residual (ct): publication refs (arxiv/substack/url) parity with StartResearch cj.
  * Residual (df): soft-gate Ask when budget projection would exceed (parity de).
+ * Residual (ln): DecisionTreeDriverBadge with launchTier (parity StartResearch ll).
  */
 export default function ChatInputArea({
   parentInvestigationId,
@@ -222,13 +224,20 @@ export default function ChatInputArea({
           </p>
         ) : null}
       </div>
-      {/* Residual (bq/df): same launch budget panel as StartResearch (bp). */}
+      {/* Residual (bq/df/ln): budget panel + driver badge (parity StartResearch). */}
       <div
         className="mt-2"
         data-testid="chat-input-budget-mount"
         data-depth-prefill={depthPrefill}
         data-research-tier={launchTier}
       >
+        <div
+          data-testid="chat-input-driver-badge-mount"
+          data-view-format="html"
+          data-research-tier={launchTier}
+        >
+          <DecisionTreeDriverBadge researchTier={launchTier} />
+        </div>
         <ResearchLaunchBudgetPanel
           promptText={question}
           researchTier={launchTier}
