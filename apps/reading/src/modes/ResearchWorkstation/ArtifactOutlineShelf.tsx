@@ -14,6 +14,7 @@ import {
   type PaletteDragPayload,
 } from "../CreationStudio/BlockPalette";
 import LemonButton from "../../components/lemon/LemonButton";
+import { useChaseDraftHandoffs } from "./chaseHandoffs";
 
 /**
  * ANT-AHT SPR-AHT-06 — draggable insight/question blocks sourced from
@@ -56,12 +57,14 @@ export default function ArtifactOutlineShelf({
   const [twinNotesPath, setTwinNotesPath] = useState<string | null>(null);
   const [mergeIds, setMergeIds] = useState("");
   const [selectedChildIds, setSelectedChildIds] = useState<string[]>([]);
+  const [selectedHandoffIds, setSelectedHandoffIds] = useState<string[]>([]);
   const [draftMergePath, setDraftMergePath] = useState<string | null>(null);
   const [draftMergeIds, setDraftMergeIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [mergeBusy, setMergeBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const { investigations } = useInvestigationList({ limit: 200, pollIntervalMs: 0 });
+  const chaseHandoffs = useChaseDraftHandoffs(investigationId);
   const childOptions = useMemo(
     () =>
       investigations
@@ -69,6 +72,12 @@ export default function ArtifactOutlineShelf({
         .sort((a, b) => (b.started_at ?? "").localeCompare(a.started_at ?? "")),
     [investigations, investigationId],
   );
+  const handoffOptions = useMemo(() => {
+    const serverChildIds = new Set(childOptions.map((child) => child.investigation_id));
+    return chaseHandoffs.filter(
+      (handoff) => !serverChildIds.has(handoff.child_investigation_id),
+    );
+  }, [chaseHandoffs, childOptions]);
 
   const reload = useCallback(async () => {
     try {
@@ -101,7 +110,12 @@ export default function ArtifactOutlineShelf({
   };
 
   const onDraftMerge = async () => {
-    const ids = [investigationId, ...selectedChildIds, ...parseSiblingIds(mergeIds)];
+    const ids = [
+      investigationId,
+      ...selectedChildIds,
+      ...selectedHandoffIds,
+      ...parseSiblingIds(mergeIds),
+    ];
     const uniqueIds = Array.from(new Set(ids));
     if (uniqueIds.length < 2) {
       setErr("Add at least one other research id to draft a merge.");
@@ -122,6 +136,14 @@ export default function ArtifactOutlineShelf({
 
   const toggleChild = (childId: string) => {
     setSelectedChildIds((current) =>
+      current.includes(childId)
+        ? current.filter((id) => id !== childId)
+        : [...current, childId],
+    );
+  };
+
+  const toggleHandoff = (childId: string) => {
+    setSelectedHandoffIds((current) =>
       current.includes(childId)
         ? current.filter((id) => id !== childId)
         : [...current, childId],
@@ -174,6 +196,30 @@ export default function ArtifactOutlineShelf({
               <span className="truncate">{child.question ?? child.investigation_id}</span>
             </label>
           ))}
+        </div>
+      ) : null}
+      {handoffOptions.length > 0 ? (
+        <div className="mb-2 flex flex-col gap-1.5">
+          <span className="text-[10px] font-mono uppercase tracking-wide text-ink-mute">
+            Saved chase handoffs
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            {handoffOptions.map((handoff) => (
+              <label
+                key={`${handoff.parent_investigation_id}:${handoff.child_investigation_id}`}
+                className="inline-flex max-w-full items-center gap-1.5 rounded-hog border border-rule bg-ice-0 px-2 py-1 font-mono text-[11px] text-ink dark:bg-charcoal-2 dark:text-bright"
+                title={handoff.source_passage}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedHandoffIds.includes(handoff.child_investigation_id)}
+                  onChange={() => toggleHandoff(handoff.child_investigation_id)}
+                  className="h-3 w-3 accent-sun"
+                />
+                <span className="truncate">{handoff.source_passage}</span>
+              </label>
+            ))}
+          </div>
         </div>
       ) : null}
       <div className="mb-3 flex flex-wrap items-center gap-2">

@@ -2,6 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import ArtifactOutlineShelf from "./ArtifactOutlineShelf";
+import {
+  buildChaseDraftHandoff,
+  clearChaseDraftHandoffs,
+  recordChaseDraftHandoff,
+} from "./chaseHandoffs";
 
 const { composeResearchArtifactsMock, exportResearchArtifactMock, getResearchArtifactBlocksMock, listState } =
   vi.hoisted(() => ({
@@ -26,6 +31,7 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   listState.investigations = [];
+  clearChaseDraftHandoffs();
 });
 
 describe("ArtifactOutlineShelf", () => {
@@ -167,6 +173,34 @@ describe("ArtifactOutlineShelf", () => {
       expect(composeResearchArtifactsMock).toHaveBeenCalledWith(["inv-a", "inv-child-empty"], true),
     );
     expect(await screen.findByText("/tmp/artifacts/early-draft-merge.html")).toBeTruthy();
+  });
+
+  it("draft-merges saved chase handoffs that are not yet in the investigation list", async () => {
+    recordChaseDraftHandoff(
+      buildChaseDraftHandoff({
+        childInvestigationId: "inv-local-child",
+        parentInvestigationId: "inv-a",
+        sourcePassage: "wing sweep delayed transonic drag rise",
+      }),
+    );
+    getResearchArtifactBlocksMock.mockResolvedValue({ investigation_id: "inv-a", blocks: [] });
+    composeResearchArtifactsMock.mockResolvedValue({
+      path: "/tmp/artifacts/compose.html",
+      draft_merge_path: "/tmp/artifacts/local-handoff-draft-merge.html",
+      members: [],
+      hash_conflicts: [],
+    });
+
+    render(<ArtifactOutlineShelf investigationId="inv-a" />);
+
+    expect(await screen.findByText("Saved chase handoffs")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("wing sweep delayed transonic drag rise"));
+    fireEvent.click(screen.getByRole("button", { name: /Draft merge/i }));
+
+    await waitFor(() =>
+      expect(composeResearchArtifactsMock).toHaveBeenCalledWith(["inv-a", "inv-local-child"], true),
+    );
+    expect(await screen.findByText("/tmp/artifacts/local-handoff-draft-merge.html")).toBeTruthy();
   });
 
   it("refuses a draft merge without a second research id", async () => {

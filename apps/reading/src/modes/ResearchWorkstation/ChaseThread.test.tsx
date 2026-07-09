@@ -66,12 +66,17 @@ vi.mock("./VoiceChaseButton", () => ({ default: () => null }));
 
 import ChaseThread from "./ChaseThread";
 import { ApiError } from "../../lib/api";
+import {
+  clearChaseDraftHandoffs,
+  listChaseDraftHandoffs,
+} from "./chaseHandoffs";
 
 afterEach(() => {
   cleanup();
   startInvestigationMock.mockReset();
   navigateMock.mockReset();
   recordSpawnMock.mockReset();
+  clearChaseDraftHandoffs();
 });
 
 function renderChase(props: {
@@ -129,6 +134,14 @@ describe("ChaseThread — reserved-id reuse (M2)", () => {
     // No reserved id ⇒ no investigation_id ⇒ substrate mints fresh.
     expect(arg.investigation_id).toBeUndefined();
     expect(arg.parent_investigation_id).toBe("inv-parent");
+    await waitFor(() =>
+      expect(listChaseDraftHandoffs("inv-parent")[0]).toMatchObject({
+        child_investigation_id: "inv-fresh",
+        parent_investigation_id: "inv-parent",
+        source_passage: "an unflagged passage",
+        no_spend: true,
+      }),
+    );
   });
 });
 

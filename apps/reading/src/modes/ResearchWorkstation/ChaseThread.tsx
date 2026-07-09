@@ -9,6 +9,10 @@ import { startInvestigation, ApiError } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
+import {
+  buildChaseDraftHandoff,
+  recordChaseDraftHandoff,
+} from "./chaseHandoffs";
 import ThinkingStream from "./ThinkingStream";
 import VoiceChaseButton from "./VoiceChaseButton";
 
@@ -104,6 +108,13 @@ export default function ChaseThread({
       });
       setLaunchedId(resp.investigation_id);
       recordSpawnRelationship(resp.investigation_id, parentInvestigationId);
+      recordChaseDraftHandoff(
+        buildChaseDraftHandoff({
+          childInvestigationId: resp.investigation_id,
+          parentInvestigationId,
+          sourcePassage: spawnContext,
+        }),
+      );
       // The payoff is already in hand (the id is back); the beat just
       // decorates it — non-blocking, fires once.
       celebrate();
@@ -208,14 +219,11 @@ function LaunchedThread({
   const [copiedHandoff, setCopiedHandoff] = useState(false);
 
   async function copyDraftHandoff() {
-    const payload = {
-      kind: "antiek.chase.draft_handoff",
-      child_investigation_id: childId,
-      parent_investigation_id: parentInvestigationId,
-      source_passage: spawnContext,
-      next_step: "export the child research artifact, then compose it with its parent before merging into the source asset",
-      no_spend: true,
-    };
+    const payload = buildChaseDraftHandoff({
+      childInvestigationId: childId,
+      parentInvestigationId,
+      sourcePassage: spawnContext,
+    });
     await navigator.clipboard?.writeText(JSON.stringify(payload, null, 2));
     setCopiedHandoff(true);
   }
