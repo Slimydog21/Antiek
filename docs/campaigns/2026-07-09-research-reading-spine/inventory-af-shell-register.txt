@@ -9,7 +9,7 @@
 CAPABILITY | STATUS | EVIDENCE
 (a) research↔reading engagement spine | branch_only | substrate/engagement_spine/**; tests/test_engagement_spine.py; PR #465
 (b) HTML-first human view of info assets | on_main | services/html_projection/** on origin/main; engagement_spine.project_to_html; modes use data-view-format=html
-(c) model driver + budget bar + prompt cost projection + add-model | on_main + branch_only | #440 settings_budget.py on origin/main; substrate/model_registration/** + Settings panel on PR #465
+(c) model driver + budget bar + prompt cost projection + add-model | branch_only | budget/projection #440 on origin/main (settings_budget.py); add-model registration + decision-tree Settings residual on PR #465 (substrate/model_registration/**) — full capability stack not solely on_main
 (d) Midnight oil substrate (ceiling/job/worker/deposit) | branch_only | substrate/midnight_oil/{ceiling,job,worker,deposit}.py; tests/test_midnight_oil.py
 (e) book marketplace host package (catalog/host/receipt/library/view) | branch_only | substrate/marketplace_host/**; tests/test_marketplace_host.py
 (f) Antiek-bench core suite/run/rewrite | branch_only | substrate/antiek_bench/{suite,run,rewrite,store}.py; tests/test_antiek_bench.py
