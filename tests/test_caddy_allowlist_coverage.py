@@ -68,7 +68,7 @@ def _registered_prefixes() -> set[str]:
 
 def _allowlist_prefixes() -> set[str]:
     with open(_CADDY, encoding="utf-8") as fh:
-        line = next(l for l in fh if "@api_routes path" in l)
+        line = next(line_text for line_text in fh if "@api_routes path" in line_text)
     toks = line.split()[2:]  # tokens after "@api_routes" "path"
     # tokens are glob prefixes like "/ad-impressions*" or "/api/ad/*" — strip
     # the trailing "*" AND reduce to the top-level segment before comparing.
@@ -81,7 +81,7 @@ def _allowlist_prefixes() -> set[str]:
 
 def _allowlist_paths() -> set[str]:
     with open(_CADDY, encoding="utf-8") as fh:
-        line = next(l for l in fh if "@api_routes path" in l)
+        line = next(line_text for line_text in fh if "@api_routes path" in line_text)
     return {t.rstrip("*") for t in line.split()[2:] if t.startswith("/")}
 
 
