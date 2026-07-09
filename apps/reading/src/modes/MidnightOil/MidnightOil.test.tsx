@@ -1019,6 +1019,16 @@ describe("MidnightOil mode", () => {
     expect(after).toBeGreaterThan("Goal alone".length);
   });
 
+  it("links dual-gate L1–L2 hydrate checklist beside pub refs (pb)", () => {
+    render(<MidnightOil />);
+    const link = screen.getByTestId("moil-pub-refs-dual-gate-link");
+    expect(link.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4/);
+    expect(link.textContent).toMatch(/L1–L2 hydrate/i);
+    const offline = screen.getByTestId("moil-pub-refs-offline-default");
+    expect(offline.getAttribute("data-offline-honest")).toBe("true");
+    expect(offline.textContent).toMatch(/offline identity default/i);
+  });
+
   it("hydrates pub refs and appends grounded goals on create (oy)", async () => {
     createMidnightOilJob.mockResolvedValue({
       job_id: "moil_pubs",

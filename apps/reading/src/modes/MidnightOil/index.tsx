@@ -49,6 +49,8 @@
  * (parity Write/ResearchThis; offline-honest hydrate default).
  * Residual (pa): budget projection promptText includes pub refs so soft-gate
  * sees grounded-goal length before create (never under-project MO cost).
+ * Residual (pb): dual-gate L1–L2 hydrate checklist deep-link beside pub refs
+ * (prep only; never enables live arxiv/substack injectors).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -643,6 +645,25 @@ export default function MidnightOil() {
             placeholder={"arxiv:1706.03762\nhttps://…"}
             aria-label="Publication references for Midnight Oil grounding"
           />
+          {/* Residual (pb): L1/L2 hydrate prep deep-link (parity ml dual-gate). */}
+          <p className="text-[11px] font-mono">
+            <a
+              href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+              data-testid="moil-pub-refs-dual-gate-link"
+              className="underline opacity-80 hover:opacity-100"
+              title="Dual-gate L1–L2 live hydrate prep only — offline identity default"
+            >
+              Dual-gate L1–L2 hydrate checklist
+            </a>
+            <span
+              className="ml-2 opacity-70"
+              data-testid="moil-pub-refs-offline-default"
+              data-offline-honest="true"
+              role="status"
+            >
+              offline identity default
+            </span>
+          </p>
           {pubRefStatus ? (
             <p
               className="text-[11px] font-mono opacity-80"

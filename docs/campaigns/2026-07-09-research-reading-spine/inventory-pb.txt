@@ -1,0 +1,8 @@
+# inventory-pb · MO pub refs dual-gate L1–L2 hydrate link
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: pb
+files:
+  apps/reading/src/modes/MidnightOil/index.tsx
+  apps/reading/src/modes/MidnightOil/MidnightOil.test.tsx
+proof: vitest MidnightOil 18 passed
+invariants: offline identity default · prep only · never enables injectors

@@ -530,3 +530,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (pa, 2026-07-10) **MO budget projection includes pub refs:**
   - promptText concatenates goals + publication refs
   - data-prompt-includes-pub-refs / data-pub-refs-chars honesty
+
+- Closed (pb, 2026-07-10) **MO pub refs dual-gate L1–L2 hydrate link:**
+  - moil-pub-refs-dual-gate-link + offline identity default honesty
+  - prep only; never enables live arxiv/substack injectors
