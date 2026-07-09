@@ -125,3 +125,6 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - _record_investigation_start_usage via get_bench_usage_store
 - wrestle accepted on InvestigationStartRequest
 - tests: test_record_investigation_start_usage_helper_gx
+## residual (gy) books research_tier wrestle — 2026-07-09
+- AskBookRequest + MetaReadingRequest accept wrestle
+- tests: book_qa_meta_reading 15 + schema smoke GY_BOOKS_TIER_OK

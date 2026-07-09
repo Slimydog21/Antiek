@@ -325,7 +325,8 @@ class AskBookRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     # The recent tail of the running conversation (server bounds it again).
     history: list[TalkTurn] = Field(default_factory=list)
-    research_tier: Literal["fast", "deep"] = "deep"
+    # Residual (gy): closed ResearchTier includes wrestle (parity with dispatch gp).
+    research_tier: Literal["fast", "deep", "wrestle"] = "deep"
 
 
 class CitationResponse(BaseModel):
@@ -375,7 +376,8 @@ class MetaReadingRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=2000)
     length_unit: Literal["pages", "minutes"]
     length_amount: int = Field(ge=1)
-    research_tier: Literal["fast", "deep"] = "deep"
+    # Residual (gy): closed ResearchTier includes wrestle.
+    research_tier: Literal["fast", "deep", "wrestle"] = "deep"
     # The owned-corpus scope. "hard" is the PROPOSED Research↔Read boundary
     # (owned servable docs, optionally an explicit pick); "soft" is the rollback
     # when operator sign-off is withheld (the whole owned readable corpus).
