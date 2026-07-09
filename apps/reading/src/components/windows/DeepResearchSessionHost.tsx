@@ -6,8 +6,12 @@
  * Content stance is HTML (`view_format: "html"`); PDF is never required.
  *
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
+ *
+ * Residual (ag): mounts ResearchContextPanel when parent_asset_id is present
+ * so twin/source-ref context is reachable from the session chrome.
  */
 
+import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
 import { useInWindow } from "./windowHostContext";
 
 export type DeepResearchSessionHostProps = {
@@ -92,6 +96,21 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           {selection}
         </p>
       </section>
+
+      {/* Product mount: twin + source-ref research context for this session's
+          parent asset / spawn. Panel owns fetch/attach; host only passes identity. */}
+      {props.parent_asset_id?.trim() ? (
+        <section
+          className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
+          data-testid="deep-research-research-context-mount"
+          data-view-format="html"
+        >
+          <ResearchContextPanel
+            assetId={props.parent_asset_id.trim()}
+            spawnId={props.spawn_id?.trim() || null}
+          />
+        </section>
+      ) : null}
     </div>
   );
 }

@@ -1,8 +1,9 @@
 /**
  * DeepResearchSessionHost + WINDOW_PAGES eligibility for deep_research_session.
+ * Residual (ag): mounts ResearchContextPanel with asset/spawn identity.
  */
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { DEEP_RESEARCH_WINDOW_KIND } from "../../workspace/deepResearchWindow";
 import DeepResearchSessionHost from "./DeepResearchSessionHost";
@@ -23,12 +24,17 @@ const FIXTURE = {
 };
 
 describe("DeepResearchSessionHost", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   it("renders session identity and selection from payload", () => {
     render(<DeepResearchSessionHost {...FIXTURE} />);
     expect(screen.getByTestId("deep-research-session-host")).toBeTruthy();
     expect(screen.getByText("fsess_launch_1")).toBeTruthy();
-    expect(screen.getByText("spn_launch_1")).toBeTruthy();
-    expect(screen.getByText("launch-asset")).toBeTruthy();
+    // Spawn/parent appear in identity rows and ResearchContextPanel meta
+    expect(screen.getAllByText("spn_launch_1").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("launch-asset").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("reserved")).toBeTruthy();
     expect(screen.getByTestId("deep-research-selection").textContent).toContain(
       "content-addressable",
@@ -37,6 +43,28 @@ describe("DeepResearchSessionHost", () => {
     expect(
       screen.getByTestId("deep-research-session-host").getAttribute("data-view-format"),
     ).toBe("html");
+  });
+
+  it("mounts ResearchContextPanel with parent asset and spawn identity", () => {
+    const first = render(<DeepResearchSessionHost {...FIXTURE} />);
+    const mount = screen.getByTestId("deep-research-research-context-mount");
+    expect(mount).toBeTruthy();
+    expect(mount.getAttribute("data-view-format")).toBe("html");
+    // Shipped panel chrome (not a reimplementation)
+    expect(screen.getByRole("heading", { name: /research context/i })).toBeTruthy();
+    expect(mount.textContent).toContain("launch-asset");
+    expect(screen.getByRole("button", { name: /load context/i })).toBeTruthy();
+    first.unmount();
+    // Double-run: remount still binds panel
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    expect(screen.getByTestId("deep-research-research-context-mount")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /load context/i })).toBeTruthy();
+  });
+
+  it("omits ResearchContextPanel when parent_asset_id is missing", () => {
+    const { parent_asset_id: _drop, ...noParent } = FIXTURE;
+    render(<DeepResearchSessionHost {...noParent} />);
+    expect(screen.queryByTestId("deep-research-research-context-mount")).toBeNull();
   });
 
   it("kind is window-eligible in WINDOW_PAGES registry", () => {
