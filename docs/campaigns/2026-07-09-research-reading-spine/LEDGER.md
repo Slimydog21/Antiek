@@ -103,3 +103,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - StartResearch onResearchTierChange=setTier
 - ChatInputArea launchTier + research_tier on POST
 - tests: StartResearch 17 + ChatInputArea.budget 2
+## residual (gs) Midnight Oil research_tier — 2026-07-09
+- create_job + product_path + routes store research_tier
+- UI budget picker → create POST research_tier
+- tests: test_midnight_oil 17 + MidnightOil 7

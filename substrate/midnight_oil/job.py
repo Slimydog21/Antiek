@@ -6,6 +6,11 @@ import uuid
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Protocol, runtime_checkable
 
+from substrate.dispatch.research_tier import (
+    DEFAULT_RESEARCH_TIER,
+    normalize_research_tier,
+)
+
 from .ceiling import ModelPricing, recommend_price_ceiling
 
 JobStatus = Literal[
@@ -36,6 +41,8 @@ class MidnightOilJob:
     elapsed_ms: int = 0
     force_below_recommended: bool = False
     notes: str = ""
+    # Residual (gs): curated research tier for autonomous runs (fast|deep|wrestle).
+    research_tier: str = DEFAULT_RESEARCH_TIER
 
 
 @runtime_checkable
@@ -72,6 +79,7 @@ def _job_to_row(job: MidnightOilJob) -> dict[str, Any]:
         "elapsed_ms": job.elapsed_ms,
         "force_below_recommended": job.force_below_recommended,
         "notes": job.notes,
+        "research_tier": job.research_tier,
     }
 
 
@@ -95,6 +103,7 @@ def _job_from_row(row: dict[str, Any]) -> MidnightOilJob:
         elapsed_ms=int(row.get("elapsed_ms") or 0),
         force_below_recommended=bool(row.get("force_below_recommended") or False),
         notes=str(row.get("notes") or ""),
+        research_tier=normalize_research_tier(row.get("research_tier")),
     )
 
 
@@ -108,6 +117,7 @@ def create_job(
     pricing: ModelPricing | None = None,
     job_id: str | None = None,
     asset_id: str | None = None,
+    research_tier: str | None = None,
 ) -> MidnightOilJob:
     """Create a draft Midnight Oil job with a recommended price ceiling.
 
@@ -126,6 +136,7 @@ def create_job(
         pricing=pricing,
     )
     jid = job_id or f"moil_{uuid.uuid4().hex[:16]}"
+    tier = normalize_research_tier(research_tier)
     job = MidnightOilJob(
         job_id=jid,
         goals=cleaned,
@@ -134,6 +145,7 @@ def create_job(
         recommended_price_ceiling_usd=ceiling,
         status="awaiting_approval",
         asset_id=asset_id or f"moil_asset_{jid.removeprefix('moil_')}",
+        research_tier=tier,
     )
     store.put_job(_job_to_row(job))
     return job

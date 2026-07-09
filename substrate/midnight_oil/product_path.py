@@ -37,6 +37,7 @@ class MidnightOilProductResult:
             "goals": list(j.goals),
             "duration_minutes": j.duration_minutes,
             "model_id": j.model_id,
+            "research_tier": j.research_tier,
             "status": j.status,
             "recommended_price_ceiling_usd": self.recommended_price_ceiling_usd,
             "approved_ceiling_usd": j.approved_ceiling_usd,
@@ -58,6 +59,7 @@ def create_with_recommended_ceiling(
     pricing: ModelPricing | None = None,
     job_id: str | None = None,
     asset_id: str | None = None,
+    research_tier: str | None = None,
 ) -> MidnightOilProductResult:
     """Product entry: create draft job and surface recommended price ceiling.
 
@@ -80,6 +82,7 @@ def create_with_recommended_ceiling(
         pricing=pricing,
         job_id=job_id,
         asset_id=asset_id,
+        research_tier=research_tier,
     )
     if job.recommended_price_ceiling_usd != recommended:
         raise RuntimeError(

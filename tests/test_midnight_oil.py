@@ -22,6 +22,7 @@ from substrate.midnight_oil import (  # noqa: E402
     approve_job,
     create_job,
     deposit_job_results,
+    get_job,
     recommend_price_ceiling,
     run_worker_iteration,
     run_worker_loop,
@@ -73,6 +74,27 @@ def test_create_job_requires_goals_and_returns_ceiling():
     assert job.approved_ceiling_usd is None
     assert job.job_id.startswith("moil_")
     assert "retrieval" in job.goals[0]
+    # Default research tier is deep when omitted.
+    assert job.research_tier == "deep"
+
+
+def test_create_job_records_wrestle_research_tier(gs_residual=None):
+    """Residual (gs): autonomous jobs store curated research_tier."""
+    store = InMemoryJobStore()
+    job = create_job(
+        ["Multi-hop long-horizon synthesis"],
+        90,
+        store=store,
+        model_id="glm-5.2",
+        research_tier="wrestle",
+    )
+    assert job.research_tier == "wrestle"
+    got = get_job(job.job_id, store=store)
+    assert got is not None
+    assert got.research_tier == "wrestle"
+    # Unknown tiers normalize to deep (honest fallback).
+    job2 = create_job(["x"], 10, store=store, research_tier="not-a-tier")
+    assert job2.research_tier == "deep"
 
 
 def test_approve_gate_requires_explicit_ceiling():

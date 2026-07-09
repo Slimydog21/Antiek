@@ -15,6 +15,7 @@
  * note-taker when backend twin_count is thin; non-fatal reinforce).
  * Residual (gl): ResearchProgressPanel on deposit when spawn_ids present
  * (competitive multi-minute plan→gather→synthesize→cite telemetry).
+ * Residual (gs): budget-panel depth tier → create research_tier (fast|deep|wrestle).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -29,10 +30,12 @@ import {
   type MidnightOilRunResponse,
 } from "../../api/midnightOil";
 import { fetchDecisionTreeSelection } from "../../api/settings";
+import type { ResearchTier } from "../../lib/api";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
 import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
+  type ResearchLaunchTier,
 } from "../../components/engagement/ResearchLaunchBudgetPanel";
 import { ResearchProgressPanel } from "../../components/engagement/ResearchProgressPanel";
 import { openWindow } from "../../components/windows/openWindow";
@@ -144,12 +147,17 @@ export default function MidnightOil() {
   // Residual (dg): soft-gate create when budget projection would exceed.
   const [budgetWarn, setBudgetWarn] = useState(false);
   const [forceOverBudget, setForceOverBudget] = useState(false);
+  // Residual (gs): depth tier for autonomous job create.
+  const [researchTier, setResearchTier] = useState<ResearchTier>("deep");
   const onProjectionChange = useCallback(
     (p: ResearchLaunchBudgetProjection) => {
       setBudgetWarn(p.wouldExceedBudget === true);
     },
     [],
   );
+  const onResearchTierChange = useCallback((t: ResearchLaunchTier) => {
+    setResearchTier(t);
+  }, []);
 
   // Residual (cz): prefill model from decision-tree once on mount.
   useEffect(() => {
@@ -191,12 +199,20 @@ export default function MidnightOil() {
         goals,
         duration_minutes: durationMinutes,
         model_id: modelId || null,
+        research_tier: researchTier,
       });
       if (created.view_format !== "html") {
         throw new Error("Midnight Oil view_format must be html");
       }
       setJob(created);
       setCeilingInput(String(created.recommended_price_ceiling_usd));
+      // Echo server-normalized tier if present.
+      if (created.research_tier) {
+        const rt = created.research_tier;
+        if (rt === "fast" || rt === "deep" || rt === "wrestle") {
+          setResearchTier(rt);
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -377,8 +393,9 @@ export default function MidnightOil() {
         <div data-testid="moil-budget-mount" data-view-format="html">
           <ResearchLaunchBudgetPanel
             promptText={goalsText}
-            researchTier="deep"
+            researchTier={researchTier}
             allowTierPick
+            onResearchTierChange={onResearchTierChange}
             onProjectionChange={onProjectionChange}
           />
           {budgetWarn ? (
@@ -417,6 +434,15 @@ export default function MidnightOil() {
           <p>
             Status: <strong>{job.status}</strong>
             {job.runnable ? " · runnable" : ""}
+          </p>
+          {/* Residual (gs): show curated research tier on job receipt. */}
+          <p
+            className="font-mono text-sm"
+            data-testid="moil-research-tier"
+            data-research-tier={job.research_tier || researchTier}
+          >
+            Research tier:{" "}
+            <strong>{job.research_tier || researchTier}</strong>
           </p>
           <p data-testid="recommended-ceiling">
             Recommended ceiling:{" "}

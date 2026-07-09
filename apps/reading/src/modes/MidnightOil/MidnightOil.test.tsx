@@ -42,7 +42,9 @@ vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => {
   return {
     ResearchLaunchBudgetPanel: (props: {
       promptText: string;
+      researchTier?: string;
       allowTierPick?: boolean;
+      onResearchTierChange?: (t: "fast" | "deep" | "wrestle") => void;
       onProjectionChange?: (p: {
         wouldExceedBudget: boolean | null;
         pricingKnown: boolean;
@@ -64,8 +66,18 @@ vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => {
         <div
           data-testid="research-launch-budget-panel-stub"
           data-allow-tier-pick={props.allowTierPick ? "true" : "false"}
+          data-research-tier={props.researchTier || "deep"}
         >
           goals={props.promptText.length}
+          {props.allowTierPick ? (
+            <button
+              type="button"
+              data-testid="research-launch-tier-wrestle"
+              onClick={() => props.onResearchTierChange?.("wrestle")}
+            >
+              wrestle
+            </button>
+          ) : null}
         </div>
       );
     },
@@ -169,12 +181,51 @@ describe("MidnightOil mode", () => {
     ).toBe("default");
   });
 
+  it("creates job with wrestle research_tier from budget picker (gs)", async () => {
+    createMidnightOilJob.mockResolvedValue({
+      job_id: "moil_wrestle",
+      goals: ["Long-horizon synthesis"],
+      duration_minutes: 90,
+      status: "awaiting_approval",
+      research_tier: "wrestle",
+      recommended_price_ceiling_usd: 5.0,
+      view_format: "html",
+      runnable: false,
+      html: "<p>Wrestle job</p>",
+    });
+    render(<MidnightOil />);
+    fireEvent.change(screen.getByLabelText(/goals/i), {
+      target: { value: "Long-horizon synthesis" },
+    });
+    fireEvent.click(screen.getByTestId("research-launch-tier-wrestle"));
+    fireEvent.click(
+      screen.getByRole("button", { name: /create job \+ recommend ceiling/i }),
+    );
+    await waitFor(() => {
+      expect(createMidnightOilJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          goals: ["Long-horizon synthesis"],
+          research_tier: "wrestle",
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("moil-research-tier").textContent).toMatch(
+        /wrestle/i,
+      );
+    });
+    expect(
+      screen.getByTestId("moil-research-tier").getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+  });
+
   it("creates job then approves at recommended ceiling", async () => {
     createMidnightOilJob.mockResolvedValue({
       job_id: "moil_test",
       goals: ["Map residual risks"],
       duration_minutes: 60,
       status: "awaiting_approval",
+      research_tier: "deep",
       recommended_price_ceiling_usd: 3.6,
       view_format: "html",
       runnable: false,
@@ -185,6 +236,7 @@ describe("MidnightOil mode", () => {
       goals: ["Map residual risks"],
       duration_minutes: 60,
       status: "approved",
+      research_tier: "deep",
       recommended_price_ceiling_usd: 3.6,
       approved_ceiling_usd: 3.6,
       view_format: "html",

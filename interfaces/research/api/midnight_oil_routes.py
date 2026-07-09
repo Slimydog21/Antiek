@@ -46,6 +46,8 @@ class CreateJobBody(BaseModel):
     fanout_depth: int = 3
     asset_id: str | None = None
     job_id: str | None = None
+    # Residual (gs): fast | deep | wrestle (normalized server-side).
+    research_tier: str | None = None
 
 
 class ApproveBody(BaseModel):
@@ -92,6 +94,7 @@ def post_create(body: CreateJobBody) -> dict[str, Any]:
             fanout_depth=body.fanout_depth,
             job_id=body.job_id,
             asset_id=body.asset_id,
+            research_tier=body.research_tier,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -129,6 +132,7 @@ def get_job_route(job_id: str) -> dict[str, Any]:
         "goals": list(job.goals),
         "duration_minutes": job.duration_minutes,
         "model_id": job.model_id,
+        "research_tier": job.research_tier,
         "status": job.status,
         "recommended_price_ceiling_usd": job.recommended_price_ceiling_usd,
         "approved_ceiling_usd": job.approved_ceiling_usd,

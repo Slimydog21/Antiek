@@ -11,6 +11,8 @@ export type MidnightOilJobResponse = {
   goals: string[];
   duration_minutes: number;
   model_id?: string | null;
+  /** Residual (gs): curated fast|deep|wrestle for autonomous depth. */
+  research_tier?: "fast" | "deep" | "wrestle" | string | null;
   status: string;
   recommended_price_ceiling_usd: number;
   approved_ceiling_usd?: number | null;
@@ -36,6 +38,8 @@ export async function createMidnightOilJob(body: {
   model_id?: string | null;
   fanout_depth?: number;
   asset_id?: string | null;
+  /** Residual (gs): fast | deep | wrestle */
+  research_tier?: "fast" | "deep" | "wrestle" | string | null;
 }): Promise<MidnightOilJobResponse> {
   const res = await apiFetch(`${API_BASE}/midnight-oil/create`, {
     method: "POST",
