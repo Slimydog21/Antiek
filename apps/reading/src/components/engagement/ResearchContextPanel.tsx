@@ -11,7 +11,9 @@ import {
   attachSourceRefs,
   fetchEvidencePack,
   fetchResearchContext,
+  hydratePublicationRef,
   type EvidencePackResponse,
+  type HydrateRefResponse,
   type ResearchContextResponse,
 } from "../../api/engagement";
 import { detectSourceKindClient } from "../../workspace/researchContextPack";
@@ -32,6 +34,7 @@ export function ResearchContextPanel({
   const [refInput, setRefInput] = useState("");
   const [pack, setPack] = useState<ResearchContextResponse | null>(null);
   const [evidence, setEvidence] = useState<EvidencePackResponse | null>(null);
+  const [hydrated, setHydrated] = useState<HydrateRefResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -89,6 +92,28 @@ export function ResearchContextPanel({
     }
   }, [spawnId, refInput, load]);
 
+  const hydrate = useCallback(async () => {
+    if (!refInput.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const asset = await hydratePublicationRef({
+        reference: refInput.trim(),
+        include_html: true,
+        attach_spawn_id: spawnId,
+      });
+      if (asset.view_format !== "html") {
+        throw new Error("hydrate view_format must be html");
+      }
+      setHydrated(asset);
+      if (spawnId) await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [refInput, spawnId, load]);
+
   return (
     <section
       className="research-context-panel"
@@ -133,28 +158,42 @@ export function ResearchContextPanel({
         </button>
       </div>
 
-      {spawnId ? (
-        <div className="attach-refs">
-          <label>
-            Attach source (arxiv / substack / url)
-            <input
-              type="text"
-              value={refInput}
-              onChange={(e) => setRefInput(e.target.value)}
-              placeholder="https://arxiv.org/abs/… or 1706.03762"
-              disabled={busy}
-            />
-          </label>
-          {refInput.trim() ? (
-            <span className="kind-hint" data-kind={detectSourceKindClient(refInput)}>
-              kind: {detectSourceKindClient(refInput)}
-            </span>
+      <div className="attach-refs">
+        <label>
+          Source (arxiv / substack / url)
+          <input
+            type="text"
+            value={refInput}
+            onChange={(e) => setRefInput(e.target.value)}
+            placeholder="https://arxiv.org/abs/… or 1706.03762"
+            disabled={busy}
+          />
+        </label>
+        {refInput.trim() ? (
+          <span className="kind-hint" data-kind={detectSourceKindClient(refInput)}>
+            kind: {detectSourceKindClient(refInput)}
+          </span>
+        ) : null}
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          {spawnId ? (
+            <button
+              type="button"
+              onClick={() => void attach()}
+              disabled={busy || !refInput.trim()}
+            >
+              Attach ref
+            </button>
           ) : null}
-          <button type="button" onClick={() => void attach()} disabled={busy || !refInput.trim()}>
-            Attach ref
+          <button
+            type="button"
+            data-testid="hydrate-publication-ref"
+            onClick={() => void hydrate()}
+            disabled={busy || !refInput.trim()}
+          >
+            Hydrate HTML asset
           </button>
         </div>
-      ) : null}
+      </div>
 
       {error ? (
         <p className="error" role="alert">
@@ -203,6 +242,25 @@ export function ResearchContextPanel({
               className="evidence-html"
               data-testid="evidence-pack-html"
               dangerouslySetInnerHTML={{ __html: evidence.html }}
+            />
+          ) : null}
+        </div>
+      ) : null}
+
+      {hydrated ? (
+        <div
+          className="hydrate-result"
+          data-testid="hydrate-ref-result"
+          data-view-format="html"
+        >
+          <p>
+            hydrated asset <code>{hydrated.asset_id}</code> · fetched=
+            {String(hydrated.fetched)} · {hydrated.title}
+          </p>
+          {hydrated.html ? (
+            <div
+              data-testid="hydrate-ref-html"
+              dangerouslySetInnerHTML={{ __html: hydrated.html }}
             />
           ) : null}
         </div>

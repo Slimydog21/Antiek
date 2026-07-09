@@ -5,11 +5,13 @@ import { ResearchContextPanel } from "./ResearchContextPanel";
 const fetchResearchContext = vi.fn();
 const attachSourceRefs = vi.fn();
 const fetchEvidencePack = vi.fn();
+const hydratePublicationRef = vi.fn();
 
 vi.mock("../../api/engagement", () => ({
   fetchResearchContext: (...args: unknown[]) => fetchResearchContext(...args),
   attachSourceRefs: (...args: unknown[]) => attachSourceRefs(...args),
   fetchEvidencePack: (...args: unknown[]) => fetchEvidencePack(...args),
+  hydratePublicationRef: (...args: unknown[]) => hydratePublicationRef(...args),
 }));
 
 describe("ResearchContextPanel", () => {
@@ -21,6 +23,7 @@ describe("ResearchContextPanel", () => {
     fetchResearchContext.mockReset();
     attachSourceRefs.mockReset();
     fetchEvidencePack.mockReset();
+    hydratePublicationRef.mockReset();
   });
 
   it("loads and renders prompt block", async () => {
@@ -94,6 +97,52 @@ describe("ResearchContextPanel", () => {
     await waitFor(() => {
       expect(fetchResearchContext).toHaveBeenCalled();
     });
+  });
+
+  it("hydrates publication ref into HTML asset", async () => {
+    hydratePublicationRef.mockResolvedValue({
+      asset_id: "pub_arxiv_abc",
+      ref: {
+        ref_id: "s1",
+        kind: "arxiv",
+        raw: "1706.03762",
+        canonical_url: "https://arxiv.org/abs/1706.03762",
+      },
+      title: "arxiv: 1706.03762",
+      body_text: "Publication reference",
+      fetched: false,
+      view_format: "html",
+      notes: ["identity-only"],
+      product_panel: "engagement_hydrate",
+      source: "engagement_spine.hydrate",
+      html: "<p>Asset pub_arxiv_abc · view: HTML</p>",
+    });
+    fetchResearchContext.mockResolvedValue({
+      asset_id: "paper",
+      view_format: "html",
+      twin_units: [],
+      source_references: [],
+      twin_count: 0,
+      ref_count: 0,
+      prompt_block: "# empty\n",
+    });
+
+    render(<ResearchContextPanel assetId="paper" spawnId="spn_1" />);
+    fireEvent.change(screen.getByPlaceholderText(/arxiv\.org/), {
+      target: { value: "https://arxiv.org/abs/1706.03762" },
+    });
+    fireEvent.click(screen.getByTestId("hydrate-publication-ref"));
+    await waitFor(() => {
+      expect(screen.getByTestId("hydrate-ref-result").textContent).toMatch(
+        /pub_arxiv_abc/,
+      );
+    });
+    expect(hydratePublicationRef).toHaveBeenCalledWith({
+      reference: "https://arxiv.org/abs/1706.03762",
+      include_html: true,
+      attach_spawn_id: "spn_1",
+    });
+    expect(screen.getByTestId("hydrate-ref-html").innerHTML).toMatch(/HTML/);
   });
 
   it("loads evidence pack HTML", async () => {
