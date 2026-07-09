@@ -107,3 +107,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - create_job + product_path + routes store research_tier
 - UI budget picker → create POST research_tier
 - tests: test_midnight_oil 17 + MidnightOil 7
+## residual (gt) Settings depth-tier → ResearchTier prefill — 2026-07-09
+- mapDepthTierToResearchTier pure helper
+- StartResearch + Midnight Oil fetchDepthTiers on mount
+- tests: researchTier 4 + StartResearch 18 + MidnightOil 7

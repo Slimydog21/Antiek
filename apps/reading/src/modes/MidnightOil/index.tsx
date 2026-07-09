@@ -29,8 +29,9 @@ import {
   type MidnightOilJobResponse,
   type MidnightOilRunResponse,
 } from "../../api/midnightOil";
-import { fetchDecisionTreeSelection } from "../../api/settings";
+import { fetchDecisionTreeSelection, fetchDepthTiers } from "../../api/settings";
 import type { ResearchTier } from "../../lib/api";
+import { mapDepthTierToResearchTier } from "../../lib/researchTier";
 import { DecisionTreeDriverBadge } from "../../components/engagement/DecisionTreeDriverBadge";
 import {
   ResearchLaunchBudgetPanel,
@@ -160,6 +161,7 @@ export default function MidnightOil() {
   }, []);
 
   // Residual (cz): prefill model from decision-tree once on mount.
+  // Residual (gt): prefill research tier from Settings depth-tier.
   useEffect(() => {
     let cancelled = false;
     void fetchDecisionTreeSelection()
@@ -174,6 +176,15 @@ export default function MidnightOil() {
       })
       .catch(() => {
         if (!cancelled) setDriverPrefill("error");
+      });
+    void fetchDepthTiers()
+      .then((resp) => {
+        if (cancelled) return;
+        const mapped = mapDepthTierToResearchTier(resp.active_depth_tier);
+        if (mapped) setResearchTier(mapped);
+      })
+      .catch(() => {
+        /* keep default deep */
       });
     return () => {
       cancelled = true;

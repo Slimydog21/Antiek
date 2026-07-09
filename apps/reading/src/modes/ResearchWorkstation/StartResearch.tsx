@@ -11,6 +11,8 @@ import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useStartInvestigation } from "../../hooks/useStartInvestigation";
 import { ApiError, ingestSource, ingestVoiceNote } from "../../lib/api";
 import type { ResearchTier } from "../../lib/api";
+import { mapDepthTierToResearchTier } from "../../lib/researchTier";
+import { fetchDepthTiers } from "../../api/settings";
 import {
   ResearchLaunchBudgetPanel,
   type ResearchLaunchBudgetProjection,
@@ -153,8 +155,12 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   const [question, setQuestion] = useState("");
   // SPR-01 M3 / residual (gp): curated fast|deep|wrestle tier. Closed set;
   // defaults to deep. Residual (gr): budget-panel picker writes the same state.
+  // Residual (gt): prefill from Settings active_depth_tier when installed.
   // Recorded on the investigation server-side so it's queryable after.
   const [tier, setTier] = useState<ResearchTier>(DEFAULT_TIER);
+  const [depthPrefill, setDepthPrefill] = useState<
+    "pending" | "settings" | "default" | "error"
+  >("pending");
   // Two entry actions on one composer: Ask (one-shot, the shipped fast lane,
   // default) and Break-into-sub-questions (cascade). Cascade swaps the
   // composer for the proposal surface IN PLACE — no navigation away (M1). The
@@ -174,6 +180,29 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   const onProjectionChange = useCallback((p: ResearchLaunchBudgetProjection) => {
     setBudgetWarn(p.wouldExceedBudget === true);
   }, []);
+
+  // Residual (gt): Settings depth-tier → ResearchTier once on mount.
+  useEffect(() => {
+    let cancelled = false;
+    void fetchDepthTiers()
+      .then((resp) => {
+        if (cancelled) return;
+        const mapped = mapDepthTierToResearchTier(resp.active_depth_tier);
+        if (mapped) {
+          setTier(mapped);
+          setDepthPrefill("settings");
+        } else {
+          setDepthPrefill("default");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setDepthPrefill("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // The research-starts signature beat (U-05 M2) — Werner's one-shot
@@ -640,6 +669,9 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             className="flex items-center gap-2"
             role="radiogroup"
             aria-label="Research depth"
+            data-testid="start-research-depth"
+            data-depth-prefill={depthPrefill}
+            data-research-tier={tier}
           >
             <span className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
               Depth

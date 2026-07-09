@@ -32,9 +32,23 @@ vi.mock("../../api/engagement", () => ({
   seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...args),
 }));
 
+const fetchDepthTiers = vi.hoisted(() =>
+  vi.fn(async () => ({
+    active_depth_tier: null as string | null,
+    active_preset: null,
+    presets: [],
+    projection_hints: null,
+    view_format: "html" as const,
+    settings_panel: "depth_tier_presets",
+    source: "test",
+    notes: [] as string[],
+  })),
+);
+
 vi.mock("../../api/settings", () => ({
   fetchDecisionTreeSelection: (...args: unknown[]) =>
     fetchDecisionTreeSelection(...args),
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiers(...args),
 }));
 
 vi.mock("../../components/engagement/ResearchLaunchBudgetPanel", () => {

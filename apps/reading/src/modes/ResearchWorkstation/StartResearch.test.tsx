@@ -40,6 +40,50 @@ vi.mock("../../lib/api", async (orig) => {
   return { ...actual, startInvestigation: startInvestigationMock };
 });
 
+const fetchDepthTiersMock = vi.hoisted(() =>
+  vi.fn(async () => ({
+    active_depth_tier: null as string | null,
+    active_preset: null,
+    presets: [],
+    projection_hints: null,
+    view_format: "html" as const,
+    settings_panel: "depth_tier_presets",
+    source: "test",
+    notes: [],
+  })),
+);
+
+vi.mock("../../api/settings", async (orig) => {
+  try {
+    const actual = await orig<typeof import("../../api/settings")>();
+    return {
+      ...actual,
+      fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...args),
+    };
+  } catch {
+    return {
+      fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...args),
+      estimatePromptCost: vi.fn(async () => ({
+        estimated_usd_low: 0.01,
+        estimated_usd_high: 0.02,
+        would_exceed_budget: false,
+        pricing_known: true,
+      })),
+      fetchSettingsBudget: vi.fn(async () => ({
+        daily_cap_usd: 10,
+        spent_usd: 0,
+        remaining_usd: 10,
+        spent_status: "known",
+      })),
+      fetchDecisionTreeSelection: vi.fn(async () => ({
+        installed: false,
+        model_id: null,
+        provider_id: null,
+      })),
+    };
+  }
+});
+
 // Mock the stream at the hook boundary — useStartInvestigation reads it.
 // We control its returned state per-test so we exercise the REAL phase
 // logic without opening a socket in jsdom.
@@ -105,6 +149,16 @@ beforeEach(() => {
   installMatchMedia(false);
   startInvestigationMock.mockReset();
   navigateMock.mockReset();
+  fetchDepthTiersMock.mockReset().mockResolvedValue({
+    active_depth_tier: null,
+    active_preset: null,
+    presets: [],
+    projection_hints: null,
+    view_format: "html",
+    settings_panel: "depth_tier_presets",
+    source: "test",
+    notes: [],
+  });
   eventStreamState.current = { events: [], status: "closed", reconnects: 0 };
 });
 afterEach(() => cleanup());
@@ -222,6 +276,41 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
     });
     // Residual (gr): ResearchLaunchBudgetPanel picker → setTier → POST.
     fireEvent.click(screen.getByTestId("research-launch-tier-wrestle"));
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() =>
+      expect(startInvestigationMock).toHaveBeenCalledWith(
+        expect.objectContaining({ research_tier: "wrestle" }),
+      ),
+    );
+  });
+
+  it("prefills research tier from Settings active_depth_tier wrestle (gt)", async () => {
+    fetchDepthTiersMock.mockResolvedValueOnce({
+      active_depth_tier: "wrestle",
+      active_preset: null,
+      presets: [],
+      projection_hints: null,
+      view_format: "html",
+      settings_panel: "depth_tier_presets",
+      source: "test",
+      notes: [],
+    });
+    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-settings-w" });
+    renderStart();
+    await waitFor(() => {
+      expect(fetchDepthTiersMock).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("start-research-depth").getAttribute("data-research-tier"),
+      ).toBe("wrestle");
+    });
+    expect(
+      screen.getByTestId("start-research-depth").getAttribute("data-depth-prefill"),
+    ).toBe("settings");
+    fireEvent.change(screen.getByLabelText("Research question"), {
+      target: { value: "Settings depth prefill should land on the start POST." },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Ask" }));
     await waitFor(() =>
       expect(startInvestigationMock).toHaveBeenCalledWith(

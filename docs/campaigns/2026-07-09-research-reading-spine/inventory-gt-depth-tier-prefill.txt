@@ -1,0 +1,21 @@
+# residual (gt) Settings depth-tier → ResearchTier prefill
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(gs) prior | branch_only | campaign inventories
+(gt) depth prefill | branch_only | mapDepthTierToResearchTier; StartResearch + MidnightOil fetchDepthTiers; 29 vitest
+
+PATHS:
+- apps/reading/src/lib/researchTier.ts
+- apps/reading/src/lib/researchTier.test.ts
+- apps/reading/src/modes/ResearchWorkstation/StartResearch.tsx
+- apps/reading/src/modes/ResearchWorkstation/StartResearch.test.tsx
+- apps/reading/src/modes/MidnightOil/index.tsx
+- apps/reading/src/modes/MidnightOil/MidnightOil.test.tsx
+
+BEHAVIOR:
+- flash→fast, pro→deep, wrestle→wrestle
+- null/unknown keep defaults
+- start-research-depth data-depth-prefill=settings|default
+
+NEXT: (gu) re-derive; operator merge PR #465
