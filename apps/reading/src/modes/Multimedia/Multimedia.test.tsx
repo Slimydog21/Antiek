@@ -373,7 +373,9 @@ describe("Multimedia workstation", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Sim provider down" }));
 
-    expect(screen.getByRole("status").textContent).toContain("Krea provider unavailable");
+    expect(screen.getByRole("status").textContent).toContain(
+      "Krea provider unavailable in simulation. Downgrade to placeholders or retry later; no provider call starts here.",
+    );
     expect(
       screen.getByText("Simulator and fallback controls change preview state or route only; they do not call providers, export, or publish media."),
     ).toBeTruthy();
@@ -391,7 +393,9 @@ describe("Multimedia workstation", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Sim over budget" }));
 
-    expect(screen.getByRole("status").textContent).toContain("Over budget");
+    expect(screen.getByRole("status").textContent).toContain(
+      "Over budget estimate. Choose a cheaper route or adjust the separate preflight ceiling before any provider call starts.",
+    );
     fireEvent.click(screen.getByRole("button", { name: "Use cheapest fallback" }));
     expect(screen.getByRole("status").textContent).toContain("Partial render available");
   });

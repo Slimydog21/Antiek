@@ -2590,8 +2590,8 @@ function StatusPanel({
     rendering: "Rendering dry-run package. Provider calls remain behind separate budget approval and are not started here.",
     partial: "Partial render available. One visual beat fell back to a placeholder.",
     failed: "Render failed. The manifest and transcript are retained for retry.",
-    over_budget: "Over budget. Choose a cheaper route or approve a higher ceiling.",
-    provider_unavailable: "Krea provider unavailable. Downgrade to placeholders or retry later.",
+    over_budget: "Over budget estimate. Choose a cheaper route or adjust the separate preflight ceiling before any provider call starts.",
+    provider_unavailable: "Krea provider unavailable in simulation. Downgrade to placeholders or retry later; no provider call starts here.",
   };
 
   return (
