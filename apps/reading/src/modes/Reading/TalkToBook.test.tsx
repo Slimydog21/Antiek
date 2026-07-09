@@ -9,17 +9,28 @@
  * aloud control (M3 wiring).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type { AskBookResponse, BookCitation } from "../../api/books";
 import TalkToBook from "./TalkToBook";
 
-const { askBookMock } = vi.hoisted(() => ({ askBookMock: vi.fn() }));
+const { askBookMock, fetchDepthTiersMock } = vi.hoisted(() => ({
+  askBookMock: vi.fn(),
+  fetchDepthTiersMock: vi.fn(async () => ({
+    active_depth_tier: null as string | null,
+    active_preset: null,
+    tiers: [],
+  })),
+}));
 
 vi.mock("../../api/books", async (orig) => {
   const actual = await orig<typeof import("../../api/books")>();
   return { ...actual, askBook: askBookMock };
 });
+
+vi.mock("../../api/settings", () => ({
+  fetchDepthTiers: (...args: unknown[]) => fetchDepthTiersMock(...args),
+}));
 
 // Stub ReadAloud so the TTS network path isn't coupled into this test (the real
 // control is covered by ReadAloud.test.tsx); we only assert it is MOUNTED with
@@ -53,6 +64,11 @@ function answer(over: Partial<AskBookResponse> = {}): AskBookResponse {
 
 beforeEach(() => {
   askBookMock.mockReset();
+  fetchDepthTiersMock.mockReset().mockResolvedValue({
+    active_depth_tier: null,
+    active_preset: null,
+    tiers: [],
+  });
   window.sessionStorage.clear();
 });
 afterEach(cleanup);
@@ -112,8 +128,41 @@ describe("TalkToBook (M2)", () => {
       question: "first question",
       answer: "First answer.",
     });
+    // Residual (jn): default researchTier deep when Settings unset.
+    expect(secondCallOpts.researchTier).toBe("deep");
     // Both turns are visible in the thread.
     expect(screen.getByText("First answer.")).toBeTruthy();
+  });
+
+  it("forwards Settings wrestle research_tier on ask (jn)", async () => {
+    fetchDepthTiersMock.mockResolvedValue({
+      active_depth_tier: "wrestle",
+      active_preset: null,
+      tiers: [],
+    });
+    askBookMock.mockResolvedValue(answer({ answer: "Wrestle answer." }));
+    render(
+      <TalkToBook documentId="doc-x" title="A Book" onJumpToPage={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByTestId("talk-to-book-bookmark"));
+    await waitFor(() => {
+      expect(screen.getByTestId("talk-to-book").getAttribute("data-depth-prefill")).toBe(
+        "installed",
+      );
+    });
+    expect(screen.getByTestId("talk-to-book").getAttribute("data-research-tier")).toBe(
+      "wrestle",
+    );
+    fireEvent.change(screen.getByPlaceholderText("Ask about this book…"), {
+      target: { value: "wrestle this claim" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await screen.findByText("Wrestle answer.");
+    expect(askBookMock).toHaveBeenCalledWith(
+      "doc-x",
+      "wrestle this claim",
+      expect.objectContaining({ researchTier: "wrestle" }),
+    );
   });
 
   it("branches a tangent off a turn ('what about that?')", async () => {

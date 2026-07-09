@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import { LemonButton } from "../../components/lemon";
 import { askBook } from "../../api/books";
 import type { BookCitation } from "../../api/books";
+import { useSettingsResearchTier } from "../../lib/useSettingsResearchTier";
 import ReadAloud from "../../components/voice/ReadAloud";
 import { useTalkThread } from "./useTalkThread";
 import type { TalkMessage } from "./useTalkThread";
@@ -22,6 +23,7 @@ import type { TalkMessage } from "./useTalkThread";
  *     page navigation (`useTalkThread` → sessionStorage, the usePosition
  *     precedent — NOT substrate truth);
  *   • reads any answer aloud via the SPR-14 shared TTS service (`ReadAloud`).
+ * Residual (jn): Settings depth-tier → researchTier on each ask (parity DR).
  *
  * §9.0: a withheld region can never be cited — the backend search gate keeps a
  * withheld body out of the model context and the citation set, so this surface
@@ -48,6 +50,8 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
   const [draft, setDraft] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Residual (jn): Settings depth-tier for talk-to-book research_tier.
+  const { researchTier, depthPrefill } = useSettingsResearchTier();
 
   const turnCount = thread.messages.length;
   const branchCount = thread.state.branches.length;
@@ -65,7 +69,10 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
     const messageId = thread.startTurn(q);
     setPending(true);
     try {
-      const res = await askBook(documentId, q, { history });
+      const res = await askBook(documentId, q, {
+        history,
+        researchTier,
+      });
       thread.completeTurn(messageId, res.answer, res.citations, res.grounded);
     } catch (e: unknown) {
       thread.failTurn(messageId);
@@ -73,7 +80,7 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
     } finally {
       setPending(false);
     }
-  }, [draft, pending, thread, documentId]);
+  }, [draft, pending, thread, documentId, researchTier]);
 
   if (!open) {
     return (
@@ -99,6 +106,8 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
       data-testid="talk-to-book"
       className="fixed bottom-6 right-6 z-30 flex flex-col w-96 max-h-[70vh] rounded-lg border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 shadow-2xl"
       aria-label="Talk to this book"
+      data-research-tier={researchTier}
+      data-depth-prefill={depthPrefill}
     >
       <header className="flex items-center justify-between gap-2 border-b border-rule dark:border-charcoal-1 px-3 py-2">
         <span className="text-[13px] font-serif text-ink dark:text-bright truncate">
