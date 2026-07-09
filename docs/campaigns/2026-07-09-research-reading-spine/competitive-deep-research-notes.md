@@ -542,3 +542,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (pd, 2026-07-10) **FUTURE-AGENT-SPEC remaining vision:**
   - FUTURE-AGENT-SPEC-remaining-vision-2026-07-10.md
   - V1–V6 offline product residuals + L1–L7 dual-gate honesty
+
+- Closed (pe, 2026-07-10) **Antiek-bench suite rewrite rationale chrome (V3):**
+  - data-has-rationale + feed_source_count on suite metrics
+  - rewrite rationale propose≠promote honesty banner

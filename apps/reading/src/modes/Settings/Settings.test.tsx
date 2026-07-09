@@ -731,6 +731,32 @@ describe("Settings SPR-01 + decision-tree install", () => {
     ).toBe("true");
   });
 
+  it("surfaces suite rewrite rationale + feed source count (pe)", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("antiek-bench-suite-proposal-rationale"),
+      ).toBeTruthy();
+    });
+    const rationale = screen.getByTestId(
+      "antiek-bench-suite-proposal-rationale",
+    );
+    expect(rationale.textContent).toMatch(/Rewrite rationale/i);
+    expect(rationale.textContent).toMatch(/not auto-promoted/i);
+    expect(rationale.textContent).toMatch(/Ingested 2 usage events/i);
+    expect(rationale.getAttribute("data-propose-not-promote")).toBe("true");
+    expect(rationale.getAttribute("data-proposed-task-count")).toBe("1");
+    expect(Number(rationale.getAttribute("data-feed-source-count") || 0)).toBeGreaterThan(
+      0,
+    );
+    const metrics = screen.getByTestId("antiek-bench-suite-proposal-metrics");
+    expect(metrics.getAttribute("data-has-rationale")).toBe("true");
+    expect(Number(metrics.getAttribute("data-feed-source-count") || 0)).toBeGreaterThan(
+      0,
+    );
+    expect(metrics.textContent).toMatch(/feed_sources=/);
+  });
+
   it("groups proposed suite tasks by task class (hg)", async () => {
     render(<Settings />);
     await waitFor(() => {

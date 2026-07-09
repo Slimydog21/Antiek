@@ -1772,10 +1772,10 @@ export default function Settings() {
                 NotDiamond: advisory only (L7 · never dispatch authority)
               </span>
             </p>
-            {/* Residual (ht): recursive rewrite metrics for audit. */}
+            {/* Residual (ht/pe): recursive rewrite metrics + rationale delta. */}
             {suiteProposal ? (
               <div
-                className="font-mono text-[11px] text-ink-soft dark:text-starlight"
+                className="font-mono text-[11px] text-ink-soft dark:text-starlight space-y-1"
                 data-testid="antiek-bench-suite-proposal-metrics"
                 data-has-proposal={String(Boolean(suiteProposal.has_proposal))}
                 data-status={suiteProposal.status ?? ""}
@@ -1787,6 +1787,12 @@ export default function Settings() {
                 data-auto-promoted={String(
                   suiteProposal.auto_promoted === true,
                 )}
+                data-feed-source-count={String(
+                  Object.keys(usage?.by_source || {}).length,
+                )}
+                data-has-rationale={String(
+                  Boolean((suiteProposal.rationale || "").trim()),
+                )}
                 data-propose-not-promote="true"
                 data-view-format="html"
                 role="status"
@@ -1794,7 +1800,8 @@ export default function Settings() {
                 Recursive rewrite · events={suiteProposal.event_count ?? 0} ·
                 proposed_tasks=
                 {(suiteProposal.added_item_ids || []).length} · status=
-                {suiteProposal.status ?? "—"}
+                {suiteProposal.status ?? "—"} · feed_sources=
+                {Object.keys(usage?.by_source || {}).length}
               </div>
             ) : null}
             {/* Residual (hf/nz/os): show which usage sources feed this rewrite. */}
@@ -1997,11 +2004,23 @@ export default function Settings() {
                     rationale-only).
                   </p>
                 ) : null}
+                {/* Residual (pe): rewrite rationale chrome (propose≠promote honesty). */}
                 {suiteProposal.rationale ? (
                   <p
-                    className="text-[11px] text-ink-soft dark:text-starlight"
+                    className="text-[11px] font-mono text-ink-soft dark:text-starlight border border-ink/10 rounded p-2 dark:border-bright/10"
                     data-testid="antiek-bench-suite-proposal-rationale"
+                    data-proposal-id={suiteProposal.proposal_id ?? ""}
+                    data-proposed-task-count={String(
+                      (suiteProposal.added_item_ids || []).length,
+                    )}
+                    data-feed-source-count={String(
+                      Object.keys(usage?.by_source || {}).length,
+                    )}
+                    data-propose-not-promote="true"
+                    data-view-format="html"
+                    role="status"
                   >
+                    Rewrite rationale (proposed, not auto-promoted):{" "}
                     {suiteProposal.rationale}
                   </p>
                 ) : null}
