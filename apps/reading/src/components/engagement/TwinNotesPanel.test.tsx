@@ -449,6 +449,7 @@ describe("TwinNotesPanel", () => {
       asset_id: "paper",
       include_html: true,
       kinds: null,
+      note_ids: null,
     });
     expect(screen.getByTestId("twin-promote-html").innerHTML).toMatch(
       /Attention is routing/,
@@ -534,6 +535,7 @@ describe("TwinNotesPanel", () => {
         asset_id: "paper",
         include_html: true,
         kinds: ["insight"],
+        note_ids: null,
       });
     });
     await waitFor(() => {
@@ -649,6 +651,7 @@ describe("TwinNotesPanel", () => {
         asset_id: "paper",
         include_html: true,
         kinds: ["question"],
+        note_ids: null,
       });
     });
     await waitFor(() => {
@@ -661,5 +664,82 @@ describe("TwinNotesPanel", () => {
         .getByTestId("twin-promote-metrics")
         .getAttribute("data-promote-kinds"),
     ).toBe("question");
+  });
+
+  it("multi-selects note_ids and promotes selected only (mx)", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 2,
+      insight_count: 2,
+      question_count: 0,
+      notes: [
+        {
+          note_id: "twin_a",
+          asset_id: "paper",
+          kind: "insight",
+          text: "Select me",
+        },
+        {
+          note_id: "twin_b",
+          asset_id: "paper",
+          kind: "insight",
+          text: "Leave me",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>twins</p>",
+    });
+    promoteTwinsToContext.mockResolvedValue({
+      asset_id: "paper",
+      promoted_count: 1,
+      context_unit_count: 1,
+      promoted: [
+        {
+          twin_note_id: "twin_a",
+          graph_node_id: "insight_a",
+          kind: "insight",
+          text: "Select me",
+        },
+      ],
+      context_units: [
+        {
+          unit_id: "insight_a",
+          twin_note_id: "twin_a",
+          kind: "insight",
+          text: "Select me",
+        },
+      ],
+      note_ids: ["twin_a"],
+      view_format: "html",
+      product_panel: "twin_promote_context",
+      source: "engagement_spine.twin_promote",
+      notes: [],
+      html: "<p>[insight] Select me</p>",
+    });
+    render(<TwinNotesPanel assetId="paper" autoLoad />);
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-select-twin_a")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("twin-select-twin_a"));
+    expect(
+      screen.getByTestId("twin-selection-count").getAttribute("data-selected-count"),
+    ).toBe("1");
+    fireEvent.click(screen.getByTestId("twin-promote-selected"));
+    await waitFor(() => {
+      expect(promoteTwinsToContext).toHaveBeenCalledWith({
+        asset_id: "paper",
+        include_html: true,
+        kinds: null,
+        note_ids: ["twin_a"],
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-promote-status").textContent).toMatch(
+        /selected=1/,
+      );
+    });
   });
 });

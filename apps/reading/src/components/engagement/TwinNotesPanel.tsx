@@ -24,6 +24,7 @@
  * then promote (browse→merge path without a second dropdown).
  * Residual (mt): dual-gate L1–L4 checklist deep-link for L3 twin live seed prep
  * (parity mj/ml/mm; never enables injectors).
+ * Residual (mx): multi-select by note_id — promote only checked twin notes.
  * HTML-first; never PDF.
  */
 
@@ -110,6 +111,13 @@ export function TwinNotesPanel({
   const [listFilter, setListFilter] = useState<
     "all" | "insight" | "question"
   >("all");
+  /**
+   * Residual (mx): multi-select twin note_ids for per-note promote.
+   * Empty selection → promote uses kinds filter only (mq/ms behavior).
+   */
+  const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   // Residual (kr/lb): prop wins; seed/list API research_tier is fallback.
   const apiResearchTier = (twins?.research_tier || "").trim().toLowerCase() || "";
@@ -258,8 +266,34 @@ export function TwinNotesPanel({
     return notes.filter((n) => n.kind === listFilter);
   }, [twins?.notes, listFilter]);
 
+  /** Residual (mx): toggle note_id in multi-select set. */
+  const toggleNoteSelected = useCallback((noteId: string) => {
+    setSelectedNoteIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(noteId)) next.delete(noteId);
+      else next.add(noteId);
+      return next;
+    });
+  }, []);
+
+  /** Residual (mx): select all currently visible notes. */
+  const selectAllVisible = useCallback(() => {
+    setSelectedNoteIds((prev) => {
+      const next = new Set(prev);
+      for (const n of visibleNotes) next.add(n.note_id);
+      return next;
+    });
+  }, [visibleNotes]);
+
+  const clearNoteSelection = useCallback(() => {
+    setSelectedNoteIds(new Set());
+  }, []);
+
   const promote = useCallback(
-    async (kindsOverride?: "all" | "insight" | "question") => {
+    async (
+      kindsOverride?: "all" | "insight" | "question",
+      noteIdsOverride?: string[] | null,
+    ) => {
       setBusy(true);
       setError(null);
       try {
@@ -272,18 +306,32 @@ export function TwinNotesPanel({
           effective === "all"
             ? null
             : ([effective] as Array<"insight" | "question">);
+        // Residual (mx): multi-select note_ids when provided / selected.
+        const fromOverride =
+          noteIdsOverride !== undefined
+            ? noteIdsOverride
+            : selectedNoteIds.size > 0
+              ? Array.from(selectedNoteIds)
+              : null;
+        const note_ids =
+          fromOverride && fromOverride.length > 0 ? fromOverride : null;
         const p = await promoteTwinsToContext({
           asset_id: assetId,
           include_html: true,
           kinds,
+          note_ids,
         });
         if (p.view_format !== "html") {
           throw new Error("twin promote view_format must be html");
         }
         setPromoted(p);
         const kindLabel = effective === "all" ? "all kinds" : effective;
+        const selLabel =
+          note_ids && note_ids.length > 0
+            ? ` · selected=${note_ids.length}`
+            : "";
         setPromoteStatus(
-          `promoted ${p.promoted_count} twin unit(s) to context (${kindLabel})`,
+          `promoted ${p.promoted_count} twin unit(s) to context (${kindLabel}${selLabel})`,
         );
         onPromoted?.(p);
       } catch (e) {
@@ -292,13 +340,22 @@ export function TwinNotesPanel({
         setBusy(false);
       }
     },
-    [assetId, onPromoted, promoteKinds],
+    [assetId, onPromoted, promoteKinds, selectedNoteIds],
   );
 
   /** Residual (ms): promote using current list filter (browse→merge). */
   const promoteVisible = useCallback(() => {
     void promote(listFilter);
   }, [promote, listFilter]);
+
+  /** Residual (mx): promote only multi-selected note_ids. */
+  const promoteSelected = useCallback(() => {
+    if (selectedNoteIds.size < 1) {
+      setError("Select at least one twin note to promote");
+      return;
+    }
+    void promote(undefined, Array.from(selectedNoteIds));
+  }, [promote, selectedNoteIds]);
 
   return (
     <section
@@ -427,6 +484,33 @@ export function TwinNotesPanel({
           Promote visible
           {listFilter !== "all" ? ` (${listFilter})` : ""}
         </button>
+        {/* Residual (mx): multi-select promote. */}
+        <button
+          type="button"
+          data-testid="twin-select-all-visible"
+          onClick={() => selectAllVisible()}
+          disabled={busy || visibleNotes.length === 0}
+          title="Select all notes currently shown in the list filter"
+        >
+          Select visible
+        </button>
+        <button
+          type="button"
+          data-testid="twin-clear-selection"
+          onClick={() => clearNoteSelection()}
+          disabled={busy || selectedNoteIds.size === 0}
+        >
+          Clear selection
+        </button>
+        <button
+          type="button"
+          data-testid="twin-promote-selected"
+          onClick={() => promoteSelected()}
+          disabled={busy || selectedNoteIds.size === 0}
+          title="Promote only multi-selected twin note_ids"
+        >
+          Promote selected ({selectedNoteIds.size})
+        </button>
       </div>
       {error ? (
         <p className="error" role="alert">
@@ -512,11 +596,37 @@ export function TwinNotesPanel({
           </p>
           <ul data-testid="twin-notes-list">
             {visibleNotes.map((n) => (
-              <li key={n.note_id} data-kind={n.kind}>
-                <strong>[{n.kind}]</strong> {n.text}
+              <li
+                key={n.note_id}
+                data-kind={n.kind}
+                data-note-id={n.note_id}
+                data-selected={String(selectedNoteIds.has(n.note_id))}
+              >
+                {/* Residual (mx): multi-select checkbox per twin note. */}
+                <label className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    data-testid={`twin-select-${n.note_id}`}
+                    checked={selectedNoteIds.has(n.note_id)}
+                    onChange={() => toggleNoteSelected(n.note_id)}
+                    disabled={busy}
+                    aria-label={`Select twin note ${n.note_id}`}
+                  />
+                  <span>
+                    <strong>[{n.kind}]</strong> {n.text}
+                  </span>
+                </label>
               </li>
             ))}
           </ul>
+          <p
+            className="text-[11px] font-mono opacity-70"
+            data-testid="twin-selection-count"
+            data-selected-count={String(selectedNoteIds.size)}
+            role="status"
+          >
+            Selected notes: {selectedNoteIds.size}
+          </p>
           {twins.notes.length > 0 && visibleNotes.length === 0 ? (
             <p
               className="text-[11px] font-mono opacity-70"
@@ -545,6 +655,7 @@ export function TwinNotesPanel({
             data-promoted-count={String(promoted.promoted_count ?? 0)}
             data-context-unit-count={String(promoted.context_unit_count ?? 0)}
             data-promote-kinds={promoteKinds}
+            data-selected-count={String(selectedNoteIds.size)}
             data-view-format="html"
             data-product-panel={
               promoted.product_panel ?? "twin_promote_context"

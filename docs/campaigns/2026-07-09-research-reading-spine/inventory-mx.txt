@@ -1,0 +1,12 @@
+# inventory-mx · multi-select twin note_id promote
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: mx
+files:
+  substrate/engagement_spine/twin_promote.py
+  interfaces/research/api/engagement_routes.py
+  tests/test_engagement_twin_promote_product.py
+  apps/reading/src/api/engagement.ts
+  apps/reading/src/components/engagement/TwinNotesPanel.tsx
+  apps/reading/src/components/engagement/TwinNotesPanel.test.tsx
+proof: pytest twin_promote_product 7 passed · vitest TwinNotesPanel 14 passed
+invariants: HTML-first · kinds∩note_ids intersection · browse→select→merge · offline-honest empty selection

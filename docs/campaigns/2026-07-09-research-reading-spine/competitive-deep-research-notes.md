@@ -304,3 +304,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (mw, 2026-07-10) **Competitive duration band on progress:**
   - research-progress-competitive-band by tier + poll cadence honesty
   - dual-gate checklist on progress panel
+
+- Closed (mx, 2026-07-10) **Multi-select twin note_id promote:**
+  - `note_ids` filter on promote-context substrate/API (∩ kinds when both)
+  - TwinNotesPanel checkboxes + Select visible / Clear / Promote selected
+  - Per-note recursive note-taker merge into research context

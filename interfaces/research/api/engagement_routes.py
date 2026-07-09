@@ -238,6 +238,7 @@ class TwinPromoteContextBody(BaseModel):
 
     Residual (mq): optional ``kinds`` — ``insight`` and/or ``question`` —
     selective promote for recursive note-taker merge UX.
+    Residual (mx): optional ``note_ids`` multi-select for per-note promote.
     """
 
     asset_id: str = Field(min_length=1)
@@ -245,6 +246,7 @@ class TwinPromoteContextBody(BaseModel):
     investigation_id: str | None = None
     include_html: bool = True
     kinds: list[Literal["insight", "question"]] | None = None
+    note_ids: list[str] | None = None
 
 
 class ContextSearchBody(BaseModel):
@@ -742,6 +744,7 @@ def post_twins_promote_context(body: TwinPromoteContextBody) -> dict[str, Any]:
             promote_question_fn=_offline_promote_question,
             include_html=body.include_html,
             kinds=body.kinds,
+            note_ids=body.note_ids,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

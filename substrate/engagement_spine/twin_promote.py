@@ -250,14 +250,27 @@ def promote_twin_notes_for_asset(
     embedding_provider: Any = None,
     con: Any = None,
     kinds: Sequence[TwinKind] | None = None,
+    note_ids: Sequence[str] | None = None,
 ) -> list[TwinPromoteResult]:
-    """Promote all (or filtered-kind) twin notes for a parent asset."""
+    """Promote all (or filtered) twin notes for a parent asset.
+
+    Residual (mq): optional ``kinds`` filter (insight | question).
+    Residual (mx): optional ``note_ids`` multi-select — exact twin note ids.
+    When both set, notes must match kind AND note_id (intersection).
+    """
     if not asset_id or not asset_id.strip():
         raise ValueError("asset_id is required")
     notes = list_twin_notes(asset_id, store=store)
     if kinds is not None:
         allowed = set(kinds)
         notes = [n for n in notes if n.kind in allowed]
+    # Residual (mx): multi-select by exact twin note_id.
+    if note_ids is not None:
+        wanted = {str(i).strip() for i in note_ids if str(i).strip()}
+        if wanted:
+            notes = [n for n in notes if n.note_id in wanted]
+        else:
+            notes = []
     out: list[TwinPromoteResult] = []
     for note in notes:
         out.append(
@@ -327,11 +340,13 @@ def promote_and_context_for_asset(
     embedding_provider: Any = None,
     con: Any = None,
     kinds: Sequence[TwinKind] | None = None,
+    note_ids: Sequence[str] | None = None,
 ) -> TwinPromoteContextResult:
     """Product entry: twin notes → promote_* → search/context units.
 
     Drive twice on the same twin fixture: graph_node_id / unit_id stay stable
     (content-addressed promote_* identity).
+    Residual (mx): optional note_ids multi-select.
     """
     promoted = promote_twin_notes_for_asset(
         asset_id,
@@ -343,6 +358,7 @@ def promote_and_context_for_asset(
         embedding_provider=embedding_provider,
         con=con,
         kinds=kinds,
+        note_ids=note_ids,
     )
     units = [result_to_context_unit(p) for p in promoted]
     filtered = search_twin_context(units, query=query, asset_id=asset_id.strip())
@@ -365,6 +381,7 @@ def twin_promote_context_payload(
     promote_question_fn: PromoteQuestionFn | None = None,
     include_html: bool = True,
     kinds: Sequence[TwinKind] | None = None,
+    note_ids: Sequence[str] | None = None,
 ) -> dict[str, Any]:
     """Settings/workstation product shape for twin promote → context.
 
@@ -373,6 +390,7 @@ def twin_promote_context_payload(
 
     Residual (mq): optional ``kinds`` filter (insight | question) for selective
     promote — recursive note-taker merge of one twin class into context.
+    Residual (mx): optional ``note_ids`` multi-select for per-note promote.
     """
     if not asset_id or not str(asset_id).strip():
         raise ValueError("asset_id is required")
@@ -385,6 +403,18 @@ def twin_promote_context_payload(
             if raw in ("insight", "question") and raw not in allowed:
                 allowed.append(raw)  # type: ignore[arg-type]
         kinds_norm = tuple(allowed) if allowed else None
+    # Residual (mx): normalize note_ids (strip empties; preserve order unique).
+    note_ids_norm: tuple[str, ...] | None = None
+    if note_ids is not None:
+        seen: set[str] = set()
+        ordered: list[str] = []
+        for i in note_ids:
+            tok = str(i or "").strip()
+            if not tok or tok in seen:
+                continue
+            seen.add(tok)
+            ordered.append(tok)
+        note_ids_norm = tuple(ordered)
     result = promote_and_context_for_asset(
         asset_id.strip(),
         store=store,
@@ -394,6 +424,7 @@ def twin_promote_context_payload(
         promote_insight_fn=promote_insight_fn,
         promote_question_fn=promote_question_fn,
         kinds=kinds_norm,
+        note_ids=note_ids_norm,
     )
     raw = result.to_dict()
     payload: dict[str, Any] = {
@@ -404,16 +435,23 @@ def twin_promote_context_payload(
         "context_units": raw["context_units"],
         "query": query,
         "kinds": list(kinds_norm) if kinds_norm is not None else ["insight", "question"],
+        "note_ids": list(note_ids_norm) if note_ids_norm is not None else [],
         "view_format": "html",
         "product_panel": "twin_promote_context",
         "source": "engagement_spine.twin_promote",
         "notes": [],
     }
     if not result.promoted:
-        payload["notes"] = [
-            "No twin notes to promote — record insights/questions first "
-            "(recursive note-taker substrate is empty)."
-        ]
+        if note_ids_norm is not None and note_ids_norm:
+            payload["notes"] = [
+                "No matching twin notes for selected note_ids — check selection "
+                "or record insights/questions first."
+            ]
+        else:
+            payload["notes"] = [
+                "No twin notes to promote — record insights/questions first "
+                "(recursive note-taker substrate is empty)."
+            ]
     else:
         payload["notes"] = [
             "Twins promoted into content-addressed context units for research prompts.",

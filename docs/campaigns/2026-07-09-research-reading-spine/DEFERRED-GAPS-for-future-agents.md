@@ -71,7 +71,13 @@ ceiling budget fit + soft-gate approve; dual-gate checklist on attach; full-wave
 SESSION-ARC. Live L1–L4 injectors remain operator dual-gate only.
 See `SESSION-ARC-lw-mj-catalog-moil-dualgate.md`.
 
+## Closed since ml (twins promote granularity · 2026-07-10)
+
+**(mq–ms, mx)** selective twin promote: kinds filter, list filter, promote
+visible, multi-select note_ids. Recursive note-taker merge path product-complete
+offline. Live L3 twin seed remains dual-gate.
+
 ## Next residual after this doc
 
-**(ml)+** next thin product residual or operator merge PR #465.
+**(my)+** next thin product residual or operator merge PR #465.
 Infinite continues until STOP.

@@ -207,3 +207,112 @@ def test_api_promote_context_kinds_filter():
     assert body["kinds"] == ["question"]
     assert body["promoted"][0]["kind"] == "question"
     assert body["view_format"] == "html"
+
+
+def test_promote_context_note_ids_multi_select():
+    """Residual (mx): note_ids multi-select promotes only selected twins."""
+    reset_engagement_stores()
+    store = eng_mod._eng()
+    a = record_twin_insight(
+        "asset-mx",
+        "First insight for multi-select.",
+        store=store,
+    )
+    b = record_twin_insight(
+        "asset-mx",
+        "Second insight left unselected.",
+        store=store,
+    )
+    q = record_twin_question(
+        "asset-mx",
+        "Question also unselected?",
+        store=store,
+    )
+    # Promote only first insight by note_id.
+    only_a = twin_promote_context_payload(
+        "asset-mx",
+        store=store,
+        promote_insight_fn=_offline_promote_insight,
+        promote_question_fn=_offline_promote_question,
+        include_html=True,
+        note_ids=[a.note_id],
+    )
+    assert only_a["promoted_count"] == 1
+    assert only_a["note_ids"] == [a.note_id]
+    assert only_a["promoted"][0]["twin_note_id"] == a.note_id
+    assert "First insight" in only_a["promoted"][0]["text"]
+
+    both = twin_promote_context_payload(
+        "asset-mx",
+        store=store,
+        promote_insight_fn=_offline_promote_insight,
+        promote_question_fn=_offline_promote_question,
+        include_html=True,
+        note_ids=[a.note_id, q.note_id],
+    )
+    assert both["promoted_count"] == 2
+    ids = {p["twin_note_id"] for p in both["promoted"]}
+    assert a.note_id in ids
+    assert q.note_id in ids
+    assert b.note_id not in ids
+
+    # Intersection: kinds=insight + note_ids including question → question dropped.
+    insight_only = twin_promote_context_payload(
+        "asset-mx",
+        store=store,
+        promote_insight_fn=_offline_promote_insight,
+        promote_question_fn=_offline_promote_question,
+        include_html=True,
+        kinds=["insight"],
+        note_ids=[a.note_id, q.note_id],
+    )
+    assert insight_only["promoted_count"] == 1
+    assert insight_only["promoted"][0]["kind"] == "insight"
+
+
+def test_api_promote_context_note_ids():
+    """Residual (mx): API accepts note_ids multi-select."""
+    reset_engagement_stores()
+    app = FastAPI()
+    register_engagement_routes(app)
+    client = TestClient(app)
+    r1 = client.post(
+        "/engagement/twins",
+        json={
+            "asset_id": "paper-mx",
+            "kind": "insight",
+            "text": "API multi-select A.",
+            "include_html": False,
+        },
+    )
+    r2 = client.post(
+        "/engagement/twins",
+        json={
+            "asset_id": "paper-mx",
+            "kind": "insight",
+            "text": "API multi-select B.",
+            "include_html": False,
+        },
+    )
+    assert r1.status_code == 200 and r2.status_code == 200
+    notes_a = r1.json().get("notes") or []
+    assert len(notes_a) >= 1
+    # Prefer the note matching text A (list may be sorted by id).
+    nid = next(
+        (n["note_id"] for n in notes_a if "multi-select A" in n.get("text", "")),
+        notes_a[0]["note_id"],
+    )
+    r = client.post(
+        "/engagement/twins/promote-context",
+        json={
+            "asset_id": "paper-mx",
+            "include_html": True,
+            "note_ids": [nid],
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["promoted_count"] == 1
+    assert body["note_ids"] == [nid]
+    assert body["promoted"][0]["twin_note_id"] == nid
+    assert body["view_format"] == "html"
