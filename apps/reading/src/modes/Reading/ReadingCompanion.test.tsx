@@ -263,7 +263,20 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
     composeResearchArtifactsMock.mockResolvedValue({
       path: "/tmp/compose.html",
       draft_merge_path: "/tmp/draft-merge.html",
-      members: [],
+      members: [
+        {
+          investigation_id: "inv-ready-b",
+          content_hash: "hash-b",
+          artifact_path: "/tmp/inv-ready-b.html",
+          twin_notes_path: "/tmp/inv-ready-b.notes.html",
+        },
+        {
+          investigation_id: "inv-ready-a",
+          content_hash: "hash-a",
+          artifact_path: "/tmp/inv-ready-a.html",
+          twin_notes_path: "/tmp/inv-ready-a.notes.html",
+        },
+      ],
       hash_conflicts: [],
     });
     useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
@@ -275,9 +288,54 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
       expect(composeResearchArtifactsMock).toHaveBeenCalledWith(["inv-ready-b", "inv-ready-a"], true),
     );
     expect(await screen.findByText(/Draft written/)).toBeTruthy();
+    expect(screen.getByText("/tmp/draft-merge.html")).toBeTruthy();
+    expect(screen.getByText("2 artifacts · 2 notes twins")).toBeTruthy();
+    expect(screen.getByText("No hash conflicts")).toBeTruthy();
     expect(screen.getByRole("link", { name: "open" }).getAttribute("href")).toBe(
       "/research/artifacts/compose/draft-merge.html?investigation_ids=inv-ready-b&investigation_ids=inv-ready-a",
     );
+  });
+
+  it("surfaces draft-merge hash conflicts in the Reader receipt", async () => {
+    for (const childInvestigationId of ["inv-conflict-a", "inv-conflict-b"]) {
+      recordChaseDraftHandoff(
+        buildChaseDraftHandoff({
+          childInvestigationId,
+          parentInvestigationId: "read-doc-1",
+          sourcePassage: `Completed chase ${childInvestigationId}.`,
+        }),
+      );
+    }
+    listState.investigations = [
+      summary({ investigation_id: "inv-conflict-a", status: "completed" }),
+      summary({ investigation_id: "inv-conflict-b", status: "completed" }),
+    ];
+    composeResearchArtifactsMock.mockResolvedValue({
+      path: "/tmp/conflict-compose.html",
+      draft_merge_path: "/tmp/conflict-draft.html",
+      members: [
+        {
+          investigation_id: "inv-conflict-b",
+          content_hash: "same-hash",
+          artifact_path: "/tmp/inv-conflict-b.html",
+          twin_notes_path: "/tmp/inv-conflict-b.notes.html",
+        },
+        {
+          investigation_id: "inv-conflict-a",
+          content_hash: "same-hash",
+          artifact_path: "/tmp/inv-conflict-a.html",
+          twin_notes_path: "/tmp/inv-conflict-a.notes.html",
+        },
+      ],
+      hash_conflicts: [["inv-conflict-b", "inv-conflict-a"]],
+    });
+    useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
+
+    renderCompanion();
+    fireEvent.click(screen.getByRole("button", { name: /draft ready/i }));
+
+    expect(await screen.findByText("1 hash conflict need review")).toBeTruthy();
+    expect(screen.getByRole("region", { name: /Draft merge receipt/i })).toBeTruthy();
   });
 
   it("keeps draft merge disabled until two chases are ready", () => {

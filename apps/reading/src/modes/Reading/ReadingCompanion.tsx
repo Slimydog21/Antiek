@@ -7,6 +7,7 @@ import {
   API_BASE,
   composeResearchArtifacts,
   type InvestigationSummary,
+  type ResearchArtifactComposeResponse,
 } from "../../lib/api";
 import { useChaseDraftHandoffs } from "../ResearchWorkstation/chaseHandoffs";
 import { deriveNotes } from "../ResearchWorkstation/NotesPanel";
@@ -80,7 +81,7 @@ export default function ReadingCompanion({
   );
   const [copiedMergePacket, setCopiedMergePacket] = useState(false);
   const [draftBusy, setDraftBusy] = useState(false);
-  const [draftMergePath, setDraftMergePath] = useState<string | null>(null);
+  const [draftMergeReceipt, setDraftMergeReceipt] = useState<ResearchArtifactComposeResponse | null>(null);
   const [draftMergeIds, setDraftMergeIds] = useState<string[]>([]);
   const [draftError, setDraftError] = useState<string | null>(null);
 
@@ -125,7 +126,7 @@ export default function ReadingCompanion({
     setDraftError(null);
     try {
       const result = await composeResearchArtifacts(readyIds, true);
-      setDraftMergePath(result.draft_merge_path ?? result.path);
+      setDraftMergeReceipt(result);
       setDraftMergeIds(readyIds);
     } catch (error) {
       setDraftError(error instanceof Error ? error.message : String(error));
@@ -188,20 +189,41 @@ export default function ReadingCompanion({
               </button>
             </div>
           </div>
-          {draftMergePath ? (
-            <p className="mb-2 font-mono text-[10px] text-shadow-1 dark:text-moonlight">
-              Draft written{" "}
-              {draftMergeIds.length >= 2 ? (
-                <a
-                  href={draftMergeHref(draftMergeIds)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-ink underline dark:text-bright"
-                >
-                  open
-                </a>
-              ) : null}
-            </p>
+          {draftMergeReceipt ? (
+            <div
+              className="mb-2 rounded-hog border border-rule bg-ice-0 px-2 py-1.5 font-mono text-[10px] text-shadow-1 dark:bg-charcoal-2 dark:text-moonlight"
+              aria-label="Draft merge receipt"
+              role="region"
+            >
+              <p>
+                Draft written{" "}
+                {draftMergeIds.length >= 2 ? (
+                  <a
+                    href={draftMergeHref(draftMergeIds)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-ink underline dark:text-bright"
+                  >
+                    open
+                  </a>
+                ) : null}
+              </p>
+              <p className="truncate" title={draftMergeReceipt.draft_merge_path ?? draftMergeReceipt.path}>
+                {draftMergeReceipt.draft_merge_path ?? draftMergeReceipt.path}
+              </p>
+              <p>
+                {draftMergeReceipt.members.length} artifacts ·{" "}
+                {draftMergeReceipt.members.filter((member) => member.twin_notes_path).length} notes twins
+              </p>
+              {draftMergeReceipt.hash_conflicts.length > 0 ? (
+                <p className="text-emperor">
+                  {draftMergeReceipt.hash_conflicts.length} hash conflict
+                  {draftMergeReceipt.hash_conflicts.length === 1 ? "" : "s"} need review
+                </p>
+              ) : (
+                <p>No hash conflicts</p>
+              )}
+            </div>
           ) : null}
           {draftError ? (
             <p className="mb-2 font-serif text-[12px] text-emperor">{draftError}</p>
