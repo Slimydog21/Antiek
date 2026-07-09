@@ -8,6 +8,7 @@
  * plan→cite audit (parity twin/flywheel metrics).
  * Residual (ij): Settings deep-link for driver + budget during multi-minute jobs.
  * Residual (jq): optional researchTier for long-horizon wrestle posture chrome.
+ * Residual (ka): prefer prop researchTier; fall back to progress API research_tier.
  * HTML-first; never PDF.
  */
 
@@ -114,9 +115,19 @@ export function ResearchProgressPanel({
     return () => window.clearInterval(id);
   }, [autoLoad, pollIntervalMs, spawnId, progress?.is_terminal, load]);
 
-  const tier = (researchTier || "").trim().toLowerCase();
+  // Residual (ka): prop wins; else spawn tier from progress payload (jz).
+  const fromApi = (progress?.research_tier || "").trim().toLowerCase();
+  const fromProp = (researchTier || "").trim().toLowerCase();
+  const tierRaw = fromProp || fromApi;
   const tierKnown =
-    tier === "fast" || tier === "deep" || tier === "wrestle" ? tier : null;
+    tierRaw === "fast" || tierRaw === "deep" || tierRaw === "wrestle"
+      ? tierRaw
+      : null;
+  const tierSource = fromProp
+    ? "prop"
+    : fromApi
+      ? "api"
+      : "none";
 
   return (
     <section
@@ -125,6 +136,7 @@ export function ResearchProgressPanel({
       data-view-format="html"
       data-poll-ms={String(pollIntervalMs || 0)}
       data-research-tier={tierKnown || ""}
+      data-research-tier-source={tierSource}
       aria-label="Research progress"
     >
       <header>

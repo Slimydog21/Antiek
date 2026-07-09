@@ -318,6 +318,8 @@ export type ResearchProgressResponse = {
   }>;
   latest_stage: string | null;
   is_terminal: boolean;
+  /** Residual (jz/ka): spawn reserved research_tier when present. */
+  research_tier?: "fast" | "deep" | "wrestle" | string | null;
   view_format: "html" | string;
   product_panel: string;
   source: string;

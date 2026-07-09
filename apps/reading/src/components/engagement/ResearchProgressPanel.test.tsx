@@ -247,9 +247,46 @@ describe("ResearchProgressPanel", () => {
     );
     const panel = screen.getByTestId("research-progress-panel");
     expect(panel.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(panel.getAttribute("data-research-tier-source")).toBe("prop");
     expect(screen.getByTestId("research-progress-wrestle-note").textContent).toMatch(
       /multi-minute long-horizon/i,
     );
     expect(panel.textContent).toMatch(/tier=wrestle/);
+  });
+
+  it("falls back to progress API research_tier when prop omitted (ka)", async () => {
+    fetchResearchProgress.mockResolvedValue({
+      spawn_id: "spn_api_tier",
+      event_count: 1,
+      events: [
+        {
+          spawn_id: "spn_api_tier",
+          stage: "plan",
+          message: "planned",
+          ts: 1,
+          sequence: 1,
+        },
+      ],
+      latest_stage: "plan",
+      is_terminal: false,
+      research_tier: "wrestle",
+      view_format: "html",
+      product_panel: "research_progress",
+      source: "engagement_spine.progress",
+      notes: [],
+      html: "<p>plan</p>",
+    });
+    render(<ResearchProgressPanel spawnId="spn_api_tier" autoLoad />);
+    await waitFor(() => {
+      expect(fetchResearchProgress).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      const panel = screen.getByTestId("research-progress-panel");
+      expect(panel.getAttribute("data-research-tier")).toBe("wrestle");
+      expect(panel.getAttribute("data-research-tier-source")).toBe("api");
+    });
+    expect(screen.getByTestId("research-progress-wrestle-note").textContent).toMatch(
+      /multi-minute long-horizon/i,
+    );
   });
 });
