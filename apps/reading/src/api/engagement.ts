@@ -1,0 +1,162 @@
+/**
+ * Engagement spine API client — mirrors interfaces/research/api/engagement_routes.py
+ *
+ * Spawn deep-research from highlights, attach arxiv/substack refs, assemble
+ * research context packs, collective multi-spawn merge, session flywheel.
+ * Process-local store on the server (MVP).
+ */
+
+import { API_BASE, apiFetch } from "../lib/api";
+import type {
+  CollectiveResearchUnit,
+  ResearchContextPack,
+  SourceReference,
+} from "../workspace/researchContextPack";
+
+export type SpawnFromHighlightRequest = {
+  asset_id: string;
+  selection_text: string;
+  region_id?: string | null;
+  page?: number | null;
+  goal_hint?: string | null;
+  model_id?: string | null;
+  references?: string[];
+  force_new?: boolean;
+};
+
+export type SpawnResponse = {
+  spawn_id: string;
+  investigation_id: string;
+  parent_asset_id: string;
+  goal: string;
+  status: string;
+  model_id?: string | null;
+  region_id?: string | null;
+  source_references: SourceReference[];
+  view_format: "html";
+};
+
+export type SessionOpenRequest = SpawnFromHighlightRequest & {
+  view_mode?: "floating" | "full";
+};
+
+export type SessionOpenResponse = {
+  session_id: string;
+  spawn_id: string;
+  investigation_id: string;
+  parent_asset_id: string;
+  selection_text: string;
+  status: string;
+  view_mode: string;
+  model_id?: string | null;
+  goal?: string;
+  view_format: "html";
+};
+
+export type ResearchContextResponse = ResearchContextPack & {
+  twin_count: number;
+  ref_count: number;
+  prompt_block: string;
+};
+
+export type CollectiveResponse = CollectiveResearchUnit & {
+  spawn_count: number;
+  twin_count: number;
+  ref_count: number;
+  prompt_block: string;
+};
+
+export type SessionFlywheelResponse = {
+  session_id: string;
+  spawn_id: string;
+  status: string;
+  context: ResearchContextPack & { twin_count?: number; ref_count?: number };
+  view_format: "html";
+  prompt_block: string;
+};
+
+async function readJson<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`engagement API ${res.status}: ${text.slice(0, 200)}`);
+  }
+  return (await res.json()) as T;
+}
+
+export async function spawnFromHighlight(
+  body: SpawnFromHighlightRequest,
+): Promise<SpawnResponse> {
+  const res = await apiFetch(`${API_BASE}/engagement/spawn-from-highlight`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return readJson<SpawnResponse>(res);
+}
+
+export async function attachSourceRefs(
+  spawn_id: string,
+  references: string[],
+): Promise<{ spawn_id: string; source_references: SourceReference[]; view_format: "html" }> {
+  const res = await apiFetch(`${API_BASE}/engagement/attach-refs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ spawn_id, references }),
+  });
+  return readJson(res);
+}
+
+export async function fetchResearchContext(body: {
+  asset_id: string;
+  spawn_id?: string | null;
+  query?: string | null;
+  include_twin_promote?: boolean;
+}): Promise<ResearchContextResponse> {
+  const res = await apiFetch(`${API_BASE}/engagement/research-context`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return readJson<ResearchContextResponse>(res);
+}
+
+export async function fetchCollectiveResearch(body: {
+  spawn_ids: string[];
+  query?: string | null;
+  include_twin_promote?: boolean;
+}): Promise<CollectiveResponse> {
+  const res = await apiFetch(`${API_BASE}/engagement/collective`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return readJson<CollectiveResponse>(res);
+}
+
+export async function openEngagementSession(
+  body: SessionOpenRequest,
+): Promise<SessionOpenResponse> {
+  const res = await apiFetch(`${API_BASE}/engagement/sessions/open`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return readJson<SessionOpenResponse>(res);
+}
+
+export async function completeSessionFlywheel(body: {
+  session_id: string;
+  output_text: string;
+  insights?: string[];
+  questions?: string[];
+  query?: string | null;
+  record_twins?: boolean;
+  include_twin_promote?: boolean;
+}): Promise<SessionFlywheelResponse> {
+  const res = await apiFetch(`${API_BASE}/engagement/sessions/complete-flywheel`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return readJson<SessionFlywheelResponse>(res);
+}
