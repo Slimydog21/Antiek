@@ -3,6 +3,6 @@
 
 CAPABILITY | STATUS | EVIDENCE
 (a)–(be) prior | branch_only | campaign inventories
-(bf) add-model Settings form | branch_only | register_operator_model; GET/POST registered-models; Settings Add model panel; tests/test_settings_add_model.py; THIS CYCLE
+(bf) add-model Settings form | branch_only | register_operator_model; GET/POST registered-models; Settings Add model panel; tests/test_settings_add_model.py; @ dc5ccf62
 
 NEXT: (bg) marketplace purchase→host UI polish; operator merge PR #465
