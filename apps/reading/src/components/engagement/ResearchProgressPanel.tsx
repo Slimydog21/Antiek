@@ -9,6 +9,7 @@
  * Residual (ij): Settings deep-link for driver + budget during multi-minute jobs.
  * Residual (jq): optional researchTier for long-horizon wrestle posture chrome.
  * Residual (ka): prefer prop researchTier; fall back to progress API research_tier.
+ * Residual (lr): DecisionTreeDriverBadge with resolved tier during multi-minute jobs.
  * HTML-first; never PDF.
  */
 
@@ -18,6 +19,7 @@ import {
   seedResearchProgress,
   type ResearchProgressResponse,
 } from "../../api/engagement";
+import { DecisionTreeDriverBadge } from "./DecisionTreeDriverBadge";
 
 export type ResearchProgressPanelProps = {
   spawnId: string;
@@ -166,6 +168,16 @@ export function ResearchProgressPanel({
             Settings · driver & budget
           </a>
         </p>
+        {/* Residual (lr): model+budget+depth during multi-minute plan→cite. */}
+        {tierKnown ? (
+          <div
+            data-testid="research-progress-driver-badge-mount"
+            data-view-format="html"
+            data-research-tier={tierKnown}
+          >
+            <DecisionTreeDriverBadge researchTier={tierKnown} />
+          </div>
+        ) : null}
       </header>
       <div className="controls" style={{ display: "flex", gap: "0.5rem" }}>
         <button

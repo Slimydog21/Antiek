@@ -10,6 +10,19 @@ vi.mock("../../api/engagement", () => ({
   seedResearchProgress: (...args: unknown[]) => seedResearchProgress(...args),
 }));
 
+vi.mock("./DecisionTreeDriverBadge", () => ({
+  DecisionTreeDriverBadge: (props: {
+    researchTier?: string | null;
+  }) => (
+    <div
+      data-testid="decision-tree-driver-badge-stub"
+      data-research-tier={(props.researchTier || "").trim().toLowerCase() || ""}
+    >
+      driver badge
+    </div>
+  ),
+}));
+
 describe("ResearchProgressPanel", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
@@ -252,6 +265,17 @@ describe("ResearchProgressPanel", () => {
       /multi-minute long-horizon/i,
     );
     expect(panel.textContent).toMatch(/tier=wrestle/);
+    // Residual (lr): driver badge mounts when tier is known.
+    expect(
+      screen
+        .getByTestId("research-progress-driver-badge-mount")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
+    expect(
+      screen
+        .getByTestId("decision-tree-driver-badge-stub")
+        .getAttribute("data-research-tier"),
+    ).toBe("wrestle");
   });
 
   it("falls back to progress API research_tier when prop omitted (ka)", async () => {
