@@ -45,6 +45,7 @@
  * (note_count / note_ids / window_id) for recursive note-taker audit.
  * Residual (pp): twin multi-select → Write handoff via sessionStorage twin_seed
  * (brainstorm seed + HTML preview; no invented server document_id).
+ * Residual (ps): twin HTML draft full working-region window (parity chase full).
  * HTML-first; never PDF.
  */
 
@@ -588,6 +589,58 @@ export function TwinNotesPanel({
   }, [selectedNotes, assetId]);
 
   /**
+   * Residual (pn/pp/ps): open multi-selected twins as HTML draft window
+   * (floating | full) + Write twin_seed handoff.
+   */
+  const openTwinDraft = useCallback(
+    (mode: "floating" | "full" = "floating") => {
+      const selected = selectedNotes;
+      if (selected.length < 1) return;
+      const draft = buildTwinDraftHtml(selected, assetId);
+      const chase = buildTwinChasePayload(selected, assetId);
+      const idSuffix = mode === "full" ? ":full" : "";
+      const winId = openWindow(
+        "hosted_html_document",
+        {
+          document_id: `twin_draft_${assetId.trim() || "asset"}_${Date.now()}`,
+          title: draft.title,
+          html: draft.html,
+          view_format: "html",
+          source: "twin_draft_selected",
+        },
+        {
+          id: `win:twin-draft:${assetId.trim() || "asset"}:${draft.note_ids.slice(0, 3).join("-")}${idSuffix}`,
+          title: draft.title,
+          mode,
+        },
+      );
+      const seedKey = storeTwinWriteSeed({
+        plain_text: chase.selection_text,
+        html: draft.html,
+        title: draft.title,
+        asset_id: assetId,
+        note_ids: draft.note_ids,
+      });
+      const writeHref = seedKey ? buildTwinWriteHref(seedKey) : null;
+      setDraftMetrics({
+        note_count: selected.length,
+        note_ids: draft.note_ids,
+        window_id: winId,
+        title: draft.title,
+        write_href: writeHref,
+        write_seed_key: seedKey,
+      });
+      setChaseStatus(
+        winId
+          ? `Opened twin HTML draft (${selected.length} note(s)) · mode=${mode}` +
+              (writeHref ? " · Write handoff ready" : "")
+          : "Twin HTML draft open failed",
+      );
+    },
+    [selectedNotes, assetId],
+  );
+
+  /**
    * Residual (mz/na): spin floating deep research from multi-selected twins
    * (questions preferred in payload order). Soft-gates on budget projection.
    * Clears selection on success.
@@ -896,58 +949,24 @@ export function TwinNotesPanel({
         >
           Chase full
         </button>
-        {/* Residual (pn): open multi-selected twins as HTML draft window. */}
+        {/* Residual (pn/ps): open multi-selected twins as HTML draft window. */}
         <button
           type="button"
           data-testid="twin-draft-selected-html"
-          onClick={() => {
-            const selected = selectedNotes;
-            if (selected.length < 1) return;
-            const draft = buildTwinDraftHtml(selected, assetId);
-            const chase = buildTwinChasePayload(selected, assetId);
-            const winId = openWindow(
-              "hosted_html_document",
-              {
-                document_id: `twin_draft_${assetId.trim() || "asset"}_${Date.now()}`,
-                title: draft.title,
-                html: draft.html,
-                view_format: "html",
-                source: "twin_draft_selected",
-              },
-              {
-                id: `win:twin-draft:${assetId.trim() || "asset"}:${draft.note_ids.slice(0, 3).join("-")}`,
-                title: draft.title,
-                mode: "floating",
-              },
-            );
-            // Residual (pp): session seed for Write brainstorm handoff.
-            const seedKey = storeTwinWriteSeed({
-              plain_text: chase.selection_text,
-              html: draft.html,
-              title: draft.title,
-              asset_id: assetId,
-              note_ids: draft.note_ids,
-            });
-            const writeHref = seedKey ? buildTwinWriteHref(seedKey) : null;
-            setDraftMetrics({
-              note_count: selected.length,
-              note_ids: draft.note_ids,
-              window_id: winId,
-              title: draft.title,
-              write_href: writeHref,
-              write_seed_key: seedKey,
-            });
-            setChaseStatus(
-              winId
-                ? `Opened twin HTML draft (${selected.length} note(s))` +
-                    (writeHref ? " · Write handoff ready" : "")
-                : "Twin HTML draft open failed",
-            );
-          }}
+          onClick={() => openTwinDraft("floating")}
           disabled={busy || selectedNoteIds.size === 0}
           title="Open multi-selected twin notes as HTML draft window (combine before promote)"
         >
           Draft HTML ({selectedNoteIds.size})
+        </button>
+        <button
+          type="button"
+          data-testid="twin-draft-selected-html-full"
+          onClick={() => openTwinDraft("full")}
+          disabled={busy || selectedNoteIds.size === 0}
+          title="Open multi-selected twin draft as full working-region HTML window"
+        >
+          Draft full
         </button>
         {draftMetrics ? (
           <div
@@ -957,6 +976,11 @@ export function TwinNotesPanel({
             data-window-id={draftMetrics.window_id ?? ""}
             data-write-seed-key={draftMetrics.write_seed_key ?? ""}
             data-has-write-href={draftMetrics.write_href ? "1" : "0"}
+            data-window-mode={
+              (draftMetrics.window_id || "").includes(":full")
+                ? "full"
+                : "floating"
+            }
             data-view-format="html"
             data-source="twin_draft_selected"
             role="status"

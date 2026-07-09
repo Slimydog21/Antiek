@@ -597,3 +597,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (pr, 2026-07-10) **SESSION-ARC pn–pq twin write path:**
   - SESSION-ARC-pn-pq-twin-write-path.md fleet handoff
+
+- Closed (ps, 2026-07-10) **Twin HTML draft full working-region window:**
+  - openTwinDraft(floating|full) shared chokepoint
+  - twin-draft-selected-html-full + data-window-mode

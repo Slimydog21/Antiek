@@ -1237,6 +1237,54 @@ describe("TwinNotesPanel", () => {
     expect(write.getAttribute("data-view-format")).toBe("html");
   });
 
+  it("opens twin HTML draft in full working-region window (ps)", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 1,
+      insight_count: 0,
+      question_count: 1,
+      notes: [
+        {
+          note_id: "twin_q",
+          asset_id: "paper",
+          kind: "question",
+          text: "Open Q",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>twins</p>",
+    });
+    openWindow.mockReturnValue("win:twin-draft:paper:twin_q:full");
+    render(<TwinNotesPanel assetId="paper" autoLoad />);
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-select-twin_q")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("twin-select-twin_q"));
+    fireEvent.click(screen.getByTestId("twin-draft-selected-html-full"));
+    await waitFor(() => {
+      expect(openWindow).toHaveBeenCalledWith(
+        "hosted_html_document",
+        expect.objectContaining({
+          view_format: "html",
+          source: "twin_draft_selected",
+        }),
+        expect.objectContaining({
+          mode: "full",
+          id: expect.stringMatching(/:full$/),
+        }),
+      );
+    });
+    expect(
+      screen.getByTestId("twin-draft-metrics").getAttribute("data-window-mode"),
+    ).toBe("full");
+    expect(screen.getByTestId("twin-chase-status").textContent).toMatch(
+      /mode=full/,
+    );
+  });
+
   it("inverts multi-select over visible notes (ne)", async () => {
     fetchTwinNotes.mockResolvedValue({
       asset_id: "paper",
