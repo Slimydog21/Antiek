@@ -269,6 +269,14 @@ describe("MidnightOil mode", () => {
     expect(
       screen.getByTestId("moil-research-tier").getAttribute("data-research-tier"),
     ).toBe("wrestle");
+    // Residual (jl): tier factor transparency on recommended ceiling.
+    const tierFactor = screen.getByTestId("moil-ceiling-tier-factor");
+    expect(tierFactor.getAttribute("data-research-tier")).toBe("wrestle");
+    expect(tierFactor.getAttribute("data-tier-multiplier")).toBe("2");
+    expect(tierFactor.textContent).toMatch(/2\.0× \(wrestle\)/);
+    expect(
+      screen.getByTestId("moil-ceiling-formula-note").textContent,
+    ).toMatch(/tier multiplier/);
   });
 
   it("creates job then approves at recommended ceiling", async () => {

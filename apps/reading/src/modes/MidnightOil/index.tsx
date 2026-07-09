@@ -555,7 +555,29 @@ export default function MidnightOil() {
             data-testid="moil-ceiling-formula-note"
           >
             Formula: duration × tokens/min × model rates × fanout × 1.25 safety
+            × tier multiplier (fast 0.5 · deep 1.0 · wrestle 2.0)
             (recommendation only — explicit approve required before swarm work)
+          </p>
+          <p
+            className="text-[11px] font-mono opacity-70"
+            data-testid="moil-ceiling-tier-factor"
+            data-research-tier={job.research_tier || researchTier}
+            data-tier-multiplier={
+              (job.research_tier || researchTier) === "wrestle"
+                ? "2"
+                : (job.research_tier || researchTier) === "fast"
+                  ? "0.5"
+                  : "1"
+            }
+          >
+            Tier factor applied:{" "}
+            <strong>
+              {(job.research_tier || researchTier) === "wrestle"
+                ? "2.0× (wrestle)"
+                : (job.research_tier || researchTier) === "fast"
+                  ? "0.5× (fast)"
+                  : "1.0× (deep)"}
+            </strong>
           </p>
           {job.approved_ceiling_usd != null ? (
             <p

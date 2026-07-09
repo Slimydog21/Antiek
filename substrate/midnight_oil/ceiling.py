@@ -8,6 +8,7 @@ Formula (explicit, unit-tested):
         * (input_usd_per_1m + output_usd_per_1m) / 1_000_000
         * fanout_depth
         * SAFETY_FACTOR
+        * TIER_MULTIPLIER[research_tier]
 
 Assumptions (documented so they are hard to vary without changing tests):
 
@@ -16,6 +17,10 @@ Assumptions (documented so they are hard to vary without changing tests):
 * ``SAFETY_FACTOR = 1.25`` — headroom for retries and tool overhead.
 * ``fanout_depth`` defaults to 3 (root + 2 child investigation levels).
 * Model rates are USD per 1M tokens (same unit family as settings #440).
+* Residual (jl): ``research_tier`` scales intensity — ``fast`` 0.5× (thinking
+  off / distill), ``deep`` 1.0× (default), ``wrestle`` 2.0× (long-horizon
+  multi-minute competitive depth). Ceiling honesty: depth choice moves the
+  recommended price before approve.
 
 This is a **recommendation**, not a charge. The operator must approve a
 ceiling before work starts (see ``approve_job``).
@@ -25,9 +30,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from substrate.dispatch.research_tier import normalize_research_tier
+
 TOKENS_PER_MINUTE = 4_000
 SAFETY_FACTOR = 1.25
 DEFAULT_FANOUT_DEPTH = 3
+
+# Residual (jl): closed research tier → ceiling intensity multiplier.
+TIER_MULTIPLIER: dict[str, float] = {
+    "fast": 0.5,
+    "deep": 1.0,
+    "wrestle": 2.0,
+}
 
 
 @dataclass(frozen=True)
@@ -56,16 +70,24 @@ def resolve_pricing(model_id: str | None, pricing: ModelPricing | None = None) -
     return DEFAULT_PRICING.get(key, DEFAULT_PRICING["default"])
 
 
+def tier_multiplier(research_tier: str | None = None) -> float:
+    """Return closed-set intensity multiplier for a research tier (jl)."""
+    tier = normalize_research_tier(research_tier)
+    return float(TIER_MULTIPLIER.get(tier, TIER_MULTIPLIER["deep"]))
+
+
 def recommend_price_ceiling(
     duration_minutes: int,
     *,
     model_id: str | None = None,
     fanout_depth: int = DEFAULT_FANOUT_DEPTH,
     pricing: ModelPricing | None = None,
+    research_tier: str | None = None,
 ) -> float:
     """Return recommended USD ceiling for a Midnight Oil job.
 
     Raises ``ValueError`` for non-positive duration or fanout_depth.
+    Residual (jl): optional ``research_tier`` scales the recommendation.
     """
     if duration_minutes <= 0:
         raise ValueError("duration_minutes must be positive")
@@ -74,6 +96,7 @@ def recommend_price_ceiling(
 
     rates = resolve_pricing(model_id, pricing)
     combined_per_1m = rates.input_usd_per_1m + rates.output_usd_per_1m
+    mult = tier_multiplier(research_tier)
     raw = (
         float(duration_minutes)
         * float(TOKENS_PER_MINUTE)
@@ -81,6 +104,7 @@ def recommend_price_ceiling(
         / 1_000_000.0
         * float(fanout_depth)
         * float(SAFETY_FACTOR)
+        * mult
     )
     # Round to cents for operator-facing ceilings.
     return round(raw, 2)

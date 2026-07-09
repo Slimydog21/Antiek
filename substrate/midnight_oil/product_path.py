@@ -67,11 +67,13 @@ def create_with_recommended_ceiling(
     """
     # Pre-compute recommendation for stable double-run checks on same inputs
     # (create_job uses the same math; assert identity below).
+    # Residual (jl): pass research_tier so ceiling intensity matches create_job.
     recommended = recommend_price_ceiling(
         duration_minutes,
         model_id=model_id,
         fanout_depth=fanout_depth,
         pricing=pricing,
+        research_tier=research_tier,
     )
     job = create_job(
         list(goals),

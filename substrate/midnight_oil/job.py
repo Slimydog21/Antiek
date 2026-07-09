@@ -129,14 +129,16 @@ def create_job(
     if duration_minutes <= 0:
         raise ValueError("duration_minutes must be positive")
 
+    jid = job_id or f"moil_{uuid.uuid4().hex[:16]}"
+    tier = normalize_research_tier(research_tier)
+    # Residual (jl): ceiling recommendation scales with research_tier.
     ceiling = recommend_price_ceiling(
         duration_minutes,
         model_id=model_id,
         fanout_depth=fanout_depth,
         pricing=pricing,
+        research_tier=tier,
     )
-    jid = job_id or f"moil_{uuid.uuid4().hex[:16]}"
-    tier = normalize_research_tier(research_tier)
     job = MidnightOilJob(
         job_id=jid,
         goals=cleaned,

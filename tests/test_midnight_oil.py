@@ -37,8 +37,8 @@ from substrate.midnight_oil.worker import FakeClock, WorkerStepResult  # noqa: E
 
 
 def test_recommend_price_ceiling_hand_calculated():
-    # 60 min, default rates 1+3 = 4 USD/1M, depth 3, safety 1.25
-    # raw = 60 * 4000 * 4 / 1e6 * 3 * 1.25
+    # 60 min, default rates 1+3 = 4 USD/1M, depth 3, safety 1.25, deep 1.0×
+    # raw = 60 * 4000 * 4 / 1e6 * 3 * 1.25 * 1.0
     expected = round(
         60 * TOKENS_PER_MINUTE * 4.0 / 1_000_000.0 * 3 * SAFETY_FACTOR, 2
     )
@@ -49,9 +49,24 @@ def test_recommend_price_ceiling_hand_calculated():
 
 def test_recommend_price_ceiling_custom_pricing():
     pricing = ModelPricing("custom", input_usd_per_1m=2.0, output_usd_per_1m=2.0)
-    # 30 * 4000 * 4 / 1e6 * 2 * 1.25 = 1.2
+    # 30 * 4000 * 4 / 1e6 * 2 * 1.25 * 1.0 = 1.2
     got = recommend_price_ceiling(30, fanout_depth=2, pricing=pricing)
     assert got == pytest.approx(1.2, abs=1e-6)
+
+
+def test_recommend_price_ceiling_scales_by_research_tier():
+    """Residual (jl): fast 0.5×, deep 1.0×, wrestle 2.0× on same duration/model."""
+    deep = recommend_price_ceiling(60, model_id="default", fanout_depth=3)
+    assert deep == pytest.approx(3.6, abs=1e-6)
+    fast = recommend_price_ceiling(
+        60, model_id="default", fanout_depth=3, research_tier="fast"
+    )
+    wrestle = recommend_price_ceiling(
+        60, model_id="default", fanout_depth=3, research_tier="wrestle"
+    )
+    assert fast == pytest.approx(1.8, abs=1e-6)
+    assert wrestle == pytest.approx(7.2, abs=1e-6)
+    assert fast < deep < wrestle
 
 
 def test_recommend_rejects_zero_duration():
@@ -95,6 +110,19 @@ def test_create_job_records_wrestle_research_tier(gs_residual=None):
     # Unknown tiers normalize to deep (honest fallback).
     job2 = create_job(["x"], 10, store=store, research_tier="not-a-tier")
     assert job2.research_tier == "deep"
+
+
+def test_create_job_wrestle_ceiling_higher_than_deep():
+    """Residual (jl): create_job ceiling scales with research_tier."""
+    store = InMemoryJobStore()
+    deep = create_job(["q"], 60, store=store, model_id="default", research_tier="deep")
+    wrestle = create_job(
+        ["q2"], 60, store=store, model_id="default", research_tier="wrestle"
+    )
+    fast = create_job(["q3"], 60, store=store, model_id="default", research_tier="fast")
+    assert deep.recommended_price_ceiling_usd == pytest.approx(3.6, abs=1e-6)
+    assert wrestle.recommended_price_ceiling_usd == pytest.approx(7.2, abs=1e-6)
+    assert fast.recommended_price_ceiling_usd == pytest.approx(1.8, abs=1e-6)
 
 
 def test_approve_gate_requires_explicit_ceiling():
