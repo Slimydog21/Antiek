@@ -36,6 +36,8 @@
  *     so operators can see which multi-select ids survive window close.
  * 21. Residual (og): Select recent only — one-click multi-select of recent_ring
  *     rows (twin-chase batch merge path).
+ * 22. Residual (oj): surface usage_event from collective/merge on metrics
+ *     (Antiek-bench recursive rewrite audit).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -679,6 +681,8 @@ export function CollectiveResearchPanel({
             data-recommended-research-tier={
               unit.recommended_research_tier || ""
             }
+            data-usage-source={unit.usage_event?.source ?? ""}
+            data-usage-task-class={unit.usage_event?.task_class ?? ""}
             data-view-format="html"
             role="status"
           >
@@ -686,6 +690,9 @@ export function CollectiveResearchPanel({
             {unit.twin_count ?? 0} · refs={unit.ref_count ?? 0}
             {unit.recommended_research_tier
               ? ` · tier=${unit.recommended_research_tier}`
+              : ""}
+            {unit.usage_event?.source
+              ? ` · bench=${unit.usage_event.source}/${unit.usage_event.task_class ?? "?"}`
               : ""}
           </div>
           <p>
@@ -793,7 +800,22 @@ export function CollectiveResearchPanel({
           className="document-merge-result"
           data-testid="collective-doc-merge-result"
           data-view-format="html"
+          data-usage-source={docMerge.usage_event?.source ?? ""}
+          data-usage-task-class={docMerge.usage_event?.task_class ?? ""}
         >
+          {/* Residual (oj): Antiek-bench usage audit for document merge path. */}
+          {docMerge.usage_event?.source ? (
+            <p
+              className="text-[11px] font-mono opacity-80"
+              data-testid="collective-doc-merge-usage"
+              data-usage-source={docMerge.usage_event.source}
+              data-usage-task-class={docMerge.usage_event.task_class ?? ""}
+              role="status"
+            >
+              Bench feed · {docMerge.usage_event.source}/
+              {docMerge.usage_event.task_class ?? "?"}
+            </p>
+          ) : null}
           <p>
             mode=<code>{docMerge.mode}</code> · document=
             <code>{docMerge.document_id}</code> · draft_leaves_parent=

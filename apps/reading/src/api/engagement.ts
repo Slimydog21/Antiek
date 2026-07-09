@@ -82,6 +82,15 @@ export type CollectiveResponse = CollectiveResearchUnit & {
   prompt_block: string;
   research_tiers?: string[];
   recommended_research_tier?: "fast" | "deep" | "wrestle" | string;
+  /** Residual (oi/oj): Antiek-bench usage from multi-spawn cohesive unit. */
+  usage_event?: {
+    task_class?: string;
+    outcome?: string;
+    source?: string;
+    prompt_hint?: string;
+    model_id?: string | null;
+  } | null;
+  usage_event_error?: string | null;
 };
 
 export type SessionFlywheelResponse = {
@@ -187,6 +196,15 @@ export type MergeProductResponse = {
   source: string;
   notes: string[];
   html?: string | null;
+  /** Residual (oi/oj): Antiek-bench usage from document merge path. */
+  usage_event?: {
+    task_class?: string;
+    outcome?: string;
+    source?: string;
+    prompt_hint?: string;
+    model_id?: string | null;
+  } | null;
+  usage_event_error?: string | null;
 };
 
 export async function mergeSpawnOutputs(body: {

@@ -453,3 +453,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (oi, 2026-07-10) **Collective merge Antiek-bench usage feed:**
   - record_collective_merge_usage on POST /collective and /merge
   - source=collective_merge in known feed sources for suite rewrite
+
+- Closed (oj, 2026-07-10) **Collective usage_event UI chrome:**
+  - collective-unit-metrics data-usage-source/task-class
+  - collective-doc-merge-usage bench feed status

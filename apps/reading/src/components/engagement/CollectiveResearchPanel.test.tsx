@@ -164,6 +164,12 @@ describe("CollectiveResearchPanel", () => {
       twin_count: 0,
       ref_count: 0,
       prompt_block: "# Collective deep-research unit `col_abc`\n",
+      // Residual (oj): bench usage from multi-spawn merge.
+      usage_event: {
+        source: "collective_merge",
+        task_class: "synthesize",
+        outcome: "worked",
+      },
     });
 
     render(
@@ -191,6 +197,10 @@ describe("CollectiveResearchPanel", () => {
     expect(metrics.getAttribute("data-ref-count")).toBe("0");
     expect(metrics.getAttribute("data-view-format")).toBe("html");
     expect(metrics.textContent).toMatch(/Collective unit/);
+    // Residual (oj): Antiek-bench usage on collective unit metrics.
+    expect(metrics.getAttribute("data-usage-source")).toBe("collective_merge");
+    expect(metrics.getAttribute("data-usage-task-class")).toBe("synthesize");
+    expect(metrics.textContent).toMatch(/bench=collective_merge\/synthesize/);
     // Residual (jf): depth prefill none when Settings unset.
     await waitFor(() => {
       expect(
