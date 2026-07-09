@@ -93,9 +93,14 @@ export function ResearchLaunchBudgetPanel({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Residual (gm): local tier override when picker is enabled.
+  // Residual (gr): when parent drives researchTier (e.g. StartResearch radios
+  // or onResearchTierChange), clear override so prop and projection stay aligned.
   const [pickedTier, setPickedTier] = useState<ResearchLaunchTier | null>(
     null,
   );
+  useEffect(() => {
+    setPickedTier(null);
+  }, [researchTier]);
   const activeTier: ResearchLaunchTier = pickedTier ?? researchTier;
 
   // Residual (de): surface projection to parent for launch gating honesty.

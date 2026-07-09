@@ -1,7 +1,9 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
+import { startInvestigation } from "../../lib/api";
 import ChatInputArea from "./ChatInputArea";
 
 const {
@@ -52,11 +54,16 @@ vi.mock("../../lib/api", async (importOriginal) => {
   };
 });
 
+const startInvestigationMock = vi.mocked(startInvestigation);
+
 describe("ChatInputArea budget projection (bq)", () => {
   beforeEach(() => {
     fetchSettingsBudget.mockClear();
     estimatePromptCost.mockClear();
     fetchDecisionTreeSelection.mockClear();
+    startInvestigationMock.mockReset().mockResolvedValue({
+      investigation_id: "inv-chat-1",
+    } as Awaited<ReturnType<typeof startInvestigation>>);
   });
 
   afterEach(() => {
@@ -79,5 +86,35 @@ describe("ChatInputArea budget projection (bq)", () => {
       /~\$0\.08-\$0\.16/,
     );
     expect(document.body.textContent || "").toMatch(/live projection above/);
+  });
+
+  it("budget-panel wrestle pick submits research_tier wrestle (gr)", async () => {
+    render(
+      <MemoryRouter>
+        <ChatInputArea />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("research-launch-tier-wrestle")).toBeTruthy();
+    });
+    const ta = screen.getByPlaceholderText(/what do you want to research/i);
+    await userEvent.type(ta, "Follow-up wrestle across the open investigation");
+    fireEvent.click(screen.getByTestId("research-launch-tier-wrestle"));
+    // Ask enables once question is ≥3 chars.
+    await waitFor(() => {
+      expect(
+        (screen.getByRole("button", { name: /ask/i }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
+    });
+    fireEvent.click(screen.getByRole("button", { name: /ask/i }));
+    await waitFor(() => {
+      expect(startInvestigationMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          research_tier: "wrestle",
+          question: expect.stringMatching(/Follow-up wrestle/),
+        }),
+      );
+    });
   });
 });

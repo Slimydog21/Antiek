@@ -99,3 +99,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 ## residual (gq) wrestle type alignment — 2026-07-09
 - books.ts research_tier + Talk opts include wrestle
 - generated/types.ts research_tier Literal += wrestle
+## residual (gr) wrestle budget pick → startInvestigation — 2026-07-09
+- StartResearch onResearchTierChange=setTier
+- ChatInputArea launchTier + research_tier on POST
+- tests: StartResearch 17 + ChatInputArea.budget 2

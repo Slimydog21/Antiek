@@ -1,0 +1,20 @@
+# residual (gr) budget-panel tier pick → startInvestigation research_tier
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(gq) prior | branch_only | campaign inventories
+(gr) wrestle launch wire | branch_only | StartResearch onResearchTierChange=setTier; ChatInputArea launchTier + research_tier POST; 17 StartResearch + 2 ChatInput budget vitest
+
+PATHS:
+- apps/reading/src/modes/ResearchWorkstation/StartResearch.tsx
+- apps/reading/src/modes/ResearchWorkstation/StartResearch.test.tsx
+- apps/reading/src/modes/ResearchWorkstation/ChatInputArea.tsx
+- apps/reading/src/modes/ResearchWorkstation/ChatInputArea.budget.test.tsx
+- apps/reading/src/components/engagement/ResearchLaunchBudgetPanel.tsx
+
+BEHAVIOR:
+- Budget picker writes parent tier state (not projection-only)
+- startInvestigation / useStartInvestigation receives research_tier wrestle|fast|deep
+- Panel clears local override when researchTier prop changes (radio ↔ picker sync)
+
+NEXT: (gs) re-derive; operator merge PR #465

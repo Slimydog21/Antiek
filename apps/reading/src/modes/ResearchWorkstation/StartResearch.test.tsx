@@ -197,6 +197,39 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
     );
   });
 
+  it("selecting Wrestle submits research_tier wrestle (gp/gr)", async () => {
+    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-wrestle" });
+    renderStart();
+    fireEvent.change(screen.getByLabelText("Research question"), {
+      target: {
+        value: "Wrestle with multi-hop evidence across my corpus carefully.",
+      },
+    });
+    fireEvent.click(screen.getByRole("radio", { name: "Wrestle" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() =>
+      expect(startInvestigationMock).toHaveBeenCalledWith(
+        expect.objectContaining({ research_tier: "wrestle" }),
+      ),
+    );
+  });
+
+  it("budget-panel tier pick writes the same launch research_tier (gr)", async () => {
+    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-bpick" });
+    renderStart();
+    fireEvent.change(screen.getByLabelText("Research question"), {
+      target: { value: "Budget picker should drive start investigation tier." },
+    });
+    // Residual (gr): ResearchLaunchBudgetPanel picker → setTier → POST.
+    fireEvent.click(screen.getByTestId("research-launch-tier-wrestle"));
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() =>
+      expect(startInvestigationMock).toHaveBeenCalledWith(
+        expect.objectContaining({ research_tier: "wrestle" }),
+      ),
+    );
+  });
+
   it("rejects a too-short question without POSTing", async () => {
     renderStart();
     const input = screen.getByLabelText("Research question");

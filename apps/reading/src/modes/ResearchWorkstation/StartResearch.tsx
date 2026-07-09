@@ -151,7 +151,8 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   const navigate = useNavigate();
   const start = useStartInvestigation();
   const [question, setQuestion] = useState("");
-  // SPR-01 M3: the curated fast/deep tier. Closed set; defaults to deep.
+  // SPR-01 M3 / residual (gp): curated fast|deep|wrestle tier. Closed set;
+  // defaults to deep. Residual (gr): budget-panel picker writes the same state.
   // Recorded on the investigation server-side so it's queryable after.
   const [tier, setTier] = useState<ResearchTier>(DEFAULT_TIER);
   // Two entry actions on one composer: Ask (one-shot, the shipped fast lane,
@@ -679,6 +680,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             promptText={question}
             researchTier={tier}
             allowTierPick
+            onResearchTierChange={setTier}
             onProjectionChange={onProjectionChange}
           />
           {budgetWarn ? (

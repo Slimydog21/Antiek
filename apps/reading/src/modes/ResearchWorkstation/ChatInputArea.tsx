@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -27,7 +27,9 @@ import {
  *   autoFocus               steal focus on mount
  *   onSubmitted             called with the new investigation_id;
  *                           when omitted, the component navigates itself
- *   researchTier           optional fast|deep for budget projection (default deep)
+ *   researchTier           optional fast|deep|wrestle for launch + budget (default deep)
+ * Residual (gr): budget-panel tier pick is written into startInvestigation
+ * research_tier (not projection-only).
  *
  * S5 redesign: now a Lemon-styled docked-bottom panel surface. The
  * surrounding chrome (sun-yellow border, ink offset shadow) is provided
@@ -59,7 +61,14 @@ export default function ChatInputArea({
   const [error, setError] = useState<string | null>(null);
   const [budgetWarn, setBudgetWarn] = useState(false);
   const [forceOverBudget, setForceOverBudget] = useState(false);
+  // Residual (gr): launch tier state — prop default + budget-panel pick.
+  const [launchTier, setLaunchTier] = useState<ResearchTier>(researchTier);
   const navigate = useNavigate();
+
+  // Keep prop → state in sync when parent remounts with a different default.
+  useEffect(() => {
+    setLaunchTier(researchTier);
+  }, [researchTier]);
 
   const onProjectionChange = useCallback((p: ResearchLaunchBudgetProjection) => {
     setBudgetWarn(p.wouldExceedBudget === true);
@@ -96,12 +105,15 @@ export default function ChatInputArea({
         question: launchQuestion,
         parent_investigation_id: parentInvestigationId,
         spawn_context: spawnContext,
+        // Residual (gr): wrestle|fast|deep from budget picker / prop.
+        research_tier: launchTier,
       });
       track("investigation_started", {
         question_length: launchQuestion.length,
         has_parent: Boolean(parentInvestigationId),
         has_spawn_context: Boolean(spawnContext),
         publication_ref_count: refs.length,
+        research_tier: launchTier,
       });
       setQuestion("");
       if (onSubmitted) {
@@ -125,6 +137,7 @@ export default function ChatInputArea({
     onSubmitted,
     budgetWarn,
     forceOverBudget,
+    launchTier,
   ]);
 
   return (
@@ -181,14 +194,9 @@ export default function ChatInputArea({
       <div className="mt-2" data-testid="chat-input-budget-mount">
         <ResearchLaunchBudgetPanel
           promptText={question}
-          researchTier={
-            researchTier === "fast"
-              ? "fast"
-              : researchTier === "wrestle"
-                ? "wrestle"
-                : "deep"
-          }
+          researchTier={launchTier}
           allowTierPick
+          onResearchTierChange={setLaunchTier}
           onProjectionChange={onProjectionChange}
         />
         {budgetWarn ? (
