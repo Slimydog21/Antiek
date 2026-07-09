@@ -30,6 +30,11 @@ _CADDY = os.path.join(
 # a one-line reason, so the exclusion is explicit and reviewed.
 _ALLOWLIST_EXCEPTIONS: set[str] = set()
 
+# FastAPI framework routes are not declared in interfaces/research/api/*.py, so
+# the prefix scanner below cannot infer them. Keep them explicit because missing
+# one sends API tooling to the SPA HTML shell in production.
+_FRAMEWORK_API_PATHS: set[str] = {"/openapi.json"}
+
 _DECORATOR = re.compile(
     r"""@app\.(?:get|post|put|delete|patch|websocket)\(\s*["']([^"']+)["']"""
 )
@@ -74,6 +79,12 @@ def _allowlist_prefixes() -> set[str]:
     }
 
 
+def _allowlist_paths() -> set[str]:
+    with open(_CADDY, encoding="utf-8") as fh:
+        line = next(l for l in fh if "@api_routes path" in l)
+    return {t.rstrip("*") for t in line.split()[2:] if t.startswith("/")}
+
+
 def test_caddy_allowlist_covers_every_registered_route() -> None:
     registered = _registered_prefixes()
     allow = _allowlist_prefixes()
@@ -86,6 +97,16 @@ def test_caddy_allowlist_covers_every_registered_route() -> None:
         f"serve the SPA HTML for them instead of proxying to uvicorn: {missing}. "
         "Add each to the @api_routes path line (or, if a route is intentionally "
         "SPA-only, to _ALLOWLIST_EXCEPTIONS in this test with a reason)."
+    )
+
+
+def test_caddy_allowlist_covers_framework_api_paths() -> None:
+    allow = _allowlist_paths()
+    missing = sorted(path for path in _FRAMEWORK_API_PATHS if path not in allow)
+    assert not missing, (
+        "Caddy @api_routes allowlist is missing FastAPI framework paths that "
+        f"are not discoverable from app decorators: {missing}. Missing paths "
+        "would return SPA HTML instead of uvicorn JSON in prod."
     )
 
 
