@@ -9,6 +9,8 @@
  * after autoLoad/seed so prompts inherit recursive notes without a click.
  * Residual (fk): twin-notes-metrics data attributes for recursive note-taker
  * audit (parity ResearchContextPanel ff).
+ * Residual (hh): offline-seed honesty — machine-readable live_seed /
+ * seed_source / offline_honest on seed status (parity ResearchContext hydrate hd).
  * HTML-first; never PDF.
  */
 
@@ -66,6 +68,14 @@ export function TwinNotesPanel({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [seedStatus, setSeedStatus] = useState<string | null>(null);
+  /** Residual (hh): machine-readable offline-seed honesty (parity hydrate hd). */
+  const [seedHonesty, setSeedHonesty] = useState<{
+    liveSeed: boolean;
+    offlineHonest: boolean;
+    seeded: boolean;
+    seedSource: string;
+    seedSkipped: string | null;
+  } | null>(null);
   const [promoteStatus, setPromoteStatus] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -77,6 +87,7 @@ export function TwinNotesPanel({
         throw new Error("twin notes view_format must be html");
       }
       // Residual (dd): offline seed when empty so every asset has a twin twin.
+      // Panel always force_offline — never invents live LLM note_taker content.
       if (autoSeedIfEmpty && (t.note_count ?? 0) === 0) {
         try {
           const seeded = await seedTwinNotes({
@@ -90,13 +101,37 @@ export function TwinNotesPanel({
           if (seeded.view_format !== "html") {
             throw new Error("twin seed view_format must be html");
           }
-          setSeedStatus(
-            seeded.seeded
-              ? "offline seed applied (recursive note-taker)"
-              : `seed skipped: ${seeded.seed_skipped || "none"}`,
-          );
+          // Residual (hh): honor backend live_seed/seed_source; panel force_offline
+          // means offline_honest=true unless API reports live_seed (should not
+          // happen with force_offline — still surface honestly if it does).
+          const liveSeed = Boolean(seeded.live_seed);
+          const offlineHonest = !liveSeed;
+          const seedSource =
+            (seeded.seed_source && String(seeded.seed_source)) ||
+            (liveSeed
+              ? "engagement_spine.twin.seed_twins_for_asset.live"
+              : "engagement_spine.twin.seed_twins_for_asset");
+          setSeedHonesty({
+            liveSeed,
+            offlineHonest,
+            seeded: Boolean(seeded.seeded),
+            seedSource,
+            seedSkipped: seeded.seed_skipped ?? null,
+          });
+          if (seeded.seeded) {
+            setSeedStatus(
+              offlineHonest
+                ? "Seed mode: offline-honest identity stubs — recursive note-taker substrate (not live note_taker)"
+                : "Seed mode: live note_taker injector landed",
+            );
+          } else {
+            setSeedStatus(
+              `seed skipped: ${seeded.seed_skipped || "none"}`,
+            );
+          }
           t = seeded;
         } catch (seedErr) {
+          setSeedHonesty(null);
           setSeedStatus(
             seedErr instanceof Error
               ? `seed failed: ${seedErr.message}`
@@ -264,6 +299,18 @@ export function TwinNotesPanel({
         <p
           className="meta font-mono text-[11px]"
           data-testid="twin-seed-status"
+          data-offline-honest={
+            seedHonesty ? String(seedHonesty.offlineHonest) : undefined
+          }
+          data-live-seed={
+            seedHonesty ? String(seedHonesty.liveSeed) : undefined
+          }
+          data-seeded={
+            seedHonesty ? String(seedHonesty.seeded) : undefined
+          }
+          data-seed-source={seedHonesty?.seedSource}
+          data-seed-skipped={seedHonesty?.seedSkipped ?? undefined}
+          data-force-offline="true"
           role="status"
         >
           {seedStatus}

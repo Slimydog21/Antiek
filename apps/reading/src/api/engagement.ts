@@ -358,6 +358,9 @@ export async function seedTwinNotes(body: {
     seeded?: boolean;
     live_seed?: boolean;
     seed_skipped?: string | null;
+    /** Residual (hh): offline seed path id vs live note_taker. */
+    seed_source?: string | null;
+    force_offline?: boolean;
   }
 > {
   const res = await apiFetch(`${API_BASE}/engagement/twins/seed`, {

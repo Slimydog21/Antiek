@@ -94,6 +94,8 @@ describe("TwinNotesPanel", () => {
       html: "<p>seeded</p>",
       seeded: true,
       force_offline: true,
+      live_seed: false,
+      seed_source: "engagement_spine.twin.seed_twins_for_asset",
     });
 
     render(
@@ -116,14 +118,70 @@ describe("TwinNotesPanel", () => {
       );
     });
     await waitFor(() => {
-      expect(screen.getByTestId("twin-seed-status").textContent).toMatch(
-        /offline seed applied/,
+      const status = screen.getByTestId("twin-seed-status");
+      // Residual (hh): offline-honest copy + machine-readable attrs.
+      expect(status.textContent).toMatch(/offline-honest identity stubs/);
+      expect(status.getAttribute("data-offline-honest")).toBe("true");
+      expect(status.getAttribute("data-live-seed")).toBe("false");
+      expect(status.getAttribute("data-seeded")).toBe("true");
+      expect(status.getAttribute("data-force-offline")).toBe("true");
+      expect(status.getAttribute("data-seed-source")).toBe(
+        "engagement_spine.twin.seed_twins_for_asset",
       );
     });
     await waitFor(() => {
       expect(screen.getByTestId("twin-notes-summary").textContent).toMatch(
         /notes=2/,
       );
+    });
+  });
+
+  it("surfaces live seed honesty when API reports live_seed (hh)", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 0,
+      insight_count: 0,
+      question_count: 0,
+      notes: [],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "",
+    });
+    seedTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 2,
+      insight_count: 1,
+      question_count: 1,
+      notes: [
+        {
+          note_id: "twin_live_1",
+          asset_id: "paper",
+          kind: "insight",
+          text: "Live note_taker insight",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>live</p>",
+      seeded: true,
+      live_seed: true,
+      seed_source: "engagement_spine.twin.seed_twins_for_asset.live",
+    });
+
+    render(
+      <TwinNotesPanel assetId="paper" autoLoad autoSeedIfEmpty />,
+    );
+
+    await waitFor(() => {
+      const status = screen.getByTestId("twin-seed-status");
+      expect(status.textContent).toMatch(/live note_taker injector landed/);
+      expect(status.getAttribute("data-offline-honest")).toBe("false");
+      expect(status.getAttribute("data-live-seed")).toBe("true");
+      expect(status.getAttribute("data-seed-source")).toMatch(/\.live$/);
     });
   });
 
