@@ -12,6 +12,7 @@
  * merge stays manual — parent may already be open).
  * Residual (ev): manual re-open as full working-region window after merge.
  * Residual (fn): Open Write handoff link for merged HTML document_id (fl/fm).
+ * Residual (ho): spawn-merge-metrics machine attrs for draft/parent merge audit.
  */
 
 import { useCallback, useState } from "react";
@@ -217,6 +218,22 @@ export function SpawnMergePanel({
           data-view-format="html"
           data-mode={result.mode}
         >
+          {/* Residual (ho): machine-readable merge outcome metrics. */}
+          <div
+            data-testid="spawn-merge-metrics"
+            data-mode={result.mode}
+            data-document-id={result.document_id ?? ""}
+            data-draft-leaves-parent={String(
+              Boolean(result.draft_leaves_parent),
+            )}
+            data-spawn-id={spawnId}
+            data-parent-asset-id={parentAssetId}
+            data-view-format="html"
+            data-auto-open-draft={autoOpenDraft ? "true" : "false"}
+            role="status"
+          >
+            Spawn merge · mode={result.mode} · document={result.document_id}
+          </div>
           <p className="text-[12px] font-mono text-ink dark:text-bright">
             mode=<code>{result.mode}</code> · document=
             <code>{result.document_id}</code> · draft_leaves_parent=

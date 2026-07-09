@@ -86,6 +86,15 @@ describe("SpawnMergePanel residual ci", () => {
       screen.getByTestId("spawn-merge-panel").getAttribute("data-view-format"),
     ).toBe("html");
     expect(screen.getByTestId("spawn-merge-html").innerHTML).toMatch(/Draft merge/);
+    // Residual (ho): machine-readable merge outcome metrics.
+    const metrics = screen.getByTestId("spawn-merge-metrics");
+    expect(metrics.getAttribute("data-mode")).toBe("draft_combined");
+    expect(metrics.getAttribute("data-document-id")).toBe("draft_book-1_abc");
+    expect(metrics.getAttribute("data-spawn-id")).toBe("spn_1");
+    expect(metrics.getAttribute("data-parent-asset-id")).toBe("book-1");
+    expect(metrics.getAttribute("data-view-format")).toBe("html");
+    expect(metrics.getAttribute("data-auto-open-draft")).toBe("true");
+    expect(metrics.textContent).toMatch(/Spawn merge/);
     // Residual (eh): parent notified after merge + twin seed.
     await waitFor(() => {
       expect(onMerged).toHaveBeenCalled();
