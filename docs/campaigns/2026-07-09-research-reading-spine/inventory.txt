@@ -5,11 +5,11 @@
 
 CAPABILITY | STATUS | EVIDENCE
 (a)–(an) prior campaign residuals | branch_only | PR #465 inventories through inventory-an-merge-product.txt
-(ao) CollectiveResearchPanel → draft/parent document merge UI | branch_only | CollectiveResearchPanel merge to draft + into parent via mergeSpawnOutputs; DeepResearchSessionHost passes parentAssetId; tests CollectiveResearchPanel + host; THIS CYCLE
+(ao) CollectiveResearchPanel → draft/parent document merge UI | branch_only | CollectiveResearchPanel merge to draft + into parent via mergeSpawnOutputs; DeepResearchSessionHost passes parentAssetId; tests CollectiveResearchPanel + host; @ 78a561bd
 
 ALREADY_SHIPPED_DO_NOT_REBUILD:
 - POST /engagement/merge product path (an)
 - collective prompt merge via fetchCollectiveResearch
 
-THIS_CYCLE_RESIDUAL: (ao) collective document merge UI — shipping
+THIS_CYCLE_RESIDUAL: (ao) collective document merge UI — complete @ 78a561bd
 NEXT_RESIDUAL: (ap) competitive deep-research notes→spec OR arxiv/substack fetch-into-context; operator merge PR #465
