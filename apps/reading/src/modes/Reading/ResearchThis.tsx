@@ -4,21 +4,19 @@ import { useNavigate } from "react-router-dom";
 import { LemonButton } from "../../components/lemon";
 import { spinResearch } from "../../api/books";
 import { track } from "../../lib/analytics";
+import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
 
 /**
- * ResearchThis (Read SPR-08) — spin a deep research from the current
- * passage and hand off to the Research workflow.
+ * ResearchThis (Read SPR-08 + residual cc) — spin deep research from the
+ * current passage.
  *
- * The seed is built server-side and is gate-safe: a gated book contributes
- * only its snippet + metadata, never full text (the endpoint enforces it,
- * so this button cannot leak gated content into a research even if it
- * tried). On success it navigates to the spawned investigation. Return-to-
- * reading is free: the reader's page position is persisted by
- * `usePosition`, so coming back to /read/:id lands on the same page.
+ * Residual (cc): primary path opens a **floating** deep_research_session
+ * window via engagement sessions/open + openDeepResearchFromHighlight
+ * (HTML-first host with twins/collective/merge). Full-page workstation
+ * handoff remains available as an explicit secondary action.
  *
- * This complements — does not replace — the quick rabbit hole (SPR-07):
- * a rabbit hole answers a passing question inline; spin-research is for
- * when a passage warrants real depth.
+ * Gate-safe: passageText for gated books is still constrained server-side;
+ * floating path uses the same asset_id + selection identity.
  */
 
 export interface ResearchThisProps {
@@ -29,12 +27,47 @@ export interface ResearchThisProps {
   passageText?: string;
 }
 
-export default function ResearchThis({ documentId, pageIndex, passageText }: ResearchThisProps) {
+export default function ResearchThis({
+  documentId,
+  pageIndex,
+  passageText,
+}: ResearchThisProps) {
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastWindowId, setLastWindowId] = useState<string | null>(null);
 
-  const spin = async () => {
+  const selection =
+    (passageText || "").trim() ||
+    `Page ${pageIndex + 1} of document ${documentId}`;
+
+  const spinFloating = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const out = await launchFloatingDeepResearch({
+        asset_id: documentId,
+        selection_text: selection,
+        page: pageIndex,
+        goal_hint: "Deep-research the highlighted passage from reading",
+        view_mode: "floating",
+      });
+      track("reading_research_spun", {
+        document_id: documentId,
+        page_index: pageIndex,
+        has_passage: Boolean(passageText),
+        mode: "floating_window",
+        session_id: out.session_id,
+      });
+      setLastWindowId(out.window_id);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const spinFullWorkstation = async () => {
     setBusy(true);
     setError(null);
     try {
@@ -43,9 +76,8 @@ export default function ResearchThis({ documentId, pageIndex, passageText }: Res
         document_id: documentId,
         page_index: pageIndex,
         has_passage: Boolean(passageText),
+        mode: "full_workstation",
       });
-      // Hand off to the Research workflow. Return-to-reading is handled by
-      // usePosition persisting this page.
       navigate(`/inv/${encodeURIComponent(res.investigation_id)}`);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -54,19 +86,47 @@ export default function ResearchThis({ documentId, pageIndex, passageText }: Res
   };
 
   return (
-    <div className="inline-flex items-center gap-2">
+    <div
+      className="inline-flex flex-wrap items-center gap-2"
+      data-testid="research-this"
+    >
       <LemonButton
         type="button"
         variant="secondary"
         size="sm"
         disabled={busy}
-        onClick={() => void spin()}
-        title="Spin a deep research from this page and hand off to the Research workflow"
+        onClick={() => void spinFloating()}
+        title="Open deep research in a floating window over the scene"
+        data-testid="research-this-floating"
       >
-        {busy ? "Spinning research…" : "Research this page"}
+        {busy ? "Opening…" : "Deep research (window)"}
       </LemonButton>
+      <LemonButton
+        type="button"
+        variant="tertiary"
+        size="sm"
+        disabled={busy}
+        onClick={() => void spinFullWorkstation()}
+        title="Spin full Research workstation (legacy handoff)"
+        data-testid="research-this-full"
+      >
+        {busy ? "Spinning…" : "Research this page"}
+      </LemonButton>
+      {lastWindowId ? (
+        <span
+          className="text-[11px] font-mono text-aurora"
+          data-testid="research-this-window-id"
+          role="status"
+        >
+          Window {lastWindowId}
+        </span>
+      ) : null}
       {error && (
-        <span className="text-[11px] font-mono text-emperor" role="alert">
+        <span
+          className="text-[11px] font-mono text-emperor"
+          role="alert"
+          data-testid="research-this-error"
+        >
           {error === "book_not_found" ? "Book not found." : error}
         </span>
       )}
