@@ -10,6 +10,7 @@
  * Residual (el): auto-open draft_combined HTML in hosted_html_document so the
  * draft joins the reading/research flywheel without a second click (parent
  * merge stays manual — parent may already be open).
+ * Residual (ev): manual re-open as full working-region window after merge.
  */
 
 import { useCallback, useState } from "react";
@@ -28,6 +29,11 @@ export type OpenMergedResearchWindowOpts = {
   source?: string;
   /** Window id prefix (default: win:merge). */
   idPrefix?: string;
+  /**
+   * Residual (ev): floating (default) or full working-region window.
+   * Auto-open stays floating; operators can re-open full after merge.
+   */
+  windowMode?: "floating" | "full";
 };
 
 /** Open merged HTML as hosted document (HTML-first; never PDF). Shared by spawn + collective. */
@@ -41,6 +47,8 @@ export function openMergedResearchWindow(
   const stem = (opts.titleStem || "Merged research").trim() || "Merged research";
   const source = (opts.source || "spawn_merge_panel").trim() || "spawn_merge_panel";
   const idPrefix = (opts.idPrefix || "win:merge").trim() || "win:merge";
+  const windowMode = opts.windowMode === "full" ? "full" : "floating";
+  const idSuffix = windowMode === "full" ? ":full" : "";
   return openWindow(
     "hosted_html_document",
     {
@@ -51,9 +59,9 @@ export function openMergedResearchWindow(
       source,
     },
     {
-      id: `${idPrefix}:${result.document_id}`,
+      id: `${idPrefix}:${result.document_id}${idSuffix}`,
       title: stem,
-      mode: "floating",
+      mode: windowMode,
     },
   );
 }
@@ -232,16 +240,28 @@ export function SpawnMergePanel({
           ))}
           {result.html && result.view_format === "html" ? (
             <>
-              <button
-                type="button"
-                data-testid="spawn-merge-open-window"
-                onClick={() => {
-                  openMergedResearchWindow(result);
-                }}
-                className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono hover:bg-ink/5 dark:border-bright/30"
-              >
-                Open merged HTML in window
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  data-testid="spawn-merge-open-window"
+                  onClick={() => {
+                    openMergedResearchWindow(result);
+                  }}
+                  className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono hover:bg-ink/5 dark:border-bright/30"
+                >
+                  Open merged HTML in window
+                </button>
+                <button
+                  type="button"
+                  data-testid="spawn-merge-open-full"
+                  onClick={() => {
+                    openMergedResearchWindow(result, { windowMode: "full" });
+                  }}
+                  className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono hover:bg-ink/5 dark:border-bright/30"
+                >
+                  Open merged HTML full
+                </button>
+              </div>
               <div
                 className="prose max-h-40 overflow-auto text-sm"
                 data-testid="spawn-merge-html"

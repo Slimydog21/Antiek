@@ -480,21 +480,37 @@ export function CollectiveResearchPanel({
               {n}
             </p>
           ))}
-          {/* Residual (cg/em): open draft analysis HTML via shared chokepoint. */}
+          {/* Residual (cg/em/ev): open draft analysis HTML via shared chokepoint. */}
           {docMerge.html && docMerge.view_format === "html" ? (
-            <button
-              type="button"
-              data-testid="collective-open-analysis-window"
-              onClick={() => {
-                openMergedResearchWindow(docMerge, {
-                  titleStem: "Written analysis",
-                  source: "collective_written_analysis",
-                  idPrefix: "win:analysis",
-                });
-              }}
-            >
-              Open analysis in window
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                data-testid="collective-open-analysis-window"
+                onClick={() => {
+                  openMergedResearchWindow(docMerge, {
+                    titleStem: "Written analysis",
+                    source: "collective_written_analysis",
+                    idPrefix: "win:analysis",
+                  });
+                }}
+              >
+                Open analysis in window
+              </button>
+              <button
+                type="button"
+                data-testid="collective-open-analysis-full"
+                onClick={() => {
+                  openMergedResearchWindow(docMerge, {
+                    titleStem: "Written analysis",
+                    source: "collective_written_analysis",
+                    idPrefix: "win:analysis",
+                    windowMode: "full",
+                  });
+                }}
+              >
+                Open analysis full
+              </button>
+            </div>
           ) : null}
           {docMerge.html ? (
             <div

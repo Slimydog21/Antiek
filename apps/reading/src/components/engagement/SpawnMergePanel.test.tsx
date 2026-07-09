@@ -146,6 +146,46 @@ describe("SpawnMergePanel residual ci", () => {
     expect(screen.queryByTestId("spawn-merge-auto-open-window")).toBeNull();
   });
 
+  it("opens merged HTML in full working-region window (ev)", async () => {
+    mergeSpawnOutputs.mockResolvedValue({
+      mode: "draft_combined",
+      parent_asset_id: "book-1",
+      document_id: "draft_full",
+      source_spawn_ids: ["spn_1"],
+      sections_merged: 1,
+      draft_leaves_parent: true,
+      parent_document_id: "book-1",
+      view_format: "html",
+      product_panel: "engagement_merge",
+      source: "engagement_spine.merge_spawn_outputs",
+      notes: ["Draft"],
+      html: "<p>Full open</p>",
+    });
+    render(
+      <SpawnMergePanel
+        spawnId="spn_1"
+        parentAssetId="book-1"
+        autoOpenDraft={false}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("spawn-merge-draft"));
+    await waitFor(() => {
+      expect(screen.getByTestId("spawn-merge-open-full")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("spawn-merge-open-full"));
+    expect(openWindow).toHaveBeenCalledWith(
+      "hosted_html_document",
+      expect.objectContaining({
+        document_id: "draft_full",
+        view_format: "html",
+      }),
+      expect.objectContaining({
+        id: "win:merge:draft_full:full",
+        mode: "full",
+      }),
+    );
+  });
+
   it("merges into parent without auto-open; manual open still works", async () => {
     mergeSpawnOutputs.mockResolvedValue({
       mode: "into_parent",
