@@ -18,6 +18,7 @@ from substrate.midnight_oil import (
     get_job,
     job_summary_html,
     product_result_html,
+    run_job_offline,
 )
 from substrate.midnight_oil.job import InMemoryJobStore, JobStore, put_job_state, _job_from_row
 
@@ -62,6 +63,16 @@ class DepositBody(BaseModel):
     record_progress: bool = True
     mark_complete: bool = True
     include_progress_html: bool = True
+
+
+class RunBody(BaseModel):
+    """Run approved job with offline worker (no live multi-provider calls)."""
+
+    job_id: str
+    max_steps: int | None = None
+    spent_per_goal: float = 0.05
+    auto_deposit: bool = False
+    draft_combined: bool = True
 
 
 @midnight_oil_router.post("/create")
@@ -123,6 +134,41 @@ def get_job_route(job_id: str) -> dict[str, Any]:
         "runnable": job.status == "approved",
         "html": job_summary_html(job),
     }
+
+
+@midnight_oil_router.post("/run")
+def post_run(body: RunBody) -> dict[str, Any]:
+    """Run offline worker loop for an approved job (residual bn).
+
+    Honest offline simulation: one synthetic step per goal with stub spend.
+    Optionally auto-deposits into engagement twins/HTML when ``auto_deposit``.
+    """
+    try:
+        out = run_job_offline(
+            body.job_id,
+            store=_store(),
+            max_steps=body.max_steps,
+            spent_per_goal=body.spent_per_goal,
+        )
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    deposit_payload: dict[str, Any] | None = None
+    if body.auto_deposit:
+        # Reuse deposit product path without mark_complete override if already terminal
+        deposit_payload = post_deposit(
+            DepositBody(
+                job_id=body.job_id,
+                draft_combined=body.draft_combined,
+                record_progress=True,
+                mark_complete=False,
+                include_progress_html=True,
+            )
+        )
+        out["deposit"] = deposit_payload
+    return out
 
 
 @midnight_oil_router.post("/deposit")

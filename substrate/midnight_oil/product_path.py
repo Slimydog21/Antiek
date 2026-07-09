@@ -211,3 +211,91 @@ def job_summary_html(job: MidnightOilJob) -> str:
 
 def product_result_html(result: MidnightOilProductResult) -> str:
     return job_summary_html(result.job)
+
+
+def offline_goal_step_fn(
+    job: MidnightOilJob,
+    *,
+    spent_per_goal: float = 0.05,
+) -> "WorkerStepResult":
+    """Default offline step: one synthetic result per goal, no network.
+
+    Used by product ``run_job_offline`` so operators can exercise the swarm
+    path without a live multi-provider worker. Costs are fixed stubs for
+    budget-halt testing honesty — not real API prices.
+    """
+    from .worker import WorkerStepResult
+
+    idx = len(job.spawn_ids)
+    if idx >= len(job.goals):
+        return WorkerStepResult(spent_usd=0.0, done=True)
+    goal = job.goals[idx]
+    done = idx + 1 >= len(job.goals)
+    return WorkerStepResult(
+        spent_usd=float(spent_per_goal),
+        spawn_id=f"spn_moil_{job.job_id}_{idx}",
+        output_text=f"Offline worker synthesis for goal: {goal}",
+        insights=(f"Insight on: {goal}",),
+        questions=(f"What remains open for: {goal}?",),
+        done=done,
+    )
+
+
+def run_job_offline(
+    job_id: str,
+    *,
+    store: JobStore,
+    max_steps: int | None = None,
+    spent_per_goal: float = 0.05,
+    advance_ms_per_step: int = 60_000,
+) -> dict[str, Any]:
+    """Product entry: run approved job with offline goal step_fn + FakeClock.
+
+    Does **not** call live models. Returns job summary + step counts for UI.
+    Terminal statuses: complete | timed_out | budget_halted | failed.
+    """
+    from .worker import FakeClock, run_worker_loop
+
+    job = get_job(job_id, store=store)
+    if job is None:
+        raise KeyError(f"unknown job_id: {job_id}")
+    if job.status not in ("approved", "running"):
+        raise ValueError(
+            f"job {job_id} status is {job.status!r}; must be approved before run"
+        )
+
+    steps_cap = max_steps if max_steps is not None else max(len(job.goals) + 2, 4)
+    clock = FakeClock(0)
+
+    def step_fn(j: MidnightOilJob):
+        return offline_goal_step_fn(j, spent_per_goal=spent_per_goal)
+
+    final = run_worker_loop(
+        job_id,
+        store=store,
+        step_fn=step_fn,
+        clock=clock,
+        max_steps=steps_cap,
+        advance_ms_per_step=advance_ms_per_step,
+    )
+    return {
+        "job_id": final.job_id,
+        "status": final.status,
+        "spent_usd": final.spent_usd,
+        "approved_ceiling_usd": final.approved_ceiling_usd,
+        "spawn_ids": list(final.spawn_ids),
+        "goals_total": len(final.goals),
+        "steps_cap": steps_cap,
+        "elapsed_ms": final.elapsed_ms,
+        "notes": final.notes,
+        "view_format": "html",
+        "runnable": final.status == "approved",
+        "offline": True,
+        "product_panel": "midnight_oil_run",
+        "source": "midnight_oil.run_job_offline",
+        "notes_list": [
+            "Offline worker simulation — no live multi-provider calls.",
+            "Deposit separately to land HTML twins + usage/progress.",
+        ],
+        "html": job_summary_html(final),
+    }

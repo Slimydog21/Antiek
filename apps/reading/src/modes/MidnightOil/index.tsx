@@ -8,8 +8,10 @@ import {
   approveMidnightOilCeiling,
   createMidnightOilJob,
   depositMidnightOilJob,
+  runMidnightOilJob,
   type MidnightOilDepositResponse,
   type MidnightOilJobResponse,
+  type MidnightOilRunResponse,
 } from "../../api/midnightOil";
 
 export default function MidnightOil() {
@@ -20,8 +22,12 @@ export default function MidnightOil() {
   const [deposit, setDeposit] = useState<MidnightOilDepositResponse | null>(
     null,
   );
+  const [runResult, setRunResult] = useState<MidnightOilRunResponse | null>(
+    null,
+  );
   const [ceilingInput, setCeilingInput] = useState("");
   const [forceBelow, setForceBelow] = useState(false);
+  const [autoDeposit, setAutoDeposit] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -109,6 +115,35 @@ export default function MidnightOil() {
         asset_id: result.asset_id,
         runnable: false,
       });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRunOffline() {
+    if (!job) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await runMidnightOilJob({
+        job_id: job.job_id,
+        auto_deposit: autoDeposit,
+        spent_per_goal: 0.05,
+      });
+      if (result.view_format !== "html") {
+        throw new Error("run view_format must be html");
+      }
+      setRunResult(result);
+      setJob({
+        ...job,
+        status: result.status,
+        runnable: result.runnable,
+      });
+      if (result.deposit) {
+        setDeposit(result.deposit);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -231,13 +266,39 @@ export default function MidnightOil() {
             </div>
           ) : null}
 
-          {job.status === "approved" || job.status === "complete" ? (
+          {job.status === "approved" ||
+          job.status === "complete" ||
+          job.status === "running" ||
+          job.status === "timed_out" ||
+          job.status === "budget_halted" ? (
             <div className="space-y-2 border rounded p-3">
               <p className="text-sm opacity-80">
-                Deposit lands HTML research output + twin notes and seeds
-                progress telemetry (plan→cite→complete). Worker may also run
-                out-of-band.
+                Offline run simulates the autonomous swarm (one step per goal,
+                stub spend, no live multi-provider). Deposit lands HTML + twins
+                + progress. Live worker remains a separate future inject.
               </p>
+              {job.status === "approved" || job.status === "running" ? (
+                <>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      data-testid="moil-auto-deposit"
+                      checked={autoDeposit}
+                      onChange={(e) => setAutoDeposit(e.target.checked)}
+                      disabled={busy}
+                    />
+                    Auto-deposit after offline run
+                  </label>
+                  <button
+                    type="button"
+                    data-testid="moil-run-offline"
+                    onClick={() => void onRunOffline()}
+                    disabled={busy}
+                  >
+                    {busy ? "Running…" : "Run offline worker"}
+                  </button>
+                </>
+              ) : null}
               <button
                 type="button"
                 data-testid="moil-deposit"
@@ -246,6 +307,29 @@ export default function MidnightOil() {
               >
                 {busy ? "Depositing…" : "Deposit results (HTML + twins)"}
               </button>
+            </div>
+          ) : null}
+
+          {runResult ? (
+            <div
+              className="space-y-2 border rounded p-3"
+              data-testid="moil-run-result"
+              data-view-format="html"
+            >
+              <h3 className="font-medium">Offline run result</h3>
+              <p className="font-mono text-sm">
+                status=<strong>{runResult.status}</strong> · spent=$
+                {runResult.spent_usd.toFixed(4)} · spawns=
+                {runResult.spawn_ids.length}/{runResult.goals_total} · offline=
+                {String(runResult.offline)}
+              </p>
+              {runResult.html ? (
+                <div
+                  className="prose border rounded p-3 text-sm max-h-48 overflow-auto"
+                  data-testid="run-html"
+                  dangerouslySetInnerHTML={{ __html: runResult.html }}
+                />
+              ) : null}
             </div>
           ) : null}
 

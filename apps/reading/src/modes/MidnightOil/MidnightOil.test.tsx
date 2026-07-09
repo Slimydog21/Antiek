@@ -6,11 +6,13 @@ const {
   createMidnightOilJob,
   approveMidnightOilCeiling,
   depositMidnightOilJob,
+  runMidnightOilJob,
   getMidnightOilJob,
 } = vi.hoisted(() => ({
   createMidnightOilJob: vi.fn(),
   approveMidnightOilCeiling: vi.fn(),
   depositMidnightOilJob: vi.fn(),
+  runMidnightOilJob: vi.fn(),
   getMidnightOilJob: vi.fn(),
 }));
 
@@ -18,6 +20,7 @@ vi.mock("../../api/midnightOil", () => ({
   createMidnightOilJob,
   approveMidnightOilCeiling,
   depositMidnightOilJob,
+  runMidnightOilJob,
   getMidnightOilJob,
 }));
 
@@ -27,6 +30,7 @@ describe("MidnightOil mode", () => {
     createMidnightOilJob.mockReset();
     approveMidnightOilCeiling.mockReset();
     depositMidnightOilJob.mockReset();
+    runMidnightOilJob.mockReset();
     getMidnightOilJob.mockReset();
   });
 
@@ -163,5 +167,93 @@ describe("MidnightOil mode", () => {
     expect(
       screen.getByTestId("midnight-oil-mode").getAttribute("data-view-format"),
     ).toBe("html");
+  });
+
+  it("runs offline worker after approve with auto-deposit", async () => {
+    createMidnightOilJob.mockResolvedValue({
+      job_id: "moil_run",
+      goals: ["Goal A"],
+      duration_minutes: 30,
+      status: "awaiting_approval",
+      recommended_price_ceiling_usd: 1.5,
+      view_format: "html",
+      runnable: false,
+      html: "<p>Receipt</p>",
+    });
+    approveMidnightOilCeiling.mockResolvedValue({
+      job_id: "moil_run",
+      goals: ["Goal A"],
+      duration_minutes: 30,
+      status: "approved",
+      recommended_price_ceiling_usd: 1.5,
+      approved_ceiling_usd: 1.5,
+      view_format: "html",
+      runnable: true,
+      html: "<p>Approved</p>",
+    });
+    runMidnightOilJob.mockResolvedValue({
+      job_id: "moil_run",
+      status: "complete",
+      spent_usd: 0.05,
+      approved_ceiling_usd: 1.5,
+      spawn_ids: ["spn_moil_run_0"],
+      goals_total: 1,
+      steps_cap: 4,
+      elapsed_ms: 0,
+      view_format: "html",
+      runnable: false,
+      offline: true,
+      html: "<p>Offline run complete</p>",
+      deposit: {
+        job_id: "moil_run",
+        asset_id: "moil_asset_run",
+        document_id: "draft_x",
+        twin_count: 2,
+        spawn_ids: ["spn_moil_run_0"],
+        draft_combined: true,
+        usage_recorded: true,
+        progress_seeded: true,
+        progress: {
+          latest_stage: "complete",
+          event_count: 5,
+          is_terminal: true,
+          html: "<p>progress</p>",
+        },
+        job_status: "complete",
+        view_format: "html",
+        html: "<p>Deposited</p>",
+      },
+    });
+
+    render(<MidnightOil />);
+    fireEvent.change(screen.getByLabelText(/goals/i), {
+      target: { value: "Goal A" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /create job \+ recommend ceiling/i }),
+    );
+    await waitFor(() => expect(screen.getByTestId("moil-job")).toBeTruthy());
+    fireEvent.click(
+      screen.getByRole("button", { name: /approve at recommended/i }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("moil-run-offline")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("moil-run-offline"));
+    await waitFor(() => {
+      expect(runMidnightOilJob).toHaveBeenCalledWith({
+        job_id: "moil_run",
+        auto_deposit: true,
+        spent_per_goal: 0.05,
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("moil-run-result").textContent).toMatch(
+        /complete/,
+      );
+    });
+    expect(screen.getByTestId("moil-deposit-result").textContent).toMatch(
+      /twins=2/,
+    );
   });
 });

@@ -114,3 +114,45 @@ export async function depositMidnightOilJob(body: {
   });
   return readJson<MidnightOilDepositResponse>(res);
 }
+
+/** Offline worker run (no live multi-provider calls). */
+export type MidnightOilRunResponse = {
+  job_id: string;
+  status: string;
+  spent_usd: number;
+  approved_ceiling_usd?: number | null;
+  spawn_ids: string[];
+  goals_total: number;
+  steps_cap: number;
+  elapsed_ms: number;
+  notes?: string;
+  view_format: "html" | string;
+  runnable: boolean;
+  offline: boolean;
+  product_panel?: string;
+  source?: string;
+  notes_list?: string[];
+  html?: string | null;
+  deposit?: MidnightOilDepositResponse | null;
+};
+
+export async function runMidnightOilJob(body: {
+  job_id: string;
+  max_steps?: number | null;
+  spent_per_goal?: number;
+  auto_deposit?: boolean;
+  draft_combined?: boolean;
+}): Promise<MidnightOilRunResponse> {
+  const res = await apiFetch(`${API_BASE}/midnight-oil/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      job_id: body.job_id,
+      max_steps: body.max_steps ?? null,
+      spent_per_goal: body.spent_per_goal ?? 0.05,
+      auto_deposit: Boolean(body.auto_deposit),
+      draft_combined: body.draft_combined ?? true,
+    }),
+  });
+  return readJson<MidnightOilRunResponse>(res);
+}

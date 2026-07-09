@@ -26,7 +26,9 @@ from .product_path import (
     create_recommend_and_approve,
     create_with_recommended_ceiling,
     job_summary_html,
+    offline_goal_step_fn,
     product_result_html,
+    run_job_offline,
 )
 from .worker import WorkerStepResult, run_worker_iteration, run_worker_loop
 
@@ -45,7 +47,9 @@ __all__ = [
     "get_job",
     "job_summary_html",
     "product_result_html",
+    "offline_goal_step_fn",
     "recommend_price_ceiling",
+    "run_job_offline",
     "run_worker_iteration",
     "run_worker_loop",
 ]
