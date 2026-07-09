@@ -610,3 +610,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (pv, 2026-07-10) **SESSION-ARC pn–pu twin write complete:**
   - SESSION-ARC-pn-pu-twin-write-complete.md fleet handoff
+
+- Closed (pw, 2026-07-10) **mergeTwinChaseNotes pure helper (V1 foundation):**
+  - multi-list dedupe by note_id · questions first
+  - composes with buildTwinDraftHtml for cross-asset drafts

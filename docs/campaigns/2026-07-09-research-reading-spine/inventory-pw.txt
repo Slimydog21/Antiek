@@ -1,0 +1,8 @@
+# inventory-pw · mergeTwinChaseNotes pure helper (V1 foundation)
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: pw
+files:
+  apps/reading/src/components/engagement/TwinNotesPanel.tsx
+  apps/reading/src/components/engagement/TwinNotesPanel.test.tsx
+proof: vitest TwinNotesPanel 26 passed
+invariants: dedupe note_id · questions first · never invent · composes with buildTwinDraftHtml

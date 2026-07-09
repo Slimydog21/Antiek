@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildTwinChasePayload,
   buildTwinDraftHtml,
+  mergeTwinChaseNotes,
   TwinNotesPanel,
 } from "./TwinNotesPanel";
 
@@ -115,6 +116,28 @@ describe("buildTwinDraftHtml (pn)", () => {
     expect(draft.html).toMatch(/data-note-id="q1"/);
     expect(draft.html).toMatch(/&lt;b&gt;/);
     expect(draft.html).not.toMatch(/<b>bold<\/b>/);
+  });
+});
+
+describe("mergeTwinChaseNotes (pw)", () => {
+  it("dedupes by note_id and orders questions before insights", () => {
+    const merged = mergeTwinChaseNotes([
+      [
+        { note_id: "i1", kind: "insight", text: "From A" },
+        { note_id: "q1", kind: "question", text: "Q from A" },
+      ],
+      [
+        { note_id: "q1", kind: "question", text: "duplicate ignored" },
+        { note_id: "q2", kind: "question", text: "Q from B" },
+        { note_id: "  ", kind: "insight", text: "skip empty id" },
+        { note_id: "i2", kind: "insight", text: "  " },
+      ],
+    ]);
+    expect(merged.map((n) => n.note_id)).toEqual(["q1", "q2", "i1"]);
+    expect(merged.find((n) => n.note_id === "q1")?.text).toBe("Q from A");
+    const draft = buildTwinDraftHtml(merged, "cross-asset");
+    expect(draft.note_ids).toEqual(["q1", "q2", "i1"]);
+    expect(draft.html).toMatch(/data-note-count="3"/);
   });
 });
 

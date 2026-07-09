@@ -47,6 +47,8 @@
  * (brainstorm seed + HTML preview; no invented server document_id).
  * Residual (ps): twin HTML draft full working-region window (parity chase full).
  * Residual (pt): twin-draft-metrics echo note_ids provenance (parity ni chase).
+ * Residual (pw): mergeTwinChaseNotes pure helper — dedupe by note_id, questions
+ * first (FUTURE-AGENT V1 cross-asset combine foundation).
  * HTML-first; never PDF.
  */
 
@@ -110,6 +112,37 @@ export function buildTwinChasePayload(
     `${ordered.length} note(s) (questions=${qCount}, insights=${iCount})` +
     (idsPreview ? ` · note_ids=${idsPreview}` : "");
   return { selection_text, goal_hint, note_ids };
+}
+
+/**
+ * Residual (pw): pure helper — merge twin note lists from one or more assets
+ * for cross-asset combine drafts. Dedupes by note_id (first wins); orders
+ * questions before insights. Never invents notes.
+ */
+export function mergeTwinChaseNotes(
+  lists: readonly (readonly TwinChaseNote[])[],
+): TwinChaseNote[] {
+  const seen = new Set<string>();
+  const out: TwinChaseNote[] = [];
+  for (const list of lists) {
+    for (const n of list) {
+      const id = String(n?.note_id || "").trim();
+      if (!id || seen.has(id)) continue;
+      const text = String(n?.text || "").trim();
+      if (!text) continue;
+      seen.add(id);
+      out.push({
+        note_id: id,
+        kind: String(n.kind || "note").trim() || "note",
+        text,
+      });
+    }
+  }
+  return out.sort((a, b) => {
+    const rank = (k: string) =>
+      k === "question" ? 0 : k === "insight" ? 1 : 2;
+    return rank(a.kind) - rank(b.kind);
+  });
 }
 
 /**
