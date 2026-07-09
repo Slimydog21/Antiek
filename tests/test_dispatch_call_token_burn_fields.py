@@ -40,6 +40,7 @@ def test_token_burn_fields_exist_with_safe_defaults():
     assert p.parent_run_id is None
     assert p.feature_label is None
     assert p.session_id is None
+    assert p.route_receipt is None
 
 
 def test_cached_input_tokens_rejects_negative():
@@ -90,6 +91,7 @@ def test_pre_spr01_construction_round_trips_without_new_fields():
     # The new fields serialize as their JSON defaults (0 / null), not absent.
     assert dumped["cached_input_tokens"] == 0
     assert dumped["task_id"] is None
+    assert dumped["route_receipt"] is None
 
 
 def test_new_fields_populate_when_set():

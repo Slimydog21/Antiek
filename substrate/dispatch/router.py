@@ -24,19 +24,23 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml  # type: ignore[import]
 
 # Package-relative imports with a fall-back for direct-script execution.
 try:
     from ..event_log import emit_typed
-    from ..schemas import DispatchCallPayload
+    from ..schemas import (
+        DispatchCallPayload,
+        RouteReceipt,
+        RouteReceiptCandidate,
+        RouteReceiptSelection,
+    )
     from .base import (
         NormalizedUsage,
         Provider,
         ProviderError,
-        RawProviderResponse,
     )
     from .breaker import default_breaker
 except ImportError:  # pragma: no cover
@@ -50,7 +54,12 @@ except ImportError:  # pragma: no cover
     )
     from dispatch.breaker import default_breaker  # type: ignore[import-not-found, no-redef]
     from event_log import emit_typed  # type: ignore[import-not-found, no-redef]
-    from schemas import DispatchCallPayload  # type: ignore[import-not-found, no-redef]
+    from schemas import (  # type: ignore[import-not-found, no-redef]
+        DispatchCallPayload,
+        RouteReceipt,
+        RouteReceiptCandidate,
+        RouteReceiptSelection,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +208,15 @@ class DispatchConfig:
 
 
 _PROVIDER_REGISTRY: dict[str, Provider] = {}
+_RouteOverrideKind = Literal["none", "manual", "fallback"]
+_RouteReasonCode = Literal[
+    "primary",
+    "operator_override",
+    "fallback_after_error",
+    "provider_unregistered",
+    "circuit_breaker_open",
+    "provider_error",
+]
 
 
 def register_provider(provider: Provider) -> None:
@@ -240,6 +258,7 @@ class DispatchResult:
     finish_reason: str | None
     fallback_chain_index: int  # 0 = primary, 1 = first fallback, etc.
     event_id: str | None  # the DispatchCall event_id for this success
+    route_receipt: RouteReceipt | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -249,6 +268,97 @@ class DispatchResult:
 
 def _sha256_prefix(s: str, n: int = 12) -> str:
     return "sha256:" + hashlib.sha256(s.encode("utf-8")).hexdigest()[:n]
+
+
+def _pricing_known(pricing: TierPricing) -> bool:
+    """Return whether tier pricing is known enough to trust cost fields."""
+    return any(
+        value > 0.0
+        for value in (
+            pricing.input_per_mtok,
+            pricing.output_per_mtok,
+            pricing.cached_input_per_mtok,
+        )
+    )
+
+
+def _route_receipt_id(
+    *,
+    prompt_hash: str,
+    role: str,
+    provider: str,
+    model: str,
+    fallback_chain_index: int,
+) -> str:
+    material = "|".join((prompt_hash, role, provider, model, str(fallback_chain_index)))
+    return _sha256_prefix(material)
+
+
+def _candidate_models(tier: TierConfig) -> tuple[RouteReceiptCandidate, ...]:
+    candidates: list[RouteReceiptCandidate] = []
+    current: TierConfig | None = tier
+    chain_index = 0
+    while current is not None:
+        if current.provider is not None and current.model is not None:
+            candidates.append(
+                RouteReceiptCandidate(
+                    provider=current.provider,
+                    model=current.model,
+                    tier=current.name,
+                    fallback_chain_index=chain_index,
+                    pricing_known=_pricing_known(current.pricing),
+                )
+            )
+        current = current.fallback
+        chain_index += 1
+    return tuple(candidates)
+
+
+def _override_kind(*, manual_override: bool, fallback_chain_index: int) -> _RouteOverrideKind:
+    if fallback_chain_index > 0:
+        return "fallback"
+    if manual_override:
+        return "manual"
+    return "none"
+
+
+def _route_receipt(
+    *,
+    prompt_hash: str,
+    role: str,
+    selected_tier_name: str,
+    provider: str,
+    model: str,
+    pricing: TierPricing,
+    fallback_chain_index: int,
+    candidate_models: tuple[RouteReceiptCandidate, ...],
+    reason_code: _RouteReasonCode,
+    manual_override: bool,
+) -> RouteReceipt:
+    return RouteReceipt(
+        route_receipt_id=_route_receipt_id(
+            prompt_hash=prompt_hash,
+            role=role,
+            provider=provider,
+            model=model,
+            fallback_chain_index=fallback_chain_index,
+        ),
+        task_kind=role,
+        objective="operator_selected" if manual_override and fallback_chain_index == 0 else "balanced",
+        override=_override_kind(
+            manual_override=manual_override,
+            fallback_chain_index=fallback_chain_index,
+        ),
+        candidate_models=candidate_models,
+        selected=RouteReceiptSelection(
+            provider=provider,
+            model=model,
+            tier=selected_tier_name,
+            fallback_chain_index=fallback_chain_index,
+            reason_code=reason_code,
+            pricing_known=_pricing_known(pricing),
+        ),
+    )
 
 
 # Anthropic prompt-caching pricing multiplier: a 5-minute cache WRITE
@@ -340,6 +450,7 @@ def _emit_dispatch_call(
     prompt_hash: str,
     finish_reason: str | None,
     context_pack_event_id: str | None,
+    route_receipt: RouteReceipt | None = None,
 ) -> str | None:
     """Emit one DispatchCall event. Returns the event_id."""
     return emit_typed(
@@ -358,6 +469,7 @@ def _emit_dispatch_call(
             prompt_hash=prompt_hash,
             finish_reason=finish_reason,  # type: ignore[arg-type]
             context_pack_event_id=context_pack_event_id,
+            route_receipt=route_receipt,
         ),
         parent_event_id=parent_event_id,
         role=role,
@@ -447,6 +559,7 @@ def dispatch(
     # keeping the same pricing/limits and the SAME fallback chain. Requires
     # both halves; a partial override is ignored (refuse to guess).
     if provider_override and model_override:
+        manual_override = True
         tier = TierConfig(
             name=tier.name,
             provider=provider_override,
@@ -457,6 +570,9 @@ def dispatch(
             pricing=tier.pricing,
             fallback=tier.fallback,
         )
+    else:
+        manual_override = False
+    receipt_candidates = _candidate_models(tier)
     chain_index = 0
     last_error: ProviderError | None = None
 
@@ -471,9 +587,8 @@ def dispatch(
         # mypy --strict: bind the guard-narrowed fields once. TierConfig's
         # provider/model are Optional by design (placeholder tiers), and
         # attribute narrowing does not survive the calls below.
-        provider_name: str = current.provider
-        model_name: str = current.model
-
+        provider_name = current.provider
+        model_name = current.model
 
         # An unregistered provider (e.g. a route-override pointing at a
         # provider whose API key isn't set, so bootstrap never registered
@@ -506,6 +621,18 @@ def dispatch(
                 prompt_hash=prompt_hash,
                 finish_reason="error",
                 context_pack_event_id=context_pack_event_id,
+                route_receipt=_route_receipt(
+                    prompt_hash=prompt_hash,
+                    role=role,
+                    selected_tier_name=current.name,
+                    provider=provider_name,
+                    model=model_name,
+                    pricing=current.pricing,
+                    fallback_chain_index=chain_index,
+                    candidate_models=receipt_candidates,
+                    reason_code="provider_unregistered",
+                    manual_override=manual_override,
+                ),
             )
             current = current.fallback
             chain_index += 1
@@ -536,6 +663,18 @@ def dispatch(
                 prompt_hash=prompt_hash,
                 finish_reason="error",
                 context_pack_event_id=context_pack_event_id,
+                route_receipt=_route_receipt(
+                    prompt_hash=prompt_hash,
+                    role=role,
+                    selected_tier_name=current.name,
+                    provider=provider_name,
+                    model=model_name,
+                    pricing=current.pricing,
+                    fallback_chain_index=chain_index,
+                    candidate_models=receipt_candidates,
+                    reason_code="circuit_breaker_open",
+                    manual_override=manual_override,
+                ),
             )
             current = current.fallback
             chain_index += 1
@@ -570,6 +709,18 @@ def dispatch(
                 prompt_hash=prompt_hash,
                 finish_reason="error",
                 context_pack_event_id=context_pack_event_id,
+                route_receipt=_route_receipt(
+                    prompt_hash=prompt_hash,
+                    role=role,
+                    selected_tier_name=current.name,
+                    provider=provider_name,
+                    model=model_name,
+                    pricing=current.pricing,
+                    fallback_chain_index=chain_index,
+                    candidate_models=receipt_candidates,
+                    reason_code="provider_error",
+                    manual_override=manual_override,
+                ),
             )
             # Count this genuine provider-call failure toward the breaker. Config
             # conditions (unregistered/no-key) never reach here — they fall
@@ -585,6 +736,24 @@ def dispatch(
         usage = provider.normalize_usage(raw.raw_usage)
         finish = normalize_finish_reason(raw.finish_reason)
         cost = _compute_cost_usd(usage, current.pricing)
+        receipt = _route_receipt(
+            prompt_hash=prompt_hash,
+            role=role,
+            selected_tier_name=current.name,
+            provider=provider_name,
+            model=model_name,
+            pricing=current.pricing,
+            fallback_chain_index=chain_index,
+            candidate_models=receipt_candidates,
+            reason_code=(
+                "fallback_after_error"
+                if chain_index > 0
+                else "operator_override"
+                if manual_override
+                else "primary"
+            ),
+            manual_override=manual_override,
+        )
         eid = _emit_dispatch_call(
             investigation_id=investigation_id,
             parent_event_id=parent_event_id,
@@ -600,6 +769,7 @@ def dispatch(
             prompt_hash=prompt_hash,
             finish_reason=finish,
             context_pack_event_id=context_pack_event_id,
+            route_receipt=receipt,
         )
         return DispatchResult(
             text=raw.text,
@@ -612,6 +782,7 @@ def dispatch(
             finish_reason=finish,
             fallback_chain_index=chain_index,
             event_id=eid,
+            route_receipt=receipt,
         )
 
     # All tiers exhausted.

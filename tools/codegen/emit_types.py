@@ -108,6 +108,11 @@ GENERATED_HEADER = """\
 NESTED_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.ContextLayer,
     schema_module.Claim,
+    schema_module.RouteReceiptCandidate,
+    schema_module.RouteReceiptSelection,
+    schema_module.RouteReceiptBudget,
+    schema_module.RouteReceiptCacheState,
+    schema_module.RouteReceipt,
     schema_module.ThesisOutcome,
     schema_module.FalsificationOutcome,
     schema_module.ExecutionRiskOutcome,
@@ -491,7 +496,8 @@ def _emit_interface(model: type[BaseModel], lines: list[str]) -> None:
     if docstring:
         lines.append("/**")
         for d_line in docstring.splitlines():
-            lines.append(f" * {d_line.rstrip()}")
+            cleaned = d_line.rstrip()
+            lines.append(f" * {cleaned}" if cleaned else " *")
         lines.append(" */")
     lines.append(f"export interface {name} {{")
     for field_name, field in model.model_fields.items():
