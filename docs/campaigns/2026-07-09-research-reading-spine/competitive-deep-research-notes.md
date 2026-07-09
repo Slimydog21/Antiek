@@ -355,3 +355,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - goal_hint includes note_ids (truncated preview when >4)
   - twin-chase-metrics data-note-ids for recursive audit
   - suite-proposal AC recheck 4_passed
+
+- Closed (nj, 2026-07-10) **SESSION-ARC ng–ni MO duration + chase provenance:**
+  - SESSION-ARC-ng-ni-moil-duration-chase-provenance.md fleet handoff

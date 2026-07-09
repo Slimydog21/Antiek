@@ -77,7 +77,13 @@ See `SESSION-ARC-lw-mj-catalog-moil-dualgate.md`.
 visible, multi-select note_ids. Recursive note-taker merge path product-complete
 offline. Live L3 twin seed remains dual-gate.
 
+## Closed since mq (multi-select promote/chase · 2026-07-10)
+
+**(mq–ne, ni)** twin multi-select promote + chase float|full + budget gate +
+driver badge + select by kind + invert + note_ids provenance.
+**(ng–nh)** Midnight Oil competitive duration recommend + soft-sync.
+
 ## Next residual after this doc
 
-**(my)+** next thin product residual or operator merge PR #465.
+**(nk)+** next thin product residual or operator merge PR #465.
 Infinite continues until STOP.
