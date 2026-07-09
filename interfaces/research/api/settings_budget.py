@@ -513,6 +513,9 @@ class AntiekBenchUsageSummaryResponse(BaseModel):
 
     event_count: int = 0
     by_task_class: dict[str, dict[str, int]] = Field(default_factory=dict)
+    # Residual (ha/nx): source counts + known feed source legend.
+    by_source: dict[str, int] = Field(default_factory=dict)
+    known_sources: list[str] = Field(default_factory=list)
     view_format: str = "html"
     settings_panel: str = "antiek_bench_usage_weekly"
     source: str = "antiek_bench.usage_events"
@@ -562,6 +565,8 @@ def get_antiek_bench_usage_summary(
     return AntiekBenchUsageSummaryResponse(
         event_count=int(payload.get("event_count") or 0),
         by_task_class=dict(payload.get("by_task_class") or {}),
+        by_source=dict(payload.get("by_source") or {}),
+        known_sources=list(payload.get("known_sources") or []),
         view_format=str(payload.get("view_format") or "html"),
         settings_panel=str(payload.get("settings_panel") or "antiek_bench_usage_weekly"),
         source=str(payload.get("source") or "antiek_bench.usage_events"),

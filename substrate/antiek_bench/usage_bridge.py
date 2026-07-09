@@ -151,11 +151,27 @@ def propose_from_recorded_usage(
     return propose_suite_delta(events, store=store, registry=registry)
 
 
+# Residual (nx): known engagement feed sources for Settings honesty legend.
+# Includes twin_chase + floating_deep_research from residual (nw).
+KNOWN_USAGE_FEED_SOURCES: tuple[str, ...] = (
+    "investigation_start",
+    "session_flywheel",
+    "midnight_oil",
+    "marketplace_host",
+    "floating_deep_research",
+    "twin_chase",
+    "antiek_bench.offline_dogfood",
+    "engagement",
+)
+
+
 def weekly_usage_summary(*, store: BenchStore) -> dict[str, Any]:
     """Aggregate recorded usage for settings / Antiek-bench display.
 
     Residual (ha): also aggregate ``by_source`` so operators see interactive
     investigation starts vs Midnight Oil / session flywheel deposits.
+    Residual (nx): known_sources legend for twin_chase / floating_deep_research
+    (session open feed) so Settings UI can label the recursive rewrite feed.
     """
     events = list_usage_events(store=store)
     by_class: dict[str, dict[str, int]] = {}
@@ -173,5 +189,7 @@ def weekly_usage_summary(*, store: BenchStore) -> dict[str, Any]:
         "event_count": len(events),
         "by_task_class": by_class,
         "by_source": by_source,
+        # Residual (nx): closed catalog of feed sources (not counts).
+        "known_sources": list(KNOWN_USAGE_FEED_SOURCES),
         "view_format": "html",
     }

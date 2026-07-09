@@ -57,6 +57,8 @@ def settings_usage_summary_payload(
         "by_task_class": dict(summary.get("by_task_class") or {}),
         # Residual (ha): source breakdown (investigation_start vs session_flywheel).
         "by_source": dict(summary.get("by_source") or {}),
+        # Residual (nx): known feed source legend (incl twin_chase / floating DR).
+        "known_sources": list(summary.get("known_sources") or []),
         "view_format": "html",
         "settings_panel": "antiek_bench_usage_weekly",
         "source": "antiek_bench.usage_events",
@@ -105,6 +107,20 @@ def project_usage_summary_html(summary: dict[str, Any]) -> str:
                 ],
             }
         )
+    # Residual (nx): catalog of known feed sources (twin_chase, floating DR, …).
+    known = summary.get("known_sources") or []
+    if known:
+        blocks.append(
+            {
+                "type": "paragraph",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": "Known feed sources: " + ", ".join(str(s) for s in known),
+                    }
+                ],
+            }
+        )
     if not by_class:
         blocks.append(
             {
@@ -113,8 +129,10 @@ def project_usage_summary_html(summary: dict[str, Any]) -> str:
                     {
                         "type": "text",
                         "text": (
-                            "(no usage events yet — investigation starts + "
-                            "engagement flywheel deposits feed this summary)"
+                            "(no usage events yet — investigation starts, "
+                            "floating DR / twin chase opens, engagement flywheel "
+                            "deposits, marketplace host, and Midnight Oil feed "
+                            "this summary)"
                         ),
                     }
                 ],

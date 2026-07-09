@@ -95,12 +95,25 @@ const {
       by_source: {
         investigation_start: 1,
         session_flywheel: 1,
+        twin_chase: 1,
+        floating_deep_research: 1,
       },
+      // Residual (nx): known feed sources legend (incl twin_chase / floating DR).
+      known_sources: [
+        "investigation_start",
+        "session_flywheel",
+        "midnight_oil",
+        "marketplace_host",
+        "floating_deep_research",
+        "twin_chase",
+        "antiek_bench.offline_dogfood",
+        "engagement",
+      ],
       view_format: "html",
       settings_panel: "antiek_bench_usage_weekly",
       source: "antiek_bench.usage_events",
       notes: [],
-      html: "<p>Events recorded: 2 · By source: investigation_start=1</p>",
+      html: "<p>Events recorded: 2 · By source: investigation_start=1 · Known feed sources: twin_chase</p>",
     })),
     fetchAntiekBenchSuiteProposal: vi.fn(async () => ({
       has_proposal: true,
@@ -647,6 +660,22 @@ describe("Settings SPR-01 + decision-tree install", () => {
     };
     expect(call.model_id).toBe("stub-strong");
     expect(call.provider_id).toBeTruthy();
+  });
+
+  it("shows known feed sources including twin_chase and floating DR (nx)", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("antiek-bench-usage-known-sources")).toBeTruthy();
+    });
+    const legend = screen.getByTestId("antiek-bench-usage-known-sources");
+    expect(legend.getAttribute("data-has-twin-chase")).toBe("true");
+    expect(legend.getAttribute("data-has-floating-dr")).toBe("true");
+    expect(legend.textContent).toMatch(/twin_chase/);
+    expect(legend.textContent).toMatch(/floating_deep_research/);
+    // Residual (nx): by_source list includes chase open sources when present.
+    const sources = screen.getByTestId("antiek-bench-usage-sources");
+    expect(sources.textContent).toMatch(/twin_chase/);
+    expect(sources.textContent).toMatch(/floating_deep_research/);
   });
 
   it("links dual-gate checklist + NotDiamond advisory-only on suite panel (nt)", async () => {

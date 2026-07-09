@@ -52,6 +52,7 @@ from .suite import (
 )
 from .summary import project_run_html
 from .usage_bridge import (
+    KNOWN_USAGE_FEED_SOURCES,
     UsageEvent,
     classify_engagement_task,
     list_usage_events,
@@ -88,6 +89,7 @@ __all__ = [
     "SuiteRegistry",
     "TaskClass",
     "TaskScore",
+    "KNOWN_USAGE_FEED_SOURCES",
     "UsageEvent",
     "active_suite",
     "approve_and_promote",

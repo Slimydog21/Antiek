@@ -1676,11 +1676,32 @@ export default function Settings() {
                     data-testid="antiek-bench-usage-sources"
                   >
                     {Object.entries(usage.by_source || {}).map(([src, n]) => (
-                      <li key={src}>
+                      <li key={src} data-source={src}>
                         <strong>{src}</strong>: {n}
                       </li>
                     ))}
                   </ul>
+                ) : null}
+                {/* Residual (nx): known feed sources legend (twin_chase, floating DR). */}
+                {(usage.known_sources || []).length > 0 ? (
+                  <p
+                    className="text-[11px] font-mono opacity-80"
+                    data-testid="antiek-bench-usage-known-sources"
+                    data-source-count={String(
+                      (usage.known_sources || []).length,
+                    )}
+                    data-has-twin-chase={String(
+                      (usage.known_sources || []).includes("twin_chase"),
+                    )}
+                    data-has-floating-dr={String(
+                      (usage.known_sources || []).includes(
+                        "floating_deep_research",
+                      ),
+                    )}
+                    role="status"
+                  >
+                    Known feed sources: {(usage.known_sources || []).join(", ")}
+                  </p>
                 ) : null}
                 {usage.notes?.map((n) => (
                   <p

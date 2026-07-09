@@ -226,6 +226,11 @@ export type AntiekBenchUsageSummaryResponse = {
   by_task_class: Record<string, UsageTaskClassBucket>;
   /** Residual (ha/hb): investigation_start vs session_flywheel etc. */
   by_source?: Record<string, number>;
+  /**
+   * Residual (nx): closed catalog of feed sources including twin_chase +
+   * floating_deep_research (session open residual nw).
+   */
+  known_sources?: string[];
   view_format: "html" | string;
   settings_panel: string;
   source: string;

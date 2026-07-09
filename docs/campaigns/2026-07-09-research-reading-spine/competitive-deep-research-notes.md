@@ -407,3 +407,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - sessions/open records usage_event (source twin_chase | floating_deep_research)
   - research_tier → task_class feeds recursive suite rewrite
   - TwinNotes chase metrics data-usage-source / task-class audit
+
+- Closed (nx, 2026-07-10) **Settings known feed sources + by_source chase/DR:**
+  - KNOWN_USAGE_FEED_SOURCES incl twin_chase / floating_deep_research
+  - usage-summary API returns by_source + known_sources (by_source was missing)
+  - Settings legend antiek-bench-usage-known-sources

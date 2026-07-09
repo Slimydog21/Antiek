@@ -1,0 +1,14 @@
+# inventory-nx · Settings known feed sources + by_source twin_chase/floating DR
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: nx
+files:
+  substrate/antiek_bench/usage_bridge.py
+  substrate/antiek_bench/settings_surface.py
+  substrate/antiek_bench/__init__.py
+  interfaces/research/api/settings_budget.py
+  tests/test_usage_session_open_feed_nx.py
+  apps/reading/src/api/settings.ts
+  apps/reading/src/modes/Settings/index.tsx
+  apps/reading/src/modes/Settings/Settings.test.tsx
+proof: pytest test_usage_session_open_feed_nx 1 · durable+suite 10 · Settings vitest 4 matched
+invariants: HTML-first · propose≠promote · by_source honesty · known_sources legend
