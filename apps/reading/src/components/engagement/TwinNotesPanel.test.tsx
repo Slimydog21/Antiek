@@ -23,6 +23,13 @@ describe("TwinNotesPanel", () => {
     seedTwinNotes.mockReset();
   });
 
+  it("links to Settings twin seed readiness (ib)", () => {
+    render(<TwinNotesPanel assetId="paper" />);
+    const link = screen.getByTestId("twin-notes-settings-link");
+    expect(link.getAttribute("href")).toBe("/settings");
+    expect(link.textContent).toMatch(/twin seed readiness/i);
+  });
+
   it("auto-loads twins on mount when autoLoad (cq)", async () => {
     fetchTwinNotes.mockResolvedValue({
       asset_id: "paper",

@@ -13,6 +13,7 @@
  * seed_source / offline_honest on seed status (parity ResearchContext hydrate hd).
  * Residual (hi): twin-promote-metrics data attributes for promote→context
  * audit (parity twin-notes-metrics fk / context-search-metrics fi).
+ * Residual (ib): Settings deep-link for twin seed live readiness (hs).
  * HTML-first; never PDF.
  */
 
@@ -245,6 +246,16 @@ export function TwinNotesPanel({
         <h2>Twin notes</h2>
         <p className="meta">
           Recursive note-taker for asset <code>{assetId}</code>
+        </p>
+        {/* Residual (ib): Settings deep-link for twin seed dual-gate readiness. */}
+        <p className="meta font-mono text-[11px]">
+          <a
+            href="/settings"
+            data-testid="twin-notes-settings-link"
+            title="Open Settings → Twin seed live readiness"
+          >
+            Settings · twin seed readiness
+          </a>
         </p>
       </header>
       <div className="controls" style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
