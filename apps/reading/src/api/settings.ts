@@ -106,3 +106,28 @@ export async function clearDecisionTreeSelection(): Promise<DecisionTreeSelectio
   });
   return readJson<DecisionTreeSelectionResponse>(res);
 }
+
+/** Weekly Antiek-bench usage summary (recorded engagement outcomes). */
+export type UsageTaskClassBucket = {
+  worked?: number;
+  failed?: number;
+  total?: number;
+};
+
+export type AntiekBenchUsageSummaryResponse = {
+  event_count: number;
+  by_task_class: Record<string, UsageTaskClassBucket>;
+  view_format: "html" | string;
+  settings_panel: string;
+  source: string;
+  notes: string[];
+  html?: string | null;
+};
+
+export async function fetchAntiekBenchUsageSummary(opts?: {
+  includeHtml?: boolean;
+}): Promise<AntiekBenchUsageSummaryResponse> {
+  const q = opts?.includeHtml ? "?include_html=true" : "";
+  const res = await apiFetch(`${API_BASE}/settings/antiek-bench/usage-summary${q}`);
+  return readJson<AntiekBenchUsageSummaryResponse>(res);
+}

@@ -24,7 +24,11 @@ from .rewrite import (
     propose_suite_delta,
 )
 from .run import BenchRunResult, TaskScore, run_suite
-from .settings_surface import settings_leaderboard_payload
+from .settings_surface import (
+    project_usage_summary_html,
+    settings_leaderboard_payload,
+    settings_usage_summary_payload,
+)
 from .store import BenchStore, InMemoryBenchStore
 from .suite import (
     SuiteDefinition,
@@ -75,6 +79,8 @@ __all__ = [
     "record_usage_event",
     "register_suite",
     "run_suite",
+    "project_usage_summary_html",
     "settings_leaderboard_payload",
+    "settings_usage_summary_payload",
     "weekly_usage_summary",
 ]

@@ -53,6 +53,20 @@ _session_store: SessionStore | None = None
 _bench_usage_store: Any = None
 
 
+def get_bench_usage_store(*, create_if_missing: bool = True) -> Any:
+    """Process-local Antiek-bench usage store shared with settings summary.
+
+    Honest limitation: process-local (same as decision-tree registry). When
+    ``create_if_missing`` is False and no store was opened yet, returns None.
+    """
+    global _bench_usage_store
+    if _bench_usage_store is None and create_if_missing:
+        from substrate.antiek_bench import InMemoryBenchStore
+
+        _bench_usage_store = InMemoryBenchStore()
+    return _bench_usage_store
+
+
 def engagement_data_dir() -> Path | None:
     """Resolve durable root when ANTIEK_ENGAGEMENT_DIR is set."""
     raw = (os.environ.get("ANTIEK_ENGAGEMENT_DIR") or "").strip()
@@ -293,14 +307,11 @@ def post_session_complete_flywheel(body: SessionFlywheelBody) -> dict[str, Any]:
     out = result.to_dict()
     # Feed Antiek-bench recursive rewrite with engagement outcomes (best-effort).
     try:
-        from substrate.antiek_bench import InMemoryBenchStore, record_session_flywheel_usage
+        from substrate.antiek_bench import record_session_flywheel_usage
 
-        global _bench_usage_store
-        if _bench_usage_store is None:
-            _bench_usage_store = InMemoryBenchStore()
         ctx = result.context
         usage = record_session_flywheel_usage(
-            store=_bench_usage_store,
+            store=get_bench_usage_store(create_if_missing=True),
             twin_count=len(ctx.twin_units),
             ref_count=len(ctx.source_references),
             status=result.session.status,

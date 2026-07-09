@@ -1,5 +1,5 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Settings from "./index";
 
@@ -14,6 +14,7 @@ const {
   estimatePromptCost,
   fetchSettingsModels,
   fetchSettingsBudget,
+  fetchAntiekBenchUsageSummary,
 } = vi.hoisted(() => {
   const models = {
     models: [
@@ -73,6 +74,18 @@ const {
     })),
     fetchSettingsModels: vi.fn(async () => models),
     fetchSettingsBudget: vi.fn(async () => budget),
+    fetchAntiekBenchUsageSummary: vi.fn(async () => ({
+      event_count: 2,
+      by_task_class: {
+        wrestle: { worked: 1, failed: 0, total: 1 },
+        book_qa: { worked: 0, failed: 1, total: 1 },
+      },
+      view_format: "html",
+      settings_panel: "antiek_bench_usage_weekly",
+      source: "antiek_bench.usage_events",
+      notes: [],
+      html: "<p>Events recorded: 2</p>",
+    })),
   };
 });
 
@@ -83,9 +96,14 @@ vi.mock("../../api/settings", () => ({
   fetchDecisionTreeSelection,
   installDecisionTreeSelection,
   clearDecisionTreeSelection,
+  fetchAntiekBenchUsageSummary,
 }));
 
 describe("Settings SPR-01 + decision-tree install", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   beforeEach(() => {
     installDecisionTreeSelection.mockClear();
     clearDecisionTreeSelection.mockClear();
@@ -93,6 +111,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
     estimatePromptCost.mockClear();
     fetchSettingsModels.mockClear();
     fetchSettingsBudget.mockClear();
+    fetchAntiekBenchUsageSummary.mockClear();
   });
 
   it("renders registered providers and budget bar", async () => {
@@ -148,5 +167,23 @@ describe("Settings SPR-01 + decision-tree install", () => {
       const status = container.querySelector('[data-testid="decision-tree-status"]');
       expect(status?.textContent).toMatch(/zai\s*\/\s*glm-5\.2/i);
     });
+  });
+
+  it("loads Antiek-bench weekly usage summary in Settings", async () => {
+    render(<Settings />);
+    await waitFor(() => {
+      expect(screen.getByTestId("antiek-bench-usage-panel")).toBeTruthy();
+    });
+    expect(fetchAntiekBenchUsageSummary).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.getByTestId("antiek-bench-usage-summary").textContent).toMatch(
+        /Events/,
+      );
+    });
+    expect(screen.getByTestId("antiek-bench-usage-panel").getAttribute("data-view-format")).toBe(
+      "html",
+    );
+    expect(screen.getByText(/wrestle/i)).toBeTruthy();
+    expect(screen.getByTestId("antiek-bench-usage-html").innerHTML).toContain("2");
   });
 });

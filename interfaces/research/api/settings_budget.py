@@ -405,6 +405,68 @@ def get_antiek_bench_leaderboard(
     )
 
 
+class AntiekBenchUsageSummaryResponse(BaseModel):
+    """Settings-facing weekly usage summary from recorded engagement events."""
+
+    event_count: int = 0
+    by_task_class: dict[str, dict[str, int]] = Field(default_factory=dict)
+    view_format: str = "html"
+    settings_panel: str = "antiek_bench_usage_weekly"
+    source: str = "antiek_bench.usage_events"
+    notes: list[str] = Field(default_factory=list)
+    html: str | None = None
+
+
+@settings_router.get(
+    "/antiek-bench/usage-summary",
+    response_model=AntiekBenchUsageSummaryResponse,
+)
+def get_antiek_bench_usage_summary(
+    request: Request,
+    include_html: bool = False,
+) -> AntiekBenchUsageSummaryResponse:
+    """Return weekly usage summary derived from shipped ``weekly_usage_summary``.
+
+    Store resolution (honest process-local limitation):
+    1. ``app.state.antiek_bench_store`` when injected (tests / configured app)
+    2. engagement flywheel process-local usage store when present
+    3. empty summary with note when neither is available
+
+    Does not run live multi-provider Antiek-bench.
+    """
+    from substrate.antiek_bench import settings_usage_summary_payload
+
+    store = getattr(request.app.state, "antiek_bench_store", None)
+    notes: list[str] = []
+    if store is None:
+        # Share process-local store with engagement complete-flywheel when possible.
+        try:
+            from .engagement_routes import get_bench_usage_store
+
+            store = get_bench_usage_store(create_if_missing=False)
+        except Exception:
+            store = None
+    if store is None:
+        return AntiekBenchUsageSummaryResponse(
+            notes=[
+                "No antiek_bench_store / engagement usage store configured; "
+                "usage summary is empty until flywheel records events or a store is injected"
+            ],
+            view_format="html",
+        )
+
+    payload = settings_usage_summary_payload(store=store, include_html=include_html)
+    return AntiekBenchUsageSummaryResponse(
+        event_count=int(payload.get("event_count") or 0),
+        by_task_class=dict(payload.get("by_task_class") or {}),
+        view_format=str(payload.get("view_format") or "html"),
+        settings_panel=str(payload.get("settings_panel") or "antiek_bench_usage_weekly"),
+        source=str(payload.get("source") or "antiek_bench.usage_events"),
+        notes=list(payload.get("notes") or notes),
+        html=payload.get("html"),
+    )
+
+
 class DecisionTreeSelectionRequest(BaseModel):
     """Install operator decision-tree driver for this process."""
 
@@ -496,6 +558,7 @@ def register_settings_budget_routes(app: FastAPI) -> None:
 
 __all__ = [
     "AntiekBenchLeaderboardResponse",
+    "AntiekBenchUsageSummaryResponse",
     "BudgetResponse",
     "DecisionTreeSelectionRequest",
     "DecisionTreeSelectionResponse",
@@ -505,6 +568,7 @@ __all__ = [
     "delete_decision_tree_selection",
     "estimate_prompt_cost",
     "get_antiek_bench_leaderboard",
+    "get_antiek_bench_usage_summary",
     "get_decision_tree_selection",
     "post_decision_tree_selection",
     "read_operator_budget",

@@ -4,10 +4,12 @@ import LemonCard from "../../components/lemon/LemonCard";
 import {
   clearDecisionTreeSelection,
   estimatePromptCost,
+  fetchAntiekBenchUsageSummary,
   fetchDecisionTreeSelection,
   fetchSettingsBudget,
   fetchSettingsModels,
   installDecisionTreeSelection,
+  type AntiekBenchUsageSummaryResponse,
   type BudgetResponse,
   type DecisionTreeSelectionResponse,
   type ModelRow,
@@ -16,7 +18,8 @@ import {
 
 /**
  * Operator Settings — model inventory + budget + prompt projection (SPR-01)
- * + decision-tree driver install (process-local registry).
+ * + decision-tree driver install (process-local registry)
+ * + Antiek-bench weekly usage summary (recorded engagement outcomes).
  *
  * Honesty: spent/pricing may be unknown; UI never invents $0.00 when the
  * ledger or rate table is unset. Cost projection stays on #440 API.
@@ -48,6 +51,11 @@ export default function Settings() {
   const [tree, setTree] = useState<DecisionTreeSelectionResponse | null>(null);
   const [treeError, setTreeError] = useState<string | null>(null);
   const [treeBusy, setTreeBusy] = useState(false);
+  const [usage, setUsage] = useState<AntiekBenchUsageSummaryResponse | null>(
+    null,
+  );
+  const [usageError, setUsageError] = useState<string | null>(null);
+  const [usageBusy, setUsageBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,11 +94,34 @@ export default function Settings() {
         if (!cancelled)
           setTreeError(e instanceof Error ? e.message : String(e));
       }
+      try {
+        const u = await fetchAntiekBenchUsageSummary({ includeHtml: true });
+        if (!cancelled) setUsage(u);
+      } catch (e) {
+        if (!cancelled)
+          setUsageError(e instanceof Error ? e.message : String(e));
+      }
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  async function onRefreshUsage() {
+    setUsageBusy(true);
+    setUsageError(null);
+    try {
+      const u = await fetchAntiekBenchUsageSummary({ includeHtml: true });
+      if (u.view_format !== "html") {
+        throw new Error("usage summary view_format must be html");
+      }
+      setUsage(u);
+    } catch (e) {
+      setUsageError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUsageBusy(false);
+    }
+  }
 
   const spendPct = useMemo(() => {
     if (
@@ -341,6 +372,69 @@ export default function Settings() {
                 </p>
               ))}
             </div>
+          </div>
+        </LemonCard>
+
+        <LemonCard title="Antiek-bench usage" elevation="z1" colour="glacial">
+          <div
+            className="p-4 space-y-3"
+            data-testid="antiek-bench-usage-panel"
+            data-view-format="html"
+          >
+            <p className="text-sm text-ink dark:text-bright">
+              Weekly usage patterns recorded from engagement flywheel outcomes
+              (task classes that feed recursive suite rewrite proposals). Not a
+              live multi-provider bench run.
+            </p>
+            {usageError && (
+              <p className="text-sm text-red-700 dark:text-red-300 font-mono">
+                {usageError}
+              </p>
+            )}
+            <button
+              type="button"
+              data-testid="antiek-bench-usage-refresh"
+              onClick={() => void onRefreshUsage()}
+              disabled={usageBusy}
+              className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+            >
+              {usageBusy ? "Loading…" : "Refresh usage summary"}
+            </button>
+            {usage && (
+              <div className="font-mono text-[13px] space-y-2" data-testid="antiek-bench-usage-summary">
+                <Row label="Events" value={String(usage.event_count)} />
+                <Row label="View" value={usage.view_format} />
+                {Object.keys(usage.by_task_class || {}).length === 0 ? (
+                  <p className="text-[11px] text-ink-soft dark:text-starlight">
+                    No usage events yet.
+                  </p>
+                ) : (
+                  <ul className="space-y-1" data-testid="antiek-bench-usage-classes">
+                    {Object.entries(usage.by_task_class).map(([tc, bucket]) => (
+                      <li key={tc}>
+                        <strong>{tc}</strong>: total={bucket.total ?? 0}{" "}
+                        worked={bucket.worked ?? 0} failed={bucket.failed ?? 0}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {usage.notes?.map((n) => (
+                  <p
+                    key={n}
+                    className="text-[11px] text-ink-soft dark:text-starlight"
+                  >
+                    {n}
+                  </p>
+                ))}
+                {usage.html ? (
+                  <div
+                    className="prose border rounded p-2 text-sm max-h-48 overflow-auto"
+                    data-testid="antiek-bench-usage-html"
+                    dangerouslySetInnerHTML={{ __html: usage.html }}
+                  />
+                ) : null}
+              </div>
+            )}
           </div>
         </LemonCard>
 
