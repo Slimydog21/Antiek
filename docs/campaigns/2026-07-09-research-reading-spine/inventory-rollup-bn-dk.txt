@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(dk) · PR #465
+dj: catalog filter · dk: auto-open hosted HTML window after marketplace host.
+Operator merge still gated.

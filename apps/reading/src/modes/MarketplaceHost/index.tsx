@@ -41,6 +41,8 @@ export default function MarketplaceHost({
   const [receiptRef, setReceiptRef] = useState("manual-order-token-demo");
   /** Residual (dj): substring filter over catalog title/author/license. */
   const [filterQuery, setFilterQuery] = useState("");
+  /** Residual (dk): auto-open hosted HTML window after successful host. */
+  const [autoOpenWindow, setAutoOpenWindow] = useState(true);
 
   const filteredEntries = useMemo(() => {
     const q = filterQuery.trim().toLowerCase();
@@ -69,6 +71,26 @@ export default function MarketplaceHost({
     void loadCatalog();
   }, [loadCatalog]);
 
+  function openHostedWindow(result: HostResultResponse) {
+    if (result.view_format !== "html" || !result.html) return;
+    openWindow(
+      "hosted_html_document",
+      {
+        document_id: result.document_id,
+        title: result.title,
+        html: result.html,
+        view_format: result.view_format,
+        license_class: result.license_class,
+        owner_id: result.owner_id,
+        source: "marketplace_host",
+      },
+      {
+        id: `win:hosted:${result.document_id}`,
+        title: result.title || "Hosted book",
+      },
+    );
+  }
+
   async function onHost(bookId: string) {
     setBusy(true);
     setError(null);
@@ -83,6 +105,10 @@ export default function MarketplaceHost({
       setHosted(result);
       const lib = await fetchAccountLibrary(ownerId);
       setLibraryHtml(lib.html);
+      // Residual (dk): seamless port into reading surface.
+      if (autoOpenWindow) {
+        openHostedWindow(result);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -107,6 +133,9 @@ export default function MarketplaceHost({
       setHosted(result);
       const lib = await fetchAccountLibrary(ownerId);
       setLibraryHtml(lib.html);
+      if (autoOpenWindow) {
+        openHostedWindow(result);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -156,6 +185,18 @@ export default function MarketplaceHost({
             className="border rounded px-2 py-1 min-w-[16rem]"
             disabled={busy}
           />
+        </label>
+        <label
+          className="flex items-center gap-2 text-sm font-mono"
+          data-testid="auto-open-hosted-window"
+        >
+          <input
+            type="checkbox"
+            checked={autoOpenWindow}
+            onChange={(e) => setAutoOpenWindow(e.target.checked)}
+            disabled={busy}
+          />
+          Auto-open hosted book window
         </label>
       </div>
 
@@ -216,7 +257,7 @@ export default function MarketplaceHost({
             {hosted.already_hosted ? "Already hosted" : "Newly hosted"} ·{" "}
             {hosted.license_class} · view_format={hosted.view_format}
           </p>
-          {/* Residual (bt): open hosted HTML book in a floating window. */}
+          {/* Residual (bt/dk): open hosted HTML book in a floating window. */}
           <button
             type="button"
             data-testid="open-hosted-in-window"
@@ -226,22 +267,7 @@ export default function MarketplaceHost({
                 setError("view_format must be html — PDF is not a reading surface");
                 return;
               }
-              openWindow(
-                "hosted_html_document",
-                {
-                  document_id: hosted.document_id,
-                  title: hosted.title,
-                  html: hosted.html,
-                  view_format: hosted.view_format,
-                  license_class: hosted.license_class,
-                  owner_id: hosted.owner_id,
-                  source: "marketplace_host",
-                },
-                {
-                  id: `win:hosted:${hosted.document_id}`,
-                  title: hosted.title || "Hosted book",
-                },
-              );
+              openHostedWindow(hosted);
             }}
             className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
           >

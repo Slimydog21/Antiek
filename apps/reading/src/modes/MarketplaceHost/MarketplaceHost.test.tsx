@@ -86,6 +86,17 @@ describe("MarketplaceHost mode", () => {
       book_id: "pd-pride",
     });
     expect(screen.getByTestId("hosted-html").innerHTML).toContain("truth");
+    // Residual (dk): auto-open hosted window after host (default on).
+    await waitFor(() => {
+      expect(openWindow).toHaveBeenCalledWith(
+        "hosted_html_document",
+        expect.objectContaining({
+          document_id: "hdoc_abc",
+          view_format: "html",
+        }),
+        expect.objectContaining({ id: "win:hosted:hdoc_abc" }),
+      );
+    });
   });
 
   it("filters catalog by title/author substring (dj)", async () => {

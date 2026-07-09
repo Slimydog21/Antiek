@@ -1,0 +1,15 @@
+# residual (dk) Marketplace auto-open hosted book window
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(dj) prior | branch_only | campaign inventories
+(dk) auto-open after host | branch_only | MarketplaceHost autoOpenWindow default on; openHostedWindow helper; 4 vitest
+
+## What shipped
+- After host or purchase+host, optionally auto-open hosted_html_document window (default on).
+- Checkbox to disable; manual open button still works.
+
+## Why (north star)
+Seamless port: buy/host a book → it appears in Antiek HTML reading surface with twins/context/deep research (da).
+
+NEXT: (dl) re-derive; operator merge PR #465
