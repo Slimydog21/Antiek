@@ -139,3 +139,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - antiek-bench-usage-sources renders investigation_start + session_flywheel
 - TS AntiekBenchUsageSummaryResponse.by_source
 - tests: Settings weekly usage case
+## residual (hc) PublicationAttach offline_honest UI — 2026-07-09
+- HydrateRefResponse.offline_honest
+- publication-attach-offline-honest + per-asset flags
+- tests: PublicationAttachPanel 3 passed

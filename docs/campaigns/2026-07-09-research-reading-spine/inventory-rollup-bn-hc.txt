@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(hc) · PR #465
+Publication attach offline_honest UI (hc); Settings by_source (hb/ha).
+Operator-visible hydrate honesty on DR attach path. Next residual (hd).

@@ -181,6 +181,11 @@ export type HydrateRefResponse = {
   title: string;
   body_text: string;
   fetched: boolean;
+  /**
+   * Residual (gz/hc): true when identity-only offline path (no live body).
+   * Prefer this over inventing abstracts; false when injector landed body.
+   */
+  offline_honest?: boolean;
   view_format: "html" | string;
   html?: string | null;
   notes: string[];

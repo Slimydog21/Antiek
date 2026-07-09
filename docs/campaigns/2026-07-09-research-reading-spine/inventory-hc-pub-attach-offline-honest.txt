@@ -1,0 +1,19 @@
+# residual (hc) PublicationAttachPanel surfaces offline_honest hydrate mode
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(hb) prior | branch_only | campaign inventories
+(hc) pub attach offline_honest UI | branch_only | publication-attach-offline-honest + per-asset data-offline-honest; 3 PublicationAttachPanel vitest
+
+PATHS:
+- apps/reading/src/api/engagement.ts
+- apps/reading/src/components/engagement/PublicationAttachPanel.tsx
+- apps/reading/src/components/engagement/PublicationAttachPanel.test.tsx
+
+BEHAVIOR:
+- HydrateRefResponse.offline_honest typed
+- Result banner: offline-honest identity vs injector body landed
+- Per-asset data-offline-honest / data-fetched
+- HTML view_format; never invents live body
+
+NEXT: (hd) re-derive; operator merge PR #465

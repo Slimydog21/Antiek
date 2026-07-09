@@ -30,6 +30,7 @@ describe("PublicationAttachPanel residual ck/ed", () => {
       title: "Attention Is All You Need",
       body_text: "…",
       fetched: false,
+      offline_honest: true,
       view_format: "html",
       notes: [],
       product_panel: "engagement_hydrate",
@@ -89,6 +90,64 @@ describe("PublicationAttachPanel residual ck/ed", () => {
     expect(
       screen.getByTestId("publication-attach-citation-trust").textContent,
     ).toMatch(/grounded/i);
+    // Residual (hc): offline-honest identity path surfaced.
+    expect(
+      screen
+        .getByTestId("publication-attach-result")
+        .getAttribute("data-offline-honest-count"),
+    ).toBe("1");
+    expect(
+      screen.getByTestId("publication-attach-offline-honest").textContent,
+    ).toMatch(/offline-honest identity/i);
+    expect(
+      screen
+        .getByTestId("publication-attach-asset-pub_arxiv_abc")
+        .getAttribute("data-offline-honest"),
+    ).toBe("true");
+    expect(
+      screen.getByTestId("publication-attach-asset-pub_arxiv_abc").textContent,
+    ).toMatch(/offline-honest/);
+  });
+
+  it("surfaces injector-backed hydrate as not offline-honest (hc)", async () => {
+    attachSourceRefs.mockResolvedValue({
+      spawn_id: "spn_2",
+      source_references: [{ kind: "arxiv", raw: "arxiv:1706.03762" }],
+      view_format: "html",
+    });
+    hydratePublicationRef.mockResolvedValue({
+      asset_id: "pub_arxiv_live",
+      ref: { kind: "arxiv", raw: "arxiv:1706.03762" },
+      title: "Attention Is All You Need",
+      body_text: "We propose the Transformer…",
+      fetched: true,
+      offline_honest: false,
+      view_format: "html",
+      notes: ["Body landed via injectable fetch_publication."],
+      product_panel: "engagement_hydrate",
+      source: "test",
+      html: "<p>Transformer</p>",
+    });
+    render(<PublicationAttachPanel spawnId="spn_2" />);
+    fireEvent.change(screen.getByTestId("publication-attach-input"), {
+      target: { value: "arxiv:1706.03762" },
+    });
+    fireEvent.click(screen.getByTestId("publication-attach-submit"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("publication-attach-offline-honest").textContent,
+      ).toMatch(/injector body landed/i);
+    });
+    expect(
+      screen
+        .getByTestId("publication-attach-result")
+        .getAttribute("data-offline-honest-count"),
+    ).toBe("0");
+    expect(
+      screen
+        .getByTestId("publication-attach-asset-pub_arxiv_live")
+        .getAttribute("data-offline-honest"),
+    ).toBe("false");
   });
 
   it("surfaces attach failure honestly", async () => {

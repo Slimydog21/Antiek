@@ -5,6 +5,8 @@
  * research windows. Composes attachSourceRefs + hydratePublicationRef.
  * Residual (ed): onAttached notifies parent so research context remounts
  * and source refs appear in the context pack / citation trust surface.
+ * Residual (hc): surface offline_honest per hydrated asset so operators
+ * never confuse identity-only stubs with live publication bodies.
  * HTML-first; offline hydrate by default.
  */
 
@@ -131,6 +133,10 @@ export function PublicationAttachPanel({
           data-view-format="html"
           data-citation-trust={hydrated.length > 0 ? "grounded" : "ungrounded"}
           data-hydrated-count={String(hydrated.length)}
+          data-offline-honest-count={String(
+            hydrated.filter((a) => a.offline_honest !== false && !a.fetched)
+              .length,
+          )}
         >
           <p>
             Attached {attached.length} · hydrated {hydrated.length} HTML asset(s)
@@ -149,13 +155,45 @@ export function PublicationAttachPanel({
               ? `Citation trust: grounded · ${hydrated.length} HTML publication asset(s)`
               : "Citation trust: ungrounded — hydrate failed; re-attach refs"}
           </p>
-          <ul>
-            {hydrated.map((a) => (
-              <li key={a.asset_id}>
-                <code>{a.asset_id}</code> · {a.title} · fetched=
-                {String(a.fetched)}
-              </li>
-            ))}
+          {/* Residual (hc): offline-honest identity vs injector body. */}
+          {hydrated.length > 0 ? (
+            <p
+              className="text-ink-soft dark:text-starlight"
+              data-testid="publication-attach-offline-honest"
+              role="status"
+            >
+              {(() => {
+                const offlineN = hydrated.filter(
+                  (a) => a.offline_honest !== false && !a.fetched,
+                ).length;
+                const liveN = hydrated.length - offlineN;
+                if (offlineN > 0 && liveN === 0) {
+                  return `Hydrate mode: offline-honest identity (${offlineN}) — no live body; not invented abstract`;
+                }
+                if (offlineN === 0 && liveN > 0) {
+                  return `Hydrate mode: injector body landed (${liveN})`;
+                }
+                return `Hydrate mode: mixed · offline-honest=${offlineN} · injector=${liveN}`;
+              })()}
+            </p>
+          ) : null}
+          <ul data-testid="publication-attach-asset-list">
+            {hydrated.map((a) => {
+              const offline =
+                a.offline_honest !== false && a.fetched !== true;
+              return (
+                <li
+                  key={a.asset_id}
+                  data-testid={`publication-attach-asset-${a.asset_id}`}
+                  data-offline-honest={offline ? "true" : "false"}
+                  data-fetched={String(Boolean(a.fetched))}
+                >
+                  <code>{a.asset_id}</code> · {a.title} · fetched=
+                  {String(a.fetched)}
+                  {offline ? " · offline-honest" : " · body landed"}
+                </li>
+              );
+            })}
           </ul>
         </div>
       ) : null}
