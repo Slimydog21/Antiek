@@ -1,0 +1,12 @@
+# inventory-il · marketplace catalog HTML-first metrics · residual (il)
+
+## Delta
+- marketplace-catalog-metrics: entry/filtered counts, view_format=html,
+  payment_rails=manual_receipt_only
+- catalog entry data-view-format + HTML host copy
+
+## Verified
+vitest MarketplaceHost 5_passed
+
+## Next
+(im) re-derive

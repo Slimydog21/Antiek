@@ -123,6 +123,16 @@ describe("MarketplaceHost mode", () => {
     await waitFor(() => {
       expect(screen.getByText("Pride and Prejudice")).toBeTruthy();
     });
+    // Residual (il): HTML-first catalog honesty metrics.
+    const catMetrics = screen.getByTestId("marketplace-catalog-metrics");
+    expect(catMetrics.getAttribute("data-view-format")).toBe("html");
+    expect(catMetrics.getAttribute("data-payment-rails")).toBe(
+      "manual_receipt_only",
+    );
+    expect(Number(catMetrics.getAttribute("data-entry-count"))).toBeGreaterThan(
+      0,
+    );
+    expect(catMetrics.textContent).toMatch(/HTML/);
     fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
     await waitFor(() => {
       expect(screen.getByTestId("host-result").textContent).toContain("hdoc_abc");

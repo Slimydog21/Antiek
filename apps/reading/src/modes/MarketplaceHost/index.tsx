@@ -17,6 +17,7 @@
  * Residual (hl): offline-seed honesty machine attrs on marketplace twin seed
  * status (parity TwinNotes hh).
  * Residual (id): Settings deep-link for driver + twin seed readiness.
+ * Residual (il): catalog HTML-first honesty metrics (no payment rails claim).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -441,15 +442,36 @@ export default function MarketplaceHost({
       >
         Showing {filteredEntries.length} of {entries.length}
       </p>
+      {/* Residual (il): HTML-first catalog honesty (no live payment rails). */}
+      <div
+        className="text-[11px] font-mono opacity-80 mb-2"
+        data-testid="marketplace-catalog-metrics"
+        data-entry-count={String(entries.length)}
+        data-filtered-count={String(filteredEntries.length)}
+        data-view-format="html"
+        data-payment-rails="manual_receipt_only"
+        role="status"
+      >
+        Catalog · entries={entries.length} · filtered={filteredEntries.length} ·
+        human view=HTML · payment=manual receipt only (no live rails)
+      </div>
 
       <ul className="mt-4 space-y-2" data-testid="catalog-list">
         {filteredEntries.map((e) => (
-          <li key={e.book_id} className="border rounded p-3 flex justify-between gap-4">
+          <li
+            key={e.book_id}
+            className="border rounded p-3 flex justify-between gap-4"
+            data-testid={`catalog-entry-${e.book_id}`}
+            data-view-format="html"
+            data-license-class={e.license_class}
+            data-is-free={String(Boolean(e.is_free))}
+          >
             <div>
               <strong>{e.title}</strong>
               <div className="text-sm opacity-80">
                 {e.author} · {e.license_class}
                 {e.is_free ? " · free" : ""}
+                {" · HTML host"}
               </div>
             </div>
             {e.license_class === "public_domain" || e.is_free ? (
