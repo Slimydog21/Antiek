@@ -16,6 +16,8 @@
  * Residual (ib): Settings deep-link for twin seed live readiness (hs).
  * Residual (kr): optional researchTier chrome for depth posture on note-taker.
  * Residual (lb): fall back to seed/list API research_tier when prop absent (la).
+ * Residual (mq): selective promote by twin kind (all | insight | question)
+ * for recursive note-taker merge UX into research context.
  * HTML-first; never PDF.
  */
 
@@ -88,6 +90,13 @@ export function TwinNotesPanel({
     seedSkipped: string | null;
   } | null>(null);
   const [promoteStatus, setPromoteStatus] = useState<string | null>(null);
+  /**
+   * Residual (mq): which twin kinds to promote into context.
+   * all → both; insight|question → single-class selective merge.
+   */
+  const [promoteKinds, setPromoteKinds] = useState<
+    "all" | "insight" | "question"
+  >("all");
 
   // Residual (kr/lb): prop wins; seed/list API research_tier is fallback.
   const apiResearchTier = (twins?.research_tier || "").trim().toLowerCase() || "";
@@ -233,16 +242,24 @@ export function TwinNotesPanel({
     setBusy(true);
     setError(null);
     try {
+      // Residual (mq): selective kinds for recursive note-taker merge.
+      const kinds =
+        promoteKinds === "all"
+          ? null
+          : ([promoteKinds] as Array<"insight" | "question">);
       const p = await promoteTwinsToContext({
         asset_id: assetId,
         include_html: true,
+        kinds,
       });
       if (p.view_format !== "html") {
         throw new Error("twin promote view_format must be html");
       }
       setPromoted(p);
+      const kindLabel =
+        promoteKinds === "all" ? "all kinds" : promoteKinds;
       setPromoteStatus(
-        `promoted ${p.promoted_count} twin unit(s) to context`,
+        `promoted ${p.promoted_count} twin unit(s) to context (${kindLabel})`,
       );
       onPromoted?.(p);
     } catch (e) {
@@ -250,7 +267,7 @@ export function TwinNotesPanel({
     } finally {
       setBusy(false);
     }
-  }, [assetId, onPromoted]);
+  }, [assetId, onPromoted, promoteKinds]);
 
   return (
     <section
@@ -333,12 +350,31 @@ export function TwinNotesPanel({
         >
           Refresh
         </button>
+        {/* Residual (mq): selective promote by twin kind. */}
+        <label className="flex items-center gap-1 text-[11px] font-mono">
+          <span className="opacity-70">Promote</span>
+          <select
+            data-testid="twin-promote-kinds"
+            value={promoteKinds}
+            onChange={(e) =>
+              setPromoteKinds(
+                e.target.value as "all" | "insight" | "question",
+              )
+            }
+            disabled={busy}
+            aria-label="Twin kinds to promote"
+          >
+            <option value="all">all kinds</option>
+            <option value="insight">insights only</option>
+            <option value="question">questions only</option>
+          </select>
+        </label>
         <button
           type="button"
           data-testid="twin-promote-context"
           onClick={() => void promote()}
           disabled={busy}
-          title="Promote twins into research context units"
+          title="Promote twins into research context units (selective kinds)"
         >
           Promote to context
         </button>
@@ -424,6 +460,7 @@ export function TwinNotesPanel({
             data-testid="twin-promote-metrics"
             data-promoted-count={String(promoted.promoted_count ?? 0)}
             data-context-unit-count={String(promoted.context_unit_count ?? 0)}
+            data-promote-kinds={promoteKinds}
             data-view-format="html"
             data-product-panel={
               promoted.product_panel ?? "twin_promote_context"
@@ -433,6 +470,7 @@ export function TwinNotesPanel({
           >
             Twin promote → context · promoted={promoted.promoted_count ?? 0} ·
             context_units={promoted.context_unit_count ?? 0}
+            {promoteKinds !== "all" ? ` · kinds=${promoteKinds}` : ""}
           </div>
           <p>
             promoted={promoted.promoted_count} · context_units=

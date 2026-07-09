@@ -441,6 +441,7 @@ describe("TwinNotesPanel", () => {
     expect(promoteTwinsToContext).toHaveBeenCalledWith({
       asset_id: "paper",
       include_html: true,
+      kinds: null,
     });
     expect(screen.getByTestId("twin-promote-html").innerHTML).toMatch(
       /Attention is routing/,
@@ -449,6 +450,7 @@ describe("TwinNotesPanel", () => {
     const metrics = screen.getByTestId("twin-promote-metrics");
     expect(metrics.getAttribute("data-promoted-count")).toBe("1");
     expect(metrics.getAttribute("data-context-unit-count")).toBe("1");
+    expect(metrics.getAttribute("data-promote-kinds")).toBe("all");
     expect(metrics.getAttribute("data-view-format")).toBe("html");
     expect(metrics.getAttribute("data-product-panel")).toBe(
       "twin_promote_context",
@@ -457,5 +459,58 @@ describe("TwinNotesPanel", () => {
       "engagement_spine.twin_promote",
     );
     expect(metrics.textContent).toMatch(/Twin promote → context/);
+  });
+
+  it("selectively promotes questions only (mq)", async () => {
+    promoteTwinsToContext.mockResolvedValue({
+      asset_id: "paper",
+      promoted_count: 1,
+      context_unit_count: 1,
+      promoted: [
+        {
+          twin_note_id: "twin_q",
+          graph_node_id: "question_abc",
+          kind: "question",
+          text: "What remains open?",
+        },
+      ],
+      context_units: [
+        {
+          unit_id: "question_abc",
+          twin_note_id: "twin_q",
+          kind: "question",
+          text: "What remains open?",
+        },
+      ],
+      kinds: ["question"],
+      view_format: "html",
+      product_panel: "twin_promote_context",
+      source: "engagement_spine.twin_promote",
+      notes: [],
+      html: "<p>[question] What remains open?</p>",
+    });
+    render(<TwinNotesPanel assetId="paper" />);
+    expect(screen.getByTestId("twin-promote-kinds")).toBeTruthy();
+    fireEvent.change(screen.getByTestId("twin-promote-kinds"), {
+      target: { value: "question" },
+    });
+    fireEvent.click(screen.getByTestId("twin-promote-context"));
+    await waitFor(() => {
+      expect(promoteTwinsToContext).toHaveBeenCalledWith({
+        asset_id: "paper",
+        include_html: true,
+        kinds: ["question"],
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-promote-status").textContent).toMatch(
+        /questions only|question/i,
+      );
+    });
+    expect(
+      screen
+        .getByTestId("twin-promote-metrics")
+        .getAttribute("data-promote-kinds"),
+    ).toBe("question");
   });
 });

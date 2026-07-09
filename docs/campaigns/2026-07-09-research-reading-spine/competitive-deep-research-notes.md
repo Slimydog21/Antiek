@@ -281,3 +281,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (mp, 2026-07-10) **Marketplace DR domain-aware launch:**
   - selection_text + goal_hint include catalog subjects
   - budget mount data-domains; DR status domains=
+
+- Closed (mq, 2026-07-10) **Selective twin promote by kind:**
+  - kinds filter on promote-context API + TwinNotesPanel UI
+  - insights only | questions only | all for recursive note-taker merge

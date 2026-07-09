@@ -1,0 +1,12 @@
+# inventory-mq · selective twin promote by kind
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: mq
+files:
+  substrate/engagement_spine/twin_promote.py
+  interfaces/research/api/engagement_routes.py
+  apps/reading/src/api/engagement.ts
+  apps/reading/src/components/engagement/TwinNotesPanel.tsx
+  apps/reading/src/components/engagement/TwinNotesPanel.test.tsx
+  tests/test_engagement_twin_promote_product.py
+proof: pytest 5 passed; vitest TwinNotesPanel 10 passed
+invariants: HTML-first · selective kinds insight|question · auto-promote still all

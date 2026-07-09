@@ -364,14 +364,27 @@ def twin_promote_context_payload(
     promote_insight_fn: PromoteInsightFn | None = None,
     promote_question_fn: PromoteQuestionFn | None = None,
     include_html: bool = True,
+    kinds: Sequence[TwinKind] | None = None,
 ) -> dict[str, Any]:
     """Settings/workstation product shape for twin promote → context.
 
     Calls shipped ``promote_and_context_for_asset``. Does not invent twin notes.
     Empty twins → zero promoted units + honest notes (not an error).
+
+    Residual (mq): optional ``kinds`` filter (insight | question) for selective
+    promote — recursive note-taker merge of one twin class into context.
     """
     if not asset_id or not str(asset_id).strip():
         raise ValueError("asset_id is required")
+    # Normalize kinds: only closed twin kinds; empty → treat as all.
+    kinds_norm: tuple[TwinKind, ...] | None = None
+    if kinds is not None:
+        allowed: list[TwinKind] = []
+        for k in kinds:
+            raw = str(k or "").strip().lower()
+            if raw in ("insight", "question") and raw not in allowed:
+                allowed.append(raw)  # type: ignore[arg-type]
+        kinds_norm = tuple(allowed) if allowed else None
     result = promote_and_context_for_asset(
         asset_id.strip(),
         store=store,
@@ -380,6 +393,7 @@ def twin_promote_context_payload(
         source_document_id=source_document_id,
         promote_insight_fn=promote_insight_fn,
         promote_question_fn=promote_question_fn,
+        kinds=kinds_norm,
     )
     raw = result.to_dict()
     payload: dict[str, Any] = {
@@ -389,6 +403,7 @@ def twin_promote_context_payload(
         "promoted": raw["promoted"],
         "context_units": raw["context_units"],
         "query": query,
+        "kinds": list(kinds_norm) if kinds_norm is not None else ["insight", "question"],
         "view_format": "html",
         "product_panel": "twin_promote_context",
         "source": "engagement_spine.twin_promote",

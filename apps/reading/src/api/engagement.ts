@@ -497,6 +497,8 @@ export async function promoteTwinsToContext(body: {
   query?: string | null;
   investigation_id?: string | null;
   include_html?: boolean;
+  /** Residual (mq): selective promote — insight and/or question. */
+  kinds?: Array<"insight" | "question"> | null;
 }): Promise<TwinPromoteContextResponse> {
   const res = await apiFetch(`${API_BASE}/engagement/twins/promote-context`, {
     method: "POST",
@@ -506,6 +508,7 @@ export async function promoteTwinsToContext(body: {
       query: body.query ?? null,
       investigation_id: body.investigation_id ?? null,
       include_html: body.include_html ?? true,
+      kinds: body.kinds ?? null,
     }),
   });
   return readJson<TwinPromoteContextResponse>(res);

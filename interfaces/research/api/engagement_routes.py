@@ -234,12 +234,17 @@ class TwinRecordBody(BaseModel):
 
 
 class TwinPromoteContextBody(BaseModel):
-    """Promote twin notes into depth-graph context units for research prompts."""
+    """Promote twin notes into depth-graph context units for research prompts.
+
+    Residual (mq): optional ``kinds`` — ``insight`` and/or ``question`` —
+    selective promote for recursive note-taker merge UX.
+    """
 
     asset_id: str = Field(min_length=1)
     query: str | None = None
     investigation_id: str | None = None
     include_html: bool = True
+    kinds: list[Literal["insight", "question"]] | None = None
 
 
 class ContextSearchBody(BaseModel):
@@ -725,6 +730,7 @@ def post_twins_promote_context(body: TwinPromoteContextBody) -> dict[str, Any]:
 
     Uses process offline promote hooks by default so API tests never need DuckDB.
     Production can inject real promote_* via a future app factory.
+    Residual (mq): optional kinds filter for selective promote.
     """
     try:
         return twin_promote_context_payload(
@@ -735,6 +741,7 @@ def post_twins_promote_context(body: TwinPromoteContextBody) -> dict[str, Any]:
             promote_insight_fn=_offline_promote_insight,
             promote_question_fn=_offline_promote_question,
             include_html=body.include_html,
+            kinds=body.kinds,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
