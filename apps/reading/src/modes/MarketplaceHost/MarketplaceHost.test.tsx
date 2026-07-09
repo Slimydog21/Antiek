@@ -1021,7 +1021,8 @@ describe("MarketplaceHost mode", () => {
       (c) => c[0] === "hosted_html_document",
     );
     expect(call).toBeTruthy();
-    expect(call![1].document_id).toBe("marketplace-catalog");
+    // Residual (mi): chip-aware catalog document id (default chips = all/any).
+    expect(call![1].document_id).toMatch(/^marketplace-catalog-/);
     expect(call![1].view_format).toBe("html");
     expect(call![1].html).toContain("marketplace catalog");
     expect(call![1].source).toBe("marketplace_catalog");

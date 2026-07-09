@@ -255,3 +255,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 
 - Closed (mh, 2026-07-10) **Host-land catalog subjects:**
   - marketplace-host-metrics data-subjects + chrome from catalog entry
+
+- Closed (mi, 2026-07-10) **Chip-aware catalog HTML window ids:**
+  - document_id encodes freePD/subject/source filters

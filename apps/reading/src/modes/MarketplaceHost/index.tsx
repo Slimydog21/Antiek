@@ -45,6 +45,8 @@
  * Residual (mb): surface host usage_event (Antiek-bench book_qa) on host land.
  * Residual (mh): host-land metrics include catalog subjects for research-domain
  * continuity after host (parity subject chips).
+ * Residual (mi): catalog HTML window id encodes active chips so filter-aware
+ * projections do not clobber each other in the workspace.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -380,9 +382,16 @@ export default function MarketplaceHost({
         throw new Error("catalog view must not be PDF");
       }
       setCatalogHtml(cat.html);
+      // Residual (mi): chip-aware document id so filtered HTML opens uniquely.
+      const filterKey = [
+        freePdOnly ? "freepd" : "all",
+        subjectFilter || "any-subject",
+        sourceFilter || "any-source",
+      ].join("_");
+      const catalogDocId = `marketplace-catalog-${filterKey}`;
       openHostedWindow({
-        document_id: "marketplace-catalog",
-        title: "Marketplace catalog (HTML)",
+        document_id: catalogDocId,
+        title: `Marketplace catalog (HTML) · ${filterKey}`,
         html: cat.html,
         view_format: "html",
         license_class: "public_domain",
@@ -393,7 +402,7 @@ export default function MarketplaceHost({
       // Fallback: last full-catalog projection if chip-aware fetch fails.
       if (catalogHtml?.trim()) {
         openHostedWindow({
-          document_id: "marketplace-catalog",
+          document_id: "marketplace-catalog-fallback",
           title: "Marketplace catalog (HTML)",
           html: catalogHtml,
           view_format: "html",
