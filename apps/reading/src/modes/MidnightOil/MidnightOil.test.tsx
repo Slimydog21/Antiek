@@ -355,6 +355,14 @@ describe("MidnightOil mode", () => {
         .getByTestId("recommended-ceiling")
         .getAttribute("data-recommended-usd"),
     ).toBe("3.6");
+    // Residual (md): ceiling vs remaining budget fit (mock remaining=$5, ceiling=$3.6).
+    const budgetFit = screen.getByTestId("moil-ceiling-budget-fit");
+    expect(budgetFit.getAttribute("data-fit")).toBe("fits");
+    expect(budgetFit.getAttribute("data-recommended-usd")).toBe("3.6");
+    expect(budgetFit.getAttribute("data-remaining-usd")).toBe("5");
+    expect(
+      screen.getByTestId("moil-ceiling-budget-fit-label").textContent,
+    ).toMatch(/fits remaining/i);
 
     fireEvent.click(
       screen.getByRole("button", { name: /approve at recommended/i }),

@@ -238,3 +238,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (mc, 2026-07-10) **SESSION-ARC marketplace catalog lw–mb:**
   - SESSION-ARC-lw-mb-marketplace-catalog.md zero-context fleet handoff
   - Offline marketplace filter matrix + bench usage feed product-complete for demo
+
+- Closed (md, 2026-07-10) **Midnight Oil ceiling budget fit:**
+  - moil-ceiling-budget-fit chrome (fits|may_exceed|unknown)
+  - remaining from budget projection; never invent $0

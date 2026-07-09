@@ -1,0 +1,8 @@
+# inventory-md · Midnight Oil ceiling vs remaining budget fit
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: md
+files:
+  apps/reading/src/modes/MidnightOil/index.tsx
+  apps/reading/src/modes/MidnightOil/MidnightOil.test.tsx
+proof: vitest MidnightOil 9 passed
+invariants: never invent $0 remaining · fits|may_exceed|unknown · explicit approve still required

@@ -21,6 +21,8 @@
  * Residual (hy): live-step status panel (offline-honest dual-gate readiness).
  * Residual (ic): Settings deep-link for decision-tree driver + daily budget.
  * Residual (js): deposit progress panels pass researchTier + tier poll cadence.
+ * Residual (md): recommended ceiling vs remaining daily budget fit chrome
+ * (fits | may_exceed | unknown) — never invent $0 remaining.
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -163,11 +165,21 @@ export default function MidnightOil() {
   // Residual (dg): soft-gate create when budget projection would exceed.
   const [budgetWarn, setBudgetWarn] = useState(false);
   const [forceOverBudget, setForceOverBudget] = useState(false);
+  /**
+   * Residual (md): last budget projection remaining_usd for ceiling-fit honesty.
+   * null remaining = unknown (never invent $0).
+   */
+  const [budgetRemainingUsd, setBudgetRemainingUsd] = useState<number | null>(
+    null,
+  );
   // Residual (gs): depth tier for autonomous job create.
   const [researchTier, setResearchTier] = useState<ResearchTier>("deep");
   const onProjectionChange = useCallback(
     (p: ResearchLaunchBudgetProjection) => {
       setBudgetWarn(p.wouldExceedBudget === true);
+      setBudgetRemainingUsd(
+        typeof p.remainingUsd === "number" ? p.remainingUsd : null,
+      );
     },
     [],
   );
@@ -556,6 +568,41 @@ export default function MidnightOil() {
             Recommended ceiling:{" "}
             <strong>${job.recommended_price_ceiling_usd.toFixed(2)}</strong>
           </p>
+          {/* Residual (md): ceiling vs remaining daily budget fit (honest unknown). */}
+          {(() => {
+            const rec = job.recommended_price_ceiling_usd;
+            let fit: "fits" | "may_exceed" | "unknown" = "unknown";
+            if (budgetRemainingUsd != null && Number.isFinite(budgetRemainingUsd)) {
+              fit = rec <= budgetRemainingUsd + 1e-9 ? "fits" : "may_exceed";
+            }
+            return (
+              <p
+                className="text-[11px] font-mono opacity-80"
+                data-testid="moil-ceiling-budget-fit"
+                data-fit={fit}
+                data-recommended-usd={String(rec)}
+                data-remaining-usd={
+                  budgetRemainingUsd != null
+                    ? String(budgetRemainingUsd)
+                    : "unknown"
+                }
+                data-view-format="html"
+                role="status"
+              >
+                Budget fit:{" "}
+                <strong data-testid="moil-ceiling-budget-fit-label">
+                  {fit === "fits"
+                    ? "fits remaining daily budget"
+                    : fit === "may_exceed"
+                      ? "may exceed remaining daily budget"
+                      : "unknown (remaining budget unset)"}
+                </strong>
+                {budgetRemainingUsd != null
+                  ? ` · remaining=$${budgetRemainingUsd.toFixed(2)} · ceiling=$${rec.toFixed(2)}`
+                  : " · remaining unknown — never invent $0"}
+              </p>
+            );
+          })()}
           <p
             className="text-[11px] font-mono opacity-70"
             data-testid="moil-ceiling-formula-note"
