@@ -7,11 +7,13 @@ const {
   hostBookIntoAccount,
   fetchAccountLibrary,
   purchaseAndHost,
+  openWindow,
 } = vi.hoisted(() => ({
   fetchMarketplaceCatalog: vi.fn(),
   hostBookIntoAccount: vi.fn(),
   fetchAccountLibrary: vi.fn(),
   purchaseAndHost: vi.fn(),
+  openWindow: vi.fn(() => "win:hosted:hdoc_abc"),
 }));
 
 vi.mock("../../api/marketplaceHost", () => ({
@@ -21,6 +23,10 @@ vi.mock("../../api/marketplaceHost", () => ({
   purchaseAndHost,
 }));
 
+vi.mock("../../components/windows/openWindow", () => ({
+  openWindow,
+}));
+
 describe("MarketplaceHost mode", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
@@ -28,6 +34,7 @@ describe("MarketplaceHost mode", () => {
     hostBookIntoAccount.mockReset();
     fetchAccountLibrary.mockReset();
     purchaseAndHost.mockReset();
+    openWindow.mockClear();
   });
 
   it("loads catalog and hosts public domain book", async () => {
@@ -79,6 +86,63 @@ describe("MarketplaceHost mode", () => {
       book_id: "pd-pride",
     });
     expect(screen.getByTestId("hosted-html").innerHTML).toContain("truth");
+  });
+
+  it("opens hosted book in floating HTML window (bt)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-pride",
+          title: "Pride and Prejudice",
+          author: "Jane Austen",
+          license_class: "public_domain",
+          is_free: true,
+          source: "standard_ebooks",
+        },
+      ],
+      count: 1,
+      view_format: "html",
+    });
+    hostBookIntoAccount.mockResolvedValue({
+      document_id: "hdoc_abc",
+      owner_id: "operator",
+      book_id: "pd-pride",
+      content_hash: "x",
+      title: "Pride and Prejudice",
+      license_class: "public_domain",
+      already_hosted: false,
+      source_format: "html",
+      library_document_ids: ["hdoc_abc"],
+      view_format: "html",
+      html: "<p>It is a truth universally acknowledged</p>",
+    });
+    fetchAccountLibrary.mockResolvedValue({
+      owner_id: "operator",
+      documents: [{ document_id: "hdoc_abc" }],
+      count: 1,
+      view_format: "html",
+      html: "<p>Library</p>",
+    });
+
+    render(<MarketplaceHost ownerId="operator" />);
+    await waitFor(() => {
+      expect(screen.getByText("Pride and Prejudice")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: /host into account/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("open-hosted-in-window")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByTestId("open-hosted-in-window"));
+    expect(openWindow).toHaveBeenCalled();
+    const call = openWindow.mock.calls.at(-1) as unknown as [
+      string,
+      Record<string, unknown>,
+      Record<string, unknown>?,
+    ];
+    expect(call[0]).toBe("hosted_html_document");
+    expect(call[1].document_id).toBe("hdoc_abc");
+    expect(call[1].view_format).toBe("html");
+    expect(String(call[1].html)).toMatch(/truth/);
   });
 
   it("purchases and hosts paid catalog title with receipt ref", async () => {

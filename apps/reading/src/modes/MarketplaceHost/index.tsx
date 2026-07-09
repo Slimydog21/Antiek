@@ -12,6 +12,7 @@ import {
   type CatalogEntryRow,
   type HostResultResponse,
 } from "../../api/marketplaceHost";
+import { openWindow } from "../../components/windows/openWindow";
 
 export type MarketplaceHostProps = {
   ownerId?: string;
@@ -173,6 +174,37 @@ export default function MarketplaceHost({
             {hosted.already_hosted ? "Already hosted" : "Newly hosted"} ·{" "}
             {hosted.license_class} · view_format={hosted.view_format}
           </p>
+          {/* Residual (bt): open hosted HTML book in a floating window. */}
+          <button
+            type="button"
+            data-testid="open-hosted-in-window"
+            disabled={hosted.view_format !== "html" || !hosted.html}
+            onClick={() => {
+              if (hosted.view_format !== "html") {
+                setError("view_format must be html — PDF is not a reading surface");
+                return;
+              }
+              openWindow(
+                "hosted_html_document",
+                {
+                  document_id: hosted.document_id,
+                  title: hosted.title,
+                  html: hosted.html,
+                  view_format: hosted.view_format,
+                  license_class: hosted.license_class,
+                  owner_id: hosted.owner_id,
+                  source: "marketplace_host",
+                },
+                {
+                  id: `win:hosted:${hosted.document_id}`,
+                  title: hosted.title || "Hosted book",
+                },
+              );
+            }}
+            className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+          >
+            Open hosted book in window
+          </button>
           <div
             className="prose border rounded p-3 text-sm"
             data-testid="hosted-html"

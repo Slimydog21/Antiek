@@ -105,6 +105,12 @@ export const WINDOW_PAGES: Record<string, { title: string; renderer: WindowPageR
     title: "Deep research",
     renderer: lazy(() => import("./DeepResearchSessionHost")),
   },
+  // Residual (bt): marketplace / account hosted book — HTML-first reading
+  // surface in a floating window. Payload: document_id, html, title, view_format.
+  hosted_html_document: {
+    title: "Hosted book",
+    renderer: lazy(() => import("./HostedHtmlDocumentHost")),
+  },
 };
 
 export type WindowEligibleKind = keyof typeof WINDOW_PAGES;
