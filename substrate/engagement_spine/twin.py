@@ -170,14 +170,10 @@ def record_twin_product(
 
 # Residual (bz): optional live note_taker for twin seed — default OFF.
 # Env ANTIEK_TWIN_SEED_LIVE + process inject both required (no silent LLM).
-import os
-from collections.abc import Callable
-from typing import Sequence as _Sequence
-
 ANTIEK_TWIN_SEED_LIVE_ENV = "ANTIEK_TWIN_SEED_LIVE"
 
 # (title, body_text) -> sequence of (kind, text) pairs; kinds insight|question
-TwinSeedLiveFn = Callable[[str, str], _Sequence[tuple[str, str]]]
+TwinSeedLiveFn = Callable[[str, str], Sequence[tuple[str, str]]]
 _twin_seed_live_fn: TwinSeedLiveFn | None = None
 
 
