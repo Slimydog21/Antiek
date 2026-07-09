@@ -290,13 +290,85 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
     expect(await screen.findByText(/Draft written/)).toBeTruthy();
     expect(screen.getByText("/tmp/draft-merge.html")).toBeTruthy();
     expect(screen.getByText("2 artifacts · 2 notes twins")).toBeTruthy();
+    expect(screen.getByText("Review only · book not changed")).toBeTruthy();
     expect(screen.getByText("No hash conflicts")).toBeTruthy();
     expect(screen.getByRole("link", { name: "open" }).getAttribute("href")).toBe(
       "/research/artifacts/compose/draft-merge.html?investigation_ids=inv-ready-b&investigation_ids=inv-ready-a",
     );
   });
 
-  it("surfaces draft-merge hash conflicts in the Reader receipt", async () => {
+  it("copies a source-merge review packet without mutating the book or notes twin", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    for (const childInvestigationId of ["inv-review-a", "inv-review-b"]) {
+      recordChaseDraftHandoff(
+        buildChaseDraftHandoff({
+          childInvestigationId,
+          parentInvestigationId: "read-doc-1",
+          sourcePassage: `Completed chase ${childInvestigationId}.`,
+        }),
+      );
+    }
+    listState.investigations = [
+      summary({ investigation_id: "inv-review-a", status: "completed" }),
+      summary({ investigation_id: "inv-review-b", status: "completed" }),
+    ];
+    composeResearchArtifactsMock.mockResolvedValue({
+      path: "/tmp/review-compose.html",
+      draft_merge_path: "/tmp/review-draft.html",
+      members: [
+        {
+          investigation_id: "inv-review-b",
+          content_hash: "hash-b",
+          artifact_path: "/tmp/inv-review-b.html",
+          twin_notes_path: "/tmp/inv-review-b.notes.html",
+        },
+        {
+          investigation_id: "inv-review-a",
+          content_hash: "hash-a",
+          artifact_path: "/tmp/inv-review-a.html",
+          twin_notes_path: "/tmp/inv-review-a.notes.html",
+        },
+      ],
+      hash_conflicts: [],
+    });
+    useInvestigationMock.mockReturnValue(state({ status: "not_found", events: [] }));
+
+    renderCompanion();
+    fireEvent.click(screen.getByRole("button", { name: /draft ready/i }));
+    await screen.findByRole("region", { name: /Draft merge receipt/i });
+    fireEvent.click(screen.getByRole("button", { name: /copy review/i }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const payload = JSON.parse(writeText.mock.calls[0][0]);
+    expect(payload).toMatchObject({
+      kind: "antiek.reader.source_merge_review_packet",
+      document_id: "doc-1",
+      title: "Meditations",
+      parent_reading_thread_id: "read-doc-1",
+      draft_merge_path: "/tmp/review-draft.html",
+      compose_index_path: "/tmp/review-compose.html",
+      member_investigation_ids: ["inv-review-b", "inv-review-a"],
+      requested_investigation_ids: ["inv-review-b", "inv-review-a"],
+      hash_conflict_count: 0,
+      hash_conflicts: [],
+      source_book_mutated: false,
+      twin_document_mutated: false,
+      no_spend: true,
+    });
+    expect(payload.next_step).toMatch(/before any source book or twin-document mutation/);
+    expect(screen.getByRole("button", { name: /copied review/i })).toBeTruthy();
+  });
+
+  it("surfaces draft-merge hash conflicts in the Reader receipt and review packet", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
     for (const childInvestigationId of ["inv-conflict-a", "inv-conflict-b"]) {
       recordChaseDraftHandoff(
         buildChaseDraftHandoff({
@@ -336,6 +408,13 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
 
     expect(await screen.findByText("1 hash conflict need review")).toBeTruthy();
     expect(screen.getByRole("region", { name: /Draft merge receipt/i })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /copy review/i }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const payload = JSON.parse(writeText.mock.calls[0][0]);
+    expect(payload.hash_conflict_count).toBe(1);
+    expect(payload.hash_conflicts).toEqual([["inv-conflict-b", "inv-conflict-a"]]);
+    expect(payload.source_book_mutated).toBe(false);
+    expect(payload.twin_document_mutated).toBe(false);
   });
 
   it("keeps draft merge disabled until two chases are ready", () => {

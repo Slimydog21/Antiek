@@ -80,6 +80,7 @@ export default function ReadingCompanion({
     [investigations],
   );
   const [copiedMergePacket, setCopiedMergePacket] = useState(false);
+  const [copiedSourceReviewPacket, setCopiedSourceReviewPacket] = useState(false);
   const [draftBusy, setDraftBusy] = useState(false);
   const [draftMergeReceipt, setDraftMergeReceipt] = useState<ResearchArtifactComposeResponse | null>(null);
   const [draftMergeIds, setDraftMergeIds] = useState<string[]>([]);
@@ -117,6 +118,29 @@ export default function ReadingCompanion({
     setCopiedMergePacket(true);
   }
 
+  async function copySourceMergeReviewPacket() {
+    if (!draftMergeReceipt) return;
+    const draftPath = draftMergeReceipt.draft_merge_path ?? draftMergeReceipt.path;
+    const payload = {
+      kind: "antiek.reader.source_merge_review_packet",
+      document_id: documentId,
+      title: title ?? null,
+      parent_reading_thread_id: readingThreadId,
+      draft_merge_path: draftPath,
+      compose_index_path: draftMergeReceipt.path,
+      member_investigation_ids: draftMergeReceipt.members.map((member) => member.investigation_id),
+      requested_investigation_ids: draftMergeIds,
+      hash_conflict_count: draftMergeReceipt.hash_conflicts.length,
+      hash_conflicts: draftMergeReceipt.hash_conflicts,
+      source_book_mutated: false,
+      twin_document_mutated: false,
+      no_spend: true,
+      next_step: "review the draft merge before any source book or twin-document mutation",
+    };
+    await navigator.clipboard?.writeText(JSON.stringify(payload, null, 2));
+    setCopiedSourceReviewPacket(true);
+  }
+
   async function draftReadyChases() {
     if (readyIds.length < 2) {
       setDraftError("Two completed chases are needed for a draft merge.");
@@ -128,6 +152,7 @@ export default function ReadingCompanion({
       const result = await composeResearchArtifacts(readyIds, true);
       setDraftMergeReceipt(result);
       setDraftMergeIds(readyIds);
+      setCopiedSourceReviewPacket(false);
     } catch (error) {
       setDraftError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -215,6 +240,17 @@ export default function ReadingCompanion({
                 {draftMergeReceipt.members.length} artifacts ·{" "}
                 {draftMergeReceipt.members.filter((member) => member.twin_notes_path).length} notes twins
               </p>
+              <div className="mt-1 flex items-center justify-between gap-2 border-t border-rule pt-1 dark:border-charcoal-1">
+                <p>Review only · book not changed</p>
+                <button
+                  type="button"
+                  onClick={() => void copySourceMergeReviewPacket()}
+                  className="shrink-0 text-ink underline dark:text-bright"
+                  title="Copy a review-only packet for deciding whether to merge into the source book"
+                >
+                  {copiedSourceReviewPacket ? "copied review" : "copy review"}
+                </button>
+              </div>
               {draftMergeReceipt.hash_conflicts.length > 0 ? (
                 <p className="text-emperor">
                   {draftMergeReceipt.hash_conflicts.length} hash conflict
