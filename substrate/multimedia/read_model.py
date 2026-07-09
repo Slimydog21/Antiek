@@ -104,6 +104,20 @@ class LiveProviderExecutionPlan(_ReadModelBase):
     idempotency_key: str
 
 
+class LiveProviderRoutePreview(_ReadModelBase):
+    """No-spend provider route resolved from a queued execution plan."""
+
+    provider: str
+    model: str
+    route_policy: RoutePolicy
+    quality_label: str
+    estimated_cost_usd: float = Field(ge=0)
+    resolution: tuple[int, int] | None = None
+    duration_seconds: float | None = Field(default=None, ge=0)
+    status: str
+    reason: str
+
+
 class MultimediaJobRecord(_ReadModelBase):
     """Durable progress record for one multimedia operation.
 
@@ -124,6 +138,7 @@ class MultimediaJobRecord(_ReadModelBase):
     error_code: str | None = None
     retryable: bool | None = None
     execution_plan: LiveProviderExecutionPlan | None = None
+    route_preview: LiveProviderRoutePreview | None = None
 
 
 class MultimediaAssetSummary(_ReadModelBase):
@@ -413,6 +428,7 @@ class MultimediaAssetStore:
         error_code: str | None = None,
         retryable: bool | None = None,
         execution_plan: LiveProviderExecutionPlan | None = None,
+        route_preview: LiveProviderRoutePreview | None = None,
     ) -> MultimediaAssetRecord:
         """Append an arbitrary job row (failed/partial provider jobs, retries).
 
@@ -430,6 +446,7 @@ class MultimediaAssetStore:
             error_code=error_code,
             retryable=retryable,
             execution_plan=execution_plan,
+            route_preview=route_preview,
         )
         self.save(updated)
         return updated
@@ -450,6 +467,7 @@ class MultimediaAssetStore:
         error_code: str | None = None,
         retryable: bool | None = None,
         execution_plan: LiveProviderExecutionPlan | None = None,
+        route_preview: LiveProviderRoutePreview | None = None,
     ) -> MultimediaAssetRecord:
         sequence = max((job.sequence for job in record.jobs), default=0) + 1
         job = MultimediaJobRecord(
@@ -464,6 +482,7 @@ class MultimediaAssetStore:
             error_code=error_code,
             retryable=retryable,
             execution_plan=execution_plan,
+            route_preview=route_preview,
         )
         return record.model_copy(update={"jobs": record.jobs + (job,)})
 
@@ -569,6 +588,7 @@ __all__ = [
     "CreateMultimediaDraftRequest",
     "LiveProviderExecutionPlan",
     "LiveProviderExecutionRequest",
+    "LiveProviderRoutePreview",
     "MultimediaAssetList",
     "MultimediaAssetRecord",
     "MultimediaAssetStore",

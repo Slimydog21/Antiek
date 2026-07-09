@@ -20,6 +20,9 @@ from .hardening import (
     ShipStatus,
     evaluate_multimedia_asset,
 )
+from .live_worker import (
+    preview_next_live_execution,
+)
 from .narration import (
     NarrationParagraph,
     normalize_line,
@@ -53,6 +56,7 @@ from .provider_router import (
 from .read_model import (
     CreateMultimediaDraftRequest,
     LiveProviderExecutionRequest,
+    LiveProviderRoutePreview,
     MultimediaAssetList,
     MultimediaAssetRecord,
     MultimediaAssetStore,
@@ -155,6 +159,7 @@ __all__ = [
     "GateFinding",
     "GateResult",
     "LiveProviderExecutionRequest",
+    "LiveProviderRoutePreview",
     "GateStatus",
     "MultimediaHardeningReport",
     "ShipStatus",
@@ -166,4 +171,5 @@ __all__ = [
     "MultimediaAssetStore",
     "MultimediaAssetSummary",
     "SteeringRequest",
+    "preview_next_live_execution",
 ]
