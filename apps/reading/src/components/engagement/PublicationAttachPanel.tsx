@@ -138,6 +138,25 @@ export function PublicationAttachPanel({
               .length,
           )}
         >
+          {/* Residual (hz): machine-readable attach+hydrate metrics. */}
+          <div
+            data-testid="publication-attach-metrics"
+            data-attached-count={String(attached.length)}
+            data-hydrated-count={String(hydrated.length)}
+            data-offline-honest-count={String(
+              hydrated.filter((a) => a.offline_honest !== false && !a.fetched)
+                .length,
+            )}
+            data-citation-trust={
+              hydrated.length > 0 ? "grounded" : "ungrounded"
+            }
+            data-view-format="html"
+            role="status"
+          >
+            Publication attach · attached={attached.length} · hydrated=
+            {hydrated.length} · trust=
+            {hydrated.length > 0 ? "grounded" : "ungrounded"}
+          </div>
           <p>
             Attached {attached.length} · hydrated {hydrated.length} HTML asset(s)
           </p>

@@ -90,6 +90,14 @@ describe("PublicationAttachPanel residual ck/ed", () => {
     expect(
       screen.getByTestId("publication-attach-citation-trust").textContent,
     ).toMatch(/grounded/i);
+    // Residual (hz): machine-readable attach+hydrate metrics.
+    const metrics = screen.getByTestId("publication-attach-metrics");
+    expect(metrics.getAttribute("data-attached-count")).toBe("1");
+    expect(metrics.getAttribute("data-hydrated-count")).toBe("1");
+    expect(metrics.getAttribute("data-offline-honest-count")).toBe("1");
+    expect(metrics.getAttribute("data-citation-trust")).toBe("grounded");
+    expect(metrics.getAttribute("data-view-format")).toBe("html");
+    expect(metrics.textContent).toMatch(/Publication attach/);
     // Residual (hc): offline-honest identity path surfaced.
     expect(
       screen
