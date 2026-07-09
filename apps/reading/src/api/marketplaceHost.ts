@@ -17,6 +17,16 @@ export type CatalogEntryRow = {
   subjects?: string[];
 };
 
+/** Residual (ma/mb): Antiek-bench usage event from host/purchase path. */
+export type MarketplaceUsageEvent = {
+  task_class?: string;
+  outcome?: string;
+  prompt_hint?: string;
+  source?: string;
+  recorded?: boolean;
+  record_skipped?: string;
+};
+
 export type HostResultResponse = {
   document_id: string;
   owner_id: string;
@@ -31,6 +41,8 @@ export type HostResultResponse = {
   html: string;
   body_preview?: string;
   receipt_id?: string;
+  /** Residual (ma): book_qa usage feed for recursive suite rewrite. */
+  usage_event?: MarketplaceUsageEvent;
 };
 
 async function readJson<T>(res: Response): Promise<T> {

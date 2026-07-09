@@ -192,6 +192,13 @@ describe("MarketplaceHost mode", () => {
       library_document_ids: ["hdoc_abc"],
       view_format: "html",
       html: "<p>It is a truth universally acknowledged</p>",
+      // Residual (ma/mb): Antiek-bench book_qa usage from host path.
+      usage_event: {
+        task_class: "book_qa",
+        outcome: "worked",
+        source: "marketplace_host",
+        prompt_hint: "host pd-pride · Pride and Prejudice",
+      },
     });
     fetchAccountLibrary.mockResolvedValue({
       owner_id: "operator",
@@ -259,6 +266,17 @@ describe("MarketplaceHost mode", () => {
     expect(
       screen.getByTestId("marketplace-host-research-substrate").textContent,
     ).toMatch(/recursive note-taker/i);
+    // Residual (mb): Antiek-bench usage event chrome after host.
+    expect(hostMetrics.getAttribute("data-usage-task-class")).toBe("book_qa");
+    expect(hostMetrics.getAttribute("data-usage-source")).toBe(
+      "marketplace_host",
+    );
+    const usageChrome = screen.getByTestId("marketplace-host-usage-event");
+    expect(usageChrome.getAttribute("data-task-class")).toBe("book_qa");
+    expect(usageChrome.getAttribute("data-source")).toBe("marketplace_host");
+    expect(usageChrome.getAttribute("data-propose-not-promote")).toBe("true");
+    expect(usageChrome.textContent).toMatch(/book_qa/);
+    expect(usageChrome.textContent).toMatch(/propose/);
     expect(hostBookIntoAccount).toHaveBeenCalledWith({
       owner_id: "operator",
       book_id: "pd-pride",

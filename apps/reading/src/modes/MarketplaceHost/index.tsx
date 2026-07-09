@@ -42,6 +42,7 @@
  * with free-PD + subject + text filter).
  * Residual (ly): open catalog as HTML asset window (project_catalog_html;
  * chip-aware free_only/subject/source filters).
+ * Residual (mb): surface host usage_event (Antiek-bench book_qa) on host land.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -1049,6 +1050,8 @@ export default function MarketplaceHost({
               entries.find((e) => e.book_id === hosted.book_id)?.source ||
               "unknown"
             }
+            data-usage-task-class={hosted.usage_event?.task_class || ""}
+            data-usage-source={hosted.usage_event?.source || ""}
             data-twin-seeded={
               twinSeedStatus
                 ? twinSeedHonesty?.seeded === false
@@ -1075,6 +1078,25 @@ export default function MarketplaceHost({
             Research substrate: HTML host + offline twin seed path (recursive
             note-taker) — ready for floating deep research on this book
           </p>
+          {/* Residual (mb): Antiek-bench usage feed honesty after host. */}
+          {hosted.usage_event ? (
+            <p
+              className="text-[11px] font-mono opacity-80"
+              data-testid="marketplace-host-usage-event"
+              data-task-class={hosted.usage_event.task_class || ""}
+              data-outcome={hosted.usage_event.outcome || ""}
+              data-source={hosted.usage_event.source || ""}
+              data-propose-not-promote="true"
+              data-view-format="html"
+              role="status"
+            >
+              Antiek-bench usage: task_class=
+              {hosted.usage_event.task_class || "?"} · outcome=
+              {hosted.usage_event.outcome || "?"} · source=
+              {hosted.usage_event.source || "?"} · propose≠promote (Settings
+              suite proposal)
+            </p>
+          ) : null}
           <p>
             {hosted.already_hosted ? "Already hosted" : "Newly hosted"} ·{" "}
             {hosted.license_class} · view_format={hosted.view_format}

@@ -1,0 +1,9 @@
+# inventory-mb · marketplace host usage_event UI chrome
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: mb
+files:
+  apps/reading/src/api/marketplaceHost.ts
+  apps/reading/src/modes/MarketplaceHost/index.tsx
+  apps/reading/src/modes/MarketplaceHost/MarketplaceHost.test.tsx
+proof: vitest MarketplaceHost 13 passed
+invariants: propose≠promote · book_qa · marketplace_host source

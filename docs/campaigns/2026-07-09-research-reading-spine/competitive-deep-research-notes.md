@@ -230,3 +230,7 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (ma, 2026-07-10) **Marketplace host → Antiek-bench book_qa usage:**
   - POST /host and /purchase-and-host record UsageEvent(task_class=book_qa, source=marketplace_host)
   - Shared bench usage store feeds Settings suite-proposal rewrite (propose≠promote)
+
+- Closed (mb, 2026-07-10) **Marketplace host usage_event UI:**
+  - HostResultResponse.usage_event types
+  - Host land metrics + marketplace-host-usage-event chrome (propose≠promote)
