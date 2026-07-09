@@ -90,6 +90,13 @@ from .hydrate_adapters import (
     hydrate_with_publication_adapters,
     substack_post_fetch_publication,
 )
+from .hydrate_live_wiring import (
+    ANTIEK_HYDRATE_LIVE_ARXIV_ENV,
+    ANTIEK_HYDRATE_LIVE_SUBSTACK_ENV,
+    configure_engagement_hydrate_injectors,
+    env_flag,
+    live_fetch_publication_from_env,
+)
 from .context_search import search_engagement_context, project_context_search_html
 from .progress import (
     ProgressEvent,
@@ -130,15 +137,20 @@ __all__ = [
     "filter_references",
     "HydratedAsset",
     "ProgressEvent",
+    "ANTIEK_HYDRATE_LIVE_ARXIV_ENV",
+    "ANTIEK_HYDRATE_LIVE_SUBSTACK_ENV",
     "arxiv_metadata_fetch_publication",
     "asset_id_for_ref",
     "compose_fetch_publication",
+    "configure_engagement_hydrate_injectors",
+    "env_flag",
     "evidence_pack_payload",
     "get_spawn",
     "hydrate_reference",
     "hydrate_with_arxiv_adapter",
     "hydrate_with_publication_adapters",
     "list_progress",
+    "live_fetch_publication_from_env",
     "substack_post_fetch_publication",
     "list_source_references",
     "list_spawns_for_asset",
