@@ -29,6 +29,11 @@ from orchestration.continuous.budget import (
     _budget_path,
 )
 from substrate.antiek_bench import read_latest_scorecard
+from substrate.model_routing import (
+    NotDiamondAdvisorCandidate,
+    NotDiamondAdvisorRecommendation,
+    resolve_notdiamond_advisor,
+)
 
 settings_router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -135,6 +140,11 @@ class AntiekBenchLatestResponse(BaseModel):
     mock_run: bool | None = None
     best_by_task_class: list[AntiekBenchBestModelRow] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
+
+
+class NotDiamondAdvisorResponse(BaseModel):
+    estimate: PromptCostEstimateResponse
+    recommendation: NotDiamondAdvisorRecommendation
 
 
 def _dispatch_config_path() -> Path:
@@ -519,6 +529,30 @@ def estimate_prompt_cost(
     )
 
 
+def _advisor_candidate(candidate: PromptCostCandidate) -> NotDiamondAdvisorCandidate:
+    return NotDiamondAdvisorCandidate(
+        provider=candidate.provider,
+        model=candidate.model,
+        tier=candidate.tier,
+        estimated_usd_high=candidate.estimated_usd_high,
+        pricing_known=candidate.pricing_known,
+        cache_status=candidate.cache_status,
+    )
+
+
+def estimate_notdiamond_advisor(req: PromptCostEstimateRequest) -> NotDiamondAdvisorResponse:
+    budget = read_operator_budget()
+    estimate = estimate_prompt_cost(req, budget=budget)
+    candidates = [_advisor_candidate(candidate) for candidate in estimate.candidates]
+    selected = _advisor_candidate(estimate.selected_candidate) if estimate.selected_candidate else None
+    recommendation = resolve_notdiamond_advisor(
+        candidates=candidates,
+        local_selected=selected,
+        task_kind=req.task_kind,
+    )
+    return NotDiamondAdvisorResponse(estimate=estimate, recommendation=recommendation)
+
+
 def read_operator_budget() -> BudgetResponse:
     """Read daily cap + spent with honest unknown-spend semantics."""
     notes: list[str] = []
@@ -620,6 +654,11 @@ def post_prompt_cost_estimate(req: PromptCostEstimateRequest) -> PromptCostEstim
     return estimate_prompt_cost(req, budget=budget)
 
 
+@settings_router.post("/router-advisor/notdiamond", response_model=NotDiamondAdvisorResponse)
+def post_notdiamond_advisor(req: PromptCostEstimateRequest) -> NotDiamondAdvisorResponse:
+    return estimate_notdiamond_advisor(req)
+
+
 @settings_router.get("/antiek-bench/latest", response_model=AntiekBenchLatestResponse)
 def get_latest_antiek_bench_scorecard() -> AntiekBenchLatestResponse:
     scorecard = read_latest_scorecard()
@@ -662,9 +701,11 @@ __all__ = [
     "AntiekBenchBestModelRow",
     "AntiekBenchLatestResponse",
     "ModelsResponse",
+    "NotDiamondAdvisorResponse",
     "PromptCostCandidate",
     "PromptCostEstimateRequest",
     "PromptCostEstimateResponse",
+    "estimate_notdiamond_advisor",
     "estimate_prompt_cost",
     "read_operator_budget",
     "register_settings_budget_routes",

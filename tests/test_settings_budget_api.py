@@ -143,6 +143,51 @@ def test_antiek_bench_latest_shows_best_model_by_task_class(
     assert all(row["provider"] and row["model"] for row in body["best_by_task_class"])
 
 
+def test_notdiamond_advisor_endpoint_is_disabled_without_flag(client: TestClient) -> None:
+    r = client.post(
+        "/settings/router-advisor/notdiamond",
+        json={
+            "tier": "pro",
+            "route_mode": "auto_balanced",
+            "task_kind": "research_question",
+            "prompt_chars": 4000,
+            "expected_output_tokens": 1000,
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["recommendation"]["mode"] == "disabled"
+    assert body["recommendation"]["source"] == "disabled"
+    assert body["recommendation"]["external_call_performed"] is False
+    assert body["estimate"]["selected_candidate"] is not None
+
+
+def test_notdiamond_advisor_endpoint_shadow_mode_never_calls_live_service(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANTIEK_ROUTER_ADVISOR", "notdiamond")
+    monkeypatch.setenv("ANTIEK_ROUTER_ADVISOR_MODE", "shadow")
+
+    r = client.post(
+        "/settings/router-advisor/notdiamond",
+        json={
+            "tier": "pro",
+            "route_mode": "auto_cost",
+            "task_kind": "reading_highlight",
+            "prompt_chars": 40_000,
+            "expected_output_tokens": 1000,
+            "session_cache_key": "book-session",
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["recommendation"]["mode"] == "shadow"
+    assert body["recommendation"]["source"] == "local_policy"
+    assert body["recommendation"]["notdiamond_would_call"] is True
+    assert body["recommendation"]["external_call_performed"] is False
+
+
 def test_estimate_with_synthetic_pricing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
