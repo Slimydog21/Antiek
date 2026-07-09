@@ -340,11 +340,7 @@ def _consume_nd_decision() -> tuple[
     consume_nd_decision = module.consume_nd_decision
     nd = dict(consume_nd_decision())
     latency = nd.get("nd_decision_latency_ms")
-    latency_ms: int | None
-    if latency is None:
-        latency_ms = None
-    else:
-        latency_ms = int(latency)
+    latency_ms: int | None = None if latency is None else int(latency)
     return (
         str(nd["nd_session_id"]) if nd.get("nd_session_id") is not None else None,
         str(nd["nd_recommended_provider"])
