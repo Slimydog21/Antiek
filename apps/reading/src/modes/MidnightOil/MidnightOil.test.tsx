@@ -8,6 +8,7 @@ import {
   budgetReservationMidnightOil,
   dispatchMidnightOil,
   dryRunMidnightOil,
+  finalArtifactMidnightOil,
   graphMutationMidnightOil,
   preflightMidnightOil,
   providerRouteMidnightOil,
@@ -333,6 +334,35 @@ vi.mock("../../api/midnightOil", () => ({
     final_artifact_created: false,
     graph_notes: ["graph mutation gate only: graph writer is not configured"],
   })),
+  finalArtifactMidnightOil: vi.fn(async () => ({
+    receipt_id: "midnight-oil-test-final-artifact",
+    graph_mutation_receipt_id: "midnight-oil-test-graph-mutation",
+    retrieval_receipt_id: "midnight-oil-test-retrieval",
+    provider_route_receipt_id: "midnight-oil-test-provider-route",
+    budget_reservation_receipt_id: "midnight-oil-test-budget-reservation",
+    activation_checklist_receipt_id: "midnight-oil-test-activation-checklist",
+    dispatch_receipt_id: "midnight-oil-test-dispatch-receipt",
+    applied_run_receipt_id: "midnight-oil-test-applied-run-receipt",
+    runner_handoff_id: "midnight-oil-test-runner-handoff",
+    approval_receipt_id: "midnight-oil-test-approval-receipt",
+    launch_packet_id: "midnight-oil-test-launch-packet",
+    run_id: "midnight-oil-test",
+    status: "blocked_final_artifact_writer_disabled",
+    planned_artifact_id: "midnight-oil-test-html-research-asset",
+    planned_twin_note_document_id: "midnight-oil-test-twin-note-document",
+    final_format: "html",
+    pdf_allowed: false,
+    blocker_reason: "final_html_artifact_writer_missing",
+    final_artifact_allowed: false,
+    final_artifact_created: false,
+    graph_mutated: false,
+    source_receipts_created: false,
+    retrieval_performed: false,
+    provider_calls_made: false,
+    budget_reserved: false,
+    dispatch_performed: false,
+    artifact_notes: ["final artifact gate only: final HTML artifact writer is not configured"],
+  })),
 }));
 
 describe("MidnightOil", () => {
@@ -595,5 +625,48 @@ describe("MidnightOil", () => {
     expect(screen.getByText("blocked graph mutation disabled")).toBeTruthy();
     expect(screen.getByText("graph mutation writer missing")).toBeTruthy();
     expect(screen.getByText("not mutated")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "Final artifact" }));
+
+    await waitFor(() => expect(finalArtifactMidnightOil).toHaveBeenCalled());
+    expect(finalArtifactMidnightOil).toHaveBeenCalledWith({
+      launch_packet: expect.objectContaining({
+        packet_id: "midnight-oil-test-launch-packet",
+      }),
+      approval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-approval-receipt",
+      }),
+      runner_handoff: expect.objectContaining({
+        handoff_id: "midnight-oil-test-runner-handoff",
+      }),
+      applied_run_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-applied-run-receipt",
+      }),
+      dispatch_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-dispatch-receipt",
+      }),
+      activation_checklist_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-activation-checklist",
+      }),
+      budget_reservation_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-budget-reservation",
+      }),
+      provider_route_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-provider-route",
+      }),
+      retrieval_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-retrieval",
+      }),
+      graph_mutation_receipt: expect.objectContaining({
+        receipt_id: "midnight-oil-test-graph-mutation",
+      }),
+    });
+    expect(screen.getByText("Artifact receipt")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-final-artifact")).toBeTruthy();
+    expect(screen.getByText("blocked final artifact writer disabled")).toBeTruthy();
+    expect(screen.getByText("final html artifact writer missing")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-html-research-asset")).toBeTruthy();
+    expect(screen.getByText("midnight-oil-test-twin-note-document")).toBeTruthy();
+    expect(screen.getAllByText("not created").length).toBeGreaterThan(1);
   });
 });
