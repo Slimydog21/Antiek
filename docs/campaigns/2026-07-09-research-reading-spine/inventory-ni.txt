@@ -1,0 +1,8 @@
+# inventory-ni · twin chase note_ids provenance in goal_hint + metrics
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: ni
+files:
+  apps/reading/src/components/engagement/TwinNotesPanel.tsx
+  apps/reading/src/components/engagement/TwinNotesPanel.test.tsx
+proof: vitest TwinNotesPanel 22 passed · suite-proposal 4 passed
+invariants: HTML-first · recursive note-taker provenance · truncate long id lists

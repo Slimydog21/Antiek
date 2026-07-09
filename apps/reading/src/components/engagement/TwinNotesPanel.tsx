@@ -36,6 +36,7 @@
  * Residual (nd): one-click select questions|insights into multi-select
  * (chase/promote questions path without manual checkbox grind).
  * Residual (ne): invert multi-select over currently visible notes.
+ * Residual (ni): note_ids provenance in chase goal_hint (recursive audit).
  * HTML-first; never PDF.
  */
 
@@ -84,9 +85,15 @@ export function buildTwinChasePayload(
   const selection_text = lines.filter(Boolean).join("\n\n");
   const qCount = ordered.filter((n) => n.kind === "question").length;
   const iCount = ordered.filter((n) => n.kind === "insight").length;
+  // Residual (ni): include note_ids in goal_hint for recursive provenance.
+  const idsPreview =
+    note_ids.length <= 4
+      ? note_ids.join(",")
+      : `${note_ids.slice(0, 4).join(",")},+${note_ids.length - 4}`;
   const goal_hint =
     `Twin chase on ${assetId.trim() || "asset"}: ` +
-    `${ordered.length} note(s) (questions=${qCount}, insights=${iCount})`;
+    `${ordered.length} note(s) (questions=${qCount}, insights=${iCount})` +
+    (idsPreview ? ` · note_ids=${idsPreview}` : "");
   return { selection_text, goal_hint, note_ids };
 }
 
@@ -162,6 +169,8 @@ export function TwinNotesPanel({
     researchTier: string;
     viewMode: string;
     noteIdCount: number;
+    /** Residual (ni): promoted note_ids for provenance. */
+    noteIds: string[];
     forceBudget: boolean;
     viewFormat: string;
   } | null>(null);
@@ -561,6 +570,7 @@ export function TwinNotesPanel({
           researchTier: String(out.research_tier || chaseTier),
           viewMode,
           noteIdCount: payload.note_ids.length,
+          noteIds: payload.note_ids,
           forceBudget: forced,
           viewFormat: out.view_format,
         });
@@ -900,6 +910,7 @@ export function TwinNotesPanel({
           data-research-tier={chaseMetrics.researchTier}
           data-view-mode={chaseMetrics.viewMode}
           data-note-id-count={String(chaseMetrics.noteIdCount)}
+          data-note-ids={chaseMetrics.noteIds.join(",")}
           data-force-budget={String(chaseMetrics.forceBudget)}
           data-view-format={chaseMetrics.viewFormat}
           className="font-mono text-[11px] opacity-80"
@@ -908,6 +919,9 @@ export function TwinNotesPanel({
           Twin chase metrics · spawn={chaseMetrics.spawnId} · model=
           {chaseMetrics.modelId ?? "none"} · tier={chaseMetrics.researchTier} ·
           mode={chaseMetrics.viewMode} · notes={chaseMetrics.noteIdCount}
+          {chaseMetrics.noteIds.length > 0
+            ? ` · note_ids=${chaseMetrics.noteIds.join(",")}`
+            : ""}
           {chaseMetrics.forceBudget ? " · force_budget" : ""}
         </div>
       ) : null}

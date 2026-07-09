@@ -80,7 +80,7 @@ vi.mock("./ResearchLaunchBudgetPanel", () => ({
   },
 }));
 
-describe("buildTwinChasePayload (mz)", () => {
+describe("buildTwinChasePayload (mz/ni)", () => {
   it("orders questions before insights and builds goal_hint", () => {
     const payload = buildTwinChasePayload(
       [
@@ -95,6 +95,20 @@ describe("buildTwinChasePayload (mz)", () => {
     expect(payload.goal_hint).toMatch(/Twin chase on paper-42/);
     expect(payload.goal_hint).toMatch(/questions=1/);
     expect(payload.goal_hint).toMatch(/insights=1/);
+    // Residual (ni): note_ids provenance in goal_hint.
+    expect(payload.goal_hint).toMatch(/note_ids=q1,i1/);
+  });
+
+  it("truncates long note_ids preview in goal_hint (ni)", () => {
+    const notes = Array.from({ length: 6 }, (_, i) => ({
+      note_id: `n${i}`,
+      kind: i % 2 === 0 ? "question" : "insight",
+      text: `T${i}`,
+    }));
+    const payload = buildTwinChasePayload(notes, "asset");
+    expect(payload.note_ids).toHaveLength(6);
+    expect(payload.goal_hint).toMatch(/note_ids=/);
+    expect(payload.goal_hint).toMatch(/\+2/);
   });
 });
 
@@ -1029,6 +1043,7 @@ describe("TwinNotesPanel", () => {
     expect(metrics.getAttribute("data-research-tier")).toBe("deep");
     expect(metrics.getAttribute("data-view-mode")).toBe("floating");
     expect(metrics.getAttribute("data-note-id-count")).toBe("2");
+    expect(metrics.getAttribute("data-note-ids")).toMatch(/twin_q/);
     expect(metrics.getAttribute("data-view-format")).toBe("html");
     // Selection cleared after successful chase (parity my).
     expect(

@@ -350,3 +350,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (nh, 2026-07-10) **MO soft-sync duration on tier change:**
   - onResearchTierChange updates duration only when still at previous recommended
   - preserves operator custom duration overrides
+
+- Closed (ni, 2026-07-10) **Twin chase note_ids provenance:**
+  - goal_hint includes note_ids (truncated preview when >4)
+  - twin-chase-metrics data-note-ids for recursive audit
+  - suite-proposal AC recheck 4_passed
