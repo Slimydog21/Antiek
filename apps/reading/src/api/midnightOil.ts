@@ -762,6 +762,57 @@ export interface MidnightOilFinalArtifactAdapterPlanReceipt {
   adapter_plan_notes: string[];
 }
 
+export interface MidnightOilOperatorDispatchAdapterPlanRequest {
+  launch_packet: MidnightOilLaunchPacket;
+  approval_receipt: MidnightOilApprovalReceipt;
+  runner_handoff: MidnightOilRunnerHandoff;
+  runner_control_plan_receipt: MidnightOilRunnerControlPlanReceipt;
+  budget_provider_adapter_plan_receipt: MidnightOilBudgetProviderAdapterPlanReceipt;
+  provider_executor_adapter_plan_receipt: MidnightOilProviderExecutorAdapterPlanReceipt;
+  retrieval_adapter_plan_receipt: MidnightOilRetrievalAdapterPlanReceipt;
+  graph_adapter_plan_receipt: MidnightOilGraphAdapterPlanReceipt;
+  final_artifact_adapter_plan_receipt: MidnightOilFinalArtifactAdapterPlanReceipt;
+}
+
+export interface MidnightOilOperatorDispatchAdapterPlanReceipt {
+  receipt_id: string;
+  runner_control_plan_receipt_id: string;
+  budget_provider_adapter_plan_receipt_id: string;
+  provider_executor_adapter_plan_receipt_id: string;
+  retrieval_adapter_plan_receipt_id: string;
+  graph_adapter_plan_receipt_id: string;
+  final_artifact_adapter_plan_receipt_id: string;
+  runner_readiness_receipt_id: string;
+  runner_handoff_id: string;
+  approval_receipt_id: string;
+  launch_packet_id: string;
+  run_id: string;
+  status: "blocked_operator_dispatch_adapter_unimplemented";
+  adapter_key: "operator_live_dispatch_enablement";
+  planned_setting_id: string;
+  planned_control_ledger_id: string;
+  required_invariants: string[];
+  required_dispatch_enablement_fields: string[];
+  blocker_reason: "operator_dispatch_adapter_unimplemented";
+  operator_dispatch_allowed: boolean;
+  operator_live_dispatch_enabled: boolean;
+  live_run_allowed: boolean;
+  dispatch_allowed: boolean;
+  dispatch_performed: boolean;
+  budget_reservation_allowed: boolean;
+  budget_reserved: boolean;
+  provider_execution_allowed: boolean;
+  provider_calls_made: boolean;
+  retrieval_allowed: boolean;
+  retrieval_performed: boolean;
+  source_receipts_created: boolean;
+  graph_mutation_allowed: boolean;
+  graph_mutated: boolean;
+  final_artifact_allowed: boolean;
+  final_artifact_created: boolean;
+  adapter_plan_notes: string[];
+}
+
 export async function preflightMidnightOil(
   request: MidnightOilRequest,
 ): Promise<MidnightOilPreflight> {
@@ -1027,4 +1078,21 @@ export async function finalArtifactAdapterPlanMidnightOil(
     );
   }
   return (await resp.json()) as MidnightOilFinalArtifactAdapterPlanReceipt;
+}
+
+export async function operatorDispatchAdapterPlanMidnightOil(
+  request: MidnightOilOperatorDispatchAdapterPlanRequest,
+): Promise<MidnightOilOperatorDispatchAdapterPlanReceipt> {
+  const resp = await apiFetch(`${API_BASE}/research/midnight-oil/operator-dispatch-adapter-plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(
+      `POST /research/midnight-oil/operator-dispatch-adapter-plan: HTTP ${resp.status}: ${body}`,
+    );
+  }
+  return (await resp.json()) as MidnightOilOperatorDispatchAdapterPlanReceipt;
 }
