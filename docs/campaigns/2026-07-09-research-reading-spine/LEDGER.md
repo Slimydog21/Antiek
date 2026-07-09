@@ -66,3 +66,7 @@ No browser Playwright e2e; does not replace chase-launcher write path; operator 
 - write-piece-selection-preview + clear highlight
 - ResearchLaunchBudgetPanel promptText tracks highlight
 - tests: WriteHome 19 passed
+## residual (gi) Marketplace → Write HTML draft handoff — 2026-07-09
+- marketplace-open-write on host-result
+- library-open-write-{document_id} on library rows
+- tests: MarketplaceHost 5 passed

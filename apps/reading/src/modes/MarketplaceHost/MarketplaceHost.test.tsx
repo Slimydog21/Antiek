@@ -112,6 +112,11 @@ describe("MarketplaceHost mode", () => {
       book_id: "pd-pride",
     });
     expect(screen.getByTestId("hosted-html").innerHTML).toContain("truth");
+    // Residual (gi): host-result → Write HTML draft handoff.
+    const writeLink = screen.getByTestId("marketplace-open-write");
+    expect(writeLink.getAttribute("href")).toBe("/write?html_draft=hdoc_abc");
+    expect(writeLink.getAttribute("data-view-format")).toBe("html");
+    expect(writeLink.getAttribute("data-document-id")).toBe("hdoc_abc");
     // Residual (dk): auto-open hosted window after host (default on).
     await waitFor(() => {
       expect(openWindow).toHaveBeenCalledWith(
@@ -128,6 +133,10 @@ describe("MarketplaceHost mode", () => {
       expect(screen.getByTestId("library-doc-list")).toBeTruthy();
       expect(screen.getByTestId("library-doc-hdoc_abc")).toBeTruthy();
     });
+    // Residual (gi): library row → Write handoff.
+    const libWrite = screen.getByTestId("library-open-write-hdoc_abc");
+    expect(libWrite.getAttribute("href")).toBe("/write?html_draft=hdoc_abc");
+    expect(libWrite.getAttribute("data-view-format")).toBe("html");
     expect(screen.getByTestId("library-filter-count").textContent).toMatch(
       /Showing 1 of 1/,
     );

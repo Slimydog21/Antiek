@@ -10,6 +10,8 @@
  * Residual (dq): load account library on mount (not only after host).
  * Residual (dz): DecisionTreeDriverBadge — active model driver readout before
  * host/research (reading ≡ research model visibility).
+ * Residual (gi): Open Write HTML draft handoff from host-result + library
+ * rows (marketplace → write flywheel; fl path).
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -399,29 +401,44 @@ export default function MarketplaceHost({
             {hosted.license_class} · view_format={hosted.view_format}
           </p>
           {/* Residual (bt/dk): open hosted HTML book in a floating window. */}
-          <button
-            type="button"
-            data-testid="open-hosted-in-window"
-            disabled={hosted.view_format !== "html" || !hosted.html}
-            onClick={() => {
-              if (hosted.view_format !== "html") {
-                setError("view_format must be html — PDF is not a reading surface");
-                return;
-              }
-              openHostedWindow({
-                document_id: hosted.document_id,
-                title: hosted.title,
-                html: hosted.html,
-                view_format: hosted.view_format,
-                license_class: hosted.license_class,
-                owner_id: hosted.owner_id,
-                source: "marketplace_host",
-              });
-            }}
-            className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
-          >
-            Open hosted book in window
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              data-testid="open-hosted-in-window"
+              disabled={hosted.view_format !== "html" || !hosted.html}
+              onClick={() => {
+                if (hosted.view_format !== "html") {
+                  setError("view_format must be html — PDF is not a reading surface");
+                  return;
+                }
+                openHostedWindow({
+                  document_id: hosted.document_id,
+                  title: hosted.title,
+                  html: hosted.html,
+                  view_format: hosted.view_format,
+                  license_class: hosted.license_class,
+                  owner_id: hosted.owner_id,
+                  source: "marketplace_host",
+                });
+              }}
+              className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+            >
+              Open hosted book in window
+            </button>
+            {/* Residual (gi): handoff hosted HTML into Write mode (fl path). */}
+            {hosted.view_format === "html" && hosted.document_id ? (
+              <a
+                href={`/write?html_draft=${encodeURIComponent(hosted.document_id)}`}
+                data-testid="marketplace-open-write"
+                data-view-format="html"
+                data-document-id={hosted.document_id}
+                className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono underline hover:bg-ink/5 dark:hover:bg-bright/10"
+                title="Open Write with hosted book as HTML draft handoff"
+              >
+                Open Write (HTML draft)
+              </a>
+            ) : null}
+          </div>
           <div
             className="prose border rounded p-3 text-sm"
             data-testid="hosted-html"
@@ -472,15 +489,28 @@ export default function MarketplaceHost({
                   </div>
                 </div>
                 {(d.view_format || "html") === "html" ? (
-                  <button
-                    type="button"
-                    data-testid={`library-open-${d.document_id}`}
-                    className="text-xs font-mono border rounded px-2 py-1"
-                    disabled={busy}
-                    onClick={() => void onOpenLibraryDoc(d)}
-                  >
-                    Open window
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      data-testid={`library-open-${d.document_id}`}
+                      className="text-xs font-mono border rounded px-2 py-1"
+                      disabled={busy}
+                      onClick={() => void onOpenLibraryDoc(d)}
+                    >
+                      Open window
+                    </button>
+                    {/* Residual (gi): library → Write HTML draft handoff. */}
+                    <a
+                      href={`/write?html_draft=${encodeURIComponent(d.document_id)}`}
+                      data-testid={`library-open-write-${d.document_id}`}
+                      data-view-format="html"
+                      data-document-id={d.document_id}
+                      className="text-xs font-mono border rounded px-2 py-1 underline"
+                      title="Open Write with library document as HTML draft handoff"
+                    >
+                      Open Write
+                    </a>
+                  </div>
                 ) : null}
               </li>
             ))}
