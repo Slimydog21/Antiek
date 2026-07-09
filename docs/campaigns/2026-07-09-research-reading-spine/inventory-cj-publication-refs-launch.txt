@@ -1,0 +1,13 @@
+# residual (cj) Publication refs (arxiv/substack/url) on research launch
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(ci) prior | branch_only | campaign inventories
+(cj) publication refs launch | branch_only | parsePublicationRefs + hydratePublicationRefs + questionWithPublicationRefs; StartResearch panel; 28 vitest; tip after commit
+
+PRODUCT PATH:
+one ref/line → hydrate-ref (HTML assets) → append to launch question → Ask
+
+HONESTY: offline identity hydrate default; live via ANTIEK_HYDRATE_LIVE_* injectors
+
+NEXT: (ck) re-derive; operator merge PR #465

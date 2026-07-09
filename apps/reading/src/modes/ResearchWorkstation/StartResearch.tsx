@@ -15,6 +15,11 @@ import { ResearchLaunchBudgetPanel } from "../../components/engagement/ResearchL
 import CascadeProposal from "./CascadeProposal";
 import MyResearch from "./MyResearch";
 import VoiceChaseButton from "./VoiceChaseButton";
+import {
+  hydratePublicationRefs,
+  parsePublicationRefs,
+  questionWithPublicationRefs,
+} from "./publicationRefs";
 
 /**
  * StartResearch — the Research HOME (S5 redesign fix → Living-Roadmap SPR-05).
@@ -87,6 +92,9 @@ const EXAMPLE_PROMPTS: readonly string[] = [
  * Residual (bp): live budget bar + #440 cost projection for the typed prompt
  * mount below the depth control (ResearchLaunchBudgetPanel). Static
  * "~$0.08–$0.16" copy is retired in favor of honest projection / unknown.
+ *
+ * Residual (cj): publication refs (arxiv/substack/url) hydrate into HTML
+ * assets and are appended to the launch question for grounded research.
  */
 const RESEARCH_TIER_OPTIONS: ReadonlyArray<{
   value: ResearchTier;
@@ -147,6 +155,9 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   // tracked so we can label it honestly in the UI.
   const [attach, setAttach] = useState<AttachState>({ kind: "idle" });
   const [promptDerived, setPromptDerived] = useState(false);
+  // Residual (cj): arxiv / substack / URL handles, one per line.
+  const [pubRefs, setPubRefs] = useState("");
+  const [pubRefStatus, setPubRefStatus] = useState<string | null>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // The research-starts signature beat (U-05 M2) — Werner's one-shot
@@ -169,9 +180,29 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   } = start;
 
   const onSubmit = useCallback(async () => {
-    const id = await submit({ question, researchTier: tier });
-    if (id) setQuestion("");
-  }, [submit, question, tier]);
+    const refs = parsePublicationRefs(pubRefs);
+    setPubRefStatus(null);
+    let launchQuestion = question;
+    if (refs.length > 0) {
+      const hydrated = await hydratePublicationRefs(refs);
+      const nOk = hydrated.ok.length;
+      const nFail = hydrated.failed.length;
+      setPubRefStatus(
+        `Hydrated ${nOk} publication asset(s)` +
+          (nFail ? ` · ${nFail} failed` : "") +
+          " · HTML-first",
+      );
+      launchQuestion = questionWithPublicationRefs(question, refs);
+    }
+    const id = await submit({
+      question: launchQuestion,
+      researchTier: tier,
+    });
+    if (id) {
+      setQuestion("");
+      // Keep refs visible for follow-up asks; operator clears manually.
+    }
+  }, [submit, question, tier, pubRefs]);
 
   const fillExample = useCallback((prompt: string) => {
     setQuestion(prompt);
@@ -629,6 +660,43 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             promptText={question}
             researchTier={tier}
           />
+
+          {/* Residual (cj): knowledge-dense publication handles for deep research. */}
+          <div
+            className="space-y-1"
+            data-testid="publication-refs-panel"
+            data-view-format="html"
+          >
+            <label
+              className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight"
+              htmlFor="publication-refs-input"
+            >
+              Publication refs (arxiv / substack / URL)
+            </label>
+            <textarea
+              id="publication-refs-input"
+              data-testid="publication-refs-input"
+              value={pubRefs}
+              onChange={(e) => setPubRefs(e.target.value)}
+              disabled={busy}
+              rows={2}
+              placeholder={"arxiv:1706.03762\nhttps://example.substack.com/p/…"}
+              className="w-full rounded-hog border border-rule dark:border-charcoal-1 bg-ice-0 dark:bg-charcoal-2 px-2 py-1.5 text-[12px] font-mono text-ink dark:text-bright disabled:opacity-50"
+            />
+            <p className="text-[10px] font-mono text-ink-mute dark:text-moonlight">
+              One handle per line. Hydrated into HTML assets on Ask (offline
+              identity by default; live arxiv/substack via env injectors).
+            </p>
+            {pubRefStatus ? (
+              <p
+                className="text-[11px] font-mono text-aurora"
+                data-testid="publication-refs-status"
+                role="status"
+              >
+                {pubRefStatus}
+              </p>
+            ) : null}
+          </div>
 
           <div className="flex items-center justify-between gap-3">
             <div className="text-[11px] font-mono text-ink-mute dark:text-moonlight">
