@@ -624,6 +624,65 @@ describe("CollectiveResearchPanel", () => {
     expect(dual.textContent).toMatch(/Dual-gate/i);
   });
 
+  it("auto-selects newest recent_ring spawn when selection empty (ol)", async () => {
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_open", "spn_newest", "spn_older"]}
+        parentAssetId="parent"
+        recentSpawnIds={["spn_newest", "spn_older"]}
+        // no preferredSpawnId
+      />,
+    );
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("collective-selection-count")
+          .getAttribute("data-selected-count"),
+      ).toBe("1");
+    });
+    expect(
+      (screen.getByTestId("collective-select-spn_newest") as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(
+      (screen.getByTestId("collective-select-spn_open") as HTMLInputElement)
+        .checked,
+    ).toBe(false);
+    // Clear selection — does not re-auto-select same newest.
+    fireEvent.click(screen.getByTestId("collective-clear-selection"));
+    expect(
+      screen
+        .getByTestId("collective-selection-count")
+        .getAttribute("data-selected-count"),
+    ).toBe("0");
+    // Still empty after a tick (same newest).
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("collective-selection-count")
+          .getAttribute("data-selected-count"),
+      ).toBe("0");
+    });
+  });
+
+  it("does not auto-select recent when preferredSpawnId is set (ol)", () => {
+    render(
+      <CollectiveResearchPanel
+        availableSpawnIds={["spn_pref", "spn_newest"]}
+        preferredSpawnId="spn_pref"
+        recentSpawnIds={["spn_newest"]}
+      />,
+    );
+    expect(
+      (screen.getByTestId("collective-select-spn_pref") as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(
+      (screen.getByTestId("collective-select-spn_newest") as HTMLInputElement)
+        .checked,
+    ).toBe(false);
+  });
+
   it("selects only recent_ring spawns in one click (og)", () => {
     render(
       <CollectiveResearchPanel

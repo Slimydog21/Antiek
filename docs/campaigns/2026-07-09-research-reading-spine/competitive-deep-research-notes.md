@@ -461,3 +461,8 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (ok, 2026-07-10) **SESSION-ARC oi–oj collective bench feed:**
   - SESSION-ARC-oi-oj-collective-bench-feed.md fleet handoff
   - twin chase → collective merge → collective_merge usage → suite rewrite
+
+- Closed (ol, 2026-07-10) **Auto-select newest recent_ring spawn:**
+  - preferredSpawnId still wins
+  - no re-auto after clear of same newest
+  - chase → collective one less click

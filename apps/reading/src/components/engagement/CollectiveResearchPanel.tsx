@@ -38,9 +38,11 @@
  *     rows (twin-chase batch merge path).
  * 22. Residual (oj): surface usage_event from collective/merge on metrics
  *     (Antiek-bench recursive rewrite audit).
+ * 23. Residual (ol): auto-select newest recent_ring spawn when selection is
+ *     empty and preferredSpawnId is unset (chase → collective one less click).
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchCollectiveResearch,
   mergeSpawnOutputs,
@@ -89,6 +91,11 @@ export type CollectiveResearchPanelProps = {
    * (closed windows). When omitted, falls back to listRecentDeepResearchSpawnIds().
    */
   recentSpawnIds?: readonly string[] | null;
+  /**
+   * Residual (ol): when true (default), auto-select newest recent_ring spawn
+   * if selection is empty and preferredSpawnId is unset.
+   */
+  autoSelectNewestRecent?: boolean;
 };
 
 export function CollectiveResearchPanel({
@@ -99,6 +106,7 @@ export function CollectiveResearchPanel({
   onDocMerged,
   onRecentSpawnsCleared,
   recentSpawnIds = null,
+  autoSelectNewestRecent = true,
 }: CollectiveResearchPanelProps) {
   const [selected, setSelected] = useState<string[]>([]);
   /** Residual (oc/of): local read of recent ring for chrome + origin badges. */
@@ -106,6 +114,8 @@ export function CollectiveResearchPanel({
     listRecentDeepResearchSpawnIds(),
   );
   const recentCount = recentRing.length;
+  /** Residual (ol): skip re-auto-selecting same newest after operator clears. */
+  const lastAutoSelectedRecent = useRef<string | null>(null);
 
   // Auto-select preferred spawn once when available (residual cn).
   useEffect(() => {
@@ -114,6 +124,25 @@ export function CollectiveResearchPanel({
     if (!availableSpawnIds.includes(pref)) return;
     setSelected((prev) => (prev.includes(pref) ? prev : [...prev, pref]));
   }, [preferredSpawnId, availableSpawnIds]);
+
+  // Residual (ol): auto-select newest recent when no preferred + empty selection.
+  useEffect(() => {
+    if (!autoSelectNewestRecent) return;
+    if ((preferredSpawnId || "").trim()) return;
+    if (selected.length > 0) return;
+    const newest = recentRing.find((id) => availableSpawnIds.includes(id));
+    if (!newest) return;
+    if (lastAutoSelectedRecent.current === newest) return;
+    setSelected([newest]);
+    lastAutoSelectedRecent.current = newest;
+  }, [
+    autoSelectNewestRecent,
+    preferredSpawnId,
+    selected.length,
+    recentRing,
+    availableSpawnIds,
+  ]);
+
   const [unit, setUnit] = useState<CollectiveResponse | null>(null);
   const [docMerge, setDocMerge] = useState<MergeProductResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -548,6 +577,7 @@ export function CollectiveResearchPanel({
         data-available-count={String(availableSpawnIds.length)}
         data-recent-count={String(recentCount)}
         data-recent-in-available={String(recentInAvailable)}
+        data-auto-select-newest-recent={String(autoSelectNewestRecent)}
         data-view-format="html"
         title="Includes open deep-research windows and recent session opens (twin chase / float)"
       >
