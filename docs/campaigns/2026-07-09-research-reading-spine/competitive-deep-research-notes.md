@@ -657,3 +657,5 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
 - Closed (qg, 2026-07-10) **collective DecisionTreeDriverBadge promptText** for budget foresight
 
 - Closed (qh, 2026-07-10) **spawn-merge DecisionTreeDriverBadge promptText**
+
+- Closed (qi, 2026-07-10) **TwinNotes DecisionTreeDriverBadge promptText** from chase selection

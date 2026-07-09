@@ -33,6 +33,7 @@
  * ResearchLaunchBudgetPanel + force override when projection would exceed.
  * Residual (nc): DecisionTreeDriverBadge + chase metrics (model/spawn/tier)
  * for model+budget+depth audit on recursive note-taker chase path.
+ * Residual (qi): DecisionTreeDriverBadge promptText from chase selection preview.
  * Residual (nd): one-click select questions|insights into multi-select
  * (chase/promote questions path without manual checkbox grind).
  * Residual (ne): invert multi-select over currently visible notes.
@@ -1014,6 +1015,7 @@ export function TwinNotesPanel({
                 normalizedResearchTier ||
                 undefined) as ResearchLaunchTier | undefined
             }
+            promptText={chasePromptPreview || undefined}
           />
         </div>
       </header>

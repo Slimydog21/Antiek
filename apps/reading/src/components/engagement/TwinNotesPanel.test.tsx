@@ -41,10 +41,14 @@ vi.mock("../../workspace/twinWriteSeed", () => ({
 }));
 
 vi.mock("./DecisionTreeDriverBadge", () => ({
-  DecisionTreeDriverBadge: (props: { researchTier?: string }) => (
+  DecisionTreeDriverBadge: (props: {
+    researchTier?: string;
+    promptText?: string;
+  }) => (
     <div
       data-testid="mock-decision-tree-driver-badge"
       data-research-tier={props.researchTier ?? ""}
+      data-prompt-len={String((props.promptText || "").length)}
     >
       mock driver badge
     </div>
@@ -1785,4 +1789,44 @@ describe("TwinNotesPanel", () => {
       }),
     );
   });
+
+  it("passes chase selection as driver badge promptText (qi)", async () => {
+    fetchTwinNotes.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 1,
+      insight_count: 0,
+      question_count: 1,
+      notes: [
+        {
+          note_id: "twin_q_qi",
+          asset_id: "paper",
+          kind: "question",
+          text: "Does promptText project budget?",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+      messages: [],
+      html: "<p>twins</p>",
+    });
+    render(<TwinNotesPanel assetId="paper" autoLoad researchTier="deep" />);
+    await waitFor(() => {
+      expect(screen.getByTestId("twin-select-twin_q_qi")).toBeTruthy();
+    });
+    expect(
+      screen
+        .getByTestId("mock-decision-tree-driver-badge")
+        .getAttribute("data-prompt-len"),
+    ).toBe("0");
+    fireEvent.click(screen.getByTestId("twin-select-twin_q_qi"));
+    expect(
+      Number(
+        screen
+          .getByTestId("mock-decision-tree-driver-badge")
+          .getAttribute("data-prompt-len") || 0,
+      ),
+    ).toBeGreaterThan(10);
+  });
+
 });
