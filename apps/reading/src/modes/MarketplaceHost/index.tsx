@@ -1,9 +1,12 @@
 /**
  * Marketplace host-into-account mode — catalog → host → HTML library.
  * PDF may be purchase/ingest source only; view is always HTML.
+ *
+ * Residual (dj): client-side catalog filter (title/author/license) so the
+ * operator can find a book before host/purchase without a second network hop.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchAccountLibrary,
   fetchMarketplaceCatalog,
@@ -36,6 +39,18 @@ export default function MarketplaceHost({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [receiptRef, setReceiptRef] = useState("manual-order-token-demo");
+  /** Residual (dj): substring filter over catalog title/author/license. */
+  const [filterQuery, setFilterQuery] = useState("");
+
+  const filteredEntries = useMemo(() => {
+    const q = filterQuery.trim().toLowerCase();
+    if (!q) return entries;
+    return entries.filter((e) => {
+      const hay =
+        `${e.title} ${e.author} ${e.license_class} ${e.book_id}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [entries, filterQuery]);
 
   const loadCatalog = useCallback(async () => {
     setBusy(true);
@@ -116,6 +131,21 @@ export default function MarketplaceHost({
         </button>
         <label className="flex flex-col gap-1 text-sm font-mono">
           <span className="text-[11px] uppercase opacity-70">
+            Filter catalog
+          </span>
+          <input
+            type="search"
+            data-testid="catalog-filter"
+            value={filterQuery}
+            onChange={(e) => setFilterQuery(e.target.value)}
+            placeholder="Title, author, license…"
+            className="border rounded px-2 py-1 min-w-[16rem]"
+            disabled={busy}
+            aria-label="Filter catalog"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-sm font-mono">
+          <span className="text-[11px] uppercase opacity-70">
             Purchase receipt ref
           </span>
           <input
@@ -135,8 +165,15 @@ export default function MarketplaceHost({
         </p>
       ) : null}
 
+      <p
+        className="text-[11px] font-mono opacity-70"
+        data-testid="catalog-filter-count"
+      >
+        Showing {filteredEntries.length} of {entries.length}
+      </p>
+
       <ul className="mt-4 space-y-2" data-testid="catalog-list">
-        {entries.map((e) => (
+        {filteredEntries.map((e) => (
           <li key={e.book_id} className="border rounded p-3 flex justify-between gap-4">
             <div>
               <strong>{e.title}</strong>
@@ -166,6 +203,11 @@ export default function MarketplaceHost({
           </li>
         ))}
       </ul>
+      {entries.length > 0 && filteredEntries.length === 0 ? (
+        <p className="text-sm opacity-70" data-testid="catalog-filter-empty">
+          No catalog matches for “{filterQuery.trim()}”.
+        </p>
+      ) : null}
 
       {hosted ? (
         <section className="mt-8 space-y-2" data-testid="host-result">

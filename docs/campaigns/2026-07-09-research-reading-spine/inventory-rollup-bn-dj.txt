@@ -1,0 +1,3 @@
+# Campaign rollup (bn)–(dj) · PR #465
+di: collective budget gate · dj: marketplace catalog filter for reading host path.
+Operator merge still gated.

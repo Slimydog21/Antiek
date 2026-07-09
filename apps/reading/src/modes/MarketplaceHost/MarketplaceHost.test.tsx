@@ -88,6 +88,52 @@ describe("MarketplaceHost mode", () => {
     expect(screen.getByTestId("hosted-html").innerHTML).toContain("truth");
   });
 
+  it("filters catalog by title/author substring (dj)", async () => {
+    fetchMarketplaceCatalog.mockResolvedValue({
+      entries: [
+        {
+          book_id: "pd-pride",
+          title: "Pride and Prejudice",
+          author: "Jane Austen",
+          license_class: "public_domain",
+          is_free: true,
+          source: "standard_ebooks",
+        },
+        {
+          book_id: "pd-moby",
+          title: "Moby-Dick",
+          author: "Herman Melville",
+          license_class: "public_domain",
+          is_free: true,
+          source: "standard_ebooks",
+        },
+      ],
+      count: 2,
+      view_format: "html",
+    });
+
+    render(<MarketplaceHost ownerId="operator" />);
+    await waitFor(() => {
+      expect(screen.getByText("Pride and Prejudice")).toBeTruthy();
+      expect(screen.getByText("Moby-Dick")).toBeTruthy();
+    });
+    expect(screen.getByTestId("catalog-filter-count").textContent).toMatch(
+      /Showing 2 of 2/,
+    );
+    fireEvent.change(screen.getByTestId("catalog-filter"), {
+      target: { value: "melville" },
+    });
+    expect(screen.getByTestId("catalog-filter-count").textContent).toMatch(
+      /Showing 1 of 2/,
+    );
+    expect(screen.getByText("Moby-Dick")).toBeTruthy();
+    expect(screen.queryByText("Pride and Prejudice")).toBeNull();
+    fireEvent.change(screen.getByTestId("catalog-filter"), {
+      target: { value: "zzz-no-match" },
+    });
+    expect(screen.getByTestId("catalog-filter-empty")).toBeTruthy();
+  });
+
   it("opens hosted book in floating HTML window (bt)", async () => {
     fetchMarketplaceCatalog.mockResolvedValue({
       entries: [

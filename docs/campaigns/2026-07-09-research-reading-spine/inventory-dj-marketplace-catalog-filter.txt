@@ -1,0 +1,15 @@
+# residual (dj) Marketplace catalog filter
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(di) prior | branch_only | campaign inventories
+(dj) catalog filter | branch_only | MarketplaceHost filter title/author/license; 4 vitest
+
+## What shipped
+- Client-side catalog filter input; count “Showing N of M”.
+- Empty state when no matches.
+
+## Why (north star)
+Pure reading mode: find a digital book in the catalog before host/purchase into Antiek HTML library.
+
+NEXT: (dk) re-derive; operator merge PR #465
