@@ -198,6 +198,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           <ResearchContextPanel
             assetId={props.parent_asset_id.trim()}
             spawnId={props.spawn_id?.trim() || null}
+            autoLoad
           />
         </section>
       ) : null}

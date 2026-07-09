@@ -33,6 +33,39 @@ describe("ResearchContextPanel", () => {
     promoteTwinsToContext.mockReset();
   });
 
+  it("auto-loads context and evidence on mount when autoLoad (co)", async () => {
+    fetchResearchContext.mockResolvedValue({
+      asset_id: "paper",
+      view_format: "html",
+      twin_units: [],
+      source_references: [],
+      twin_count: 0,
+      ref_count: 0,
+      prompt_block: "# auto pack",
+    });
+    fetchEvidencePack.mockResolvedValue({
+      asset_id: "paper",
+      insight_count: 0,
+      question_count: 0,
+      ref_count: 0,
+      insights: [],
+      questions: [],
+      source_references: [],
+      view_format: "html",
+      product_panel: "evidence",
+      source: "test",
+      notes: [],
+      html: "<p>evidence</p>",
+    });
+    render(<ResearchContextPanel assetId="paper" autoLoad />);
+    await waitFor(() => {
+      expect(fetchResearchContext).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(fetchEvidencePack).toHaveBeenCalled();
+    });
+  });
+
   it("loads and renders prompt block", async () => {
     fetchResearchContext.mockResolvedValue({
       asset_id: "paper",

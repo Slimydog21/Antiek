@@ -6,7 +6,7 @@
  * HTML-first stance: this panel never offers PDF export.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   attachSourceRefs,
   fetchEvidencePack,
@@ -27,12 +27,18 @@ export type ResearchContextPanelProps = {
   spawnId?: string | null;
   /** Optional controlled initial query filter */
   initialQuery?: string;
+  /**
+   * Residual (co): auto-load research context + evidence pack on mount
+   * (competitive citation-trust surface without extra clicks).
+   */
+  autoLoad?: boolean;
 };
 
 export function ResearchContextPanel({
   assetId,
   spawnId = null,
   initialQuery = "",
+  autoLoad = false,
 }: ResearchContextPanelProps) {
   const [query, setQuery] = useState(initialQuery);
   const [refInput, setRefInput] = useState("");
@@ -87,6 +93,14 @@ export function ResearchContextPanel({
       setBusy(false);
     }
   }, [assetId, spawnId]);
+
+  useEffect(() => {
+    if (!autoLoad || !assetId.trim()) return;
+    void load();
+    void loadEvidence();
+    // Intentionally once per asset/spawn identity when autoLoad is on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- residual (co) mount-once
+  }, [autoLoad, assetId, spawnId]);
 
   const attach = useCallback(async () => {
     if (!spawnId || !refInput.trim()) return;
