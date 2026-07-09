@@ -523,3 +523,6 @@ Campaign 2026-07-09. Quality bar for Antiek deep research — study of technical
   - arxiv/substack/URL hydrate offline-honest on create
   - Ground publication: handles appended as swarm goals
   - knowledge-dense autonomous research parity Write/ResearchThis
+
+- Closed (oz, 2026-07-10) **SESSION-ARC om–oy engagement + MO pubs:**
+  - SESSION-ARC-om-oy-engagement-moil-pubs.md fleet handoff

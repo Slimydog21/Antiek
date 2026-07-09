@@ -83,6 +83,11 @@ offline. Live L3 twin seed remains dual-gate.
 driver badge + select by kind + invert + note_ids provenance.
 **(ng–nh)** Midnight Oil competitive duration recommend + soft-sync.
 
+## Closed since oy (MO pubs + full matrix · 2026-07-10)
+
+**(oy–oz)** Midnight Oil knowledge-dense pub refs on create; SESSION-ARC om–oy.
+See `SESSION-ARC-om-oy-engagement-moil-pubs.md`.
+
 ## Next residual after this doc
 
 ## Closed since nw (Antiek-bench chase feed · 2026-07-10)
