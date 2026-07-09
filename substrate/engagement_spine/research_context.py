@@ -38,6 +38,8 @@ class ResearchContextPack:
     source_references: tuple[SourceReference, ...]
     query: str | None = None
     view_format: str = "html"
+    # Residual (kk): reserved spawn research_tier when spawn_id set (default deep).
+    research_tier: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -50,6 +52,7 @@ class ResearchContextPack:
             "view_format": self.view_format,
             "twin_count": len(self.twin_units),
             "ref_count": len(self.source_references),
+            "research_tier": self.research_tier,
         }
 
     def prompt_block(self, *, max_twins: int = 12, max_refs: int = 12) -> str:
@@ -59,6 +62,8 @@ class ResearchContextPack:
         ]
         if self.spawn_id:
             lines.append(f"spawn: {self.spawn_id}")
+        if self.research_tier:
+            lines.append(f"research_tier: {self.research_tier}")
         if self.investigation_id:
             lines.append(f"investigation: {self.investigation_id}")
         if self.query:
@@ -126,16 +131,21 @@ def assemble_research_context(
             inv = pack.promoted[0].investigation_id
 
     refs: tuple[SourceReference, ...] = ()
+    research_tier: str | None = None
     sid = (spawn_id or "").strip() or None
     if sid:
+        from substrate.dispatch.research_tier import normalize_research_tier
+
         listed = list_source_references(sid, store=store)
         if query:
             listed = filter_references(listed, query=query)
         refs = tuple(listed)
-        # Fall back to investigation from spawn row if still unknown
-        if inv is None:
-            row = store.get_spawn(sid)
-            if row:
+        row = store.get_spawn(sid)
+        if row:
+            # Residual (kk): surface reserved spawn research_tier on pack.
+            research_tier = normalize_research_tier(row.get("research_tier"))
+            # Fall back to investigation from spawn row if still unknown
+            if inv is None:
                 inv = row.get("investigation_id")
                 # If no filter applied above and row has refs, prefer row order
                 if not refs and not query:
@@ -149,6 +159,7 @@ def assemble_research_context(
         source_references=refs,
         query=query,
         view_format="html",
+        research_tier=research_tier,
     )
 
 
@@ -175,6 +186,11 @@ def research_context_html(pack: ResearchContextPack) -> str:
                     "type": "text",
                     "text": (
                         f"twins={len(pack.twin_units)} refs={len(pack.source_references)}"
+                        + (
+                            f" · tier={pack.research_tier}"
+                            if pack.research_tier
+                            else ""
+                        )
                         + (f" query={pack.query}" if pack.query else "")
                     ),
                 }

@@ -101,17 +101,52 @@ def test_assemble_research_context_combines_twins_and_refs(store):
     )
     assert pack.view_format == "html"
     assert pack.spawn_id == spawn.spawn_id
+    # Residual (kk): default research_tier deep when spawn reserved without tier.
+    assert pack.research_tier == "deep"
+    assert pack.to_dict()["research_tier"] == "deep"
     assert len(pack.twin_units) == 2
     assert len(pack.source_references) == 2
     kinds = {r.kind for r in pack.source_references}
     assert "arxiv" in kinds and "substack" in kinds
     block = pack.prompt_block()
     assert "Self-attention" in block
+    assert "research_tier: deep" in block
     assert "1706.03762" in block or "arxiv" in block
     html = research_context_html(pack)
     assert "Self-attention" in html
+    assert "tier=deep" in html
     assert pack.to_dict()["twin_count"] == 2
     assert pack.to_dict()["ref_count"] == 2
+
+
+def test_assemble_research_context_surfaces_spawn_research_tier_wrestle(store):
+    """Residual (kk): pack + HTML carry reserved spawn research_tier."""
+    asset = "paper-wrestle-ctx"
+    record_twin_insight(asset, "Wrestle-depth twin insight.", store=store)
+    spawn = spawn_from_highlight_with_references(
+        HighlightSelection(
+            asset_id=asset,
+            selection_text="wrestle selection",
+            region_id="w-1",
+        ),
+        store=store,
+        references=["https://arxiv.org/abs/1706.03762"],
+        research_tier="wrestle",
+    )
+    rec = _Rec()
+    pack = assemble_research_context(
+        asset,
+        store=store,
+        spawn_id=spawn.spawn_id,
+        promote_insight_fn=rec.promote_insight,
+        promote_question_fn=rec.promote_question,
+    )
+    assert pack.research_tier == "wrestle"
+    assert pack.to_dict()["research_tier"] == "wrestle"
+    assert "research_tier: wrestle" in pack.prompt_block()
+    html = research_context_html(pack)
+    assert "tier=wrestle" in html
+    assert "application/pdf" not in html.lower()
 
 
 def test_assemble_double_run_stable(store):

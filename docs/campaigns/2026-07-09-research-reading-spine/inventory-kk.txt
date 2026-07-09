@@ -1,0 +1,8 @@
+# inventory-kk · research context pack + HTML research_tier
+branch: campaign/research-reading-spine-2026-07-09-main
+residual: kk
+files:
+  substrate/engagement_spine/research_context.py
+  tests/test_research_context_pack.py
+proof: test_research_context_pack 4_passed (HONEST_OK)
+invariants: HTML · tier=deep|wrestle · spawn-scoped · no PDF · parity evidence/progress/search
