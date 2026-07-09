@@ -282,6 +282,49 @@ export default function Settings() {
     }
   }
 
+  async function onInstallRecommendedFromLeaderboard() {
+    if (!leaderboard?.recommended_model_id) {
+      setLeaderboardError("No recommended model to install");
+      return;
+    }
+    setTreeBusy(true);
+    setTreeError(null);
+    setLeaderboardError(null);
+    try {
+      // Advisory install: use selected provider if set, else first ready provider.
+      const provider =
+        selectedProvider ||
+        models?.find((m) => m.ready)?.provider_id ||
+        models?.[0]?.provider_id ||
+        null;
+      if (!provider) {
+        throw new Error(
+          "Select a provider (or ensure models inventory has one) before installing recommended driver",
+        );
+      }
+      const mid = leaderboard.recommended_model_id;
+      const result = await installDecisionTreeSelection({
+        model_id: mid,
+        provider_id: provider,
+      });
+      setTree(result);
+      setSelectedModel(mid);
+      setSelectedProvider(provider);
+      // Keep registry list in sync when add-model path shares process registry
+      try {
+        const rm = await fetchRegisteredModels();
+        setRegistered(rm);
+      } catch {
+        /* optional */
+      }
+    } catch (e) {
+      setLeaderboardError(e instanceof Error ? e.message : String(e));
+      setTreeError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setTreeBusy(false);
+    }
+  }
+
   async function onApplyDepthTier(tier: string) {
     setDepthBusy(true);
     setDepthError(null);
@@ -938,6 +981,17 @@ export default function Settings() {
                   }
                 />
                 <Row label="View" value={leaderboard.view_format} />
+                {leaderboard.recommended_model_id ? (
+                  <button
+                    type="button"
+                    data-testid="antiek-bench-leaderboard-install-recommended"
+                    disabled={treeBusy || leaderboardBusy}
+                    onClick={() => void onInstallRecommendedFromLeaderboard()}
+                    className="px-3 py-1.5 rounded border border-ink dark:border-bright text-sm font-mono hover:bg-ink/5 dark:hover:bg-bright/10 disabled:opacity-50"
+                  >
+                    Install recommended as decision-tree driver
+                  </button>
+                ) : null}
                 {(leaderboard.models || []).length === 0 ? (
                   <p className="text-[11px] text-ink-soft dark:text-starlight">
                     No offline runs for this week yet.

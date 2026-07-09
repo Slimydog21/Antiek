@@ -584,6 +584,28 @@ describe("Settings SPR-01 + decision-tree install", () => {
     );
   });
 
+  it("installs recommended leaderboard model as decision-tree driver", async () => {
+    const user = userEvent.setup();
+    render(<Settings />);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("antiek-bench-leaderboard-install-recommended"),
+      ).toBeTruthy();
+    });
+    await user.click(
+      screen.getByTestId("antiek-bench-leaderboard-install-recommended"),
+    );
+    await waitFor(() => {
+      expect(installDecisionTreeSelection).toHaveBeenCalled();
+    });
+    const call = installDecisionTreeSelection.mock.calls.at(-1)?.[0] as {
+      model_id: string;
+      provider_id?: string;
+    };
+    expect(call.model_id).toBe("strong-model");
+    expect(call.provider_id).toBeTruthy();
+  });
+
   it("registers an operator model via Add model panel", async () => {
     const user = userEvent.setup();
     render(<Settings />);
