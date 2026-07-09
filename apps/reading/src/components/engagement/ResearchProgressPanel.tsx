@@ -23,12 +23,18 @@ export type ResearchProgressPanelProps = {
    * so the operator sees stages immediately (honest offline scaffold).
    */
   autoSeedIfEmpty?: boolean;
+  /**
+   * Residual (cr): poll interval ms while non-terminal (competitive multi-minute
+   * telemetry). 0/undefined disables polling after mount load.
+   */
+  pollIntervalMs?: number;
 };
 
 export function ResearchProgressPanel({
   spawnId,
   autoLoad = false,
   autoSeedIfEmpty = false,
+  pollIntervalMs = 0,
 }: ResearchProgressPanelProps) {
   const [progress, setProgress] = useState<ResearchProgressResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -86,11 +92,24 @@ export function ResearchProgressPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoLoad, autoSeedIfEmpty, spawnId]);
 
+  // Residual (cr): poll while non-terminal for multi-minute deep research.
+  useEffect(() => {
+    if (!autoLoad || !pollIntervalMs || pollIntervalMs < 500) return;
+    if (!spawnId.trim()) return;
+    const id = window.setInterval(() => {
+      // Stop polling once terminal; still refresh once more if already terminal.
+      if (progress?.is_terminal) return;
+      void load();
+    }, pollIntervalMs);
+    return () => window.clearInterval(id);
+  }, [autoLoad, pollIntervalMs, spawnId, progress?.is_terminal, load]);
+
   return (
     <section
       className="research-progress-panel"
       data-testid="research-progress-panel"
       data-view-format="html"
+      data-poll-ms={String(pollIntervalMs || 0)}
       aria-label="Research progress"
     >
       <header>

@@ -20,6 +20,7 @@
  * Residual (cl): SessionFlywheelPanel — complete flywheel + twins/usage.
  * Residual (cp): ResearchProgressPanel autoLoad + autoSeedIfEmpty.
  * Residual (cq): TwinNotesPanel autoLoad.
+ * Residual (cr): ResearchProgressPanel pollIntervalMs for multi-minute jobs.
  */
 
 import { useMemo } from "react";
@@ -215,6 +216,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             spawnId={props.spawn_id.trim()}
             autoLoad
             autoSeedIfEmpty
+            pollIntervalMs={4000}
           />
         </section>
       ) : null}

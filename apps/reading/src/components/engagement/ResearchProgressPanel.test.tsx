@@ -87,6 +87,80 @@ describe("ResearchProgressPanel", () => {
     expect(seedResearchProgress).not.toHaveBeenCalled();
   });
 
+  it("polls progress while non-terminal when pollIntervalMs set (cr)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    fetchResearchProgress
+      .mockResolvedValueOnce({
+        spawn_id: "spn_poll",
+        event_count: 1,
+        events: [
+          {
+            spawn_id: "spn_poll",
+            stage: "plan",
+            message: "p",
+            ts: 1,
+            sequence: 1,
+          },
+        ],
+        latest_stage: "plan",
+        is_terminal: false,
+        view_format: "html",
+        product_panel: "research_progress",
+        source: "test",
+        notes: [],
+        html: "<p>plan</p>",
+      })
+      .mockResolvedValue({
+        spawn_id: "spn_poll",
+        event_count: 2,
+        events: [
+          {
+            spawn_id: "spn_poll",
+            stage: "plan",
+            message: "p",
+            ts: 1,
+            sequence: 1,
+          },
+          {
+            spawn_id: "spn_poll",
+            stage: "gather",
+            message: "g",
+            ts: 2,
+            sequence: 2,
+          },
+        ],
+        latest_stage: "gather",
+        is_terminal: false,
+        view_format: "html",
+        product_panel: "research_progress",
+        source: "test",
+        notes: [],
+        html: "<p>gather</p>",
+      });
+
+    render(
+      <ResearchProgressPanel
+        spawnId="spn_poll"
+        autoLoad
+        pollIntervalMs={1000}
+      />,
+    );
+    await waitFor(() => {
+      expect(fetchResearchProgress).toHaveBeenCalled();
+    });
+    const callsAfterMount = fetchResearchProgress.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(1100);
+    await waitFor(() => {
+      expect(fetchResearchProgress.mock.calls.length).toBeGreaterThan(
+        callsAfterMount,
+      );
+    });
+    expect(
+      screen.getByTestId("research-progress-panel").getAttribute("data-poll-ms"),
+    ).toBe("1000");
+    vi.useRealTimers();
+  });
+
   it("auto-seeds empty pipeline when autoSeedIfEmpty (cp)", async () => {
     fetchResearchProgress.mockResolvedValue({
       spawn_id: "spn_empty",

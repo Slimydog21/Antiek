@@ -1,0 +1,10 @@
+# residual (cr) Multi-minute research progress polling
+# PR #465 · 2026-07-09
+
+CAPABILITY | STATUS | EVIDENCE
+(a)–(cq) prior | branch_only | campaign inventories
+(cr) progress pollIntervalMs | branch_only | ResearchProgressPanel polls while non-terminal; host uses 4000ms; 20 vitest; tip after commit
+
+Competitive: multi-minute deep research job visibility (vs OpenAI/Perplexity progress UX)
+
+NEXT: (cs) re-derive; operator merge PR #465

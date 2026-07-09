@@ -67,10 +67,12 @@ vi.mock("../engagement/ResearchProgressPanel", () => ({
     spawnId: string;
     autoLoad?: boolean;
     autoSeedIfEmpty?: boolean;
+    pollIntervalMs?: number;
   }) => (
     <div data-testid="research-progress-panel-stub">
       {props.spawnId}:auto={String(Boolean(props.autoLoad))}:seed=
-      {String(Boolean(props.autoSeedIfEmpty))}
+      {String(Boolean(props.autoSeedIfEmpty))}:poll=
+      {String(props.pollIntervalMs ?? 0)}
     </div>
   ),
 }));
@@ -161,7 +163,7 @@ describe("DeepResearchSessionHost", () => {
     render(<DeepResearchSessionHost {...FIXTURE} />);
     expect(screen.getByTestId("deep-research-progress-mount")).toBeTruthy();
     expect(screen.getByTestId("research-progress-panel-stub").textContent).toMatch(
-      /spn_launch_1:auto=true:seed=true/,
+      /spn_launch_1:auto=true:seed=true:poll=4000/,
     );
   });
 
